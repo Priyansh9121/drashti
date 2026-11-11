@@ -4,7 +4,6 @@ import { KIRTAN_FIELD_NAMES as FIELD_NAMES, searchWords } from '../../../shared/
 import { hideLegacy, openHit, showLegacy, useLibrary, useSearch } from './library-store';
 import { clickPresentation } from './library-store';
 import { startDrag } from '../playlists/drag';
-import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Search } from '../ui/icons';
 import { rowClass } from '../ui/ListRow';
@@ -72,7 +71,6 @@ function HitRow({ hit, query, selected }: { hit: SearchHit; query: string; selec
           </span>
         </span>
       )}
-      {hit.suggestion && <Badge>{hit.suggestion === 'meaning' ? 'Meaning match' : 'Similar spelling'}</Badge>}
       <span className="block text-xs text-muted">{hit.libraryName}</span>
     </button>
   );

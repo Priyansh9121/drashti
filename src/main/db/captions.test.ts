@@ -21,7 +21,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe('captions settings in the library (migration 066)', () => {
+describe('captions settings in the library', () => {
   it('upgrade an alpha.14 library (57; 062–065 are Part 17b’s): the defaults, everything else as it was', () => {
     const file = join(dir, 'library.sqlite');
     const v57 = openDatabase(
@@ -35,6 +35,32 @@ describe('captions settings in the library (migration 066)', () => {
     expect(MIGRATIONS.some((m) => m.version === 66 && m.name === 'live captions')).toBe(true);
     expect(new CaptionSettingsRepo(db).get()).toEqual(DEFAULT_CAPTION_SETTINGS);
     db.close();
+  });
+
+  it('upgrades an alpha.15 library so it can save Sanskrit and keep the other caption settings', () => {
+    const file = join(dir, 'library.sqlite');
+    const previous = openDatabase(
+      file,
+      MIGRATIONS.filter((migration) => migration.version <= 68),
+    );
+    const settings = { language: 'gu', audience: true, size: 'large', place: 'top' } as const;
+    try {
+      expect(schemaVersion(previous)).toBe(68);
+      new CaptionSettingsRepo(previous).set(settings);
+    } finally {
+      previous.close();
+    }
+
+    const current = openDatabase(file);
+    try {
+      const repo = new CaptionSettingsRepo(current);
+      expect(repo.get()).toEqual(settings);
+      const sanskrit = { ...settings, language: 'sa' } as const;
+      repo.set(sanskrit);
+      expect(repo.get()).toEqual(sanskrit);
+    } finally {
+      current.close();
+    }
   });
 
   it('keep what the admin chose, and refuse what is not a setting', () => {

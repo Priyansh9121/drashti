@@ -2,7 +2,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { createWriteStream, fdatasync, openSync, statfsSync, type WriteStream } from 'node:fs';
 import { setPriority } from 'node:os';
 import { dirname } from 'node:path';
-import { placeName, type StreamPreset } from '../../../shared/stream';
+import { placeName, RECORD_PART_BYTES, type StreamPreset } from '../../../shared/stream';
 import { redact } from '../redact';
 import { audioArgs, type EncoderChoice, encoderCandidates, pickEncoder, videoArgs } from './encoders';
 import type { MkvCluster } from './mkv';
@@ -44,11 +44,6 @@ export interface PipelineHooks {
   datasync?(fd: number, done: (error: NodeJS.ErrnoException | null) => void): void;
 }
 
-/**
- * A recording goes on in a new part once its part holds this much, at the next picture (Session 31,
- * MED-2): under FAT32's 4 GB for a file, so a USB stick never cuts a long sabha's recording short.
- */
-export const PART_BYTES = 3.5 * 1024 ** 3;
 /** The disk is asked to keep what has been written about this often (fdatasync), off the hot path. */
 const SYNC_EVERY_MS = 9000;
 
@@ -267,7 +262,7 @@ export class StreamPipeline {
   /** The recording's first file, the number of the part being written, and the most a part may hold. */
   private firstFile = '';
   private part = 1;
-  private partBytes = PART_BYTES;
+  private partBytes = RECORD_PART_BYTES;
   /** Bytes written to every part so far (the rate counts across parts). */
   private recordedBytes = 0;
   private lastSync = 0;
@@ -623,7 +618,7 @@ export class StreamPipeline {
 
   // ---- recording -----------------------------------------------------------------------
 
-  record(file: string, keepFreeBytes: number, partBytes = PART_BYTES): void {
+  record(file: string, keepFreeBytes: number, partBytes = RECORD_PART_BYTES): void {
     this.stopRecording();
     this.keepFree = keepFreeBytes;
     this.partBytes = partBytes;

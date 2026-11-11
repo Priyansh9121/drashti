@@ -31,7 +31,6 @@ export interface AppearanceItems {
 }
 
 export interface MenuActions {
-  aiHelpers?: () => void;
   /** Simple Mode leaves out backup and restore, and offers the way back to Pro Mode. */
   mode: OperatorMode;
   /** This computer's access is Simple Mode only (Session 55): Simple Mode offers no way back to Pro Mode. */
@@ -163,9 +162,6 @@ export function installMenu(actions: MenuActions): void {
                       click: actions.deckAnimations.toggle,
                     } as MenuItemConstructorOptions,
                   ]
-                : []),
-              ...(actions.aiHelpers
-                ? [{ id: 'ai-helpers', label: 'AI helpers…', click: actions.aiHelpers }]
                 : []),
               { id: 'events-out', label: 'Events Out…', click: actions.eventsOut },
               { id: 'opening', label: 'Opening…', click: actions.opening },

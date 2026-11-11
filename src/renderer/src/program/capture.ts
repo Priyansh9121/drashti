@@ -1,7 +1,7 @@
 import { PREVIEW_FPS, PREVIEW_WIDTH } from '../../../shared/stream';
 import { cutText } from '../../../shared/text';
 import { inTurn } from '../render/live-window';
-import { speechPort } from './speech-tap';
+import { speechPort, type SpeechGraph } from './speech-tap';
 
 /*
  * The stream's page captures its own picture (the Program), frame by frame,
@@ -26,6 +26,7 @@ let size = { width: 1920, height: 1080 };
 let levelOf: () => number = () => -100;
 let soundTrack: () => MediaStreamTrack | null = () => null;
 let inputTrack: () => MediaStreamTrack | null = () => null;
+let inputGraph: () => SpeechGraph | null = () => null;
 let previewBusy = false;
 let lastPreview = 0;
 let frames = 0;
@@ -290,10 +291,12 @@ export function startCapture(
   sound: () => MediaStreamTrack | null,
   // The sound input's own track, for live captions (Session 55, Part 10).
   input: () => MediaStreamTrack | null = () => null,
+  graph: () => SpeechGraph | null = () => null,
 ): void {
   levelOf = level;
   soundTrack = sound;
   inputTrack = input;
+  inputGraph = graph;
   if (listening) return;
   listening = true;
   window.addEventListener('message', (event) => {
@@ -303,7 +306,7 @@ export function startCapture(
     if (!port) return;
     if (data?.drashtiStreamPort === 'speech') {
       // Live captions (Session 55, Part 10): the sound input's own sound, on its own port.
-      speechPort(port, inputTrack);
+      speechPort(port, inputTrack, inputGraph);
       return;
     }
     if (data?.drashtiStreamPort === 'preview') {

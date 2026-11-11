@@ -4,9 +4,10 @@ import { placeName, STREAM_PRESETS } from '../../../shared/stream';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog } from '../ui/Dialog';
-import { CircleDot, FolderOpen, HardDrive, Radio, Square, Wifi, WifiOff } from '../ui/icons';
+import { HardDrive, Radio, Square, Wifi, WifiOff } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
+import { RecordButton } from './RecordButton';
 import { streamAction, useStream } from './stream-store';
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -264,38 +265,14 @@ export function RecordingControls({ status }: { status: StreamStatus }) {
     <section className="space-y-2" data-testid="stream-recording">
       <SectionTitle>Recording</SectionTitle>
       <div className="flex flex-wrap items-center gap-2">
-        {on ? (
-          <Button
-            size="lg"
-            icon={Square}
-            data-testid="stop-recording"
-            onClick={() => void streamAction(() => window.drashti.stream.stopRecording())}
-          >
-            Stop recording
-          </Button>
-        ) : (
-          <Button
-            size="lg"
-            icon={CircleDot}
-            data-testid="start-recording"
-            disabled={!rec.folder || !status.ffmpeg.available}
-            onClick={() => void streamAction(() => window.drashti.stream.startRecording())}
-          >
-            Record
-          </Button>
-        )}
-        <Button
-          icon={FolderOpen}
-          disabled={on}
-          data-testid="recording-folder"
-          onClick={() => void streamAction(() => window.drashti.stream.pickFolder())}
-        >
-          {rec.folder ? 'Change folder…' : 'Choose a folder…'}
-        </Button>
+        <RecordButton size="lg" allowFolderChoice />
       </div>
       <p className="truncate text-xs text-muted" title={rec.folder ?? undefined}>
         {rec.folder ? `Recordings go in ${rec.folder}` : 'Choose where recordings go first.'}
       </p>
+      {!on && (
+        <p className="text-xs text-muted">Video records the stream’s layout and uses about 3 GB an hour.</p>
+      )}
       {rec.message && <Notice tone="warning">{rec.message}</Notice>}
       {rec.warning && (
         <Notice tone="warning" data-testid="recording-warning">

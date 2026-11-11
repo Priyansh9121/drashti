@@ -24,6 +24,7 @@ import { Loading } from '../ui/States';
 import { Toggle } from '../ui/Toggle';
 import { loadProfiles, streamAction, useStream, watchProgram } from './stream-store';
 import { cutText } from '../../../shared/text';
+import { RecordingFolder } from './RecordButton';
 
 /*
  * Stream settings: profiles, each with a name, where it goes (the RTMPS
@@ -491,6 +492,10 @@ function SettingsDialog() {
             </Button>
           </div>
           <ProfileForm key={profile.id} profile={profile} active={profile.id === profiles.activeId} />
+          <section className="space-y-2" aria-label="Recording folder">
+            <SectionTitle>Recording folder</SectionTitle>
+            <RecordingFolder />
+          </section>
         </>
       )}
     </Dialog>

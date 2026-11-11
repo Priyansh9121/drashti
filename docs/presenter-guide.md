@@ -2,7 +2,7 @@
 
 This guide describes **1.0.0-alpha.15**, including the phone’s playlist rows, gestures and Simple Mode limits, and the completed slide editor on the Drashti computer.
 
-Live captions and all five AI helpers are **Trial** and start off. Each can slow the screens while on. Ask the operator about a slowdown; their switches are on the Drashti computer, not your phone.
+Live captions are **Trial** and start off. They can slow the screens while on. Ask the operator about a slowdown. The switch is on the Drashti computer.
 
 For anyone who speaks or leads from the front: you see what is on the screens, your notes, and the next slide, and you move through any presentation in Drashti's library from your phone, your iPad or a laptop. The screens follow. The page has the operator's show controls too: the clears, what is playing, the music, the stage screen, messages, timers and lower thirds. It costs nothing and needs no app: it is a page that Drashti itself shows on the mandir's Wi-Fi.
 

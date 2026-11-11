@@ -2,7 +2,12 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_CAPTION_SETTINGS, type CaptionSettings, type CaptionsShown } from '../../shared/captions';
+import {
+  DEFAULT_CAPTION_SETTINGS,
+  type CaptionModelId,
+  type CaptionSettings,
+  type CaptionsShown,
+} from '../../shared/captions';
 import type { Heard, SpeechState } from '../../shared/speech';
 import { CaptionsService, type CaptionsStatus } from './captions-service';
 import { readCaptionsSwitch } from './captions-switch';
@@ -10,7 +15,7 @@ import type { SpeechEngine } from './hub';
 
 /* Live captions as an admin turns them on (Part 10): a stand-in engine and download; placeholder words only. */
 
-function setup(o: { engine?: boolean; failDownload?: boolean } = {}) {
+function setup(o: { engine?: boolean; failDownload?: boolean; controlDownload?: boolean } = {}) {
   const userData = mkdtempSync(join(tmpdir(), 'drashti-captions-service-'));
   let settings: CaptionSettings = { ...DEFAULT_CAPTION_SETTINGS };
   let out: { heard(h: Heard): void; state(s: SpeechState): void } | null = null;
@@ -25,7 +30,8 @@ function setup(o: { engine?: boolean; failDownload?: boolean } = {}) {
       };
     },
   };
-  let ready = false;
+  const ready = new Set<CaptionModelId>();
+  const pending: { signal: AbortSignal; finish: () => void }[] = [];
   const downloads: string[] = [];
   const shown: (CaptionsShown | null)[] = [];
   const views: CaptionsStatus[] = [];
@@ -41,15 +47,16 @@ function setup(o: { engine?: boolean; failDownload?: boolean } = {}) {
     },
     engine,
     engineProblem: () => ((o.engine ?? true) ? null : 'This copy of Drashti has no captions engine.'),
-    modelReady: () => ready,
-    download: async (id, progress) => {
+    modelReady: (id) => ready.has(id),
+    download: async (id, progress, signal) => {
       downloads.push(id);
       progress(100, 200);
+      if (o.controlDownload) await new Promise<void>((finish) => pending.push({ signal, finish }));
       await Promise.resolve();
       if (o.failDownload)
         throw new Error('No internet: the captions model downloads once, when this computer is online.');
       progress(200, 200);
-      ready = true;
+      if (!signal.aborted) ready.add(id);
     },
     show: (c) => shown.push(c),
     changed: (v) => views.push(v),
@@ -76,7 +83,7 @@ function setup(o: { engine?: boolean; failDownload?: boolean } = {}) {
       heardAt: Date.now(),
     });
   };
-  return { service, userData, started, downloads, shown, views, say, getSettings: () => settings };
+  return { service, userData, started, downloads, pending, shown, views, say, getSettings: () => settings };
 }
 
 describe('live captions as an admin turns them on (Part 10)', () => {
@@ -132,6 +139,59 @@ describe('live captions as an admin turns them on (Part 10)', () => {
     expect(view.download.message).toMatch(/No internet/);
     expect(started).toEqual([]);
     expect(view.speech).toEqual({ phase: 'held', reason: 'no-model' });
+  });
+
+  it('stops the download when captions turn off and ignores its late progress and completion', async () => {
+    const { service, pending, started } = setup({ controlDownload: true });
+    const turningOn = service.setOn(true);
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    await service.setOn(false);
+    expect(pending[0]?.signal.aborted).toBe(true);
+    pending[0]?.finish();
+    await turningOn;
+    expect(service.view()).toMatchObject({
+      on: false,
+      download: { phase: 'missing' },
+      speech: { phase: 'off' },
+    });
+    expect(started).toEqual([]);
+  });
+
+  it('only marks the selected model ready when its own download completes', async () => {
+    const { service, pending, downloads, started, views } = setup({ controlDownload: true });
+    const turningOn = service.setOn(true);
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    const switching = service.setModel('turbo');
+    expect(pending[0]?.signal.aborted).toBe(true);
+    pending[0]?.finish();
+    await turningOn;
+    await vi.waitFor(() => expect(downloads).toEqual(['small', 'turbo']));
+    expect(views.some((v) => v.model === 'turbo' && v.download.phase === 'ready')).toBe(false);
+    expect(started).toEqual([]);
+    pending[1]?.finish();
+    await switching;
+    expect(service.view()).toMatchObject({ model: 'turbo', download: { phase: 'ready' } });
+    expect(started).toEqual(['auto']);
+  });
+
+  it('waits while the stream is in use and resumes a stopped download afterwards', async () => {
+    const { service, pending, downloads, started } = setup({ controlDownload: true });
+    service.setStreamInUse(true);
+    await service.setOn(true);
+    await service.retry();
+    expect(downloads).toEqual([]);
+    expect(service.view().download.message).toMatch(/waits until/);
+    service.setStreamInUse(false);
+    await vi.waitFor(() => expect(downloads).toEqual(['small']));
+    service.setStreamInUse(true);
+    expect(pending[0]?.signal.aborted).toBe(true);
+    pending[0]?.finish();
+    await service.retry();
+    expect(downloads).toEqual(['small']);
+    service.setStreamInUse(false);
+    await vi.waitFor(() => expect(downloads).toEqual(['small', 'small']));
+    pending[1]?.finish();
+    await vi.waitFor(() => expect(started).toEqual(['auto']));
   });
 
   it('keep the settings in the library; a language starts the engine again in it', async () => {

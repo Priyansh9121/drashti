@@ -8,6 +8,7 @@ import { engineNow } from '../render/clock';
 import { startPlayback } from '../render/playback';
 import { failureState, findDevice, setSoundState } from './camera';
 import { useProgram } from './program-store';
+import type { SpeechGraph } from './speech-tap';
 
 /*
  * The stream's sound: one input (the mixer's line in), held back by the
@@ -74,6 +75,11 @@ export class StreamSound {
    */
   inputTrack(): MediaStreamTrack | null {
     return this.input?.stream.getAudioTracks()[0] ?? null;
+  }
+
+  /** Raw microphone on the existing audio render thread, with a silent branch into the stream's mix. */
+  speechGraph(): SpeechGraph | null {
+    return this.input ? { context: this.ctx, source: this.input.source, sink: this.mix } : null;
   }
 
   setDelay(ms: number): void {

@@ -1,0 +1,6 @@
+{
+  "msvcp140.dll": "CRT",
+  "vcruntime140.dll": "CRT",
+  "vcruntime140_1.dll": "CRT",
+  "vcomp140.dll": "OpenMP"
+}

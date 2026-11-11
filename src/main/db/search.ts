@@ -1,5 +1,5 @@
 import { occasionsFrom } from '../../shared/kirtans';
-import type { AiSearchHint, KirtanField, SearchHit, SearchResult } from '../../shared/search';
+import type { KirtanField, SearchHit, SearchResult } from '../../shared/search';
 import { ftsQuery, matchesAll, SEARCH_LIMIT, searchWords } from '../../shared/search';
 import type { TextRun } from '../../shared/model';
 import type { Statement } from 'better-sqlite3';
@@ -163,7 +163,7 @@ export class SearchIndex {
   }
 
   /** Presentations whose title or text has every word typed, best first. */
-  search(input: string, limit = SEARCH_LIMIT, suggestions: readonly AiSearchHint[] = []): SearchResult {
+  search(input: string, limit = SEARCH_LIMIT): SearchResult {
     const legacyCount = (
       this.stmt(
         `SELECT COUNT(*) AS n FROM search_docs d INDEXED BY search_docs_legacy
@@ -210,114 +210,7 @@ export class SearchIndex {
         ? { ...base, match: { kind: 'text', line: found[1], slideId: found[0] } }
         : { ...base, match: { kind: 'title' } };
     });
-    const result = { query: input, hits, more: ranked.length > limit, legacyCount };
-    return this.withSuggestions(result, suggestions, limit);
-  }
-
-  /** Resolve only current, enabled library sources; the worker cannot author a search result. */
-  private withSuggestions(
-    original: SearchResult,
-    suggestions: readonly AiSearchHint[],
-    limit: number,
-  ): SearchResult {
-    if (!Array.isArray(suggestions) || suggestions.length === 0 || !Number.isFinite(limit) || limit < 1)
-      return original;
-    const payload: readonly unknown[] = suggestions;
-    const candidates = payload
-      .slice(0, 200)
-      .filter((input): input is AiSearchHint => {
-        if (input === null || typeof input !== 'object') return false;
-        const hint = input as Partial<Record<keyof AiSearchHint, unknown>>;
-        return (
-          typeof hint.presentationId === 'string' &&
-          (hint.slideId === null || typeof hint.slideId === 'string') &&
-          typeof hint.stamp === 'string' &&
-          (hint.kind === 'meaning' || hint.kind === 'spelling') &&
-          typeof hint.score === 'number' &&
-          Number.isFinite(hint.score) &&
-          hint.score >= 0 &&
-          hint.score <= 1
-        );
-      })
-      .sort((a, b) => b.score - a.score);
-    if (candidates.length === 0) return original;
-    // SQLite returns one existing line, rather than decoding a whole large presentation on Main.
-    const source = this.stmt(
-      `SELECT p.id, p.name, l.name AS library_name, p.updated_at, p.content_rev,
-         (SELECT CASE WHEN line.type = 'array' THEN json_extract(line.value, '$[1]') END
-            FROM json_each(CASE WHEN json_valid(d.lines) THEN d.lines ELSE '[]' END) line
-           WHERE CASE WHEN line.type = 'array' THEN json_extract(line.value, '$[0]') END = s.id
-           LIMIT 1) AS line
-         FROM search_docs d JOIN presentations p ON p.id = d.presentation_id AND p.deleted_at IS NULL
-         JOIN libraries l ON l.id = p.library_id
-         JOIN slides s ON s.id = ? AND s.enabled = 1
-         JOIN slide_groups g ON g.id = s.group_id AND g.presentation_id = p.id
-        WHERE p.id = ?`,
-    );
-    const hits = [...original.hits];
-    const seen = new Set(hits.map((hit) => hit.presentationId));
-    let more = original.more;
-    for (const hint of candidates) {
-      if (seen.has(hint.presentationId)) continue;
-      if (hint.slideId === null) {
-        const title = this.stmt(
-          `SELECT p.id, p.name, l.name AS library_name, p.updated_at, p.content_rev
-             FROM presentations p JOIN libraries l ON l.id = p.library_id
-            WHERE p.id = ? AND p.deleted_at IS NULL`,
-        ).get(hint.presentationId) as
-          | {
-              id: string;
-              name: string;
-              library_name: string;
-              updated_at: string;
-              content_rev: number;
-            }
-          | undefined;
-        if (!title || title.updated_at + '#' + String(title.content_rev) !== hint.stamp) continue;
-        seen.add(title.id);
-        if (hits.length >= limit) {
-          more = true;
-          continue;
-        }
-        hits.push({
-          presentationId: title.id,
-          name: title.name,
-          libraryName: title.library_name,
-          match: { kind: 'title' },
-          suggestion: hint.kind,
-        });
-        continue;
-      }
-      const row = source.get(hint.slideId, hint.presentationId) as
-        | {
-            id: string;
-            name: string;
-            library_name: string;
-            updated_at: string;
-            content_rev: number;
-            line: unknown;
-          }
-        | undefined;
-      if (
-        !row ||
-        row.updated_at + '#' + String(row.content_rev) !== hint.stamp ||
-        typeof row.line !== 'string'
-      )
-        continue;
-      seen.add(row.id);
-      if (hits.length >= limit) {
-        more = true;
-        continue;
-      }
-      hits.push({
-        presentationId: row.id,
-        name: row.name,
-        libraryName: row.library_name,
-        match: { kind: 'text', slideId: hint.slideId, line: row.line },
-        suggestion: hint.kind,
-      });
-    }
-    return { ...original, hits, more };
+    return { query: input, hits, more: ranked.length > limit, legacyCount };
   }
 
   /** Presentations with text search cannot read yet, by name. */

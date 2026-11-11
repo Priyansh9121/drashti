@@ -6,7 +6,8 @@
 // One pinned whisper.cpp release (v1.9.5, its build b5454) for every platform, each download checked against its
 // SHA-256 before anything is unpacked. Downloads are kept in ~/.cache/drashti/whisper-<version>/ and the engine is
 // put in vendor/whisper/<platform>-<arch>/ (never committed: see .gitignore), from where the installers take it.
-// - Windows x64: whisper.cpp's own whisper-server.exe and its DLLs (whisper-bin-x64.zip).
+// - Windows x64: whisper.cpp's own whisper-server.exe and its DLLs (whisper-bin-x64.zip). A Windows build also
+//   stages the app-local C++ runtime from Visual Studio's x64 redistribution directories.
 // - macOS (Apple silicon and Intel): whisper.cpp's prebuilt library (whisper.framework, from its xcframework), and
 //   tools/whisper-server/drashti-whisper.c, our small program on it that answers as whisper-server does, compiled
 //   here by the Mac's own clang (the owner's choice, 4 Nov 2026: no prebuilt Mac program exists). The library needs
@@ -20,9 +21,11 @@ import {
   createWriteStream,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
@@ -30,6 +33,7 @@ import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
+import windowsRuntimeLibraries from '../src/shared/whisper-windows-runtime.json' with { type: 'json' };
 import { digestLine, stillAsUnpacked } from './tree-digest.mjs';
 
 export const WHISPER_VERSION = '1.9.5';
@@ -51,6 +55,65 @@ const WINDOWS_FILES = [
   'ggml-cpu-cannonlake.dll',
   'ggml-cpu-cascadelake.dll',
 ];
+
+// The b5454 Windows release has linker version 14.51. Microsoft requires a runtime at least as new.
+const MIN_WINDOWS_RUNTIME = '14.51';
+
+/** The newest compatible x64 runtime with every required DLL in the same Visual Studio redist version. */
+export function windowsWhisperRuntime(redistRoot) {
+  if (!redistRoot || !existsSync(redistRoot)) return null;
+  const versions = readdirSync(redistRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map(({ name }) => name)
+    .filter((version) => /^14\.\d+\.\d+(?:\.\d+)?$/u.test(version))
+    .filter((version) => version.localeCompare(MIN_WINDOWS_RUNTIME, 'en', { numeric: true }) >= 0)
+    .sort((a, b) => b.localeCompare(a, 'en', { numeric: true }));
+  for (const version of versions) {
+    const x64 = join(redistRoot, version, 'x64');
+    if (!existsSync(x64)) continue;
+    for (const directory of readdirSync(x64).sort()) {
+      const toolset = /^(Microsoft\.VC\d+)\.CRT$/iu.exec(directory)?.[1];
+      if (!toolset) continue;
+      const files = Object.entries(windowsRuntimeLibraries).map(([name, group]) => ({
+        name,
+        path: join(x64, `${toolset}.${group}`, name),
+      }));
+      if (files.every(({ path }) => statSync(path, { throwIfNoEntry: false })?.isFile()))
+        return { version, files };
+    }
+  }
+  return null;
+}
+
+function installedWindowsRuntime() {
+  const vswhere = join(
+    process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
+    'Microsoft Visual Studio',
+    'Installer',
+    'vswhere.exe',
+  );
+  const found = spawnSync(
+    vswhere,
+    [
+      '-latest',
+      '-products',
+      '*',
+      '-requires',
+      'Microsoft.VisualStudio.Component.VC.Redist.14.Latest',
+      '-property',
+      'installationPath',
+      '-utf8',
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  const installation = found.status === 0 ? found.stdout.trim() : '';
+  const runtime = windowsWhisperRuntime(installation ? join(installation, 'VC', 'Redist', 'MSVC') : null);
+  if (!runtime)
+    throw new Error(
+      `Building Windows captions needs the Visual Studio x64 CRT and OpenMP redistribution files (version ${MIN_WINDOWS_RUNTIME} or newer).`,
+    );
+  return runtime;
+}
 
 const XCFRAMEWORK = {
   url: `${RELEASE}/whisper-b5454-xcframework.zip`,
@@ -122,12 +185,16 @@ export async function fetchWhisper(target) {
     ? join(root, 'tools', 'whisper-server', 'drashti-whisper.c')
     : null;
   const sourceSha = source ? sha256Of(source) : null;
+  const runtime = target === 'win32-x64' && process.platform === 'win32' ? installedWindowsRuntime() : null;
+  const runtimeStamp = runtime ? `Microsoft Visual C++ x64 app-local runtime ${runtime.version}` : '';
   // Reused only while it is still what was made (and, on a Mac, from today's drashti-whisper.c).
+  const recorded = existsSync(stamp) ? readFileSync(stamp, 'utf8') : '';
   if (
     existsSync(out) &&
-    existsSync(stamp) &&
-    stillAsUnpacked(readFileSync(stamp, 'utf8'), outDir, build.sha256) &&
-    (!sourceSha || readFileSync(stamp, 'utf8').includes(sourceSha))
+    stillAsUnpacked(recorded, outDir, build.sha256) &&
+    (!sourceSha || recorded.includes(sourceSha)) &&
+    (!runtime ||
+      (recorded.includes(runtimeStamp) && runtime.files.every(({ name }) => existsSync(join(outDir, name)))))
   )
     return out;
   const name = target === 'win32-x64' ? 'whisper-bin-x64.zip' : 'whisper-xcframework.zip';
@@ -140,6 +207,7 @@ export async function fetchWhisper(target) {
   if (target === 'win32-x64') {
     const from = unpackWindows(zip, tmp);
     for (const f of WINDOWS_FILES) copyFileSync(join(from, f), join(outDir, f));
+    for (const file of runtime?.files ?? []) copyFileSync(file.path, join(outDir, file.name));
   } else {
     if (process.platform !== 'darwin')
       throw new Error(`The Mac engine is compiled on a Mac (asked for ${target}).`);
@@ -175,7 +243,7 @@ export async function fetchWhisper(target) {
       sourceSha
         ? `drashti-whisper compiled here from tools/whisper-server/drashti-whisper.c, sha256 ${sourceSha}\n`
         : ''
-    }${digestLine(outDir)}\nMIT: see LICENSES/whisper/ in Drashti's repository.\n`,
+    }${runtimeStamp ? `${runtimeStamp}\n` : ''}${digestLine(outDir)}\nSee LICENSES/whisper/ in Drashti's repository.\n`,
   );
   console.log(`whisper.cpp ${WHISPER_VERSION} for ${target}: ${out}`);
   return out;

@@ -32,7 +32,7 @@ export function downloadText(view: CaptionsStatus): string {
   const d = view.download;
   switch (d.phase) {
     case 'missing':
-      return `The model (${megabytes(d.total)}) downloads once, when captions are turned on.`;
+      return d.message ?? `The model (${megabytes(d.total)}) downloads once, when captions are turned on.`;
     case 'downloading':
       return `Downloading the model: ${String(Math.round(d.done / 1_000_000))} of ${megabytes(d.total)}.`;
     case 'ready':

@@ -4,6 +4,7 @@
 // (Session 25c, src/main/links/youtube-selftest.ts): yt-dlp and Deno run
 // (--version only), and Deno, started as yt-dlp starts it, cannot read a
 // file, reach 127.0.0.1 or start a program.
+// In packaged apps the bundled Whisper program must also start (with --help, without a model).
 //
 //   node scripts/check-ffmpeg.mjs             the built app in out/ (pnpm build first)
 //   node scripts/check-ffmpeg.mjs --packaged  every app electron-builder left in release/
@@ -71,13 +72,15 @@ function check(label, command, args) {
       const result = JSON.parse(line.slice('DRASHTI_SELFTEST_RESULT '.length));
       const works = result.encoders.map((e) => `${e.label}: ${e.works ? 'works' : 'no'}`).join('; ');
       const yt = result.youtube;
+      const whisper = result.whisper?.detail ?? (packaged ? 'no startup result' : 'checked in packaged apps');
+      const passed = result.passed && (!packaged || result.whisper?.passed === true);
       const sandbox = yt.sandbox
         ? `reading a file: ${yt.sandbox.readFile}; reaching 127.0.0.1: ${yt.sandbox.network} (${yt.sandbox.connections} connection(s) arrived); starting a program: ${yt.sandbox.runProgram}`
         : 'not run';
       console.log(
-        `${label}: ${result.passed ? 'OK' : 'FAILED'}\n  ${result.path}\n  ${result.version}\n  RTMPS: ${result.rtmps ? 'yes' : 'no'}\n  ${works}\n  Streams with: ${result.chosen ?? 'nothing'}\n  yt-dlp: ${yt.ytDlp.version ?? 'does not run'} (${yt.ytDlp.path ?? 'missing'})\n  Deno: ${yt.deno.version ?? 'does not run'} (${yt.deno.path ?? 'missing'})\n  Deno as yt-dlp starts it: ${sandbox}`,
+        `${label}: ${passed ? 'OK' : 'FAILED'}\n  ${result.path}\n  ${result.version}\n  RTMPS: ${result.rtmps ? 'yes' : 'no'}\n  ${works}\n  Streams with: ${result.chosen ?? 'nothing'}\n  yt-dlp: ${yt.ytDlp.version ?? 'does not run'} (${yt.ytDlp.path ?? 'missing'})\n  Deno: ${yt.deno.version ?? 'does not run'} (${yt.deno.path ?? 'missing'})\n  Deno as yt-dlp starts it: ${sandbox}\n  Live captions: ${whisper}`,
       );
-      resolve(result.passed);
+      resolve(passed);
     });
   });
 }

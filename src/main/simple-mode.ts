@@ -43,21 +43,7 @@ const ACCESS_LIST_EDITS: readonly InvokeChannel[] = [
 ];
 
 export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
-  // Offline helpers are operator choices in Pro Mode, including their background requests.
-  IPC.aiSpeech.get,
-  IPC.aiSpeech.set,
-  IPC.aiSpeech.search,
-  IPC.aiSpeech.showBook,
-  IPC.aiSpeech.nextVerse,
-  IPC.ai.get,
-  IPC.ai.set,
-  IPC.ai.past,
-  IPC.ai.search,
-  IPC.ai.lyrics,
-  IPC.ai.approveLyrics,
-  IPC.ai.playlist,
-  IPC.ai.approvePlaylist,
-  IPC.ai.cancel,
+  // Writing and saving slides from words are Pro Mode's.
   IPC.library.saveWords,
   IPC.library.newFromWords,
   // New › QR code… (Session 55, Part 8): Pro Mode's.
@@ -149,7 +135,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.setup.finish,
   IPC.setup.setSeen,
   IPC.setup.welcomeSeen,
-  // The stream: Simple Mode shows ON AIR and REC, and can neither start, end nor change it.
+  // Simple Mode can record locally. Going on air, ending a stream and changing its settings are Pro Mode's.
   IPC.stream.setLayout,
   IPC.stream.saveProfile,
   IPC.stream.setInputs,
@@ -159,8 +145,6 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stream.removeKey,
   IPC.stream.goLive,
   IPC.stream.end,
-  IPC.stream.startRecording,
-  IPC.stream.stopRecording,
   IPC.stream.pickFolder,
   IPC.media.convert,
   IPC.media.setMarkers,
@@ -475,6 +459,5 @@ export function simpleModeRefusals(
   answers.set(IPC.liveWindow.list, () => ({ ok: false, reason: 'unlisted', message: words() }));
   answers.set(IPC.liveWindow.access, () => null);
   answers.set(IPC.zoom.open, () => null);
-  answers.set(IPC.ai.cancel, () => null);
   return answers;
 }

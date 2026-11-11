@@ -33,15 +33,17 @@ function setup(settings: Partial<CaptionSettings> = {}) {
   const hub = createFakeSpeechHub();
   hub.setState({ phase: 'listening', language: 'auto' });
   const shown: (CaptionsShown | null)[] = [];
+  const onFinalPhrase = vi.fn();
   const feed = createCaptionsFeed({
     hub,
     show: (c) => shown.push(c),
+    onFinalPhrase,
     settings: () => ({ ...DEFAULT_CAPTION_SETTINGS, ...settings }),
     clearAfterMs: 6_000,
     minGapMs: 300,
   });
   const last = () => shown.at(-1) ?? null;
-  return { hub, feed, shown, last };
+  return { hub, feed, shown, last, onFinalPhrase };
 }
 
 describe('live captions from the hub (Part 10)', () => {
@@ -72,6 +74,52 @@ describe('live captions from the hub (Part 10)', () => {
     vi.advanceTimersByTime(400);
     // The last phrase stays above the new one while it is spoken (roll-up), two lines at most.
     expect(last()?.lines).toEqual(['alpha beta gamma', 'delta']);
+  });
+
+  it('offers only settled phrases to the recorder while the captions feed is running', () => {
+    const hub = createFakeSpeechHub();
+    hub.setState({ phase: 'listening', language: 'auto' });
+    const onFinalPhrase = vi.fn();
+    const feed = createCaptionsFeed({
+      hub,
+      show: vi.fn(),
+      onFinalPhrase,
+      settings: () => DEFAULT_CAPTION_SETTINGS,
+    });
+    hub.say(phrase('s1', true, 'Before'));
+    feed.start();
+    hub.say(phrase('s2', false, 'Partial'));
+    hub.say(phrase('s2', true, 'Generated placeholder'));
+    feed.stop();
+    hub.say(phrase('s3', true, 'After'));
+    expect(onFinalPhrase).toHaveBeenCalledTimes(1);
+    expect(onFinalPhrase).toHaveBeenCalledWith(expect.objectContaining({ text: 'Generated placeholder' }));
+  });
+
+  it('writes Sanskrit in Gujarati letters on the screens and in the timed draft', () => {
+    const { hub, feed, last, onFinalPhrase } = setup();
+    feed.start();
+    hub.say(phrase('s1', false, 'कखग', 'sa'));
+    expect(last()).toMatchObject({ lines: ['કખગ'], language: 'sa' });
+    expect(onFinalPhrase).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(400);
+    const final = phrase('s1', true, 'कखग १४ ऴ Latin। ક', 'sa');
+    hub.say(final);
+    const written = ['કખગ', '૧૪', 'ऴ', 'Latin।', 'ક'];
+    expect(last()).toMatchObject({ lines: [written.join(' ')], language: 'sa' });
+    expect(onFinalPhrase).toHaveBeenCalledTimes(1);
+    expect(onFinalPhrase).toHaveBeenCalledWith({
+      ...final,
+      heardAt: Date.now(),
+      text: written.join(' '),
+      words: final.words.map((word, index) => ({ ...word, text: written[index] })),
+    });
+
+    vi.advanceTimersByTime(400);
+    hub.say(phrase('s2', true, 'कखग', 'hi'));
+    expect(last()).toMatchObject({ lines: ['कखग'], language: 'hi' });
+    expect(onFinalPhrase).toHaveBeenLastCalledWith(expect.objectContaining({ text: 'कखग' }));
   });
 
   it('change the screens at most every 300 ms (the last change always shown)', () => {

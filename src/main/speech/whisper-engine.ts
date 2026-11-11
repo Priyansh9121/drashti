@@ -1,7 +1,9 @@
 import { spawn as spawnChild, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { constants, setPriority } from 'node:os';
-import { SPEECH_LANGUAGES, type Heard, type HeardWord, type SpeechLanguage } from '../../shared/speech';
+import { SPEECH_RATE, type Heard, type HeardWord, type SpeechLanguage } from '../../shared/speech';
+import { whisperDependencyProblem } from './engine-place';
 import type { SpeechEngine } from './hub';
 
 /*
@@ -14,12 +16,12 @@ import type { SpeechEngine } from './hub';
  * own output is never read.
  */
 
-export const SAMPLE_RATE = 16_000;
+export const SAMPLE_RATE = SPEECH_RATE;
 
 /** The stream's sound input, 16 kHz mono 16-bit, each chunk with when its last sample was heard (epoch ms). */
 export interface PcmSource {
   /** Start; null when there is no sound input. Returns how to stop. */
-  open(chunk: (samples: Int16Array, endAt: number) => void): (() => void) | null;
+  open(chunk: (samples: Int16Array, endAt: number, startAt?: number) => void): (() => void) | null;
 }
 
 export interface WhisperEngineOptions {
@@ -43,11 +45,12 @@ export interface WhisperEngineOptions {
   restMs?: number;
 }
 
-const LANGUAGE_NAMES: Readonly<Record<string, SpeechLanguage>> = {
-  gujarati: 'gu',
-  hindi: 'hi',
-  english: 'en',
-};
+const LANGUAGE_CODES = new Map<string, SpeechLanguage>([
+  ['gujarati', 'gu'],
+  ['hindi', 'hi'],
+  ['sanskrit', 'sa'],
+  ['english', 'en'],
+]);
 
 /** A free port on 127.0.0.1 for the engine. */
 async function freePort(): Promise<number> {
@@ -97,12 +100,16 @@ interface Token {
 }
 interface Reply {
   language?: string;
-  language_probabilities?: Record<string, number>;
   segments?: { words?: Token[]; no_speech_prob?: number }[];
 }
 
 /** What the engine heard in a clip that began at `clipAt` (epoch ms): its words, in order, never empty. */
-export function wordsOf(reply: Reply, clipAt: number, clipEndAt: number): HeardWord[] {
+export function wordsOf(
+  reply: Reply,
+  clipAt: number,
+  clipEndAt: number,
+  captured?: (seconds: number, beginning: boolean) => number,
+): HeardWord[] {
   const words: { text: string; start: number; end: number; p: number[] }[] = [];
   for (const segment of reply.segments ?? []) {
     // Silence the engine still wrote something for.
@@ -110,8 +117,10 @@ export function wordsOf(reply: Reply, clipAt: number, clipEndAt: number): HeardW
     for (const token of segment.words ?? []) {
       const text = token.word;
       if (text.trim() === '') continue;
-      const start = clipAt + (token.start ?? 0) * 1000;
-      const end = clipAt + (token.end ?? token.start ?? 0) * 1000;
+      const from = token.start ?? 0;
+      const to = token.end ?? from;
+      const start = captured ? captured(from, true) : clipAt + from * 1000;
+      const end = captured ? captured(to, false) : clipAt + to * 1000;
       const last = words.at(-1);
       // A token without a space before it belongs to the word before it (a letter's second part, punctuation).
       if (last && !/^\s/.test(text)) {
@@ -138,27 +147,33 @@ export function wordsOf(reply: Reply, clipAt: number, clipEndAt: number): HeardW
   return out;
 }
 
-/** The language among Gujarati, Hindi and English the engine finds likeliest, and how likely. */
-export function likeliest(reply: Reply): { language: SpeechLanguage; p: number } | null {
-  const probabilities = reply.language_probabilities;
-  if (!probabilities) return null;
-  let best: { language: SpeechLanguage; p: number } | null = null;
-  for (const language of SPEECH_LANGUAGES) {
-    const p = probabilities[language] ?? 0;
-    if (!best || p > best.p) best = { language, p };
-  }
-  return best && best.p > 0 ? best : null;
-}
-
-/** The language the engine wrote the words in, if it is one of the three. */
+/** The language the engine used, if Drashti captions it. */
 export function writtenIn(reply: Reply): SpeechLanguage | null {
-  return LANGUAGE_NAMES[(reply.language ?? '').toLowerCase()] ?? null;
+  return LANGUAGE_CODES.get((reply.language ?? '').toLowerCase()) ?? null;
 }
 
 /** A phrase being heard: its samples, from its start, and when its first sample was heard. */
+interface CapturedSpan {
+  from: number;
+  to: number;
+  startAt: number;
+  endAt: number;
+}
+
+/** Recognizer offsets count samples; gaps or slow capture must not turn recent words into old ones. */
+function capturedAt(spans: readonly CapturedSpan[], seconds: number, beginning: boolean): number {
+  const last = spans[spans.length - 1];
+  if (!last) return NaN;
+  const sample = Math.max(0, Math.min(last.to, Math.round(seconds * SAMPLE_RATE)));
+  const span = spans.find((part) => (beginning ? sample < part.to : sample <= part.to)) ?? last;
+  const fraction = Math.max(0, Math.min(1, (sample - span.from) / (span.to - span.from)));
+  return span.startAt + fraction * (span.endAt - span.startAt);
+}
+
 interface Growing {
   id: string;
   samples: Int16Array[];
+  captured: CapturedSpan[];
   length: number;
   startAt: number;
   endAt: number;
@@ -174,7 +189,14 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
   const readyMs = o.readyMs ?? 90_000;
   const get = o.fetch ?? fetch;
   const run =
-    o.spawn ?? ((program, args) => spawnChild(program, args, { stdio: 'ignore', windowsHide: true }));
+    o.spawn ??
+    ((program, args) => {
+      const options = { stdio: 'ignore', windowsHide: true } as const;
+      // Keep the model's compute and disk work below the show, including while it loads.
+      return process.platform === 'darwin'
+        ? spawnChild('/usr/sbin/taskpolicy', ['-b', program, ...args], options)
+        : spawnChild(program, args, options);
+    });
 
   return {
     start(language, to) {
@@ -183,13 +205,14 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       const ended = (): boolean => stopped;
       let child: ChildProcess | null = null;
       let closeSound: (() => void) | null = null;
-      let port = 0;
+      let address = '';
       let busy = false;
       let slowInARow = 0;
       let phrase: Growing | null = null;
       let count = 0;
       let rest: NodeJS.Timeout | null = null;
       let retrySound: NodeJS.Timeout | null = null;
+      let allowFallback = true;
       const abort = new AbortController();
       // The noise floor, learnt as it goes: speech is well above it.
       let floor = 300;
@@ -208,23 +231,21 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       };
 
       /** Send one clip; null when the engine said nothing usable or the piece was dropped. */
-      const ask = async (
-        samples: Int16Array,
-        forced: SpeechLanguage | null,
-      ): Promise<{ reply: Reply; tookMs: number } | null> => {
+      const ask = async (samples: Int16Array): Promise<{ reply: Reply; tookMs: number } | null> => {
         const form = new FormData();
         form.append('file', new Blob([wavOf(samples)], { type: 'audio/wav' }), 'clip.wav');
         form.append('response_format', 'verbose_json');
         form.append('temperature', '0');
-        if (!o.fallback()) form.append('temperature_inc', '0');
-        const lang = forced ?? (language === 'auto' ? 'auto' : language);
-        form.append('language', lang);
-        form.append('no_language_probabilities', lang === 'auto' ? 'false' : 'true');
+        if (!allowFallback) form.append('temperature_inc', '0');
+        form.append('language', language);
+        // The decode already reports its language. Asking for probabilities runs detection again.
+        form.append('no_language_probabilities', 'true');
         const began = Date.now();
-        const response = await get(`http://127.0.0.1:${String(port)}/inference`, {
+        const response = await get(`${address}/inference`, {
           method: 'POST',
           body: form,
           signal: abort.signal,
+          redirect: 'error',
         });
         if (!response.ok) return null;
         const reply = (await response.json()) as Reply;
@@ -269,33 +290,30 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         working = true;
         piece.sentAt = Date.now();
         const samples = joined(piece);
+        // Freeze the clock with the submitted samples: more microphone chunks can arrive during inference.
+        const captured = piece.captured.slice();
         const clipAt = piece.startAt;
         const clipEndAt = piece.endAt;
         try {
-          let asked = await ask(samples, null);
+          const asked = await ask(samples);
           if (!asked || ended()) return;
-          let heardIn = language === 'auto' ? writtenIn(asked.reply) : language;
-          const guess = language === 'auto' ? likeliest(asked.reply) : null;
-          if (language === 'auto' && heardIn === null) {
-            // Written in a fourth language: a whole phrase is heard again in the likeliest of the three.
-            if (!final || !guess) return;
-            asked = await ask(samples, guess.language);
-            if (!asked || ended()) return;
-            heardIn = guess.language;
-          }
           const behind = Date.now() - clipEndAt;
           slowInARow = asked.tookMs > stepMs * 1.5 ? slowInARow + 1 : 0;
           if (slowInARow >= 3 || behind > 8_000) {
             hold();
             return;
           }
-          const words = wordsOf(asked.reply, clipAt, clipEndAt);
+          const heardIn = language === 'auto' ? writtenIn(asked.reply) : language;
+          if (heardIn === null) return;
+          const words = wordsOf(asked.reply, clipAt, clipEndAt, (seconds, beginning) =>
+            capturedAt(captured, seconds, beginning),
+          );
           if (final && words.length === 0) return;
           const heard: Heard = {
             id: piece.id,
             final: final !== undefined,
-            language: heardIn ?? 'en',
-            languageConfidence: language === 'auto' ? (guess?.p ?? null) : null,
+            language: heardIn,
+            languageConfidence: null,
             words,
             text: words.map((w) => w.text).join(' '),
             startAt: Math.min(clipAt, words[0]?.startAt ?? clipAt),
@@ -311,9 +329,17 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         }
       };
 
-      const chunk = (samples: Int16Array, endAt: number): void => {
+      const chunk = (samples: Int16Array, endAt: number, startAt?: number): void => {
         if (stopped || busy) return;
         const ms = (samples.length / SAMPLE_RATE) * 1000;
+        const capturedStart = startAt ?? endAt - ms;
+        if (
+          !samples.length ||
+          !Number.isFinite(capturedStart) ||
+          !Number.isFinite(endAt) ||
+          capturedStart > endAt
+        )
+          return;
         let sum = 0;
         for (const s of samples) sum += s * s;
         const level = Math.sqrt(sum / Math.max(1, samples.length));
@@ -325,13 +351,20 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           phrase = {
             id: `s${String(count)}`,
             samples: [],
+            captured: [],
             length: 0,
-            startAt: endAt - ms,
+            startAt: capturedStart,
             endAt,
             quietMs: 0,
             sentAt: Date.now(),
           };
         }
+        phrase.captured.push({
+          from: phrase.length,
+          to: phrase.length + samples.length,
+          startAt: capturedStart,
+          endAt,
+        });
         phrase.samples.push(samples);
         phrase.length += samples.length;
         phrase.endAt = endAt;
@@ -363,8 +396,15 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           return;
         }
         to.state({ phase: 'starting' });
-        port = await freePort();
+        const port = await freePort().catch(() => 0);
         if (stopped) return;
+        if (!port) {
+          to.state({ phase: 'failed', message: 'The captions engine could not open a local connection.' });
+          return;
+        }
+        // Both engines require this private path for their handlers. Each child gets a fresh one.
+        const requestPath = `/${randomBytes(16).toString('hex')}`;
+        address = `http://127.0.0.1:${String(port)}${requestPath}`;
         const args = [
           '-m',
           o.model(),
@@ -372,9 +412,14 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           '127.0.0.1',
           '--port',
           String(port),
+          '--request-path',
+          requestPath,
           '-t',
           String(o.threads ?? 4),
         ];
+        // The Windows server has an optional public files directory. Drashti serves no files.
+        if (process.platform === 'win32') args.push('--public', '');
+        allowFallback = o.fallback();
         const started = run(program, args);
         child = started;
         started.once('exit', (code) => {
@@ -384,7 +429,9 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           end();
           to.state({
             phase: 'failed',
-            message: 'The captions engine stopped. Turn captions off and on to try again.',
+            message:
+              whisperDependencyProblem(process.platform, code) ??
+              'The captions engine stopped. Turn captions off and on to try again.',
           });
         });
         started.once('error', () => {
@@ -404,8 +451,8 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         const deadline = Date.now() + readyMs;
         while (!ended() && child === started && Date.now() < deadline) {
           try {
-            const health = await get(`http://127.0.0.1:${String(port)}/health`, { signal: abort.signal });
-            if (health.ok) {
+            const health = await get(`${address}/health`, { signal: abort.signal, redirect: 'error' });
+            if (health.ok && !ended() && child === started) {
               o.log.info(`Speech: the captions engine is ready (pid ${String(started.pid)}).`);
               openSound();
               return;

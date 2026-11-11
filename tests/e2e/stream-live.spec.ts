@@ -454,7 +454,7 @@ test('without the system’s secure storage, no key is kept, and the settings sa
   await app.close();
 });
 
-test('Simple Mode shows ON AIR and REC, and refuses starting, ending or changing the stream', async () => {
+test('Simple Mode can change recordings while on air and keeps live stream controls locked', async () => {
   test.setTimeout(90_000);
   const port = await freePort();
   const dir = mkdtempSync(join(tmpdir(), 'drashti-simple-stream-'));
@@ -492,8 +492,6 @@ test('Simple Mode shows ON AIR and REC, and refuses starting, ending or changing
     const all = await Promise.all([
       s.end({ confirmed: true }),
       s.goLive({ confirmed: true }),
-      s.stopRecording(),
-      s.startRecording(),
       s.setLayout('slides'),
       s.saveProfile(activeId, input ?? ({} as never)),
       s.saveProfile(null, input ?? ({} as never)),
@@ -501,7 +499,6 @@ test('Simple Mode shows ON AIR and REC, and refuses starting, ending or changing
       s.useProfile(activeId ?? ''),
       s.setKey(activeId ?? '', key),
       s.removeKey(activeId ?? ''),
-      s.pickFolder(),
     ]);
     return all.map((r) => (r.ok ? 'done' : r.message));
   }, TEST_KEY);
@@ -510,6 +507,28 @@ test('Simple Mode shows ON AIR and REC, and refuses starting, ending or changing
   const after = await bridge(win).status();
   expect([after.live.state, after.recording.state, after.layout]).toEqual(['live', 'recording', 'camera']);
   await expectNoSeriousA11yIssues(win, 'Simple Mode on air and recording');
+  await win.getByRole('button', { name: 'Stop video recording' }).click();
+  await expect.poll(async () => (await bridge(win).status()).recording.state).toBe('off');
+  await win.getByRole('button', { name: 'Record', exact: true }).click();
+  await win.getByRole('menuitem', { name: 'Record sound', exact: true }).click();
+  await expect
+    .poll(async () => (await bridge(win).status()).recording)
+    .toMatchObject({
+      kind: 'sound',
+      state: 'recording',
+    });
+  await expect(win.getByTestId('on-air')).toBeVisible();
+  await win.getByRole('button', { name: 'Stop sound recording' }).click();
+  await expect.poll(async () => (await bridge(win).status()).recording.state).toBe('off');
+  await win.getByRole('button', { name: 'Record', exact: true }).click();
+  await win.getByRole('menuitem', { name: 'Record video', exact: true }).click();
+  await expect
+    .poll(async () => (await bridge(win).status()).recording)
+    .toMatchObject({
+      kind: 'video',
+      state: 'recording',
+    });
+  await expect(win.getByTestId('on-air')).toBeVisible();
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;

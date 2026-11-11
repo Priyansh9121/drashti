@@ -1,4 +1,3 @@
-import type { AiResult, AiSettings, AiSearchProgress, AiLyricReview, AiPlaylistReview } from './ai';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { ReadyReport } from './ready';
 import type { PdfJob, PdfPage, PdfDone } from './editable-source';
@@ -61,7 +60,6 @@ import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events
 import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type { OpeningChoice, OpeningEnd, OpeningPlan, OpeningResult, OpeningView } from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
-import type { SpeechHelperSettings, SpeechHelperView } from './ai-speech';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
   CopiedElements,
@@ -146,29 +144,6 @@ import type {
  * ipcRenderer, no raw channel names.
  */
 export interface DrashtiBridge {
-  aiSpeech: {
-    get(): Promise<AiResult<SpeechHelperView>>;
-    set(settings: SpeechHelperSettings): Promise<AiResult<SpeechHelperView>>;
-    search(request: unknown): Promise<AiResult<SpeechHelperView>>;
-    showBook(request: unknown): Promise<AiResult<null>>;
-    nextVerse(id: unknown): Promise<AiResult<null>>;
-    onChanged(listener: (view: SpeechHelperView) => void): () => void;
-  };
-  ai: {
-    get(): Promise<AiResult<AiSettings>>;
-    set(settings: unknown): Promise<AiResult<AiSettings>>;
-    past(): Promise<AiResult<{ id: string; name: string }[]>>;
-    search(request: unknown): Promise<AiResult<SearchResult>>;
-    lyrics(request: unknown): Promise<AiResult<AiLyricReview>>;
-    approveLyrics(request: unknown): Promise<AiResult<string>>;
-    playlist(request: unknown): Promise<AiResult<AiPlaylistReview>>;
-    approvePlaylist(request: unknown): Promise<AiResult<{ id: string }>>;
-    cancel(): Promise<null>;
-    onOpen(listener: () => void): () => void;
-    onChanged(listener: (settings: AiSettings) => void): () => void;
-    onProgress(listener: (progress: AiSearchProgress) => void): () => void;
-  };
-
   app: {
     getInfo(): Promise<AppInfo>;
     /** A render error in this window, for the main process's log (Session 23; any of Drashti's windows). */
@@ -681,6 +656,7 @@ export interface DrashtiBridge {
     goLive(confirm: { confirmed: true }): Promise<StreamResult>;
     end(confirm: { confirmed: true }): Promise<StreamResult>;
     startRecording(): Promise<StreamResult>;
+    startSoundRecording(): Promise<StreamResult>;
     stopRecording(): Promise<StreamResult>;
     pickFolder(): Promise<StreamResult>;
     /** Let the offer to go live again after a crash go. */

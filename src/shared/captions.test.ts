@@ -54,6 +54,7 @@ describe('caption settings (Part 10, migration 066)', () => {
     expect(parseCaptionSettings({ language: 'fr', audience: 'yes', size: 'huge', place: 'middle' })).toEqual(
       DEFAULT_CAPTION_SETTINGS,
     );
+    expect(parseCaptionSettings({ language: 'sa' }).language).toBe('sa');
   });
 });
 

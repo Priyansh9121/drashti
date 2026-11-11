@@ -22,6 +22,7 @@ export function CaptionsView({
 }) {
   const captions = captionsFor(state.captions, screen);
   if (!captions) return null;
+  const language = captions.language === 'sa' ? 'sa-gu' : captions.language;
   const px = Math.round(canvas.height * CAPTION_TEXT_HEIGHT[captions.size]);
   const edge = Math.round(canvas.height * 0.04) + (captions.place === 'bottom' ? lift : 0);
   return (
@@ -30,7 +31,7 @@ export function CaptionsView({
       data-screen={screen}
       data-size={captions.size}
       data-place={captions.place}
-      lang={HTML_LANG[captions.language]}
+      lang={HTML_LANG[language]}
       aria-hidden="true"
       style={{
         position: 'absolute',
@@ -46,7 +47,7 @@ export function CaptionsView({
         style={{
           background: 'rgba(0, 0, 0, 0.75)',
           color: '#ffffff',
-          fontFamily: fontFamilyFor(null, captions.language),
+          fontFamily: fontFamilyFor(null, language),
           fontSize: px,
           fontWeight: 500,
           lineHeight: 1.3,

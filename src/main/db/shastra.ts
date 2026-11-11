@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { bookHit } from '../ai/book-source';
 import type { Lang } from '../../shared/model';
 import { LANGS } from '../../shared/model';
 import { toDevanagari, toGujaratiScript } from '../../shared/scripts';
@@ -547,20 +546,7 @@ export class ShastraRepo {
    * Passages found by their words in any language, accents ignored (as the
    * library's search): every word typed must start one of the item's words.
    */
-  search(input: string, limit = SEARCH_LIMIT, hints: readonly unknown[] = []): ShastraHit[] {
-    const exact = this.exactSearch(input, limit);
-    if (hints.length === 0 || exact.length >= limit) return exact;
-    const seen = new Set(exact.map((hit) => hit.passageId));
-    for (const hint of hints.slice(0, 50)) {
-      const hit = bookHit(this.db, this, hint);
-      if (!hit || seen.has(hit.passageId)) continue;
-      exact.push(hit);
-      seen.add(hit.passageId);
-      if (exact.length >= limit) break;
-    }
-    return exact;
-  }
-  private exactSearch(input: string, limit: number): ShastraHit[] {
+  search(input: string, limit = SEARCH_LIMIT): ShastraHit[] {
     const query = ftsQuery(input);
     if (!query) return [];
     const wanted = searchWords(input);

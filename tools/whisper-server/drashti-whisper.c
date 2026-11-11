@@ -8,7 +8,7 @@
  *                    temperature, temperature_inc, no_language_probabilities; the reply is whisper-server's
  *                    verbose_json: language, language_probabilities, segments with their words (tokens).
  * It listens on 127.0.0.1 only, one request at a time, and writes nothing it hears anywhere (no log, no file).
- * Usage: drashti-whisper -m MODEL --host 127.0.0.1 --port PORT [-t THREADS] [-ng]
+ * Both routes need a private --request-path prefix chosen by Drashti for this process.
  * Built by scripts/fetch-whisper.mjs with the Mac's own clang, against the framework beside it.
  */
 #include <whisper/whisper.h>
@@ -29,6 +29,9 @@
 
 static struct whisper_context *ctx;
 static int threads = 4;
+static char health_request[64], inference_request[64];
+static const char usage[] =
+    "Usage: drashti-whisper -m MODEL --host 127.0.0.1 --port PORT --request-path PATH [-t THREADS] [-ng]\n";
 
 /* ---- a growing buffer for the reply ---- */
 typedef struct {
@@ -59,7 +62,7 @@ static void putnum(buf *b, double v) {
 /* A JSON string of UTF-8 text; bytes that are not UTF-8 become U+FFFD, as whisper-server's own replacing does. */
 static void put_json_string(buf *b, const char *s) {
   puts_(b, "\"");
-  const unsigned char *p = (const unsigned char *)s;
+  const unsigned char *p = (const unsigned char *)(s ? s : "");
   while (*p) {
     unsigned char c = *p;
     if (c == '"' || c == '\\') {
@@ -241,7 +244,7 @@ static void verbose_json(buf *b, int samples, bool probabilities) {
     float *p = calloc((size_t)max + 1, sizeof(float));
     if (p) {
       int top = whisper_lang_auto_detect(ctx, 0, threads, p);
-      if (top >= 0) {
+      if (top >= 0 && top <= max) {
         puts_(b, ",\"detected_language\":");
         put_json_string(b, whisper_lang_str_full(top));
         puts_(b, ",\"detected_language_probability\":");
@@ -283,15 +286,19 @@ static void verbose_json(buf *b, int samples, bool probabilities) {
       whisper_token_data d = whisper_full_get_token_data(ctx, i, j);
       if (d.id >= eot) continue;
       char word[512];
-      snprintf(word, sizeof word, "%s", whisper_full_get_token_text(ctx, i, j));
+      const char *text = whisper_full_get_token_text(ctx, i, j);
+      if (!text) continue;
+      snprintf(word, sizeof word, "%s", text);
       int64_t t1 = d.t1;
       /* A letter split over tokens: joined, as whisper-server does. */
       while (j + 1 < tokens && trailing_needed(word) > 0) {
         whisper_token_data next = whisper_full_get_token_data(ctx, i, j + 1);
         if (next.id >= eot) break;
+        const char *more = whisper_full_get_token_text(ctx, i, j + 1);
+        if (!more) break;
         j++;
         size_t have = strlen(word);
-        snprintf(word + have, sizeof word - have, "%s", whisper_full_get_token_text(ctx, i, j));
+        snprintf(word + have, sizeof word - have, "%s", more);
         if (next.t1 > -1) t1 = next.t1;
       }
       if (!first) puts_(b, ",");
@@ -392,9 +399,9 @@ static void serve(int fd) {
     return;
   }
   size_t head_len = (size_t)(end - head) + 4;
-  if (strncmp(head, "GET /health ", 12) == 0) {
+  if (strncmp(head, health_request, strlen(health_request)) == 0) {
     reply(fd, 200, "{\"status\":\"ok\"}");
-  } else if (strncmp(head, "POST /inference ", 16) == 0) {
+  } else if (strncmp(head, inference_request, strlen(inference_request)) == 0) {
     char length[32];
     long size = header(head, "Content-Length", length, sizeof length) ? strtol(length, NULL, 10) : -1;
     if (size < 0 || size > MAX_BODY) {
@@ -430,11 +437,16 @@ static void quiet(enum ggml_log_level level, const char *text, void *user) {
 
 int main(int argc, char **argv) {
   const char *model = NULL;
+  const char *request_path = NULL;
   int port = 0;
   bool gpu = true;
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) model = argv[++i];
+    if (strcmp(argv[i], "--help") == 0) {
+      fputs(usage, stdout);
+      return 0;
+    } else if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) model = argv[++i];
     else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) port = atoi(argv[++i]);
+    else if (strcmp(argv[i], "--request-path") == 0 && i + 1 < argc) request_path = argv[++i];
     else if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) threads = atoi(argv[++i]);
     else if (strcmp(argv[i], "--host") == 0 && i + 1 < argc) {
       /* Only this computer may ask it. */
@@ -444,10 +456,14 @@ int main(int argc, char **argv) {
       }
     } else if (strcmp(argv[i], "-ng") == 0 || strcmp(argv[i], "--no-gpu") == 0) gpu = false;
   }
-  if (!model || port <= 0 || port > 65535 || threads < 1) {
-    fprintf(stderr, "usage: drashti-whisper -m MODEL --host 127.0.0.1 --port PORT [-t THREADS] [-ng]\n");
+  if (!model || port <= 0 || port > 65535 || threads < 1 || !request_path
+      || request_path[0] != '/' || strlen(request_path) != 33
+      || strspn(request_path + 1, "0123456789abcdef") != 32) {
+    fputs(usage, stderr);
     return 2;
   }
+  snprintf(health_request, sizeof health_request, "GET %s/health ", request_path);
+  snprintf(inference_request, sizeof inference_request, "POST %s/inference ", request_path);
   signal(SIGPIPE, SIG_IGN);
   whisper_log_set(quiet, NULL);
   struct whisper_context_params cp = whisper_context_default_params();

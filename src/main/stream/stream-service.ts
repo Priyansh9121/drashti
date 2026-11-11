@@ -13,6 +13,7 @@ import type {
   CameraState,
   ProgramContext,
   ProgramInputs,
+  RecordingKind,
   SoundState,
   StreamLayout,
   StreamProfile,
@@ -41,6 +42,7 @@ import { pageAlive } from '../windows/send';
 import type { ToStreamWorker, WorkerStatus } from './worker/protocol';
 import { NO_SOUND_MS, type NoSound, NoSoundWatch } from './no-sound';
 import { bytesPerHourAt, freeBytesOf, recordingWarning } from './recording-drive';
+import { SoundRecording } from './sound-recording';
 import { PictureWatch } from './picture-watch';
 import { RestartCap } from './restart-cap';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -48,6 +50,7 @@ import { join } from 'node:path';
 import { fileStamp } from '../../shared/format';
 import { parsePlain } from '../../shared/plain-parse';
 import type { ClockStyle } from '../../shared/format';
+import { SPEECH_RATE, type Heard } from '../../shared/speech';
 
 /*
  * The stream (PLAN.md 4.2), as the main process keeps it: the profiles and
@@ -57,6 +60,7 @@ import type { ClockStyle } from '../../shared/format';
  */
 
 export type MediaAccess = 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
+type MediaKind = 'camera' | 'microphone';
 
 export interface StreamServiceDeps {
   /** How Main writes the time (Sessions 31–36, I18N-8), for the stream page's clocks. */
@@ -69,9 +73,9 @@ export interface StreamServiceDeps {
   sendToOperator<C extends EventChannel>(channel: C, payload: EventContract[C]): void;
   platform: NodeJS.Platform;
   /** The system's own camera and microphone permission for Drashti (macOS, Windows). */
-  mediaAccess(kind: 'camera' | 'microphone'): MediaAccess;
+  mediaAccess(kind: MediaKind): MediaAccess;
   /** Ask the system for it (macOS shows its question once). */
-  askMediaAccess(kind: 'camera' | 'microphone'): Promise<boolean>;
+  askMediaAccess(kind: MediaKind): Promise<boolean>;
   /** ON AIR and REC for the window's own title ('' when neither). */
   titleMarks?(marks: string): void;
   /** How the stream stands, whenever the operator window is told (events out: Session 28). */
@@ -144,6 +148,8 @@ const inputsSchema = z.object({
   message: z.string().max(500).nullable(),
 });
 
+type SoundListener = (samples: Int16Array, endAt: number, startAt: number) => void;
+
 export class StreamService {
   private program: BrowserWindow | null = null;
   private programReady = false;
@@ -152,12 +158,13 @@ export class StreamService {
   private readonly watchers = new Map<number, WebContents>();
   /** What else keeps the Program open, by name (Session 48: the window for Zoom), without the preview's port. */
   private readonly holders = new Set<string>();
-  /** Live captions' listener (Session 55, Part 10) and its port to the page. */
-  private speech: ((samples: Int16Array, endAt: number) => void) | null = null;
+  /** Captions and Record sound share one raw-input tap. Neither changes the stream's mix. */
+  private readonly soundListeners = new Set<SoundListener>();
   private speechPort: MessagePortMain | null = null;
   private inputs: ProgramInputs = NO_INPUTS;
   private layout: StreamLayout;
   private systemBlocked: { camera: boolean; microphone: boolean } = { camera: false, microphone: false };
+  private readonly mediaRequests = new Map<MediaKind, Promise<boolean>>();
   /** Live and recording: kept by the encoder's side (stream/pipeline.ts) from step 2. */
   private live: StreamStatus['live'] = {
     state: 'off',
@@ -172,6 +179,7 @@ export class StreamService {
     destinations: [],
   };
   private recording: StreamStatus['recording'] = {
+    kind: 'video',
     state: 'off',
     since: null,
     file: null,
@@ -182,6 +190,9 @@ export class StreamService {
     message: null,
     warning: null,
   };
+  private recordingKind: RecordingKind = 'video';
+  private readonly soundRecording: SoundRecording;
+  private stopRecordingInput: (() => void) | null = null;
   private encoder: string | null = null;
   /** The encoder found to work here (the worker tries it first next time). */
   private encoderName: string | null = null;
@@ -209,6 +220,22 @@ export class StreamService {
 
   constructor(private readonly deps: StreamServiceDeps) {
     this.noSoundWatch = new NoSoundWatch(deps.noSoundMs ?? NO_SOUND_MS);
+    this.soundRecording = new SoundRecording({
+      now: () => deps.now(),
+      freeBytes: freeBytesOf,
+      onFat: (folder) => deps.recordingDrive?.(folder) ?? Promise.resolve(null),
+      keepFree: KEEP_FREE_BYTES,
+      ...(deps.recordPartBytes ? { partBytes: deps.recordPartBytes } : {}),
+      stopping: () => {
+        this.stopRecordingInput?.();
+        this.stopRecordingInput = null;
+      },
+      changed: () => {
+        if (!this.soundRecording.inUse()) this.deps.log('info', 'Sound recording stopped');
+        this.changed();
+      },
+      notice: (message) => deps.notice(message),
+    });
     const saved = streamLayoutSchema.safeParse(deps.settings.get(LAYOUT_SETTING));
     this.layout = saved.success ? saved.data : 'camera';
     const folder = z.string().safeParse(deps.settings.get(FOLDER_SETTING));
@@ -250,12 +277,16 @@ export class StreamService {
 
   /** On air or recording: the profile in use and its inputs stay as they are. */
   inUse(): boolean {
+    return this.videoInUse() || this.soundRecording.inUse();
+  }
+
+  private videoInUse(): boolean {
     return this.liveWanted || this.recordWanted;
   }
 
   /** On air (or getting there) and recording, as the operator asked: for the quit question. */
   wanted(): { live: boolean; recording: boolean } {
-    return { live: this.liveWanted, recording: this.recordWanted };
+    return { live: this.liveWanted, recording: this.recordWanted || this.soundRecording.inUse() };
   }
 
   saveProfile(rawId: unknown, rawInput: unknown): StreamProfilesResult {
@@ -412,11 +443,15 @@ export class StreamService {
       groupId: this.deps.screens.streamGroup()?.id ?? null,
       width: preset.width,
       height: preset.height,
-      camera: this.systemBlocked.camera ? null : profile.camera,
-      sound: this.systemBlocked.microphone ? null : profile.sound,
+      camera:
+        !this.pictureWanted() || this.systemBlocked.camera || this.mediaRequests.has('camera')
+          ? null
+          : profile.camera,
+      sound: this.systemBlocked.microphone || this.mediaRequests.has('microphone') ? null : profile.sound,
       soundDelayMs: profile.soundDelayMs,
-      mixOwnSound: profile.mixOwnSound,
-      capturing: this.liveWanted || this.recordWanted,
+      mixOwnSound: this.pictureWanted() && profile.mixOwnSound,
+      picture: this.pictureWanted(),
+      capturing: this.videoInUse(),
       preview: this.watchers.size > 0,
       ...(this.deps.clockStyle ? { clockStyle: this.deps.clockStyle() } : {}),
     };
@@ -452,13 +487,22 @@ export class StreamService {
     if (on) this.holders.add(who);
     else this.holders.delete(who);
     this.updateProgram();
+    this.contextChanged();
+  }
+
+  private pictureWanted(): boolean {
+    return this.watchers.size > 0 || this.holders.size > 0 || this.videoInUse();
+  }
+
+  private programWanted(): boolean {
+    return this.pictureWanted() || this.soundListeners.size > 0;
   }
 
   /** The Program window is open while the preview is watched, something holds it, or the stream is live or recording. */
   private updateProgram(): void {
     // Stopped after crashing too often: only Try again starts it (tryAgainPage).
     if (this.closing || this.pageStopped) return;
-    const wanted = this.watchers.size > 0 || this.holders.size > 0 || this.inUse();
+    const wanted = this.programWanted();
     if (wanted && (!this.program || this.program.isDestroyed())) {
       void this.openProgram();
     } else if (!wanted && this.program && !this.program.isDestroyed()) {
@@ -466,6 +510,8 @@ export class StreamService {
       this.program.destroy();
       this.program = null;
       this.programReady = false;
+      this.speechPort?.close();
+      this.speechPort = null;
       this.inputs = NO_INPUTS;
       this.changed();
       this.deps.programChanged?.();
@@ -475,7 +521,7 @@ export class StreamService {
   private async openProgram(): Promise<void> {
     await this.checkSystemAccess();
     // Drashti may have begun to quit while the system asked (a new window would stop the quit).
-    if (this.closing) return;
+    if (this.closing || !this.programWanted()) return;
     if (this.program && !this.program.isDestroyed()) return;
     const { width, height } = this.context();
     const win = this.deps.createProgram({ width, height });
@@ -493,6 +539,8 @@ export class StreamService {
     });
     win.webContents.on('render-process-gone', (_e, details) => {
       this.programReady = false;
+      this.speechPort?.close();
+      this.speechPort = null;
       if (!win.isDestroyed()) win.destroy();
       if (this.program === win) this.program = null;
       this.deps.programChanged?.();
@@ -520,23 +568,37 @@ export class StreamService {
   }
 
   /** Ask the system for the camera and microphone the profile uses (once; macOS shows its question). */
-  private async checkSystemAccess(): Promise<void> {
-    if (this.deps.fakeDevices) {
-      this.systemBlocked = { camera: false, microphone: false };
-      return;
-    }
+  private async checkSystemAccess(): Promise<boolean> {
+    if (this.deps.fakeDevices) return false;
     const profile = this.activeProfile();
-    const check = async (kind: 'camera' | 'microphone', wanted: boolean): Promise<boolean> => {
-      if (!wanted) return false;
-      let access = this.deps.mediaAccess(kind);
-      if (access === 'not-determined' && this.deps.platform === 'darwin')
-        access = (await this.deps.askMediaAccess(kind)) ? 'granted' : 'denied';
-      return access === 'denied' || access === 'restricted';
+    const check = async (kind: MediaKind, wanted: boolean) => {
+      if (!wanted) return { blocked: false, asked: false };
+      const access = this.deps.mediaAccess(kind);
+      if (access === 'not-determined' && this.deps.platform === 'darwin') {
+        let request = this.mediaRequests.get(kind);
+        if (!request) {
+          request = this.deps
+            .askMediaAccess(kind)
+            .catch(() => false)
+            .finally(() => {
+              this.mediaRequests.delete(kind);
+            });
+          this.mediaRequests.set(kind, request);
+        }
+        return { blocked: !(await request), asked: true };
+      }
+      return { blocked: access === 'denied' || access === 'restricted', asked: false };
     };
-    this.systemBlocked = {
-      camera: await check('camera', profile.camera !== null),
-      microphone: await check('microphone', profile.sound !== null),
-    };
+    const camera = await check('camera', this.pictureWanted() && profile.camera !== null);
+    const microphone = await check('microphone', !this.closing && profile.sound !== null);
+    const previous = this.systemBlocked;
+    this.systemBlocked = { camera: camera.blocked, microphone: microphone.blocked };
+    return (
+      camera.asked ||
+      microphone.asked ||
+      camera.blocked !== previous.camera ||
+      microphone.blocked !== previous.microphone
+    );
   }
 
   /** Give each window watching the preview a port to the stream's page. */
@@ -581,6 +643,20 @@ export class StreamService {
   /** Something the page draws or opens changed. */
   contextChanged(): void {
     const program = this.program;
+    if (program && !program.isDestroyed() && !this.closing) {
+      // A Program first opened for sound alone may only now need permission for the camera.
+      void this.checkSystemAccess().then((refresh) => {
+        if (!refresh || this.program !== program || this.closing) return;
+        this.sendProgramContext();
+        this.changed();
+      });
+    }
+    this.sendProgramContext();
+    this.changed();
+  }
+
+  private sendProgramContext(): void {
+    const program = this.program;
     if (pageAlive(program) && this.programReady) {
       const context = this.context();
       const [w, h] = program.getContentSize();
@@ -596,8 +672,6 @@ export class StreamService {
       }
       program.webContents.send(IPC.stream.context, context);
     }
-    if (program && !program.isDestroyed()) void this.checkSystemAccess();
-    this.changed();
   }
 
   // ---- status ----------------------------------------------------------------------------
@@ -641,7 +715,10 @@ export class StreamService {
         message: this.inputsMessage(),
       },
       live: { ...this.live },
-      recording: { ...this.recording, file: this.recording.file ? basename(this.recording.file) : null },
+      recording:
+        this.recordingKind === 'sound'
+          ? this.soundRecording.view(this.recording.folder)
+          : { ...this.recording, file: this.recording.file ? basename(this.recording.file) : null },
       encoder: this.workerStatus?.encoder?.label ?? this.encoder,
       ffmpeg: { available: this.deps.ffmpegPath() !== null, version: FFMPEG_VERSION },
       resume: this.resume,
@@ -719,7 +796,7 @@ export class StreamService {
       if (this.worker !== worker) return;
       this.worker = null;
       this.workerStatus = null;
-      if (this.inUse()) {
+      if (this.videoInUse()) {
         // It stopped by itself: start it again with what was wanted.
         this.deps.log('warn', 'The stream worker stopped; starting it again');
         setTimeout(() => {
@@ -750,7 +827,7 @@ export class StreamService {
 
   private restartWorker(): void {
     const ffmpeg = this.deps.ffmpegPath();
-    if (!ffmpeg || !this.inUse()) return;
+    if (!ffmpeg || !this.videoInUse()) return;
     const worker = this.ensureWorker(ffmpeg);
     const profile = this.activeProfile();
     if (this.liveWanted) {
@@ -761,31 +838,37 @@ export class StreamService {
   }
 
   /**
-   * Hear the stream's sound input (Session 55, Part 10, live captions), on air or not: the page is kept open and given
-   * a port it sends the input's own sound on (16 kHz mono 16-bit, before the stream's delay, mix and limiter), each
-   * piece timed as it arrives. Null when no sound input is chosen, or the computer blocks it. Returns how to stop.
+   * Hear the stream's sound input on air or off. One port supplies timed raw PCM before the stream's
+   * delay, mix and limiter. Null when no sound input is chosen or the computer blocks it.
    */
-  listenSound(chunk: (samples: Int16Array, endAt: number) => void): (() => void) | null {
-    if (this.activeProfile().sound === null || this.context().sound === null) return null;
-    this.speech = chunk;
-    this.hold('captions', true);
-    this.pairSpeech();
+  listenSound(chunk: SoundListener): (() => void) | null {
+    if (this.activeProfile().sound === null || this.systemBlocked.microphone) return null;
+    this.soundListeners.add(chunk);
+    if (this.soundListeners.size === 1) {
+      this.updateProgram();
+      this.pairSpeech();
+    }
     return () => {
-      if (this.speech !== chunk) return;
-      this.speech = null;
+      if (!this.soundListeners.delete(chunk) || this.soundListeners.size > 0) return;
       this.speechPort?.close();
       this.speechPort = null;
-      this.hold('captions', false);
+      this.updateProgram();
     };
   }
 
   private pairSpeech(): void {
     const program = this.program;
-    if (!this.speech || !pageAlive(program) || !this.programReady) return;
+    if (!this.soundListeners.size || !pageAlive(program) || !this.programReady) return;
     this.speechPort?.close();
     const { port1, port2 } = new MessageChannelMain();
     port1.on('message', (event) => {
-      const data = event.data as { kind?: unknown; samples?: unknown } | null;
+      if (this.speechPort !== port1) return;
+      const data = event.data as {
+        kind?: unknown;
+        samples?: unknown;
+        startAt?: unknown;
+        endAt?: unknown;
+      } | null;
       if (data?.kind !== 'pcm') return;
       const samples =
         data.samples instanceof ArrayBuffer
@@ -793,7 +876,20 @@ export class StreamService {
           : data.samples instanceof Int16Array
             ? data.samples
             : null;
-      if (samples) this.speech?.(samples, this.deps.now());
+      if (
+        !samples?.length ||
+        samples.length > SPEECH_RATE ||
+        typeof data.startAt !== 'number' ||
+        !Number.isFinite(data.startAt) ||
+        data.startAt < 0 ||
+        typeof data.endAt !== 'number' ||
+        !Number.isFinite(data.endAt) ||
+        data.startAt > data.endAt ||
+        data.endAt > Date.now() + 250
+      )
+        return;
+      // Renderer queuing is real capture age. Never replace it with this port's delivery time.
+      for (const listener of this.soundListeners) listener(samples, data.endAt, data.startAt);
     });
     port1.start();
     this.speechPort = port1;
@@ -820,7 +916,7 @@ export class StreamService {
    */
   private checkPicture(status: WorkerStatus): void {
     const wait = this.pictureWatch.heard({
-      wanted: this.inUse() && this.programReady,
+      wanted: this.videoInUse() && this.programReady,
       encoderChosen: status.encoder !== null,
       encoding: status.encoding,
       failed: Boolean(status.error),
@@ -836,7 +932,7 @@ export class StreamService {
 
   /** Stop the worker when neither live nor recording is wanted. */
   private settleWorker(): void {
-    if (this.inUse() || !this.worker) return;
+    if (this.videoInUse() || !this.worker) return;
     this.worker.send({ type: 'stop' });
     const worker = this.worker;
     setTimeout(() => {
@@ -902,7 +998,7 @@ export class StreamService {
     };
     this.saveState();
     this.changed();
-    if (!this.inUse()) this.settleWorker();
+    if (!this.videoInUse()) this.settleWorker();
     else this.checkPicture(status);
   }
 
@@ -1014,13 +1110,16 @@ export class StreamService {
   }
 
   startRecording(): StreamResult {
-    if (this.recordWanted) return { ok: false, message: 'It is already recording.' };
+    if (this.recordWanted || this.soundRecording.inUse())
+      return { ok: false, message: 'It is already recording.' };
+    if (this.closing) return { ok: false, message: 'Drashti is quitting.' };
     const ffmpeg = this.deps.ffmpegPath();
     if (!ffmpeg) return { ok: false, message: FFMPEG_MISSING };
     const folder = this.recording.folder;
     if (!folder || !existsSync(folder))
       return { ok: false, message: 'Choose a folder for recordings first.' };
     this.ensureStreamGroup();
+    this.recordingKind = 'video';
     this.recordWanted = true;
     this.resume = null;
     this.recording = {
@@ -1038,6 +1137,32 @@ export class StreamService {
     this.contextChanged();
     void this.lookAtRecordingDrive(folder);
     return { ok: true, status: this.status() };
+  }
+
+  startSoundRecording(): StreamResult {
+    if (this.recordWanted || this.soundRecording.inUse())
+      return { ok: false, message: 'It is already recording.' };
+    if (this.closing) return { ok: false, message: 'Drashti is quitting.' };
+    const folder = this.recording.folder;
+    if (!folder || !existsSync(folder))
+      return { ok: false, message: 'Choose a folder for recordings first.' };
+    if (this.pageStopped)
+      return { ok: false, message: 'The stream’s page is stopped. Press Try again before recording sound.' };
+    const stopInput = this.listenSound((samples, endAt, startAt) =>
+      this.soundRecording.chunk(samples, endAt, startAt),
+    );
+    if (!stopInput)
+      return { ok: false, message: 'Choose an available sound input in Stream settings before recording.' };
+    this.stopRecordingInput = stopInput;
+    this.recordingKind = 'sound';
+    this.soundRecording.start(folder);
+    this.deps.log('info', 'Sound recording started');
+    return { ok: true, status: this.status() };
+  }
+
+  /** From the active captions feed. The draft is only written while recording the sound input. */
+  recordCaption(phrase: Heard): void {
+    this.soundRecording.caption(phrase);
   }
 
   /** The worker's next recording: a new file, the space kept free, and how much a part holds. */
@@ -1074,7 +1199,9 @@ export class StreamService {
     this.changed();
   }
 
-  stopRecording(): StreamResult {
+  stopRecording(): StreamResult | Promise<StreamResult> {
+    const soundSaved = this.soundRecording.stop();
+    if (soundSaved) return soundSaved.then(() => ({ ok: true, status: this.status() }));
     if (!this.recordWanted) return { ok: false, message: 'Nothing is being recorded.' };
     this.recordWanted = false;
     this.worker?.send({ type: 'stopRecording' });
@@ -1089,7 +1216,7 @@ export class StreamService {
 
   private startHeartbeat(): void {
     this.heartbeat ??= setInterval(() => {
-      if (this.inUse()) this.saveState();
+      if (this.videoInUse()) this.saveState();
       else if (this.heartbeat) {
         clearInterval(this.heartbeat);
         this.heartbeat = null;
@@ -1218,7 +1345,7 @@ export class StreamService {
       : await dialog.showOpenDialog(options);
     const folder = picked.filePaths[0];
     if (picked.canceled || !folder) return { ok: true, status: this.status() };
-    if (this.recording.state !== 'off')
+    if (this.recording.state !== 'off' || this.soundRecording.inUse())
       return { ok: false, message: 'Stop recording before choosing another folder.' };
     this.setRecordingFolder(folder);
     return { ok: true, status: this.status() };
@@ -1235,13 +1362,17 @@ export class StreamService {
    * Drashti is going to quit (its quit was confirmed): from now on nothing opens the stream's page
    * again, or the new window would stop the quit and leave Drashti running unseen, on air (Session 23).
    */
-  quitting(): void {
+  quitting(): Promise<void> | null {
     this.closing = true;
+    return this.soundRecording.stop();
   }
 
   /** Close everything (Drashti is quitting on purpose: the stream ends, and is not resumed). */
   close(): void {
     this.closing = true;
+    void this.soundRecording.stop();
+    this.speechPort?.close();
+    this.speechPort = null;
     if (this.liveWanted || this.recordWanted) {
       this.liveWanted = false;
       this.recordWanted = false;

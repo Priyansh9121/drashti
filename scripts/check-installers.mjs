@@ -39,6 +39,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
+import whisperWindowsRuntime from '../src/shared/whisper-windows-runtime.json' with { type: 'json' };
 import { fusesAsWanted, runAsNodeRefused } from './fuse-checks.mjs';
 import { iconFiles, macAppIcon, windowsProgramIcon } from './icon-checks.mjs';
 import { makeTempRoot, removeTempRoot } from './temp-root.mjs';
@@ -184,6 +185,8 @@ async function starts(name, command, args, appDir, emulated = false) {
   else if (!within(f.path, appDir))
     fail(name, `it ran an FFmpeg from outside the installed app: ${String(f.path)}`);
   else pass(name, `starts, and runs its own FFmpeg (${f.version}; streams with ${f.chosen ?? 'nothing'})`);
+  if (f && !f.whisper?.passed) fail(name, f.whisper?.detail ?? 'no bundled captions engine startup result');
+  else if (f?.whisper) pass(name, f.whisper.detail);
   // YouTube's two programs (Session 25c): its own yt-dlp and Deno run, and Deno is sandboxed.
   const y = f?.youtube;
   if (f && !y) fail(name, 'its self-test says nothing of yt-dlp and Deno');
@@ -425,6 +428,19 @@ async function checkWindows(f) {
       fail(f.name, `the icon its windows show (${windowIcon}) is not build/icon.ico`);
     else pass(f.name, "its windows show Drashti's icon (resources\\icon.ico: build/icon.ico)");
     checkGuides(f.name, join(installDir, 'resources'));
+    const changedRuntime = Object.keys(whisperWindowsRuntime).filter(
+      (dll) =>
+        !sameBytes(
+          join(installDir, 'resources', 'whisper', dll),
+          join('vendor', 'whisper', 'win32-x64', dll),
+        ),
+    );
+    if (changedRuntime.length > 0)
+      fail(
+        f.name,
+        `the installed captions runtime differs from the staged Microsoft DLLs: ${changedRuntime.join(', ')}`,
+      );
+    else pass(f.name, 'installs the four Microsoft captions runtime DLLs with their original bytes');
     if (existsSync(menu)) {
       const entry = shortcut(menu);
       const same = (a, b) => resolve(a).toLowerCase() === resolve(b).toLowerCase();

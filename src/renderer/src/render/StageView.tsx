@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
@@ -15,6 +15,7 @@ import { useNow } from './useNow';
 import { ClockStyleContext } from './clock-style';
 import { type ClockStyle, formatClock } from '../../../shared/format';
 import { stageMessageColors, stageMessageData, stageMessagePx } from './StageMessageBanner';
+import { createTextSizeObserver, type TextSizes } from './observe-text-sizes';
 
 /**
  * What a stage screen says is up when no slide is: the background's kind, never the picture itself (another
@@ -164,57 +165,79 @@ const STAGE_MIN_FIT = 0.2;
  * at today's size for their length and only ever get smaller, so a long slide's last line shows. The box
  * says how far (data-stage-fit) for tests; with words that fit, nothing changes.
  */
-function StageFit({ testId, children }: { testId: string; children: ReactNode }) {
+function StageFit({
+  testId,
+  contents,
+  children,
+}: {
+  testId: string;
+  contents: RenderSlide | string;
+  children: ReactNode;
+}) {
   const box = useRef<HTMLDivElement>(null);
-  const [fontsAndSize, setFontsAndSize] = useState(0);
-  // What it was last measured for: the clock's tick re-draws the stage every second, and must not measure.
-  const measured = useRef('');
-  // A font arriving, or the screen changing size, changes how far the words reach.
-  useEffect(() => {
-    const again = () => {
-      setFontsAndSize((n) => n + 1);
-    };
-    document.fonts.addEventListener('loadingdone', again);
-    const b = box.current;
-    const sized = b ? new ResizeObserver(again) : null;
-    if (b) sized?.observe(b);
-    return () => {
-      document.fonts.removeEventListener('loadingdone', again);
-      sized?.disconnect();
-    };
-  }, []);
+  const update = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     const b = box.current;
     if (!b) return;
-    const words = b.firstElementChild;
-    const key = `${String(fontsAndSize)} ${words?.textContent ?? ''}`;
-    if (key === measured.current) return;
-    measured.current = key;
-    if (!(words instanceof HTMLElement)) return;
-    const fits = (fit: number) => {
-      b.style.setProperty('--stage-fit', String(fit));
-      return words.offsetHeight <= b.clientHeight + 0.5;
-    };
-    // The usual case, words that fit as they are: nothing is written.
-    const shrunk = b.style.getPropertyValue('--stage-fit') !== '';
-    if (!shrunk && words.offsetHeight <= b.clientHeight + 0.5) return;
-    let lo = 1;
-    if (!fits(1)) {
-      lo = STAGE_MIN_FIT;
-      let hi = 1;
-      for (let i = 0; i < 12; i++) {
-        const mid = (lo + hi) / 2;
-        if (fits(mid)) lo = mid;
-        else hi = mid;
+    let words: HTMLElement | null = null;
+    let measured: TextSizes | null = null;
+    const observer = createTextSizeObserver(b, (measurement) => {
+      const target = words;
+      if (!target) return;
+      const { width, height, wordsHeight } = measurement;
+      // Ignore the resize caused by applying our own fit.
+      if (
+        measured?.width === width &&
+        measured.height === height &&
+        Math.abs(measured.wordsHeight - wordsHeight) <= 0.5
+      )
+        return;
+      measured = measurement;
+      const shrunk = b.style.getPropertyValue('--stage-fit') !== '';
+      if (!shrunk && wordsHeight <= height + 0.5) return;
+      const fits = (fit: number) => {
+        b.style.setProperty('--stage-fit', String(fit));
+        measurement.wordsHeight = target.offsetHeight;
+        return measurement.wordsHeight <= height + 0.5;
+      };
+      let lo = 1;
+      if (!fits(1)) {
+        lo = STAGE_MIN_FIT;
+        let hi = 1;
+        for (let i = 0; i < 12; i++) {
+          const mid = (lo + hi) / 2;
+          if (fits(mid)) lo = mid;
+          else hi = mid;
+        }
+        fits(lo);
       }
-      fits(lo);
-    }
-    if (lo < 1) b.setAttribute('data-stage-fit', lo.toFixed(3));
-    else {
-      b.style.removeProperty('--stage-fit');
-      b.removeAttribute('data-stage-fit');
-    }
-  });
+      if (lo < 1) b.setAttribute('data-stage-fit', lo.toFixed(3));
+      else {
+        b.style.removeProperty('--stage-fit');
+        b.removeAttribute('data-stage-fit');
+      }
+    });
+    const checkWords = () => {
+      const child = b.firstElementChild;
+      const next = child instanceof HTMLElement ? child : null;
+      // Ordinary text is already at full size. A changed font or slide can let shrunk words grow
+      // even when their measured height has not changed at the current fit.
+      if (next === words && !b.hasAttribute('data-stage-fit')) return;
+      words = next;
+      measured = null;
+      observer.observeWords(words);
+    };
+    update.current = checkWords;
+    document.fonts.addEventListener('loadingdone', checkWords);
+    return () => {
+      update.current = null;
+      document.fonts.removeEventListener('loadingdone', checkWords);
+      observer.disconnect();
+    };
+  }, []);
+  useLayoutEffect(() => {
+    update.current?.();
+  }, [contents]);
   return (
     <div ref={box} data-testid={testId} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {children}
@@ -251,6 +274,15 @@ export function StageView({
   const pageStyle = useContext(ClockStyleContext);
   const clock = formatClock(now, clockStyle ?? pageStyle);
   const background = state.layers.background;
+  const currentSlide = slide && !slide.slide.deck ? languageView(slide.slide, languages) : null;
+  const nextSlide = next?.kind === 'slide' && !next.slide.deck ? languageView(next.slide, languages) : null;
+  const currentLabel = backgroundWords(background);
+  const nextLabel =
+    next?.kind === 'media'
+      ? `${kindName[next.media]}: ${next.label}`
+      : next?.kind === 'input'
+        ? `Video input: ${next.name}`
+        : 'End';
   return (
     <div
       data-testid="stage-view"
@@ -301,15 +333,11 @@ export function StageView({
           {slide?.slide.deck ? (
             <StageDeckNow layer={slide} testId="stage-current" />
           ) : (
-            <StageFit testId="stage-current">
-              {slide ? (
-                <StageText
-                  slide={languageView(slide.slide, languages)}
-                  size={sizeFor(languageView(slide.slide, languages), 92)}
-                  timers={state.timers}
-                />
+            <StageFit testId="stage-current" contents={currentSlide ?? currentLabel}>
+              {currentSlide ? (
+                <StageText slide={currentSlide} size={sizeFor(currentSlide, 92)} timers={state.timers} />
               ) : (
-                <p style={{ fontSize: 56, color: '#6b7280', margin: 0 }}>{backgroundWords(background)}</p>
+                <p style={{ fontSize: 56, color: '#6b7280', margin: 0 }}>{currentLabel}</p>
               )}
             </StageFit>
           )}
@@ -368,21 +396,12 @@ export function StageView({
           {next?.kind === 'slide' && next.slide.deck ? (
             <StageDeckNext slide={next.slide} step={next.step ?? 0} testId="stage-next" />
           ) : (
-            <StageFit testId="stage-next">
-              {next?.kind === 'slide' ? (
-                <StageText
-                  slide={languageView(next.slide, languages)}
-                  size={sizeFor(languageView(next.slide, languages), 56)}
-                  dim
-                  timers={state.timers}
-                />
-              ) : next?.kind === 'media' ? (
-                <p
-                  style={{ fontSize: 48, color: '#c9ced8', margin: 0 }}
-                >{`${kindName[next.media]}: ${next.label}`}</p>
-              ) : next?.kind === 'input' ? (
-                // A video input item (Session 51): named, as a stage screen never draws it.
-                <p style={{ fontSize: 48, color: '#c9ced8', margin: 0 }}>{`Video input: ${next.name}`}</p>
+            <StageFit testId="stage-next" contents={nextSlide ?? nextLabel}>
+              {nextSlide ? (
+                <StageText slide={nextSlide} size={sizeFor(nextSlide, 56)} dim timers={state.timers} />
+              ) : next?.kind === 'media' || next?.kind === 'input' ? (
+                // Media and video inputs are named, as the stage screen never draws them.
+                <p style={{ fontSize: 48, color: '#c9ced8', margin: 0 }}>{nextLabel}</p>
               ) : (
                 <p style={{ fontSize: 48, color: '#6b7280', margin: 0 }}>End</p>
               )}
