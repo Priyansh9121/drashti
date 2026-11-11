@@ -12,8 +12,9 @@ import { sizeOperatorWindow } from './window-size';
  * where they were. The same with a folder that holds the open playlist, and in Simple Mode. Placeholder names only.
  */
 
-/** A playlist's or folder's row in the list on the left. */
-const node = (win: Page, name: string): Locator => win.getByTestId('playlist-node').filter({ hasText: name });
+/** A playlist's or folder's row in the list on the left, by its name (a playlist in a folder names it after its own). */
+const node = (win: Page, name: string): Locator =>
+  win.getByTestId('playlist-node').filter({ has: win.getByText(name, { exact: true }) });
 
 /** Delete… from its row's right-click menu, and Delete in the question. */
 async function deleteFromList(win: Page, name: string): Promise<void> {
