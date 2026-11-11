@@ -82,6 +82,7 @@ function setup() {
     { id: 'i-clip', kind: 'media', mediaId: 'clip', media: 'video', label: 'Placeholder clip' },
     { id: 'i-cam', kind: 'input', inputId: INPUT.id, label: INPUT.name },
     { id: 'i-tune', kind: 'media', mediaId: 'tune', media: 'audio', label: 'Placeholder tune' },
+    { id: 'i-pic', kind: 'media', mediaId: 'still', media: 'image', label: 'Placeholder picture' },
   ]);
   let clock = 1_000_000;
   const jobs: { at: number; run: () => void; cancelled: boolean }[] = [];
@@ -110,6 +111,16 @@ function setup() {
     }
     clock = end;
   };
+  engine.setTimers([
+    {
+      id: 'talk',
+      name: 'Placeholder talk',
+      kind: 'countdown',
+      durationMs: 60_000,
+      targetTime: null,
+      allowsOverrun: false,
+    },
+  ]);
   /** Both covers on, as the operator turns them on. */
   const cover = () => {
     engine.dispatch({ type: 'setWallpaper', on: true });
@@ -346,5 +357,117 @@ describe('LIVE shows one thing at a time (Session 56): the engine by itself neve
     expect(again.current.wallpaper).toBe(true);
     expect(again.current.layers.background).toBeNull();
     expect(input).toMatchObject({ input: null, wallpaper: true });
+  });
+});
+
+/*
+ * The lead's open question to the owner (11 Nov): slides and pictures. Until the owner says otherwise, anything the
+ * operator puts up (a slide, a deck's click, a picture, a colour, a timer shown alone, another app's window) takes the
+ * covers off too, so what is put up is always seen; a cover going on keeps a slide or a picture under it and brings it
+ * back as it was when it comes off; what the engine does by itself (a slide moving on by itself, Repeat Slides going
+ * round) leaves the covers on, as before.
+ */
+describe('LIVE shows one thing at a time (Session 56): a slide or a picture put up takes the covers off too', () => {
+  const ways: { name: string; run: (s: ReturnType<typeof setup>) => void }[] = [
+    {
+      name: 'a slide’s click',
+      run: ({ engine }) => engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 1 }),
+    },
+    {
+      name: 'a click on the slide already up',
+      run: ({ engine, cover }) => {
+        engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 1 });
+        cover();
+        engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 1 });
+      },
+    },
+    {
+      name: 'Next',
+      run: ({ engine, cover }) => {
+        engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+        cover();
+        engine.dispatch({ type: 'next' });
+      },
+    },
+    {
+      name: 'Back',
+      run: ({ engine, cover }) => {
+        engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+        engine.dispatch({ type: 'next' });
+        cover();
+        engine.dispatch({ type: 'back' });
+      },
+    },
+    { name: 'a picture’s row', run: ({ engine }) => engine.dispatch(play('i-pic')) },
+    {
+      name: 'a picture from Media',
+      run: ({ engine }) =>
+        engine.dispatch({
+          type: 'setBackground',
+          background: { kind: 'media', mediaId: 'still', media: 'image', fit: 'fill', loop: false },
+        }),
+    },
+    {
+      name: 'a colour from Media',
+      run: ({ engine }) =>
+        engine.dispatch({ type: 'setBackground', background: { kind: 'color', color: '#203040' } }),
+    },
+    {
+      name: 'a timer shown alone',
+      run: ({ engine }) => engine.dispatch({ type: 'showTimer', timerId: 'talk' }),
+    },
+    {
+      name: 'another app’s window (Pro Mode’s, from Main)',
+      run: ({ engine }) => engine.showWindow({ sourceId: 'window:1:0', name: 'Placeholder meeting' }),
+    },
+    {
+      name: 'Put it back',
+      run: ({ engine, cover }) => {
+        engine.dispatch({ type: 'goLive', presentationId: 'p2', slideIndex: 0 });
+        engine.dispatch({ type: 'clearAll' });
+        cover();
+        engine.dispatch({ type: 'putBack' });
+      },
+    },
+  ];
+  for (const way of ways)
+    it(`by ${way.name}`, () => {
+      const s = setup();
+      s.cover();
+      way.run(s);
+      expect(covers(s.engine.current)).toEqual(OFF);
+      expect(s.engine.current.layers.slide !== null || s.engine.current.layers.background !== null).toBe(
+        true,
+      );
+    });
+
+  it('a cover going on keeps the slide under it and brings it back as it was', () => {
+    const { engine } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 2 });
+    const layers = engine.current.layers;
+    engine.dispatch({ type: 'toggleWallpaper' });
+    expect(engine.current.layers).toBe(layers);
+    engine.dispatch({ type: 'toggleWallpaper' });
+    expect(engine.current.layers).toBe(layers);
+  });
+
+  it('what is not put up on the picture leaves the covers on: a sound, a message, Clear all, a layer cleared', () => {
+    const { engine, cover } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+    cover();
+    engine.dispatch(play('i-tune'));
+    engine.dispatch({ type: 'showMessage', message: { id: 'm1', text: 'Placeholder message' } });
+    engine.dispatch({ type: 'clearLayer', layer: 'slide' });
+    engine.dispatch({ type: 'clearAll' });
+    expect(covers(engine.current)).toEqual(ON);
+  });
+
+  it('a slide moving on by itself leaves the covers on', () => {
+    const { engine, cover, elapse } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'timed', slideIndex: 0 });
+    cover();
+    elapse(4000);
+    expect(engine.current.layers.slide?.slide.id).toBe('t2');
+    expect(covers(engine.current)).toEqual(ON);
   });
 });
