@@ -72,9 +72,9 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
         </div>
         <p className="text-sm text-muted">
           What is said into the stream’s sound input shows as captions on the stream and the stage screens,
-          and on the audience screens if you choose. Captions are worked out on this computer: Drashti does
-          not keep or log the sound or the words it hears, and phones never get them. The captions are part of
-          the stream’s picture, so they go to YouTube and into the stream’s recordings.
+          and on the audience screens if you choose. Drashti works out captions on this computer and draws
+          them on the stream and its video recording. Phones do not receive the captions. When you record
+          sound with captions on, Drashti saves a timed draft beside the audio file.
         </p>
         <Toggle
           checked={view.on}

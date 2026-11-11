@@ -642,6 +642,7 @@ export interface DrashtiBridge {
     goLive(confirm: { confirmed: true }): Promise<StreamResult>;
     end(confirm: { confirmed: true }): Promise<StreamResult>;
     startRecording(): Promise<StreamResult>;
+    startSoundRecording(): Promise<StreamResult>;
     stopRecording(): Promise<StreamResult>;
     pickFolder(): Promise<StreamResult>;
     /** Let the offer to go live again after a crash go. */

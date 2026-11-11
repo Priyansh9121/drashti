@@ -7,6 +7,7 @@ import {
   type CaptionsShown,
   type CaptionsStatus,
 } from '../../shared/captions';
+import type { Heard } from '../../shared/speech';
 import { createCaptionsFeed, type CaptionsFeed } from './captions-feed';
 import { readCaptionsSwitch, writeCaptionsSwitch, type CaptionsSwitch } from './captions-switch';
 import { createSpeechHub, type SpeechEngine, type SpeechHubControl } from './hub';
@@ -36,6 +37,7 @@ export interface CaptionsServiceDeps {
   ) => Promise<void>;
   /** The engine's setCaptions. */
   show: (captions: CaptionsShown | null) => void;
+  onFinalPhrase?: (phrase: Heard) => void;
   /** Tell the operator window (the dialog). */
   changed: (view: CaptionsStatus) => void;
   log: { info(message: string): void; warn(message: string): void };
@@ -67,7 +69,12 @@ export class CaptionsService {
       },
       log: deps.log,
     });
-    this.feed = createCaptionsFeed({ hub: this.hub, show: deps.show, settings: () => this.settings() });
+    this.feed = createCaptionsFeed({
+      hub: this.hub,
+      show: deps.show,
+      onFinalPhrase: (phrase) => deps.onFinalPhrase?.(phrase),
+      settings: () => this.settings(),
+    });
     this.hub.onState(() => {
       this.tell();
     });

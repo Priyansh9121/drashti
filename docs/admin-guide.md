@@ -19,7 +19,7 @@ Drashti runs on both of the mandir's computers. One is **Main**: it keeps the li
 - **A graphics chip that decodes video by itself**: every Mac that runs macOS 13 has one; a PC needs Intel, AMD or NVIDIA graphics (not a basic display adapter). Section 13 has what the speed tests found.
 - **The internet** on Main (and on any other computer used as a Main), to check its access every 15 seconds while it runs (section 3; without it, Drashti keeps working for up to 15 days): a wired connection if at all possible, and a phone's hotspot ready as a spare. A node needs none for this: it follows its Main.
 - **A wired network between Main and the node** if at all possible, and a fixed address for Main (section 8).
-- **Room on the disk**: the media library (with a copy beside each file Drashti converts, section 20), plus 2 GB that Drashti keeps free, plus the recordings (about 3 GB an hour). A recording goes on in parts of 3.5 GB (`… part 2.mkv`, `part 3`…), so even a USB stick formatted FAT32 takes a long sabha; Drashti says so when the folder is on one, and when the disk has room for less than an hour.
+- **Room on the disk**: the media library (with a copy beside each file Drashti converts, section 20), plus 2 GB that Drashti keeps free, plus the recordings. **Record sound** saves about 115 MB an hour in 16 kHz mono WAV files. **Record video** saves about 3 GB an hour at the Good internet setting in MKV files. A recording goes on in parts of up to 3.5 GB, so a FAT32 USB stick can take a long sabha. Drashti warns when the folder is on one or the disk has room for less than an hour.
 - Each computer's **user account with a password of its own**: once the computer is let in (section 3), anyone who can use its account can use Drashti there.
 
 ---
@@ -615,7 +615,7 @@ The download leaves about 2 GB free on the drive. It pauses when the stream or a
 
 **Windows.** The captions engine needs the Microsoft Visual C++ v14 Redistributable for x64. If Drashti reports a missing Windows library, install or repair that runtime and try captions again. [Microsoft's downloads](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
 
-**What captions hear.** Choose the mixer's input under **Sound input** in the stream's settings. Captions hear that input, not Drashti's music or videos. The stream's page stays open while listening, even off air, so its chosen camera may be open and its light on. This alone does not start a stream or recording.
+**What captions hear.** Choose the mixer's input under **Sound input** in **Stream settings**. Captions and **Record sound** both hear that input before the stream's delay, mix or limiter. When you record sound with captions on, Drashti saves the finished phrases in a timed WebVTT draft beside the WAV file. Choose the destination in **Stream settings › Recording folder** or from the **Record** menu.
 
 **Language and where the words go.** Under **Language**, choose Gujarati, Hindi, Sanskrit or English if you know which one the speaker will use. **Gujarati, Hindi, Sanskrit or English, as heard** lets Drashti choose for each phrase. It can mistake Gujarati for Hindi. Check the words in rehearsal, especially for Gujarati and Sanskrit. The stream and stage screens show captions. **Show them on the audience screens too** adds them to the hall. Leave that off while trying them. **Size** chooses Small, Medium or Large. **Place** chooses Along the bottom or Along the top. Phones and output nodes never receive captions.
 
@@ -635,4 +635,4 @@ The download leaves about 2 GB free on the drive. It pauses when the stream or a
 - **Resting: this computer is busy**: the show comes first. Captions try again in a minute. If this happens in the rehearsal, leave them off on that computer.
 - A message about the engine or macOS means this copy or computer cannot start it. Put that right before trying again; there is no need to turn captions on to run the show.
 
-**What stays private.** Captions are worked out on this computer. Drashti does not keep or log what it hears for captions, or send the sound to a speech service. Words shown in the stream are part of its picture, so take the same care with them as with any words put on the screens. Turn **Live captions on this computer** off to stop listening.
+**What stays private.** Drashti works out captions on this computer. The words are kept out of logs. They can appear in the video picture and in the timed draft saved beside a sound recording. Turn **Live captions on this computer** off to stop listening.

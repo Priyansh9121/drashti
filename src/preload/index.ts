@@ -457,6 +457,7 @@ const bridge: DrashtiBridge = {
     goLive: (confirm) => invoke(IPC.stream.goLive, confirm),
     end: (confirm) => invoke(IPC.stream.end, confirm),
     startRecording: () => invoke(IPC.stream.startRecording),
+    startSoundRecording: () => invoke(IPC.stream.startSoundRecording),
     stopRecording: () => invoke(IPC.stream.stopRecording),
     pickFolder: () => invoke(IPC.stream.pickFolder),
     dismissResume: () => invoke(IPC.stream.dismissResume),

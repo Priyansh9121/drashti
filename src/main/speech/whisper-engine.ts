@@ -2,7 +2,7 @@ import { spawn as spawnChild, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { constants, setPriority } from 'node:os';
-import type { Heard, HeardWord, SpeechLanguage } from '../../shared/speech';
+import { SPEECH_RATE, type Heard, type HeardWord, type SpeechLanguage } from '../../shared/speech';
 import { whisperDependencyProblem } from './engine-place';
 import type { SpeechEngine } from './hub';
 
@@ -16,7 +16,7 @@ import type { SpeechEngine } from './hub';
  * own output is never read.
  */
 
-export const SAMPLE_RATE = 16_000;
+export const SAMPLE_RATE = SPEECH_RATE;
 
 /** The stream's sound input, 16 kHz mono 16-bit, each chunk with when its last sample was heard (epoch ms). */
 export interface PcmSource {

@@ -219,15 +219,15 @@ Only on the computer that streams, and only once the screens and sound work. **T
 4. Choose the **Camera** and the **Sound input** (the mixer's line in; a mixer's USB output is a sound input too, and can be chosen here). They are also on **YouTube**'s card in **Screens**, with the stream's languages: the same settings, so a change in one shows in the other. On a Mac, the first time, macOS asks whether Drashti may use the camera and the microphone: press **Allow**. If Drashti says Windows or macOS is blocking them, follow what it says, then open the Stream panel again.
 5. **Internet**: **Good internet** (1080p) needs an upload of 8 Mbps or more; otherwise choose **Weak internet** (720p). Ask whoever looks after the mandir's internet, or run a speed test on this computer.
 6. **Save profile**. Back in the Stream panel, the preview shows what the stream will look like, and the bar under it moves with the sound. Talk into a microphone on the mixer: if the lips move after the words are heard, raise **Sound delay** in Stream settings a little at a time.
-7. **Recording**: press **Choose a folder…** and pick a folder on a disk with plenty of space (an hour at Good internet is about 3 GB).
+7. **Recording**: pick a **Recording folder** in **Stream settings** on a disk with plenty of space (an hour of video at Good internet is about 3 GB).
 
 **Each time:**
 
 1. Open the **Stream** panel. Choose **Camera and words** (the camera, with the kirtan's words along the bottom) or **Slides** (what the hall sees, a video input on the screens too). You can switch at any time, even on air.
-2. Press **Record** if the sabha should be recorded too.
+2. Open **Record** and choose **Record sound** for the sound input alone or **Record video** for the stream’s layout with sound.
 3. Press **Go live…**, read what it says, then **Go live**. The top of the window says **ON AIR**. In YouTube Studio the stream appears after a few seconds.
 4. Run the sabha as usual. On the hall's screens, black-out and the **Wallpaper** do not cover the stream in **Camera and words**: the camera carries on and the words go.
-5. At the end, press **End the stream…**, then **End the stream**, and **Stop recording**. End the broadcast in YouTube Studio too.
+5. At the end, press **End the stream…**, then **End the stream**, and stop the sound or video recording if one is on. End the broadcast in YouTube Studio too.
 6. The recording is in the folder you chose, named `Drashti <date> <time>.mkv`. It opens in **VLC** (free, for Mac and Windows) or IINA on a Mac; QuickTime Player does not open this kind of file. If Drashti stopped in the middle, the file still plays up to that moment.
 
 There is no key for going live or ending: always the buttons, and always a question first.

@@ -46,6 +46,7 @@ import { ScreensSaidNotice } from '../screens/ScreensSaid';
 import { StoppedScreens } from '../screens/StoppedScreens';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { OnAirBadges } from '../stream/OnAirBadges';
+import { RecordButton } from '../stream/RecordButton';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
 import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
 import { Badge } from '../ui/Badge';
@@ -345,6 +346,9 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
             <NextBack platform={platform} run={run} oops={false} canStart={items.some(playable)} caption />
             {/* The time bar for what plays (Session 54), under Next and Back: Play while paused (question 14). */}
             <PlayingBars className="px-3 pt-2" />
+            <div className="px-3 pt-2">
+              <RecordButton />
+            </div>
             <KeysLine platform={platform} />
           </aside>
         }

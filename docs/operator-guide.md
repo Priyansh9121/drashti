@@ -59,13 +59,15 @@ Do these about 30 minutes before the sabha starts.
 
 6. **The wallpaper.** In **Wallpapers**, under the playlists, click the one the hall should see while nothing is up (the mandir's darshan pictures going round, say, or **Idle rotation**). It shows until the first thing goes up, and again whenever nothing is up.
 7. **A countdown for the start** (if wanted): in **Timers**, press **Countdown to the start…**, set **The sabha’s time** and press **Show the countdown**. The hall's screens and the stage screens show the time left to it over the wallpaper ("The sabha starts in"), and it goes by itself at zero; a time already passed today is refused, saying so. **Hide the countdown** takes it off sooner. For any other timer on the hall's screens, use its **Show for the audience** (section 2), a timer slide ("Starting in 4:59": section 2), or a message such as "Sabha starts in {time}", with {time} set to **Timer: Sabha starts in** in place of **Typed in**.
-8. **The stream** (only on the computer that streams, and only if tonight's sabha is streamed): press **Stream** in the header, choose **Camera and words** or **Slides**, press **Record** if it should be recorded, then **Go live…** and **Go live**. The header says **ON AIR** (and **REC**). Section 6 of `docs/parallel-run.md` has the details.
+8. **The stream** (only on the computer that streams, and only if tonight's sabha is streamed): press **Stream** in the header, choose **Camera and words** or **Slides**, then press **Go live…** and **Go live**. The header says **ON AIR**. Section 6 of `docs/parallel-run.md` has the details.
 9. **Phones** (if a phone remote or a stage tablet is used): press **Phones**, check **Let paired phones and tablets connect** is on, and check each phone says **Connected**.
 10. **Ready?** Last, press **Ready?** in the top bar. It checks eight things and shows each green, or amber with what to do: the **Screens** (each connected and showing, **Audience** and **Stage** on, the projector extended, not mirrored), the **Sound output** (**Test sound** plays a short tone to it), the chosen **Video input**, **Access**, the open playlist's **Files** (**Find missing media…** when some are gone), the **Charger**, **Sleep** and **Notifications**. Put each amber line right, then press **Check again**, until every line is green. Under them, **What Ready? can’t check** lists what to look at yourself: the projector's picture, the hall's sound, the stream's internet and the phones' batteries. It looks only when you press it.
 
 ![Ready? before the sabha: each line green, or amber with what to do](screenshots/ready.png)
 
 **Live captions (Trial).** They start off and can slow the screens while on. When an admin has turned them on, captions may show along the bottom of that computer's stage screens and the stream (or at the top, if chosen), and on the audience screens only if chosen too. Tell the admin if they are wrong or lag behind; **File › Live Captions…** turns them off. There is nothing to do in Simple Mode. The admin's guide, section 25, has the settings and the rehearsal.
+
+**Record the sabha.** Open **Record** in **Stream** in Pro Mode, or under **LIVE** in Simple Mode. Pick **Record sound** to save the chosen sound input as a WAV file. If Live captions is on, a timed caption draft is saved beside the sound. **Record video** saves the stream’s chosen layout and takes about 3 GB an hour at the Good internet setting. Both choices work off air or while the stream is on air. Choose the folder in **Stream settings** or from the **Record** menu, and press the recording’s **Stop** button when finished.
 
 ## 2. Running the sabha
 
@@ -252,7 +254,7 @@ In the studio, **Save** keeps it, **Show** puts it up (**Save and show** when it
 
 ## 4. After the sabha
 
-1. **The stream**: **End the stream…**, then **End the stream**, and **Stop recording**. End the broadcast in YouTube Studio too.
+1. **The stream and recording**: if streaming, press **End the stream…**, then **End the stream**, and end the broadcast in YouTube Studio. If recording, press **Stop sound recording** or **Stop video recording**.
 2. **F1** (Clear all), so nothing is left up.
 3. If anything went wrong, **Help**, then **Save Diagnostics…**: a file appears on the Desktop. Send it to whoever looks after Drashti with the time and what you saw. It holds no kirtan words, names or file paths. If Drashti asks about crash files, leave **Include crash files** unticked unless whoever looks after Drashti asks for them: they can hold words from slides.
 4. Quit Drashti, or switch to Simple Mode for the next volunteer (**View**, then **Switch to Simple Mode**).
@@ -332,7 +334,7 @@ In Drashti, **Help**, then **Keyboard Shortcuts…** (or press **?** when no fie
 
 ## 9. Simple Mode, for a sabha with one projector
 
-Simple Mode is this window with only what a small sabha with one projector needs, for a volunteer: the one playlist in the middle, the wallpapers on the left, and on the right **LIVE**, **Next** and **Back** and the time bar, with the keys in a line under them; along the bottom, **Clear all**, **Wallpaper** and **Black-out**. It has no stream, no stage screen, no messages, timers or lower thirds, and no screens to set up: a display plugged in sets itself (above). The first time it opens, three short first steps under the top bar say what it is; **Skip** puts them away.
+Simple Mode is this window with only what a small sabha with one projector needs, for a volunteer: the one playlist in the middle, the wallpapers on the left, and on the right **LIVE**, **Next** and **Back**, the time bar and **Record**, with the keys in a line under them; along the bottom, **Clear all**, **Wallpaper** and **Black-out**. The stage screen, messages, timers, lower thirds, screen setup and live stream controls are in Pro Mode. A display plugged in sets itself (above). The first time it opens, three short first steps under the top bar say what it is; **Skip** puts them away.
 
 **Switching to it.** Open the night's playlist, then press **Simple Mode** at the top right (or **View**, then **Switch to Simple Mode**). Simple Mode works on that playlist; with none open, it makes a new one, "Sabha, " and the day's date, at the top of the list (or uses again an empty one it made before). After a restart it opens the same playlist. If that playlist was deleted, Simple Mode makes a new, empty one, named apart from the deleted one ("Sabha, 30 Oct 2026 (2)"), so it is never taken for the deleted one come back.
 

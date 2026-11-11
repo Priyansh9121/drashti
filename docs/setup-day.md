@@ -171,7 +171,7 @@ On each computer:
 
 - [ ] Check **File › Live Captions…** starts **Off on this computer** and is marked **Trial**. On a Mac, check macOS is 13.3 or later. While online, choose Standard (488 MB; start here on the Windows PC) or Most accurate (574 MB; start here on an Apple-silicon Mac), turn on **Live captions on this computer** and wait for the model. Check progress and **Try again** if a download fails.
 - [ ] Choose the mixer's input in the stream's **Sound input** settings; captions hear only this input, not Drashti's music or videos. Use generated speech or made-up rehearsal words, choose English or Hindi, and keep **Show them on the audience screens too** off at first. Check Size and Place on the stage and Program picture without going live. Gujarati is a trial only and is not good enough for the audience; **as heard** may take it for Hindi.
-- [ ] Watch the status: **No sound input** means choose one; **Waiting for the model** means let it finish; **Resting: this computer is busy** means leave captions off on this computer. Check the chosen model works offline after downloading and that phones show no captions. Listening may keep the camera light on off air. Turn captions off after trying them unless the owner chooses otherwise, and write down that choice.
+- [ ] Watch the captions status. Choose a sound input if prompted. Wait for the model to finish while off air and between recordings. If captions rest because the computer is busy, leave them off on this computer. Check the chosen model works offline and that phones show no captions. Turn captions off after trying them unless the owner chooses otherwise, and write down that choice.
 
 ### The remaining checks (each computer)
 

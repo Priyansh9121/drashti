@@ -4,8 +4,8 @@ import { SPEECH_LANGUAGES, type SpeechLanguage, type SpeechState } from './speec
 /*
  * Live captions (Session 55, Part 10): speech from the stream's sound input, heard on this computer
  * (src/main/speech/), drawn as one or two lines on the stream and the stage, and on the audience screens only if
- * chosen. The screens get only the lines to draw now, through the engine's state (engine state 26); the words are
- * never kept, logged or sent to a phone or a node (src/shared/engine/captions-filter.ts).
+ * chosen. The screens get the lines to draw through engine state. Phones and nodes receive the filtered state.
+ * During a sound recording, final phrases can also go into the draft beside the audio.
  */
 
 /** How big the captions are drawn. */

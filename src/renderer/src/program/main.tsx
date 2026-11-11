@@ -131,7 +131,7 @@ function Program() {
       data-fonts={ready ? 'ready' : 'loading'}
       data-warm-up={warmed ? 'done' : 'warming'}
     >
-      {fontsReady && !warmed && (
+      {context?.picture && fontsReady && !warmed && (
         <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
           <WarmUp
             page="stream"
@@ -143,7 +143,7 @@ function Program() {
           />
         </PlacedInParent>
       )}
-      {state && ready && context && !stop.black && (
+      {state && ready && context?.picture && !stop.black && (
         // The stream's picture: black if it fails as it draws, until the next change (Session 23).
         <SceneBoundary resetKey={rev}>
           {/* Main's way of writing the time (Sessions 31–36, I18N-8), for clocks in messages. */}

@@ -132,7 +132,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.setup.finish,
   IPC.setup.setSeen,
   IPC.setup.welcomeSeen,
-  // The stream: Simple Mode shows ON AIR and REC, and can neither start, end nor change it.
+  // Simple Mode can record locally. Going on air, ending a stream and changing its settings are Pro Mode's.
   IPC.stream.setLayout,
   IPC.stream.saveProfile,
   IPC.stream.setInputs,
@@ -142,9 +142,6 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stream.removeKey,
   IPC.stream.goLive,
   IPC.stream.end,
-  IPC.stream.startRecording,
-  IPC.stream.stopRecording,
-  IPC.stream.pickFolder,
   IPC.media.convert,
   IPC.media.setMarkers,
   IPC.media.cancelConversion,

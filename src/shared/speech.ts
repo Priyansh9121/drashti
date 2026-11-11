@@ -1,8 +1,11 @@
 /*
  * What the speech hub hears (Session 55, Part 10; the lead's interface of 4 Nov 2026). Main process only:
  * a window, phone or node never receives speech. Captions reach the screens through the engine state, as
- * everything else drawn does. The words are never kept or logged (src/main/speech/speech-hub.ts).
+ * everything else drawn does. Final phrases can go into the local draft beside an operator's sound recording.
  */
+
+/** The stream's raw sound tap supplies mono PCM at this sample rate. */
+export const SPEECH_RATE = 16_000;
 
 /** The languages Drashti listens for: Gujarati, Hindi, Sanskrit and English. */
 export const SPEECH_LANGUAGES = ['gu', 'hi', 'sa', 'en'] as const;

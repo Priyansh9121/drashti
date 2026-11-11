@@ -14,8 +14,8 @@ import { SPEECH_LANGUAGES, type Heard, type HeardWord, type SpeechState } from '
  *    far behind the engine runs, and a phrase more than 10 s behind is dropped, never sent.
  * 6. Each phrase's language is the engine's own detection among Gujarati, Hindi, Sanskrit and English, or the one
  *    language the admin chose.
- * 7. The words are never kept and never logged: listeners get them in memory only, never the log,
- *    Diagnostics, the library, a file, a phone, a node or the network. The log says counts and times only.
+ * 7. The hub keeps words in memory only. An operator-started sound recording may save final captions
+ *    as a local draft beside its audio. The log says counts and times only.
  * 8. The show comes first: the engine runs below the show's priority and stops itself when the computer is
  *    short (held, busy), and starts again by itself. A listener returns at once; one that throws is named in
  *    the log once and kept.
