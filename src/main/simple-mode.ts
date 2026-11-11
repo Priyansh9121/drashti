@@ -23,10 +23,11 @@ import { NO_VIEW } from '../shared/access-list';
  * and Dropbox)"). Since Session 56 (the owner's words of 11 Nov 2026: "several playlists on the left,
  * with folders, as in Pro Mode, and smart playlists") the playlists and folders themselves too, as Pro Mode's left
  * column offers them: New playlist and New folder (at the top or in a folder), Rename…, Delete… and its Undo, and
- * Smart Playlist from a Folder…; the window opens any of them (main/simple-playlist.ts follows which). A template, a
- * slot, sharing with phones, Repeat Slides and its settings, Duplicate and a row's timers stay Pro Mode's, and so does
- * everything else. This is the one list for Simple access too (Session 55, Part 19): the mode keeper holds the mode
- * in Simple, and so this lock.
+ * Smart Playlist from a Folder…; the window opens any of them (main/simple-playlist.ts follows which). Also since
+ * Session 56, Pro Mode's Audio, a row's Trim and When it ends, and Edit slides (SESSION_56_BOUNDED, below). A
+ * template, a slot, sharing with phones, Repeat Slides and its settings, Duplicate and a row's timers stay Pro Mode's,
+ * and so does everything else. This is the one list for Simple access too (Session 55, Part 19): the mode keeper
+ * holds the mode in Simple, and so this lock.
  */
 
 /** The Access List's edits (Session 54, E4). */
@@ -48,7 +49,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.newFromWords,
   // New › QR code… (Session 55, Part 8): Pro Mode's.
   IPC.library.newQrSlide,
-  IPC.library.saveSlides,
+  // The slide editor's Save a PDF copy… (a copy: Pro Mode's; its save is bounded since Session 56, below).
   IPC.library.exportPdf,
   IPC.library.setDefaultTransition,
   IPC.library.setExtras,
@@ -59,7 +60,6 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.appearance.make,
   IPC.appearance.remove,
   IPC.appearance.setMotion,
-  IPC.library.restoreRevision,
   IPC.library.relinkMedia,
   IPC.library.setArrangement,
   IPC.library.removePresentations,
@@ -89,9 +89,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stageLayouts.save,
   IPC.playlists.editSlot,
   IPC.playlists.setTimers,
-  // Session 55, Part 6: a video row's When it ends; and a wallpaper's seconds and fade, its editor's (Simple Mode has the
-  // wallpapers since Part 18, bounded below, without the editor).
-  IPC.playlists.setWhenEnds,
+  // Session 55, Part 6: a wallpaper's seconds and fade, its editor's (Simple Mode has the wallpapers since Part 18,
+  // bounded below, without the editor; a video row's When it ends is bounded since Session 56).
   IPC.wallpapers.setTiming,
   // Smart playlists (Session 26c): Simple Mode makes one since Session 56 (bounded below); taking a smart playlist's
   // missing items out, its banner's button, stays Pro Mode's (a row's Delete takes one out in either mode).
@@ -106,12 +105,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.lowerThirds.save,
   IPC.lowerThirds.remove,
   IPC.lowerThirds.restore,
-  // The Lower Thirds studio (Session 55, Part 16): Pro Mode's; it closes in Simple Mode.
+  // The Lower Thirds studio (Session 55, Part 16): Pro Mode's; it closes in Simple Mode. (The slide editor's window,
+  // Part 17a, is Simple Mode's too since Session 56, bounded below.)
   IPC.lowerThirds.studio,
-  // The slide editor's window (Session 55, Part 17a): Pro Mode's (its saves are locked above); it closes in Simple
-  // Mode, and what it copies is kept for Pro Mode's next.
-  IPC.slideEditor.open,
-  IPC.slideEditor.copy,
   IPC.lowerThirds.show,
   IPC.lowerThirds.hide,
   // The MIDI controller: Simple Mode changes none of it (its pads still work Simple Mode's own actions).
@@ -146,20 +142,17 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stream.goLive,
   IPC.stream.end,
   IPC.stream.pickFolder,
+  // Conversions make copies: Pro Mode's (a file's start, end and markers are bounded since Session 56, below).
   IPC.media.convert,
-  IPC.media.setMarkers,
   IPC.media.cancelConversion,
   IPC.media.undoConversion,
-  // Save as MP4… (Session 26e) is Pro Mode's, as are a picture's look and keeping a live zoom; and Save picture…
-  // (Session 55, Part 5), from the right-click menu Simple Mode does not have.
+  // Save as MP4… (Session 26e) is Pro Mode's (a copy of the part: Simple Mode's Trim never makes one), as are a
+  // picture's look and keeping a live zoom; and Save picture… (Session 55, Part 5). (Session 55, Part 7's Music steps
+  // aside, Even loudness and Trim black and silence are bounded since Session 56, below.)
   IPC.media.saveTrim,
   IPC.media.stopSave,
   IPC.media.setLook,
   IPC.media.keepLiveZoom,
-  // Session 55, Part 7: Audio's Music steps aside, a file's Even loudness, Trim black and silence: Pro Mode's.
-  IPC.sound.setStepsAside,
-  IPC.sound.setEven,
-  IPC.sound.trimEdges,
   IPC.media.savePicture,
   IPC.network.setOn,
   IPC.network.setPort,
@@ -211,18 +204,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.captions.setModel,
   IPC.captions.setSettings,
   IPC.captions.retry,
-  // Audio playlists (Session 14): Simple Mode plays and pauses one, and changes none.
-  IPC.music.create,
-  IPC.music.rename,
-  IPC.music.remove,
-  IPC.music.setOptions,
-  IPC.music.addTracks,
-  IPC.music.moveTrack,
-  IPC.music.removeTrack,
-  IPC.music.restore,
+  // A file deleted from the library and put back (the audio playlists' own changes are bounded since Session 56, below).
   IPC.media.remove,
   IPC.media.restore,
-  IPC.music.restoreTrack,
   // Updates (Session 14): Simple Mode never sees them.
   IPC.updates.check,
   IPC.updates.download,
@@ -293,6 +277,12 @@ export interface SimpleScope extends SimpleOpenPlaylist {
   listsMedia(mediaId: string): boolean;
   /** Whether a playlist (never a template) has a row of this presentation (a PDF's or a deck's too). */
   listsPresentation(presentationId: string): boolean;
+  // Session 56 (alpha.16): Audio, a row's Trim and Edit slides in Simple Mode. Left out (as in a scope made for a
+  // test), each answers no: the lock fails closed.
+  /** Whether an audio playlist has this sound (a track of one): Audio's own right-click menu trims and renames it. */
+  inMusic?(mediaId: string): boolean;
+  /** The presentations an edit kept for Undo covers (main/library/revisions.ts), or null when it is not kept. */
+  revisionCovers?(revisionId: string): readonly string[] | null;
 }
 
 /** Whether a request on a bounded channel, with its arguments as sent, stays within Simple Mode's bounds. */
@@ -332,6 +322,56 @@ const itsAdds = (items: unknown): boolean =>
   Array.isArray(items) &&
   items.length > 0 &&
   items.every((i) => typeof i === 'object' && i !== null && SIMPLE_ADDS.has((i as { kind?: unknown }).kind));
+
+/*
+ * Session 56 (alpha.16), the owner: Simple Mode's right column and bottom bar from Pro Mode's own parts, each let
+ * through here within its bounds (a phone or Companion, with none of the arguments, is still refused).
+ * - Audio as Pro Mode has it (the owner: "build nothing new for it, just make it reachable"): the audio playlists made,
+ *   renamed, deleted and put back, their sounds added, moved, taken out and put back, going round or shuffled, and
+ *   Music steps aside. Audio playlists belong to no playlist: nothing bounds them but what they are.
+ * - A row's Trim (start, end and markers), Trim black and silence and Even loudness, of a file a playlist holds (or a
+ *   track of an audio playlist, from Audio's own right-click menu): its points and how loud it plays, never a copy
+ *   (Save as MP4 and conversions stay Pro Mode's). A video row's When it ends, of a playlist's rows.
+ * - Edit slides (Pro's slide editor, its window): opened on a presentation a playlist holds, its save, what it copies
+ *   for its next window, and its save's Undo when every presentation that edit kept is one a playlist holds.
+ */
+
+/** A file a playlist holds (never only a template), or a track of an audio playlist. */
+const itsFile = (scope: SimpleScope, id: unknown): boolean =>
+  aPlaylistsMedia(scope, id) || (typeof id === 'string' && (scope.inMusic?.(id) ?? false));
+
+const isId = (value: unknown): boolean => typeof value === 'string' && value !== '';
+
+const SESSION_56_BOUNDED: readonly [InvokeChannel, SimpleBound][] = [
+  // Audio (Pro Mode's panel: music/MusicPanel.tsx).
+  [IPC.music.create, ([name]) => typeof name === 'string'],
+  [IPC.music.rename, ([id, name]) => isId(id) && typeof name === 'string'],
+  [IPC.music.remove, ([id]) => isId(id)],
+  [IPC.music.restore, ([id]) => isId(id)],
+  [IPC.music.setOptions, ([id, options]) => isId(id) && typeof options === 'object' && options !== null],
+  [IPC.music.addTracks, ([id, mediaIds]) => isId(id) && Array.isArray(mediaIds) && mediaIds.every(isId)],
+  [IPC.music.moveTrack, ([id, to]) => isId(id) && typeof to === 'number'],
+  [IPC.music.removeTrack, ([id]) => isId(id)],
+  [IPC.music.restoreTrack, ([id, at]) => isId(id) && typeof at === 'number'],
+  [IPC.sound.setStepsAside, ([on]) => typeof on === 'boolean'],
+  // A row's Trim, Trim black and silence and Even loudness (Rename… of a file is bounded above, a track's too).
+  [IPC.media.setMarkers, ([id], scope) => itsFile(scope, id)],
+  [IPC.sound.trimEdges, ([id], scope) => itsFile(scope, id)],
+  [IPC.sound.setEven, ([id], scope) => itsFile(scope, id)],
+  // When it ends (Session 55, Part 6), in a video row's menu.
+  [IPC.playlists.setWhenEnds, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
+  // Edit slides: Pro's slide editor's window, its save, and its save's Undo.
+  [IPC.slideEditor.open, ([id], scope) => aPlaylistsPresentation(scope, id)],
+  [IPC.slideEditor.copy, ([copied]) => typeof copied === 'object' && copied !== null],
+  [IPC.library.saveSlides, ([id], scope) => aPlaylistsPresentation(scope, id)],
+  [
+    IPC.library.restoreRevision,
+    ([id], scope) => {
+      const covers = typeof id === 'string' ? (scope.revisionCovers?.(id) ?? null) : null;
+      return covers !== null && covers.length > 0 && covers.every((p) => aPlaylistsPresentation(scope, p));
+    },
+  ],
+];
 
 /**
  * What Simple Mode offers since Session 55 (Part 18), each with its bounds. Never also in SIMPLE_MODE_LOCKED. Each has
@@ -379,9 +419,9 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   [IPC.playlists.setItemOrder, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.playlists.splitItem, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.playlists.undoSplit, ([itemId, , madeId], scope) => playlistsItems(scope, [itemId, madeId])],
-  // Rename… on a row: a file a playlist holds.
+  // Rename… on a row: a file a playlist holds (since Session 56 a track's sound too, from Audio's own menu).
   [IPC.library.renamePresentation, ([id], scope) => aPlaylistsPresentation(scope, id)],
-  [IPC.media.rename, ([id], scope) => aPlaylistsMedia(scope, id)],
+  [IPC.media.rename, ([id], scope) => itsFile(scope, id)],
   // From a Link… (YouTube and Dropbox), whole since Session 56 (the owner's words of 11 Nov 2026: "Import from a Link,
   // whole"): Pro Mode's dialog, into the playlist chosen (or a new one), a Dropbox folder a playlist of its own. The
   // link service keeps its own limits (a quality it offers, nothing changed while a download goes, only what it saved
@@ -406,6 +446,7 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   [IPC.wallpapers.remove, anything],
   [IPC.wallpapers.restore, anything],
   [IPC.wallpapers.choose, anything],
+  ...SESSION_56_BOUNDED,
 ]);
 
 /**

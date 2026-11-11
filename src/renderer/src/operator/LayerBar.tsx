@@ -39,9 +39,13 @@ import { Tooltip } from '../ui/Tooltip';
  * fade (Session 25).
  *
  * Simple Mode's (Session 55, Part 18: Pro Mode's window with only what a one-projector sabha needs) is the same bar
- * with Clear all (and Put it back after it), the Wallpaper and Black-out alone; its dimmed Clear all stays a stop of
- * the Tab key's (Part 13's answer: a volunteer's Tab order never changes).
+ * with Clear all (and Put it back after it), Slide, Background and Audio beside it (Session 56, the owner: "The Slide,
+ * Background and Audio buttons at the bottom, beside Clear all"), the Wallpaper and Black-out; its dimmed Clear all and
+ * clears stay stops of the Tab key's (Part 13's answer: a volunteer's Tab order never changes).
  */
+
+/** Simple Mode's clears beside its Clear all (Session 56), in the order of their keys (F2, F3, F5). */
+const SIMPLE_CLEARS: readonly ClearedLayer[] = ['slide', 'background', 'audio'];
 
 const icons: Record<ClearedLayer, Icon> = {
   slide: Type,
@@ -117,7 +121,7 @@ export function LayerBar({
 }: {
   platform: string;
   run: (action: OperatorAction) => void;
-  /** Simple Mode's: Clear all, the Wallpaper and Black-out only, with its own test ids. */
+  /** Simple Mode's: Clear all, Slide, Background and Audio, the Wallpaper and Black-out, with its own test ids. */
   simple?: boolean;
 }) {
   // The show, or the practice show while it is on (Session 26g).
@@ -190,48 +194,51 @@ export function LayerBar({
         data-zone="bar"
       >
         {clearAll}
-        {!simple && (
-          <div
-            role="group"
-            aria-label="Clear one layer"
-            className="flex items-center gap-1 min-[1280px]:gap-1.5"
-          >
-            {LAYER_CLEARS.map((c) => {
-              const on = layers ? !isLayerEmpty(layers, c.layer) : false;
-              return (
-                <Tooltip
-                  key={c.layer}
-                  content={`Clear ${c.label.toLowerCase()}`}
-                  kbd={key(c.action)}
-                  describes={false}
+        <div
+          role="group"
+          aria-label="Clear one layer"
+          className="flex items-center gap-1 min-[1280px]:gap-1.5"
+        >
+          {LAYER_CLEARS.filter((c) => !simple || SIMPLE_CLEARS.includes(c.layer)).map((c) => {
+            const on = layers ? !isLayerEmpty(layers, c.layer) : false;
+            return (
+              <Tooltip
+                key={c.layer}
+                content={`Clear ${c.label.toLowerCase()}`}
+                kbd={key(c.action)}
+                describes={false}
+              >
+                <button
+                  type="button"
+                  // Simple Mode's stay Tab stops, dimmed, as its Clear all (Part 13's answer); Pro Mode's are not
+                  // pressable while their layer has nothing up.
+                  disabled={!simple && !on}
+                  aria-disabled={simple && !on ? true : undefined}
+                  data-testid={simple ? `simple-clear-${c.layer}` : undefined}
+                  data-lit={on ? 'true' : undefined}
+                  data-dimmed={on ? undefined : 'true'}
+                  data-show-control
+                  onClick={() => {
+                    if (on) run(c.action);
+                  }}
+                  aria-label={`Clear ${c.label.toLowerCase()}${on ? ' (on screen)' : ''}`}
+                  // Wide enough that the lit dot keeps clear of its key.
+                  className={cx(BAR_BUTTON, 'pr-3.5', on ? LIT : cx(DIMMED, 'cursor-not-allowed'))}
                 >
-                  <button
-                    type="button"
-                    disabled={!on}
-                    data-lit={on ? 'true' : undefined}
-                    data-show-control
-                    onClick={() => {
-                      run(c.action);
-                    }}
-                    aria-label={`Clear ${c.label.toLowerCase()}${on ? ' (on screen)' : ''}`}
-                    // Wide enough that the lit dot keeps clear of its key.
-                    className={cx(BAR_BUTTON, 'pr-3.5', on ? LIT : cx(DIMMED, 'cursor-not-allowed'))}
-                  >
-                    <BarIcon shape={icons[c.layer]} />
-                    <WordsAndKey words={c.label} keyText={key(c.action)} />
-                    {/* In the corner beside its key. */}
-                    {on && (
-                      <span
-                        aria-hidden="true"
-                        className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-live"
-                      />
-                    )}
-                  </button>
-                </Tooltip>
-              );
-            })}
-          </div>
-        )}
+                  <BarIcon shape={icons[c.layer]} />
+                  <WordsAndKey words={c.label} keyText={key(c.action)} />
+                  {/* In the corner beside its key. */}
+                  {on && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-live"
+                    />
+                  )}
+                </button>
+              </Tooltip>
+            );
+          })}
+        </div>
         {/* The ? and the two covers at the far end. */}
         <span className="ml-auto flex">{help.button}</span>
         <CoverButton

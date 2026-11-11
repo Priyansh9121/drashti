@@ -212,7 +212,7 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
 
   // Nothing that can change the library, the screens or the sound is in the window (bringing things into its one
   // playlist and the wallpapers' Import…, and a row's Rename and Delete in its right-click menu, are Simple Mode's
-  // since Session 55, Part 18)...
+  // since Session 55, Part 18; Pro Mode's Audio, and a row's Trim, When it ends and Edit slides… since Session 56)...
   for (const name of [
     'Edit words',
     'Edit slides',
@@ -256,11 +256,14 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
       return {
         remove: await d.library.removePresentations([welcomeId]),
         words: await d.library.saveWords(welcomeId, 'Placeholder changed'),
-        // The slide editor's save and the default transition (Session 7).
+        // The slide editor's save (Session 7) of a presentation no playlist holds (Simple Mode's Edit slides edits its
+        // playlist's own since Session 56), and the default transition, every presentation's.
         slides: await (async () => {
-          const opened = await d.library.slidesForEdit(welcomeId);
+          const other = (await d.library.listPresentations()).find((p) => p.name === 'Language test slides');
+          if (!other) return { ok: true, message: 'no placeholder presentation' };
+          const opened = await d.library.slidesForEdit(other.id);
           if (!opened.ok) return { ok: true, message: opened.message };
-          return d.library.saveSlides(welcomeId, { ...opened.doc, loop: true }, opened.stamp, true);
+          return d.library.saveSlides(other.id, { ...opened.doc, loop: true }, opened.stamp, true);
         })(),
         transition: await d.library.setDefaultTransition({ kind: 'dissolve', durationMs: 500 }),
         // A playlist's Duplicate (Session 56: making, renaming and deleting one is Simple Mode's, as Pro Mode's left

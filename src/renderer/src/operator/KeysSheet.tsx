@@ -9,7 +9,7 @@ import { useKeymapNow, useSingleKeys } from './single-keys-store';
 
 /*
  * The keys sheet (Session 25): Help > Keyboard Shortcuts…, or ? when no field has the focus, in Pro
- * Mode (Simple Mode keeps its key line). Built from KEYMAP and grouped by what the operator is doing
+ * Mode (Simple Mode's buttons show their keys). Built from KEYMAP and grouped by what the operator is doing
  * (KEY_GROUPS), each key as this computer writes it, so it never drifts from the keys. It holds the
  * switch for the single-letter keys (Session 37, WCAG 2.1.4): on to begin with; off, the sheet
  * says Off beside each key it took away. The keys are the ones the operators already press, and it says so

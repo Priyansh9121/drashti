@@ -24,6 +24,14 @@ export class Revisions {
     return id;
   }
 
+  /**
+   * The presentations a change kept covers, without using it up (Session 56: Simple Mode's lock lets its Undo through
+   * only for presentations a playlist holds); null when it is not kept (used up, or the oldest gone).
+   */
+  covers(id: string): string[] | null {
+    return this.kept.get(id)?.map((rows) => rows.presentationId) ?? null;
+  }
+
   /** The copies, once: Undo uses them up. */
   take(id: string): ContentRows[] | null {
     const rows = this.kept.get(id) ?? null;

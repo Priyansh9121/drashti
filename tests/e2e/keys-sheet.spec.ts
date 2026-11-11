@@ -211,16 +211,17 @@ test('single-letter keys (B, . and ?) are on to begin with, and can be turned of
   await win2.keyboard.press('b');
   await holdStill(async () => (await show(win2)).rev === before2.rev, 1000, 'B is still off after a restart');
 
-  // Simple Mode: the keys do nothing there either, its key line does not name them, its buttons work, and it
-  // cannot turn them back on.
+  // Simple Mode: the keys do nothing there either, its buttons do not name them (its key line went in Session 56),
+  // its buttons work, and it cannot turn them back on.
   await win2.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win2.getByTestId('simple-mode')).toBeVisible();
-  const keyLine = win2.getByTestId('simple-keys');
-  await expect(keyLine).toContainText('Clear all');
-  // The Wallpaper keeps F12 there too; only Black-out is left to its button.
-  await expect(keyLine).toContainText('Wallpaper F12');
-  await expect(keyLine).toContainText('Black-out: its button');
-  expect(await keyLine.locator('kbd').allTextContents()).not.toEqual(
+  await expect(win2.getByTestId('simple-keys')).toHaveCount(0);
+  const simpleBar = win2.getByTestId('simple-buttons');
+  await expect(simpleBar.getByTestId('simple-clear-all').locator('kbd')).toHaveText('F1');
+  // The Wallpaper keeps F12 there too; only Black-out is left to its button, with no key shown.
+  await expect(simpleBar.getByTestId('simple-wallpaper').locator('kbd')).toHaveText('F12');
+  await expect(simpleBar.getByTestId('simple-blackout').locator('kbd')).toHaveCount(0);
+  expect(await simpleBar.locator('kbd').allTextContents()).not.toEqual(
     expect.arrayContaining([expect.stringMatching(/^[B.]$/u)]),
   );
   await letGo(win2);

@@ -172,19 +172,20 @@ test('F5 takes the sound off, F6 the messages and F7 the ticker, each leaving th
   await app.close();
 });
 
-test('Simple Mode’s key line names F12 for the Wallpaper, and F12 covers and uncovers there (S5-3, Session 55)', async () => {
+test('Simple Mode’s buttons name F12 for the Wallpaper (its key line went in Session 56), and F12 covers and uncovers there (S5-3, Session 55)', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.singleKeys())).toBe(true);
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  const keyLine = win.getByTestId('simple-keys');
-  await expect(keyLine).toContainText('Wallpaper F12');
-  await expect(keyLine).not.toContainText('Logo');
-  await expect(keyLine).toContainText('Black-out B or .');
-  // Every one has a key: none is left to its button.
-  await expect(keyLine).not.toContainText('button');
+  // No key line (the owner, 11 Nov 2026: "Remove the keys line"): each button shows its key, the Logo's gone.
+  await expect(win.getByTestId('simple-keys')).toHaveCount(0);
+  const bar = win.getByTestId('simple-buttons');
+  await expect(bar.getByTestId('simple-wallpaper').locator('kbd')).toHaveText('F12');
+  await expect(bar).not.toContainText('Logo');
+  await expect(bar.getByTestId('simple-blackout').locator('kbd')).toHaveText('B');
+  await expect(bar.getByTestId('simple-clear-all').locator('kbd')).toHaveText('F1');
   const wallpaperUp = () =>
     win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.wallpaper);
   await letGo(win);

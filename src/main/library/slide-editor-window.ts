@@ -30,8 +30,9 @@ import { secureWebPreferences } from '../windows/web-preferences';
  *
  * Keys: the page has its own (⌘Z and ⌘⇧Z undo and redo its changes, ⌘S saves, zoom, find); ⌘W closes it on a Mac, and
  * the keys the application menu shows for the operator window (⌘1, ⌘2) stop here. Closing it while its page says it
- * has changes not saved, the window stays and its page asks first (then closes it); as Drashti quits, and in Simple
- * Mode, it closes without asking.
+ * has changes not saved, the window stays and its page asks first (then closes it); as Drashti quits, it closes without
+ * asking. Since Session 56 it is Simple Mode's too (the owner: "Edit slides (Pro's slide editor)"), opened from a row
+ * on a presentation its playlists hold (main/simple-mode.ts bounds it), and it stays open as the mode changes.
  */
 
 /** The window's size and place: as large as the work area allows, up to 1600 × 1000, in its middle. */
@@ -170,7 +171,7 @@ export class SlideEditorWindow {
     this.goingAway = true;
   }
 
-  /** Closed at once, without asking (Simple Mode, and quitting). */
+  /** Closed at once, without asking (quitting). */
   close(): void {
     const win = this.win;
     if (win && !win.isDestroyed()) win.destroy();

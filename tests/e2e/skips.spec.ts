@@ -23,7 +23,8 @@ import { makeTestTone, makeTestVideo } from './test-media';
  * and the audio player, as a jump to a marker does, never past the file's start or end: Back within the first
  * 15 s goes to the start, Forward within the last 15 s to the end (a file played once holds it), and so does
  * Last 10 s on a file shorter than 10 s; an audio playlist goes on to its next track; paused, it moves where
- * playing will start. Simple Mode has none. Generated media only, quiet, on displays no wider than 1024.
+ * playing will start. Simple Mode has an audio playlist's, in its Audio (Session 56: Pro Mode's own), and none under
+ * the live picture. Generated media only, quiet, on displays no wider than 1024.
  */
 
 async function audioPage(app: ElectronApplication): Promise<Page> {
@@ -190,7 +191,7 @@ test('the background video: Back 15 s, Forward 15 s and Last 10 s under the live
   await app.close();
 });
 
-test('the sound: a single sound’s under the live picture, an audio playlist’s beside its Play and Pause, on to the next track and while paused; none in Simple Mode', async () => {
+test('the sound: a single sound’s under the live picture, an audio playlist’s beside its Play and Pause, on to the next track and while paused; in Simple Mode Audio’s alone', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -276,11 +277,17 @@ test('the sound: a single sound’s under the live picture, an audio playlist’
   await expect.poll(async () => (await audioLayer(win))?.pausedAtMs).toBeUndefined();
   await inStep(copy(two), timingOf(await audioLayer(win)), 'playing from where the skips left it');
 
-  // Simple Mode, as asked, has none (and no Audio panel since Session 55, Part 18: the track shows in its time bar).
+  // Simple Mode (Session 56, the owner: Pro Mode's Audio there too): the track's three in Audio, beside its Play and
+  // Pause, as in Pro Mode, and they move it there too; none under the live picture.
   await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
-  await expect(win.getByTestId('simple-mode').getByTestId('time-bars')).toBeVisible();
+  const simple = win.getByTestId('simple-mode');
+  await expect(simple.getByTestId('time-bars')).toBeVisible();
+  await expect(simple.getByTestId('marker-jumps')).toHaveCount(0);
   for (const name of ['Back 15 s', 'Forward 15 s', 'Last 10 s'])
-    await expect(win.getByRole('button', { name })).toHaveCount(0);
+    await expect(simple.getByRole('button', { name })).toHaveCount(1);
+  // Last 10 s of track two (12 s long): from 2 s in.
+  await (await skipButton(simple.getByTestId('music-skips'), 'Last 10 s')).click();
+  await expect.poll(async () => (await audioLayer(win))?.seek?.toMs).toBe(2000);
   await app.close();
 });
 

@@ -181,7 +181,7 @@ function RenameDialog() {
 /** The menu (and Rename's question), once for the window. */
 export function FileMenu({ platform }: { platform: string }) {
   const open = useFileMenu((s) => s.open);
-  // Simple Mode's has Rename and Delete only (Session 55, Part 18).
+  // Simple Mode's has Rename and Delete (Session 55, Part 18), and Trim, When it ends and Edit slides… (Session 56).
   const simple = useMode((s) => s.mode === 'simple');
   const entries = open ? fileMenuEntries(open.target, platform, { simple }) : [];
   return (

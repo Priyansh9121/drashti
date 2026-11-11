@@ -113,4 +113,41 @@ describe('native source preparation authority', () => {
       }
     },
   );
+
+  it('asks for the authority with the presentation it is for (Session 56: Simple Mode’s slide editor, within its bounds), the library’s PDFs listed with none', async () => {
+    const w = originalWorld();
+    try {
+      const imported = await w.importPdf();
+      const asked: (string | undefined)[] = [];
+      const reader = vi.fn(nativeSourceReader);
+      registerSlidesIpc({
+        db: w.db,
+        presentations: new PresentationRepo(w.db),
+        revisions: new Revisions(),
+        settings: new SettingsRepo(w.db),
+        fromOperator: () => true,
+        // As Main's in Simple Mode for a presentation its playlists do not hold: refused, but the list.
+        mayPrepareSource: (_e, presentationId) => {
+          asked.push(presentationId);
+          return presentationId === undefined;
+        },
+        sourceReader: reader,
+        sourceWrite: sourceWrite(w.db),
+        lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
+        changed: () => undefined,
+      });
+      expect((await opened(imported.id)).ok).toBe(true);
+      expect(reader).not.toHaveBeenCalled();
+      expect(asked).toEqual([imported.id]);
+      // Insert pages from another PDF: asked for the presentation the pages go into, and refused before anything.
+      const insert = handlers.get(IPC.library.insertPdfPages);
+      expect(await insert?.({}, imported.id, 'stamp', 'placeholder-source')).toMatchObject({ ok: false });
+      expect(asked).toEqual([imported.id, imported.id]);
+      // The library's PDFs, for Insert pages: a read, asked with none.
+      expect(Array.isArray(handlers.get(IPC.library.pdfPageSources)?.({}))).toBe(true);
+      expect(asked).toEqual([imported.id, imported.id, undefined]);
+    } finally {
+      w.clean();
+    }
+  });
 });

@@ -1405,7 +1405,8 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                           clickSlideRow(r, e, platform);
                         }}
                         onDoubleClick={
-                          // Edit slides is Pro Mode's (Simple Mode has none).
+                          // Edit slides by a double-click is Pro Mode's (Simple Mode's is in the row's menu, Session
+                          // 56: a volunteer's double-click never opens a window over the show).
                           !simple &&
                           r.item &&
                           !isRepeat &&
@@ -1481,9 +1482,10 @@ async function addFilesTo(playlistId: string): Promise<void> {
  * The open playlist (Session 26a: in the centre, above the chosen item's slides): its items as cards, in
  * order, to drag about, drop library rows and files on, and download into. `simple`: Simple Mode's open playlist
  * (Session 55, Part 18), with only what Simple Mode offers: its rows, one click, dragging, Add files…, From a Link…
- * and files dropped, and the right-click menu's Rename and Delete; no menu of the playlist's own, no Close, no Up,
- * Down or order under a row, no trash buttons, no bar of chosen rows, no header renamed in place, no Edit slides
- * (since Session 56 its folders go through the left column's, and its name is renamed as Pro Mode's is).
+ * and files dropped, and the right-click menu's Rename and Delete (since Session 56 also Trim, When it ends and Edit
+ * slides…); no menu of the playlist's own, no Close, no Up, Down or order under a row, no trash buttons, no bar of
+ * chosen rows, no header renamed in place, no Edit slides by a double-click (since Session 56 its folders go through
+ * the left column's, and its name is renamed as Pro Mode's is).
  */
 export function OpenPlaylist({ platform, simple = false }: { platform: string; simple?: boolean }) {
   const openId = usePlaylists((s) => s.openId);

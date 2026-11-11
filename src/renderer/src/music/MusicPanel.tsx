@@ -58,8 +58,9 @@ import { openLinkForAudio } from '../links/link-store';
  * one track after another, independent of the slides (music before the
  * sabha). Choose a list, play from a track, pause, next and previous, go
  * round again, shuffle; make lists from the library's sounds. Simple Mode
- * has none since Session 55 (Part 18: its one playlist's sounds are rows, and
- * music playing shows in its time bar). Session 55 (Part 13): the lists are
+ * had none in Session 55 (Part 18), and has them again under its LIVE since
+ * Session 56, as Pro Mode does (music/AudioGroup.tsx; the owner: "build
+ * nothing new for it, just make it reachable"). Session 55 (Part 13): the lists are
  * straight under Audio, with no Music heading or ? of their own; with none,
  * Audio asks for one: Create playlist, Import sounds…, From a Link… (YouTube
  * as MP3, Dropbox), or sounds dropped there.

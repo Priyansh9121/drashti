@@ -30,7 +30,8 @@ export function connectSound(): void {
   window.drashti.sound.onChanged((view) => {
     useSound.setState({ view });
   });
-  addFileMenuItems(soundMenuItems);
+  // Simple Mode's menu has them too (Session 56: the owner's Trim, as in Pro Mode).
+  addFileMenuItems(soundMenuItems, { simple: true });
 }
 
 /** Audio's Music steps aside switch (K). */
