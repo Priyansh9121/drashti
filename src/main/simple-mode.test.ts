@@ -68,8 +68,8 @@ describe('Simple Mode locks', () => {
     // The engine refuses (from anywhere) in Simple Mode zooming the live picture (Session 26e, Pro Mode's; switching
     // the Look was refused too, until Looks went in Session 55), setting up, swapping or moving a
     // picture-in-picture box (Session 50; taking one off is not refused), choosing a video input (Session 50:
-    // Pro Mode's Media puts one up; Simple Mode may clear it, as any background), and the time bar's move and the
-    // skips (Session 54: Simple Mode shows the bar only).
+    // Pro Mode's Media puts one up; Simple Mode may clear it, as any background), and the skips (Session 54; the time
+    // bar's move too until Session 56, when the owner asked for the bar to be dragged in Simple Mode as well).
     // Session 55 (Part 5): the live zoom is Simple Mode's too, from the window and a phone.
     expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('zoomLive');
     expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('resetLiveZoom');
@@ -80,12 +80,13 @@ describe('Simple Mode locks', () => {
       'showInput',
       // LIVE's one press for the chosen video input (Session 55), as showInput.
       'toggleInput',
-      'moveTo',
       'skip',
     ]);
   });
 
-  it('shows the time bar but moves nothing: the move, the skips and Pause are refused, Play never is, and a track’s Pause is Music’s own (Session 54)', () => {
+  it('lets the time bar move what plays, Pause it and Play it on, a video or a sound (Session 56, the owner’s words: drag LIVE’s time bar, Pause under LIVE); the skips stay Pro Mode’s', () => {
+    // Until Session 56 Simple Mode showed the bar and moved nothing: the move and Pause were refused, but an audio
+    // playlist's track's Pause (Music's own), and Play never was.
     // What plays on the audio layer: an audio playlist's track, or a single sound (put up from a phone's Media, say).
     const none = initialEngineState();
     const track = {
@@ -115,20 +116,13 @@ describe('Simple Mode locks', () => {
     ] as const;
     for (const state of [music, sound, none])
       for (const playing of everything) {
-        expect(simpleModeRefuses({ type: 'moveTo', playing, toMs: 1000 }, state), playing.layer).toBe(true);
-        // Paused, it can always be played on: Simple Mode's LIVE has no Play, so nothing stays stuck.
+        expect(simpleModeRefuses({ type: 'moveTo', playing, toMs: 1000 }, state), playing.layer).toBe(false);
+        expect(simpleModeRefuses({ type: 'pausePlaying', playing }, state), playing.layer).toBe(false);
         expect(simpleModeRefuses({ type: 'resumePlaying', playing }, state), playing.layer).toBe(false);
       }
-    // Pause is refused, but on an audio playlist's track, where it is Music's own (Simple Mode's Pause music). A
-    // single sound's is refused too (Session 54's review): Simple Mode's window could never play it on.
-    for (const playing of everything) {
-      expect(simpleModeRefuses({ type: 'pausePlaying', playing }, music), playing.layer).toBe(
-        playing.layer !== 'audio',
-      );
-      expect(simpleModeRefuses({ type: 'pausePlaying', playing }, sound), playing.layer).toBe(true);
-      expect(simpleModeRefuses({ type: 'pausePlaying', playing }, none), playing.layer).toBe(true);
-    }
+    // Back 15 s, Forward 15 s and Last 10 s stay Pro Mode's: Simple Mode's window has no skips.
     expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump: 'back' }, music)).toBe(true);
+    expect(simpleModeRefuses({ type: 'skip', layer: 'background', jump: 'forward' }, sound)).toBe(true);
     // As before: a marker jump and Music's own buttons are not refused (switching the Look, refused here before, went
     // with Looks in Session 55).
     expect(simpleModeRefuses({ type: 'jumpToMarker', layer: 'background', markerId: 'm1' }, sound)).toBe(
