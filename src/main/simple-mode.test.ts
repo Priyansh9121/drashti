@@ -476,7 +476,14 @@ describe('Simple Mode locks', () => {
   });
 
   it('the opening (Session 55) plays in both modes; File › Opening…’s changes are Pro Mode’s', () => {
-    for (const c of [IPC.opening.setOn, IPC.opening.setChoice, IPC.opening.loadPack, IPC.opening.saveCopy]) {
+    for (const c of [
+      IPC.opening.setOn,
+      IPC.opening.setChoice,
+      IPC.opening.loadPack,
+      IPC.opening.saveCopy,
+      // Taking its sound out (alpha.16).
+      IPC.opening.removeSound,
+    ]) {
       expect(SIMPLE_MODE_LOCKED).toContain(c);
       expect(answers.get(c)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     }

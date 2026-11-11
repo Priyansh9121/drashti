@@ -1,232 +1,224 @@
 import { describe, expect, it } from 'vitest';
 import { swings } from './flash';
-import { animationById } from './lower-third-animations';
 import {
-  cutLine,
   OPENING_DEFAULT,
   OPENING_DEFAULT_PHOTO_URL,
-  OPENING_LINE_MAX,
-  OPENING_LINES_MAX,
   OPENING_MS,
-  OPENING_PHOTOS_MAX,
-  OPENING_WORDS,
+  OPENING_SOUND_MAX_BYTES,
+  OPENING_SOUND_VOLUME,
+  OPENING_TIMES,
+  OPENING_ZOOM,
+  openingChoiceSchema,
   openingPlanOf,
-  openingSparkles,
-  openingTimes,
-  packLines,
+  openingSoundCurve,
+  openingSoundGain,
+  openingSoundUrl,
   packMissing,
+  packPhotoOf,
+  packSoundOf,
+  packSoundProblem,
   readOpening,
-  wordFrames,
 } from './opening';
 
 /*
- * The opening (Session 55, the owner's brief of 3 Nov 2026 and answer of 4 Nov): what is kept, read forgivingly; the
- * five seconds shared by its photos and, side by side, by its lines (five of each: a photo with its own line, a
- * second each; the pack's eight photos: 625 ms each under five lines of a second); the words with a Lower Thirds
- * studio move; the sparkles; and the opening pack's lines and what a pack is missing. Placeholder words only.
+ * The opening (alpha.16, the owner's words of 11 Nov 2026): two seconds, one photo, no words, with a smooth
+ * transition; the mandir's own sound from its opening pack, played gently with the photo. What is kept (alpha.15's
+ * several photos and lines read as its first photo), the two seconds, the sound's loudness through them, and the
+ * pack's rules: photo 1 is enough, and its sound is one of three kinds, not too big, and a sound Drashti plays.
+ * Placeholder names and made-up file facts only.
  */
 
 const id = (n: number) => `placeholder-photo-${String(n)}`;
+const SHA = 'ab'.repeat(32);
 
 describe('what is kept', () => {
   it('is on with nothing chosen when nothing is kept, or what is kept cannot be read', () => {
+    expect(OPENING_DEFAULT).toEqual({ on: true, photo: null, sound: null });
     expect(readOpening(undefined)).toEqual(OPENING_DEFAULT);
     expect(readOpening('on')).toEqual(OPENING_DEFAULT);
-    expect(OPENING_DEFAULT).toEqual({ on: true, photos: [], lines: [] });
+    expect(readOpening({ on: 'yes', photo: 'not a media id!', sound: { sha256: 'x' } })).toEqual(OPENING_DEFAULT);
   });
 
-  it('keeps at most eight photos and five lines, leaving out what it cannot read, never the rest', () => {
-    const kept = readOpening({
+  it('keeps one photo and the pack’s sound', () => {
+    const sound = { sha256: SHA, kind: 'm4a', name: 'sound.m4a' };
+    expect(readOpening({ on: false, photo: id(1), sound })).toEqual({ on: false, photo: id(1), sound });
+    // A sound it cannot read is left out, never the rest.
+    for (const bad of [
+      { sha256: 'AB'.repeat(32), kind: 'm4a', name: 'sound.m4a' },
+      { sha256: SHA, kind: 'aiff', name: 'sound.aiff' },
+      { sha256: SHA, kind: 'mp3', name: '' },
+      { sha256: '../../x', kind: 'wav', name: 'sound.wav' },
+    ])
+      expect(readOpening({ photo: id(2), sound: bad })).toEqual({ on: true, photo: id(2), sound: null });
+  });
+
+  it('reads alpha.15’s several photos and lines forgivingly: its first photo, no words', () => {
+    expect(
+      readOpening({
+        on: true,
+        photos: ['not a media id!', id(1), id(2), id(3)],
+        lines: ['Placeholder line one', 'Placeholder line two'],
+      }),
+    ).toEqual({ on: true, photo: id(1), sound: null });
+    expect(readOpening({ on: false, photos: [], lines: ['Placeholder'] })).toEqual({
       on: false,
-      photos: [id(1), 'not a media id!', 7, ...[2, 3, 4, 5, 6, 7, 8, 9].map(id)],
-      lines: [
-        '  Placeholder   line one ',
-        3,
-        '',
-        ...[2, 3, 4, 5, 6].map((n) => `Placeholder line ${String(n)}`),
-      ],
+      photo: null,
+      sound: null,
     });
-    expect(kept.on).toBe(false);
-    expect(kept.photos).toEqual([1, 2, 3, 4, 5, 6, 7, 8].map(id));
-    expect(OPENING_PHOTOS_MAX).toBe(8);
-    expect(kept.lines).toEqual([
-      'Placeholder line one',
-      'Placeholder line 2',
-      'Placeholder line 3',
-      'Placeholder line 4',
-      'Placeholder line 5',
-    ]);
-    expect(OPENING_LINES_MAX).toBe(5);
-    // A list that is not one is left out by itself.
-    expect(readOpening({ photos: 'x', lines: [' Placeholder '] })).toEqual({
-      on: true,
-      photos: [],
-      lines: ['Placeholder'],
-    });
+    // Kept by alpha.16 (a photo taken out): no photo, whatever an older list says.
+    expect(readOpening({ photo: null, photos: [id(4)] })).toEqual({ on: true, photo: null, sound: null });
   });
 
-  it('cuts a long line between letters, never inside a Gujarati conjunct', () => {
-    const long = 'ક્ષ '.repeat(60);
-    const line = readOpening({ lines: [long] }).lines[0] ?? '';
-    expect(line.length).toBeLessThanOrEqual(OPENING_LINE_MAX);
-    expect(line.endsWith('ક્ષ')).toBe(true);
+  it('a change from File › Opening… is one photo from Media, or none', () => {
+    expect(openingChoiceSchema.safeParse({ photo: id(1) }).success).toBe(true);
+    expect(openingChoiceSchema.safeParse({ photo: null }).success).toBe(true);
+    for (const bad of [{ photo: 'not a media id!' }, { photos: [id(1)] }, { photo: [id(1)] }, null])
+      expect(openingChoiceSchema.safeParse(bad).success).toBe(false);
   });
 });
 
-describe('the five seconds', () => {
-  it('five photos and five lines: each photo with its own line, a second each, the first from the dark', () => {
-    const t = openingTimes(5, [3, 4, 5, 4, 6]);
-    expect(t.end).toBe(OPENING_MS);
-    expect(t.photos.map((p) => [p.start, p.end])).toEqual([
-      [0, 1000],
-      [1000, 2000],
-      [2000, 3000],
-      [3000, 4000],
-      [4000, 5000],
-    ]);
-    expect(t.lines.map((l) => [l.start, l.end])).toEqual(t.photos.map((p) => [p.start, p.end]));
-    for (const p of t.photos) {
-      expect(p.sweep.start).toBeGreaterThanOrEqual(p.start);
-      expect(p.sweep.start + p.sweep.length).toBeLessThanOrEqual(p.end);
-    }
-    expect(t.photos[0]?.fadeIn).toBeGreaterThan(t.photos[1]?.fadeIn ?? 0);
-    for (const [i, l] of t.lines.entries()) {
-      // Every word in well before the line's second ends: it is read whole for a while.
-      const words = [3, 4, 5, 4, 6][i] ?? 0;
-      expect(l.words.start + (words - 1) * l.words.stagger + l.words.each).toBeLessThanOrEqual(l.start + 700);
-      if (i < 4) expect(l.lineOut).toBeLessThanOrEqual(l.end - 100);
-      else expect(l.lineOut).toBeNull();
-    }
-    expect(t.fadeOut.start + t.fadeOut.length).toBe(OPENING_MS);
+describe('what plays', () => {
+  const photo = 'drashti-media://opening/placeholder-photo-1';
+  const sound = openingSoundUrl(SHA);
+
+  it('the mandir’s photo, with its sound when it has one', () => {
+    expect(openingPlanOf(photo, sound, true)).toEqual({ photo, sound });
+    expect(openingPlanOf(photo, null, true)).toEqual({ photo });
+    expect(openingPlanOf(photo, null, false)).toEqual({ photo });
+    expect(sound).toBe(`drashti-media://opening-sound/${SHA}`);
   });
 
-  it('the pack’s eight photos come every 625 ms under its five lines of a second each', () => {
-    const t = openingTimes(8, [4, 5, 5, 4, 6]);
-    expect(t.photos.map((p) => p.start)).toEqual([0, 625, 1250, 1875, 2500, 3125, 3750, 4375]);
-    expect(t.photos.at(-1)?.end).toBe(OPENING_MS);
-    expect(t.lines.map((l) => l.start)).toEqual([0, 1000, 2000, 3000, 4000]);
-    for (const p of t.photos) expect(p.sweep.start + p.sweep.length).toBeLessThanOrEqual(p.end);
-  });
-
-  it('the photos alone, or the lines over the lamp once it is lit; with nothing, the lamp and Drashti’s name', () => {
-    expect(openingTimes(2, []).photos.map((p) => [p.start, p.end])).toEqual([
-      [0, 2500],
-      [2500, 5000],
-    ]);
-    expect(openingTimes(2, []).lines).toEqual([]);
-    const lamp = openingTimes(0, [2, 2]);
-    expect(lamp.photos).toEqual([]);
-    expect(lamp.lines.map((l) => [l.start, l.end])).toEqual([
-      [lamp.lampWords, 3000],
-      [3000, 5000],
-    ]);
-    expect(lamp.lampWords).toBeGreaterThanOrEqual(900);
-    expect(openingTimes(0, []).end).toBe(OPENING_MS);
-  });
-
-  it('a long line comes in faster, so all of it is in by its second’s middle', () => {
-    const l = openingTimes(5, [14, 1, 1, 1, 1]).lines[0];
-    if (!l) throw new Error('no line');
-    expect(l.words.stagger).toBeLessThan(animationById(OPENING_WORDS).timing.stagger ?? 0);
-    expect(l.words.start + 13 * l.words.stagger + l.words.each).toBeLessThanOrEqual(l.start + 700);
-  });
-});
-
-describe('with nothing chosen: Drashti’s default photo (the owner’s decision of 5 Nov 2026)', () => {
-  it('plays the default photo alone, with no words and no name; anything chosen (a pack loaded) replaces it as before', () => {
-    expect(openingPlanOf([], [], true)).toEqual({
-      photos: [OPENING_DEFAULT_PHOTO_URL],
-      lines: [],
-      defaultPhoto: true,
-    });
+  it('with no photo, Drashti’s default photo, never with a sound; its file missing, the lamp alone', () => {
+    expect(openingPlanOf(null, sound, true)).toEqual({ photo: OPENING_DEFAULT_PHOTO_URL, defaultPhoto: true });
+    expect(openingPlanOf(null, null, true)).toEqual({ photo: OPENING_DEFAULT_PHOTO_URL, defaultPhoto: true });
     expect(OPENING_DEFAULT_PHOTO_URL).toMatch(/^drashti-media:\/\/opening-default\//u);
-    // Its file missing: the lamp and Drashti's name, as before.
-    expect(openingPlanOf([], [], false)).toEqual({ photos: [], lines: [] });
-    // A photo or a line chosen: only what is chosen, exactly as before (lines alone over the lamp: never over it).
-    const photo = 'drashti-media://opening/placeholder-photo-1';
-    expect(openingPlanOf([photo], [], true)).toEqual({ photos: [photo], lines: [] });
-    expect(openingPlanOf([], ['Placeholder line'], true)).toEqual({
-      photos: [],
-      lines: ['Placeholder line'],
-    });
-    expect(openingPlanOf([photo], ['Placeholder line'], true)).toEqual({
-      photos: [photo],
-      lines: ['Placeholder line'],
-    });
-  });
-
-  it('the default photo has the whole five seconds: in from the dark, then slowly zooming to the end', () => {
-    const t = openingTimes(1, []);
-    expect(t.photos.map((p) => [p.start, p.end])).toEqual([[0, OPENING_MS]]);
-    expect(t.photos[0]?.fadeIn).toBeGreaterThan(0);
-    expect(t.lines).toEqual([]);
+    expect(openingPlanOf(null, sound, false)).toEqual({ photo: null });
   });
 });
 
-describe('the words, with the Lower Thirds studio’s move', () => {
-  it('is one of the studio’s word moves, of opacity and transform only', () => {
-    const a = animationById(OPENING_WORDS);
-    expect(a.id).toBe(OPENING_WORDS);
-    expect(a.unit).toBe('word');
-    const frames = wordFrames(0);
-    expect(frames[0]).toMatchObject({ offset: 0, opacity: 0 });
-    expect(frames.at(-1)).toEqual({ offset: 1, opacity: 1, transform: 'none' });
-    for (const f of frames) expect(Object.keys(f).sort()).toEqual(['offset', 'opacity', 'transform']);
+describe('the two seconds', () => {
+  it('lasts two seconds', () => {
+    expect(OPENING_MS).toBe(2000);
+    expect(OPENING_TIMES.end).toBe(OPENING_MS);
   });
 
-  it('cuts a line into whole words, a Gujarati or Hindi conjunct never split', () => {
-    const { pieces, units } = cutLine('ક્ષ સ્વ दृश्य word');
-    expect(units).toBe(4);
-    expect(pieces.filter((p) => p.unit !== null).map((p) => p.text)).toEqual(['ક્ષ', 'સ્વ', 'दृश्य', 'word']);
-    expect(pieces.map((p) => p.text).join('')).toBe('ક્ષ સ્વ दृश्य word');
-  });
-});
-
-describe('the sparkles', () => {
-  it('a few, small, each glinting once, never more than one starting in any third of a second', () => {
-    const all = openingSparkles();
-    expect(all.length).toBeGreaterThanOrEqual(6);
-    expect(all.length).toBeLessThanOrEqual(16);
-    for (const s of all) {
-      expect(s.size).toBeLessThanOrEqual(12);
-      expect(s.length).toBeGreaterThanOrEqual(800);
-      expect(s.start + s.length).toBeLessThanOrEqual(OPENING_MS - 300);
-      // Above where the words are.
-      expect(s.y).toBeLessThanOrEqual(66);
-    }
-    const starts = all.map((s) => s.start).sort((a, b) => a - b);
-    for (let i = 1; i < starts.length; i++)
-      expect((starts[i] ?? 0) - (starts[i - 1] ?? 0)).toBeGreaterThanOrEqual(1000 / 3);
-    // The same every time (no flicker between starts, and a test sees what a person sees).
-    expect(openingSparkles()).toEqual(all);
+  it('the photo comes in from the dark, and the whole goes smoothly into the window at the end', () => {
+    const t = OPENING_TIMES;
+    expect(t.fadeIn).toBeGreaterThanOrEqual(300);
+    expect(t.fadeOut.start + t.fadeOut.length).toBe(OPENING_MS);
+    expect(t.fadeOut.length).toBeGreaterThanOrEqual(300);
+    // Seen whole, still, for a while between the two.
+    expect(t.fadeOut.start - t.fadeIn).toBeGreaterThanOrEqual(800);
   });
 
-  it('a sparkle’s glint is one rise and one fall: well under three swings a second', () => {
-    const series = Array.from({ length: 61 }, (_, i) => Math.sin((i / 60) * Math.PI));
+  it('zooms gently, as before, settling on the whole photo', () => {
+    expect(OPENING_ZOOM).toBeGreaterThan(1);
+    expect(OPENING_ZOOM).toBeLessThanOrEqual(1.08);
+  });
+
+  it('one rise and one fall of light in two seconds: well under three swings a second', () => {
+    const t = OPENING_TIMES;
+    const at = (ms: number) =>
+      Math.min(1, ms / t.fadeIn) * (ms <= t.fadeOut.start ? 1 : 1 - (ms - t.fadeOut.start) / t.fadeOut.length);
+    const series = Array.from({ length: 121 }, (_, i) => at((i * 1000) / 60));
     expect(swings(series, 60).worst).toBeLessThanOrEqual(2);
   });
 });
 
-describe('the opening pack', () => {
-  it('reads its lines one to a line, whatever the computer wrote: no BOM, no empty lines, NFC', () => {
-    expect(packLines('\uFEFFPlaceholder one\r\n\r\n  Placeholder two  \nક્ષ\n')).toEqual([
-      'Placeholder one',
-      'Placeholder two',
-      'ક્ષ'.normalize('NFC'),
-    ]);
+describe('the pack’s sound, played gently', () => {
+  it('in from silence, never louder than OPENING_SOUND_VOLUME, out to silence as the two seconds end', () => {
+    expect(OPENING_SOUND_VOLUME).toBeGreaterThan(0.1);
+    expect(OPENING_SOUND_VOLUME).toBeLessThanOrEqual(0.3);
+    expect(openingSoundGain(0)).toBe(0);
+    expect(openingSoundGain(OPENING_MS)).toBe(0);
+    expect(openingSoundGain(OPENING_MS + 500)).toBe(0);
+    expect(openingSoundGain(-10)).toBe(0);
+    expect(openingSoundGain(OPENING_MS / 2)).toBeCloseTo(OPENING_SOUND_VOLUME, 5);
+    // Rising, then held, then falling: never a jump.
+    const steps = Array.from({ length: 401 }, (_, i) => openingSoundGain((i * OPENING_MS) / 400));
+    const peak = steps.indexOf(Math.max(...steps));
+    for (let i = 1; i < steps.length; i++) {
+      const [now = 0, before = 0] = [steps[i], steps[i - 1]];
+      if (i <= peak) expect(now).toBeGreaterThanOrEqual(before);
+      else expect(now).toBeLessThanOrEqual(before);
+      expect(Math.abs(now - before)).toBeLessThan(0.02);
+    }
+    for (const g of steps) expect(g).toBeLessThanOrEqual(OPENING_SOUND_VOLUME);
+    // Faded in gently: still quiet a tenth of a second in.
+    expect(openingSoundGain(100)).toBeLessThan(OPENING_SOUND_VOLUME / 4);
+    expect(openingSoundGain(OPENING_MS - 100)).toBeLessThan(OPENING_SOUND_VOLUME / 4);
   });
 
-  it('says what a pack is missing: its eight photos by number and file, and its five lines', () => {
-    const all = [1, 2, 3, 4, 5, 6, 7, 8];
-    expect(packMissing({ photos: all, lines: 5 })).toBeNull();
-    expect(packMissing({ photos: [1, 2, 3, 4, 5, 6], lines: 5 })).toBe(
-      'The opening pack is missing photos 7 and 8 (photos/7.jpg and photos/8.jpg). Nothing was changed.',
+  it('a file shorter than the two seconds is faded out by its own end', () => {
+    expect(openingSoundGain(800, 800)).toBe(0);
+    expect(openingSoundGain(400, 800)).toBeGreaterThan(0);
+    expect(openingSoundGain(1200, 800)).toBe(0);
+    // Very short: in and out, never louder than the most.
+    for (let t = 0; t <= 200; t += 10) expect(openingSoundGain(t, 200)).toBeLessThanOrEqual(OPENING_SOUND_VOLUME);
+  });
+
+  it('as Web Audio’s curve: the same loudness at even steps from its start to its end', () => {
+    const curve = openingSoundCurve(OPENING_MS, 101);
+    expect(curve).toHaveLength(101);
+    expect(curve[0]).toBe(0);
+    expect(curve.at(-1)).toBe(0);
+    expect(curve[50]).toBeCloseTo(openingSoundGain(OPENING_MS / 2), 5);
+    for (const [i, g] of curve.entries()) expect(g).toBeCloseTo(openingSoundGain((i * OPENING_MS) / 100), 5);
+    const short = openingSoundCurve(600, 31);
+    expect(short.at(-1)).toBe(0);
+    expect(Math.max(...short)).toBeLessThanOrEqual(OPENING_SOUND_VOLUME);
+  });
+});
+
+describe('the opening pack', () => {
+  it('needs only photos/1 (a .jpg, .jpeg or .png, in any case); photos 2 to 8 are left alone', () => {
+    expect(packPhotoOf(['2.jpg', '1.JPG', '3.png'])).toBe('1.JPG');
+    expect(packPhotoOf(['1.jpeg'])).toBe('1.jpeg');
+    expect(packPhotoOf(['1.png', '1.jpg'])).toBe('1.jpg');
+    expect(packPhotoOf(['2.jpg', '8.jpg', '1.gif', '11.jpg', 'notes.jpg'])).toBeNull();
+    expect(packMissing({ photo: true })).toBeNull();
+    expect(packMissing({ photo: false })).toBe(
+      'The opening pack has no photo 1 (photos/1.jpg). Nothing was changed.',
     );
-    expect(packMissing({ photos: all, lines: 3 })).toBe(
-      'The opening pack has 3 lines of the 5 in words.txt. Nothing was changed.',
+  });
+
+  it('finds its sound at its top: sound.mp3, sound.m4a or sound.wav, in any case; one at most', () => {
+    expect(packSoundOf(['photos', 'words.txt'])).toBeNull();
+    expect(packSoundOf(['photos', 'sound.mp3'])).toEqual({ name: 'sound.mp3', kind: 'mp3' });
+    expect(packSoundOf(['Sound.M4A'])).toEqual({ name: 'Sound.M4A', kind: 'm4a' });
+    expect(packSoundOf(['SOUND.WAV', 'readme.txt'])).toEqual({ name: 'SOUND.WAV', kind: 'wav' });
+    // Not its sound: another name, or a kind it does not take.
+    expect(packSoundOf(['sounds.mp3', 'sound.aiff', 'sound.mp3.txt', 'my sound.wav'])).toBeNull();
+    expect(packSoundOf(['sound.wav', 'sound.mp3'])).toEqual({ several: ['sound.mp3', 'sound.wav'] });
+  });
+
+  it('takes a sound Drashti plays, at most 10 MB; says in plain words why not', () => {
+    expect(OPENING_SOUND_MAX_BYTES).toBe(10 * 1024 * 1024);
+    const ok = { name: 'sound.m4a', bytes: 200_000, kind: 'audio', playable: true, format: 'AAC sound file (M4A)' } as const;
+    expect(packSoundProblem(ok)).toBeNull();
+    expect(packSoundProblem({ ...ok, bytes: OPENING_SOUND_MAX_BYTES })).toBeNull();
+    expect(packSoundProblem({ ...ok, bytes: OPENING_SOUND_MAX_BYTES + 1 })).toBe(
+      'The opening pack’s sound.m4a is too big: the opening’s sound can be at most 10 MB, and only its first two seconds play. Nothing was changed.',
     );
-    expect(packMissing({ photos: [1, 2, 3, 4, 5, 6, 7], lines: 0 })).toBe(
-      'The opening pack is missing photo 8 (photos/8.jpg), and has no lines in words.txt. Nothing was changed.',
+    expect(
+      packSoundProblem({ ...ok, name: 'sound.mp3', kind: 'image', playable: true, format: 'PNG picture' }),
+    ).toBe(
+      'Drashti cannot play the opening pack’s sound.mp3 as it is: PNG picture. Its sound must be an MP3, an M4A (AAC) or a WAV. Nothing was changed.',
     );
+    expect(
+      packSoundProblem({ ...ok, playable: false, format: 'Apple Lossless sound file (M4A)' }),
+    ).toBe(
+      'Drashti cannot play the opening pack’s sound.m4a as it is: Apple Lossless sound file (M4A). Its sound must be an MP3, an M4A (AAC) or a WAV. Nothing was changed.',
+    );
+    // Not sure it plays is not a sound it plays.
+    expect(packSoundProblem({ ...ok, name: 'sound.wav', playable: null, format: 'WAV sound file' })).toMatch(
+      /^Drashti cannot play the opening pack’s sound\.wav as it is: WAV sound file\./u,
+    );
+    expect(packSoundProblem({ ...ok, bytes: 0 })).toBe(
+      'Drashti cannot play the opening pack’s sound.m4a as it is: empty file. Its sound must be an MP3, an M4A (AAC) or a WAV. Nothing was changed.',
+    );
+    expect(
+      packSoundProblem({ ...ok, kind: 'video', playable: true, format: 'H.264 video (MP4)' }),
+    ).toMatch(/as it is: H\.264 video \(MP4\)\./u);
   });
 });
