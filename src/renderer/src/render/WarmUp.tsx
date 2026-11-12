@@ -195,7 +195,7 @@ const layerOf = (s: RenderSlide, shownAt: number, transition?: Transition): Slid
   ...(transition ? { transition } : {}),
 });
 
-interface WarmScene {
+export interface WarmScene {
   key: string;
   look: LiveGroupLook;
   /** What the engine would have up: before the change (`during` false), and once it is part-way. */
@@ -231,7 +231,8 @@ export const WARM_LOWER_THIRDS = [
   'letter-pop-band-wipe-steady',
 ];
 
-function scenes(): WarmScene[] {
+/** Every scene the warm-up draws (a unit test reads them: render/warm-up.test.ts). */
+export function warmScenes(): WarmScene[] {
   const base = initialEngineState();
   const look = (movement: Movement, more: Partial<LiveGroupLook> = {}): LiveGroupLook => ({
     ...DEFAULT_LIVE_GROUP_LOOK,
@@ -531,7 +532,7 @@ export function WarmUp({
     (id: string, attempt?: number) => pictures[id] ?? mediaUrl(id, attempt),
     [pictures],
   );
-  const list = useMemo(() => scenes(), []);
+  const list = useMemo(() => warmScenes(), []);
   return (
     <div
       ref={host}

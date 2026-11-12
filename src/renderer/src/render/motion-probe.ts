@@ -104,6 +104,10 @@ function seenOpacity(el: Element, known: Map<Element, number>): number {
   return seen;
 }
 
+/** What of an element's own style moves it on the screen, beyond how much of it shows and its box. */
+export const movedLook = (style: Pick<CSSStyleDeclaration, 'transform' | 'clipPath' | 'filter'>): string =>
+  `${style.transform}|${style.clipPath}|${style.filter}`;
+
 /** What an element shows of itself at this frame, or null when it shows nothing. */
 function lookOf(el: Element, known: Map<Element, number>): string | null {
   const style = getComputedStyle(el);
@@ -135,7 +139,7 @@ function lookOf(el: Element, known: Map<Element, number>): string | null {
         ? `@${el.complete && el.naturalWidth > 0 ? 'in' : 'loading'}`
         : '';
   const at = `${box.left.toFixed(1)},${box.top.toFixed(1)},${box.width.toFixed(1)},${box.height.toFixed(1)}`;
-  return `${el.tagName}#${which}|${String(opacity)}|${at}|${style.transform}|${style.clipPath}|${style.filter}${time}`;
+  return `${el.tagName}#${which}|${String(opacity)}|${at}|${movedLook(style)}${time}`;
 }
 
 /** A track's look at this frame: every element of it that shows, in the page's order. */
