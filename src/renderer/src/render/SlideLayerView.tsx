@@ -219,7 +219,12 @@ function paintLayers(els: Layers, how: Paint, p: number): void {
  * Whether every picture and video in `root` can be drawn now; else a promise for when it can, or for
  * `deadline` (the engine's time) if that comes first.
  */
-function mediaReady(root: HTMLElement, deadline: number, native: boolean): true | Promise<void> {
+export function slideMediaReady(
+  root: HTMLElement,
+  deadline: number,
+  layer: SlideLayer,
+): true | Promise<void> {
+  const native = isDeckNativeTransition(layer.transition);
   const waits: Promise<unknown>[] = [];
   for (const img of root.querySelectorAll('img'))
     if (!img.complete) waits.push(img.decode().catch(() => undefined));
@@ -409,7 +414,7 @@ export function SlideLayerView({
   useEffect(() => {
     if (!waiting || !on || !inRef.current) return;
     const shownAt = on.shownAt;
-    const ready = mediaReady(inRef.current, shownAt + MEDIA_WAIT_MS, native !== undefined);
+    const ready = slideMediaReady(inRef.current, shownAt + MEDIA_WAIT_MS, on);
     const begin = (start: number) => {
       setShowing((s) =>
         s.on && keyOf(s.on) === onKey && s.fade?.start === null ? { ...s, fade: { ...s.fade, start } } : s,
