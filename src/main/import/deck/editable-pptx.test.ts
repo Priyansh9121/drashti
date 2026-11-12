@@ -45,6 +45,7 @@ describe('native objects from a retained PPTX source', () => {
     expect(box?.kind).toBe('text');
     if (box?.kind !== 'text') throw new Error('Source words were not read.');
     expect(box.text).toBe('Placeholder café');
+    expect(slideElementSchema.parse(box)).toMatchObject({ sourceShapeId: '2' });
     expect(box.runs?.map((run) => run.text).join('')).toBe(box.text);
     expect(box.style.fontSize).toBeCloseTo((40 * 4) / 3);
     expect(box.frame.x).toBeCloseTo(105.6);
@@ -110,7 +111,7 @@ describe('native objects from a retained PPTX source', () => {
 
   it('keeps supported group geometry, a basic shape, embedded picture crop and stable media references', async () => {
     const group =
-      '<p:grpSp><p:nvGrpSpPr/><p:grpSpPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="3657600" cy="1828800"/><a:chOff x="0" y="0"/><a:chExt cx="1828800" cy="914400"/></a:xfrm></p:grpSpPr><p:sp><p:nvSpPr><p:cNvPr id="3" name="Placeholder rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="228600" y="91440"/><a:ext cx="457200" cy="274320"/></a:xfrm><a:prstGeom prst="rect"/><a:solidFill><a:srgbClr val="334455"/></a:solidFill></p:spPr></p:sp></p:grpSp>';
+      '<p:grpSp><p:nvGrpSpPr><p:cNvPr id="9" name="Placeholder group"/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="3657600" cy="1828800"/><a:chOff x="0" y="0"/><a:chExt cx="1828800" cy="914400"/></a:xfrm></p:grpSpPr><p:sp><p:nvSpPr><p:cNvPr id="3" name="Placeholder rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="228600" y="91440"/><a:ext cx="457200" cy="274320"/></a:xfrm><a:prstGeom prst="rect"/><a:solidFill><a:srgbClr val="334455"/></a:solidFill></p:spPr></p:sp></p:grpSp>';
     const picture =
       '<p:pic><p:nvPicPr><p:cNvPr id="4" name="Placeholder picture"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rPic"/><a:srcRect l="25000"/><a:stretch/></p:blipFill><p:spPr><a:xfrm rot="5400000" flipH="1"><a:off x="3657600" y="914400"/><a:ext cx="1828800" cy="1828800"/></a:xfrm><a:prstGeom prst="rect"/></p:spPr></p:pic>';
     const bytes = editablePicture();
@@ -129,12 +130,15 @@ describe('native objects from a retained PPTX source', () => {
     const shape = deck.slides[0]?.elements.find((element) => element.kind === 'shape');
     expect(shape).toMatchObject({
       shape: 'rectangle',
+      sourceShapeId: '3',
+      sourceGroupIds: ['9'],
       frame: { x: 144, y: 115.2, width: 96, height: 57.6 },
       fill: '#334455',
     });
     const image = deck.slides[0]?.elements.find((element) => element.kind === 'image');
     expect(image).toMatchObject({
       mediaId: 'media-ref:0',
+      sourceShapeId: '4',
       fit: 'stretch',
       rotation: 90,
       flipX: true,
