@@ -226,12 +226,18 @@ function mediaReady(root: HTMLElement, deadline: number, native: boolean): true 
   for (const video of root.querySelectorAll('video'))
     if (
       video.readyState < 2 &&
+      // A deck's next click, loading out of sight while its step is up (Session 57, item 6; DeckStep.tsx): never
+      // drawn as the slide comes in, so never waited for.
+      video.dataset['deckVideo'] !== 'preparing' &&
       (!native || (video.dataset['deckCover'] !== 'poster' && video.dataset['deckCover'] !== 'hidden'))
     )
       waits.push(
         new Promise<void>((resolve) => {
-          video.addEventListener('loadeddata', () => resolve(), { once: true });
-          video.addEventListener('error', () => resolve(), { once: true });
+          // Its first frame; or, for a deck's clip loaded ahead (DeckStep.tsx took it decoded, its first frame long
+          // in), the frame its jump into the clip lands on (a seek takes it below 2 until then, and loadeddata never
+          // comes again).
+          for (const event of ['loadeddata', 'canplay', 'error'])
+            video.addEventListener(event, () => resolve(), { once: true });
         }),
       );
   if (waits.length === 0) return true;

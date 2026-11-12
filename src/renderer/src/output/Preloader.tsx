@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { deckStep } from '../../../shared/deck-show';
 import type { PreloadMedia } from '../../../shared/engine/preload';
 import { mediaToPreload } from '../../../shared/engine/preload';
 import type { UpNext } from '../../../shared/engine/state';
 import { mediaUrl } from '../../../shared/media';
 import type { PictureLook } from '../../../shared/picture-look';
+import { DeckClipAhead } from '../render/DeckStep';
 import { useMediaAttempt } from '../render/media-attempts';
 import { useSharpCopy } from '../render/picture-looks';
 
@@ -78,6 +80,20 @@ function PreloadOne({ media, look }: { media: PreloadMedia; look: PictureLook | 
   );
 }
 
+/**
+ * The clip of a deck's step Next plays (Session 57, item 6): a slide's first (`first`), loaded and decoded here in an
+ * element its step takes as the slide comes in (render/DeckStep.tsx's DeckClipAhead), so it plays from the press; or
+ * the slide up's next click's, which its step keeps loaded itself, so it is not loaded twice. Null for anything else
+ * (a clip with no motion is never played).
+ */
+function deckClip(next: UpNext | null): { mediaId: string; first: boolean } | null {
+  if (next?.kind !== 'slide') return null;
+  const index = next.step ?? 0;
+  const step = deckStep(next.slide.deck, index);
+  if (!step || step.clipMs <= 0) return null;
+  return { mediaId: step.clipId, first: index === 0 };
+}
+
 /** Loads what Next will show (PLAN.md 4.3), so its images and videos are never a frame late. */
 export function Preloader({
   next,
@@ -88,6 +104,7 @@ export function Preloader({
   pictures?: Record<string, PictureLook>;
 }) {
   const wanted: PreloadMedia[] = useMemo(() => mediaToPreload(next), [next]);
+  const clip = useMemo(() => deckClip(next), [next]);
   return (
     <div
       data-testid="preload"
@@ -103,9 +120,11 @@ export function Preloader({
         pointerEvents: 'none',
       }}
     >
-      {wanted.map((m) => (
-        <PreloadOne key={`${m.media}:${m.mediaId}`} media={m} look={pictures[m.mediaId] ?? null} />
-      ))}
+      {wanted.map((m) => {
+        if (m.media === 'video' && m.mediaId === clip?.mediaId)
+          return clip.first ? <DeckClipAhead key={`deck:${m.mediaId}`} mediaId={m.mediaId} /> : null;
+        return <PreloadOne key={`${m.media}:${m.mediaId}`} media={m} look={pictures[m.mediaId] ?? null} />;
+      })}
     </div>
   );
 }
