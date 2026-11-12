@@ -33,7 +33,7 @@ class Window extends EventEmitter {
     this.emit('closed');
   }
 }
-function setup(size = { width: 480, height: 320 }) {
+function setup(size = { width: 480, height: 320 }, picture = false) {
   const win = new Window();
   const admission = { allowed: true };
   const normalize = vi.fn(
@@ -51,25 +51,36 @@ function setup(size = { width: 480, height: 320 }) {
   });
   sessions.add(session);
   const signal = new AbortController();
-  const result = session.run(
-    {
-      pages: [
+  const slide = { id: 'placeholder-page', ...size, background: '#ffffff', elements: [] };
+  const current = () => admission.allowed;
+  const result = picture
+    ? session.picture(slide, {}, current, signal.signal)
+    : session.run(
         {
-          kind: 'native',
-          slide: { id: 'placeholder-page', ...size, background: '#ffffff', elements: [] },
+          pages: [{ kind: 'native', slide }],
+          sources: [],
         },
-      ],
-      sources: [],
-    },
-    () => admission.allowed,
-    signal.signal,
-  );
+        current,
+        signal.signal,
+      );
   const own = win.webContents as unknown as WebContents;
   const other = { id: 202 } as WebContents;
   const job = session.job(own);
   if (!job) throw new Error('The private generated job was not admitted.');
   return { win, admission, normalize, session, signal, result, own, other, job };
 }
+
+it('returns a phone picture only from Main’s capture of its owned hidden window', async () => {
+  const s = setup({ width: 2560, height: 1440 }, true);
+  expect(s.job.picture).toMatchObject({ scale: 0.75 });
+  expect(await s.session.print(s.own, s.job.id, 0)).toBeNull();
+  expect(await s.session.capture(s.other, s.job.id, 0)).toBeNull();
+  expect(await s.session.capture(s.own, 'different-job', 0)).toBeNull();
+  await s.session.capture(s.own, s.job.id, 0);
+  expect(await s.result).toEqual(new Uint8Array(Buffer.from('Generated effect pixels')));
+  expect(s.win.setContentSize).toHaveBeenCalledWith(1920, 1080);
+  expect(s.win.isDestroyed()).toBe(true);
+});
 
 describe('the exact hidden PDF copy window protocol', () => {
   it('captures only the current owned sheet, keeps capture hidden and refuses it after printing', async () => {

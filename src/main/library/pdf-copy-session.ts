@@ -61,6 +61,20 @@ export class PdfCopySession {
 
   constructor(private readonly deps: PdfCopySessionDeps) {}
 
+  picture(
+    slide: Extract<PdfCopyJob['pages'][number], { kind: 'native' }>['slide'],
+    looks: NonNullable<PdfCopyJob['picture']>['looks'],
+    current: () => boolean,
+    signal: AbortSignal,
+  ): Promise<Uint8Array | null> {
+    const scale = Math.min(1, 1920 / Math.max(slide.width, slide.height));
+    return this.run(
+      { pages: [{ kind: 'native', slide }], sources: [], picture: { scale, looks } },
+      current,
+      signal,
+    );
+  }
+
   async run(
     plan: Omit<PdfCopyJob, 'id'>,
     current: () => boolean,
@@ -118,7 +132,7 @@ export class PdfCopySession {
         fresh: null,
       };
       const abort = () => finish(null);
-      const timer = setTimeout(abort, DEADLINE_MS);
+      const timer = setTimeout(abort, plan.picture ? 8_000 : DEADLINE_MS);
       this.active = active;
       signal.addEventListener('abort', abort, { once: true });
       win.webContents.once('render-process-gone', abort);
@@ -168,8 +182,9 @@ export class PdfCopySession {
       return null;
     const page = active.job.pages[index];
     if (page?.kind !== 'native') return null;
-    const width = Math.ceil((page.slide.width * 4) / 3),
-      height = Math.ceil((page.slide.height * 4) / 3);
+    const scale = active.job.picture?.scale ?? 4 / 3;
+    const width = Math.ceil(page.slide.width * scale);
+    const height = Math.ceil(page.slide.height * scale);
     // Bound viewport and screenshot memory as well as compressed output bytes.
     if (width * height > 4_000_000) return null;
     active.printing = true;
@@ -188,7 +203,9 @@ export class PdfCopySession {
       const data = image.toPNG();
       active.captureBytes += data.length;
       if (data.length > 32 * 1024 * 1024 || active.captureBytes > LIMIT) return null;
-      return new Uint8Array(data);
+      const bytes = new Uint8Array(data);
+      if (active.job.picture) active.finish(bytes);
+      return bytes;
     } catch {
       active.finish(null);
       return null;
@@ -201,6 +218,7 @@ export class PdfCopySession {
     const active = this.own(sender);
     if (
       !active ||
+      active.job.picture ||
       typeof index !== 'number' ||
       !active.taken ||
       active.job.id !== id ||
@@ -248,6 +266,7 @@ export class PdfCopySession {
     const checked = z.array(printPageSchema).length(1).safeParse(raw);
     if (
       !active ||
+      active.job.picture ||
       typeof index !== 'number' ||
       active.job.id !== id ||
       active.next !== index ||
@@ -279,7 +298,7 @@ export class PdfCopySession {
     const checked = finishedSchema.safeParse(raw);
     if (!active || !checked.success || checked.data.id !== active.job.id) return false;
     const value = checked.data;
-    if (value.error) {
+    if (active.job.picture || value.error) {
       active.finish(null);
       return true;
     }
