@@ -350,6 +350,7 @@ const bridge: DrashtiBridge = {
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
     convert: (mediaIds) => invoke(IPC.media.convert, mediaIds),
     retryConversion: (jobId) => invoke(IPC.media.retryConversion, jobId),
+    cancelLinkConversion: (jobId) => invoke(IPC.media.cancelLinkConversion, jobId),
     cancelConversion: (jobId) => invoke(IPC.media.cancelConversion, jobId),
     conversions: () => invoke(IPC.media.conversions),
     onConversions: (listener) => on(IPC.media.conversionsChanged, listener),

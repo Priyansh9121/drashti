@@ -388,6 +388,8 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   [IPC.library.pickImportPaths, anything],
   // Main checks that this is a failed automatic conversion that can be tried again.
   [IPC.media.retryConversion, ([id]) => isId(id)],
+  // Main only stops the background conversion of a linked video.
+  [IPC.media.cancelLinkConversion, ([id]) => isId(id)],
   // The playlists and folders (Session 56), as Pro Mode's left column offers them: New playlist and New folder, at the
   // top or in a folder (New playlist here, New folder here); Rename…; Delete… (several chosen together too) and its
   // Undo. Never a template.

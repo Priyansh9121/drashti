@@ -5,7 +5,16 @@ import { useEngine } from '../engine/engine-store';
 import type { AppInfo } from '../../../shared/app-info';
 import { describeAppInfo } from '../../../shared/app-info';
 import { cancelImport, dismissFinished, useImports } from '../library/import-store';
-import { dismissImportNotice, retryImportNotice, useImportNotices } from '../library/import-notices';
+import {
+  dismissAllImportNotices,
+  dismissImportNotice,
+  findImportMedia,
+  retryImportNotice,
+  useImportNotices,
+} from '../library/import-notices';
+import { cancelLinkConversion, connectConversions, useConvert } from '../library/convert-store';
+import { convertingWords, jobBusy } from '../library/converting';
+import { useMode } from './mode-store';
 import { connectSound, useSound } from '../screens/sound-store';
 import { Button } from '../ui/Button';
 import { AlertTriangle, CalendarDays, Info, Volume2, X } from '../ui/icons';
@@ -301,6 +310,7 @@ export function StatusBar({
         {/* Ahead of what comes and goes: an import's long line runs on under the version's words, never under a button. */}
         {help.button}
         <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">
+          <LinkConversionStatus />
           <ImportStatus />
           <SaveStatus platform={info?.platform ?? 'darwin'} />
           <TaskStatus />
@@ -310,6 +320,28 @@ export function StatusBar({
         </span>
       </footer>
     </>
+  );
+}
+
+function LinkConversionStatus() {
+  useEffect(connectConversions, []);
+  const job = useConvert((state) =>
+    state.jobs.find((entry) => entry.maxHeight !== undefined && jobBusy(entry)),
+  );
+  if (!job) return null;
+  const text = `${job.name} · ${job.note ?? convertingWords(job)}`;
+  return (
+    <div data-testid="link-conversion-status" className="flex min-w-0 items-center gap-1.5">
+      <Truncate text={text} />
+      <Button
+        size="sm"
+        className="h-5 shrink-0"
+        aria-label={`Stop converting ${job.name}`}
+        onClick={() => void cancelLinkConversion(job.id)}
+      >
+        Stop
+      </Button>
+    </div>
   );
 }
 
@@ -323,6 +355,7 @@ export function StatusBar({
 export function NoticeArea() {
   const notice = useNotice((s) => s.text);
   const imports = useImportNotices((s) => s.notices);
+  const canFindMissing = useMode((s) => s.mode === 'pro');
   if (!notice && imports.length === 0) return null;
   const shown = imports.slice(0, 4);
   const more = imports.length - shown.length;
@@ -330,40 +363,56 @@ export function NoticeArea() {
     // An anchor with no height on the bars' top edge: the notices stand over the bottom of the columns.
     <div className="relative z-30 h-0 shrink-0">
       <div className="pointer-events-none absolute right-3 bottom-2 flex w-[min(38rem,calc(100vw-1.5rem))] flex-col items-end gap-1">
-        {more > 0 && (
-          <span className="rounded-md bg-panel-3/75 px-2 py-1 text-xs text-fg">
-            {plural(more, 'more import notice')}
-          </span>
-        )}
-        {shown.map((item) => (
-          <div
-            key={item.id}
-            role="alert"
-            data-testid="import-notice"
-            className="flex max-w-full items-center gap-1.5 rounded-md border border-line/60 border-l-2 border-l-accent bg-panel-3/75 px-2 py-1 text-xs text-fg"
-          >
-            <Info size={13} aria-hidden="true" className="shrink-0 text-accent" />
-            <Truncate text={item.text} />
-            {item.retry && (
-              <Button
-                size="sm"
-                className="pointer-events-auto h-5 shrink-0"
-                onClick={() => void retryImportNotice(item)}
-              >
-                Try again
-              </Button>
+        {shown.length > 0 && (
+          <div data-testid="import-notice-stack" className="flex w-full flex-col items-end gap-1">
+            {more > 0 && (
+              <div className="flex items-center gap-2 rounded-md bg-panel-3/75 px-2 py-1 text-xs text-fg">
+                <span>{plural(more, 'more import notice')}</span>
+                <Button size="sm" className="pointer-events-auto h-5" onClick={dismissAllImportNotices}>
+                  Dismiss all
+                </Button>
+              </div>
             )}
-            <button
-              type="button"
-              aria-label="Dismiss import notice"
-              title={item.text}
-              onClick={() => dismissImportNotice(item.id)}
-              className="pointer-events-auto -mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm hover:bg-panel-2"
-            >
-              <X size={12} aria-hidden="true" />
-            </button>
+            {shown.map((item) => (
+              <div
+                key={item.id}
+                role="alert"
+                data-testid="import-notice"
+                className="flex max-w-full items-center gap-1.5 rounded-md border border-line/60 border-l-2 border-l-accent bg-panel-3/75 px-2 py-1 text-xs text-fg"
+              >
+                <Info size={13} aria-hidden="true" className="shrink-0 text-accent" />
+                <Truncate text={item.text} />
+                {canFindMissing && item.findMissing && (
+                  <Button
+                    size="sm"
+                    className="pointer-events-auto h-5 shrink-0"
+                    onClick={() => void findImportMedia(item)}
+                  >
+                    Find…
+                  </Button>
+                )}
+                {item.retry && (
+                  <Button
+                    size="sm"
+                    className="pointer-events-auto h-5 shrink-0"
+                    onClick={() => void retryImportNotice(item)}
+                  >
+                    Try again
+                  </Button>
+                )}
+                <button
+                  type="button"
+                  aria-label="Dismiss import notice"
+                  title={item.text}
+                  onClick={() => dismissImportNotice(item.id)}
+                  className="pointer-events-auto -mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm hover:bg-panel-2"
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
         {notice && <NoticeCard key={notice} notice={notice} />}
       </div>
     </div>

@@ -22,7 +22,7 @@ import {
   TARGET_FORMAT,
 } from './plan';
 import { PROBE_MS, readInfo } from './read-info';
-import { moveBack, moveMedia, type Moved, presentationsMoved } from './relink';
+import { copyFinder, moveBack, moveMedia, type Moved, presentationsMoved } from './relink';
 import { freeFileName } from './trim';
 
 /*
@@ -112,7 +112,7 @@ export interface ConvertDeps {
    * The conversions not finished, by media item in order, kept with the library (Session 51): what was kept when
    * Drashti last stopped, and keeping it as it changes.
    */
-  kept?: { load(): unknown; save(mediaIds: string[]): void };
+  kept?: { load(): unknown; save(pending: KeptConversion[]): void };
   /**
    * Each FFmpeg started, and its end (Session 31, ROB-3: ../system/leftovers.ts), so one left running by a
    * crash is stopped at the next start, with the part-file it was writing.
@@ -129,13 +129,20 @@ interface MediaRow {
   name: string;
   path: string;
   source_path: string | null;
+  playable: number | null;
+  format: string | null;
   /** 1: deleted from the library (Session 26a), perhaps while its conversion waited. */
   deleted: number;
 }
 
-const idsSchema = z.array(z.string().min(1).max(100)).min(1).max(10_000);
-/** The conversions kept from the last run (Session 51): none when it cannot be read. */
-const keptSchema = z.array(z.string().min(1).max(100)).max(10_000);
+const idSchema = z.string().min(1).max(100);
+const idsSchema = z.array(idSchema).min(1).max(10_000);
+const maxHeightSchema = z.number().int().min(2).max(1080);
+/** Earlier versions kept just the media id. A linked video's job also needs its height cap. */
+const keptSchema = z
+  .array(z.union([idSchema, z.object({ mediaId: idSchema, maxHeight: maxHeightSchema })]))
+  .max(10_000);
+type KeptConversion = z.infer<typeof keptSchema>[number];
 const movedSchema = z.object({
   cues: z.array(z.string()),
   items: z.array(z.string()),
@@ -276,8 +283,12 @@ export class ConvertService {
     // Those not finished when Drashti last stopped (Session 51): waiting again, held until resumeWaiting.
     const kept = keptSchema.safeParse(deps.kept?.load());
     if (kept.success && kept.data.length > 0) {
-      this.keptNow = kept.data.join('\n');
-      this.enqueue(kept.data, Number.POSITIVE_INFINITY);
+      this.keptNow = JSON.stringify(kept.data);
+      const ids = kept.data.map((job) => (typeof job === 'string' ? job : job.mediaId));
+      const heights = new Map(
+        kept.data.flatMap((job) => (typeof job === 'string' ? [] : [[job.mediaId, job.maxHeight] as const])),
+      );
+      this.enqueue(ids, Number.POSITIVE_INFINITY, heights);
     }
   }
 
@@ -345,20 +356,20 @@ export class ConvertService {
   /** Keep the conversions not finished, in order, for the next start (Session 51), when they have changed. */
   private keep(): void {
     if (this.closed) return;
-    const ids = this.jobs
+    const pending: KeptConversion[] = this.jobs
       .filter((j) => j.state === 'waiting' || j.state === 'converting')
-      .map((j) => j.mediaId);
-    const now = ids.join('\n');
+      .map((j) => (j.maxHeight === undefined ? j.mediaId : { mediaId: j.mediaId, maxHeight: j.maxHeight }));
+    const now = JSON.stringify(pending);
     if (now === this.keptNow) return;
     this.keptNow = now;
-    this.deps.kept?.save(ids);
+    this.deps.kept?.save(pending);
   }
 
   private row(id: string): MediaRow | null {
     return (
       (this.deps.db
         .prepare(
-          'SELECT id, kind, name, path, source_path, deleted_at IS NOT NULL AS deleted FROM media WHERE id = ?',
+          'SELECT id, kind, name, path, source_path, playable, format, deleted_at IS NOT NULL AS deleted FROM media WHERE id = ?',
         )
         .get(id) as MediaRow | undefined) ?? null
     );
@@ -370,24 +381,28 @@ export class ConvertService {
   }
 
   /**
-   * Convert by itself what an import found Drashti's player cannot play (Session 50): the report's lines that
-   * say so ('converting-media'), videos, sounds and (Session 55, Part 5) pictures a screen cannot show. Each starts
+   * Queue conversions an import identified, including smaller copies for tall linked videos. Each starts
    * a moment after the import (AFTER_IMPORT_MS), one at a time, once the show and stream are idle.
-   * How many were added.
+   * Returns the number of new jobs.
    */
   convertImported(report: ImportedLines | null): number {
     const ids = new Set<string>();
+    const heights = new Map<string, number>();
     for (const item of report?.items ?? [])
-      for (const issue of item.issues)
-        if (issue.code === 'converting-media' && issue.fix?.kind === 'convert-media')
-          ids.add(issue.fix.mediaId);
-    const wanted = [...ids].filter((id) => this.row(id) !== null);
-    if (wanted.length === 0) return 0;
-    const { added } = this.enqueue(wanted, Date.now() + (this.deps.limits?.afterImportMs ?? AFTER_IMPORT_MS));
+      for (const { code, fix } of item.issues) {
+        if (code !== 'converting-media' || fix?.kind !== 'convert-media') continue;
+        ids.add(fix.mediaId);
+        const height = maxHeightSchema.safeParse(fix.maxHeight);
+        if (height.success)
+          heights.set(fix.mediaId, Math.min(heights.get(fix.mediaId) ?? height.data, height.data));
+      }
+    if (ids.size === 0) return 0;
+    const at = Date.now() + (this.deps.limits?.afterImportMs ?? AFTER_IMPORT_MS);
+    const { added } = this.enqueue([...ids], at, heights);
     if (added > 0)
       this.deps.log(
         'info',
-        `An import found ${String(added)} file${added === 1 ? '' : 's'} Drashti cannot play: converted by itself`,
+        `Queued ${String(added)} imported file${added === 1 ? '' : 's'} for background conversion`,
       );
     return added;
   }
@@ -396,7 +411,11 @@ export class ConvertService {
    * Add jobs for these media items; how many were added. `heldUntil`: Drashti found them by itself (an import, or
    * the last run's, Session 51), and each waits until then; null: the operator asked.
    */
-  private enqueue(rawIds: unknown, heldUntil: number | null): { result: ConvertResult; added: number } {
+  private enqueue(
+    rawIds: unknown,
+    heldUntil: number | null,
+    heights?: ReadonlyMap<string, number>,
+  ): { result: ConvertResult; added: number } {
     const byItself = heldUntil !== null;
     const ids = idsSchema.safeParse(rawIds);
     if (!ids.success) return { result: { ok: false, message: 'Choose the files to convert.' }, added: 0 };
@@ -410,19 +429,28 @@ export class ConvertService {
       };
     let added = 0;
     let going = 0;
-    for (const id of new Set(ids.data)) {
+    let capChanged = false;
+    const findCopy = heights?.size ? copyFinder(this.deps.db) : null;
+    for (const requestedId of new Set(ids.data)) {
+      const maxHeight = heights?.get(requestedId);
+      const id = maxHeight === undefined ? requestedId : (findCopy?.(requestedId) ?? requestedId);
       const row = this.row(id);
-      if (!row) continue;
-      // Only what Drashti cannot play: files marked so at import, and HEVC (which the window offers only
-      // where this computer cannot play it). Never a file deleted from the library (Session 51 review).
-      const kind = this.deps.db
-        .prepare('SELECT playable, format FROM media WHERE id = ? AND deleted_at IS NULL')
-        .get(id) as { playable: number | null; format: string | null } | undefined;
-      if (kind?.playable !== 0 && !isHevc(kind?.format ?? null)) continue;
-      const pending = this.jobs.some(
+      if (!row || row.deleted) continue;
+      if (maxHeight === undefined && row.playable !== 0 && !isHevc(row.format)) continue;
+      if (maxHeight !== undefined && row.kind !== 'video') continue;
+      const pending = this.jobs.find(
         (j) => j.mediaId === id && (j.state === 'waiting' || j.state === 'converting'),
       );
       if (pending) {
+        if (maxHeight !== undefined && (pending.maxHeight ?? Infinity) > maxHeight) {
+          pending.maxHeight = maxHeight;
+          capChanged = true;
+          const running = this.running;
+          if (running?.job === pending && !running.stop) {
+            running.stop = 'wait';
+            running.child?.kill();
+          }
+        }
         going++;
         continue;
       }
@@ -452,6 +480,7 @@ export class ConvertService {
         convertedName: null,
         conversionId: null,
         ...(byItself ? { byItself: true } : {}),
+        ...(maxHeight === undefined ? {} : { maxHeight }),
       };
       this.jobs.push(job);
       if (heldUntil !== null) this.heldUntil.set(job.id, heldUntil);
@@ -466,7 +495,7 @@ export class ConvertService {
         },
         added,
       };
-    if (added > 0) {
+    if (added > 0 || capChanged) {
       this.changed();
       this.watch();
     }
@@ -476,10 +505,26 @@ export class ConvertService {
   /** Try an automatic conversion again without turning it into a manual conversion. */
   retryImported(rawId: unknown): ConvertResult {
     const job = this.jobs.find(
-      (job) => job.id === rawId && job.byItself && job.state === 'failed' && job.retryable,
+      (job) =>
+        job.id === rawId &&
+        (job.byItself || job.maxHeight !== undefined) &&
+        job.state === 'failed' &&
+        job.retryable,
     );
     if (!job) return { ok: false, message: 'This conversion is no longer available to retry.' };
-    return this.enqueue([job.mediaId], Date.now()).result;
+    const heights = job.maxHeight === undefined ? undefined : new Map([[job.mediaId, job.maxHeight]]);
+    return this.enqueue([job.mediaId], Date.now(), heights).result;
+  }
+
+  /** Stop only the background sizing of a linked video. Its imported original stays. */
+  cancelLinkConversion(rawId: unknown): ConvertResult {
+    const job = this.jobs.find(
+      (job) =>
+        job.id === rawId &&
+        job.maxHeight !== undefined &&
+        (job.state === 'waiting' || job.state === 'converting'),
+    );
+    return job ? this.cancel(job.id) : { ok: false, message: 'This link conversion is no longer running.' };
   }
 
   /** Cancel one job (or, with null, every one not finished). */
@@ -624,7 +669,7 @@ export class ConvertService {
   private async run(job: ConversionJob): Promise<boolean> {
     const ffmpeg = this.deps.ffmpegPath();
     const row = this.row(job.mediaId);
-    const fail = (message: string, retryable = true): false => {
+    const fail = (message: string, retryable = false): false => {
       job.state = 'failed';
       job.message = message;
       job.retryable = retryable;
@@ -653,6 +698,7 @@ export class ConvertService {
     if (free - size < KEEP_FREE_BYTES)
       return fail(
         `Only ${gb(free)} is free on the disk, and Drashti keeps 2 GB free. Free up some space, then convert again.`,
+        true,
       );
     const running: Running = { job, child: null, tmp: null, stop: null, limitMs: 0 };
     this.running = running;
@@ -676,13 +722,28 @@ export class ConvertService {
     this.pauseForActivity(running, true);
     if (running.stop) return this.stopped(running, running.stop);
     if (info.timedOut) return fail(probeTooLong(this.probeMs()));
+    const { maxHeight } = job;
+    if (maxHeight !== undefined) {
+      const video = info.video;
+      if (!video || video.still)
+        return fail('FFmpeg could not find a video to make smaller. Check the downloaded file.');
+      if (video.height <= maxHeight && row.playable === 1) {
+        // A copy made since the import can already fit. Keep using it.
+        job.state = 'done';
+        job.progress = 1;
+        this.running = null;
+        this.changed();
+        this.watch();
+        return true;
+      }
+    }
     const target = chooseTarget(row.kind, info);
     if (!target) return fail('FFmpeg could not read anything in this file to convert.', false);
     const work = join(this.deps.mediaDir, CONVERTING_DIR);
     mkdirSync(work, { recursive: true });
     const tmp = join(work, `${job.id}.${TARGET_EXT[target]}`);
     running.tmp = tmp;
-    const child = spawn(ffmpeg, convertArgs(target, source, tmp, info), {
+    const child = spawn(ffmpeg, convertArgs(target, source, tmp, info, { maxHeight }), {
       windowsHide: true,
       env: ffmpegEnv(),
     });
@@ -727,7 +788,9 @@ export class ConvertService {
     if (code !== 0 || stopped) {
       removeQuietly(tmp);
       if (stopped) return this.stopped(running, stopped);
-      return fail(`FFmpeg could not convert it${lines.length > 0 ? ` (${lines.at(-1) ?? ''})` : ''}.`);
+      return fail(
+        `FFmpeg could not convert it${lines.length > 0 ? ` (${lines.at(-1) ?? ''})` : ''}. Check the original in another player and import a fresh copy if needed.`,
+      );
     }
     try {
       const digest = await sha256File(tmp);
@@ -742,7 +805,11 @@ export class ConvertService {
       removeQuietly(tmp);
       const stopped = this.pauseForActivity(running, true);
       if (stopped) return this.stopped(running, stopped);
-      return fail(`The converted file could not be kept. ${fileProblem(error, 'own')}`);
+      const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : null;
+      return fail(
+        `The converted file could not be kept. ${fileProblem(error, 'own')}`,
+        code === 'ENOSPC' || code === 'EBUSY',
+      );
     }
   }
 
@@ -755,7 +822,8 @@ export class ConvertService {
     else if (stop === 'wait') {
       job.state = 'waiting';
       job.note = this.waitFor(true);
-      this.deps.log('info', 'A conversion paused for the show or stream: it starts again afterwards');
+      if (job.note !== null)
+        this.deps.log('info', 'A conversion paused for the show or stream: it starts again afterwards');
     } else if (stop === 'time') {
       job.state = 'failed';
       job.retryable = true;
@@ -788,7 +856,9 @@ export class ConvertService {
     if (existsSync(dest)) removeQuietly(tmp);
     else renameSync(tmp, dest);
     const db = this.deps.db;
-    const name = `${basename(row.name, extname(row.name))}.${ext}`;
+    const base = basename(row.name, extname(row.name));
+    const size = job.maxHeight === undefined ? '' : ` (${String(job.maxHeight)}p)`;
+    const name = `${base}${size}.${ext}`;
     const existing = db.prepare('SELECT id, name FROM media WHERE sha256 = ?').get(sha256) as
       { id: string; name: string } | undefined;
     const convertedId = existing?.id ?? randomUUID();

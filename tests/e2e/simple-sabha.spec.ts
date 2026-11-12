@@ -219,8 +219,7 @@ test('none open: a new playlist; Add files… and files dropped bring in only wh
     'Placeholder simple picture.png',
     'Placeholder simple tone.wav',
   ]);
-  const notice = win.getByTestId('operator-notice');
-  await expect(notice).toContainText('Placeholder simple lyrics.txt');
+  const notice = win.getByTestId('import-notice').filter({ hasText: 'Placeholder simple lyrics.txt' });
   await expect(notice).toContainText(SIMPLE_IMPORT_LEFT_OUT);
   const presentations = await win.evaluate(async () =>
     (await (globalThis as PageGlobals).drashti.library.listPresentations()).map((p) => p.name),

@@ -161,6 +161,7 @@ async function harness(over: Partial<LinkServiceDeps> = {}): Promise<Harness> {
   const origin = await standIn();
   const root = mkdtempSync(join(tmpdir(), 'drashti-links-'));
   const folder = join(root, 'Saved here');
+  mkdirSync(folder);
   const logs: string[] = [];
   const imported: string[][] = [];
   const views: LinkView[] = [];
