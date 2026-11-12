@@ -1,4 +1,6 @@
+import type { DeckEffect } from '../../../shared/deck';
 import type { XmlNode } from '../xml';
+import { type NativePptxTransition, nativePptxTransition } from './pptx-native-transition';
 
 /*
  * What a PowerPoint slide does, read from its own XML (Session 54, C2, from C1's trial: assister/session-54-deck-
@@ -21,6 +23,8 @@ export interface PptxTransition {
   sound: { part: string; loop: boolean } | null;
   /** The deck's own "after N s" (advTm), or null. */
   advanceMs: number | null;
+  /** Whole-slide motion to play without a baked clip, and whether it approximates the source. */
+  native?: NativePptxTransition;
 }
 
 /** One group of the main sequence: what one click does (or what runs by itself as the slide comes in). */
@@ -83,6 +87,8 @@ export interface PptxDeckSlide {
   media: PptxMedia[];
   /** Effects that run when a shape is clicked (a trigger's own sequence), videos' and sounds' starts aside. */
   triggers: number;
+  /** Effects Drashti can play on editable shapes, and whether the original needs a movie when available. */
+  motion?: { effects: DeckEffect[]; approximate: boolean };
 }
 
 /** A relationship of the slide's: its type and target (a part's path, or a link's own text when External). */
@@ -228,6 +234,7 @@ function readTransition(sld: XmlNode, rels: ReadonlyMap<string, SlideRel>): Pptx
   const effect = kids(t).find((c) => c.name !== 'p:sndAc' && c.name !== 'p:extLst');
   const p14 = num(t.attrs['p14:dur']) ?? num(t.attrs['dur']);
   const durationMs = effect ? Math.round(p14 ?? SPEED_MS[t.attrs['spd'] ?? 'fast'] ?? 500) : 0;
+  const native = nativePptxTransition(effect, durationMs);
   const stSnd = kid(kid(t, 'p:sndAc'), 'p:stSnd');
   const snd = kid(stSnd, 'p:snd');
   const rel = snd ? rels.get(snd.attrs['r:embed'] ?? '') : undefined;
@@ -236,6 +243,7 @@ function readTransition(sld: XmlNode, rels: ReadonlyMap<string, SlideRel>): Pptx
     durationMs,
     sound: rel && !rel.external ? { part: rel.target, loop: stSnd?.attrs['loop'] === '1' } : null,
     advanceMs: num(t.attrs['advTm']),
+    ...(native ? { native } : {}),
   };
 }
 
@@ -265,6 +273,565 @@ function readGroups(timing: XmlNode | undefined): PptxGroup[] {
       untilClickMs: toClick.length > 0 && turnOf(toClick) > 0 ? Math.round(turnOf(toClick)) : null,
     };
   });
+}
+
+// ---- shape animations -------------------------------------------------------------------------------
+
+interface TimeWindow {
+  start: number;
+  end: number | null;
+}
+
+interface NativeSchedule {
+  step: number;
+  windows: Map<string, TimeWindow>;
+  byNode: Map<XmlNode, TimeWindow>;
+  effects: DeckEffect[];
+  approximate: boolean;
+}
+
+const VISUAL_BEHAVIOURS = new Set([
+  'p:set',
+  'p:anim',
+  'p:animEffect',
+  'p:animMotion',
+  'p:animScale',
+  'p:animRot',
+  'p:animClr',
+]);
+const EFFECT_NODE_TYPES = new Set(['clickEffect', 'withEffect', 'afterEffect']);
+
+function nativeStart(tn: XmlNode, at: number, schedule: NativeSchedule): number {
+  const conditions = kids(kid(tn, 'p:stCondLst') ?? NONE);
+  if (conditions.length === 0) return at;
+
+  // A par's children share its clock. PowerPoint encodes After Previous in a new delayed par.
+  let first = Infinity;
+  for (const cond of conditions) {
+    const delay = num(cond.attrs['delay']);
+    if (delay === null) continue;
+    const evt = cond.attrs['evt'];
+    const id = kid(cond, 'p:tn')?.attrs['val'];
+    const window = id === undefined ? undefined : schedule.windows.get(id);
+    const base =
+      evt === undefined ? at : evt === 'onBegin' ? window?.start : evt === 'onEnd' ? window?.end : null;
+    if (base == null) schedule.approximate = true;
+    else first = Math.min(first, base + Math.max(0, delay));
+  }
+  if (first !== Infinity) return first;
+  schedule.approximate = true;
+  return at;
+}
+
+type NativeLook = Pick<
+  DeckEffect,
+  | 'kind'
+  | 'direction'
+  | 'verticalDirection'
+  | 'degrees'
+  | 'fade'
+  | 'distance'
+  | 'splitAxis'
+  | 'scale'
+  | 'shape'
+  | 'inward'
+  | 'spokes'
+  | 'bars'
+> & { partial?: true };
+type Direction = NonNullable<DeckEffect['direction']>;
+
+const FLY_FROM = new Map<string, Direction>([
+  ['1', 'down'],
+  ['2', 'left'],
+  ['4', 'up'],
+  ['8', 'right'],
+]);
+const DIAGONAL_FLY = new Set(['3', '6', '9', '12']);
+const OPPOSITE: Record<Direction, Direction> = {
+  down: 'up',
+  left: 'right',
+  up: 'down',
+  right: 'left',
+};
+const WIPE = new Map<string, Direction>([
+  ['wipe(down)', 'down'],
+  ['wipe(left)', 'left'],
+  ['wipe(up)', 'up'],
+  ['wipe(right)', 'right'],
+]);
+
+/** A pair of linear coordinates at the start and end of one animation behaviour. */
+function animationValues(behaviour: XmlNode): [string, string] | null {
+  const mode = behaviour.attrs['calcmode'];
+  if (mode !== undefined && mode !== 'lin') return null;
+  const values = kids(kid(behaviour, 'p:tavLst') ?? NONE);
+  const [first, last] = values;
+  if (
+    values.length !== 2 ||
+    first?.attrs['tm'] !== '0' ||
+    last?.attrs['tm'] !== '100000' ||
+    first.attrs['fmla'] ||
+    last.attrs['fmla']
+  )
+    return null;
+  const value = (n: XmlNode) => {
+    const held = kid(n, 'p:val');
+    const written = kid(held, 'p:strVal') ?? kid(held, 'p:fltVal') ?? kid(held, 'p:intVal');
+    return written?.attrs['val']?.replace(/\s+/gu, '');
+  };
+  const from = value(first);
+  const to = value(last);
+  return from !== undefined && to !== undefined ? [from, to] : null;
+}
+
+function animationProperty(behaviour: XmlNode): string | undefined {
+  return kid(kid(kid(behaviour, 'p:cBhvr'), 'p:attrNameLst'), 'p:attrName')?.text.trim();
+}
+
+/** A diagonal Fly has one linear track per axis, with the object's far edge outside the slide. */
+function diagonalFly(behaviours: readonly XmlNode[], entering: boolean): NativeLook | null {
+  const tracks = behaviours.filter((node) => node.name === 'p:anim');
+  if (tracks.length !== 2) return null;
+  const fromEdge = (axis: 'x' | 'y', extent: 'w' | 'h') => {
+    const track = tracks.find((node) => animationProperty(node) === `ppt_${axis}`);
+    const points = track ? animationValues(track) : null;
+    if (!points) return null;
+    const [away, rest] = entering ? points : [points[1], points[0]];
+    if (rest !== `#ppt_${axis}`) return null;
+    const half = `#ppt_${extent}/2`;
+    if (away === `-${half}` || away === `0-${half}`) return 'min';
+    if (away === `1+${half}`) return 'max';
+    return null;
+  };
+  const horizontal = fromEdge('x', 'w');
+  const vertical = fromEdge('y', 'h');
+  if (!horizontal || !vertical) return null;
+  return {
+    kind: 'fly',
+    direction: (horizontal === 'min') === entering ? 'right' : 'left',
+    verticalDirection: (vertical === 'min') === entering ? 'down' : 'up',
+  };
+}
+
+function uniformScale(point: XmlNode | undefined): number | null {
+  const x = num(point?.attrs['x']);
+  const y = num(point?.attrs['y']);
+  return x !== null && x === y && x >= 0 && x <= 1_000_000 ? x / 100_000 : null;
+}
+
+function zoomLimit(behaviours: readonly XmlNode[], entering: boolean): number | null {
+  const scales = behaviours.filter((node) => node.name === 'p:animScale' || node.name === 'p:anim');
+  const [first] = scales;
+  if (scales.length === 1 && first?.name === 'p:animScale') {
+    const from = uniformScale(kid(first, 'p:from'));
+    const to = uniformScale(kid(first, 'p:to'));
+    return (entering ? to : from) === 1 ? (entering ? from : to) : null;
+  }
+  const dimensions = new Map<string, number>();
+  for (const node of scales) {
+    const property = animationProperty(node);
+    const points = animationValues(node);
+    if (!points || (property !== 'ppt_w' && property !== 'ppt_h')) return null;
+    const base = `#${property}`;
+    const [small, full] = entering ? points : [points[1], points[0]];
+    if (full !== base || dimensions.has(property)) return null;
+    const factor =
+      small === '0'
+        ? 0
+        : small.startsWith(`${base}*`)
+          ? num(small.slice(base.length + 1))
+          : small.endsWith(`*${base}`)
+            ? num(small.replace(`*${base}`, ''))
+            : null;
+    if (factor === null || factor < 0 || factor > 10) return null;
+    dimensions.set(property, factor);
+  }
+  const width = dimensions.get('ppt_w');
+  return width !== undefined && dimensions.get('ppt_h') === width ? width : null;
+}
+
+function floatLook(behaviours: readonly XmlNode[], entering: boolean): NativeLook | null {
+  const movement = behaviours.filter((node) => node.name === 'p:anim');
+  let look: NativeLook | null = null;
+  for (const node of movement) {
+    const property = animationProperty(node);
+    const points = animationValues(node);
+    if (!points || (property !== 'ppt_x' && property !== 'ppt_y')) return null;
+    const [away, rest] = entering ? points : [points[1], points[0]];
+    const origin = `#${property}`;
+    if (rest !== origin || !away.startsWith(origin)) return null;
+    if (away === origin) continue;
+    const offset = away.slice(origin.length);
+    if (!/^[+-](?:\d+\.?\d*|\.\d+)$/u.test(offset)) return null;
+    const displacement = Number(offset) * (entering ? -1 : 1);
+    const distance = Math.abs(displacement);
+    if (distance === 0) continue;
+    if (distance > 1 || look) return null;
+    const direction =
+      property === 'ppt_x' ? (displacement < 0 ? 'left' : 'right') : displacement < 0 ? 'up' : 'down';
+    look = { kind: 'float', direction, distance };
+  }
+  return look;
+}
+
+/** A turn's degrees from where it starts to where the shape rests (an entrance), or the other way (an exit). */
+function turnOf(track: XmlNode | undefined, entering: boolean): number | null {
+  const points = track ? animationValues(track) : null;
+  if (!points) return null;
+  const [away, rest] = entering ? points : [points[1], points[0]];
+  const from = num(away);
+  const to = num(rest);
+  return from !== null && to !== null && Math.abs(from - to) <= 3600 ? from - to : null;
+}
+
+/** Grow & Turn (Shrink & Turn as it leaves): the gallery Zoom's scale and fade, turning as it grows. */
+function growAndTurn(behaviours: readonly XmlNode[], entering: boolean): NativeLook {
+  const turns = behaviours.filter(
+    (node) => node.name === 'p:anim' && animationProperty(node) === 'style.rotation',
+  );
+  const scale = zoomLimit(
+    behaviours.filter((node) => !turns.includes(node)),
+    entering,
+  );
+  const degrees = turns.length === 1 ? turnOf(turns[0], entering) : null;
+  return scale === null || degrees === null
+    ? { kind: 'zoom', fade: true, partial: true }
+    : { kind: 'zoom', fade: true, scale, ...(degrees === 0 ? {} : { degrees }) };
+}
+
+const OUTLINES = ['circle', 'box', 'diamond', 'plus'] as const;
+const RANDOM_BARS = new Map<string, NonNullable<DeckEffect['bars']>>([
+  ['randombar(horizontal)', 'horizontal'],
+  ['randombar(vertical)', 'vertical'],
+]);
+const SPLITS = new Map<string, NativeLook>([
+  ['barn(outvertical)', { kind: 'split', splitAxis: 'x' }],
+  ['barn(outhorizontal)', { kind: 'split', splitAxis: 'y' }],
+  ['barn(invertical)', { kind: 'split', splitAxis: 'x', inward: true }],
+  ['barn(inhorizontal)', { kind: 'split', splitAxis: 'y', inward: true }],
+]);
+
+/**
+ * Office's own reveal filters (ECMA-376 §19.5.3) that Drashti draws as clips: Shape's circle, box, diamond and plus,
+ * Wheel's spokes and Random Bars. Not yet compared with PowerPoint's own movie, so a slide using one keeps PowerPoint's
+ * video wherever one can be made, and plays these where none can.
+ */
+function filterLook(filter: string | undefined): NativeLook | null {
+  if (!filter) return null;
+  const outline = OUTLINES.find((shape) => filter === `${shape}(in)` || filter === `${shape}(out)`);
+  if (outline)
+    return {
+      kind: 'shape',
+      shape: outline,
+      ...(filter.endsWith('(in)') ? { inward: true } : {}),
+      partial: true,
+    };
+  const wheel = /^wheel\(([12348])\)$/u.exec(filter);
+  if (wheel) return { kind: 'wheel', spokes: Number(wheel[1]), partial: true };
+  const bars = RANDOM_BARS.get(filter);
+  return bars ? { kind: 'bars', bars, partial: true } : null;
+}
+
+function nativeLook(
+  tn: XmlNode,
+  phase: DeckEffect['phase'],
+  behaviours: readonly XmlNode[],
+): NativeLook | null {
+  const preset = tn.attrs['presetID'];
+  if (phase === 'emphasis') {
+    const rot = behaviours.find((n) => n.name === 'p:animRot');
+    const degrees = num(rot?.attrs['by']);
+    if (tn.attrs['presetClass'] !== 'emph') return null;
+    if (preset === '8' && degrees !== null) return { kind: 'spin', degrees: degrees / 60_000 };
+    if (preset === '6') {
+      const scale = behaviours.find((node) => node.name === 'p:animScale');
+      const amount = uniformScale(kid(scale, 'p:by'));
+      if (
+        amount !== null &&
+        amount > 0 &&
+        kid(scale, 'p:from') === undefined &&
+        kid(scale, 'p:to') === undefined &&
+        cTnOf(scale ?? NONE)?.attrs['fill'] !== 'remove'
+      )
+        return { kind: 'grow-shrink', scale: amount };
+    }
+    return null;
+  }
+  if (tn.attrs['presetClass'] !== 'entr' && tn.attrs['presetClass'] !== 'exit') return null;
+  const filter = behaviours
+    .find((n) => n.name === 'p:animEffect')
+    ?.attrs['filter']?.trim()
+    .toLowerCase();
+  if (preset === '1' && behaviours.some((n) => n.name === 'p:set')) return { kind: 'appear' };
+  if (preset === '10' && filter === 'fade') return { kind: 'fade' };
+  if (preset === '2') {
+    const subtype = tn.attrs['presetSubtype'] ?? '';
+    if (DIAGONAL_FLY.has(subtype)) return diagonalFly(behaviours, phase === 'in');
+    const direction = FLY_FROM.get(subtype);
+    return direction ? { kind: 'fly', direction: phase === 'out' ? OPPOSITE[direction] : direction } : null;
+  }
+  if (preset === '22') {
+    const direction = WIPE.get(filter ?? '');
+    return direction ? { kind: 'wipe', direction } : null;
+  }
+  if (preset === '23' && behaviours.some((n) => n.name === 'p:anim' || n.name === 'p:animScale'))
+    return { kind: 'zoom' };
+  if (preset === '53' && filter === 'fade') {
+    const scale = zoomLimit(behaviours, phase === 'in');
+    return scale === null ? { kind: 'zoom', fade: true, partial: true } : { kind: 'zoom', fade: true, scale };
+  }
+  if ((preset === '42' || preset === '47') && filter === 'fade') return floatLook(behaviours, phase === 'in');
+  if (preset === '16') return SPLITS.get(filter ?? '') ?? null;
+  if (preset === '31' && filter === 'fade') return growAndTurn(behaviours, phase === 'in');
+  // Bounce's own path (its falls and squashes) is not read: Drashti drops the shape in with a bounce of its own.
+  if (preset === '26') return { kind: 'bounce', partial: true };
+  return filterLook(filter);
+}
+
+const PLAYED_BEHAVIOURS: Record<DeckEffect['kind'], readonly string[]> = {
+  appear: ['p:set'],
+  fade: ['p:animEffect'],
+  fly: ['p:anim'],
+  wipe: ['p:animEffect'],
+  zoom: ['p:anim', 'p:animScale'],
+  spin: ['p:animRot'],
+  pulse: [],
+  float: ['p:anim', 'p:animEffect'],
+  split: ['p:animEffect'],
+  'grow-shrink': ['p:animScale'],
+  shape: ['p:animEffect'],
+  wheel: ['p:animEffect'],
+  bars: ['p:animEffect'],
+  bounce: ['p:anim', 'p:animEffect', 'p:animScale', 'p:animMotion', 'p:animRot'],
+};
+
+/** Repeats, playing back, an early end, or text built word by word or letter by letter (p:iterate). */
+function unsupportedTiming(tn: XmlNode): boolean {
+  const { repeatCount, repeatDur, autoRev } = tn.attrs;
+  return (
+    (repeatCount !== undefined && repeatCount !== '1000') ||
+    repeatDur !== undefined ||
+    autoRev === '1' ||
+    autoRev === 'true' ||
+    kid(tn, 'p:endCondLst') !== undefined ||
+    kid(tn, 'p:iterate') !== undefined
+  );
+}
+
+/** A timing node's smooth start and smooth end (accel, decel), as shares of its duration. */
+function easeOf(tn: XmlNode): [number, number] {
+  const share = (value: string | undefined) => Math.min(1, Math.max(0, num(value) ?? 0) / 100_000);
+  return [share(tn.attrs['accel']), share(tn.attrs['decel'])];
+}
+
+/** An effect's smooth start and end: its own, or the one all its behaviours share; null when they differ. */
+function smoothing(tn: XmlNode, behaviours: readonly XmlNode[]): [number, number] | null {
+  const own = easeOf(tn);
+  const inner = behaviours.flatMap((behaviour) => {
+    const clock = cTnOf(behaviour);
+    return clock && clock !== tn ? [easeOf(clock)] : [];
+  });
+  const [first] = inner;
+  if (!first || inner.every(([a, d]) => a === 0 && d === 0)) return own[0] + own[1] <= 1 ? own : null;
+  if (own[0] > 0 || own[1] > 0) return null;
+  return first[0] + first[1] <= 1 && inner.every(([a, d]) => a === first[0] && d === first[1]) ? first : null;
+}
+
+/** Each paragraph range (first and last, from 0) a text effect's targets name, joined; null for anything else. */
+function paragraphRange(targets: readonly XmlNode[]): [number, number] | null {
+  let first = Infinity;
+  let last = -Infinity;
+  for (const target of targets) {
+    const range = kid(kid(target, 'p:txEl'), 'p:pRg');
+    const from = num(range?.attrs['st']);
+    const to = num(range?.attrs['end']);
+    if (from === null || to === null || !Number.isSafeInteger(from) || !Number.isSafeInteger(to)) return null;
+    if (from < 0 || to < from || to > 9999) return null;
+    first = Math.min(first, from);
+    last = Math.max(last, to);
+  }
+  return Number.isFinite(first) ? [first, last] : null;
+}
+
+/** Office writes a visibility set alongside a fade or move, at its first or last frame. */
+function matchesVisibilitySet(
+  behaviour: XmlNode,
+  clock: TimeWindow | undefined,
+  phase: DeckEffect['phase'],
+  start: number,
+  end: number,
+): boolean {
+  const value = kid(kid(behaviour, 'p:to'), 'p:strVal')?.attrs['val'];
+  if (
+    animationProperty(behaviour) !== 'style.visibility' ||
+    clock?.end == null ||
+    clock.end - clock.start !== 1
+  )
+    return false;
+  if (phase === 'in') return value === 'visible' && clock.start === start;
+  return phase === 'out' && value === 'hidden' && (clock.start === end || clock.end === end);
+}
+
+function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedule: NativeSchedule): void {
+  const behaviours = [
+    ...(VISUAL_BEHAVIOURS.has(node.name) ? [node] : []),
+    ...all(node, (n) => VISUAL_BEHAVIOURS.has(n.name)),
+  ];
+  const targets = behaviours.flatMap((behaviour) =>
+    kids(kid(kid(behaviour, 'p:cBhvr'), 'p:tgtEl') ?? NONE).filter((target) => target.name === 'p:spTgt'),
+  );
+  const shapeId = targets[0]?.attrs['spid'];
+  if (!shapeId || targets.some((target) => target.attrs['spid'] !== shapeId)) {
+    schedule.approximate = true;
+    return;
+  }
+  const subtarget = targets.some((target) => kids(target).length > 0);
+  const textRange = targets.some((target) => kid(target, 'p:txEl') !== undefined);
+  const cls = tn.attrs['presetClass'];
+  const transition = behaviours.find((n) => n.name === 'p:animEffect')?.attrs['transition'];
+  const phase =
+    subtarget && !textRange
+      ? 'emphasis'
+      : cls === 'entr'
+        ? 'in'
+        : cls === 'exit'
+          ? 'out'
+          : cls === undefined && (transition === 'in' || transition === 'out')
+            ? transition
+            : 'emphasis';
+  const paragraphs = textRange && phase !== 'emphasis' ? paragraphRange(targets) : null;
+  const native = subtarget && !paragraphs ? null : nativeLook(tn, phase, behaviours);
+  // A paragraph build shows or hides each paragraph by itself: at once for Appear, anything else as a fade.
+  const selected: NativeLook = paragraphs
+    ? { kind: native?.kind === 'appear' ? 'appear' : 'fade' }
+    : (native ?? { kind: phase === 'emphasis' ? 'pulse' : 'fade' });
+  const { partial, ...look } = selected;
+  const played =
+    look.kind === 'zoom' && look.fade
+      ? [...PLAYED_BEHAVIOURS.zoom, 'p:animEffect']
+      : PLAYED_BEHAVIOURS[look.kind];
+  const clocks = behaviours
+    .filter((b) => played.includes(b.name))
+    .map((b) => schedule.byNode.get(b))
+    .filter((clock) => clock !== undefined);
+  const start = clocks.length > 0 ? Math.min(...clocks.map((w) => w.start)) : window.start;
+  const end = clocks.length > 0 ? Math.max(...clocks.map((w) => w.end ?? w.start)) : (window.end ?? start);
+  const delayMs = Math.round(start);
+  const durationMs = look.kind === 'appear' ? 0 : Math.round(end - start);
+  if (!Number.isSafeInteger(delayMs) || !Number.isSafeInteger(durationMs)) {
+    schedule.approximate = true;
+    return;
+  }
+  const ease = smoothing(
+    tn,
+    behaviours.filter((b) => b.name !== 'p:set' && played.includes(b.name)),
+  );
+  if (
+    !native ||
+    partial ||
+    paragraphs ||
+    !ease ||
+    durationMs < 0 ||
+    (durationMs === 0 && look.kind !== 'appear') ||
+    behaviours.some(
+      (b) =>
+        !played.includes(b.name) &&
+        (b.name !== 'p:set' || !matchesVisibilitySet(b, schedule.byNode.get(b), phase, start, end)),
+    ) ||
+    clocks.some((w) => w.start !== start || w.end !== end)
+  )
+    schedule.approximate = true;
+  const effect: DeckEffect = {
+    shapeId,
+    step: schedule.step,
+    phase,
+    ...look,
+    delayMs,
+    durationMs: Math.max(0, durationMs),
+    ...(ease && ease[0] > 0 ? { accel: ease[0] } : {}),
+    ...(ease && ease[1] > 0 ? { decel: ease[1] } : {}),
+    ...(paragraphs ? { paragraphs } : {}),
+  };
+  schedule.effects.push(effect);
+}
+
+/** Resolve time-node references and parallel/serial delays relative to this click. */
+function scheduleNative(
+  node: XmlNode,
+  at: number,
+  schedule: NativeSchedule,
+  insideEffect = false,
+  click = false,
+): TimeWindow {
+  const tn = cTnOf(node);
+  if (!tn) return { start: at, end: at };
+  const start = click ? at : nativeStart(tn, at, schedule);
+  const window: TimeWindow = { start, end: null };
+  const id = tn.attrs['id'];
+  if (id !== undefined) schedule.windows.set(id, window);
+  if (isMediaCall(node)) {
+    window.end = start;
+    return window;
+  }
+
+  schedule.byNode.set(node, window);
+  const effect =
+    !insideEffect &&
+    (tn.attrs['presetClass'] !== undefined ||
+      EFFECT_NODE_TYPES.has(tn.attrs['nodeType'] ?? '') ||
+      VISUAL_BEHAVIOURS.has(node.name));
+  let end = start;
+  for (const child of kids(kid(tn, 'p:childTnLst') ?? NONE)) {
+    const timed = scheduleNative(
+      child,
+      node.name === 'p:seq' ? end : start,
+      schedule,
+      insideEffect || effect,
+    );
+    end = Math.max(end, timed.end ?? timed.start);
+  }
+
+  const duration = num(tn.attrs['dur']);
+  window.end = duration === null ? end : start + Math.max(0, duration);
+  const [accel, decel] = easeOf(tn);
+  // An effect's own smooth start and end, and its behaviours', are played; any other node's are not.
+  if ((accel > 0 || decel > 0) && !effect && !(insideEffect && VISUAL_BEHAVIOURS.has(node.name)))
+    schedule.approximate = true;
+  if (unsupportedTiming(tn)) {
+    schedule.approximate = true;
+    window.end = start + runLength(node, true);
+  }
+  if (effect) addNativeEffect(node, tn, window, schedule);
+  return window;
+}
+
+function readNativeMotion(timing: XmlNode | undefined): PptxDeckSlide['motion'] {
+  if (!timing) return undefined;
+  const visual = all(timing, (n) => VISUAL_BEHAVIOURS.has(n.name));
+  if (visual.length === 0) return undefined;
+  const anchors = all(
+    timing,
+    (n) => n.name === 'p:cTn' && (n.attrs['nodeType'] === 'tmRoot' || n.attrs['nodeType'] === 'mainSeq'),
+  ).flatMap((n): [string, TimeWindow][] => (n.attrs['id'] ? [[n.attrs['id'], { start: 0, end: null }]] : []));
+  const schedule: NativeSchedule = {
+    step: 0,
+    windows: new Map(anchors),
+    byNode: new Map(),
+    effects: [],
+    approximate: false,
+  };
+  for (const group of mainGroups(timing)) {
+    const click = waitsForClick(group);
+    if (click) {
+      schedule.step++;
+      schedule.windows = new Map(anchors);
+    }
+    scheduleNative(group, 0, schedule, false, click);
+  }
+  return {
+    effects: schedule.effects.sort((a, b) => a.step - b.step || a.delayMs - b.delayMs),
+    approximate: schedule.approximate || visual.some((n) => !schedule.byNode.has(n)),
+  };
 }
 
 // ---- the media --------------------------------------------------------------------------------------
@@ -438,6 +1005,7 @@ export function readDeckSlide(
   return {
     transition: readTransition(sld, rels),
     groups: readGroups(timing),
+    motion: readNativeMotion(timing),
     media: readMedia(sld, timing, rels, size),
     triggers: triggered.reduce(
       (n, seq) =>

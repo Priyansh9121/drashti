@@ -1,3 +1,4 @@
+import type { DeckNativeTransition } from './deck-transition';
 import type { PlaybackClip } from './media';
 import type { Transition } from './model';
 
@@ -16,7 +17,73 @@ import type { Transition } from './model';
 /** Which app made the deck's movie, or none (pictures, as before Session 54). */
 export type DeckBaker = 'powerpoint' | 'keynote' | 'pictures';
 
-/** One step of a slide: what moves at its click, as a clip, and the still it ends on. */
+export type DeckEffectDirection = 'left' | 'right' | 'up' | 'down';
+
+export type DeckEffectKind =
+  | 'appear'
+  | 'fade'
+  | 'fly'
+  | 'wipe'
+  | 'zoom'
+  | 'spin'
+  | 'pulse'
+  | 'float'
+  | 'split'
+  | 'grow-shrink'
+  | 'shape'
+  | 'wheel'
+  | 'bars'
+  | 'bounce';
+
+/** An effect from the deck's own click sequence, targeted at its slide-local shape or group id. */
+export interface DeckEffect {
+  shapeId: string;
+  /** Zero runs with the slide; the following steps are one per click. */
+  step: number;
+  phase: 'in' | 'out' | 'emphasis';
+  kind: DeckEffectKind;
+  delayMs: number;
+  durationMs: number;
+  /** PowerPoint's smooth start and smooth end, as shares of the duration (SMIL's accelerate and decelerate). */
+  accel?: number;
+  decel?: number;
+  /** The direction of travel. */
+  direction?: DeckEffectDirection;
+  /** The second axis of a diagonal Fly. */
+  verticalDirection?: 'up' | 'down';
+  degrees?: number;
+  /** Gallery Zoom fades during its scale. */
+  fade?: true;
+  /** Float's travel as a fraction of the slide along its direction. */
+  distance?: number;
+  /** Split expands or contracts around the center along this axis. */
+  splitAxis?: 'x' | 'y';
+  /** Gallery Zoom's outer scale or Grow/Shrink's final scale. */
+  scale?: number;
+  /** Shape's outline, opening from the centre (or closing towards it when inward). */
+  shape?: 'circle' | 'box' | 'diamond' | 'plus';
+  /** Shape or Split reveals from the edges towards the centre (PowerPoint's "In"). */
+  inward?: true;
+  /** Wheel's spokes. */
+  spokes?: number;
+  /** Random Bars' bars: horizontal strips or vertical ones. */
+  bars?: 'horizontal' | 'vertical';
+  /**
+   * The paragraphs of a text box (the first and the last, from 0) that this entrance or exit shows or hides, when the
+   * deck builds the box paragraph by paragraph. The box itself stays.
+   */
+  paragraphs?: [number, number];
+}
+
+export interface DeckMotion {
+  effects: DeckEffect[];
+  /** How long each step runs, from the automatic step (0) through the last click. */
+  stepsMs: number[];
+  /** One or more source effects were replaced by the closest playable effect. */
+  approximate: boolean;
+}
+
+/** One baked step: what moves at its click, as a clip, and the still it ends on. */
 export interface DeckStep {
   /** The step's motion: a video in Media (no sound), hidden from the Media list as a deck's pages are. */
   clipId: string;
@@ -79,6 +146,8 @@ export interface DeckTransition {
   /** Its name in the deck (`push`, `p14:vortex`, `p159:morph`, Keynote's `cube`…), for the report and the editor. */
   name: string;
   durationMs: number;
+  /** The closest transition Drashti can draw from editable shapes, when playing without a baked clip. */
+  nativeTransition?: DeckNativeTransition;
   /** Its sound, an audio file in Media, played as the slide comes in. */
   soundId?: string;
 }
@@ -100,8 +169,12 @@ export interface DeckSlide {
    * slide's last step; Session 54, C review); left out for the first slide and a deck made before.
    */
   after?: string;
-  /** Step 0 (coming in), then one per click; at least one. */
+  /** The baked last frame kept as the starting picture of a later slide's fallback transition. */
+  sourceStillId?: string;
+  /** Baked step 0 (coming in), then one per click. Empty for a deck played from its editable shapes. */
   steps: DeckStep[];
+  /** PowerPoint's effects, kept alongside baked clips for the editor when a slide needs a video fallback. */
+  motion?: DeckMotion;
   media: DeckMedia[];
   /**
    * Its animations are still being made (Session 56): it shows its picture, a still step, while the import makes its
@@ -130,5 +203,10 @@ export interface DeckImport {
 
 /** How many steps a slide has: its deck's, or one for any other slide. */
 export function stepCount(deck: DeckSlide | undefined): number {
-  return deck ? Math.max(1, deck.steps.length) : 1;
+  return Math.max(1, nativeDeckMotion(deck)?.stepsMs.length ?? deck?.steps.length ?? 0);
+}
+
+/** Baked clips win until the slide is edited and the clips are removed. */
+export function nativeDeckMotion(deck: DeckSlide | undefined): DeckMotion | undefined {
+  return deck?.steps.length === 0 ? deck.motion : undefined;
 }
