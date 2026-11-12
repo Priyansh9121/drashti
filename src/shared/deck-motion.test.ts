@@ -5,6 +5,7 @@ import {
   deckMotionFrame,
   deckParagraphRuns,
   deckWipeClip,
+  deckWipeMask,
   smoothedProgress,
 } from './deck-motion';
 import { deckFromJson, deckMediaIds, deckToJson, mapDeckMedia } from './deck-schema';
@@ -73,6 +74,23 @@ describe('a deck whose editable shapes play each click', () => {
     expect(deckFromJson(deckToJson(deck))).toEqual(deck);
     const invalid = { ...deck, motion: { ...motion, effects: [{ ...effect, step: 7 }] } };
     expect(deckFromJson(deckToJson(invalid))).toBeNull();
+  });
+
+  it('round-trips Basic Zoom’s far end as PowerPoint’s own formulas, and nothing else in their place', () => {
+    const out = '(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*';
+    const zoomAway = { w: `${out}#ppt_w`, h: `${out}#ppt_h`, x: '0.5', y: `1+${out}#ppt_h/2` };
+    const zoom = {
+      ...deck,
+      motion: { ...motion, effects: [{ ...effect, kind: 'zoom' as const, zoomAway }] },
+    };
+    expect(deckFromJson(deckToJson(zoom))).toEqual(zoom);
+    for (const bad of ['', '<script>', '#ppt_w;1', 'x'.repeat(201)]) {
+      const stored = {
+        ...zoom,
+        motion: { ...motion, effects: [{ ...effect, zoomAway: { ...zoomAway, w: bad } }] },
+      };
+      expect(deckFromJson(deckToJson(stored)), bad).toBeNull();
+    }
   });
 });
 
@@ -160,7 +178,11 @@ describe('PowerPoint effects from the engine step clock', () => {
     const floating = at(1, 187.5, [float]);
     expect(floating).toMatchObject({ opacity: 0.5, x: 0, moving: true });
     expect(floating.y).toBeCloseTo(43.2, 4);
-    expect(deckWipeClip(at(1, 187.5, [split]).wipe, bounds, bounds)).toBe('inset(0% 25% 0% 25%)');
+    // Split: its middle shows half-way, with PowerPoint's soft edges, as a mask (never a clip).
+    expect(deckWipeClip(at(1, 187.5, [split]).wipe, bounds, bounds)).toBe('');
+    expect(deckWipeMask(at(1, 187.5, [split]).wipe, bounds, bounds)).toBe(
+      'linear-gradient(to right, rgb(0 0 0 / 0) 0%, rgb(0 0 0 / 0) 21.625%, rgb(0 0 0 / 1) 28.375%, rgb(0 0 0 / 1) 71.625%, rgb(0 0 0 / 0) 78.375%, rgb(0 0 0 / 0) 100%)',
+    );
     expect(at(1, 187.5, [grow]).scale).toBe(1.25);
     expect(at(2, 0, [grow])).toMatchObject({ scale: 1.5, moving: false });
     const resized = { ...slide, deck: { ...loaded, motion: { ...loaded.motion, effects: [grow] } } };
@@ -205,15 +227,38 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
   });
 
   it('opens Shape from the centre, or closes it in from the edges, and leaves nothing clipped at the end', () => {
+    // Its edge where PowerPoint's soft edge is half-way: from half that edge's width (14 % of the way) before the
+    // middle to half past the corners, evenly, so it is where Drashti's old edge was only half-way through.
     const box: DeckEffect = { ...effect, kind: 'shape', shape: 'box' };
     expect(clipAt(187.5, box)).toBe('polygon(25% 25%, 75% 25%, 75% 75%, 25% 75%)');
+    expect(clipAt(131.25, box)).toBe('polygon(39.25% 39.25%, 60.75% 39.25%, 60.75% 60.75%, 39.25% 60.75%)');
     const inward: DeckEffect = { ...box, shape: 'diamond', inward: true };
     expect(clipAt(187.5, inward)).toBe(
       'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 50% 0%, 100% 50%, 50% 100%, 0% 50%, 50% 0%)',
     );
-    const circle = clipAt(75, { ...box, shape: 'circle' });
-    expect(circle.startsWith('polygon(50% 50%, 50% 50%')).toBe(true);
+    // PowerPoint's circle is an ellipse of the shape's own proportions, through its corners at the end.
+    const circle = clipAt(187.5, { ...box, shape: 'circle' });
+    expect(circle.startsWith('polygon(85.355% 50%, ')).toBe(true);
+    expect(circle.split(', ')[18]).toBe('50% 85.355%');
+    expect(clipAt(75, { ...box, shape: 'circle' }).startsWith('polygon(50% 50%, 50% 50%')).toBe(true);
+    // PowerPoint's plus: two bars across the whole shape, widening from its middle lines.
+    expect(clipAt(187.5, { ...box, shape: 'plus' })).toBe(
+      'polygon(25% 0%, 75% 0%, 75% 25%, 100% 25%, 100% 75%, 75% 75%, 75% 100%, 25% 100%, 25% 75%, 0% 75%, 0% 25%, 25% 25%)',
+    );
     expect(at(300, [box]).wipe).toBeNull();
+  });
+
+  it('leaves by Shape the way PowerPoint does: its edges travel as they come in, hiding what they pass', () => {
+    // Out: a hole opening from the middle, the corners last.
+    const box: DeckEffect = { ...effect, kind: 'shape', shape: 'box', phase: 'out' };
+    expect(clipAt(131.25, box)).toBe(
+      'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 39.25% 39.25%, 60.75% 39.25%, 60.75% 60.75%, 39.25% 60.75%, 39.25% 39.25%)',
+    );
+    // In: closing from the edges to the middle, the middle last.
+    expect(clipAt(131.25, { ...box, shape: 'diamond', inward: true })).toBe(
+      'polygon(50% -28.5%, 128.5% 50%, 50% 128.5%, -28.5% 50%)',
+    );
+    expect(at(300, [box])).toMatchObject({ opacity: 0, wipe: null });
   });
 
   it('sweeps Wheel’s spokes clockwise from twelve o’clock', () => {
@@ -235,11 +280,23 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
     expect(at(300, [bars]).wipe).toBeNull();
   });
 
-  it('brings Split in from both edges, the gap closing in the middle', () => {
+  it('brings Split in from both edges, the gap closing in the middle, with PowerPoint’s soft edges', () => {
     const split: DeckEffect = { ...effect, kind: 'split', splitAxis: 'x', inward: true };
-    expect(clipAt(187.5, split)).toBe(
-      'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 25% 0%, 75% 0%, 75% 100%, 25% 100%, 25% 0%)',
+    expect(clipAt(187.5, split)).toBe('');
+    expect(deckWipeMask(at(187.5, [split]).wipe, bounds, bounds)).toBe(
+      'linear-gradient(to right, rgb(0 0 0 / 1) 0%, rgb(0 0 0 / 1) 21.625%, rgb(0 0 0 / 0) 28.375%, rgb(0 0 0 / 0) 71.625%, rgb(0 0 0 / 1) 78.375%, rgb(0 0 0 / 1) 100%)',
     );
+    // Leaving the same way (PowerPoint's In): hidden from both edges in, so the middle goes last.
+    const leaving = deckWipeMask(at(187.5, [{ ...split, phase: 'out' }]).wipe, bounds, bounds);
+    expect(leaving).toBe(
+      'linear-gradient(to right, rgb(0 0 0 / 0) 0%, rgb(0 0 0 / 0) 21.625%, rgb(0 0 0 / 1) 28.375%, rgb(0 0 0 / 1) 71.625%, rgb(0 0 0 / 0) 78.375%, rgb(0 0 0 / 0) 100%)',
+    );
+    // Up and down, and nothing to mask once it has come in, or before it starts to leave.
+    expect(deckWipeMask(at(187.5, [{ ...split, splitAxis: 'y' }]).wipe, bounds, bounds)).toMatch(
+      /^linear-gradient\(to bottom, /u,
+    );
+    expect(at(300, [split]).wipe).toBeNull();
+    expect(deckWipeMask(at(75, [{ ...split, phase: 'out' }]).wipe, bounds, bounds)).toBe('');
   });
 
   it('drops Bounce in from above the slide and lands it in place', () => {

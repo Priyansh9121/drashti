@@ -4,6 +4,9 @@ import {
   caseRow,
   framePeriod,
   intervalStats,
+  jumpFigures,
+  jumpLine,
+  type JumpOnScreens,
   measureRun,
   type MotionRecord,
   stillIntervals,
@@ -215,5 +218,70 @@ describe('a screen’s still frames, between the cases', () => {
       'still frames (nothing moving, between the cases): median 16.7, p95 16.7, longest 36.7 ms, 1 of 29 over 1.5×',
     );
     expect(stillLine(null)).toBe('still frames (nothing moving, between the cases): none');
+  });
+});
+
+describe('a jump to a deck slide Drashti plays itself, on two hall screens (DK-6)', () => {
+  /** One jump: the engine's own times (its first effect starts as the slide goes up), and each screen's frames. */
+  const jump = (shownAt: number, arrived: (number | null)[], moved: (number | null)[]): JumpOnScreens => ({
+    shownAt,
+    effectAt: shownAt,
+    arrivedAt: arrived,
+    movedAt: moved,
+  });
+  const runs = [
+    jump(1000, [1080, 1100], [1080, 1100]),
+    jump(5000, [5050, 5040], [5060, 5040]),
+    jump(9000, [9120, 9200], [9120, 9210]),
+  ];
+
+  it('says how long after the engine’s time each screen showed it and moved its first effect, and how far apart', () => {
+    const f = jumpFigures(runs);
+    expect(f.runs).toBe(3);
+    expect(f.screens).toEqual([
+      { seen: 3, arrival: { median: 80, max: 120 }, effect: { median: 80, max: 120 } },
+      { seen: 3, arrival: { median: 100, max: 200 }, effect: { median: 100, max: 210 } },
+    ]);
+    // Each run's second screen against its first, whichever was first.
+    expect(f.apart).toEqual({ arrival: { median: 20, max: 80 }, effect: { median: 20, max: 90 } });
+  });
+
+  it('counts an effect from its own start, and leaves out a screen’s run that never showed it', () => {
+    const late = { ...jump(0, [300, null], [300, null]), effectAt: 200 };
+    const f = jumpFigures([late, jump(1000, [1040, 1060], [1040, 1060])]);
+    // Its first effect starts 200 ms after the slide went up: the frame 300 ms after is 100 ms into it.
+    expect(f.screens[0]).toEqual({
+      seen: 2,
+      arrival: { median: 40, max: 300 },
+      effect: { median: 40, max: 100 },
+    });
+    expect(f.screens[1]).toEqual({
+      seen: 1,
+      arrival: { median: 60, max: 60 },
+      effect: { median: 60, max: 60 },
+    });
+    // Apart only where both screens showed it.
+    expect(f.apart).toEqual({ arrival: { median: 20, max: 20 }, effect: { median: 20, max: 20 } });
+  });
+
+  it('has no screens apart with one screen, and nothing for a screen that never showed it', () => {
+    const f = jumpFigures([jump(0, [30], [40]), jump(1000, [null], [null])]);
+    expect(f.screens).toEqual([
+      { seen: 1, arrival: { median: 30, max: 30 }, effect: { median: 40, max: 40 } },
+    ]);
+    expect(f.apart).toBeNull();
+    expect(jumpFigures([jump(0, [null, null], [null, null])]).screens).toEqual([
+      { seen: 0, arrival: null, effect: null },
+      { seen: 0, arrival: null, effect: null },
+    ]);
+  });
+
+  it('reads as one line: each screen against the engine’s time, then the screens apart', () => {
+    expect(jumpLine(jumpFigures(runs))).toBe(
+      'a jump to a deck slide Drashti plays itself (3 runs, 2 screens): screen 1 showed it +80 ms from the engine’s time (the most +120), moved its first effect +80 ms from its start (the most +120); screen 2 showed it +100 ms from the engine’s time (the most +200), moved its first effect +100 ms from its start (the most +210); screens apart: 20 ms showing it (the most 80), 20 ms moving it (the most 90)',
+    );
+    expect(jumpLine(jumpFigures([jump(0, [null], [null])]))).toBe(
+      'a jump to a deck slide Drashti plays itself (1 run, 1 screen): screen 1 never showed it',
+    );
   });
 });
