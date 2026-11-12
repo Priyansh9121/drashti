@@ -138,6 +138,20 @@ interface PreparedEditor {
   linked: Map<string, { page: EditSlide; nativeIds: Set<string> }>;
 }
 
+export interface PdfEditorProgress {
+  slideId: string | null;
+  open(doc: EditDoc, pending: string[], issues: string[]): void;
+  update(pages: EditSlide[], settled: string[]): void;
+  /** The show idle; `resuming` (after the show ended a job, or a wait at all): idle for a couple of seconds too. */
+  waitForIdle(signal: AbortSignal, resuming?: boolean): Promise<boolean>;
+  /** The show needs the computer now (anything up, or the stream on air or recording). */
+  busy(): boolean;
+}
+
+const sourceIndices = (slides: EditSlide[]) => [
+  ...new Set(slides.flatMap((slide) => (slide.documentPage ? [slide.documentPage.page] : []))),
+];
+
 /** Native working copies belong to an editor stamp; they never replace stored playback merely on open. */
 export class ImportedSlides {
   private readonly prepared = new Map<string, PreparedEditor>();
@@ -175,10 +189,11 @@ export class ImportedSlides {
     opened: EditDoc,
     stamp: string,
     guard: SourceCommitGuard,
+    progress?: PdfEditorProgress,
   ): Promise<{ doc: EditDoc; issues: string[] }> {
     if (rows.presentationId !== opened.presentationId)
       throw new Error('Source presentation identity changed.');
-    return this.prepareDoc(opened, stamp, guard);
+    return this.prepareDoc(opened, stamp, guard, undefined, progress);
   }
 
   private async prepareDoc(
@@ -186,12 +201,14 @@ export class ImportedSlides {
     stamp: string,
     guard: SourceCommitGuard,
     retained?: OriginalDescriptor,
+    progress?: PdfEditorProgress,
   ): Promise<{ doc: EditDoc; issues: string[] }> {
     const allowed = () => !guard.signal.aborted && guard.allowed();
     if (!allowed()) throw new Error('Source preparation cancelled.');
     const doc = structuredClone(opened);
     const issues: string[] = [];
     const slides = allSlides(doc);
+    for (const slide of slides) if (slide.documentPage) slide.sourceOccurrenceId = slide.id;
     // A saved page picture with no page of the original: an older import's slide (or one whose pages did not match).
     // A page added in the editor is not one: it has a PDF page's paper size, or no picture of an original.
     if (
@@ -213,6 +230,7 @@ export class ImportedSlides {
     }
     const work = await mkdtemp(join(tmpdir(), 'drashti-edit-source-'));
     let retainOutput = false;
+    const view = { shown: false };
     try {
       const bySource = new Map<string, EditSlide[]>();
       for (const slide of slides)
@@ -227,7 +245,39 @@ export class ImportedSlides {
           list.push(slide);
           bySource.set(key, list);
         }
-      for (const list of bySource.values()) {
+      const sources = [...bySource.values()];
+      const focused = slides.find((slide) => slide.id === progress?.slideId) ?? slides[0];
+      const primary = sources.find((list) => focused && list.includes(focused)) ?? sources[0];
+      const primaryPages = primary ? sourceIndices(primary) : [];
+      const progressive =
+        primary?.[0]?.documentPage?.ext === 'pdf' && primaryPages.length > 3 ? progress : undefined;
+      if (progressive && focused?.documentPage && primary?.includes(focused)) {
+        const at = focused.documentPage.page;
+        primaryPages.sort((a, b) => Math.abs(a - at) - Math.abs(b - at) || b - a);
+      }
+      const order =
+        progressive && primary ? [primary, ...sources.filter((list) => list !== primary)] : sources;
+      const pending = new Set(progressive ? order.flat().map((slide) => slide.id) : []);
+      const firstPages = new Set(primaryPages.slice(0, 3));
+      const openEditor = () => {
+        if (!progressive || view.shown || !allowed()) return;
+        view.shown = true;
+        this.rememberPrepared(doc, stamp);
+        progressive.open(structuredClone(doc), [...pending], [...issues]);
+      };
+      const settle = (occurrences: EditSlide[], ready: EditSlide[] = []) => {
+        const settled = occurrences.map((slide) => slide.id).filter((id) => pending.delete(id));
+        if (view.shown && settled.length && allowed()) progressive?.update(ready, settled);
+      };
+      const waitForIdle = (signal: AbortSignal, resuming = false) =>
+        view.shown && progressive
+          ? progressive.waitForIdle(signal, resuming)
+          : Promise.resolve(!signal.aborted);
+      if (progressive && focused && !primary?.includes(focused)) openEditor();
+
+      for (const list of order) {
+        if (!(await waitForIdle(guard.signal)) || !allowed())
+          throw new Error('Source preparation cancelled.');
         const ref = list[0]?.documentPage;
         if (!ref) continue;
         const source = await this.originalFor(ref, retained);
@@ -235,6 +285,8 @@ export class ImportedSlides {
           issues.push(
             'The original file of these slides is missing or damaged. The slides still show as before; restore the original file from a backup.',
           );
+          settle(list);
+          if (list === primary) openEditor();
           continue;
         }
         if (!allowed()) throw new Error('Source preparation cancelled.');
@@ -242,48 +294,24 @@ export class ImportedSlides {
           issues.push(
             'Drashti can’t read this deck’s own words and shapes. To edit them, save the deck as a PDF from its own program, then use Link source page… to link each slide to its page. The slides still show as before.',
           );
+          settle(list);
+          if (list === primary) openEditor();
           continue;
         }
         try {
           const outDir = join(work, randomUUID());
           await mkdir(outDir);
-          // W6's review N4: a PowerPoint slide imported before alpha.17 has its clicks read from the kept file too.
-          const timingPages =
-            ref.ext === 'pptx'
-              ? sourceTimingPages(
-                  list,
-                  this.db
-                    .prepare('SELECT source_hash FROM presentations WHERE id = ?')
-                    .pluck()
-                    .get(doc.presentationId),
-                )
-              : [];
-          const parsed = await this.reader({
-            ext: ref.ext,
-            file: source.file,
-            outDir,
-            sourcePages: [
-              ...new Set(list.flatMap((slide) => (slide.documentPage ? [slide.documentPage.page] : []))),
-            ],
-            ...(timingPages.length > 0 ? { timingPages } : {}),
-            signal: guard.signal,
-            checkpoint: () => Promise.resolve(allowed()),
-          });
-          if (!parsed.ok) {
-            retainOutput ||= parsed.retainOutput === true;
-            issues.push(parsed.message);
-            continue;
-          }
-          if (!allowed()) throw new Error('Source preparation cancelled.');
-          const retained = new Map<string, string>();
-          for (const native of parsed.pages) {
-            const occurrences = list.filter((slide) => slide.documentPage?.page === native.sourceIndex);
-            if (!occurrences.length) continue;
+          const retainedAssets = new Map<string, string>();
+          const takeNative = async (
+            native: PreparedSourcePage,
+            occurrences: EditSlide[],
+          ): Promise<EditSlide[]> => {
+            if (!occurrences.length) return [];
             try {
               const media = new Map<string, string>();
               for (const asset of native.assets) {
                 if (!allowed()) throw new Error('Source preparation cancelled.');
-                let mediaId = retained.get(asset.file);
+                let mediaId = retainedAssets.get(asset.file);
                 if (!mediaId) {
                   const staged = await this.media.stage(asset.file);
                   if (!staged.ok) {
@@ -298,7 +326,7 @@ export class ImportedSlides {
                     }),
                   );
                   mediaId = imported.mediaId;
-                  retained.set(asset.file, mediaId);
+                  retainedAssets.set(asset.file, mediaId);
                 }
                 if (media.has(asset.token)) throw new Error('A source asset token is duplicated.');
                 media.set(asset.token, mediaId);
@@ -360,31 +388,100 @@ export class ImportedSlides {
                 Object.assign(slide, candidate);
               }
               issues.push(...native.issues);
+              return occurrences;
             } catch {
               if (!allowed()) throw new Error('Source preparation cancelled.');
               issues.push(
                 'Some of the original’s words, pictures or shapes could not be made editable. Those slides still show as before.',
               );
+              return [];
             }
+          };
+          const offered = new Set<number>();
+          const takePage = async (index: number, page?: PreparedSourcePage) => {
+            if (!allowed()) throw new Error('Source preparation cancelled.');
+            if (offered.has(index)) return;
+            offered.add(index);
+            const occurrences = list.filter((slide) => slide.documentPage?.page === index);
+            const ready = page ? await takeNative(page, occurrences) : [];
+            settle(occurrences, ready);
+            if (list === primary && (!firstPages.delete(index) || !firstPages.size)) openEditor();
+          };
+          /*
+           * Behind the open editor (Session 57, the review's HIGH-1), a PDF's job ends whenever the show needs the
+           * computer, leaving the pages it has not read `unread`; the reading waits for the show here, outside every
+           * queue and with no job's clock running, then goes on with them in a new job. One byte budget for the PDF.
+           */
+          const behind =
+            progressive && ref.ext === 'pdf'
+              ? {
+                  onPdfPage: takePage,
+                  pdfHold: () => view.shown && progressive.busy(),
+                  pdfBudget: { assetBytes: 0, metadataBytes: 0 },
+                }
+              : {};
+          // W6's review N4: a PowerPoint slide imported before alpha.17 has its clicks read from the kept file too.
+          const timingPages =
+            ref.ext === 'pptx'
+              ? sourceTimingPages(
+                  list,
+                  this.db
+                    .prepare('SELECT source_hash FROM presentations WHERE id = ?')
+                    .pluck()
+                    .get(doc.presentationId),
+                )
+              : [];
+          let sourcePages = progressive && list === primary ? primaryPages : sourceIndices(list);
+          let failed = false;
+          for (;;) {
+            const parsed = await this.reader({
+              ext: ref.ext,
+              file: source.file,
+              outDir,
+              sourcePages,
+              ...(timingPages.length > 0 ? { timingPages } : {}),
+              signal: guard.signal,
+              checkpoint: () => Promise.resolve(allowed()),
+              ...behind,
+            });
+            if (!parsed.ok) {
+              retainOutput ||= parsed.retainOutput === true;
+              issues.push(parsed.message);
+              break;
+            }
+            if (!allowed()) throw new Error('Source preparation cancelled.');
+            for (const native of parsed.pages) await takePage(native.sourceIndex, native);
+            failed ||= parsed.failed.length > 0;
+            if (!parsed.unread?.length) break;
+            sourcePages = parsed.unread;
+            if (!(await waitForIdle(guard.signal, true)) || !allowed())
+              throw new Error('Source preparation cancelled.');
           }
-          if (parsed.failed.length)
+          if (failed)
             issues.push('Some source pages could not be prepared and stay as their saved pictures.');
         } catch {
           if (!allowed()) throw new Error('Source preparation cancelled.');
           issues.push(
             'Some of the original’s words, pictures or shapes could not be made editable. Those slides still show as before.',
           );
+        } finally {
+          settle(list);
+          if (list === primary) openEditor();
         }
       }
     } finally {
       if (!retainOutput) await rm(work, { recursive: true, force: true });
     }
     if (!allowed()) throw new Error('Source preparation cancelled.');
-    for (const slide of slides) if (slide.documentPage) slide.sourceOccurrenceId = slide.id;
+    if (!view.shown) this.rememberPrepared(structuredClone(doc), stamp);
+    return { doc, issues: [...new Set(issues)] };
+  }
+
+  private rememberPrepared(doc: EditDoc, stamp: string): void {
     this.prepared.delete(doc.presentationId);
     this.prepared.set(doc.presentationId, {
       stamp,
-      doc: structuredClone(doc),
+      doc,
       inserted: new Set(),
       linked: new Map(),
     });
@@ -393,7 +490,6 @@ export class ImportedSlides {
       if (oldest === undefined) break;
       this.prepared.delete(oldest);
     }
-    return { doc, issues: [...new Set(issues)] };
   }
 
   /** Prepare an existing retained PDF, then authorize fresh occurrences for this editor stamp.
@@ -724,7 +820,8 @@ export class ImportedSlides {
     const doc = structuredClone(edited);
     const prepared = cached?.stamp === stamp ? allSlides(cached.doc) : [];
     const native = new Map(prepared.map((slide) => [slide.id, slide]));
-    const stored = new Map(allSlides(editDocOf(before, edited.name).doc).map((slide) => [slide.id, slide]));
+    const storedDoc = editDocOf(before, edited.name).doc;
+    const stored = new Map(allSlides(storedDoc).map((slide) => [slide.id, slide]));
     for (const slide of allSlides(doc)) {
       const old = before.slides.find((row) => row.id === slide.id);
       const storedRef = documentPageFromJson(old?.document_page);
@@ -786,12 +883,13 @@ export class ImportedSlides {
       )
         return { ok: false, message: 'Reopen the editor before saving these imported pages.' };
       const copied = !old;
-      const untouched =
-        sameData(slideCanvas(original, cached?.doc ?? before), slideCanvas(slide, doc)) &&
-        sameData(masterContribution(cached?.doc ?? doc, original), masterContribution(doc, slide)) &&
-        sameData(contentOf(slide, copied), contentOf(original, copied));
-      if (untouched) {
-        const saved = stored.get(original.id) ?? (cached?.inserted.has(original.id) ? original : undefined);
+      const saved = stored.get(original.id) ?? (cached?.inserted.has(original.id) ? original : undefined);
+      const matches = (basis: EditSlide, basisDoc: EditDoc) =>
+        sameData(slideCanvas(basis, basisDoc), slideCanvas(slide, doc)) &&
+        sameData(masterContribution(basisDoc, basis), masterContribution(doc, slide)) &&
+        sameData(contentOf(slide, copied), contentOf(basis, copied));
+      // A save can reach Main before the renderer receives the last prepared page.
+      if (matches(original, cached?.doc ?? doc) || (saved && matches(saved, storedDoc))) {
         if (!saved)
           return { ok: false, message: 'The original page is no longer available. Reopen the editor.' };
         // Only the prepared objects are restored; notes, position, hide, guides and transitions still save.

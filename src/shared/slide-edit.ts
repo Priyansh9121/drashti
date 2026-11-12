@@ -132,6 +132,15 @@ export interface SlideLook {
   darken?: Darken | null;
 }
 
+export interface EditSourceRequest {
+  requestId: string;
+  slideId: string | null;
+}
+
+export type EditSourceUpdate = { requestId: string } & (
+  { pages: EditSlide[]; settled: string[] } | { issues: string[] }
+);
+
 export type EditSlidesResult =
   | {
       ok: true;
@@ -144,6 +153,8 @@ export type EditSlidesResult =
       unreadable: number;
       /** Limits of a source document's editable derivative, shown before its objects are changed. */
       sourceIssues?: string[];
+      /** Saved pictures still being prepared for this editor request. */
+      preparingSource?: string[];
     }
   | { ok: false; message: string };
 
