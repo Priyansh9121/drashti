@@ -23,7 +23,7 @@ import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import { formatBytes, formatClock } from '../shared/format';
-import type { AutomaticImportNotice, ImportOptions, ImportResult } from '../shared/import';
+import type { ImportOptions, ImportResult } from '../shared/import';
 import { loadedBooks } from '../shared/import';
 import { type LibraryChange, listedKirtan, type NewFromWordsResult } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
@@ -144,6 +144,7 @@ import { isPerfScenario, scenarioFor } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { SoundRepo } from './db/sound';
 import { SoundPass } from './sound/sound-pass';
+import { automaticImportNotices } from './import/automatic-notices';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { clearDeckLeftovers, OfficeCopies, officeCopiesFile } from './import/deck/leftovers';
@@ -2905,12 +2906,10 @@ function start(): void {
     sendToPage(operatorWindow, channel, payload);
   };
   // A watched folder can finish its first look before the operator window subscribes.
-  const initialImportNotices: AutomaticImportNotice[] = [];
-  let automaticImportNoticesReady = false;
-  const importNotice = (notice: AutomaticImportNotice) => {
-    if (automaticImportNoticesReady) sendToOperator(IPC.library.automaticImportNotice, notice);
-    else initialImportNotices.push(notice);
-  };
+  const importNotices = automaticImportNotices((notice) =>
+    sendToPage(operatorWindow, IPC.library.automaticImportNotice, notice),
+  );
+  const importNotice = importNotices.publish;
 
   // ---- streaming -------------------------------------------------------------
   let eventsStreamWas: StreamStatus | null = null;
@@ -6079,8 +6078,7 @@ function start(): void {
   });
   handle(IPC.library.takeAutomaticImportNotices, (e) => {
     if (!fromOperator(e)) return [];
-    automaticImportNoticesReady = true;
-    return initialImportNotices.splice(0);
+    return importNotices.take();
   });
   handle(IPC.media.saveStill, async (e, mediaId, jpeg) => {
     if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) {
