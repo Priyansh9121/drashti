@@ -18,7 +18,7 @@ it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => 
     const trashDir = join(root, 'Trash');
     mkdirSync(mediaDir);
     mkdirSync(trashDir);
-    const ids = ['unused', 'playlist', 'undo', 'slide', 'live', 'replaced', 'path-alias'];
+    const ids = ['unused', 'playlist', 'undo', 'slide', 'live', 'replaced', 'path-alias', 'z-late'];
     db.exec(
       "INSERT INTO media (id, kind, name, path) VALUES ('original', 'video', 'Original', 'original.mp4')",
     );
@@ -53,10 +53,15 @@ it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => 
     const removal = new MediaRemoval(db, { onScreens: () => new Set(['live']) });
     const trash = vi.fn((file: string) => {
       renameSync(file, join(trashDir, 'unused.mp4'));
+      // The operator can add a slide reference while the first move is in progress.
+      db.prepare('UPDATE elements SET props = ? WHERE id = ?').run(
+        JSON.stringify({ mediaId: 'slide', other: 'z-late' }),
+        'e',
+      );
       return Promise.resolve();
     });
 
-    expect(await removal.trashUnusedTrims(mediaDir, trash)).toBe(1);
+    expect(await removal.trashUnusedTrims(mediaDir, trash, () => true, new AbortController().signal)).toBe(1);
     expect(trash).toHaveBeenCalledOnce();
     expect(existsSync(join(trashDir, 'unused.mp4'))).toBe(true);
     expect(existsSync(join(mediaDir, 'unused.mp4'))).toBe(false);

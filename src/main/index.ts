@@ -40,7 +40,7 @@ import {
 } from '../shared/media';
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
-import { MediaRemoval } from './library/media-removal';
+import { MediaRemoval, TrimCleanup } from './library/media-removal';
 import { FileActions } from './library/file-actions';
 import {
   extOf,
@@ -697,6 +697,7 @@ const updateBase = testUpdateBase ?? UPDATE_BASE;
 const testInstallLog = packaged() ? undefined : sw('DRASHTI_TEST_UPDATE_INSTALL');
 const testUpdateRate = packaged() ? null : Number(sw('DRASHTI_TEST_UPDATE_RATE') ?? 0) || null;
 let testOnAir = false;
+let testTrimActivityChanged: (() => void) | undefined;
 // Tests only (never a packaged Drashti): Import from a Link asks this local stand-in instead of Dropbox,
 // saves into this folder by default, and (the guard, which every e2e run sets) refuses any request to
 // anywhere but 127.0.0.1.
@@ -706,6 +707,7 @@ const testDownloadsDir = packaged() ? null : (sw('DRASHTI_TEST_DOWNLOADS_DIR') ?
 if (!packaged() && sw('DRASHTI_TEST_ON_AIR_HOOK') === '1')
   (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir = (on) => {
     testOnAir = on;
+    testTrimActivityChanged?.();
   };
 // Tests only: scheduled backups copy at this rate (bytes a second), so a test can watch one wait.
 const testBackupRate = packaged() ? null : Number(sw('DRASHTI_TEST_BACKUP_RATE') ?? 0) || null;
@@ -2875,6 +2877,7 @@ function start(): void {
   let eventsStreamWas: StreamStatus | null = null;
   let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
   let conversionActivityChanged: (() => void) | undefined;
+  let trimCleanupActivityChanged: (() => void) | undefined;
   // Edit slides' PDF reading waiting for the show (Session 57): each wait's check, told when the stream changes.
   const pdfReadWaits = new Set<() => void>();
   const countStreams = streamCounter((kind) => behind?.service.count(kind));
@@ -2918,6 +2921,7 @@ function start(): void {
     statusChanged: (status) => {
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
+      trimCleanupActivityChanged?.();
       for (const check of [...pdfReadWaits]) check();
       eventsOut.emit(streamEvents(eventsStreamWas, status));
       eventsStreamWas = status;
@@ -3918,19 +3922,34 @@ function start(): void {
     .catch((error: unknown) => {
       log.warn('Trim: could not resume an interrupted cut', error);
     });
-  void mediaRemoval
-    .trashUnusedTrims(mediaDir, (file) => shell.trashItem(file))
-    .then((gone) => {
-      if (gone === 0) return;
+  const trimCleanupQuiet = () =>
+    !quitStarted && !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers);
+  const trimCleanup = new TrimCleanup(
+    trimCleanupQuiet,
+    async (signal) => {
+      const gone = await mediaRemoval.trashUnusedTrims(
+        mediaDir,
+        (file) => shell.trashItem(file),
+        trimCleanupQuiet,
+        signal,
+      );
+      if (gone === 0 || quitStarted) return;
       libraryChanged(true);
       log.info(`Media: moved ${String(gone)} unused Trim cut(s) to the Trash`);
-    })
-    .catch((error: unknown) => {
-      log.warn('Media: could not check unused Trim cuts', error);
-    });
-  const offTrimActivity = engine.onChange(() => playlistTrims.activityChanged());
+    },
+    (error) => log.warn('Media: could not check unused Trim cuts', error),
+  );
+  trimCleanupActivityChanged = () => trimCleanup.activityChanged();
+  testTrimActivityChanged = trimCleanupActivityChanged;
+  const offTrimActivity = engine.onChange(() => {
+    playlistTrims.activityChanged();
+    trimCleanup.activityChanged();
+  });
   stops.add('playlist trims', () => {
     offTrimActivity();
+    trimCleanupActivityChanged = undefined;
+    testTrimActivityChanged = undefined;
+    trimCleanup.close();
     playlistTrims.close();
   });
   const noTrim = { ok: false as const, message: 'Open a video row’s Trim to change that playlist.' };
@@ -6798,6 +6817,13 @@ function start(): void {
   operatorWindow.webContents.on('before-input-event', (event, input) => {
     if (openingKeys.take(input)) event.preventDefault();
   });
+  const openTrimCleanup = () => {
+    if (operatorWindow?.isVisible() && !operatorWindow.webContents.isLoadingMainFrame()) trimCleanup.open();
+  };
+  if (sw('DRASHTI_SELFTEST') === undefined) {
+    operatorWindow.once('show', openTrimCleanup);
+    operatorWindow.webContents.once('did-finish-load', openTrimCleanup);
+  }
   operatorWindow.once('show', () => {
     log.info(phaseLine('operator window shown'));
   });
