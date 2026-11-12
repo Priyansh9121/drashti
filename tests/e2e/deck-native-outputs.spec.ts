@@ -145,13 +145,13 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       expect(clicked?.stepAt).toBe(entryAt + WIPE_MS);
       const incoming = hall.locator('[data-layer="slide"] [data-slide-in]');
       await holdClock(app, entryAt + WIPE_MS / 2);
-      // PowerPoint's Wipe: the incoming slide through a soft band one slide long (a mask), no hard edge.
-      await expect(incoming).toHaveCSS('mask-image', /^linear-gradient\(/u);
-      await expect(incoming).toHaveCSS('clip-path', 'none');
+      // A deck's Wipe: the incoming slide up to a hard edge (a clip), no mask (Q57-28).
+      await expect(incoming).not.toHaveCSS('clip-path', 'none');
+      await expect(incoming).toHaveCSS('mask-image', 'none');
       await expect(target(hall, 5)).toHaveCSS('opacity', '0');
       await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0');
       await holdClock(app, entryAt + WIPE_MS + FADE_MS / 2);
-      await expect(incoming).toHaveCSS('mask-image', 'none');
+      await expect(incoming).toHaveCSS('clip-path', 'none');
       await expect(target(hall, 5)).toHaveCSS('opacity', '0.5');
       await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0.5');
       await holdClock(app, entryAt + WIPE_MS + FADE_MS);
