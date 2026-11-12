@@ -7,6 +7,7 @@ import { basename, dirname, extname, join } from 'node:path';
 import { z } from 'zod';
 import type { ConversionJob, ConvertResult } from '../../shared/convert';
 import { isHevc } from '../../shared/convert';
+import { formatBytes } from '../../shared/format';
 import type { ImportIssue } from '../../shared/import';
 import type { Db } from '../db/database';
 import { CONVERTING_DIR, MediaStore, sha256File } from '../import/media-store';
@@ -1045,10 +1046,13 @@ export class ConvertService {
     action: 'save it' | 'import it',
   ): string | null {
     const size = statSync(source, { throwIfNoEntry: false })?.size ?? 0;
+    const estimate = Math.ceil(size * fraction);
     const free = this.deps.freeBytes(out);
-    return free - Math.ceil(size * fraction) < KEEP_FREE_BYTES
-      ? `Only ${gb(free)} is free on this disk, and Drashti keeps 2 GB free. Free up some space, then ${action} again.`
-      : null;
+    if (free - estimate >= KEEP_FREE_BYTES) return null;
+    const advice = `Free up some space, then ${action} again.`;
+    return action === 'save it'
+      ? `This cut needs about ${formatBytes(estimate)}, and only ${gb(free)} is free on this disk (Drashti keeps 2 GB free). ${advice}`
+      : `Only ${gb(free)} is free on this disk, and Drashti keeps 2 GB free. ${advice}`;
   }
 
   private async runFile(job: FileJob): Promise<void> {
