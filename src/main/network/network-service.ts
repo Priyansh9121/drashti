@@ -1012,7 +1012,7 @@ export class NetworkService implements EngineTransport {
     };
     this.savingSlide = true;
     try {
-      if (!(await waitForSlidePicture(read, now)) || !current()) {
+      if ((await waitForSlidePicture(read, now)) === null || !current()) {
         const guard = this.checked(request);
         return 'status' in guard ? guard : fallback();
       }
