@@ -36,6 +36,9 @@ interface DrawingContext {
   drawImage: (...args: unknown[]) => unknown;
   fillRect: (...args: unknown[]) => unknown;
   strokeRect: (...args: unknown[]) => unknown;
+  clip: (...args: unknown[]) => unknown;
+  save: (...args: unknown[]) => unknown;
+  restore: (...args: unknown[]) => unknown;
 }
 interface CanvasFactory {
   create(width: number, height: number): { canvas: DrawingCanvas; context: DrawingContext };
@@ -50,9 +53,12 @@ interface PaintCall {
   alpha: number;
   width: number;
   composite: string;
+  clip?: ClipBounds | null;
 }
 const PAINT = ['fillText', 'strokeText', 'fill', 'stroke', 'drawImage', 'fillRect', 'strokeRect'] as const;
+type ContextMethod = (typeof PAINT)[number] | 'save' | 'restore' | 'clip';
 type Matrix = [number, number, number, number, number, number];
+type ClipBounds = [left: number, top: number, right: number, bottom: number];
 function matrixOf(values: readonly number[]): Matrix {
   const [a, b, c, d, e, f] = values;
   if (
@@ -126,6 +132,58 @@ function pointInPdfPaint(x: number, y: number, matrix: Matrix, scale: number): {
     y: (matrix[1] * x + matrix[3] * y + matrix[5]) / scale,
   };
 }
+function rectangleBounds(commands: readonly NativePathCommand[]): ClipBounds | undefined {
+  const [a, b, c, d, end] = commands;
+  if (
+    commands.length !== 5 ||
+    a?.op !== 'M' ||
+    b?.op !== 'L' ||
+    c?.op !== 'L' ||
+    d?.op !== 'L' ||
+    end?.op !== 'Z'
+  )
+    return undefined;
+  const verticalFirst = a.x === b.x && b.y === c.y && c.x === d.x && d.y === a.y;
+  const horizontalFirst = a.y === b.y && b.x === c.x && c.y === d.y && d.x === a.x;
+  if (!verticalFirst && !horizontalFirst) return undefined;
+  return [Math.min(a.x, c.x), Math.min(a.y, c.y), Math.max(a.x, c.x), Math.max(a.y, c.y)];
+}
+
+function formBounds(value: unknown): ClipBounds | undefined {
+  if (!Array.isArray(value) || value.length !== 4) return undefined;
+  const bounds: readonly unknown[] = value;
+  const [x1, y1, x2, y2] = bounds;
+  if (
+    typeof x1 !== 'number' ||
+    typeof y1 !== 'number' ||
+    typeof x2 !== 'number' ||
+    typeof y2 !== 'number' ||
+    ![x1, y1, x2, y2].every(Number.isFinite)
+  )
+    return undefined;
+  return [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
+}
+
+function intersectClip(
+  current: ClipBounds | null | undefined,
+  bounds: ClipBounds | undefined,
+  ctx: DrawingContext,
+  scale: number,
+): ClipBounds | null {
+  if (current === null || !bounds) return null;
+  const { a, b, c, d, e, f } = ctx.getTransform();
+  if ((b !== 0 || c !== 0) && (a !== 0 || d !== 0)) return null;
+  const matrix: Matrix = [a, b, c, d, e, f];
+  const p = pointInPdfPaint(bounds[0], bounds[1], matrix, scale);
+  const q = pointInPdfPaint(bounds[2], bounds[3], matrix, scale);
+  return [
+    Math.max(Math.min(p.x, q.x), current?.[0] ?? -Infinity),
+    Math.max(Math.min(p.y, q.y), current?.[1] ?? -Infinity),
+    Math.min(Math.max(p.x, q.x), current?.[2] ?? Infinity),
+    Math.min(Math.max(p.y, q.y), current?.[3] ?? Infinity),
+  ];
+}
+
 function mappedPdfCommands(
   commands: readonly NativePathCommand[],
   matrix: Matrix,
@@ -239,8 +297,8 @@ async function pngOf(canvas: DrawingCanvas): Promise<Uint8Array> {
 
 /**
  * Run every PDF operator so text advances and graphics state remain correct.
- * Suppress only paint on the page's own canvas. Unknown compositing is refused,
- * rather than leaving an original full-page picture underneath editable words.
+ * Separate paint on the page canvas, leaving clips and masks active in PDF.js.
+ * Backdrop-dependent compositing needs the original page and stays in saved playback.
  */
 export async function editablePdfPage(
   doc: PDFDocumentProxy,
@@ -271,33 +329,42 @@ export async function editablePdfPage(
     ops['nextLineShowText'],
     ops['nextLineSetSpacingShowText'],
   ]);
-  const complex = new Set([ops['beginGroup'], ops['endGroup'], ops['beginSMaskGroup'], ops['endSMaskGroup']]);
-  if (list.fnArray.some((op) => complex.has(op)))
-    throw new Error(
-      'This page uses transparency groups or masks that cannot yet be separated safely. Its saved playback is unchanged.',
-    );
-  let clippingText = false;
-  for (let i = 0; i < list.fnArray.length; i++) {
-    if (list.fnArray[i] === ops['setTextRenderingMode'] && Number(argsAt(i)[0]) >= 4) clippingText = true;
-  }
-  if (clippingText)
-    throw new Error('This page uses text as a clipping mask. Its saved playback is unchanged.');
-
+  const pathClips = new Set([ops['clip'], ops['eoClip']]);
+  const scopes = new Set([ops['beginGroup'], ops['beginSMaskGroup'], ops['paintFormXObjectBegin']]);
+  const ends = new Set([ops['restore'], ops['endGroup'], ops['endSMaskGroup'], ops['paintFormXObjectEnd']]);
+  const imageMasks = new Set([
+    ops['paintImageMaskXObject'],
+    ops['paintImageMaskXObjectGroup'],
+    ops['paintImageMaskXObjectRepeat'],
+    ops['paintSolidColorImageMask'],
+  ]);
   // Source v6 packed snapshots must precede the first reference render.
   const pathSnapshots = new Map<number, { commands: NativePathCommand[]; fillRule: 'nonzero' | 'evenodd' }>();
-  const clipped = new Set([
-    ops['clip'],
-    ops['eoClip'],
-    ops['paintFormXObjectBegin'],
-    ops['paintFormXObjectEnd'],
-  ]);
-  if (list.fnArray.some((fn) => clipped.has(fn)))
-    throw new Error(
-      'This page uses clipping or form drawing that cannot yet be separated safely. Its saved playback is unchanged.',
-    );
+  const clipBounds = new Map<number, ClipBounds>();
+  const textMasks = new Set<number>();
+  const textModes: number[] = [];
+  let textMode = 0;
+  let clipsNextPath = false;
+  let hasEffects = false;
   for (const [index, fn] of list.fnArray.entries()) {
     if (index % 128 === 0) await control.checkpoint?.();
     const args = argsAt(index);
+    if (scopes.has(fn) || fn === ops['save']) textModes.push(textMode);
+    if (ends.has(fn)) {
+      textMode = textModes.pop() ?? 0;
+      clipsNextPath = false;
+    }
+    if (scopes.has(fn) || pathClips.has(fn) || imageMasks.has(fn)) hasEffects = true;
+    if (pathClips.has(fn)) clipsNextPath = true;
+    if (fn === ops['paintFormXObjectBegin']) {
+      const bounds = formBounds(args[1]);
+      if (bounds) clipBounds.set(index, bounds);
+    }
+    if (fn === ops['setTextRenderingMode']) {
+      textMode = Number(args[0]);
+      if (textMode >= 4) hasEffects = true;
+    }
+    if (show.has(fn) && textMode >= 4) textMasks.add(index);
     if (fn === ops['setGState']) {
       const states: unknown = args[0];
       if (!Array.isArray(states)) throw new Error('This page has an unsupported graphics state.');
@@ -310,20 +377,28 @@ export async function editablePdfPage(
           throw new Error(
             'This page uses backdrop-dependent compositing that cannot be separated safely. Its saved playback is unchanged.',
           );
-        if ((key === 'SMask' && value !== false) || (key === 'TR' && value !== null))
+        if (key === 'TR' && value !== null)
           throw new Error(
-            'This page uses masks or transfer effects that cannot be separated safely. Its saved playback is unchanged.',
+            'This page uses transfer effects that cannot be separated safely. Its saved playback is unchanged.',
           );
+        if (key === 'SMask' && value !== false) hasEffects = true;
       }
     }
     if (fn !== ops['constructPath']) continue;
+    const clipping = clipsNextPath;
+    clipsNextPath = false;
     const paint: unknown = args[0],
       wrapped: unknown = args[1];
-    if (paint !== ops['fill'] && paint !== ops['eoFill']) continue;
-    if (!Array.isArray(wrapped)) continue;
+    const filling = paint === ops['fill'] || paint === ops['eoFill'];
+    if ((!filling && !clipping) || !Array.isArray(wrapped)) continue;
     const source: unknown = wrapped[0];
     const commands = nativePdfCommands(source);
-    if (commands)
+    if (!commands) continue;
+    if (clipping) {
+      const bounds = rectangleBounds(commands);
+      if (bounds) clipBounds.set(index, bounds);
+    }
+    if (filling)
       pathSnapshots.set(index, { commands, fillRule: paint === ops['eoFill'] ? 'evenodd' : 'nonzero' });
   }
   const pathCalls = new Map<number, PaintCall[]>();
@@ -334,65 +409,84 @@ export async function editablePdfPage(
   async function render(allowed?: ReadonlySet<number>): Promise<ReturnType<CanvasFactory['create']>> {
     const target = factory.create(width, height);
     const ctx = target.context;
-    const originals = new Map<string, unknown>();
+    const originals = new Map<ContextMethod, DrawingContext[ContextMethod]>();
     let current: number | null = null;
+    let clip: ClipBounds | null | undefined;
+    const observe = (method: ContextMethod, allow: (args: unknown[]) => boolean) => {
+      const old = ctx[method];
+      originals.set(method, old);
+      Object.defineProperty(ctx, method, {
+        configurable: true,
+        writable: true,
+        value: (...args: unknown[]) => {
+          if (allow(args)) return Reflect.apply(old, ctx, args);
+          return undefined;
+        },
+      });
+    };
     try {
+      if (hasEffects && !allowed) {
+        // PDF.js mirrors clips and save/restore back to this canvas while it paints masks.
+        const stack: (ClipBounds | null | undefined)[] = [];
+        observe('save', () => {
+          stack.push(clip);
+          return true;
+        });
+        observe('restore', () => {
+          clip = stack.pop();
+          return true;
+        });
+        observe('clip', () => {
+          clip = intersectClip(clip, current === null ? undefined : clipBounds.get(current), ctx, scale);
+          return true;
+        });
+      }
       for (const method of PAINT) {
-        const old = ctx[method];
-        originals.set(method, old);
-        Object.defineProperty(ctx, method, {
-          configurable: true,
-          writable: true,
-          value: function (...args: unknown[]) {
-            if (current !== null) {
-              if (ctx.globalCompositeOperation !== 'source-over')
-                throw new Error(
-                  'This page uses backdrop-dependent compositing that cannot be separated safely. Its saved playback is unchanged.',
-                );
-              if (!allowed) {
-                painted.add(current);
-                if (show.has(list.fnArray[current]) && (method === 'strokeText' || method === 'stroke'))
-                  outlinedText.add(current);
-                if (pathSnapshots.has(current) && method === 'fill') {
-                  const m = ctx.getTransform();
-                  const values = pathCalls.get(current) ?? [];
-                  values.push({
-                    method,
-                    at: [m.e, m.f],
-                    matrix: [m.a, m.b, m.c, m.d, m.e, m.f],
-                    font: ctx.font,
-                    fill: typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '',
-                    alpha: ctx.globalAlpha,
-                    width: 0,
-                    composite: ctx.globalCompositeOperation,
-                  });
-                  pathCalls.set(current, values);
-                }
-                if (show.has(list.fnArray[current]) && (method === 'fillText' || method === 'fill')) {
-                  const m = ctx.getTransform();
-                  const x = method === 'fillText' ? Number(args[1]) : 0,
-                    y = method === 'fillText' ? Number(args[2]) : 0;
-                  const values = calls.get(current) ?? [];
-                  values.push({
-                    method,
-                    at: [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f],
-                    matrix: [m.a, m.b, m.c, m.d, m.e, m.f],
-                    font: ctx.font,
-                    fill: typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '',
-                    alpha: ctx.globalAlpha,
-                    width:
-                      method === 'fillText'
-                        ? ctx.measureText(String(args[0])).width * Math.hypot(m.a, m.b)
-                        : 0,
-                    composite: ctx.globalCompositeOperation,
-                  });
-                  calls.set(current, values);
-                }
-              }
-              if (allowed && !allowed.has(current)) return;
-            }
-            return Reflect.apply(old, ctx, args);
-          },
+        observe(method, (args) => {
+          if (current === null) return true;
+          if (ctx.globalCompositeOperation !== 'source-over')
+            throw new Error(
+              'This page uses backdrop-dependent compositing that cannot be separated safely. Its saved playback is unchanged.',
+            );
+          if (allowed) return allowed.has(current);
+          painted.add(current);
+          const isText = show.has(list.fnArray[current]);
+          if (isText && (method === 'strokeText' || method === 'stroke')) outlinedText.add(current);
+          if (!hasEffects && pathSnapshots.has(current) && method === 'fill') {
+            const m = ctx.getTransform();
+            const values = pathCalls.get(current) ?? [];
+            values.push({
+              method,
+              at: [m.e, m.f],
+              matrix: [m.a, m.b, m.c, m.d, m.e, m.f],
+              font: ctx.font,
+              fill: typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '',
+              alpha: ctx.globalAlpha,
+              width: 0,
+              composite: ctx.globalCompositeOperation,
+            });
+            pathCalls.set(current, values);
+          }
+          if (isText && !textMasks.has(current) && (method === 'fillText' || method === 'fill')) {
+            const m = ctx.getTransform();
+            const x = method === 'fillText' ? Number(args[1]) : 0,
+              y = method === 'fillText' ? Number(args[2]) : 0;
+            const values = calls.get(current) ?? [];
+            values.push({
+              method,
+              at: [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f],
+              matrix: [m.a, m.b, m.c, m.d, m.e, m.f],
+              font: ctx.font,
+              fill: typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '',
+              alpha: ctx.globalAlpha,
+              width:
+                method === 'fillText' ? ctx.measureText(String(args[0])).width * Math.hypot(m.a, m.b) : 0,
+              composite: ctx.globalCompositeOperation,
+              clip,
+            });
+            calls.set(current, values);
+          }
+          return true;
         });
       }
       await page.render({
@@ -496,12 +590,27 @@ export async function editablePdfPage(
       y = first.at[1] / scale - size * 0.8;
     }
     if (size < 1 || size > 1000 || textWidth <= 0) continue;
+    const frame = { x, y, width: textWidth + 1, height: size * 1.2 };
+    // Allow text fully inside a rectangular clip; keep possible cropped ink in the source picture.
+    const margin = size / 4;
+    if (
+      values.some(
+        ({ clip }) =>
+          clip === null ||
+          (clip !== undefined &&
+            (x - margin < clip[0] ||
+              y - margin < clip[1] ||
+              x + frame.width + margin > clip[2] ||
+              y + frame.height + margin > clip[3])),
+      )
+    )
+      continue;
     native.set(index, {
       id: `pdf-text-${index}`,
       kind: 'text',
       text: words,
       lang: null,
-      frame: { x, y, width: textWidth + 1, height: size * 1.2 },
+      frame,
       style: {
         fontFamily: 'Noto Sans',
         fontSize: size,
@@ -581,11 +690,16 @@ export async function editablePdfPage(
       factory.destroy(target);
     }
   }
+  if (hasEffects && assets.length)
+    issues.push('Clipped or masked graphics stay as pictures. You can move or remove those pictures.');
   if ([...painted].some((index) => show.has(list.fnArray[index]) && !native.has(index)))
     issues.push(
       'Some rotated, outlined or unusual-font text stays as a separate picture. It can be moved or removed, but its words cannot be retyped.',
     );
-  if ([...painted].some((index) => list.fnArray[index] === ops['constructPath'] && !native.has(index)))
+  if (
+    !hasEffects &&
+    [...painted].some((index) => list.fnArray[index] === ops['constructPath'] && !native.has(index))
+  )
     issues.push(
       'Some stroked or complex source drawings stay as separate pictures. They can be moved or removed; their control points cannot be edited.',
     );

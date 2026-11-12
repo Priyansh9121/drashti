@@ -714,6 +714,22 @@ async function objectOf(
   if (text) output.push(text);
   return output;
 }
+function nonVisualProperties(node: XmlNode): Node {
+  const wrapper = kids(node).find((part) => nameOf(part).startsWith('nv'));
+  return child(wrapper, 'cNvPr');
+}
+
+function drawingId(properties: Node): string | undefined {
+  const id = attr(properties, 'id')?.trim();
+  return id && /^\d{1,10}$/u.test(id) ? id : undefined;
+}
+
+interface WalkGroup {
+  id: string;
+  sourceIds: string[];
+  hidden: boolean;
+}
+
 async function walk(
   tree: Node,
   part: Part,
@@ -721,12 +737,16 @@ async function walk(
   flip: boolean,
   ctx: Context,
   inherited = false,
-  groupId?: string,
+  group?: WalkGroup,
 ): Promise<SlideElement[]> {
   const result: SlideElement[] = [];
   for (const node of kids(tree)) {
     const kind = nameOf(node);
     if (inherited && placeholder(node)) continue;
+    // Layout and master parts have their own ID spaces. Slide timing addresses this slide's tree.
+    const properties = nonVisualProperties(node);
+    const sourceShapeId = inherited ? undefined : drawingId(properties);
+    const hidden = group?.hidden === true || flag(attr(properties, 'hidden'));
     if (kind === 'grpSp') {
       const xfrm = child(child(node, 'grpSpPr'), 'xfrm'),
         rect = rawRect(xfrm);
@@ -752,19 +772,25 @@ async function walk(
       if (Math.abs(rect.width / cx - rect.height / cy) > 0.00001)
         ctx.issues.add('Non-uniform group scaling may change editable text spacing.');
       result.push(
-        ...(await walk(
-          node,
-          part,
-          m,
-          flip !== flag(attr(xfrm, 'flipH')),
-          ctx,
-          inherited,
-          groupId ?? ctx.id(),
-        )),
+        ...(await walk(node, part, m, flip !== flag(attr(xfrm, 'flipH')), ctx, inherited, {
+          id: group?.id ?? ctx.id(),
+          sourceIds: sourceShapeId ? [...(group?.sourceIds ?? []), sourceShapeId] : (group?.sourceIds ?? []),
+          hidden,
+        })),
       );
     } else if (kind === 'sp' || kind === 'pic' || kind === 'cxnSp') {
       const objects = await objectOf(node, part, parent, flip, ctx);
-      result.push(...objects.map((el) => (groupId ? { ...el, groupId } : el)));
+      const name = cutText(attr(properties, 'name')?.trim() ?? '', 200);
+      result.push(
+        ...objects.map((el) => ({
+          ...el,
+          ...(group && !el.groupId ? { groupId: group.id } : {}),
+          ...(name ? { name } : {}),
+          ...(hidden ? { hidden } : {}),
+          ...(sourceShapeId ? { sourceShapeId } : {}),
+          ...(group?.sourceIds.length ? { sourceGroupIds: group.sourceIds } : {}),
+        })),
+      );
     } else if (kind === 'AlternateContent') {
       ctx.issues.add('Alternate drawing content uses its available fallback.');
       result.push(
@@ -775,7 +801,7 @@ async function walk(
           flip,
           ctx,
           inherited,
-          groupId,
+          group,
         )),
       );
     } else if (!['nvGrpSpPr', 'grpSpPr', 'extLst'].includes(kind)) {
