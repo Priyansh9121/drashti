@@ -1,3 +1,4 @@
+import { lstatSync, realpathSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import type { MediaUsage, UsedIn } from '../../shared/media-removal';
@@ -7,6 +8,7 @@ import { removeCopiesOf } from '../media/sharpened';
 import { removeBlurredOf } from '../media/blurred';
 import { isInside } from '../media/contained';
 import type { Db } from '../db/database';
+import { sha256File } from '../import/media-store';
 
 /*
  * Deleting media from the library (Session 26a; migration 36). Media could
@@ -143,6 +145,95 @@ export class MediaRemoval {
       }
       return done;
     })();
+  }
+
+  /** Reclaim earlier managed Trim cuts once the library and recovered show are available. */
+  async trashUnusedTrims(mediaDir: string, trash: (file: string) => Promise<void>): Promise<number> {
+    const rows = this.db
+      .prepare(
+        `SELECT m.id, m.path, m.sha256 FROM trimmed_videos t JOIN media m ON m.id = t.media_id
+         WHERE m.source_kind = 'drashti' AND m.deleted_at IS NULL AND m.missing = 0
+           AND m.path <> '' AND m.sha256 IS NOT NULL`,
+      )
+      .all() as { id: string; path: string; sha256: string }[];
+    if (rows.length === 0) return 0;
+
+    // Include soft-deleted rows for Undo, plus durable media uses outside the removal dialog's summary.
+    const used = this.db.prepare(
+      `SELECT 1 WHERE
+         EXISTS (SELECT 1 FROM playlist_items WHERE media_id = @id)
+         OR EXISTS (SELECT 1 FROM audio_playlist_tracks WHERE media_id = @id)
+         OR EXISTS (SELECT 1 FROM slide_cues WHERE media_id = @id)
+         OR EXISTS (SELECT 1 FROM kirtans WHERE audio_media_id = @id)
+         OR EXISTS (SELECT 1 FROM wallpaper_pictures WHERE media_id = @id)
+         OR EXISTS (SELECT 1 FROM document_original_previews WHERE media_id = @id)
+         OR EXISTS (SELECT 1 FROM drop_files WHERE media_id = @id)
+         OR EXISTS (SELECT 1 FROM trimmed_videos WHERE original_id = @id)
+         OR EXISTS (SELECT 1 FROM playlist_trim_resets WHERE original_id = @id)
+         OR EXISTS (SELECT 1 FROM media_conversions WHERE original_id = @id OR converted_id = @id)
+         OR EXISTS (
+           SELECT 1 FROM media WHERE id <> @id AND (
+             converted_from = @id
+             OR replace(path, char(92), '/') COLLATE NOCASE IN (@path, @absolute, @real)
+             OR replace(source_path, char(92), '/') COLLATE NOCASE IN (@path, @absolute, @real)
+           )
+         )
+         OR EXISTS (
+           SELECT 1 FROM (
+             SELECT props AS data FROM elements
+             UNION ALL SELECT deck FROM slides
+             UNION ALL SELECT editor_design FROM slides
+             UNION ALL SELECT editor_master FROM presentations
+             UNION ALL SELECT definition FROM props
+             UNION ALL SELECT definition FROM themes
+             UNION ALL SELECT actions FROM macros
+             UNION ALL SELECT value FROM app_meta WHERE key LIKE 'setting.%'
+           ) refs, json_tree(CASE WHEN json_valid(refs.data) THEN refs.data ELSE NULL END) j
+           WHERE j.type = 'text' AND j.atom = @id
+         )`,
+    );
+    const forget = this.db.prepare(
+      `UPDATE media SET path = '', missing = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+       WHERE id = @id AND path = @path AND sha256 = @sha256 AND deleted_at IS NULL`,
+    );
+    const recovered = this.deps.onScreens();
+    const root = realpathSync.native(mediaDir);
+    const slash = (path: string) => path.replaceAll('\\', '/');
+    let gone = 0;
+    for (const row of rows) {
+      const file = resolve(root, row.path);
+      if (isAbsolute(row.path) || !isInside(root, file) || recovered.has(row.id)) continue;
+      const lookup = {
+        id: row.id,
+        path: slash(row.path),
+        absolute: slash(resolve(mediaDir, row.path)),
+        real: slash(file),
+      };
+      const referenced = () => this.deps.onScreens().has(row.id) || used.get(lookup) !== undefined;
+      if (referenced()) continue;
+      try {
+        const before = lstatSync(file, { bigint: true });
+        if (!before.isFile() || realpathSync.native(file) !== file) continue;
+        const { sha256 } = await sha256File(file);
+        const after = lstatSync(file, { bigint: true });
+        if (
+          sha256 !== row.sha256 ||
+          before.dev !== after.dev ||
+          before.ino !== after.ino ||
+          before.size !== after.size ||
+          before.mtimeNs !== after.mtimeNs ||
+          !after.isFile() ||
+          realpathSync.native(file) !== file ||
+          referenced()
+        )
+          continue;
+        await trash(file);
+        gone += forget.run(row).changes;
+      } catch {
+        // A file the system could not check or move stays in the library for the next start.
+      }
+    }
+    return gone;
   }
 
   /**

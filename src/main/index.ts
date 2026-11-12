@@ -3913,6 +3913,16 @@ function start(): void {
     notice: (text) => sendToOperator(IPC.app.notice, { text }),
   });
   void playlistTrims.cleanupCopies();
+  void mediaRemoval
+    .trashUnusedTrims(mediaDir, (file) => shell.trashItem(file))
+    .then((gone) => {
+      if (gone === 0) return;
+      libraryChanged(true);
+      log.info(`Media: moved ${String(gone)} unused Trim cut(s) to the Trash`);
+    })
+    .catch((error: unknown) => {
+      log.warn('Media: could not check unused Trim cuts', error);
+    });
   const offTrimActivity = engine.onChange(() => playlistTrims.activityChanged());
   stops.add('playlist trims', () => {
     offTrimActivity();
