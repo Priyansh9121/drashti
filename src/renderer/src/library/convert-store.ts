@@ -36,10 +36,15 @@ function accept(jobs: ConversionJob[]): void {
   // Each conversion the operator asked for that finishes can be undone (the original used again where it was); one
   // Drashti did by itself is not offered (Session 50).
   for (const job of jobs) {
-    if (job.byItself && job.state === 'failed' && !failureNotices.has(job.id)) {
+    if (
+      (job.byItself || job.maxHeight !== undefined) &&
+      job.state === 'failed' &&
+      !failureNotices.has(job.id)
+    ) {
       failureNotices.add(job.id);
+      const what = job.maxHeight === undefined ? 'convert' : `make a ${String(job.maxHeight)}p copy of`;
       showImportNotice(
-        `Couldn’t convert “${job.name}”. ${job.message ?? 'Check the file and import it again.'}`,
+        `Couldn’t ${what} “${job.name}”. ${job.message ?? 'Check the file and import it again.'}`,
         job.retryable ? () => retryConversion(job.id) : undefined,
       );
     }
@@ -85,6 +90,12 @@ export async function convert(mediaIds: string[]): Promise<void> {
 async function retryConversion(jobId: string): Promise<void> {
   const result = await window.drashti.media.retryConversion(jobId);
   if (!result.ok) showImportNotice(result.message);
+}
+
+export async function cancelLinkConversion(jobId: string): Promise<void> {
+  const result = await window.drashti.media.cancelLinkConversion(jobId);
+  if (result.ok) useConvert.setState({ jobs: result.jobs });
+  else showImportNotice(result.message);
 }
 
 export async function cancelConversion(jobId: string | null): Promise<void> {

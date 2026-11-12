@@ -6,6 +6,7 @@ interface ImportNotice {
   id: number;
   text: string;
   retry?: () => Promise<unknown>;
+  findMissing?: () => Promise<boolean>;
 }
 
 export const useImportNotices = create<{ notices: ImportNotice[] }>(() => ({ notices: [] }));
@@ -25,6 +26,14 @@ export function showImportNotice(text: string, retry?: () => Promise<unknown>): 
 
 export function dismissImportNotice(id: number): void {
   useImportNotices.setState((s) => ({ notices: s.notices.filter((notice) => notice.id !== id) }));
+}
+
+export function dismissAllImportNotices(): void {
+  useImportNotices.setState({ notices: [] });
+}
+
+export async function findImportMedia(notice: ImportNotice): Promise<void> {
+  if (await notice.findMissing?.()) dismissImportNotice(notice.id);
 }
 
 export async function retryImportNotice(notice: ImportNotice): Promise<void> {
@@ -57,6 +66,7 @@ const missingParts = new Set([
 function noticeFor(
   item: ImportItemReport,
   retry?: (paths: string[]) => Promise<unknown>,
+  findMissing?: (mediaIds: string[]) => Promise<boolean>,
 ): Omit<ImportNotice, 'id'> | null {
   const failed = item.outcome === 'failed';
   const refused = failed || item.outcome === 'unsupported';
@@ -70,7 +80,14 @@ function noticeFor(
   if (reasons.length === 0) return null;
 
   const filename = item.name ?? item.sourcePath.split(/[\\/]/u).at(-1) ?? 'File';
-  const fix = item.issues.find((issue) => issue.fix?.kind === 'import-again')?.fix;
+  const fix = item.issues.find(
+    (issue) => issue.code !== 'missing-presentation' && issue.fix?.kind === 'import-again',
+  )?.fix;
+  const missing = [
+    ...new Set(
+      item.issues.flatMap((issue) => (issue.fix?.kind === 'relink-media' ? [issue.fix.mediaId] : [])),
+    ),
+  ];
   const space = item.issues.find((issue) => issue.fix?.kind === 'free-space')?.fix;
   const path = (fix?.kind === 'import-again' ? fix.sourcePath : item.sourcePath).split('!/')[0];
   const canRetry = fix !== undefined || (failed && (item.format !== 'unknown' || space !== undefined));
@@ -79,6 +96,7 @@ function noticeFor(
   return {
     text: `“${filename}” · ${[...new Set(reasons)].join(' ')}${freeSpace}`,
     retry: retry && path && canRetry ? () => retry([path]) : undefined,
+    findMissing: findMissing && missing.length > 0 ? () => findMissing(missing) : undefined,
   };
 }
 
@@ -86,9 +104,10 @@ function noticeFor(
 export function showImportFailures(
   report: ImportReport,
   retry?: (paths: string[]) => Promise<unknown>,
+  findMissing?: (mediaIds: string[]) => Promise<boolean>,
 ): void {
   const notices = report.items.flatMap((item) => {
-    const notice = noticeFor(item, retry);
+    const notice = noticeFor(item, retry, findMissing);
     return notice ? [notice] : [];
   });
   if (report.message !== null && report.status !== 'cancelled') notices.push({ text: report.message });

@@ -55,6 +55,7 @@ on:
             enhanced-pictures,
             bold-transitions,
             lower-thirds,
+            animations,
           ]
         default: none
       handicap:
@@ -160,6 +161,9 @@ jobs:
           DRASHTI_PERF_RAW: ${{ runner.temp }}/perf-raw
           # The operator window's appearance (Session 43; tests only, never packaged): empty follows the computer.
           DRASHTI_TEST_APPEARANCE: ${{ inputs.appearance }}
+          # Item 6 (Session 57): the animations scenario's motion probe on the screens and the operator window (tests
+          # only, never packaged; render/motion-probe.ts).
+          DRASHTI_TEST_MOTION_PROBE: ${{ inputs.scenario == 'animations' && '1' || '' }}
         run: pnpm test:perf
       - name: Keep each slide change's raw times (90 days)
         if: always()

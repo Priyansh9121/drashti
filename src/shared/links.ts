@@ -243,6 +243,8 @@ export interface LinkView {
   look: LinkLook | null;
   /** Where files are saved: the admin's last choice, else "Drashti downloads" in Movies or Videos. */
   folder: string;
+  /** The previous folder was unavailable, so this request uses the usual downloads folder. */
+  folderFallback?: boolean;
   progress: { done: number; total: number | null } | null;
   /** Why it waits, in words. */
   waitingFor: string | null;

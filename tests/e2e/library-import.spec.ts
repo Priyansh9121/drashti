@@ -7,7 +7,7 @@ import { makeOldWordDoc, makeTestDocx } from '../../src/main/import/testing/make
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, closeLibrary, dropFiles, launchApp, openLibrary, operatorPage } from './helpers';
+import { chooseMenuItem, dropFiles, launchApp, openLibrary, operatorPage } from './helpers';
 import { sizeOperatorWindow } from './window-size';
 
 /*
@@ -215,7 +215,7 @@ test('Word lyrics (Session 26f): Files… offers a .docx and imports it as lyric
   await app.close();
 });
 
-test('drag a .pro6 presentation in: its text goes live, and Ready finds its missing media', async () => {
+test('drag a .pro6 presentation in: its text goes live, and Find relinks its missing slide background', async () => {
   const work = mkdtempSync(join(tmpdir(), 'drashti-pp6-drop-'));
   const hymn = join(work, 'Placeholder Hymn.pro6');
   writeFileSync(
@@ -248,15 +248,6 @@ test('drag a .pro6 presentation in: its text goes live, and Ready finds its miss
 
   const { app } = await launchApp();
   const win = await operatorPage(app);
-  await win.evaluate(async () => {
-    const made = await (globalThis as PageGlobals).drashti.playlists.create(
-      'Placeholder Relink',
-      null,
-      false,
-    );
-    if (!made.ok) throw new Error(made.message);
-  });
-  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Relink' }).click();
   await openLibrary(win);
   await expect(win.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   await win.evaluate(async () => {
@@ -275,19 +266,15 @@ test('drag a .pro6 presentation in: its text goes live, and Ready finds its miss
   await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
 
   await dropFiles(win, win.getByTestId('library-drop'), [hymn]);
-  await expect(win.getByTestId('playlist-item').filter({ hasText: 'Placeholder Hymn' })).toBeVisible();
-  await expect(win.getByTestId('import-notice').filter({ hasText: 'Placeholder Hymn' })).toContainText(
-    'Blue Loop.mov',
-  );
+  const missing = win.getByTestId('import-notice').filter({ hasText: 'Placeholder Hymn' });
+  await expect(missing).toContainText('Blue Loop.mov');
   await expect(win.getByTestId('import-report')).toHaveCount(0);
 
-  // Ready’s Find missing media… asks for a folder and relinks by name.
-  await closeLibrary(win);
+  // Find… uses the selected folder to relink the slide’s missing background by name.
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
   }, found);
-  await win.getByTestId('open-ready').click();
-  await win.getByTestId('ready-find-missing').click();
+  await missing.getByRole('button', { name: 'Find…', exact: true }).click();
   await expect
     .poll(() =>
       win.evaluate(async () => {
@@ -296,7 +283,7 @@ test('drag a .pro6 presentation in: its text goes live, and Ready finds its miss
       }),
     )
     .toBe(false);
-  await openLibrary(win);
+  await expect(missing).toHaveCount(0);
 
   // Its text goes live like any other presentation's.
   await win
@@ -348,5 +335,25 @@ test('a window drop gives each refused file its own notice and retries a repaire
   await expect(list.getByRole('button', { name: /^Placeholder damaged/ })).toBeVisible();
   await expect(damagedNotice).toHaveCount(0);
   await expect(notices.filter({ hasText: 'Placeholder extra.odt' })).toBeVisible();
+
+  const more = Array.from({ length: 5 }, (_, index) => {
+    const file = join(work, `Placeholder extra ${String(index)}.odt`);
+    writeFileSync(file, 'Placeholder words');
+    return file;
+  });
+  await dropFiles(win, win.getByTestId('live-preview'), more, { overlay: false });
+  const stack = win.getByTestId('import-notice-stack');
+  await expect(stack.getByTestId('import-notice')).toHaveCount(4);
+  await expect(stack.getByText('2 more import notices')).toBeVisible();
+  const passThrough = await stack.evaluate((element) =>
+    Array.from(element.querySelectorAll('[data-testid="import-notice"] span[title]')).map((line) => {
+      const rect = line.getBoundingClientRect();
+      const underneath = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return underneath !== null && !element.contains(underneath);
+    }),
+  );
+  expect(passThrough).toEqual([true, true, true, true]);
+  await stack.getByRole('button', { name: 'Dismiss all' }).click();
+  await expect(stack).toHaveCount(0);
   await app.close();
 });
