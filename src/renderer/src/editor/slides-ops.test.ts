@@ -139,6 +139,8 @@ describe('one slide’s look for every slide', () => {
     fill: '#000000',
     cornerRadius: 0,
     opacity: 0.5,
+    sourceShapeId: '17',
+    sourceGroupIds: ['3'],
   };
   const model = text('m', 'નમૂના\nNamuna', {
     frame: { x: 50, y: 820, width: 1820, height: 240 },
@@ -192,6 +194,10 @@ describe('one slide’s look for every slide', () => {
     expect(b?.elements.map((e) => e.kind)).toEqual(['shape', 'text', 'image']);
     expect(b?.elements[0]).toMatchObject({ fill: '#000000', opacity: 0.5 });
     expect(b?.elements[0]?.id).not.toBe('box');
+    for (const copied of [b, c].flatMap((slide) => slide?.elements.filter((e) => e.kind === 'shape') ?? [])) {
+      expect(copied).not.toHaveProperty('sourceShapeId');
+      expect(copied).not.toHaveProperty('sourceGroupIds');
+    }
     const words = b?.elements[1] as TextElement;
     expect(words.text).toBe('બીજી\nBiji');
     expect(words).toMatchObject({
