@@ -30,6 +30,8 @@ export interface DeckEffect {
   durationMs: number;
   /** The direction of travel. */
   direction?: DeckEffectDirection;
+  /** The second axis of a diagonal Fly. */
+  verticalDirection?: 'up' | 'down';
   degrees?: number;
   /** Gallery Zoom fades during its scale. */
   fade?: true;

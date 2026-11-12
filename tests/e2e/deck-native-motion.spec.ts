@@ -97,12 +97,14 @@ test('PowerPoint clicks play on the screen without Office and survive a text edi
 
       const { ed, editor } = await openEditor(app, win, name);
       await sizeSlideEditor(app, ed, { width: 1024, height: 645 });
+      await editor.getByTestId('editor-slide-thumb').first().click();
       const word = sourceWord(editor, 'Placeholder appear');
       await word.dblclick();
       const typing = editor.getByTestId('text-editing');
       await expect(typing).toBeFocused();
       await typing.press(`${mod}+A`);
       await ed.keyboard.insertText('Placeholder edited appearance');
+      await expect(typing).toHaveText('Placeholder edited appearance');
       await editor.getByTestId('save-slides').click();
       await slideEditorClosed(app);
       const saved = await publicSlides(win, id);

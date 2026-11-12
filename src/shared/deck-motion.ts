@@ -122,6 +122,10 @@ export function deckMotionFrame(
       const [x, y] = outsideSlide(edge, bounds, slide);
       frame.x += x * (1 - amount);
       frame.y += y * (1 - amount);
+      if (effect.verticalDirection) {
+        const verticalEdge = entering ? opposite[effect.verticalDirection] : effect.verticalDirection;
+        frame.y += outsideSlide(verticalEdge, bounds, slide)[1] * (1 - amount);
+      }
     }
     if (effect.kind === 'float') {
       const [x, y] = travel[direction];
