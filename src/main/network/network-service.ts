@@ -143,7 +143,10 @@ export interface NetworkDeps {
     state(): EngineState;
   };
   reads: NetworkReads;
-  /** The stream is on air or recording (Session 50's rule: background work stays off then). Not looked at yet (red). */
+  /**
+   * The stream is on air or recording (Session 50's rule: background work stays off then): a phone's Save captures
+   * nothing, and answers with the slide as it starts (C6's review, MEDIUM 3).
+   */
   onAir?(): boolean;
   /**
    * Captures a settled native slide once in the private renderer, while `current` holds and until `signal` stops it
@@ -1010,7 +1013,8 @@ export class NetworkService implements EngineTransport {
         ? ok({ mediaId: picture.mediaId })
         : deny(409, 'This slide couldn’t be saved now. Try again when the screens are still.');
     };
-    if (!this.deps.nativeSlidePicture || this.savingSlide) return fallback();
+    const onAir = () => this.deps.onAir?.() === true;
+    if (!this.deps.nativeSlidePicture || this.savingSlide || onAir()) return fallback();
     const now = () => this.deps.now();
     // When the capture must be over by (C6's review, MEDIUM 2): nothing the engine has scheduled may fall before it.
     let endsAt = -Infinity;
@@ -1019,6 +1023,7 @@ export class NetworkService implements EngineTransport {
       const screens = read();
       return (
         !('status' in this.checked(request)) &&
+        !onAir() &&
         slidePictureReadyAt(screens, at) <= at &&
         nextScheduledChange(screens, at) > endsAt
       );
