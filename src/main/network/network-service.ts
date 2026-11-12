@@ -39,7 +39,9 @@ import {
   type RemoteLibraryPage,
   type RemotePresentation,
 } from '../../shared/network-api';
-import type { PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
+import { musicPlaySchema } from '../../shared/music';
+import { PHONE_LIBRARY_IDS_MAX } from '../../shared/network-desktop';
+import { PLAYLIST_IDS_MAX, type PlaylistItemInfo, type PlaylistNode } from '../../shared/playlists';
 import type {
   AddFilesView,
   ArrivedFile,
@@ -54,12 +56,14 @@ import { referenceInputSchema } from '../../shared/shastra';
 import { type HallGroup, hallPicture } from '../../shared/stage-layouts';
 import type { DeviceRepo, DeviceRow } from '../db/devices';
 import { localInterfaceAddresses } from './addresses';
+import { RateLimiter } from './limits';
 import type { NetworkWorker } from './network-worker';
 import type { PreviewSource } from './previews';
 import type { ServerOptions } from './server';
 import { hashToken, newPairingCode, newToken } from './tokens';
 import type { FromNetworkWorker } from './worker/protocol';
 import { COULD_NOT } from './messages';
+import { audioAnswer, type AudioActs } from './audio-answers';
 import { mirrorAnswer, type MirrorReads } from './mirror-answers';
 import { type DesktopActs, DesktopAnswers } from './desktop-answers';
 import { phoneCommandInSimpleMode, phoneMayInSimpleMode, type SimplePhoneScope } from '../simple-mode-phones';
@@ -142,7 +146,13 @@ export interface NetworkDeps {
    * Play the audio playlist (music-service.ts): the one a phone chose (Session 54, D5), or on from a pause, or the
    * one played last.
    */
-  playMusic(who: string, playlistId: string | null): { ok: true } | { ok: false; message: string };
+  playMusic(
+    who: string,
+    playlistId: string | null,
+    index: number,
+  ): { ok: true } | { ok: false; message: string };
+  /** Audio under LIVE, backed by the same music service as the operator window. */
+  audio?: AudioActs;
   /** Announcements from phones (announcement-service.ts). */
   announcements: {
     submit(device: { id: string; name: string }, address: string, input: unknown): DeviceAnswer;
@@ -207,6 +217,17 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   hall: IPC.screens.get,
   // Playing music is not a change to the library: Simple Mode lets a Remote do it, as it does the window.
   'music.play': IPC.music.play,
+  'music.audio': IPC.music.view,
+  'music.new': IPC.music.create,
+  'music.rename': IPC.music.rename,
+  'music.remove': IPC.music.remove,
+  'music.restore': IPC.music.restore,
+  'music.options': IPC.music.setOptions,
+  'music.addTracks': IPC.music.addTracks,
+  'music.moveTrack': IPC.music.moveTrack,
+  'music.removeTrack': IPC.music.removeTrack,
+  'music.restoreTrack': IPC.music.restoreTrack,
+  'music.stepsAside': IPC.sound.setStepsAside,
   'shastra.texts': IPC.shastra.list,
   // Putting up a passage runs the show, as Next does: Simple Mode lets a Remote do it.
   shastra: IPC.engine.command,
@@ -310,15 +331,33 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'playlist.whenEnds': IPC.playlists.setWhenEnds,
 };
 
+const idsWithin = (ids: unknown, max: number): unknown =>
+  Array.isArray(ids) && ids.length > max ? undefined : ids;
+
 /**
  * A phone's request as the window's own would carry its arguments (Session 55, Part 9), for the channels Simple Mode
- * bounds (simple-mode.ts SIMPLE_MODE_BOUNDED): its one playlist's rows taken out and put back, Rename… of a file that
- * playlist holds, and the wallpapers. Weighed within those very bounds, so a phone in Simple Mode does what Simple
- * Mode's window does, never more. A bounded request left out here is refused to a phone whole, as before.
+ * bounds (simple-mode.ts SIMPLE_MODE_BOUNDED): playlist and row changes, file renames and wallpapers. A bounded
+ * request left out here is refused without the operator window's arguments.
  */
 export const WINDOW_ARGS: Partial<Record<DeviceOp, (args: Record<string, unknown>) => readonly unknown[]>> = {
-  'playlist.removeItems': (a) => [a['ids']],
-  'playlist.restoreItems': (a) => [a['ids']],
+  'music.new': (a) => [a['name']],
+  'music.rename': (a) => [a['playlistId'], a['name']],
+  'music.remove': (a) => [a['playlistId']],
+  'music.restore': (a) => [a['playlistId']],
+  'music.options': (a) => [a['playlistId'], { loop: a['loop'], shuffle: a['shuffle'] }],
+  'music.addTracks': (a) => [a['playlistId'], a['mediaIds'], a['at'] ?? null],
+  'music.moveTrack': (a) => [a['trackId'], a['to']],
+  'music.removeTrack': (a) => [a['trackId']],
+  'music.restoreTrack': (a) => [a['trackId'], a['at']],
+  'music.stepsAside': (a) => [a['on']],
+  'playlist.new': (a) => [a['name'], a['parentId'] ?? null, a['isFolder'] ?? false],
+  'playlist.rename': (a) => [a['playlistId'], a['name']],
+  'playlist.remove': (a) => [idsWithin(a['ids'], PHONE_LIBRARY_IDS_MAX)],
+  'playlist.restore': (a) => [idsWithin(a['ids'], PLAYLIST_IDS_MAX)],
+  'playlist.move': (a) => [a['playlistId'], a['ids'], a['to']],
+  'playlist.whenEnds': (a) => [a['itemId'], a['whenEnds']],
+  'playlist.removeItems': (a) => [idsWithin(a['ids'], PHONE_LIBRARY_IDS_MAX)],
+  'playlist.restoreItems': (a) => [idsWithin(a['ids'], PHONE_LIBRARY_IDS_MAX)],
   'media.rename': (a) => [a['mediaId'], a['name']],
   'presentation.rename': (a) => [a['presentationId'], a['name']],
   'wallpaper.choose': (a) => [a['wallpaperId']],
@@ -381,8 +420,10 @@ export class NetworkService implements EngineTransport {
   private readonly desktop: DesktopAnswers | null;
   /** The phone's own (Session 55, Part 9), or null where it cannot. */
   private readonly phone: PhoneAnswers | null;
+  private readonly audioChanges: RateLimiter;
 
   constructor(private readonly deps: NetworkDeps) {
+    this.audioChanges = new RateLimiter(5, 30, () => deps.now());
     this.desktop = deps.desktop
       ? new DesktopAnswers(deps.desktop, {
           // At the computer's yes, long after the ask: still let in, the phone still paired, Simple Mode not refusing.
@@ -393,7 +434,7 @@ export class NetworkService implements EngineTransport {
               this.letIn() &&
               this.deps.devices.get(deviceId) !== null &&
               !(channel !== null && this.deps.refused(channel)) &&
-              (simple === null || phoneMayInSimpleMode(op, {}, simple, this.deps.engine.state()))
+              (simple === null || phoneMayInSimpleMode(op, {}, simple))
             );
           },
           changed: () => {
@@ -899,8 +940,7 @@ export class NetworkService implements EngineTransport {
     if (channel && this.deps.refused(channel, WINDOW_ARGS[request.op]?.(args)))
       return deny(403, this.deps.refusal?.() ?? SIMPLE_MODE_REFUSAL);
     const simple = this.deps.simple?.() ?? null;
-    if (simple && !phoneMayInSimpleMode(request.op, args, simple, this.deps.engine.state()))
-      return deny(403, simple.refusal());
+    if (simple && !phoneMayInSimpleMode(request.op, args, simple)) return deny(403, simple.refusal());
     return { device, args, who: `${DEVICE_KIND_LABEL[device.kind]} “${device.name}”` };
   }
 
@@ -932,7 +972,7 @@ export class NetworkService implements EngineTransport {
         });
       }
       case 'hall': {
-        // Simple Mode (Session 55, Part 9): its one playlist and the words a phone shows once for what it dims.
+        // The desktop's open playlist and the Simple Mode explanation.
         const simple = this.deps.simple?.() ?? null;
         return ok({
           groupId: this.deps.reads.hall().groupId,
@@ -960,13 +1000,27 @@ export class NetworkService implements EngineTransport {
           : shown;
       }
       case 'music.play': {
-        // An audio playlist a phone chose (Session 54, D5), or none: on from where it was paused.
-        const chosen = args['playlistId'] ?? null;
-        const playlistId = chosen === null ? null : idSchema.safeParse(chosen).data;
-        if (playlistId === undefined) return deny(400, 'Which audio playlist?');
-        const played = this.deps.playMusic(who, playlistId);
+        const playlistId = args['playlistId'] ?? null;
+        const play = musicPlaySchema.safeParse({ playlistId, index: args['index'] });
+        if (!play.success) return deny(400, 'Which audio playlist?');
+        const played = this.deps.playMusic(who, play.data.playlistId, play.data.index);
         return played.ok ? ok({ playing: true }) : deny(409, played.message);
       }
+      case 'music.audio':
+      case 'music.new':
+      case 'music.rename':
+      case 'music.remove':
+      case 'music.restore':
+      case 'music.options':
+      case 'music.addTracks':
+      case 'music.moveTrack':
+      case 'music.removeTrack':
+      case 'music.restoreTrack':
+      case 'music.stepsAside':
+        if (!this.deps.audio) return deny(404, 'Drashti cannot change Audio from a phone here.');
+        if (request.op !== 'music.audio' && !this.audioChanges.take(device.id))
+          return deny(429, 'Too many changes at once: wait a moment, then try again.');
+        return audioAnswer(request.op, args, this.deps.audio);
       case 'playlists':
         return ok({ playlists: this.deps.reads.playlists() });
       case 'items': {
@@ -1122,8 +1176,10 @@ export class NetworkService implements EngineTransport {
    */
   private simpleRefusal(command: EngineCommand): string | null {
     const simple = this.deps.simple?.() ?? null;
-    if (simple === null || phoneCommandInSimpleMode(command, simple)) return null;
-    return simpleModeRefuses(command, this.deps.engine.state())
+    if (simple === null) return null;
+    const state = this.deps.engine.state();
+    if (phoneCommandInSimpleMode(command, simple, state)) return null;
+    return simpleModeRefuses(command, state)
       ? (this.deps.refusal?.() ?? SIMPLE_MODE_REFUSAL)
       : simple.refusal();
   }

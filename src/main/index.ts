@@ -3212,32 +3212,17 @@ function start(): void {
       revisionCovers: (revisionId) => revisions.covers(revisionId),
     };
   };
-  /**
-   * Simple Mode as a paired phone's request is weighed (Session 55, the owner's answer of 30 Oct 2026: a phone does only
-   * what Simple Mode's window does, simple-mode-phones.ts): the same, with what its playlist plays (a Shastra passage's
-   * row too) and the phone's words, true for this computer's access and naming that playlist. Null in Pro Mode.
-   */
-  const simplePhones = (): SimplePhoneScope | null => {
-    if (mode !== 'simple') return null;
-    const scope = simpleScope();
-    const one = scope.playlistId;
-    let rows: ReturnType<typeof playlists.itemsOf> | null = null;
-    const items = () => (rows ??= one === null ? [] : playlists.itemsOf(one));
-    return {
-      ...scope,
-      plays: (presentationId) =>
-        items().some(
-          (i) =>
-            (i.kind === 'presentation' && i.presentationId === presentationId) ||
-            (i.kind === 'shastra' && i.passageId === presentationId),
-        ),
-      refusal: () =>
-        simplePhoneRefusalText(
-          modes.simpleOnly(),
-          one === null ? null : (playlists.tree().find((n) => n.id === one)?.name ?? null),
-        ),
-    };
-  };
+  /** Simple Mode's phone controls use every active playlist, with the same bounds as the window. */
+  const simplePhones = (): SimplePhoneScope | null =>
+    mode === 'simple'
+      ? {
+          ...simpleScope(),
+          activePlaylist: (id) => playlists.activePlaylist(id),
+          activeItem: (id, itemId) => playlists.activeItem(id, itemId),
+          plays: (id, from) => playlists.playsPresentation(id, from),
+          refusal: () => simplePhoneRefusalText(modes.simpleOnly()),
+        }
+      : null;
   // While it is on, every request that would change the library, screens or sound is refused here, but what Simple
   // Mode offers (Session 55, Part 18), each within its bounds.
   lockChannels(
@@ -3734,17 +3719,21 @@ function start(): void {
   handle(IPC.sound.file, (_e, mediaId) =>
     typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? fileSound(mediaId) : null,
   );
-  handle(IPC.sound.setStepsAside, (e, on) => {
-    if (!fromOperator(e) || typeof on !== 'boolean')
-      return { ok: false as const, message: 'Only the operator window can change Audio’s switches.' };
+  const setMusicStepsAside = (on: boolean) => {
     stepsAside = on;
     laterSetting('music.stepsAside', on);
     engine.refreshSound();
     log.info(`Sound: the music ${on ? 'steps aside' : 'no longer steps aside'} under a video with sound`);
     const view = soundView();
     sendToOperator(IPC.sound.changed, view);
+    network?.hint('music');
     return { ok: true as const, view };
-  });
+  };
+  handle(IPC.sound.setStepsAside, (e, on) =>
+    fromOperator(e) && typeof on === 'boolean'
+      ? setMusicStepsAside(on)
+      : { ok: false as const, message: 'Only the operator window can change Audio’s switches.' },
+  );
   handle(IPC.sound.setEven, (e, mediaId, on) => {
     if (
       !fromOperator(e) ||
@@ -5020,8 +5009,9 @@ function start(): void {
         playableDoc(repeatPresentationId(playlistId))?.groups.find((g) => g.id === itemId)?.slides[0]
           ?.index ?? null,
     },
-    playMusic: (who, playlistId) => {
-      const played = music.play(playlistId);
+    audio: { music, stepsAside: () => stepsAside, setStepsAside: setMusicStepsAside },
+    playMusic: (who, playlistId, index) => {
+      const played = music.play(playlistId, index);
       if (played.ok) log.info(`Music: ${who} played it`);
       return played.ok ? { ok: true as const } : { ok: false as const, message: played.message };
     },

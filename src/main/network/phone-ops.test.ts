@@ -27,7 +27,7 @@ import { NetworkService, OP_CHANNEL } from './network-service';
 const PHONE = '192.168.1.20';
 
 const PHONE_WORDS =
-  'Simple Mode on Drashti’s computer: a phone does only what Simple Mode does there (its playlist “Sabha, 30 Oct 2026”, Next and Back, Clear all, Black-out and the Wallpaper). On the Drashti computer, a double-click on Pro Mode leaves it.';
+  'Simple Mode on Drashti’s computer: a phone does only what Simple Mode does there (playlists, playback and Audio). On the Drashti computer, a double-click on Pro Mode leaves it.';
 
 /** Simple Mode's one playlist: a talk and a picture; another playlist has a kirtan and a video. */
 const ROWS: Record<string, { playlist: string; presentation?: string; media?: string }> = {
@@ -35,20 +35,25 @@ const ROWS: Record<string, { playlist: string; presentation?: string; media?: st
   'one-picture': { playlist: 'one', media: 'm-picture' },
   'other-kirtan': { playlist: 'other', presentation: 'p-kirtan' },
   'other-video': { playlist: 'other', media: 'm-video' },
+  'template-video': { playlist: 'template', media: 'm-template' },
 };
 const SCOPE: SimpleScope = {
   playlistId: 'one',
   playlistOf: (itemId) => ROWS[itemId]?.playlist ?? null,
   holdsMedia: (mediaId) => Object.values(ROWS).some((r) => r.playlist === 'one' && r.media === mediaId),
   holdsPresentation: (id) => Object.values(ROWS).some((r) => r.playlist === 'one' && r.presentation === id),
-  // The window's bounds (Session 56): every playlist, as Pro Mode's left column offers them; a phone keeps to its one.
-  kindOf: (id) => (id === 'one' || id === 'other' ? 'playlist' : null),
-  listsMedia: (mediaId) => Object.values(ROWS).some((r) => r.media === mediaId),
+  kindOf: (id) => (id === 'one' || id === 'other' ? 'playlist' : id === 'template' ? 'template' : null),
+  listsMedia: (mediaId) => Object.values(ROWS).some((r) => r.playlist !== 'template' && r.media === mediaId),
   listsPresentation: (id) => Object.values(ROWS).some((r) => r.presentation === id),
+};
+const active = {
+  activePlaylist: (id: string) => SCOPE.kindOf(id) === 'playlist',
+  activeItem: (id: string, itemId: string) => ROWS[itemId]?.playlist === id,
 };
 const SIMPLE: SimplePhoneScope = {
   ...SCOPE,
-  plays: (id) => SCOPE.holdsPresentation(id),
+  ...active,
+  plays: (id) => SCOPE.listsPresentation(id),
   refusal: () => PHONE_WORDS,
 };
 
@@ -443,7 +448,7 @@ describe('the phone’s own requests (Session 55, Part 9)', () => {
     expect(calls).toHaveLength(30);
   });
 
-  it('in Simple Mode: the wallpapers, and its one playlist’s rows’ Rename and Remove with Undo, as its window does; the rest refused before anything runs', () => {
+  it('in Simple Mode: the wallpapers, Rename and Remove with Undo on any playlist’s rows and all four video endings, as its window does; the rest refused before anything runs', () => {
     const { ask, remote, calls } = setup({ simple: true });
     // The wallpapers: Simple Mode's window has them (Part 18), all but their seconds and fade.
     for (const [op, args] of [
@@ -454,30 +459,28 @@ describe('the phone’s own requests (Session 55, Part 9)', () => {
       ['wallpaper.restore', { wallpaperId: 'w-1' }],
     ] as const)
       expect(ask(remote, op, args).status, op).toBe(200);
-    // Its one playlist's rows: renamed, taken out and put back (Undo), as its window's right-click menu does.
-    expect(ask(remote, 'media.rename', { mediaId: 'm-picture', name: 'Placeholder dawn' }).status).toBe(200);
-    expect(ask(remote, 'presentation.rename', { presentationId: 'p-talk', name: 'Placeholder' }).status).toBe(
-      200,
-    );
-    expect(ask(remote, 'playlist.removeItems', { ids: ['one-picture'] }).status).toBe(200);
-    expect(ask(remote, 'playlist.restoreItems', { ids: ['one-picture'] }).status).toBe(200);
-    // Another playlist's, or a file it does not hold: refused, as its window is.
     for (const [op, args] of [
-      ['media.rename', { mediaId: 'm-video', name: 'Placeholder' }],
-      ['presentation.rename', { presentationId: 'p-kirtan', name: 'Placeholder' }],
-      ['playlist.removeItems', { ids: ['other-video'] }],
+      ['media.rename', { mediaId: 'm-picture', name: 'Placeholder dawn' }],
+      ['presentation.rename', { presentationId: 'p-talk', name: 'Placeholder' }],
+      ['media.rename', { mediaId: 'm-video', name: 'Placeholder video' }],
+      ['presentation.rename', { presentationId: 'p-kirtan', name: 'Placeholder talk' }],
       ['playlist.removeItems', { ids: ['one-picture', 'other-video'] }],
-      ['playlist.restoreItems', { ids: ['other-kirtan'] }],
+      ['playlist.restoreItems', { ids: ['one-picture', 'other-video'] }],
+      ...(['wallpaper', 'next', 'loop', 'freeze'] as const).map(
+        (whenEnds) => ['playlist.whenEnds', { itemId: 'other-video', whenEnds }] as const,
+      ),
     ] as const)
-      expect(ask(remote, op, args as Record<string, unknown>).status, JSON.stringify(args)).toBe(403);
-    // Pro Mode's, in the window's own words (Simple Mode's lock): the quick bar's changes, the Picture editor, When it
-    // ends. Reading the bar and a look stays.
+      expect(ask(remote, op, args).status, JSON.stringify(args)).toBe(200);
+
     for (const [op, args] of [
+      ['media.rename', { mediaId: 'm-template', name: 'Placeholder' }],
+      ['playlist.removeItems', { ids: ['one-picture', 'template-video'] }],
+      ['playlist.restoreItems', { ids: ['template-video'] }],
+      ['playlist.whenEnds', { itemId: 'template-video', whenEnds: 'loop' }],
       ['quickBar.set', { pins: [] }],
       ['media.setLook', { mediaId: 'm-picture', look: null }],
-      ['playlist.whenEnds', { itemId: 'one-picture', whenEnds: 'loop' }],
     ] as const)
-      expect(ask(remote, op, args as Record<string, unknown>), op).toEqual({
+      expect(ask(remote, op, args), op).toEqual({
         status: 403,
         body: { ok: false, message: SIMPLE_MODE_REFUSAL },
       });
@@ -490,8 +493,11 @@ describe('the phone’s own requests (Session 55, Part 9)', () => {
       ['restoreWallpaper', ['w-1']],
       ['renameMedia', ['m-picture', 'Placeholder dawn']],
       ['renamePresentation', ['p-talk', 'Placeholder']],
-      ['removeItems', [['one-picture']]],
-      ['restoreItems', [['one-picture']]],
+      ['renameMedia', ['m-video', 'Placeholder video']],
+      ['renamePresentation', ['p-kirtan', 'Placeholder talk']],
+      ['removeItems', [['one-picture', 'other-video']]],
+      ['restoreItems', [['one-picture', 'other-video']]],
+      ...['wallpaper', 'next', 'loop', 'freeze'].map((whenEnds) => ['whenEnds', ['other-video', whenEnds]]),
     ]);
   });
 

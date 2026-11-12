@@ -42,6 +42,7 @@ import type { Uploads } from './uploads';
 import type { ArrivedFile, ArrivedOutcome, UploadPolicy } from '../../shared/phone-files';
 import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
 import { COULD_NOT } from './messages';
+import { audioRoutes } from './audio-routes';
 import { mirrorRoutes } from './mirror-routes';
 import { desktopRoutes } from './desktop-routes';
 import { phoneRoutes } from './phone-routes';
@@ -188,7 +189,10 @@ const ROUTES: Route[] = [
     markerId: p['id'],
   })),
   // With an audio playlist chosen on a phone (Session 54, D5), or on from where it was paused.
-  route('POST', '/api/v1/music/play', 'music.play', (b) => ({ playlistId: b['playlistId'] })),
+  route('POST', '/api/v1/music/play', 'music.play', (b) => ({
+    playlistId: b['playlistId'],
+    index: b['index'],
+  })),
   // The time bar (Session 54): what plays moved, paused or played on; the engine checks what `playing` names.
   route('POST', '/api/v1/playing/move', 'command', (b) => ({
     type: 'moveTo',
@@ -256,6 +260,7 @@ const ROUTES: Route[] = [
   route('POST', '/api/v1/messages/:id/hide', 'message.hide', (_b, p) => ({ templateId: p['id'] })),
   // The phone as a mirror of the operator window (Session 54, D5).
   ...mirrorRoutes(route),
+  ...audioRoutes(route),
   // The phone as a full Drashti (Session 54): the computer's screens, Keep these screens? and the switches.
   ...desktopRoutes(route),
   // The phone's own (Session 55, Part 9): the wallpapers, the quick bar, a picture's look, Rename… and When it ends.
