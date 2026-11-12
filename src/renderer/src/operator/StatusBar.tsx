@@ -5,16 +5,11 @@ import { useEngine } from '../engine/engine-store';
 import type { AppInfo } from '../../../shared/app-info';
 import { describeAppInfo } from '../../../shared/app-info';
 import { cancelImport, dismissFinished, useImports } from '../library/import-store';
-import {
-  dismissAllImportNotices,
-  dismissImportNotice,
-  findImportMedia,
-  retryImportNotice,
-  useImportNotices,
-} from '../library/import-notices';
+import { dismissAllImportNotices, useImportNotices } from '../library/import-notices';
 import { cancelLinkConversion, connectConversions, useConvert } from '../library/convert-store';
 import { convertingWords, jobBusy } from '../library/converting';
 import { useMode } from './mode-store';
+import { ImportNoticeLine } from './ImportNoticeLine';
 import { connectSound, useSound } from '../screens/sound-store';
 import { Button } from '../ui/Button';
 import { AlertTriangle, CalendarDays, Info, Volume2, X } from '../ui/icons';
@@ -374,42 +369,7 @@ export function NoticeArea() {
               </div>
             )}
             {shown.map((item) => (
-              <div
-                key={item.id}
-                role="alert"
-                data-testid="import-notice"
-                className="flex max-w-full items-center gap-1.5 rounded-md border border-line/60 border-l-2 border-l-accent bg-panel-3/75 px-2 py-1 text-xs text-fg"
-              >
-                <Info size={13} aria-hidden="true" className="shrink-0 text-accent" />
-                <Truncate text={item.text} />
-                {canFindMissing && item.findMissing && (
-                  <Button
-                    size="sm"
-                    className="pointer-events-auto h-5 shrink-0"
-                    onClick={() => void findImportMedia(item)}
-                  >
-                    Find…
-                  </Button>
-                )}
-                {item.retry && (
-                  <Button
-                    size="sm"
-                    className="pointer-events-auto h-5 shrink-0"
-                    onClick={() => void retryImportNotice(item)}
-                  >
-                    Try again
-                  </Button>
-                )}
-                <button
-                  type="button"
-                  aria-label="Dismiss import notice"
-                  title={item.text}
-                  onClick={() => dismissImportNotice(item.id)}
-                  className="pointer-events-auto -mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm hover:bg-panel-2"
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              </div>
+              <ImportNoticeLine key={item.id} item={item} canFindMissing={canFindMissing} />
             ))}
           </div>
         )}

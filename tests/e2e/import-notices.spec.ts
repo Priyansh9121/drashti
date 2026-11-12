@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,7 +22,8 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * presentations use it, saying to install them on this computer and on each node (which draws these slides itself);
  * a later import's line naming every one of them takes its place. The line stands with the other import notices in the
  * window's bottom-right corner, never in the way, with no Try again and no Find…, above a refused file's own line,
- * which keeps its Try again; the presentations come in as ever. Simple Mode imports none of these files (lyrics and
+ * which keeps its Try again; unlike the others, its words are drawn whole, wrapping, for the admin to write the fonts
+ * down (the review of 12 Nov). The presentations come in as ever. Simple Mode imports none of these files (lyrics and
  * the other program's files are Pro Mode's), so its corner shows the lines Pro Mode's import left. In CI's window,
  * about 1024 × 645. Placeholder font names and words only.
  */
@@ -82,7 +83,9 @@ async function expectInTheCorner(
     )
     .toBe('in the corner');
   const through = await stack.evaluate((element) =>
-    Array.from(element.querySelectorAll('[data-testid="import-notice"] span[title]')).map((line) => {
+    Array.from(
+      element.querySelectorAll('[data-testid="import-notice"] span[title], [data-testid="import-notice"] p'),
+    ).map((line) => {
       const rect = line.getBoundingClientRect();
       const under = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
       return under !== null && !element.contains(under);
@@ -91,7 +94,16 @@ async function expectInTheCorner(
   expect(through).toEqual(Array.from({ length: lines }, () => true));
 }
 
-test('an import names its old fonts in one line, bottom right in Pro Mode and in Simple Mode, with no Try again, above a refused file’s', async () => {
+/** Whether a notice's words are all in sight: none run out of their box, cut off with an ellipsis. */
+const shownWhole = (line: Locator) =>
+  line.evaluate((element) => {
+    const words = element.querySelector('p, span[title]');
+    return (
+      words !== null && words.scrollWidth <= words.clientWidth && words.scrollHeight <= words.clientHeight
+    );
+  });
+
+test('an import names its old fonts in one notice, drawn whole, bottom right in Pro Mode and in Simple Mode, with no Try again, above a refused file’s', async () => {
   const work = mkdtempSync(join(tmpdir(), 'drashti-old-font-'));
   const hymn = presentationIn(work, 'Placeholder Old Hymn', 'E2E-OLD-FONT-HYMN', [GOPIKA, KRUTI_DEV]);
   const song = presentationIn(work, 'Placeholder Old Song', 'E2E-OLD-FONT-SONG', [GOPIKA]);
@@ -123,6 +135,8 @@ test('an import names its old fonts in one line, bottom right in Pro Mode and in
   await expect(refused.getByRole('button', { name: 'Try again' })).toBeVisible();
   await expect(fonts.getByRole('button', { name: 'Try again' })).toHaveCount(0);
   await expect(fonts.getByRole('button', { name: 'Find…' })).toHaveCount(0);
+  // Every font and what to do in sight: the line is drawn whole, wrapping, never cut off.
+  await expect.poll(() => shownWhole(fonts)).toBe(true);
 
   // Another import naming both fonts: its line takes the earlier one's place, at the top.
   await dropFiles(win, win.getByTestId('library-drop'), [prayer]);
@@ -143,6 +157,7 @@ test('an import names its old fonts in one line, bottom right in Pro Mode and in
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expectInTheCorner(win, 'simple-buttons', 2);
   await expect(fonts).toContainText('on each node');
+  await expect.poll(() => shownWhole(fonts)).toBe(true);
   await expect(fonts.getByRole('button', { name: 'Try again' })).toHaveCount(0);
 
   // Dismissed like any other; the refused deck's line stays.
