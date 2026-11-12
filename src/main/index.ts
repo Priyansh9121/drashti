@@ -279,7 +279,7 @@ import { AppearanceService } from './appearance/appearance-service';
 import { ownSchema } from './appearance/appearance-file';
 import { FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
-import { StopList } from './lifecycle';
+import { StopList, stopTimes } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
 import { CHECK_EVERY_MS, OPEN_GRACE_MS, OutputHeartbeat, REPORT_STALE_MS } from './outputs/heartbeat';
 import {
@@ -7566,9 +7566,29 @@ if (!app.requestSingleInstanceLock()) {
   stops.add('sleep guard', () => {
     sleepGuard.release();
   });
+  /** The main thread's time working so far (ms), or null where the system does not say: never in the quit's way. */
+  const mainThreadWork = (): number | null => {
+    try {
+      const { user, system } = process.threadCpuUsage();
+      return (user + system) / 1000;
+    } catch {
+      return null;
+    }
+  };
   app.on('will-quit', () => {
     const started = performance.now();
+    const workBefore = mainThreadWork();
     stops.run();
-    log.info(`Quit: Drashti's own stops took ${String(Math.round(performance.now() - started))} ms`);
+    const workAfter = mainThreadWork();
+    const took = Math.round(performance.now() - started);
+    // How much of that time Drashti's main thread was working (12 Nov 2026): the rest it waited, on the disk (the
+    // library's last write), on another process, or on a busy computer. On Windows the thread's time moves in steps
+    // of about 16 ms, so it is never said as more than the whole.
+    const working =
+      workBefore === null || workAfter === null
+        ? 'its working time not known'
+        : `${String(Math.min(took, Math.round(workAfter - workBefore)))} ms of it working`;
+    log.info(`Quit: Drashti's own stops took ${String(took)} ms (${working})`);
+    log.info(`Quit: how long each stop took, in ms: ${stopTimes(stops.times)}`);
   });
 }
