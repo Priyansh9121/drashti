@@ -107,6 +107,9 @@ export interface TextParagraph {
   marginRight?: number;
   indent?: number;
   lineHeight?: number;
+  /** Space before and after this paragraph, in slide pixels. */
+  spaceBefore?: number;
+  spaceAfter?: number;
   bullet?: string;
   /** The source bullet’s font when it differs from the paragraph’s words. */
   bulletFont?: string;
@@ -134,6 +137,8 @@ export interface TextStyle {
   glow?: Glow | null;
   /** Make the words smaller until they fit the box (never bigger than they are set). */
   shrinkToFit?: boolean;
+  /** Apply paragraph spacing at the outside edges of this text box too. */
+  spaceAtTextEdges?: boolean;
   /** Crop words to the text rectangle when the source requests clipping. */
   clipToBox?: boolean;
   /** Preserve only explicit breaks in a source text box that does not wrap. */
