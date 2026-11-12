@@ -141,10 +141,15 @@ interface DeckSplit {
   progress: number;
 }
 
+/** A Shape at one moment: its outline's edges travel as a Split's do (DeckSplit), from the middle out or the edges in. */
+interface DeckShape extends Omit<DeckSplit, 'axis'> {
+  shape: NonNullable<DeckEffect['shape']>;
+}
+
 type DeckWipe =
   | { edge: DeckEffectDirection; fraction: number }
   | DeckSplit
-  | { shape: NonNullable<DeckEffect['shape']>; inward: boolean; amount: number }
+  | DeckShape
   | { spokes: number; amount: number }
   | { bars: NonNullable<DeckEffect['bars']>; amount: number };
 
@@ -312,7 +317,12 @@ export function deckMotionFrame(
         progress,
       };
     if (effect.kind === 'shape')
-      frame.wipe = { shape: effect.shape ?? 'circle', inward: effect.inward === true, amount };
+      frame.wipe = {
+        shape: effect.shape ?? 'circle',
+        inward: effect.inward === true,
+        leaving: !entering,
+        progress,
+      };
     if (effect.kind === 'wheel') frame.wipe = { spokes: effect.spokes ?? 1, amount };
     if (effect.kind === 'bars') frame.wipe = { bars: effect.bars ?? 'horizontal', amount };
     if (effect.kind === 'zoom') {
@@ -342,49 +352,60 @@ function polygon(points: readonly Point[], frame: Rect, evenodd = false): string
   return `polygon(${evenodd ? 'evenodd, ' : ''}${list.join(', ')})`;
 }
 
-/** The outline Shape opens from the centre of `target`, `amount` of the way to covering it. */
-function outline(shape: NonNullable<DeckEffect['shape']>, target: Rect, amount: number): Point[] {
+/**
+ * Shape's outline about the centre of `target`, `size` of the way from its middle (0) to its corners (1), as PowerPoint
+ * draws it (its own movie, 13 Nov 2026): in the shape's own proportions, an ellipse, a box or a diamond; and for Plus,
+ * two bars across the whole shape, each `size` of its half-width (or half-height) either side of its middle line.
+ */
+function outline(shape: NonNullable<DeckEffect['shape']>, target: Rect, size: number): Point[] {
   const cx = target.x + target.width / 2;
   const cy = target.y + target.height / 2;
-  const w = target.width * amount;
-  const h = target.height * amount;
+  // Half the shape's width and height: the box at `size` 1.
+  const a = (target.width / 2) * size;
+  const b = (target.height / 2) * size;
   switch (shape) {
-    case 'circle': {
-      const radius = (Math.hypot(target.width, target.height) / 2) * amount;
+    case 'circle':
+      // Through the box's corners at `size` 1: √2 times its half-width and half-height.
       return Array.from({ length: 72 }, (_, i): Point => {
         const angle = (i / 72) * 2 * Math.PI;
-        return [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)];
+        return [cx + Math.SQRT2 * a * Math.cos(angle), cy + Math.SQRT2 * b * Math.sin(angle)];
       });
-    }
     case 'box':
       return [
-        [cx - w / 2, cy - h / 2],
-        [cx + w / 2, cy - h / 2],
-        [cx + w / 2, cy + h / 2],
-        [cx - w / 2, cy + h / 2],
+        [cx - a, cy - b],
+        [cx + a, cy - b],
+        [cx + a, cy + b],
+        [cx - a, cy + b],
       ];
     case 'diamond':
+      // Through the box's corners at `size` 1.
       return [
-        [cx, cy - h],
-        [cx + w, cy],
-        [cx, cy + h],
-        [cx - w, cy],
+        [cx, cy - 2 * b],
+        [cx + 2 * a, cy],
+        [cx, cy + 2 * b],
+        [cx - 2 * a, cy],
       ];
-    case 'plus':
+    case 'plus': {
+      // The bars reach the box's edges; past `size` 1 they cover it.
+      const w = target.width / 2;
+      const h = target.height / 2;
+      const x = Math.min(a, w);
+      const y = Math.min(b, h);
       return [
-        [cx - w / 2, cy - h],
-        [cx + w / 2, cy - h],
-        [cx + w / 2, cy - h / 2],
-        [cx + w, cy - h / 2],
-        [cx + w, cy + h / 2],
-        [cx + w / 2, cy + h / 2],
-        [cx + w / 2, cy + h],
-        [cx - w / 2, cy + h],
-        [cx - w / 2, cy + h / 2],
-        [cx - w, cy + h / 2],
-        [cx - w, cy - h / 2],
-        [cx - w / 2, cy - h / 2],
+        [cx - x, cy - h],
+        [cx + x, cy - h],
+        [cx + x, cy - y],
+        [cx + w, cy - y],
+        [cx + w, cy + y],
+        [cx + x, cy + y],
+        [cx + x, cy + h],
+        [cx - x, cy + h],
+        [cx - x, cy + y],
+        [cx - w, cy + y],
+        [cx - w, cy - y],
+        [cx - x, cy - y],
       ];
+    }
   }
 }
 
@@ -466,6 +487,14 @@ function bars(kind: NonNullable<DeckEffect['bars']>, target: Rect, amount: numbe
 const SPLIT_SOFTNESS = 0.135;
 
 /**
+ * How wide PowerPoint draws Shape's soft edge, as a share of the way it travels (from the shape's middle to its corners):
+ * its own movie of all sixteen (13 Nov 2026) fits 14.0-14.4 %, its edge's middle running evenly from half that width
+ * before the middle to half past the corners, as a Split's. Drashti draws a hard edge where PowerPoint's is half-way
+ * (deckWipeClip): close, not the same, so a slide using Shape keeps PowerPoint's video wherever one can be made.
+ */
+const SHAPE_SOFTNESS = 0.14;
+
+/**
  * How much of a Split's shape shows at `at` along its axis, from −1 (one edge) through 0 (the middle) to 1 (the other
  * edge): 0 to 1. Any other wipe, or none, shows it whole. As PowerPoint draws it (its own movie, 13 Nov 2026): both
  * edges travel from the middle out (from the box's own edges in, for its "In"), each soft, the middle of its soft edge
@@ -527,9 +556,14 @@ export function deckWipeMask(wipe: DeckWipe | null, target: Rect, frame: Rect): 
 export function deckWipeClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
   if (!wipe) return '';
   if ('shape' in wipe) {
-    if (wipe.inward)
-      return polygon(around(target, outline(wipe.shape, target, 1 - wipe.amount)), frame, true);
-    return polygon(outline(wipe.shape, target, wipe.amount), frame);
+    // The edge where PowerPoint's soft one is half-way: SHAPE_SOFTNESS / 2 behind its leading side.
+    const reach = (1 + SHAPE_SOFTNESS) * wipe.progress - SHAPE_SOFTNESS / 2;
+    const size = Math.max(0, wipe.inward ? 1 - reach : reach);
+    // What the edges have passed shows coming in and is hidden leaving: inside the outline for an entrance's Out and
+    // an exit's In, outside it (a hole) for an entrance's In and an exit's Out.
+    return wipe.inward === wipe.leaving
+      ? polygon(outline(wipe.shape, target, size), frame)
+      : polygon(around(target, outline(wipe.shape, target, size)), frame, true);
   }
   if ('spokes' in wipe) return polygon(spokes(wipe.spokes, target, wipe.amount), frame);
   if ('bars' in wipe) {
