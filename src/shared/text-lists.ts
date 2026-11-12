@@ -101,7 +101,7 @@ export function lineListOf(runs: readonly TextRun[]): LineList {
 /** Each line's mark, numbers counted (the runs of each line, as boxLines gives them). */
 export function lineMarks(lines: readonly (readonly TextRun[])[]): LineMark[] {
   /** Per level: the numbering going on there, and its count. */
-  const counts: ({ mark: NumberMark; n: number } | null)[] = [];
+  const counts: ({ mark: NumberMark; n: number; startAt: number | undefined } | null)[] = [];
   return lines.map((runs) => {
     const blank = runs.every((r) => r.text.trim() === '');
     if (blank) return { mark: null, level: 0, label: null };
@@ -117,8 +117,11 @@ export function lineMarks(lines: readonly (readonly TextRun[])[]): LineMark[] {
       return { mark, level, label: null };
     }
     const was = counts[level];
-    const n = was?.mark === mark ? was.n + 1 : 1;
-    counts[level] = { mark, n };
+    const first = runs.find((run) => run.text.trim() !== '');
+    const startAt = first?.paragraph?.startAt;
+    const continuing = was?.mark === mark && (startAt === undefined || startAt === was.startAt);
+    const n = continuing ? was.n + 1 : (startAt ?? 1);
+    counts[level] = { mark, n, startAt: continuing ? was.startAt : startAt };
     return { mark, level, label: listLabel(n, mark) };
   });
 }
@@ -216,6 +219,10 @@ export interface DrawnLine {
 export function drawnLines(runs: readonly TextRun[]): DrawnLine[] {
   const lines: Omit<DrawnLine, 'mark'>[] = [{ pieces: [], end: null }];
   runs.forEach((run, index) => {
+    if (run.softBreak && /^\n+$/u.test(run.text)) {
+      lines.at(-1)?.pieces.push({ run, index, text: run.text });
+      return;
+    }
     const parts = run.text.split('\n');
     parts.forEach((part, i) => {
       const line = lines[lines.length - 1];

@@ -101,6 +101,7 @@ function Tool({
   disabled,
   testId,
   menu = false,
+  title,
 }: {
   icon: Icon;
   children: ReactNode;
@@ -108,6 +109,7 @@ function Tool({
   disabled?: boolean;
   testId: string;
   menu?: boolean;
+  title?: string;
 }) {
   return (
     <Button
@@ -117,6 +119,7 @@ function Tool({
       disabled={disabled}
       data-testid={testId}
       aria-haspopup={menu ? 'menu' : undefined}
+      title={title}
       onClick={onClick}
     >
       {children}
@@ -131,7 +134,17 @@ const shownSlide = () => {
 };
 
 /** Insert: what goes on the slide. A text box goes straight into typing, the Words group chosen. */
-export function InsertGroup({ onPicture, onSound }: { onPicture: () => void; onSound: () => void }) {
+export function InsertGroup({
+  onPicture,
+  onPictureFile,
+  pictureBusy,
+  onSound,
+}: {
+  onPicture: () => void;
+  onPictureFile: () => void;
+  pictureBusy: boolean;
+  onSound: () => void;
+}) {
   const slide = useEditor((s) => (s.doc ? findSlide(s.doc, s.slideId) : undefined));
   const [shapeMenu, setShapeMenu] = useState<MenuPlace | null>(null);
   const [timerMenu, setTimerMenu] = useState<MenuPlace | null>(null);
@@ -197,13 +210,22 @@ export function InsertGroup({ onPicture, onSound }: { onPicture: () => void; onS
         <Tool
           icon={ImagePlus}
           testId="add-media"
-          disabled={!slide}
+          disabled={!slide || pictureBusy}
           onClick={() => {
             finishTextEditing();
             onPicture();
           }}
         >
           Picture or video
+        </Tool>
+        <Tool
+          icon={ImagePlus}
+          testId="add-picture-file"
+          disabled={!slide || pictureBusy}
+          title="Choose a picture file from this computer"
+          onClick={onPictureFile}
+        >
+          Picture from computer…
         </Tool>
         <Tool
           icon={Timer}

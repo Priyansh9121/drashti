@@ -1,9 +1,10 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type VideoClips, videoClip, type VideoSeeks, videoSeek } from '../../../shared/engine/state';
 import { type PlaybackClip, type PlaybackSeek, stillUrl } from '../../../shared/media';
 import type {
   Glow,
+  GradientFill,
   ElementMotion,
   ListMark,
   MediaElement,
@@ -12,6 +13,7 @@ import type {
   ShapeElement,
   SlideElement,
   TextElement,
+  TextParagraph,
   TextRun,
   TextShadow,
   TimerElement,
@@ -291,6 +293,25 @@ export function listLineStyle(
   return { paddingLeft: fitted((line.level * LEVEL_STEP + room) * size) };
 }
 
+export function paragraphLineStyle(
+  line: { mark: ListMark | null; level: number; label: string | null },
+  size: number,
+  paragraph: TextParagraph | undefined,
+): CSSProperties {
+  const base = listLineStyle(line, size);
+  if (!paragraph) return base;
+  const { align, marginLeft, marginRight, indent, lineHeight } = paragraph;
+  const indentWords = indent !== undefined && (line.mark === null || indent > 0) ? fitted(indent) : undefined;
+  return {
+    ...base,
+    textAlign: align,
+    ...(marginLeft !== undefined ? { paddingLeft: undefined, paddingInlineStart: fitted(marginLeft) } : {}),
+    ...(marginRight !== undefined ? { paddingInlineEnd: fitted(marginRight) } : {}),
+    textIndent: indentWords,
+    lineHeight,
+  };
+}
+
 /**
  * Where a list's mark sits (Session 55, Part 17a): in the room before its line's words, in the size, weight and
  * colour of the line's first words; a number in their font too (Gujarati and Devanagari digits drawn by their fonts).
@@ -302,19 +323,25 @@ export function listMarkerBoxStyle(
 ): CSSProperties {
   const size = first.size ?? el.style.fontSize;
   const room = line.label === null ? BULLET_ROOM : NUMBER_ROOM;
+  const indent = first.paragraph?.marginLeft === undefined ? undefined : first.paragraph.indent;
+  const markerRoom = indent !== undefined && indent < 0 ? -indent : room * size;
   return {
     display: 'inline-block',
-    width: fitted(room * size),
-    marginLeft: fitted(-room * size),
+    ...(first.paragraph
+      ? { inlineSize: fitted(markerRoom), marginInlineStart: fitted(-markerRoom) }
+      : { width: fitted(markerRoom), marginLeft: fitted(-markerRoom) }),
     textIndent: 0,
     textAlign: 'center',
     fontSize: fitted(size),
     fontWeight: first.weight,
-    ...(line.label === null
+    ...(line.label === null && !first.paragraph?.bullet
       ? {}
       : {
-          fontFamily: fontFamilyFor(first.font ?? el.style.fontFamily, first.lang ?? el.lang),
-          ...listMarkerStyle(line.mark, first),
+          fontFamily: fontFamilyFor(
+            first.paragraph?.bulletFont ?? first.font ?? el.style.fontFamily,
+            first.lang ?? el.lang,
+          ),
+          ...(line.label === null ? { color: first.color } : listMarkerStyle(line.mark, first)),
         }),
   };
 }
@@ -344,7 +371,10 @@ function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly Text
             data-list={mark ?? undefined}
             data-reveal-line={reveal ? li : undefined}
             data-reveal-empty={reveal && blank ? '' : undefined}
-            style={{ position: reveal ? 'relative' : undefined, ...listLineStyle(line.mark, size) }}
+            style={{
+              position: reveal ? 'relative' : undefined,
+              ...paragraphLineStyle(line.mark, size, first.paragraph),
+            }}
           >
             {mark !== null && (
               <span
@@ -352,7 +382,7 @@ function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly Text
                 data-list-marker={mark}
                 style={listMarkerBoxStyle({ mark, label }, first, el)}
               >
-                {label ?? <span style={listMarkerStyle(mark, first)} />}
+                {label ?? first.paragraph?.bullet ?? <span style={listMarkerStyle(mark, first)} />}
               </span>
             )}
             {line.pieces.length === 0 ? (
@@ -406,6 +436,8 @@ export function useShrinkToFit(
   again?: unknown,
 ): void {
   const on = el.style.shrinkToFit === true;
+  const vertical = el.style.writingMode !== undefined;
+  const noWrap = el.style.noWrap === true;
   const report = useMeasureReport();
   const passive = !on && report === null;
   const [fontsLoaded, setFontsLoaded] = useState(0);
@@ -429,18 +461,29 @@ export function useShrinkToFit(
     if (b.style.getPropertyValue('--fit') !== '') b.style.removeProperty('--fit');
     if (b.hasAttribute('data-fit')) b.removeAttribute('data-fit');
     // These nodes stay mounted through text and font changes. Use the browser's completed sizes.
-    return observeTextSizes(b, w, ({ height, wordsHeight }) => {
-      const over = wordsHeight > height + 0.5;
+    return observeTextSizes(b, w, ({ width, height, wordsHeight }) => {
+      const over = wordsHeight > (vertical ? width : height) + 0.5;
       if (b.hasAttribute('data-overset') !== over) b.toggleAttribute('data-overset', over);
     });
-  }, [box, words, passive]);
+  }, [box, words, passive, vertical]);
   useLayoutEffect(() => {
     if (passive) return undefined;
     const b = box.current;
     const w = words.current;
     if (!b || !w) return undefined;
+    const isOver = () => {
+      if (vertical)
+        return (
+          Math.max(w.offsetWidth, w.scrollWidth) > b.clientWidth + 0.5 ||
+          (noWrap && Math.max(w.offsetHeight, w.scrollHeight) > b.clientHeight + 0.5)
+        );
+      return (
+        w.offsetHeight > b.clientHeight + 0.5 ||
+        (noWrap && Math.max(w.offsetWidth, w.scrollWidth) > b.clientWidth + 0.5)
+      );
+    };
     const reportOver = (fit: number) => {
-      const over = w.offsetHeight > b.clientHeight + 0.5;
+      const over = isOver();
       if (over) b.setAttribute('data-overset', '');
       else b.removeAttribute('data-overset');
       report?.(el.id, { over, fit });
@@ -453,7 +496,7 @@ export function useShrinkToFit(
     }
     const fits = (fit: number) => {
       b.style.setProperty('--fit', String(fit));
-      return w.offsetHeight <= b.clientHeight + 0.5;
+      return !isOver();
     };
     let lo = 1;
     if (!fits(1)) {
@@ -472,7 +515,7 @@ export function useShrinkToFit(
     // The words still past the box, at that fit.
     reportOver(lo);
     return undefined;
-  }, [box, words, el, on, passive, fontsLoaded, again, report]);
+  }, [box, words, el, on, passive, vertical, noWrap, fontsLoaded, again, report]);
 }
 
 /** How a text box is drawn (the slide editor draws the box it edits the same way). */
@@ -484,13 +527,16 @@ export function textBoxStyle(el: TextElement): CSSProperties {
     flexDirection: 'column',
     justifyContent: justify[s.verticalAlign],
     textAlign: s.align,
+    writingMode: s.writingMode,
+    textOrientation: s.textOrientation,
+    overflow: s.clipToBox ? 'hidden' : undefined,
     fontFamily: fontFamilyFor(s.fontFamily, el.lang),
     fontSize: fitted(s.fontSize),
     fontWeight: s.fontWeight,
     lineHeight: s.lineHeight,
     color: s.color,
-    whiteSpace: 'pre-wrap',
-    overflowWrap: 'anywhere',
+    whiteSpace: s.noWrap ? 'pre' : 'pre-wrap',
+    overflowWrap: s.noWrap ? undefined : 'anywhere',
     fontKerning: 'normal',
     // A glow (Session 55, Part 17a) with its shadow; with none, the shadow as it always was.
     textShadow: glowing(s.glow)
@@ -544,7 +590,8 @@ function TextView({
         ref={words}
         data-darken={band ? 'band' : undefined}
         style={{
-          width: '100%',
+          inlineSize: el.style.noWrap ? 'max-content' : '100%',
+          ...(el.style.noWrap ? { minInlineSize: '100%' } : {}),
           flexShrink: 0,
           // The band behind the lines: its spread is drawn outside them, so the words lie exactly as without it.
           ...(band
@@ -555,8 +602,8 @@ function TextView({
             : {}),
         }}
       >
-        {el.runs && hasList(el) ? (
-          // Lines of a list (Session 55, Part 17a), revealed or not.
+        {el.runs && (hasList(el) || el.runs.some((run) => run.paragraph)) ? (
+          // Keep source paragraph alignment and the positions of list marks.
           <ListedRuns el={el} runs={el.runs} reveal={reveal} />
         ) : reveal ? (
           <RevealRuns
@@ -604,7 +651,27 @@ export function timerBoxStyle(el: TimerElement): CSSProperties {
  * words, or a Timer (Session 50).
  */
 export const darkensBehind = (el: SlideElement): boolean =>
-  el.kind === 'timer' || (el.kind === 'text' && el.text.trim() !== '');
+  !el.hidden && (el.kind === 'timer' || (el.kind === 'text' && el.text.trim() !== ''));
+
+function Gradient({ id, paint }: { id: string; paint: GradientFill }) {
+  const stops = paint.stops.map((stop, index) => (
+    <stop key={index} offset={stop.offset} stopColor={stop.color} />
+  ));
+  if (paint.kind === 'radial')
+    return (
+      <radialGradient id={id} cx={paint.x} cy={paint.y} r={0.707107}>
+        {stops}
+      </radialGradient>
+    );
+  const radians = (paint.angle * Math.PI) / 180;
+  const x = Math.cos(radians) / 2;
+  const y = Math.sin(radians) / 2;
+  return (
+    <linearGradient id={id} x1={0.5 - x} x2={0.5 + x} y1={0.5 - y} y2={0.5 + y}>
+      {stops}
+    </linearGradient>
+  );
+}
 
 /**
  * A shape, drawn as SVG so its outline sits on its edge (half inside, half
@@ -614,9 +681,10 @@ export const darkensBehind = (el: SlideElement): boolean =>
 function ShapeView({ el }: { el: ShapeElement }) {
   const { width, height } = el.frame;
   const kind = el.shape ?? 'rectangle';
+  const gradientId = useId();
   const stroke = el.outline && el.outline.width > 0 ? el.outline : null;
   const paint = {
-    fill: kind === 'line' ? 'none' : (el.fill ?? 'none'),
+    fill: kind === 'line' ? 'none' : el.gradient ? 'url(#' + gradientId + ')' : (el.fill ?? 'none'),
     stroke: stroke?.color ?? 'none',
     strokeWidth: stroke?.width ?? 0,
   };
@@ -634,6 +702,11 @@ function ShapeView({ el }: { el: ShapeElement }) {
       overflow="visible"
       style={{ ...frameStyle(el), opacity: el.opacity, overflow: 'visible' }}
     >
+      {el.gradient && (
+        <defs>
+          <Gradient id={gradientId} paint={el.gradient} />
+        </defs>
+      )}
       {path ? (
         <path
           d={path}
@@ -654,7 +727,19 @@ function ShapeView({ el }: { el: ShapeElement }) {
 }
 
 function mediaStyle(el: MediaElement): CSSProperties {
-  return { ...frameStyle(el), objectFit: OBJECT_FIT[el.fit], opacity: el.opacity ?? 1 };
+  const { width, height } = el.frame;
+  const clip = el.pictureClip;
+  const path = clip && shapePath(clip.shape, width, height);
+  const radius = clip && Math.min(clip.cornerRadius ?? 0, width / 2, height / 2);
+  const clipPath =
+    clip?.shape === 'ellipse'
+      ? 'ellipse(50% 50%)'
+      : path
+        ? 'path("' + path + '")'
+        : radius
+          ? 'inset(0 round ' + String(radius) + 'px)'
+          : undefined;
+  return { ...frameStyle(el), objectFit: OBJECT_FIT[el.fit], opacity: el.opacity ?? 1, clipPath };
 }
 
 /**
@@ -1029,6 +1114,7 @@ function MovingElement({
 }
 
 export function ElementView(props: Parameters<typeof ElementBody>[0] & { previewAt?: number }) {
+  if (props.el.hidden) return null;
   const at = props.previewAt ?? props.startedAt;
   const motion = props.el.motion;
   if (
@@ -1158,7 +1244,7 @@ export const SlideView = memo(function SlideView({
               }}
             />
           ) : null,
-          text === 'only' && el.kind !== 'text' ? null : el.id === deckPicture &&
+          el.hidden || (text === 'only' && el.kind !== 'text') ? null : el.id === deckPicture &&
             deck &&
             step &&
             el.kind === 'image' ? (
