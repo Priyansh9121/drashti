@@ -122,6 +122,13 @@ describe('PowerPoint effects from the engine step clock', () => {
     expect(at(1, 300, [out])).toMatchObject({ opacity: 0, x: 0, y: 0, moving: false });
   });
 
+  it('wipes away the top edge first when a PowerPoint Wipe up exits', () => {
+    const wipe: DeckEffect = { ...effect, kind: 'wipe', phase: 'out', direction: 'up' };
+    const middle = at(1, 187.5, [wipe]);
+    expect(deckWipeClip(middle.wipe, bounds, bounds)).toBe('inset(50% 0% 0% 0%)');
+    expect(at(1, 300, [wipe]).opacity).toBe(0);
+  });
+
   it('fades while scaling the gallery Zoom', () => {
     const zoom: DeckEffect = { ...effect, kind: 'zoom', fade: true };
     expect(at(1, 187.5, [zoom])).toMatchObject({ opacity: 0.5, scale: 0.5, moving: true });
