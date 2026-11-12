@@ -102,7 +102,7 @@ describe('auto-advance', () => {
     expect(engine.current.autoAdvance).toEqual({ startedAt: now(), durationMs: 5000 });
   });
 
-  it('carries on through black-out and the Wallpaper', () => {
+  it('carries on when the Wallpaper replaces Black-out', () => {
     const { engine, elapse } = setup();
     engine.dispatch({ type: 'goLive', presentationId: 'p', slideIndex: 0 });
     const count = engine.current.autoAdvance;
@@ -111,7 +111,7 @@ describe('auto-advance', () => {
     expect(engine.current.autoAdvance).toEqual(count);
     elapse(4000);
     expect(slideId(engine)).toBe('b');
-    expect(engine.current.blackout).toBe(true);
+    expect(engine.current).toMatchObject({ blackout: false, wallpaper: true });
   });
 
   it('keeps its start when the slide on the screens is edited, with the new time', () => {
