@@ -268,9 +268,11 @@ export function applySlideEdit(
         enabled: s.enabled ? 1 : 0,
         macro_id: s.macroId,
         // A deck's slide (Session 54, C2): as stored, with Drashti's transitions as the editor set them.
-        ...(s.documentPage?.edited && !s.deck
-          ? { deck: null }
-          : !old && s.documentPage && !s.documentPage.edited && s.deck
+        ...(s.documentPage?.edited
+          ? s.deck?.motion
+            ? { deck: JSON.stringify(s.deck) }
+            : { deck: null }
+          : !old && s.documentPage && s.deck
             ? { deck: JSON.stringify(s.deck) }
             : deckRow(s.deck, old)),
         ...(s.guides

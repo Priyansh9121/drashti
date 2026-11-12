@@ -41,8 +41,15 @@ import { drawnLines, hasList } from '../../../shared/text-lists';
 import { TimerElementView } from './TimerElementView';
 import { PlayBar } from './PlayBar';
 import type { DeckMedia } from '../../../shared/deck';
-import { deckMediaOf, deckPictureId, type StepTiming, videoShowsFrom } from '../../../shared/deck-show';
+import {
+  deckMediaOf,
+  deckPictureId,
+  type DeckVideoTiming,
+  type StepTiming,
+  videoShowsFrom,
+} from '../../../shared/deck-show';
 import { DeckStepView, useDeckCover } from './DeckStep';
+import { NativeDeckElement, useNativeDeckTiming } from './NativeDeckElement';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -681,7 +688,7 @@ function SlideVideo({
   /** A deck's own video (Session 54, C2): its poster before it plays, hidden while stopped when its deck says. */
   deck?: DeckMedia;
   /** The step its slide shows (C review): it shows between its entrance and its exit only. */
-  deckStep?: StepTiming | null;
+  deckStep?: DeckVideoTiming | null;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   // Props and other things without a start time play from when they appear.
@@ -838,7 +845,7 @@ function MediaView({
   /** A deck's own video (Session 54, C2). */
   deck?: DeckMedia;
   /** The step its slide shows (C review). */
-  deckStep?: StepTiming | null;
+  deckStep?: DeckVideoTiming | null;
 }) {
   // On a node, a copy that landed after this picture was asked for: drawn again (a new element).
   const attempt = useMediaAttempt(el.mediaId);
@@ -953,7 +960,7 @@ function ElementBody({
   /** A deck's own video (Session 54, C2): how its deck plays it. */
   deck?: DeckMedia;
   /** The step its slide shows (C review): a deck's video shows between its entrance and its exit only. */
-  deckStep?: StepTiming | null;
+  deckStep?: DeckVideoTiming | null;
 }) {
   if (el.kind === 'text') return <TextView el={el} hidden={textHidden} reveal={reveal} band={band} />;
   if (el.kind === 'shape') return <ShapeView el={el} />;
@@ -1124,6 +1131,7 @@ export const SlideView = memo(function SlideView({
   const darken = slide.darken;
   // The deck's picture, drawn as the step showing (Session 54, C2).
   const deck = slide.deck;
+  const nativeStep = useNativeDeckTiming();
   const deckPicture = step && deck && media === 'live' ? deckPictureId(slide) : null;
   // What its transliteration is of (Sessions 31–36, I18N-4), for its words' lang.
   const source = useMemo(() => slide.translitOf ?? translitSource(slide.elements), [slide]);
@@ -1174,19 +1182,22 @@ export const SlideView = memo(function SlideView({
               {(box) => <DeckStepView deck={deck} timing={step} style={box} fit={OBJECT_FIT[el.fit]} />}
             </Looked>
           ) : (
-            <ElementView
-              key={el.id}
-              el={el}
-              media={media}
-              startedAt={startedAt}
-              clips={clips}
-              seeks={seeks}
-              textHidden={text === 'hidden'}
-              reveal={text === 'only' ? reveal : undefined}
-              band={darken?.kind === 'band' && darkensBehind(el) ? darken.strength : undefined}
-              deck={deck && el.kind === 'video' ? deckMediaOf(slide, el.mediaId, 'video') : undefined}
-              deckStep={step ?? null}
-            />
+            <NativeDeckElement key={el.id} element={el}>
+              {(placed) => (
+                <ElementView
+                  el={placed}
+                  media={media}
+                  startedAt={startedAt}
+                  clips={clips}
+                  seeks={seeks}
+                  textHidden={text === 'hidden'}
+                  reveal={text === 'only' ? reveal : undefined}
+                  band={darken?.kind === 'band' && darkensBehind(el) ? darken.strength : undefined}
+                  deck={deck && el.kind === 'video' ? deckMediaOf(slide, el.mediaId, 'video') : undefined}
+                  deckStep={step ?? nativeStep}
+                />
+              )}
+            </NativeDeckElement>
           ),
         ])}
       </div>

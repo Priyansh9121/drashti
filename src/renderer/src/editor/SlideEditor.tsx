@@ -1,4 +1,5 @@
 import { slideCanvas } from '../../../shared/document-page';
+import { DECK_MOTION_APPROXIMATION } from '../../../shared/deck-edit-motion';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { EditDoc } from '../../../shared/slide-edit';
 import type { TextElement } from '../../../shared/model';
@@ -119,6 +120,8 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const saving = useEditor((s) => s.saving);
   const askDiscard = useEditor((s) => s.askDiscard);
   const sourceConversion = useEditor((s) => s.sourceConversion);
+  const warningDecks =
+    doc && sourceConversion ? sourceConversion.slideIds.map((id) => findSlide(doc, id)?.deck) : [];
   const pdfTool = useEditor((s) => s.pdfTool);
   const pdfDrawing = useEditor((s) => s.pdfDrawing);
   const steps = useEditor((s) => s.past.length);
@@ -757,8 +760,11 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               {sourceConversion.slideIds.length === 1
                 ? 'Only this slide becomes Drashti’s own.'
                 : `These ${sourceConversion.slideIds.length} slides become Drashti’s own.`}{' '}
-              Their original animations and clicks are replaced by editable content.
             </p>
+            {warningDecks.some((deck) => deck && !deck.motion) && (
+              <p>Their original animations and clicks are replaced by editable content.</p>
+            )}
+            {warningDecks.some((deck) => deck?.motion?.approximate) && <p>{DECK_MOTION_APPROXIMATION}</p>}
             <p>The original file is never changed. Other slides keep their original playback.</p>
           </div>
         </Dialog>

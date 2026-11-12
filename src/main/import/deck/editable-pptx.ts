@@ -966,10 +966,6 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       throw new Error(
         'A source slide exceeds the 500 editable-object limit; objects were not silently dropped.',
       );
-    if (descendants(slide.root, 'timing').length > 0)
-      issues.add(
-        'This slide’s animations are not kept when it becomes Drashti’s own: its objects stay still.',
-      );
     slides.push({
       sourceIndex,
       hidden: ['0', 'false'].includes(attr(slide.root, 'show') ?? ''),

@@ -478,6 +478,7 @@ export async function bakedPresentation(
         videos++;
         const element: MediaElement = {
           id: `video-${String(deckMedia.length)}`,
+          sourceShapeId: m.shapeId,
           kind: 'video',
           frame: frameOf(m.box, width, height),
           mediaId,

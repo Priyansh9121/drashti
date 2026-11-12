@@ -5,6 +5,9 @@ import type { Transition } from './model';
 export interface DeckNativeTransition extends Transition {
   deckEffect: 'dissolve' | 'fade-black' | 'push' | 'wipe' | 'cover' | 'uncover' | 'zoom';
   direction?: 'left' | 'right' | 'up' | 'down';
+  /** Set only on LIVE when Drashti’s transition plays over the original. */
+  deckDurationMs?: number;
+  over?: Transition;
 }
 
 export const deckNativeTransitionSchema: z.ZodType<DeckNativeTransition> = z.object({
