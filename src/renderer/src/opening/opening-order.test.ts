@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openingHolds, stillAfterHold, type StartFacts, windowMayStart } from './opening-order';
+import { openingHolds, photoWait, stillAfterHold, type StartFacts, windowMayStart } from './opening-order';
 
 /*
  * The order of Drashti's start under the opening (Session 57, item 6). On CI's Mac the window starting underneath took
@@ -62,5 +62,17 @@ describe('the opening holds, black', () => {
     expect(openingHolds({ ...covered, ended: true })).toBe(false);
     expect(openingHolds({ ...covered, plan: 'none' })).toBe(false);
     expect(openingHolds({ ...covered, plan: 'asking' })).toBe(false);
+  });
+});
+
+describe('its photo', () => {
+  // CI's Mac (run 43171930738, opening.spec.ts:544 at :558): the window starting under the hold kept the page busy past
+  // the photo's 600 ms, its decode lost to that timer, and the lamp lit in the photo's place.
+  it('has no limit while the opening holds anyway: the photo holds nothing up then', () => {
+    expect(photoWait(true, 600)).toBeNull();
+  });
+
+  it('holds it up for its limit at most once nothing else does (then the lamp lights in its place)', () => {
+    expect(photoWait(false, 600)).toBe(600);
   });
 });
