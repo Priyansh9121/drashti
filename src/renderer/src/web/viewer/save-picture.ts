@@ -3,6 +3,7 @@ import { savedPictureName } from '../../../../shared/media';
 import type { PictureLook, PixelSize } from '../../../../shared/picture-look';
 import { editLayout, hasEdit, shownSize } from '../../../../shared/picture-look';
 import { current } from '../device';
+import type { NativeSlideSave } from './viewer-store';
 
 /*
  * Save picture… on a phone or tablet (Session 55, Part 5): the picture looked at (a picture, or a deck's slide)
@@ -73,6 +74,43 @@ export async function savePictureHere(
       return 'This device could not draw the picture: save it on Drashti’s computer instead.';
     }
   }
+  return handOverPicture(out, name);
+}
+
+/** Save the whole native deck slide as its selected click ends. */
+export async function saveNativeSlideHere(
+  slide: NativeSlideSave,
+  name: string,
+  looks: Record<string, PictureLook>,
+): Promise<string | null> {
+  const token = current()?.token;
+  const query = new URLSearchParams({ format: 'png', slide: slide.slideId, click: String(slide.click) });
+  try {
+    const response = await fetch(
+      `/api/v1/presentations/${encodeURIComponent(slide.presentationId)}?${query.toString()}`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
+    );
+    if (response.ok && response.headers.get('Content-Type') === 'image/png')
+      return await handOverPicture(await response.blob(), name);
+    const reply: unknown = await response.json();
+    if (reply && typeof reply === 'object') {
+      if (response.ok && 'mediaId' in reply && typeof reply.mediaId === 'string') {
+        return (
+          (await savePictureHere(reply.mediaId, name, looks[reply.mediaId] ?? null)) ??
+          'This is the slide as it starts. Try again when the screens are still to save this click.'
+        );
+      }
+      if ('message' in reply && typeof reply.message === 'string') return reply.message;
+    }
+  } catch {
+    return 'Drashti could not be reached: check this device’s Wi-Fi, then try again.';
+  }
+  return 'Drashti could not send this picture now: try again in a moment.';
+}
+
+async function handOverPicture(out: Blob, name: string): Promise<string | null> {
   const file = new File([out], savedPictureName(name, out.type === 'image/jpeg'), { type: out.type });
   if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
     try {
