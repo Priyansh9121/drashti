@@ -354,9 +354,17 @@ const styleOr = (style: LowerThirdStyle): LowerThirdStyle =>
 const motionOr = (motion: LowerThirdMotion): LowerThirdMotion =>
   OFFERED_MOTIONS.includes(motion) ? motion : 'none';
 
-interface TemplateMaking {
+export interface LowerThirdTemplate {
   id: string;
   name: string;
+  direction: 'left' | 'right' | 'up' | 'down' | 'centre';
+  kind: 'slide' | 'wipe' | 'reveal' | 'pop' | 'letters';
+  feel: 'quick' | 'elegant' | 'bold' | 'calm';
+  speed: AnimationSpeed;
+  input: LowerThirdInput;
+}
+
+interface TemplateMaking extends Omit<LowerThirdTemplate, 'input' | 'speed'> {
   lines: [string, string, string];
   look: Partial<LowerThirdLook> & Pick<LowerThirdLook, 'style'>;
   animation: string;
@@ -367,6 +375,9 @@ const MAKINGS: readonly TemplateMaking[] = [
   {
     id: 'name-title',
     name: 'Name and title',
+    direction: 'left',
+    kind: 'slide',
+    feel: 'calm',
     lines: ['Placeholder name', 'Placeholder title', ''],
     look: { style: 'box' },
     animation: 'slide-left-steady',
@@ -374,6 +385,9 @@ const MAKINGS: readonly TemplateMaking[] = [
   {
     id: 'news-band',
     name: 'News band',
+    direction: 'right',
+    kind: 'wipe',
+    feel: 'bold',
     lines: ['Placeholder name', 'Placeholder title', ''],
     look: {
       style: 'band',
@@ -388,6 +402,9 @@ const MAKINGS: readonly TemplateMaking[] = [
   {
     id: 'pill',
     name: 'Soft pill',
+    direction: 'centre',
+    kind: 'pop',
+    feel: 'quick',
     lines: ['Placeholder name', 'Placeholder title', ''],
     look: {
       style: 'pill',
@@ -403,6 +420,9 @@ const MAKINGS: readonly TemplateMaking[] = [
   {
     id: 'ribbon',
     name: 'Ribbon',
+    direction: 'up',
+    kind: 'reveal',
+    feel: 'elegant',
     lines: ['Placeholder name', 'Placeholder title', ''],
     look: {
       style: 'ribbon',
@@ -419,6 +439,9 @@ const MAKINGS: readonly TemplateMaking[] = [
   {
     id: 'glass',
     name: 'Glass',
+    direction: 'centre',
+    kind: 'reveal',
+    feel: 'calm',
     lines: ['Placeholder name', 'Placeholder title', ''],
     look: { style: 'glass', band: '#0f172a', bandOpacity: 0.6, font: 'Montserrat' },
     animation: 'fade-steady',
@@ -426,6 +449,9 @@ const MAKINGS: readonly TemplateMaking[] = [
   {
     id: 'two-colours',
     name: 'Two colours',
+    direction: 'up',
+    kind: 'reveal',
+    feel: 'bold',
     lines: ['Placeholder name', 'Placeholder title', 'Placeholder place'],
     look: { style: 'split', band: '#1e3a8a', bandOpacity: 0.95, accent: '#b45309', font: 'Hind' },
     animation: 'line-reveal-band-fade-steady',
@@ -433,6 +459,9 @@ const MAKINGS: readonly TemplateMaking[] = [
   {
     id: 'outline',
     name: 'Outline',
+    direction: 'centre',
+    kind: 'letters',
+    feel: 'calm',
     lines: ['Placeholder name', 'Placeholder title', ''],
     look: {
       style: 'outline',
@@ -448,6 +477,9 @@ const MAKINGS: readonly TemplateMaking[] = [
   {
     id: 'accent-bar',
     name: 'Accent bar',
+    direction: 'left',
+    kind: 'slide',
+    feel: 'bold',
     lines: ['Placeholder name', 'Placeholder title', ''],
     look: { style: 'accent', band: '#111827', bandOpacity: 0.9, accent: '#f97316', font: 'Noto Serif' },
     animation: 'slide-left-steady',
@@ -455,6 +487,9 @@ const MAKINGS: readonly TemplateMaking[] = [
   {
     id: 'gujarati',
     name: 'Gujarati title',
+    direction: 'up',
+    kind: 'reveal',
+    feel: 'elegant',
     lines: ['નમૂના નામ', 'Placeholder title', ''],
     look: {
       style: 'stacked',
@@ -470,6 +505,9 @@ const MAKINGS: readonly TemplateMaking[] = [
   {
     id: 'hindi',
     name: 'Hindi title',
+    direction: 'up',
+    kind: 'reveal',
+    feel: 'elegant',
     lines: ['नमूना नाम', 'Placeholder title', ''],
     look: {
       style: 'underline',
@@ -487,21 +525,25 @@ const MAKINGS: readonly TemplateMaking[] = [
  * Templates to start from, with placeholder words only, each from what is offered (a choice left out of OFFERED
  * falls back: the default animation, a box, no moving background).
  */
-export const LOWER_THIRD_TEMPLATES: readonly { id: string; name: string; input: LowerThirdInput }[] =
-  MAKINGS.map((m) => {
-    const look: LowerThirdLook = {
-      ...DEFAULT_LOWER_THIRD_LOOK,
-      ...m.look,
-      style: styleOr(m.look.style ?? 'box'),
-      ...(m.look.motion ? { motion: motionOr(m.look.motion) } : {}),
-    };
-    const out = m.outAnimation && isOffered(m.outAnimation) ? { outAnimation: m.outAnimation } : {};
-    return {
-      id: m.id,
-      name: m.name,
-      input: { lines: [...m.lines], look, where: 'both', animation: offeredOr(m.animation), ...out },
-    };
-  });
+export const LOWER_THIRD_TEMPLATES: readonly LowerThirdTemplate[] = MAKINGS.map((m) => {
+  const look: LowerThirdLook = {
+    ...DEFAULT_LOWER_THIRD_LOOK,
+    ...m.look,
+    style: styleOr(m.look.style ?? 'box'),
+    ...(m.look.motion ? { motion: motionOr(m.look.motion) } : {}),
+  };
+  const out = m.outAnimation && isOffered(m.outAnimation) ? { outAnimation: m.outAnimation } : {};
+  const animation = offeredOr(m.animation);
+  return {
+    id: m.id,
+    name: m.name,
+    direction: animation === m.animation ? m.direction : 'left',
+    kind: animation === m.animation ? m.kind : 'slide',
+    feel: m.feel,
+    speed: animationById(animation).speed,
+    input: { lines: [...m.lines], look, where: 'both', animation, ...out },
+  };
+});
 
 /** Every animation the library has that the studio does not offer (left out of OFFERED, or never in it). */
 export const NOT_OFFERED: readonly LowerThirdAnimation[] = LOWER_THIRD_ANIMATIONS.filter(
