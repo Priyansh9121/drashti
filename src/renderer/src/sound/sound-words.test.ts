@@ -40,7 +40,7 @@ describe('Drashti’s own sound in words', () => {
 
   it('says where a trimmed video plays from and to, its file not cut', () => {
     expect(trimmedWords('Placeholder clip.mp4', { startMs: 1500, endMs: 4500 })).toBe(
-      '“Placeholder clip.mp4” now plays from 0:01.5 to 0:04.5, past the black and silence. Its file is not cut: Trim (start, end and markers)… changes the points.',
+      '“Placeholder clip.mp4” now plays from 0:01.5 to 0:04.5, past the black and silence. Choose Undo to restore the old playback points.',
     );
     expect(trimmedWords('Placeholder clip.mp4', { startMs: 0, endMs: null })).toContain(
       'from its start to its end',

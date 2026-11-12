@@ -103,3 +103,60 @@ test('a PowerPoint slide keeps its editable cells, aligned words and hidden obje
     await app.close();
   }
 });
+
+test('tight imported PowerPoint boxes and table cells fit their words on both writing axes', async () => {
+  const line = 'Placeholder unwrapped line that is wider than its source text box';
+  const column = 'Placeholder vertical first column';
+  const cellWords = 'Placeholder words that wrap inside a narrow table cell';
+  const horizontal = wordsShape(
+    '<a:p>' + text(line) + '</a:p>',
+    '<a:xfrm><a:off x="914400" y="1828800"/><a:ext cx="1524000" cy="381000"/></a:xfrm>',
+  ).replace('bIns="0"/>', 'bIns="0" wrap="none"><a:spAutoFit/></a:bodyPr>');
+  const vertical = wordsShape(
+    '<a:p>' + text(column) + '</a:p><a:p>' + text('Placeholder vertical second column') + '</a:p>',
+    '<a:xfrm><a:off x="5486400" y="1828800"/><a:ext cx="381000" cy="3048000"/></a:xfrm>',
+  )
+    .replace('id="2"', 'id="3"')
+    .replace('<a:bodyPr ', '<a:bodyPr vert="vert" ');
+  const tightTable = graphic(
+    '6',
+    '3200400',
+    '<a:tbl><a:tblGrid><a:gridCol w="1524000"/><a:gridCol w="1524000"/></a:tblGrid><a:tr h="609600">' +
+      cell(cellWords) +
+      cell('Placeholder other cell') +
+      '</a:tr></a:tbl>',
+  );
+
+  const { app, userData } = await launchApp({ DRASHTI_TEST_DECK_CONVERTER: '1' });
+  try {
+    const name = 'Placeholder text fit';
+    const file = join(userData, name + '.pptx');
+    writeFileSync(file, editablePptxFixture({ slides: [slideXml(horizontal + vertical + tightTable)] }));
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const [presentationId] = await importAndGetIds(win, [file]);
+    expect(presentationId).toBeTruthy();
+    const { editor } = await openEditor(app, win, name);
+    const canvas = editor.getByTestId('editor-slide');
+    for (const words of [line, column, cellWords]) {
+      const box = canvas.locator('[data-element]').filter({ hasText: words });
+      await expect(box.getByText(words, { exact: true })).toBeVisible();
+      await expect(box).toHaveAttribute('data-fit', /^0\./u);
+      await expect(box).not.toHaveAttribute('data-overset');
+      await expect(box).toHaveCSS('overflow', 'visible');
+      expect(
+        await box.evaluate((element) => {
+          const contents = element.firstElementChild;
+          return (
+            contents instanceof HTMLElement &&
+            contents.scrollWidth <= element.clientWidth + 1 &&
+            contents.scrollHeight <= element.clientHeight + 1
+          );
+        }),
+      ).toBe(true);
+    }
+    await expect(canvas.locator('[data-element]').filter({ hasText: line })).toHaveCSS('white-space', 'pre');
+  } finally {
+    await app.close();
+  }
+});

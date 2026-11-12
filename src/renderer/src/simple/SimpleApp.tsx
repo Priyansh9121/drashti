@@ -377,7 +377,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <StatusBar info={info} onOpenScreens={null} />
       {/* A row's right-click menu, its Delete's question when it is up, and From a Link…. */}
       <FileMenu platform={platform} />
-      {/* A row's Trim (Session 56): Pro Mode's start, end and markers, never a copy (no Save as MP4…). */}
+      {/* A playlist video's Trim prepares a new cut for its row (Session 57). */}
       <MarkersDialog copies={false} />
       <RemoveItemsConfirm undoKey={shortcutText('undo', platform)} />
       {/* Delete… of a playlist or a folder (Session 56), asked first, with Undo. */}

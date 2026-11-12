@@ -203,6 +203,7 @@ export const textStyleSchema: z.ZodType<TextStyle> = z.object({
   glow: glowSchema.nullable().optional(),
   shrinkToFit: z.boolean().optional(),
   clipToBox: z.boolean().optional(),
+  noWrap: z.boolean().optional(),
   writingMode: z.enum(['vertical-rl', 'vertical-lr', 'sideways-lr']).optional(),
   textOrientation: z.literal('upright').optional(),
 });
@@ -231,6 +232,7 @@ export const textRunSchema: z.ZodType<TextRun> = z.object({
       indent: num.min(-16_384).max(16_384).optional(),
       lineHeight: num.positive().max(5).optional(),
       bullet: z.string().max(8).optional(),
+      bulletFont: z.string().max(200).optional(),
       startAt: num.int().min(1).max(32_767).optional(),
     })
     .optional(),

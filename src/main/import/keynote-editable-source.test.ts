@@ -146,8 +146,7 @@ describe('the editable Keynote export', () => {
     );
     const limit = call?.[1].find((arg) => arg.startsWith('with timeout of '));
     const seconds = Number(/with timeout of (\d+) seconds/u.exec(limit ?? '')?.[1]);
-    expect(seconds).toBeGreaterThanOrEqual(15);
-    expect(seconds).toBeLessThanOrEqual(69);
+    expect(seconds).toBe(69);
   });
 
   it('keeps the PDF and tells the operator what to do when their Keynote stops answering', async () => {
