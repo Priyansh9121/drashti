@@ -116,7 +116,15 @@ import type {
   TimerCue,
 } from './playlists';
 import type { RepeatSettings } from './repeat';
-import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from './trim';
+import type {
+  KeyframeResult,
+  RowTrimRequest,
+  RowTrimResult,
+  RowTrimView,
+  SaveJob,
+  SaveRequest,
+  SaveResult,
+} from './trim';
 import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
@@ -577,6 +585,11 @@ export interface DrashtiBridge {
     keyframe(mediaId: string, startMs: number): Promise<KeyframeResult>;
     /** Save the part as an MP4 where the operator chooses (a save dialog), in the background. */
     saveTrim(request: SaveRequest): Promise<SaveResult>;
+    rowTrim(itemId: string): Promise<RowTrimView | null>;
+    applyRowTrim(itemId: string, request: RowTrimRequest): Promise<RowTrimResult>;
+    resetRowTrim(itemId: string, mediaId: string): Promise<RowTrimResult>;
+    preparingTrims(): Promise<string[]>;
+    onPreparingTrims(listener: (itemIds: string[]) => void): () => void;
     saves(): Promise<SaveJob[]>;
     onSaves(listener: (jobs: SaveJob[]) => void): () => void;
     stopSave(jobId: string): Promise<boolean>;
