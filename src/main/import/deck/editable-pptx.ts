@@ -714,6 +714,16 @@ async function objectOf(
   if (text) output.push(text);
   return output;
 }
+function nonVisualProperties(node: XmlNode): Node {
+  const wrapper = kids(node).find((part) => nameOf(part).startsWith('nv'));
+  return child(wrapper, 'cNvPr');
+}
+
+function drawingId(node: XmlNode): string | undefined {
+  const id = attr(nonVisualProperties(node), 'id')?.trim();
+  return id && /^\d{1,10}$/u.test(id) ? id : undefined;
+}
+
 async function walk(
   tree: Node,
   part: Part,
@@ -722,11 +732,14 @@ async function walk(
   ctx: Context,
   inherited = false,
   groupId?: string,
+  sourceGroupIds: string[] = [],
 ): Promise<SlideElement[]> {
   const result: SlideElement[] = [];
   for (const node of kids(tree)) {
     const kind = nameOf(node);
     if (inherited && placeholder(node)) continue;
+    // Layout and master parts have their own ID spaces. Slide timing addresses this slide's tree.
+    const sourceShapeId = inherited ? undefined : drawingId(node);
     if (kind === 'grpSp') {
       const xfrm = child(child(node, 'grpSpPr'), 'xfrm'),
         rect = rawRect(xfrm);
@@ -760,11 +773,19 @@ async function walk(
           ctx,
           inherited,
           groupId ?? ctx.id(),
+          sourceShapeId ? [...sourceGroupIds, sourceShapeId] : sourceGroupIds,
         )),
       );
     } else if (kind === 'sp' || kind === 'pic' || kind === 'cxnSp') {
       const objects = await objectOf(node, part, parent, flip, ctx);
-      result.push(...objects.map((el) => (groupId ? { ...el, groupId } : el)));
+      result.push(
+        ...objects.map((el) => ({
+          ...el,
+          ...(groupId ? { groupId } : {}),
+          ...(sourceShapeId ? { sourceShapeId } : {}),
+          ...(sourceGroupIds.length > 0 ? { sourceGroupIds } : {}),
+        })),
+      );
     } else if (kind === 'AlternateContent') {
       ctx.issues.add('Alternate drawing content uses its available fallback.');
       result.push(
@@ -776,6 +797,7 @@ async function walk(
           ctx,
           inherited,
           groupId,
+          sourceGroupIds,
         )),
       );
     } else if (!['nvGrpSpPr', 'grpSpPr', 'extLst'].includes(kind)) {
