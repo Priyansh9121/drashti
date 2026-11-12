@@ -2851,6 +2851,7 @@ function start(): void {
   // ---- streaming -------------------------------------------------------------
   let eventsStreamWas: StreamStatus | null = null;
   let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
+  let conversionActivityChanged: (() => void) | undefined;
   const countStreams = streamCounter((kind) => behind?.service.count(kind));
   const streamKeys = new StreamKeyStore(
     join(app.getPath('userData'), 'stream-keys.json'),
@@ -2891,6 +2892,7 @@ function start(): void {
     },
     statusChanged: (status) => {
       captionsStreamUseChanged?.(stream?.inUse() === true);
+      conversionActivityChanged?.();
       eventsOut.emit(streamEvents(eventsStreamWas, status));
       eventsStreamWas = status;
       // Each stream and recording started, counted for the Access List (Session 54): never what.
@@ -3610,6 +3612,7 @@ function start(): void {
       streaming.inUse() || testOnAir
         ? 'Waits while the stream is on air or recording, then carries on by itself.'
         : null,
+    showBusy: () => !nothingUp(engine.current.layers),
     freeBytes: diskFreeBytes,
     changed: (jobs) => {
       sendToOperator(IPC.media.conversionsChanged, jobs);
@@ -3638,7 +3641,13 @@ function start(): void {
       },
     },
   });
+  conversionActivityChanged = () => conversions.activityChanged();
+  const offConversionActivity = engine.onChange((state) => {
+    if (!nothingUp(state.layers)) conversions.activityChanged();
+  });
   stops.add('conversions', () => {
+    conversionActivityChanged = undefined;
+    offConversionActivity();
     conversions.close();
   });
   // ---- Drashti's own sound with everything else (Session 55, Part 7; main/sound/, shared/sound.ts) ----------------
@@ -3756,6 +3765,11 @@ function start(): void {
     fromOperator(e)
       ? conversions.convert(ids)
       : { ok: false as const, message: 'Only the operator window can convert.' },
+  );
+  handle(IPC.media.retryConversion, (e, id) =>
+    fromOperator(e)
+      ? conversions.retryImported(id)
+      : { ok: false as const, message: 'Only the operator window can retry a conversion.' },
   );
   handle(IPC.media.cancelConversion, (e, id) =>
     fromOperator(e)
@@ -4477,6 +4491,14 @@ function start(): void {
     message: 'Only the operator window can import from a link.',
   };
   handle(IPC.links.view, () => links.view());
+  handle(IPC.links.start, (e, text, audio, intoOpenPlaylist) =>
+    fromOperator(e) &&
+    typeof text === 'string' &&
+    typeof audio === 'boolean' &&
+    typeof intoOpenPlaylist === 'boolean'
+      ? links.start(text, audio, intoOpenPlaylist)
+      : notLinksOperator,
+  );
   handle(IPC.links.look, (e, kind, link) =>
     fromOperator(e) && (kind === 'dropbox' || kind === 'youtube') && typeof link === 'string'
       ? links.look(kind, link)

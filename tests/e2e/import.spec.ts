@@ -251,28 +251,32 @@ test('a big import runs in its own process: every slide change still reaches the
   expect(again.ok, JSON.stringify(again)).toBe(true);
   expect(again.ok && again.run.totals).toMatchObject({ skipped: SONGS, imported: 0 });
 
-  // A changed file waits for a choice; replacing keeps the presentation and updates its slides.
+  // A changed file is kept beside the earlier one and can be opened independently.
   const changedFile = join(dir, 'Placeholder Song 001.txt');
   writeFileSync(changedFile, '[Verse 1]\nPlaceholder song 1, rewritten\n');
-  const asked = await win.evaluate(
+  const changed = await win.evaluate(
     (file) => (globalThis as PageGlobals).drashti.library.importPaths([file]),
     changedFile,
   );
-  expect(asked.ok, JSON.stringify(asked)).toBe(true);
-  expect(asked.ok && asked.run.totals).toMatchObject({ conflicts: 1 });
-  const replaced = await win.evaluate(
-    (file) =>
-      (globalThis as PageGlobals).drashti.library.importPaths([file], { decisions: { [file]: 'replace' } }),
-    changedFile,
+  expect(changed.ok, JSON.stringify(changed)).toBe(true);
+  expect(changed.ok && changed.run.totals).toMatchObject({
+    keptBoth: 1,
+    conflicts: 0,
+    presentations: 1,
+    slides: 1,
+  });
+  const presentations = await win.evaluate(async () =>
+    (await (globalThis as PageGlobals).drashti.library.listPresentations())
+      .map((item) => item.name)
+      .filter((name) => name.startsWith('Placeholder Song 001')),
   );
-  expect(replaced.ok, JSON.stringify(replaced)).toBe(true);
-  expect(replaced.ok && replaced.run.totals).toMatchObject({ replaced: 1, presentations: 1, slides: 1 });
+  expect(presentations.sort()).toEqual(['Placeholder Song 001', 'Placeholder Song 001 (2)']);
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /^Placeholder Song 001/ })
+    .getByRole('button', { name: /^Placeholder Song 001 \(2\)/ })
     .click();
   await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
-    'Placeholder Song 001',
+    'Placeholder Song 001 (2)',
   );
   await expect(win.getByTestId('slide-thumb')).toHaveCount(1);
 

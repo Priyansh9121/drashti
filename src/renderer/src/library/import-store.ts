@@ -1,15 +1,11 @@
 import { create } from 'zustand';
-import type {
-  ConflictChoice,
-  ImportOptions,
-  ImportProgress,
-  ImportReport,
-  ImportResult,
-  ImportRunSummary,
-} from '../../../shared/import';
+import type { ImportOptions, ImportProgress, ImportResult, ImportRunSummary } from '../../../shared/import';
+import { itemsMadeBy } from '../../../shared/import-items';
+import type { NewItem } from '../../../shared/playlists';
 import type { UsedIn } from '../../../shared/media-removal';
 import { useEngine } from '../engine/engine-store';
-import { usePlaylists } from '../playlists/playlist-store';
+import { openImportDestination, usePlaylists } from '../playlists/playlist-store';
+import { showImportFailures, showImportNotice } from './import-notices';
 import type { ShownItem } from './library-store';
 import {
   chooseNothing,
@@ -39,9 +35,6 @@ interface ImportView {
   runs: Record<string, ImportProgress>;
   /** The last run this window started, once it ended. */
   finished: ImportRunSummary | null;
-  error: string | null;
-  /** The report on screen, if any. */
-  report: ImportReport | null;
   /**
    * Presentations waiting for the operator to confirm removing them; `closes` when it was asked from the middle
    * (Session 50: Delete… in the menu of the presentation open there), which then shows nothing chosen;
@@ -61,8 +54,6 @@ interface ImportView {
 export const useImports = create<ImportView>(() => ({
   runs: {},
   finished: null,
-  error: null,
-  report: null,
   confirmRemove: null,
 }));
 
@@ -85,64 +76,83 @@ export function watchImports(): void {
   });
 }
 
-const somethingLive = () => useEngine.getState().state?.live.presentationId != null;
+export type ImportDestination = (items: NewItem[]) => Promise<void>;
 
-export async function openReport(runId: string): Promise<void> {
-  const report = await window.drashti.library.getImportReport(runId);
-  useImports.setState({ report });
+function finishedRun(run: ImportRunSummary): void {
+  useImports.setState((s) => ({ finished: run, runs: withoutRun(s.runs, run.id) }));
 }
 
-export function closeReport(): void {
-  useImports.setState({ report: null });
-}
-
-async function settle(run: Promise<ImportResult>, report = true): Promise<ImportResult> {
-  useImports.setState({ error: null });
-  const result = await run;
-  if (!result.ok) {
-    useImports.setState({ error: result.message });
-    return result;
-  }
-  useImports.setState((s) => ({ finished: result.run, runs: withoutRun(s.runs, result.run.id) }));
-  // The report comes up by itself, unless the show is on (a dialog would take the keyboard) or the import was
-  // for Audio (Session 44: the result line still offers it).
-  if (report && !somethingLive()) await openReport(result.run.id);
-  return result;
-}
-
-/** Import files and folders (dropped, or picked in a dialog); `report: false` keeps its report from opening by itself. */
+/** Import dropped or picked files and add their playlist items at the destination captured at the start. */
 export function importPaths(
   paths: string[],
   options?: ImportOptions,
-  { report = true }: { report?: boolean } = {},
+  destination: ImportDestination | null = openImportDestination(),
 ): Promise<ImportResult | null> {
-  if (paths.length === 0) return Promise.resolve(null);
-  return settle(window.drashti.library.importPaths(paths, options), report);
+  const delivered = new Set<string>();
+  const placeFiles = async (run: ImportRunSummary, files: string[]) => {
+    const report = await window.drashti.library.getImportReport(run.id).catch(() => null);
+    if (!report) {
+      showImportNotice('Drashti couldn’t read which files came in.', () => placeFiles(run, files));
+      return;
+    }
+    if (destination) {
+      const made = itemsMadeBy(
+        report.items.filter((item) => !item.target || !delivered.has(item.target.id)),
+        files,
+      );
+      if (made.length > 0) {
+        const place = async () => {
+          await destination(made);
+          for (const item of made) {
+            if (item.kind === 'presentation') delivered.add(item.presentationId);
+            if (item.kind === 'media') delivered.add(item.mediaId);
+          }
+        };
+        try {
+          await place();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'The imported files couldn’t be added.';
+          showImportNotice(message, place);
+        }
+      }
+    }
+    showImportFailures(report, importAgain);
+  };
+  const importAgain = async (files: string[]): Promise<ImportResult | null> => {
+    if (files.length === 0) return null;
+    const result = await window.drashti.library.importPaths(files, options).catch(() => ({
+      ok: false as const,
+      message: 'Drashti couldn’t import the selected files. Try again.',
+    }));
+    if (!result.ok) {
+      if (result.message !== 'Cancelled before it started.')
+        showImportNotice(result.message, () => importAgain(files));
+      return result;
+    }
+    finishedRun(result.run);
+    await placeFiles(result.run, files);
+    return result;
+  };
+  return importAgain(paths);
 }
 
 /** The Import button: a system dialog for files or a folder. */
 export async function importWithDialog(kind: 'files' | 'folder'): Promise<void> {
+  const destination = openImportDestination();
   const paths = await window.drashti.library.pickImportPaths(kind);
-  await importPaths(paths);
+  await importPaths(paths, undefined, destination);
 }
 
-/**
- * The file to import for a report item: the file itself, or the bundle it was
- * in ("bundle.pro6x!/inner/Song.pro6" is imported by importing the bundle).
- */
-export const fileToImport = (sourcePath: string): string => sourcePath.split('!/')[0] ?? sourcePath;
-
-/** Answer "replace or keep both?" for changed files. */
-export async function resolveConflicts(sourcePaths: string[], choice: ConflictChoice): Promise<void> {
-  closeReport();
-  const files = [...new Set(sourcePaths.map(fileToImport))];
-  await importPaths(files, { decisions: Object.fromEntries(sourcePaths.map((p) => [p, choice])) });
-}
-
-/** Look for missing media in a folder the operator picks. */
+/** Look for missing media in a folder the operator picks from the Ready panel. */
 export async function relinkMedia(mediaIds?: string[]): Promise<void> {
-  closeReport();
-  await settle(window.drashti.library.relinkMedia(mediaIds));
+  const result = await window.drashti.library.relinkMedia(mediaIds);
+  if (!result.ok) {
+    if (result.message !== 'No folder was chosen.') showImportNotice(result.message);
+    return;
+  }
+  finishedRun(result.run);
+  const report = await window.drashti.library.getImportReport(result.run.id).catch(() => null);
+  if (report) showImportFailures(report);
 }
 
 export async function cancelImport(runId: string): Promise<void> {
@@ -150,7 +160,7 @@ export async function cancelImport(runId: string): Promise<void> {
 }
 
 export function dismissFinished(): void {
-  useImports.setState({ finished: null, error: null });
+  useImports.setState({ finished: null });
 }
 
 // ---- removing presentations -------------------------------------------------

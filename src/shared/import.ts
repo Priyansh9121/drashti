@@ -8,8 +8,7 @@ export type ConflictChoice = 'replace' | 'keep-both' | 'skip';
 
 export interface ImportOptions {
   /**
-   * Changed files: 'ask' (the default) writes nothing for them and lists them
-   * as conflicts, so the operator can choose; or one choice for all of them.
+   * Changed files are kept beside the earlier import by default. Callers can set another policy.
    */
   onConflict?: 'ask' | ConflictChoice;
   /** Choices for single files, by source path (the answers to an earlier run's conflicts). */

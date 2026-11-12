@@ -1,9 +1,7 @@
 /*
  * Import from a Link (Session 25b, PLAN §7): File › Import from a Link…
- * asks which kind of link (YouTube or Dropbox), saves what it holds in a
- * folder the admin chooses, and then imports the saved files through the
- * normal import. Nothing goes straight into Drashti, and Drashti never moves
- * or deletes what it saved.
+ * detects YouTube or Dropbox from a pasted link and saves it in the usual
+ * downloads folder before importing it. Drashti keeps the saved files.
  *
  * Dropbox: a shared link to a file, or to a folder (Dropbox sends a folder
  * as one zip). Its PowerPoint files (.pptx) and MP4 videos are imported;
@@ -131,6 +129,14 @@ function checkDropbox(text: string): LinkCheck {
   return { ok: true, url: url.toString(), shape };
 }
 
+/** The service named by a pasted address, before that service's shared-link checks. */
+export function linkKind(raw: string): LinkKind | null {
+  const host = parse(raw.trim())?.hostname.toLowerCase();
+  if (host === undefined) return null;
+  if (DROPBOX_HOSTS.has(host)) return 'dropbox';
+  return isYouTubeHost(host) ? 'youtube' : null;
+}
+
 /** Check a pasted link for the kind chosen. */
 export function checkLink(kind: LinkKind, raw: string): LinkCheck {
   const text = raw.trim();
@@ -206,10 +212,10 @@ export const aboveTheSetting = (maxHeight: number): string =>
   `Above ${heightLabel(maxHeight)}, the highest video quality allowed. Change it under Highest video quality, above.`;
 
 export type LinkPhase =
-  /** Nothing yet: choose a kind, paste a link. */
+  /** Ready for a link. */
   | 'idle'
   | 'looking'
-  /** The link was looked at: choose where to save, then Download. */
+  /** The link was looked at; ready for the download. */
   | 'looked'
   /** Waiting to download (the stream is on air or recording). */
   | 'waiting'
@@ -242,13 +248,15 @@ export interface LinkView {
   waitingFor: string | null;
   /** What went wrong, or how it stopped, in words. */
   message: string | null;
+  /** A failed lookup or download may succeed on another attempt. */
+  retryable?: boolean;
   /** What was saved: the folder, and the files in it (paths inside it). */
   saved: { folder: string; files: string[] } | null;
   /** Files saved but not imported, with why. */
   notTaken: NotTaken[];
   /** Videos above the highest quality whose copy that tall was imported (the originals stay in the folder). */
   fitted: string[];
-  /** The admin's highest video quality, for YouTube and Dropbox. */
+  /** The highest video quality for this download. */
   maxHeight: LinkHeight;
   /** The import run of what was saved, once it started (its report). */
   runId: string | null;
@@ -256,6 +264,8 @@ export interface LinkView {
   choice: { type: YouTubeType; height: number | null } | null;
   /** A Dropbox folder's own playlist (Session 26c), made when its import ended; opened as it is made. */
   playlist: { id: string; name: string } | null;
+  /** The relative path of each file in a folder imported into an existing playlist. */
+  folderFiles?: { path: string; relative: string }[];
   /** A folder's PDFs and pictures, saved but not added yet (paths inside it): one button adds them. */
   waiting: string[];
   /** How many of those the button added, once it has. */

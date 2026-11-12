@@ -11,11 +11,9 @@ import type {
   TimerCue,
 } from '../../../shared/playlists';
 import { POSITION_MAX } from '../../../shared/playlists';
-import { itemsMadeBy, leftOutLine } from '../../../shared/import-items';
 import { useEngine } from '../engine/engine-store';
-import { importPaths } from '../library/import-store';
-import { useNotice } from '../operator/actions';
-import { useMode } from '../operator/mode-store';
+import { showImportNotice } from '../library/import-notices';
+import { importPaths, type ImportDestination } from '../library/import-store';
 import { chooseNothing, leaveItem, showItem, showRepeatSteps, useLibrary } from '../library/library-store';
 import { isRepeatId, repeatPresentationId, type RepeatSettings } from '../../../shared/repeat';
 import { describeSome, pushRemoval } from '../library/undo';
@@ -725,41 +723,39 @@ export async function addFromLibrary(
   return ids;
 }
 
-/**
- * Files from the Finder or Explorer dropped on a playlist (Session 26a): imported as files dropped
- * anywhere are (the same rules: Pro Mode), then everything the import made
- * added before the item that was at `at` when they landed (at the end when none), in the order dropped.
- */
+/** Capture where to add an import before its files are read. */
+function importDestination(playlistId: string, at: number | null, header: string | null): ImportDestination {
+  const start = usePlaylists.getState();
+  const beforeId = start.openId === playlistId && at !== null ? (start.items[at]?.id ?? null) : null;
+  let addHeader = header !== null;
+  return async (made) => {
+    const { openId, items } = usePlaylists.getState();
+    const index = openId === playlistId && beforeId !== null ? items.findIndex((i) => i.id === beforeId) : -1;
+    const given = addHeader && header !== null ? [{ kind: 'header' as const, label: header }, ...made] : made;
+    const ids = await addFromLibrary(playlistId, index >= 0 ? index : null, given);
+    if (ids.length === 0)
+      throw new Error(
+        usePlaylists.getState().problem ?? 'The imported files couldn’t be added to the playlist.',
+      );
+    addHeader = false;
+  };
+}
+
+export function openImportDestination(): ImportDestination | null {
+  const { openId } = usePlaylists.getState();
+  if (openId === null) return null;
+  const { at, header } = addingAt();
+  return importDestination(openId, at, header);
+}
+
+/** Add files to their drop position, or at the end when none was specified. */
 export async function importIntoPlaylist(
   playlistId: string,
   at: number | null,
   paths: string[],
-  /** A header to put first (Session 44: a folder shown that has no part of its own yet). */
   header: string | null = null,
 ): Promise<void> {
-  if (paths.length === 0) return;
-  const before = () => {
-    const { openId, items } = usePlaylists.getState();
-    return openId === playlistId && at !== null ? (items[at]?.id ?? null) : null;
-  };
-  const beforeId = before();
-  // Simple Mode (Session 55, Part 18) has no import report to open: a line says what was left out, and why.
-  const simple = useMode.getState().mode === 'simple';
-  const result = await importPaths(paths, undefined, { report: !simple });
-  if (!result?.ok) return;
-  const report = await window.drashti.library.getImportReport(result.run.id);
-  const leftOut = simple ? leftOutLine(report?.items ?? []) : null;
-  if (leftOut !== null) useNotice.setState({ text: leftOut });
-  const made = itemsMadeBy(report?.items ?? [], paths);
-  if (made.length === 0) return;
-  // The import may have taken a while: the place is found again by the item it went before.
-  const { openId, items } = usePlaylists.getState();
-  const index = openId === playlistId && beforeId !== null ? items.findIndex((i) => i.id === beforeId) : -1;
-  await addFromLibrary(
-    playlistId,
-    index >= 0 ? index : null,
-    header === null ? made : [{ kind: 'header', label: header }, ...made],
-  );
+  await importPaths(paths, undefined, importDestination(playlistId, at, header));
 }
 
 /**
@@ -782,7 +778,7 @@ export async function dropFolders(
     // Never lost: what could not be looked at goes where files go.
     dropped = { made: [], files: paths, problems: [] };
   }
-  if (dropped.problems.length > 0) useNotice.setState({ text: dropped.problems.join(' ') });
+  for (const problem of dropped.problems) showImportNotice(problem);
   // The files' place is taken as their import starts (importIntoPlaylist), before another playlist opens.
   const files = dropped.files.length > 0 ? rest(dropped.files) : undefined;
   const last = dropped.made.at(-1);

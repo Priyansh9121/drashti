@@ -4,13 +4,15 @@ import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeOldWordDoc, makeTestDocx } from '../../src/main/import/testing/make-docx';
+import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, dropFiles, launchApp, openLibrary, operatorPage } from './helpers';
+import { chooseMenuItem, closeLibrary, dropFiles, launchApp, openLibrary, operatorPage } from './helpers';
+import { sizeOperatorWindow } from './window-size';
 
 /*
  * Importing from the operator window: drag files onto the presentation
- * list, read the report, go live on what came in, remove it and Undo, and
+ * list, go live on what came in, remove it and Undo, and
  * the Import… button. The fixtures are placeholder lyrics written for these tests.
  */
 
@@ -22,7 +24,7 @@ async function outputPage(app: ElectronApplication): Promise<Page> {
   return app.waitForEvent('window', { predicate: (w) => w.url().includes('output.html') });
 }
 
-test('drag lyrics onto the library, read the report, go live, remove and undo, import with the button', async () => {
+test('drag lyrics onto the library, go live, remove and undo, and keep both versions without a question', async () => {
   const work = mkdtempSync(join(tmpdir(), 'drashti-drop-'));
   const songOne = join(work, 'Placeholder Song One.txt');
   copyFileSync(join(FIXTURES, 'Placeholder Song One.txt'), songOne);
@@ -47,20 +49,11 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   const output = await outputPage(app);
   await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
 
-  // Drop the file: it is imported, and (nothing is live yet) the report comes up by itself.
   await dropFiles(win, win.getByTestId('library-drop'), [songOne]);
-  const report = win.getByTestId('import-report');
-  await expect(report).toBeVisible();
-  await expect(report.getByTestId('report-summary')).toContainText(
-    'Came across: 1 presentation · 2 groups · 3 slides · 1 arrangement.',
-  );
-  await expect(report.getByTestId('report-item')).toHaveCount(1);
-  await report.getByTestId('report-item').getByRole('button', { name: 'Open' }).click();
-  await expect(report).toHaveCount(0);
-  await expect(list.getByRole('button', { name: /^Placeholder Song One/ })).toHaveAttribute(
-    'aria-current',
-    'true',
-  );
+  const first = list.getByRole('button', { name: /^Placeholder Song One/ });
+  await expect(first).toBeVisible();
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
+  await first.click();
 
   // Go live on its first slide: the output shows it.
   await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
@@ -112,18 +105,16 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   await chooseMenuItem(app, 'undo');
   await expect(list.getByTestId('presentation-row')).toHaveCount(3);
 
-  // The file changes and is dropped again. A slide is live, so the report waits to be opened.
+  // Both versions are kept while the slide already up stays on the output.
   writeFileSync(songOne, '[Verse 1]\nPlaceholder song one, rewritten\n');
   await dropFiles(win, win.getByTestId('library-drop'), [songOne]);
   const result = win.getByTestId('import-result');
-  await expect(result).toContainText('1 file changed: choose what to do');
-  await expect(report).toHaveCount(0);
-  await result.getByRole('button', { name: 'Report' }).click();
-  const changed = report.getByTestId('report-item').filter({ hasText: 'Placeholder Song One' });
-  await expect(changed).toHaveAttribute('data-outcome', 'conflict');
-  await changed.getByRole('button', { name: 'Keep both' }).click();
   await expect(list.getByRole('button', { name: /^Placeholder Song One \(2\)/ })).toBeVisible();
+  await expect(list.getByRole('button', { name: /^Placeholder Song One/ })).toHaveCount(2);
   await expect(result).toContainText('Imported 1 presentation');
+  await expect(result.getByRole('button', { name: 'Report' })).toHaveCount(0);
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
+  await expect(output.locator('[data-run][data-lang="gu"]')).toHaveText('નમૂનાની ટેક');
 
   // The Import… button opens a system dialog (answered here by the test).
   const songTwo = join(FIXTURES, 'Placeholder Song Two.txt');
@@ -138,7 +129,7 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   const runs = await win.evaluate(
     async () => (await (globalThis as PageGlobals).drashti.library.listImportRuns()).length,
   );
-  expect(runs).toBe(4);
+  expect(runs).toBe(3);
   await app.close();
 });
 
@@ -208,27 +199,23 @@ test('Word lyrics (Session 26f): Files… offers a .docx and imports it as lyric
       ],
     ],
   ]);
-  // The report says what was left out (under "Imported with notes", and again under "Imported").
-  const report = win.getByTestId('import-report');
-  await expect(report).toBeVisible();
-  const notes = report.getByTestId('report-item').first();
-  await expect(notes).toContainText(
+  const notices = win.getByTestId('import-notice');
+  const omitted = notices.filter({ hasText: 'Placeholder Word Song' });
+  await expect(omitted).toContainText(
     'Its formatting (bold, colours, sizes, alignment) was left out: the slides take their theme’s look.',
   );
-  await expect(notes).toContainText('A table was left out, and the words in it.');
-  await report.getByRole('button', { name: 'Close' }).first().click();
-  await expect(report).toHaveCount(0);
+  await expect(omitted).toContainText('A table was left out, and the words in it.');
   await dropFiles(win, win.getByTestId('library-drop'), [old]);
-  await expect(report).toBeVisible();
-  const refused = report.getByTestId('report-item').filter({ hasText: 'Placeholder Old Order.doc' });
-  await expect(refused).toHaveAttribute('data-outcome', 'unsupported');
+  const refused = notices.filter({ hasText: 'Placeholder Old Order.doc' });
   await expect(refused).toContainText(
     'An old Word document (.doc) is not read: open it in Word and save it as a Word Document (.docx), then import that.',
   );
+  await expect(refused.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
   await app.close();
 });
 
-test('drag a .pro6 presentation in: its text goes live, and missing media is found from the report', async () => {
+test('drag a .pro6 presentation in: its text goes live, and Ready finds its missing media', async () => {
   const work = mkdtempSync(join(tmpdir(), 'drashti-pp6-drop-'));
   const hymn = join(work, 'Placeholder Hymn.pro6');
   writeFileSync(
@@ -261,6 +248,15 @@ test('drag a .pro6 presentation in: its text goes live, and missing media is fou
 
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await win.evaluate(async () => {
+    const made = await (globalThis as PageGlobals).drashti.playlists.create(
+      'Placeholder Relink',
+      null,
+      false,
+    );
+    if (!made.ok) throw new Error(made.message);
+  });
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Relink' }).click();
   await openLibrary(win);
   await expect(win.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   await win.evaluate(async () => {
@@ -279,20 +275,28 @@ test('drag a .pro6 presentation in: its text goes live, and missing media is fou
   await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
 
   await dropFiles(win, win.getByTestId('library-drop'), [hymn]);
-  const report = win.getByTestId('import-report');
-  await expect(report.getByTestId('report-summary')).toContainText(
-    'Came across: 1 presentation · 1 group · 1 slide',
+  await expect(win.getByTestId('playlist-item').filter({ hasText: 'Placeholder Hymn' })).toBeVisible();
+  await expect(win.getByTestId('import-notice').filter({ hasText: 'Placeholder Hymn' })).toContainText(
+    'Blue Loop.mov',
   );
-  await expect(report.getByTestId('missing-media')).toContainText('1 media file could not be found');
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
 
-  // "Find missing media…" asks for a folder (answered here by the test) and relinks by name.
+  // Ready’s Find missing media… asks for a folder and relinks by name.
+  await closeLibrary(win);
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
   }, found);
-  await report.getByRole('button', { name: 'Find missing media…' }).click();
-  await expect(report.getByTestId('report-item')).toHaveAttribute('data-outcome', 'imported');
-  await expect(report.getByTestId('report-item')).toContainText('Relinked to');
-  await report.getByRole('button', { name: 'Close' }).click();
+  await win.getByTestId('open-ready').click();
+  await win.getByTestId('ready-find-missing').click();
+  await expect
+    .poll(() =>
+      win.evaluate(async () => {
+        const d = (globalThis as PageGlobals).drashti;
+        return (await d.library.listMedia()).find((item) => item.name === 'Blue Loop.mov')?.missing;
+      }),
+    )
+    .toBe(false);
+  await openLibrary(win);
 
   // Its text goes live like any other presentation's.
   await win
@@ -308,35 +312,41 @@ test('drag a .pro6 presentation in: its text goes live, and missing media is fou
   await app.close();
 });
 
-test('a file dropped anywhere on the window is imported, and a failed import shows as a problem', async () => {
+test('a window drop gives each refused file its own notice and retries a repaired deck', async () => {
   const work = mkdtempSync(join(tmpdir(), 'drashti-drop-'));
   const songOne = join(work, 'Placeholder Song One.txt');
   copyFileSync(join(FIXTURES, 'Placeholder Song One.txt'), songOne);
-  // A PowerPoint file cut short: refused before any app is asked to open it.
   const damaged = join(work, 'Placeholder damaged.pptx');
+  const unknown = join(work, 'Placeholder extra.odt');
   writeFileSync(damaged, Buffer.from('PK\u0003\u0004 placeholder, cut short'));
+  writeFileSync(unknown, 'Placeholder words');
 
-  const { app } = await launchApp();
+  const { app } = await launchApp({ DRASHTI_TEST_DECK_CONVERTER: '1' });
   const win = await operatorPage(app);
+  await sizeOperatorWindow(app, win, { width: 1024, height: 645 });
   await openLibrary(win);
   const list = win.getByTestId('presentation-list');
   await expect(list.getByTestId('presentation-row')).toHaveCount(2);
 
-  // Onto the slide grid, not the list (Session 16): imported all the same.
   await dropFiles(win, win.getByTestId('slide-grid'), [songOne], { overlay: false });
   await expect(list.getByRole('button', { name: /^Placeholder Song One/ })).toHaveCount(1);
-  const report = win.getByTestId('import-report');
-  await expect(report).toBeVisible();
-  await report.getByRole('button', { name: 'Close' }).click();
-  await expect(win.getByTestId('import-result')).not.toContainText('problem');
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
 
-  // A file that fails: the status bar says so as a warning, with the report a click away.
-  await dropFiles(win, win.getByTestId('live-preview'), [damaged], { overlay: false });
-  await expect(report).toBeVisible();
-  await expect(report).toContainText('This file looks damaged');
-  await report.getByRole('button', { name: 'Close' }).click();
-  const result = win.getByTestId('import-result');
-  await expect(result).toContainText('1 problem');
-  await expect(result.getByLabel('Problems')).toBeVisible();
+  await dropFiles(win, win.getByTestId('live-preview'), [damaged, unknown], { overlay: false });
+  const notices = win.getByTestId('import-notice');
+  await expect(notices).toHaveCount(2);
+  const damagedNotice = notices.filter({ hasText: 'Placeholder damaged.pptx' });
+  await expect(damagedNotice).toContainText('This file looks damaged');
+  await expect(notices.filter({ hasText: 'Placeholder extra.odt' })).toContainText(
+    'Drashti doesn’t read .odt files.',
+  );
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
+  await expect(win.getByTestId('import-result').getByRole('button', { name: 'Report' })).toHaveCount(0);
+
+  writeFileSync(damaged, makeTestPptx([{ color: '1E3A8A', text: 'Placeholder repaired slide', notes: '' }]));
+  await damagedNotice.getByRole('button', { name: 'Try again' }).click();
+  await expect(list.getByRole('button', { name: /^Placeholder damaged/ })).toBeVisible();
+  await expect(damagedNotice).toHaveCount(0);
+  await expect(notices.filter({ hasText: 'Placeholder extra.odt' })).toBeVisible();
   await app.close();
 });

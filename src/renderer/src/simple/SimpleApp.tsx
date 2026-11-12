@@ -8,7 +8,7 @@ import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
 import { useAccess } from '../access/access-store';
 import { FileMenu } from '../files/FileMenu';
 import { GuidesDialog } from '../help/GuidesDialog';
-import { ImportReportDialog } from '../library/ImportReport';
+import { importPaths } from '../library/import-store';
 import { useLibrary } from '../library/library-store';
 import { RemoveItemsConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { UndoBar } from '../library/UndoBar';
@@ -173,7 +173,9 @@ function useDropsIntoPlaylist(): void {
         .map((f) => window.drashti.files.pathFor(f))
         .filter((p) => p !== '');
       void dropFolders(paths, (files) =>
-        playlistId !== null ? importIntoPlaylist(playlistId, null, files) : undefined,
+        playlistId !== null
+          ? importIntoPlaylist(playlistId, null, files)
+          : importPaths(files, undefined, null),
       );
     };
     window.addEventListener('dragover', over);
@@ -369,6 +371,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           </aside>
         }
       />
+      <LinkDialog />
       <NoticeArea />
       <LayerBar platform={platform} run={run} simple />
       <StatusBar info={info} onOpenScreens={null} />
@@ -379,13 +382,10 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <RemoveItemsConfirm undoKey={shortcutText('undo', platform)} />
       {/* Delete… of a playlist or a folder (Session 56), asked first, with Undo. */}
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
-      <LinkDialog platform={platform} />
       <GuidesDialog />
       {/* Jump by number (Session 55, Part 4): a row's number and Enter, as in Pro Mode. */}
       <JumpBox />
       {dashboardOpen && <ScreensDashboard simple onSetUp={null} />}
-      {/* The import report when asked (Session 56: From a Link…'s See the import report, the status bar's Report). */}
-      <ImportReportDialog platform={platform} />
     </div>
   );
 }
