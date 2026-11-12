@@ -67,6 +67,39 @@ describe('PowerPoint bullet fonts', () => {
     ]);
   });
 
+  it('keeps bullet colour and size, including inherited percentages and follow-text overrides', async () => {
+    const explicit = paragraph(
+      '<a:buClr><a:srgbClr val="224466"/></a:buClr><a:buSzPts val="1500"/>' + bullet('◆'),
+    );
+    const inherited = paragraph(bullet('◆'));
+    const followText = paragraph('<a:buClrTx/><a:buSzTx/>' + bullet('◆'));
+    const words = wordsShape(explicit + inherited + followText).replace(
+      '<a:lstStyle/>',
+      '<a:lstStyle><a:lvl1pPr><a:buClr><a:srgbClr val="AA2244"/></a:buClr>' +
+        '<a:buSzPct val="75000"/></a:lvl1pPr></a:lstStyle>',
+    );
+    const { runs } = await readBullets(words);
+    expect(runs).toMatchObject([
+      { paragraph: { bulletColor: '#224466', bulletSize: 20 } },
+      { paragraph: { bulletColor: '#aa2244', bulletScale: 0.75 } },
+      { paragraph: { bullet: '◆' } },
+    ]);
+    expect(runs[0]?.paragraph).not.toHaveProperty('bulletScale');
+    expect(runs[1]?.paragraph).not.toHaveProperty('bulletSize');
+    for (const property of ['bulletColor', 'bulletSize', 'bulletScale'])
+      expect(runs[2]?.paragraph).not.toHaveProperty(property);
+  });
+
+  it('keeps upper- and lower-case Roman numbering distinct', async () => {
+    const upper = paragraph('<a:buAutoNum type="romanUcPeriod" startAt="4"/>');
+    const lower = paragraph('<a:buAutoNum type="romanLcPeriod" startAt="4"/>');
+    const { runs } = await readBullets(wordsShape(upper + lower));
+    expect(runs).toMatchObject([
+      { list: 'I', paragraph: { startAt: 4 } },
+      { list: 'i', paragraph: { startAt: 4 } },
+    ]);
+  });
+
   it('keeps an ordinary marker font separate from the words and honors follow-text overrides', async () => {
     const explicit = paragraph(font('Placeholder Marker') + bullet('◇'));
     const inherited = paragraph(bullet('n'));
