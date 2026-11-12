@@ -172,7 +172,7 @@ describe('long and complex generated PDFs', () => {
       }
       return { bytes, assets, slowest };
     });
-    console.info(
+    process.stdout.write(
       '[Editable PDF timing] ' +
         JSON.stringify({
           platform: process.platform,
@@ -185,7 +185,8 @@ describe('long and complex generated PDFs', () => {
           assetBytes: measured.bytes,
           elapsedMs: Math.round(performance.now() - from),
           slowestPageMs: Math.round(measured.slowest),
-        }),
+        }) +
+        '\n',
     );
     expect(measured.assets).toBe(count * 4);
   });
