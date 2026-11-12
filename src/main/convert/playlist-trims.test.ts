@@ -221,7 +221,7 @@ describe('trimming a playlist video', () => {
   it('uses the requested start when the preceding frame could not be read', async () => {
     const x = await setup(() => Promise.resolve(null));
     expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
-    expect(x.queue).toHaveBeenCalledWith(expect.objectContaining({ startMs: request.points.startMs }));
+    expect(x.queue.mock.calls[0]?.[0]).toMatchObject({ startMs: request.points.startMs });
   });
 
   it('keeps the original when Start snaps to its first frame and End is empty', async () => {
@@ -248,7 +248,7 @@ describe('trimming a playlist video', () => {
     x.media.setMarkers('original', oldPoints);
     expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
     expect(x.pendingChanged).toHaveBeenLastCalledWith([x.itemId]);
-    expect(x.queue).toHaveBeenCalledWith(expect.objectContaining({ startMs: 500, endMs: 2500 }));
+    expect(x.queue.mock.calls[0]?.[0]).toMatchObject({ startMs: 500, endMs: 2500 });
     expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
     x.finish({ ok: true, copy: x.output });
     await vi.waitFor(() => {

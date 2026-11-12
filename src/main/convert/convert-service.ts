@@ -218,6 +218,8 @@ export interface CopyOptions {
   lengthMs: number;
   /** Wait while show layers are up, including when a show starts during the copy. */
   waitForShow?: boolean;
+  /** Record a managed Trim copy before it can appear at its final path. */
+  beforePublish?(temporary: string, destination: string): void;
   progress?(fraction: number | null): void;
   waiting?(note: string | null): void;
 }
@@ -1183,6 +1185,7 @@ export class ConvertService {
       : job.dest;
     try {
       // Publish a show-gated copy in the same turn as the last activity check.
+      job.copy?.beforePublish?.(tmp, dest);
       if (job.waitForShow) renameSync(tmp, dest);
       else await rename(tmp, dest);
     } catch {
