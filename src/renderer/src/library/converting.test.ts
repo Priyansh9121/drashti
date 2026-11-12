@@ -50,6 +50,16 @@ describe('a file Drashti converts (Session 50)', () => {
     expect(mediaProblem({ missing: false, unplayable: null })).toBeNull();
   });
 
+  it('says a playable link video is getting a smaller copy', () => {
+    const clip = { missing: false, unplayable: null };
+    const waiting = job({ maxHeight: 1080 });
+    expect(mediaProblem(clip, waiting)).toBe('Making a 1080p copy…');
+    expect(convertingWords(waiting)).toBe('Making a 1080p copy…');
+    expect(convertingWords({ ...waiting, state: 'converting', progress: 0.4 })).toBe(
+      'Making a 1080p copy… 40%',
+    );
+  });
+
   it('finds a file’s newest job, and the copy everything uses once it is converted', () => {
     const jobs = [
       job({ id: 'a', state: 'failed' }),
