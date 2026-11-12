@@ -8,8 +8,17 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { DeckMedia, DeckSlide } from '../../../shared/deck';
-import { deckStep, type StepTiming, stepTiming, videoShowsFrom } from '../../../shared/deck-show';
+import { nativeDeckMotion, type DeckMedia, type DeckSlide } from '../../../shared/deck';
+import {
+  deckSlideAt,
+  deckStep,
+  type DeckVideoTiming,
+  lastStep,
+  nativeStepTiming,
+  type StepTiming,
+  stepTiming,
+  videoShowsFrom,
+} from '../../../shared/deck-show';
 import type { SlideLayer } from '../../../shared/engine/state';
 import type { RenderSlide } from '../../../shared/model';
 import {
@@ -20,6 +29,9 @@ import {
   playbackSpanMs,
 } from '../../../shared/media';
 import { engineNow, onClockJump } from './clock';
+import { NativeDeckMotion } from './NativeDeckElement';
+import { PlacedInParent } from './Placed';
+import { SlideView } from './SlideView';
 import { useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
 import { startPlayback } from './playback';
@@ -387,20 +399,34 @@ const INSET: CSSProperties = { position: 'absolute', inset: 0 };
  */
 export function StageDeckNow({ layer, testId }: { layer: SlideLayer; testId?: string }) {
   const { slide, step, stepAt, stepFromMs, shownAt } = layer;
-  const timing = useMemo(
-    () => stepTiming({ slide, step, stepAt, stepFromMs, shownAt }),
-    [slide, step, stepAt, stepFromMs, shownAt],
-  );
+  const { timing, native } = useMemo(() => {
+    const layer = { slide, step, stepAt, stepFromMs, shownAt };
+    return { timing: stepTiming(layer), native: nativeStepTiming(layer) };
+  }, [slide, step, stepAt, stepFromMs, shownAt]);
   // The still that showed before this slide came (C review): under its first step's clip until that can be drawn,
   // as the hall's screens and LIVE keep the slide before up, so the stage never shows nothing for a moment.
   const now = stageStill(
     null,
     `${slide.id}@${String(shownAt)}`,
-    timing ? (deckStep(slide.deck, timing.index)?.lastId ?? null) : null,
+    timing
+      ? (deckStep(slide.deck, timing.index)?.lastId ?? null)
+      : native?.index === lastStep(slide.deck)
+        ? (slide.deck?.sourceStillId ?? null)
+        : null,
   );
   const [kept, setKept] = useState<StageStill>(now);
   const next = stageStill(kept, now.key, now.still);
   if (next !== kept) setKept(next);
+  if (native)
+    return (
+      <div data-testid={testId} data-stage-deck="now" style={STAGE_DECK}>
+        <PlacedInParent content={slide} mode="fit" className="absolute inset-0">
+          <NativeDeckMotion slide={slide} timing={native}>
+            <SlideView slide={slide} startedAt={shownAt} clips={layer.clips} seeks={layer.seeks} />
+          </NativeDeckMotion>
+        </PlacedInParent>
+      </div>
+    );
   if (!slide.deck || !timing) return null;
   return (
     <div data-testid={testId} data-stage-deck="now" style={STAGE_DECK}>
@@ -428,7 +454,13 @@ export function StageDeckNext({
   if (!slide.deck) return null;
   return (
     <div data-testid={testId} data-stage-deck="next" style={STAGE_DECK}>
-      <DeckStepStill deck={slide.deck} index={step} style={INSET} />
+      {nativeDeckMotion(slide.deck) ? (
+        <PlacedInParent content={slide} mode="fit" className="absolute inset-0">
+          <SlideView slide={deckSlideAt(slide, step)} media="still" />
+        </PlacedInParent>
+      ) : (
+        <DeckStepStill deck={slide.deck} index={step} style={INSET} />
+      )}
     </div>
   );
 }
@@ -480,7 +512,7 @@ export function useDeckCover(
   clock: { startedAt: number; loop: boolean; clip?: PlaybackClip; seek?: PlaybackSeek },
   durationMs: number | null,
   /** The step its slide shows (C review): it is hidden outside its entrance and its exit, never its poster. */
-  timing: StepTiming | null = null,
+  timing: DeckVideoTiming | null = null,
 ): DeckCover {
   const [, redraw] = useState(0);
   const now = engineNow();

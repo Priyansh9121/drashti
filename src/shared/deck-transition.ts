@@ -9,11 +9,17 @@ export interface DeckNativeTransition extends Transition {
 
 export const deckNativeTransitionSchema: z.ZodType<DeckNativeTransition> = z.object({
   kind: z.enum(['dissolve', 'fade-black', 'slide', 'wipe', 'zoom-dissolve']),
-  durationMs: z.number().int().positive().max(24 * 3600 * 1000),
+  durationMs: z
+    .number()
+    .int()
+    .positive()
+    .max(24 * 3600 * 1000),
   deckEffect: z.enum(['dissolve', 'fade-black', 'push', 'wipe', 'cover', 'uncover', 'zoom']),
   direction: z.enum(['left', 'right', 'up', 'down']).optional(),
 });
 
-export function isDeckNativeTransition(transition: Transition | undefined): transition is DeckNativeTransition {
+export function isDeckNativeTransition(
+  transition: Transition | undefined,
+): transition is DeckNativeTransition {
   return transition !== undefined && 'deckEffect' in transition;
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { DeckSlide } from './deck';
+import { deckNativeTransitionSchema } from './deck-transition';
 import { idSchema, transitionSchema } from './model-schema';
 
 /*
@@ -28,6 +29,28 @@ const stepSchema = z.looseObject({
   holdMs: ms.optional(),
 });
 
+const effectSchema = z.looseObject({
+  shapeId: idSchema,
+  step: z.number().int().min(0).max(9999),
+  phase: z.enum(['in', 'out', 'emphasis']),
+  kind: z.enum(['appear', 'fade', 'fly', 'wipe', 'zoom', 'spin', 'pulse']),
+  delayMs: ms,
+  durationMs: ms,
+  direction: z.enum(['left', 'right', 'up', 'down']).optional(),
+  degrees: z.number().optional(),
+});
+
+const motionSchema = z
+  .looseObject({
+    effects: z.array(effectSchema).max(10_000),
+    stepsMs: z.array(ms).min(1).max(10_000),
+    approximate: z.boolean(),
+  })
+  .refine(({ effects, stepsMs }) => effects.every((effect) => effect.step < stepsMs.length), {
+    message: 'An effect must belong to a deck step.',
+    path: ['effects'],
+  });
+
 const startSchema = z.union([
   z.looseObject({ step: z.number().int().min(0).max(10_000), offsetMs: ms }),
   z.looseObject({ clicked: z.literal(true) }),
@@ -54,11 +77,18 @@ const mediaSchema = z.looseObject({
 
 export const deckSlideSchema = z.looseObject({
   transition: z
-    .looseObject({ name: z.string().min(1).max(200), durationMs: ms, soundId: idSchema.optional() })
+    .looseObject({
+      name: z.string().min(1).max(200),
+      durationMs: ms,
+      nativeTransition: deckNativeTransitionSchema.optional(),
+      soundId: idSchema.optional(),
+    })
     .optional(),
   deckAdvanceMs: ms.optional(),
   after: idSchema.optional(),
+  sourceStillId: idSchema.optional(),
   steps: z.array(stepSchema).max(10_000),
+  motion: motionSchema.optional(),
   media: z.array(mediaSchema).max(1000),
   preparing: z.literal(true).optional(),
   drashti: z.object({ transition: transitionSchema, mode: z.enum(['over', 'instead']) }).optional(),
@@ -90,6 +120,7 @@ export function deckToJson(deck: DeckSlide | null | undefined): string | null {
 /** Every media item a deck's slide uses: its steps' clips, last frames and holds, its media and their posters. */
 export function deckMediaIds(deck: DeckSlide): string[] {
   const ids = new Set<string>();
+  if (deck.sourceStillId) ids.add(deck.sourceStillId);
   for (const s of deck.steps) {
     ids.add(s.clipId);
     ids.add(s.lastId);
@@ -116,6 +147,7 @@ export function mapDeckMedia(deck: DeckSlide, swap: (id: string) => string): Dec
         }
       : {}),
     ...(deck.after ? { after: swap(deck.after) } : {}),
+    ...(deck.sourceStillId ? { sourceStillId: swap(deck.sourceStillId) } : {}),
     steps: deck.steps.map((s) => ({
       ...s,
       clipId: swap(s.clipId),

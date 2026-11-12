@@ -1,5 +1,14 @@
-import type { DeckMedia, DeckSlide } from '../../shared/deck';
-import { deckStep, lastStep, playsAcross, stepOf, stepTiming, takingTime } from '../../shared/deck-show';
+import { nativeDeckMotion, type DeckMedia, type DeckSlide } from '../../shared/deck';
+import {
+  deckStep,
+  lastStep,
+  nativeStepTiming,
+  playsAcross,
+  stepDurationMs,
+  stepOf,
+  stepTiming,
+  takingTime,
+} from '../../shared/deck-show';
 import type { SlideLayer, VideoSeeks } from '../../shared/engine/state';
 import type { PlaybackSeek } from '../../shared/media';
 import type { Transition } from '../../shared/model';
@@ -102,6 +111,11 @@ function atStep(layer: SlideLayer, index: number, at: number, fromMs: number): S
   return { ...rest, step: index, stepAt: at, ...(fromMs > 0 ? { stepFromMs: fromMs } : {}) };
 }
 
+/** A step shown settled is past its motion, including a native click with an instantaneous effect. */
+function settledFrom(deck: DeckSlide, index: number): number {
+  return Math.max(nativeDeckMotion(deck) ? 1 : 0, stepDurationMs(deck, index));
+}
+
 /** Next on a deck's slide: its next step, from `at`; null at its last step (Next goes on to the next slide). */
 export function stepForward(layer: SlideLayer, at: number): SlideLayer | null {
   const deck = layer.slide.deck;
@@ -119,10 +133,7 @@ export function stepBack(layer: SlideLayer, at: number): SlideLayer | null {
   const index = stepOf(layer);
   if (!deck || index <= 0) return null;
   const to = index - 1;
-  return withSeeks(
-    atStep(layer, to, at, deckStep(deck, to)?.clipMs ?? 0),
-    backSeeks(deck, to, at, layer.seeks),
-  );
+  return withSeeks(atStep(layer, to, at, settledFrom(deck, to)), backSeeks(deck, to, at, layer.seeks));
 }
 
 /**
@@ -130,9 +141,10 @@ export function stepBack(layer: SlideLayer, at: number): SlideLayer | null {
  * no motion. The same layer when it is no deck's, or its step's motion is over.
  */
 export function settledStep(layer: SlideLayer, at: number): SlideLayer {
-  const timing = stepTiming(layer);
-  if (!timing || timing.still || at >= timing.endsAt) return layer;
-  return atStep(layer, timing.index, at, timing.step.clipMs);
+  const deck = layer.slide.deck;
+  const timing = nativeStepTiming(layer) ?? stepTiming(layer);
+  if (!deck || !timing || timing.still || at >= timing.endsAt) return layer;
+  return atStep(layer, timing.index, at, settledFrom(deck, timing.index));
 }
 
 /**
@@ -149,6 +161,8 @@ export interface DeckShow {
   step: number;
   /** How far into the step's clip it is shown from (ms); 0 from its start. */
   fromMs: number;
+  /** When an in-order native slide's automatic effects begin, after its transition. */
+  startsAt?: number;
   /** Drashti's transition into it; undefined for a cut (the deck's own plays inside its clip, or none). */
   transition: Transition | undefined;
   seeks: VideoSeeks | undefined;
@@ -169,11 +183,23 @@ export function deckShow(
 ): DeckShow {
   if (entry === 'back') {
     const last = lastStep(deck);
-    const fromMs = deckStep(deck, last)?.clipMs ?? 0;
+    const fromMs = settledFrom(deck, last);
     return { step: last, fromMs, transition: undefined, seeks: entrySeeks(deck, last, at, fromMs) };
   }
   const own = deck.drashti;
   if (entry === 'order' && inOrder && own?.mode !== 'instead') {
+    const native = nativeDeckMotion(deck) ? deck.transition?.nativeTransition : undefined;
+    if (native) {
+      const startsAt = at + native.durationMs;
+      const transition = own?.mode === 'over' ? takingTime(own.transition) : native;
+      return {
+        step: 0,
+        fromMs: 0,
+        startsAt,
+        transition,
+        seeks: withChime(deck, entrySeeks(deck, 0, startsAt, 0), at),
+      };
+    }
     const transition = own?.mode === 'over' ? takingTime(own.transition) : undefined;
     return { step: 0, fromMs: 0, transition, seeks: withChime(deck, entrySeeks(deck, 0, at, 0), at) };
   }
@@ -188,6 +214,6 @@ export const stepsLeft = (layer: SlideLayer): boolean =>
 
 /** How long a step's clip has left to play from `at` (ms), so a slide moving on by itself never cuts it short. */
 export function clipLeftMs(layer: SlideLayer, at: number): number {
-  const timing = stepTiming(layer);
+  const timing = nativeStepTiming(layer) ?? stepTiming(layer);
   return timing && !timing.still ? Math.max(0, timing.endsAt - at) : 0;
 }
