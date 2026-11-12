@@ -84,7 +84,13 @@ export function mirrorAnswer(
       return ok({ keys: reads.keys() });
     case 'media': {
       const query = typeof args['query'] === 'string' ? cutText(args['query'].trim(), 200) : '';
-      const found = mediaMatching(reads.media(), query);
+      const kind = args['kind'];
+      const media = reads.media();
+      const matchingKind =
+        kind === 'audio' || kind === 'image' || kind === 'video'
+          ? media.filter((m) => m.kind === kind)
+          : media;
+      const found = mediaMatching(matchingKind, query);
       const offset = whole(args['offset'], 0, 0, 1_000_000);
       const limit = whole(args['limit'], REMOTE_MEDIA_PAGE, 1, REMOTE_MEDIA_MAX);
       const page: RemoteMediaPage = {
