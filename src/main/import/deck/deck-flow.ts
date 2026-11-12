@@ -209,6 +209,7 @@ export async function runDeck(
                 await write(made.parsed, made.indices);
               })
               .catch(() => undefined);
+          return early.written ?? undefined;
         },
       },
     );
