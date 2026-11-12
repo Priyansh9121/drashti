@@ -33,9 +33,10 @@ createRoot(root, {
   <StrictMode>
     <WindowBoundary reloadLabel="Reload the operator window">
       <AccessGate>
-        <App />
-        {/* The opening as Drashti starts (Session 55): over the window, in either mode, once let in. */}
-        <OpeningAtStart />
+        {/* The opening as Drashti starts, in either mode, once let in. */}
+        <OpeningAtStart>
+          <App />
+        </OpeningAtStart>
       </AccessGate>
     </WindowBoundary>
   </StrictMode>,
