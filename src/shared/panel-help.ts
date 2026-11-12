@@ -83,7 +83,7 @@ export const PANEL_HELP = {
   controls: {
     title: 'Show controls',
     doc: 'operator',
-    text: 'Clear all, the layers’ clear buttons in the order of their keys, the Wallpaper and Black-out, each with its key; a button with nothing of its own up is dimmed, so what is on the screens shows at a glance. Each changes the hall’s screens at once: the Wallpaper puts the chosen wallpaper up instead of the picture, and Put it back, straight after Clear all, brings back what it took off. One thing at a time: a slide, picture or video put up takes the Wallpaper and Black-out off, and either going on takes a video off.',
+    text: 'Clear all, the layers’ clear buttons in the order of their keys, the Wallpaper and Black-out, each with its key; a button with nothing of its own up is dimmed, so what is on the screens shows at a glance. Each changes the hall’s screens at once: the Wallpaper puts the chosen wallpaper up instead of the picture, and Put it back, straight after Clear all, brings back what it took off. One thing at a time: a slide, picture or video put up takes the Wallpaper and Black-out off, and either going on takes the other and a video off.',
     guide: '**Covering and clearing:**',
   },
   nextback: {
