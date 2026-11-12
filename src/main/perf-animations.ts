@@ -118,7 +118,7 @@ const PAGE_LIMIT_MS = 5000;
 /** The cases stop pressing after this long, measuring those done: the check's own time limit is 14 min in all. */
 const BUDGET_MS = 6 * 60_000;
 /** The lines it writes as it goes (tests/perf/performance.spec.ts prints them). */
-export const PROGRESS = 'DRASHTI_PERF_ANIMATIONS';
+export const PROGRESS = 'PERF-ANIMATIONS';
 
 /** A page's answer, or `late` once `ms` have gone by (or it failed): a page that never answers holds nothing up. */
 function within<T, L>(answer: Promise<T>, ms: number, late: L): Promise<T | L> {
