@@ -102,6 +102,21 @@ export function hitTest(
   return hits[(previous + 1) % hits.length] ?? null;
 }
 
+/** Right-clicking over the selection keeps that pick, including a box under another one. */
+export function menuTarget(
+  elements: Parameters<typeof hitTest>[0],
+  selected: readonly string[],
+  point: Point,
+  slack: number,
+): string | null {
+  return (
+    hitTest(
+      elements.filter((element) => selected.includes(element.id)),
+      point,
+    ) ?? hitTest(elements, point, slack)
+  );
+}
+
 /** Whether two upright boxes overlap. */
 export const overlaps = (a: Rect, b: Rect): boolean =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;

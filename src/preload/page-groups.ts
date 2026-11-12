@@ -108,6 +108,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   'slide-editor': [
     'app',
     'engine',
+    'files',
     'library',
     'media',
     'output',

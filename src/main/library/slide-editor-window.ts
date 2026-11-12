@@ -1,6 +1,10 @@
 import { BrowserWindow, type IpcMainInvokeEvent, type Rectangle, type WebContents } from 'electron';
+import { stat } from 'node:fs/promises';
+import { isAbsolute } from 'node:path';
 import { type EventChannel, type EventContract, IPC } from '../../shared/ipc';
+import { unreadPictureWords } from '../../shared/media';
 import { idSchema } from '../../shared/model-schema';
+import type { SlidePictureResult } from '../../shared/slide-picture';
 import {
   type CopiedElements,
   copiedElementsSchema,
@@ -10,6 +14,7 @@ import {
 import { SHOW_F_KEYS } from '../../shared/keymap';
 import { isShownMenuKey } from '../shown-keys';
 import { handle } from '../ipc/handle';
+import { extOf, mediaKindOf } from '../import/scan';
 import { windowIcon } from '../windows/app-icon';
 import { loadPage } from '../windows/renderer';
 import { pageAlive, sendToPage } from '../windows/send';
@@ -189,6 +194,11 @@ export function handleSlideEditor(o: {
   exists: (presentationId: string) => boolean;
   /** One of the show's F-keys, for the operator window to act on as if pressed there. */
   showKey: (key: string) => void;
+  pictures: {
+    allowed(presentationId: string): boolean;
+    choose(event: IpcMainInvokeEvent): Promise<string | null>;
+    importFile(path: string): Promise<SlidePictureResult>;
+  };
 }): void {
   handle(IPC.slideEditor.open, (e, presentationId, slideId) => {
     if (!o.fromOperator(e))
@@ -218,6 +228,32 @@ export function handleSlideEditor(o: {
     return null;
   });
   handle(IPC.slideEditor.copied, (e) => (o.editor.isPage(e.sender) ? copied : null));
+  handle(IPC.slideEditor.addPicture, async (e, rawId, rawPath) => {
+    const id = idSchema.safeParse(rawId);
+    const allowed = () => id.success && o.editor.isPage(e.sender) && o.pictures.allowed(id.data);
+    const refused = {
+      ok: false as const,
+      message: 'Open a presentation you can edit, then add the picture again.',
+    };
+    if (!id.success || !allowed() || !o.exists(id.data)) return refused;
+    if (rawPath !== null && typeof rawPath !== 'string')
+      return { ok: false, message: 'Choose a picture from this computer.' };
+    const file = rawPath ?? (await o.pictures.choose(e));
+    if (!allowed()) return refused;
+    if (file === null) return { ok: true, mediaId: null };
+    if (file.length > 4096 || file.includes('\0') || !isAbsolute(file))
+      return { ok: false, message: 'Choose a picture from this computer.' };
+    if (mediaKindOf(file) !== 'image')
+      return {
+        ok: false,
+        message: unreadPictureWords(extOf(file)) ?? 'Choose a picture such as JPEG or PNG.',
+      };
+    if (!(await stat(file).catch(() => null))?.isFile())
+      return { ok: false, message: 'Drashti couldn’t open that picture. Choose a picture file.' };
+    if (!allowed() || !o.exists(id.data)) return refused;
+    const result = await o.pictures.importFile(file);
+    return allowed() ? result : refused;
+  });
   // The show's F-keys pressed in the editor (Clear all, Oops, the Wallpaper...): the operator window acts on them.
   handle(IPC.slideEditor.showKey, (e, key) => {
     if (o.editor.isPage(e.sender) && typeof key === 'string' && SHOW_F_KEYS.includes(key)) o.showKey(key);

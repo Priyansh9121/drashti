@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { IPC } from '../../shared/ipc';
 import { handleSlideEditor, SlideEditorWindow } from './slide-editor-window';
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
@@ -40,7 +41,7 @@ function pictureHandlers() {
   };
   handleSlideEditor(options);
   const add = (event: unknown, id: string, path: unknown) => {
-    const handler = handlers.get('slideeditor:add-picture');
+    const handler = handlers.get(IPC.slideEditor.addPicture);
     if (!handler) throw new Error('The slide editor has no picture-from-computer request.');
     return handler(event, id, path);
   };
@@ -93,9 +94,9 @@ describe('pictures from the computer in Edit slides', () => {
 
   it('rechecks access after the picker before it imports', async () => {
     const { add, pictures } = pictureHandlers();
-    pictures.choose.mockImplementationOnce(async () => {
+    pictures.choose.mockImplementationOnce(() => {
       pictures.allowed.mockReturnValue(false);
-      return join(tmpdir(), 'Placeholder picture.png');
+      return Promise.resolve(join(tmpdir(), 'Placeholder picture.png'));
     });
     await expect(add(page, presentationId, null)).resolves.toMatchObject({ ok: false });
     expect(pictures.importFile).not.toHaveBeenCalled();

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import * as geometry from './geometry';
 import {
   alignMoves,
   boundsOf,
@@ -7,6 +6,7 @@ import {
   cornersOf,
   distributeMoves,
   hitTest,
+  menuTarget,
   resizeFrame,
   rotatePoint,
   rotationToward,
@@ -88,13 +88,6 @@ describe('turned frames', () => {
       { id: 'under', frame: { x: 0, y: 0, width: 100, height: 100 } },
       { id: 'over', frame: { x: 50, y: 50, width: 100, height: 100 } },
     ];
-    const menuTarget = (Reflect.get(geometry, 'menuTarget') ??
-      ((items, _selected, point, slop) => hitTest(items, point, slop))) as (
-      items: typeof elements,
-      selected: readonly string[],
-      point: geometry.Point,
-      slop: number,
-    ) => string | null;
     expect(menuTarget(elements, ['under'], { x: 75, y: 75 }, 6)).toBe('under');
     expect(menuTarget(elements, ['under'], { x: 110, y: 75 }, 6)).toBe('over');
     expect(menuTarget(elements, ['under'], { x: 500, y: 500 }, 6)).toBeNull();
