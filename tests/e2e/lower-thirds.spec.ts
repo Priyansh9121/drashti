@@ -1,5 +1,8 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import type { ProbeRead } from '../../src/renderer/src/render/motion-probe';
+import { LOWER_THIRD_TEMPLATES } from '../../src/shared/lower-third-templates';
+import { DEFAULT_LOWER_THIRD_LOOK } from '../../src/shared/lower-thirds';
 import type { PageGlobals } from './helpers';
 import {
   launchApp,
@@ -7,6 +10,7 @@ import {
   operatorReady,
   outputPage,
   outputPages,
+  outputReady,
   setUpScreen,
   testDisplays,
 } from './helpers';
@@ -260,4 +264,78 @@ test('a key and fill pair draws its moving lower third alike at every held momen
     await holdClock(app, null);
   }
   await app.close();
+});
+
+async function startHeldOutput(env: Record<string, string> = {}) {
+  const { app } = await launchApp({
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_TEST_CLOCK_HOLD: '1',
+    ...env,
+  });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await setUpScreen(win, 'Main Hall', 0);
+    const out = await outputPage(app);
+    await outputReady(out);
+    return { app, win, out };
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
+}
+
+test('a lower third finishes its entrance when the held clock is let go', async () => {
+  const { app, win, out } = await startHeldOutput();
+  try {
+    const lowerThird = {
+      id: 'placeholder-resume-lower-third',
+      // The long letter entrance leaves time to hold it mid-flight before the clock is let go.
+      lines: ['Placeholder '.repeat(7) + 'words'],
+      where: 'both',
+      look: DEFAULT_LOWER_THIRD_LOOK,
+      animation: 'letter-type-band-fade-steady',
+    };
+    await heldChange(app, () => dispatch(win, { type: 'showLowerThird', lowerThird }));
+    const shownAt = (await engineState(win)).layers.lowerThird?.shownAt ?? 0;
+    expect(shownAt).toBeGreaterThan(0);
+    const layer = out.getByTestId('lower-third-layer');
+    await holdClock(app, shownAt + 120);
+    await expect(layer).toHaveAttribute('data-lt-at', '120');
+    await expect(layer).toHaveAttribute('data-lt-phase', 'in');
+    await holdClock(app, null);
+    await expect(layer).toHaveAttribute('data-lt-phase', 'still');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the motion probe sees a design’s accent move before its words and panel', async () => {
+  const { app, win, out } = await startHeldOutput({ DRASHTI_TEST_MOTION_PROBE: '1' });
+  try {
+    const design = LOWER_THIRD_TEMPLATES.find((template) => template.id === 'gold-underline');
+    if (!design) throw new Error('The Gold underline fixture is missing');
+    const lowerThird = { ...design.input, id: 'placeholder-probe-lower-third' };
+    await heldChange(app, () => dispatch(win, { type: 'showLowerThird', lowerThird }));
+    const shownAt = (await engineState(win)).layers.lowerThird?.shownAt ?? 0;
+    expect(shownAt).toBeGreaterThan(0);
+    const layer = out.getByTestId('lower-third-layer');
+    const accent = layer.locator('[data-lt-accent]');
+    const read = (from: number): Promise<ProbeRead | undefined> =>
+      out.evaluate((from) => window.drashtiMotionProbe?.read(from, Number.MAX_SAFE_INTEGER), from);
+    const frames = async () => (await read(0))?.frames.length ?? 0;
+    await holdClock(app, shownAt + 40);
+    await expect(layer).toHaveAttribute('data-lt-at', '40');
+    const firstPose = await accent.evaluate((element: HTMLElement) => element.style.transform);
+    await expect.poll(frames).toBeGreaterThan(await frames());
+    const since = await out.evaluate(() => Date.now());
+
+    // The first 126 ms draw only the accent. The layer, band and words look the same at both frames.
+    await holdClock(app, shownAt + 100);
+    await expect(layer).toHaveAttribute('data-lt-at', '100');
+    expect(await accent.evaluate((element: HTMLElement) => element.style.transform)).not.toBe(firstPose);
+    await expect.poll(async () => (await read(since))?.changes['lowerThird']?.length ?? 0).toBeGreaterThan(0);
+  } finally {
+    await app.close();
+  }
 });
