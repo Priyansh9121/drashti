@@ -6,6 +6,11 @@ import { cutText } from '../../../shared/text';
 export function elementName(el: SlideElement): string {
   const name = el.name?.trim();
   if (name) return name;
+  return elementDescription(el);
+}
+
+/** What the selected object is and the words it shows. */
+export function elementDescription(el: SlideElement): string {
   switch (el.kind) {
     case 'text': {
       const words = el.text.trim().replace(/\s+/gu, ' ');
