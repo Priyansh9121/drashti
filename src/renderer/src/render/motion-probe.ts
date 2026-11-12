@@ -29,9 +29,9 @@ export interface MotionTrack {
 /**
  * An audience screen's moving parts (render/Scene.tsx): the slide layer's two slides, the black of a fade through
  * black and the words drawn apart while a move runs (never a slow zoom's zooming after its fade); a deck's step's
- * pictures and videos; a lower third's band, units, accent and design panels (never its moving background's pieces, which move while it is
- * up); Black-out; and the Wallpaper with its picture. A slow zoom's slide zooms on for 20 s after its fade (the zoom is
- * a child of the slide's box): only the fade is the transition's.
+ * pictures and videos; a lower third's band, units, accent and design panels (never its moving background's
+ * pieces, which move while it is up); Black-out; and the Wallpaper with its picture. A slow zoom's slide zooms
+ * on for 20 s after its fade (the zoom is a child of the slide's box): only the fade is the transition's.
  */
 export const AUDIENCE_TRACKS: readonly MotionTrack[] = [
   {

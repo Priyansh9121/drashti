@@ -424,6 +424,9 @@ export const LOWER_THIRD_DESIGNS: readonly Design[] = [
       bottom: 10,
     },
   },
+  // Two-core Windows runs 43195014134, 43195085796 and 43200188333 rechecked Silver 4.5% design-lift,
+  // Purple 5% design-lower, Lavender 4.5% design-centre-wipe, Emerald 5% design-slide-left,
+  // Midnight 5% design-reveal-down and Sea green 4.5% design-reveal-up.
   {
     id: 'silver-outline',
     name: 'Silver outline',
