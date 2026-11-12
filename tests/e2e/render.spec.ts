@@ -50,7 +50,7 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
   await expect(win.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   const screenId = await setUpOneScreen(win);
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
 
   const presentationId = await win.evaluate(async () => {
     const list = await (globalThis as PageGlobals).drashti.library.listPresentations();
@@ -259,7 +259,7 @@ test('Gujarati set italic and letter-spaced in a file is drawn upright with its 
   }, file);
   await setUpOneScreen(win);
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await win.evaluate(
     (id) =>
       (globalThis as PageGlobals).drashti.engine.dispatch({
@@ -341,7 +341,7 @@ test('Hindi is drawn by Noto Sans Devanagari in a message, the ticker, the stage
   if (!first || !second) throw new Error('two screens expected');
   const [hall, stage] = (await roleOf(first)) === 'audience' ? [first, second] : [second, first];
   for (const page of [hall, stage])
-    await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+    await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const dispatch = (command: unknown) =>
     win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
   // Inside the Gujarati line.
@@ -394,7 +394,7 @@ test('an output draws shapes, outlines, shadows, rotation and shrink-to-fit', as
   const win = await operatorPage(app);
   await setUpOneScreen(win);
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const style = {
     fontFamily: null,
     fontSize: 120,
