@@ -34,6 +34,7 @@ import {
   blurOfId,
   copyMediaId,
   copyOfId,
+  IMAGE_FILE_FILTER,
   MEDIA_ID_PATTERN,
   MEDIA_SCHEME,
 } from '../shared/media';
@@ -191,6 +192,7 @@ import { rowTrimRequestSchema, saveRequestSchema } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
 import { PlaylistTrims } from './convert/playlist-trims';
 import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
+import { frameAtOrBefore } from './convert/frame-at';
 import { isRepeatId, repeatPresentationId } from '../shared/repeat';
 import {
   applyPendingRestore,
@@ -268,6 +270,7 @@ import { spawnPptxReaderWorker } from './documents/spawn-pptx-reader-worker';
 import { sourceWrite } from './documents/source-write';
 import { SourceQuitGate } from './documents/source-quit-gate';
 import { PdfPrintGeometry } from './documents/pdf-geometry-service';
+import { systemFontFamilies } from './documents/system-fonts';
 import { PdfCopySession } from './library/pdf-copy-session';
 import { PdfEditor } from './library/pdf-editor';
 import { createPdfCopyWindow } from './library/pdf-copy-window';
@@ -3570,6 +3573,8 @@ function start(): void {
   ]);
   for (const c of [IPC.library.importPaths, IPC.library.pickImportPaths, IPC.library.relinkMedia])
     edits.delete(c);
+  // The slide editor's picture import joins the same queue.
+  edits.delete(IPC.slideEditor.addPicture);
   setGiveWay((channel) => {
     if (imports.activeRunId === null || !edits.has(channel)) return null;
     // Usually the lock is free (the import holds it only while it writes a group): go at once.
@@ -3852,6 +3857,24 @@ function start(): void {
       const ffmpeg = saveFfmpeg();
       return ffmpeg ? readTrimInfo(ffmpeg, file) : { durationMs: null, video: null, audio: null };
     },
+    frameAt: (file, atMs) => {
+      const ffmpeg = saveFfmpeg();
+      return ffmpeg ? frameAtOrBefore(ffmpeg, file, atMs) : Promise.resolve(null);
+    },
+    isLive: (itemId, mediaId) => {
+      const { live, layers } = engine.current;
+      const bg = layers.background;
+      return (
+        live.playlist?.itemId === itemId &&
+        bg?.kind === 'media' &&
+        bg.media === 'video' &&
+        bg.mediaId === mediaId
+      );
+    },
+    kept: {
+      load: () => settings.get('playlistTrimsWaiting'),
+      save: (cuts) => laterSetting('playlistTrimsWaiting', cuts),
+    },
     queue: (input) => queueTrimCopy(conversions, input),
     cancel: (id) => conversions.cancelFile(id),
     pendingChanged: (ids) => sendToOperator(IPC.media.preparingTrimsChanged, ids),
@@ -3865,7 +3888,9 @@ function start(): void {
     markersChanged: (id) => engine.refreshMarkers(id),
     notice: (text) => sendToOperator(IPC.app.notice, { text }),
   });
+  const offTrimActivity = engine.onChange(() => playlistTrims.activityChanged());
   stops.add('playlist trims', () => {
+    offTrimActivity();
     playlistTrims.close();
   });
   const noTrim = { ok: false as const, message: 'Open a video row’s Trim to change that playlist.' };
@@ -3950,7 +3975,8 @@ function start(): void {
   });
   handle(IPC.app.startNotice, (e) => {
     if (!fromOperator(e)) return null;
-    const text = startNotice;
+    const interruptedTrim = playlistTrims.reportInterrupted();
+    const text = [startNotice, interruptedTrim].filter(Boolean).join(' ') || null;
     startNotice = null;
     startNoticeTaken = true;
     return text;
@@ -4020,10 +4046,44 @@ function start(): void {
   stops.add('slide editor', () => {
     editorWindow.close();
   });
+  // Simple Mode may edit presentations that its playlists hold. An unscoped read lists PDFs for Insert pages.
+  const mayEditSlides = (presentationId?: string) =>
+    !stops.done &&
+    !quitStarted &&
+    documentQuit?.closing !== true &&
+    isLetIn() &&
+    (mode === 'pro'
+      ? !simpleAccess()
+      : presentationId === undefined || aPlaylistsPresentation(simpleScope(), presentationId));
   handleSlideEditor({
     editor: editorWindow,
     fromOperator,
     exists: (presentationId) => presentations.content(presentationId) !== null,
+    pictures: {
+      allowed: mayEditSlides,
+      choose: async (e) => {
+        const parent = BrowserWindow.fromWebContents(e.sender);
+        if (!parent) return null;
+        const picked = await dialog.showOpenDialog(parent, {
+          title: 'Choose a picture for this slide',
+          buttonLabel: 'Add picture',
+          properties: ['openFile'],
+          filters: [IMAGE_FILE_FILTER],
+        });
+        return picked.canceled ? null : (picked.filePaths[0] ?? null);
+      },
+      importFile: async (file) => {
+        const done = await imports.start([file], mode === 'simple' ? SIMPLE_IMPORT : {});
+        if (!done.ok) return done;
+        const item = importRepo.report(done.run.id)?.items[0];
+        if (item?.target?.kind === 'media') return { ok: true, mediaId: item.target.id };
+        const issue = item?.issues.find((problem) => problem.severity === 'error');
+        return {
+          ok: false,
+          message: issue?.message ?? 'Drashti couldn’t add that picture. Choose another picture.',
+        };
+      },
+    },
     // The show's F-keys from the editor's window: pressed in the operator window's page, which acts on them.
     showKey: (key) => {
       const page = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null;
@@ -4032,6 +4092,9 @@ function start(): void {
       page.sendInputEvent({ type: 'keyUp', keyCode: key });
     },
   });
+  handle(IPC.slideEditor.fontFamilies, (event) =>
+    isLetIn() && editorWindow.isPage(event.sender) ? systemFontFamilies() : [],
+  );
   const slideEdits = registerSlidesIpc({
     choosePdfFile: async (e) => {
       const parent = BrowserWindow.fromWebContents(e.sender);
@@ -4052,16 +4115,8 @@ function start(): void {
     settings,
     // The operator window, and the slide editor's own window (Session 55, Part 17a).
     fromOperator: (e) => fromOperator(e) || editorWindow.isPage(e.sender),
-    // Pro Mode's; and Simple Mode's (Session 56: Pro's slide editor there too) for a presentation its playlists hold, as
-    // its lock bounds the editor's save; the library's PDFs listed for Insert pages (naming none) are a read.
     mayPrepareSource: (e, presentationId) =>
-      !stops.done &&
-      !quitStarted &&
-      documentQuit?.closing !== true &&
-      isLetIn() &&
-      (mode === 'pro'
-        ? !simpleAccess()
-        : presentationId === undefined || aPlaylistsPresentation(simpleScope(), presentationId)) &&
+      mayEditSlides(presentationId) &&
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
     sourceReader: async (request) => {

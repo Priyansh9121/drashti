@@ -13,6 +13,7 @@ import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { DARKEN_STRENGTHS } from '../../../shared/model';
 import { cueInputName, slidesOf } from '../../../shared/slide-edit';
 import { fileNameIn } from '../../../shared/library';
+import { GROUP_COLOURS } from '../../../shared/group-colors';
 import { useLibrary, useMedia } from '../library/library-store';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
 import { Button } from '../ui/Button';
@@ -47,6 +48,15 @@ import { DeckTransitions } from './DeckTransitions';
  * background picture or video and its sound, how it comes on and moves on,
  * its group, and the presentation's transition and loop.
  */
+
+const COLOUR_NAMES = {
+  [GROUP_COLOURS.teal]: 'Teal',
+  [GROUP_COLOURS.indigo]: 'Indigo',
+  [GROUP_COLOURS.orange]: 'Orange',
+  [GROUP_COLOURS.purple]: 'Purple',
+  [GROUP_COLOURS.amber]: 'Amber',
+  [GROUP_COLOURS.cyan]: 'Cyan',
+};
 
 function Section({ title, children, testId }: { title: string; children: ReactNode; testId?: string }) {
   return (
@@ -421,7 +431,10 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
                   i,
                   [null, ...GROUP_COLORS].some((x) => x === group.color),
                 )}
-                aria-label={c ? `Colour ${c}` : 'No colour'}
+                aria-label={c ? COLOUR_NAMES[c] : 'No colour'}
+                title={
+                  c ? `Set the group colour to ${COLOUR_NAMES[c].toLowerCase()}` : 'Remove the group colour'
+                }
                 data-testid="group-color-choice"
                 onClick={() => {
                   change((d) => changeGroup(d, group.id, { color: c }));
@@ -456,31 +469,36 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
       )}
 
       <Section title="Behind it and with it" testId="cues-section">
-        <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 text-sm">
-            {background ? (
-              <span data-testid="background-cue">
-                Background: {inputName !== null ? `the video input “${inputName}”` : nameOf(background)}
-              </span>
-            ) : (
-              <span className="text-muted">No background picture or video</span>
-            )}
-          </span>
-          <Button size="sm" onClick={() => setPicking('background')} data-testid="choose-background">
-            {background ? 'Change' : 'Choose'}
-          </Button>
-          {background && (
+        <div className="space-y-1.5">
+          {background ? (
+            <p className="text-sm break-words" data-testid="background-cue">
+              Background: {inputName !== null ? `the video input “${inputName}”` : nameOf(background)}
+            </p>
+          ) : (
+            <p className="text-sm text-muted">No background picture or video</p>
+          )}
+          <div className="flex flex-wrap items-center gap-1">
             <Button
               size="sm"
-              variant="ghost"
-              aria-label="Remove the background"
-              onClick={() => {
-                change((d) => mapSlide(d, slide.id, (s) => setBackgroundCue(s, null)));
-              }}
+              title="Choose a picture, video or video input behind this slide"
+              onClick={() => setPicking('background')}
+              data-testid="choose-background"
             >
-              Remove
+              {background ? 'Change background…' : 'Choose background…'}
             </Button>
-          )}
+            {background && (
+              <Button
+                size="sm"
+                variant="ghost"
+                title="Take the background off this slide"
+                onClick={() => {
+                  change((d) => mapSlide(d, slide.id, (s) => setBackgroundCue(s, null)));
+                }}
+              >
+                Remove background
+              </Button>
+            )}
+          </div>
         </div>
         {/* A video input this computer has none of (Session 51): another computer's, say. */}
         {inputName !== null && !inputHere && (
@@ -511,32 +529,37 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
             }}
           />
         )}
-        <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 text-sm">
-            {sound ? (
-              <span data-testid="sound-cue">
-                <Music size={14} aria-hidden="true" className="mr-1 inline" />
-                {nameOf(sound)}
-              </span>
-            ) : (
-              <span className="text-muted">No sound</span>
-            )}
-          </span>
-          <Button size="sm" onClick={() => setPicking('sound')} data-testid="choose-sound">
-            {sound ? 'Change' : 'Choose'}
-          </Button>
-          {sound && (
+        <div className="space-y-1.5">
+          {sound ? (
+            <p className="text-sm break-words" data-testid="sound-cue">
+              <Music size={14} aria-hidden="true" className="mr-1 inline" />
+              {nameOf(sound)}
+            </p>
+          ) : (
+            <p className="text-sm text-muted">No sound</p>
+          )}
+          <div className="flex flex-wrap items-center gap-1">
             <Button
               size="sm"
-              variant="ghost"
-              aria-label="Remove the sound"
-              onClick={() => {
-                change((d) => mapSlide(d, slide.id, (s) => setSoundCue(s, null)));
-              }}
+              title="Choose the sound that plays when this slide goes up"
+              onClick={() => setPicking('sound')}
+              data-testid="choose-sound"
             >
-              Remove
+              {sound ? 'Change sound…' : 'Choose sound…'}
             </Button>
-          )}
+            {sound && (
+              <Button
+                size="sm"
+                variant="ghost"
+                title="Take the sound off this slide"
+                onClick={() => {
+                  change((d) => mapSlide(d, slide.id, (s) => setSoundCue(s, null)));
+                }}
+              >
+                Remove sound
+              </Button>
+            )}
+          </div>
         </div>
         {/* Its file missing (Session 54): what is playing carries on, as LIVE says. */}
         {soundMissing && (

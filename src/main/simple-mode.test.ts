@@ -498,7 +498,7 @@ describe('Simple Mode locks', () => {
   /*
    * Session 56 (alpha.16), the owner: Simple Mode's right column and bottom bar from Pro Mode's own parts. Audio as Pro
    * Mode has it (the audio playlists, their Play, and Music steps aside); a row's Trim (start, end and markers, Trim
-   * black and silence, Even loudness: it never makes a copy) and When it ends; Edit slides (Pro's slide editor, and its
+   * black and silence, Even loudness) and When it ends; Edit slides (Pro's slide editor, and its
    * save's Undo). Each within its bounds, so a phone or Companion (no arguments) is still refused; what makes a copy
    * (Save as MP4, a conversion, a PDF copy), a library-wide setting (the default transition) and the rest stay Pro Mode's.
    */
@@ -554,6 +554,22 @@ describe('Simple Mode locks', () => {
     expect(SIMPLE_MODE_BOUNDED.get(IPC.media.setMarkers)?.(['m-in', markers], noMusic)).toBe(true);
   });
 
+  it('reads, saves and resets a Trim only on playlist video rows in Simple Mode', () => {
+    for (const [channel, args] of [
+      [IPC.media.rowTrim, []],
+      [IPC.media.applyRowTrim, [{ mediaId: 'm-in', points: { startMs: 500, endMs: 1000, markers: [] } }]],
+      [IPC.media.resetRowTrim, ['m-in']],
+    ] as const) {
+      expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
+      expect(simpleModeRefusesWhole(channel), channel).toBe(true);
+      for (const row of ['i-one', 'i-other']) expect(within(channel, row, ...args), channel).toBe(true);
+      for (const row of ['i-tpl', 'i-unknown', 42])
+        expect(within(channel, row, ...args), channel).toBe(false);
+      expect(within(channel), channel).toBe(false);
+    }
+    expect(answers.get(IPC.media.rowTrim)?.()).toBeNull();
+  });
+
   it('a video row’s When it ends (Session 56): a playlist’s row, never a template’s', () => {
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.playlists.setWhenEnds);
     expect(within(IPC.playlists.setWhenEnds, 'i-one', 'wallpaper')).toBe(true);
@@ -569,6 +585,7 @@ describe('Simple Mode locks', () => {
     for (const channel of [
       IPC.slideEditor.open,
       IPC.slideEditor.copy,
+      IPC.slideEditor.addPicture,
       IPC.library.saveSlides,
       IPC.library.restoreRevision,
     ]) {
@@ -581,6 +598,8 @@ describe('Simple Mode locks', () => {
     // Another playlist's (the playlists, as Pro Mode's left column has them); never one only a template holds, or none.
     expect(within(IPC.slideEditor.open, 'p-other', null)).toBe(true);
     expect(within(IPC.slideEditor.open, 'p-out', null)).toBe(false);
+    expect(within(IPC.slideEditor.addPicture, 'p-in')).toBe(true);
+    expect(within(IPC.slideEditor.addPicture, 'p-out')).toBe(false);
     expect(within(IPC.library.saveSlides, 'p-in', { presentationId: 'p-in' }, 'stamp', false)).toBe(true);
     expect(within(IPC.library.saveSlides, 'p-out', { presentationId: 'p-out' }, 'stamp', false)).toBe(false);
     expect(within(IPC.library.saveSlides, 42, {}, 'stamp', false)).toBe(false);
@@ -600,7 +619,7 @@ describe('Simple Mode locks', () => {
 
   it('what makes a copy, a library-wide setting, and the rest of the editor’s and Audio’s neighbours stay Pro Mode’s (Session 56)', () => {
     for (const channel of [
-      // Save as MP4… and its stop: a copy of the part (the owner: Trim "never makes a copy").
+      // Standalone Save as MP4… and its stop.
       IPC.media.saveTrim,
       IPC.media.stopSave,
       // Conversions make copies.

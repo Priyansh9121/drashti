@@ -1006,6 +1006,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     }
     const hash = kept.original.sha256;
     const retained: OriginalDescriptor[] = [kept.original];
+    const keepEditableKeynote = async (candidate: string): Promise<OriginalDescriptor | null> => {
+      const staged = await steps.time('original', () => originals.stage(candidate, 'pptx', ctx.signal));
+      if (!staged.ok) return null;
+      retained.push(staged.original);
+      return staged.original;
+    };
     const visibleIndices = (list: readonly PptxSlide[] | null) =>
       list?.flatMap((slide, index) => (slide.hidden ? [] : [index])) ?? [];
     time('read', t);
@@ -1050,6 +1056,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       let converter: Converter | null = null;
       let firstTried: { converter: Converter; reason: string } | null = null;
       let slides: PptxSlide[] | null = null;
+      let keynoteExport: { file: string; slides: readonly PptxSlide[] } | null = null;
       /** The deck as read, for its videos and sounds beside its pictures (Session 54, C2), and why no animations. */
       let deckRead: { deck: PptxDeck; file: string } | null = null;
       const deckIssues: ImportIssue[] = [];
@@ -1135,11 +1142,26 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         time('parse', t);
         if (flow.kind === 'baked') {
           const indices = flow.sourceIndices ?? visibleIndices(slides);
-          flow.parsed.groups
-            .flatMap((g) => g.slides)
-            .forEach((slide, index) => {
-              slide.documentPage = { sha256: hash, ext: source, page: indices[index] ?? index };
-            });
+          const pages = flow.parsed.groups.flatMap((group) => group.slides);
+          const editablePptx =
+            source === 'key' && 'editablePptx' in flow && typeof flow.editablePptx === 'string'
+              ? flow.editablePptx
+              : undefined;
+          let exported: OriginalDescriptor | null = null;
+          if (editablePptx && indices.length === pages.length) {
+            exported = await keepEditableKeynote(editablePptx);
+            if (ctx.signal?.aborted) {
+              fail('pictures-cancelled', 'Cancelled while the PowerPoint copy was being kept.');
+              return;
+            }
+          }
+          for (const [index, slide] of pages.entries()) {
+            slide.documentPage = {
+              sha256: exported?.sha256 ?? hash,
+              ext: exported?.ext ?? source,
+              page: indices[index] ?? index,
+            };
+          }
           told.how = 'baked';
           told.slides = slideCount(flow.parsed);
           // Its pictures changed or deleted meanwhile: the operator's edit wins (Session 56).
@@ -1184,7 +1206,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         }
         deckIssues.push(...flow.issues);
         if (flow.drawn) reuse = flow.drawn;
-        if (flow.deck && flow.deckFile) deckRead = { deck: flow.deck, file: flow.deckFile };
+        if (flow.deck && flow.deckFile) {
+          deckRead = { deck: flow.deck, file: flow.deckFile };
+          if (source === 'key') keynoteExport = { file: flow.deckFile, slides: flow.deck.slides };
+        }
         // A Keynote file's or an old .ppt's notes, from the .pptx made of it as it was tried.
         if (!slides && flow.deck) slides = flow.deck.slides;
         // The pictures the app saved while it tried: no need to ask it again.
@@ -1233,6 +1258,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           if (converted.ok) {
             converter = app;
             pdf = converted.pdf;
+            if (source === 'key' && converted.editablePptx && converted.slides && !converted.shownOnly)
+              keynoteExport = { file: converted.editablePptx, slides: converted.slides };
             // The file's own notes when it could be read; otherwise what the app told.
             if (!slides?.some((sl) => sl.notes !== '') && converted.slides) slides = converted.slides;
             break;
@@ -1283,13 +1310,32 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         drawn,
         drawn.pages.map((p) => notes?.[p.index] ?? ''),
       );
-      const shownIndices = visibleIndices(slides);
+      let editableSlides: readonly PptxSlide[] | null = slides;
+      if (keynoteExport) {
+        const exportSlides = keynoteExport.slides;
+        const shown = visibleIndices(exportSlides);
+        if (drawn.total === exportSlides.length || drawn.total === shown.length) {
+          const exported = await keepEditableKeynote(keynoteExport.file);
+          if (ctx.signal?.aborted) {
+            fail('pictures-cancelled', 'Cancelled while the PowerPoint copy was being kept.');
+            return;
+          }
+          if (exported) {
+            editableOriginal = exported;
+            editableSlides = exportSlides;
+          }
+        }
+      }
+      const shownIndices = visibleIndices(editableSlides);
       parsed.groups
         .flatMap((g) => g.slides)
         .forEach((slide, index) => {
           const drawnIndex = drawn.pages[index]?.index ?? index;
           const page =
-            source === 'pdf' || editableOriginal.ext === 'pdf' || !slides || drawn.total === slides.length
+            source === 'pdf' ||
+            editableOriginal.ext === 'pdf' ||
+            !editableSlides ||
+            drawn.total === editableSlides.length
               ? drawnIndex
               : drawn.total === shownIndices.length
                 ? shownIndices[drawnIndex]
@@ -1321,6 +1367,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         source,
         converter,
         firstTried,
+        ...(source === 'key' && (editableOriginal.ext === 'pptx' || editableOriginal.ext === 'pdf')
+          ? { editableSource: editableOriginal.ext }
+          : {}),
         hidden:
           slides && shown.length < slides.length && drawn.total === shown.length
             ? slides.length - shown.length

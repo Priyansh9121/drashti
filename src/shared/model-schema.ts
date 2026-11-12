@@ -127,6 +127,8 @@ export function slideDesignFromJson(text: string | null | undefined): SlideDesig
 }
 const sourceShapeIdSchema = z.string().regex(/^\d{1,10}$/u);
 const elementPlacement = {
+  name: z.string().min(1).max(200).optional(),
+  hidden: z.boolean().optional(),
   sourceShapeId: sourceShapeIdSchema.optional(),
   sourceGroupIds: z.array(sourceShapeIdSchema).max(128).optional(),
   groupId: idSchema.optional(),
@@ -134,6 +136,20 @@ const elementPlacement = {
   flipY: z.boolean().optional(),
   motion: elementMotionSchema.optional(),
 };
+const gradientStops = z
+  .array(z.object({ offset: num.min(0).max(1), color: hexColorSchema }))
+  .min(2)
+  .max(64)
+  .refine((stops) => stops.every((stop, i) => i === 0 || stop.offset >= (stops[i - 1]?.offset ?? 0)));
+const gradientSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('linear'), angle: num.min(0).max(360), stops: gradientStops }),
+  z.object({
+    kind: z.literal('radial'),
+    x: num.min(0).max(1),
+    y: num.min(0).max(1),
+    stops: gradientStops,
+  }),
+]);
 const cropSchema = z
   .object({
     x: num.min(0).max(1),
@@ -186,6 +202,10 @@ export const textStyleSchema: z.ZodType<TextStyle> = z.object({
   // Session 55 (Part 17a): a glow round the letters.
   glow: glowSchema.nullable().optional(),
   shrinkToFit: z.boolean().optional(),
+  clipToBox: z.boolean().optional(),
+  noWrap: z.boolean().optional(),
+  writingMode: z.enum(['vertical-rl', 'vertical-lr', 'sideways-lr']).optional(),
+  textOrientation: z.literal('upright').optional(),
 });
 
 export const textRunSchema: z.ZodType<TextRun> = z.object({
@@ -204,6 +224,19 @@ export const textRunSchema: z.ZodType<TextRun> = z.object({
   glow: glowSchema.nullable().optional(),
   list: z.enum(LIST_MARKS).optional(),
   level: num.int().min(0).max(MAX_LIST_LEVEL).optional(),
+  paragraph: z
+    .object({
+      align: z.enum(['left', 'center', 'right', 'justify']),
+      marginLeft: num.min(0).max(16_384).optional(),
+      marginRight: num.min(0).max(16_384).optional(),
+      indent: num.min(-16_384).max(16_384).optional(),
+      lineHeight: num.positive().max(5).optional(),
+      bullet: z.string().max(8).optional(),
+      bulletFont: z.string().max(200).optional(),
+      startAt: num.int().min(1).max(32_767).optional(),
+    })
+    .optional(),
+  softBreak: z.boolean().optional(),
   lang: langSchema.nullable().optional(),
   legacy: z.boolean().optional(),
 });
@@ -221,6 +254,14 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
     runs: z.array(textRunSchema).max(2000).optional(),
     opacity: num.min(0).max(1).optional(),
     everyScreen: z.boolean().optional(),
+    tableCell: z
+      .object({
+        row: num.int().min(0).max(499),
+        column: num.int().min(0).max(499),
+        rowSpan: num.int().min(1).max(500),
+        columnSpan: num.int().min(1).max(500),
+      })
+      .optional(),
   }),
   z
     .object({
@@ -232,6 +273,7 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
       shape: z.enum(SHAPE_KINDS).optional(),
       path: nativePathSchema.optional(),
       fill: hexColorSchema.nullable(),
+      gradient: gradientSchema.optional(),
       cornerRadius: num.nonnegative(),
       opacity: num.min(0).max(1),
       outline: outlineSchema.nullable().optional(),
@@ -255,6 +297,12 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
       // A video's play bar on the screens (Session 54), off unless ticked.
       playBar: z.boolean().optional(),
       crop: cropSchema.optional(),
+      pictureClip: z
+        .object({
+          shape: z.enum(SHAPE_KINDS).exclude(['line', 'path']),
+          cornerRadius: num.min(0).max(16_384).optional(),
+        })
+        .optional(),
     }),
   ),
   // A timer on a slide (Session 50): which timer, its look as words, its last minute and its zero.
