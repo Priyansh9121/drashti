@@ -1,6 +1,6 @@
 import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { deckOnWindows } from '../deck-converters';
 import type * as DeckConverters from '../deck-converters';
@@ -30,7 +30,13 @@ vi.mock('../deck-converters', async (original) => ({
   ...(await original<typeof DeckConverters>()),
   deckOnWindows: vi.fn<typeof deckOnWindows>(),
 }));
-vi.mock('./timed-copy', () => ({ writeTimedCopy: () => Promise.resolve() }));
+const copies = vi.hoisted(() => ({ written: [] as string[] }));
+vi.mock('./timed-copy', () => ({
+  writeTimedCopy: (_deck: string, out: string) => {
+    copies.written.push(out);
+    return Promise.resolve();
+  },
+}));
 
 it.each([
   {
@@ -137,6 +143,87 @@ it.each([
       `Windows PowerPoint preview unit clock (ms) ${JSON.stringify({ platform: process.platform, name, firstPicturesMs, movieStartMs, movieDoneMs, firstPicturesWallMs })}\n`,
     );
     expect({ firstPicturesMs, movieStartMs, movieDoneMs }).toEqual(expected);
+  } finally {
+    finishDrawing();
+    await running;
+    await rm(work, { force: true, recursive: true });
+  }
+});
+
+// The part 3 review's LOW-2 (Session 57): cancelling, or going on air, while the pictures are drawn stops the Windows
+// path before it writes the movie's timed copy or asks PowerPoint for the movie.
+it('a cancel while the pictures are drawn writes no timed copy for the movie and asks for no movie', async () => {
+  legacy.movieStartsBeforePictures = false;
+  const work = await mkdtemp(join(tmpdir(), 'drashti-windows-preview-cancel-'));
+  const file = join(work, 'Placeholder deck.ppt');
+  let wakeDrawing: () => void = () => undefined;
+  const drawing = new Promise<void>((resolve) => {
+    wakeDrawing = resolve;
+  });
+  let finishDrawing: () => void = () => undefined;
+  const raster = new Promise<void>((resolve) => {
+    finishDrawing = resolve;
+  });
+  const stop = new AbortController();
+  let running: ReturnType<typeof runDeck> | undefined;
+  let movies = 0;
+  try {
+    await writeFile(
+      file,
+      makeTestPptx([
+        { text: 'Placeholder moving', color: '204060', animated: true },
+        { text: 'Placeholder still', color: '204060' },
+      ]),
+    );
+    vi.mocked(deckOnWindows).mockImplementation(async (job) => {
+      if (job.pptx) await copyFile(file, job.pptx);
+      if (job.pdf) await writeFile(job.pdf, '%PDF-1.4 Placeholder Windows export');
+      if (!job.movie) return { ok: true };
+      movies++;
+      return { ok: false, reason: 'placeholder movie unavailable', message: 'Use the saved pictures.' };
+    });
+    copies.written.length = 0;
+    running = runDeck(
+      {
+        source: 'ppt',
+        file,
+        fileName: 'Placeholder deck',
+        sourcePath: file,
+        read: null,
+        work,
+        bakers: ['powerpoint'],
+      },
+      {
+        ffmpeg: '',
+        platform: 'win32',
+        signal: stop.signal,
+        freeBytes: () => 1024 ** 4,
+        onAir: () => Promise.resolve(false),
+        drawPdf: async () => {
+          wakeDrawing();
+          await raster;
+          return {
+            ok: true,
+            width: 960,
+            height: 540,
+            total: 2,
+            failed: [],
+            pages: [0, 1].map((index) => ({
+              index,
+              file: join(work, `Placeholder-${String(index)}.png`),
+              notes: '',
+            })),
+          };
+        },
+        early: () => Promise.resolve(),
+      },
+    );
+    await Promise.race([drawing, running]);
+    stop.abort();
+    finishDrawing();
+    expect((await running).kind).toBe('pictures');
+    expect(movies).toBe(0);
+    expect(copies.written.map((out) => basename(out))).toEqual(['timed-all.pptx']);
   } finally {
     finishDrawing();
     await running;
