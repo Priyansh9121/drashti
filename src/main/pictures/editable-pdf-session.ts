@@ -57,6 +57,14 @@ const failure = (): PreparedSource => ({
   ok: false,
   message: 'This PDF’s words and shapes could not be read safely. The slides still show as before.',
 });
+/** A job the show stopped before any page was read (Session 57): every page left for a new job; no page count yet. */
+const notRead = (pages: Iterable<number>): PreparedSource => ({
+  ok: true,
+  pages: [],
+  total: 0,
+  failed: [],
+  unread: [...pages],
+});
 
 // Return completed pages before the outer source queue expires and cancels its request.
 const PDF_FINISH_RESERVE_MS = 2_000;
@@ -78,12 +86,18 @@ interface Session {
   finish(result: PreparedSource): void;
 }
 
-function completed(session: Session, total: number, failed: Iterable<number>): PreparedSource {
+function completed(
+  session: Session,
+  total: number,
+  failed: Iterable<number>,
+  unread?: number[],
+): PreparedSource {
   return {
     ok: true,
     pages: [...session.pages.values()].sort((a, b) => a.sourceIndex - b.sourceIndex),
     total,
     failed: [...failed].sort((a, b) => a - b),
+    ...(unread ? { unread } : {}),
   };
 }
 
@@ -97,6 +111,34 @@ export class EditablePdfSessions {
   }
   private isAborted(request: SourceRead): boolean {
     return request.signal.aborted;
+  }
+  /*
+   * The show needs the computer (Session 57, the lead's review of C2's part 1, HIGH-1): the job ends here instead of
+   * waiting, so none of its clocks (Main's, the reader queue's, the hidden window's own and each page's) runs on
+   * through the show, and PdfPictures' one queue is free for an import's pictures meanwhile. What is read stays read;
+   * the pages not read yet are left `unread`, never failed, for a new job once the show is idle (imported-slides.ts).
+   */
+  private hold(session: Session): false {
+    if (session.total === null) {
+      // Before the window said its page count (as it asks for its job, say): no page is read yet, so all are left.
+      session.finish(notRead(session.job.sourcePages));
+      return false;
+    }
+    const unread = session.job.sourcePages.filter(
+      (index) => !session.pages.has(index) && !session.skipped.has(index),
+    );
+    session.finish(completed(session, session.total, session.skipped, unread));
+    return false;
+  }
+  /** What Main keeps of a page counts against the job's budgets and, shared, against the PDF's (`pdfBudget`). */
+  private spend(session: Session, assetBytes: number, metadataBytes: number): void {
+    session.assetBytes += assetBytes;
+    session.metadataBytes += metadataBytes;
+    const shared = session.request.pdfBudget;
+    if (shared) {
+      shared.assetBytes = session.assetBytes;
+      shared.metadataBytes = session.metadataBytes;
+    }
   }
   constructor(private readonly open: () => BrowserWindow) {}
 
@@ -117,6 +159,8 @@ export class EditablePdfSessions {
       [...requested].some((index) => !Number.isInteger(index) || index < 0 || index > 1_000_000)
     )
       return failure();
+    // The show needs the computer as the job's turn comes (the delta review's LOW-1): nothing is read, copied or opened.
+    if (request.pdfHold?.()) return notRead(requested);
     let data: Uint8Array;
     try {
       // Preparation is bounded independently of ordinary full-page picture imports.
@@ -130,6 +174,7 @@ export class EditablePdfSessions {
     }
     if (this.isAborted(request) || !(await sourceCheckpoint(request))) return failure();
     if (this.current()) return failure();
+    if (request.pdfHold?.()) return notRead(requested);
     return new Promise<PreparedSource>((resolve) => {
       let win: BrowserWindow;
       try {
@@ -154,9 +199,10 @@ export class EditablePdfSessions {
         const failed = [...session.requested].filter((index) => !session.pages.has(index));
         finish(completed(session, session.total, failed));
       }, timeBudgetMs);
+      const closed = new AbortController();
       const session: Session = {
         win,
-        request,
+        request: { ...request, signal: AbortSignal.any([request.signal, closed.signal]) },
         job: {
           mode: 'editable-source',
           jobId: randomUUID(),
@@ -170,8 +216,9 @@ export class EditablePdfSessions {
         skipped: new Set(),
         total: null,
         deadlineAt,
-        assetBytes: 0,
-        metadataBytes: 0,
+        // One PDF's jobs share its budgets (a job ended for the show is followed by another).
+        assetBytes: request.pdfBudget?.assetBytes ?? 0,
+        metadataBytes: request.pdfBudget?.metadataBytes ?? 0,
         accepting: false,
         stopped: false,
         writes: Promise.resolve(),
@@ -181,6 +228,7 @@ export class EditablePdfSessions {
         if (finished) return;
         finished = true;
         session.stopped = true;
+        closed.abort();
         clearTimeout(timer);
         request.signal.removeEventListener('abort', abort);
         if (this.active === session) this.active = null;
@@ -213,6 +261,11 @@ export class EditablePdfSessions {
   job(sender: WebContents): EditablePdfJob | null {
     const session = this.active;
     if (!session || !this.owns(sender)) return null;
+    // The show turned busy as the window opened: the PDF is never sent to it, and every page is left for a new job.
+    if (!this.isStopped(session) && session.request.pdfHold?.()) {
+      this.hold(session);
+      return null;
+    }
     return { ...session.job, timeBudgetMs: Math.max(0, session.deadlineAt - performance.now()) };
   }
 
@@ -243,7 +296,7 @@ export class EditablePdfSessions {
           if (await sourceCheckpoint(session.request)) {
             if (this.isStopped(session)) return false;
             if (total !== undefined) session.total = total;
-            return true;
+            return session.request.pdfHold?.() ? this.hold(session) : true;
           }
           session.finish(failure());
           return false;
@@ -255,12 +308,12 @@ export class EditablePdfSessions {
           !session.requested.has(reply.data.sourceIndex) ||
           session.pages.has(reply.data.sourceIndex) ||
           session.skipped.has(reply.data.sourceIndex) ||
+          (session.request.onPdfPage !== undefined && session.total === null) ||
           (session.total !== null && reply.data.sourceIndex >= session.total)
         ) {
           session.finish(failure());
           return false;
         }
-        const parsed = validateEditablePdfPage(raw, session.job.jobId, session.requested);
         if (
           !(await sourceCheckpoint(session.request)) ||
           this.isStopped(session) ||
@@ -269,6 +322,9 @@ export class EditablePdfSessions {
           session.finish(failure());
           return false;
         }
+        // A page that arrives as the show needs the computer is neither checked nor written: it is read again later.
+        if (session.request.pdfHold?.()) return this.hold(session);
+        const parsed = validateEditablePdfPage(raw, session.job.jobId, session.requested);
         if (
           !parsed ||
           session.assetBytes + parsed.assetBytes > EDITABLE_SOURCE_LIMITS.jobAssetBytes ||
@@ -276,7 +332,9 @@ export class EditablePdfSessions {
         ) {
           // A page failing Main's checks, or one past the remaining output budget, keeps its saved picture.
           session.skipped.add(reply.data.sourceIndex);
-          return 'skipped';
+          await session.request.onPdfPage?.(reply.data.sourceIndex);
+          if (this.isStopped(session)) return false;
+          return session.request.pdfHold?.() ? this.hold(session) : 'skipped';
         }
         const assets: PreparedSourcePage['assets'] = [];
         for (const asset of parsed.page.assets) {
@@ -286,7 +344,7 @@ export class EditablePdfSessions {
           assets.push({ token: asset.token, file, kind: 'image' });
         }
         if (this.isStopped(session)) return false;
-        session.pages.set(parsed.page.sourceIndex, {
+        const page: PreparedSourcePage = {
           sourceIndex: parsed.page.sourceIndex,
           width: parsed.page.width,
           height: parsed.page.height,
@@ -294,10 +352,12 @@ export class EditablePdfSessions {
           elements: parsed.page.elements,
           assets,
           issues: parsed.page.issues,
-        });
-        session.assetBytes += parsed.assetBytes;
-        session.metadataBytes += parsed.metadataBytes;
-        return true;
+        };
+        session.pages.set(page.sourceIndex, page);
+        this.spend(session, parsed.assetBytes, parsed.metadataBytes);
+        await session.request.onPdfPage?.(page.sourceIndex, page);
+        if (this.isStopped(session)) return false;
+        return session.request.pdfHold?.() ? this.hold(session) : true;
       } catch {
         session.finish(failure());
         return false;

@@ -74,6 +74,8 @@ import type {
   EditDoc,
   EditSlidesOpen,
   EditSlidesResult,
+  EditSourceRequest,
+  EditSourceUpdate,
   SaveSlidesResult,
   SlidesSaved,
 } from './slide-edit';
@@ -372,7 +374,7 @@ export interface DrashtiBridge {
     legacyPresentations(): Promise<{ id: string; name: string }[]>;
     getPresentation(id: string): Promise<PresentationDoc | null>;
     /** A presentation's slides, everything on them, and how new text looks, for the slide editor. */
-    slidesForEdit(presentationId: string): Promise<EditSlidesResult>;
+    slidesForEdit(presentationId: string, source?: EditSourceRequest): Promise<EditSlidesResult>;
     /** Save a separate PDF from the current editor document; never saves or closes the presentation. */
     linkPdfPage(
       presentationId: string,
@@ -874,6 +876,7 @@ export interface DrashtiBridge {
       slideId: string | null,
     ): Promise<{ ok: true } | { ok: false; message: string }>;
     onEdit(listener: (open: EditSlidesOpen) => void): () => void;
+    onSourcePrepared(listener: (update: EditSourceUpdate) => void): () => void;
     dirty(dirty: boolean): Promise<null>;
     close(): Promise<null>;
     onAskClose(listener: () => void): () => void;
@@ -1045,7 +1048,10 @@ export interface DrashtiBridge {
   };
   pictures: {
     job(): Promise<PdfJob | null>;
-    /** False: stop (the import was cancelled). */
+    /**
+     * False: stop (the import was cancelled, or Edit slides' reading ended its job for the show). 'skipped': Main
+     * kept that page's saved picture; go on with the next page.
+     */
     page(page: PdfPage): Promise<PdfPageReceipt>;
     done(done: PdfDone): Promise<null>;
     asset(kind: PictureAssetKind, name: string): Promise<Uint8Array | null>;
