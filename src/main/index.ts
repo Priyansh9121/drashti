@@ -3883,7 +3883,7 @@ function start(): void {
     },
     kept: {
       load: () => settings.get('playlistTrimsWaiting'),
-      save: (cuts) => laterSetting('playlistTrimsWaiting', cuts),
+      save: (cuts) => settings.set('playlistTrimsWaiting', cuts),
     },
     spaceProblem: (file, durationMs, lengthMs) =>
       conversions.trimSpaceProblem(file, dirname(file), durationMs, lengthMs),
@@ -3912,7 +3912,12 @@ function start(): void {
     markersChanged: (id) => engine.refreshMarkers(id),
     notice: (text) => sendToOperator(IPC.app.notice, { text }),
   });
-  void playlistTrims.cleanupCopies();
+  const trimStartup = playlistTrims.resumeInterrupted();
+  void trimStartup
+    .then(() => playlistTrims.cleanupCopies())
+    .catch((error: unknown) => {
+      log.warn('Trim: could not resume an interrupted cut', error);
+    });
   void mediaRemoval
     .trashUnusedTrims(mediaDir, (file) => shell.trashItem(file))
     .then((gone) => {
@@ -4015,8 +4020,9 @@ function start(): void {
     if (boxGone !== null && recovery) recovery = { ...recovery, pip: false, pipInputGone: boxGone };
     return recovery;
   });
-  handle(IPC.app.startNotice, (e) => {
+  handle(IPC.app.startNotice, async (e) => {
     if (!fromOperator(e)) return null;
+    await trimStartup.catch(() => undefined);
     const interruptedTrim = playlistTrims.reportInterrupted();
     const text = [startNotice, interruptedTrim].filter(Boolean).join(' ') || null;
     startNotice = null;
