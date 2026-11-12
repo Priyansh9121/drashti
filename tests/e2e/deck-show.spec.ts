@@ -1,5 +1,6 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import type { DeckSlide } from '../../src/shared/deck';
+import { IPC } from '../../src/shared/ipc';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
@@ -847,6 +848,67 @@ test('a deck’s sound set to play across slides plays on through the clicks and
     await expect.poll(async () => (await sound()) ?? null).toBeNull();
     await expect(win.locator('[data-testid="time-bar-row"][data-playing="audio"]')).toHaveCount(0);
     await expect.poll(heard).toBe(false);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a failed click clip appears when its late copy becomes available', async () => {
+  expect(ffmpeg, 'bundled FFmpeg for placeholder clips').not.toBeNull();
+  const { app } = await launchApp({
+    DRASHTI_TEST_CLOCK_HOLD: '1',
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+  });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const files = await makeDeckFiles(win);
+    const clipId = files.clips[1];
+    if (!clipId) throw new Error('Expected a placeholder click clip');
+    const id = await writeDeck(win, 'Placeholder late deck clip', standInDecks(files));
+    const out = await outputFor(app, await setUpScreen(win, 'Placeholder Hall', 0));
+
+    // A missing first copy fails for this one clip. On the node's retry URL Chromium decodes the generated video.
+    await out.evaluate((mediaId) => {
+      const prototype = HTMLMediaElement.prototype;
+      const src = Object.getOwnPropertyDescriptor(prototype, 'src');
+      if (!src?.set) throw new Error('Expected the Chromium media source setter');
+      Object.defineProperty(prototype, 'src', {
+        ...src,
+        set(this: HTMLMediaElement, value: string) {
+          const unavailable = this.dataset['mediaId'] === mediaId && !new URL(value).searchParams.has('try');
+          if (unavailable && this.dataset['deckVideo'] === 'preparing') return;
+          src.set?.call(this, unavailable ? 'data:video/webm;base64,AA==' : value);
+        },
+      });
+    }, clipId);
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    await expect(out.locator('[data-deck-step="0"]')).toHaveAttribute('data-deck-phase', 'held');
+    await dispatch(win, { type: 'next' });
+    const at = await stepAt(win);
+    expect(at).toBeGreaterThan(0);
+    expect(await holdClock(app, at + 250)).toBe(true);
+    const shown = out.locator('[data-deck-step="1"]');
+    const clip = shown.locator('video[data-deck-video="clip"]');
+    await expect.poll(() => clip.evaluate((video: HTMLVideoElement) => video.error !== null)).toBe(true);
+    await expect(shown).toHaveAttribute('data-deck-phase', 'held');
+
+    await app.evaluate(
+      ({ BrowserWindow }, { channel, mediaId }) => {
+        const output = BrowserWindow.getAllWindows().find((w) =>
+          w.webContents.getURL().includes('output.html'),
+        );
+        if (!output) throw new Error('Expected the output window');
+        output.webContents.send(channel, { mediaId });
+      },
+      { channel: IPC.output.mediaReady, mediaId: clipId },
+    );
+    await expect(clip).toHaveAttribute('src', /[?]try=1$/);
+    await expect
+      .poll(() => clip.evaluate((video: HTMLVideoElement) => video.readyState))
+      .toBeGreaterThanOrEqual(2);
+    await expect(shown).toHaveAttribute('data-deck-phase', 'clip');
+    await holdClock(app, null);
   } finally {
     await app.close();
   }
