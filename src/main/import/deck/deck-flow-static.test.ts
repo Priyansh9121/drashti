@@ -4,24 +4,8 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { readPptxDeck } from '../pictures';
 import { makeTestPptx } from '../testing/make-pptx';
-import { makeZip } from '../testing/zip-writer';
-import { readZipEntries } from '../zip';
+import { addTestPptxShadow } from '../testing/pptx-shadow';
 import { runDeck } from './deck-flow';
-
-async function withShadow(file: string): Promise<Buffer> {
-  const parts = await readZipEntries(file, () => true);
-  const slidePart = 'ppt/slides/slide1.xml';
-  const slide = parts.get(slidePart);
-  if (!slide) throw new Error('The fixture slide is missing.');
-  const xml = slide
-    .toString()
-    .replace(
-      '</p:spPr>',
-      '<a:effectLst><a:outerShdw><a:srgbClr val="000000"/></a:outerShdw></a:effectLst></p:spPr>',
-    );
-  parts.set(slidePart, Buffer.from(xml));
-  return makeZip(Array.from(parts, ([name, data]) => ({ name, data })));
-}
 
 it.each([
   {
@@ -47,7 +31,7 @@ it.each([
   try {
     const file = join(work, 'Placeholder deck.pptx');
     await writeFile(file, makeTestPptx([{ text: 'Placeholder words', color: '204060' }]));
-    if (shadow) await writeFile(file, await withShadow(file));
+    if (shadow) await addTestPptxShadow(file);
     const read = await readPptxDeck(file);
     const options = {
       ffmpeg: '',
