@@ -143,6 +143,8 @@ export interface NetworkDeps {
     state(): EngineState;
   };
   reads: NetworkReads;
+  /** The stream is on air or recording (Session 50's rule: background work stays off then). Not looked at yet (red). */
+  onAir?(): boolean;
   /** Captures a settled native slide once in the private renderer. */
   nativeSlidePicture?(
     slide: RenderSlide,
