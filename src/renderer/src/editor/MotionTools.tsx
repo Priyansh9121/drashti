@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { type DeckEffect, type DeckSlide, stepCount } from '../../../shared/deck';
-import type { ElementMotion } from '../../../shared/model';
+import type { ElementMotion, SlideElement } from '../../../shared/model';
 import { elementMotionSchema } from '../../../shared/model-schema';
 import { hasElementMotion } from '../../../shared/element-motion';
 import { renderEditedSlide } from '../../../shared/slide-design';
@@ -12,6 +12,7 @@ import { commit, useEditor } from './editor-store';
 import { findSlide, mapElements } from './ops';
 import { finishTextEditing } from './TextBoxEditor';
 import { Cluster, Divider } from './RibbonParts';
+import { emptyClicks } from './empty-clicks';
 
 const EFFECTS = {
   in: [
@@ -101,9 +102,16 @@ function importedEffect(effect: DeckEffect): string {
 }
 
 /** An imported slide's PowerPoint animations: how many clicks, each effect in order, and what plays them. */
-export function ImportedMotion({ deck }: { deck: DeckSlide }) {
+export function ImportedMotion({ deck, elements }: { deck: DeckSlide; elements?: readonly SlideElement[] }) {
   const clicks = stepCount(deck) - 1;
   const effects = deck.motion?.effects ?? [];
+  const empty = elements ? emptyClicks(deck, elements) : [];
+  const emptyNote =
+    empty.length === 1
+      ? `Click ${String(empty[0])} has nothing left to move. Check it before going live.`
+      : empty.length > 1
+        ? `Clicks ${empty.join(', ')} have nothing left to move. Check them before going live.`
+        : null;
   return (
     <>
       <Divider />
@@ -129,9 +137,7 @@ export function ImportedMotion({ deck }: { deck: DeckSlide }) {
           {effects.some((effect) => effect.paragraphs) && (
             <p>Added paragraphs appear with the built paragraph before them.</p>
           )}
-          {clicks > 0 && (
-            <p>Deleting an animated shape or paragraph can leave a click with no visible change.</p>
-          )}
+          {emptyNote && <p>{emptyNote}</p>}
           {deck.motion?.approximate && (
             <p>
               {deck.steps.length
@@ -151,7 +157,8 @@ export function MotionTools() {
   const ids = useEditor((s) => s.selection);
   const preview = useEditor((s) => s.previewAt);
   const slide = doc ? findSlide(doc, slideId) : undefined;
-  if (slide?.deck?.motion) return <ImportedMotion deck={slide.deck} />;
+  if (doc && slide?.deck?.motion)
+    return <ImportedMotion deck={slide.deck} elements={renderEditedSlide(doc, slide).elements} />;
   const selected = slide?.elements.filter((el) => ids.includes(el.id)) ?? [];
   const disabled = !selected.length || Boolean(slide?.deck);
   const update = (phase: Phase, field: 'kind' | 'delayMs' | 'durationMs', value: string | number) => {
