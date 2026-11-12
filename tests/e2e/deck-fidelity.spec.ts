@@ -6,7 +6,7 @@ import {
   slideXml,
   wordsShape,
 } from '../../src/main/import/testing/editable-pptx-fixture';
-import { hashFile, openEditor, publicSlides } from './deck-edit-fixtures';
+import { hashFile, openEditor, publicSlides, rawContent } from './deck-edit-fixtures';
 import {
   importAndGetIds,
   launchApp,
@@ -86,7 +86,13 @@ test('a PowerPoint slide keeps its editable cells, aligned words and hidden obje
 
     const [saved] = await publicSlides(win, presentationId);
     const elements = saved?.slide.elements ?? [];
-    expect(elements.find((element) => element.sourceShapeId === '2')).toMatchObject({ hidden: true });
+    expect(elements.some((element) => element.sourceShapeId === '2')).toBe(false);
+    const stored = rawContent(userData, presentationId).elements.flatMap((row) =>
+      typeof row.props === 'string'
+        ? [JSON.parse(row.props) as { sourceShapeId?: string; hidden?: boolean }]
+        : [],
+    );
+    expect(stored.find((element) => element.sourceShapeId === '2')).toMatchObject({ hidden: true });
     expect(
       elements.find((element) => element.kind === 'text' && element.text === 'Placeholder cell edited'),
     ).toMatchObject({ sourceShapeId: '6', tableCell: { row: 0, column: 1, rowSpan: 1, columnSpan: 1 } });
