@@ -4,10 +4,11 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
+import { sourceTimingDeck } from '../../../shared/deck-source-timing';
 import { EDITABLE_SOURCE_LIMITS, type PreparedSourcePage } from '../../../shared/editable-source';
 import { editablePdfPage } from '../../../shared/pdf-edit-page';
 import type { SourceReader } from '../../documents/source-reader';
-import { readEditablePptx } from '../deck/editable-pptx';
+import { readEditableWithTiming } from '../../documents/pptx-source-timing';
 import { MEDIA_REF } from '../model';
 
 const require = createRequire(import.meta.url);
@@ -18,7 +19,12 @@ export const nativeSourceReader: SourceReader = async (request) => {
   const pages: PreparedSourcePage[] = [];
   const failed: number[] = [];
   if (request.ext === 'pptx') {
-    const native = await readEditablePptx(request.file, request.outDir);
+    // As the document reader does (W6's review N4): the asked pages' clicks too, checked as Main checks them.
+    const { editable: native, decks } = await readEditableWithTiming(
+      request.file,
+      request.outDir,
+      request.timingPages ?? [],
+    );
     for (const sourceIndex of request.sourcePages) {
       if (isAborted() || !(await request.checkpoint())) return { ok: false, message: 'Cancelled.' };
       const page = native.slides.find((entry) => entry.sourceIndex === sourceIndex);
@@ -31,6 +37,7 @@ export const nativeSourceReader: SourceReader = async (request) => {
           element.kind === 'image' || element.kind === 'video' ? [element.mediaId] : [],
         ),
       );
+      const deck = sourceTimingDeck(decks.get(sourceIndex));
       pages.push({
         sourceIndex,
         width: native.width,
@@ -38,6 +45,7 @@ export const nativeSourceReader: SourceReader = async (request) => {
         background: page.background,
         elements: page.elements,
         issues: page.issues,
+        ...(deck ? { deck } : {}),
         assets: native.media.flatMap((asset, index) => {
           const token = `${MEDIA_REF}${String(index)}`;
           return tokens.has(token) ? [{ token, file: asset.originalPath, kind: asset.kind }] : [];
