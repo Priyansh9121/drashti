@@ -80,7 +80,7 @@ Drashti copies presentations, playlists and media from ProPresenter's folders. I
 
 You can also use **Import…**, in the library above its list, then **A folder…**.
 
-While it imports, a progress bar shows in the status bar along the bottom, and you can keep using Drashti. What it brings goes into the library (and, with a playlist open, at that playlist's end too). When it finishes, the status bar says what came across, and anything that did not has a small notice of its own in the bottom-right corner, saying why (since alpha.17 no report opens). Look at them:
+While it imports, a progress bar shows in the status bar along the bottom, and you can keep using Drashti. What it brings goes into the library only, never into the open playlist (since alpha.17), so a whole library brought in here doesn't fill it. When it finishes, the status bar says what came across, and anything that did not has a small notice of its own in the bottom-right corner, saying why (since alpha.17 no report opens). Look at them:
 
 - The status bar says how many presentations and media files came in, how many were there already, and how many problems (in yellow, with a ⚠ sign).
 - **Media that could not be found**: a notice for each presentation whose files ProPresenter pointed at were not found. Press **Find…** on it and choose the folder where those files are, and Drashti finds them by name (**Find missing media…** in **Ready?** does the same for the open playlist).
