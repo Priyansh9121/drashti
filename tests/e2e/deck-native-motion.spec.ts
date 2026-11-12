@@ -136,7 +136,12 @@ test('an unsupported PowerPoint transition keeps its clip until the edited slide
     const name = 'Placeholder deck fallback';
     const file = join(dir, `${name}.pptx`);
     await writeFile(file, nativeDeckFixture(true));
-    const { app } = await launchApp({ DRASHTI_TEST_DECK_CONVERTER: '1', DRASHTI_TEST_DECK_BAKER: '1' });
+    const { app } = await launchApp({
+      DRASHTI_TEST_DECK_CONVERTER: '1',
+      DRASHTI_TEST_DECK_BAKER: '1',
+      DRASHTI_WINDOWED_OUTPUTS: '1',
+      DRASHTI_TEST_CLOCK_HOLD: '1',
+    });
     try {
       const win = await operatorPage(app);
       await operatorReady(win);
@@ -146,6 +151,22 @@ test('an unsupported PowerPoint transition keeps its clip until the edited slide
       expect(before[0]?.slide.deck?.steps).toEqual([]);
       expect(before[1]?.slide.deck?.steps).toHaveLength(1);
       expect(before[1]?.slide.deck?.motion?.approximate).toBe(true);
+
+      await setUpScreen(win, 'Main Hall', 0);
+      const out = await outputPage(app);
+      await outputReady(out);
+      const enterSecondSlide = async () => {
+        await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+        for (let step = 0; step < 4; step++) await dispatch(win, { type: 'next' });
+        await expect.poll(async () => (await current(win))?.slideIndex).toBe(1);
+      };
+      await enterSecondSlide();
+      await inStep(app, win, 0, 325);
+      await expect(out.locator('[data-slide-in] [data-deck-step="0"]')).toHaveAttribute(
+        'data-deck-phase',
+        'clip',
+      );
+      await holdClock(app, null);
 
       const { ed, editor } = await openEditor(app, win, name);
       await editor.getByTestId('editor-slide-thumb').nth(1).click();
@@ -168,6 +189,12 @@ test('an unsupported PowerPoint transition keeps its clip until the edited slide
         motion: { approximate: true },
         transition: { nativeTransition: { deckEffect: 'dissolve', durationMs: 650 } },
       });
+      await enterSecondSlide();
+      const live = await current(win);
+      expect(live?.transition).toMatchObject({ kind: 'dissolve', durationMs: 650 });
+      await holdClock(app, (live?.shownAt ?? 0) + 325);
+      await expect(out.locator('[data-slide-in] [data-native-deck-step="0"]')).toHaveCount(1);
+      await expect(out.locator('[data-slide-in]')).toHaveCSS('opacity', '0.5');
     } finally {
       await app.close();
     }
