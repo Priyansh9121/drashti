@@ -18,6 +18,7 @@ const checkpointSchema = z
     mode: z.literal('editable-checkpoint'),
     jobId: z.string().max(512),
     sourceIndex: z.number().int().min(0),
+    total: z.number().int().min(1).max(1_000_000).optional(),
   })
   .strict();
 const doneSchema = z
@@ -34,18 +35,33 @@ const failure = (): PreparedSource => ({
   message: 'This PDF’s words and shapes could not be read safely. The slides still show as before.',
 });
 
+// Return completed pages before the outer source queue expires and cancels its request.
+const PDF_FINISH_RESERVE_MS = 2_000;
+
 interface Session {
   win: BrowserWindow;
   request: SourceRead;
   job: EditablePdfJob;
   requested: Set<number>;
   pages: Map<number, PreparedSourcePage>;
+  skipped: Set<number>;
+  total: number | null;
+  deadlineAt: number;
   assetBytes: number;
   metadataBytes: number;
   accepting: boolean;
   stopped: boolean;
   writes: Promise<void>;
   finish(result: PreparedSource): void;
+}
+
+function completed(session: Session, total: number, failed: Iterable<number>): PreparedSource {
+  return {
+    ok: true,
+    pages: [...session.pages.values()].sort((a, b) => a.sourceIndex - b.sourceIndex),
+    total,
+    failed: [...failed].sort((a, b) => a - b),
+  };
 }
 
 export class EditablePdfSessions {
@@ -105,7 +121,16 @@ export class EditablePdfSessions {
           ok: false,
           message: 'Reading the original’s words and shapes was stopped. The slides still show as before.',
         });
-      const timer = setTimeout(() => finish(failure()), sourceTimeLeft(request));
+      const timeBudgetMs = Math.max(1, sourceTimeLeft(request) - PDF_FINISH_RESERVE_MS);
+      const deadlineAt = performance.now() + timeBudgetMs;
+      const timer = setTimeout(() => {
+        if (this.isAborted(request) || session.total === null || !session.pages.size) {
+          finish(failure());
+          return;
+        }
+        const failed = [...session.requested].filter((index) => !session.pages.has(index));
+        finish(completed(session, session.total, failed));
+      }, timeBudgetMs);
       const session: Session = {
         win,
         request,
@@ -115,9 +140,13 @@ export class EditablePdfSessions {
           data,
           sourcePages: [...requested],
           limits: EDITABLE_SOURCE_LIMITS,
+          timeBudgetMs,
         },
         requested,
         pages: new Map(),
+        skipped: new Set(),
+        total: null,
+        deadlineAt,
         assetBytes: 0,
         metadataBytes: 0,
         accepting: false,
@@ -135,7 +164,7 @@ export class EditablePdfSessions {
         if (!win.isDestroyed()) win.destroy();
         // Main may already be writing a PNG; caller must not remove the output folder until it settles.
         void session.writes.then(
-          () => resolve(result),
+          () => resolve(result.ok && this.isAborted(request) ? failure() : result),
           () => resolve(failure()),
         );
       };
@@ -159,7 +188,9 @@ export class EditablePdfSessions {
   }
 
   job(sender: WebContents): EditablePdfJob | null {
-    return this.owns(sender) ? (this.active?.job ?? null) : null;
+    const session = this.active;
+    if (!session || !this.owns(sender)) return null;
+    return { ...session.job, timeBudgetMs: Math.max(0, session.deadlineAt - performance.now()) };
   }
 
   async page(sender: WebContents, raw: unknown): Promise<boolean> {
@@ -174,14 +205,23 @@ export class EditablePdfSessions {
       try {
         const checkpoint = checkpointSchema.safeParse(raw);
         if (checkpoint.success) {
+          const { jobId, sourceIndex, total } = checkpoint.data;
           if (
-            checkpoint.data.jobId !== session.job.jobId ||
-            !session.requested.has(checkpoint.data.sourceIndex)
+            jobId !== session.job.jobId ||
+            !session.requested.has(sourceIndex) ||
+            (total !== undefined &&
+              (session.total === null
+                ? [...session.pages.keys()].some((index) => index >= total)
+                : session.total !== total))
           ) {
             session.finish(failure());
             return false;
           }
-          if (await sourceCheckpoint(session.request)) return !this.isStopped(session);
+          if (await sourceCheckpoint(session.request)) {
+            if (this.isStopped(session)) return false;
+            if (total !== undefined) session.total = total;
+            return true;
+          }
           session.finish(failure());
           return false;
         }
@@ -189,8 +229,8 @@ export class EditablePdfSessions {
         if (
           !parsed ||
           session.pages.has(parsed.page.sourceIndex) ||
-          session.assetBytes + parsed.assetBytes > EDITABLE_SOURCE_LIMITS.jobAssetBytes ||
-          session.metadataBytes + parsed.metadataBytes > EDITABLE_SOURCE_LIMITS.jobMetadataBytes
+          session.skipped.has(parsed.page.sourceIndex) ||
+          (session.total !== null && parsed.page.sourceIndex >= session.total)
         ) {
           session.finish(failure());
           return false;
@@ -202,6 +242,14 @@ export class EditablePdfSessions {
         ) {
           session.finish(failure());
           return false;
+        }
+        if (
+          session.assetBytes + parsed.assetBytes > EDITABLE_SOURCE_LIMITS.jobAssetBytes ||
+          session.metadataBytes + parsed.metadataBytes > EDITABLE_SOURCE_LIMITS.jobMetadataBytes
+        ) {
+          // A valid page that exceeds the remaining output budget keeps its saved picture.
+          session.skipped.add(parsed.page.sourceIndex);
+          return true;
         }
         const assets: PreparedSourcePage['assets'] = [];
         for (const asset of parsed.page.assets) {
@@ -244,6 +292,7 @@ export class EditablePdfSessions {
     if (
       !parsed.success ||
       parsed.data.jobId !== session.job.jobId ||
+      (session.total !== null && session.total !== parsed.data.total) ||
       parsed.data.error ||
       session.accepting
     ) {
@@ -255,17 +304,15 @@ export class EditablePdfSessions {
       failed.size !== parsed.data.failed.length ||
       [...failed].some((index) => !session.requested.has(index)) ||
       [...session.pages.keys()].some((index) => index >= parsed.data.total || failed.has(index)) ||
-      [...session.requested].some((index) => !session.pages.has(index) && !failed.has(index))
+      [...session.requested].some(
+        (index) => !session.pages.has(index) && !failed.has(index) && !session.skipped.has(index),
+      )
     ) {
       session.finish(failure());
       return;
     }
-    session.finish({
-      ok: true,
-      pages: [...session.pages.values()].sort((a, b) => a.sourceIndex - b.sourceIndex),
-      total: parsed.data.total,
-      failed: [...failed].sort((a, b) => a - b),
-    });
+    for (const index of session.skipped) failed.add(index);
+    session.finish(completed(session, parsed.data.total, failed));
   }
 
   stop(): void {

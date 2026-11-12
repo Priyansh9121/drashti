@@ -268,6 +268,7 @@ import { spawnPptxReaderWorker } from './documents/spawn-pptx-reader-worker';
 import { sourceWrite } from './documents/source-write';
 import { SourceQuitGate } from './documents/source-quit-gate';
 import { PdfPrintGeometry } from './documents/pdf-geometry-service';
+import { systemFontFamilies } from './documents/system-fonts';
 import { PdfCopySession } from './library/pdf-copy-session';
 import { PdfEditor } from './library/pdf-editor';
 import { createPdfCopyWindow } from './library/pdf-copy-window';
@@ -4032,6 +4033,9 @@ function start(): void {
       page.sendInputEvent({ type: 'keyUp', keyCode: key });
     },
   });
+  handle(IPC.slideEditor.fontFamilies, (event) =>
+    isLetIn() && editorWindow.isPage(event.sender) ? systemFontFamilies() : [],
+  );
   const slideEdits = registerSlidesIpc({
     choosePdfFile: async (e) => {
       const parent = BrowserWindow.fromWebContents(e.sender);
