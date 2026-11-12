@@ -309,6 +309,23 @@ describe('the network server', () => {
     ]);
   });
 
+  it('limits a high-density capture to 1920 on its long side when it makes the PNG', async () => {
+    const { host, port } = await start();
+    const width = 3840;
+    const height = 4;
+    const pixels = Buffer.alloc(width * height * 4).fill(Buffer.from([10, 30, 200, 255, 30, 50, 220, 255]));
+    host.request = () =>
+      Promise.resolve({ status: 200, body: { picture: { width, height, pixels, order: 'bgra' } } });
+    const response = await fetch(
+      `http://127.0.0.1:${String(port)}/api/v1/presentations/placeholder-deck?format=png&slide=placeholder-slide&click=1`,
+      { headers: bearer(REMOTE_TOKEN) },
+    );
+    expect(response.status).toBe(200);
+    const saved = readPng(new Uint8Array(await response.arrayBuffer()));
+    expect(saved).toMatchObject({ width: 1920, height: 2 });
+    expect(saved.rows.subarray(0, 4)).toEqual(Buffer.from([0, 210, 40, 20]));
+  });
+
   it('never sends pixels that are not the picture’s size', async () => {
     const { host, port } = await start();
     host.request = () =>
