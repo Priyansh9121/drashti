@@ -39,6 +39,7 @@ export function StudioPreview({
   backdrop,
   className,
   thumbnail,
+  paused = false,
 }: {
   input: LowerThirdInput;
   play: number;
@@ -46,6 +47,7 @@ export function StudioPreview({
   className?: string;
   /** A template tile is still until hovered or focused, then plays once. */
   thumbnail?: 'play' | 'still';
+  paused?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const { width } = useElementSize(box);
@@ -57,11 +59,13 @@ export function StudioPreview({
   const [finished, setFinished] = useState(false);
   const lines = input.lines.some((l) => l.trim() !== '') ? input.lines : SAMPLE;
   // Asked to play (`play` changed), or round again: up from now. Typing a line or changing a colour changes it in place.
-  const key = `${String(play)}/${String(round)}`;
-  if (thumbnail !== 'still' && played !== key) {
+  const pausedOrIdle = paused || thumbnail === 'still';
+  const key = pausedOrIdle ? null : String(play) + '/' + String(round);
+  if (played !== key) {
     setPlayed(key);
     setOff(null);
-    setLayer({ id: 'preview', ...input, lines, shownAt: engineNow() });
+    setFinished(false);
+    setLayer(key === null ? null : { id: 'preview', ...input, lines, shownAt: engineNow() });
   }
   // Held a moment once in, then out; then round again.
   useEffect(() => {
@@ -96,7 +100,7 @@ export function StudioPreview({
     };
   }, [off, thumbnail]);
   // The words and look as they are now, while it is up.
-  const still = thumbnail === 'still' || finished;
+  const still = pausedOrIdle || finished;
   const animation = animationById(input.animation);
   const frozenAt = still ? animationLength(animation, 'in', unitCount(lines, animation)) + 700 : undefined;
   const now = still ? { id: 'preview', ...input, lines, shownAt: 0 } : layer && { ...layer, ...input, lines };
