@@ -114,7 +114,13 @@ describe('the animations scenario', () => {
     it('makes table slides as the import keeps an editable PowerPoint table of 250 cells, words fitting and shrinking (MS-1)', async () => {
       dir = mkdtempSync(join(tmpdir(), 'drashti-perf-animations-'));
       db = openDatabase(':memory:');
-      const run = startScenario('animations', { db, mediaDir: dir, ffmpeg, engine: engine(), outputs: () => [] });
+      const run = startScenario('animations', {
+        db,
+        mediaDir: dir,
+        ffmpeg,
+        engine: engine(),
+        outputs: () => [],
+      });
       // Made before the check's measured part: the reader of a deck's editable copy, on a generated deck.
       await run.begin();
       const repo = new PresentationRepo(db);
@@ -127,9 +133,9 @@ describe('the animations scenario', () => {
         // Every cell its own text box, measuring itself on each screen (shrink to fit), as an imported deck's are.
         expect(cells(s)).toHaveLength(250);
         expect(cells(s).every((c) => c.style.shrinkToFit === true)).toBe(true);
-        expect(new Set(cells(s).map((c) => `${String(c.tableCell?.row)},${String(c.tableCell?.column)}`)).size).toBe(
-          250,
-        );
+        expect(
+          new Set(cells(s).map((c) => `${String(c.tableCell?.row)},${String(c.tableCell?.column)}`)).size,
+        ).toBe(250);
         // Within the editable reader's 500 objects a slide, its fills and edges included; on with the editor's fade.
         expect(s.slide.elements.length).toBeLessThanOrEqual(500);
         expect(s.slide.elements.some((e) => e.kind === 'shape')).toBe(true);

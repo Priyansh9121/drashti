@@ -250,15 +250,25 @@ describe('a jump to a deck slide Drashti plays itself, on two hall screens (DK-6
     const late = { ...jump(0, [300, null], [300, null]), effectAt: 200 };
     const f = jumpFigures([late, jump(1000, [1040, 1060], [1040, 1060])]);
     // Its first effect starts 200 ms after the slide went up: the frame 300 ms after is 100 ms into it.
-    expect(f.screens[0]).toEqual({ seen: 2, arrival: { median: 40, max: 300 }, effect: { median: 40, max: 100 } });
-    expect(f.screens[1]).toEqual({ seen: 1, arrival: { median: 60, max: 60 }, effect: { median: 60, max: 60 } });
+    expect(f.screens[0]).toEqual({
+      seen: 2,
+      arrival: { median: 40, max: 300 },
+      effect: { median: 40, max: 100 },
+    });
+    expect(f.screens[1]).toEqual({
+      seen: 1,
+      arrival: { median: 60, max: 60 },
+      effect: { median: 60, max: 60 },
+    });
     // Apart only where both screens showed it.
     expect(f.apart).toEqual({ arrival: { median: 20, max: 20 }, effect: { median: 20, max: 20 } });
   });
 
   it('has no screens apart with one screen, and nothing for a screen that never showed it', () => {
     const f = jumpFigures([jump(0, [30], [40]), jump(1000, [null], [null])]);
-    expect(f.screens).toEqual([{ seen: 1, arrival: { median: 30, max: 30 }, effect: { median: 40, max: 40 } }]);
+    expect(f.screens).toEqual([
+      { seen: 1, arrival: { median: 30, max: 30 }, effect: { median: 40, max: 40 } },
+    ]);
     expect(f.apart).toBeNull();
     expect(jumpFigures([jump(0, [null, null], [null, null])]).screens).toEqual([
       { seen: 0, arrival: null, effect: null },

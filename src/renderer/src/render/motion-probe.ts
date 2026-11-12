@@ -50,6 +50,9 @@ export const AUDIENCE_TRACKS: readonly MotionTrack[] = [
     name: 'wallpaper',
     parts: '[data-layer="wallpaper"], [data-wallpaper-role], [data-layer="wallpaper"] img',
   },
+  // A deck's slide Drashti plays itself (no clip, Session 57's DK-6): each shape its effects move, as the frame shows
+  // it (render/NativeDeckElement.tsx), so its first effect's start can be put against the engine's time.
+  { name: 'nativeDeck', parts: '[data-layer="slide"] [data-deck-motion-target]' },
 ];
 
 /**
