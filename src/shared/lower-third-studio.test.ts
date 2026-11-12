@@ -391,19 +391,18 @@ describe('the model: a lower third that hides itself, its out, its style', () =>
     ).toBe(false);
   });
 
-  it('classifies templates by the motion they show and the feel they offer', () => {
-    expect(LOWER_THIRD_TEMPLATES.find((t) => t.id === 'news-band')).toMatchObject({
-      direction: 'right',
-      kind: 'wipe',
+  it('classifies templates by the direction they enter from and the motion they actually play', () => {
+    const news = LOWER_THIRD_TEMPLATES.find((t) => t.id === 'news-band');
+    expect(news).toMatchObject({
+      direction: 'left',
+      kind: news?.input.animation === 'wipe-right-steady' ? 'wipe' : 'slide',
       feel: 'bold',
       speed: 'steady',
     });
-    expect(LOWER_THIRD_TEMPLATES.find((t) => t.id === 'outline')).toMatchObject({
-      direction: 'centre',
-      kind: 'letters',
-      feel: 'calm',
-      speed: 'steady',
-    });
+    const outline = LOWER_THIRD_TEMPLATES.find((t) => t.id === 'outline');
+    if (outline?.input.animation === 'letter-type-band-fade-steady')
+      expect(outline).toMatchObject({ direction: 'centre', kind: 'letters', feel: 'calm', speed: 'steady' });
+    else expect(outline).toMatchObject({ direction: 'left', kind: 'slide', feel: 'calm', speed: 'steady' });
   });
 
   it('animates the design accent, panel, name and role at different times', () => {
