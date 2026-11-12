@@ -28,6 +28,7 @@ function styleAt(style: TextStyle, scale: number): TextStyle {
 }
 
 function runAt<T extends RunLook | TextRun>(run: T, scale: number): T {
+  const paragraph = 'paragraph' in run ? run.paragraph : undefined;
   return {
     ...run,
     ...(run.size !== undefined ? { size: run.size * scale } : {}),
@@ -35,6 +36,19 @@ function runAt<T extends RunLook | TextRun>(run: T, scale: number): T {
     ...(run.shadow !== undefined ? { shadow: shadowAt(run.shadow, scale) } : {}),
     ...(run.outline !== undefined ? { outline: outlineAt(run.outline, scale) } : {}),
     ...(run.glow !== undefined ? { glow: glowAt(run.glow, scale) } : {}),
+    ...(paragraph && (paragraph.spaceBefore !== undefined || paragraph.spaceAfter !== undefined)
+      ? {
+          paragraph: {
+            ...paragraph,
+            ...(paragraph.spaceBefore !== undefined
+              ? { spaceBefore: Math.min(16_384, paragraph.spaceBefore * scale) }
+              : {}),
+            ...(paragraph.spaceAfter !== undefined
+              ? { spaceAfter: Math.min(16_384, paragraph.spaceAfter * scale) }
+              : {}),
+          },
+        }
+      : {}),
   };
 }
 
