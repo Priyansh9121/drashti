@@ -1,4 +1,4 @@
-import type { PreparedSource } from '../../shared/editable-source';
+import type { PreparedSource, PreparedSourcePage } from '../../shared/editable-source';
 
 export interface SourceRead {
   ext: 'pdf' | 'pptx';
@@ -10,6 +10,9 @@ export interface SourceRead {
   deadlineAt?: number;
   /** Authoritative Main guard + asynchronous CPU give-way; false cancels this generation. */
   checkpoint(): Promise<boolean>;
+  /** Main has validated this PDF page, or kept its saved picture when no page was returned. */
+  onPdfPage?(index: number, page?: PreparedSourcePage): Promise<void>;
+  waitForPdfIdle?(signal: AbortSignal): Promise<boolean>;
 }
 export type SourceReader = (request: SourceRead) => Promise<PreparedSource>;
 
@@ -39,7 +42,10 @@ export function sourceCheckpoint(request: SourceRead): Promise<boolean> {
     const abort = () => finish(false);
     request.signal.addEventListener('abort', abort, { once: true });
     void Promise.resolve()
-      .then(() => request.checkpoint())
+      .then(async () => {
+        if (!(await request.checkpoint())) return false;
+        return request.waitForPdfIdle ? request.waitForPdfIdle(request.signal) : true;
+      })
       .then(finish, () => finish(false));
     if (request.signal.aborted) abort();
   });

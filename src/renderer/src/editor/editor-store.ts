@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useMemo } from 'react';
-import type { EditDoc, SlideLook } from '../../../shared/slide-edit';
+import type { EditDoc, EditSourceUpdate, SlideLook } from '../../../shared/slide-edit';
 import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
 import { findSlide } from './ops';
 import type { Measured } from '../render/measure';
@@ -58,6 +58,7 @@ export interface EditorView {
   unreadable: number;
   /** Preparation limits for imported source objects, separate from unreadable stored elements. */
   sourceIssues: string[];
+  preparingSource: ReadonlySet<string>;
   slideId: string | null;
   /** Selected elements on the slide shown. */
   selection: string[];
@@ -114,6 +115,7 @@ const closed: EditorView = {
   look: null,
   unreadable: 0,
   sourceIssues: [],
+  preparingSource: new Set(),
   slideId: null,
   selection: [],
   editing: null,
@@ -221,15 +223,102 @@ export function useEditorLook(): SlideLook | null {
 
 export const isDirty = (s: EditorView): boolean => s.doc !== null && s.doc !== s.opened;
 
+let unsubscribePdfPages: (() => void) | undefined;
+
+function stopPdfUpdates(): void {
+  unsubscribePdfPages?.();
+  unsubscribePdfPages = undefined;
+}
+
+function applySourceUpdate(update: EditSourceUpdate): void {
+  if ('issues' in update) {
+    useEditor.setState((s) => ({
+      preparingSource: new Set(),
+      sourceIssues: [...new Set([...s.sourceIssues, ...update.issues])],
+    }));
+    stopPdfUpdates();
+    return;
+  }
+  const s = useEditor.getState();
+  if (!s.doc || !s.opened) return;
+  const pending = new Set(s.preparingSource);
+  for (const id of update.settled) pending.delete(id);
+  if (!update.pages.length) {
+    useEditor.setState({ preparingSource: pending });
+    return;
+  }
+  const pages = new Map(update.pages.map((page) => [page.id, page]));
+  const before = new Map(
+    slidesOf(s.opened)
+      .filter((slide) => pages.has(slide.id))
+      .map((slide) => [slide.id, slide]),
+  );
+  const rebased = new Map<EditDoc, EditDoc>();
+  const withPages = (doc: EditDoc): EditDoc => {
+    const done = rebased.get(doc);
+    if (done) return done;
+    const groups = doc.groups.map((group) => {
+      const slides = group.slides.map((slide) => {
+        const previous = before.get(slide.id);
+        const page = pages.get(slide.id);
+        // Keep an operator's picture edits and preserve notes, order and other slide settings on every history step.
+        if (
+          !previous ||
+          !page ||
+          slide.elements !== previous.elements ||
+          slide.background !== previous.background ||
+          slide.pageSize !== previous.pageSize
+        )
+          return slide;
+        return {
+          ...slide,
+          elements: page.elements,
+          background: page.background,
+          documentPage: page.documentPage,
+          pageSize: page.pageSize,
+        };
+      });
+      return slides.some((slide, index) => slide !== group.slides[index]) ? { ...group, slides } : group;
+    });
+    const result = groups.some((group, index) => group !== doc.groups[index]) ? { ...doc, groups } : doc;
+    rebased.set(doc, result);
+    return result;
+  };
+  const doc = withPages(s.doc);
+  const step = (entry: EditStep): EditStep => (isOutside(entry) ? entry : withPages(entry));
+  const selection = validSelection(doc, s.slideId, s.selection);
+  useEditor.setState({
+    doc,
+    opened: withPages(s.opened),
+    gesture: s.gesture ? withPages(s.gesture) : null,
+    past: s.past.map(step),
+    future: s.future.map(step),
+    preparingSource: pending,
+    selection,
+    editing: s.editing && selection.includes(s.editing) ? s.editing : null,
+  });
+}
+
 /** Open the editor on a presentation, at a slide (or its first); `name` until its slides say theirs. */
 export async function openSlideEditor(presentationId: string, name: string, slideId: string | null = null) {
   cancelSourceConversion();
+  stopPdfUpdates();
   // The group along the top stays as it was, as a presentation program keeps it.
   const group = useEditor.getState().group;
   useEditor.setState({ ...closed, group, open: { presentationId, name }, loading: true });
-  const result = await window.drashti.library.slidesForEdit(presentationId);
-  if (useEditor.getState().open?.presentationId !== presentationId) return;
+  const requestId = crypto.randomUUID();
+  let ready = false;
+  const buffered: EditSourceUpdate[] = [];
+  const stop = window.drashti.slideEditor.onSourcePrepared((update) => {
+    if (update.requestId !== requestId) return;
+    if (ready) applySourceUpdate(update);
+    else buffered.push(update);
+  });
+  unsubscribePdfPages = stop;
+  const result = await window.drashti.library.slidesForEdit(presentationId, { requestId, slideId });
+  if (unsubscribePdfPages !== stop) return;
   if (!result.ok) {
+    stopPdfUpdates();
     useEditor.setState({ loading: false, problem: result.message });
     return;
   }
@@ -244,8 +333,13 @@ export async function openSlideEditor(presentationId: string, name: string, slid
     look: result.look,
     unreadable: result.unreadable,
     sourceIssues: result.sourceIssues ?? [],
+    preparingSource: new Set(result.preparingSource),
     slideId: start?.id ?? null,
   });
+  if (result.preparingSource) {
+    ready = true;
+    for (const update of buffered) applySourceUpdate(update);
+  } else stopPdfUpdates();
 }
 
 /** The window the editor is in closes (main closes it: Session 55, Part 17a). */
@@ -261,6 +355,7 @@ export function closeSlideEditor(): void {
   const next = pending;
   pending = null;
   cancelSourceConversion();
+  stopPdfUpdates();
   useEditor.setState({ ...closed, group: useEditor.getState().group });
   if (next) void openSlideEditor(next.presentationId, '', next.slideId);
   else closeWindow();

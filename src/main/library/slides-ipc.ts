@@ -1,9 +1,16 @@
 import type { InsertPdfPagesResult, PdfPageSource, LinkPdfPageResult } from '../../shared/slide-edit';
 import type { IpcMainInvokeEvent } from 'electron';
+import { z } from 'zod';
 import { IPC } from '../../shared/ipc';
 import { CUT, type Transition } from '../../shared/model';
 import { idSchema, transitionSchema } from '../../shared/model-schema';
-import type { EditSlidesResult, SaveSlidesResult, SlideLook, SlidesSaved } from '../../shared/slide-edit';
+import type {
+  EditSlidesResult,
+  EditSourceUpdate,
+  SaveSlidesResult,
+  SlideLook,
+  SlidesSaved,
+} from '../../shared/slide-edit';
 import { editDocSchema } from '../../shared/slide-edit';
 import type { Db } from '../db/database';
 import type { ContentRows } from '../db/content';
@@ -13,7 +20,7 @@ import { handle } from '../ipc/handle';
 import type { Revisions } from './revisions';
 import { applySlideEdit, editDocOf, mediaIdsOf } from './slides';
 import { nfcEditDoc } from '../../shared/nfc';
-import { ImportedSlides } from './imported-slides';
+import { ImportedSlides, type PdfEditorProgress } from './imported-slides';
 import type { SourceReader } from '../documents/source-reader';
 import type { SourceWrite } from '../documents/source-write';
 import type { EditDoc } from '../../shared/slide-edit';
@@ -40,6 +47,7 @@ export interface SlidesIpcDeps {
   /** Main selects secure production adapters; omitted readers never fall back to Node canvas. */
   sourceReader?: SourceReader;
   sourceWrite?: SourceWrite;
+  waitForPdfIdle?: (signal: AbortSignal) => Promise<boolean>;
   /**
    * Main's current Pro/access/sender authority, rechecked throughout preparation; `presentationId`, the presentation it
    * is for (Session 56: Simple Mode's slide editor, for a presentation its playlists hold), none for the library's PDFs
@@ -63,6 +71,7 @@ export interface SlidesIpcController {
 
 const onlyOperator = { ok: false as const, message: 'Only the operator window can change slides.' };
 const DEFAULT_TRANSITION = 'defaultTransition';
+const editSourceRequest = z.object({ requestId: idSchema, slideId: idSchema.nullable() }).strict();
 
 /** The transition for presentations without their own: a cut until the operator chooses another. */
 export function defaultTransition(settings: SettingsRepo): Transition {
@@ -82,6 +91,7 @@ export function registerSlidesIpc({
   sourceReader,
   sourceWrite,
   mayPrepareSource = () => false,
+  waitForPdfIdle = (signal) => Promise.resolve(!signal.aborted),
   choosePdfFile,
 }: SlidesIpcDeps): SlidesIpcController {
   const imported = new ImportedSlides(db, undefined, { sourceReader, sourceWrite });
@@ -109,59 +119,96 @@ export function registerSlidesIpc({
     return row ? { name: row.name, stamp: `${row.updated_at}#${String(row.content_rev)}` } : null;
   };
 
-  handle(IPC.library.slidesForEdit, (e, presentationId): EditSlidesResult | Promise<EditSlidesResult> => {
-    const id = idSchema.safeParse(presentationId);
-    const rows = id.success ? presentations.content(id.data) : null;
-    const stamp = id.success ? stampOf(id.data) : null;
-    if (!rows || !stamp) return { ok: false, message: 'That presentation is no longer in the library.' };
-    const { doc, unreadable } = editDocOf(rows, stamp.name);
-    const source = db
-      .prepare('SELECT source_kind FROM presentations WHERE id = ?')
-      .pluck()
-      .get(rows.presentationId);
-    if (source === 'pictures' || rows.slides.some((slide) => slide.document_page)) {
-      if (!fromOperator(e) || !mayPrepareSource(e, rows.presentationId))
-        return { ok: true, doc, stamp: stamp.stamp, look: lookFor(rows.themeId, rows), unreadable };
-      cancelSourcePreparation();
-      const controller = new AbortController();
-      generations.set(rows.presentationId, controller);
-      const allowed = () =>
-        !controller.signal.aborted &&
-        generations.get(rows.presentationId) === controller &&
-        fromOperator(e) &&
-        mayPrepareSource(e, rows.presentationId) &&
-        stampOf(rows.presentationId)?.stamp === stamp.stamp;
-      const preparing: Promise<EditSlidesResult> = imported
-        .prepare(rows, doc, stamp.stamp, { signal: controller.signal, allowed })
-        .then((prepared): EditSlidesResult => {
-          if (!allowed())
-            return {
-              ok: false,
-              message:
-                'This presentation changed while its source pages were being prepared. Reopen the editor.',
-            };
-          return {
-            ok: true,
-            doc: prepared.doc,
-            stamp: stamp.stamp,
-            look: lookFor(rows.themeId, rows),
-            unreadable,
-            ...(prepared.issues.length ? { sourceIssues: prepared.issues } : {}),
-          };
-        })
-        .catch(() => ({
-          ok: false as const,
-          message: 'The source pages could not be prepared. The saved presentation is unchanged.',
-        }))
-        .finally(() => {
-          if (generations.get(rows.presentationId) === controller) generations.delete(rows.presentationId);
-          preparations.delete(preparing);
+  handle(
+    IPC.library.slidesForEdit,
+    (e, presentationId, rawRequest): EditSlidesResult | Promise<EditSlidesResult> => {
+      const id = idSchema.safeParse(presentationId);
+      const rows = id.success ? presentations.content(id.data) : null;
+      const stamp = id.success ? stampOf(id.data) : null;
+      if (!rows || !stamp) return { ok: false, message: 'That presentation is no longer in the library.' };
+      const { doc, unreadable } = editDocOf(rows, stamp.name);
+      const source = db
+        .prepare('SELECT source_kind FROM presentations WHERE id = ?')
+        .pluck()
+        .get(rows.presentationId);
+      if (source === 'pictures' || rows.slides.some((slide) => slide.document_page)) {
+        if (!fromOperator(e) || !mayPrepareSource(e, rows.presentationId))
+          return { ok: true, doc, stamp: stamp.stamp, look: lookFor(rows.themeId, rows), unreadable };
+        cancelSourcePreparation();
+        const controller = new AbortController();
+        generations.set(rows.presentationId, controller);
+        const allowed = () =>
+          !controller.signal.aborted &&
+          generations.get(rows.presentationId) === controller &&
+          fromOperator(e) &&
+          mayPrepareSource(e, rows.presentationId) &&
+          stampOf(rows.presentationId)?.stamp === stamp.stamp;
+        const request = editSourceRequest.safeParse(rawRequest);
+        let initial: ((result: EditSlidesResult) => void) | undefined;
+        let opened = false;
+        const opening = request.success
+          ? new Promise<EditSlidesResult>((resolve) => {
+              initial = resolve;
+            })
+          : undefined;
+        const view = (doc: EditDoc, issues: string[], pending?: string[]): EditSlidesResult => ({
+          ok: true,
+          doc,
+          stamp: stamp.stamp,
+          look: lookFor(rows.themeId, rows),
+          unreadable,
+          ...(issues.length ? { sourceIssues: issues } : {}),
+          ...(pending ? { preparingSource: pending } : {}),
         });
-      preparations.add(preparing);
-      return preparing;
-    }
-    return { ok: true, doc, stamp: stamp.stamp, look: lookFor(rows.themeId, rows), unreadable };
-  });
+        const sendUpdate = (update: EditSourceUpdate) => {
+          if (!e.sender.isDestroyed() && fromOperator(e))
+            e.sender.send(IPC.slideEditor.sourcePrepared, update);
+        };
+        const progress: PdfEditorProgress | undefined = request.success
+          ? {
+              slideId: request.data.slideId,
+              open: (doc, pending, issues) => {
+                opened = true;
+                initial?.(view(doc, issues, pending));
+              },
+              update: (pages, settled) => sendUpdate({ requestId: request.data.requestId, pages, settled }),
+              waitForIdle: waitForPdfIdle,
+            }
+          : undefined;
+        const preparing: Promise<EditSlidesResult> = imported
+          .prepare(rows, doc, stamp.stamp, { signal: controller.signal, allowed }, progress)
+          .then((prepared): EditSlidesResult =>
+            allowed()
+              ? view(prepared.doc, prepared.issues)
+              : {
+                  ok: false,
+                  message:
+                    'This presentation changed while its source pages were being prepared. Reopen the editor.',
+                },
+          )
+          .catch(() => ({
+            ok: false as const,
+            message: 'The source pages could not be prepared. The saved presentation is unchanged.',
+          }))
+          .then((result) => {
+            if (opened && request.success)
+              sendUpdate({
+                requestId: request.data.requestId,
+                issues: result.ok ? (result.sourceIssues ?? []) : [result.message],
+              });
+            else initial?.(result);
+            return result;
+          })
+          .finally(() => {
+            if (generations.get(rows.presentationId) === controller) generations.delete(rows.presentationId);
+            preparations.delete(preparing);
+          });
+        preparations.add(preparing);
+        return opening ?? preparing;
+      }
+      return { ok: true, doc, stamp: stamp.stamp, look: lookFor(rows.themeId, rows), unreadable };
+    },
+  );
 
   handle(IPC.library.pdfPageSources, (e): PdfPageSource[] => {
     if (!fromOperator(e) || !mayPrepareSource(e)) return [];
@@ -376,6 +423,7 @@ export function registerSlidesIpc({
     if (!fromOperator(e)) return onlyOperator;
     const checked = validateDocument(presentationId, edited, stamp, force);
     if (!checked.ok) return checked;
+    cancelSourcePreparation(checked.id);
     // Its words in one form, NFC, exactly as in the validated export document.
     const after = applySlideEdit(checked.before, checked.doc);
     presentations.setContent(after);

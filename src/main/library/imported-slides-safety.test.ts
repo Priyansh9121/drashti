@@ -270,8 +270,8 @@ describe('imported editor provenance and legacy safety', () => {
 
   it('opens on the requested PDF page and its neighbours while later pages are still reading', async () => {
     const w = originalWorld();
-    let later = () => {};
-    let initialPages = (_indices: number[]) => {};
+    let later: () => void = () => undefined;
+    let initialPages: (indices: number[]) => void = () => undefined;
     const hold = new Promise<void>((resolve) => {
       later = resolve;
     });

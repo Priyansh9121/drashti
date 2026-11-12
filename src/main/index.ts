@@ -2868,6 +2868,7 @@ function start(): void {
   let eventsStreamWas: StreamStatus | null = null;
   let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
   let conversionActivityChanged: (() => void) | undefined;
+  let pdfReadActivityChanged: (() => void) | undefined;
   const countStreams = streamCounter((kind) => behind?.service.count(kind));
   const streamKeys = new StreamKeyStore(
     join(app.getPath('userData'), 'stream-keys.json'),
@@ -2909,6 +2910,7 @@ function start(): void {
     statusChanged: (status) => {
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
+      pdfReadActivityChanged?.();
       eventsOut.emit(streamEvents(eventsStreamWas, status));
       eventsStreamWas = status;
       // Each stream and recording started, counted for the Access List (Session 54): never what.
@@ -4123,6 +4125,26 @@ function start(): void {
       const result = await documentReaders.read(request);
       if (!result.ok && result.retainOutput) sourceOutputQuarantined = true;
       return result;
+    },
+    // After the requested PDF pages have opened, the hidden reader waits while the show needs the computer.
+    waitForPdfIdle: (signal) => {
+      const idle = () => !streaming.inUse() && nothingUp(engine.snapshot().state.layers);
+      if (signal.aborted || idle()) return Promise.resolve(!signal.aborted);
+      return new Promise<boolean>((resolve) => {
+        const finish = (allowed: boolean) => {
+          offEngine();
+          if (pdfReadActivityChanged === check) pdfReadActivityChanged = undefined;
+          signal.removeEventListener('abort', stop);
+          resolve(allowed);
+        };
+        const check = () => {
+          if (idle()) finish(true);
+        };
+        const stop = () => finish(false);
+        const offEngine = engine.onChange(check);
+        pdfReadActivityChanged = check;
+        signal.addEventListener('abort', stop, { once: true });
+      });
     },
     sourceWrite: sourceWrite(libraryDb, () => imports.giveWay()),
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),

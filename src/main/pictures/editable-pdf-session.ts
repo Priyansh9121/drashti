@@ -154,9 +154,10 @@ export class EditablePdfSessions {
         const failed = [...session.requested].filter((index) => !session.pages.has(index));
         finish(completed(session, session.total, failed));
       }, timeBudgetMs);
+      const closed = new AbortController();
       const session: Session = {
         win,
-        request,
+        request: { ...request, signal: AbortSignal.any([request.signal, closed.signal]) },
         job: {
           mode: 'editable-source',
           jobId: randomUUID(),
@@ -181,6 +182,7 @@ export class EditablePdfSessions {
         if (finished) return;
         finished = true;
         session.stopped = true;
+        closed.abort();
         clearTimeout(timer);
         request.signal.removeEventListener('abort', abort);
         if (this.active === session) this.active = null;
@@ -255,12 +257,12 @@ export class EditablePdfSessions {
           !session.requested.has(reply.data.sourceIndex) ||
           session.pages.has(reply.data.sourceIndex) ||
           session.skipped.has(reply.data.sourceIndex) ||
+          (session.request.onPdfPage !== undefined && session.total === null) ||
           (session.total !== null && reply.data.sourceIndex >= session.total)
         ) {
           session.finish(failure());
           return false;
         }
-        const parsed = validateEditablePdfPage(raw, session.job.jobId, session.requested);
         if (
           !(await sourceCheckpoint(session.request)) ||
           this.isStopped(session) ||
@@ -269,6 +271,8 @@ export class EditablePdfSessions {
           session.finish(failure());
           return false;
         }
+        const parsed = validateEditablePdfPage(raw, session.job.jobId, session.requested);
+        const nextPage = () => session.request.waitForPdfIdle?.(session.request.signal) ?? true;
         if (
           !parsed ||
           session.assetBytes + parsed.assetBytes > EDITABLE_SOURCE_LIMITS.jobAssetBytes ||
@@ -276,7 +280,8 @@ export class EditablePdfSessions {
         ) {
           // A page failing Main's checks, or one past the remaining output budget, keeps its saved picture.
           session.skipped.add(reply.data.sourceIndex);
-          return 'skipped';
+          await session.request.onPdfPage?.(reply.data.sourceIndex);
+          return (await nextPage()) ? 'skipped' : false;
         }
         const assets: PreparedSourcePage['assets'] = [];
         for (const asset of parsed.page.assets) {
@@ -286,7 +291,7 @@ export class EditablePdfSessions {
           assets.push({ token: asset.token, file, kind: 'image' });
         }
         if (this.isStopped(session)) return false;
-        session.pages.set(parsed.page.sourceIndex, {
+        const page: PreparedSourcePage = {
           sourceIndex: parsed.page.sourceIndex,
           width: parsed.page.width,
           height: parsed.page.height,
@@ -294,10 +299,12 @@ export class EditablePdfSessions {
           elements: parsed.page.elements,
           assets,
           issues: parsed.page.issues,
-        });
+        };
+        session.pages.set(page.sourceIndex, page);
         session.assetBytes += parsed.assetBytes;
         session.metadataBytes += parsed.metadataBytes;
-        return true;
+        await session.request.onPdfPage?.(page.sourceIndex, page);
+        return await nextPage();
       } catch {
         session.finish(failure());
         return false;

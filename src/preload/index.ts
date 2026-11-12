@@ -227,7 +227,7 @@ const bridge: DrashtiBridge = {
     restoreRevision: (revisionId) => invoke(IPC.library.restoreRevision, revisionId),
     legacyPresentations: () => invoke(IPC.library.legacyPresentations),
     getPresentation: (id) => invoke(IPC.library.getPresentation, id),
-    slidesForEdit: (presentationId) => invoke(IPC.library.slidesForEdit, presentationId),
+    slidesForEdit: (presentationId, source) => invoke(IPC.library.slidesForEdit, presentationId, source),
     linkPdfPage: (presentationId, doc, stamp, slideId, pictureId, preparedId) =>
       invoke(IPC.library.linkPdfPage, presentationId, doc, stamp, slideId, pictureId, preparedId),
     pdfPageSources: () => invoke(IPC.library.pdfPageSources),
@@ -571,6 +571,7 @@ const bridge: DrashtiBridge = {
   slideEditor: {
     open: (presentationId, slideId) => invoke(IPC.slideEditor.open, presentationId, slideId),
     onEdit: (listener) => on(IPC.slideEditor.edit, listener),
+    onSourcePrepared: (listener) => on(IPC.slideEditor.sourcePrepared, listener),
     dirty: (dirty) => invoke(IPC.slideEditor.dirty, dirty),
     close: () => invoke(IPC.slideEditor.close),
     onAskClose: (listener) =>
