@@ -369,7 +369,11 @@ describe('putting edited slides back', () => {
       };
       source.deck = deck;
       source.documentPage = { sha256: '0'.repeat(64), ext: 'pptx', page: 0, edited: true };
-      group.slides.push({ ...structuredClone(source), id: 'placeholder-copy' });
+      const copy = structuredClone(source);
+      copy.id = 'placeholder-copy';
+      copy.elements = copy.elements.map((element, i) => ({ ...element, id: `copy-element-${i}` }));
+      copy.cues = copy.cues.map((cue, i) => ({ ...cue, id: `copy-cue-${i}` }));
+      group.slides.push(copy);
       const rows = {
         ...before,
         slides: before.slides.map((row) =>
