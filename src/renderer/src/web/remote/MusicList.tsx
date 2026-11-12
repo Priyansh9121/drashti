@@ -239,7 +239,7 @@ export function MusicList() {
                   <Button
                     size="lg"
                     className="min-h-12"
-                    aria-label={`Play ${track.name}`}
+                    aria-label={`Play track: ${track.name}`}
                     disabled={busy || !track.playable}
                     onClick={() => void tap(post(MUSIC + '/play', { playlistId: open.id, index }))}
                   >
@@ -248,7 +248,7 @@ export function MusicList() {
                   <Button
                     size="lg"
                     className="min-h-12"
-                    aria-label={`Move ${track.name} up`}
+                    aria-label={`Move up: ${track.name}`}
                     disabled={busy || index === 0}
                     onClick={() => void change(trackPath(track.id) + '/move', { to: index - 1 })}
                   >
@@ -257,7 +257,7 @@ export function MusicList() {
                   <Button
                     size="lg"
                     className="min-h-12"
-                    aria-label={`Move ${track.name} down`}
+                    aria-label={`Move down: ${track.name}`}
                     disabled={busy || index === open.tracks.length - 1}
                     onClick={() => void change(trackPath(track.id) + '/move', { to: index + 1 })}
                   >
