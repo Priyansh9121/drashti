@@ -66,7 +66,7 @@ import type { Zoom } from './zoom';
 import { scaleFor, zoomBy, zoomIn, zoomLabel, zoomOut, zoomScroll } from './zoom';
 import { pdfMark } from './pdf-marks';
 import type { PdfCanvasTool } from './pdf-marks';
-import { elementName } from './objects';
+import { elementDescription } from './objects';
 import { ObjectMenu } from './ObjectMenu';
 import {
   copySelectedObjects,
@@ -94,6 +94,7 @@ const PAD = 32;
 const SNAP_PX = 8;
 /** Moves under this (screen pixels) are a click, not a drag. */
 const DRAG_PX = 3;
+const CLICK_DISTANCE_PX = 6;
 /** Handles, screen pixels. */
 const HANDLE_PX = 10;
 
@@ -117,6 +118,7 @@ interface ObjectClick {
   top: string;
   picked: string;
   pressed: string;
+  individual: boolean;
 }
 
 type Drag =
@@ -255,6 +257,7 @@ export function Canvas({
     target: string | null;
   } | null>(null);
   const lastClick = useRef<(ObjectClick & { slide: EditSlide; selection: readonly string[] }) | null>(null);
+  const firstClick = useRef<{ slide: EditSlide; pressed: string | null } | null>(null);
   const pdfPointer = useRef<PdfPointerGesture | null>(null);
   const [pdfDraft, setPdfDraft] = useState<PdfPointerPreview | null>(null);
   const cancelPdfPointer = () => {
@@ -457,10 +460,11 @@ export function Canvas({
         previous?.slide === slide &&
         previous.top === hit &&
         previous.selection === now.selection &&
-        Math.hypot(p.x - previous.point.x, p.y - previous.point.y) * scale <= DRAG_PX;
+        Math.hypot(p.x - previous.point.x, p.y - previous.point.y) * scale <= CLICK_DISTANCE_PX;
       const pressed = repeat ? previous.picked : hit;
       let ids = now.selection;
       const members = groupedSelection(elements, [pressed]);
+      const insideSelectedGroup = members.length > 1 && members.every((id) => ids.includes(id));
       if (additive)
         ids = members.every((id) => ids.includes(id))
           ? ids.filter((id) => !members.includes(id))
@@ -469,7 +473,8 @@ export function Canvas({
       select(ids, { expandGroups: additive });
       ids = useEditor.getState().selection;
       if (!ids.includes(pressed)) return;
-      const picked = repeat ? (hitTest(elements, p, 6 / scale, pressed) ?? hit) : hit;
+      const picked =
+        repeat && !insideSelectedGroup ? (hitTest(elements, p, 6 / scale, pressed) ?? hit) : pressed;
       const moving = elements.filter((el) => ids.includes(el.id));
       drag.current = {
         kind: 'move',
@@ -479,7 +484,9 @@ export function Canvas({
         box: unionOf(moving.map((el) => boundsOf(el))) ?? { x: 0, y: 0, width: 0, height: 0 },
         lines: linesWithout(ids),
         dragging: false,
-        click: additive ? null : { point: p, top: hit, picked, pressed },
+        click: additive
+          ? null
+          : { point: p, top: hit, picked, pressed, individual: insideSelectedGroup || picked !== pressed },
       };
       return;
     }
@@ -667,8 +674,8 @@ export function Canvas({
     }
     // Change the pick only on a click. A drag still moves the object held when the pointer went down.
     if (!canceled && d.kind === 'move' && !d.dragging && d.click) {
-      const { picked, pressed } = d.click;
-      if (picked !== pressed) select([picked], { expandGroups: false });
+      const { picked, individual } = d.click;
+      if (individual) select([picked], { expandGroups: false });
       else if (d.ids.length > 1) select([picked]);
       lastClick.current = { ...d.click, slide, selection: useEditor.getState().selection };
       return;
@@ -685,11 +692,25 @@ export function Canvas({
     onPointerUp(e, true);
   };
 
-  const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Chromium counts the clicks in a double-click. The second press may land on a new selection handle.
+    if (e.detail !== 1) return;
     const click = lastClick.current;
+    firstClick.current = { slide, pressed: click?.slide === slide ? click.pressed : null };
+  };
+
+  const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const first = firstClick.current;
+    firstClick.current = null;
     lastClick.current = null;
-    // The second press of a double-click edits the box it pressed, before its single-click pick cycles.
-    if (click?.slide === slide) startEditing(click.pressed, { x: e.clientX, y: e.clientY });
+    const now = useEditor.getState();
+    if (now.editing || now.pdfTool || now.pdfDrawing) return;
+    const textBoxes = visible.filter((element) => element.kind === 'text');
+    const pressed = first?.slide === slide ? first.pressed : null;
+    const target = textBoxes.some((box) => box.id === pressed)
+      ? pressed
+      : hitTest(textBoxes, pointOf(e), CLICK_DISTANCE_PX / scale);
+    if (target) startEditing(target, { x: e.clientX, y: e.clientY });
   };
 
   const openObjectMenu = (at: MenuPlace, point?: Point) => {
@@ -741,13 +762,13 @@ export function Canvas({
       commit(moveElements(now.doc, slide.id, selection, arrow), { coalesce: `nudge:${selection.join(',')}` });
       return;
     }
-    if (e.key === 'Tab' && !mod && !e.altKey && elements.length > 0) {
+    if (e.key === 'Tab' && !mod && !e.altKey && visible.length > 0) {
       // The next (or previous) element in order; past the last, Tab goes on to the controls.
-      const at = single ? elements.indexOf(single) : e.shiftKey ? elements.length : -1;
-      const next = elements[at + (e.shiftKey ? -1 : 1)];
+      const at = single && !single.hidden ? visible.indexOf(single) : e.shiftKey ? visible.length : -1;
+      const next = visible[at + (e.shiftKey ? -1 : 1)];
       if (next) {
         e.preventDefault();
-        select([next.id]);
+        select([next.id], { expandGroups: false });
       }
       return;
     }
@@ -763,7 +784,10 @@ export function Canvas({
     }
     if (mod && e.key.toLowerCase() === 'a') {
       e.preventDefault();
-      select(elements.map((x) => x.id));
+      select(
+        visible.map((x) => x.id),
+        { expandGroups: false },
+      );
       return;
     }
     // ⌘B, ⌘I and ⌘U (Ctrl on Windows): the text boxes selected, bold, italic or underlined, and back (Session 55,
@@ -836,7 +860,7 @@ export function Canvas({
     selected.length === 0
       ? 'Nothing selected'
       : single
-        ? `${elementName(single)} selected, at ${Math.round(single.frame.x)}, ${Math.round(single.frame.y)}, ${Math.round(single.frame.width)} by ${Math.round(single.frame.height)}`
+        ? `${elementDescription(single)} selected, at ${Math.round(single.frame.x)}, ${Math.round(single.frame.y)}, ${Math.round(single.frame.width)} by ${Math.round(single.frame.height)}`
         : `${selected.length} elements selected`;
 
   return (
@@ -869,6 +893,7 @@ export function Canvas({
           onLostPointerCapture={() => {
             if (pdfPointer.current) cancelPdfPointer();
           }}
+          onClick={onClick}
           onDoubleClick={onDoubleClick}
           onContextMenu={(e) => {
             if (e.target instanceof Element && e.target.closest('[data-editing]')) return;

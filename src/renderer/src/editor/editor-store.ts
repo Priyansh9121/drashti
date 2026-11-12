@@ -468,7 +468,10 @@ export function startEditing(elementId: string, at: Point | null = null): void {
       sourceGate.pending?.after.push(() => startEditing(elementId, at));
     return;
   }
-  if (element.hidden) return;
+  if (element.hidden) {
+    tell('Show this text box in Objects before editing its words.');
+    return;
+  }
   const legacy = legacyFontOf(element);
   if (legacy) {
     tell(
