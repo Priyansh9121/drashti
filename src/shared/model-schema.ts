@@ -203,6 +203,7 @@ export const textStyleSchema: z.ZodType<TextStyle> = z.object({
   glow: glowSchema.nullable().optional(),
   shrinkToFit: z.boolean().optional(),
   clipToBox: z.boolean().optional(),
+  noWrap: z.boolean().optional(),
   writingMode: z.enum(['vertical-rl', 'vertical-lr', 'sideways-lr']).optional(),
   textOrientation: z.literal('upright').optional(),
 });
