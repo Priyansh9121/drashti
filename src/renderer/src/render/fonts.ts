@@ -33,6 +33,23 @@ export const HTML_LANG: Record<Lang, string> = {
   'sa-gu': 'sa-Gujr',
 };
 
+const SUBSTITUTES: Record<string, readonly string[]> = {
+  aptos: ['Calibri', 'Carlito', 'Arial'],
+  arial: ['Liberation Sans', 'Helvetica', 'Arial Nova'],
+  'arial narrow': ['Liberation Sans Narrow', 'Helvetica Neue'],
+  calibri: ['Carlito', 'Aptos', 'Arial'],
+  cambria: ['Caladea', 'Georgia', 'Times New Roman'],
+  'courier new': ['Liberation Mono', 'Courier', 'Consolas', 'Menlo'],
+  helvetica: ['Arial', 'Liberation Sans'],
+  'times new roman': ['Liberation Serif', 'Times', 'Georgia'],
+  'trebuchet ms': ['Verdana', 'Arial'],
+  verdana: ['Tahoma', 'Arial'],
+};
+
+export function fontSubstitutes(family: string): readonly string[] {
+  return Object.hasOwn(SUBSTITUTES, family.toLowerCase()) ? (SUBSTITUTES[family.toLowerCase()] ?? []) : [];
+}
+
 /** CSS font-family for a text element: its own font (if any) backed by the bundled stack. */
 export function fontFamilyFor(family: string | null, lang: Lang | null): string {
   const stack = LANG_FONT_STACK[lang ?? 'default'];
@@ -43,7 +60,8 @@ export function fontFamilyFor(family: string | null, lang: Lang | null): string 
       .families.map((f) => `"${f}"`)
       .join(', ')}, ${stack}`;
   const quoted = /^["'].*["']$/.test(family) ? family : `"${family.replace(/"/g, '')}"`;
-  return `${quoted}, ${stack}`;
+  const substitutes = fontSubstitutes(family).map((name) => '"' + name + '"');
+  return [quoted, ...substitutes, stack].join(', ');
 }
 
 /** Samples that pull in every unicode-range subset we render (Latin with diacritics, Gujarati, Devanagari). */

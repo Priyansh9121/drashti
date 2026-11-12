@@ -580,6 +580,7 @@ const bridge: DrashtiBridge = {
     onSaved: (listener) => on(IPC.slideEditor.edited, listener),
     copy: (copied) => invoke(IPC.slideEditor.copy, copied),
     copied: () => invoke(IPC.slideEditor.copied),
+    fontFamilies: () => invoke(IPC.slideEditor.fontFamilies),
     showKey: (key) => invoke(IPC.slideEditor.showKey, key),
   },
   midi: {

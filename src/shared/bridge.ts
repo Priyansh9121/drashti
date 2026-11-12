@@ -870,6 +870,7 @@ export interface DrashtiBridge {
     /** What the editor copied, kept for the next editor window, and what is kept. */
     copy(copied: CopiedElements): Promise<null>;
     copied(): Promise<CopiedElements | null>;
+    fontFamilies(): Promise<readonly string[]>;
     /** One of the show's F-keys (Clear all F1, Oops F9, Wallpaper F12...): the operator window acts on it. */
     showKey(key: string): Promise<null>;
   };
