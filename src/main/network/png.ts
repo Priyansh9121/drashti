@@ -14,6 +14,7 @@ const squeeze = promisify(deflate);
 const SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 /** The most pixels a phone's picture holds: 3840 x 2160, a 1920 x 1080 slide on a display at twice the size. */
 const MOST_PIXELS = 3840 * 2160;
+const PNG_LONG_SIDE = 1920;
 /** About this many pixels copied between turns of the process's other work. */
 const SLICE_PIXELS = 65_536;
 
@@ -44,10 +45,26 @@ function chunk(type: string, body: Uint8Array): Buffer {
   return Buffer.concat([head, body, check]);
 }
 
-/** The picture as a PNG: 8-bit RGB, each row stored as it is (filter 0). */
-export async function pngOf({ width, height, pixels, order }: CapturedPicture): Promise<Buffer> {
+function sampleAt(pixel: number, size: number, sourceSize: number) {
+  const at = ((pixel + 0.5) * sourceSize) / size - 0.5;
+  const near = Math.floor(at);
+  return { near, far: Math.min(near + 1, sourceSize - 1), weight: at - near };
+}
+
+/** The picture as a PNG: 8-bit RGB, with a 1920-pixel cap even from a high-density capture. */
+export async function pngOf({
+  width: sourceWidth,
+  height: sourceHeight,
+  pixels,
+  order,
+}: CapturedPicture): Promise<Buffer> {
+  const scale = Math.min(1, PNG_LONG_SIDE / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  const columns = scale < 1 ? Array.from({ length: width }, (_, x) => sampleAt(x, width, sourceWidth)) : [];
   const red = order === 'bgra' ? 2 : 0;
   const blue = 2 - red;
+  const channels = [red, 1, blue];
   const stride = width * 3 + 1;
   // Zeroed: each row's first byte, its filter, stays 0.
   const rows = Buffer.alloc(stride * height);
@@ -58,6 +75,23 @@ export async function pngOf({ width, height, pixels, order }: CapturedPicture): 
         setImmediate(resolve);
       });
     for (let y = top; y < Math.min(height, top + slice); y++) {
+      if (columns.length) {
+        // Sample between pixel centres. A twice-density capture contributes all four pixels to each output pixel.
+        const row = sampleAt(y, height, sourceHeight);
+        const upper = row.near * sourceWidth * 4;
+        const lower = row.far * sourceWidth * 4;
+        let to = y * stride + 1;
+        for (const { near, far, weight } of columns) {
+          for (const channel of channels) {
+            const left = near * 4 + channel;
+            const right = far * 4 + channel;
+            const a = (pixels[upper + left] ?? 0) * (1 - weight) + (pixels[upper + right] ?? 0) * weight;
+            const b = (pixels[lower + left] ?? 0) * (1 - weight) + (pixels[lower + right] ?? 0) * weight;
+            rows[to++] = Math.round(a * (1 - row.weight) + b * row.weight);
+          }
+        }
+        continue;
+      }
       let from = y * width * 4;
       const end = from + width * 4;
       for (let to = y * stride + 1; from < end; from += 4, to += 3) {

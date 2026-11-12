@@ -37,7 +37,7 @@ import { useMediaUrl } from './media-urls';
 import { useMeasureReport } from './measure';
 import { observeTextSizes } from './observe-text-sizes';
 import { missingFontsOf } from './font-probe';
-import { MIN_FIT } from '../../../shared/readable';
+import { queueFit } from './shrink-to-fit';
 import { standsUpright } from '../../../shared/text-runs';
 import { drawnLines, hasList } from '../../../shared/text-lists';
 import { TimerElementView } from './TimerElementView';
@@ -500,39 +500,35 @@ export function useShrinkToFit(
         (noWrap && Math.max(w.offsetWidth, w.scrollWidth) > b.clientWidth + 0.5)
       );
     };
-    const reportOver = (fit: number) => {
-      const over = isOver();
-      if (over) b.setAttribute('data-overset', '');
-      else b.removeAttribute('data-overset');
-      report?.(el.id, { over, fit });
+    // Searched (or, with shrink-to-fit off, only measured) with the other boxes drawn in this commit
+    // (render/shrink-to-fit.ts).
+    let live = true;
+    const forget = queueFit({
+      on,
+      write: (fit) => {
+        if (fit !== null) {
+          b.style.setProperty('--fit', String(fit));
+          return;
+        }
+        if (b.style.getPropertyValue('--fit') !== '') b.style.removeProperty('--fit');
+        b.removeAttribute('data-fit');
+      },
+      over: isOver,
+      settle: (fit, over) => {
+        if (!live) return;
+        // For tests and diagnostics: how much it was made smaller.
+        if (on && fit < 1) b.setAttribute('data-fit', fit.toFixed(3));
+        else if (on) b.removeAttribute('data-fit');
+        // The words still past the box, at that fit.
+        if (over) b.setAttribute('data-overset', '');
+        else b.removeAttribute('data-overset');
+        report?.(el.id, { over, fit });
+      },
+    });
+    return () => {
+      live = false;
+      forget();
     };
-    if (!on) {
-      if (b.style.getPropertyValue('--fit') !== '') b.style.removeProperty('--fit');
-      b.removeAttribute('data-fit');
-      reportOver(1);
-      return undefined;
-    }
-    const fits = (fit: number) => {
-      b.style.setProperty('--fit', String(fit));
-      return !isOver();
-    };
-    let lo = 1;
-    if (!fits(1)) {
-      lo = MIN_FIT;
-      let hi = 1;
-      for (let i = 0; i < 12; i++) {
-        const mid = (lo + hi) / 2;
-        if (fits(mid)) lo = mid;
-        else hi = mid;
-      }
-      b.style.setProperty('--fit', String(lo));
-    }
-    // For tests and diagnostics: how much it was made smaller.
-    if (lo < 1) b.setAttribute('data-fit', lo.toFixed(3));
-    else b.removeAttribute('data-fit');
-    // The words still past the box, at that fit.
-    reportOver(lo);
-    return undefined;
   }, [box, words, el, on, passive, vertical, noWrap, fontsLoaded, again, report]);
 }
 
