@@ -139,7 +139,7 @@ import {
 } from './ipc/handle';
 import { readOrDefault } from './ipc/read-or-default';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
-import { isPerfScenario, startScenario } from './perf-scenarios';
+import { isPerfScenario, scenarioFor } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { SoundRepo } from './db/sound';
 import { SoundPass } from './sound/sound-pass';
@@ -958,10 +958,13 @@ type PerfRun = Parameters<typeof runPerformanceTest>[0] & {
   program: () => Pick<Electron.BrowserWindow, 'webContents'> | null;
 };
 
-/** The performance check with a heavy case for the screens (DRASHTI_PERF_SCENARIO; Session 15). */
-function runPerformanceTestWithScenario(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
+/**
+ * The performance check with a heavy case for the screens (DRASHTI_PERF_SCENARIO; Session 15). Session 57: a fault
+ * while the case sets up fails the check at once, with its message (scenarioFor).
+ */
+async function runPerformanceTestWithScenario(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
   if (!perfScenario) return runPerformanceTestWithNodes(ctx);
-  const scenario = startScenario(perfScenario, {
+  const scenario = await scenarioFor(perfScenario, {
     db: ctx.library.db,
     mediaDir: ctx.library.mediaDir,
     ffmpeg: ctx.ffmpegPath(),
@@ -975,6 +978,7 @@ function runPerformanceTestWithScenario(ctx: PerfRun): ReturnType<typeof runPerf
     streamSlides: () => {
       ctx.stream.setLayout('slides');
     },
+    operator: ctx.operator,
   });
   return runPerformanceTestWithNodes({ ...ctx, scenario });
 }
@@ -3780,6 +3784,11 @@ function start(): void {
       ? conversions.retryImported(id)
       : { ok: false as const, message: 'Only the operator window can retry a conversion.' },
   );
+  handle(IPC.media.cancelLinkConversion, (e, id) =>
+    fromOperator(e)
+      ? conversions.cancelLinkConversion(id)
+      : { ok: false as const, message: 'Only the operator window can stop a link conversion.' },
+  );
   handle(IPC.media.cancelConversion, (e, id) =>
     fromOperator(e)
       ? conversions.cancel(id)
@@ -3927,8 +3936,9 @@ function start(): void {
     if (!options.success) return { ok: false, message: 'Those import options are not valid.' };
     if (!paths.data.every((p) => isAbsolute(p)))
       return { ok: false, message: 'Import needs full file paths.' };
-    // Simple Mode's own limits (Session 55, Part 18), whatever the window asked.
-    return imports.start(paths.data, mode === 'simple' ? SIMPLE_IMPORT : options.data);
+    // Simple Mode keeps its own formats and conflict policy. A retried link can carry the 1080p cap.
+    const simpleOptions = { ...SIMPLE_IMPORT, maxVideoHeight: options.data.maxVideoHeight };
+    return imports.start(paths.data, mode === 'simple' ? simpleOptions : options.data);
   };
 
   // ---- IPC ----------------------------------------------------------------
@@ -4458,12 +4468,13 @@ function start(): void {
       });
       return picked.canceled ? null : (picked.filePaths[0] ?? null);
     },
-    importFiles: async (paths) => {
+    importFiles: async (paths, maxVideoHeight) => {
       // Its videos' start and end points go past their black and silence (Session 55, Part 7): known by their paths,
       // as the import ends before its run comes back here.
       for (const path of paths) linkPaths.add(path);
-      // Simple Mode's own limits (Session 55, Part 18), as its Add files… has them.
-      const result = await imports.start(paths, mode === 'simple' ? SIMPLE_IMPORT : {});
+      // The cap is set here for pasted Dropbox links. The playable original can be added while its copy waits.
+      const options = { ...(mode === 'simple' ? SIMPLE_IMPORT : {}), maxVideoHeight };
+      const result = await imports.start(paths, options);
       if (!result.ok) for (const path of paths) linkPaths.delete(path);
       return result.ok ? { ok: true, runId: result.run.id } : { ok: false, message: result.message };
     },

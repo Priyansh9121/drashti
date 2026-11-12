@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ImportOptions } from '../../../shared/import';
 import type { PlaylistCursor } from '../../../shared/engine/state';
 import type { PresentationDoc } from '../../../shared/library';
 import type {
@@ -754,8 +755,9 @@ export async function importIntoPlaylist(
   at: number | null,
   paths: string[],
   header: string | null = null,
+  options?: ImportOptions,
 ): Promise<void> {
-  await importPaths(paths, undefined, importDestination(playlistId, at, header));
+  await importPaths(paths, options, importDestination(playlistId, at, header));
 }
 
 /**

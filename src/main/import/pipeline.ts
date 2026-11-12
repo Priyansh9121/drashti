@@ -1669,7 +1669,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
 
   const importMedia = async (file: ScannedFile, where: Where) => {
     const t = performance.now();
-    const stage = await ctx.media.stage(file.path);
+    const stage = await ctx.media.stage(file.path, ctx.options.maxVideoHeight);
     time('media', t);
     if (!stage.ok) {
       failed(where, 'media', basename(file.path), stage.issue.message, [stage.issue]);
@@ -2005,8 +2005,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           target: null,
           counts: NO_COUNTS,
           message: ext
-            ? `Drashti doesn’t read .${ext} files.`
-            : 'This file has no extension Drashti can read.',
+            ? `Drashti doesn’t read .${ext} files. Save it in a supported format and import it again.`
+            : 'This file has no extension Drashti can read. Add its file extension and import it again.',
           issues: [],
         });
       }

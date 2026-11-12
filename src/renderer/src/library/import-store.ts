@@ -116,17 +116,20 @@ export function importPaths(
         }
       }
     }
-    showImportFailures(report, importAgain);
+    showImportFailures(report, importAgain, relinkMedia);
   };
   const importAgain = async (files: string[]): Promise<ImportResult | null> => {
     if (files.length === 0) return null;
-    const result = await window.drashti.library.importPaths(files, options).catch(() => ({
-      ok: false as const,
-      message: 'Drashti couldn’t import the selected files. Try again.',
-    }));
+    let result: ImportResult;
+    try {
+      result = await window.drashti.library.importPaths(files, options);
+    } catch {
+      const message = 'Drashti couldn’t import the selected files. Select them again to retry the import.';
+      showImportNotice(message);
+      return { ok: false, message };
+    }
     if (!result.ok) {
-      if (result.message !== 'Cancelled before it started.')
-        showImportNotice(result.message, () => importAgain(files));
+      if (result.message !== 'Cancelled before it started.') showImportNotice(result.message);
       return result;
     }
     finishedRun(result.run);
@@ -143,16 +146,21 @@ export async function importWithDialog(kind: 'files' | 'folder'): Promise<void> 
   await importPaths(paths, undefined, destination);
 }
 
-/** Look for missing media in a folder the operator picks from the Ready panel. */
-export async function relinkMedia(mediaIds?: string[]): Promise<void> {
-  const result = await window.drashti.library.relinkMedia(mediaIds);
+/** Search a folder chosen from a missing-media notice or from Ready. */
+export async function relinkMedia(mediaIds?: string[]): Promise<boolean> {
+  const result = await window.drashti.library.relinkMedia(mediaIds).catch(() => ({
+    ok: false as const,
+    message: 'Drashti couldn’t look for the missing files. Choose Find… again.',
+  }));
   if (!result.ok) {
     if (result.message !== 'No folder was chosen.') showImportNotice(result.message);
-    return;
+    return false;
   }
   finishedRun(result.run);
   const report = await window.drashti.library.getImportReport(result.run.id).catch(() => null);
-  if (report) showImportFailures(report);
+  if (!report) return false;
+  showImportFailures(report, undefined, relinkMedia);
+  return true;
 }
 
 export async function cancelImport(runId: string): Promise<void> {

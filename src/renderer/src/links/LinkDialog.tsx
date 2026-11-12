@@ -94,7 +94,7 @@ function linkProgress(view: LinkView): string | null {
     case 'unpacking':
       return 'Unpacking download…';
     case 'converting':
-      return view.waitingFor ? 'Download conversion waiting' : `Making video ${heightLabel(view.maxHeight)}…`;
+      return view.waitingFor ?? `Making video ${heightLabel(view.maxHeight)}…`;
     case 'importing':
       return 'Importing download…';
     default:

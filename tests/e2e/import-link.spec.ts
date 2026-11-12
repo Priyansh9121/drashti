@@ -13,13 +13,14 @@ import { dropboxStandIn, fileLink, folderLink, type StandIn, type StandInFile } 
 import {
   chooseMenuItem,
   holdStill,
+  importAndGetIds,
   launchApp,
   openLibrary,
   operatorPage,
   operatorReady,
   type PageGlobals,
 } from './helpers';
-import { linkFinished, linkView, pasteLink } from './paste-link';
+import { linkFinished, pasteLink } from './paste-link';
 import { testFfmpeg } from './stream-helpers';
 import { makeTestImage } from './test-media';
 
@@ -72,6 +73,21 @@ const setOnAir = (app: ElectronApplication, on: boolean) =>
   }, on);
 
 const listMedia = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
+
+const conversionOf = (win: Page, name: string) =>
+  win.evaluate(
+    async (source) =>
+      (await (globalThis as PageGlobals).drashti.media.conversions()).find((job) => job.name === source),
+    name,
+  );
+
+function storedMedia(userData: string, id: string): string {
+  const db = new Database(join(userData, 'drashti.sqlite'), { readonly: true });
+  const row = db.prepare('SELECT path FROM media WHERE id = ?').get(id) as { path: string } | undefined;
+  db.close();
+  if (!row) throw new Error('The library has no row for the expected video');
+  return join(userData, 'Media', row.path);
+}
 
 /** Every file under a folder, as paths inside it. */
 const filesIn = (dir: string): string[] =>
@@ -157,7 +173,12 @@ test('Dropbox: a file link and a folder link are pasted and imported from the de
   await expect(notices.filter({ hasText: 'Placeholder deck' })).toContainText('no Keynote or PowerPoint');
   await expect.poll(async () => (await listMedia(win)).map((m) => m.name)).toContain('Placeholder 1080p.mp4');
   await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder clip');
-  await expect(win.getByTestId('open-playlist').getByTestId('playlist-item')).toHaveCount(2);
+  const rows = win.getByTestId('open-playlist').getByTestId('playlist-item');
+  await expect(rows.locator('[data-label]')).toHaveText([
+    'Placeholder clip.mp4',
+    'Videos',
+    'Placeholder 1080p.mp4',
+  ]);
   await expect(win.getByTestId('import-report')).toHaveCount(0);
 
   // Nothing of the downloads is left behind (no part-file, no work folder), and nothing was ever asked of
@@ -227,14 +248,17 @@ test('Dropbox: a folder zipped as Dropbox zips it (a "/" entry, loose parts, dat
   await app.close();
 });
 
-test('Dropbox: a video above 1080p ends as a 1080p copy in the library, the original untouched in the folder', async () => {
+test('Dropbox: a 4K file imports and another paste works while its 1080p copy waits for the show', async () => {
   test.setTimeout(240_000);
   const work = mkdtempSync(join(tmpdir(), 'drashti-link-e2e-'));
-  const media = join(work, 'made');
-  mkdirSync(media);
-  const big = makeVideo(join(media, 'big.mp4'), '3840x2160');
+  const big = makeVideo(join(work, 'big.mp4'), '3840x2160');
+  const small = makeVideo(join(work, 'small.mp4'), '320x180');
+  const name = 'Placeholder 2160p.mp4';
   standIn = await dropboxStandIn(
-    { bigAAAAAAAAAAAA: { name: 'Placeholder 2160p.mp4', body: big, type: 'video/mp4' } },
+    {
+      bigAAAAAAAAAAAA: { name, body: big, type: 'video/mp4' },
+      smallAAAAAAAAAA: { name: 'Placeholder other clip.mp4', body: small, type: 'video/mp4' },
+    },
     {},
   );
   const chosen = join(work, 'Videos', 'Drashti downloads');
@@ -245,7 +269,6 @@ test('Dropbox: a video above 1080p ends as a 1080p copy in the library, the orig
   const win = await operatorPage(app);
   await operatorReady(win);
   await app.evaluate(({ shell }) => {
-    // Show in Finder (Explorer): what it would show.
     shell.showItemInFolder = (path) => {
       (globalThis as { shown?: string[] }).shown = [
         ...((globalThis as { shown?: string[] }).shown ?? []),
@@ -253,37 +276,73 @@ test('Dropbox: a video above 1080p ends as a 1080p copy in the library, the orig
       ];
     };
   });
+  const still = await makeTestImage(win, join(work, 'Placeholder live picture.png'), { color: '#1e3a8a' });
+  const [background = ''] = await importAndGetIds(win, [still]);
+  expect(
+    await win.evaluate(
+      (mediaId) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'setBackground',
+          background: { kind: 'media', mediaId, media: 'image', fit: 'fit', loop: false },
+        }),
+      background,
+    ),
+  ).toMatchObject({ ok: true });
 
-  // From the library's Import menu this time.
   await openLibrary(win);
   await win.getByTestId('library-sheet').getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'From a Link…' }).click();
-  await pasteLink(win, fileLink('bigAAAAAAAAAAAA', 'Placeholder 2160p.mp4'));
-
-  // Saved; made 1080p for the library; imported.
-  await linkFinished(win);
-  expect((await linkView(win)).fitted).toEqual(['Placeholder 2160p.mp4']);
+  await pasteLink(win, fileLink('bigAAAAAAAAAAAA', name));
+  await linkFinished(win, 60_000);
+  await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder 2160p');
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-item')).toContainText(name);
+  await expect
+    .poll(() => conversionOf(win, name))
+    .toMatchObject({
+      maxHeight: 1080,
+      state: 'waiting',
+      note: 'Waits while the show is on, then carries on by itself.',
+    });
+  const conversion = win.getByTestId('link-conversion-status');
+  await expect(conversion).toContainText('Waits while the show is on, then carries on by itself.');
+  await expect(
+    conversion.getByRole('button', { name: 'Stop converting Placeholder 2160p.mp4' }),
+  ).toBeVisible();
+  const original = (await listMedia(win)).find((item) => item.name === name);
+  expect(original).toMatchObject({ convertedTo: null });
+  expect(readFileSync(storedMedia(userData, original?.id ?? '')).equals(big)).toBe(true);
   await win.getByTestId('link-show-saved').click();
   await expect
     .poll(() => app.evaluate(() => (globalThis as { shown?: string[] }).shown ?? []))
-    .toEqual([join(chosen, 'Placeholder 2160p.mp4')]);
+    .toEqual([join(chosen, name)]);
+  expect(readFileSync(join(chosen, name)).equals(big)).toBe(true);
 
-  // The original, 2160p, is in the folder as it came.
-  expect(readdirSync(chosen)).toEqual(['Placeholder 2160p.mp4']);
-  expect(readFileSync(join(chosen, 'Placeholder 2160p.mp4')).equals(big)).toBe(true);
-  // The library's copy is 1080p (H.264), and no copy is left in Drashti's work folder.
-  const db = new Database(join(userData, 'drashti.sqlite'), { readonly: true });
-  const row = db.prepare('SELECT path FROM media WHERE name = ?').get('Placeholder 2160p.mp4') as
-    { path: string } | undefined;
-  db.close();
-  expect(row).toBeDefined();
+  await chooseMenuItem(app, 'import-from-link');
+  await pasteLink(win, fileLink('smallAAAAAAAAAA', 'Placeholder other clip.mp4'));
+  await linkFinished(win, 60_000);
+  await expect(
+    win
+      .getByTestId('open-playlist')
+      .getByTestId('playlist-item')
+      .filter({ hasText: 'Placeholder other clip.mp4' }),
+  ).toBeVisible();
+  const stillLive = await win.evaluate(
+    async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background,
+  );
+  expect(stillLive).toMatchObject({ kind: 'media', mediaId: background });
+  expect(await conversionOf(win, name)).toMatchObject({ state: 'waiting', convertedId: null });
+
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' }));
+  await expect.poll(() => conversionOf(win, name), { timeout: 120_000 }).toMatchObject({ state: 'done' });
+  const copy = await conversionOf(win, name);
   const stored = spawnSync(ffmpeg ?? '', [
     '-hide_banner',
     '-i',
-    join(userData, 'Media', row?.path ?? ''),
-  ]).stderr.toString();
-  expect(stored).toMatch(/Video: h264/u);
-  expect(stored).toMatch(/1920x1080/u);
+    storedMedia(userData, copy?.convertedId ?? ''),
+  ]);
+  expect(stored.stderr.toString()).toMatch(/Video: h264/u);
+  expect(stored.stderr.toString()).toMatch(/1920x1080/u);
+  expect(readFileSync(join(chosen, name)).equals(big)).toBe(true);
   expect(
     existsSync(join(userData, 'Link downloads')) ? readdirSync(join(userData, 'Link downloads')) : [],
   ).toEqual([]);
@@ -293,13 +352,9 @@ test('Dropbox: a video above 1080p ends as a 1080p copy in the library, the orig
 test('Dropbox: a saved 2160p setting does not lift the pasted link’s 1080p cap', async () => {
   test.setTimeout(240_000);
   const work = mkdtempSync(join(tmpdir(), 'drashti-link-e2e-'));
-  const media = join(work, 'made');
-  mkdirSync(media);
-  const big = makeVideo(join(media, 'big.mp4'), '3840x2160');
-  standIn = await dropboxStandIn(
-    { bigAAAAAAAAAAAA: { name: 'Placeholder 2160p.mp4', body: big, type: 'video/mp4' } },
-    {},
-  );
+  const name = 'Placeholder 2160p.mp4';
+  const big = makeVideo(join(work, 'big.mp4'), '3840x2160');
+  standIn = await dropboxStandIn({ bigAAAAAAAAAAAA: { name, body: big, type: 'video/mp4' } }, {});
   const chosen = join(work, 'Videos', 'Drashti downloads');
   const { app, userData } = await launchApp({
     DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
@@ -313,21 +368,67 @@ test('Dropbox: a saved 2160p setting does not lift the pasted link’s 1080p cap
     ok: true,
   });
   await chooseMenuItem(app, 'import-from-link');
-  await pasteLink(win, fileLink('bigAAAAAAAAAAAA', 'Placeholder 2160p.mp4'));
+  await pasteLink(win, fileLink('bigAAAAAAAAAAAA', name));
   await linkFinished(win);
-  expect((await linkView(win)).fitted).toEqual(['Placeholder 2160p.mp4']);
-  expect(readFileSync(join(chosen, 'Placeholder 2160p.mp4')).equals(big)).toBe(true);
+  expect(readFileSync(join(chosen, name)).equals(big)).toBe(true);
+  await expect
+    .poll(() => conversionOf(win, name), { timeout: 120_000 })
+    .toMatchObject({
+      maxHeight: 1080,
+      state: 'done',
+    });
+  const copy = await conversionOf(win, name);
   const db = new Database(join(userData, 'drashti.sqlite'), { readonly: true });
-  const row = db.prepare('SELECT path FROM media WHERE name = ?').get('Placeholder 2160p.mp4') as
-    { path: string } | undefined;
-  // Kept with the library's settings, so a backup keeps it.
   const setting = db.prepare("SELECT value FROM app_meta WHERE key = 'setting.links.maxHeight'").get() as
     { value: string } | undefined;
   db.close();
   expect(setting?.value).toBe('2160');
-  expect(row).toBeDefined();
-  const stored = spawnSync(ffmpeg ?? '', ['-hide_banner', '-i', join(userData, 'Media', row?.path ?? '')]);
+  const stored = spawnSync(ffmpeg ?? '', [
+    '-hide_banner',
+    '-i',
+    storedMedia(userData, copy?.convertedId ?? ''),
+  ]);
   expect(stored.stderr.toString()).toMatch(/1920x1080/u);
+  await app.close();
+});
+
+test('Dropbox: a missing saved folder falls back to Drashti downloads and says so once', async () => {
+  test.setTimeout(180_000);
+  const work = mkdtempSync(join(tmpdir(), 'drashti-link-fallback-e2e-'));
+  const clip = makeVideo(join(work, 'clip.mp4'), '320x180');
+  const name = 'Placeholder fallback.mp4';
+  standIn = await dropboxStandIn({ clipAAAAAAAAAAA: { name, body: clip, type: 'video/mp4' } }, {});
+  const chosen = join(work, 'Videos', 'Drashti downloads');
+  const previous = join(work, 'Disconnected downloads');
+  const { app } = await launchApp({
+    DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
+    DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+  }, previous);
+  expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.links.pickFolder())).toMatchObject({
+    ok: true,
+  });
+
+  const url = fileLink('clipAAAAAAAAAAA', name);
+  await chooseMenuItem(app, 'import-from-link');
+  await pasteLink(win, url);
+  await linkFinished(win, 60_000);
+  const notice = win
+    .getByTestId('import-notice')
+    .filter({ hasText: 'The previous downloads folder couldn’t be used.' });
+  await expect(notice).toContainText('Drashti downloads');
+  expect(existsSync(previous)).toBe(false);
+  expect(readFileSync(join(chosen, name)).equals(clip)).toBe(true);
+  await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder fallback');
+  await chooseMenuItem(app, 'import-from-link');
+  await pasteLink(win, url);
+  await linkFinished(win, 60_000);
+  await expect(notice).toHaveCount(1);
+  expect(readFileSync(join(chosen, 'Placeholder fallback (2).mp4')).equals(clip)).toBe(true);
   await app.close();
 });
 

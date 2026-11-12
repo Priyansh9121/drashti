@@ -19,6 +19,8 @@ export interface ImportOptions {
    * (import-schema.ts takes no such field).
    */
   simple?: true;
+  /** Link imports and saved-link retries can request a smaller background copy of tall videos. */
+  maxVideoHeight?: number;
 }
 
 /** How Drashti read a file. */
@@ -60,8 +62,8 @@ export type IssueFix =
   | { kind: 'import-again'; sourcePath: string }
   | { kind: 'free-space'; neededBytes: number }
   | { kind: 'convert-font'; font: string }
-  /** A file Drashti cannot play as it is: convert it (src/main/convert/), with what that makes. */
-  | { kind: 'convert-media'; mediaId: string; advice: string };
+  /** A background conversion of an imported file, optionally to fit a linked video's height limit. */
+  | { kind: 'convert-media'; mediaId: string; advice: string; maxHeight?: number };
 
 export interface ImportIssue {
   severity: IssueSeverity;

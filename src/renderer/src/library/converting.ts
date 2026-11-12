@@ -53,8 +53,8 @@ export function mediaProblem(
   job?: ConversionJob,
 ): string | null {
   if (m.missing) return 'File missing';
-  if (m.unplayable !== null) return jobBusy(job) ? 'Converting…' : 'Can’t play';
-  return null;
+  if (jobBusy(job) && (m.unplayable !== null || job.maxHeight !== undefined)) return 'Converting…';
+  return m.unplayable === null ? null : 'Can’t play';
 }
 
 /**

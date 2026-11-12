@@ -572,6 +572,8 @@ export interface DrashtiBridge {
     convert(mediaIds: string[]): Promise<ConvertResult>;
     /** Try a failed automatic conversion again. */
     retryConversion(jobId: string): Promise<ConvertResult>;
+    /** Stop making a smaller copy of a linked video. */
+    cancelLinkConversion(jobId: string): Promise<ConvertResult>;
     /** Cancel one conversion, or every one not finished (null). */
     cancelConversion(jobId: string | null): Promise<ConvertResult>;
     conversions(): Promise<ConversionJob[]>;

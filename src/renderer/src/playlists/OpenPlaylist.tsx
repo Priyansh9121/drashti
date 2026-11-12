@@ -14,6 +14,7 @@ import { folderEnd, hasFolder, playlistFolders } from '../../../shared/playlist-
 import { useEngine } from '../engine/engine-store';
 import { useLibrary } from '../library/library-store';
 import { CannotPlayBadge, mediaKindIcon, mediaProblem } from '../library/MediaList';
+import { jobFor, useConvert } from '../library/convert-store';
 import { useExtras } from '../library/extras-store';
 import { useLandedInView } from '../links/link-playlist';
 import { openLinkDialog } from '../links/link-store';
@@ -279,6 +280,9 @@ function ItemBody({
   fold?: boolean | null;
 }) {
   const liveBadge = live ? <LiveBadge /> : null;
+  const conversion = useConvert((state) =>
+    item.kind === 'media' ? jobFor(state.jobs, item.mediaId) : undefined,
+  );
   if (item.kind === 'header')
     return (
       <span className="flex items-center gap-2">
@@ -301,7 +305,7 @@ function ItemBody({
     );
   const name = item.kind === 'presentation' ? (item.presentationName ?? item.label) : item.label;
   const size = sizeWord(item);
-  const problem = item.kind === 'media' ? mediaProblem(item) : null;
+  const problem = item.kind === 'media' ? mediaProblem(item, conversion) : null;
   const Chevron = fold ? ChevronRight : ChevronDown;
   return (
     <span className="flex items-center gap-2.5">

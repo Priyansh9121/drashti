@@ -161,6 +161,7 @@ async function harness(over: Partial<LinkServiceDeps> = {}): Promise<Harness> {
   const origin = await standIn();
   const root = mkdtempSync(join(tmpdir(), 'drashti-links-'));
   const folder = join(root, 'Saved here');
+  mkdirSync(folder);
   const logs: string[] = [];
   const imported: string[][] = [];
   const views: LinkView[] = [];
@@ -215,6 +216,63 @@ const files = (dir: string): string[] =>
     .sort();
 
 describe('Import from a Link: Dropbox', () => {
+  it.each(['missing', 'unwritable'] as const)(
+    'saves in the usual folder when the saved folder is %s',
+    async (problem) => {
+      const root = mkdtempSync(join(tmpdir(), 'drashti-link-fallback-'));
+      const previous = join(root, 'Previous downloads');
+      const fallback = join(root, 'Drashti downloads');
+      if (problem === 'unwritable') writeFileSync(previous, 'placeholder');
+      let remembered = previous;
+      const { service } = await harness({
+        defaultFolder: fallback,
+        lastFolder: {
+          get: () => remembered,
+          set: (folder) => {
+            remembered = folder;
+          },
+        },
+      });
+
+      expect(service.start(FILE_LINK, false, false).ok).toBe(true);
+      await until(() => ['done', 'failed'].includes(service.view().phase));
+      expect(service.view()).toMatchObject({
+        phase: 'done',
+        folderFallback: true,
+        saved: { folder: fallback },
+      });
+      expect(files(fallback)).toEqual(['Placeholder clip.mp4']);
+      expect(remembered).toBe(fallback);
+      if (problem === 'missing') expect(existsSync(previous)).toBe(false);
+      else expect(readFileSync(previous, 'utf8')).toBe('placeholder');
+
+      expect(service.start(FILE_LINK, false, false).ok).toBe(true);
+      await until(() => service.view().phase === 'done');
+      expect(service.view().folder).toBe(fallback);
+      expect(service.view()).toMatchObject({ folderFallback: false });
+    },
+  );
+
+  it('passes the saved original to the import with a cap without waiting for the link fitter', async () => {
+    let fitCalls = 0;
+    const imported: { paths: string[]; maxHeight?: number }[] = [];
+    const h = await harness({
+      fitVideo: () => {
+        fitCalls++;
+        return Promise.resolve({ ok: true, copy: null });
+      },
+      importFiles: (paths, maxHeight?: number) => {
+        imported.push({ paths, maxHeight });
+        return Promise.resolve({ ok: true, runId: 'run-placeholder' });
+      },
+    });
+
+    expect(h.service.start(FILE_LINK, false, false).ok).toBe(true);
+    await until(() => h.service.view().phase === 'done');
+    expect(fitCalls).toBe(0);
+    expect(imported).toEqual([{ paths: [join(h.folder, 'Placeholder clip.mp4')], maxHeight: 1080 }]);
+  });
+
   it('turns an automatic download setup exception into a retryable failure', async () => {
     const { workers, spawn } = controlledWorkers();
     const h = await harness({

@@ -71,8 +71,11 @@ export interface LinkServiceDeps {
   lastFolder: { get(): string | null; set(dir: string): void };
   /** The system's folder picker, starting at `current`; null when cancelled. */
   pickFolder(current: string): Promise<string | null>;
-  /** The normal import of these files (it copies them into the library); its run once it ends. */
-  importFiles(paths: string[]): Promise<{ ok: true; runId: string } | { ok: false; message: string }>;
+  /** The normal import of these files. An optional height cap queues video copies in the library. */
+  importFiles(
+    paths: string[],
+    maxVideoHeight?: number,
+  ): Promise<{ ok: true; runId: string } | { ok: false; message: string }>;
   changed(view: LinkView): void;
   log(level: 'info' | 'warn', message: string): void;
   /** The file listing part-files and work folders, to clear after a crash. */
@@ -471,6 +474,7 @@ export class LinkService {
     this.set({
       phase: 'looking',
       retryable: false,
+      folderFallback: false,
       folderFiles: [],
       kind,
       link: check.url,
@@ -625,22 +629,61 @@ export class LinkService {
 
   // ---- downloading ---------------------------------------------------------------
 
+  /** Check an existing folder with a real, exclusive write, without recreating a disconnected path. */
+  private checkWritableFolder(folder: string): void {
+    const probe = join(folder, `.drashti-download-${randomUUID()}.part`);
+    writeFileSync(probe, '', { flag: 'wx' });
+    try {
+      rmSync(probe);
+    } catch (error) {
+      this.remember(probe);
+      throw error;
+    }
+  }
+
+  private downloadFolder(): { ok: true; folder: string } | { ok: false; message: string } {
+    const current = this.state.folder;
+    const usual = this.deps.defaultFolder;
+    try {
+      if (!this.automatic || current === usual) {
+        mkdirSync(current, { recursive: true });
+        return { ok: true, folder: current };
+      }
+      try {
+        this.checkWritableFolder(current);
+        return { ok: true, folder: current };
+      } catch {
+        mkdirSync(usual, { recursive: true });
+        this.checkWritableFolder(usual);
+        this.set({ folder: usual, folderFallback: true });
+        try {
+          this.deps.lastFolder.set(usual);
+        } catch {
+          this.deps.log('warn', 'Links: the usual downloads folder could not be remembered');
+        }
+        return { ok: true, folder: usual };
+      }
+    } catch (error) {
+      this.deps.log(
+        'warn',
+        `Links: the folder to save in could not be made (${String((error as NodeJS.ErrnoException).code)})`,
+      );
+      return {
+        ok: false,
+        message: `Drashti could not save there. ${fileProblem(error, this.automatic ? 'own' : 'write')}`,
+      };
+    }
+  }
+
   download(choice?: unknown): LinkResult {
     if (this.busy) return this.refuse('A download is going on already.');
     const checked = this.checked;
     const look = this.state.look;
     if (this.state.phase !== 'looked' || !checked || !look) return this.refuse('Paste a link first.');
     if (look.video) return this.youtubeDownload(checked.url, look.video, choice);
-    const folder = this.state.folder;
-    try {
-      mkdirSync(folder, { recursive: true });
-    } catch (error) {
-      this.deps.log(
-        'warn',
-        `Links: the folder to save in could not be made (${String((error as NodeJS.ErrnoException).code)})`,
-      );
-      return this.refuse(`Drashti could not save there. ${fileProblem(error, 'write')}`);
-    }
+    const ready = this.downloadFolder();
+    if (!ready.ok) return this.refuse(ready.message);
+    const { folder } = ready;
     const free = this.deps.freeBytes(folder);
     if (this.automatic && free - (look.size ?? 0) < LINK_KEEP_FREE_BYTES)
       return this.refuse(
@@ -713,16 +756,9 @@ export class LinkService {
   ): LinkResult {
     const picked = this.youtubeChoice(video, raw);
     if (!picked.ok) return this.refuse(picked.message);
-    const folder = this.state.folder;
-    try {
-      mkdirSync(folder, { recursive: true });
-    } catch (error) {
-      this.deps.log(
-        'warn',
-        `Links: the folder to save in could not be made (${String((error as NodeJS.ErrnoException).code)})`,
-      );
-      return this.refuse(`Drashti could not save there. ${fileProblem(error, 'write')}`);
-    }
+    const ready = this.downloadFolder();
+    if (!ready.ok) return this.refuse(ready.message);
+    const { folder } = ready;
     const free = this.deps.freeBytes(folder);
     if (this.automatic && free - (picked.bytes ?? 0) < LINK_KEEP_FREE_BYTES)
       return this.refuse(
@@ -914,7 +950,9 @@ export class LinkService {
           .filter((f) => !takes(f) && !waiting.includes(f))
           .map((name) => ({
             name,
-            reason: automatic ? 'This file type cannot be imported from a link.' : NOT_TAKEN_REASON,
+            reason: automatic
+              ? 'This file type cannot be imported from a link. Find the saved file and use Import… with a supported format.'
+              : NOT_TAKEN_REASON,
           }));
     this.deps.log(
       'info',
@@ -929,7 +967,8 @@ export class LinkService {
       waiting,
       waitingAdded: null,
     });
-    // Videos above the highest quality: a copy that tall is imported instead (the original stays in the folder).
+    // The manual workflow fits over-height videos before importing. Pasted links import their saved
+    // files right away, then let the library make smaller copies when the show allows it.
     const maxHeight = this.maxHeight;
     const most = heightLabel(maxHeight);
     const work = join(this.deps.workDir, randomUUID());
@@ -938,7 +977,7 @@ export class LinkService {
     // What the import is given, and where each one is in the folder (a 1080p copy is its original's).
     const given: FolderFile[] = [];
     for (const path of taken) {
-      if (takenKind(path) !== 'video' || !this.deps.fitVideo) {
+      if (automatic || takenKind(path) !== 'video' || !this.deps.fitVideo) {
         prepared.push(path);
         given.push({ path, relative: inFolder(path) });
         continue;
@@ -985,8 +1024,8 @@ export class LinkService {
       });
       return;
     }
-    const result = await this.deps.importFiles(prepared);
-    // The import has copied the copies into the library: they are not needed now.
+    const result = await this.deps.importFiles(prepared, automatic && !youtube ? maxHeight : undefined);
+    // Temporary copies from the manual workflow are already in the library.
     await rm(work, { recursive: true, force: true }).catch(() => undefined);
     if (result.ok) {
       this.deps.log('info', 'Links: the saved files went to the import');
