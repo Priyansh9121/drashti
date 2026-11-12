@@ -3523,7 +3523,7 @@ function start(): void {
       // test sees a deck's slides preparing.
       standInHold: packaged() ? null : (sw('DRASHTI_TEST_DECK_BAKER_HOLD') ?? null),
     },
-    drawPdf: (pdf, outDir, signal) => pdfPictures.draw(pdf, outDir, signal),
+    drawPdf: (pdf, outDir, signal, readPageText) => pdfPictures.draw(pdf, outDir, signal, readPageText),
     // A deck with its animations where this computer's setting says so (Session 54, C2 and its review). Tests only
     // (never a packaged Drashti): a stand-in makes its movie, or (with the stand-ins or no converter above) no
     // deck's movie is made, as on a computer with no app for it.

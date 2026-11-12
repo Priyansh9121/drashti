@@ -5,12 +5,14 @@ import { join } from 'node:path';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { documentPageFromJson } from '../../shared/document-page';
 import { openDatabase } from '../db/database';
+import { ImportRepo } from '../db/imports';
 import { PresentationRepo } from '../db/presentations';
 import type * as Converters from './deck-converters';
 import * as deckFlow from './deck/deck-flow';
 import { readEditablePptx } from './deck/editable-pptx';
 import { MediaStore } from './media-store';
 import { OriginalsStore } from './originals-store';
+import { keynotePagesShifted, readPptx } from './pictures';
 import { runImport } from './pipeline';
 import { editablePicture } from './testing/editable-pptx-fixture';
 import { makeTestPdf } from './testing/make-pdf';
@@ -35,25 +37,51 @@ const pptx = makeTestPptx([
   { text: 'Placeholder skipped slide', color: '204060', hidden: true },
   { text: 'Placeholder last slide', color: '204060' },
 ]);
-const pdf = makeTestPdf([
-  { text: 'Placeholder first slide', width: 960, height: 540, color: [32, 64, 96] },
-  { text: 'Placeholder last slide', width: 960, height: 540, color: [32, 64, 96] },
-]);
+const page = (text: string) => ({
+  text,
+  width: 960,
+  height: 540,
+  color: [32, 64, 96] as [number, number, number],
+});
+const first = 'Placeholder first slide';
+const last = 'Placeholder last slide';
 const slides = [
-  { hidden: false, notes: '', animated: false },
-  { hidden: true, notes: '', animated: false },
-  { hidden: false, notes: '', animated: false },
+  { hidden: false, notes: 'Placeholder first notes', animated: false, pageText: first },
+  { hidden: true, notes: '', animated: false, pageText: 'Placeholder skipped slide' },
+  { hidden: false, notes: 'Placeholder last notes', animated: false, pageText: last },
 ];
 
 beforeEach(() => {
   convert.mockReset();
 });
 
-it.each(['matched', 'mismatched', 'no export'] as const)(
+it('keeps the PowerPoint copy when the only word differences are page numbers', () => {
+  const numbered = [1, 2].map((number) => ({
+    hidden: false,
+    notes: '',
+    animated: false,
+    pageText: 'Placeholder numbered slide ' + String(number),
+  }));
+  const pages = [2, 1].map((number, index) => ({
+    index,
+    pageText: 'Placeholder numbered slide ' + String(number),
+  }));
+  expect(keynotePagesShifted(numbered, { total: 2, pages })).toBe(false);
+});
+
+it.each(['matched', 'uncertain', 'shifted', 'shifted without notes', 'mismatched', 'no export'] as const)(
   'keeps the editable Keynote source with the correct page order (%s)',
   async (kind) => {
     const root = mkdtempSync(join(tmpdir(), 'drashti-keynote-source-import-'));
     const source = join(root, 'Placeholder Keynote.key');
+    const shifted = kind === 'shifted' || kind === 'shifted without notes';
+    const words = shifted ? [last, first] : [first, last];
+    const pdfNotes =
+      kind === 'shifted'
+        ? ['Placeholder last PDF-order notes', 'Placeholder first PDF-order notes']
+        : undefined;
+    const total = kind === 'mismatched' ? 1 : words.length;
+    const pdf = makeTestPdf(words.slice(0, total).map(page));
     const mediaDir = join(root, 'Media');
     mkdirSync(mediaDir);
     writeFileSync(source, key);
@@ -71,7 +99,7 @@ it.each(['matched', 'mismatched', 'no export'] as const)(
           });
         const editablePptx = join(work, 'editable-source.pptx');
         writeFileSync(editablePptx, pptx);
-        return Promise.resolve({ ok: true, pdf: picture, slides, shownOnly: false, editablePptx });
+        return Promise.resolve({ ok: true, pdf: picture, slides, shownOnly: false, editablePptx, pdfNotes });
       });
       const media = new MediaStore(db, { dir: mediaDir, freeBytes: () => 1024 ** 4 });
       const written: string[] = [];
@@ -86,11 +114,15 @@ it.each(['matched', 'mismatched', 'no export'] as const)(
         onWrote: ({ presentationId }) => written.push(presentationId),
         drawPdf: (_input, outDir) => {
           mkdirSync(outDir, { recursive: true });
-          const total = kind === 'mismatched' ? 1 : 2;
           const pages = Array.from({ length: total }, (_, index) => {
             const file = join(outDir, 'placeholder-' + String(index) + '.png');
             writeFileSync(file, editablePicture());
-            return { index, file, notes: '' };
+            return {
+              index,
+              file,
+              notes: shifted ? 'Placeholder PDF comments' : '',
+              pageText: kind === 'uncertain' ? 'Placeholder slide' : words[index],
+            };
           });
           return Promise.resolve({ ok: true, width: 960, height: 540, pages, total, failed: [] });
         },
@@ -114,7 +146,7 @@ it.each(['matched', 'mismatched', 'no export'] as const)(
       if (!keptPdf) throw new Error('The PDF playback source was not retained.');
       expect(readFileSync(keptPdf)).toEqual(pdf);
 
-      if (kind !== 'matched') {
+      if (kind !== 'matched' && kind !== 'uncertain') {
         expect(refs?.map((ref) => [ref?.ext, ref?.page])).toEqual(
           kind === 'mismatched'
             ? [['pdf', 0]]
@@ -124,6 +156,16 @@ it.each(['matched', 'mismatched', 'no export'] as const)(
               ],
         );
         expect(records.some((record) => record.ext === 'pptx')).toBe(false);
+        if (shifted) {
+          expect
+            .soft(stored?.slides.map((slide) => slide.notes))
+            .toEqual(pdfNotes ?? ['Placeholder PDF comments', 'Placeholder PDF comments']);
+          const notice = new ImportRepo(db)
+            .report(result.id)
+            ?.items[0]?.issues.find((issue) => issue.code === 'keynote-copy-left-out');
+          expect(notice?.message).toContain('export the deck from Keynote as PowerPoint');
+          expect(notice?.message.includes('speaker notes were left out')).toBe(pdfNotes === undefined);
+        }
         return;
       }
 
@@ -136,6 +178,11 @@ it.each(['matched', 'mismatched', 'no export'] as const)(
       const editable = await originals.resolve(derivative);
       if (!editable) throw new Error('The editable derivative was lost with the work folder.');
       expect(readFileSync(editable)).toEqual(pptx);
+      expect((await readPptx(editable, true)).map((slide) => slide.pageText)).toEqual([
+        first,
+        'Placeholder skipped slide',
+        last,
+      ]);
       const deck = await readEditablePptx(editable, join(root, 'prepared'));
       expect(deck.slides[2]?.elements.find((element) => element.kind === 'text')).toMatchObject({
         text: 'Placeholder last slide',
