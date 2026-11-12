@@ -57,6 +57,29 @@ async function until(check: () => boolean, ms = 60_000): Promise<void> {
   }
 }
 
+it('names the estimated cut and the free space when Trim cannot save', () => {
+  dir = mkdtempSync(join(tmpdir(), 'drashti-trim-space-'));
+  const source = join(dir, 'Placeholder clip.mp4');
+  writeFileSync(source, Buffer.alloc(4096));
+  db = openDatabase(join(dir, 'drashti.sqlite'));
+  let free = KEEP_FREE_BYTES + 1535;
+  service = new ConvertService({
+    db,
+    mediaDir: dir,
+    ffmpegPath: () => null,
+    busy: () => null,
+    freeBytes: () => free,
+    changed: () => undefined,
+    libraryChanged: () => undefined,
+    log: () => undefined,
+  });
+  expect(service.trimSpaceProblem(source, dir, 4000, 1000)).toBe(
+    'This cut needs about 1.5 KB, and only 2.0 GB is free on this disk (Drashti keeps 2 GB free). Free up some space, then save it again.',
+  );
+  free++;
+  expect(service.trimSpaceProblem(source, dir, 4000, 1000)).toBeNull();
+});
+
 describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
   it('turns each kind into what Drashti plays, keeps the original, and moves what used it', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
