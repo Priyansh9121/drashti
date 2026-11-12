@@ -142,6 +142,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const dirty = useEditor(isDirty);
   const unreadable = useEditor((s) => s.unreadable);
   const sourceIssues = useEditor((s) => s.sourceIssues);
+  const preparingSource = useEditor((s) => s.slideId !== null && s.preparingSource.has(s.slideId));
   const selection = useEditor((s) => s.selection);
   const editing = useEditor((s) => s.editing);
   useEditor((s) => s.textTick);
@@ -694,6 +695,14 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                   else tell('Drop a picture file from this computer.');
                 }}
               />
+              {preparingSource && (
+                <div
+                  role="status"
+                  className="pointer-events-none absolute left-3 top-3 z-10 rounded bg-panel px-2 py-1 text-sm text-muted shadow"
+                >
+                  <span>Preparing…</span> <span>You can edit this page once it’s ready.</span>
+                </div>
+              )}
               {finding && (
                 <FindPanel
                   onClose={() => {
@@ -866,6 +875,7 @@ function SlideList({
   horizontal?: boolean;
 }) {
   const numbers = new Map(slidesOf(doc).map((s, i) => [s.id, i + 1]));
+  const preparing = useEditor((s) => s.preparingSource);
   const [dragging, setDragging] = useState<string | null>(null);
   // Slides with words past a box (Sessions 31–36, SLD-1), marked on their thumbnails.
   const [overset, setOverset] = useState<ReadonlySet<string>>(new Set());
@@ -931,7 +941,7 @@ function SlideList({
             <ol className={horizontal ? 'flex gap-2' : 'space-y-2'}>
               {g.slides.map((s, index) => {
                 const n = numbers.get(s.id) ?? 0;
-                const label = `Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}${overset.has(s.id) ? ', words run past a box' : ''}`;
+                const label = `Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}${overset.has(s.id) ? ', words run past a box' : ''}${preparing.has(s.id) ? ', preparing' : ''}`;
                 const here = s.id === current;
                 const marker = dropAt?.groupId === g.id && dropAt.index === index;
                 return (
@@ -964,6 +974,7 @@ function SlideList({
                       draggable
                       data-testid="editor-slide-thumb"
                       data-slide-id={s.id}
+                      data-source-preparing={preparing.has(s.id) || undefined}
                       aria-current={here ? 'true' : undefined}
                       aria-label={label}
                       title={label}

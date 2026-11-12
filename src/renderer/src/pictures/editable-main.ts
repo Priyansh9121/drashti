@@ -9,6 +9,11 @@ type BinaryDataFactory = new () => {
 };
 
 const MAX_PAGE_MS = 8_000;
+/**
+ * A job of this many pages or fewer gives each page its whole fair share of the time left (Session 57, leftovers PX-2):
+ * alpha.16 had no cap per page, and 8 s left a heavy page as its picture when only one or a few were asked.
+ */
+const FEW_PAGES = 3;
 const PDF_CLEANUP_MS = 250;
 /*
  * How this window shares the processor as it prepares the pages (Session 57). Main runs it at the lowest priority;
@@ -60,7 +65,8 @@ export async function drawEditablePdf(
         failed.push(...job.sourcePages.slice(position));
         break;
       }
-      const pageEnds = start + Math.min(MAX_PAGE_MS, remainingMs / (job.sourcePages.length - position));
+      const share = remainingMs / (job.sourcePages.length - position);
+      const pageEnds = start + (job.sourcePages.length <= FEW_PAGES ? share : Math.min(MAX_PAGE_MS, share));
       const checkTime = () => {
         if (performance.now() >= pageEnds) throw new Error('This page took too long to prepare.');
       };
@@ -108,6 +114,7 @@ export async function drawEditablePdf(
           issues: native.issues,
         });
         if (!accepted) break;
+        // Main checked again as it took the page (kept it, or kept its saved picture: 'skipped').
         answeredAt = performance.now();
         if (accepted === true) jobBytes += assets.reduce((sum, asset) => sum + asset.png.byteLength, 0);
       } catch {
