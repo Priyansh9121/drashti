@@ -4,6 +4,7 @@ import { addFileMenuItems, type FileTarget } from '../files/file-menu';
 import { pushRemoval } from '../library/undo';
 import { useNotice } from '../operator/actions';
 import type { MenuEntry } from '../ui/Menu';
+import { useMode } from '../operator/mode-store';
 import { evenWords, soundMenuEntries, trimmedWords } from './sound-words';
 
 /*
@@ -83,7 +84,7 @@ export async function trimEdges(mediaId: string, name: string): Promise<void> {
       });
     },
   });
-  useNotice.setState({ text: trimmedWords(name, points) });
+  useNotice.setState({ text: trimmedWords(name, points, useMode.getState().mode === 'simple') });
 }
 
 /** The one menu's items for a video or a sound (sound-words.ts), with this window's ticks. */
