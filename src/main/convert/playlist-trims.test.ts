@@ -453,6 +453,26 @@ describe('trimming a playlist video', () => {
     expect(await readFile(x.original, 'utf8')).toBe('placeholder original');
   });
 
+  it('cleans the recorded hidden Trim part after a crash before the rename', async () => {
+    const x = await setup();
+    const part = join(dir, '.11111111-1111-4111-8111-111111111111.mp4');
+    const unrelated = join(dir, '.22222222-2222-4222-8222-222222222222.mp4');
+    await rename(x.output, part);
+    await writeFile(unrelated, 'placeholder unrelated part');
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    x.publish(part, x.output);
+    expect(x.copies.load()).toHaveLength(1);
+    await x.service.cleanupCopies();
+    expect(x.trash).not.toHaveBeenCalled();
+
+    await x.restart().cleanupCopies();
+    expect(x.trash).toHaveBeenCalledTimes(1);
+    expect(x.trash).toHaveBeenCalledWith(part);
+    expect(x.copies.load()).toEqual([]);
+    expect(await readFile(join(dir, 'Trash', basename(part)), 'utf8')).toBe('placeholder trim');
+    expect(await readFile(unrelated, 'utf8')).toBe('placeholder unrelated part');
+  });
+
   it.each(['referenced', 'replaced'] as const)('keeps a %s file at the saved path', async (kind) => {
     const x = await setup();
     expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
