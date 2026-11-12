@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isAnimation } from '../../shared/lower-third-animations';
-import { LOWER_THIRD_TEMPLATES, OFFERED } from '../../shared/lower-third-studio';
+import { OFFERED } from '../../shared/lower-third-studio';
+import { LOWER_THIRD_TEMPLATES } from '../../shared/lower-third-templates';
 import { lowerThirdSchema } from '../../shared/lower-thirds';
 import { isPerfScenario } from '../perf-scenarios';
 import { keptOf, keptOfPhase, playedRows } from './perf-lower-thirds';
@@ -16,8 +17,8 @@ import { keptOf, keptOfPhase, playedRows } from './perf-lower-thirds';
 const APP = join(__dirname, '..', '..', '..');
 
 describe('the lower-thirds scenario', () => {
-  it('plays each row of OFFERED once, as a lower third the library takes, with placeholder words', () => {
-    const rows = playedRows().filter((r) => !r.row.startsWith('template '));
+  it('plays each row of OFFERED once, as a lower third the library takes, with placeholder words', async () => {
+    const rows = (await playedRows()).filter((r) => !r.row.startsWith('template '));
     expect(rows).toHaveLength(OFFERED.length);
     expect(new Set(rows.map((r) => r.lowerThird.id)).size).toBe(rows.length);
     for (const r of rows) {
@@ -40,11 +41,11 @@ describe('the lower-thirds scenario', () => {
       expect(r.lowerThird.look.style).toBe(r.row.slice('style '.length));
   });
 
-  it('measures each new name-and-role design with its own complete look and animation', () => {
+  it('measures each new name-and-role design with its own complete look and animation', async () => {
     const designs = LOWER_THIRD_TEMPLATES.filter((template) =>
       template.input.animation.startsWith('design-'),
     );
-    const measured = playedRows().filter((r) => r.row.startsWith('template '));
+    const measured = (await playedRows()).filter((r) => r.row.startsWith('template '));
     expect(designs.length).toBeGreaterThanOrEqual(35);
     expect(measured).toHaveLength(designs.length);
     expect(new Set(measured.map((r) => r.lowerThird.id)).size).toBe(designs.length);
