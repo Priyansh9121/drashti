@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type { DeckEffect } from '../../../shared/deck';
 import {
+  builtParagraphEffects,
   deckEffectsByTarget,
   deckElementTargets,
   type DeckMotionFrame,
@@ -18,7 +19,6 @@ import {
   deckParagraphRuns,
   deckTargetBounds,
   deckWipeClip,
-  paragraphEffects,
 } from '../../../shared/deck-motion';
 import type { NativeStepTiming } from '../../../shared/deck-show';
 import type { Rect, RenderSlide, SlideElement, TextElement } from '../../../shared/model';
@@ -107,7 +107,8 @@ export function NativeDeckMotion({
       if (!own || !shapeId || element.kind !== 'text') continue;
       const built = found.get(shapeId) ?? new Map<number, Paragraph>();
       for (const index of new Set(deckParagraphRuns(element).paragraphs)) {
-        const list = built.has(index) ? [] : paragraphEffects(own, index);
+        // A paragraph with no effect of its own (added after an edit) comes in with the built one before it.
+        const list = built.has(index) ? [] : builtParagraphEffects(own, index);
         // Hidden until it is drawn when it comes in: a later paragraph never shows before its click.
         if (list.length > 0)
           built.set(index, {
