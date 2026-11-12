@@ -521,9 +521,22 @@ const warmUps = new WarmUpChoices({
     log.info(line);
   },
 });
+/**
+ * Tests only (never a packaged Drashti; warm-up.spec.ts): with DRASHTI_TEST_GPU_SAID=late, Chromium's word reaches
+ * the outputs only when a test calls drashtiTestGpuSaid, every page's warm-up kept drawn till then
+ * (windows/renderer.ts), so an output is told after its warm-up began, as on a slow computer. On Main's next turn, as
+ * a test's call can arrive in the middle of Main's own work.
+ */
+const gpuSaidLate = !packaged() && sw('DRASHTI_TEST_GPU_SAID') === 'late';
 app.on('gpu-info-update', () => {
-  warmUps.gpuSaid();
+  if (!gpuSaidLate) warmUps.gpuSaid();
 });
+if (gpuSaidLate)
+  (globalThis as { drashtiTestGpuSaid?: () => void }).drashtiTestGpuSaid = () => {
+    setImmediate(() => {
+      warmUps.gpuSaid();
+    });
+  };
 
 /**
  * Before Save Diagnostics (Sessions 31–36, ROB-6): with crash files kept, whether they go too, unticked as
