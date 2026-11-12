@@ -13,25 +13,29 @@ export function composeSlide(
   ownsBackground = false,
   masterCanvas?: Size,
 ): RenderSlide {
-  const nativeDeck = nativeDeckMotion(slide.deck);
-  if (slide.deck && !nativeDeck) return slide;
+  const own = slide.elements.some((element) => element.hidden)
+    ? { ...slide, elements: slide.elements.filter((element) => !element.hidden) }
+    : slide;
+  const nativeDeck = nativeDeckMotion(own.deck);
+  if (own.deck && !nativeDeck) return own;
   const behind = design?.skipMaster ? null : master;
   const backdrop =
     design?.backdrop ?? (slide.background === null && !ownsBackground ? behind?.design?.backdrop : undefined);
-  if (!design && !behind) return nativeDeck ? { ...slide, fullSlide: true } : slide;
+  if (!design && !behind) return nativeDeck ? { ...own, fullSlide: true } : own;
+  const masterElements = behind?.elements.filter((element) => !element.hidden) ?? [];
   return {
-    ...slide,
+    ...own,
     background: slide.background ?? (ownsBackground ? null : behind?.background) ?? null,
     ...(backdrop ? { backdrop } : {}),
     ...(behind
       ? {
           elements: [
-            ...fitElements(behind.elements, masterCanvas ?? slide, slide).map((el) =>
+            ...fitElements(masterElements, masterCanvas ?? slide, slide).map((el) =>
               el.kind === 'text' ? { ...el, everyScreen: true } : el,
             ),
-            ...slide.elements,
+            ...own.elements,
           ],
-          masterElementIds: behind.elements.map((el) => el.id),
+          masterElementIds: masterElements.map((el) => el.id),
         }
       : {}),
     fullSlide: true,

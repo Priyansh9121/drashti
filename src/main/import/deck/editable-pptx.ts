@@ -1,10 +1,26 @@
 import { mkdir, mkdtemp, stat, writeFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
-import type { Lang, Outline, Rect, ShapeKind, SlideElement, TextRun, TextStyle } from '../../../shared/model';
+import { RETAINED_SLIDE_PICTURE, sourcePictureRegion } from '../../../shared/editable-source';
+import {
+  MAX_LIST_LEVEL,
+  type GradientFill,
+  type Lang,
+  type MediaElement,
+  type ListMark,
+  type Outline,
+  type Rect,
+  type ShapeElement,
+  type ShapeKind,
+  type SlideElement,
+  type TextElement,
+  type TextParagraph,
+  type TextRun,
+  type TextStyle,
+} from '../../../shared/model';
 import { detectLang, langOfLine } from '../../../shared/text-runs';
 import { cutText } from '../../../shared/text';
 import { mediaRef, type ParsedMediaRef } from '../model';
-import { parseXml, type XmlNode } from '../xml';
+import { parseXml, XmlError, type XmlNode } from '../xml';
 import { listZip, readZipEntries, type ZipEntry } from '../zip';
 
 /*
@@ -21,6 +37,7 @@ export interface EditablePptxSlide {
   issues: string[];
 }
 export interface EditablePptx {
+  sourceCount: number;
   width: number;
   height: number;
   slides: EditablePptxSlide[];
@@ -151,7 +168,11 @@ function makePart(path: string, roots: Map<string, XmlNode>): Part | undefined {
     const id = attr(item, 'Id');
     const target = attr(item, 'Target');
     if (!id || !target) continue;
-    if (rels.has(id)) throw new Error('This presentation contains duplicate relationship identifiers.');
+    if (rels.has(id)) {
+      // Keep ambiguous references unusable without invalidating other objects or slides.
+      rels.set(id, { type: attr(item, 'Type') ?? '', external: false, target: null });
+      continue;
+    }
     const external = attr(item, 'TargetMode')?.toLowerCase() === 'external';
     rels.set(id, {
       type: attr(item, 'Type') ?? '',
@@ -172,6 +193,8 @@ interface Theme {
   fonts: Record<string, string>;
 }
 interface Context {
+  width: number;
+  height: number;
   theme: Theme;
   master: Part | undefined;
   layout: Part | undefined;
@@ -389,12 +412,16 @@ function matching(root: Node, ph: Node): Node {
     candidates.find((n) => (attr(placeholder(n), 'type') ?? 'obj') === (attr(ph, 'type') ?? 'obj'))
   );
 }
-function chainOf(node: XmlNode, ctx: Context): XmlNode[] {
+function chainOf(node: XmlNode, part: Part, ctx: Context): { node: XmlNode; part: Part }[] {
   const ph = placeholder(node);
-  if (!ph) return [node];
+  if (!ph) return [{ node, part }];
   const layout = matching(ctx.layout?.root, ph);
   const master = matching(ctx.master?.root, placeholder(layout) ?? ph);
-  return [master, layout, node].filter((n): n is XmlNode => n !== undefined);
+  return [
+    ...(master && ctx.master ? [{ node: master, part: ctx.master }] : []),
+    ...(layout && ctx.layout ? [{ node: layout, part: ctx.layout }] : []),
+    { node, part },
+  ];
 }
 function paragraphNodes(chain: XmlNode[], paragraph: XmlNode, ctx: Context): Node[] {
   const level = Math.max(0, Math.min(8, number(attr(child(paragraph, 'pPr'), 'lvl'), 0)));
@@ -415,7 +442,11 @@ function paragraphNodes(chain: XmlNode[], paragraph: XmlNode, ctx: Context): Nod
     ...chain.flatMap((shape) => {
       const body = child(shape, 'txBody'),
         list = child(body, 'lstStyle');
-      return [child(list, 'defPPr'), child(list, levelName), child(kids(body, 'p')[0], 'pPr')];
+      return [
+        child(list, 'defPPr'),
+        child(list, levelName),
+        shape === chain.at(-1) ? undefined : child(kids(body, 'p')[0], 'pPr'),
+      ];
     }),
     child(paragraph, 'pPr'),
   ];
@@ -436,8 +467,6 @@ function runOf(
     font = cutText(font, 200);
     ctx.issues.add('An unusually long font name was shortened.');
   }
-  if (font)
-    ctx.issues.add('Named fonts use Drashti’s bundled fallbacks where unavailable; text spacing may differ.');
   const size = (((number(lowToHighValue(nodes, 'sz'), 2400) / 100) * 4) / 3) * scale;
   if (!(size > 0 && size <= 2000)) ctx.issues.add('A font size outside the editable range was adjusted.');
   const marked = lowToHighValue(nodes, 'lang')?.toLowerCase();
@@ -466,6 +495,183 @@ function runOf(
     lang: langOfLine(lang, text),
   };
 }
+const NUMBERED_LISTS: Record<string, ListMark> = {
+  alphaLc: 'a',
+  alphaUc: 'A',
+  romanLc: 'i',
+  romanUc: 'i',
+  hindiNum: 'hi',
+};
+
+// Common bullet shapes in the symbol fonts. Unicode WG2 N4384 documents the Wingdings
+// and Webdings positions. Use widely available glyphs of the same shape where possible.
+const SYMBOL_BULLETS = new Map<string, Readonly<Record<number, string>>>([
+  [
+    'wingdings',
+    {
+      0x6c: '●',
+      0x6e: '■',
+      0x71: '❑',
+      0x72: '❒',
+      0x75: '◆',
+      0x76: '❖',
+      0x9f: '•',
+      0xa7: '▪',
+      0xab: '★',
+      0xd8: '➢',
+      0xe8: '➔',
+      0xfb: '✗',
+      0xfc: '✓',
+      0xfd: '☒',
+      0xfe: '☑',
+    },
+  ],
+  [
+    'wingdings2',
+    {
+      0x4f: '✗',
+      0x50: '✓',
+      0x51: '☒',
+      0x52: '☑',
+      0x53: '☒',
+      0x54: '☒',
+      0x98: '●',
+      0x99: '○',
+      0xa2: '■',
+      0xa3: '□',
+      0xaf: '◇',
+      0xb1: '◈',
+    },
+  ],
+  [
+    'wingdings3',
+    {
+      0x21: '←',
+      0x22: '→',
+      0x23: '↑',
+      0x24: '↓',
+      0x70: '▲',
+      0x71: '▼',
+      0x72: '△',
+      0x73: '▽',
+      0x74: '◀',
+      0x75: '▶',
+      0x76: '◁',
+      0x77: '▷',
+    },
+  ],
+  [
+    'webdings',
+    {
+      0x61: '✔',
+      0x63: '□',
+      0x67: '■',
+      0x6e: '●',
+    },
+  ],
+  [
+    'symbol',
+    {
+      0xa7: '♣',
+      0xa8: '♦',
+      0xa9: '♥',
+      0xaa: '♠',
+      0xab: '↔',
+      0xac: '←',
+      0xad: '↑',
+      0xae: '→',
+      0xaf: '↓',
+      0xb7: '•',
+    },
+  ],
+]);
+
+function bulletStyle(
+  character: string,
+  family: string | undefined,
+  ctx: Context,
+): Pick<TextParagraph, 'bullet' | 'bulletFont'> {
+  const key = family?.toLowerCase().replace(/\s+/gu, '');
+  const glyphs = SYMBOL_BULLETS.get(key === 'symbolmt' ? 'symbol' : (key ?? ''));
+  if (!glyphs) {
+    return { bullet: cutText(character, 8), ...(family ? { bulletFont: cutText(family, 200) } : {}) };
+  }
+  const code = character.codePointAt(0) ?? 0;
+  const position = code >= 0xf000 && code <= 0xf0ff ? code - 0xf000 : code;
+  const glyph = character.length === 1 ? glyphs[position] : undefined;
+  if (glyph) return { bullet: glyph };
+  // Some writers already supply Unicode (for example U+2022 with Symbol).
+  if (position > 0xff && !/[\p{Co}\p{Cs}]/u.test(character)) return { bullet: cutText(character, 8) };
+  ctx.issues.add('Some symbol bullets use a dot. Change them in Bullets and Numbering.');
+  return {};
+}
+
+function paragraphOf(
+  nodes: Node[],
+  xScale: number,
+  ctx: Context,
+): Pick<TextRun, 'paragraph' | 'list' | 'level'> {
+  const alignment = lowToHighValue(nodes, 'algn') ?? 'l';
+  const align =
+    alignment === 'ctr'
+      ? 'center'
+      : alignment === 'r'
+        ? 'right'
+        : ['just', 'justLow', 'dist', 'thaiDist'].includes(alignment)
+          ? 'justify'
+          : 'left';
+  const paragraph: TextParagraph = { align };
+  const marginLeft = lowToHighValue(nodes, 'marL');
+  const marginRight = lowToHighValue(nodes, 'marR');
+  const indent = lowToHighValue(nodes, 'indent');
+  const pixels = (value: string, min: number) =>
+    round(Math.max(min, Math.min(16_384, (number(value, 0) * xScale) / EMU)));
+  if (marginLeft !== undefined) paragraph.marginLeft = pixels(marginLeft, 0);
+  if (marginRight !== undefined) paragraph.marginRight = pixels(marginRight, 0);
+  if (indent !== undefined) paragraph.indent = pixels(indent, -16_384);
+  const spacing = attr(child(lastChild(nodes, 'lnSpc'), 'spcPct'), 'val');
+  if (spacing !== undefined)
+    paragraph.lineHeight = Math.max(0.1, Math.min(5, number(spacing, 100_000) / 100_000));
+
+  const children = [...nodes].reverse().flatMap((node) => kids(node));
+  const bullet = children.find((node) => ['buNone', 'buChar', 'buAutoNum', 'buBlip'].includes(nameOf(node)));
+  if (!bullet || nameOf(bullet) === 'buNone') return { paragraph };
+  const level = Math.min(MAX_LIST_LEVEL, Math.max(0, Math.trunc(number(lowToHighValue(nodes, 'lvl'), 0))));
+  const startAt = attr(bullet, 'startAt');
+  if (nameOf(bullet) === 'buAutoNum' && startAt !== undefined)
+    paragraph.startAt = Math.min(32_767, Math.max(1, Math.trunc(number(startAt, 1))));
+  const character = attr(bullet, 'char');
+  if (character) {
+    const font = children.find((node) => ['buFont', 'buFontTx'].includes(nameOf(node)));
+    const typeface = attr(font, 'typeface')?.trim();
+    const family = typeface?.startsWith('+') ? ctx.theme.fonts[typeface] : typeface;
+    Object.assign(paragraph, bulletStyle(character, family, ctx));
+  }
+  const numbering = (attr(bullet, 'type') ?? '').replace(/(?:Period|ParenR|ParenBoth|Plain)$/u, '');
+  return {
+    paragraph,
+    list: nameOf(bullet) === 'buAutoNum' ? (NUMBERED_LISTS[numbering] ?? '1') : 'disc',
+    ...(level ? { level } : {}),
+  };
+}
+
+function textDirection(bodies: Node[]): Pick<TextStyle, 'writingMode' | 'textOrientation'> {
+  switch (lowToHighValue(bodies, 'vert')) {
+    case 'vert':
+    case 'eaVert':
+      return { writingMode: 'vertical-rl' };
+    case 'vert270':
+      return { writingMode: 'sideways-lr' };
+    case 'mongolianVert':
+      return { writingMode: 'vertical-lr' };
+    case 'wordArtVert':
+    case 'wordArtVertRtl':
+      return { writingMode: 'vertical-rl', textOrientation: 'upright' };
+    default:
+      return {};
+  }
+}
+
 function textElement(
   node: XmlNode,
   chain: XmlNode[],
@@ -473,14 +679,14 @@ function textElement(
   matrix: Matrix,
   flipX: boolean,
   ctx: Context,
-): SlideElement | null {
+  keepEmpty = false,
+): TextElement | null {
   const body = child(node, 'txBody');
   if (!body) return null;
   const paragraphs = kids(body, 'p'),
     runs: TextRun[] = [];
-  let align: TextStyle['align'] = 'left',
-    lineHeight = 1.2;
   const scale = Math.hypot(matrix[2], matrix[3]);
+  const xScale = Math.hypot(matrix[0], matrix[1]);
   const fontRef = lastChild(
     chain.map((shape) => child(shape, 'style')),
     'fontRef',
@@ -493,44 +699,43 @@ function textElement(
   for (const [index, paragraph] of paragraphs.entries()) {
     const nodes = paragraphNodes(chain, paragraph, ctx);
     const defaults = nodes.map((n) => child(n, 'defRPr'));
-    const value = lowToHighValue(nodes, 'algn');
-    const here = value === 'ctr' ? 'center' : value === 'r' ? 'right' : 'left';
-    if (index === 0) {
-      align = here;
-      const spacing = child(lastChild(nodes, 'lnSpc'), 'spcPct');
-      if (spacing) lineHeight = Math.max(0.1, Math.min(5, number(attr(spacing, 'val'), 100_000) / 100_000));
-    } else if (here !== align)
-      ctx.issues.add(
-        'Different paragraph alignments share the first paragraph’s alignment in this text box.',
-      );
-    if (value && !['l', 'ctr', 'r'].includes(value))
-      ctx.issues.add('Justified paragraphs use left alignment in the editable copy.');
-    if (index > 0) runs.push(runOf('\n', defaults, ctx, scale, fallback));
+    const formatting = paragraphOf(nodes, xScale, ctx);
+    const push = (words: string, style: Node[], softBreak = false) =>
+      runs.push({
+        ...runOf(words, style, ctx, scale, fallback),
+        ...formatting,
+        ...(softBreak ? { softBreak } : {}),
+      });
     for (const piece of kids(paragraph)) {
       const kind = nameOf(piece);
-      if (kind === 'br') runs.push(runOf('\n', [...defaults, child(piece, 'rPr')], ctx, scale, fallback));
+      if (kind === 'br') push('\n', [...defaults, child(piece, 'rPr')], true);
       else if (kind === 'r' || kind === 'fld') {
         if (kind === 'fld') ctx.issues.add('Dynamic fields are kept as their current words.');
         const words = child(piece, 't')?.text ?? '';
-        if (words !== '') runs.push(runOf(words, [...defaults, child(piece, 'rPr')], ctx, scale, fallback));
+        if (words !== '') push(words, [...defaults, child(piece, 'rPr')]);
       }
     }
-    const bullet = lastChild(nodes, 'buChar'),
-      automatic = lastChild(nodes, 'buAutoNum');
-    if ((bullet || automatic) && !lastChild(nodes, 'buNone'))
-      ctx.issues.add('Source list marks and paragraph indentation may differ in the editable copy.');
+    if (index < paragraphs.length - 1) push('\n', [...defaults, child(paragraph, 'endParaRPr')]);
   }
   const words = runs.map((run) => run.text).join('');
-  if (words === '') return null;
+  if (words === '' && !keepEmpty) return null;
   if (words.length > 20_000 || runs.length > 2000)
     throw new Error('A source text box exceeds the editable text limit; its words were not truncated.');
   const first = runs.find((r) => r.text.trim() !== '') ?? runs[0];
   const bodies = chain.map((shape) => child(child(shape, 'txBody'), 'bodyPr'));
   const inset = (key: string, fallback: number) => Math.max(0, number(lowToHighValue(bodies, key), fallback));
-  const left = inset('lIns', 91_440),
-    right = inset('rIns', 91_440),
-    top = inset('tIns', 45_720),
-    bottom = inset('bIns', 45_720);
+  const shape = attr(
+    lastChild(
+      chain.map((el) => child(el, 'spPr')),
+      'prstGeom',
+    ),
+    'prst',
+  );
+  const insetFraction = shape === 'ellipse' ? (1 - Math.SQRT1_2) / 2 : shape === 'diamond' ? 0.25 : 0;
+  const left = inset('lIns', 91_440) + rect.width * insetFraction,
+    right = inset('rIns', 91_440) + rect.width * insetFraction,
+    top = inset('tIns', 45_720) + rect.height * insetFraction,
+    bottom = inset('bIns', 45_720) + rect.height * insetFraction;
   if (left + right >= rect.width || top + bottom >= rect.height)
     ctx.issues.add('Source text insets leave no usable area; its editable frame was adjusted.');
   const frame = placed(
@@ -546,10 +751,9 @@ function textElement(
   );
   if (!frame) return null;
   const anchor = lowToHighValue(bodies, 'anchor');
-  if (lowToHighValue(bodies, 'vert') && lowToHighValue(bodies, 'vert') !== 'horz')
-    ctx.issues.add('Vertical text is laid out horizontally in the editable copy.');
-  if (lastChild(bodies, 'normAutofit') || lastChild(bodies, 'spAutoFit'))
-    ctx.issues.add('Source auto-fit and wrapping may differ in the editable copy.');
+  const clipToBox = ['vertOverflow', 'horzOverflow'].some((key) => lowToHighValue(bodies, key) === 'clip');
+  const paragraph = first?.paragraph;
+  const align = paragraph?.align === 'justify' ? 'left' : (paragraph?.align ?? 'left');
   return {
     id: ctx.id(),
     kind: 'text',
@@ -564,8 +768,12 @@ function textElement(
       color: first?.color ?? '#000000',
       align,
       verticalAlign: anchor === 'ctr' ? 'middle' : anchor === 'b' ? 'bottom' : 'top',
-      lineHeight,
+      lineHeight: paragraph?.lineHeight ?? 1.2,
       shadow: false,
+      ...(!clipToBox || lastChild(bodies, 'normAutofit') ? { shrinkToFit: true } : {}),
+      ...(clipToBox ? { clipToBox: true } : {}),
+      ...(lowToHighValue(bodies, 'wrap') === 'none' ? { noWrap: true } : {}),
+      ...textDirection(bodies),
     },
   };
 }
@@ -581,12 +789,222 @@ const SHAPES: Record<string, ShapeKind> = {
   star5: 'star',
   heart: 'heart',
 };
-function outlineOf(props: Node[], ctx: Context): Outline | null {
-  const line = lastChild(props, 'ln');
+function lineOutline(line: Node, ctx: Context): Outline | null {
   if (!line || child(line, 'noFill')) return null;
   const color = fillOf([line], ctx, '#000000');
   return color ? { color, width: Math.max(0.01, Math.min(100, number(attr(line, 'w'), EMU) / EMU)) } : null;
 }
+interface SourcePaint {
+  color: string | null;
+  gradient?: GradientFill;
+  picture?: Pick<MediaElement, 'mediaId' | 'crop'>;
+}
+
+function gradientOf(fill: XmlNode, ctx: Context): GradientFill | undefined {
+  const fraction = (value: string | undefined) => Math.max(0, Math.min(1, number(value, 0) / 100_000));
+  const stops = kids(child(fill, 'gsLst'), 'gs').flatMap((stop) => {
+    const color = colorOf(stop, ctx);
+    return color ? [{ offset: fraction(attr(stop, 'pos')), color }] : [];
+  });
+  if (stops.length < 2 || stops.length > 64) return undefined;
+  stops.sort((a, b) => a.offset - b.offset);
+  const radial = child(fill, 'path');
+  if (radial) {
+    const box = child(radial, 'fillToRect');
+    const center = (start: string, end: string) =>
+      (1 + fraction(attr(box, start)) - fraction(attr(box, end))) / 2;
+    return { kind: 'radial', x: center('l', 'r'), y: center('t', 'b'), stops };
+  }
+  const degrees = number(attr(child(fill, 'lin'), 'ang'), 0) / 60_000;
+  return { kind: 'linear', angle: ((degrees % 360) + 360) % 360, stops };
+}
+
+async function pictureOf(fill: Node, part: Part, ctx: Context): Promise<SourcePaint['picture']> {
+  const blip = child(fill, 'blip');
+  const embed = attr(blip, 'r:embed');
+  if (attr(blip, 'r:link'))
+    ctx.issues.add('Linked pictures are not opened; only an embedded copy can be used.');
+  if (!embed) {
+    ctx.issues.add('A linked or missing picture has no embedded copy.');
+    return undefined;
+  }
+  const mediaId = await ctx.asset(part, embed, ctx.issues);
+  if (!mediaId) return undefined;
+  const crop = child(fill, 'srcRect');
+  const l = number(attr(crop, 'l'), 0) / 100_000,
+    t = number(attr(crop, 't'), 0) / 100_000;
+  const r = number(attr(crop, 'r'), 0) / 100_000,
+    b = number(attr(crop, 'b'), 0) / 100_000;
+  const valid = l >= 0 && t >= 0 && r >= 0 && b >= 0 && 1 - l - r >= 0.01 && 1 - t - b >= 0.01;
+  if (!valid) ctx.issues.add('A picture crop outside the editable range was left out.');
+  if (child(fill, 'tile')) ctx.issues.add('A tiled picture is stretched once in the editable copy.');
+  return {
+    mediaId,
+    ...(crop && valid ? { crop: { x: l, y: t, width: 1 - l - r, height: 1 - t - b } } : {}),
+  };
+}
+
+async function shapePaintOf(
+  sources: { props: Node; part: Part }[],
+  ctx: Context,
+  fallback: string | null,
+): Promise<SourcePaint> {
+  for (const { props, part } of [...sources].reverse()) {
+    const fill = kids(props).find((item) =>
+      ['solidFill', 'noFill', 'gradFill', 'blipFill', 'pattFill'].includes(nameOf(item)),
+    );
+    if (!fill) continue;
+    switch (nameOf(fill)) {
+      case 'noFill':
+        return { color: null };
+      case 'solidFill':
+        return { color: colorOf(fill, ctx) ?? fallback };
+      case 'gradFill': {
+        const gradient = gradientOf(fill, ctx);
+        if (gradient) return { color: gradient.stops[0]?.color ?? fallback, gradient };
+        ctx.issues.add('A gradient could not be read. The editable copy uses its reference colour.');
+        return { color: fallback };
+      }
+      case 'blipFill': {
+        const picture = await pictureOf(fill, part, ctx);
+        return picture ? { color: null, picture } : { color: fallback };
+      }
+      default:
+        ctx.issues.add('A patterned fill uses its foreground colour in the editable copy.');
+        return { color: colorOf(child(fill, 'fgClr'), ctx) ?? fallback };
+    }
+  }
+  return { color: fallback };
+}
+
+function pictureClip(shape: ShapeKind | undefined, cornerRadius: number): Pick<MediaElement, 'pictureClip'> {
+  if (!shape || shape === 'line' || shape === 'path' || (shape === 'rectangle' && !cornerRadius)) return {};
+  return { pictureClip: { shape, ...(cornerRadius ? { cornerRadius } : {}) } };
+}
+
+function fallbackPicture(rect: Rect, matrix: Matrix, ctx: Context): SlideElement[] {
+  const corners = [
+    at(matrix, rect.x, rect.y),
+    at(matrix, rect.x + rect.width, rect.y),
+    at(matrix, rect.x, rect.y + rect.height),
+    at(matrix, rect.x + rect.width, rect.y + rect.height),
+  ];
+  const xs = corners.map((point) => point.x / EMU);
+  const ys = corners.map((point) => point.y / EMU);
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  const region = sourcePictureRegion({ x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y }, ctx);
+  return region
+    ? [{ id: ctx.id(), kind: 'image', fit: 'stretch', mediaId: RETAINED_SLIDE_PICTURE, ...region }]
+    : [];
+}
+
+function gridStops(items: XmlNode[], key: string, length: number): number[] | null {
+  const sizes = items.map((item) => number(attr(item, key), 0));
+  const total = sizes.reduce((sum, size) => sum + size, 0);
+  if (!sizes.length || sizes.some((size) => !(size > 0)) || !Number.isFinite(total)) return null;
+  const stops = [0];
+  let sum = 0;
+  for (const size of sizes) {
+    sum += size;
+    stops.push((sum * length) / total);
+  }
+  return stops;
+}
+
+function tableTextNode(cell: XmlNode, props: Node): XmlNode {
+  const body = child(cell, 'txBody') ?? { name: 'a:txBody', attrs: {}, children: [], text: '' };
+  const bodyPr = child(body, 'bodyPr');
+  const attrs = { ...bodyPr?.attrs };
+  for (const [from, to] of [
+    ['marL', 'lIns'],
+    ['marR', 'rIns'],
+    ['marT', 'tIns'],
+    ['marB', 'bIns'],
+    ['anchor', 'anchor'],
+    ['vert', 'vert'],
+  ] as const) {
+    const value = attr(props, from);
+    if (value !== undefined) attrs[to] = value;
+  }
+  const copy = {
+    ...body,
+    children: [
+      { name: 'a:bodyPr', attrs, children: bodyPr?.children ?? [], text: '' },
+      ...kids(body).filter((node) => node !== bodyPr),
+    ],
+  };
+  return { ...cell, children: [copy] };
+}
+
+function cellSpan(cell: XmlNode, key: string, remaining: number): number {
+  return Math.max(1, Math.min(remaining, Math.trunc(number(attr(cell, key), 1))));
+}
+
+async function tableObjects(
+  table: XmlNode,
+  part: Part,
+  rect: Rect,
+  matrix: Matrix,
+  flipX: boolean,
+  ctx: Context,
+): Promise<SlideElement[] | null> {
+  const grid = kids(child(table, 'tblGrid'), 'gridCol');
+  const rows = kids(table, 'tr');
+  if (grid.length * rows.length > MAX_ELEMENTS / 2) return null;
+  const columns = gridStops(grid, 'w', rect.width);
+  const heights = gridStops(rows, 'h', rect.height);
+  if (!columns || !heights) return null;
+  const groupId = ctx.id();
+  const elements: SlideElement[] = [];
+  for (const [row, rowNode] of rows.entries()) {
+    const cells = kids(rowNode, 'tc');
+    const complete = cells.length === grid.length;
+    let column = 0;
+    for (const cell of cells) {
+      if (flag(attr(cell, 'hMerge')) || flag(attr(cell, 'vMerge'))) {
+        column++;
+        continue;
+      }
+      const rowSpan = cellSpan(cell, 'rowSpan', rows.length - row);
+      const columnSpan = cellSpan(cell, 'gridSpan', grid.length - column);
+      const x = columns[column],
+        y = heights[row];
+      const right = columns[column + columnSpan],
+        bottom = heights[row + rowSpan];
+      if (x === undefined || y === undefined || right === undefined || bottom === undefined) return null;
+      const box = { x: rect.x + x, y: rect.y + y, width: right - x, height: bottom - y };
+      const place = placed(box, matrix, flipX, ctx);
+      if (!place) return null;
+      const props = child(cell, 'tcPr');
+      const paint = await shapePaintOf([{ props, part }], ctx, null);
+      const edge = kids(props).find((node) => ['lnL', 'lnR', 'lnT', 'lnB'].includes(nameOf(node)));
+      const outline = lineOutline(edge, ctx);
+      if (paint.picture)
+        elements.push({ id: ctx.id(), kind: 'image', groupId, ...place, ...paint.picture, fit: 'stretch' });
+      if (paint.color || outline || paint.gradient) {
+        elements.push({
+          id: ctx.id(),
+          kind: 'shape',
+          groupId,
+          ...place,
+          fill: paint.color,
+          cornerRadius: 0,
+          opacity: 1,
+          outline,
+          ...(paint.gradient ? { gradient: paint.gradient } : {}),
+        });
+      }
+      const node = tableTextNode(cell, props);
+      const text = textElement(node, [node], box, matrix, flipX, ctx, true);
+      if (!text) return null;
+      elements.push({ ...text, groupId, tableCell: { row, column, rowSpan, columnSpan } });
+      column += complete ? 1 : columnSpan;
+    }
+  }
+  return elements;
+}
+
 function unsupported(node: XmlNode, ctx: Context): void {
   if (
     descendants(node, 'effectLst').some((n) => n.children.length > 0) ||
@@ -628,61 +1046,85 @@ async function objectOf(
   parentFlip: boolean,
   ctx: Context,
 ): Promise<SlideElement[]> {
-  const chain = chainOf(node, ctx),
-    props = chain.map((s) => child(s, 'spPr'));
-  const xfrm = lastChild(props, 'xfrm'),
+  const sources = chainOf(node, part, ctx);
+  const chain = sources.map((source) => source.node);
+  const paints = sources.map((source) => ({ props: child(source.node, 'spPr'), part: source.part }));
+  const props = paints.map((source) => source.props);
+  const kind = nameOf(node);
+  const xfrm = kind === 'graphicFrame' ? child(node, 'xfrm') : lastChild(props, 'xfrm'),
     rect = rawRect(xfrm);
   if (!rect) {
-    ctx.issues.add('An object has no size or place Drashti can use, so it was left out.');
+    ctx.issues.add(
+      kind === 'graphicFrame'
+        ? 'A table, chart or embedded drawing has no usable bounds in the source.'
+        : 'An object has no size or place Drashti can use, so it was left out.',
+    );
     return [];
   }
   const own = about(rect.x + rect.width / 2, rect.y + rect.height / 2, turning(xfrm));
   const matrix = multiply(parent, own),
     flipX = parentFlip !== flag(attr(xfrm, 'flipH'));
   const placement = placed(rect, matrix, flipX, ctx);
-  if (!placement) return [];
+  if (!placement) return fallbackPicture(rect, matrix, ctx);
   unsupported(node, ctx);
-  if (nameOf(node) === 'pic') {
-    const blipFill = child(node, 'blipFill'),
-      blip = child(blipFill, 'blip');
-    const embed = attr(blip, 'r:embed');
-    if (attr(blip, 'r:link'))
-      ctx.issues.add('Linked pictures are not opened; only an embedded copy can be used.');
-    if (!embed) {
-      ctx.issues.add('A linked or missing picture has no embedded copy.');
-      return [];
+  if (kind === 'graphicFrame') {
+    const data = child(child(node, 'graphic'), 'graphicData');
+    const table = child(data, 'tbl');
+    if (table) {
+      const cells = await tableObjects(table, part, rect, matrix, flipX, ctx);
+      if (cells?.length) return cells;
     }
-    const mediaId = await ctx.asset(part, embed, ctx.issues);
-    if (!mediaId) return [];
-    const crop = child(blipFill, 'srcRect');
-    const l = number(attr(crop, 'l'), 0) / 100_000,
-      t = number(attr(crop, 't'), 0) / 100_000;
-    const r = number(attr(crop, 'r'), 0) / 100_000,
-      b = number(attr(crop, 'b'), 0) / 100_000;
-    const valid = l >= 0 && t >= 0 && r >= 0 && b >= 0 && l + r < 1 && t + b < 1;
-    if (!valid) ctx.issues.add('A picture crop outside the editable range was left out.');
-    if (child(blipFill, 'tile')) ctx.issues.add('A tiled picture is stretched once in the editable copy.');
-    const preset = attr(lastChild(props, 'prstGeom'), 'prst');
-    if (preset && preset !== 'rect') ctx.issues.add('A picture’s shape clipping is not reproduced.');
+    const preview = descendants(data, 'pic')[0];
+    if (preview) {
+      const picture = await pictureOf(child(preview, 'blipFill'), part, ctx);
+      if (picture) return [{ id: ctx.id(), kind: 'image', ...placement, ...picture, fit: 'stretch' }];
+    }
+    ctx.issues.add(
+      'An unsupported table, chart or drawing stays as a picture when its slide picture is available.',
+    );
+    return fallbackPicture(rect, matrix, ctx);
+  }
+  const preset = attr(lastChild(props, 'prstGeom'), 'prst') ?? (kind === 'cxnSp' ? 'line' : undefined);
+  const shape = preset ? SHAPES[preset] : undefined;
+  const radius = preset === 'roundRect' ? Math.min(placement.frame.width, placement.frame.height) * 0.15 : 0;
+  if (kind === 'pic') {
+    const blipFill = child(node, 'blipFill');
+    const picture = await pictureOf(blipFill, part, ctx);
+    if (!picture) {
+      const rel = part.rels.get(attr(child(blipFill, 'blip'), 'r:embed') ?? '');
+      return rel?.target && !rel.external && rel.type.endsWith('/image')
+        ? fallbackPicture(rect, matrix, ctx)
+        : [];
+    }
     return [
       {
         id: ctx.id(),
         kind: 'image',
         ...placement,
-        mediaId,
+        ...picture,
         fit: 'stretch',
-        ...(crop && valid ? { crop: { x: l, y: t, width: 1 - l - r, height: 1 - t - b } } : {}),
+        ...pictureClip(shape, radius),
       },
     ];
   }
+  if ((preset && !shape) || lastChild(props, 'custGeom')) {
+    ctx.issues.add('An unsupported shape stays as a picture when its slide picture is available.');
+    return fallbackPicture(rect, matrix, ctx);
+  }
   const output: SlideElement[] = [];
-  const preset =
-    attr(lastChild(props, 'prstGeom'), 'prst') ?? (nameOf(node) === 'cxnSp' ? 'line' : undefined);
-  const shape = preset ? SHAPES[preset] : undefined;
-  if (preset && !shape) ctx.issues.add('An unsupported source shape uses a rectangular editable frame.');
-  if (preset === 'roundRect') ctx.issues.add('Rounded rectangles use Drashti’s own corner proportions.');
-  const fill = fillOf(props, ctx, referenceColor(chain, 'fillRef', ctx));
-  const outline = outlineOf(props, ctx);
+  const paint = await shapePaintOf(paints, ctx, referenceColor(chain, 'fillRef', ctx));
+  const outline = lineOutline(lastChild(props, 'ln'), ctx);
+  if (paint.picture) {
+    output.push({
+      id: ctx.id(),
+      kind: 'image',
+      ...placement,
+      ...paint.picture,
+      fit: 'stretch',
+      ...pictureClip(shape, radius),
+    });
+  }
+  const fill = paint.color;
   if (fill || outline || shape === 'line') {
     let place = placement;
     if (shape === 'line') {
@@ -705,8 +1147,9 @@ async function objectOf(
       ...place,
       shape: shape ?? 'rectangle',
       fill: shape === 'line' ? null : fill,
+      ...(paint.gradient ? { gradient: paint.gradient } : {}),
       opacity: 1,
-      cornerRadius: preset === 'roundRect' ? Math.min(place.frame.width, place.frame.height) * 0.15 : 0,
+      cornerRadius: radius,
       outline: outline ?? (shape === 'line' ? { color: fill ?? '#000000', width: 1 } : null),
     });
   }
@@ -719,9 +1162,15 @@ function nonVisualProperties(node: XmlNode): Node {
   return child(wrapper, 'cNvPr');
 }
 
-function drawingId(node: XmlNode): string | undefined {
-  const id = attr(nonVisualProperties(node), 'id')?.trim();
+function drawingId(properties: Node): string | undefined {
+  const id = attr(properties, 'id')?.trim();
   return id && /^\d{1,10}$/u.test(id) ? id : undefined;
+}
+
+interface WalkGroup {
+  id: string;
+  sourceIds: string[];
+  hidden: boolean;
 }
 
 async function walk(
@@ -731,15 +1180,16 @@ async function walk(
   flip: boolean,
   ctx: Context,
   inherited = false,
-  groupId?: string,
-  sourceGroupIds: string[] = [],
+  group?: WalkGroup,
 ): Promise<SlideElement[]> {
   const result: SlideElement[] = [];
   for (const node of kids(tree)) {
     const kind = nameOf(node);
     if (inherited && placeholder(node)) continue;
     // Layout and master parts have their own ID spaces. Slide timing addresses this slide's tree.
-    const sourceShapeId = inherited ? undefined : drawingId(node);
+    const properties = nonVisualProperties(node);
+    const sourceShapeId = inherited ? undefined : drawingId(properties);
+    const hidden = group?.hidden === true || flag(attr(properties, 'hidden'));
     if (kind === 'grpSp') {
       const xfrm = child(child(node, 'grpSpPr'), 'xfrm'),
         rect = rawRect(xfrm);
@@ -765,41 +1215,63 @@ async function walk(
       if (Math.abs(rect.width / cx - rect.height / cy) > 0.00001)
         ctx.issues.add('Non-uniform group scaling may change editable text spacing.');
       result.push(
-        ...(await walk(
-          node,
-          part,
-          m,
-          flip !== flag(attr(xfrm, 'flipH')),
-          ctx,
-          inherited,
-          groupId ?? ctx.id(),
-          sourceShapeId ? [...sourceGroupIds, sourceShapeId] : sourceGroupIds,
-        )),
+        ...(await walk(node, part, m, flip !== flag(attr(xfrm, 'flipH')), ctx, inherited, {
+          id: group?.id ?? ctx.id(),
+          sourceIds: sourceShapeId ? [...(group?.sourceIds ?? []), sourceShapeId] : (group?.sourceIds ?? []),
+          hidden,
+        })),
       );
-    } else if (kind === 'sp' || kind === 'pic' || kind === 'cxnSp') {
-      const objects = await objectOf(node, part, parent, flip, ctx);
+    } else if (kind === 'sp' || kind === 'pic' || kind === 'cxnSp' || kind === 'graphicFrame') {
+      let objects: SlideElement[];
+      try {
+        objects = await objectOf(node, part, parent, flip, ctx);
+      } catch {
+        const xfrm = kind === 'graphicFrame' ? child(node, 'xfrm') : child(child(node, 'spPr'), 'xfrm');
+        const rect = rawRect(xfrm);
+        ctx.issues.add('A damaged source object stays as a picture when its slide picture is available.');
+        objects = rect
+          ? fallbackPicture(
+              rect,
+              multiply(parent, about(rect.x + rect.width / 2, rect.y + rect.height / 2, turning(xfrm))),
+              ctx,
+            )
+          : [];
+      }
+      const name = cutText(attr(properties, 'name')?.trim() ?? '', 200);
       result.push(
         ...objects.map((el) => ({
           ...el,
-          ...(groupId ? { groupId } : {}),
+          ...(group && !el.groupId ? { groupId: group.id } : {}),
+          ...(name ? { name } : {}),
+          ...(hidden ? { hidden } : {}),
           ...(sourceShapeId ? { sourceShapeId } : {}),
-          ...(sourceGroupIds.length > 0 ? { sourceGroupIds } : {}),
+          ...(group?.sourceIds.length ? { sourceGroupIds: group.sourceIds } : {}),
         })),
       );
     } else if (kind === 'AlternateContent') {
-      ctx.issues.add('Alternate drawing content uses its available fallback.');
-      result.push(
-        ...(await walk(
-          child(node, 'Fallback') ?? child(node, 'Choice'),
-          part,
-          parent,
-          flip,
-          ctx,
-          inherited,
-          groupId,
-          sourceGroupIds,
-        )),
-      );
+      const choice = child(node, 'Choice');
+      const fallback = child(node, 'Fallback');
+      const original = kids(choice);
+      const primary = original.length === 1 ? original[0] : undefined;
+      const table = child(child(child(primary, 'graphic'), 'graphicData'), 'tbl');
+      if (table || !fallback) {
+        result.push(...(await walk(choice, part, parent, flip, ctx, inherited, group)));
+      } else {
+        ctx.issues.add('An alternate source drawing keeps its embedded preview.');
+        const objects = await walk(fallback, part, parent, flip, ctx, inherited, group);
+        const choiceProps = primary && kids(fallback).length === 1 ? nonVisualProperties(primary) : undefined;
+        const id = inherited ? undefined : drawingId(choiceProps);
+        const name = cutText(attr(choiceProps, 'name')?.trim() ?? '', 200);
+        const hidden = attr(choiceProps, 'hidden');
+        result.push(
+          ...objects.map((element) => ({
+            ...element,
+            ...(id ? { sourceShapeId: id } : {}),
+            ...(name ? { name } : {}),
+            ...(hidden !== undefined ? { hidden: group?.hidden === true || flag(hidden) } : {}),
+          })),
+        );
+      }
     } else if (!['nvGrpSpPr', 'grpSpPr', 'extLst'].includes(kind)) {
       ctx.issues.add('Tables, charts and embedded objects are not reproduced in this editable slide.');
     }
@@ -837,7 +1309,10 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
     names.add(entry.name);
   }
   const selected = entries.filter(
-    (entry) => entry.name.startsWith('ppt/') && /\.(xml|rels)$/u.test(entry.name),
+    (entry) =>
+      entry.name.startsWith('ppt/') &&
+      /\.(xml|rels)$/u.test(entry.name) &&
+      !/^ppt\/(?:charts|diagrams|embeddings)\//u.test(entry.name),
   );
   if (
     selected.some((entry) => entry.size > MAX_XML || entry.compressedSize > MAX_XML) ||
@@ -845,7 +1320,19 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
   )
     throw new Error('This presentation has too much XML to prepare safely.');
   const buffers = await readParts(file, selected, MAX_XML, MAX_XML_TOTAL);
-  const roots = new Map([...buffers].map(([path, bytes]) => [path, xml(bytes)]));
+  const roots = new Map<string, XmlNode>();
+  for (const [path, bytes] of buffers) {
+    try {
+      roots.set(path, xml(bytes));
+    } catch (error) {
+      if (
+        !(error instanceof XmlError) ||
+        path === 'ppt/presentation.xml' ||
+        path === 'ppt/_rels/presentation.xml.rels'
+      )
+        throw error;
+    }
+  }
   const presentation = makePart('ppt/presentation.xml', roots);
   if (!presentation || nameOf(presentation.root) !== 'presentation')
     throw new Error('This is not a readable PPTX presentation.');
@@ -910,8 +1397,7 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
     const rel = presentation.rels.get(attr(id, 'r:id') ?? '');
     const slide =
       rel?.target && rel.type.endsWith('/slide') && !rel.external ? makePart(rel.target, roots) : undefined;
-    if (!slide || nameOf(slide.root) !== 'sld')
-      throw new Error('A source slide is missing or has an unsafe relationship.');
+    if (!slide || nameOf(slide.root) !== 'sld') continue;
     const layout = related(slide, 'slideLayout', roots),
       master = related(layout, 'slideMaster', roots);
     const theme = related(master, 'theme', roots),
@@ -923,6 +1409,8 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       issues.add('A source layout or master is missing or unsafe; some inherited content may differ.');
     let nextId = 0;
     const ctx: Context = {
+      width,
+      height,
       theme: themeOf(theme, master, layout, slide),
       master,
       layout,
@@ -931,24 +1419,45 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       id: () => `pptx-${String(sourceIndex)}-${String(++nextId)}`,
       asset,
     };
-    const backgrounds = [master?.root, layout?.root, slide.root].map((root) =>
-      child(child(root, 'cSld'), 'bg'),
-    );
-    let background = fillOf(
-      backgrounds.map((bg) => child(bg, 'bgPr')),
+    const backgrounds = [master, layout, slide].flatMap((part) => {
+      const bg = child(child(part?.root, 'cSld'), 'bg');
+      return part && bg ? [{ part, bg }] : [];
+    });
+    const paint = await shapePaintOf(
+      backgrounds.map(({ part, bg }) => ({ part, props: child(bg, 'bgPr') })),
       ctx,
       ctx.theme.colors[ctx.theme.map['bg1'] ?? 'lt1'] ?? '#ffffff',
     );
-    for (let i = backgrounds.length - 1; i >= 0; i--) {
-      if (!backgrounds[i]) continue;
-      const ref = child(backgrounds[i], 'bgRef');
-      if (ref) {
-        background = colorOf(ref, ctx) ?? background;
-        issues.add('A theme background style uses its reference colour in the editable copy.');
-      }
-      break;
+    let background = paint.color;
+    const ref = child(backgrounds.at(-1)?.bg, 'bgRef');
+    if (ref) {
+      background = colorOf(ref, ctx) ?? background;
+      ctx.issues.add('A theme background style uses its reference colour in the editable copy.');
     }
+    const frame = { x: 0, y: 0, width, height };
     const elements: SlideElement[] = [];
+    if (!ref && paint.picture) {
+      elements.push({
+        id: ctx.id(),
+        kind: 'image',
+        name: 'Background picture',
+        frame,
+        ...paint.picture,
+        fit: 'stretch',
+      });
+    } else if (!ref && paint.gradient) {
+      const backdrop: ShapeElement = {
+        id: ctx.id(),
+        kind: 'shape',
+        name: 'Background gradient',
+        frame,
+        fill: paint.color,
+        gradient: paint.gradient,
+        opacity: 1,
+        cornerRadius: 0,
+      };
+      elements.push(backdrop);
+    }
     if (
       master &&
       !['0', 'false'].includes(attr(slide.root, 'showMasterSp') ?? '') &&
@@ -974,5 +1483,6 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       issues: [...issues],
     });
   }
-  return { width, height, slides, media };
+  if (slides.length === 0) throw new Error('No source slide could be read safely.');
+  return { sourceCount: ids.length, width, height, slides, media };
 }

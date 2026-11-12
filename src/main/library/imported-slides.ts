@@ -11,6 +11,12 @@ import { dirname, isAbsolute, join } from 'node:path';
 import type { DocumentPageRef } from '../../shared/document-page';
 import { documentPageFromJson } from '../../shared/document-page';
 import type { MediaElement, SlideElement } from '../../shared/model';
+import {
+  RETAINED_SLIDE_PICTURE,
+  sourcePictureRegion,
+  type PreparedSourcePage,
+} from '../../shared/editable-source';
+import { fitPage } from '../../shared/pictures';
 import { editDocSchema, type EditDoc, type EditSlide } from '../../shared/slide-edit';
 import type { ContentRows } from '../db/content';
 import type { Db } from '../db/database';
@@ -42,6 +48,58 @@ const contentOf = (slide: EditSlide, copied = false) => {
 };
 const sameSource = (a: DocumentPageRef | undefined, b: DocumentPageRef | undefined) =>
   !!a && !!b && a.sha256 === b.sha256 && a.ext === b.ext && a.page === b.page;
+
+function bakedObject(
+  element: MediaElement,
+  source: PreparedSourcePage,
+  slide: EditSlide,
+  doc: EditDoc,
+): MediaElement | null {
+  const canvas = documentCanvas(slide.documentPage, doc);
+  const picture = slide.elements.find(
+    (item) =>
+      item.kind === 'image' &&
+      !item.hidden &&
+      !item.crop &&
+      item.frame.x === 0 &&
+      item.frame.y === 0 &&
+      Math.abs(item.frame.width - canvas.width) <= 1 &&
+      Math.abs(item.frame.height - canvas.height) <= 1,
+  );
+  if (picture?.kind !== 'image') return null;
+  // Existing page pictures include the letterbox. Map the source rectangle through the same fit.
+  const { frame } = element;
+  const rad = ((element.rotation ?? 0) * Math.PI) / 180;
+  const c = Math.abs(Math.cos(rad)),
+    s = Math.abs(Math.sin(rad));
+  const width = c * frame.width + s * frame.height;
+  const height = s * frame.width + c * frame.height;
+  const region = sourcePictureRegion(
+    { x: frame.x + (frame.width - width) / 2, y: frame.y + (frame.height - height) / 2, width, height },
+    source,
+  );
+  if (!region) return null;
+  const fit = fitPage(source.width, source.height, picture.frame.width, picture.frame.height);
+  const saved = sourcePictureRegion(
+    {
+      x: fit.x + region.crop.x * fit.w,
+      y: fit.y + region.crop.y * fit.h,
+      width: region.crop.width * fit.w,
+      height: region.crop.height * fit.h,
+    },
+    picture.frame,
+  );
+  if (!saved) return null;
+  const { rotation: _rotation, flipX: _flipX, flipY: _flipY, pictureClip: _clip, ...rest } = element;
+  return {
+    ...rest,
+    kind: 'image',
+    frame: region.frame,
+    crop: saved.crop,
+    mediaId: picture.mediaId,
+    fit: 'stretch',
+  };
+}
 
 function nativePageElements(
   slide: EditSlide,
@@ -215,7 +273,10 @@ export class ImportedSlides {
                 let mediaId = retained.get(asset.file);
                 if (!mediaId) {
                   const staged = await this.media.stage(asset.file);
-                  if (!staged.ok) throw new Error('A source object could not be retained.');
+                  if (!staged.ok) {
+                    if (ref.ext === 'pptx') continue;
+                    throw new Error('A source object could not be retained.');
+                  }
                   if (!allowed()) throw new Error('Source preparation cancelled.');
                   const imported = await this.write(guard, () =>
                     this.media.addStaged(staged.staged, {
@@ -229,22 +290,36 @@ export class ImportedSlides {
                 if (media.has(asset.token)) throw new Error('A source asset token is duplicated.');
                 media.set(asset.token, mediaId);
               }
-              const elements = native.elements.map((element): SlideElement => {
-                if (element.kind !== 'image' && element.kind !== 'video') return element;
-                const mediaId = media.get(element.mediaId);
-                if (!mediaId) throw new Error('A source object could not be retained.');
-                return { ...element, mediaId };
+              const candidates = occurrences.map((slide) => {
+                const elements = native.elements.flatMap((element): SlideElement[] => {
+                  if (element.kind !== 'image' && element.kind !== 'video') return [element];
+                  const mediaId = media.get(element.mediaId);
+                  if (mediaId) return [{ ...element, mediaId }];
+                  if (ref.ext !== 'pptx') throw new Error('A source object could not be retained.');
+                  const baked = bakedObject(element, native, slide, doc);
+                  if (baked) {
+                    if (element.mediaId !== RETAINED_SLIDE_PICTURE)
+                      issues.push(
+                        'A source picture could not be read. The slide’s saved picture supplies that part.',
+                      );
+                    return [baked];
+                  }
+                  issues.push(
+                    'A source drawing has no usable saved picture. Re-import with PowerPoint or Keynote to retain its picture.',
+                  );
+                  return [];
+                });
+                return {
+                  ...slide,
+                  elements: nativePageElements(slide, elements, doc, native).map((element) => ({
+                    ...element,
+                    id: `${slide.id}-${element.id}`,
+                  })),
+                  background: native.background,
+                  documentPage: { ...slide.documentPage, width: native.width, height: native.height },
+                  ...(ref.ext === 'pdf' ? { pageSize: { width: native.width, height: native.height } } : {}),
+                };
               });
-              const candidates = occurrences.map((slide) => ({
-                ...slide,
-                elements: nativePageElements(slide, elements, doc, native).map((element) => ({
-                  ...element,
-                  id: `${slide.id}-${element.id}`,
-                })),
-                background: native.background,
-                documentPage: { ...slide.documentPage, width: native.width, height: native.height },
-                ...(ref.ext === 'pdf' ? { pageSize: { width: native.width, height: native.height } } : {}),
-              }));
               // Check complete candidates before replacing any occurrence's old canvas.
               for (const candidate of candidates) {
                 const one = {
@@ -278,7 +353,7 @@ export class ImportedSlides {
           }
           if (parsed.failed.length)
             issues.push(
-              'Some pages of the original could not be matched to their slides. Those slides still show as before.',
+              'Some source pages could not be prepared and stay as their saved pictures. Reopen Edit slides to try again.',
             );
         } catch {
           if (!allowed()) throw new Error('Source preparation cancelled.');

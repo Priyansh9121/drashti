@@ -80,7 +80,12 @@ for (const operation of ['replace', 'delete'] as const) {
         await originalBox.dblclick();
         const typing = editor.locator('[data-editing="true"] .ProseMirror');
         await expect(typing).toBeVisible();
-        await typing.fill(REVISED);
+        // Chosen with the keys, as a person does: fill()'s DOM range can lose to the box's own check just
+        // after it takes the keyboard, which puts the double-click's caret back.
+        await expect(typing).toBeFocused();
+        await typing.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+        await ed.keyboard.insertText(REVISED);
+        await expect(typing).toHaveText(REVISED);
         await ed.keyboard.press('Escape');
         await expect(typing).toHaveCount(0);
         await expect(editor.getByTestId('editor-slide')).toContainText(REVISED);

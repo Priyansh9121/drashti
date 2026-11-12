@@ -6,6 +6,7 @@ import {
   cornersOf,
   distributeMoves,
   hitTest,
+  menuTarget,
   resizeFrame,
   rotatePoint,
   rotationToward,
@@ -65,6 +66,42 @@ describe('turned frames', () => {
     const line = { id: 'line', frame: { x: 0, y: 49, width: 300, height: 2 } };
     expect(hitTest([line], { x: 150, y: 56 })).toBeNull();
     expect(hitTest([line], { x: 150, y: 56 }, 6)).toBe('line');
+  });
+
+  it('cycles through the visible boxes at the same point in drawing order', () => {
+    const frame = { x: 50, y: 50, width: 200, height: 100 };
+    const elements = [
+      { id: 'bottom', frame },
+      { id: 'middle', frame, rotation: 90 },
+      { id: 'top', frame },
+      { id: 'hidden', frame, hidden: true },
+    ];
+    const point = { x: 150, y: 100 };
+    expect(hitTest(elements, point, 6)).toBe('top');
+    expect(hitTest(elements, point, 6, 'top')).toBe('middle');
+    expect(hitTest(elements, point, 6, 'middle')).toBe('bottom');
+    expect(hitTest(elements, point, 6, 'bottom')).toBe('top');
+  });
+
+  it('keeps the selected object under a right-click and picks a different object at a new point', () => {
+    const elements = [
+      { id: 'under', frame: { x: 0, y: 0, width: 100, height: 100 } },
+      { id: 'over', frame: { x: 50, y: 50, width: 100, height: 100 } },
+    ];
+    expect(menuTarget(elements, ['under'], { x: 75, y: 75 }, 6)).toBe('under');
+    expect(menuTarget(elements, ['under'], { x: 110, y: 75 }, 6)).toBe('over');
+    expect(menuTarget(elements, ['under'], { x: 500, y: 500 }, 6)).toBeNull();
+  });
+
+  it('starts from the top at a new point and ignores nearby boxes while cycling exact hits', () => {
+    const frame = { x: 0, y: 0, width: 100, height: 100 };
+    const elements = [
+      { id: 'under', frame },
+      { id: 'over', frame: { ...frame, x: 10 } },
+      { id: 'nearby', frame: { ...frame, x: 25 } },
+    ];
+    expect(hitTest(elements, { x: 20, y: 50 }, 6, 'over')).toBe('under');
+    expect(hitTest(elements, { x: 2, y: 50 }, 6, 'over')).toBe('under');
   });
 });
 

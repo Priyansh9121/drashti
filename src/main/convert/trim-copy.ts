@@ -20,7 +20,7 @@ export interface TrimCopyInput {
 
 type VideoTarget = 'mp4' | 'webm-alpha';
 
-const seconds = (ms: number): string => (ms / 1000).toFixed(3);
+const seconds = (ms: number): string => (ms / 1000).toFixed(Number.isInteger(ms) ? 3 : 6);
 
 function trimCopyArgs(input: TrimCopyInput, target: VideoTarget, output: string, id: string): string[] {
   // Re-encode even if a whole-file conversion could copy the picture. Accurate input seeking
@@ -39,7 +39,8 @@ function trimCopyArgs(input: TrimCopyInput, target: VideoTarget, output: string,
     '-nostdin',
     ...alphaDecoder,
     '-ss',
-    seconds(input.startMs),
+    // FFmpeg accepts microseconds. Round toward the frame instead of skipping it by a fraction.
+    seconds(Math.floor(input.startMs * 1000) / 1000),
     '-i',
     input.path,
     '-t',
