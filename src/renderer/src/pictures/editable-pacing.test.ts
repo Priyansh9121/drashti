@@ -21,7 +21,12 @@ const clock = vi.hoisted(() => ({
   longest: 0,
 }));
 /** Each page's steps (the page reader's own checkpoints) and how long each step's work takes, by page. */
-const core = vi.hoisted(() => ({ steps: 10, stepMs: (_page: number): number => 0 }));
+const core = vi.hoisted(() => ({
+  steps: 10,
+  stepMs: (_page: number): number => 0,
+  assetBytes: 0,
+  budgets: [] as number[],
+}));
 
 vi.mock('pdfjs-dist', () => ({
   OPS: {},
@@ -39,8 +44,9 @@ vi.mock('../../../shared/pdf-edit-page', () => ({
     _doc: unknown,
     page: { index: number },
     _ops: unknown,
-    control: { checkpoint?: () => Promise<void> },
+    control: { checkpoint?: () => Promise<void>; maxAssetBytes: number },
   ) => {
+    core.budgets.push(control.maxAssetBytes);
     for (let step = 0; step < core.steps; step++) {
       const ms = core.stepMs(page.index);
       clock.now += ms;
@@ -48,7 +54,13 @@ vi.mock('../../../shared/pdf-edit-page', () => ({
       clock.longest = Math.max(clock.longest, clock.working);
       await control.checkpoint?.();
     }
-    return { width: 960, height: 540, elements: [], assets: [], issues: [] };
+    return {
+      width: 960,
+      height: 540,
+      elements: [],
+      assets: core.assetBytes ? [{ id: 'placeholder', png: new Uint8Array(core.assetBytes) }] : [],
+      issues: [],
+    };
   },
 }));
 
@@ -70,6 +82,7 @@ const job = (pages: number): EditablePdfJob => ({
 /** What the window sent Main, in order, with the clock's time. */
 let sent: { mode: string; sourceIndex?: number; total?: number; at: number }[] = [];
 let finished: { total: number; failed: number[] } | null = null;
+let skipped: number | null = null;
 
 beforeEach(() => {
   clock.now = 0;
@@ -79,6 +92,9 @@ beforeEach(() => {
   clock.working = 0;
   clock.longest = 0;
   core.steps = 10;
+  core.assetBytes = 0;
+  core.budgets = [];
+  skipped = null;
   core.stepMs = () => 0;
   sent = [];
   finished = null;
@@ -97,7 +113,9 @@ beforeEach(() => {
       pictures: {
         page: (message: { mode: string; sourceIndex?: number; total?: number }) => {
           sent.push({ ...message, at: clock.now });
-          return Promise.resolve(true);
+          return Promise.resolve(
+            message.mode === 'editable-source' && message.sourceIndex === skipped ? 'skipped' : true,
+          );
         },
         done: (message: { total: number; failed: number[] }) => {
           finished = message;
@@ -125,6 +143,16 @@ describe('preparing a PDF for Edit slides in the hidden window (Session 57)', ()
     const waited = clock.pauses.reduce((sum, ms) => sum + ms, 0);
     expect(waited, `${String(clock.pauses.length)} pauses`).toBeLessThan(1_000);
     expect(checkpoints().length).toBeLessThanOrEqual(100);
+  });
+
+  it('keeps the full byte budget for the next page when Main skips a page', async () => {
+    skipped = 0;
+    core.assetBytes = 50;
+    const request = job(3);
+    request.limits = { ...request.limits, jobAssetBytes: 100 };
+    await drawEditablePdf(request, Assets);
+    expect(pages()).toEqual([0, 1, 2]);
+    expect(core.budgets).toEqual([100, 100, 50]);
   });
 
   it('still gives way: never 100 ms of work without a pause', async () => {
