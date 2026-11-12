@@ -271,7 +271,7 @@ describe('Import from a Link: Dropbox', () => {
       expect(probe.path).toEqual(expect.any(String));
       expect(workers).toHaveLength(1);
       expect(service.view().phase).toBe('looking');
-      expect(service.stop().view.phase).toBe('stopped');
+      expect(service.stop()).toMatchObject({ ok: true, view: { phase: 'stopped' } });
       release();
       await until(() => probe.removed);
       expect(workers).toHaveLength(1);
@@ -385,6 +385,7 @@ describe('Import from a Link: Dropbox', () => {
     const h = await harness({ spawn });
     expect(h.service.start(FILE_LINK, false, false).ok).toBe(true);
     workers[0]?.send({ type: 'looked', name: 'Placeholder clip.mp4', size: VIDEO.length, zip: false });
+    await until(() => workers[1]?.messages.some((message) => message.type === 'download') === true);
     const job = workers[1]?.messages.find((message) => message.type === 'download');
     if (!job) throw new Error('The automatic download did not start');
     writeFileSync(job.part, VIDEO);
