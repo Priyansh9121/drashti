@@ -17,6 +17,7 @@ import { sourceWrite } from '../documents/source-write';
 import * as nativeImport from '../import/deck/native-deck-import';
 import { MediaStore } from '../import/media-store';
 import { OriginalsStore } from '../import/originals-store';
+import { editablePicture } from '../import/testing/editable-pptx-fixture';
 import { makeTestDeck, placeholderDeckMedia, type TestDeckSlide } from '../import/testing/make-deck';
 import { nativeSourceReader } from '../import/testing/native-source-reader';
 import { originalWorld } from '../import/testing/original-fixture';
@@ -118,7 +119,8 @@ async function save(id: string, opened: Opened): Promise<SaveSlidesResult> {
 
 /** The generated deck kept as an original, as an import keeps it, and placeholder media for its clips. */
 async function kept(w: World, slides: readonly TestDeckSlide[], name: string) {
-  const bytes = makeTestDeck(slides, placeholderDeckMedia());
+  // The reader extracts the video's poster as its editable source picture.
+  const bytes = makeTestDeck(slides, { ...placeholderDeckMedia(), poster1: editablePicture() });
   const file = join(w.root, `${name}.pptx`);
   writeFileSync(file, bytes);
   const originals = new OriginalsStore(w.db, w.mediaDir, { freeBytes: () => 1024 ** 4 });
