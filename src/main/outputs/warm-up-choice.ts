@@ -17,6 +17,8 @@
  * takes one up again): an output told to skip its warm-up is never told to warm up.
  */
 
+import type { ScreenRole } from '../../shared/screens';
+
 /** Chromium's gpu_compositing status in a feature status (app.getGPUFeatureStatus()), or '' where there is none. */
 export function compositingOf(status: unknown): string {
   if (typeof status !== 'object' || status === null) return '';
@@ -38,7 +40,8 @@ export function warmsUp(status: unknown): boolean {
 }
 
 /** An output's choice as the log says it. */
-export function warmUpLine(name: string, status: unknown): string {
+export function warmUpLine(name: string, status: unknown, role?: ScreenRole): string {
+  if (role === 'stage') return `Warm-up: none (stage), for ${name}`;
   const compositing = compositingOf(status);
   const what = !warmsUp(status)
     ? `skipped, no graphics chip (gpu_compositing ${compositing})`
@@ -100,7 +103,7 @@ export class WarmUpChoices {
    * Whether output window `id` (`name` for the log) skips its warm-up now: only once Chromium has said it draws
    * without a graphics chip. Said in the log as it is first given, and again only if it changes.
    */
-  skips(id: number, name: string): boolean {
+  skips(id: number, name: string, role?: ScreenRole): boolean {
     if (!this.said) return false;
     if (this.given.get(id) === true) return true;
     let status: unknown;
@@ -112,7 +115,7 @@ export class WarmUpChoices {
     const skip = !warmsUp(status);
     if (this.given.get(id) !== skip) {
       this.given.set(id, skip);
-      this.deps.log(warmUpLine(name, status));
+      this.deps.log(warmUpLine(name, status, role));
     }
     return skip;
   }
@@ -137,8 +140,11 @@ export function warmUpFact(
   choices: WarmUpChoices,
   win: WarmUpWindow | undefined,
   name: string,
+  role?: ScreenRole,
 ): { noGpu?: true } {
-  return win !== undefined && alive(win) && choices.skips(win.webContents.id, name) ? { noGpu: true } : {};
+  return win !== undefined && alive(win) && choices.skips(win.webContents.id, name, role)
+    ? { noGpu: true }
+    : {};
 }
 
 /** Follow Main's or a node's output windows (by screen, with their names): each is sent its context with `send`. */

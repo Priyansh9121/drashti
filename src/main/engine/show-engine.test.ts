@@ -461,7 +461,11 @@ describe('ShowEngine', () => {
     it('puts a slide background on the background layer, with its start time, in the same patch as the slide', () => {
       const { engine, transport } = withBackgrounds();
       engine.dispatch(goLive('bg', 0));
-      expect(engine.current.layers.background).toEqual({ ...video('A'), startedAt: 2000 });
+      expect(engine.current.layers.background).toEqual({
+        ...video('A'),
+        startedAt: 2000,
+        sourceItemId: null,
+      });
       const patch = transport.last as EnginePatchMessage;
       // The first change: Oops can take it back (Session 55).
       expect(patch.ops.map((o) => o.path.join('.')).sort()).toEqual([
@@ -491,10 +495,18 @@ describe('ShowEngine', () => {
       engine.dispatch(goLive('bg', 0));
       engine.dispatch({ type: 'next' });
       engine.dispatch({ type: 'next' });
-      expect(engine.current.layers.background).toEqual({ ...video('A', { fit: 'fit' }), startedAt: 2000 });
+      expect(engine.current.layers.background).toEqual({
+        ...video('A', { fit: 'fit' }),
+        startedAt: 2000,
+        sourceItemId: null,
+      });
       // Going live on its first slide again changes nothing but the fit: still the same playback.
       engine.dispatch(goLive('bg', 0));
-      expect(engine.current.layers.background).toEqual({ ...video('A'), startedAt: 2000 });
+      expect(engine.current.layers.background).toEqual({
+        ...video('A'),
+        startedAt: 2000,
+        sourceItemId: null,
+      });
     });
 
     it('replaces the background when a slide brings a different file', () => {
@@ -539,7 +551,11 @@ describe('ShowEngine', () => {
       const { engine } = withBackgrounds();
       engine.dispatch(goLive('bg', 0));
       engine.dispatch({ type: 'setBackground', background: video('A', { loop: false }) });
-      expect(engine.current.layers.background).toEqual({ ...video('A', { loop: false }), startedAt: 2000 });
+      expect(engine.current.layers.background).toEqual({
+        ...video('A', { loop: false }),
+        startedAt: 2000,
+        sourceItemId: null,
+      });
       engine.dispatch({ type: 'setBackground', background: { kind: 'color', color: '#101010' } });
       expect(engine.current.layers.background).toEqual({ kind: 'color', color: '#101010' });
       engine.dispatch({ type: 'setBackground', background: video('A') });
@@ -1306,7 +1322,7 @@ describe('ShowEngine', () => {
         engine.restore({ slide: { presentationId: 'p2', slideIndex: 5 }, background, blackout: false }).slide,
       ).toBe(false);
       expect(engine.current.layers.slide).toBeNull();
-      expect(engine.current.layers.background).toEqual(background);
+      expect(engine.current.layers.background).toEqual({ ...background, sourceItemId: null });
     });
 
     it('puts the slide back with the time it went up, so its videos and their sound carry on (Session 51); never later than now', () => {

@@ -426,6 +426,38 @@ test('Trim black and silence: from a video’s menu with Undo, and by itself for
   await expect.poll(async () => (await markersOf(win, videoId)).startMs).toBeNull();
   expect((await markersOf(win, videoId)).endMs).toBeNull();
 
+  // A playlist reset ignores the file’s old points again after Undo.
+  const oldPoints = { startMs: 700, endMs: 5200, markers: [] };
+  const resetRow = await win.evaluate(
+    async ({ id, old }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const points = await d.media.setMarkers(id, old);
+      if (!points.ok) throw new Error(points.message);
+      const list = await d.playlists.create('Placeholder reset', null, false);
+      if (!list.ok) throw new Error(list.message);
+      const added = await d.playlists.addItems(list.ids[0] ?? '', null, [{ kind: 'media', mediaId: id }]);
+      if (!added.ok) throw new Error(added.message);
+      const rowId = added.ids[0] ?? '';
+      const reset = await d.media.resetRowTrim(rowId, id);
+      if (!reset.ok) throw new Error(reset.message);
+      return rowId;
+    },
+    { id: videoId, old: oldPoints },
+  );
+  const rowTrim = () => win.evaluate((id) => (globalThis as PageGlobals).drashti.media.rowTrim(id), resetRow);
+  expect((await rowTrim())?.markers).toEqual({ startMs: null, endMs: null, markers: [] });
+
+  await win.getByTestId('media-item').filter({ hasText: 'Placeholder edges' }).click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Trim black and silence' }).click();
+  await expect(win.getByTestId('operator-notice')).toContainText('now plays from 0:01.5 to 0:04.5', {
+    timeout: 30_000,
+  });
+  await expect(undo).toContainText('Trimmed “Placeholder edges.mp4” past its black and silence');
+  expect((await rowTrim())?.markers).toEqual(points);
+  await undo.getByRole('button', { name: /Undo/ }).click();
+  await expect.poll(() => markersOf(win, videoId)).toEqual(oldPoints);
+  expect((await rowTrim())?.markers).toEqual({ startMs: null, endMs: null, markers: [] });
+
   // From a Link… (a made-up Dropbox): its points are set by themselves once it is in.
   await chooseMenuItem(app, 'import-from-link');
   await pasteLink(win, fileLink('edgeAAAAAAAAAAA', 'Placeholder link clip.mp4'));
