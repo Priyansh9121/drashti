@@ -558,7 +558,7 @@ export class SmartFolders {
     // A changed file replaces what it was in the library: the folder is the playlist's own.
     const result = await this.deps.importFiles(
       given.map((g) => g.path),
-      { onConflict: 'replace' },
+      { onConflict: 'replace', automatic: true },
     );
     for (const g of given) f.pending.delete(g.relative);
     if (!result.ok) {

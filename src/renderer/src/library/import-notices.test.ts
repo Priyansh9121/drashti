@@ -130,7 +130,7 @@ it.each([
     ...deckOf(name, [
       { severity: 'warning', code, message, fix: null },
       { severity: 'warning', code, message, fix: null },
-      { severity: 'info', code: 'placeholder-info', message: 'Placeholder information.', fix: null },
+      { severity: 'info', code, message: 'Placeholder information.', fix: null },
     ]),
     format,
     sourcePath: `/placeholder/${format}.json`,
@@ -139,6 +139,33 @@ it.each([
   showImportFailures(reportOf([item]), vi.fn());
   expect(useImportNotices.getState().notices).toMatchObject([
     { text: `“${name}” · ${message}`, retry: undefined },
+  ]);
+});
+
+it.each(['deck-other-app', 'pictures-converter'])('shows only the %s warning, once', (code) => {
+  const message = 'Another app prepared the placeholder deck. Check its slides before the show.';
+  const warning = { severity: 'warning' as const, code, message, fix: null };
+  const info = { severity: 'info' as const, code, message: 'Placeholder successful conversion.', fix: null };
+  showImportFailures(
+    reportOf([
+      deckOf('Placeholder deck', [warning, warning, info]),
+      deckOf('Placeholder converted deck', [info]),
+    ]),
+  );
+  expect(useImportNotices.getState().notices).toMatchObject([
+    { text: `“Placeholder deck” · ${message}`, whole: true },
+  ]);
+});
+
+it('says when an import replaced the markers of media already in the library', () => {
+  const message = 'Placeholder clip has the start, end and markers from this import now.';
+  const issue = { severity: 'info' as const, code: 'markers-replaced', message, fix: null };
+  showImportFailures(reportOf([deckOf('Placeholder deck', [issue, issue])]));
+  expect(useImportNotices.getState().notices).toMatchObject([
+    {
+      text: `“Placeholder deck” · ${message} Check the new points and markers before playing the media again.`,
+      whole: true,
+    },
   ]);
 });
 

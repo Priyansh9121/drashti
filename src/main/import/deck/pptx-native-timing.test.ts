@@ -186,7 +186,7 @@ describe('PowerPoint slide animation timing', () => {
     }
   });
 
-  it('reads the gallery Zoom, Float, Split and symmetric Grow/Shrink with their durations, keeping PowerPoint’s video only for Split', () => {
+  it('reads the gallery Zoom, Float, Split and symmetric Grow/Shrink with their durations, all as PowerPoint plays them', () => {
     const click = (id: number, preset: string, cls: 'entr' | 'exit' | 'emph', children: string) =>
       parallel(
         id,
@@ -235,19 +235,18 @@ describe('PowerPoint slide animation timing', () => {
         click(40, '16', 'entr', split) +
         click(50, '6', 'emph', grow),
     );
-    // Compared with PowerPoint's own movie: the gallery Zoom (12 Nov), Float in and out and Grow/Shrink (13 Nov), all
-    // within a pixel (shared/deck-motion-powerpoint.test.ts), so Drashti plays them itself. Split is drawn by Drashti
-    // where no video can be made, and keeps PowerPoint's video wherever one can be.
+    // Compared with PowerPoint's own movie: the gallery Zoom (12 Nov), Float in and out, Grow/Shrink and Split (13 Nov),
+    // all within a pixel (shared/deck-motion-powerpoint.test.ts), so Drashti plays them itself.
     for (const [preset, cls, children] of [
       ['53', 'entr', zoom],
       ['42', 'entr', float(3, 'in')],
       ['47', 'exit', float(4, 'out')],
+      ['16', 'entr', split],
       ['6', 'emph', grow],
     ] as const)
       expect(read(click(20, preset, cls, children)).motion?.approximate, `preset ${preset}`).toBe(false);
-    expect(read(click(20, '16', 'entr', split)).motion?.approximate).toBe(true);
     expect(slide.motion).toMatchObject({
-      approximate: true,
+      approximate: false,
       effects: [
         { shapeId: '2', step: 1, phase: 'in', kind: 'zoom', fade: true, durationMs: 300 },
         {
@@ -321,7 +320,7 @@ describe('PowerPoint slide animation timing', () => {
     });
   });
 
-  it('plays Basic Zoom exactly only as a plain zoom from nothing where the shape stands, keeping PowerPoint’s video for its other variants', () => {
+  it('plays Basic Zoom and its variants as PowerPoint writes them, each track evenly from where it starts', () => {
     const grow = (width: string, height: string, ...moves: string[]) =>
       alone(
         '23',
@@ -335,6 +334,7 @@ describe('PowerPoint slide animation timing', () => {
       approximate: false,
       effects: [{ shapeId: '2', phase: 'in', kind: 'zoom', durationMs: 500 }],
     });
+    expect(grow(number(0), number(0))?.effects[0]).not.toHaveProperty('zoomAway');
     // Leaving the same way: shrinking to nothing where it stands.
     expect(
       alone(
@@ -344,33 +344,89 @@ describe('PowerPoint slide animation timing', () => {
           track(2, 22, 'ppt_h', formula('#ppt_h'), number(0)),
       ),
     ).toMatchObject({ approximate: false, effects: [{ phase: 'out', kind: 'zoom', durationMs: 500 }] });
-    // The other variants start from another size, or move as they grow. Drashti still draws them as that zoom where
-    // no video can be made, but they have not been compared with PowerPoint's own movie.
-    const large = (base: string) => formula(`(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*${base}`);
+    // The other variants start from another size, or move as they grow: each read from its tracks, PowerPoint's own
+    // formulas of the shape's place and size, and played evenly as written. Compared with PowerPoint's own movie
+    // (13 Nov): within a pixel (shared/deck-motion-powerpoint.test.ts).
+    const large = (base: string) => `(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*${base}`;
     const fromCentre = [
       track(2, 23, 'ppt_x', number(0.5), formula('#ppt_x')),
       track(2, 24, 'ppt_y', number(0.5), formula('#ppt_y')),
     ];
     const fromBottom = [
       track(2, 23, 'ppt_x', number(0.5), formula('#ppt_x')),
-      track(
-        2,
-        24,
-        'ppt_y',
-        formula('1+(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*#ppt_h/2'),
-        formula('#ppt_y'),
-      ),
+      track(2, 24, 'ppt_y', formula(`1+${large('#ppt_h')}/2`), formula('#ppt_y')),
     ];
-    for (const [variant, motion] of [
-      ['In Slightly', grow(formula('2/3*#ppt_w'), formula('2/3*#ppt_h'))],
-      ['Out', grow(large('#ppt_w'), large('#ppt_h'))],
-      ['In From Screen Center', grow(number(0), number(0), ...fromCentre)],
-      ['Out From Screen Bottom', grow(large('#ppt_w'), large('#ppt_h'), ...fromBottom)],
+    const big = { w: large('#ppt_w'), h: large('#ppt_h') };
+    for (const [variant, motion, zoomAway] of [
+      [
+        'In Slightly',
+        grow(formula('2/3*#ppt_w'), formula('2/3*#ppt_h')),
+        { w: '2/3*#ppt_w', h: '2/3*#ppt_h' },
+      ],
+      ['Out', grow(formula(big.w), formula(big.h)), big],
+      [
+        'In From Screen Center',
+        grow(number(0), number(0), ...fromCentre),
+        { w: '0', h: '0', x: '0.5', y: '0.5' },
+      ],
+      [
+        'Out From Screen Bottom',
+        grow(formula(big.w), formula(big.h), ...fromBottom),
+        { ...big, x: '0.5', y: `1+${large('#ppt_h')}/2` },
+      ],
     ] as const)
       expect(motion, variant).toMatchObject({
-        approximate: true,
-        effects: [{ shapeId: '2', phase: 'in', kind: 'zoom', durationMs: 500 }],
+        approximate: false,
+        effects: [{ shapeId: '2', phase: 'in', kind: 'zoom', zoomAway, durationMs: 500 }],
       });
+    // Leaving to another size or place, each its entrance played backwards as PowerPoint writes them: Out, In Slightly
+    // and In To Screen Center compared with PowerPoint's own movie (13 Nov, run 2: within a pixel); Out To Screen
+    // Bottom drawn so, keeping PowerPoint's video (its last frame, a sliver across the slide's foot, is 0.26 px off).
+    const shrink = (width: string, height: string, ...moves: string[]) =>
+      alone(
+        '23',
+        'exit',
+        track(2, 21, 'ppt_w', formula('#ppt_w'), width) +
+          track(2, 22, 'ppt_h', formula('#ppt_h'), height) +
+          moves.join(''),
+      );
+    const toCentre = [
+      track(2, 23, 'ppt_x', formula('#ppt_x'), number(0.5)),
+      track(2, 24, 'ppt_y', formula('#ppt_y'), number(0.5)),
+    ];
+    const toBottom = [
+      track(2, 23, 'ppt_x', formula('#ppt_x'), number(0.5)),
+      track(2, 24, 'ppt_y', formula('#ppt_y'), formula(`1+${large('#ppt_h')}/2`)),
+    ];
+    for (const [variant, motion, zoomAway] of [
+      ['Out', shrink(formula(big.w), formula(big.h)), big],
+      [
+        'In Slightly',
+        shrink(formula('2/3*#ppt_w'), formula('2/3*#ppt_h')),
+        { w: '2/3*#ppt_w', h: '2/3*#ppt_h' },
+      ],
+      [
+        'In To Screen Center',
+        shrink(number(0), number(0), ...toCentre),
+        { w: '0', h: '0', x: '0.5', y: '0.5' },
+      ],
+    ] as const)
+      expect(motion, variant).toMatchObject({
+        approximate: false,
+        effects: [{ shapeId: '2', phase: 'out', kind: 'zoom', zoomAway, durationMs: 500 }],
+      });
+    expect(shrink(formula(big.w), formula(big.h), ...toBottom)).toMatchObject({
+      approximate: true,
+      effects: [{ phase: 'out', kind: 'zoom', zoomAway: { ...big, x: '0.5', y: `1+${large('#ppt_h')}/2` } }],
+    });
+    // A width and height that grow apart, or a formula Drashti cannot read: the closest zoom, keeping the video.
+    for (const motion of [
+      grow(formula('2/3*#ppt_w'), formula('3/4*#ppt_h')),
+      grow(number(0), number(0), track(2, 23, 'ppt_x', formula('sin(#ppt_x)'), formula('#ppt_x'))),
+    ]) {
+      expect(motion).toMatchObject({ approximate: true, effects: [{ kind: 'zoom' }] });
+      expect(motion?.effects[0]).not.toHaveProperty('zoomAway');
+    }
   });
 
   it('turns Grow & Turn and Shrink & Turn while they scale and fade, as PowerPoint plays them', () => {
@@ -400,18 +456,29 @@ describe('PowerPoint slide animation timing', () => {
     expect(alone('31', 'entr', turn('in').replace(number(90), formula('#ppt_w')))?.approximate).toBe(true);
   });
 
-  it('plays Split in from both edges as well as out from the middle, keeping PowerPoint’s video where one can be made', () => {
-    expect(alone('16', 'entr', filtered(2, 'barn(inVertical)'))).toMatchObject({
-      approximate: true,
-      effects: [{ kind: 'split', splitAxis: 'x', inward: true, durationMs: 500 }],
-    });
-    expect(alone('16', 'exit', filtered(2, 'barn(inHorizontal)', 'out'))).toMatchObject({
-      approximate: true,
-      effects: [{ phase: 'out', kind: 'split', splitAxis: 'y', inward: true }],
-    });
+  it('plays Split in from both edges as well as out from the middle, coming in and leaving, as PowerPoint does', () => {
+    // PowerPoint's "In" (barn(in…)) moves both edges from the box's own edges to its middle; "Out" from the middle to
+    // the edges. Compared with its own movie (13 Nov), all eight within a pixel.
+    for (const [filter, axis] of [
+      ['barn(inVertical)', 'x'],
+      ['barn(inHorizontal)', 'y'],
+      ['barn(outVertical)', 'x'],
+      ['barn(outHorizontal)', 'y'],
+    ] as const) {
+      const inward = filter.startsWith('barn(in') ? { inward: true } : {};
+      expect(alone('16', 'entr', filtered(2, filter)), filter).toMatchObject({
+        approximate: false,
+        effects: [{ phase: 'in', kind: 'split', splitAxis: axis, ...inward, durationMs: 500 }],
+      });
+      expect(alone('16', 'exit', filtered(2, filter, 'out')), filter).toMatchObject({
+        approximate: false,
+        effects: [{ phase: 'out', kind: 'split', splitAxis: axis, ...inward, durationMs: 500 }],
+      });
+    }
+    expect(alone('16', 'entr', filtered(2, 'barn(outVertical)'))?.effects[0]).not.toHaveProperty('inward');
   });
 
-  it('plays a Fly’s smooth start and smooth end exactly, the effect’s own or the one its behaviours share', () => {
+  it('plays a smooth start and smooth end of a Fly, Float or Grow/Shrink exactly, the effect’s own or the one its behaviours share', () => {
     const fly = (timing: string, own = '') =>
       alone(
         '2',
@@ -434,19 +501,45 @@ describe('PowerPoint slide animation timing', () => {
     });
     // The effect's own and its behaviours' differ: Drashti cannot say which PowerPoint plays.
     expect(fly(' decel="100000"', ' accel="50000"')?.approximate).toBe(true);
-    // Any other effect with a smooth start or end has not been compared with PowerPoint's own movie (run 1 eased only a
-    // Fly): it is drawn with the same ramps, but keeps PowerPoint's video where one can be made.
+    // Float and Grow/Shrink eased the same are played exactly too: compared with PowerPoint's own movie (13 Nov, run 2:
+    // within half a pixel and 2 % of the box, shared/deck-motion-powerpoint.test.ts).
     const float = track(2, 21, 'ppt_y', formula('#ppt_y+0.08'), formula('#ppt_y')) + fadeOf(2, 22, 'in');
     expect(alone('42', 'entr', float)?.approximate).toBe(false);
     expect(alone('42', 'entr', float, 'accel="25000" decel="50000"')).toMatchObject({
-      approximate: true,
+      approximate: false,
       effects: [{ kind: 'float', accel: 0.25, decel: 0.5 }],
+    });
+    const sink = track(2, 21, 'ppt_y', formula('#ppt_y'), formula('#ppt_y+0.08')) + fadeOf(2, 22, 'out');
+    expect(alone('47', 'exit', sink, 'accel="25000" decel="50000"')).toMatchObject({
+      approximate: false,
+      effects: [{ phase: 'out', kind: 'float', direction: 'down', accel: 0.25, decel: 0.5 }],
     });
     const grow = `<p:animScale><p:cBhvr><p:cTn id="21" dur="500" decel="100000"/><p:tgtEl><p:spTgt spid="2"/></p:tgtEl></p:cBhvr><p:by x="150000" y="150000"/></p:animScale>`;
     expect(alone('6', 'emph', grow)).toMatchObject({
-      approximate: true,
+      approximate: false,
       effects: [{ kind: 'grow-shrink', scale: 1.5, decel: 1 }],
     });
+    expect(
+      alone('6', 'emph', grow.replace(' decel="100000"', ''), 'accel="25000" decel="50000"'),
+    ).toMatchObject({
+      approximate: false,
+      effects: [{ kind: 'grow-shrink', scale: 1.5, accel: 0.25, decel: 0.5 }],
+    });
+    // Any other effect with a smooth start or end has not been compared with PowerPoint's own movie: it is drawn with
+    // the same ramps, but keeps PowerPoint's video where one can be made.
+    expect(alone('16', 'entr', filtered(2, 'barn(outVertical)'), 'decel="100000"')).toMatchObject({
+      approximate: true,
+      effects: [{ kind: 'split', decel: 1 }],
+    });
+    expect(
+      alone(
+        '23',
+        'entr',
+        track(2, 21, 'ppt_w', number(0), formula('#ppt_w')) +
+          track(2, 22, 'ppt_h', number(0), formula('#ppt_h')),
+        'accel="50000"',
+      ),
+    ).toMatchObject({ approximate: true, effects: [{ kind: 'zoom', accel: 0.5 }] });
   });
 
   it('draws Shape, Wheel, Random Bars and Bounce, keeping PowerPoint’s video where one can be made', () => {
