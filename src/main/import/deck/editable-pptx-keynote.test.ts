@@ -221,6 +221,59 @@ describe('the text style and line of a plain text box', () => {
     expect.soft(elements[4]).toMatchObject({ fill: '#22bb44', outline: null });
     expect(elements[5]).toMatchObject({ fill: '#22bb44', outline: null });
   });
+
+  it('uses Office-theme style lines for a shape and a connector without direct lines', async () => {
+    const lines = [6350, 12700, 19050]
+      .map(
+        (width) => `<a:ln w="${String(width)}"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln>`,
+      )
+      .join('');
+    const theme =
+      '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Placeholder Office">' +
+      '<a:themeElements><a:clrScheme name="Placeholder"><a:accent1><a:srgbClr val="4472C4"/></a:accent1></a:clrScheme>' +
+      '<a:fmtScheme name="Placeholder"><a:lnStyleLst>' +
+      lines +
+      '</a:lnStyleLst></a:fmtScheme></a:themeElements></a:theme>';
+    const style = (index: number, shade = '') =>
+      `<p:style><a:lnRef idx="${String(index)}"><a:schemeClr val="accent1">${shade}</a:schemeClr></a:lnRef></p:style>`;
+    const rectangle =
+      '<p:sp><p:nvSpPr><p:cNvPr id="10" name="Placeholder rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>' +
+      '<p:spPr>' +
+      BOX +
+      '</p:spPr>' +
+      style(2, '<a:shade val="15000"/>') +
+      '</p:sp>';
+    const connector = (id: number, name: string, line: string) =>
+      `<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="${String(id)}" name="${name}"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>` +
+      '<p:spPr>' +
+      BOX.replace('prst="rect"', 'prst="line"') +
+      line +
+      '</p:spPr>' +
+      style(1) +
+      '</p:cxnSp>';
+    const elements = await readSlide(
+      slideXml(
+        rectangle +
+          connector(11, 'Placeholder connector', '') +
+          connector(12, 'Placeholder no outline', '<a:ln><a:noFill/></a:ln>'),
+      ),
+      { 'ppt/theme/theme1.xml': theme },
+    );
+    expect(elements).toHaveLength(2);
+    expect(elements[0]).toMatchObject({
+      kind: 'shape',
+      shape: 'rectangle',
+      name: 'Placeholder rectangle',
+      outline: { color: '#172c51', width: 4 / 3 },
+    });
+    expect(elements[1]).toMatchObject({
+      kind: 'shape',
+      shape: 'line',
+      name: 'Placeholder connector',
+      fill: null,
+      outline: { color: '#4472c4', width: 2 / 3 },
+    });
+  });
 });
 
 describe("Keynote's copy of a title slide and a table (the real round trip's slides 4 and 5)", () => {
