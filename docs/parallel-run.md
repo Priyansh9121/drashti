@@ -1,6 +1,6 @@
 # Running Drashti alongside ProPresenter
 
-This guide is for **1.0.0-alpha.16**: a double-click switches to Simple Mode and back; Simple Mode has Pro Mode's playlists (several, in folders), **Audio**, **Record**, a row's trims and **Edit slides…**; LIVE shows one thing at a time; and the time bar drags as on any video player. Keep the existing fallback program and its library untouched.
+This guide is for **1.0.0-alpha.17**: imports ask nothing and open no report (a notice says what did not come in), **From a Link…** starts on a paste, a playlist video's **Trim** makes a trimmed video for its row, and the Wallpaper and Black-out turn each other off. Since alpha.16 a double-click switches to Simple Mode and back; Simple Mode has Pro Mode's playlists (several, in folders), **Audio**, **Record**, a row's trims and **Edit slides…**; LIVE shows one thing at a time; and the time bar drags as on any video player. Keep the existing fallback program and its library untouched.
 
 This guide is for the volunteers who try Drashti on the mandir's two computers, the ProPresenter 6 Mac and the ProPresenter 7 Windows PC, before it is used for a real sabha. It follows the plan's "parallel run" (PLAN.md, section 5.1): Drashti runs on the real computers and screens on evenings **without** a sabha, and ProPresenter stays installed, untouched, the whole time.
 

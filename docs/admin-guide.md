@@ -1,6 +1,6 @@
 # The admin's guide: looking after Drashti
 
-These instructions describe **1.0.0-alpha.16**, including Books, editing imported slides and PDFs, and live captions (off and marked Trial). Keep Main, nodes and phone pages on the matching build when updating.
+These instructions describe **1.0.0-alpha.17**, including imports that ask nothing (section 14 for links), Books, editing imported slides and PDFs, and live captions (off and marked Trial). Keep Main, nodes and phone pages on the matching build when updating.
 
 This guide is for the **admins**: whoever sets Drashti up at the mandir and keeps it right from week to week. The operators' side, running a sabha in Pro Mode, is in `docs/operator-guide.md`; the first evenings beside the old presentation program are in `docs/parallel-run.md`; the day Drashti is set up on the mandir's computers has its own list, `docs/setup-day.md`.
 
