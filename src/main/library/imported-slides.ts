@@ -1,4 +1,5 @@
 import { documentCanvas, slideCanvas } from '../../shared/document-page';
+import { deckAfterEdit } from '../../shared/deck-edit-motion';
 import { freshGroups } from '../../shared/element-groups';
 import { masterContribution, renderEditedSlide } from '../../shared/slide-design';
 import { fitElements } from '../../shared/slide-size';
@@ -100,6 +101,35 @@ function bakedObject(
   };
 }
 
+function nativePageElements(
+  slide: EditSlide,
+  elements: SlideElement[],
+  doc: EditDoc,
+  native: Pick<EditDoc, 'width' | 'height'>,
+): SlideElement[] {
+  const videos = new Map<string, MediaElement>();
+  for (const element of slide.elements) {
+    if (element.kind === 'video' && element.sourceShapeId) videos.set(element.sourceShapeId, element);
+  }
+  if (!slide.deck?.motion || videos.size === 0) return elements;
+  const mapped = elements.map((element): SlideElement => {
+    if (element.kind !== 'image' || !element.sourceShapeId) return element;
+    const video = videos.get(element.sourceShapeId);
+    if (!video) return element;
+    videos.delete(element.sourceShapeId);
+    const { crop: _posterCrop, ...poster } = element;
+    return {
+      ...video,
+      ...poster,
+      kind: 'video',
+      mediaId: video.mediaId,
+      fit: video.fit,
+    };
+  });
+  // Some embedded videos have no poster in the source. Keep their playable object above the other elements.
+  return [...mapped, ...fitElements([...videos.values()], documentCanvas(slide.documentPage, doc), native)];
+}
+
 interface PreparedEditor {
   stamp: string;
   doc: EditDoc;
@@ -185,7 +215,11 @@ export class ImportedSlides {
     try {
       const bySource = new Map<string, EditSlide[]>();
       for (const slide of slides)
-        if (slide.documentPage && !slide.documentPage.edited) {
+        if (
+          slide.documentPage &&
+          !slide.documentPage.edited &&
+          !(slide.deck?.motion && slide.deck.steps.length === 0)
+        ) {
           const ref = slide.documentPage;
           const key = `${ref.sha256}.${ref.ext}`;
           const list = bySource.get(key) ?? [];
@@ -277,7 +311,10 @@ export class ImportedSlides {
                 });
                 return {
                   ...slide,
-                  elements: elements.map((element) => ({ ...element, id: slide.id + '-' + element.id })),
+                  elements: nativePageElements(slide, elements, doc, native).map((element) => ({
+                    ...element,
+                    id: `${slide.id}-${element.id}`,
+                  })),
                   background: native.background,
                   documentPage: { ...slide.documentPage, width: native.width, height: native.height },
                   ...(ref.ext === 'pdf' ? { pageSize: { width: native.width, height: native.height } } : {}),
@@ -719,7 +756,9 @@ export class ImportedSlides {
             message: 'A page cannot be linked to a different original file. Reopen the editor.',
           };
         slide.documentPage.edited = true;
-        delete slide.deck;
+        const deck = deckAfterEdit(stored.get(slide.id)?.deck, slide.deck);
+        if (deck) slide.deck = deck;
+        else delete slide.deck;
         continue;
       }
       const original =
@@ -779,7 +818,7 @@ export class ImportedSlides {
         if (saved.pageSize) slide.pageSize = saved.pageSize;
         else delete slide.pageSize;
       } else {
-        if (original.deck && !original.documentPage?.edited && (!slide.documentPage.edited || slide.deck))
+        if (original.deck?.steps.length && !original.documentPage?.edited && !slide.documentPage.edited)
           return {
             ok: false,
             message: 'Confirm that this animated slide becomes a Drashti slide before changing its objects.',
@@ -791,7 +830,9 @@ export class ImportedSlides {
           page: originalRef.page,
           edited: true,
         };
-        delete slide.deck;
+        const deck = deckAfterEdit(original.deck, slide.deck);
+        if (deck) slide.deck = deck;
+        else delete slide.deck;
       }
     }
     return { ok: true, doc };

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { type DeckNativeTransition, isDeckNativeTransition } from '../../../shared/deck-transition';
 import type { EngineState, SlideLayer } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
 import type { Movement, SlideStyle } from '../../../shared/looks';
@@ -14,8 +15,10 @@ import type { TimerState } from '../../../shared/timers';
 import { clockHeld, engineNow, onClockJump } from './clock';
 import { SlideMovementContext, SlideTimersContext } from './slide-timers';
 import { linesReveal, type UnitFrame, wordsReveal } from './reveal';
-import { stepTiming } from '../../../shared/deck-show';
+import { deckSlideAt, nativeStepTiming, stepTiming } from '../../../shared/deck-show';
+import { NativeDeckMotion } from './NativeDeckElement';
 import {
+  deckTransitionFrame,
   takesTime,
   transitionFrame,
   wordsFrame,
@@ -46,7 +49,7 @@ interface Showing {
   /** The slide going away while `on` comes in. */
   off: SlideLayer | null;
   /** The transition's kind and length, and when it started (null: the new slide's media is still loading). */
-  fade: { kind: TransitionKind; ms: number; start: number | null } | null;
+  fade: { kind: TransitionKind; ms: number; start: number | null; native?: DeckNativeTransition } | null;
 }
 
 /** The slide just taken off on its own, and when (the engine's slideOff). */
@@ -73,8 +76,22 @@ export function nextShowing(
       return { on: null, off: prev.on, fade: { kind: 'dissolve', ms: t.durationMs, start: leaving.at } };
     return { on: null, off: null, fade: null };
   }
-  // The same slide with new content (an edit): no new transition.
-  if (prev.on && keyOf(prev.on) === keyOf(layer)) return { ...prev, on: layer };
+  if (prev.on && keyOf(prev.on) === keyOf(layer)) {
+    // A new click can have its own transition. The same slide with new content keeps its running transition.
+    const moved = prev.on.step !== layer.step || prev.on.stepAt !== layer.stepAt;
+    if (moved) {
+      const native = nativeStepTiming(layer);
+      const t = native?.drashti?.transition;
+      if (native && takesTime(t) && now < native.shownAt + t.durationMs)
+        return {
+          on: layer,
+          off: prev.on,
+          fade: { kind: t.kind, ms: t.durationMs, start: native.shownAt },
+        };
+      if (native && prev.off && keyOf(prev.off) === keyOf(layer)) return { on: layer, off: null, fade: null };
+    }
+    return { ...prev, on: layer };
+  }
   const t = layer.transition;
   if (takesTime(t) && now < layer.shownAt + t.durationMs)
     return {
@@ -82,7 +99,12 @@ export function nextShowing(
       // What goes away is what is on screen: a slide still waiting for its pictures had not begun to
       // show, and the one before it was still up, whole (Session 23).
       off: prev.fade?.start === null ? prev.off : prev.on,
-      fade: { kind: t.kind, ms: t.durationMs, start: null },
+      fade: {
+        kind: t.kind,
+        ms: t.durationMs,
+        start: null,
+        ...(isDeckNativeTransition(t) ? { native: t } : {}),
+      },
     };
   // A deck's slide coming in by a cut (Session 54, C2: in order, its deck's own transition in its clip, which begins
   // on the slide before's last frame) keeps the slide before up until its clip can be drawn, as a transition waits for
@@ -118,6 +140,7 @@ interface Layers {
  */
 interface Paint {
   kind: TransitionKind | null;
+  native: DeckNativeTransition | undefined;
   movement: Movement;
   move: WordsMove | null;
   width: number;
@@ -167,16 +190,21 @@ function paintUnits(els: Layers, how: Paint, p: number): void {
 
 /** The two slides and the black as the transition has them at `p`, the words too while apart (nothing set when not in one). */
 function paintLayers(els: Layers, how: Paint, p: number): void {
-  const { kind, movement } = how;
-  const frame = kind === null ? null : transitionFrame(kind, p, movement);
+  const { kind, movement, native } = how;
+  const frame = native
+    ? deckTransitionFrame(native, p, movement)
+    : kind === null
+      ? null
+      : transitionFrame(kind, p, movement);
   const set = (el: HTMLDivElement | null, opacity: string, transform: string, clip = '') => {
     if (!el) return;
     el.style.opacity = opacity;
     el.style.transform = transform;
     el.style.clipPath = clip;
   };
-  set(els.in, frame ? String(frame.in.opacity) : '', frame?.in.transform ?? '');
-  set(els.out, frame ? String(frame.out.opacity) : '', frame?.out.transform ?? '');
+  set(els.in, frame ? String(frame.in.opacity) : '', frame?.in.transform ?? '', frame?.in.clip);
+  set(els.out, frame ? String(frame.out.opacity) : '', frame?.out.transform ?? '', frame?.out.clip);
+  if (els.out) els.out.style.zIndex = native?.deckEffect === 'uncover' ? '1' : '';
   if (els.black) els.black.style.opacity = frame ? String(frame.black) : '0';
   const move = kind === null ? null : how.move;
   if (move && (els.wordsIn || els.wordsOut)) {
@@ -191,16 +219,25 @@ function paintLayers(els: Layers, how: Paint, p: number): void {
  * Whether every picture and video in `root` can be drawn now; else a promise for when it can, or for
  * `deadline` (the engine's time) if that comes first.
  */
-function mediaReady(root: HTMLElement, deadline: number): true | Promise<void> {
+function mediaReady(root: HTMLElement, deadline: number, native: boolean): true | Promise<void> {
   const waits: Promise<unknown>[] = [];
   for (const img of root.querySelectorAll('img'))
     if (!img.complete) waits.push(img.decode().catch(() => undefined));
   for (const video of root.querySelectorAll('video'))
-    if (video.readyState < 2)
+    if (
+      video.readyState < 2 &&
+      // A deck's next click, loading out of sight while its step is up (Session 57, item 6; DeckStep.tsx): never
+      // drawn as the slide comes in, so never waited for.
+      video.dataset['deckVideo'] !== 'preparing' &&
+      (!native || (video.dataset['deckCover'] !== 'poster' && video.dataset['deckCover'] !== 'hidden'))
+    )
       waits.push(
         new Promise<void>((resolve) => {
-          video.addEventListener('loadeddata', () => resolve(), { once: true });
-          video.addEventListener('error', () => resolve(), { once: true });
+          // Its first frame; or, for a deck's clip loaded ahead (DeckStep.tsx took it decoded, its first frame long
+          // in), the frame its jump into the clip lands on (a seek takes it below 2 until then, and loadeddata never
+          // comes again).
+          for (const event of ['loadeddata', 'canplay', 'error'])
+            video.addEventListener(event, () => resolve(), { once: true });
         }),
       );
   if (waits.length === 0) return true;
@@ -271,6 +308,7 @@ function DrawnSlide({
   reveal,
   movement,
   timers,
+  settled = false,
 }: {
   layer: SlideLayer;
   canvas: Size;
@@ -284,12 +322,18 @@ function DrawnSlide({
   /** The screen's Movement and the state's timers, for its Timers (Session 50). */
   movement: Movement;
   timers: readonly TimerState[] | undefined;
+  /** The previous click's final frame while a new click uses Drashti's own transition. */
+  settled?: boolean;
 }) {
-  // A deck's slide (Session 54, C2): the step showing, drawn in its picture's place from the engine's time.
   const { slide, step: index, stepAt, stepFromMs, shownAt } = layer;
-  const step = useMemo(
-    () => stepTiming({ slide, step: index, stepAt, stepFromMs, shownAt }),
-    [slide, index, stepAt, stepFromMs, shownAt],
+  const { step, native } = useMemo(() => {
+    if (settled) return { step: null, native: null };
+    const timing = { slide, step: index, stepAt, stepFromMs, shownAt };
+    return { step: stepTiming(timing), native: nativeStepTiming(timing) };
+  }, [slide, index, stepAt, stepFromMs, shownAt, settled]);
+  const drawn = useMemo(
+    () => languageView(settled ? deckSlideAt(slide, index ?? 0) : slide, languages),
+    [slide, settled, index, languages],
   );
   if (slides === 'lowerThird') {
     const lines = lowerThird(layer.slide, languages);
@@ -300,18 +344,21 @@ function DrawnSlide({
   return (
     <SlideMovementContext.Provider value={movement}>
       <SlideTimersContext.Provider value={timers ?? null}>
-        <Placed content={layer.slide} box={canvas} mode={scaling}>
-          <SlideView
-            slide={languageView(layer.slide, languages)}
-            startedAt={layer.shownAt}
-            // Its videos between their files' start and end points, the engine's (Session 52), from where the time
-            // bar left them (Session 54).
-            clips={layer.clips}
-            seeks={layer.seeks}
-            text={text}
-            reveal={reveal}
-            step={step}
-          />
+        <Placed content={drawn} box={canvas} mode={scaling}>
+          <NativeDeckMotion slide={drawn} timing={native}>
+            <SlideView
+              slide={drawn}
+              media={settled ? 'still' : 'live'}
+              startedAt={layer.shownAt}
+              // Its videos between their files' start and end points, the engine's (Session 52), from where the
+              // time bar left them (Session 54).
+              clips={layer.clips}
+              seeks={layer.seeks}
+              text={text}
+              reveal={reveal}
+              step={step}
+            />
+          </NativeDeckMotion>
         </Placed>
       </SlideTimersContext.Provider>
     </SlideMovementContext.Provider>
@@ -357,13 +404,16 @@ export function SlideLayerView({
   // Start the fade once the new slide's pictures and videos can be drawn: at shownAt if they
   // already could (every screen at the same point), else when they can.
   const waiting = fade !== null && fade.start === null;
+  const native = fade?.native;
   const onKey = on ? keyOf(on) : null;
   useEffect(() => {
     if (!waiting || !on || !inRef.current) return;
     const shownAt = on.shownAt;
-    const ready = mediaReady(inRef.current, shownAt + MEDIA_WAIT_MS);
+    const ready = mediaReady(inRef.current, shownAt + MEDIA_WAIT_MS, native !== undefined);
     const begin = (start: number) => {
-      setShowing((s) => (s.on && keyOf(s.on) === onKey && s.fade ? { ...s, fade: { ...s.fade, start } } : s));
+      setShowing((s) =>
+        s.on && keyOf(s.on) === onKey && s.fade?.start === null ? { ...s, fade: { ...s.fade, start } } : s,
+      );
     };
     if (ready === true) {
       begin(shownAt);
@@ -371,12 +421,12 @@ export function SlideLayerView({
     }
     let live = true;
     void ready.then(() => {
-      if (live) begin(Math.max(shownAt, engineNow()));
+      if (live) begin(native ? shownAt : Math.max(shownAt, engineNow()));
     });
     return () => {
       live = false;
     };
-  }, [waiting, on, onKey]);
+  }, [waiting, on, onKey, native]);
 
   // Run the transition, frame by frame, from the clock every screen shares.
   const start = fade?.start ?? null;
@@ -385,7 +435,7 @@ export function SlideLayerView({
   // How its words move while it runs (Session 27): never word by word on a kirtan's slide; slides as designed
   // only (a lower third has its own way).
   const moveNow =
-    fade !== null && on !== null && slides === 'designed'
+    fade !== null && !native && on !== null && slides === 'designed'
       ? wordsMove(kind, movement, on.slide.kirtan === true)
       : null;
   const { width, height } = canvas;
@@ -408,7 +458,7 @@ export function SlideLayerView({
           wordsIn: wordsInRef.current,
           wordsOut: wordsOutRef.current,
         },
-        { kind, movement, move: moveNow, width, height, scaleIn, scaleOut },
+        { kind, native, movement, move: moveNow, width, height, scaleIn, scaleOut },
         p,
       );
       rootRef.current?.setAttribute('data-fade', p.toFixed(3));
@@ -422,7 +472,7 @@ export function SlideLayerView({
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [start, ms, kind, movement, moveNow, width, height, scaleIn, scaleOut]);
+  }, [start, ms, kind, native, movement, moveNow, width, height, scaleIn, scaleOut]);
 
   // After every render, before it is painted: where the transition is now (the frames between renders set
   // it too). A deck's slide coming in by a cut (Session 54, C2) shows nothing of itself until it starts.
@@ -441,7 +491,7 @@ export function SlideLayerView({
         wordsIn: wordsInRef.current,
         wordsOut: wordsOutRef.current,
       },
-      { kind: fading ? kind : null, movement, move: moveNow, width, height, scaleIn, scaleOut },
+      { kind: fading ? kind : null, native, movement, move: moveNow, width, height, scaleIn, scaleOut },
       start !== null ? fadeAt({ ms, start }, engineNow()) : 0,
     );
   });
@@ -451,10 +501,21 @@ export function SlideLayerView({
   // going off alone (Session 50), only it.
   const shown = on ? (fading && off ? [off, on] : [on]) : off ? [off] : [];
   // A fade adds the new slide light for light over the old; the others draw it over.
-  const adds = fading && off !== null && transitionFrame(kind, 0, movement).add;
+  const adds =
+    fading &&
+    off !== null &&
+    (native ? deckTransitionFrame(native, 0, movement) : transitionFrame(kind, 0, movement)).add;
   // A Bold move (Session 27): the words drawn apart, above both slides' pictures, shapes and colour, which
   // only dissolve. Slides as designed only (a lower third has its own); none for a cut or a Calm dissolve.
   const move = fading ? moveNow : null;
+  // Two independently moving edges can expose a corner of the canvas. Keep the outgoing still under both.
+  const underlay =
+    fading &&
+    native?.over?.kind === 'slide' &&
+    native.deckEffect !== 'dissolve' &&
+    native.deckEffect !== 'fade-black'
+      ? off
+      : null;
   return (
     <div
       ref={rootRef}
@@ -469,14 +530,29 @@ export function SlideLayerView({
         position: 'absolute',
         inset: 0,
         isolation: fading ? 'isolate' : undefined,
-        overflow: fading && kind === 'slide' ? 'hidden' : undefined,
+        overflow: fading && (kind === 'slide' || native?.over?.kind === 'slide') ? 'hidden' : undefined,
       }}
     >
+      {underlay && (
+        <div aria-hidden="true" style={{ position: 'absolute', inset: 0 }}>
+          <DrawnSlide
+            layer={underlay}
+            canvas={canvas}
+            scaling={scaling}
+            languages={languages}
+            slides={slides}
+            movement={movement}
+            timers={timers}
+            settled
+          />
+        </div>
+      )}
       {shown.map((l) => {
         const incoming = l === on;
+        const settled = !incoming && on !== null && keyOf(l) === keyOf(on);
         return (
           <div
-            key={keyOf(l)}
+            key={settled ? `${keyOf(l)}:settled` : keyOf(l)}
             ref={incoming ? inRef : outRef}
             data-slide-in={incoming ? '' : undefined}
             data-slide-out={incoming ? undefined : ''}
@@ -494,6 +570,7 @@ export function SlideLayerView({
                 languages={languages}
                 slides={slides}
                 text={move ? 'hidden' : 'shown'}
+                settled={settled}
                 movement={movement}
                 timers={timers}
               />
@@ -508,9 +585,10 @@ export function SlideLayerView({
         <div data-words-apart={move} style={{ position: 'absolute', inset: 0, isolation: 'isolate' }}>
           {shown.map((l) => {
             const incoming = l === on;
+            const settled = !incoming && on !== null && keyOf(l) === keyOf(on);
             return (
               <div
-                key={keyOf(l)}
+                key={settled ? `${keyOf(l)}:settled` : keyOf(l)}
                 ref={incoming ? wordsInRef : wordsOutRef}
                 data-words-in={incoming ? '' : undefined}
                 data-words-out={incoming ? undefined : ''}
@@ -528,6 +606,7 @@ export function SlideLayerView({
                   languages={languages}
                   slides={slides}
                   text="only"
+                  settled={settled}
                   reveal={move === 'lines' || move === 'words' ? move : undefined}
                   movement={movement}
                   timers={timers}
@@ -538,11 +617,17 @@ export function SlideLayerView({
         </div>
       )}
       {/* A fade through black: black over both, whole half-way. */}
-      {fading && kind === 'fade-black' && (
+      {fading && (kind === 'fade-black' || native?.over?.kind === 'fade-black') && (
         <div
           ref={blackRef}
           data-slide-black=""
-          style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0 }}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: '#000',
+            opacity: 0,
+            zIndex: native ? 2 : undefined,
+          }}
         />
       )}
     </div>

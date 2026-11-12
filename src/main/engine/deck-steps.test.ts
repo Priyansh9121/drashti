@@ -416,3 +416,24 @@ describe('a deck’s slide still being prepared (Session 56)', () => {
     expect(up(engine)).toMatchObject({ id: 'b', step: 0 });
   });
 });
+
+describe('a native deck’s click groups', () => {
+  it('advances one group per Next even when pressed twice quickly and returns to the previous final frame', () => {
+    const motion = { effects: [], stepsMs: [200, 500, 350], approximate: false };
+    const nativeDeck = { steps: [], media: [], motion };
+    const a = { ...textSlide('a', 'Placeholder one'), deck: nativeDeck };
+    const b = textSlide('b', 'Placeholder two');
+    const { engine, elapse, now } = setup([a, b]);
+
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    expect(engine.current.next).toMatchObject({ kind: 'slide', slideIndex: 0, step: 1 });
+    elapse(20);
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide).toMatchObject({ step: 1, stepAt: now() });
+    elapse(20);
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide).toMatchObject({ step: 2, stepAt: now() });
+    engine.dispatch({ type: 'back' });
+    expect(engine.current.layers.slide).toMatchObject({ step: 1, stepAt: now(), stepFromMs: 500 });
+  });
+});

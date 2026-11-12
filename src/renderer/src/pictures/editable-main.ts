@@ -10,6 +10,18 @@ type BinaryDataFactory = new () => {
 
 const MAX_PAGE_MS = 8_000;
 const PDF_CLEANUP_MS = 250;
+/*
+ * How this window shares the processor as it prepares the pages (Session 57). Main runs it at the lowest priority;
+ * besides, it gives way for GIVE_WAY_MS after each WORK_SLICE_MS of work, and asks Main whether it may go on once
+ * WORK_SLICE_MS have passed since Main last said so (Main checks again as it takes each page). It did both at each of a
+ * page's small steps (about ten a page), so a big PDF's opening was mostly waiting: the generated 100-page PDF stayed at
+ * "Opening the slides…" past 30 s on CI's Mac, where a 10 ms pause takes 38 ms. A pause that takes longer than asked
+ * gave the processor away for that long, so the work before the next one may be four times as long (up to
+ * MAX_SLICE_MS): the window gives way about a fifth of the time.
+ */
+const WORK_SLICE_MS = 50;
+const MAX_SLICE_MS = 250;
+const GIVE_WAY_MS = 10;
 
 export async function drawEditablePdf(
   job: EditablePdfJob,
@@ -33,6 +45,11 @@ export async function drawEditablePdf(
   let jobBytes = 0;
   const preparation = { stopped: false };
   let error: string | undefined;
+  // When this window last gave way, the work it may do before the next pause, and when Main last said it may go on
+  // (null: not asked yet).
+  let gaveWayAt = performance.now();
+  let slice = WORK_SLICE_MS;
+  let answeredAt: number | null = null;
   try {
     const doc = await task.promise;
     total = doc.numPages;
@@ -51,7 +68,13 @@ export async function drawEditablePdf(
       try {
         const checkpoint = async () => {
           checkTime();
-          await new Promise((resolve) => setTimeout(resolve, 10));
+          if (performance.now() - gaveWayAt >= slice) {
+            const pausedAt = performance.now();
+            await new Promise((resolve) => setTimeout(resolve, GIVE_WAY_MS));
+            gaveWayAt = performance.now();
+            slice = Math.min(MAX_SLICE_MS, Math.max(WORK_SLICE_MS, 4 * (gaveWayAt - pausedAt)));
+          } else if (answeredAt !== null && performance.now() - answeredAt < WORK_SLICE_MS) return;
+          // The first one also tells Main the page count.
           if (
             !(await window.drashti.pictures.page({
               mode: 'editable-checkpoint',
@@ -63,6 +86,7 @@ export async function drawEditablePdf(
             preparation.stopped = true;
             throw new Error('Editable source preparation stopped.');
           }
+          answeredAt = performance.now();
           checkTime();
         };
         await checkpoint();
@@ -86,6 +110,8 @@ export async function drawEditablePdf(
           }))
         )
           break;
+        // Main checked again as it took the page.
+        answeredAt = performance.now();
         jobBytes += assets.reduce((sum, asset) => sum + asset.png.byteLength, 0);
       } catch {
         failed.push(sourceIndex);

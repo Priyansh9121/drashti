@@ -94,7 +94,8 @@ export function sourceFixture(animated: boolean): { name: string; file: string; 
         },
       ],
       effects: [
-        { kind: 'fade', target: 3, dur: 100, start: 'click' },
+        // Paragraph builds still use the baked clip before the first object edit.
+        { kind: 'fade', target: 3, para: 0, dur: 100, start: 'click' },
         { kind: 'exit-fade', target: 3, dur: 100, start: 'click' },
       ],
     }));
@@ -259,7 +260,7 @@ export async function expectWarningBeforeChange(ed: Page, editor: Locator, befor
     'editing an animated imported slide requires notice before its first content change',
   ).toBeVisible();
   await expect(ask).toContainText('Only this slide');
-  await expect(ask).toContainText('animations');
+  await expect(ask).toContainText('closest effects');
   await expect(ask).toContainText('original file');
   // Neither live typing nor a drag preview may mutate under the warning.
   expect(await canvasSnapshot(editor)).toEqual(beforeCanvas);

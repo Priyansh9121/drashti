@@ -727,7 +727,6 @@ export function applyLookToAll(doc: EditDoc, slideId: string): EditDoc {
     else delete next.runs;
     return next;
   };
-  const copy = (s: ShapeElement): ShapeElement => ({ ...structuredClone(s), id: newId() });
   return {
     ...doc,
     groups: doc.groups.map((g) => ({
@@ -753,7 +752,7 @@ export function applyLookToAll(doc: EditDoc, slideId: string): EditDoc {
                 },
               }
             : {}),
-          elements: [...behind.map(copy), ...kept, ...front.map(copy)],
+          elements: [...behind.map(copyElement), ...kept, ...front.map(copyElement)],
         };
       }),
     })),

@@ -73,6 +73,20 @@ async function outputFor(app: ElectronApplication, screenId: string): Promise<Pa
   return found;
 }
 
+/**
+ * A deck's clip loaded ahead, before the press (Session 57, item 6): its first frame in (loaded 2 or more) and paused,
+ * then marked, so a check after the press can tell the very element plays (nothing loaded anew at the press).
+ */
+async function markPrepared(clip: Locator): Promise<void> {
+  await expect
+    .poll(() => clip.evaluate((video: HTMLVideoElement) => video.readyState))
+    .toBeGreaterThanOrEqual(2);
+  await expect(clip).toHaveJSProperty('paused', true);
+  await clip.evaluate((video) => {
+    video.setAttribute('data-deck-check-prepared', 'true');
+  });
+}
+
 /** Wait until each output's middle is this colour. */
 async function allShow(outs: Page[], rgb: readonly number[], what: string): Promise<void> {
   for (const out of outs)
@@ -157,7 +171,9 @@ async function middleShows(page: Page, target: Locator, rgb: readonly number[], 
         const there = await target.evaluate((el) => {
           const root = el.querySelector<HTMLElement>('[data-deck-step]') ?? el;
           const layers = [...root.children].map((child) => {
-            const c = child as HTMLElement;
+            // A slide's first clip is in a box of its own (DeckStep.tsx's FirstClip): the clip.
+            const inner = child.hasAttribute('data-deck-slot') ? child.firstElementChild : null;
+            const c = (inner ?? child) as HTMLElement;
             const role = c.dataset['deckStill'] ?? c.dataset['deckVideo'] ?? c.tagName.toLowerCase();
             const opacity = getComputedStyle(c).opacity;
             return c instanceof HTMLVideoElement
@@ -229,9 +245,21 @@ test('a deck’s clicks with the keys: Next and Back, two screens and LIVE drawi
     for (const out of halls)
       await expect(out.locator('[data-deck-step="0"]')).toHaveAttribute('data-deck-phase', 'held');
 
+    // On the spot (Session 57, item 6): the next click's clip has its first frame in, paused, before the key is
+    // pressed, in the step itself (the outputs' Preloader does not load it a second time); Next plays that very element.
+    for (const out of halls) {
+      await markPrepared(out.locator('video[data-deck-video="preparing"]'));
+      const twice = out.getByTestId('preload').locator(`[data-preload="${files.clips[1] ?? ''}"]`);
+      await expect(twice).toHaveCount(0);
+    }
     // Next with the key: the first click, on both screens, LIVE and the stage; the stage's next is the click after.
     await win.keyboard.press('ArrowRight');
     await expect.poll(() => step(win)).toBe(1);
+    for (const out of halls)
+      await expect(out.locator('[data-deck-step="1"] video[data-deck-video="clip"]')).toHaveAttribute(
+        'data-deck-check-prepared',
+        'true',
+      );
     // LIVE says which click is up.
     await expect(win.getByTestId('live-text')).toContainText('slide 1 of 2 · click 1 of 2');
     // At held moments (C review): the hall's screens and the stage's current play the click's clip (dark), then hold
@@ -283,8 +311,16 @@ test('a deck’s clicks with the keys: Next and Back, two screens and LIVE drawi
     // Next twice: the next slide comes in order, the deck's own transition in its clip from its start.
     await win.keyboard.press('ArrowRight');
     await expect(stage.locator('[data-stage-deck="now"] [data-deck-step="2"]')).toHaveCount(1);
+    // Its first clip loaded and decoded ahead by each hall's Preloader before the key is pressed; as the slide comes
+    // in, its step plays that very element (Session 57, item 6).
+    for (const out of halls)
+      await markPrepared(out.getByTestId('preload').locator(`video[data-preload="${files.nextClip}"]`));
     await win.keyboard.press('ArrowRight');
     await expect.poll(async () => (await state(win)).live.slideIndex).toBe(1);
+    for (const out of halls)
+      await expect(
+        out.locator(`[data-deck-step="0"] video[data-deck-video="clip"][data-media-id="${files.nextClip}"]`),
+      ).toHaveAttribute('data-deck-check-prepared', 'true');
     // The stage keeps the still that showed before under the new slide's clip until it can be drawn (C review).
     await expect(
       stage.locator(

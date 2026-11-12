@@ -82,7 +82,7 @@ import {
   stepsLeft,
 } from './deck-steps';
 import { deckClips, lastStep, stepOf } from '../../shared/deck-show';
-import type { DeckSlide } from '../../shared/deck';
+import { type DeckSlide, nativeDeckMotion } from '../../shared/deck';
 import {
   type AcrossStart,
   acrossLayer,
@@ -1407,16 +1407,20 @@ export class ShowEngine {
    */
   private inOrder(presentationId: string, slideIndex: number, deck: DeckSlide): boolean {
     const before = this.state.layers.slide;
+    if (
+      repeatPlaylistOf(presentationId) !== null ||
+      before === null ||
+      before.timer !== undefined ||
+      before.presentationId !== presentationId ||
+      before.slideIndex !== slideIndex - 1 ||
+      stepOf(before) !== lastStep(before.slide.deck)
+    )
+      return false;
+    if (nativeDeckMotion(deck)) return true;
+    const previous = before.slide.deck;
     return (
-      repeatPlaylistOf(presentationId) === null &&
-      before !== null &&
-      before.timer === undefined &&
-      before.presentationId === presentationId &&
-      before.slideIndex === slideIndex - 1 &&
-      before.slide.deck !== undefined &&
-      stepOf(before) === lastStep(before.slide.deck) &&
       deck.after !== undefined &&
-      before.slide.deck.steps.at(-1)?.lastId === deck.after
+      (previous?.steps.at(-1)?.lastId === deck.after || previous?.sourceStillId === deck.after)
     );
   }
 
@@ -1507,7 +1511,7 @@ export class ShowEngine {
     // A sound set to play across slides (Session 54, across-slides.ts), its deck's own or its sound cue saying so: on
     // the audio layer with the slide, never started again by Next or Back. A sound cue of its own comes after it.
     const across = startsWith(played, entry, deck?.fromMs ?? 0, soundMissing === null);
-    const music = across ? this.acrossAction(across, presentationId, slideIndex, at) : null;
+    const music = across ? this.acrossAction(across, presentationId, slideIndex, deck?.startsAt ?? at) : null;
     if (music) layers.push(music);
     if (sound && soundMissing === null && !isAcrossCue(sound)) {
       const { mediaId, volume, loop } = sound;
@@ -1524,7 +1528,7 @@ export class ShowEngine {
         soundMissing,
         ...(deck
           ? {
-              deck: { step: deck.step, stepAt: at, stepFromMs: deck.fromMs },
+              deck: { step: deck.step, stepAt: deck.startsAt ?? at, stepFromMs: deck.fromMs },
               ...(deck.seeks ? { seeks: deck.seeks } : {}),
             }
           : {}),
@@ -2935,7 +2939,8 @@ export class ShowEngine {
       before.slide.id === slide.slide.id &&
       before.shownAt === slide.shownAt &&
       // Each of a deck's steps counts from when it was shown (Session 54, C2).
-      before.stepAt === slide.stepAt;
+      before.stepAt === slide.stepAt &&
+      before.step === slide.step;
     const running = next.autoAdvance;
     // Repeat Slides' settings changed take effect from the next slide: this one keeps its count.
     if (same && running && repeating !== null) return running;

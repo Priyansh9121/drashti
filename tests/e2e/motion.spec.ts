@@ -424,6 +424,54 @@ const watchAnimations = (win: Page, ms: number) =>
     ms,
   );
 
+/**
+ * Every animation that starts in the page within `ms` of the next click it takes (what that click sets moving). The
+ * watch starts as the click reaches the window, not as the test asks for it: on CI's Mac VM a click can take over a
+ * second to land (Session 55's gate: 1,151 ms, against an 800 ms watch started just before it). It looks at the page
+ * as it changes as well as at each frame, so a slow frame there can't hide an animation that started.
+ */
+const watchClick = (win: Page, ms: number) =>
+  win.evaluate(
+    (wait) =>
+      new Promise<{ what: string; ms: number; delay: number }[]>((resolve) => {
+        const seen = new Map<Animation, { what: string; ms: number; delay: number }>();
+        const look = () => {
+          for (const a of document.getAnimations()) {
+            const effect = a.effect as KeyframeEffect | null;
+            const target = effect?.target;
+            if (!target || seen.has(a)) continue;
+            const timing = effect.getComputedTiming();
+            seen.set(a, {
+              what: `${target.getAttribute('data-testid') ?? (target.hasAttribute('data-glide') ? 'underline' : target.tagName)}${effect.pseudoElement ?? ''}`,
+              ms: Number(timing.duration ?? 0),
+              delay: effect.getTiming().delay ?? 0,
+            });
+          }
+        };
+        window.addEventListener(
+          'click',
+          () => {
+            look();
+            const changes = new MutationObserver(look);
+            changes.observe(document, { subtree: true, childList: true, attributes: true });
+            let frame = 0;
+            const each = () => {
+              look();
+              frame = requestAnimationFrame(each);
+            };
+            frame = requestAnimationFrame(each);
+            setTimeout(() => {
+              changes.disconnect();
+              cancelAnimationFrame(frame);
+              resolve([...seen.values()]);
+            }, wait);
+          },
+          { capture: true, once: true },
+        );
+      }),
+    ms,
+  );
+
 test('Lively: the tab’s underline and the chosen playlist glide, cards arrive one after another, a panel opens, a press answers, and an appearance fades into the next (Session 40)', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
@@ -449,8 +497,8 @@ test('Lively: the tab’s underline and the chosen playlist glide, cards arrive 
   // Nothing starts while the show is changing: let the window's own start settle first.
   await letTimePass(win, 900, 'the show has not changed for a moment, as Lively waits for');
 
-  // The playlist opens: its cards arrive one after another, 30 ms apart.
-  let started = watchAnimations(win, 800);
+  // The playlist opens: its cards arrive one after another, 30 ms apart (watched from the click's arrival).
+  let started = watchClick(win, 800);
   await row('Placeholder lively one').click();
   await expect(win.getByTestId('playlist-item')).toHaveCount(2);
   const arrivals = (await started).filter((a) => a.what === 'LI');
@@ -460,13 +508,13 @@ test('Lively: the tab’s underline and the chosen playlist glide, cards arrive 
   ]);
 
   // The chosen playlist's highlight glides to the next one chosen.
-  started = watchAnimations(win, 800);
+  started = watchClick(win, 800);
   await row('Placeholder lively two').click();
   expect((await started).some((a) => a.what === 'SPAN' && a.ms === 240)).toBe(true);
 
   // The tab's underline glides to the tab chosen.
   await openLibrary(win);
-  started = watchAnimations(win, 800);
+  started = watchClick(win, 800);
   await win.getByTestId('library-tab-media').click();
   expect((await started).some((a) => a.what === 'underline' && a.ms === 240)).toBe(true);
 

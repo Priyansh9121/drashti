@@ -100,11 +100,11 @@ const background = (e: ShowEngine) => {
 describe('the chosen wallpaper in the engine’s state (engine state 18)', () => {
   it('is set by the main process alone, from when it was chosen; the same again is no change, and none is null', () => {
     const { engine, now, elapse } = setup();
-    // 18 then (Part 6); 27 now (offline helpers; native paths retained), reading every additive predecessor whole.
-    expect(ENGINE_STATE_VERSION).toBe(27);
-    expect([27, 26, 25, 24, 23, 22, 20, 18, 17, 16, 15, 14, 13, 12].every((v) => readsEngineVersion(v))).toBe(
-      true,
-    );
+    // 18 then (Part 6); 28 now (editable deck effects; native paths retained), reading every additive predecessor whole.
+    expect(ENGINE_STATE_VERSION).toBe(28);
+    expect(
+      [28, 27, 26, 25, 24, 23, 22, 20, 18, 17, 16, 15, 14, 13, 12].every((v) => readsEngineVersion(v)),
+    ).toBe(true);
     expect(engine.current.chosenWallpaper ?? null).toBeNull();
     expect(engine.setChosenWallpaper(WALL)).toMatchObject({ ok: true, changed: true });
     expect(engine.current.chosenWallpaper).toEqual({ ...WALL, since: now() });

@@ -14,6 +14,13 @@ export interface PlaybackOptions {
   mediaId: string;
   /** A later try at loading it (a node's copy that landed after the first try failed). */
   attempt?: number;
+  /**
+   * A deck's clip only (Session 57, item 6; render/DeckStep.tsx alone asks): the element may hold this very file
+   * already, loaded ahead and paused at its first frame (the next click's, or the next slide's first): it plays from
+   * there, at once, rather than loading it again. Left out (every other caller), the file is loaded afresh, as before,
+   * whatever the element holds.
+   */
+  reuseLoadedSource?: boolean;
   /** When the playback started (ms since the epoch, main-process clock). */
   startedAt: number;
   /** The file has its first frame (or sound), at the right point. */
@@ -330,7 +337,16 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   for (const event of ['seeked', 'playing', 'ratechange']) v.addEventListener(event, rearm);
   // eslint-disable-next-line no-restricted-syntax -- checks every 250 ms that the video is where the engine's time says (check)
   const timer = setInterval(check, CHECK_MS);
-  v.src = mediaUrl(mediaId, attempt);
+  const url = mediaUrl(mediaId, attempt);
+  // A deck's clip loaded ahead (Session 57, item 6): the same file, with no error, is played from where it is; what
+  // its load would have told comes now (its length known, its first frame in), or as it comes (its events, above).
+  // One that failed is loaded again, as any file is.
+  if (options.reuseLoadedSource === true && v.getAttribute('src') === url && !v.error) {
+    if (v.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      v.removeEventListener('loadedmetadata', onMetadata);
+      onMetadata();
+    }
+  } else v.src = url;
   const stop = () => {
     clearInterval(timer);
     if (starting) clearTimeout(starting.timer);

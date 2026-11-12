@@ -71,7 +71,11 @@ test('replacing existing PDF words exports searchable words once, restores the p
     await expect(box, 'change the existing source text, not a new overlay box').toHaveCount(1);
     await box.dblclick();
     const typing = s.editor.getByTestId('text-editing');
-    await typing.fill(PDF_MARKERS.revised);
+    // Chosen with the keys, as a person does: fill()'s DOM range can lose to the box's own check just
+    // after it takes the keyboard, which puts the double-click's caret back.
+    await expect(typing).toBeFocused();
+    await typing.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+    await s.ed.keyboard.insertText(PDF_MARKERS.revised);
     await expect(typing).toHaveText(PDF_MARKERS.revised);
     // Save while typing must keep the last unblurred change.
     await s.editor.getByTestId('save-slides').click();
