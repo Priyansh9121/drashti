@@ -37,7 +37,7 @@ const graphic = (data: string) =>
 describe('keeping a generated PPTX editable', () => {
   it('keeps paragraph alignment, bullets, hanging indents and vertical words inside their box', async () => {
     const words = wordsShape(
-      '<a:p><a:pPr algn="l" lvl="2" marL="228600" marR="114300" indent="-114300"><a:buChar char="•"/></a:pPr><a:r><a:t>Placeholder bullet</a:t></a:r><a:br/><a:r><a:t>Placeholder continuation</a:t></a:r></a:p>' +
+      '<a:p><a:pPr algn="l" lvl="2" marL="228600" marR="114300" indent="-114300"><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:buChar char="•"/></a:pPr><a:r><a:t>Placeholder bullet</a:t></a:r><a:br/><a:r><a:t>Placeholder continuation</a:t></a:r></a:p>' +
         '<a:p><a:pPr algn="just"><a:buNone/></a:pPr><a:r><a:t>Placeholder justified words</a:t></a:r></a:p>' +
         '<a:p><a:pPr algn="r"><a:buNone/></a:pPr><a:r><a:t>Placeholder aligned right</a:t></a:r></a:p>',
     ).replace('<a:bodyPr ', '<a:bodyPr vert="vert" ');
@@ -49,7 +49,7 @@ describe('keeping a generated PPTX editable', () => {
     expect(box.runs?.find((run) => run.text === 'Placeholder bullet')).toMatchObject({
       list: 'disc',
       level: 2,
-      paragraph: { align: 'left', marginLeft: 24, marginRight: 12, indent: -12, bullet: '•' },
+      paragraph: { align: 'left', marginLeft: 24, marginRight: 12, indent: -12, lineHeight: 1.08, bullet: '•' },
     });
     expect(box.runs?.find((run) => run.softBreak)).toMatchObject({ text: '\n', softBreak: true });
     expect(box.runs?.find((run) => run.text === 'Placeholder justified words')).toMatchObject({
