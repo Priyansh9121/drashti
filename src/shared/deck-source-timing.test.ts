@@ -144,14 +144,14 @@ describe('a slide imported before alpha.17, and its kept PowerPoint file', () =>
     expect(sourceTimingPages([slide(old)], undefined)).toEqual([]);
   });
 
-  it('asks only where every video the slide plays is its own shape (alpha.17’s rows, never alpha.16’s)', () => {
+  it('reads clicks for a legacy video it can try to match, and applies timing only with a source shape', () => {
     expect(wantsSourceTiming(slide(withVideo, {}, [video('4')]))).toBe(true);
     // alpha.16 stored a deck's video with no shape of the deck's (HIGH-1); a slide that has lost it; another video.
     expect(wantsSourceTiming(slide(withVideo, {}, [video(null)]))).toBe(false);
     expect(wantsSourceTiming(slide(withVideo))).toBe(false);
     expect(wantsSourceTiming(slide(withVideo, {}, [video('4', 'placeholder-other-video')]))).toBe(false);
     expect(sourceTimingPages([slide(withVideo, {}, [video(null)]), slide(old, { page: 1 })], HASH)).toEqual([
-      1,
+      0, 1,
     ]);
     // An occurrence that doesn't want them keeps its deck, whatever the reader read for its page.
     const older = slide(withVideo, {}, [video(null)]);
