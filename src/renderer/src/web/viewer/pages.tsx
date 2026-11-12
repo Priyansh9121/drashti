@@ -52,6 +52,18 @@ export function screensPage(): ViewerPage {
     title: 'On the screens',
     size: CANVAS,
     draw: () => <ScreensNow />,
+    save: (state) => {
+      if (!state || state.blackout || state.wallpaper) return null;
+      const up = state.layers.slide;
+      return up && nativeDeckMotion(up.slide.deck)
+        ? {
+            presentationId: up.presentationId,
+            slideId: up.slide.id,
+            slide: up.slideIndex + 1,
+            click: stepOf(up),
+          }
+        : null;
+    },
     showing: showingNow,
     live: (state) => state !== null && (state.layers.slide !== null || state.layers.background !== null),
     onScreens: (state) => {
@@ -134,6 +146,11 @@ function deckStepPage(presentationId: string, s: OrderedSlide, index: number, st
     title: index === 0 ? named : `${named} · click ${String(index)} of ${String(steps - 1)}`,
     size: { width: s.slide.slide.width, height: s.slide.slide.height },
     draw: () => <DeckStepDrawn s={s} index={index} />,
+    ...(nativeDeckMotion(s.slide.slide.deck)
+      ? {
+          save: { presentationId, slideId: s.slide.id, slide: s.position + 1, click: index },
+        }
+      : {}),
     live: stepUp,
     onScreens: (state) => {
       if (!stepUp(state)) return null;
