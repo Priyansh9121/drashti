@@ -19,7 +19,9 @@ it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => 
     mkdirSync(mediaDir);
     mkdirSync(trashDir);
     const ids = ['unused', 'playlist', 'undo', 'slide', 'live', 'replaced', 'path-alias'];
-    db.exec("INSERT INTO media (id, kind, name, path) VALUES ('original', 'video', 'Original', 'original.mp4')");
+    db.exec(
+      "INSERT INTO media (id, kind, name, path) VALUES ('original', 'video', 'Original', 'original.mp4')",
+    );
     writeFileSync(join(mediaDir, 'original.mp4'), 'Placeholder original.');
     for (const id of ids) {
       const path = `${id}.mp4`;
@@ -58,7 +60,10 @@ it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => 
     expect(trash).toHaveBeenCalledOnce();
     expect(existsSync(join(trashDir, 'unused.mp4'))).toBe(true);
     expect(existsSync(join(mediaDir, 'unused.mp4'))).toBe(false);
-    expect(db.prepare("SELECT path, missing FROM media WHERE id = 'unused'").get()).toEqual({ path: '', missing: 1 });
+    expect(db.prepare("SELECT path, missing FROM media WHERE id = 'unused'").get()).toEqual({
+      path: '',
+      missing: 1,
+    });
     for (const id of [...ids.filter((id) => id !== 'unused'), 'original'])
       expect(existsSync(join(mediaDir, `${id}.mp4`)), id).toBe(true);
   } finally {
