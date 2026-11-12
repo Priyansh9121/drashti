@@ -7,8 +7,11 @@ interface ImportNotice {
   text: string;
   retry?: () => Promise<unknown>;
   findMissing?: () => Promise<boolean>;
-  /** What it is about, where only one notice may say it: a newer one takes an older one's place. */
-  about?: string;
+  /**
+   * What it says, for words a later notice may say again (an import's old fonts): a newer notice that says all of an
+   * older one's takes its place.
+   */
+  about?: string[];
 }
 
 export const useImportNotices = create<{ notices: ImportNotice[] }>(() => ({ notices: [] }));
@@ -17,11 +20,16 @@ let nextId = 0;
 
 function show(notices: Omit<ImportNotice, 'id'>[]): void {
   if (notices.length === 0) return;
-  const said = new Set(notices.flatMap((notice) => (notice.about ? [notice.about] : [])));
+  // A new notice that says all an older one says (its old fonts, say) takes its place.
+  const saysAgain = (older: ImportNotice): boolean => {
+    const said = older.about;
+    if (said === undefined || said.length === 0) return false;
+    return notices.some((notice) => said.every((what) => notice.about?.includes(what) === true));
+  };
   useImportNotices.setState((s) => ({
     notices: [
       ...notices.map((notice) => ({ ...notice, id: ++nextId })),
-      ...s.notices.filter((notice) => notice.about === undefined || !said.has(notice.about)),
+      ...s.notices.filter((notice) => !saysAgain(notice)),
     ],
   }));
 }
@@ -73,36 +81,49 @@ const missingParts = new Set([
 const nameOf = (item: ImportItemReport): string =>
   item.name ?? item.sourcePath.split(/[\\/]/u).at(-1) ?? 'File';
 
+/** “A”, “A” and “B”, “A”, “B” and “C”. */
+const quoted = (names: string[]): string => {
+  const all = names.map((name) => `“${name}”`);
+  return all.length <= 1 ? (all[0] ?? '') : `${all.slice(0, -1).join(', ')} and ${all.at(-1) ?? ''}`;
+};
+
 /**
  * Words typed in an old (legacy) Gujarati or Hindi font are kept as typed and drawn in that font, so they read right
- * only where it is installed (main/import/legacy-fonts.ts): a line for each font an import met, however many of its
- * presentations use it, and one in the stack for each font. Installing it is the only answer: no Try again, no Find….
- * Drashti draws in it once it is on the computer and Drashti has started again; importing again would change nothing.
+ * only where it is installed (main/import/legacy-fonts.ts): on this computer and on each node, which draws them itself
+ * (admin guide, section 11). One line for an import, naming each of its old fonts once however many presentations use
+ * it, so it never takes more than one of the four lines shown from the files' own (their Try again and Find…).
+ * Installing is the only answer: no Try again, no Find…. Drashti draws in the font once it is on the computer and
+ * Drashti has started again; importing again would change nothing (an unchanged file is skipped).
  */
-function oldFontNotices(report: ImportReport): Omit<ImportNotice, 'id'>[] {
-  const fonts = new Map<string, { font: string; first: ImportItemReport; items: Set<string> }>();
+function oldFontsNotice(report: ImportReport): Omit<ImportNotice, 'id'> | null {
+  const fonts = new Map<string, string>();
+  const items: ImportItemReport[] = [];
   for (const item of report.items) {
     // A refused file did not come in: its fonts are named once it does.
     if (item.outcome === 'failed' || item.outcome === 'unsupported') continue;
+    let uses = false;
     for (const issue of item.issues) {
       if (issue.code !== 'legacy-font' || issue.fix?.kind !== 'convert-font') continue;
       const font = issue.fix.font.trim();
       if (font === '') continue;
+      uses = true;
       // A font's name in any case is the same font, as the computer finds it.
       const key = font.toLowerCase();
-      const use = fonts.get(key);
-      if (use) use.items.add(item.id);
-      else fonts.set(key, { font, first: item, items: new Set([item.id]) });
+      if (!fonts.has(key)) fonts.set(key, font);
     }
+    if (uses) items.push(item);
   }
-  const install = 'install it on this computer, then quit and start Drashti again.';
-  return [...fonts].map(([key, { font, first, items }]) => ({
-    about: `old-font:${key}`,
+  const [first] = items;
+  if (!first) return null;
+  const one = fonts.size === 1;
+  const what = `the old ${one ? 'font' : 'fonts'} ${quoted([...fonts.values()])}: install ${one ? 'it' : 'them'} on this computer and on each node, then quit and start Drashti again on each.`;
+  return {
+    about: [...fonts.keys()].map((key) => `old-font:${key}`),
     text:
-      items.size === 1
-        ? `“${nameOf(first)}” · This presentation uses the old font “${font}”: ${install}`
-        : `“${nameOf(first)}” and ${String(items.size - 1)} more · These presentations use the old font “${font}”: ${install}`,
-  }));
+      items.length === 1
+        ? `“${nameOf(first)}” · This presentation uses ${what}`
+        : `“${nameOf(first)}” and ${String(items.length - 1)} more · These presentations use ${what}`,
+  };
 }
 
 function noticeFor(
@@ -148,9 +169,10 @@ export function showImportFailures(
   retry?: (paths: string[]) => Promise<unknown>,
   findMissing?: (mediaIds: string[]) => Promise<boolean>,
 ): void {
-  // The old fonts first: a few lines that matter to the whole library, above any file's own.
+  // The old fonts first, in one line: they matter to the whole library, and take one line from the files' own.
+  const fonts = oldFontsNotice(report);
   const notices = [
-    ...oldFontNotices(report),
+    ...(fonts ? [fonts] : []),
     ...report.items.flatMap((item) => {
       const notice = noticeFor(item, retry, findMissing);
       return notice ? [notice] : [];
