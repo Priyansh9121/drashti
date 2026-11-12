@@ -260,6 +260,16 @@ describe('a paired phone in Simple Mode (Session 55, the owner’s answer of 30 
     expect(mayOp('presentation.rename', {})).toBe(false);
   });
 
+  it('refuses adding existing Media and library presentations in Simple Mode', () => {
+    expect(mayOp('playlist.add', {
+      playlistId: 'other',
+      items: [
+        { kind: 'media', mediaId: 'picture' },
+        { kind: 'presentation', presentationId: 'library-only' },
+      ],
+    })).toBe(false);
+  });
+
   it('refuses what it does not know, and every command a phone can send is weighed (fail closed)', () => {
     expect(mayOp('lowerThird.studio')).toBe(false);
     expect(mayOp('toString')).toBe(false);

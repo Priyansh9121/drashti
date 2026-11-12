@@ -141,13 +141,19 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
     ok: true,
     windows: [{ id: 'window:7:0', name: 'Placeholder meeting', picture: 'data:image/png;base64,AAAA' }],
   };
+  const lookups = { playlists: 0, items: 0 };
   const scope: SimpleScope = {
     playlistId: 'pl-1',
-    playlistOf: (id) => (id === 'item-1' ? 'pl-1' : id === 'template-item' ? 'template' : null),
+    playlistOf: (id) => {
+      lookups.items++;
+      return id === 'item-1' ? 'pl-1' : id === 'template-item' ? 'template' : null;
+    },
     holdsMedia: () => false,
     holdsPresentation: () => false,
-    kindOf: (id) =>
-      id === 'pl-1' ? 'playlist' : id === 'folder' ? 'folder' : id === 'template' ? 'template' : null,
+    kindOf: (id) => {
+      lookups.playlists++;
+      return id === 'pl-1' ? 'playlist' : id === 'folder' ? 'folder' : id === 'template' ? 'template' : null;
+    },
     listsMedia: () => false,
     listsPresentation: () => false,
   };
@@ -433,6 +439,7 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
     service.windows({ address: PHONE, deviceId, op: 'windows', args: {} });
   return {
     listWindows,
+    lookups,
     setInputs: (v: { inputs?: VideoInput[]; access?: CameraAccess; cameras?: string[] | null }) => {
       inputs = v.inputs ?? inputs;
       access = v.access ?? access;
@@ -965,7 +972,6 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       ['playlist.rename', { playlistId: 'folder', name: 'Placeholder renamed' }],
       ['playlist.remove', { ids: ['folder'] }],
       ['playlist.restore', { ids: ['folder'] }],
-      ['playlist.add', add],
       ['playlist.move', { playlistId: 'pl-1', ids: ['item-1'], to: 0 }],
       ['playlist.removeItems', { ids: ['item-1'] }],
       ['playlist.restoreItems', { ids: ['item-1'] }],
@@ -976,6 +982,7 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       ['playlist.rename', { playlistId: 'template', name: 'Placeholder' }],
       ['playlist.remove', { ids: ['template', 'folder'] }],
       ['playlist.restore', { ids: ['template'] }],
+      ['playlist.add', add],
       ['playlist.add', { ...add, playlistId: 'template' }],
       ['playlist.move', { playlistId: 'template', ids: ['template-item'], to: 0 }],
       ['playlist.removeItems', { ids: ['item-1', 'template-item'] }],
@@ -990,6 +997,7 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       400,
     );
     setLocked(false);
+    expect(ask(remote, 'playlist.add', add).status).toBe(200);
     setLetIn(false);
     expect(ask(remote, 'library.remove', { ids: ['p-1'] })).toMatchObject({
       status: 503,
@@ -1002,11 +1010,29 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       { what: 'renamePlaylist', args: ['folder', 'Placeholder renamed'] },
       { what: 'removePlaylists', args: [['folder']] },
       { what: 'restorePlaylists', args: [['folder']] },
-      { what: 'addItems', args: ['pl-1', null, add.items] },
       { what: 'moveItems', args: ['pl-1', ['item-1'], 0] },
       { what: 'removeItems', args: [['item-1']] },
       { what: 'restoreItems', args: [['item-1']] },
+      { what: 'addItems', args: ['pl-1', null, add.items] },
     ]);
+  });
+
+  it('caps playlist and row id lists before looking up any ids in Simple Mode', () => {
+    const { ask, remote, calls, lookups } = setup({ locked: true });
+    for (const [op, limit, id] of [
+      ['playlist.remove', 50, 'pl-1'],
+      ['playlist.restore', 1000, 'pl-1'],
+      ['playlist.removeItems', 50, 'item-1'],
+      ['playlist.restoreItems', 50, 'item-1'],
+    ] as const) {
+      const ids = Array.from({ length: limit + 1 }, () => id);
+      expect(ask(remote, op, { ids }).status, op).toBe(403);
+      expect(lookups, op).toEqual({ playlists: 0, items: 0 });
+    }
+    expect(calls).toEqual([]);
+    const ids = Array.from({ length: 1000 }, () => 'folder');
+    expect(ask(remote, 'playlist.restore', { ids }).status).toBe(200);
+    expect(calls).toEqual([{ what: 'restorePlaylists', args: [ids] }]);
   });
 });
 

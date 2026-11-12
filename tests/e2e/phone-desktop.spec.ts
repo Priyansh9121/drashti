@@ -931,6 +931,78 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     }
   });
 
+test('a Pro Mode phone deletes a folder with its playlist, restores both, and asks before deleting a running Repeat Slides playlist', async () => {
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const folderName = 'Placeholder phone folder';
+  const repeatName = 'Placeholder repeating slides';
+  const { folderId, repeatId } = await win.evaluate(
+    async ({ folderName, repeatName }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const folder = await d.playlists.create(folderName, null, true);
+      if (!folder.ok || !folder.ids[0]) throw new Error('The placeholder folder could not be made.');
+      const folderId = folder.ids[0];
+      const repeat = await d.playlists.createRepeat(folderId);
+      if (!repeat.ok || !repeat.ids[0]) throw new Error('The placeholder playlist could not be made.');
+      const repeatId = repeat.ids[0];
+      const renamed = await d.playlists.rename(repeatId, repeatName);
+      if (!renamed.ok) throw new Error(renamed.message);
+      const presentation = await d.library.newFromWords(
+        'Placeholder phone slides',
+        'Placeholder slide one\n\nPlaceholder slide two',
+      );
+      if (!presentation.ok) throw new Error(presentation.message);
+      const added = await d.playlists.addItems(repeatId, null, [
+        { kind: 'presentation', presentationId: presentation.id },
+      ]);
+      if (!added.ok) throw new Error(added.message);
+      return { folderId, repeatId };
+    },
+    { folderName, repeatName },
+  );
+  const { base } = await networkOn(win);
+  const phone = await device('chromium');
+  const p = phone.page;
+  const node = (id: string) =>
+    p.locator(`[data-testid="remote-library-playlist"][data-playlist-id="${id}"]`);
+  try {
+    await p.setViewportSize({ width: 375, height: 812 });
+    await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-playlist').click();
+    await p.getByTestId('remote-open-playlists').click();
+    await node(folderId).getByTestId('remote-library-playlist-delete').click();
+    const ask = p.getByTestId('remote-library-playlist-delete-confirm');
+    await expect(ask).toContainText('This also deletes the playlists and folders inside it.');
+    await ask.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect.poll(() => playlistId(win, folderName)).toBeNull();
+    await expect.poll(() => playlistId(win, repeatName)).toBeNull();
+    await p.getByTestId('remote-library-undo').click();
+    await expect.poll(() => playlistId(win, folderName)).toBe(folderId);
+    await expect.poll(() => playlistId(win, repeatName)).toBe(repeatId);
+
+    await p.getByTestId('remote-library-sheet-close').click();
+    await p.getByTestId('remote-playlist').selectOption(repeatId);
+    await p.getByTestId('remote-going-round').click();
+    const running = () =>
+      win.evaluate(
+        async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.repeat?.playlistId,
+      );
+    await expect.poll(running).toBe(repeatId);
+    await p.getByTestId('remote-open-playlists').click();
+    await node(repeatId).getByTestId('remote-library-playlist-delete').click();
+    await expect(ask).toContainText('This Repeat Slides playlist is going round.');
+    await ask.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(ask).toHaveCount(0);
+    expect(await playlistId(win, repeatName)).toBe(repeatId);
+    expect(await running()).toBe(repeatId);
+  } finally {
+    await phone.close();
+    await app.close();
+  }
+});
+
 /** MIDI's settings as the window reads them. */
 const midiNow = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.midi.get());
 

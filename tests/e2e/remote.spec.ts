@@ -110,9 +110,11 @@ test('the remote’s waits are said as a status, and its empty places say where 
     await expectNoSeriousA11yIssues(p, 'the remote with no playlists');
     await p.getByTestId('remote-tab-library').click();
     await expect(
-      p.getByText(
-        'The library is empty: presentations are imported in Drashti on the computer, in Pro Mode.',
-      ),
+      p.getByText('The library is empty. Import a presentation in Drashti on the computer.'),
+    ).toBeVisible();
+    await p.getByTestId('remote-library-media').click();
+    await expect(
+      p.getByText('There are no pictures, videos or sounds yet. Import files in Drashti on the computer.'),
     ).toBeVisible();
   } finally {
     await phone.close();

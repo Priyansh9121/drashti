@@ -410,6 +410,15 @@ test('a Simple Mode phone chooses a playlist, pauses, seeks and plays, and edits
 
     // Create a folder and a playlist in it from the phone’s Playlist tab.
     await p.getByTestId('remote-open-playlists').click();
+    const sheet = p.getByTestId('remote-library-sheet');
+    await expect(sheet.getByTestId('remote-library-items')).toBeVisible();
+    await expect(sheet.getByTestId('remote-library-add-form')).toHaveCount(0);
+    const desktopList = sheet.getByTestId('remote-library-playlist').filter({ hasText: PLAYLIST });
+    await desktopList.getByTestId('remote-library-playlist-delete').click();
+    const confirmDelete = p.getByTestId('remote-library-playlist-delete-confirm');
+    await expect(confirmDelete).toContainText('open on the Drashti computer');
+    await p.getByTestId('remote-library-playlist-delete-confirm-safe').click();
+    await expect(desktopList).toBeVisible();
     const form = p.getByTestId('remote-library-new-playlist');
     const kind = form.getByTestId('remote-library-new-playlist-kind');
     const name = form.getByTestId('remote-library-new-playlist-name');
@@ -469,11 +478,17 @@ test('a Simple Mode phone manages Audio and plays a chosen track', async () => {
         .click();
       await expect(track.filter({ hasText: name })).toBeVisible();
     }
-    await track.nth(1).getByRole('button', { name: 'Move up', exact: true }).click();
+    await track
+      .nth(1)
+      .getByRole('button', { name: /^Move Placeholder second tone.* up$/u })
+      .click();
     await expect
       .poll(async () => (await music()).playlists[0]?.tracks[0]?.name)
       .toContain('Placeholder second tone');
-    await track.first().getByRole('button', { name: 'Remove', exact: true }).click();
+    await track
+      .first()
+      .getByRole('button', { name: /^Remove Placeholder second tone/u })
+      .click();
     await expect(track).toHaveCount(1);
     await audio.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(track).toHaveCount(2);
@@ -487,7 +502,10 @@ test('a Simple Mode phone manages Audio and plays a chosen track', async () => {
     await editor.getByRole('button', { name: 'Shuffle', exact: true }).click();
     await expect.poll(async () => (await music()).playlists[0]).toMatchObject({ loop: false, shuffle: true });
     await editor.getByRole('button', { name: 'Shuffle', exact: true }).click();
-    await track.nth(1).getByRole('button', { name: 'Play track', exact: true }).click();
+    await track
+      .nth(1)
+      .getByRole('button', { name: /^Play Placeholder first tone/u })
+      .click();
     await expect.poll(async () => (await state(win)).layers.audio?.title).toContain('Placeholder first tone');
     await audio.getByRole('button', { name: 'Pause music', exact: true }).click();
     await expect.poll(async () => (await state(win)).layers.audio?.pausedAtMs).toBeDefined();
@@ -498,6 +516,7 @@ test('a Simple Mode phone manages Audio and plays a chosen track', async () => {
     await p.getByRole('button', { name: 'Save name', exact: true }).click();
     await expect.poll(async () => (await music()).playlists[0]?.name).toBe('Placeholder renamed audio');
     await editor.getByRole('button', { name: 'Delete playlist', exact: true }).click();
+    await expect(p.getByRole('alertdialog')).toContainText('If it’s playing, the music stops.');
     await p.getByTestId('remote-audio-delete-act').click();
     await expect.poll(async () => (await music()).playlists).toHaveLength(0);
     await audio.getByRole('button', { name: 'Undo', exact: true }).click();

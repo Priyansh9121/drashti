@@ -72,6 +72,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
   };
   const audioCalls: unknown[][] = [];
   const playIndexes: number[] = [];
+  let clock = 1_000_000;
   let stepsAside = true;
   const recordAudio =
     (action: string) =>
@@ -175,14 +176,17 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     simple: () => (options.locked === true ? ONE : null),
     changed: () => undefined,
     log: () => undefined,
-    now: () => 1_000_000,
+    now: () => clock,
   });
   const remote = service.pairForCheck('remote', 'Placeholder phone').id;
   const stage = service.pairForCheck('stage', 'Placeholder tablet').id;
   const poster = service.pairForCheck('announcements', 'Placeholder poster').id;
   const ask = (deviceId: string, op: DeviceOp, args: Record<string, unknown> = {}) =>
     service.answer({ address: PHONE, deviceId, op, args });
-  return { service, commands, played, state, remote, stage, poster, ask, audioView, audioCalls, playIndexes };
+  const advance = (ms: number) => {
+    clock += ms;
+  };
+  return { service, commands, played, state, remote, stage, poster, ask, audioView, audioCalls, playIndexes, advance };
 }
 
 /** The new reads and the actions that put something up. */
@@ -486,6 +490,34 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     expect(ask(remote, 'music.play', { playlistId: 'music-1', index: -1 }).status).toBe(400);
     expect(played).toEqual(['music-1']);
     expect(playIndexes).toEqual([2]);
+  });
+
+  it.each([false, true])('limits Audio changes to each phone, with Simple Mode %s', (locked) => {
+    const { ask, service, remote, audioCalls, advance } = setup({ locked });
+    const name = { name: 'Placeholder tunes' };
+    for (let i = 0; i < 30; i++) expect(ask(remote, 'music.new', name).status).toBe(200);
+    for (const [op, args] of [
+      ['music.new', name],
+      ['music.rename', { playlistId: 'music-1', name: 'Placeholder sounds' }],
+      ['music.remove', { playlistId: 'music-1' }],
+      ['music.restore', { playlistId: 'music-1' }],
+      ['music.options', { playlistId: 'music-1', loop: true, shuffle: false }],
+      ['music.addTracks', { playlistId: 'music-1', mediaIds: ['m-tune'] }],
+      ['music.moveTrack', { trackId: 'track-1', to: 1 }],
+      ['music.removeTrack', { trackId: 'track-1' }],
+      ['music.restoreTrack', { trackId: 'track-1', at: 1 }],
+      ['music.stepsAside', { on: false }],
+    ] as const)
+      expect(ask(remote, op, args).status, op).toBe(429);
+    expect(audioCalls).toHaveLength(30);
+    expect(ask(remote, 'music.audio')).toMatchObject({ status: 200, body: { stepsAside: true } });
+    expect(ask(remote, 'music.play', { playlistId: 'music-1' }).status).toBe(200);
+    const other = service.pairForCheck('remote', 'Placeholder second phone').id;
+    expect(ask(other, 'music.new', name).status).toBe(200);
+    advance(100);
+    expect(ask(remote, 'music.new', name).status).toBe(429);
+    advance(100);
+    expect(ask(remote, 'music.new', name).status).toBe(200);
   });
 
   it('refuses each with Simple Mode’s words when its window request is locked, as the window would be', () => {

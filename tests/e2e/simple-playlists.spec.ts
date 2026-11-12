@@ -243,7 +243,19 @@ test('a paired Simple Mode phone can manage other playlists and open a smart pla
     status: 403,
     json: { ok: false, message: SIMPLE_MODE_REFUSAL },
   });
-  expect((await post(`/api/v1/playlists/${other}/add`, addPicture)).status).toBe(200);
+  expect(await post(`/api/v1/playlists/${other}/add`, addPicture)).toMatchObject({
+    status: 403,
+    json: { ok: false, message: expect.stringContaining('Simple Mode') },
+  });
+  const empty = await apiCall(port, `/api/v1/playlists/${other}/items`, { token });
+  expect(empty.json['items']).toEqual([]);
+  // The imported media can still be added by the operator window and used from the phone.
+  const added = await win.evaluate(
+    ({ playlistId, mediaId }) =>
+      (globalThis as PageGlobals).drashti.playlists.addItems(playlistId, null, [{ kind: 'media', mediaId }]),
+    { playlistId: other, mediaId: show.pictureMediaId },
+  );
+  expect(added.ok).toBe(true);
   const listed = await apiCall(port, `/api/v1/playlists/${other}/items`, { token });
   expect(listed.status).toBe(200);
   expect(listed.json['items']).toMatchObject([{ kind: 'media', mediaId: show.pictureMediaId }]);
