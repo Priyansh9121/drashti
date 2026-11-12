@@ -151,7 +151,12 @@ test('the library’s Import › Files… and a drop on its list bring pictures 
   await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/ }).click();
   await expect.poll(() => labels(win)).toEqual([]);
   expect(await mediaNames(win)).toEqual(
-    expect.arrayContaining(['Placeholder A.png', 'Placeholder B.png', 'Placeholder C.png', 'Placeholder D.png']),
+    expect.arrayContaining([
+      'Placeholder A.png',
+      'Placeholder B.png',
+      'Placeholder C.png',
+      'Placeholder D.png',
+    ]),
   );
   await app.close();
 });
