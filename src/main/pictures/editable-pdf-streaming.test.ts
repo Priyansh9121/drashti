@@ -32,7 +32,10 @@ class HiddenWindow extends EventEmitter {
 const roots: string[] = [];
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-type Streamed = { index: number; page?: PreparedSourcePage };
+interface Streamed {
+  index: number;
+  page?: PreparedSourcePage;
+}
 type Extra = Partial<SourceRead> & Record<string, unknown>;
 
 function setup(
@@ -62,7 +65,7 @@ function setup(
     },
     ...extra({ handed, stop }),
   };
-  const result = session.readNow(request as SourceRead);
+  const result = session.readNow(request);
   return { outDir, stop, win, session, sender, result, handed };
 }
 

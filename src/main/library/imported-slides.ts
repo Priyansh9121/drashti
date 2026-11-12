@@ -409,7 +409,7 @@ export class ImportedSlides {
             progressive && ref.ext === 'pdf'
               ? {
                   onPdfPage: takePage,
-                  pdfHold: () => view.shown && progressive?.busy() === true,
+                  pdfHold: () => view.shown && progressive.busy(),
                   pdfBudget: { assetBytes: 0, metadataBytes: 0 },
                 }
               : {};
