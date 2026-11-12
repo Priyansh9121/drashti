@@ -118,7 +118,7 @@ const QUEUE: AnnouncementsView = {
   earlier: [announcement('a-3', 'ended')],
 };
 
-function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
+function setup(options: { locked?: boolean; letIn?: boolean; audioTrackIds?: readonly string[] } = {}) {
   const db = openDatabase(':memory:');
   const devices = new DeviceRepo(db);
   const calls: Call[] = [];
@@ -155,6 +155,7 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
       return id === 'pl-1' ? 'playlist' : id === 'folder' ? 'folder' : id === 'template' ? 'template' : null;
     },
     listsMedia: () => false,
+    inMusic: (id) => options.audioTrackIds?.includes(id) === true,
     listsPresentation: () => false,
   };
   const playScope = {
@@ -192,6 +193,9 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
       calls.push({ what, args });
       return answer(...args);
     };
+  const unexpectedPhoneAction = () => {
+    throw new Error('This fixture supports only renaming a track.');
+  };
   const service = new NetworkService({
     devices,
     settings: { get: () => undefined, set: () => undefined },
@@ -400,6 +404,27 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
           boxes.push({ question, answer: resolve });
         }),
     },
+    phone: options.audioTrackIds
+      ? {
+          wallpapers: {
+            view: unexpectedPhoneAction,
+            choose: unexpectedPhoneAction,
+            rename: unexpectedPhoneAction,
+            remove: unexpectedPhoneAction,
+            restore: unexpectedPhoneAction,
+          },
+          quickBar: { view: unexpectedPhoneAction, set: unexpectedPhoneAction },
+          looks: { look: unexpectedPhoneAction, photo: unexpectedPhoneAction, set: unexpectedPhoneAction },
+          rename: {
+            media: (id, name) => {
+              calls.push({ what: 'renameMedia', args: [id, name] });
+              return { ok: true };
+            },
+            presentation: unexpectedPhoneAction,
+          },
+          whenEnds: unexpectedPhoneAction,
+        }
+      : undefined,
     playMusic: () => ({ ok: true as const }),
     announcements: {
       submit: () => ({ status: 202, body: { ok: true } }),
@@ -1033,6 +1058,14 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       { what: 'restoreItems', args: [['item-1']] },
       { what: 'addItems', args: ['pl-1', null, add.items] },
     ]);
+  });
+
+  it('renames a sound on an Audio playlist in Simple Mode and refuses an unlisted sound', () => {
+    const { ask, remote, calls } = setup({ locked: true, audioTrackIds: ['sound-in-audio'] });
+    const name = 'Placeholder renamed track';
+    expect(ask(remote, 'media.rename', { mediaId: 'sound-in-audio', name }).status).toBe(200);
+    expect(ask(remote, 'media.rename', { mediaId: 'sound-unlisted', name }).status).toBe(403);
+    expect(calls).toEqual([{ what: 'renameMedia', args: ['sound-in-audio', name] }]);
   });
 
   it('caps playlist and row id lists before looking up any ids in Simple Mode', () => {
