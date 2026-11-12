@@ -34,6 +34,8 @@ export function pptxFormula(text: string): PptxFormula | null {
   const known = read.get(text);
   if (known !== undefined) return known;
   const formula = parse(text);
+  // Only what could be a formula is kept: a deck's longer text is never held on to.
+  if (text.length > FORMULA_LENGTH) return formula;
   if (read.size >= 256) read.clear();
   read.set(text, formula);
   return formula;
@@ -110,8 +112,10 @@ function parse(text: string): PptxFormula | null {
       return inner;
     }
     const name = /^([a-z]+)\(/u.exec(rest)?.[1];
-    const work = name === undefined ? undefined : FUNCTIONS[name];
-    const [fewest, most] = (name === undefined ? undefined : ARGUMENTS[name]) ?? [0, 0];
+    // Only the functions' own names: never one every object has (`constructor`), which a deck could write.
+    const known = name !== undefined && Object.hasOwn(FUNCTIONS, name) && Object.hasOwn(ARGUMENTS, name);
+    const work = known ? FUNCTIONS[name] : undefined;
+    const [fewest, most] = (known ? ARGUMENTS[name] : undefined) ?? [0, 0];
     if (!name || !work) throw new Unread();
     at += name.length + 1;
     const values = [sum(depth + 1)];
