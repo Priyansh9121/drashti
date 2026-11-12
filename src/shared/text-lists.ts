@@ -117,7 +117,8 @@ export function lineMarks(lines: readonly (readonly TextRun[])[]): LineMark[] {
       return { mark, level, label: null };
     }
     const was = counts[level];
-    const n = was?.mark === mark ? was.n + 1 : 1;
+    const first = runs.find((run) => run.text.trim() !== '');
+    const n = first?.paragraph?.startAt ?? (was?.mark === mark ? was.n + 1 : 1);
     counts[level] = { mark, n };
     return { mark, level, label: listLabel(n, mark) };
   });
@@ -216,6 +217,10 @@ export interface DrawnLine {
 export function drawnLines(runs: readonly TextRun[]): DrawnLine[] {
   const lines: Omit<DrawnLine, 'mark'>[] = [{ pieces: [], end: null }];
   runs.forEach((run, index) => {
+    if (run.softBreak && /^\n+$/u.test(run.text)) {
+      lines.at(-1)?.pieces.push({ run, index, text: run.text });
+      return;
+    }
     const parts = run.text.split('\n');
     parts.forEach((part, i) => {
       const line = lines[lines.length - 1];
