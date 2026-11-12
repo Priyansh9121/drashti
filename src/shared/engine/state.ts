@@ -432,6 +432,21 @@ export function backgroundItemId(
 }
 
 /**
+ * A playlist row's video is the live background (Session 57, TR-6): that row supplied it, or that row is LIVE and the
+ * same video was chosen again straight from Media. Its held cut then waits, and Reset waits.
+ */
+export function rowVideoLive(
+  state: Pick<EngineState, 'live' | 'layers'>,
+  itemId: string,
+  mediaId: string,
+): boolean {
+  const bg = state.layers.background;
+  if (bg?.kind !== 'media' || bg.media !== 'video' || bg.mediaId !== mediaId) return false;
+  const liveRow = state.live.playlist?.itemId;
+  return liveRow === itemId || backgroundItemId(bg, liveRow) === itemId;
+}
+
+/**
  * Part of a message: words, a timer shown live (each window works out its
  * time), or today's Samvat date and tithi from the loaded calendars (nothing
  * when they do not give today).
