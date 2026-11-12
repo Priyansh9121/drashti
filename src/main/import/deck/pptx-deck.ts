@@ -1,4 +1,5 @@
 import type { DeckEffect } from '../../../shared/deck';
+import { deckBackgroundTarget } from '../../../shared/deck-motion';
 import type { XmlNode } from '../xml';
 import { type NativePptxTransition, nativePptxTransition } from './pptx-native-transition';
 
@@ -697,10 +698,11 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
   }
   const subtarget = targets.some((target) => kids(target).length > 0);
   const textRange = targets.some((target) => kid(target, 'p:txEl') !== undefined);
+  const background = !textRange && targets.some((target) => kid(target, 'p:bg') !== undefined);
   const cls = tn.attrs['presetClass'];
   const transition = behaviours.find((n) => n.name === 'p:animEffect')?.attrs['transition'];
   const phase =
-    subtarget && !textRange
+    subtarget && !textRange && !background
       ? 'emphasis'
       : cls === 'entr'
         ? 'in'
@@ -710,7 +712,7 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
             ? transition
             : 'emphasis';
   const paragraphs = textRange && phase !== 'emphasis' ? paragraphRange(targets) : null;
-  const native = subtarget && !paragraphs ? null : nativeLook(tn, phase, behaviours);
+  const native = subtarget && !paragraphs && !background ? null : nativeLook(tn, phase, behaviours);
   // A paragraph build shows or hides each paragraph by itself: at once for Appear, anything else as a fade.
   const selected: NativeLook = paragraphs
     ? { kind: native?.kind === 'appear' ? 'appear' : 'fade' }
@@ -739,6 +741,7 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
   if (
     !native ||
     partial ||
+    background ||
     paragraphs ||
     !ease ||
     // A smooth start or end: played as SMIL defines it, but not yet compared with PowerPoint's own movie.
@@ -755,7 +758,7 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
   )
     schedule.approximate = true;
   const effect: DeckEffect = {
-    shapeId,
+    shapeId: background ? deckBackgroundTarget(shapeId) : shapeId,
     step: schedule.step,
     phase,
     ...look,

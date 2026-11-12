@@ -9,6 +9,7 @@ import {
   stepTiming,
   takingTime,
 } from '../../shared/deck-show';
+import { isDeckNativeTransition } from '../../shared/deck-transition';
 import type { SlideLayer, VideoSeeks } from '../../shared/engine/state';
 import type { PlaybackSeek } from '../../shared/media';
 import type { Transition } from '../../shared/model';
@@ -116,12 +117,17 @@ function settledFrom(deck: DeckSlide, index: number): number {
   return Math.max(nativeDeckMotion(deck) ? 1 : 0, stepDurationMs(deck, index));
 }
 
-/** Next on a deck's slide: its next step, from `at`; null at its last step (Next goes on to the next slide). */
+/** Next starts the next click after an incoming native transition, or at once if it has finished. */
 export function stepForward(layer: SlideLayer, at: number): SlideLayer | null {
   const deck = layer.slide.deck;
   const index = stepOf(layer);
   if (!deck || index >= lastStep(deck)) return null;
-  return withSeeks(atStep(layer, index + 1, at, 0), forwardSeeks(deck, index + 1, at, layer.seeks));
+  const transition = layer.transition;
+  const start =
+    nativeDeckMotion(deck) && isDeckNativeTransition(transition)
+      ? Math.max(at, layer.shownAt + transition.durationMs)
+      : at;
+  return withSeeks(atStep(layer, index + 1, start, 0), forwardSeeks(deck, index + 1, start, layer.seeks));
 }
 
 /**

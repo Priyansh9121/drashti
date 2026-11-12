@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { nativeDeckMotion } from '../../../shared/deck';
 import { type DeckNativeTransition, isDeckNativeTransition } from '../../../shared/deck-transition';
 import type { EngineState, SlideLayer } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
@@ -48,6 +49,8 @@ interface Showing {
   on: SlideLayer | null;
   /** The slide going away while `on` comes in. */
   off: SlideLayer | null;
+  /** The click pressed while PowerPoint's incoming transition is still on screen. */
+  afterTransition?: SlideLayer;
   /** The transition's kind and length, and when it started (null: the new slide's media is still loading). */
   fade: { kind: TransitionKind; ms: number; start: number | null; native?: DeckNativeTransition } | null;
 }
@@ -81,6 +84,8 @@ export function nextShowing(
     const moved = prev.on.step !== layer.step || prev.on.stepAt !== layer.stepAt;
     if (moved) {
       const native = nativeStepTiming(layer);
+      if (native && prev.fade?.native && (prev.fade.start === null || now < prev.fade.start + prev.fade.ms))
+        return { ...prev, afterTransition: layer };
       const t = native?.drashti?.transition;
       if (native && takesTime(t) && now < native.shownAt + t.durationMs)
         return {
@@ -224,7 +229,7 @@ export function slideMediaReady(
   deadline: number,
   layer: SlideLayer,
 ): true | Promise<void> {
-  const native = isDeckNativeTransition(layer.transition);
+  const native = nativeDeckMotion(layer.slide.deck) !== undefined;
   const waits: Promise<unknown>[] = [];
   for (const img of root.querySelectorAll('img'))
     if (!img.complete) waits.push(img.decode().catch(() => undefined));
@@ -454,7 +459,8 @@ export function SlideLayerView({
     if (start === null) return;
     let frame = 0;
     const tick = () => {
-      const p = fadeAt({ ms, start }, engineNow());
+      const now = engineNow();
+      const p = fadeAt({ ms, start }, now);
       paintLayers(
         {
           in: inRef.current,
@@ -468,7 +474,11 @@ export function SlideLayerView({
       );
       rootRef.current?.setAttribute('data-fade', p.toFixed(3));
       if (p >= 1) {
-        setShowing((s) => (s.fade?.start === start ? { on: s.on, off: null, fade: null } : s));
+        setShowing((s) => {
+          if (s.fade?.start !== start) return s;
+          const done = { on: s.on, off: null, fade: null };
+          return s.afterTransition ? nextShowing(done, s.afterTransition, now) : done;
+        });
         return;
       }
       frame = requestAnimationFrame(tick);
