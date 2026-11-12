@@ -108,6 +108,7 @@ export type PreparedSource =
   | {
       ok: true;
       pages: PreparedSourcePage[];
+      /** The pages in the document, as read; 0 for a PDF job the show stopped before its page count (all `unread`). */
       total: number;
       failed: number[];
       /**

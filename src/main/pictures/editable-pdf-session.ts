@@ -57,6 +57,14 @@ const failure = (): PreparedSource => ({
   ok: false,
   message: 'This PDF’s words and shapes could not be read safely. The slides still show as before.',
 });
+/** A job the show stopped before any page was read (Session 57): every page left for a new job; no page count yet. */
+const notRead = (pages: Iterable<number>): PreparedSource => ({
+  ok: true,
+  pages: [],
+  total: 0,
+  failed: [],
+  unread: [...pages],
+});
 
 // Return completed pages before the outer source queue expires and cancels its request.
 const PDF_FINISH_RESERVE_MS = 2_000;
@@ -112,8 +120,8 @@ export class EditablePdfSessions {
    */
   private hold(session: Session): false {
     if (session.total === null) {
-      // A window that never said how many pages there are: nothing to go on from, as before.
-      session.finish(failure());
+      // Before the window said its page count (as it asks for its job, say): no page is read yet, so all are left.
+      session.finish(notRead(session.job.sourcePages));
       return false;
     }
     const unread = session.job.sourcePages.filter(
@@ -151,6 +159,8 @@ export class EditablePdfSessions {
       [...requested].some((index) => !Number.isInteger(index) || index < 0 || index > 1_000_000)
     )
       return failure();
+    // The show needs the computer as the job's turn comes (the delta review's LOW-1): nothing is read, copied or opened.
+    if (request.pdfHold?.()) return notRead(requested);
     let data: Uint8Array;
     try {
       // Preparation is bounded independently of ordinary full-page picture imports.
@@ -164,6 +174,7 @@ export class EditablePdfSessions {
     }
     if (this.isAborted(request) || !(await sourceCheckpoint(request))) return failure();
     if (this.current()) return failure();
+    if (request.pdfHold?.()) return notRead(requested);
     return new Promise<PreparedSource>((resolve) => {
       let win: BrowserWindow;
       try {
@@ -250,6 +261,11 @@ export class EditablePdfSessions {
   job(sender: WebContents): EditablePdfJob | null {
     const session = this.active;
     if (!session || !this.owns(sender)) return null;
+    // The show turned busy as the window opened: the PDF is never sent to it, and every page is left for a new job.
+    if (!this.isStopped(session) && session.request.pdfHold?.()) {
+      this.hold(session);
+      return null;
+    }
     return { ...session.job, timeBudgetMs: Math.max(0, session.deadlineAt - performance.now()) };
   }
 
