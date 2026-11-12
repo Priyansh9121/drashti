@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_COUNTS, type ImportItemReport, type ImportOptions } from '../../shared/import';
 import type { SmartPlaylistView } from '../../shared/playlists';
 import { openDatabase, type Db } from '../db/database';
@@ -115,11 +115,13 @@ function setup(db: Db = openDatabase(':memory:'), maxFiles?: number, air = { on:
     reports.set(runId, items);
     return { ok: true as const, runId };
   };
+  const importNotice = vi.fn();
   const service = new SmartFolders({
     db,
     playlists,
     importFiles,
     report: (runId) => ({ items: reports.get(runId) ?? [] }),
+    ...{ importNotice },
     changed: () => undefined,
     views: (v) => views.push(v),
     log: (level, message) => {
@@ -147,7 +149,7 @@ function setup(db: Db = openDatabase(':memory:'), maxFiles?: number, air = { on:
         i.kind === 'header' ? `# ${i.label}` : `${i.label}${'gone' in i && i.gone ? ' (gone)' : ''}`,
       );
   const view = (id: string) => service.views().find((v) => v.playlistId === id);
-  return { db, playlists, presentations, service, imports, views, clock, held, settle, shown, view };
+  return { db, playlists, presentations, service, imports, importNotice, views, clock, held, settle, shown, view };
 }
 
 const folder = () => join(root, 'Sabha');
@@ -347,13 +349,15 @@ describe('a smart playlist following a folder', () => {
   it('a file that will not import is not tried again until it changes', async () => {
     await put('Bad.jpg', 'broken');
     await put('Good.jpg', 'fine');
-    const { service, settle, shown, imports } = setup();
+    const { service, settle, shown, imports, importNotice } = setup();
     const made = await service.create(folder());
     const id = made.ok ? made.id : '';
     await settle(id);
     expect(shown(id)).toEqual(['Good.jpg']);
+    expect(importNotice).toHaveBeenCalledWith({ runId: expect.any(String) });
     await settle(id);
     expect(imports).toHaveLength(1);
+    expect(importNotice).toHaveBeenCalledTimes(1);
     await put('Bad.jpg', 'mended now');
     await settle(id);
     expect(shown(id)).toEqual(['Good.jpg', 'Bad.jpg']);
