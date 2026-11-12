@@ -553,6 +553,33 @@ describe('the network server', () => {
   });
 });
 
+it('fits a thousand playlist IDs in one paired Undo request under its own body limit', async () => {
+  const { host, port } = await start();
+  const ids = Array.from(
+    { length: 1000 },
+    (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+  );
+  const body = JSON.stringify({ ids });
+  const headers = { ...bearer(REMOTE_TOKEN), 'Content-Type': 'application/json' };
+  expect(Buffer.byteLength(body)).toBeGreaterThan(16 * 1024);
+  const restore = await call(port, '/api/v1/playlists/restore', { method: 'POST', headers, body });
+  expect(restore.status).toBe(200);
+  const request = host.requests[0];
+  expect(request?.op).toBe('playlist.restore');
+  expect((request?.args as { ids?: string[] } | undefined)?.ids).toHaveLength(1000);
+  expect((await call(port, '/api/v1/command', { method: 'POST', headers, body })).status).toBe(413);
+  expect(
+    (
+      await call(port, '/api/v1/playlists/restore', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ids, note: 'x'.repeat(16_384) }),
+      })
+    ).status,
+  ).toBe(413);
+  expect(host.requests).toHaveLength(1);
+});
+
 describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
   /** A PNG's headers saying this size, as a stand-in picture in the media folder. */
   function pictureFile(width: number, height: number): string {
