@@ -279,8 +279,10 @@ describe('Edit slides reads the rest of a big PDF behind the editor (Session 57,
       await vi.advanceTimersByTimeAsync(200_000);
       await until(() => false, 200);
       expect(t.last(), 'nothing is given up while the show is busy').toBeUndefined();
-      // Clear all: the rest is read, and every page becomes editable.
+      // Clear all: once the show has stayed idle a couple of seconds, the rest is read and every page becomes editable.
       t.show.set(false);
+      await until(() => false, 100);
+      await vi.advanceTimersByTimeAsync(2_500);
       expect(await until(() => t?.last() !== undefined)).toBe(true);
       expect([...t.madeReady()].sort()).toEqual(t.ids.slice(3).sort());
       expect(t.last()).toEqual(expect.objectContaining({ issues: [] }));
@@ -312,9 +314,46 @@ describe('Edit slides reads the rest of a big PDF behind the editor (Session 57,
         total: 2,
       });
       t.show.set(false);
+      await until(() => false, 100);
+      await vi.advanceTimersByTimeAsync(2_500);
       expect(await until(() => t?.last() !== undefined)).toBe(true);
       expect([...t.madeReady()].sort()).toEqual(t.ids.slice(3).sort());
       await drawn;
+    } finally {
+      vi.useRealTimers();
+      await cleanUp(t);
+    }
+  });
+
+  // The delta review's LOW-1: Clear all, then the next slide a moment later, is no time to start reading again.
+  it('goes on only once the show has stayed idle for a couple of seconds', async () => {
+    let t: Setup | undefined;
+    try {
+      t = await setup();
+      const go = t.gate(3);
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+      await t.open(t.ids[0] ?? null);
+      t.show.set(true);
+      go();
+      await until(() => false, 200);
+      expect(t.windows).toHaveLength(1);
+      // Clear all, and a second later the next slide: nothing is read in between.
+      t.show.set(false);
+      await until(() => false, 100);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await until(() => false, 100);
+      expect(t.windows, 'no new job in the moment between two slides').toHaveLength(1);
+      t.show.set(true);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await until(() => false, 100);
+      expect(t.windows).toHaveLength(1);
+      // Clear all for good: after a couple of seconds the rest is read.
+      t.show.set(false);
+      await until(() => false, 100);
+      await vi.advanceTimersByTimeAsync(2_500);
+      expect(await until(() => t?.last() !== undefined)).toBe(true);
+      expect([...t.madeReady()].sort()).toEqual(t.ids.slice(3).sort());
+      expect(t.windows).toHaveLength(2);
     } finally {
       vi.useRealTimers();
       await cleanUp(t);
