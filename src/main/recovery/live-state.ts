@@ -135,6 +135,7 @@ const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind'
     fit: z.enum(['fit', 'fill', 'stretch']),
     loop: z.boolean(),
     startedAt: z.number(),
+    sourceItemId: idSchema.nullable().optional(),
     durationMs: z.number().positive().optional(),
     seek: seekSchema.optional(),
   }),

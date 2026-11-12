@@ -409,6 +409,8 @@ export type BackgroundLayer =
        * of restarting; a window that joins late starts from this point.
        */
       startedAt: number;
+      /** The playlist video row that supplied it, or null for a direct choice. Older saves omit it. */
+      sourceItemId?: string | null;
       /** It came on dissolving from the background before, with its slide: from `at` for `durationMs`. */
       fade?: { at: number; durationMs: number };
       /** A video's length, once known (learned from playing it): a stage screen shows the time left. */
@@ -420,6 +422,14 @@ export type BackgroundLayer =
       /** The file's named markers to jump to (Session 14), when it has any. */
       marks?: PlaybackMarker[];
     });
+
+/** The playback row for this background. A save from before origins were stored uses the old fallback. */
+export function backgroundItemId(
+  layer: Extract<BackgroundLayer, { kind: 'media' }>,
+  fallback?: string,
+): string | undefined {
+  return layer.sourceItemId === undefined ? fallback : (layer.sourceItemId ?? undefined);
+}
 
 /**
  * Part of a message: words, a timer shown live (each window works out its
