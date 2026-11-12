@@ -230,6 +230,10 @@ export function newTextBox(look: SlideLook): TextElement {
   };
 }
 
+export function setShapeFill(element: SlideElement, fill: ShapeElement['fill']): SlideElement {
+  return element.kind === 'shape' ? { ...element, fill, gradient: undefined } : element;
+}
+
 export type ShapeChoice = ShapeKind | 'rounded';
 
 /**
