@@ -33,6 +33,7 @@ import {
   HANDLE_AT,
   HANDLES,
   hitTest,
+  menuTarget,
   overlaps,
   resizeFrame,
   rotatePoint,
@@ -44,8 +45,6 @@ import {
 } from './geometry';
 import type { TextPatch } from './ops';
 import {
-  deleteElements,
-  duplicateElements,
   findSlide,
   mapElements,
   moveElements,
@@ -56,18 +55,25 @@ import {
   addElement,
   newId,
 } from './ops';
-import { copyElements, pasteElements } from './clipboard';
 import { finishTextEditing, TextBoxEditor } from './TextBoxEditor';
 import { SafeAreas } from './SafeAreas';
 import { connectSafeAreas } from './safe-areas-store';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ZoomIn, ZoomOut } from '../ui/icons';
+import { isMenuKey, menuBelow, menuPlace, type MenuPlace } from '../ui/Menu';
 import type { Zoom } from './zoom';
 import { scaleFor, zoomBy, zoomIn, zoomLabel, zoomOut, zoomScroll } from './zoom';
 import { pdfMark } from './pdf-marks';
 import type { PdfCanvasTool } from './pdf-marks';
 import { elementName, type SlideObject } from './objects';
+import { ObjectMenu } from './ObjectMenu';
+import {
+  copySelectedObjects,
+  deleteSelectedObjects,
+  duplicateSelectedObjects,
+  pasteSelectedObjects,
+} from './object-actions';
 
 /*
  * The slide being edited, scaled to fit, drawn by the same renderer as the
@@ -165,7 +171,13 @@ const keepMeasure: MeasureReport = (id, measured) => {
   useEditor.setState({ measured: measured === null ? rest : { ...rest, [id]: measured } });
 };
 
-export function Canvas({ platform }: { platform: string }) {
+export function Canvas({
+  platform,
+  onPictureDrop,
+}: {
+  platform: string;
+  onPictureDrop: (file: File, at: Point) => void;
+}) {
   // View › Show Safe Areas: its switch, from the main process.
   useEffect(() => {
     connectSafeAreas();
@@ -237,6 +249,11 @@ export function Canvas({ platform }: { platform: string }) {
   const drag = useRef<Drag | null>(null);
   const [guides, setGuides] = useState<Guides | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
+  const [objectMenu, setObjectMenu] = useState<{
+    at: MenuPlace;
+    slideId: string;
+    target: string | null;
+  } | null>(null);
   const lastClick = useRef<(ObjectClick & { slide: EditSlide; selection: readonly string[] }) | null>(null);
   const pdfPointer = useRef<PdfPointerGesture | null>(null);
   const [pdfDraft, setPdfDraft] = useState<PdfPointerPreview | null>(null);
@@ -675,6 +692,17 @@ export function Canvas({ platform }: { platform: string }) {
     if (click?.slide === slide) startEditing(click.pressed, { x: e.clientX, y: e.clientY });
   };
 
+  const openObjectMenu = (at: MenuPlace, point?: Point) => {
+    const before = useEditor.getState();
+    if (before.pdfTool || before.pdfDrawing || before.sourceConversion) return;
+    finishTextEditing();
+    const now = useEditor.getState();
+    const target = point ? menuTarget(elements, now.selection, point, 6 / scale) : (single?.id ?? null);
+    if (point && (!target || !now.selection.includes(target))) select(target ? [target] : []);
+    stage.current?.focus({ preventScroll: true });
+    setObjectMenu({ at, slideId: slide.id, target });
+  };
+
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape' && (pdfPointer.current || useEditor.getState().pdfTool)) {
       e.preventDefault();
@@ -691,6 +719,12 @@ export function Canvas({ platform }: { platform: string }) {
       return;
     }
     if (editing || e.target !== e.currentTarget) return;
+    if (isMenuKey(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      openObjectMenu(menuBelow(e.currentTarget));
+      return;
+    }
     const mod = platform === 'darwin' ? e.metaKey : e.ctrlKey;
     const now = useEditor.getState();
     if (!now.doc) return;
@@ -724,7 +758,7 @@ export function Canvas({ platform }: { platform: string }) {
     }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length > 0) {
       e.preventDefault();
-      commit(deleteElements(now.doc, slide.id, selection), { select: [] });
+      deleteSelectedObjects();
       return;
     }
     if (mod && e.key.toLowerCase() === 'a') {
@@ -766,41 +800,27 @@ export function Canvas({ platform }: { platform: string }) {
     }
     if (mod && e.key.toLowerCase() === 'd' && selection.length > 0) {
       e.preventDefault();
-      const copied = duplicateElements(now.doc, slide.id, selection);
-      commit(copied.doc, { select: copied.ids });
+      duplicateSelectedObjects();
       return;
     }
     // Paste in place (Mod+Shift+V): exactly where they were. (Mod+V comes as the window's paste.)
     if (mod && e.shiftKey && e.key.toLowerCase() === 'v') {
       e.preventDefault();
       pastedInPlaceAt.current = e.timeStamp;
-      paste(true);
+      pasteSelectedObjects(true);
     }
   };
 
-  /** Paste what was copied onto this slide (one step for Undo); the pasted elements are selected. */
-  const paste = (inPlace: boolean) => {
-    const now = useEditor.getState();
-    if (!now.doc || now.editing) return;
-    const pasted = pasteElements(now.doc, slide.id, { inPlace });
-    if (pasted) commit(pasted.doc, { select: pasted.ids });
-  };
   // The window's Copy, Cut and Paste (the Edit menu and its keys) while the slide has the focus.
   const onCopy = (e: React.ClipboardEvent<HTMLDivElement>) => {
     if (editing || e.target !== e.currentTarget || selection.length === 0) return;
-    const now = useEditor.getState();
-    if (!now.doc) return;
     e.preventDefault();
-    const n = copyElements(now.doc, slide.id, selection);
-    tell(n === 1 ? 'Copied 1 element.' : `Copied ${n} elements.`);
+    copySelectedObjects();
   };
   const onCut = (e: React.ClipboardEvent<HTMLDivElement>) => {
     if (editing || e.target !== e.currentTarget || selection.length === 0) return;
-    const now = useEditor.getState();
-    if (!now.doc) return;
     e.preventDefault();
-    copyElements(now.doc, slide.id, selection);
-    commit(deleteElements(now.doc, slide.id, selection), { select: [] });
+    copySelectedObjects(true);
   };
   const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     if (editing || e.target !== e.currentTarget) return;
@@ -809,7 +829,7 @@ export function Canvas({ platform }: { platform: string }) {
     const inPlaceAt = pastedInPlaceAt.current;
     pastedInPlaceAt.current = null;
     if (inPlaceAt !== null && e.timeStamp - inPlaceAt < 300) return;
-    paste(false);
+    pasteSelectedObjects();
   };
 
   const status =
@@ -850,6 +870,26 @@ export function Canvas({ platform }: { platform: string }) {
             if (pdfPointer.current) cancelPdfPointer();
           }}
           onDoubleClick={onDoubleClick}
+          onContextMenu={(e) => {
+            if (e.target instanceof Element && e.target.closest('[data-editing]')) return;
+            e.preventDefault();
+            openObjectMenu(menuPlace(e), e.clientX === 0 && e.clientY === 0 ? undefined : pointOf(e));
+          }}
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes('Files')) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+          }}
+          onDrop={(e) => {
+            if (!e.dataTransfer.types.includes('Files')) return;
+            e.preventDefault();
+            if (e.dataTransfer.files.length !== 1) {
+              tell('Drop one picture at a time.');
+              return;
+            }
+            const file = e.dataTransfer.files.item(0);
+            if (file) onPictureDrop(file, pagePoint(e));
+          }}
           onKeyDown={onKeyDown}
           onCopy={onCopy}
           onCut={onCut}
@@ -1015,6 +1055,14 @@ export function Canvas({ platform }: { platform: string }) {
         </p>
       </div>
       <ZoomBar zoom={zoom} fit={fit} />
+      {objectMenu?.slideId === slide.id && (
+        <ObjectMenu
+          at={objectMenu.at}
+          slide={slide}
+          target={objectMenu.target}
+          onClose={() => setObjectMenu(null)}
+        />
+      )}
     </div>
   );
 }

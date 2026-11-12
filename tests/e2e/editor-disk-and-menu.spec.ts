@@ -127,7 +127,7 @@ test('a picture can be picked from the computer or dropped directly on the slide
 
     const canvas = await editor.getByTestId('editor-canvas').boundingBox();
     if (!canvas) throw new Error('The slide canvas did not render');
-    const x = Math.round(canvas.x + canvas.width * 0.76);
+    const x = Math.round(canvas.x + canvas.width * 0.73);
     const y = Math.round(canvas.y + canvas.height * 0.67);
     const cdp = await ed.context().newCDPSession(ed);
     try {

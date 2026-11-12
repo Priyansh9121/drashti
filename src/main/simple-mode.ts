@@ -363,6 +363,7 @@ const SESSION_56_BOUNDED: readonly [InvokeChannel, SimpleBound][] = [
   // Edit slides: Pro's slide editor's window, its save, and its save's Undo.
   [IPC.slideEditor.open, ([id], scope) => aPlaylistsPresentation(scope, id)],
   [IPC.slideEditor.copy, ([copied]) => typeof copied === 'object' && copied !== null],
+  [IPC.slideEditor.addPicture, ([id], scope) => aPlaylistsPresentation(scope, id)],
   [IPC.library.saveSlides, ([id], scope) => aPlaylistsPresentation(scope, id)],
   [
     IPC.library.restoreRevision,

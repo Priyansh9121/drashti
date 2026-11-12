@@ -2,18 +2,13 @@ import type { EditSlide } from '../../../shared/slide-edit';
 import { Button } from '../ui/Button';
 import { commit, select, startEditing, useEditor } from './editor-store';
 import { elementName, type SlideObject } from './objects';
-import { arrange, mapElements } from './ops';
+import { arrange, canMoveInOrder, mapElements } from './ops';
 import { finishTextEditing } from './TextBoxEditor';
 
 export function ObjectsPane({ slide }: { slide: EditSlide }) {
   const selection = useEditor((s) => s.selection);
   const elements: readonly SlideObject[] = slide.elements;
   const selected = new Set(selection);
-  const canMove = (step: number) =>
-    elements.some((el, index) => {
-      const other = elements[index + step];
-      return selected.has(el.id) && other && !selected.has(other.id);
-    });
   const reorder = (how: 'forward' | 'backward') => {
     finishTextEditing();
     const now = useEditor.getState();
@@ -86,7 +81,7 @@ export function ObjectsPane({ slide }: { slide: EditSlide }) {
           <div className="flex flex-wrap gap-1">
             <Button
               size="sm"
-              disabled={!canMove(1)}
+              disabled={!canMoveInOrder(elements, selection, 1)}
               title="Move the selected objects one place closer to the front"
               onClick={() => reorder('forward')}
             >
@@ -94,7 +89,7 @@ export function ObjectsPane({ slide }: { slide: EditSlide }) {
             </Button>
             <Button
               size="sm"
-              disabled={!canMove(-1)}
+              disabled={!canMoveInOrder(elements, selection, -1)}
               title="Move the selected objects one place closer to the back"
               onClick={() => reorder('backward')}
             >

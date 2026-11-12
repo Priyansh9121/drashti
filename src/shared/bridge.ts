@@ -1,4 +1,5 @@
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
+import type { SlidePictureResult } from './slide-picture';
 import type { ReadyReport } from './ready';
 import type { PdfJob, PdfPage, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
@@ -852,6 +853,8 @@ export interface DrashtiBridge {
     /** What the editor copied, kept for the next editor window, and what is kept. */
     copy(copied: CopiedElements): Promise<null>;
     copied(): Promise<CopiedElements | null>;
+    /** A picture chosen in the editor's file dialog (null) or dropped from the desktop. */
+    addPicture(presentationId: string, path: string | null): Promise<SlidePictureResult>;
     /** One of the show's F-keys (Clear all F1, Oops F9, Wallpaper F12...): the operator window acts on it. */
     showKey(key: string): Promise<null>;
   };
