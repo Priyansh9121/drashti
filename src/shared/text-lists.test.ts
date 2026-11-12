@@ -76,6 +76,14 @@ describe('each line’s mark', () => {
     ]);
   });
 
+  it('continues repeated imported start numbers and resets when the start changes', () => {
+    const starts = [5, 5, 5, 7, undefined, 7];
+    const lines: TextRun[][] = starts.map((startAt) => [
+      { text: 'Placeholder numbered line', list: '1', paragraph: { align: 'left', startAt } },
+    ]);
+    expect(lineMarks(lines).map(({ label }) => label)).toEqual(['5.', '6.', '7.', '7.', '8.', '9.']);
+  });
+
   it('gives bullets no label, and a bullet between numbers starts the numbers again', () => {
     const el = box([
       { text: 'one\n', list: '1' },

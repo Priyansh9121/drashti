@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
 import { ffmpegHere } from '../testing/ffmpeg-here';
 import type { ConvertService } from './convert-service';
+import { frameAtOrBefore } from './frame-at';
 import { parseFfmpegInfo } from './plan';
 import type { MediaInfo } from './plan';
 import { queueTrimCopy } from './trim-copy';
@@ -121,7 +122,7 @@ function probe(path: string): MediaInfo {
 }
 
 describe.skipIf(!ffmpegHere(ffmpeg))('trimming with the bundled FFmpeg', () => {
-  it('starts between keyframes and keeps exactly the chosen frames with converted sound', () => {
+  it('keeps the frame displayed between timestamps and the chosen part with converted sound', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-trim-copy-'));
     try {
       const path = join(dir, 'Example.mkv');
@@ -151,10 +152,13 @@ describe.skipIf(!ffmpegHere(ffmpeg))('trimming with the bundled FFmpeg', () => {
       const before = readFileSync(path);
       const date = statSync(path).mtimeMs;
       const info = probe(path);
-      const { dest, copy } = plan({ path, name: 'Example.mkv', info, startMs: 250, endMs: 650 });
+      const startMs = await frameAtOrBefore(ffmpeg, path, 250);
+      expect(startMs).toBe(200);
+      if (startMs === null) throw new Error('The source frame could not be read.');
+      const { dest, copy } = plan({ path, name: 'Example.mkv', info, startMs, endMs: 650 });
       run(copy.args(dest));
       const another = join(dir, 'Another cut.mp4');
-      run(plan({ path, name: 'Example.mkv', info, startMs: 250, endMs: 650 }).copy.args(another));
+      run(plan({ path, name: 'Example.mkv', info, startMs, endMs: 650 }).copy.args(another));
       expect(readFileSync(dest)).not.toEqual(readFileSync(another));
       const kept = probe(dest);
       expect(kept.video).toMatchObject({ codec: 'h264', width: 64, height: 48, pixFmt: 'yuv420p' });
@@ -172,10 +176,10 @@ describe.skipIf(!ffmpegHere(ffmpeg))('trimming with the bundled FFmpeg', () => {
         'rawvideo',
         '-',
       ]);
-      // Four frames, at 300, 400, 500, and 600 ms. Each is a different generated shade.
+      // Start at 250 ms shows the frame from 200 ms. The cut keeps it and the next four frames.
       const frameSize = (64 * 48 * 3) / 2;
-      expect(frames.length).toBe(4 * frameSize);
-      [52, 64, 76, 88].forEach((shade, index) => {
+      expect(frames.length).toBe(5 * frameSize);
+      [40, 52, 64, 76, 88].forEach((shade, index) => {
         expect(Math.abs((frames[index * frameSize] ?? 0) - shade)).toBeLessThanOrEqual(2);
       });
       expect(readFileSync(path).equals(before)).toBe(true);

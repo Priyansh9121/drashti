@@ -250,7 +250,7 @@ describe('long and complex generated PDFs', () => {
       }
       expect(after[1]?.elements).toEqual(saved[1]?.elements);
       expect(after[1]?.background).toBe(saved[1]?.background);
-      expect(prepared.issues.some((issue) => issue.includes('saved pictures'))).toBe(true);
+      expect(prepared.issues.some((issue) => issue.includes('Reopen Edit slides to try again.'))).toBe(true);
       expect(repo.content(id)).toEqual(rows);
       expect(readFileSync(world.source)).toEqual(source);
     } finally {

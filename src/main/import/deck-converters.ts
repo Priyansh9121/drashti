@@ -954,7 +954,7 @@ async function convertOnMac(
           'export d to (POSIX file (item 2 of argv)) as Microsoft PowerPoint',
         ],
         [doc, pptx],
-        Math.max(1, Math.ceil(limits.saveMs / 1000)),
+        Math.max(1, seconds),
       );
       const exportFailed = exported.code !== 0 || exported.timedOut;
       if (exportFailed) session.editableExportFailed(exported);

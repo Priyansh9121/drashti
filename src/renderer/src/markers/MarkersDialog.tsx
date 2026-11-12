@@ -49,7 +49,9 @@ export function openMarkers(media: MediaSummary): void {
 export async function openPlaylistTrim(itemId: string): Promise<void> {
   const trim = await window.drashti.media.rowTrim(itemId);
   if (!trim) {
-    useNotice.setState({ text: 'The original video is unavailable. Check the file in Media.' });
+    useNotice.setState({
+      text: 'The original video is unavailable. Add the original video to the playlist again.',
+    });
     return;
   }
   useMarkersDialog.setState({
@@ -170,6 +172,17 @@ function MarkersForm({
     return (bg?.kind === 'media' && bg.mediaId === media.id) || layers?.audio?.mediaId === media.id;
   });
   const shown = () => Math.round((preview.current?.currentTime ?? 0) * 1000);
+  const frameMs = useRef<number | null>(null);
+  useEffect(() => {
+    const video = preview.current;
+    if (!trim || !video) return;
+    let callback = video.requestVideoFrameCallback(function frame(_now, metadata) {
+      frameMs.current = Math.ceil(metadata.mediaTime * 1000 - 0.000_001);
+      callback = video.requestVideoFrameCallback(frame);
+    });
+    return () => video.cancelVideoFrameCallback(callback);
+  }, [trim]);
+  const shownStart = () => frameMs.current ?? shown();
   // The part chosen, as the timeline draws it (what cannot be read yet: the whole).
   const typedStart = startText.trim() === '' ? 0 : parseMarkerTime(startText);
   const typedEnd = endText.trim() === '' ? durationMs : parseMarkerTime(endText);
@@ -290,7 +303,7 @@ function MarkersForm({
           if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
           if (e.key === 'i' || e.key === 'I') {
             e.preventDefault();
-            setStartText(pointTime(shown()));
+            setStartText(pointTime(shownStart()));
           } else if (e.key === 'o' || e.key === 'O') {
             e.preventDefault();
             setEndText(pointTime(shown()));
@@ -357,7 +370,7 @@ function MarkersForm({
         )}
         <p className="text-xs text-muted">
           {trim
-            ? 'Saving prepares a new video for this row after the show or stream ends. The preview is silent.'
+            ? 'Saving a cut prepares a new video for this row. It waits while the show or stream is on, and the current video plays until it’s ready. The preview is silent.'
             : copies
               ? 'It plays between its start and end points wherever it is used (a background video loops between them), and the markers can be jumped to while it plays, from under the live picture or a phone. The preview is silent: only the audio player makes sound.'
               : 'It plays between its start and end points wherever it is used (a background video loops between them), and its markers show on its time bar under the live picture. Its file is never cut or copied. The preview is silent: only the audio player makes sound.'}
@@ -372,7 +385,7 @@ function MarkersForm({
                 className="w-24"
                 onChange={(e) => setStartText(e.target.value)}
               />
-              <Button type="button" size="sm" onClick={() => setStartText(pointTime(shown()))}>
+              <Button type="button" size="sm" onClick={() => setStartText(pointTime(shownStart()))}>
                 Here
               </Button>
             </div>

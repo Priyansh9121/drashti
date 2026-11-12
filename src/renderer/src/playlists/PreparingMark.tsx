@@ -73,7 +73,7 @@ export function TrimPreparing({ itemId }: { itemId: string }) {
       tone="info"
       icon={Loader}
       data-testid="trim-preparing"
-      title="Drashti is preparing the cut. The current video plays until it’s ready."
+      title="The cut waits while the show or stream is on. The current video plays until the cut is ready."
     >
       Preparing
     </Badge>

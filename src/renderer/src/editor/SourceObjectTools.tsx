@@ -89,7 +89,14 @@ export function SourceObjectFormat({
   element: SlideElement;
   update: (next: SlideElement) => void;
 }) {
-  if (element.kind === 'text' && element.style.clipToBox)
+  if (
+    element.kind === 'text' &&
+    (element.sourceShapeId !== undefined ||
+      element.tableCell ||
+      element.style.clipToBox ||
+      element.style.writingMode !== undefined ||
+      element.runs?.some((run) => run.paragraph))
+  )
     return (
       <Field label="Text direction">
         <Select

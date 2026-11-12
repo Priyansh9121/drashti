@@ -101,7 +101,7 @@ export function lineListOf(runs: readonly TextRun[]): LineList {
 /** Each line's mark, numbers counted (the runs of each line, as boxLines gives them). */
 export function lineMarks(lines: readonly (readonly TextRun[])[]): LineMark[] {
   /** Per level: the numbering going on there, and its count. */
-  const counts: ({ mark: NumberMark; n: number } | null)[] = [];
+  const counts: ({ mark: NumberMark; n: number; startAt: number | undefined } | null)[] = [];
   return lines.map((runs) => {
     const blank = runs.every((r) => r.text.trim() === '');
     if (blank) return { mark: null, level: 0, label: null };
@@ -118,8 +118,10 @@ export function lineMarks(lines: readonly (readonly TextRun[])[]): LineMark[] {
     }
     const was = counts[level];
     const first = runs.find((run) => run.text.trim() !== '');
-    const n = first?.paragraph?.startAt ?? (was?.mark === mark ? was.n + 1 : 1);
-    counts[level] = { mark, n };
+    const startAt = first?.paragraph?.startAt;
+    const continuing = was?.mark === mark && (startAt === undefined || startAt === was.startAt);
+    const n = continuing ? was.n + 1 : (startAt ?? 1);
+    counts[level] = { mark, n, startAt: continuing ? was.startAt : startAt };
     return { mark, level, label: listLabel(n, mark) };
   });
 }
