@@ -204,6 +204,17 @@ test('Trim waits while on air, cuts exact frames in the same row, and widens or 
 
     await onAir(app, true);
     await openTrim();
+    await saveCut('0:01', '0:03');
+    await expect(preparing).toBeVisible();
+    await openTrim();
+    await expect(dialog.getByTestId('markers-save')).toBeDisabled();
+    await dialog.getByRole('button', { name: 'Stop', exact: true }).click();
+    await expect(preparing).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
+    await expect(dialog.getByTestId('markers-save')).toBeEnabled();
+    expect(await items(win, edited.playlistId)).toMatchObject([{ id: edited.rowId, mediaId }]);
+    expect(existsSync(cut)).toBe(false);
+
     const preview = dialog.locator('video');
     await preview.evaluate(async (video) => {
       if (!(video instanceof HTMLVideoElement)) throw new Error('Trim’s preview is missing.');

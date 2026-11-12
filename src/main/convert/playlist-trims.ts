@@ -115,7 +115,11 @@ export class PlaylistTrims {
     if (points.startMs === null && points.endMs === null && before.canReset)
       return this.resetRow(row, resetMarkerEdits(before.markers, points));
     if (this.pending.has(itemId))
-      return { ok: false, message: 'This video is already being trimmed. Wait for Preparing to clear.' };
+      return {
+        ok: false,
+        message:
+          'This video is already being trimmed. Wait for Preparing to clear, or open Trim again and press Stop.',
+      };
     if ((points.startMs ?? 0) === (before.markers.startMs ?? 0) && points.endMs === before.markers.endMs)
       return this.saveMarkers(row, points);
 
@@ -194,6 +198,25 @@ export class PlaylistTrims {
     return this.resetRow(row);
   }
 
+  stop(itemId: string, mediaId: string): RowTrimResult {
+    const row = this.deps.repo.row(itemId);
+    if (this.closed || row?.mediaId !== mediaId) return CHANGED;
+    if (!this.cancelPending(itemId))
+      return {
+        ok: false,
+        message: 'This cut is no longer preparing. Open Trim again to see the video’s points.',
+      };
+    return { ok: true };
+  }
+
+  private cancelPending(itemId: string): boolean {
+    const pending = this.pending.get(itemId);
+    if (!pending) return false;
+    if (pending.queueId !== null) this.deps.cancel(pending.queueId);
+    this.clear(itemId, pending);
+    return true;
+  }
+
   private resetRow(row: TrimSource, edits?: TrimMarkerEdits): RowTrimResult {
     if (this.deps.isLive(row.itemId, row.mediaId)) return { ok: false, message: RESET_LIVE };
     const reset = this.deps.repo.reset(row, edits);
@@ -203,11 +226,7 @@ export class PlaylistTrims {
         message: 'The original can hold up to 50 markers. Remove a marker and save again.',
       };
     if (reset === 'changed') return CHANGED;
-    const pending = this.pending.get(row.itemId);
-    if (pending) {
-      if (pending.queueId !== null) this.deps.cancel(pending.queueId);
-      this.clear(row.itemId, pending);
-    }
+    this.cancelPending(row.itemId);
     this.deps.rowChanged(null);
     if (edits) this.deps.markersChanged(row.sourceId);
     return { ok: true };
