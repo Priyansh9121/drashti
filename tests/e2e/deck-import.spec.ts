@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DeckSlide } from '../../src/shared/deck';
+import { type DeckSlide, stepCount } from '../../src/shared/deck';
 import type { MediaElement } from '../../src/shared/model';
 import { makeDeckMedia, makeTestDeck, TRIAL_SLIDES } from '../../src/main/import/testing/make-deck';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -16,8 +16,8 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * deck's movie as PowerPoint makes its timed copy's (DRASHTI_TEST_DECK_BAKER=1), and Drashti cuts it for real.
  * The deck is C1's placeholder trial deck (assister/session-54-deck-trial.md), made here with FFmpeg's media:
  * six slides, the last hidden, a different transition on each, clicks, a chain, a spin, two videos and a sound.
- * Then the same deck where nothing makes its movie (pictures, as before, with its videos as real videos), and on
- * a computer with neither PowerPoint nor Keynote. In CI's window, 1024 × 645; the notices pass axe.
+ * The same deck also exercises the picture fallback while on air and native playback on a computer without
+ * Office. The tests use CI's 1024 × 645 operator window.
  */
 
 const ffmpeg = testFfmpeg();
@@ -56,7 +56,7 @@ async function importDeck(win: Page, deck: string) {
   return importItem(win, deck);
 }
 
-test('a deck comes in with its animations: each slide its steps, its one picture, its videos and sounds real media, and the report says which app and how long', async () => {
+test('a mixed deck keeps its click steps, uses native playback where supported, and keeps its videos and sounds', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp({ DRASHTI_TEST_DECK_BAKER: '1', DRASHTI_TEST_DECK_CONVERTER: '1' });
   const win = await operatorPage(app);
@@ -83,8 +83,10 @@ test('a deck comes in with its animations: each slide its steps, its one picture
   // Its five shown slides, with their notes; the hidden one left out.
   expect(slides.map((s) => s.notes)).toEqual(TRIAL_SLIDES.filter((s) => !s.hidden).map((s) => s.notes));
   const decks: (DeckSlide | undefined)[] = slides.map((s) => s.slide.deck);
-  // Step 0 coming in, then one per click.
-  expect(decks.map((d) => d?.steps.length)).toEqual([5, 3, 2, 1, 2]);
+  // The supported fourth slide plays its own transition and video without a baked clip.
+  expect(decks.map(stepCount)).toEqual([5, 3, 2, 1, 2]);
+  expect(decks.map((d) => d?.steps.length)).toEqual([5, 3, 2, 0, 2]);
+  expect(decks[3]?.motion).toMatchObject({ approximate: false, stepsMs: [0] });
   expect(decks.map((d) => d?.transition?.name)).toEqual([
     'p:fade',
     'p:push',
@@ -92,10 +94,18 @@ test('a deck comes in with its animations: each slide its steps, its one picture
     'p:cover',
     'p14:vortex',
   ]);
-  // ONE picture each, its last step's last frame; the deck's videos as videos on their slides, at their boxes.
-  for (const [i, s] of slides.entries()) {
-    expect(s.slide.elements[0]).toMatchObject({ kind: 'image', mediaId: decks[i]?.steps.at(-1)?.lastId });
+  // The baked slides draw their last frame. The native slide keeps the editable title.
+  for (const i of [0, 1, 2, 4]) {
+    expect(slides[i]?.slide.elements[0]).toMatchObject({
+      kind: 'image',
+      mediaId: decks[i]?.steps.at(-1)?.lastId,
+    });
   }
+  expect(slides[3]?.slide.elements).toContainEqual(
+    expect.objectContaining({ kind: 'text', text: 'Moving tessel plays by itself' }),
+  );
+  expect(decks[3]?.sourceStillId).toBeTruthy();
+  expect(decks[4]?.after).toBe(decks[3]?.sourceStillId);
   const videos = slides.map((s) => s.slide.elements.filter((e): e is MediaElement => e.kind === 'video'));
   expect(videos.map((v) => v.length)).toEqual([0, 0, 0, 1, 1]);
   expect(videos[3]?.[0]).toMatchObject({ loop: true, volume: 0.8, fit: 'stretch' });
@@ -104,7 +114,7 @@ test('a deck comes in with its animations: each slide its steps, its one picture
     mediaId: videos[3]?.[0]?.mediaId,
     clip: { startMs: 1000, endMs: 4000 },
     loop: true,
-    start: { step: 0 },
+    start: { step: 0, offsetMs: 0 },
   });
   expect(decks[4]?.media.map((m) => [m.kind, 'step' in m.start ? m.start.step : 'clicked'])).toEqual([
     ['video', 1],
@@ -117,10 +127,19 @@ test('a deck comes in with its animations: each slide its steps, its one picture
   await app.close();
 });
 
-test('where nothing makes its movie, a deck comes in as pictures with its videos as real videos on their slides and its sound as the slide’s, said plainly', async () => {
+test('a mixed deck imported while on air uses pictures and keeps its videos and automatic sound', async () => {
   test.setTimeout(180_000);
-  // The stand-in saves it as PDF, as PowerPoint would; nothing makes its movie.
-  const { app } = await launchApp({ DRASHTI_TEST_DECK_CONVERTER: '1' });
+  const { app } = await launchApp({
+    DRASHTI_TEST_DECK_BAKER: '1',
+    DRASHTI_TEST_DECK_CONVERTER: '1',
+    DRASHTI_TEST_ON_AIR_HOOK: '1',
+  });
+  // Set the import worker's on-air flag without starting a stream.
+  await app.evaluate(() => {
+    const onAir = (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir;
+    if (!onAir) throw new Error('The on-air test hook is missing.');
+    onAir(true);
+  });
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
@@ -147,27 +166,33 @@ test('where nothing makes its movie, a deck comes in as pictures with its videos
   await app.close();
 });
 
-test('on a computer with neither PowerPoint nor Keynote, a deck’s videos and sound still come in as media, and the report says what needs one', async () => {
+test('without Office, a deck imports with native clicks, real media and warnings for approximated effects', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ DRASHTI_TEST_NO_CONVERTER: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
+  const mediaBefore = (await listMedia(win)).length;
   const item = await importDeck(win, trialDeck());
-  expect(item?.outcome).toBe('failed');
-  await expect(win.getByTestId('import-notice').filter({ hasText: DECK })).toContainText(
-    'no Keynote or PowerPoint',
-  );
-  expect(item?.issues.map((issue) => issue.message).join(' ')).toContain(
-    'Its 3 videos and sounds came in as media (in the Media list), with the time bar. Its slides as pictures, and its animations, clicks and transitions, need PowerPoint (or Keynote on a Mac)',
-  );
-  await expectNoSeriousA11yIssues(
-    win,
-    'the notice when a deck needs its app',
-    '[data-testid="import-notice"]',
-  );
-  await expect
-    .poll(async () => (await listMedia(win)).map((m) => m.name).sort())
-    .toEqual(expect.arrayContaining(['Clip one.mp4', 'Clip two.mp4', 'Tone.m4a']));
+  expect(item?.outcome).toBe('imported');
+  const notice = win.getByTestId('import-notice').filter({ hasText: DECK });
+  for (const index of [1, 2, 3, 5])
+    await expect(notice).toContainText(`Slide ${index} uses the closest effects Drashti can play.`);
+  await expectNoSeriousA11yIssues(win, 'the approximated effects notice', '[data-testid="import-notice"]');
+  const slides = await deckSlides(win);
+  const decks = slides.map((s) => s.slide.deck);
+  expect(decks.map(stepCount)).toEqual([5, 3, 2, 1, 2]);
+  expect(decks.map((d) => d?.steps.length)).toEqual([0, 0, 0, 0, 0]);
+  expect(decks.map((d) => d?.motion?.approximate)).toEqual([true, true, true, false, true]);
+  expect(decks[3]?.media[0]).toMatchObject({
+    kind: 'video',
+    clip: { startMs: 1000, endMs: 4000 },
+    start: { step: 0, offsetMs: 0 },
+  });
+  expect(decks[4]?.media.map((m) => [m.kind, 'step' in m.start ? m.start.step : 'clicked'])).toEqual([
+    ['video', 1],
+    ['audio', 0],
+  ]);
+  expect((await listMedia(win)).length).toBe(mediaBefore);
   await app.close();
 });

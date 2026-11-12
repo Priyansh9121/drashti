@@ -1,0 +1,364 @@
+import { describe, expect, it } from 'vitest';
+import { type DeckEffect, stepCount } from './deck';
+import { deckMotionFrame, deckParagraphRuns, deckWipeClip, smoothedProgress } from './deck-motion';
+import { deckFromJson, deckMediaIds, deckToJson, mapDeckMedia } from './deck-schema';
+import { deckPictureId, deckPictures, deckSlideAt, nativeStepTiming, stepOf } from './deck-show';
+import type { RenderSlide, TextElement } from './model';
+
+const effect = {
+  shapeId: '7',
+  step: 1,
+  phase: 'in' as const,
+  kind: 'fade' as const,
+  delayMs: 75,
+  durationMs: 225,
+};
+
+const motion = {
+  effects: [effect, { ...effect, step: 2, phase: 'out' as const }],
+  stepsMs: [0, 300, 300],
+  approximate: false,
+};
+
+const deck = { steps: [], media: [], motion };
+const card = { sourceShapeId: '7' };
+const slide: RenderSlide = {
+  id: 'placeholder-slide',
+  width: 1920,
+  height: 1080,
+  background: null,
+  elements: [
+    {
+      id: 'placeholder-card',
+      ...card,
+      kind: 'image',
+      frame: { x: 100, y: 100, width: 600, height: 400 },
+      mediaId: 'placeholder-image',
+      fit: 'fit',
+    },
+  ],
+  deck,
+};
+
+describe('a deck whose editable shapes play each click', () => {
+  it('counts click groups with no baked clips and clamps the active step', () => {
+    expect(stepCount(deck)).toBe(3);
+    expect(stepOf({ slide, step: 50 })).toBe(2);
+  });
+
+  it('shows only shapes visible at the end of the selected click in a still preview', () => {
+    expect(deckPictureId(slide)).toBeNull();
+    expect(deckSlideAt(slide, 0).elements).toEqual([]);
+    expect(deckSlideAt(slide, 1).elements).toEqual(slide.elements);
+    expect(deckSlideAt(slide, 2).elements).toEqual([]);
+  });
+
+  it('keeps an existing baked slide and its stills even when motion for editing is available', () => {
+    const baked = {
+      ...slide,
+      deck: { ...deck, steps: [{ clipId: 'placeholder-clip', clipMs: 500, lastId: 'placeholder-still' }] },
+    };
+    expect(stepCount(baked.deck)).toBe(1);
+    expect(deckPictureId(baked)).toBe('placeholder-card');
+    expect(deckSlideAt(baked, 0).elements[0]).toMatchObject({ mediaId: 'placeholder-still' });
+  });
+
+  it('round-trips native motion and rejects an invalid step reference', () => {
+    expect(deckFromJson(deckToJson(deck))).toEqual(deck);
+    const invalid = { ...deck, motion: { ...motion, effects: [{ ...effect, step: 7 }] } };
+    expect(deckFromJson(deckToJson(invalid))).toBeNull();
+  });
+});
+
+describe('PowerPoint effects from the engine step clock', () => {
+  const bounds = { x: 100, y: 100, width: 600, height: 400 };
+  const at = (step: number, elapsedMs: number, effects: readonly DeckEffect[] = motion.effects) =>
+    deckMotionFrame(effects, step, elapsedMs, bounds, slide);
+
+  it('waits for the precise delay, finishes each effect, and settles prior groups on a quick Next', () => {
+    expect(at(0, Infinity)).toMatchObject({ opacity: 0, moving: false, nextAt: null });
+    expect(at(1, 74)).toMatchObject({ opacity: 0, moving: false, nextAt: 75 });
+    expect(at(1, 75)).toMatchObject({ opacity: 0, moving: true });
+    expect(at(1, 187.5).opacity).toBe(0.5);
+    expect(at(1, 300)).toMatchObject({ opacity: 1, moving: false });
+    expect(at(2, 0)).toMatchObject({ opacity: 1, moving: false, nextAt: 75 });
+    expect(at(2, 187.5).opacity).toBe(0.5);
+    expect(at(2, 300)).toMatchObject({ opacity: 0, moving: false });
+  });
+
+  it('applies an instantaneous effect at its timestamp, with the step clock independent of slide entry', () => {
+    const appear: DeckEffect = { ...effect, kind: 'appear', delayMs: 0, durationMs: 0 };
+    expect(at(1, -1, [appear])).toMatchObject({ opacity: 0, nextAt: 0, moving: false });
+    expect(at(1, 0, [appear])).toMatchObject({ opacity: 1, nextAt: null, moving: false });
+    expect(nativeStepTiming({ slide, shownAt: 1000, step: 1, stepAt: 1300 })).toMatchObject({
+      index: 1,
+      clipAt: 1300,
+      endsAt: 1600,
+      still: false,
+    });
+    expect(nativeStepTiming({ slide, shownAt: 1000, step: 1, stepAt: 1400, stepFromMs: 300 })).toMatchObject({
+      index: 1,
+      clipAt: 1100,
+      endsAt: 1400,
+      still: true,
+    });
+  });
+
+  it('flies up from below the slide and zooms from the shape’s center', () => {
+    const fly: DeckEffect = { ...effect, kind: 'fly', direction: 'up' };
+    expect(at(1, 75, [fly])).toMatchObject({ opacity: 1, x: 0, y: 980, moving: true });
+    expect(at(1, 187.5, [fly]).y).toBe(490);
+    expect(at(1, 300, [fly])).toMatchObject({ x: 0, y: 0, moving: false });
+    const zoom: DeckEffect = { ...effect, kind: 'zoom' };
+    expect(at(1, 187.5, [zoom]).scale).toBe(0.5);
+    expect(at(1, 300, [zoom]).scale).toBe(1);
+  });
+
+  it('travels along both axes for diagonal Fly In and Fly Out', () => {
+    const into: DeckEffect = { ...effect, kind: 'fly', direction: 'right', verticalDirection: 'up' };
+    const out: DeckEffect = { ...into, phase: 'out', direction: 'left', verticalDirection: 'down' };
+    expect(at(1, 75, [into])).toMatchObject({ x: -700, y: 980, moving: true });
+    expect(at(1, 187.5, [out])).toMatchObject({ x: -350, y: 490, moving: true });
+    expect(at(1, 300, [out])).toMatchObject({ opacity: 0, x: 0, y: 0, moving: false });
+  });
+
+  it('wipes away the top edge first when a PowerPoint Wipe up exits', () => {
+    const wipe: DeckEffect = { ...effect, kind: 'wipe', phase: 'out', direction: 'up' };
+    const middle = at(1, 187.5, [wipe]);
+    expect(deckWipeClip(middle.wipe, bounds, bounds)).toBe('inset(50% 0% 0% 0%)');
+    expect(at(1, 300, [wipe]).opacity).toBe(0);
+  });
+
+  it('fades while scaling the gallery Zoom', () => {
+    const zoom: DeckEffect = { ...effect, kind: 'zoom', fade: true };
+    expect(at(1, 187.5, [zoom])).toMatchObject({ opacity: 0.5, scale: 0.5, moving: true });
+    expect(at(1, 300, [zoom])).toMatchObject({ opacity: 1, scale: 1, moving: false });
+  });
+
+  it('round-trips Float, Split and Grow/Shrink, then draws their midpoint and final pose', () => {
+    const saved = {
+      ...deck,
+      motion: {
+        ...motion,
+        effects: [
+          { ...effect, kind: 'float', direction: 'up', distance: 0.08 },
+          { ...effect, kind: 'split', splitAxis: 'x' },
+          { ...effect, kind: 'grow-shrink', phase: 'emphasis', scale: 1.5 },
+        ],
+      },
+    };
+    const loaded = deckFromJson(JSON.stringify(saved));
+    expect(loaded).toEqual(saved);
+    const [float, split, grow] = loaded?.motion?.effects ?? [];
+    if (!float || !split || !grow || !loaded?.motion) throw new Error('The stored effects were not read.');
+    const floating = at(1, 187.5, [float]);
+    expect(floating).toMatchObject({ opacity: 0.5, x: 0, moving: true });
+    expect(floating.y).toBeCloseTo(43.2, 4);
+    expect(deckWipeClip(at(1, 187.5, [split]).wipe, bounds, bounds)).toBe('inset(0% 25% 0% 25%)');
+    expect(at(1, 187.5, [grow]).scale).toBe(1.25);
+    expect(at(2, 0, [grow])).toMatchObject({ scale: 1.5, moving: false });
+    const resized = { ...slide, deck: { ...loaded, motion: { ...loaded.motion, effects: [grow] } } };
+    expect(deckSlideAt(resized, 1).elements[0]?.frame).toEqual({ x: -50, y: 0, width: 900, height: 600 });
+  });
+
+  it('wipes a group with one edge across its separately drawn shapes', () => {
+    const wipe: DeckEffect = { ...effect, kind: 'wipe', direction: 'left' };
+    const frame = at(1, 187.5, [wipe]);
+    expect(deckWipeClip(frame.wipe, bounds, { ...bounds, width: 200 })).toBe('inset(0% 0% 0% 100%)');
+    expect(deckWipeClip(frame.wipe, bounds, { ...bounds, x: 300, width: 200 })).toBe('inset(0% 0% 0% 50%)');
+    expect(deckWipeClip(frame.wipe, bounds, { ...bounds, x: 500, width: 200 })).toBe('inset(0% 0% 0% 0%)');
+    expect(at(1, 300, [wipe]).wipe).toBeNull();
+  });
+
+  it('keeps a spin’s final rotation across clicks while a pulse returns to its original size', () => {
+    const spin: DeckEffect = { ...effect, phase: 'emphasis', kind: 'spin', degrees: 90 };
+    const pulse: DeckEffect = { ...effect, phase: 'emphasis', kind: 'pulse' };
+    expect(at(1, 187.5, [spin, pulse])).toMatchObject({ rotation: 45, scale: 1.12 });
+    expect(at(2, 0, [spin, pulse])).toMatchObject({ rotation: 90, scale: 1, moving: false });
+  });
+
+  it('retains and remaps the original still needed by a following baked transition', () => {
+    const native = { ...deck, sourceStillId: 'placeholder-last' };
+    expect(deckMediaIds(native)).toEqual(['placeholder-last']);
+    expect(deckPictures(native)).toEqual(['placeholder-last']);
+    expect(mapDeckMedia(native, (id) => id + '-copy').sourceStillId).toBe('placeholder-last-copy');
+  });
+});
+
+describe('the common PowerPoint effects Drashti draws itself', () => {
+  const bounds = { x: 100, y: 100, width: 600, height: 400 };
+  const at = (elapsedMs: number, effects: readonly DeckEffect[]) =>
+    deckMotionFrame(effects, 1, elapsedMs, bounds, slide);
+  const clipAt = (elapsedMs: number, one: DeckEffect) =>
+    deckWipeClip(at(elapsedMs, [one]).wipe, bounds, bounds);
+
+  it('turns Grow & Turn as it grows and fades in', () => {
+    const turn: DeckEffect = { ...effect, kind: 'zoom', fade: true, scale: 0, degrees: 90 };
+    expect(at(187.5, [turn])).toMatchObject({ opacity: 0.5, scale: 0.5, rotation: 45, moving: true });
+    expect(at(300, [turn])).toMatchObject({ opacity: 1, scale: 1, rotation: 0, moving: false });
+  });
+
+  it('opens Shape from the centre, or closes it in from the edges, and leaves nothing clipped at the end', () => {
+    const box: DeckEffect = { ...effect, kind: 'shape', shape: 'box' };
+    expect(clipAt(187.5, box)).toBe('polygon(25% 25%, 75% 25%, 75% 75%, 25% 75%)');
+    const inward: DeckEffect = { ...box, shape: 'diamond', inward: true };
+    expect(clipAt(187.5, inward)).toBe(
+      'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 50% 0%, 100% 50%, 50% 100%, 0% 50%, 50% 0%)',
+    );
+    const circle = clipAt(75, { ...box, shape: 'circle' });
+    expect(circle.startsWith('polygon(50% 50%, 50% 50%')).toBe(true);
+    expect(at(300, [box]).wipe).toBeNull();
+  });
+
+  it('sweeps Wheel’s spokes clockwise from twelve o’clock', () => {
+    const wheel: DeckEffect = { ...effect, kind: 'wheel', spokes: 2 };
+    const points = clipAt(75, wheel).slice('polygon('.length, -1).split(', ');
+    // Each spoke starts at the centre, then at its own twelve or six o'clock, straight above or below it.
+    expect(points.filter((point) => point === '50% 50%')).toHaveLength(2);
+    expect(points[0]).toBe('50% 50%');
+    expect(points[1]?.startsWith('50% -')).toBe(true);
+    expect(points.at(-1)?.startsWith('50% 1')).toBe(true);
+    expect(at(300, [wheel]).wipe).toBeNull();
+  });
+
+  it('shows Random Bars one bar at a time, none at the start and all by the end', () => {
+    const bars: DeckEffect = { ...effect, kind: 'bars', bars: 'horizontal' };
+    expect(clipAt(75, bars)).toBe('inset(50% 50% 50% 50%)');
+    const half = clipAt(187.5, bars);
+    expect(half.split(', ').length).toBe(4 * 24);
+    expect(at(300, [bars]).wipe).toBeNull();
+  });
+
+  it('brings Split in from both edges, the gap closing in the middle', () => {
+    const split: DeckEffect = { ...effect, kind: 'split', splitAxis: 'x', inward: true };
+    expect(clipAt(187.5, split)).toBe(
+      'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 25% 0%, 75% 0%, 75% 100%, 25% 100%, 25% 0%)',
+    );
+  });
+
+  it('drops Bounce in from above the slide and lands it in place', () => {
+    const bounce: DeckEffect = { ...effect, kind: 'bounce' };
+    expect(at(75, [bounce]).y).toBe(-500);
+    expect(at(300, [bounce])).toMatchObject({ y: 0, moving: false });
+  });
+
+  it('eases a smooth start and end as SMIL does, ending on time', () => {
+    expect(smoothedProgress(0.5, 0, 1)).toBe(0.75);
+    expect(smoothedProgress(0.5, 1, 0)).toBe(0.25);
+    expect(smoothedProgress(0.25, 0.5, 0.5)).toBe(0.125);
+    expect(smoothedProgress(1, 0.5, 0.5)).toBe(1);
+    const fly: DeckEffect = { ...effect, kind: 'fly', direction: 'up', decel: 1 };
+    expect(at(187.5, [fly]).y).toBe(245);
+  });
+});
+
+describe('a deck that builds a text box paragraph by paragraph', () => {
+  const words: TextElement = {
+    id: 'placeholder-points',
+    kind: 'text',
+    sourceShapeId: '9',
+    frame: { x: 100, y: 100, width: 800, height: 400 },
+    text: 'Placeholder first\nPlaceholder second\nPlaceholder third',
+    lang: null,
+    style: {
+      fontFamily: null,
+      fontSize: 40,
+      fontWeight: 400,
+      color: '#ffffff',
+      align: 'left',
+      verticalAlign: 'top',
+      lineHeight: 1.2,
+      shadow: false,
+    },
+    runs: [
+      { text: 'Placeholder first', color: '#ffeeaa' },
+      { text: '\n' },
+      { text: 'Placeholder second\nPlaceholder third', shadow: true },
+    ],
+  };
+  const build = (paragraph: number, step: number, phase: 'in' | 'out' = 'in'): DeckEffect => ({
+    shapeId: '9',
+    step,
+    phase,
+    kind: 'fade',
+    delayMs: 0,
+    durationMs: 200,
+    paragraphs: [paragraph, paragraph],
+  });
+  const built: RenderSlide = {
+    ...slide,
+    elements: [words],
+    deck: {
+      steps: [],
+      media: [],
+      motion: {
+        effects: [build(0, 1), build(1, 2), build(2, 3), build(0, 4, 'out')],
+        stepsMs: [0, 200, 200, 200, 200],
+        approximate: true,
+      },
+    },
+  };
+  const hidden = {
+    color: 'transparent',
+    shadow: false,
+    outline: null,
+    glow: null,
+    underline: false,
+    strike: false,
+  };
+
+  it('cuts the runs where each paragraph ends, keeping every run’s look', () => {
+    expect(deckParagraphRuns(words)).toEqual({
+      runs: [
+        { text: 'Placeholder first', color: '#ffeeaa' },
+        { text: '\n' },
+        { text: 'Placeholder second\n', shadow: true },
+        { text: 'Placeholder third', shadow: true },
+      ],
+      paragraphs: [0, 0, 1, 2],
+    });
+    const soft = {
+      ...words,
+      runs: [{ text: 'Placeholder one' }, { text: '\n', softBreak: true }, { text: 'line' }],
+    };
+    expect(deckParagraphRuns(soft).paragraphs).toEqual([0, 0, 0]);
+  });
+
+  it('never shows a later paragraph before its click, and keeps the shown ones where they were', () => {
+    expect(deckSlideAt(built, 0).elements).toEqual([]);
+    expect(deckSlideAt(built, 1).elements[0]).toMatchObject({
+      runs: [
+        { text: 'Placeholder first', color: '#ffeeaa' },
+        { text: '\n' },
+        { text: 'Placeholder second\n', ...hidden },
+        { text: 'Placeholder third', ...hidden },
+      ],
+    });
+    expect(deckSlideAt(built, 3).elements[0]).toBe(words);
+    expect(deckSlideAt(built, 4).elements[0]).toMatchObject({
+      runs: [
+        { text: 'Placeholder first', ...hidden },
+        { text: '\n', ...hidden },
+        { text: 'Placeholder second\n', shadow: true },
+        { text: 'Placeholder third', shadow: true },
+      ],
+    });
+  });
+
+  it('fades each paragraph by itself while the box stays', () => {
+    const effects = built.deck?.motion?.effects ?? [];
+    expect(deckMotionFrame([build(1, 2)], 1, Infinity, words.frame, slide).opacity).toBe(0);
+    expect(deckMotionFrame([build(1, 2)], 2, 100, words.frame, slide).opacity).toBe(0.5);
+    // The box's own frame ignores its paragraphs' effects.
+    expect(
+      deckMotionFrame(
+        effects.filter((e) => !e.paragraphs),
+        0,
+        0,
+        words.frame,
+        slide,
+      ).opacity,
+    ).toBe(1);
+    expect(deckFromJson(deckToJson(built.deck))).toEqual(built.deck);
+  });
+});

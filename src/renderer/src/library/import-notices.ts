@@ -49,6 +49,7 @@ export async function retryImportNotice(notice: ImportNotice): Promise<void> {
 const missingParts = new Set([
   'bundle-entry',
   'deck-media-unmatched',
+  'deck-motion-approximated',
   'deck-pictures',
   'deck-slides-pictures',
   'deck-sounds-left',

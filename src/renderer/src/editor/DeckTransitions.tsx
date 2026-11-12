@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import type { DeckDrashtiTransition, DeckSlide } from '../../../shared/deck';
+import {
+  type DeckDrashtiTransition,
+  type DeckSlide,
+  nativeDeckMotion,
+  stepCount,
+} from '../../../shared/deck';
 import {
   BOLD_ONLY_KINDS,
   CUT,
@@ -90,11 +95,13 @@ function OwnTransition({
   value,
   onChange,
   testId,
+  picture,
 }: {
   label: string;
   value: DeckDrashtiTransition | null;
   onChange: (own: DeckDrashtiTransition | null) => void;
   testId: string;
+  picture: boolean;
 }) {
   const t = value?.transition ?? null;
   return (
@@ -153,7 +160,7 @@ function OwnTransition({
               onChange({ ...value, transition: { kind: t.kind, durationMs } });
             }}
           />
-          {(BOLD_ONLY_KINDS.includes(t.kind) || t.kind === 'lines' || t.kind === 'words') && (
+          {picture && (BOLD_ONLY_KINDS.includes(t.kind) || t.kind === 'lines' || t.kind === 'words') && (
             <p className="text-xs text-muted" data-testid={`${testId}-picture-note`}>
               A deck’s slide is a picture: it fades on every screen.
             </p>
@@ -176,7 +183,8 @@ export function DeckTransitions({
   /** The deck's slide with the transitions as now chosen (coalesced as one change while typing). */
   onChange: (deck: DeckSlide, coalesce: string) => void;
 }) {
-  const clicks = Math.max(0, deck.steps.length - 1);
+  const clicks = stepCount(deck) - 1;
+  const picture = !nativeDeckMotion(deck);
   return (
     <div className="space-y-3" data-testid="deck-transitions">
       <p className="text-xs text-muted" data-testid="deck-own-transition">
@@ -185,6 +193,7 @@ export function DeckTransitions({
       <OwnTransition
         label="Comes on with"
         testId="deck-transition"
+        picture={picture}
         value={deck.drashti ?? null}
         onChange={(own) => {
           onChange(withSlideTransition(deck, own), 'deck-transition');
@@ -201,6 +210,7 @@ export function DeckTransitions({
           key={index}
           label={`Click ${String(index)} comes on with`}
           testId={`deck-step-transition-${String(index)}`}
+          picture={picture}
           value={deck.stepTransitions?.[index] ?? null}
           onChange={(own) => {
             onChange(withStepTransition(deck, index, own), `deck-step-${String(index)}`);
