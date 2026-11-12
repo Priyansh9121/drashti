@@ -305,16 +305,19 @@ export function paragraphLineStyle(
   line: { mark: ListMark | null; level: number; label: string | null },
   size: number,
   paragraph: TextParagraph | undefined,
+  space: { before: boolean; after: boolean },
 ): CSSProperties {
   const base = listLineStyle(line, size);
   if (!paragraph) return base;
-  const { align, marginLeft, marginRight, indent, lineHeight } = paragraph;
+  const { align, marginLeft, marginRight, indent, lineHeight, spaceBefore, spaceAfter } = paragraph;
   const indentWords = indent !== undefined && (line.mark === null || indent > 0) ? fitted(indent) : undefined;
   return {
     ...base,
     textAlign: align,
     ...(marginLeft !== undefined ? { paddingLeft: undefined, paddingInlineStart: fitted(marginLeft) } : {}),
     ...(marginRight !== undefined ? { paddingInlineEnd: fitted(marginRight) } : {}),
+    ...(space.before && spaceBefore !== undefined ? { paddingBlockStart: fitted(spaceBefore) } : {}),
+    ...(space.after && spaceAfter !== undefined ? { paddingBlockEnd: fitted(spaceAfter) } : {}),
     textIndent: indentWords,
     lineHeight,
   };
@@ -384,7 +387,10 @@ function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly Text
             data-reveal-empty={reveal && blank ? '' : undefined}
             style={{
               position: reveal ? 'relative' : undefined,
-              ...paragraphLineStyle(line.mark, size, first.paragraph),
+              ...paragraphLineStyle(line.mark, size, first.paragraph, {
+                before: el.style.spaceAtTextEdges === true || li > 0,
+                after: el.style.spaceAtTextEdges === true || li < lines.length - 1,
+              }),
             }}
           >
             {mark !== null && (
