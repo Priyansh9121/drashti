@@ -32,10 +32,7 @@ class Window extends EventEmitter {
     executeJavaScript: vi.fn(() => Promise.resolve(undefined)),
     capturePage: vi.fn((rect: { width: number; height: number }) =>
       Promise.resolve(
-        capturedImage(
-          Math.round(rect.width * this.displayScale),
-          Math.round(rect.height * this.displayScale),
-        ),
+        capturedImage(Math.ceil(rect.width * this.displayScale), Math.ceil(rect.height * this.displayScale)),
       ),
     ),
   });
@@ -134,6 +131,32 @@ it.each([
       { stayHidden: true },
     );
     expect(await s.result).toMatchObject({ width: 1920, height: pictureHeight });
+  },
+);
+
+it.each([
+  { width: 1920, height: 1080, factor: 1.75, css: [1097, 617], bitmap: [1920, 1080] },
+  { width: 1920, height: 1200, factor: 1.75, css: [1097, 685], bitmap: [1920, 1199] },
+  { width: 960, height: 720, factor: 1.75, css: [1097, 822], bitmap: [1920, 1439] },
+  { width: 1920, height: 1080, factor: 2.25, css: [853, 480], bitmap: [1920, 1080] },
+  { width: 1920, height: 1200, factor: 2.25, css: [853, 533], bitmap: [1920, 1200] },
+  { width: 960, height: 720, factor: 2.25, css: [853, 640], bitmap: [1920, 1440] },
+  { width: 720, height: 1280, factor: 1.75, css: [617, 1097], bitmap: [1080, 1920] },
+])(
+  'covers the whole capture of a $width by $height slide at $factor device scale',
+  async ({ width, height, factor, css, bitmap }) => {
+    const s = setup({ width, height }, true, factor);
+    const drawScale = s.job.picture?.scale ?? 0;
+    expect.soft(Math.max(width, height) * drawScale * factor).toBeCloseTo(1920, 8);
+    expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
+    expect.soft(s.win.setContentSize).toHaveBeenCalledWith(...css);
+    expect
+      .soft(s.win.webContents.capturePage)
+      .toHaveBeenCalledWith({ x: 0, y: 0, width: css[0], height: css[1] }, { stayHidden: true });
+    const picture = await s.result;
+    expect(picture).toMatchObject({ width: bitmap[0], height: bitmap[1] });
+    expect(picture?.width).toBeLessThanOrEqual(Math.ceil(width * drawScale * factor));
+    expect(picture?.height).toBeLessThanOrEqual(Math.ceil(height * drawScale * factor));
   },
 );
 
