@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { EngineCommand } from '../../shared/engine/commands';
 import { parseEngineCommand } from '../../shared/engine/commands';
@@ -11,6 +14,7 @@ import type { SlideCue } from '../../shared/library';
 import type { MediaElement, RenderSlide } from '../../shared/model';
 import { simpleModeRefuses } from '../../shared/mode';
 import { DEFAULT_PIP_PLACE } from '../../shared/pip';
+import { savedFrom, toRestore } from '../recovery/live-state';
 import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';
 
@@ -697,6 +701,53 @@ describe('automatic imports keep the points of a file already playing', () => {
     expect(engine.current.layers.slide?.clips).toEqual({ clipped: clip });
     expect(engine.current.layers.pip?.clips).toEqual({ clipped: clip });
     expect(engine.current.videoFiles?.['clipped']?.marks).toEqual(marks);
+  });
+
+  it('loads an older saved show and leaves the box’s separate ticks out of a new save', () => {
+    const { engine, source, automaticImport, elapse } = setupImport();
+    const slides = [
+      slideWith('s1', videoEl('first', 'clipped')),
+      slideWith('s2', videoEl('second', 'clipped')),
+    ];
+    source.set('videos', slides);
+    engine.dispatch(goLive(0));
+    engine.dispatch(putBox);
+    const when = new Date('2026-01-01T00:00:00Z');
+    const oldShow = savedFrom(engine.current, 'placeholder-old-run', when);
+    const mirror = new EngineMirror();
+    expect(mirror.apply(engine.snapshot())).toBe('applied');
+    expect(mirror.state?.videoFiles?.['clipped']).not.toHaveProperty('boxMarks');
+    expect(playingOf(mirror.state, BOX)?.marks).toEqual(oldMarks);
+
+    automaticImport();
+    elapse(1000);
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.videoFiles?.['clipped']).toMatchObject({ marks: newMarks, boxMarks: oldMarks });
+    const newShow = savedFrom(engine.current, 'placeholder-new-run', when);
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-playback-points-'));
+    const files = { state: join(dir, 'live-state.json'), cleanMark: join(dir, 'live-state.clean') };
+    try {
+      for (const saved of [oldShow, newShow]) {
+        expect(saved).not.toHaveProperty('videoFiles');
+        expect(saved.pip).not.toHaveProperty('boxMarks');
+        writeFileSync(files.state, JSON.stringify(saved));
+        const request = toRestore(files, when);
+        if (!request) throw new Error('the saved show should restore');
+        const restored = setup();
+        restored.source.set('videos', slides);
+        restored.markers['clipped'] = { ...newClip, markers: newMarks };
+        expect(restored.engine.restore(request)).toMatchObject({ slide: true, pip: true });
+        expect(restored.engine.current.layers.slide?.slideIndex).toBe(saved.slide?.slideIndex);
+        expect(restored.engine.current.layers.pip?.shownAt).toBe(saved.pip?.shownAt);
+        expect(playingOf(restored.engine.current, BOX)).toMatchObject({
+          clock: { clip: newClip },
+          marks: newMarks,
+        });
+        expect(restored.engine.current.videoFiles?.['clipped']).not.toHaveProperty('boxMarks');
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('restores the current library points after a restart', () => {

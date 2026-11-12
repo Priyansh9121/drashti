@@ -2900,15 +2900,8 @@ export class ShowEngine {
     // What the time bar shows of the slide's and the box's videos (Session 54).
     const files = videoFilesFor(next, {
       lengthOf: (id) => this.options.mediaLength?.(id) ?? null,
-      marksOf: (id) => {
-        const { slide, pip } = next.layers;
-        const heldSlide = this.heldFor(id, 'slide', slide?.shownAt);
-        const heldBox =
-          pip?.source.kind === 'media' && pip.source.mediaId === id
-            ? this.heldFor(id, 'pip', pip.shownAt)
-            : undefined;
-        const held =
-          (heldSlide && playingOf(next, { layer: 'slide', mediaId: id }) ? heldSlide : undefined) ?? heldBox;
+      marksOf: (id, layer) => {
+        const held = this.heldFor(id, layer, next.layers[layer]?.shownAt);
         return held ? held.marks : this.options.mediaMarkers?.(id)?.markers;
       },
     });
