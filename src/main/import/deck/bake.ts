@@ -712,6 +712,15 @@ async function powerPointOnWindows(
       };
     // Let the library show the pictures before starting the Windows movie process.
     await options.pdfReady?.(pdf, deck);
+    // Cancelled, or on air, while they were drawn (Session 57, the part 3 review's LOW-2): no timed copy, no movie.
+    if (options.signal?.aborted)
+      return {
+        ok: false,
+        failed: { ok: false, reason: 'cancelled', message: 'Cancelled.', cancelled: true },
+        pdf,
+        deck,
+        deckFile,
+      };
   }
   const copyFrom = performance.now();
   await writeTimedCopy(deckFile, timed, plan, leaving ? choice.pictures : []);
