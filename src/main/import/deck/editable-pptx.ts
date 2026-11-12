@@ -500,7 +500,7 @@ const NUMBERED_LISTS: Record<string, ListMark> = {
   alphaLc: 'a',
   alphaUc: 'A',
   romanLc: 'i',
-  romanUc: 'i',
+  romanUc: 'I',
   hindiNum: 'hi',
 };
 
@@ -610,6 +610,7 @@ function bulletStyle(
 function paragraphOf(
   nodes: Node[],
   xScale: number,
+  yScale: number,
   ctx: Context,
 ): Pick<TextRun, 'paragraph' | 'list' | 'level'> {
   const alignment = lowToHighValue(nodes, 'algn') ?? 'l';
@@ -641,6 +642,24 @@ function paragraphOf(
   const bullet = children.find((node) => ['buNone', 'buChar', 'buAutoNum', 'buBlip'].includes(nameOf(node)));
   if (!bullet || nameOf(bullet) === 'buNone') return { paragraph };
   const level = Math.min(MAX_LIST_LEVEL, Math.max(0, Math.trunc(number(lowToHighValue(nodes, 'lvl'), 0))));
+  const color = children.find((node) => ['buClr', 'buClrTx'].includes(nameOf(node)));
+  if (color && nameOf(color) === 'buClr') {
+    const explicit = colorOf(color, ctx);
+    if (explicit) paragraph.bulletColor = explicit;
+  }
+  const size = children.find((node) => ['buSzPct', 'buSzPts', 'buSzTx'].includes(nameOf(node)));
+  const amount = attr(size, 'val');
+  if (size && amount !== undefined) {
+    if (nameOf(size) === 'buSzPct') {
+      const scale = amount.endsWith('%')
+        ? number(amount.replace(/%$/u, ''), 100) / 100
+        : number(amount, 100_000) / 100_000;
+      paragraph.bulletScale = Math.min(4, Math.max(0.25, scale));
+    } else if (nameOf(size) === 'buSzPts') {
+      const points = number(amount, 2400) / 100;
+      paragraph.bulletSize = Math.min(2000, Math.max(0.01, points * (4 / 3) * yScale));
+    }
+  }
   const startAt = attr(bullet, 'startAt');
   if (nameOf(bullet) === 'buAutoNum' && startAt !== undefined)
     paragraph.startAt = Math.min(32_767, Math.max(1, Math.trunc(number(startAt, 1))));
@@ -703,7 +722,7 @@ function textElement(
   for (const [index, paragraph] of paragraphs.entries()) {
     const nodes = paragraphNodes(chain, paragraph, ctx);
     const defaults = nodes.map((n) => child(n, 'defRPr'));
-    const formatting = paragraphOf(nodes, xScale, ctx);
+    const formatting = paragraphOf(nodes, xScale, scale, ctx);
     const push = (words: string, style: Node[], softBreak = false) =>
       runs.push({
         ...runOf(words, style, ctx, scale, fallback),

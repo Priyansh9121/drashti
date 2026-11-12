@@ -26,6 +26,11 @@ const boxes = wordsShape(
     text('Placeholder justified words') +
     '</a:p><a:p><a:pPr algn="r"/>' +
     text('Placeholder aligned right') +
+    '</a:p><a:p><a:pPr><a:buClr><a:srgbClr val="336699"/></a:buClr><a:buSzPts val="1350"/>' +
+    '<a:buChar char="◆"/></a:pPr>' +
+    text('Placeholder styled bullet') +
+    '</a:p><a:p><a:pPr><a:buAutoNum type="romanUcPeriod" startAt="4"/></a:pPr>' +
+    text('Placeholder Roman item') +
     '</a:p>',
 ).replace('id="2"', 'id="3"');
 const graphic = (id: string, x: string, data: string) =>
@@ -81,6 +86,18 @@ test('a PowerPoint slide keeps its editable cells, aligned words and hidden obje
       'text-align',
       'right',
     );
+    const bullet = canvas.locator('[data-list-marker="disc"]');
+    const bulletWords = canvas.getByText('Placeholder styled bullet', { exact: true });
+    await expect(bullet).toHaveText('◆');
+    await expect(canvas.locator('[data-list-marker="I"]')).toHaveText('IV.');
+    await expect(bullet).toHaveCSS('color', 'rgb(51, 102, 153)');
+    const markerPx = await bullet.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).fontSize),
+    );
+    const wordsPx = await bulletWords.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).fontSize),
+    );
+    expect(markerPx / wordsPx).toBeCloseTo(0.75, 2);
     await expect(canvas.locator('[data-slide-crop]')).toHaveCount(1);
     await expect(canvas.locator('[data-shape="line"] line')).toHaveCount(2);
     await expect(canvas.locator('line[stroke="#aa2244"]')).toHaveAttribute('stroke-width', '2');
