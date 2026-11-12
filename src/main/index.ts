@@ -336,6 +336,7 @@ import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
+import { followOutputs, WarmUpChoices, warmUpFact } from './outputs/warm-up-choice';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
 import { youtubeSelfTest } from './links/youtube-selftest';
@@ -505,6 +506,23 @@ app.on('child-process-gone', (_event, details) => {
   for (const w of BrowserWindow.getAllWindows())
     if (!w.isDestroyed()) sendToPage(w, IPC.output.gpuRestarted, { at: Date.now() });
   if (gpuStops.stopped(Date.now())) gpuStoppedTwice?.(GPU_STOPPED_TWICE);
+});
+
+/** Tests only (never a packaged Drashti): Chromium's gpu_compositing as if it said this (warm-up.spec.ts). */
+const testCompositing = sw('DRASHTI_TEST_GPU_COMPOSITING');
+/**
+ * Whether each output warms its graphics chip up (Session 57, outputs/warm-up-choice.ts): not where Chromium draws
+ * without one. Its status means nothing until its GPU process has said how it draws, so it is read from then.
+ */
+const warmUps = new WarmUpChoices({
+  status: () =>
+    testCompositing === undefined ? app.getGPUFeatureStatus() : { gpu_compositing: testCompositing },
+  log: (line) => {
+    log.info(line);
+  },
+});
+app.on('gpu-info-update', () => {
+  warmUps.gpuSaid();
 });
 
 /**
@@ -1200,6 +1218,7 @@ function startNodeMode(): void {
     windowed: windowedOutputs,
     watchdog,
     sleepGuard,
+    warmUps,
     clockSkewMs: nodeClockSkewMs,
     computerName: testComputerName ?? hostname(),
     diagnostics: {
@@ -2058,8 +2077,15 @@ function start(): void {
       // A stage layout's audience picture box (Session 50): the first audience group's picture, said off with
       // Audience off (Session 51; the switch's reconcile sends every output its context again).
       hall: hallHere(),
+      // No warm-up where Chromium draws without a graphics chip (Session 57).
+      ...warmUpFact(warmUps, outputWindows.get(screenId), outputNames.get(screenId) ?? 'an output'),
     };
   };
+  // An output open before Chromium said how it draws is sent its context again once it skips its warm-up (Session 57).
+  followOutputs(warmUps, outputWindows, outputNames, (screenId, win) => {
+    const context = contextFor(screenId);
+    if (context) sendToPage(win, IPC.output.context, context);
+  });
   // ---- hung, stale and given-up outputs (Session 23; outputs/heartbeat.ts, watchdog.ts) ----------
   // Each output's 2-second report is its heartbeat: one that stops, or stops painting the show, is
   // crashed into the watchdog's reload. One the watchdog gave up on is shown as Stopped.
@@ -2159,6 +2185,7 @@ function start(): void {
         loadedSinceStopped.add(config.id);
       });
       window.on('closed', () => {
+        warmUps.forget(h.webContentsId);
         if (outputWindows.get(config.id) === window) {
           outputWindows.delete(config.id);
           heartbeat.closed(config.id);
