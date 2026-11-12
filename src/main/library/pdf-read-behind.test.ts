@@ -213,10 +213,11 @@ async function setup() {
     sourceReader: queue.read,
     sourceWrite: sourceWrite(w.db),
     waitForPdfIdle: show.waitForIdle,
+    showBusy: show.busy,
     lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
     changed: () => undefined,
   };
-  const controller = registerSlidesIpc({ ...deps, ...{ showBusy: show.busy } });
+  const controller = registerSlidesIpc(deps);
   const updates: EditSourceUpdate[] = [];
   const editor = {
     sender: {
@@ -229,7 +230,8 @@ async function setup() {
     const handler = handlers.get(IPC.library.slidesForEdit);
     if (!handler) throw new Error('The editor-open handler was not registered.');
     return Promise.resolve(
-      handler(editor, id, { requestId: randomUUID(), slideId }) as EditSlidesResult | Promise<EditSlidesResult>,
+      handler(editor, id, { requestId: randomUUID(), slideId }) as
+        EditSlidesResult | Promise<EditSlidesResult>,
     ).then((result) => {
       if (!result.ok) throw new Error(result.message);
       return result;
@@ -239,7 +241,9 @@ async function setup() {
   const last = () => updates.find((update) => 'issues' in update);
   /** The slides the reading made editable after the editor opened. */
   const madeReady = () =>
-    new Set(updates.flatMap((update) => ('pages' in update ? update.pages.filter(editable).map((p) => p.id) : [])));
+    new Set(
+      updates.flatMap((update) => ('pages' in update ? update.pages.filter(editable).map((p) => p.id) : [])),
+    );
   const ids = slides.map((slide) => slide.id);
   return { w, id, ids, show, windows, gate, gates, pictures, controller, updates, open, last, madeReady };
 }
@@ -354,8 +358,7 @@ describe('Edit slides reads the rest of a big PDF behind the editor (Session 57,
       const insert = handlers.get(IPC.library.insertPdfPages);
       if (!insert) throw new Error('The insert handler was not registered.');
       const inserted = await (insert({ sender: { id: 900 } }, t.id, opened.stamp, sourceId) as
-        | InsertPdfPagesResult
-        | Promise<InsertPdfPagesResult>);
+        InsertPdfPagesResult | Promise<InsertPdfPagesResult>);
       expect(inserted).toMatchObject({ ok: true });
       expect(await until(() => t?.last() !== undefined)).toBe(true);
       expect(t.last()).toEqual(expect.objectContaining({ issues: [STOPPED_TO_INSERT] }));

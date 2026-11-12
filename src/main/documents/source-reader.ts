@@ -12,7 +12,17 @@ export interface SourceRead {
   checkpoint(): Promise<boolean>;
   /** Main has validated this PDF page, or kept its saved picture when no page was returned. */
   onPdfPage?(index: number, page?: PreparedSourcePage): Promise<void>;
-  waitForPdfIdle?(signal: AbortSignal): Promise<boolean>;
+  /**
+   * True while the show needs the computer (Session 57: anything up, or the stream on air or recording): the PDF job
+   * ends at its next checkpoint or page, leaving the pages it has not read as `unread`, never failed. It never waits
+   * inside the job, so no clock of the job's runs while the show goes on, and the shared queues are free meanwhile.
+   */
+  pdfHold?(): boolean;
+  /**
+   * The bytes one PDF's preparation has kept so far, shared by all its jobs: each job counts its budgets from here
+   * and adds what it keeps, so ending a job for the show never gives one PDF more than one job's budgets.
+   */
+  pdfBudget?: { assetBytes: number; metadataBytes: number };
 }
 export type SourceReader = (request: SourceRead) => Promise<PreparedSource>;
 
@@ -42,10 +52,7 @@ export function sourceCheckpoint(request: SourceRead): Promise<boolean> {
     const abort = () => finish(false);
     request.signal.addEventListener('abort', abort, { once: true });
     void Promise.resolve()
-      .then(async () => {
-        if (!(await request.checkpoint())) return false;
-        return request.waitForPdfIdle ? request.waitForPdfIdle(request.signal) : true;
-      })
+      .then(() => request.checkpoint())
       .then(finish, () => finish(false));
     if (request.signal.aborted) abort();
   });
