@@ -88,10 +88,10 @@ export interface Glow {
 /**
  * A line's mark when it is one of a list (Session 55, Part 17a): a bullet (a dot, a ring, a square, a dash or an
  * arrow), or a number: 1. 2. 3., in Gujarati digits (૧. ૨. ૩.), in Devanagari digits (१. २. ३.), a. b. c., A. B. C.
- * or i. ii. iii.
+ * i. ii. iii., or I. II. III.
  */
 export const BULLET_MARKS = ['disc', 'circle', 'square', 'dash', 'arrow'] as const;
-export const NUMBER_MARKS = ['1', 'gu', 'hi', 'a', 'A', 'i'] as const;
+export const NUMBER_MARKS = ['1', 'gu', 'hi', 'a', 'A', 'i', 'I'] as const;
 export type BulletMark = (typeof BULLET_MARKS)[number];
 export type NumberMark = (typeof NUMBER_MARKS)[number];
 export type ListMark = BulletMark | NumberMark;
@@ -110,6 +110,10 @@ export interface TextParagraph {
   bullet?: string;
   /** The source bullet’s font when it differs from the paragraph’s words. */
   bulletFont?: string;
+  /** Imported marker styling. Size in slide pixels, or a multiplier of the line’s text size. */
+  bulletColor?: string;
+  bulletSize?: number;
+  bulletScale?: number;
   startAt?: number;
 }
 

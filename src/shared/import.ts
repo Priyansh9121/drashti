@@ -135,6 +135,14 @@ export interface ImportReport extends ImportRunSummary {
   items: ImportItemReport[];
 }
 
+export interface RefusedImport {
+  name: string;
+  reason: string;
+}
+
+/** The operator's notices for an import by a watched folder, including files refused before the run. */
+export type AutomaticImportNotice = { runId: string } | { refused: RefusedImport[] };
+
 export interface ImportProgress {
   runId: string;
   phase: 'queued' | 'scanning' | 'importing' | 'finished';

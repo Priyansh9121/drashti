@@ -39,7 +39,14 @@ import type { AppInfo, TaskProgress } from './app-info';
 import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
-import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
+import type {
+  AutomaticImportNotice,
+  ImportOptions,
+  ImportProgress,
+  ImportReport,
+  ImportResult,
+  ImportRunSummary,
+} from './import';
 import type {
   LibraryChange,
   NewFromWordsResult,
@@ -66,6 +73,8 @@ import type {
   EditDoc,
   EditSlidesOpen,
   EditSlidesResult,
+  EditSourceRequest,
+  EditSourceUpdate,
   SaveSlidesResult,
   SlidesSaved,
 } from './slide-edit';
@@ -425,6 +434,8 @@ export const IPC = {
     revealPresentation: 'library:reveal-presentation',
     /** main -> operator: how an import is going. */
     importProgress: 'library:import-progress',
+    automaticImportNotice: 'library:automatic-import-notice',
+    takeAutomaticImportNotices: 'library:take-automatic-import-notices',
     /** main -> operator: presentations, props, messages or themes were added or changed. */
     changed: 'library:changed',
     /**
@@ -480,6 +491,7 @@ export const IPC = {
     rowTrim: 'media:row-trim',
     applyRowTrim: 'media:apply-row-trim',
     resetRowTrim: 'media:reset-row-trim',
+    stopRowTrim: 'media:stop-row-trim',
     preparingTrims: 'media:preparing-trims',
     preparingTrimsChanged: 'media:preparing-trims-changed',
     saves: 'media:saves',
@@ -691,6 +703,7 @@ export const IPC = {
     open: 'slideeditor:open',
     /** main -> the editor: open this presentation's slides (the window was open already). */
     edit: 'slideeditor:edit',
+    sourcePrepared: 'slideeditor:source-prepared',
     dirty: 'slideeditor:dirty',
     close: 'slideeditor:close',
     /** main -> the editor: its window was asked to close with changes not saved (ask first). */
@@ -1318,7 +1331,10 @@ export interface InvokeContract {
   [IPC.playlists.share]: { args: [playlistId: string, on: boolean]; result: PlaylistResult };
   [IPC.playlists.setRepeat]: { args: [playlistId: string, settings: RepeatSettings]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
-  [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
+  [IPC.library.slidesForEdit]: {
+    args: [presentationId: string, source?: EditSourceRequest];
+    result: EditSlidesResult;
+  };
   [IPC.library.linkPdfPage]: {
     args: [
       presentationId: string,
@@ -1362,6 +1378,7 @@ export interface InvokeContract {
   [IPC.library.cancelImport]: { args: [runId: string]; result: boolean };
   [IPC.library.listImportRuns]: { args: []; result: ImportRunSummary[] };
   [IPC.library.getImportReport]: { args: [runId: string]; result: ImportReport | null };
+  [IPC.library.takeAutomaticImportNotices]: { args: []; result: AutomaticImportNotice[] };
   [IPC.library.pickImportPaths]: { args: [kind: 'files' | 'folder' | 'sounds']; result: string[] };
   [IPC.library.relinkMedia]: { args: [mediaIds?: string[]]; result: ImportResult };
   [IPC.library.setArrangement]: {
@@ -1426,6 +1443,7 @@ export interface InvokeContract {
   [IPC.media.rowTrim]: { args: [itemId: string]; result: RowTrimView | null };
   [IPC.media.applyRowTrim]: { args: [itemId: string, request: RowTrimRequest]; result: RowTrimResult };
   [IPC.media.resetRowTrim]: { args: [itemId: string, mediaId: string]; result: RowTrimResult };
+  [IPC.media.stopRowTrim]: { args: [itemId: string, mediaId: string]; result: RowTrimResult };
   [IPC.media.preparingTrims]: { args: []; result: string[] };
   [IPC.media.saves]: { args: []; result: SaveJob[] };
   [IPC.media.stopSave]: { args: [jobId: string]; result: boolean };
@@ -1675,6 +1693,7 @@ export interface EventContract {
   [IPC.appearance.open]: { at: number };
   [IPC.engine.message]: EngineMessage;
   [IPC.library.importProgress]: ImportProgress;
+  [IPC.library.automaticImportNotice]: AutomaticImportNotice;
   [IPC.library.changed]: { at: number; what: LibraryChange };
   [IPC.library.extrasChanged]: { on: boolean };
   [IPC.app.safeAreasChanged]: { on: boolean };
@@ -1712,6 +1731,7 @@ export interface EventContract {
   [IPC.lowerThirds.edit]: NonNullable<StudioOpen>;
   [IPC.lowerThirds.askClose]: null;
   [IPC.slideEditor.edit]: EditSlidesOpen;
+  [IPC.slideEditor.sourcePrepared]: EditSourceUpdate;
   [IPC.slideEditor.askClose]: null;
   [IPC.slideEditor.edited]: SlidesSaved;
   [IPC.wallpapers.changed]: WallpapersView;

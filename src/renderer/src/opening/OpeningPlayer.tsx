@@ -13,8 +13,8 @@ import { openingSound, type OpeningSoundPlayer } from './opening-sound';
  * (reduced motion, or Interface motion Off): the photo comes and goes with a plain fade, nothing moving. With the
  * mandir's photo, the pack's sound plays gently beside it (opening-sound.ts), started with it.
  *
- * The photo and sound prepare together, including while it holds (for the hall's screens, or at start for the window
- * starting underneath: OpeningAtStart.tsx). Once visible, the compositor runs the opacity and transform tracks on one
+ * The photo and sound prepare together after the hall screens' hold. They can prepare while the operator window
+ * starts underneath (OpeningAtStart.tsx). Once visible, the compositor runs the opacity and transform tracks on one
  * frame. Changing the motion setting cancels the zoom without moving the end of the fade.
  */
 
@@ -71,6 +71,7 @@ export function OpeningPlayer({
   plan,
   still,
   held = false,
+  prepare = true,
   onDone,
   coverWhilePreparing = false,
   className,
@@ -81,6 +82,8 @@ export function OpeningPlayer({
   still: boolean;
   /** Waiting for the hall's screens to draw: black, nothing started. */
   held?: boolean;
+  /** Whether the hall screens allow the photo and sound to load. */
+  prepare?: boolean;
   /** It played to its end (its fade done). */
   onDone?: () => void;
   /** Black while its photo prepares (at start, over the window starting underneath), else nothing shown till then. */
@@ -105,11 +108,12 @@ export function OpeningPlayer({
   const sound = useRef<OpeningSoundPlayer | null>(null);
   const [prepared, setPrepared] = useState<{ photo: string | null; decoded: boolean } | null>(null);
   const selected = prepared?.photo === photo ? prepared : null;
-  const ready = selected !== null;
-  const showPhoto = photo !== null && selected?.decoded !== false;
+  const ready = prepare && selected !== null;
+  const showPhoto = prepare && photo !== null && selected?.decoded !== false;
 
-  // The photo decoded (or found unreadable) and the sound made, from the start, its hold too; the first word kept.
+  // Keep the first result, including a fallback if the photo cannot be decoded in time.
   useLayoutEffect(() => {
+    if (!prepare) return;
     const image = ref.current?.querySelector<HTMLImageElement>('[data-opening-photo]');
     const made = soundUrl ? openingSound(soundUrl) : null;
     sound.current = made;
@@ -128,18 +132,18 @@ export function OpeningPlayer({
       made?.stop();
       if (sound.current === made) sound.current = null;
     };
-  }, [photo, soundUrl]);
+  }, [photo, prepare, soundUrl]);
   // Not ready, it waits READY_WAIT at most, counted once nothing else holds it: then the lamp lights in its place.
   useEffect(() => {
     const wait = photoWait(held, READY_WAIT);
-    if (ready || wait === null) return;
+    if (!prepare || ready || wait === null) return;
     const timer = setTimeout(() => {
       setPrepared((was) => (was?.photo === photo ? was : { photo, decoded: false }));
     }, wait);
     return () => {
       clearTimeout(timer);
     };
-  }, [held, photo, ready]);
+  }, [held, photo, prepare, ready]);
 
   useLayoutEffect(() => {
     const root = ref.current;
@@ -171,29 +175,37 @@ export function OpeningPlayer({
       data-opening-held={held ? 'true' : 'false'}
       data-photos={showPhoto ? 1 : 0}
       aria-hidden="true"
-      className={cx('isolate overflow-hidden bg-black', className)}
+      className={cx(
+        'isolate overflow-hidden bg-black',
+        coverWhilePreparing && 'will-change-[opacity]',
+        className,
+      )}
       style={{ visibility: !held && !ready && !coverWhilePreparing ? 'hidden' : undefined }}
     >
-      {showPhoto ? (
-        <img
-          data-opening-photo={0}
-          src={photo}
-          alt=""
-          draggable={false}
-          decoding="async"
-          // The whole photo, never cut to the window's shape (the black around it).
-          className="absolute inset-0 size-full object-contain"
-          style={{ opacity: 0 }}
-        />
-      ) : (
-        <div
-          data-opening-lamp=""
-          className="absolute inset-0 flex items-center justify-center"
-          style={{ visibility: held || !ready ? 'hidden' : undefined }}
-        >
-          <LitLamp size={110} />
-        </div>
-      )}
+      {prepare &&
+        (showPhoto ? (
+          <img
+            data-opening-photo={0}
+            src={photo}
+            alt=""
+            draggable={false}
+            decoding="async"
+            // The whole photo, never cut to the window's shape (the black around it).
+            className={cx(
+              'absolute inset-0 size-full object-contain',
+              coverWhilePreparing && 'will-change-[opacity,transform]',
+            )}
+            style={{ opacity: 0 }}
+          />
+        ) : (
+          <div
+            data-opening-lamp=""
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ visibility: held || !ready ? 'hidden' : undefined }}
+          >
+            <LitLamp size={110} />
+          </div>
+        ))}
     </div>
   );
 }

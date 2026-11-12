@@ -1,15 +1,33 @@
-import type { PreparedSource } from '../../shared/editable-source';
+import type { PreparedSource, PreparedSourcePage } from '../../shared/editable-source';
 
 export interface SourceRead {
   ext: 'pdf' | 'pptx';
   file: string;
   outDir: string;
   sourcePages: number[];
+  /**
+   * PowerPoint only: the pages among `sourcePages` whose clicks and transition to read too, as alpha.17's import reads
+   * them (W6's review N4: slides imported before alpha.17 that play PowerPoint's clips).
+   */
+  timingPages?: number[];
   signal: AbortSignal;
   /** Main's monotonic deadline, including time waiting for a turn. */
   deadlineAt?: number;
   /** Authoritative Main guard + asynchronous CPU give-way; false cancels this generation. */
   checkpoint(): Promise<boolean>;
+  /** Main has validated this PDF page, or kept its saved picture when no page was returned. */
+  onPdfPage?(index: number, page?: PreparedSourcePage): Promise<void>;
+  /**
+   * True while the show needs the computer (Session 57: anything up, or the stream on air or recording): the PDF job
+   * ends at its next checkpoint or page, leaving the pages it has not read as `unread`, never failed. It never waits
+   * inside the job, so no clock of the job's runs while the show goes on, and the shared queues are free meanwhile.
+   */
+  pdfHold?(): boolean;
+  /**
+   * The bytes one PDF's preparation has kept so far, shared by all its jobs: each job counts its budgets from here
+   * and adds what it keeps, so ending a job for the show never gives one PDF more than one job's budgets.
+   */
+  pdfBudget?: { assetBytes: number; metadataBytes: number };
 }
 export type SourceReader = (request: SourceRead) => Promise<PreparedSource>;
 

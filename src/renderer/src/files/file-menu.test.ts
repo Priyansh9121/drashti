@@ -28,6 +28,17 @@ const labels = (target: FileTarget, platform = 'darwin') =>
   fileMenuEntries(target, platform).map((e) => `${e.separatorBefore === true ? '— ' : ''}${e.label}`);
 
 describe('the one right-click menu', () => {
+  it.each([
+    ['video', 'media'],
+    ['sound', 'media'],
+    ['sound', 'playlist'],
+    ['sound', 'music'],
+  ] as const)('labels the %s action in %s as setting points for the whole file', (kind, place) => {
+    expect(labels({ kind, place, name: 'Placeholder clip', trim: noop })).toEqual([
+      'Start, end and markers…',
+    ]);
+  });
+
   it('holds what fits, in one order: the place’s own, Trim, Rename, Show in Finder, and Delete last, apart', () => {
     expect(labels(video)).toEqual([
       'Timers when it goes up…',

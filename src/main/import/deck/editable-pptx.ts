@@ -45,11 +45,13 @@ export interface EditablePptx {
 }
 
 const EMU = 9525;
+const DEFAULT_LINE_HEIGHT = 1.2;
 const MAX_XML = 8 * 1024 * 1024;
 const MAX_XML_TOTAL = 64 * 1024 * 1024;
 const MAX_IMAGE = 32 * 1024 * 1024;
 const MAX_IMAGE_TOTAL = 128 * 1024 * 1024;
 const MAX_ELEMENTS = 500;
+class EditableObjectLimit extends Error {}
 type Node = XmlNode | undefined;
 type Matrix = [number, number, number, number, number, number];
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
@@ -434,11 +436,15 @@ function paragraphNodes(chain: XmlNode[], paragraph: XmlNode, ctx: Context): Nod
       ? 'bodyStyle'
       : 'otherStyle';
   const masterStyle = child(child(ctx.master?.root, 'txStyles'), styleName);
+  const presentation = [child(ctx.defaults, 'defPPr'), child(ctx.defaults, levelName)];
+  const master = [child(masterStyle, 'defPPr'), child(masterStyle, levelName)];
+  const last = chain.at(-1);
+  // A plain text box takes the presentation's default text style, as PowerPoint and Keynote draw it; the master's
+  // "other" style (where Keynote keeps its slide number's right alignment) only fills in what that leaves out, as
+  // in a deck with no default text style. Placeholders and table cells keep the master's style on top.
+  const plainBox = !ph && last !== undefined && nameOf(last) === 'sp';
   return [
-    child(ctx.defaults, 'defPPr'),
-    child(ctx.defaults, levelName),
-    child(masterStyle, 'defPPr'),
-    child(masterStyle, levelName),
+    ...(plainBox ? [...master, ...presentation] : [...presentation, ...master]),
     ...chain.flatMap((shape) => {
       const body = child(shape, 'txBody'),
         list = child(body, 'lstStyle');
@@ -499,7 +505,7 @@ const NUMBERED_LISTS: Record<string, ListMark> = {
   alphaLc: 'a',
   alphaUc: 'A',
   romanLc: 'i',
-  romanUc: 'i',
+  romanUc: 'I',
   hindiNum: 'hi',
 };
 
@@ -602,13 +608,14 @@ function bulletStyle(
   if (glyph) return { bullet: glyph };
   // Some writers already supply Unicode (for example U+2022 with Symbol).
   if (position > 0xff && !/[\p{Co}\p{Cs}]/u.test(character)) return { bullet: cutText(character, 8) };
-  ctx.issues.add('Some symbol bullets use a dot. Change them in Bullets and Numbering.');
+  ctx.issues.add('Some symbol bullets use a dot. Change them with Bullets or Numbering in Words.');
   return {};
 }
 
 function paragraphOf(
   nodes: Node[],
   xScale: number,
+  yScale: number,
   ctx: Context,
 ): Pick<TextRun, 'paragraph' | 'list' | 'level'> {
   const alignment = lowToHighValue(nodes, 'algn') ?? 'l';
@@ -631,12 +638,33 @@ function paragraphOf(
   if (indent !== undefined) paragraph.indent = pixels(indent, -16_384);
   const spacing = attr(child(lastChild(nodes, 'lnSpc'), 'spcPct'), 'val');
   if (spacing !== undefined)
-    paragraph.lineHeight = Math.max(0.1, Math.min(5, number(spacing, 100_000) / 100_000));
+    paragraph.lineHeight = Math.max(
+      0.1,
+      Math.min(5, round(DEFAULT_LINE_HEIGHT * (number(spacing, 100_000) / 100_000))),
+    );
 
   const children = [...nodes].reverse().flatMap((node) => kids(node));
   const bullet = children.find((node) => ['buNone', 'buChar', 'buAutoNum', 'buBlip'].includes(nameOf(node)));
   if (!bullet || nameOf(bullet) === 'buNone') return { paragraph };
   const level = Math.min(MAX_LIST_LEVEL, Math.max(0, Math.trunc(number(lowToHighValue(nodes, 'lvl'), 0))));
+  const color = children.find((node) => ['buClr', 'buClrTx'].includes(nameOf(node)));
+  if (color && nameOf(color) === 'buClr') {
+    const explicit = colorOf(color, ctx);
+    if (explicit) paragraph.bulletColor = explicit;
+  }
+  const size = children.find((node) => ['buSzPct', 'buSzPts', 'buSzTx'].includes(nameOf(node)));
+  const amount = attr(size, 'val');
+  if (size && amount !== undefined) {
+    if (nameOf(size) === 'buSzPct') {
+      const scale = amount.endsWith('%')
+        ? number(amount.replace(/%$/u, ''), 100) / 100
+        : number(amount, 100_000) / 100_000;
+      paragraph.bulletScale = Math.min(4, Math.max(0.25, scale));
+    } else if (nameOf(size) === 'buSzPts') {
+      const points = number(amount, 2400) / 100;
+      paragraph.bulletSize = Math.min(2000, Math.max(0.01, points * (4 / 3) * yScale));
+    }
+  }
   const startAt = attr(bullet, 'startAt');
   if (nameOf(bullet) === 'buAutoNum' && startAt !== undefined)
     paragraph.startAt = Math.min(32_767, Math.max(1, Math.trunc(number(startAt, 1))));
@@ -699,7 +727,7 @@ function textElement(
   for (const [index, paragraph] of paragraphs.entries()) {
     const nodes = paragraphNodes(chain, paragraph, ctx);
     const defaults = nodes.map((n) => child(n, 'defRPr'));
-    const formatting = paragraphOf(nodes, xScale, ctx);
+    const formatting = paragraphOf(nodes, xScale, scale, ctx);
     const push = (words: string, style: Node[], softBreak = false) =>
       runs.push({
         ...runOf(words, style, ctx, scale, fallback),
@@ -768,7 +796,7 @@ function textElement(
       color: first?.color ?? '#000000',
       align,
       verticalAlign: anchor === 'ctr' ? 'middle' : anchor === 'b' ? 'bottom' : 'top',
-      lineHeight: paragraph?.lineHeight ?? 1.2,
+      lineHeight: paragraph?.lineHeight ?? DEFAULT_LINE_HEIGHT,
       shadow: false,
       ...(!clipToBox || lastChild(bodies, 'normAutofit') ? { shrinkToFit: true } : {}),
       ...(clipToBox ? { clipToBox: true } : {}),
@@ -793,6 +821,36 @@ function lineOutline(line: Node, ctx: Context): Outline | null {
   if (!line || child(line, 'noFill')) return null;
   const color = fillOf([line], ctx, '#000000');
   return color ? { color, width: Math.max(0.01, Math.min(100, number(attr(line, 'w'), EMU) / EMU)) } : null;
+}
+function linePlacement(rect: Rect, matrix: Matrix) {
+  const a = at(matrix, rect.x, rect.y),
+    b = at(matrix, rect.x + rect.width, rect.y + rect.height);
+  const width = Math.hypot(b.x - a.x, b.y - a.y) / EMU;
+  return {
+    frame: {
+      x: round((a.x + b.x) / 2 / EMU - width / 2),
+      y: round((a.y + b.y) / 2 / EMU - 0.5),
+      width: Math.max(0.01, round(width)),
+      height: 1,
+    },
+    rotation: round(((Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 360) % 360),
+  };
+}
+
+/**
+ * A shape's line given a width but no colour anywhere, with no style line to take one from, draws nothing in
+ * PowerPoint and Keynote (Keynote writes one on every text box and shape). A line with a colour, or a style's
+ * line (PowerPoint's own shapes), reads as before.
+ */
+function colourlessLine(chain: XmlNode[], props: Node[]): boolean {
+  const lines = props.flatMap((item) => kids(item, 'ln'));
+  return (
+    lines.length > 0 &&
+    !lines.some((line) =>
+      kids(line).some((n) => ['noFill', 'solidFill', 'gradFill', 'pattFill'].includes(nameOf(n))),
+    ) &&
+    !chain.some((shape) => child(child(shape, 'style'), 'lnRef'))
+  );
 }
 interface SourcePaint {
   color: string | null;
@@ -941,6 +999,44 @@ function cellSpan(cell: XmlNode, key: string, remaining: number): number {
   return Math.max(1, Math.min(remaining, Math.trunc(number(attr(cell, key), 1))));
 }
 
+interface TableEdge {
+  vertical: boolean;
+  boundary: number;
+  start: number;
+  end: number;
+  outline: Outline;
+}
+
+function addTableEdge(edges: Map<string, TableEdge>, edge: TableEdge): void {
+  // A spanning cell can share just part of its edge. Match the cells on the underlying grid.
+  for (let start = edge.start; start < edge.end; start++) {
+    const key = `${edge.vertical ? 'v' : 'h'}:${edge.boundary}:${start}`;
+    const previous = edges.get(key);
+    if (!previous || edge.outline.width >= previous.outline.width)
+      edges.set(key, { ...edge, start, end: start + 1 });
+  }
+}
+
+function joinedTableEdges(edges: Iterable<TableEdge>): TableEdge[] {
+  const ordered = [...edges].sort(
+    (a, b) => Number(b.vertical) - Number(a.vertical) || a.boundary - b.boundary || a.start - b.start,
+  );
+  const joined: TableEdge[] = [];
+  for (const edge of ordered) {
+    const previous = joined.at(-1);
+    if (
+      previous?.vertical === edge.vertical &&
+      previous.boundary === edge.boundary &&
+      previous.end === edge.start &&
+      previous.outline.color === edge.outline.color &&
+      previous.outline.width === edge.outline.width
+    )
+      previous.end = edge.end;
+    else joined.push({ ...edge });
+  }
+  return joined;
+}
+
 async function tableObjects(
   table: XmlNode,
   part: Part,
@@ -948,6 +1044,7 @@ async function tableObjects(
   matrix: Matrix,
   flipX: boolean,
   ctx: Context,
+  available: number,
 ): Promise<SlideElement[] | null> {
   const grid = kids(child(table, 'tblGrid'), 'gridCol');
   const rows = kids(table, 'tr');
@@ -957,6 +1054,7 @@ async function tableObjects(
   if (!columns || !heights) return null;
   const groupId = ctx.id();
   const elements: SlideElement[] = [];
+  const edges = new Map<string, TableEdge>();
   for (const [row, rowNode] of rows.entries()) {
     const cells = kids(rowNode, 'tc');
     const complete = cells.length === grid.length;
@@ -978,11 +1076,9 @@ async function tableObjects(
       if (!place) return null;
       const props = child(cell, 'tcPr');
       const paint = await shapePaintOf([{ props, part }], ctx, null);
-      const edge = kids(props).find((node) => ['lnL', 'lnR', 'lnT', 'lnB'].includes(nameOf(node)));
-      const outline = lineOutline(edge, ctx);
       if (paint.picture)
         elements.push({ id: ctx.id(), kind: 'image', groupId, ...place, ...paint.picture, fit: 'stretch' });
-      if (paint.color || outline || paint.gradient) {
+      if (paint.color || paint.gradient) {
         elements.push({
           id: ctx.id(),
           kind: 'shape',
@@ -991,7 +1087,6 @@ async function tableObjects(
           fill: paint.color,
           cornerRadius: 0,
           opacity: 1,
-          outline,
           ...(paint.gradient ? { gradient: paint.gradient } : {}),
         });
       }
@@ -999,8 +1094,43 @@ async function tableObjects(
       const text = textElement(node, [node], box, matrix, flipX, ctx, true);
       if (!text) return null;
       elements.push({ ...text, groupId, tableCell: { row, column, rowSpan, columnSpan } });
+      if (elements.length > available) return null;
+      const sides = [
+        ['lnL', true, column, row, row + rowSpan],
+        ['lnR', true, column + columnSpan, row, row + rowSpan],
+        ['lnT', false, row, column, column + columnSpan],
+        ['lnB', false, row + rowSpan, column, column + columnSpan],
+      ] as const;
+      for (const [name, vertical, boundary, start, end] of sides) {
+        const outline = lineOutline(child(props, name), ctx);
+        if (outline) addTableEdge(edges, { vertical, boundary, start, end, outline });
+      }
       column += complete ? 1 : columnSpan;
     }
+  }
+  const borders = joinedTableEdges(edges.values());
+  if (elements.length + borders.length > available) return null;
+  // Draw the edges over both cells' fills at a shared boundary.
+  for (const { vertical, boundary, start, end, outline } of borders) {
+    const at = (vertical ? columns : heights)[boundary];
+    const stops = vertical ? heights : columns;
+    const from = stops[start];
+    const to = stops[end];
+    if (at === undefined || from === undefined || to === undefined) return null;
+    const edge = vertical
+      ? { x: rect.x + at, y: rect.y + from, width: 0, height: to - from }
+      : { x: rect.x + from, y: rect.y + at, width: to - from, height: 0 };
+    elements.push({
+      id: ctx.id(),
+      kind: 'shape',
+      shape: 'line',
+      groupId,
+      ...linePlacement(edge, matrix),
+      fill: null,
+      cornerRadius: 0,
+      opacity: 1,
+      outline,
+    });
   }
   return elements;
 }
@@ -1045,6 +1175,7 @@ async function objectOf(
   parent: Matrix,
   parentFlip: boolean,
   ctx: Context,
+  available: number,
 ): Promise<SlideElement[]> {
   const sources = chainOf(node, part, ctx);
   const chain = sources.map((source) => source.node);
@@ -1071,7 +1202,7 @@ async function objectOf(
     const data = child(child(node, 'graphic'), 'graphicData');
     const table = child(data, 'tbl');
     if (table) {
-      const cells = await tableObjects(table, part, rect, matrix, flipX, ctx);
+      const cells = await tableObjects(table, part, rect, matrix, flipX, ctx, available);
       if (cells?.length) return cells;
     }
     const preview = descendants(data, 'pic')[0];
@@ -1113,7 +1244,8 @@ async function objectOf(
   }
   const output: SlideElement[] = [];
   const paint = await shapePaintOf(paints, ctx, referenceColor(chain, 'fillRef', ctx));
-  const outline = lineOutline(lastChild(props, 'ln'), ctx);
+  const outline =
+    shape !== 'line' && colourlessLine(chain, props) ? null : lineOutline(lastChild(props, 'ln'), ctx);
   if (paint.picture) {
     output.push({
       id: ctx.id(),
@@ -1126,21 +1258,7 @@ async function objectOf(
   }
   const fill = paint.color;
   if (fill || outline || shape === 'line') {
-    let place = placement;
-    if (shape === 'line') {
-      const a = at(matrix, rect.x, rect.y),
-        b = at(matrix, rect.x + rect.width, rect.y + rect.height);
-      const width = Math.hypot(b.x - a.x, b.y - a.y) / EMU;
-      place = {
-        frame: {
-          x: round((a.x + b.x) / 2 / EMU - width / 2),
-          y: round((a.y + b.y) / 2 / EMU - 0.5),
-          width: Math.max(0.01, round(width)),
-          height: 1,
-        },
-        rotation: round(((Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 360) % 360),
-      };
-    }
+    const place = shape === 'line' ? linePlacement(rect, matrix) : placement;
     output.push({
       id: ctx.id(),
       kind: 'shape',
@@ -1179,6 +1297,7 @@ async function walk(
   parent: Matrix,
   flip: boolean,
   ctx: Context,
+  available: number,
   inherited = false,
   group?: WalkGroup,
 ): Promise<SlideElement[]> {
@@ -1215,16 +1334,27 @@ async function walk(
       if (Math.abs(rect.width / cx - rect.height / cy) > 0.00001)
         ctx.issues.add('Non-uniform group scaling may change editable text spacing.');
       result.push(
-        ...(await walk(node, part, m, flip !== flag(attr(xfrm, 'flipH')), ctx, inherited, {
-          id: group?.id ?? ctx.id(),
-          sourceIds: sourceShapeId ? [...(group?.sourceIds ?? []), sourceShapeId] : (group?.sourceIds ?? []),
-          hidden,
-        })),
+        ...(await walk(
+          node,
+          part,
+          m,
+          flip !== flag(attr(xfrm, 'flipH')),
+          ctx,
+          available - result.length,
+          inherited,
+          {
+            id: group?.id ?? ctx.id(),
+            sourceIds: sourceShapeId
+              ? [...(group?.sourceIds ?? []), sourceShapeId]
+              : (group?.sourceIds ?? []),
+            hidden,
+          },
+        )),
       );
     } else if (kind === 'sp' || kind === 'pic' || kind === 'cxnSp' || kind === 'graphicFrame') {
       let objects: SlideElement[];
       try {
-        objects = await objectOf(node, part, parent, flip, ctx);
+        objects = await objectOf(node, part, parent, flip, ctx, available - result.length);
       } catch {
         const xfrm = kind === 'graphicFrame' ? child(node, 'xfrm') : child(child(node, 'spPr'), 'xfrm');
         const rect = rawRect(xfrm);
@@ -1255,10 +1385,21 @@ async function walk(
       const primary = original.length === 1 ? original[0] : undefined;
       const table = child(child(child(primary, 'graphic'), 'graphicData'), 'tbl');
       if (table || !fallback) {
-        result.push(...(await walk(choice, part, parent, flip, ctx, inherited, group)));
+        result.push(
+          ...(await walk(choice, part, parent, flip, ctx, available - result.length, inherited, group)),
+        );
       } else {
         ctx.issues.add('An alternate source drawing keeps its embedded preview.');
-        const objects = await walk(fallback, part, parent, flip, ctx, inherited, group);
+        const objects = await walk(
+          fallback,
+          part,
+          parent,
+          flip,
+          ctx,
+          available - result.length,
+          inherited,
+          group,
+        );
         const choiceProps = primary && kids(fallback).length === 1 ? nonVisualProperties(primary) : undefined;
         const id = inherited ? undefined : drawingId(choiceProps);
         const name = cutText(attr(choiceProps, 'name')?.trim() ?? '', 200);
@@ -1275,10 +1416,8 @@ async function walk(
     } else if (!['nvGrpSpPr', 'grpSpPr', 'extLst'].includes(kind)) {
       ctx.issues.add('Tables, charts and embedded objects are not reproduced in this editable slide.');
     }
-    if (result.length > MAX_ELEMENTS)
-      throw new Error(
-        'A source slide exceeds the 500 editable-object limit; objects were not silently dropped.',
-      );
+    if (result.length > available)
+      throw new EditableObjectLimit('A source slide exceeds the 500 editable-object limit.');
   }
   return result;
 }
@@ -1458,23 +1597,26 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       };
       elements.push(backdrop);
     }
-    if (
-      master &&
-      !['0', 'false'].includes(attr(slide.root, 'showMasterSp') ?? '') &&
-      !['0', 'false'].includes(attr(layout?.root, 'showMasterSp') ?? '')
-    )
+    const append = async (part: Part, inherited = false) => {
+      const tree = child(child(part.root, 'cSld'), 'spTree');
       elements.push(
-        ...(await walk(child(child(master.root, 'cSld'), 'spTree'), master, IDENTITY, false, ctx, true)),
+        ...(await walk(tree, part, IDENTITY, false, ctx, MAX_ELEMENTS - elements.length, inherited)),
       );
-    if (layout)
-      elements.push(
-        ...(await walk(child(child(layout.root, 'cSld'), 'spTree'), layout, IDENTITY, false, ctx, true)),
-      );
-    elements.push(...(await walk(child(child(slide.root, 'cSld'), 'spTree'), slide, IDENTITY, false, ctx)));
-    if (elements.length > MAX_ELEMENTS)
-      throw new Error(
-        'A source slide exceeds the 500 editable-object limit; objects were not silently dropped.',
-      );
+    };
+    try {
+      if (
+        master &&
+        !['0', 'false'].includes(attr(slide.root, 'showMasterSp') ?? '') &&
+        !['0', 'false'].includes(attr(layout?.root, 'showMasterSp') ?? '')
+      )
+        await append(master, true);
+      if (layout) await append(layout, true);
+      await append(slide);
+    } catch (error) {
+      // An absent source page stays as its retained picture. The rest of the deck is still editable.
+      if (error instanceof EditableObjectLimit) continue;
+      throw error;
+    }
     slides.push({
       sourceIndex,
       hidden: ['0', 'false'].includes(attr(slide.root, 'show') ?? ''),

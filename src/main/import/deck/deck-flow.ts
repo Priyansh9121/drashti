@@ -58,7 +58,13 @@ export function pagesOfShown(
 }
 
 export type DeckFlow =
-  | { kind: 'baked'; parsed: ParsedPresentation; sourceIndices?: number[]; editablePptx?: string }
+  | {
+      kind: 'baked';
+      parsed: ParsedPresentation;
+      sourceIndices?: number[];
+      editablePptx?: string;
+      editablePptxSlideCount?: number;
+    }
   | {
       kind: 'pictures';
       /** The pictures an app saved while it tried (null: save them as PDF as before). */
@@ -171,8 +177,9 @@ export async function runDeck(
   let drawnLast: PicturesResult | null = null;
   for (const baker of bakers) {
     const work = await mkdtemp(join(request.work, 'bake-'));
-    // Every shown slide's picture, drawn as soon as the app has saved the PDF, while the movie is made; and (Session 56)
-    // the slides written as those pictures at once, the ones that move marked as preparing.
+    // Every shown slide's picture, drawn as soon as the app has saved the PDF (while the movie is made; on Windows before
+    // PowerPoint starts it, Session 57); and (Session 56) the slides written as those pictures at once, the ones that
+    // move marked as preparing.
     const early: { drawing: Promise<Drawn | null> | null; written: Promise<void> | null } = {
       drawing: null,
       written: null,
@@ -209,6 +216,7 @@ export async function runDeck(
                 await write(made.parsed, made.indices);
               })
               .catch(() => undefined);
+          return early.written ?? undefined;
         },
       },
     );
@@ -280,7 +288,9 @@ export async function runDeck(
         kind: 'baked',
         parsed,
         sourceIndices,
-        ...(source === 'key' ? { editablePptx: result.baked.deckFile } : {}),
+        ...(source === 'key'
+          ? { editablePptx: result.baked.deckFile, editablePptxSlideCount: result.baked.deck.slides.length }
+          : {}),
       };
     }
     last = result;
@@ -288,10 +298,14 @@ export async function runDeck(
     if (result.why.kind !== 'app') break;
     tried.push({ baker, reason: result.why.reason });
   }
-  return (
-    (last?.why.kind === 'app' && !options.kept ? await fromNative() : null) ??
-    pictures(last, last ? [whyPictures(last.why, last.baker, options.kept)] : [], drawnLast)
-  );
+  if (last?.why.kind === 'app' && !options.kept) {
+    const native = await fromNative();
+    if (native?.kind === 'baked') {
+      native.parsed.issues.unshift(whyPictures(last.why, last.baker, false, 'editable'));
+      return native;
+    }
+  }
+  return pictures(last, last ? [whyPictures(last.why, last.baker, options.kept)] : [], drawnLast);
 }
 
 /** The pages of an app's PDF as drawn, and the deck they are of. */

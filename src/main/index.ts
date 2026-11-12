@@ -23,7 +23,7 @@ import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import { formatBytes, formatClock } from '../shared/format';
-import type { ImportOptions, ImportResult } from '../shared/import';
+import type { AutomaticImportNotice, ImportOptions, ImportResult } from '../shared/import';
 import { loadedBooks } from '../shared/import';
 import { type LibraryChange, listedKirtan, type NewFromWordsResult } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
@@ -2863,11 +2863,20 @@ function start(): void {
   const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
     sendToPage(operatorWindow, channel, payload);
   };
+  // A watched folder can finish its first look before the operator window subscribes.
+  const initialImportNotices: AutomaticImportNotice[] = [];
+  let automaticImportNoticesReady = false;
+  const importNotice = (notice: AutomaticImportNotice) => {
+    if (automaticImportNoticesReady) sendToOperator(IPC.library.automaticImportNotice, notice);
+    else initialImportNotices.push(notice);
+  };
 
   // ---- streaming -------------------------------------------------------------
   let eventsStreamWas: StreamStatus | null = null;
   let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
   let conversionActivityChanged: (() => void) | undefined;
+  // Edit slides' PDF reading waiting for the show (Session 57): each wait's check, told when the stream changes.
+  const pdfReadWaits = new Set<() => void>();
   const countStreams = streamCounter((kind) => behind?.service.count(kind));
   const streamKeys = new StreamKeyStore(
     join(app.getPath('userData'), 'stream-keys.json'),
@@ -2909,6 +2918,7 @@ function start(): void {
     statusChanged: (status) => {
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
+      for (const check of [...pdfReadWaits]) check();
       eventsOut.emit(streamEvents(eventsStreamWas, status));
       eventsStreamWas = status;
       // Each stream and recording started, counted for the Access List (Session 54): never what.
@@ -3875,7 +3885,21 @@ function start(): void {
       load: () => settings.get('playlistTrimsWaiting'),
       save: (cuts) => laterSetting('playlistTrimsWaiting', cuts),
     },
-    queue: (input) => queueTrimCopy(conversions, input),
+    spaceProblem: (file, durationMs, lengthMs) =>
+      conversions.trimSpaceProblem(file, dirname(file), durationMs, lengthMs),
+    copies: {
+      load: () => settings.get('playlistTrimCopies'),
+      save: (copies) => settings.set('playlistTrimCopies', copies),
+    },
+    trash: (file) => shell.trashItem(file),
+    queue: (input, beforePublish) =>
+      queueTrimCopy(
+        {
+          saveCopy: (source, dest, info, copy) =>
+            conversions.saveCopy(source, dest, info, { ...copy, beforePublish }),
+        },
+        input,
+      ),
     cancel: (id) => conversions.cancelFile(id),
     pendingChanged: (ids) => sendToOperator(IPC.media.preparingTrimsChanged, ids),
     rowChanged: (added) => {
@@ -3888,6 +3912,7 @@ function start(): void {
     markersChanged: (id) => engine.refreshMarkers(id),
     notice: (text) => sendToOperator(IPC.app.notice, { text }),
   });
+  void playlistTrims.cleanupCopies();
   const offTrimActivity = engine.onChange(() => playlistTrims.activityChanged());
   stops.add('playlist trims', () => {
     offTrimActivity();
@@ -3911,6 +3936,13 @@ function start(): void {
     const video = idSchema.safeParse(mediaId);
     return fromOperator(e) && item.success && video.success
       ? playlistTrims.reset(item.data, video.data)
+      : noTrim;
+  });
+  handle(IPC.media.stopRowTrim, (e, itemId, mediaId) => {
+    const item = idSchema.safeParse(itemId);
+    const video = idSchema.safeParse(mediaId);
+    return fromOperator(e) && item.success && video.success
+      ? playlistTrims.stop(item.data, video.data)
       : noTrim;
   });
   handle(IPC.media.preparingTrims, (e) => (fromOperator(e) ? playlistTrims.list() : []));
@@ -4095,6 +4127,7 @@ function start(): void {
   handle(IPC.slideEditor.fontFamilies, (event) =>
     isLetIn() && editorWindow.isPage(event.sender) ? systemFontFamilies() : [],
   );
+  const pdfReadIdle = () => !streaming.inUse() && nothingUp(engine.snapshot().state.layers);
   const slideEdits = registerSlidesIpc({
     choosePdfFile: async (e) => {
       const parent = BrowserWindow.fromWebContents(e.sender);
@@ -4123,6 +4156,27 @@ function start(): void {
       const result = await documentReaders.read(request);
       if (!result.ok && result.retainOutput) sourceOutputQuarantined = true;
       return result;
+    },
+    // After the requested PDF pages have opened, the reading behind ends its job whenever the show needs the computer
+    // (anything up, or the stream on air or recording), and waits here, outside every queue, until the show is idle.
+    showBusy: () => !pdfReadIdle(),
+    waitForPdfIdle: (signal) => {
+      if (signal.aborted || pdfReadIdle()) return Promise.resolve(!signal.aborted);
+      return new Promise<boolean>((resolve) => {
+        const finish = (allowed: boolean) => {
+          offEngine();
+          pdfReadWaits.delete(check);
+          signal.removeEventListener('abort', stop);
+          resolve(allowed);
+        };
+        const check = () => {
+          if (pdfReadIdle()) finish(true);
+        };
+        const stop = () => finish(false);
+        const offEngine = engine.onChange(check);
+        pdfReadWaits.add(check);
+        signal.addEventListener('abort', stop, { once: true });
+      });
     },
     sourceWrite: sourceWrite(libraryDb, () => imports.giveWay()),
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
@@ -5687,6 +5741,7 @@ function start(): void {
       return result.ok ? { ok: true, runId: result.run.id } : { ok: false, message: result.message };
     },
     report: (runId) => importRepo.report(runId),
+    importNotice,
     changed: playlistsChanged,
     views: (views) => {
       sendToOperator(IPC.playlists.smartChanged, views);
@@ -5721,6 +5776,7 @@ function start(): void {
     notice: (text) => {
       sendToOperator(IPC.app.notice, { text });
     },
+    importNotice,
     mediaChanged: () => {
       libraryChanged(true);
     },
@@ -5963,6 +6019,11 @@ function start(): void {
   handle(IPC.library.getImportReport, (_e, runId) => {
     const parsed = runIdSchema.safeParse(runId);
     return parsed.success ? importRepo.report(parsed.data) : null;
+  });
+  handle(IPC.library.takeAutomaticImportNotices, (e) => {
+    if (!fromOperator(e)) return [];
+    automaticImportNoticesReady = true;
+    return initialImportNotices.splice(0);
   });
   handle(IPC.media.saveStill, async (e, mediaId, jpeg) => {
     if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) {

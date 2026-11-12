@@ -61,6 +61,20 @@ export class TrimmedVideos {
     );
   }
 
+  referencesFile(path: string, absolutePath: string): boolean {
+    const absolute = absolutePath.replaceAll('\\', '/');
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM media
+           WHERE replace(path, char(92), '/') COLLATE NOCASE IN (?, ?)
+              OR replace(source_path, char(92), '/') COLLATE NOCASE IN (?, ?)
+           LIMIT 1`,
+        )
+        .get(path, absolute, path, absolute) !== undefined
+    );
+  }
+
   view(itemId: string): RowTrimView | null {
     const row = this.row(itemId);
     if (!row) return null;

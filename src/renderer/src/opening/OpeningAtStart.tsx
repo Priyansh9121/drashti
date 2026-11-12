@@ -3,7 +3,13 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { OPENING_HOLD_MS, type OpeningEnd, type OpeningPlan } from '../../../shared/opening';
 import { motionOff } from '../ui/motion';
-import { openingHolds, stillAfterHold, type StartFacts, windowMayStart } from './opening-order';
+import {
+  afterCoverFrame,
+  openingHolds,
+  stillAfterHold,
+  type StartFacts,
+  windowMayStart,
+} from './opening-order';
 import { OpeningPlayer } from './OpeningPlayer';
 
 /*
@@ -28,6 +34,9 @@ let asked: Promise<OpeningPlan | null> | null = null;
 /** Whether the window underneath has opened: its controls drawn with their first data, the page then idle (ui/motion.ts). */
 const windowOpen = () => document.documentElement.hasAttribute('data-opened');
 
+// Allow regular frames on slow displays and reject the long gaps caused by loading the operator window.
+const OPENING_FRAME_BUDGET_MS = 50;
+
 export function OpeningAtStart({ children }: { children: ReactNode }) {
   const [plan, setPlan] = useState<OpeningPlan | null>(null);
   const [state, setState] = useState<'playing' | 'shield' | 'over'>('playing');
@@ -35,8 +44,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
   const [screensWarming, setScreensWarming] = useState(false);
   /** Its black has drawn its first frame over the window. */
   const [covered, setCovered] = useState(false);
-  /** The window underneath seen to open (what it is now is read from the page as this renders). */
-  const [, setOpenedSeen] = useState(false);
+  const [windowFrameReady, setWindowFrameReady] = useState(false);
   /** It has held for OPENING_HOLD_MS. */
   const [waitedOut, setWaitedOut] = useState(false);
   const screensUp = useRef(false);
@@ -145,16 +153,37 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
       clearTimeout(wait);
     };
   }, [plan]);
-  // The window underneath opening, seen as it happens.
+  // The opened attribute can arrive before the window has caught up with painting. Keep black across any
+  // long gaps that follow it. The same hold timer above also caps this wait.
   useEffect(() => {
-    const watch = new MutationObserver(() => {
-      if (windowOpen()) setOpenedSeen(true);
-    });
+    if (!plan || !covered || state !== 'playing' || screensWarming || waitedOut || windowFrameReady) return;
+    let previous: number | null = null;
+    let frame = 0;
+    const sample = (at: number) => {
+      if (
+        previous !== null &&
+        at - previous <= OPENING_FRAME_BUDGET_MS &&
+        performance.now() - at <= OPENING_FRAME_BUDGET_MS
+      ) {
+        setWindowFrameReady(true);
+        return;
+      }
+      previous = at;
+      frame = requestAnimationFrame(sample);
+    };
+    const watch = new MutationObserver(begin);
+    function begin() {
+      if (!windowOpen()) return;
+      watch.disconnect();
+      frame = requestAnimationFrame(sample);
+    }
     watch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-opened'] });
+    begin();
     return () => {
       watch.disconnect();
+      cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [covered, plan, screensWarming, state, waitedOut, windowFrameReady]);
   useEffect(() => {
     if (!plan) return;
     const check = () => {
@@ -172,22 +201,18 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
       chosen.disconnect();
     };
   }, [plan]);
-  // Its black over the window: the window starts underneath in the frame that draws it, never before (it would show).
+  // The black cover is mounted. Give it a frame before starting the window underneath when one is available.
   useEffect(() => {
-    if (!plan) return;
-    const frame = requestAnimationFrame(() => {
-      setCovered(true);
-    });
-    return () => {
-      cancelAnimationFrame(frame);
-    };
-  }, [plan]);
+    if (!plan || state !== 'playing') return;
+    return afterCoverFrame(() => setCovered(true));
+  }, [plan, state]);
 
   const facts: StartFacts = {
     plan: plan ? 'plays' : state === 'over' ? 'none' : 'asking',
     covered,
     screensWarming,
     windowOpened: windowOpen(),
+    windowFrameReady,
     waitedOut,
     ended: state !== 'playing',
   };
@@ -223,6 +248,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
           plan={plan}
           still={still}
           held={openingHolds(facts)}
+          prepare={!screensWarming || waitedOut}
           className="absolute inset-0"
           // The window starts under its black: the black stays until the photo is ready.
           coverWhilePreparing

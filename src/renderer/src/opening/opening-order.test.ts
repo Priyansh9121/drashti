@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { openingHolds, photoWait, stillAfterHold, type StartFacts, windowMayStart } from './opening-order';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  afterCoverFrame,
+  openingHolds,
+  photoWait,
+  stillAfterHold,
+  type StartFacts,
+  windowMayStart,
+} from './opening-order';
 
 /*
  * The order of Drashti's start under the opening (Session 57, item 6). On CI's Mac the window starting underneath took
@@ -15,6 +22,7 @@ const covered: StartFacts = {
   covered: true,
   screensWarming: false,
   windowOpened: false,
+  windowFrameReady: false,
   waitedOut: false,
   ended: false,
 };
@@ -35,6 +43,27 @@ describe('the window underneath', () => {
     expect(windowMayStart({ ...covered, screensWarming: true })).toBe(true);
   });
 
+  it('starts within 100 ms even if a hidden window gets no animation frame', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 1),
+    );
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const covered = vi.fn();
+    const dispose = afterCoverFrame(covered);
+    try {
+      vi.advanceTimersByTime(99);
+      expect(covered).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(covered).toHaveBeenCalledOnce();
+    } finally {
+      dispose();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
   it('starts at once when the opening ends, by a key or a click', () => {
     expect(windowMayStart({ ...covered, covered: false, ended: true })).toBe(true);
   });
@@ -43,11 +72,20 @@ describe('the window underneath', () => {
 describe('the opening holds, black', () => {
   it('until the window underneath has opened, so nothing starts under its two seconds', () => {
     expect(openingHolds(covered)).toBe(true);
-    expect(openingHolds({ ...covered, windowOpened: true })).toBe(false);
+    expect(openingHolds({ ...covered, windowOpened: true, windowFrameReady: true })).toBe(false);
+  });
+
+  it('does not start its timeline while the window is still missing frames after it opens', () => {
+    const busy = { ...covered, windowOpened: true, windowFrameReady: false };
+    expect(openingHolds(busy)).toBe(true);
+    expect(openingHolds({ ...busy, windowFrameReady: true })).toBe(false);
+    expect(openingHolds({ ...busy, waitedOut: true })).toBe(false);
   });
 
   it('and until the hall’s screens have drawn, as before', () => {
-    expect(openingHolds({ ...covered, windowOpened: true, screensWarming: true })).toBe(true);
+    expect(
+      openingHolds({ ...covered, windowOpened: true, windowFrameReady: true, screensWarming: true }),
+    ).toBe(true);
   });
 
   it('for OPENING_HOLD_MS at most: then it moves, still only when the screens were what it waited for', () => {

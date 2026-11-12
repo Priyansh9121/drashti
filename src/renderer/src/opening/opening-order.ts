@@ -7,7 +7,9 @@
  * The window underneath starts as soon as the opening's black covers it, never later: its controls, its first data
  * and its first drawing are the heaviest work of the start (on CI's Mac they took the main thread for a second at a
  * time). The opening holds, black, until that is done (the window has opened), and until the hall's screens have
- * drawn, as before; then its two seconds run with nothing starting under them. It holds for OPENING_HOLD_MS at most,
+ * drawn, as before. The window can still miss frames after it reports that it opened. Give it a short frame interval
+ * before the animation so the first visible frame starts near the start of the timeline. The hold stays capped at
+ * OPENING_HOLD_MS,
  * then moves: still, if the screens were what it waited for (it never moves beside their warm-up).
  */
 
@@ -21,6 +23,8 @@ export interface StartFacts {
   screensWarming: boolean;
   /** The window underneath has opened: its controls drawn with their first data, the page then idle (ui/motion.ts). */
   windowOpened: boolean;
+  /** The renderer has drawn consecutive frames without a long gap after opening. */
+  windowFrameReady: boolean;
   /** It has held for OPENING_HOLD_MS. */
   waitedOut: boolean;
   /** It ended: a key, a click, or by itself. */
@@ -29,7 +33,12 @@ export interface StartFacts {
 
 /** Whether the opening holds, black, nothing moving: until the window underneath has opened and the screens have drawn. */
 export function openingHolds(f: StartFacts): boolean {
-  return f.plan === 'plays' && !f.ended && !f.waitedOut && (f.screensWarming || !f.windowOpened);
+  return (
+    f.plan === 'plays' &&
+    !f.ended &&
+    !f.waitedOut &&
+    (f.screensWarming || !f.windowOpened || !f.windowFrameReady)
+  );
 }
 
 /** Whether the window underneath may start (the App mounts): at once with no opening, else once its black covers it. */
@@ -49,4 +58,23 @@ export function stillAfterHold(f: Pick<StartFacts, 'waitedOut' | 'screensWarming
  */
 export function photoWait(held: boolean, limitMs: number): number | null {
   return held ? null : limitMs;
+}
+
+/** Start the app underneath the opening once the black cover can draw. */
+export function afterCoverFrame(covered: () => void): () => void {
+  let waiting = true;
+  const cancel = () => {
+    waiting = false;
+    cancelAnimationFrame(frame);
+    clearTimeout(limit);
+  };
+  const ready = () => {
+    if (!waiting) return;
+    cancel();
+    covered();
+  };
+  const frame = requestAnimationFrame(ready);
+  // A minimized or covered window can stop getting frames. The black cover is already mounted.
+  const limit = setTimeout(ready, 100);
+  return cancel;
 }
