@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { nativeDeckMotion } from '../../../shared/deck';
 import { type DeckNativeTransition, isDeckNativeTransition } from '../../../shared/deck-transition';
 import type { EngineState, SlideLayer } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
@@ -16,6 +17,7 @@ import { clockHeld, engineNow, onClockJump } from './clock';
 import { SlideMovementContext, SlideTimersContext } from './slide-timers';
 import { linesReveal, type UnitFrame, wordsReveal } from './reveal';
 import { deckSlideAt, nativeStepTiming, stepTiming } from '../../../shared/deck-show';
+import { DECK_FIRST_FRAME } from './DeckStep';
 import { NativeDeckMotion } from './NativeDeckElement';
 import {
   deckTransitionFrame,
@@ -48,6 +50,8 @@ interface Showing {
   on: SlideLayer | null;
   /** The slide going away while `on` comes in. */
   off: SlideLayer | null;
+  /** The click pressed while PowerPoint's incoming transition is still on screen. */
+  afterTransition?: SlideLayer;
   /** The transition's kind and length, and when it started (null: the new slide's media is still loading). */
   fade: { kind: TransitionKind; ms: number; start: number | null; native?: DeckNativeTransition } | null;
 }
@@ -81,6 +85,8 @@ export function nextShowing(
     const moved = prev.on.step !== layer.step || prev.on.stepAt !== layer.stepAt;
     if (moved) {
       const native = nativeStepTiming(layer);
+      if (native && prev.fade?.native && (prev.fade.start === null || now < prev.fade.start + prev.fade.ms))
+        return { ...prev, afterTransition: layer };
       const t = native?.drashti?.transition;
       if (native && takesTime(t) && now < native.shownAt + t.durationMs)
         return {
@@ -90,7 +96,10 @@ export function nextShowing(
         };
       if (native && prev.off && keyOf(prev.off) === keyOf(layer)) return { on: layer, off: null, fade: null };
     }
-    return { ...prev, on: layer };
+    // The engine's newest is shown: a click that waited for the incoming transition is over with, so its older slide
+    // never replaces this one when the transition ends (an edit meanwhile that leaves the slide no longer one Drashti
+    // plays itself, C3's review LOW).
+    return { on: layer, off: prev.off, fade: prev.fade };
   }
   const t = layer.transition;
   if (takesTime(t) && now < layer.shownAt + t.durationMs)
@@ -219,24 +228,31 @@ function paintLayers(els: Layers, how: Paint, p: number): void {
  * Whether every picture and video in `root` can be drawn now; else a promise for when it can, or for
  * `deadline` (the engine's time) if that comes first.
  */
-function mediaReady(root: HTMLElement, deadline: number, native: boolean): true | Promise<void> {
+export function slideMediaReady(
+  root: HTMLElement,
+  deadline: number,
+  layer: SlideLayer,
+): true | Promise<void> {
+  const native = nativeDeckMotion(layer.slide.deck) !== undefined;
   const waits: Promise<unknown>[] = [];
   for (const img of root.querySelectorAll('img'))
     if (!img.complete) waits.push(img.decode().catch(() => undefined));
-  for (const video of root.querySelectorAll('video'))
+  const videos = Array.from(root.querySelectorAll('video'));
+  const first = videos.find((video) => video.dataset['deckFirstFrame'] !== undefined);
+  for (const video of videos)
     if (
-      video.readyState < 2 &&
-      // A deck's next click, loading out of sight while its step is up (Session 57, item 6; DeckStep.tsx): never
-      // drawn as the slide comes in, so never waited for.
-      video.dataset['deckVideo'] !== 'preparing' &&
-      (!native || (video.dataset['deckCover'] !== 'poster' && video.dataset['deckCover'] !== 'hidden'))
+      video === first
+        ? video.dataset['deckFirstFrame'] === 'loading'
+        : video.readyState < 2 &&
+          video.dataset['deckVideo'] !== 'preparing' &&
+          (!first || video.dataset['deckVideo'] !== 'hold') &&
+          (!native || (video.dataset['deckCover'] !== 'poster' && video.dataset['deckCover'] !== 'hidden'))
     )
       waits.push(
         new Promise<void>((resolve) => {
-          // Its first frame; or, for a deck's clip loaded ahead (DeckStep.tsx took it decoded, its first frame long
-          // in), the frame its jump into the clip lands on (a seek takes it below 2 until then, and loadeddata never
-          // comes again).
-          for (const event of ['loadeddata', 'canplay', 'error'])
+          // The clip's own notification waits for the frame at the seek position. A hold or the next click does
+          // not draw while this first clip plays.
+          for (const event of video === first ? [DECK_FIRST_FRAME] : ['loadeddata', 'canplay', 'error'])
             video.addEventListener(event, () => resolve(), { once: true });
         }),
       );
@@ -409,7 +425,7 @@ export function SlideLayerView({
   useEffect(() => {
     if (!waiting || !on || !inRef.current) return;
     const shownAt = on.shownAt;
-    const ready = mediaReady(inRef.current, shownAt + MEDIA_WAIT_MS, native !== undefined);
+    const ready = slideMediaReady(inRef.current, shownAt + MEDIA_WAIT_MS, on);
     const begin = (start: number) => {
       setShowing((s) =>
         s.on && keyOf(s.on) === onKey && s.fade?.start === null ? { ...s, fade: { ...s.fade, start } } : s,
@@ -449,7 +465,8 @@ export function SlideLayerView({
     if (start === null) return;
     let frame = 0;
     const tick = () => {
-      const p = fadeAt({ ms, start }, engineNow());
+      const now = engineNow();
+      const p = fadeAt({ ms, start }, now);
       paintLayers(
         {
           in: inRef.current,
@@ -463,7 +480,11 @@ export function SlideLayerView({
       );
       rootRef.current?.setAttribute('data-fade', p.toFixed(3));
       if (p >= 1) {
-        setShowing((s) => (s.fade?.start === start ? { on: s.on, off: null, fade: null } : s));
+        setShowing((s) => {
+          if (s.fade?.start !== start) return s;
+          const done = { on: s.on, off: null, fade: null };
+          return s.afterTransition ? nextShowing(done, s.afterTransition, now) : done;
+        });
         return;
       }
       frame = requestAnimationFrame(tick);
