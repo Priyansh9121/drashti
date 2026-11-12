@@ -13,8 +13,11 @@ import {
   caseRow,
   type CaseRow,
   framePeriod,
+  intervalStats,
   measureRun,
   type MotionRun,
+  stillIntervals,
+  stillLine,
 } from '../shared/motion-measure';
 import { plural } from '../shared/text';
 import { PresentationRepo } from './db/presentations';
@@ -395,7 +398,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
                 : `${plural(rows.length, 'case')}, ${plural(measured.runs.length, 'run')}`,
           },
         ],
-        summary: `scenario animations: frame period ${measured.period.toFixed(2)} ms (${String(measured.frames)} frames)${wallpaper ? '' : ', the Wallpaper black (no picture could be chosen)'}${fromMain > 0 ? `, ${String(fromMain)} pressed from the main process` : ''}; late: ${late.join(', ') || 'none'}; uneven: ${uneven.join(', ') || 'none'}; ${rows.map(caseLine).join(' | ')}`,
+        summary: `scenario animations: frame period ${measured.period.toFixed(2)} ms (${String(measured.frames)} frames)${wallpaper ? '' : ', the Wallpaper black (no picture could be chosen)'}${fromMain > 0 ? `, ${String(fromMain)} pressed from the main process` : ''}; ${stillLine(measured.still)}; late: ${late.join(', ') || 'none'}; uneven: ${uneven.join(', ') || 'none'}; ${rows.map(caseLine).join(' | ')}`,
       };
     },
   };
@@ -405,10 +408,19 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
 async function measure(
   output: BrowserWindow | undefined,
   pressed: readonly Pressed[],
-): Promise<{ runs: Measured[]; period: number; frames: number }> {
+): Promise<{
+  runs: Measured[];
+  period: number;
+  frames: number;
+  /** How evenly the screen drew between the cases, nothing moving: its own baseline. */
+  still: CaseRow['intervals'];
+  /** The probe's record of the whole stretch, kept with the figures. */
+  probe: { frames: number[]; changes: Record<string, number[]> } | null;
+}> {
   const first = pressed[0];
   const last = pressed.at(-1);
-  if (!output || output.isDestroyed() || !first || !last) return { runs: [], period: 1000 / 60, frames: 0 };
+  const none = { runs: [], period: 1000 / 60, frames: 0, still: null, probe: null };
+  if (!output || output.isDestroyed() || !first || !last) return none;
   const read = (await output.webContents
     .executeJavaScript(
       `window.drashtiMotionProbe ? window.drashtiMotionProbe.read(${String(first.at - 2000)}, ${String(last.until + 1000)}) : null`,
@@ -418,7 +430,7 @@ async function measure(
   const paints = (await output.webContents
     .executeJavaScript('globalThis.drashtiPaintLog ?? []', true)
     .catch(() => [])) as { rev: number; sentAt: number; paintedAt: number }[];
-  if (!read) return { runs: [], period: 1000 / 60, frames: 0 };
+  if (!read) return none;
   const period = framePeriod(read.frames);
   const runs = pressed.map((p): Measured => {
     const run = measureRun(
@@ -435,7 +447,20 @@ async function measure(
       paintedAt: own?.paintedAt ?? null,
     };
   });
-  return { runs, period, frames: read.frames.length };
+  // Between the cases: from a few frames after each run's last moving frame until a frame before the next press (never
+  // while a lower third is up: one's moving background moves on, unwatched).
+  const still = runs.flatMap((r, i) =>
+    r.lastAt === null || pressed[i]?.track === 'lowerThird'
+      ? []
+      : stillIntervals(read.frames, r.lastAt + period * 3, (pressed[i]?.until ?? r.lastAt) - period),
+  );
+  return {
+    runs,
+    period,
+    frames: read.frames.length,
+    still: intervalStats(still, period),
+    probe: read,
+  };
 }
 
 /** Each case's row, in the order first pressed. */
