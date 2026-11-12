@@ -272,6 +272,7 @@ import { SourceQuitGate } from './documents/source-quit-gate';
 import { PdfPrintGeometry } from './documents/pdf-geometry-service';
 import { systemFontFamilies } from './documents/system-fonts';
 import { PdfCopySession } from './library/pdf-copy-session';
+import { capturedPixelOrder } from './library/pixel-order';
 import { PdfEditor } from './library/pdf-editor';
 import { createPdfCopyWindow } from './library/pdf-copy-window';
 import { openGalleryWindow } from './windows/gallery-window';
@@ -3330,6 +3331,8 @@ function start(): void {
       ];
     },
     normalize: pdfGeometry.normalize,
+    // A phone's picture leaves Main as its pixels (C6's review): their byte order on this computer.
+    pixelOrder: capturedPixelOrder,
   });
   handle(IPC.pdfExport.job, (e) => pdfCopies.job(e.sender));
   handle(IPC.pdfExport.capture, (e, id, index) => pdfCopies.capture(e.sender, id, index));
@@ -5010,6 +5013,20 @@ function start(): void {
       dispatch: (command) => engine.dispatch(command),
       snapshot: () => withoutCaptions(engine.snapshot()),
       state: () => stateWithoutCaptions(engine.current),
+    },
+    // A phone's Save captures nothing while the stream is on air or recording (C6's review, MEDIUM 3).
+    onAir: () => streaming.inUse() || testOnAir,
+    nativeSlidePicture: async (slide, looks, current, signal) => {
+      const stop = new AbortController();
+      const off = engine.onChange(() => {
+        if (!current()) stop.abort();
+      });
+      try {
+        // Stopped by an engine change it must not run through, or at the end of its time (network/slide-picture.ts).
+        return await pdfCopies.picture(slide, looks, current, AbortSignal.any([signal, stop.signal]));
+      } finally {
+        off();
+      }
     },
     reads: {
       playlists: () => playlists.tree(),
