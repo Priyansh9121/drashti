@@ -130,11 +130,15 @@ test('Words: a bundled font, size, colour, bold, italic, underline, strike throu
   await clickSlide(ed, 960, 540);
   await expect(editor.getByTestId('editor-status')).toContainText('Text box');
   const font = ribbon.getByTestId('field-font');
-  // Only Drashti's bundled fonts are offered.
-  const offered = await font.locator('option:not([disabled])').allTextContents();
-  expect(offered).toContain('Mukta');
-  expect(offered).toContain('Noto Serif');
-  expect(offered).not.toContain('Arial');
+  const bundled = await font.locator(':scope > option:not([disabled])').allTextContents();
+  expect(bundled).toContain('Mukta');
+  expect(bundled).toContain('Noto Serif');
+  expect(bundled).not.toContain('Arial');
+  const installed = font.locator('optgroup[label="On this computer"] option');
+  await expect(installed.first()).toBeAttached();
+  const bundledNames = new Set(bundled.map((family) => family.toLowerCase()));
+  const installedNames = await installed.allTextContents();
+  expect(installedNames.filter((family) => bundledNames.has(family.toLowerCase()))).toEqual([]);
   await font.selectOption('Mukta');
   await ribbon.getByTestId('field-size').fill('96');
   await ribbon.getByTestId('field-color').fill('#ffcc00');

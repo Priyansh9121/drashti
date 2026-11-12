@@ -1,3 +1,4 @@
+import type { SlidePictureResult } from './slide-picture';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { PdfJob, PdfPage, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
@@ -699,6 +700,8 @@ export const IPC = {
     /** The editor's elements copied, kept by main for the next window (and what is kept). */
     copy: 'slideeditor:copy',
     copied: 'slideeditor:copied',
+    addPicture: 'slideeditor:add-picture',
+    fontFamilies: 'slideeditor:font-families',
     /** One of the show's F-keys pressed in the editor's window: the operator window acts on it, as if pressed there. */
     showKey: 'slideeditor:show-key',
   },
@@ -1480,6 +1483,11 @@ export interface InvokeContract {
   [IPC.slideEditor.dirty]: { args: [dirty: boolean]; result: null };
   [IPC.slideEditor.copy]: { args: [copied: CopiedElements]; result: null };
   [IPC.slideEditor.copied]: { args: []; result: CopiedElements | null };
+  [IPC.slideEditor.addPicture]: {
+    args: [presentationId: string, path: string | null];
+    result: SlidePictureResult;
+  };
+  [IPC.slideEditor.fontFamilies]: { args: []; result: readonly string[] };
   [IPC.slideEditor.showKey]: { args: [key: string]; result: null };
   [IPC.slideEditor.close]: { args: []; result: null };
   [IPC.midi.get]: { args: []; result: MidiSettings };

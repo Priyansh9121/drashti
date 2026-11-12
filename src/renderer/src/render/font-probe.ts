@@ -1,5 +1,5 @@
-import type { TextElement } from '../../../shared/model';
-import { BUNDLED_FAMILIES } from './fonts';
+import type { Lang, TextElement } from '../../../shared/model';
+import { BUNDLED_FAMILIES, fontSubstitutes } from './fonts';
 
 /*
  * Whether this computer has a font a slide names (Sessions 31–36, I18N-1): a legacy Gujarati font, or one a
@@ -90,7 +90,19 @@ export function hasFont(family: string): boolean {
 export function missingFontsOf(el: TextElement): string[] {
   const names = new Set([
     ...namedFamilies(el.style.fontFamily),
-    ...(el.runs ?? []).flatMap((r) => namedFamilies(r.font)),
+    ...(el.runs ?? []).flatMap((r) => [...namedFamilies(r.font), ...namedFamilies(r.paragraph?.bulletFont)]),
   ]);
   return [...names].filter((f) => !hasFont(f));
+}
+
+/** The first substitute in the same order as the screen’s CSS stack. */
+export function substituteFor(family: string, lang: Lang | null): string {
+  return (
+    fontSubstitutes(family).find(hasFont) ??
+    (lang === 'gu' || lang === 'sa-gu'
+      ? BUNDLED_FAMILIES[1]
+      : lang === 'hi' || lang === 'sa'
+        ? BUNDLED_FAMILIES[2]
+        : BUNDLED_FAMILIES[0])
+  );
 }

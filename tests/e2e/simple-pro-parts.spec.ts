@@ -341,23 +341,52 @@ test('a row’s Trim in Simple Mode saves and resets a cut; Trim black and silen
   await expect(dialog.getByTestId('markers-list')).toContainText('Placeholder chorus');
   await dialog.getByTestId('markers-save').click();
   await expect(dialog).toHaveCount(0);
-  await expect(row.locator('[data-label]')).toHaveText('Placeholder edges trimmed', { timeout: 30_000 });
+  await expect(row.locator('[data-label]')).toHaveText('Placeholder edges trimmed.mp4', { timeout: 30_000 });
   const trimmedId = await rowMedia();
   if (trimmedId === null) throw new Error('The trimmed video is missing from its playlist.');
   expect(trimmedId).not.toBe(videoId);
   expect(await markersOf(win, trimmedId)).toMatchObject({
     startMs: null,
     endMs: null,
-    markers: [{ name: 'Placeholder chorus', atMs: 1500 }],
+    markers: [{ name: 'Placeholder chorus', atMs: 1520 }],
   });
   expect(await markersOf(win, videoId)).toEqual(originalMarkers);
 
+  // Freeze keeps this video up even if it ends while Trim is open.
   await row.click({ button: 'right' });
-  await win.getByRole('menuitem', { name: 'Trim (start, end and markers)…' }).click();
-  await dialog.getByRole('button', { name: 'Reset to original', exact: true }).click();
+  await menu.getByRole('menuitemradio', { name: 'When it ends: Freeze' }).click();
+  await row.click();
+  await expect
+    .poll(async () => (await layers(win)).background)
+    .toMatchObject({
+      kind: 'media',
+      mediaId: trimmedId,
+    });
+  const reopenTrim = async () => {
+    await row.click({ button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Trim (start, end and markers)…' }).click();
+  };
+  const reset = dialog.getByRole('button', { name: 'Reset to original', exact: true });
+  await reopenTrim();
+  await reset.click();
+  await expect(dialog.getByTestId('markers-problem')).toHaveText(
+    'Take the video off before resetting this row.',
+  );
+  expect(await rowMedia()).toBe(trimmedId);
+  expect((await layers(win)).background).toMatchObject({ kind: 'media', mediaId: trimmedId });
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+  await simple.getByTestId('simple-clear-background').click();
+  await expect.poll(async () => (await layers(win)).background).toBeNull();
+  await reopenTrim();
+  await reset.click();
   await expect(dialog).toHaveCount(0);
   await expect.poll(rowMedia).toBe(videoId);
   await expect(row.locator('[data-label]')).toHaveText('Placeholder edges.mp4');
+  await row.click({ button: 'right' });
+  const freeze = menu.getByRole('menuitemradio', { name: 'When it ends: Freeze' });
+  await expect(freeze).toHaveAttribute('aria-checked', 'true');
+  await menu.getByRole('menuitemradio', { name: 'When it ends: Wallpaper' }).click();
 
   // Trim black and silence moves the original’s playback points and offers Undo.
   const before = { media: (await listMedia(win)).length, files: mediaFiles(userData) };

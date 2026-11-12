@@ -93,7 +93,7 @@ test('slides and groups: added, copied, moved and removed; labels, notes, cues, 
   // A new group, named and coloured, and the added slide moved into it.
   await editor.getByTestId('group-new').click();
   await editor.getByTestId('group-name').fill('Placeholder Bridge');
-  await editor.getByRole('radio', { name: 'Colour #8e4ec6' }).click();
+  await editor.getByRole('radio', { name: 'Purple', exact: true }).click();
   await editor.getByTestId('slide-label').fill('Bridge');
   expect(await outline(ed)).toEqual(['Verse: Opening · Added', 'Chorus: ·', 'Placeholder Bridge: Bridge']);
   await editor.getByRole('button', { name: /Slide 3: Added/ }).click();

@@ -4,6 +4,7 @@ import { isAbsolute, join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import {
   EDITABLE_SOURCE_LIMITS,
+  pptxAssetTokens,
   type PreparedSource,
   type PreparedSourcePage,
 } from '../../shared/editable-source';
@@ -205,11 +206,7 @@ export function pptxReader(spawn: () => PptxReaderChild, options: ReaderOptions 
                 publish(failed());
                 return;
               }
-              const needed = new Set(
-                page.elements.flatMap((element) =>
-                  element.kind === 'image' || element.kind === 'video' ? [element.mediaId] : [],
-                ),
-              );
+              const needed = pptxAssetTokens(page.elements);
               const seen = new Set<string>();
               const assets: PreparedSourcePage['assets'] = [];
               const pageFiles = new Set<string>();

@@ -1,0 +1,291 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { slideElementSchema } from '../../../shared/model-schema';
+import {
+  editablePicture,
+  editablePptxFixture,
+  REL_NS,
+  relationshipsXml,
+  slideXml,
+  wordsShape,
+} from '../testing/editable-pptx-fixture';
+import { readEditablePptx } from './editable-pptx';
+
+const roots: string[] = [];
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+async function read(slide: string, parts?: Record<string, string | Buffer>) {
+  const root = mkdtempSync(join(tmpdir(), 'drashti-placeholder-fidelity-'));
+  roots.push(root);
+  const file = join(root, 'Placeholder fidelity.pptx');
+  writeFileSync(file, editablePptxFixture({ slides: [slide], parts }));
+  const deck = await readEditablePptx(file, join(root, 'prepared'));
+  return { ...deck, elements: deck.slides[0]?.elements.map((el) => slideElementSchema.parse(el)) ?? [] };
+}
+
+const graphic = (data: string) =>
+  '<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="7" name="Placeholder object"/></p:nvGraphicFramePr>' +
+  '<p:xfrm><a:off x="95250" y="190500"/><a:ext cx="2857500" cy="857250"/></p:xfrm>' +
+  '<a:graphic><a:graphicData>' +
+  data +
+  '</a:graphicData></a:graphic></p:graphicFrame>';
+
+describe('keeping a generated PPTX editable', () => {
+  it('keeps paragraph alignment, bullets, hanging indents and vertical words inside their box', async () => {
+    const words = wordsShape(
+      '<a:p><a:pPr algn="l" lvl="2" marL="228600" marR="114300" indent="-114300"><a:buChar char="•"/></a:pPr><a:r><a:t>Placeholder bullet</a:t></a:r><a:br/><a:r><a:t>Placeholder continuation</a:t></a:r></a:p>' +
+        '<a:p><a:pPr algn="just"><a:buNone/></a:pPr><a:r><a:t>Placeholder justified words</a:t></a:r></a:p>' +
+        '<a:p><a:pPr algn="r"><a:buNone/></a:pPr><a:r><a:t>Placeholder aligned right</a:t></a:r></a:p>',
+    ).replace('<a:bodyPr ', '<a:bodyPr vert="vert" ');
+    const { elements } = await read(slideXml(words));
+    const box = elements.find((el) => el.kind === 'text');
+    expect(box).toMatchObject({ style: { shrinkToFit: true, writingMode: 'vertical-rl' } });
+    expect(box).not.toMatchObject({ style: { clipToBox: true } });
+    if (box?.kind !== 'text') throw new Error('The editable words are missing.');
+    expect(box.runs?.find((run) => run.text === 'Placeholder bullet')).toMatchObject({
+      list: 'disc',
+      level: 2,
+      paragraph: { align: 'left', marginLeft: 24, marginRight: 12, indent: -12, bullet: '•' },
+    });
+    expect(box.runs?.find((run) => run.softBreak)).toMatchObject({ text: '\n', softBreak: true });
+    expect(box.runs?.find((run) => run.text === 'Placeholder justified words')).toMatchObject({
+      paragraph: { align: 'justify' },
+    });
+    expect(box.runs?.find((run) => run.text === 'Placeholder aligned right')).toMatchObject({
+      paragraph: { align: 'right' },
+    });
+  });
+
+  it('fits source text and table cells unless PowerPoint explicitly clips the box', async () => {
+    const words = '<a:p><a:r><a:t>Placeholder words to fit</a:t></a:r></a:p>';
+    const auto = wordsShape(words).replace('bIns="0"/>', 'bIns="0" wrap="none"><a:spAutoFit/></a:bodyPr>');
+    const clipped = wordsShape(words)
+      .replace('id="2"', 'id="3"')
+      .replace('<a:bodyPr ', '<a:bodyPr vertOverflow="clip" ');
+    const table = graphic(
+      '<a:tbl><a:tblGrid><a:gridCol w="952500"/></a:tblGrid><a:tr h="285750">' +
+        '<a:tc><a:txBody><a:bodyPr/>' +
+        words +
+        '</a:txBody><a:tcPr/></a:tc>' +
+        '</a:tr></a:tbl>',
+    );
+    const { elements } = await read(slideXml(auto + clipped + table));
+    const box = elements.find((el) => el.kind === 'text' && el.sourceShapeId === '2');
+    const explicit = elements.find((el) => el.kind === 'text' && el.sourceShapeId === '3');
+    const cell = elements.find((el) => el.kind === 'text' && el.tableCell);
+    expect(box).toMatchObject({ style: { shrinkToFit: true, noWrap: true } });
+    expect(box).not.toMatchObject({ style: { clipToBox: true } });
+    expect(cell).toMatchObject({ style: { shrinkToFit: true } });
+    expect(cell).not.toMatchObject({ style: { clipToBox: true } });
+    expect(explicit).toMatchObject({ style: { clipToBox: true } });
+    expect(explicit).not.toMatchObject({ style: { shrinkToFit: true } });
+  });
+
+  it('keeps a background picture, clipped picture fill and all gradient stops as slide objects', async () => {
+    const fill = '<a:blipFill><a:blip r:embed="rFill"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>';
+    const picture = wordsShape('')
+      .replace('id="2"', 'id="17"')
+      .replace('</p:spPr>', '<a:prstGeom prst="ellipse"/>' + fill + '</p:spPr>');
+    const gradient = wordsShape('').replace(
+      '</p:spPr>',
+      '<a:prstGeom prst="rect"/><a:gradFill><a:gsLst>' +
+        '<a:gs pos="0"><a:srgbClr val="112233"/></a:gs>' +
+        '<a:gs pos="30000"><a:srgbClr val="345678"/></a:gs>' +
+        '<a:gs pos="100000"><a:srgbClr val="8899AA"/></a:gs>' +
+        '</a:gsLst><a:lin ang="5400000" scaled="1"/></a:gradFill></p:spPr>',
+    );
+    const { elements, media } = await read(
+      slideXml(picture + gradient).replace('<p:cSld>', '<p:cSld><p:bg><p:bgPr>' + fill + '</p:bgPr></p:bg>'),
+      {
+        'ppt/media/generated.png': editablePicture(),
+        'ppt/slides/_rels/slide1.xml.rels': relationshipsXml(
+          '<Relationship Id="rFill" Type="' + REL_NS + '/image" Target="../media/generated.png"/>',
+        ),
+      },
+    );
+    expect(media).toHaveLength(1);
+    expect(elements[0]).toMatchObject({
+      kind: 'image',
+      frame: { x: 0, y: 0, width: 1280, height: 720 },
+      mediaId: 'media-ref:0',
+    });
+    expect(elements).toContainEqual(
+      expect.objectContaining({
+        kind: 'image',
+        sourceShapeId: '17',
+        pictureClip: { shape: 'ellipse' },
+        mediaId: 'media-ref:0',
+      }),
+    );
+    expect(elements).toContainEqual(
+      expect.objectContaining({
+        kind: 'shape',
+        sourceShapeId: '2',
+        gradient: {
+          kind: 'linear',
+          angle: 90,
+          stops: [
+            { offset: 0, color: '#112233' },
+            { offset: 0.3, color: '#345678' },
+            { offset: 1, color: '#8899aa' },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('keeps unequal table cells, spanning and empty cells editable as one group', async () => {
+    const cell = (words: string, props = '') =>
+      '<a:tc ' +
+      props +
+      '><a:txBody><a:bodyPr/><a:p><a:r><a:t>' +
+      words +
+      '</a:t></a:r></a:p></a:txBody>' +
+      '<a:tcPr marL="0" marR="0" marT="0" marB="0"><a:solidFill><a:srgbClr val="224466"/></a:solidFill></a:tcPr></a:tc>';
+    const { elements } = await read(
+      slideXml(
+        graphic(
+          '<a:tbl><a:tblPr/><a:tblGrid><a:gridCol w="952500"/><a:gridCol w="1905000"/></a:tblGrid>' +
+            '<a:tr h="285750">' +
+            cell('Placeholder heading', 'gridSpan="2"') +
+            cell('', 'hMerge="1"') +
+            '</a:tr><a:tr h="571500">' +
+            cell('') +
+            cell('Placeholder value') +
+            '</a:tr></a:tbl>',
+        ),
+      ),
+    );
+    const cells = elements.filter((el) => el.kind === 'text');
+    expect(cells).toMatchObject([
+      {
+        text: 'Placeholder heading',
+        sourceShapeId: '7',
+        tableCell: { row: 0, column: 0, rowSpan: 1, columnSpan: 2 },
+        frame: { x: 10, y: 20, width: 300, height: 30 },
+      },
+      {
+        text: '',
+        sourceShapeId: '7',
+        tableCell: { row: 1, column: 0, rowSpan: 1, columnSpan: 1 },
+        frame: { x: 10, y: 50, width: 100, height: 60 },
+      },
+      {
+        text: 'Placeholder value',
+        sourceShapeId: '7',
+        tableCell: { row: 1, column: 1, rowSpan: 1, columnSpan: 1 },
+        frame: { x: 110, y: 50, width: 200, height: 60 },
+      },
+    ]);
+    expect(cells[0]?.groupId).toBeTruthy();
+    expect(elements.every((el) => el.groupId === cells[0]?.groupId)).toBe(true);
+    expect(elements.filter((el) => el.kind === 'shape')).toHaveLength(3);
+  });
+
+  it('keeps a broken chart as a bounded picture between the remaining editable objects', async () => {
+    const { elements } = await read(
+      slideXml(
+        wordsShape('<a:p><a:r><a:t>Placeholder before</a:t></a:r></a:p>') +
+          graphic('<c:chart xmlns:c="c" r:id="rChart"/>') +
+          wordsShape('<a:p><a:r><a:t>Placeholder after</a:t></a:r></a:p>').replace('id="2"', 'id="8"'),
+      ),
+      {
+        'ppt/charts/chart1.xml': '<c:chartSpace xmlns:c="c"><broken',
+        'ppt/slides/_rels/slide1.xml.rels': relationshipsXml(
+          '<Relationship Id="rChart" Type="' + REL_NS + '/chart" Target="../charts/chart1.xml"/>',
+        ),
+      },
+    );
+    expect(elements).toMatchObject([
+      { kind: 'text', text: 'Placeholder before' },
+      {
+        kind: 'image',
+        sourceShapeId: '7',
+        mediaId: 'retained-slide-picture',
+        frame: { x: 10, y: 20, width: 300, height: 90 },
+      },
+      { kind: 'text', text: 'Placeholder after' },
+    ]);
+    expect(elements[1]?.kind === 'image' ? elements[1].crop : undefined).toEqual({
+      x: 10 / 1280,
+      y: 20 / 720,
+      width: 300 / 1280,
+      height: 90 / 720,
+    });
+  });
+
+  it('reads the other slides when a single source slide is damaged', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'drashti-placeholder-partial-deck-'));
+    roots.push(root);
+    const file = join(root, 'Placeholder partial deck.pptx');
+    writeFileSync(
+      file,
+      editablePptxFixture({
+        slides: [
+          '<p:sld xmlns:p="p"><broken',
+          slideXml(wordsShape('<a:p><a:r><a:t>Placeholder readable slide</a:t></a:r></a:p>')),
+        ],
+      }),
+    );
+    const deck = await readEditablePptx(file, join(root, 'prepared'));
+    expect(deck.sourceCount).toBe(2);
+    expect(deck.slides).toMatchObject([
+      { sourceIndex: 1, elements: [{ kind: 'text', text: 'Placeholder readable slide' }] },
+    ]);
+  });
+
+  it('keeps local objects editable when an inherited layout part is unreadable', async () => {
+    const { slides, elements } = await read(
+      slideXml(wordsShape('<a:p><a:r><a:t>Placeholder standalone words</a:t></a:r></a:p>')),
+      { 'ppt/slideLayouts/slideLayout1.xml': '<p:sldLayout xmlns:p="p"><broken' },
+    );
+    expect(elements).toMatchObject([{ kind: 'text', text: 'Placeholder standalone words' }]);
+    expect(slides[0]?.issues.join(' ')).toMatch(/layout/u);
+  });
+
+  it('keeps a chart’s source ID on its embedded compatibility picture', async () => {
+    const chartNamespace = 'http://schemas.openxmlformats.org/drawingml/2006/chart';
+    const chart = graphic('<c:chart r:id="rChart"/>')
+      .replace('<a:graphicData>', '<a:graphicData uri="' + chartNamespace + '">')
+      .replace('</p:nvGraphicFramePr>', '<p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>');
+    const preview =
+      '<p:pic><p:nvPicPr><p:cNvPr id="42" name="Placeholder preview"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>' +
+      '<p:blipFill><a:blip r:embed="rPreview"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>' +
+      '<p:spPr><a:xfrm><a:off x="95250" y="190500"/><a:ext cx="2857500" cy="857250"/></a:xfrm>' +
+      '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>';
+    const alternate =
+      '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:c="' +
+      chartNamespace +
+      '"><mc:Choice Requires="c">' +
+      chart +
+      '</mc:Choice><mc:Fallback>' +
+      preview +
+      '</mc:Fallback></mc:AlternateContent>';
+    const { elements, media } = await read(slideXml(alternate), {
+      'ppt/charts/chart1.xml': '<c:chartSpace xmlns:c="' + chartNamespace + '"><c:chart/></c:chartSpace>',
+      'ppt/media/placeholder-preview.png': editablePicture(),
+      'ppt/slides/_rels/slide1.xml.rels': relationshipsXml(
+        '<Relationship Id="rChart" Type="' +
+          REL_NS +
+          '/chart" Target="../charts/chart1.xml"/><Relationship Id="rPreview" Type="' +
+          REL_NS +
+          '/image" Target="../media/placeholder-preview.png"/>',
+      ),
+    });
+
+    expect(media).toHaveLength(1);
+    expect(elements).toMatchObject([
+      {
+        kind: 'image',
+        mediaId: 'media-ref:0',
+        sourceShapeId: '7',
+        name: 'Placeholder object',
+        frame: { x: 10, y: 20, width: 300, height: 90 },
+      },
+    ]);
+  });
+});

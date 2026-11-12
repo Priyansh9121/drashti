@@ -9,7 +9,7 @@ Two made-up examples to try it with are in [`examples/placeholder-granth.json`](
 ## Loading a book
 
 - Drag the file onto the library, or in the library's **Books** tab choose **Books…**, then **Load a book…**. **Import…** works too.
-- The import report says what came in: how many items and sections, what Drashti made (see "Languages"), and anything it left out and why.
+- The library's **Books** tab then has it. A file that cannot come in has a notice in the bottom-right corner saying why (since alpha.17; until then the import report said what came in).
 - **Loading a book again updates it.** Drashti knows a book by its **abbreviation**: the same abbreviation (ignoring case, dots and spaces) means the same book. Items keep their place by section and number, so playlists that name a passage keep working. Items no longer in the file go. The same file loaded twice changes nothing.
 - **Books…** also removes a book (Pro Mode only). A removed book's passages show as missing in playlists until it is loaded again.
 
@@ -119,7 +119,7 @@ Each screen group shows the languages its Look chooses, in its order. The refere
 
 ## What Drashti checks
 
-- A file that does not say `"format": "drashti-shastra"`, has a field Drashti does not know, or a value of the wrong kind, is refused, and the report says where: "(at items › 3 › number)".
+- A file that does not say `"format": "drashti-shastra"`, has a field Drashti does not know, or a value of the wrong kind, is refused, and its notice says where: "(at items › 3 › number)".
 - A file with no items with words is refused.
-- An item given twice with the same number keeps the first; an item with no words, or a section given twice, is left out. The report lists each.
+- An item given twice with the same number keeps the first; an item with no words, or a section given twice, is left out.
 - Sizes: up to 20,000 items in a section, 40,000 characters of words per language per item.
