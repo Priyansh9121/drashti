@@ -514,12 +514,16 @@ const RANDOM_BARS = new Map<string, NonNullable<DeckEffect['bars']>>([
   ['randombar(horizontal)', 'horizontal'],
   ['randombar(vertical)', 'vertical'],
 ]);
-/** Split out from the middle and in from both edges. Not yet compared with PowerPoint's own movie. */
+/**
+ * Split out from the middle and in from both edges ("In": coming in or leaving, its edges travel from the box's own
+ * edges to its middle). As PowerPoint's own movie shows all eight (13 Nov 2026): its soft edges and its exits within a
+ * pixel (shared/deck-motion.ts, deckSplitShows).
+ */
 const SPLITS = new Map<string, NativeLook>([
-  ['barn(outvertical)', { kind: 'split', splitAxis: 'x', partial: true }],
-  ['barn(outhorizontal)', { kind: 'split', splitAxis: 'y', partial: true }],
-  ['barn(invertical)', { kind: 'split', splitAxis: 'x', inward: true, partial: true }],
-  ['barn(inhorizontal)', { kind: 'split', splitAxis: 'y', inward: true, partial: true }],
+  ['barn(outvertical)', { kind: 'split', splitAxis: 'x' }],
+  ['barn(outhorizontal)', { kind: 'split', splitAxis: 'y' }],
+  ['barn(invertical)', { kind: 'split', splitAxis: 'x', inward: true }],
+  ['barn(inhorizontal)', { kind: 'split', splitAxis: 'y', inward: true }],
 ]);
 
 /**

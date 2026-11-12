@@ -62,7 +62,10 @@ export interface DeckEffect {
   scale?: number;
   /** Shape's outline, opening from the centre (or closing towards it when inward). */
   shape?: 'circle' | 'box' | 'diamond' | 'plus';
-  /** Shape or Split reveals from the edges towards the centre (PowerPoint's "In"). */
+  /**
+   * PowerPoint's "In": Shape reveals from the edges towards the centre; Split's edges travel from the box's own edges
+   * to its middle, coming in or leaving (so an exit's "In" closes from both edges to the middle).
+   */
   inward?: true;
   /** Wheel's spokes. */
   spokes?: number;
