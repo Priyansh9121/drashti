@@ -599,6 +599,44 @@ describe('automatic imports keep the points of a file already playing', () => {
     expect(engine.current.videoFiles?.clipped?.marks).toEqual(oldMarks);
   });
 
+  it('leaves the slide and box marker ticks alone on an unrelated engine change', () => {
+    const { engine, automaticImport } = setupImport();
+    engine.dispatch(goLive(0));
+    engine.dispatch(putBox);
+    automaticImport();
+    expect(engine.learnLength('video', 61_000)).toMatchObject({ changed: true });
+    expect(engine.current.videoFiles?.clipped?.marks).toEqual(oldMarks);
+  });
+
+  it.each(['background', 'audio', 'slide'] as const)(
+    'takes the new points when the time bar starts an ended %s again',
+    (layer) => {
+      const { engine, source, automaticImport, elapse, now } = setupImport();
+      const ref = layer === 'slide' ? onSlide('clipped') : { layer };
+      if (layer === 'slide') {
+        source.set('videos', [slideWith('s1', videoEl('v1', 'clipped'))]);
+        engine.dispatch(goLive(0));
+        expect(engine.current.layers.slide?.clips?.clipped).toEqual(oldClip);
+      } else {
+        engine.dispatch(layer === 'background' ? setVideo('clipped') : playSound('clipped'));
+      }
+      automaticImport();
+      elapse(31_000);
+      expect(engine.dispatch(play(ref))).toMatchObject({ ok: true, changed: true });
+      if (layer === 'slide') {
+        expect(engine.current.layers.slide?.clips?.clipped).toEqual(newClip);
+        expect(engine.current.layers.slide?.seeks?.clipped).toEqual({ at: now(), toMs: newClip.startMs });
+        expect(engine.current.videoFiles?.clipped?.marks).toEqual(newMarks);
+      } else {
+        expect(engine.current.layers[layer]).toMatchObject({
+          clip: newClip,
+          marks: newMarks,
+          seek: { at: now(), toMs: newClip.startMs },
+        });
+      }
+    },
+  );
+
   it('takes the new points and marker ticks on a fresh play after Clear all', () => {
     const { engine, automaticImport, elapse } = setupImport();
     engine.dispatch(setVideo('clipped'));
