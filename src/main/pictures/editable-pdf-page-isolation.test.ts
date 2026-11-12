@@ -93,7 +93,7 @@ describe('one PDF page that fails Main’s checks (Session 57)', () => {
       await t.session.page(t.sender, { mode: 'editable-checkpoint', jobId, sourceIndex: 0, total: 3 }),
     ).toBe(true);
     expect(await t.session.page(t.sender, page(jobId, 0))).toBe(true);
-    expect(await t.session.page(t.sender, offPage(jobId, 1))).toBe(true);
+    expect(await t.session.page(t.sender, offPage(jobId, 1))).toBe('skipped');
     expect(await t.session.page(t.sender, page(jobId, 2))).toBe(true);
     t.session.done(t.sender, { mode: 'editable-source', jobId, total: 3, failed: [] });
     const prepared = await t.result;
@@ -122,7 +122,7 @@ describe('one PDF page that fails Main’s checks (Session 57)', () => {
       // A picture with no element that shows it.
       { ...page(jobId, 3), elements: [] },
     ];
-    for (const reply of bad) expect(await t.session.page(t.sender, reply)).toBe(true);
+    for (const reply of bad) expect(await t.session.page(t.sender, reply)).toBe('skipped');
     expect(await t.session.page(t.sender, page(jobId, 4))).toBe(true);
     t.session.done(t.sender, { mode: 'editable-source', jobId, total: 5, failed: [] });
     const prepared = await t.result;
@@ -180,7 +180,7 @@ describe('one PDF page that fails Main’s checks (Session 57)', () => {
   it('a page sent twice still stops the whole job, even when it failed the checks the first time', async () => {
     const t = setup([0, 1]);
     const jobId = await jobOf(t);
-    expect(await t.session.page(t.sender, offPage(jobId, 0))).toBe(true);
+    expect(await t.session.page(t.sender, offPage(jobId, 0))).toBe('skipped');
     expect(await t.session.page(t.sender, page(jobId, 0))).toBe(false);
     expect((await t.result).ok).toBe(false);
     expect(readdirSync(t.outDir)).toEqual([]);

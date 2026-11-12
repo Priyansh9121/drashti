@@ -7,6 +7,7 @@ import { z } from 'zod';
 import {
   EDITABLE_SOURCE_LIMITS,
   type EditablePdfJob,
+  type PdfPageReceipt,
   type PreparedSource,
   type PreparedSourcePage,
 } from '../../shared/editable-source';
@@ -215,7 +216,7 @@ export class EditablePdfSessions {
     return { ...session.job, timeBudgetMs: Math.max(0, session.deadlineAt - performance.now()) };
   }
 
-  async page(sender: WebContents, raw: unknown): Promise<boolean> {
+  async page(sender: WebContents, raw: unknown): Promise<PdfPageReceipt> {
     const session = this.active;
     if (!session || !this.owns(sender) || this.isStopped(session)) return false;
     if (session.accepting) {
@@ -223,7 +224,7 @@ export class EditablePdfSessions {
       return false;
     }
     session.accepting = true;
-    const accepted = Promise.resolve().then(async () => {
+    const accepted = Promise.resolve().then(async (): Promise<PdfPageReceipt> => {
       try {
         const checkpoint = checkpointSchema.safeParse(raw);
         if (checkpoint.success) {
@@ -275,7 +276,7 @@ export class EditablePdfSessions {
         ) {
           // A page failing Main's checks, or one past the remaining output budget, keeps its saved picture.
           session.skipped.add(reply.data.sourceIndex);
-          return true;
+          return 'skipped';
         }
         const assets: PreparedSourcePage['assets'] = [];
         for (const asset of parsed.page.assets) {
