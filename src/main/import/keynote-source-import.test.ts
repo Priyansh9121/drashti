@@ -35,25 +35,32 @@ const pptx = makeTestPptx([
   { text: 'Placeholder skipped slide', color: '204060', hidden: true },
   { text: 'Placeholder last slide', color: '204060' },
 ]);
-const pdf = makeTestPdf([
-  { text: 'Placeholder first slide', width: 960, height: 540, color: [32, 64, 96] },
-  { text: 'Placeholder last slide', width: 960, height: 540, color: [32, 64, 96] },
-]);
+const page = (text: string) => ({
+  text,
+  width: 960,
+  height: 540,
+  color: [32, 64, 96] as [number, number, number],
+});
+const first = 'Placeholder first slide';
+const last = 'Placeholder last slide';
 const slides = [
-  { hidden: false, notes: '', animated: false },
-  { hidden: true, notes: '', animated: false },
-  { hidden: false, notes: '', animated: false },
+  { hidden: false, notes: 'Placeholder first notes', animated: false, pageText: first },
+  { hidden: true, notes: '', animated: false, pageText: 'Placeholder skipped slide' },
+  { hidden: false, notes: 'Placeholder last notes', animated: false, pageText: last },
 ];
 
 beforeEach(() => {
   convert.mockReset();
 });
 
-it.each(['matched', 'mismatched', 'no export'] as const)(
+it.each(['matched', 'uncertain', 'shifted', 'mismatched', 'no export'] as const)(
   'keeps the editable Keynote source with the correct page order (%s)',
   async (kind) => {
     const root = mkdtempSync(join(tmpdir(), 'drashti-keynote-source-import-'));
     const source = join(root, 'Placeholder Keynote.key');
+    const words = kind === 'shifted' ? [last, first] : [first, last];
+    const total = kind === 'mismatched' ? 1 : words.length;
+    const pdf = makeTestPdf(words.slice(0, total).map(page));
     const mediaDir = join(root, 'Media');
     mkdirSync(mediaDir);
     writeFileSync(source, key);
@@ -86,11 +93,15 @@ it.each(['matched', 'mismatched', 'no export'] as const)(
         onWrote: ({ presentationId }) => written.push(presentationId),
         drawPdf: (_input, outDir) => {
           mkdirSync(outDir, { recursive: true });
-          const total = kind === 'mismatched' ? 1 : 2;
           const pages = Array.from({ length: total }, (_, index) => {
             const file = join(outDir, 'placeholder-' + String(index) + '.png');
             writeFileSync(file, editablePicture());
-            return { index, file, notes: '' };
+            return {
+              index,
+              file,
+              notes: kind === 'shifted' ? 'Placeholder PDF notes' : '',
+              pageText: kind === 'uncertain' ? 'Placeholder slide' : words[index],
+            };
           });
           return Promise.resolve({ ok: true, width: 960, height: 540, pages, total, failed: [] });
         },
@@ -114,7 +125,7 @@ it.each(['matched', 'mismatched', 'no export'] as const)(
       if (!keptPdf) throw new Error('The PDF playback source was not retained.');
       expect(readFileSync(keptPdf)).toEqual(pdf);
 
-      if (kind !== 'matched') {
+      if (kind !== 'matched' && kind !== 'uncertain') {
         expect(refs?.map((ref) => [ref?.ext, ref?.page])).toEqual(
           kind === 'mismatched'
             ? [['pdf', 0]]
@@ -124,6 +135,15 @@ it.each(['matched', 'mismatched', 'no export'] as const)(
               ],
         );
         expect(records.some((record) => record.ext === 'pptx')).toBe(false);
+        if (kind === 'shifted') {
+          expect(stored?.slides.map((slide) => slide.notes)).toEqual([
+            'Placeholder PDF notes',
+            'Placeholder PDF notes',
+          ]);
+          expect(result.items[0]?.issues).toContainEqual(
+            expect.objectContaining({ code: 'keynote-pages-out-of-order' }),
+          );
+        }
         return;
       }
 
