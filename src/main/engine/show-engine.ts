@@ -28,6 +28,7 @@ import {
   type TickerItem,
   type TickerLayer,
   UPCOMING_ITEMS,
+  backgroundItemId,
   type UpcomingItem,
   type UpNext,
   type VideoClips,
@@ -610,9 +611,11 @@ export class ShowEngine {
     // and end points (Session 51: since Session 14 it came back as if never jumped, over the whole file).
     if (background?.kind === 'media') {
       const { clip: _clip, marks: _marks, ...played } = background;
+      const itemId = backgroundItemId(played, playlist?.cursor.itemId);
       background = {
         ...played,
-        ...this.libraryOf(played.mediaId, played.durationMs, playlist?.cursor.itemId),
+        ...(played.media === 'video' ? { sourceItemId: itemId ?? null } : {}),
+        ...this.libraryOf(played.mediaId, played.durationMs, itemId),
       };
     }
     if (background) actions.push({ type: 'background/set', background });
@@ -1810,7 +1813,10 @@ export class ShowEngine {
     if (bg?.kind === 'media' && bg.mediaId === mediaId)
       actions.push({
         type: 'background/set',
-        background: { ...strip(bg), ...this.clipOf(mediaId, this.state.live.playlist?.itemId) },
+        background: {
+          ...strip(bg),
+          ...this.clipOf(mediaId, backgroundItemId(bg, this.state.live.playlist?.itemId)),
+        },
       });
     const audio = this.state.layers.audio;
     if (audio?.mediaId === mediaId)
@@ -1994,9 +2000,10 @@ export class ShowEngine {
     const current = this.state.layers.background;
     const length = this.lengthOf(choice.mediaId);
     const clip = this.clipOf(choice.mediaId, itemId);
+    const media = { ...choice, ...(choice.media === 'video' ? { sourceItemId: itemId ?? null } : {}) };
     if (!again && current?.kind === 'media' && current.mediaId === choice.mediaId)
       return {
-        ...choice,
+        ...media,
         startedAt: current.startedAt,
         ...(current.fade ? { fade: current.fade } : {}),
         ...length,
@@ -2004,7 +2011,7 @@ export class ShowEngine {
         // The same file carrying on keeps a jump it made.
         ...(current.seek ? { seek: current.seek } : {}),
       };
-    return { ...choice, startedAt: fade?.at ?? this.now(), ...(fade ? { fade } : {}), ...length, ...clip };
+    return { ...media, startedAt: fade?.at ?? this.now(), ...(fade ? { fade } : {}), ...length, ...clip };
   }
 
   /**

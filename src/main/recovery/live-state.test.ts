@@ -792,6 +792,20 @@ describe('restart recovery', () => {
     expect(toRestore(files)).toBeNull();
   });
 
+  it('validates an optional background origin without a new engine version', async () => {
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    await saved(writer, live());
+    const raw = JSON.parse(readFileSync(files.state, 'utf8')) as Record<string, unknown>;
+    expect(toRestore(files)?.background).toEqual(background);
+    for (const sourceItemId of ['placeholder-row', null]) {
+      const layer = { ...background, sourceItemId };
+      writeFileSync(files.state, JSON.stringify({ ...raw, background: layer }));
+      expect(toRestore(files)?.background).toEqual(layer);
+    }
+    writeFileSync(files.state, JSON.stringify({ ...raw, background: { ...background, sourceItemId: '' } }));
+    expect(toRestore(files)?.background).toBeNull();
+  });
+
   it('leaves out a background it cannot trust: another engine version, or not a background', async () => {
     const writer = new LiveStateWriter(files, { throttleMs: 10 });
     await saved(writer, live());

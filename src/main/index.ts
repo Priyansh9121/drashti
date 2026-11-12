@@ -358,7 +358,7 @@ import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/mo
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
 import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
-import { type EngineState, nothingUp } from '../shared/engine/state';
+import { backgroundItemId, type EngineState, nothingUp } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
 import { PhoneFiles } from './network/phone-files';
@@ -3875,10 +3875,10 @@ function start(): void {
       const { live, layers } = engine.current;
       const bg = layers.background;
       return (
-        live.playlist?.itemId === itemId &&
         bg?.kind === 'media' &&
         bg.media === 'video' &&
-        bg.mediaId === mediaId
+        bg.mediaId === mediaId &&
+        backgroundItemId(bg, live.playlist?.itemId) === itemId
       );
     },
     kept: {
