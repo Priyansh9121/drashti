@@ -15,6 +15,7 @@ const covered: StartFacts = {
   covered: true,
   screensWarming: false,
   windowOpened: false,
+  windowFrameReady: false,
   waitedOut: false,
   ended: false,
 };
@@ -43,7 +44,7 @@ describe('the window underneath', () => {
 describe('the opening holds, black', () => {
   it('until the window underneath has opened, so nothing starts under its two seconds', () => {
     expect(openingHolds(covered)).toBe(true);
-    expect(openingHolds({ ...covered, windowOpened: true })).toBe(false);
+    expect(openingHolds({ ...covered, windowOpened: true, windowFrameReady: true })).toBe(false);
   });
 
   it('does not start its timeline while the window is still missing frames after it opens', () => {
@@ -54,7 +55,9 @@ describe('the opening holds, black', () => {
   });
 
   it('and until the hall’s screens have drawn, as before', () => {
-    expect(openingHolds({ ...covered, windowOpened: true, screensWarming: true })).toBe(true);
+    expect(
+      openingHolds({ ...covered, windowOpened: true, windowFrameReady: true, screensWarming: true }),
+    ).toBe(true);
   });
 
   it('for OPENING_HOLD_MS at most: then it moves, still only when the screens were what it waited for', () => {
