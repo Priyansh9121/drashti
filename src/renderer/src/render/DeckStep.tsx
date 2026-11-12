@@ -36,7 +36,7 @@ import { PlacedInParent } from './Placed';
 import { SlideView } from './SlideView';
 import { useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
-import { startPlayback } from './playback';
+import { catchUpLeftMs, type PlaybackCatchUp, startPlayback } from './playback';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { SlideMovementContext } from './slide-timers';
 import { transitionFrame } from './transition-frame';
@@ -106,6 +106,17 @@ interface StepVideoTold {
   onFrame: () => void;
   onError: () => void;
 }
+
+/** The incoming layer can show the first clip once its start frame, including any initial seek, has decoded. */
+export const DECK_FIRST_FRAME = 'drashti-deck-first-frame';
+// A newly shown slide may wait for its first frame. An output joining a slide already on screen uses its clock.
+const FRESH_DECK_ENTRY_MS = 500;
+const FIRST_FRAME_WAIT_MS = 3000;
+/**
+ * The fastest a first clip whose first frame came in late plays to catch up on the engine's time (C3's review M1): a
+ * tenth faster, which nobody sees, so every screen, the slide's sounds and the engine's next step meet again.
+ */
+const CATCH_UP_RATE = 1.1;
 
 /**
  * The next slide's first clip, loaded and decoded ahead by this page's Preloader (Session 57, item 6), until the
@@ -182,6 +193,7 @@ export function DeckClipAhead({ mediaId }: { mediaId: string }) {
 function StepVideo({
   mediaId,
   startedAt,
+  lateMs = 0,
   loop,
   fit,
   onFrame,
@@ -191,6 +203,11 @@ function StepVideo({
   mediaId: string;
   /** When it plays from, by the engine's time; null while it waits for Next (the next click's). */
   startedAt: number | null;
+  /**
+   * How far behind the engine's time it starts (ms): a step's hold after a first clip that came in late and ended
+   * late (C3's review M1). It makes that up going round, a tenth faster at most. 0: on time.
+   */
+  lateMs?: number;
   loop: boolean;
   fit: CSSProperties['objectFit'];
   role: StepVideoRole;
@@ -227,6 +244,8 @@ function StepVideo({
       return;
     }
     waiting.current = false;
+    const catchUp: PlaybackCatchUp | undefined =
+      lateMs > 0 ? { at: startedAt, lateMs, maxRate: CATCH_UP_RATE } : undefined;
     // A hold starts as its clip ends, later than now: playback.ts waits for it at its start until then.
     return startPlayback(v, {
       mediaId,
@@ -234,7 +253,7 @@ function StepVideo({
       startedAt,
       // A clip may be the next click's, loaded already (above): it plays from where it is. A hold loads as before.
       reuseLoadedSource: role === 'clip',
-      timing: () => ({ loop }),
+      timing: () => ({ loop, catchUp }),
       onFrame: () => {
         told.current.onFrame?.();
       },
@@ -242,7 +261,7 @@ function StepVideo({
         told.current.onError?.();
       },
     });
-  }, [mediaId, attempt, startedAt, loop, role]);
+  }, [mediaId, attempt, startedAt, lateMs, loop, role]);
   return (
     <video
       ref={own}
@@ -261,18 +280,32 @@ function StepVideo({
  * A slide's first clip (its coming in), played from the engine's time as any clip is (StepVideo), in an element made
  * here: the one this page's Preloader loaded and decoded ahead for the slide Next shows (DeckClipAhead), taken as it
  * is, else a new one. In a box of its own (React keeps the box; the element is this one's), its fit the box's.
+ *
+ * Come to by a jump and cold, it plays from its first usable frame once that frame is in (C3, part 1): as far behind
+ * the engine's time as the frame was late (each screen's own decoding), so it then catches up, a tenth faster at most,
+ * until it is where the engine's time has it (C3's review M1), never jumping there.
  */
 function FirstClip({
   mediaId,
   startedAt,
+  shownAt,
+  clipEndsAt,
+  deadline,
   fit,
   onFrame,
   onError,
 }: {
   mediaId: string;
   startedAt: number;
+  shownAt: number;
+  /** When the engine's time has the clip over. */
+  clipEndsAt: number;
+  deadline: number | null;
   fit: CSSProperties['objectFit'];
-} & StepVideoTold) {
+  /** Its first frame is in: how much later than the engine's time it will end (ms; none once it has caught up). */
+  onFrame: (lateEndMs: number) => void;
+  onError: () => void;
+}) {
   const attempt = useMediaAttempt(mediaId);
   const slot = useRef<HTMLDivElement | null>(null);
   const told = useRef({ onFrame, onError });
@@ -288,27 +321,61 @@ function FirstClip({
     v.disablePictureInPicture = true;
     v.preload = 'auto';
     v.setAttribute('data-deck-video', 'clip');
+    v.setAttribute('data-deck-first-frame', 'loading');
     v.setAttribute('data-media-id', mediaId);
     Object.assign(v.style, filling('inherit'), { opacity: '0', transform: '', mixBlendMode: '' });
     host.append(v);
+    const fromMs = Math.max(0, shownAt - startedAt);
+    const warmed =
+      v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      !v.seeking &&
+      Math.abs(v.currentTime * 1000 - fromMs) < 1;
+    // On a direct jump, keep the seek past PowerPoint's incoming transition. While the clip is cold, decode exactly
+    // that frame and start there once it can be drawn, even if the file arrived after the press.
+    let seek: PlaybackSeek | undefined =
+      deadline !== null && !warmed ? { at: shownAt, toMs: fromMs, paused: true } : undefined;
+    let catchUp: PlaybackCatchUp | undefined;
+    let playFrame = 0;
+    const tell = (ready: boolean) => {
+      v.dataset['deckFirstFrame'] = ready ? 'ready' : 'failed';
+      v.dispatchEvent(new Event(DECK_FIRST_FRAME));
+    };
     const stop = startPlayback(v, {
       mediaId,
       attempt,
       startedAt,
       reuseLoadedSource: true,
-      timing: () => ({ loop: false }),
+      timing: () => ({ loop: false, seek, catchUp }),
       onFrame: () => {
-        told.current.onFrame();
+        const readyAt = engineNow();
+        if (seek?.paused) {
+          if (deadline !== null && readyAt > deadline) {
+            told.current.onError();
+            tell(false);
+            return;
+          }
+          // From that frame, as late as it came; then it catches up (C3's review M1), so it ends only as late as it
+          // has not made up by its end (the step's last frame and hold wait for that, the hold making up the rest).
+          const lateMs = Math.max(0, readyAt - shownAt);
+          seek = { at: readyAt, toMs: fromMs };
+          catchUp = lateMs > 0 ? { at: readyAt, lateMs, maxRate: CATCH_UP_RATE } : undefined;
+          told.current.onFrame(catchUpLeftMs(lateMs, clipEndsAt - shownAt, CATCH_UP_RATE));
+          // Paint the decoded frame before the video advances.
+          playFrame = requestAnimationFrame(() => void v.play().catch(() => undefined));
+        } else told.current.onFrame(0);
+        tell(true);
       },
       onError: () => {
         told.current.onError();
+        tell(false);
       },
     });
     return () => {
+      cancelAnimationFrame(playFrame);
       stop();
       v.remove();
     };
-  }, [mediaId, attempt, startedAt]);
+  }, [mediaId, attempt, startedAt, shownAt, clipEndsAt, deadline]);
   return <div ref={slot} data-deck-slot="" style={filling(fit)} />;
 }
 
@@ -322,10 +389,10 @@ export type StepPhase = 'clip' | 'held' | 'hold';
 export function stepPhase(
   timing: StepTiming,
   now: number,
-  ready: { hold: boolean; clipFailed: boolean },
+  ready: { hold: boolean; clipFailed: boolean; firstFrameDeadline?: number },
 ): StepPhase {
-  if (!timing.still && now < timing.endsAt && timing.drashti?.mode !== 'instead' && !ready.clipFailed)
-    return 'clip';
+  const until = ready.firstFrameDeadline ?? timing.endsAt;
+  if (!timing.still && now < until && timing.drashti?.mode !== 'instead' && !ready.clipFailed) return 'clip';
   // The hold goes round from the clip's end (with Drashti's transition instead, the last frame shows until then).
   return timing.step.holdId && ready.hold && now >= timing.endsAt ? 'hold' : 'held';
 }
@@ -348,7 +415,7 @@ function DeckStepLive({
   underId: string | null;
 }) {
   const movement = useContext(SlideMovementContext);
-  const { index, step, clipAt, endsAt, still, drashti, shownAt } = timing;
+  const { index, step, clipAt, still, drashti, shownAt } = timing;
   const before = index > 0 ? deckStep(deck, index - 1)?.lastId : (underId ?? undefined);
   // The next click's clip (Session 57, item 6), waiting loaded while this step is up: none after the last click, for a
   // click with no motion (shown still), or one Drashti's own transition comes instead of (its clip never played).
@@ -363,19 +430,27 @@ function DeckStepLive({
   const underRef = useRef<HTMLImageElement | null>(null);
   const lastRef = useRef<HTMLImageElement | null>(null);
   const blackRef = useRef<HTMLDivElement | null>(null);
-  // Whether the clip has its first frame (until then the step before's still shows), failed (its last frame shows at
-  // once), and whether the hold has its first frame (until then the last frame shows): each this screen's own loading,
-  // as a slide's transition waits for its pictures; what shows once they are in is the engine's time's alone.
-  const [clipReady, setClipReady] = useState(false);
+  // Once the clip has its first frame, how much later than the engine's time it ends (a cold jump's first clip that
+  // came in late, less what it makes up a tenth faster; else 0); null while the clip is loading.
+  const clipKey = `${step.clipId}@${String(clipAt)}`;
+  const newClip = () => ({
+    key: clipKey,
+    deadline:
+      index === 0 && !still && engineNow() < shownAt + FRESH_DECK_ENTRY_MS
+        ? shownAt + FIRST_FRAME_WAIT_MS
+        : null,
+    delayMs: null as number | null,
+  });
+  const [frame, setFrame] = useState(newClip);
+  const clipReady = frame.delayMs !== null;
+  const endsAt = timing.endsAt + (frame.delayMs ?? 0);
   const [clipFailed, setClipFailed] = useState(false);
   const [holdReady, setHoldReady] = useState(false);
-  const clipKey = `${step.clipId}@${String(clipAt)}`;
-  const [seenClip, setSeenClip] = useState(clipKey);
-  if (seenClip !== clipKey) {
-    setSeenClip(clipKey);
-    setClipReady(false);
+  if (frame.key !== clipKey) {
+    setFrame(newClip());
     setClipFailed(false);
   }
+  const recordFrame = (delayMs = 0) => setFrame((f) => (f.key === clipKey ? { ...f, delayMs } : f));
   const holdKey = `${step.holdId ?? ''}@${String(endsAt)}`;
   const [seenHold, setSeenHold] = useState(holdKey);
   if (seenHold !== holdKey) {
@@ -399,7 +474,11 @@ function DeckStepLive({
       hold: video('hold'),
       black: blackRef.current,
     };
-    const phase = stepPhase(timing, now, { hold: holdReady, clipFailed });
+    const phase = stepPhase({ ...timing, endsAt }, now, {
+      hold: holdReady,
+      clipFailed,
+      ...(!clipReady && frame.deadline !== null ? { firstFrameDeadline: frame.deadline } : {}),
+    });
     // The clip shows once it has its first frame; until then the step before's last frame (under) covers its place.
     const clipShows = phase === 'clip' && clipReady;
     const top = phase === 'clip' ? (clipShows ? e.clip : null) : phase === 'hold' ? e.hold : e.last;
@@ -430,7 +509,11 @@ function DeckStepLive({
     paint(engineNow());
   });
   // Frame by frame while the clip plays or Drashti's transition runs, then once more at its end; again at a clock jump.
-  const movingUntil = Math.max(still ? -Infinity : endsAt, transitionEnds);
+  const movingUntil = Math.max(
+    still ? -Infinity : endsAt,
+    transitionEnds,
+    clipReady || clipFailed ? -Infinity : (frame.deadline ?? -Infinity),
+  );
   useEffect(() => {
     let frame = 0;
     const tick = () => {
@@ -469,9 +552,13 @@ function DeckStepLive({
             key={`clip:0:${step.clipId}`}
             mediaId={step.clipId}
             startedAt={clipAt}
+            shownAt={shownAt}
+            clipEndsAt={timing.endsAt}
+            deadline={frame.deadline}
             fit={fit}
-            onFrame={() => {
-              setClipReady(true);
+            onFrame={(lateEndMs) => {
+              setClipFailed(false);
+              recordFrame(lateEndMs);
             }}
             onError={() => {
               setClipFailed(true);
@@ -485,7 +572,7 @@ function DeckStepLive({
             loop={false}
             fit={fit}
             onFrame={() => {
-              setClipReady(true);
+              recordFrame();
             }}
             onError={() => {
               setClipFailed(true);
@@ -504,11 +591,12 @@ function DeckStepLive({
           role="preparing"
         />
       )}
-      {step.holdId && (
+      {step.holdId && (frame.deadline === null || clipReady || clipFailed) && (
         <StepVideo
           key={`hold:${holdKey}`}
           mediaId={step.holdId}
           startedAt={endsAt}
+          lateMs={frame.delayMs ?? 0}
           loop
           fit={fit}
           onFrame={() => {

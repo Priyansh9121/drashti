@@ -851,3 +851,70 @@ test('a deck’s sound set to play across slides plays on through the clicks and
     await app.close();
   }
 });
+
+test('a cold direct jump keeps the outgoing slide, plays the full first animation, and catches up on the engine’s time', async () => {
+  expect(ffmpeg, 'bundled FFmpeg for placeholder clips').not.toBeNull();
+  const { app } = await launchApp({ DRASHTI_TEST_CLOCK_HOLD: '1' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const files = await makeDeckFiles(win);
+    const id = await writeDeck(win, 'Placeholder direct jump', standInDecks(files));
+    const live = win.getByTestId('live-preview').getByTestId('scene').first();
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    await expect(live.locator('[data-deck-step="0"]')).toHaveAttribute('data-deck-phase', 'held');
+
+    // Hold just the next slide’s first file until the renderer has advanced its clock. The media is generated and
+    // everything else still uses the real decoder and playback. Record the first seek before the video can play.
+    await win.evaluate((mediaId) => {
+      const proto = HTMLMediaElement.prototype;
+      const source = Object.getOwnPropertyDescriptor(proto, 'src');
+      const time = Object.getOwnPropertyDescriptor(proto, 'currentTime');
+      if (!source?.set || !time?.set) throw new Error('Expected Chromium media setters');
+      const firstClip = (node: HTMLMediaElement) =>
+        node.dataset['deckVideo'] === 'clip' && node.dataset['mediaId'] === mediaId;
+      Object.defineProperty(proto, 'src', {
+        ...source,
+        set(this: HTMLMediaElement, value: string) {
+          if (firstClip(this) && !this.dataset['testColdClip']) {
+            this.dataset['testColdClip'] = 'waiting';
+            document.addEventListener('release-placeholder-first-clip', () => source.set?.call(this, value), {
+              once: true,
+            });
+          } else source.set?.call(this, value);
+        },
+      });
+      Object.defineProperty(proto, 'currentTime', {
+        ...time,
+        set(this: HTMLMediaElement, value: number) {
+          if (firstClip(this)) this.dataset['testFirstSeek'] ??= String(value);
+          time.set?.call(this, value);
+        },
+      });
+    }, files.nextClip);
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 1 });
+    const clip = live.locator('video[data-test-cold-clip="waiting"]');
+    await expect(clip).toHaveCount(1);
+    await expect(live.locator('[data-slide-out]')).toHaveCSS('opacity', '1');
+    const at = await stepAt(win);
+    expect(at).toBeGreaterThan(0);
+    expect(await holdLive(app, at + 450)).toBe(true);
+    await win.evaluate(() => document.dispatchEvent(new Event('release-placeholder-first-clip')));
+    await expect(clip).toHaveAttribute('data-test-first-seek', String(TRANSITION_MS / 1000));
+    const showing = live.locator('[data-slide-in] [data-deck-step="0"]').last();
+    await expect(showing).toHaveAttribute('data-deck-phase', 'clip');
+    // From that frame it catches up on the engine's time (C3's review M1): a little faster, never more than a tenth.
+    const rate = () => clip.evaluate((video: HTMLVideoElement) => video.playbackRate);
+    await expect.poll(rate).toBeGreaterThan(1);
+    expect(await rate()).toBeLessThanOrEqual(1.1);
+    expect(await holdLive(app, at + CLIP_MS - TRANSITION_MS + 150)).toBe(true);
+    await expect(showing).toHaveAttribute('data-deck-phase', 'clip');
+    // 0.45 s late with 1.1 s of the clip to come, a tenth faster makes up 0.1 s: it ends 0.35 s after the engine's
+    // time, not 0.45 s.
+    expect(await holdLive(app, at + CLIP_MS - TRANSITION_MS + 400)).toBe(true);
+    await expect(showing).toHaveAttribute('data-deck-phase', 'held');
+    await holdLive(app, null);
+  } finally {
+    await app.close();
+  }
+});

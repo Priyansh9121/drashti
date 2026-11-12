@@ -7,7 +7,7 @@ import {
   playbackPosition,
   SOUND_LIMITS,
 } from '../../../shared/media';
-import { startPlayback } from './playback';
+import { catchUpLeftMs, type PlaybackCatchUp, startPlayback } from './playback';
 
 /*
  * A file played once with an end point stops there (Session 15): within two
@@ -928,4 +928,154 @@ describe('a start still to come (Session 54, C2)', () => {
       playback();
     });
   }
+});
+
+describe('a deck’s first clip whose first frame came in late, caught up on the engine’s time (Session 57, C3’s review M1)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    vi.setSystemTime(new Date('2026-11-13T10:00:00Z'));
+    vi.stubGlobal('HTMLMediaElement', { HAVE_CURRENT_DATA: 2 });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** In step: within two frames (at 30 a second) of the clock. */
+  const IN_STEP = 2 / 30;
+  /** The fastest a late start plays: a tenth faster. */
+  const MAX_RATE = 1.1;
+  /** A slide's first clip come to by a jump starts past PowerPoint's own transition: 0.4 s in. */
+  const FROM_MS = 400;
+
+  /**
+   * A slide's first clip come to by a jump, as render/DeckStep.tsx's FirstClip plays it cold: its file in `comesMs`
+   * after the slide was shown, held paused at its first usable frame until that frame is in, then played from that
+   * frame (painted first, a frame later), saying how late it is.
+   */
+  function coldFirstClip(lengthS: number, comesMs: number) {
+    const v = new FakeMedia(lengthS);
+    const shownAt = Date.now();
+    const clipAt = shownAt - FROM_MS;
+    const timing: { loop: boolean; seek?: PlaybackSeek; catchUp?: PlaybackCatchUp } = {
+      loop: false,
+      seek: { at: shownAt, toMs: FROM_MS, paused: true },
+    };
+    vi.advanceTimersByTime(comesMs);
+    const first = { at: 0, seeks: 0 };
+    const playback = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'first-clip',
+      startedAt: clipAt,
+      timing: () => timing,
+      onFrame: () => {
+        const at = Date.now();
+        first.at = at;
+        first.seeks = v.seeks;
+        timing.seek = { at, toMs: FROM_MS };
+        timing.catchUp = { at, lateMs: at - shownAt, maxRate: MAX_RATE };
+        setTimeout(() => void v.play(), 16);
+      },
+    });
+    /** How far it is from where the engine's time has the clip (seconds, + ahead). */
+    const off = () => v.currentTime - (Date.now() - clipAt) / 1000;
+    return { v, playback, shownAt, first, off };
+  }
+
+  it('one whose first frame came 0.44 s late plays from it whole, never faster than 1.1x, on the engine’s time within its length, then at 1x', () => {
+    // 6 s long, 5.6 s of it to come from its first usable frame: time enough to make up 0.44 s a tenth faster (4.4 s).
+    const { v, playback, shownAt, first, off } = coldFirstClip(6, 420);
+    const endsAt = shownAt + 6000 - FROM_MS;
+    let fastest = 0;
+    let furthestAtEnd = 0;
+    while (Date.now() < endsAt - 10) {
+      vi.advanceTimersByTime(1);
+      if (first.at === 0) continue;
+      fastest = Math.max(fastest, v.playbackRate);
+      // Its last 0.8 s by the engine's time: on the engine's time.
+      if (Date.now() >= endsAt - 800) furthestAtEnd = Math.max(furthestAtEnd, Math.abs(off()));
+    }
+    expect(first.at - shownAt, 'its first frame came late').toBeGreaterThanOrEqual(420);
+    expect(v.seeks, 'nothing skipped after its first frame: no jump').toBe(first.seeks);
+    expect(fastest, 'never faster than a tenth').toBeLessThanOrEqual(MAX_RATE);
+    expect(
+      furthestAtEnd,
+      `${furthestAtEnd.toFixed(3)} s off the engine’s time in its last 0.8 s`,
+    ).toBeLessThan(IN_STEP);
+    expect(v.playbackRate, 'at 1x once on the engine’s time').toBe(1);
+    playback();
+  });
+
+  it('one too short to make it all up ends only as late as it has not made up: its step’s last frame and hold wait that long', () => {
+    // deck-show.spec.ts's stand-in: a 1.5 s clip, 1.1 s of it to come past PowerPoint's transition, 0.45 s late. A
+    // tenth faster it makes up 0.1 s, and ends 0.35 s after the engine's time, not 0.45 s.
+    expect(catchUpLeftMs(450, 1100, MAX_RATE)).toBeCloseTo(350, 6);
+    expect(catchUpLeftMs(440, 5600, MAX_RATE), 'time enough to make it all up').toBe(0);
+    expect(catchUpLeftMs(0, 1100, MAX_RATE), 'on time').toBe(0);
+    const { v, playback, shownAt, first } = coldFirstClip(1.5, 435);
+    let endedAt = 0;
+    while (endedAt === 0 && Date.now() < shownAt + 3000) {
+      vi.advanceTimersByTime(1);
+      if (first.at > 0 && v.currentTime >= 1.5 - 1e-9) endedAt = Date.now();
+    }
+    const lateEnd = catchUpLeftMs(first.at - shownAt, 1100, MAX_RATE);
+    expect(first.at - shownAt, 'its first frame came late').toBe(450);
+    expect(
+      Math.abs(endedAt - (shownAt + 1100 + lateEnd)),
+      `ended ${String(endedAt - shownAt - 1100)} ms after the engine’s time, ${lateEnd.toFixed(0)} ms said`,
+    ).toBeLessThanOrEqual(2 * 1000 * FRAME);
+    playback();
+  });
+
+  it('one on time plays at 1x, on the engine’s time throughout', () => {
+    const v = new FakeMedia(6);
+    const shownAt = Date.now();
+    const clipAt = shownAt - FROM_MS;
+    const playback = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'first-clip-on-time',
+      startedAt: clipAt,
+      timing: () => ({ loop: false, catchUp: { at: shownAt, lateMs: 0, maxRate: MAX_RATE } }),
+    });
+    const rates = new Set<number>();
+    let furthest = 0;
+    for (let i = 0; i < 5000; i++) {
+      vi.advanceTimersByTime(1);
+      rates.add(v.playbackRate);
+      if (Date.now() - shownAt >= 100)
+        furthest = Math.max(furthest, Math.abs(v.currentTime - (Date.now() - clipAt) / 1000));
+    }
+    expect([...rates]).toEqual([1]);
+    expect(furthest, `${furthest.toFixed(3)} s off the engine’s time`).toBeLessThan(IN_STEP);
+    playback();
+  });
+
+  it('a step’s hold, starting as such a clip ends a little late, makes up the rest going round, never faster than 1.1x', () => {
+    // A 1.5 s clip 0.45 s late, 1.1 s of it to come: a tenth faster it makes up 0.1 s, and ends 0.35 s late.
+    const v = new FakeMedia(1);
+    v.loop = true;
+    const clipEndsAt = Date.now() + 200;
+    const late = 350;
+    const startsAt = clipEndsAt + late;
+    const playback = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'hold',
+      startedAt: startsAt,
+      timing: () => ({ loop: true, catchUp: { at: startsAt, lateMs: late, maxRate: MAX_RATE } }),
+    });
+    // Where the engine's time has it going round: from the clip's end by the engine's time.
+    const off = () => playbackOffset(v.currentTime, ((Date.now() - clipEndsAt) / 1000) % 1, 1, true);
+    let fastest = 0;
+    let furthestLater = 0;
+    while (Date.now() < startsAt + 5000) {
+      vi.advanceTimersByTime(1);
+      fastest = Math.max(fastest, v.playbackRate);
+      // 0.35 s takes 3.5 s to make up: from 4 s on, on the engine's time.
+      if (Date.now() >= startsAt + 4000) furthestLater = Math.max(furthestLater, Math.abs(off()));
+    }
+    expect(fastest, 'never faster than a tenth').toBeLessThanOrEqual(MAX_RATE);
+    expect(furthestLater, `${furthestLater.toFixed(3)} s off the engine’s time going round`).toBeLessThan(
+      IN_STEP,
+    );
+    playback();
+  });
 });
