@@ -10,7 +10,6 @@ import {
   duplicateSelectedObjects,
   pasteSelectedObjects,
 } from './object-actions';
-import type { SlideObject } from './objects';
 import { arrange, canMoveInOrder } from './ops';
 
 export function ObjectMenu({
@@ -28,7 +27,7 @@ export function ObjectMenu({
   const empty = selection.length === 0;
   const grouped = groupedSelection(slide.elements, selection);
   const inGroup = slide.elements.some((el) => el.groupId && selection.includes(el.id));
-  const text: SlideObject | undefined = slide.elements.find((el) => el.id === target);
+  const text = slide.elements.find((el) => el.id === target);
   const canEdit = text?.kind === 'text' && !text.hidden && legacyFontOf(text) === null;
   const change = (action: (doc: EditDoc, ids: string[]) => EditDoc, expand = false) => {
     const now = useEditor.getState();

@@ -2,11 +2,8 @@ import type { SlideElement } from '../../../shared/model';
 import { SHAPE_NAMES } from '../../../shared/model';
 import { cutText } from '../../../shared/text';
 
-/** Object information can be absent in an older document. */
-export type SlideObject = SlideElement & { name?: string; hidden?: boolean };
-
 /** The original name, or a description for a box made without one. */
-export function elementName(el: SlideObject): string {
+export function elementName(el: SlideElement): string {
   const name = el.name?.trim();
   if (name) return name;
   switch (el.kind) {
