@@ -3,7 +3,12 @@ import { isAbsolute, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { EDITABLE_SOURCE_LIMITS, pptxAssetTokens } from '../../shared/editable-source';
 import { MEDIA_REF } from '../import/model';
-import type { FromPptxReader, PptxPage, ToPptxReader } from './pptx-reader-protocol';
+import {
+  pptxPageSchema,
+  type FromPptxReader,
+  type PptxPage,
+  type ToPptxReader,
+} from './pptx-reader-protocol';
 import { readEditableWithTiming } from './pptx-source-timing';
 
 const startSchema = z
@@ -62,17 +67,23 @@ port.on('message', ({ data }: { data: unknown }) => {
         }
         const needed = pptxAssetTokens(page.elements);
         const assets: PptxPage['assets'] = [];
+        let safeAssets = true;
         for (const [index, asset] of native.media.entries()) {
           const token = `${MEDIA_REF}${String(index)}`;
           if (!needed.has(token)) continue;
           const path = relative(job.outDir, asset.originalPath);
-          if (!path || isAbsolute(path) || path === '..' || path.startsWith(`..${sep}`))
-            throw new Error('Unsafe generated asset.');
+          if (!path || isAbsolute(path) || path === '..' || path.startsWith(`..${sep}`)) {
+            safeAssets = false;
+            break;
+          }
           assets.push({ token, relative: path, kind: asset.kind });
         }
-        if (assets.length !== needed.size) throw new Error('Unresolved native asset.');
+        if (!safeAssets || assets.length !== needed.size) {
+          failed.push(sourceIndex);
+          continue;
+        }
         const deck = decks.get(sourceIndex);
-        pages.push({
+        const checked = pptxPageSchema.safeParse({
           sourceIndex,
           width: native.width,
           height: native.height,
@@ -82,6 +93,8 @@ port.on('message', ({ data }: { data: unknown }) => {
           issues: page.issues,
           ...(deck ? { deck } : {}),
         });
+        if (checked.success) pages.push(checked.data);
+        else failed.push(sourceIndex);
       }
       const within = (sent: PptxPage[]): FromPptxReader | null => {
         const message: FromPptxReader = {
