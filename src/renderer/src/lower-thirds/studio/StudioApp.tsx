@@ -157,6 +157,7 @@ export function StudioApp() {
   const asking = useStudio((s) => s.asking);
   const deleted = useStudio((s) => s.deleted);
   const upId = useEngine((s) => s.state?.layers.lowerThird?.id ?? null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [backdrop, setBackdrop] = useState<Backdrop>('picture');
   const dirty = isDirty({ draft, saved });
   const hasWords = shownLines(draft.lines).length > 0;
@@ -182,7 +183,7 @@ export function StudioApp() {
           >
             New
           </Button>
-          <TemplatePicker />
+          <TemplatePicker open={templatesOpen} onOpenChange={setTemplatesOpen} />
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
@@ -190,7 +191,7 @@ export function StudioApp() {
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1 gap-4 p-4">
             <section aria-label="Preview" className="flex min-w-0 flex-1 flex-col gap-2">
-              <StudioPreview input={draft} play={play} backdrop={backdrop} />
+              <StudioPreview input={draft} play={play} backdrop={backdrop} paused={templatesOpen} />
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="secondary" size="sm" icon={Play} onClick={playAgain}>
                   Play again

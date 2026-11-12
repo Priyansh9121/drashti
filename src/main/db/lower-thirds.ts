@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { isAnimation } from '../../shared/lower-third-animations';
+import { isLowerThirdAnimation } from '../../shared/lower-third-animations';
 import type { LowerThird, LowerThirdInput } from '../../shared/lower-thirds';
 import {
   DEFAULT_LOWER_THIRD_LOOK,
@@ -57,7 +57,7 @@ function lookOf(json: string): Pick<LowerThird, 'look' | 'outAnimation' | 'secon
   const kept = lowerThirdSecondsSchema.safeParse(seconds);
   return {
     look: look.success ? look.data : DEFAULT_LOWER_THIRD_LOOK,
-    ...(typeof outAnimation === 'string' && isAnimation(outAnimation) ? { outAnimation } : {}),
+    ...(typeof outAnimation === 'string' && isLowerThirdAnimation(outAnimation) ? { outAnimation } : {}),
     ...(kept.success ? { seconds: kept.data } : {}),
   };
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DEFAULT_ANIMATION, isAnimation } from './lower-third-animations';
+import { DEFAULT_ANIMATION, isLowerThirdAnimation } from './lower-third-animations';
 import { LOWER_THIRD_FONTS, type LowerThirdFont } from './lower-third-fonts';
 import {
   LOWER_THIRD_MOTIONS,
@@ -133,8 +133,8 @@ const fields = {
   lines: z.array(z.string().max(LOWER_THIRD_LINE_MAX)).min(1).max(LOWER_THIRD_LINES),
   look: lowerThirdLookSchema,
   where: z.enum(['hall', 'stream', 'both']),
-  animation: z.string().refine(isAnimation, 'an animation from the library'),
-  outAnimation: z.string().refine(isAnimation, 'an animation from the library').optional(),
+  animation: z.string().refine(isLowerThirdAnimation, 'an animation from the library'),
+  outAnimation: z.string().refine(isLowerThirdAnimation, 'an animation from the library').optional(),
   seconds: lowerThirdSecondsSchema.optional(),
 };
 const hasWords = (v: { lines: readonly string[] }) => v.lines.some((l) => l.trim() !== '');
