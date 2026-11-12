@@ -145,6 +145,35 @@ describe('keeping a generated PPTX editable', () => {
     );
   });
 
+  it('keeps only the painted table edges, with their own colour and width', async () => {
+    const { elements } = await read(
+      slideXml(
+        graphic(
+          '<a:tbl><a:tblGrid><a:gridCol w="2857500"/></a:tblGrid><a:tr h="857250"><a:tc>' +
+            '<a:txBody><a:bodyPr/><a:p><a:r><a:t>Placeholder cell</a:t></a:r></a:p></a:txBody>' +
+            '<a:tcPr><a:lnT><a:noFill/></a:lnT>' +
+            '<a:lnL w="19050"><a:solidFill><a:srgbClr val="AA2244"/></a:solidFill></a:lnL>' +
+            '<a:lnB w="38100"><a:solidFill><a:srgbClr val="22AA44"/></a:solidFill></a:lnB>' +
+            '</a:tcPr></a:tc></a:tr></a:tbl>',
+        ),
+      ),
+    );
+    expect(elements.filter((element) => element.kind === 'shape')).toMatchObject([
+      {
+        shape: 'line',
+        rotation: 90,
+        frame: { x: -35, y: 64.5, width: 90, height: 1 },
+        outline: { color: '#aa2244', width: 2 },
+      },
+      {
+        shape: 'line',
+        rotation: 0,
+        frame: { x: 10, y: 109.5, width: 300, height: 1 },
+        outline: { color: '#22aa44', width: 4 },
+      },
+    ]);
+  });
+
   it('keeps unequal table cells, spanning and empty cells editable as one group', async () => {
     const cell = (words: string, props = '') =>
       '<a:tc ' +
@@ -223,6 +252,64 @@ describe('keeping a generated PPTX editable', () => {
       width: 300 / 1280,
       height: 90 / 720,
     });
+  });
+
+  it('draws a shared table edge once across a spanning cell', async () => {
+    const paint = '<a:solidFill><a:srgbClr val="AA2244"/></a:solidFill>';
+    const cell = (attributes: string, edge: string) =>
+      '<a:tc ' +
+      attributes +
+      '><a:txBody><a:bodyPr/><a:p><a:r><a:t>Placeholder</a:t></a:r></a:p>' +
+      '</a:txBody><a:tcPr>' +
+      edge +
+      '</a:tcPr></a:tc>';
+    const { elements } = await read(
+      slideXml(
+        graphic(
+          '<a:tbl><a:tblGrid><a:gridCol w="100"/><a:gridCol w="100"/></a:tblGrid>' +
+            '<a:tr h="100">' +
+            cell('rowSpan="2"', '<a:lnR>' + paint + '</a:lnR>') +
+            cell('', '<a:lnL>' + paint + '</a:lnL>') +
+            '</a:tr><a:tr h="100">' +
+            cell('vMerge="1"', '') +
+            cell('', '<a:lnL>' + paint + '</a:lnL>') +
+            '</a:tr></a:tbl>',
+        ),
+      ),
+    );
+    expect(elements.filter((element) => element.kind === 'shape')).toMatchObject([
+      {
+        shape: 'line',
+        frame: { width: 90, height: 1 },
+        rotation: 90,
+        outline: { color: '#aa2244', width: 1 },
+      },
+    ]);
+  });
+
+  it('keeps a table within the remaining object budget and isolates an over-limit slide', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'drashti-placeholder-table-cap-'));
+    roots.push(root);
+    const file = join(root, 'Placeholder table limits.pptx');
+    const words = wordsShape('<a:p><a:r><a:t>Placeholder readable words</a:t></a:r></a:p>');
+    const cell = '<a:tc><a:txBody><a:bodyPr/><a:p/></a:txBody><a:tcPr/></a:tc>';
+    const table = graphic(
+      '<a:tbl><a:tblGrid><a:gridCol w="100"/><a:gridCol w="100"/></a:tblGrid><a:tr h="100">' +
+        cell.repeat(2) +
+        '</a:tr></a:tbl>',
+    );
+    writeFileSync(
+      file,
+      editablePptxFixture({
+        slides: [slideXml(words.repeat(499) + table), slideXml(words.repeat(501)), slideXml(words)],
+      }),
+    );
+    const deck = await readEditablePptx(file, join(root, 'prepared'));
+    expect(deck.sourceCount).toBe(3);
+    expect(deck.slides.map((slide) => slide.sourceIndex)).toEqual([0, 2]);
+    expect(deck.slides[0]?.elements).toHaveLength(500);
+    expect(deck.slides[0]?.elements.at(-1)).toMatchObject({ kind: 'image', crop: { width: 300 / 1280 } });
+    expect(deck.slides[1]?.elements).toMatchObject([{ kind: 'text', text: 'Placeholder readable words' }]);
   });
 
   it('reads the other slides when a single source slide is damaged', async () => {

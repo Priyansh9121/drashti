@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type DeckSlide, stepCount } from '../../../shared/deck';
 import type { ConflictChoice } from '../../../shared/import';
 import type { PicturesResult } from '../../../shared/pictures';
@@ -16,6 +16,7 @@ import { PresentationRepo } from '../../db/presentations';
 import { ffmpegHere } from '../../testing/ffmpeg-here';
 import { MediaStore, UPLOADS_DIR } from '../media-store';
 import { runImport } from '../pipeline';
+import * as bake from './bake';
 import { makeDeckMedia, makeTestDeck, type TestDeckSlide, TRIAL_SLIDES } from '../testing/make-deck';
 import { placeholderSlides } from '../testing/timing-placeholders';
 import { readZipEntries } from '../zip';
@@ -93,6 +94,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           freeBytes?: number;
           /** How many pages the stand-in's PDF has (one per shown slide; the trial deck's five). */
           pages?: number;
+          log?: (line: string) => void;
           /** Each presentation written, as soon as its group is committed. */
           onWrote?: (wrote: { presentationId: string; replaced: boolean }) => void;
         },
@@ -111,6 +113,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           tempDir: root,
           ffmpeg: options.noFfmpeg ? join(root, 'no-ffmpeg-here') : ffmpeg,
           baker: options.baker,
+          log: options.log,
           converters: options.converters,
           ...(options.freeBytes === undefined ? {} : { freeBytes: () => options.freeBytes ?? 0 }),
           ...(options.onWrote ? { onWrote: options.onWrote } : {}),
@@ -138,8 +141,16 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
 
     it('keeps the baked steps, plays a supported slide natively, and keeps the deck’s real videos and sounds', async () => {
       const t = setup();
-      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' });
+      const log: string[] = [];
+      const summary = await t.run({
+        baker: 'stand-in',
+        converters: 'stand-in',
+        log: (line) => log.push(line),
+      });
       expect(summary.totals).toMatchObject({ imported: 1, failed: 0, presentations: 1, slides: 5 });
+      expect(log.filter((line) => line.includes('steps checked'))).toEqual([
+        expect.stringMatching(/^Deck: \d+ steps checked, the furthest/u),
+      ]);
       const item = t.report(summary.id)?.items[0];
       const id = item?.target?.id ?? '';
       const slides = t.slidesOf(id);
@@ -748,6 +759,33 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
         /^There is not enough free disk space to make this deck’s animations \(it needs about [\d.]+ [MG]B more than the 2 GB Drashti keeps free\): its slides came in as pictures, without their animations\.$/u,
       );
     }, 120_000);
+
+    it.each([
+      { reason: 'automation was refused', notAllowed: true },
+      { reason: 'PowerPoint did not finish the movie' },
+    ])('explains the editable fallback when $reason', async ({ reason, notAllowed }) => {
+      const failure = vi.spyOn(bake, 'bakeDeck').mockResolvedValueOnce({
+        ok: false,
+        baker: 'stand-in',
+        why: { kind: 'app', reason, message: reason, notAllowed },
+        pdf: null,
+        deck: null,
+        deckFile: null,
+      });
+      try {
+        const t = setup();
+        const summary = await t.run({ baker: 'stand-in', converters: false });
+        expect(failure).toHaveBeenCalledOnce();
+        const item = t.report(summary.id)?.items[0];
+        expect(item?.outcome).toBe('imported');
+        expect(t.slidesOf(item?.target?.id ?? '')[0]?.slide.deck?.motion).toBeDefined();
+        expect(item?.issues.find((issue) => issue.code === 'deck-pictures')?.message).toBe(
+          `PowerPoint could not make the deck’s movie (${reason}): Drashti brought in editable slides with the effects it can play. Check the deck’s clicks and transitions before going live.`,
+        );
+      } finally {
+        failure.mockRestore();
+      }
+    });
 
     it('without Office, keeps native clicks, real media starts, and warnings for the closest effects', async () => {
       const t = setup();

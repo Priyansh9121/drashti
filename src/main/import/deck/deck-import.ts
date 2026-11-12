@@ -756,13 +756,21 @@ export function bakedIssues(d: {
   return out;
 }
 
-/** Why a deck came in as pictures, said plainly (the report's first word on it). */
-export function whyPictures(why: BakeFailure, baker: Baker, kept = false): ImportIssue {
+/** Why a deck's movie was left out, said plainly (the report's first word on it). */
+export function whyPictures(
+  why: BakeFailure,
+  baker: Baker,
+  kept = false,
+  fallback: 'pictures' | 'editable' = 'pictures',
+): ImportIssue {
   const app = APP[baker];
   // The deck was imported as pictures before, and asked for again for its animations: that import stays.
-  const lost = kept
-    ? 'the earlier import was kept as it was'
-    : 'its slides came in as pictures, without their animations';
+  const lost =
+    fallback === 'editable'
+      ? 'Drashti brought in editable slides with the effects it can play. Check the deck’s clicks and transitions before going live'
+      : kept
+        ? 'the earlier import was kept as it was'
+        : 'its slides came in as pictures, without their animations';
   const message =
     why.kind === 'on-air'
       ? why.during
