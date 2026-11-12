@@ -1,10 +1,14 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, screen } from 'electron';
 import { loadPage } from '../windows/renderer';
 import { secureWebPreferences } from '../windows/web-preferences';
 
 /** The common slide renderer prints in an isolated hidden page; no show/focus call exists. */
 export function createPdfCopyWindow(): BrowserWindow {
+  // Its 320 × 200 starting size gives the display scale before the capture grows the window.
+  const { x, y } = screen.getPrimaryDisplay().bounds;
   const win = new BrowserWindow({
+    x,
+    y,
     show: false,
     enableLargerThanScreen: true,
     transparent: true,

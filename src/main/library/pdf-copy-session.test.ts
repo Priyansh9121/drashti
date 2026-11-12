@@ -154,9 +154,10 @@ it.each([
       .soft(s.win.webContents.capturePage)
       .toHaveBeenCalledWith({ x: 0, y: 0, width: css[0], height: css[1] }, { stayHidden: true });
     const picture = await s.result;
+    if (!picture || picture instanceof Uint8Array) throw new Error('Expected captured phone pixels');
     expect(picture).toMatchObject({ width: bitmap[0], height: bitmap[1] });
-    expect(picture?.width).toBeLessThanOrEqual(Math.ceil(width * drawScale * factor));
-    expect(picture?.height).toBeLessThanOrEqual(Math.ceil(height * drawScale * factor));
+    expect(picture.width).toBeLessThanOrEqual(Math.ceil(width * drawScale * factor));
+    expect(picture.height).toBeLessThanOrEqual(Math.ceil(height * drawScale * factor));
   },
 );
 
