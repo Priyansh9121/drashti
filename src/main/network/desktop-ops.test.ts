@@ -888,6 +888,9 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
     expect(deleted).toMatchObject({ ids: ['p-1', 'p-2'] });
     ok('library.restore', { ids: (deleted as { ids: string[] }).ids });
     ok('playlist.new', { name: 'Placeholder evening' });
+    ok('playlist.new', { name: 'Placeholder folder', isFolder: true });
+    ok('playlist.new', { name: 'Placeholder nested playlist', parentId: 'folder' });
+
     ok('playlist.rename', { playlistId: 'pl-1', name: 'Placeholder evening, again' });
     ok('playlist.remove', { ids: ['pl-1'] });
     ok('playlist.restore', { ids: ['pl-1'] });
@@ -906,6 +909,9 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       ['removePresentations', [['p-1', 'p-2']]],
       ['restorePresentations', [['p-1', 'p-2']]],
       ['createPlaylist', ['Placeholder evening', null, false]],
+      ['createPlaylist', ['Placeholder folder', null, true]],
+      ['createPlaylist', ['Placeholder nested playlist', 'folder', false]],
+
       ['renamePlaylist', ['pl-1', 'Placeholder evening, again']],
       ['removePlaylists', [['pl-1']]],
       ['restorePlaylists', [['pl-1']]],
@@ -941,6 +947,18 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       ['playlist.new', { name: '   ' }],
     ] as const)
       expect(ask(remote, op, args as Record<string, unknown>).status, JSON.stringify(args)).toBe(400);
+    expect(calls).toEqual([]);
+  });
+
+  it('takes the library limit before a refused restore can look up playlist IDs', () => {
+    const { ask, remote, hold, lookups, calls } = setup({ locked: true });
+    hold();
+    const restore = () => ask(remote, 'playlist.restore', { ids: ['template'] }).status;
+    for (let i = 0; i < 30; i++) expect(restore()).toBe(403);
+    const before = lookups.playlists;
+    expect(before).toBeGreaterThan(0);
+    expect(restore()).toBe(429);
+    expect(lookups.playlists).toBe(before);
     expect(calls).toEqual([]);
   });
 
