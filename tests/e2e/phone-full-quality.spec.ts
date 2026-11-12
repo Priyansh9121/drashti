@@ -2,6 +2,9 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { nativeDeckFixture } from '../../src/main/import/deck/native-deck-fixture';
+import { editablePicture, REL_NS } from '../../src/main/import/testing/editable-pptx-fixture';
+import { makeZip } from '../../src/main/import/testing/zip-writer';
+import { readZipEntries } from '../../src/main/import/zip';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -496,10 +499,45 @@ test('a deck looked through on a phone plays each click’s motion once and hold
   await app.close();
 });
 
+async function writePhoneSaveDeck(file: string): Promise<void> {
+  writeFileSync(file, nativeDeckFixture());
+  const parts = await readZipEntries(file, () => true);
+  const slideName = 'ppt/slides/slide1.xml';
+  const relName = 'ppt/slides/_rels/slide1.xml.rels';
+  const slide = parts.get(slideName)?.toString();
+  const rel = parts.get(relName)?.toString();
+  if (!slide || !rel || !slide.includes('id="131" dur="300"'))
+    throw new Error('The generated phone Save deck is missing its wipe.');
+  const picture =
+    '<p:pic><p:nvPicPr><p:cNvPr id="7" name="Placeholder blue picture"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>' +
+    '<p:blipFill><a:blip r:embed="rSavePicture"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>' +
+    '<p:spPr><a:xfrm><a:off x="8229600" y="4572000"/><a:ext cx="1828800" cy="1371600"/></a:xfrm>' +
+    '<a:prstGeom prst="rect"/></p:spPr></p:pic>';
+  parts.set(
+    slideName,
+    Buffer.from(
+      slide
+        .replace('</p:spTree>', `${picture}</p:spTree>`)
+        .replace('id="131" dur="300"', 'id="131" dur="8000"'),
+    ),
+  );
+  parts.set(
+    relName,
+    Buffer.from(
+      rel.replace(
+        '</Relationships>',
+        `<Relationship Id="rSavePicture" Type="${REL_NS}/image" Target="../media/placeholder.png"/></Relationships>`,
+      ),
+    ),
+  );
+  parts.set('ppt/media/placeholder.png', editablePicture());
+  writeFileSync(file, makeZip([...parts].map(([name, data]) => ({ name, data, deflate: true }))));
+}
+
 test('Look closer saves the native deck click showing on the screens', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-save-native-deck-'));
   const file = join(dir, 'Placeholder Save click.pptx');
-  writeFileSync(file, nativeDeckFixture());
+  await writePhoneSaveDeck(file);
   const { app } = await launchApp({
     ...NETWORK_ENV,
     DRASHTI_TEST_DECK_CONVERTER: '1',
@@ -522,7 +560,7 @@ test('Look closer saves the native deck click showing on the screens', async () 
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     await p.evaluate(() => {
-      const images: { type: string; width: number; ink: number }[] = [];
+      const images: { type: string; width: number; height: number; ink: number }[] = [];
       Object.assign(globalThis, { savedDeckImages: images });
       Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
       Object.defineProperty(navigator, 'share', {
@@ -540,17 +578,19 @@ test('Look closer saves the native deck click showing on the screens', async () 
           bitmap.close();
           const { width, height } = canvas;
           // The first click brings in Placeholder appear at the top. Count ink in that region only.
-          const { data } = ctx.getImageData(
-            Math.floor(width * 0.06),
-            Math.floor(height * 0.11),
-            Math.floor(width * 0.39),
-            Math.floor(height * 0.12),
-          );
           let ink = 0;
-          for (let i = 0; i < data.length; i += 4) {
-            if ([0, 1, 2].some((c) => Math.abs((data[i + c] ?? 0) - (data[c] ?? 0)) > 30)) ink++;
+          if (width >= 16 && height >= 16) {
+            const { data } = ctx.getImageData(
+              Math.floor(width * 0.06),
+              Math.floor(height * 0.11),
+              Math.floor(width * 0.39),
+              Math.floor(height * 0.12),
+            );
+            for (let i = 0; i < data.length; i += 4) {
+              if ([0, 1, 2].some((c) => Math.abs((data[i + c] ?? 0) - (data[c] ?? 0)) > 30)) ink++;
+            }
           }
-          images.push({ type: file.type, width, ink });
+          images.push({ type: file.type, width, height, ink });
         },
       });
     });
@@ -572,11 +612,14 @@ test('Look closer saves the native deck click showing on the screens', async () 
     const saved = () =>
       p.evaluate(
         () =>
-          (globalThis as unknown as { savedDeckImages: { type: string; width: number; ink: number }[] })
-            .savedDeckImages,
+          (
+            globalThis as unknown as {
+              savedDeckImages: { type: string; width: number; height: number; ink: number }[];
+            }
+          ).savedDeckImages,
       );
-    const saveClick = async (click: number, count: number) => {
-      const ready = p.waitForResponse((response) => {
+    const pictureResponse = (click: number) =>
+      p.waitForResponse((response) => {
         const url = new URL(response.url());
         return (
           url.pathname.startsWith('/api/v1/presentations/') &&
@@ -584,6 +627,8 @@ test('Look closer saves the native deck click showing on the screens', async () 
           url.searchParams.get('click') === String(click)
         );
       });
+    const saveClick = async (click: number, count: number) => {
+      const ready = pictureResponse(click);
       await save.click();
       const response = await ready;
       expect(response.status()).toBe(200);
@@ -596,20 +641,40 @@ test('Look closer saves the native deck click showing on the screens', async () 
     await expect(target).toHaveCSS('opacity', '1');
     await saveClick(1, 2);
     const [before, after] = await saved();
-    expect(after?.type).toBe('image/png');
-    expect(after?.width ?? 0).toBeGreaterThanOrEqual(960);
+    expect(after).toMatchObject({ type: 'image/png', width: 1920, height: 1080 });
     expect(after?.ink ?? 0).toBeGreaterThan((before?.ink ?? 0) + 80);
-    // While the stream is on air or recording nothing is captured (C6's review, MEDIUM 3): the phone gets the slide as
-    // it starts, or is told to try again, never a capture.
-    await app.evaluate(() => {
-      (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true);
-    });
-    const onAir = p.waitForResponse((response) => {
-      const url = new URL(response.url());
-      return url.pathname.startsWith('/api/v1/presentations/') && url.searchParams.get('format') === 'png';
-    });
-    await save.click();
-    expect((await onAir).headers()['content-type']).toContain('application/json');
+    const saveStartingPicture = async (click: number, count: number, message: string) => {
+      const ready = pictureResponse(click);
+      await save.click();
+      const response = await ready;
+      expect(response.status()).toBe(200);
+      expect(response.headers()['content-type']).toContain('application/json');
+      expect(await response.json()).toMatchObject({ mediaId: expect.any(String), message });
+      await expect(p.getByText(message, { exact: true })).toBeVisible();
+      await expect.poll(async () => (await saved()).length).toBe(count);
+      expect((await saved()).at(-1)).toMatchObject({ width: 1, height: 1 });
+    };
+    const onAir = (on: boolean) =>
+      app.evaluate((_electron, value) => {
+        (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(value);
+      }, on);
+    await onAir(true);
+    await saveStartingPicture(
+      1,
+      3,
+      'This is the slide as it starts. Try again after streaming or recording stops to save this click.',
+    );
+    await onAir(false);
+
+    await dispatch(win, { type: 'next' });
+    const wiping = '[data-deck-motion-target="4"]';
+    await expect(out.locator(wiping)).not.toHaveCSS('clip-path', 'none');
+    await expect(viewer.locator(wiping)).toHaveCSS('opacity', '1');
+    await saveStartingPicture(
+      2,
+      4,
+      'This is the slide as it starts. Try again when the screens are still to save this click.',
+    );
   } finally {
     await phone.close();
     await app.close();
