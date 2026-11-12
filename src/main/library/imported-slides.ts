@@ -142,6 +142,8 @@ export interface PdfEditorProgress {
   open(doc: EditDoc, pending: string[], issues: string[]): void;
   update(pages: EditSlide[], settled: string[]): void;
   waitForIdle(signal: AbortSignal): Promise<boolean>;
+  /** The show needs the computer now (anything up, or the stream on air or recording). */
+  busy(): boolean;
 }
 
 const sourceIndices = (slides: EditSlide[]) => [
@@ -398,23 +400,45 @@ export class ImportedSlides {
             settle(occurrences, ready);
             if (list === primary && (!firstPages.delete(index) || !firstPages.size)) openEditor();
           };
-          const parsed = await this.reader({
-            ext: ref.ext,
-            file: source.file,
-            outDir,
-            sourcePages: progressive && list === primary ? primaryPages : sourceIndices(list),
-            signal: guard.signal,
-            checkpoint: () => Promise.resolve(allowed()),
-            ...(progressive && ref.ext === 'pdf' ? { onPdfPage: takePage, waitForPdfIdle: waitForIdle } : {}),
-          });
-          if (!parsed.ok) {
-            retainOutput ||= parsed.retainOutput === true;
-            issues.push(parsed.message);
-            continue;
+          /*
+           * Behind the open editor (Session 57, the review's HIGH-1), a PDF's job ends whenever the show needs the
+           * computer, leaving the pages it has not read `unread`; the reading waits for the show here, outside every
+           * queue and with no job's clock running, then goes on with them in a new job. One byte budget for the PDF.
+           */
+          const behind =
+            progressive && ref.ext === 'pdf'
+              ? {
+                  onPdfPage: takePage,
+                  pdfHold: () => view.shown && progressive?.busy() === true,
+                  pdfBudget: { assetBytes: 0, metadataBytes: 0 },
+                }
+              : {};
+          let sourcePages = progressive && list === primary ? primaryPages : sourceIndices(list);
+          let failed = false;
+          for (;;) {
+            const parsed = await this.reader({
+              ext: ref.ext,
+              file: source.file,
+              outDir,
+              sourcePages,
+              signal: guard.signal,
+              checkpoint: () => Promise.resolve(allowed()),
+              ...behind,
+            });
+            if (!parsed.ok) {
+              retainOutput ||= parsed.retainOutput === true;
+              issues.push(parsed.message);
+              break;
+            }
+            if (!allowed()) throw new Error('Source preparation cancelled.');
+            for (const native of parsed.pages) await takePage(native.sourceIndex, native);
+            failed ||= parsed.failed.length > 0;
+            if (!parsed.unread?.length) break;
+            sourcePages = parsed.unread;
+            if (!(await waitForIdle(guard.signal)) || !allowed())
+              throw new Error('Source preparation cancelled.');
           }
-          if (!allowed()) throw new Error('Source preparation cancelled.');
-          for (const native of parsed.pages) await takePage(native.sourceIndex, native);
-          if (parsed.failed.length)
+          if (failed)
             issues.push('Some source pages could not be prepared and stay as their saved pictures.');
         } catch {
           if (!allowed()) throw new Error('Source preparation cancelled.');

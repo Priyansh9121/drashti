@@ -99,5 +99,15 @@ export interface PreparedSourcePage {
   issues: string[];
 }
 export type PreparedSource =
-  | { ok: true; pages: PreparedSourcePage[]; total: number; failed: number[] }
+  | {
+      ok: true;
+      pages: PreparedSourcePage[];
+      total: number;
+      failed: number[];
+      /**
+       * Pages not read yet because the show needed the computer (Session 57: Edit slides' PDF reading behind the
+       * editor ends its job there); never failed, they are read in a new job once the show is idle.
+       */
+      unread?: number[];
+    }
   | { ok: false; message: string; retainOutput?: true };

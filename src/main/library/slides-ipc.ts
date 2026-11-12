@@ -49,6 +49,11 @@ export interface SlidesIpcDeps {
   sourceWrite?: SourceWrite;
   waitForPdfIdle?: (signal: AbortSignal) => Promise<boolean>;
   /**
+   * The show needs the computer now (anything up, or the stream on air or recording; Session 57): Edit slides' PDF
+   * reading behind the open editor ends its job, and goes on in a new one once `waitForPdfIdle` says the show is idle.
+   */
+  showBusy?: () => boolean;
+  /**
    * Main's current Pro/access/sender authority, rechecked throughout preparation; `presentationId`, the presentation it
    * is for (Session 56: Simple Mode's slide editor, for a presentation its playlists hold), none for the library's PDFs
    * listed for Insert pages.
@@ -70,6 +75,10 @@ export interface SlidesIpcController {
 }
 
 const onlyOperator = { ok: false as const, message: 'Only the operator window can change slides.' };
+/** Why Insert pages stopped the reading behind the open editor (Session 57, the review's MEDIUM-2). */
+const FOR_INSERT = { stoppedToInsert: true } as const;
+const STOPPED_TO_INSERT =
+  'Reading the rest of this PDF stopped to insert pages: its other pages stay as their saved pictures for now. Save, then open Edit slides again to edit their words and shapes.';
 const DEFAULT_TRANSITION = 'defaultTransition';
 const editSourceRequest = z.object({ requestId: idSchema, slideId: idSchema.nullable() }).strict();
 
@@ -92,6 +101,7 @@ export function registerSlidesIpc({
   sourceWrite,
   mayPrepareSource = () => false,
   waitForPdfIdle = (signal) => Promise.resolve(!signal.aborted),
+  showBusy = () => false,
   choosePdfFile,
 }: SlidesIpcDeps): SlidesIpcController {
   const imported = new ImportedSlides(db, undefined, { sourceReader, sourceWrite });
@@ -100,12 +110,15 @@ export function registerSlidesIpc({
   // the reader queue while Main stages assets or removes its private files.
   const preparations = new Set<Promise<unknown>>();
   const insertions = new Map<string, { controller: AbortController; sender: number; stamp: string }>();
-  const cancelSourcePreparation = (presentationId?: string) => {
+  const stopPreparations = (presentationId?: string, reason?: typeof FOR_INSERT) => {
     for (const [id, controller] of generations)
       if (presentationId === undefined || presentationId === id) {
-        controller.abort();
+        controller.abort(reason);
         generations.delete(id);
       }
+  };
+  const cancelSourcePreparation = (presentationId?: string) => {
+    stopPreparations(presentationId);
   };
   const drainSourcePreparation = () => Promise.allSettled([...preparations]).then(() => undefined);
   /**
@@ -173,8 +186,11 @@ export function registerSlidesIpc({
               },
               update: (pages, settled) => sendUpdate({ requestId: request.data.requestId, pages, settled }),
               waitForIdle: waitForPdfIdle,
+              busy: showBusy,
             }
           : undefined;
+        // Insert pages stops this reading (one reader at a time): the editor is told so, and what to do.
+        const stoppedToInsert = () => controller.signal.reason === FOR_INSERT;
         const preparing: Promise<EditSlidesResult> = imported
           .prepare(rows, doc, stamp.stamp, { signal: controller.signal, allowed }, progress)
           .then((prepared): EditSlidesResult =>
@@ -182,13 +198,16 @@ export function registerSlidesIpc({
               ? view(prepared.doc, prepared.issues)
               : {
                   ok: false,
-                  message:
-                    'This presentation changed while its source pages were being prepared. Reopen the editor.',
+                  message: stoppedToInsert()
+                    ? STOPPED_TO_INSERT
+                    : 'This presentation changed while its source pages were being prepared. Reopen the editor.',
                 },
           )
           .catch(() => ({
             ok: false as const,
-            message: 'The source pages could not be prepared. The saved presentation is unchanged.',
+            message: stoppedToInsert()
+              ? STOPPED_TO_INSERT
+              : 'The source pages could not be prepared. The saved presentation is unchanged.',
           }))
           .then((result) => {
             if (opened && request.success)
@@ -261,7 +280,7 @@ export function registerSlidesIpc({
           ok: false,
           message: 'That PDF or this presentation changed. Reopen the editor and choose the PDF again.',
         };
-      cancelSourcePreparation();
+      stopPreparations(undefined, FOR_INSERT);
       const controller = new AbortController();
       generations.set(id.data, controller);
       insertions.set(id.data, { controller, sender: e.sender.id, stamp: rawStamp });
@@ -310,7 +329,7 @@ export function registerSlidesIpc({
         now = stampOf(id.data);
       if (!target || now?.stamp !== rawStamp)
         return { ok: false, message: 'This presentation changed. Reopen the editor before inserting a PDF.' };
-      cancelSourcePreparation();
+      stopPreparations(undefined, FOR_INSERT);
       const controller = new AbortController();
       generations.set(id.data, controller);
       insertions.set(id.data, { controller, sender: e.sender.id, stamp: rawStamp });
