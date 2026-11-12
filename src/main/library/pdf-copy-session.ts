@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import type { CapturedPicture, PdfCopyJob, PdfCopyPage, PdfPrintPage } from '../../shared/pdf-copy';
 import { PICTURE_ASSET_NAME, type PictureAssetKind } from '../../shared/pictures';
+import type { Size } from '../../shared/scaling';
 
 const LIMIT = 64 * 1024 * 1024;
 const PICTURE_LONG_SIDE = 1920;
@@ -33,8 +34,20 @@ const finishedSchema = z.object({
   error: z.string().max(300).optional(),
 });
 
+/** The exact draw scale and the integer viewport inside it, in CSS pixels. */
+export function phoneCaptureGeometry(slide: Size, displayScale: number): Size & { scale: number } {
+  const factor = Number.isFinite(displayScale) ? Math.max(1, displayScale) : 1;
+  const cssLongSide = Math.max(1, PICTURE_LONG_SIDE / factor);
+  const longSide = Math.max(slide.width, slide.height);
+  return {
+    scale: cssLongSide / longSide,
+    width: Math.max(1, Math.floor((slide.width / longSide) * cssLongSide)),
+    height: Math.max(1, Math.floor((slide.height / longSide) * cssLongSide)),
+  };
+}
+
 export interface PdfCopySessionDeps {
-  open(): BrowserWindow;
+  open(picture?: Size): BrowserWindow;
   /** The scale of the display that contains the hidden window. */
   scaleFactor?(win: BrowserWindow): number;
   assetDirs(kind: PictureAssetKind): string[];
@@ -51,7 +64,7 @@ export interface PdfCopySessionDeps {
 interface ActiveCopy {
   win: BrowserWindow;
   job: PdfCopyJob;
-  pictureLongSide: number;
+  pictureViewport: Size | undefined;
   signal: AbortSignal;
   current(): boolean;
   finish(data: Uint8Array | CapturedPicture | null): void;
@@ -124,15 +137,16 @@ export class PdfCopySession {
     if (this.active?.job.picture && !plan.picture) this.active.finish(null);
     if (this.active) return null;
     const picture = plan.picture;
+    const first = plan.pages[0];
+    const pictureSize =
+      picture && first?.kind === 'native'
+        ? { width: first.slide.width, height: first.slide.height }
+        : undefined;
     let opened: BrowserWindow | undefined;
-    let pictureLongSide = Infinity;
+    let geometry: ReturnType<typeof phoneCaptureGeometry> | undefined;
     try {
-      opened = this.deps.open();
-      if (picture) {
-        const displayScale = this.deps.scaleFactor?.(opened) ?? 1;
-        const factor = Number.isFinite(displayScale) ? Math.max(1, displayScale) : 1;
-        pictureLongSide = Math.max(1, Math.floor(PICTURE_LONG_SIDE / factor));
-      }
+      opened = pictureSize ? this.deps.open(pictureSize) : this.deps.open();
+      if (pictureSize) geometry = phoneCaptureGeometry(pictureSize, this.deps.scaleFactor?.(opened) ?? 1);
     } catch {
       if (opened && !opened.isDestroyed()) opened.destroy();
       return null;
@@ -153,12 +167,10 @@ export class PdfCopySession {
         win,
         job: {
           ...plan,
-          ...(picture
-            ? { picture: { ...picture, scale: (picture.scale * pictureLongSide) / PICTURE_LONG_SIDE } }
-            : {}),
+          ...(picture && geometry ? { picture: { ...picture, scale: geometry.scale } } : {}),
           id: randomUUID(),
         },
-        pictureLongSide,
+        pictureViewport: geometry,
         signal,
         current,
         finish,
@@ -226,9 +238,10 @@ export class PdfCopySession {
     };
     const page = active.job.pages[index];
     if (page?.kind !== 'native') return refuse();
-    const scale = active.job.picture?.scale ?? 4 / 3;
-    const width = Math.min(active.pictureLongSide, Math.ceil(page.slide.width * scale));
-    const height = Math.min(active.pictureLongSide, Math.ceil(page.slide.height * scale));
+    const { width, height } = active.pictureViewport ?? {
+      width: Math.ceil(page.slide.width * (4 / 3)),
+      height: Math.ceil(page.slide.height * (4 / 3)),
+    };
     // Bound viewport and screenshot memory as well as compressed output bytes.
     if (width * height > 4_000_000) return refuse();
     active.printing = true;
