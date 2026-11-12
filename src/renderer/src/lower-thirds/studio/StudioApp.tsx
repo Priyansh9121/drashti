@@ -1,17 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { lowerThirdName, shownLines, WHERE_NAMES } from '../../../../shared/lower-thirds';
-import { LOWER_THIRD_TEMPLATES } from '../../../../shared/lower-third-studio';
 import { connectEngine, useEngine } from '../../engine/engine-store';
 import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
-import { Captions, LayoutTemplate, Play, Plus, Trash2 } from '../../ui/icons';
+import { Captions, Play, Plus, Trash2 } from '../../ui/icons';
 import { KeepChangesDialog, settingsChanged } from '../../ui/KeepChanges';
 import { Notice } from '../../ui/Notice';
 import { radioKeys, radioTabIndex } from '../../ui/radio';
 import { Truncate } from '../../ui/Truncate';
 import { BACKDROP_NAMES, BACKDROPS, type Backdrop, StudioPreview } from './StudioPreview';
 import { AnimationTab, BackgroundTab, StyleTab, TimingTab, WordsTab } from './StudioTabs';
+import { TemplatePicker } from './TemplatePicker';
 import {
   choose,
   connectStudio,
@@ -63,68 +63,6 @@ function useCloseGuard(): void {
         });
       }),
     [],
-  );
-}
-
-function Templates() {
-  const [open, setOpen] = useState(false);
-  const menu = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => {
-      if (!menu.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener('pointerdown', away);
-    return () => {
-      window.removeEventListener('pointerdown', away);
-    };
-  }, [open]);
-  return (
-    <div ref={menu} className="relative">
-      <Button
-        variant="ghost"
-        size="sm"
-        icon={LayoutTemplate}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        data-testid="studio-templates"
-        onClick={() => {
-          setOpen((o) => !o);
-        }}
-      >
-        Templates
-      </Button>
-      {open && (
-        <div
-          role="menu"
-          aria-label="Templates"
-          className="absolute top-full right-0 z-20 mt-1 w-60 rounded-md border border-line bg-panel p-1 shadow-lg"
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setOpen(false);
-          }}
-        >
-          {LOWER_THIRD_TEMPLATES.map((t, i) => (
-            <button
-              key={t.id}
-              type="button"
-              role="menuitem"
-              data-testid="studio-template"
-              data-template={t.id}
-              data-style={t.input.look.style ?? 'box'}
-              // The first takes the keys as the menu opens.
-              autoFocus={i === 0}
-              className="block w-full rounded-sm px-2 py-1.5 text-left text-sm text-fg hover:bg-panel-2 focus-visible:bg-panel-2"
-              onClick={() => {
-                setOpen(false);
-                makeNew(t.input);
-              }}
-            >
-              {t.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -244,7 +182,7 @@ export function StudioApp() {
           >
             New
           </Button>
-          <Templates />
+          <TemplatePicker />
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
