@@ -441,6 +441,17 @@ describe('keeping a generated PPTX editable', () => {
     ]);
   });
 
+  it('returns the limit note when the only source page is over the object cap', async () => {
+    const words = wordsShape('<a:p><a:r><a:t>Placeholder words</a:t></a:r></a:p>');
+    await expect(read(slideXml(words.repeat(501)))).resolves.toMatchObject({
+      sourceCount: 1,
+      slides: [],
+      failedNotes: {
+        0: ['PowerPoint source page 1 exceeds the 500-object editing limit and stays as its saved picture.'],
+      },
+    });
+  });
+
   it('keeps a table within the remaining object budget and isolates an over-limit slide', async () => {
     const root = mkdtempSync(join(tmpdir(), 'drashti-placeholder-table-cap-'));
     roots.push(root);
@@ -461,6 +472,11 @@ describe('keeping a generated PPTX editable', () => {
     const deck = await readEditablePptx(file, join(root, 'prepared'));
     expect(deck.sourceCount).toBe(3);
     expect(deck.slides.map((slide) => slide.sourceIndex)).toEqual([0, 2]);
+    expect(deck).toMatchObject({
+      failedNotes: {
+        1: ['PowerPoint source page 2 exceeds the 500-object editing limit and stays as its saved picture.'],
+      },
+    });
     expect(deck.slides[0]?.elements).toHaveLength(500);
     expect(deck.slides[0]?.elements.at(-1)).toMatchObject({ kind: 'image', crop: { width: 300 / 1280 } });
     expect(deck.slides[1]?.elements).toMatchObject([{ kind: 'text', text: 'Placeholder readable words' }]);
