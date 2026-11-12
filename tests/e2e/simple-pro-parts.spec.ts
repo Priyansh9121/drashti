@@ -341,14 +341,14 @@ test('a row’s Trim in Simple Mode saves and resets a cut; Trim black and silen
   await expect(dialog.getByTestId('markers-list')).toContainText('Placeholder chorus');
   await dialog.getByTestId('markers-save').click();
   await expect(dialog).toHaveCount(0);
-  await expect(row.locator('[data-label]')).toHaveText('Placeholder edges trimmed', { timeout: 30_000 });
+  await expect(row.locator('[data-label]')).toHaveText('Placeholder edges trimmed.mp4', { timeout: 30_000 });
   const trimmedId = await rowMedia();
   if (trimmedId === null) throw new Error('The trimmed video is missing from its playlist.');
   expect(trimmedId).not.toBe(videoId);
   expect(await markersOf(win, trimmedId)).toMatchObject({
     startMs: null,
     endMs: null,
-    markers: [{ name: 'Placeholder chorus', atMs: 1500 }],
+    markers: [{ name: 'Placeholder chorus', atMs: 1520 }],
   });
   expect(await markersOf(win, videoId)).toEqual(originalMarkers);
 

@@ -191,6 +191,7 @@ import { rowTrimRequestSchema, saveRequestSchema } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
 import { PlaylistTrims } from './convert/playlist-trims';
 import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
+import { frameAtOrBefore } from './convert/frame-at';
 import { isRepeatId, repeatPresentationId } from '../shared/repeat';
 import {
   applyPendingRestore,
@@ -3863,6 +3864,24 @@ function start(): void {
       const ffmpeg = saveFfmpeg();
       return ffmpeg ? readTrimInfo(ffmpeg, file) : { durationMs: null, video: null, audio: null };
     },
+    frameAt: (file, atMs) => {
+      const ffmpeg = saveFfmpeg();
+      return ffmpeg ? frameAtOrBefore(ffmpeg, file, atMs) : Promise.resolve(null);
+    },
+    isLive: (itemId, mediaId) => {
+      const { live, layers } = engine.current;
+      const bg = layers.background;
+      return (
+        live.playlist?.itemId === itemId &&
+        bg?.kind === 'media' &&
+        bg.media === 'video' &&
+        bg.mediaId === mediaId
+      );
+    },
+    kept: {
+      load: () => settings.get('playlistTrimsWaiting'),
+      save: (cuts) => laterSetting('playlistTrimsWaiting', cuts),
+    },
     queue: (input) => queueTrimCopy(conversions, input),
     cancel: (id) => conversions.cancelFile(id),
     pendingChanged: (ids) => sendToOperator(IPC.media.preparingTrimsChanged, ids),
@@ -3876,7 +3895,9 @@ function start(): void {
     markersChanged: (id) => engine.refreshMarkers(id),
     notice: (text) => sendToOperator(IPC.app.notice, { text }),
   });
+  const offTrimActivity = engine.onChange(() => playlistTrims.activityChanged());
   stops.add('playlist trims', () => {
+    offTrimActivity();
     playlistTrims.close();
   });
   const noTrim = { ok: false as const, message: 'Open a video row’s Trim to change that playlist.' };
@@ -3961,7 +3982,8 @@ function start(): void {
   });
   handle(IPC.app.startNotice, (e) => {
     if (!fromOperator(e)) return null;
-    const text = startNotice;
+    const interruptedTrim = playlistTrims.reportInterrupted();
+    const text = [startNotice, interruptedTrim].filter(Boolean).join(' ') || null;
     startNotice = null;
     startNoticeTaken = true;
     return text;

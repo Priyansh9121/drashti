@@ -37,11 +37,6 @@ interface KeptTrim {
   name: string;
 }
 
-interface ReviewHooks {
-  activityChanged?(): void;
-  reportInterrupted?(): void;
-}
-
 async function setup() {
   const media = new MediaRepo(db);
   const playlists = new PlaylistRepo(db);
@@ -80,6 +75,7 @@ async function setup() {
     readInfo: (path: string) =>
       Promise.resolve({ ...info, durationMs: path === output ? 2000 : info.durationMs }),
     queue,
+    frameAt: (_path, atMs) => Promise.resolve(atMs),
     cancel: () => true,
     pendingChanged,
     rowChanged,
@@ -88,7 +84,7 @@ async function setup() {
     isLive,
     kept,
   };
-  const restart = (): PlaylistTrims & ReviewHooks => new PlaylistTrims(deps);
+  const restart = () => new PlaylistTrims(deps);
   const service = restart();
   return {
     service,
@@ -110,7 +106,7 @@ async function setup() {
     kept,
     show: (media: string | null) => {
       liveMedia = media;
-      service.activityChanged?.();
+      service.activityChanged();
     },
   };
 }
@@ -243,17 +239,47 @@ describe('trimming a playlist video', () => {
   it('keeps an accepted cut’s interruption marker across quit and tells the operator once at restart', async () => {
     const x = await setup();
     expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    expect(x.kept.load()).toEqual([{ itemId: x.itemId, mediaId: 'original', name: 'Placeholder.mp4' }]);
     x.service.close();
     x.finish({ ok: false, stopped: true, message: 'Stopped.' });
     expect(x.kept.load()).toEqual([{ itemId: x.itemId, mediaId: 'original', name: 'Placeholder.mp4' }]);
 
     const restarted = x.restart();
-    restarted.reportInterrupted?.();
-    restarted.reportInterrupted?.();
-    expect(x.notice).toHaveBeenCalledExactlyOnceWith(
+    expect(restarted.reportInterrupted()).toBe(
       'The cut of “Placeholder.mp4” wasn’t made because Drashti closed. Open Trim and save it again.',
     );
+    expect(restarted.reportInterrupted()).toBeNull();
     expect(x.kept.load()).toEqual([]);
     expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
+  });
+
+  it('discards a cut that finished while its row was live if Drashti closes before adoption', async () => {
+    const x = await setup();
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    x.show('original');
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(() => expect(x.isLive).toHaveBeenCalledWith(x.itemId, 'original'));
+
+    x.service.close();
+    await vi.waitFor(async () => {
+      await expect(stat(x.output)).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+    expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
+    expect(x.kept.load()).toEqual([{ itemId: x.itemId, mediaId: 'original', name: 'Placeholder.mp4' }]);
+  });
+
+  it('names a failed cut and keeps the free-space instruction', async () => {
+    const x = await setup();
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    x.finish({
+      ok: false,
+      message: 'This disk has less than 2 GB free. Free up some space, then save it again.',
+    });
+    await vi.waitFor(() => {
+      expect(x.notice).toHaveBeenCalledWith(
+        'Drashti couldn’t make the cut of “Placeholder.mp4”. Free up some disk space, then open Trim and save it again.',
+      );
+    });
+    expect(x.kept.load()).toEqual([]);
   });
 });
