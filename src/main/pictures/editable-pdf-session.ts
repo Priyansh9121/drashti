@@ -32,9 +32,11 @@ const doneSchema = z
   .strict();
 /*
  * The hidden window's reply for one page, as its protocol has it (Session 57): this job, a page asked for, and each
- * field of its kind. A reply that breaks the protocol stops the whole job, as before. One whose page fails Main's own
- * checks (validateEditablePdfPage: its size, its words and shapes, its pictures and their bytes) leaves only that page
- * as its saved picture, as a page over the output budget does: the rest of the PDF is still made editable.
+ * field of its kind, its lists no longer than any page's (the page reader stops at 500 painted objects, each one
+ * element and at most one picture, and says at most five things: pdf-edit-page.ts). A reply that breaks the protocol
+ * stops the whole job, as before, so Main never reads an over-long list twice. One whose page fails Main's own checks
+ * (validateEditablePdfPage: its size, its words and shapes, its pictures and their bytes) leaves only that page as its
+ * saved picture, as a page over the output budget does: the rest of the PDF is still made editable.
  */
 const pageReplySchema = z
   .object({
@@ -43,9 +45,11 @@ const pageReplySchema = z
     sourceIndex: z.number().int().min(0),
     width: z.number(),
     height: z.number(),
-    elements: z.array(z.unknown()),
-    assets: z.array(z.object({ token: z.string(), png: z.instanceof(Uint8Array) })),
-    issues: z.array(z.unknown()),
+    elements: z.array(z.unknown()).max(EDITABLE_SOURCE_LIMITS.pageElements),
+    assets: z
+      .array(z.object({ token: z.string(), png: z.instanceof(Uint8Array) }))
+      .max(EDITABLE_SOURCE_LIMITS.pageElements),
+    issues: z.array(z.unknown()).max(100),
   })
   .strict();
 const failure = (): PreparedSource => ({
