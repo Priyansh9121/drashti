@@ -95,7 +95,7 @@ async function up(win: Page): Promise<{ blackout: boolean; wallpaper: boolean; b
  * The covers and the video, both ways, through these buttons (Pro Mode's or Simple Mode's): Black-out and the
  * Wallpaper take the playing video off the screen, and do not bring it back as they come off; the video's row put up
  * takes them off; a slide stays under a cover and comes back as it was. LIVE's line, its time bar and the bar of clears
- * never show the video beside a cover.
+ * never show the video beside a cover. Each cover replaces the other, and Oops takes the cover off to show its slide.
  */
 async function bothWays(
   win: Page,
@@ -144,6 +144,36 @@ async function bothWays(
   await expect(covers.wallpaper).toHaveText(/is on/u);
   await show.words.click();
   await expect(covers.wallpaper).not.toHaveText(/is on/u);
+
+  // Each cover takes the other off. Turning the second one off reveals the slide.
+  const blackout = hall.getByTestId('blackout');
+  const wallpaper = hall.getByTestId('wallpaper');
+  const slide = hall.locator('[data-layer="slide"]');
+  await covers.wallpaper.click();
+  await expect(wallpaper).toBeVisible();
+  await win.keyboard.press('.');
+  await expect(blackout).toBeVisible();
+  await expect(wallpaper).toHaveCount(0);
+  await expect(covers.wallpaper).not.toHaveText(/is on/u);
+  expect(await up(win)).toMatchObject({ blackout: true, wallpaper: false });
+  await win.keyboard.press('F12');
+  await expect(wallpaper).toBeVisible();
+  await expect(blackout).toHaveCount(0);
+  await expect(covers.blackout).not.toHaveText(/is on/u);
+  expect(await up(win)).toMatchObject({ blackout: false, wallpaper: true });
+  await covers.wallpaper.click();
+  await expect(wallpaper).toHaveCount(0);
+  await expect(slide).toContainText('Placeholder words one');
+
+  // Oops puts the previous slide back and takes off the cover.
+  await win.keyboard.press('PageDown');
+  await expect(slide).toContainText('Placeholder words two');
+  await covers.wallpaper.click();
+  await expect(wallpaper).toBeVisible();
+  await win.keyboard.press('F9');
+  await expect(wallpaper).toHaveCount(0);
+  await expect(blackout).toHaveCount(0);
+  await expect(slide).toContainText('Placeholder words one');
 }
 
 test('Pro Mode: Black-out and the Wallpaper take a playing video off the screen, and putting the video up takes them off; a slide stays under them', async () => {
