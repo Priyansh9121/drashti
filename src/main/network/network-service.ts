@@ -1,6 +1,11 @@
 import { nativeDeckMotion, stepCount } from '../../shared/deck';
 import { deckSlideAt } from '../../shared/deck-show';
-import { nextScheduledChange, slidePictureReadyAt, waitForSlidePicture } from './slide-picture';
+import {
+  nextScheduledChange,
+  PNG_MARGIN_MS,
+  slidePictureReadyAt,
+  waitForSlidePicture,
+} from './slide-picture';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { type CommandResult, type EngineCommand, parseEngineCommand } from '../../shared/engine/commands';
@@ -1024,14 +1029,16 @@ export class NetworkService implements EngineTransport {
     if (onAir()) return fallback(afterStream);
     if (!this.deps.nativeSlidePicture || this.savingSlide) return fallback(inAMoment);
     const now = () => this.deps.now();
-    // When the capture must be over by (C6's review, MEDIUM 2): nothing the engine has scheduled may fall before it.
+    // Keep the whole quiet window clear of scheduled changes, including the network's PNG encode.
     let endsAt = -Infinity;
+    const captureEndsAt = () => endsAt - PNG_MARGIN_MS;
     const screensStill = () => {
       const at = now();
       const screens = read();
       return slidePictureReadyAt(screens, at) <= at && nextScheduledChange(screens, at) > endsAt;
     };
-    const current = () => !('status' in this.checked(request)) && !onAir() && screensStill();
+    const current = () =>
+      now() < captureEndsAt() && !('status' in this.checked(request)) && !onAir() && screensStill();
     this.savingSlide = true;
     const stop = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1046,7 +1053,7 @@ export class NetworkService implements EngineTransport {
         () => {
           stop.abort();
         },
-        Math.max(0, endsAt - now()),
+        Math.max(0, captureEndsAt() - now()),
       );
       const { deck: _deck, ...slide } = deckSlideAt(original, click);
       const all = read().pictures;
