@@ -74,6 +74,21 @@ describe('the practice show', () => {
     expect(practiceState(cleared).canPutBack).toBe(true);
   });
 
+  it('takes the covers off when a practice slide goes up', () => {
+    const uncovered = { blackout: false, wallpaper: false };
+    expect(run('toggleBlackout', 'next')).toMatchObject({ index: 0, ...uncovered });
+    expect(run({ goTo: 1 }, 'toggleWallpaper', 'back')).toMatchObject({ index: 0, ...uncovered });
+    expect(run('toggleBlackout', { goTo: 2 })).toMatchObject({ index: 2, ...uncovered });
+    expect(run({ goTo: 2 }, 'clearAll', 'toggleWallpaper', 'putBack')).toMatchObject({
+      index: 2,
+      ...uncovered,
+    });
+
+    const first = run('next', 'toggleBlackout');
+    expect(practiceStep(first, 'back')).toBe(first);
+    expect(practiceStep(first, { goTo: 9 })).toBe(first);
+  });
+
   it('draws as an engine state of its own: the practice presentation, what comes next, nothing else', () => {
     const state = practiceState(run('next'));
     expect(state.live).toMatchObject({ presentationId: PRACTICE_ID, slideIndex: 0, slideCount: 5 });
