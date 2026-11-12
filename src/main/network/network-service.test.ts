@@ -406,7 +406,11 @@ describe('saving a native click from a paired phone', () => {
     t.onAir.now = true;
     expect(await t.service.presentationPicture(t.request)).toMatchObject({
       status: 200,
-      body: { mediaId: 'placeholder-picture' },
+      body: {
+        mediaId: 'placeholder-picture',
+        message:
+          'This is the slide as it starts. Try again after streaming or recording stops to save this click.',
+      },
     });
     expect(t.capture).not.toHaveBeenCalled();
     t.onAir.now = false;
@@ -418,7 +422,11 @@ describe('saving a native click from a paired phone', () => {
     });
     expect(await t.service.presentationPicture(t.request)).toMatchObject({
       status: 200,
-      body: { mediaId: 'placeholder-picture' },
+      body: {
+        mediaId: 'placeholder-picture',
+        message:
+          'This is the slide as it starts. Try again after streaming or recording stops to save this click.',
+      },
     });
     expect(t.capture).toHaveBeenCalledTimes(1);
   });
