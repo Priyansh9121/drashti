@@ -1,5 +1,8 @@
-import type { DeckEffect, DeckSlide } from './deck';
+import type { DeckEffect, DeckMedia, DeckSlide } from './deck';
 import { deckSlideSchema } from './deck-schema';
+import type { PageSize } from './document-page';
+import type { PreparedSourcePage } from './editable-source';
+import type { Rect } from './model';
 import type { EditSlide } from './slide-edit';
 
 /*
@@ -8,35 +11,95 @@ import type { EditSlide } from './slide-edit';
  * reader reads its clicks and transition as alpha.17's import does (main/documents/pptx-source-timing.ts), and Main
  * keeps them beside its clips as that import keeps them for a slide it leaves as video (applyNativePages). The edit
  * then keeps them (deck-edit-motion.ts): no question for an exact slide, the closest effects for another. A Keynote
- * deck's slide, an old .ppt's, one with a video alpha.16 stored, one whose kept file is missing and one whose clicks
- * don't match its clips stay as they were: they lose their clicks when edited, as before.
+ * deck's slide, an old .ppt's, one whose kept file is missing and one whose clicks or video shapes cannot be matched
+ * to its clips stay as they were.
  */
 
 /**
- * Whether a slide's clicks are to be read from its kept file: a PowerPoint page, not yet edited, that plays
- * PowerPoint's clips with no clicks of its own, every video it plays an element of the slide that names its shape in
- * the deck (alpha.17's rows; alpha.16 stored a deck's videos with no shape, so such a video couldn't take its poster's
- * place after an edit, and the slide keeps today's behaviour: the review of 0663a204, HIGH-1).
+ * An unedited PowerPoint page with clips but no native clicks. The reader can try legacy videos without a source
+ * shape. Timing is applied only once every video it plays names a distinct source shape.
  */
-export function wantsSourceTiming(slide: EditSlide): boolean {
+export function wantsSourceTiming(slide: EditSlide, allowLegacyVideos = false): boolean {
   const page = slide.documentPage;
   const deck = slide.deck;
+  if (!page || page.ext !== 'pptx' || page.edited || !deck || deck.steps.length === 0 || deck.motion)
+    return false;
+  if (!deck.media.some((media) => media.kind === 'video')) return true;
+
+  const available = new Map<string, number>();
+  const counted = new Set<string>();
+  for (const element of slide.elements) {
+    if (element.kind !== 'video') continue;
+    const id = allowLegacyVideos ? element.id : element.sourceShapeId;
+    if (!id || counted.has(id)) continue;
+    counted.add(id);
+    available.set(element.mediaId, (available.get(element.mediaId) ?? 0) + 1);
+  }
+  return deck.media.every((media) => {
+    if (media.kind !== 'video') return true;
+    const left = available.get(media.mediaId) ?? 0;
+    if (left === 0) return false;
+    available.set(media.mediaId, left - 1);
+    return true;
+  });
+}
+
+function matchesVideoBox(box: DeckMedia['box'], frame: Rect, canvas: PageSize): boolean {
+  // The old deck rounded its video frame to whole pixels. The editable source may use another canvas size.
+  const tolerance = 2;
   return (
-    !!page &&
-    page.ext === 'pptx' &&
-    !page.edited &&
-    !!deck &&
-    deck.steps.length > 0 &&
-    !deck.motion &&
-    deck.media.every(
-      (media) =>
-        media.kind !== 'video' ||
-        slide.elements.some(
-          (element) =>
-            element.kind === 'video' && element.mediaId === media.mediaId && !!element.sourceShapeId,
-        ),
-    )
+    Math.abs(frame.x - box.x * canvas.width) <= tolerance &&
+    Math.abs(frame.y - box.y * canvas.height) <= tolerance &&
+    Math.abs(frame.width - box.w * canvas.width) <= tolerance &&
+    Math.abs(frame.height - box.h * canvas.height) <= tolerance
   );
+}
+
+/** Give legacy video elements their original drawing IDs only when every match is unambiguous. */
+export function withSourceVideoShapes(
+  slide: EditSlide,
+  savedCanvas: PageSize,
+  source: Pick<PreparedSourcePage, 'width' | 'height' | 'elements' | 'sourceVideoShapeIds'>,
+): EditSlide {
+  const deck = slide.deck;
+  if (
+    !deck ||
+    !source.sourceVideoShapeIds?.length ||
+    wantsSourceTiming(slide) ||
+    !wantsSourceTiming(slide, true)
+  )
+    return slide;
+
+  const sourceIds = new Set(source.sourceVideoShapeIds);
+  const posters = source.elements.flatMap((element) =>
+    element.kind === 'image' && element.sourceShapeId && sourceIds.has(element.sourceShapeId)
+      ? [{ id: element.sourceShapeId, frame: element.frame }]
+      : [],
+  );
+  const videos = slide.elements.filter((element) => element.kind === 'video');
+  const matched = new Map<string, string>();
+  const usedShapes = new Set<string>();
+  for (const media of deck.media) {
+    if (media.kind !== 'video') continue;
+    const stored = videos.filter(
+      (video) => video.mediaId === media.mediaId && matchesVideoBox(media.box, video.frame, savedCanvas),
+    );
+    const pictures = posters.filter((poster) => matchesVideoBox(media.box, poster.frame, source));
+    if (stored.length !== 1 || pictures.length !== 1) return slide;
+    const video = stored[0];
+    const picture = pictures[0];
+    if (!video || !picture || matched.has(video.id) || usedShapes.has(picture.id)) return slide;
+    if (video.sourceShapeId && video.sourceShapeId !== picture.id) return slide;
+    matched.set(video.id, picture.id);
+    usedShapes.add(picture.id);
+  }
+  return {
+    ...slide,
+    elements: slide.elements.map((element) => {
+      const sourceShapeId = matched.get(element.id);
+      return sourceShapeId ? { ...element, sourceShapeId } : element;
+    }),
+  };
 }
 
 /**
@@ -49,7 +112,7 @@ export function sourceTimingPages(slides: readonly EditSlide[], sourceHash: unkn
   return [
     ...new Set(
       slides.flatMap((slide) =>
-        slide.documentPage?.sha256 === own && wantsSourceTiming(slide) ? [slide.documentPage.page] : [],
+        slide.documentPage?.sha256 === own && wantsSourceTiming(slide, true) ? [slide.documentPage.page] : [],
       ),
     ),
   ];
