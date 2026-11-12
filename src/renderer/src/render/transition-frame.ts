@@ -36,7 +36,10 @@ export interface SlideFrame {
   transform: string;
   /** A wipe's clip on the whole slide. */
   clip?: string;
-  /** A deck's own transition only: a CSS mask-image on the whole slide (PowerPoint's Wipe, its soft band). */
+  /**
+   * A deck's own transition only: a CSS mask-image on the whole slide. None draws one now: PowerPoint's Wipe band was
+   * one, until it dropped frames on Windows while streaming (Q57-28, 13 Nov 2026).
+   */
   mask?: string;
   /** A deck's own transition only: a CSS filter on the whole slide (the slide PowerPoint's Cover or Uncover moves). */
   filter?: string;
@@ -172,13 +175,19 @@ function powerPointFrame(transition: DeckNativeTransition, progress: number): Tr
         ? { in: { ...moving, transform: shift(e - 1) }, out: settled, black: 0, add: false }
         : { in: settled, out: { ...moving, transform: shift(e) }, black: 0, add: false };
     }
-    case 'wipe':
-      return {
-        in: p >= 1 ? settled : { ...settled, mask: wipeMask(direction, p) },
-        out: settled,
-        black: 0,
-        add: false,
-      };
+    case 'wipe': {
+      // A hard edge moving evenly from the incoming slide's own side (Q57-28, 13 Nov 2026). PowerPoint's is a soft band
+      // one slide long, but drawn as a mask over the whole slide it dropped frames on Windows while streaming, so a
+      // deck's Wipe only comes close (import/deck/pptx-native-transition.ts marks it approximate).
+      const edge = `${String((1 - p) * 100)}%`;
+      const clip = {
+        left: `inset(0 0 0 ${edge})`,
+        right: `inset(0 ${edge} 0 0)`,
+        up: `inset(${edge} 0 0 0)`,
+        down: `inset(0 0 ${edge} 0)`,
+      }[direction];
+      return { in: { ...settled, clip }, out: settled, black: 0, add: false };
+    }
     case 'zoom': {
       const e = easeInOut(p);
       return {
@@ -195,44 +204,13 @@ function powerPointFrame(transition: DeckNativeTransition, progress: number): Tr
 }
 
 /*
- * A deck's own Wipe, Cover and Uncover as PowerPoint's own movie draws them (13 Nov 2026: the comparison's movie of a
+ * A deck's own Cover and Uncover as PowerPoint's own movie draws them (13 Nov 2026: the comparison's movie of a
  * generated deck, measured frame by frame at 320 x 180 against this drawing; Push already matched within a pixel).
- *
- * Wipe: the incoming slide shows through a soft band one slide long, its middle moving at an even speed from half a
- * slide outside the incoming slide's own side (nothing shows) to half a slide past the far side (all of it shows).
- * Across the band it fades as a half cosine (the movie's band, averaged, is within 0.3% of one). Drawn as a mask: a
- * linear gradient of WIPE_STEPS + 1 stops, straight lines between them (within 0.15% of the cosine).
  *
  * Cover and Uncover move their slide (Cover's incoming, Uncover's outgoing) on PowerPoint's own curve, not an easing:
  * measured every 21st of the way, across and up or down apart (PowerPoint's differ by up to 2.6% of the way), and
  * read between those points by a monotone cubic. PowerPoint draws that slide ×0.986 darker while the transition runs.
  */
-
-/** The steps of the Wipe band's gradient. */
-const WIPE_STEPS = 20;
-
-/** How much of the incoming slide shows at each step across the Wipe band, from its own side (1) to the far end (0). */
-const WIPE_BAND = Array.from({ length: WIPE_STEPS + 1 }, (_, j) =>
-  (0.5 + 0.5 * Math.cos((Math.PI * j) / WIPE_STEPS)).toFixed(4),
-);
-
-/** Where a Wipe's gradient starts: the incoming slide's own side. */
-const WIPE_FROM: Readonly<Record<NonNullable<DeckNativeTransition['direction']>, string>> = {
-  left: 'to left',
-  right: 'to right',
-  up: 'to top',
-  down: 'to bottom',
-};
-
-/** PowerPoint's Wipe at `p`: a mask on the incoming slide (CSS mask-image), whole up to the band, then the band. */
-function wipeMask(direction: NonNullable<DeckNativeTransition['direction']>, p: number): string {
-  // The band's start, in % of the slide from the incoming slide's own side: -100% (nothing shows) to 100% (all of it).
-  const from = (2 * p - 1) * 100;
-  const stops = WIPE_BAND.map(
-    (shown, j) => `rgba(0, 0, 0, ${shown}) ${(from + (100 * j) / WIPE_STEPS).toFixed(2)}%`,
-  );
-  return `linear-gradient(${WIPE_FROM[direction]}, ${stops.join(', ')})`;
-}
 
 /**
  * A monotone curve through values at even steps from 0 to 1 (Fritsch and Carlson's cubic: it never overshoots, so the

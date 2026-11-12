@@ -48,9 +48,10 @@ import { sw } from './switches';
  * - Black-out on and off, and the Wallpaper (a placeholder picture chosen) on and off.
  * Then, each only while there is time left for all of it:
  * - a deck Drashti plays itself (13 Nov 2026, the review of h-p3tr's part B and h-p3fx's Split), as dissolve 800 was
- *   measured (one hall screen, no other window open): by Next its slides come in by its own Wipe (a mask over the whole
- *   slide coming in), Cover and Uncover (the moving slide shaded, a filter) and Push (transforms only: the control),
- *   then two shapes of its last slide come in and go out by Split (a mask the size of each), a click each;
+ *   measured (one hall screen, no other window open): by Next its slides come in by its own Wipe (a hard-edged clip
+ *   since Q57-28; a mask over the whole slide before), Cover and Uncover (the moving slide shaded, a filter) and Push
+ *   (transforms only: the control), then two shapes of its last slide come in and go out by Split (a mask the size of
+ *   each), a click each;
  * then Session 57's leftovers (h-left2's MS-1, DK-6 and DK-2), left out of the two-core streaming check (after3's ran
  * into its 14-minute stop with them):
  * - a slide of an imported, editable PowerPoint table of 250 cells (each cell a text box that measures itself on the
