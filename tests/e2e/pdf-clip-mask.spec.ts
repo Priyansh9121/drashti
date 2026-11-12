@@ -58,14 +58,18 @@ test('clipped and masked PDF drawings stay in place after editing their page wor
           .filter({ hasText: sample.name })
           .click();
         await win.getByTestId('edit-slides').click();
-        const { editor } = await slideEditorWindow(app);
+        const { ed, editor } = await slideEditorWindow(app);
         const words = sourceWord(editor, PDF_EDITABLE_WORDS);
         await expect(words).toBeVisible();
         expect(await publicSlides(win, id)).toEqual(before);
         await words.dblclick({ position: { x: 5, y: 5 } });
         const typing = editor.getByTestId('text-editing');
         await expect(typing).toBeFocused();
-        await typing.fill('Placeholder revised words');
+        // Chosen with the keys, as a person does: fill()'s DOM range can lose to the box's own check just
+        // after it takes the keyboard, which puts the double-click's caret back.
+        await typing.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+        await ed.keyboard.insertText('Placeholder revised words');
+        await expect(typing).toHaveText('Placeholder revised words');
         await editor.getByTestId('save-slides').click();
         await slideEditorClosed(app);
 
