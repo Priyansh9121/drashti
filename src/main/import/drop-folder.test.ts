@@ -96,7 +96,7 @@ function setup(options: { db?: Db; maxBytes?: number; air?: { on: boolean }; sim
     dataDir: join(root, 'Drashti data'),
     importFiles,
     report: (runId) => ({ items: reports.get(runId) ?? [] }),
-    ...{ importNotice },
+    importNotice,
     onAir: () => air.on,
     simpleMode: () => options.simple ?? false,
     notice: (t) => notices.push(t),
@@ -142,6 +142,7 @@ function setup(options: { db?: Db; maxBytes?: number; air?: { on: boolean }; sim
     settings,
     imports,
     notices,
+    reports,
     importNotice,
     views,
     clock,
@@ -244,7 +245,9 @@ describe('the drop folder', () => {
         },
       ],
     });
-    expect(h.importNotice).toHaveBeenNthCalledWith(2, { runId: expect.any(String) });
+    const [runId] = h.reports.keys();
+    expect(runId).toBeDefined();
+    expect(h.importNotice).toHaveBeenNthCalledWith(2, { runId });
     expect(h.notices).toEqual([]);
   });
 
@@ -300,12 +303,15 @@ describe('the drop folder', () => {
     ]);
   });
 
-  it('says only what was not taken when nothing came in; names a batch by what was stored (Session 51 review)', async () => {
+  it('shows the failed run once and names a successful batch by what was stored', async () => {
     await put('broken.png', 'broken');
     const h = setup();
     await h.service.setFolder(folder);
     await h.settle();
-    expect(h.notices).toEqual(['1 file from the drop folder was not taken: see File › Drop Folder….']);
+    expect(h.notices).toEqual([]);
+    const [runId] = h.reports.keys();
+    expect(runId).toBeDefined();
+    expect(h.importNotice).toHaveBeenCalledWith({ runId });
     // A video's file holding only sound, stored as a sound: one sound.
     await put('Recording.mp4', 'only sound');
     await h.settle();
