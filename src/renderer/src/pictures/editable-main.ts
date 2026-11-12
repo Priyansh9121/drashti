@@ -10,6 +10,14 @@ type BinaryDataFactory = new () => {
 
 const MAX_PAGE_MS = 8_000;
 const PDF_CLEANUP_MS = 250;
+/*
+ * How this window shares the processor as it prepares the pages (Session 57). Main runs it at the lowest priority;
+ * besides, after each WORK_SLICE_MS of work it gives way for GIVE_WAY_MS and asks Main whether it may go on (Main asks
+ * again as it takes each page). It did both at each of a page's small steps (about ten a page), so a big PDF's opening
+ * was mostly waiting: the generated 100-page PDF stayed at "Opening the slides…" past 30 s on CI's Mac.
+ */
+const WORK_SLICE_MS = 50;
+const GIVE_WAY_MS = 10;
 
 export async function drawEditablePdf(
   job: EditablePdfJob,
@@ -33,6 +41,9 @@ export async function drawEditablePdf(
   let jobBytes = 0;
   const preparation = { stopped: false };
   let error: string | undefined;
+  // When this window last gave way, and when Main last said it may go on (null: not asked yet).
+  let gaveWayAt = performance.now();
+  let answeredAt: number | null = null;
   try {
     const doc = await task.promise;
     total = doc.numPages;
@@ -51,7 +62,11 @@ export async function drawEditablePdf(
       try {
         const checkpoint = async () => {
           checkTime();
-          await new Promise((resolve) => setTimeout(resolve, 10));
+          if (performance.now() - gaveWayAt >= WORK_SLICE_MS) {
+            await new Promise((resolve) => setTimeout(resolve, GIVE_WAY_MS));
+            gaveWayAt = performance.now();
+          } else if (answeredAt !== null && performance.now() - answeredAt < WORK_SLICE_MS) return;
+          // The first one also tells Main the page count.
           if (
             !(await window.drashti.pictures.page({
               mode: 'editable-checkpoint',
@@ -63,6 +78,7 @@ export async function drawEditablePdf(
             preparation.stopped = true;
             throw new Error('Editable source preparation stopped.');
           }
+          answeredAt = performance.now();
           checkTime();
         };
         await checkpoint();
@@ -86,6 +102,8 @@ export async function drawEditablePdf(
           }))
         )
           break;
+        // Main checked again as it took the page.
+        answeredAt = performance.now();
         jobBytes += assets.reduce((sum, asset) => sum + asset.png.byteLength, 0);
       } catch {
         failed.push(sourceIndex);
