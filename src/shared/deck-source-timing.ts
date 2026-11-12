@@ -88,6 +88,7 @@ export function withSourceVideoShapes(
     const video = stored[0];
     const picture = pictures[0];
     if (!video || !picture || matched.has(video.id) || usedShapes.has(picture.id)) return slide;
+    if (posters.some((poster) => poster !== picture && poster.id === picture.id)) return slide;
     if (video.sourceShapeId && video.sourceShapeId !== picture.id) return slide;
     matched.set(video.id, picture.id);
     usedShapes.add(picture.id);
