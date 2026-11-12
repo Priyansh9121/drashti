@@ -67,11 +67,14 @@ export interface DeckEffect {
    * its size; all shares of the slide). Played evenly to (or from) where the shape rests.
    */
   zoomAway?: { w: string; h: string; x?: string; y?: string };
-  /** Shape's outline, opening from the centre (or closing towards it when inward). */
+  /**
+   * Shape's outline, in the shape's own proportions (circle: an ellipse; plus: two bars across it), its edge travelling
+   * from the centre out (or from the edges in when inward).
+   */
   shape?: 'circle' | 'box' | 'diamond' | 'plus';
   /**
-   * PowerPoint's "In": Shape reveals from the edges towards the centre; Split's edges travel from the box's own edges
-   * to its middle, coming in or leaving (so an exit's "In" closes from both edges to the middle).
+   * PowerPoint's "In": Shape's and Split's edges travel from the box's own edges to its middle, coming in or leaving
+   * (so an exit's "In" closes from the edges to the middle).
    */
   inward?: true;
   /** Wheel's spokes. */
