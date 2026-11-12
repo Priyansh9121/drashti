@@ -356,31 +356,40 @@ describe('trimming a playlist video', () => {
     expect(x.repo.view(x.itemId)?.markers).toMatchObject({ startMs: 750, endMs: 2050 });
   });
 
-  it('keeps black-and-silence points as playback bounds inside a wider copy', async () => {
-    const x = await setup();
-    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
-    x.finish({ ok: true, copy: x.output });
-    await vi.waitFor(() => expect(x.repo.row(x.itemId)?.mediaId).not.toBe('original'));
-    const firstId = x.repo.row(x.itemId)?.mediaId ?? '';
-    x.media.setMarkers(firstId, { ...NO_MARKERS, startMs: 250, endMs: 1550 });
+  it.each([
+    ['End moved out, Start left', { startMs: 750, endMs: 3000 }, { cutStartMs: 720, cutEndMs: 3000 }, 30],
+    ['Start moved out, End left', { startMs: 200, endMs: 2050 }, { cutStartMs: 200, cutEndMs: 2050 }, null],
+    ['both moved out', { startMs: 200, endMs: 3000 }, { cutStartMs: 200, cutEndMs: 3000 }, null],
+  ] as const)(
+    'plays a wider cut as saved, keeping a black-and-silence point only where its handle was left (%s)',
+    async (_name, asked, cut, carriedStart) => {
+      // The frame at or before 0:00.750 starts at 0:00.720.
+      const x = await setup((_path, atMs) => Promise.resolve(atMs === 750 ? 720 : atMs));
+      expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+      x.finish({ ok: true, copy: x.output });
+      await vi.waitFor(() => expect(x.repo.row(x.itemId)?.mediaId).not.toBe('original'));
+      const firstId = x.repo.row(x.itemId)?.mediaId ?? '';
+      // Trim black and silence on the cut (500 to 2500): Trim shows 0:00.750 to 0:02.050.
+      x.media.setMarkers(firstId, { ...NO_MARKERS, startMs: 250, endMs: 1550 });
+      expect(x.repo.view(x.itemId)?.markers).toMatchObject({ startMs: 750, endMs: 2050 });
 
-    const wider = join(dir, 'Placeholder wider.mp4');
-    await writeFile(wider, 'placeholder wider trim');
-    expect(
-      await x.service.apply(x.itemId, {
-        mediaId: firstId,
-        points: { ...NO_MARKERS, startMs: 200, endMs: 3000 },
-      }),
-    ).toEqual({ ok: true });
-    x.finish({ ok: true, copy: wider });
-    await vi.waitFor(() => expect(x.repo.row(x.itemId)?.mediaId).not.toBe(firstId));
-    expect(x.repo.row(x.itemId)).toMatchObject({ cutStartMs: 200, cutEndMs: 3000 });
-    expect(x.media.markersOf(x.repo.row(x.itemId)?.mediaId ?? '')).toMatchObject({
-      startMs: 550,
-      endMs: 1850,
-    });
-    expect(x.repo.view(x.itemId)?.markers).toMatchObject({ startMs: 750, endMs: 2050 });
-  });
+      const wider = join(dir, 'Placeholder wider.mp4');
+      await writeFile(wider, 'placeholder wider trim');
+      expect(
+        await x.service.apply(x.itemId, { mediaId: firstId, points: { ...NO_MARKERS, ...asked } }),
+      ).toEqual({ ok: true });
+      x.finish({ ok: true, copy: wider });
+      await vi.waitFor(() => expect(x.repo.row(x.itemId)?.mediaId).not.toBe(firstId));
+      expect(x.repo.row(x.itemId)).toMatchObject(cut);
+      // A handle left where Trim showed it keeps its point (to the millisecond, inside the frame the cut starts
+      // on); a handle the operator moved stands as saved.
+      expect(x.media.markersOf(x.repo.row(x.itemId)?.mediaId ?? '')).toMatchObject({
+        startMs: carriedStart,
+        endMs: null,
+      });
+      expect(x.repo.view(x.itemId)?.markers).toMatchObject(asked);
+    },
+  );
 
   it('restores the playlist reset when the operator undoes black-and-silence points', async () => {
     const x = await setup();
