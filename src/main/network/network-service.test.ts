@@ -364,7 +364,10 @@ describe('saving a native click from a paired phone', () => {
       const pending = t.service.presentationPicture(t.request);
       expect(await t.service.presentationPicture(t.request)).toMatchObject({
         status: 200,
-        body: { mediaId: 'placeholder-picture' },
+        body: {
+          mediaId: 'placeholder-picture',
+          message: 'This is the slide as it starts. Try saving this click again in a moment.',
+        },
       });
       expect(t.capture).not.toHaveBeenCalled();
       t.tick(299);
@@ -395,7 +398,10 @@ describe('saving a native click from a paired phone', () => {
     };
     expect(await t.service.presentationPicture(t.request)).toMatchObject({
       status: 200,
-      body: { mediaId: 'placeholder-picture' },
+      body: {
+        mediaId: 'placeholder-picture',
+        message: 'This is the slide as it starts. Try again when the screens are still to save this click.',
+      },
     });
     expect(t.capture).not.toHaveBeenCalled();
   });
