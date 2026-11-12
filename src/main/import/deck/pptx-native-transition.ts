@@ -15,10 +15,9 @@ export interface NativePptxTransition {
 
 /**
  * Map the incoming PowerPoint slide's own motion, with a dissolve available after an unsupported effect is edited.
- * Approximate: Drashti's drawing only comes close to PowerPoint's own (measured against PowerPoint's movie, 13 Nov
- * 2026), so a slide using it keeps PowerPoint's video wherever one can be made. Wipe is PowerPoint's soft band one
- * slide long, and Cover and Uncover move on PowerPoint's own curve, a little darker while they move: Drashti draws
- * them close, not the same.
+ * Exact: Drashti draws it as PowerPoint's own movie does (Push, Wipe, Cover and Uncover measured against it frame by
+ * frame, 13 Nov 2026: render/transition-frame.ts). Approximate: only the closest Drashti can, so a slide using it keeps
+ * PowerPoint's video wherever one can be made.
  */
 export function nativePptxTransition(
   effect: XmlNode | undefined,
@@ -37,17 +36,14 @@ export function nativePptxTransition(
     case 'p:pull': {
       const deckEffect = effect.name === 'p:push' ? 'push' : effect.name === 'p:cover' ? 'cover' : 'uncover';
       if (direction)
-        return {
-          transition: { kind: 'slide', deckEffect, durationMs, direction },
-          approximate: deckEffect !== 'push',
-        };
+        return { transition: { kind: 'slide', deckEffect, durationMs, direction }, approximate: false };
       break;
     }
     case 'p:wipe':
       if (direction)
         return {
           transition: { kind: 'wipe', deckEffect: 'wipe', durationMs, direction },
-          approximate: true,
+          approximate: false,
         };
       break;
     case 'p:zoom':
