@@ -1,11 +1,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent, KeyboardEvent, ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import type { PresentationSummary } from '../../../shared/library';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
 import { LANGS } from '../../../shared/model';
 import { LANG_SHORT } from '../../../shared/themes';
 import { useEngine } from '../engine/engine-store';
-import { importPaths, importWithDialog, requestRemoval } from '../library/import-store';
+import { importWithDialog, requestRemoval } from '../library/import-store';
 import {
   clearSearch,
   clickPresentation,
@@ -48,7 +48,6 @@ import { openPipDialog } from './pip-store';
 import { openLinkDialog } from '../links/link-store';
 import { useExtras } from '../library/extras-store';
 import { MenuButton } from '../ui/Menu';
-import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
 import { RowDelete } from '../ui/RowDelete';
 import { EmptyState } from '../ui/States';
@@ -293,9 +292,6 @@ export function PresentationList({ platform }: { platform: string }) {
   const marked = useLibrary((s) => s.marked);
   // On the screens now: its slide is up (not just the place it was, after a clear).
   const liveId = useEngine((s) => s.state?.layers.slide?.presentationId ?? null);
-  const [dropping, setDropping] = useState(false);
-  const [dropProblem, setDropProblem] = useState<string | null>(null);
-  const depth = useRef(0);
   const markedSet = new Set(marked);
   const listRef = useRef<HTMLUListElement>(null);
   const [view, setView] = useState({ top: 0, height: 800 });
@@ -380,37 +376,6 @@ export function PresentationList({ platform }: { platform: string }) {
     if (to !== null) ul.scrollTop = to;
   }, [selectedId, tab, searching]);
 
-  const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
-  const onDragEnter = (e: DragEvent) => {
-    if (!hasFiles(e)) return;
-    e.preventDefault();
-    depth.current++;
-    setDropping(true);
-  };
-  const onDragOver = (e: DragEvent) => {
-    if (!hasFiles(e)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  };
-  const onDragLeave = (e: DragEvent) => {
-    if (!hasFiles(e)) return;
-    depth.current = Math.max(0, depth.current - 1);
-    if (depth.current === 0) setDropping(false);
-  };
-  const onDrop = (e: DragEvent) => {
-    e.preventDefault();
-    // The window imports files dropped anywhere else (Pro Mode): this list has them.
-    e.stopPropagation();
-    depth.current = 0;
-    setDropping(false);
-    const paths = Array.from(e.dataTransfer.files)
-      .map((f) => window.drashti.files.pathFor(f))
-      .filter((p) => p !== '');
-    setDropProblem(paths.length === 0 ? 'Drop files or folders from the desktop or a USB drive.' : null);
-    // Into the library only, never the open playlist (Q57-11, the owner): the old program's library folder or many
-    // presentations dropped here don't fill it. Dropped anywhere else they go into the open playlist too.
-    void importPaths(paths, undefined, null);
-  };
   const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
     if (isSelectAll(e, platform)) {
       e.preventDefault();
@@ -426,15 +391,7 @@ export function PresentationList({ platform }: { platform: string }) {
   };
 
   return (
-    <nav
-      aria-label="Library"
-      className="relative flex min-h-0 flex-1 flex-col"
-      data-testid="library-drop"
-      onDragEnter={onDragEnter}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
+    <nav aria-label="Library" className="relative flex min-h-0 flex-1 flex-col" data-testid="library-drop">
       <div className="flex h-11 shrink-0 items-center gap-2 px-3">
         <Tabs
           group="library"
@@ -545,20 +502,6 @@ export function PresentationList({ platform }: { platform: string }) {
           </ul>
         )}
       </TabPanel>
-      {dropProblem && (
-        <Notice tone="warning" compact className="mx-3 mb-2" onDismiss={() => setDropProblem(null)}>
-          {dropProblem}
-        </Notice>
-      )}
-      {dropping && (
-        <div
-          data-testid="drop-overlay"
-          className="pointer-events-none absolute inset-2 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-accent bg-ink/90 p-4 text-center text-sm font-medium"
-        >
-          <Upload size={28} aria-hidden="true" className="text-accent" />
-          Drop lyrics, presentations or media to import them
-        </div>
-      )}
     </nav>
   );
 }
