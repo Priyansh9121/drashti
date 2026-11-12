@@ -8,6 +8,7 @@ import type { CapturedPicture, PdfCopyJob, PdfCopyPage, PdfPrintPage } from '../
 import { PICTURE_ASSET_NAME, type PictureAssetKind } from '../../shared/pictures';
 
 const LIMIT = 64 * 1024 * 1024;
+const PICTURE_LONG_SIDE = 1920;
 /** The most a phone's picture may hold as pixels: 3840 x 2160, a 1920 x 1080 slide on a display at twice the size. */
 const PICTURE_PIXELS_LIMIT = 3840 * 2160 * 4;
 const MAX_PAGES = 400;
@@ -71,7 +72,7 @@ export class PdfCopySession {
     current: () => boolean,
     signal: AbortSignal,
   ): Promise<CapturedPicture | null> {
-    const scale = Math.min(1, 1920 / Math.max(slide.width, slide.height));
+    const scale = PICTURE_LONG_SIDE / Math.max(slide.width, slide.height);
     const out = await this.start(
       { pages: [{ kind: 'native', slide }], sources: [], picture: { scale, looks } },
       current,
@@ -207,8 +208,9 @@ export class PdfCopySession {
     const page = active.job.pages[index];
     if (page?.kind !== 'native') return refuse();
     const scale = active.job.picture?.scale ?? 4 / 3;
-    const width = Math.ceil(page.slide.width * scale);
-    const height = Math.ceil(page.slide.height * scale);
+    const limit = active.job.picture ? PICTURE_LONG_SIDE : Infinity;
+    const width = Math.min(limit, Math.ceil(page.slide.width * scale));
+    const height = Math.min(limit, Math.ceil(page.slide.height * scale));
     // Bound viewport and screenshot memory as well as compressed output bytes.
     if (width * height > 4_000_000) return refuse();
     active.printing = true;
