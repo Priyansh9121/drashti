@@ -11,6 +11,13 @@ afterEach(() => {
 });
 
 const bytes = () => Buffer.from('%PDF-1.4\nGenerated protocol fixture\n%%EOF\n');
+/** A captured picture as Electron gives it: its size in pixels, its PNG, and its raw pixels (made-up values). */
+const capturedImage = (width: number, height: number, empty = false) => ({
+  isEmpty: () => empty,
+  getSize: () => ({ width, height }),
+  toPNG: vi.fn(() => Buffer.from('Generated effect pixels')),
+  toBitmap: () => Buffer.alloc(width * height * 4, 7),
+});
 const metadata = [{ ref: { num: 3, gen: 0 }, view: [0, 0, 480, 319.91998], rotate: 0 }];
 class Window extends EventEmitter {
   destroyed = false;
@@ -20,8 +27,8 @@ class Window extends EventEmitter {
     getOSProcessId: () => -1,
     printToPDF: vi.fn(() => Promise.resolve(bytes())),
     executeJavaScript: vi.fn(() => Promise.resolve(undefined)),
-    capturePage: vi.fn(() =>
-      Promise.resolve({ isEmpty: () => false, toPNG: () => Buffer.from('Generated effect pixels') }),
+    capturePage: vi.fn((rect: { width: number; height: number }) =>
+      Promise.resolve(capturedImage(rect.width, rect.height)),
     ),
   });
   isDestroyed() {
@@ -70,16 +77,36 @@ function setup(size = { width: 480, height: 320 }, picture = false) {
   return { win, admission, normalize, session, signal, result, own, other, job };
 }
 
-it('returns a phone picture only from Main’s capture of its owned hidden window', async () => {
+it('returns a phone picture only from Main’s capture of its owned hidden window, as its pixels, never encoded on Main', async () => {
   const s = setup({ width: 2560, height: 1440 }, true);
   expect(s.job.picture).toMatchObject({ scale: 0.75 });
   expect(await s.session.print(s.own, s.job.id, 0)).toBeNull();
   expect(await s.session.capture(s.other, s.job.id, 0)).toBeNull();
   expect(await s.session.capture(s.own, 'different-job', 0)).toBeNull();
-  await s.session.capture(s.own, s.job.id, 0);
-  expect(await s.result).toEqual(new Uint8Array(Buffer.from('Generated effect pixels')));
+  const image = capturedImage(1920, 1080);
+  s.win.webContents.capturePage.mockImplementationOnce(() => Promise.resolve(image));
+  // The hidden page is told nothing back: the pixels go to the phone.
+  expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
+  // C6's review, MEDIUM 1: no PNG made on Main's thread; the network's process makes it.
+  expect(image.toPNG).not.toHaveBeenCalled();
+  expect(await s.result).toEqual({
+    width: 1920,
+    height: 1080,
+    pixels: new Uint8Array(Buffer.alloc(1920 * 1080 * 4, 7)),
+    order: 'bgra',
+  });
   expect(s.win.setContentSize).toHaveBeenCalledWith(1920, 1080);
   expect(s.win.isDestroyed()).toBe(true);
+});
+
+it('ends a phone picture whose pixels are not its size, at once', async () => {
+  const s = setup({ width: 1280, height: 720 }, true);
+  s.win.webContents.capturePage.mockImplementationOnce(() =>
+    Promise.resolve({ ...capturedImage(1280, 720), toBitmap: () => Buffer.alloc(16) }),
+  );
+  expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
+  expect(s.win.isDestroyed()).toBe(true);
+  expect(await s.result).toBeNull();
 });
 
 describe('a phone’s picture, the lowest of the hidden window’s jobs (C6’s review, LOW 1 and LOW 4)', () => {
@@ -115,7 +142,7 @@ describe('a phone’s picture, the lowest of the hidden window’s jobs (C6’s 
   it('ends at once when its capture cannot be made, so the phone gets the slide as it starts without waiting', async () => {
     const s = setup({ width: 1280, height: 720 }, true);
     s.win.webContents.capturePage.mockImplementationOnce(() =>
-      Promise.resolve({ isEmpty: () => true, toPNG: () => Buffer.alloc(0) }),
+      Promise.resolve(capturedImage(1280, 720, true)),
     );
     expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
     expect(s.win.isDestroyed()).toBe(true);
@@ -159,7 +186,7 @@ describe('the exact hidden PDF copy window protocol', () => {
     expect(s.session.job(s.own)).toBeNull();
     expect(await s.result).toBeNull();
     if (!finish) throw new Error('The owned capture was not started.');
-    finish({ isEmpty: () => false, toPNG: () => Buffer.from('Generated late pixels') });
+    finish({ ...capturedImage(640, 427), toPNG: vi.fn(() => Buffer.from('Generated late pixels')) });
     expect(await pending).toBeNull();
     expect(s.win.webContents.printToPDF).not.toHaveBeenCalled();
     expect(s.win.destroyed).toBe(true);
