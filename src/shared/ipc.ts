@@ -489,6 +489,7 @@ export const IPC = {
     rowTrim: 'media:row-trim',
     applyRowTrim: 'media:apply-row-trim',
     resetRowTrim: 'media:reset-row-trim',
+    stopRowTrim: 'media:stop-row-trim',
     preparingTrims: 'media:preparing-trims',
     preparingTrimsChanged: 'media:preparing-trims-changed',
     saves: 'media:saves',
@@ -1436,6 +1437,7 @@ export interface InvokeContract {
   [IPC.media.rowTrim]: { args: [itemId: string]; result: RowTrimView | null };
   [IPC.media.applyRowTrim]: { args: [itemId: string, request: RowTrimRequest]; result: RowTrimResult };
   [IPC.media.resetRowTrim]: { args: [itemId: string, mediaId: string]; result: RowTrimResult };
+  [IPC.media.stopRowTrim]: { args: [itemId: string, mediaId: string]; result: RowTrimResult };
   [IPC.media.preparingTrims]: { args: []; result: string[] };
   [IPC.media.saves]: { args: []; result: SaveJob[] };
   [IPC.media.stopSave]: { args: [jobId: string]; result: boolean };
