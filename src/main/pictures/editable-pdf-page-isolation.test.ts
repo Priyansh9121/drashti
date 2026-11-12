@@ -11,8 +11,8 @@ import { EditablePdfSessions } from './editable-pdf-session';
  * One PDF page whose words and shapes fail Main's checks (Session 57, W5's review LOW-3: an object far off the page,
  * past Main's ±1,000,000 px bound) stays its saved picture, as a page over the output budget does: the other pages
  * are still made editable. A reply that breaks the hidden window's protocol (another job, a page not asked for or
- * sent twice, a field the protocol doesn't have) still stops the whole job, and so does cancelling. Transport only:
- * the hidden window is played by the test.
+ * sent twice, a field the protocol doesn't have, a list longer than any page's) still stops the whole job, and so
+ * does cancelling. Transport only: the hidden window is played by the test.
  */
 
 class HiddenWindow extends EventEmitter {
@@ -145,6 +145,29 @@ describe('one PDF page that fails Main’s checks (Session 57)', () => {
       (jobId: string) => ({ ...page(jobId, 1), assets: [{ token: 'pdf-paint-1', png: 'Placeholder' }] }),
     ],
     ['of another kind', (jobId: string) => ({ ...page(jobId, 1), mode: 'placeholder' })],
+    // Longer than any page's lists (the page reader stops at 500 painted objects, each one element and at most one
+    // picture, and says at most five things): refused before anything in them is read.
+    [
+      'with more words and shapes than a page may have',
+      (jobId: string) => ({
+        ...page(jobId, 1),
+        elements: Array.from({ length: 501 }, (_, n) => ({ ...picture, id: `Placeholder ${String(n)}` })),
+      }),
+    ],
+    [
+      'with more pictures than a page may have',
+      (jobId: string) => ({
+        ...page(jobId, 1),
+        assets: Array.from({ length: 501 }, () => page(jobId, 1).assets[0]),
+      }),
+    ],
+    [
+      'with more notes than a page may have',
+      (jobId: string) => ({
+        ...page(jobId, 1),
+        issues: Array.from({ length: 101 }, () => 'Placeholder note'),
+      }),
+    ],
   ])('a reply %s still stops the whole job', async (_what, reply) => {
     const t = setup([0, 1]);
     const jobId = await jobOf(t);
