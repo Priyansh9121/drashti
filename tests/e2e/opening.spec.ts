@@ -585,7 +585,18 @@ test('with Interface motion Off, or the computer asking for reduced motion (as i
     timeout: 15_000,
   });
   await holdOpening(moving);
+  const player = moving.getByTestId('opening');
+  await player.evaluate((root) => {
+    const [fade] = root.getAnimations();
+    if (!fade) throw new Error('The opening fade did not start.');
+    (globalThis as { openingFade?: Animation }).openingFade = fade;
+  });
   await moving.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(player).toHaveAttribute('data-opening-motion', 'still');
+  const keptFade = await player.evaluate((root) =>
+    root.getAnimations().some((fade) => fade === (globalThis as { openingFade?: Animation }).openingFade),
+  );
+  expect(keptFade).toBe(true);
   await still(reduced.app);
   await reduced.app.close();
 });
