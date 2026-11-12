@@ -250,7 +250,8 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       seconds: CLIP_MS / 1000,
       hue: 60 + i * 90,
     }).mediaId,
-    lastId: makePicture(deps, `animations-deck-last-${String(i)}`, 30 + i * 90, null),
+    // Hues none of the slides' pictures has (0, 120, 240): the library keeps a picture's bytes once (sha256).
+    lastId: makePicture(deps, `animations-deck-last-${String(i)}`, 45 + i * 90, null),
   }));
   const deck: DeckSlide = {
     transition: { name: 'push', durationMs: DECK_TRANSITION_MS },

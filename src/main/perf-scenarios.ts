@@ -324,9 +324,16 @@ const READ = `(() => {
   };
 })()`;
 
-/** The scenario, set up. Not built yet: a fault while it sets up is thrown as it comes. */
-export function scenarioFor(name: PerfScenario, deps: ScenarioDeps): Promise<ScenarioRun> {
-  return Promise.resolve(startScenario(name, deps));
+/**
+ * The scenario, set up (Session 57): a fault while it sets up (its media made with FFmpeg, its slides put in the
+ * library) is the check's failure at once, with its own message (the check says it: index.ts). Thrown inside the
+ * operator window's load listener, it left the check never started, waiting for nothing until its time limit (CI,
+ * 12 Nov 2026: 14 minutes, no word).
+ */
+export async function scenarioFor(name: PerfScenario, deps: ScenarioDeps): Promise<ScenarioRun> {
+  // A turn first, so a fault thrown while it sets up comes as this promise's rejection, never inside the caller.
+  await Promise.resolve();
+  return startScenario(name, deps);
 }
 
 export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioRun {
