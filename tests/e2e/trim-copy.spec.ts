@@ -217,7 +217,7 @@ test('Trim waits while on air, cuts exact frames in the same row, and widens or 
     await expect(preparing).toHaveText('Preparing');
     await win.getByRole('button', { name: 'Clear all' }).click();
 
-    await expect(name).toHaveText('Placeholder numbered trimmed', { timeout: 30_000 });
+    await expect(name).toHaveText('Placeholder numbered trimmed.mp4', { timeout: 30_000 });
     await expect(preparing).toHaveCount(0);
     const [first] = await items(win, edited.playlistId);
     if (first?.kind !== 'media') throw new Error('The trimmed video is missing from its playlist.');
