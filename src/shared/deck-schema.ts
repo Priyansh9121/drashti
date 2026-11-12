@@ -33,9 +33,26 @@ const effectSchema = z.looseObject({
   shapeId: idSchema,
   step: z.number().int().min(0).max(9999),
   phase: z.enum(['in', 'out', 'emphasis']),
-  kind: z.enum(['appear', 'fade', 'fly', 'wipe', 'zoom', 'spin', 'pulse', 'float', 'split', 'grow-shrink']),
+  kind: z.enum([
+    'appear',
+    'fade',
+    'fly',
+    'wipe',
+    'zoom',
+    'spin',
+    'pulse',
+    'float',
+    'split',
+    'grow-shrink',
+    'shape',
+    'wheel',
+    'bars',
+    'bounce',
+  ]),
   delayMs: ms,
   durationMs: ms,
+  accel: z.number().min(0).max(1).optional(),
+  decel: z.number().min(0).max(1).optional(),
   direction: z.enum(['left', 'right', 'up', 'down']).optional(),
   verticalDirection: z.enum(['up', 'down']).optional(),
   degrees: z.number().optional(),
@@ -43,6 +60,14 @@ const effectSchema = z.looseObject({
   distance: z.number().min(0).max(1).optional(),
   splitAxis: z.enum(['x', 'y']).optional(),
   scale: z.number().min(0).max(10).optional(),
+  shape: z.enum(['circle', 'box', 'diamond', 'plus']).optional(),
+  inward: z.literal(true).optional(),
+  spokes: z.number().int().min(1).max(8).optional(),
+  bars: z.enum(['horizontal', 'vertical']).optional(),
+  paragraphs: z
+    .tuple([z.number().int().min(0).max(9999), z.number().int().min(0).max(9999)])
+    .refine(([first, last]) => first <= last, { message: 'A paragraph range must not run backwards.' })
+    .optional(),
 });
 
 const motionSchema = z

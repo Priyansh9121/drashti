@@ -19,15 +19,34 @@ export type DeckBaker = 'powerpoint' | 'keynote' | 'pictures';
 
 export type DeckEffectDirection = 'left' | 'right' | 'up' | 'down';
 
+export type DeckEffectKind =
+  | 'appear'
+  | 'fade'
+  | 'fly'
+  | 'wipe'
+  | 'zoom'
+  | 'spin'
+  | 'pulse'
+  | 'float'
+  | 'split'
+  | 'grow-shrink'
+  | 'shape'
+  | 'wheel'
+  | 'bars'
+  | 'bounce';
+
 /** An effect from the deck's own click sequence, targeted at its slide-local shape or group id. */
 export interface DeckEffect {
   shapeId: string;
   /** Zero runs with the slide; the following steps are one per click. */
   step: number;
   phase: 'in' | 'out' | 'emphasis';
-  kind: 'appear' | 'fade' | 'fly' | 'wipe' | 'zoom' | 'spin' | 'pulse' | 'float' | 'split' | 'grow-shrink';
+  kind: DeckEffectKind;
   delayMs: number;
   durationMs: number;
+  /** PowerPoint's smooth start and smooth end, as shares of the duration (SMIL's accelerate and decelerate). */
+  accel?: number;
+  decel?: number;
   /** The direction of travel. */
   direction?: DeckEffectDirection;
   /** The second axis of a diagonal Fly. */
@@ -41,6 +60,19 @@ export interface DeckEffect {
   splitAxis?: 'x' | 'y';
   /** Gallery Zoom's outer scale or Grow/Shrink's final scale. */
   scale?: number;
+  /** Shape's outline, opening from the centre (or closing towards it when inward). */
+  shape?: 'circle' | 'box' | 'diamond' | 'plus';
+  /** Shape or Split reveals from the edges towards the centre (PowerPoint's "In"). */
+  inward?: true;
+  /** Wheel's spokes. */
+  spokes?: number;
+  /** Random Bars' bars: horizontal strips or vertical ones. */
+  bars?: 'horizontal' | 'vertical';
+  /**
+   * The paragraphs of a text box (the first and the last, from 0) that this entrance or exit shows or hides, when the
+   * deck builds the box paragraph by paragraph. The box itself stays.
+   */
+  paragraphs?: [number, number];
 }
 
 export interface DeckMotion {
