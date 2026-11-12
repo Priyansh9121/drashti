@@ -345,7 +345,28 @@ describe('runImport', () => {
     expect(names(t.db)).toEqual(['Song A']);
   });
 
-  it('asks about a changed file, then replaces it in place or keeps both, as chosen', async () => {
+  it('keeps the changed file beside the earlier import by default, keeping the operator’s edits', async () => {
+    const t = setup();
+    const a = t.write('Placeholder Song.txt', SONG_A);
+    const first = await t.run([a]);
+    const id = first.report?.items[0]?.target?.id ?? '';
+    t.db.prepare("UPDATE presentations SET name = 'Placeholder edited' WHERE id = ?").run(id);
+
+    t.write('Placeholder Song.txt', SONG_B);
+    const changed = await t.run([a]);
+
+    expect(changed.summary.totals).toMatchObject({ conflicts: 0, keptBoth: 1, presentations: 1 });
+    expect(changed.report?.items[0]).toMatchObject({
+      outcome: 'kept-both',
+      name: 'Placeholder Song',
+    });
+    expect(changed.report?.items[0]?.target?.id).not.toBe(id);
+    expect(t.presentations.get(id)?.groups.map((g) => g.name)).toEqual(['Verse 1', 'Chorus']);
+    expect(names(t.db)).toEqual(['Placeholder Song', 'Placeholder edited']);
+    expect((await t.run([a])).report?.items[0]?.outcome).toBe('skipped');
+  });
+
+  it('honours explicit conflict decisions for callers that supply them', async () => {
     const t = setup();
     const a = t.write('Song A.txt', SONG_A);
     const first = await t.run([a]);
@@ -353,7 +374,7 @@ describe('runImport', () => {
     t.db.prepare("UPDATE presentations SET name = 'Renamed by the operator' WHERE id = ?").run(id);
 
     t.write('Song A.txt', `${SONG_A}\n[Verse 2]\nA new verse\n`);
-    const asked = await t.run([a]);
+    const asked = await t.run([a], { onConflict: 'ask' });
     expect(asked.summary.totals).toMatchObject({ conflicts: 1, imported: 0 });
     expect(asked.report?.items[0]).toMatchObject({
       outcome: 'conflict',
