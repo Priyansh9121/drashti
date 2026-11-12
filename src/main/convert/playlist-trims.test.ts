@@ -57,6 +57,7 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     finish = resolve;
   });
   const pendingChanged = vi.fn();
+  const cancel = vi.fn(() => true);
   const rowChanged = vi.fn();
   const notice = vi.fn();
   let liveMedia: string | null = null;
@@ -76,7 +77,7 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
       Promise.resolve({ ...info, durationMs: path === output ? 2000 : info.durationMs }),
     queue,
     frameAt,
-    cancel: () => true,
+    cancel,
     pendingChanged,
     rowChanged,
     markersChanged: vi.fn(),
@@ -99,6 +100,7 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     output,
     queue,
     finish,
+    cancel,
     pendingChanged,
     rowChanged,
     notice,
@@ -271,6 +273,26 @@ describe('trimming a playlist video', () => {
       expect(x.service.list()).toEqual([]);
     });
     expect(x.repo.row(x.itemId)?.mediaId).not.toBe('original');
+  });
+
+  it('stops the first cut while its row is live and never adopts a late copy', async () => {
+    const x = await setup();
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    x.show('original');
+    expect(x.service.stop(x.itemId, 'different-media')).toMatchObject({ ok: false });
+    expect(x.service.list()).toEqual([x.itemId]);
+    expect(x.service.stop(x.itemId, 'original')).toEqual({ ok: true });
+    expect(x.cancel).toHaveBeenCalledExactlyOnceWith('copy');
+    expect(x.service.list()).toEqual([]);
+    expect(x.kept.load()).toEqual([]);
+
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(async () => {
+      await expect(stat(x.output)).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+    expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
+    expect(x.rowChanged).not.toHaveBeenCalled();
+    expect(await readFile(x.original, 'utf8')).toBe('placeholder original');
   });
 
   it('refuses to reset a video’s row while that row is live', async () => {

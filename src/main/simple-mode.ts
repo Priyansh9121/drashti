@@ -359,6 +359,7 @@ const SESSION_56_BOUNDED: readonly [InvokeChannel, SimpleBound][] = [
   [IPC.media.rowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.media.applyRowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.media.resetRowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
+  [IPC.media.stopRowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.sound.trimEdges, ([id], scope) => itsFile(scope, id)],
   [IPC.sound.setEven, ([id], scope) => itsFile(scope, id)],
   // When it ends (Session 55, Part 6), in a video row's menu.

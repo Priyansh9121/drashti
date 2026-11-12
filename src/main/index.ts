@@ -3920,6 +3920,13 @@ function start(): void {
       ? playlistTrims.reset(item.data, video.data)
       : noTrim;
   });
+  handle(IPC.media.stopRowTrim, (e, itemId, mediaId) => {
+    const item = idSchema.safeParse(itemId);
+    const video = idSchema.safeParse(mediaId);
+    return fromOperator(e) && item.success && video.success
+      ? playlistTrims.stop(item.data, video.data)
+      : noTrim;
+  });
   handle(IPC.media.preparingTrims, (e) => (fromOperator(e) ? playlistTrims.list() : []));
 
   const notSaving = { ok: false as const, message: 'Only the operator window can save a video’s part.' };
