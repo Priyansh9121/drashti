@@ -87,7 +87,7 @@ export type ToWorker =
 export type FromWorker =
   | { type: 'progress'; progress: ImportProgress }
   /** Draw this PDF's pages as pictures into `outDir` (Session 15); the answer comes as 'drawn'. */
-  | { type: 'draw-pdf'; requestId: string; pdf: string; outDir: string }
+  | { type: 'draw-pdf'; requestId: string; pdf: string; outDir: string; readPageText?: boolean }
   /** Is the stream on air or recording (Session 54, C2: no deck's movie is made then)? The answer comes as 'on-air'. */
   | { type: 'ask-on-air'; requestId: string }
   | { type: 'wrote'; runId: string; presentationId: string; replaced: boolean }

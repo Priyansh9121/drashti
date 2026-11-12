@@ -1,7 +1,7 @@
 import { basename, posix } from 'node:path';
 import type { ImportIssue } from '../../shared/import';
 import type { PictureSource } from '../../shared/pictures';
-import { tidyNotes } from '../../shared/pictures';
+import { MAX_PAGE_TEXT, tidyNotes } from '../../shared/pictures';
 import type { Converter } from './deck-converters';
 import { nameFromFile } from './formats/text';
 import type { ParsedPresentation } from './model';
@@ -31,6 +31,8 @@ export interface PptxSlide {
   notes: string;
   /** It has animations (entrances, exits, emphasis, motion), which a picture cannot show. */
   animated: boolean;
+  /** Bounded text for matching the two exports of a Keynote file. */
+  pageText?: string;
   /**
    * What it does (Session 54, C2): its transition, its click groups and its videos and sounds. Left out where the
    * slides were told by an app rather than read from a file.
@@ -115,8 +117,8 @@ function notesOf(xml: Buffer | undefined): string {
  * and whether it has animations. Throws when the file is not a PowerPoint
  * file (a damaged one, or an old .ppt renamed).
  */
-export async function readPptx(path: string): Promise<PptxSlide[]> {
-  return (await readPptxDeck(path)).slides;
+export async function readPptx(path: string, readPageText = false): Promise<PptxSlide[]> {
+  return (await readPptxDeck(path, readPageText)).slides;
 }
 
 /** 16:9 in EMU, PowerPoint's own size for a new deck: for a file that does not say. */
@@ -126,7 +128,7 @@ const WIDE: SlideSize = { cx: 12_192_000, cy: 6_858_000 };
  * A .pptx's slides, as readPptx reads them, each with what it does (Session 54, C2: its transition, its click
  * groups and its videos and sounds), and the slides' size.
  */
-export async function readPptxDeck(path: string): Promise<PptxDeck> {
+export async function readPptxDeck(path: string, readPageText = false): Promise<PptxDeck> {
   const parts = await readZipEntries(
     path,
     (name) =>
@@ -157,8 +159,10 @@ export async function readPptxDeck(path: string): Promise<PptxDeck> {
     );
     const notesPath = [...slideRels.values()].find((r) => r.type.endsWith('/notesSlide'))?.target;
     const timing = root ? descendants(root, (n) => n.name === 'p:timing') : [];
+    const pageText = root && readPageText ? textOfSlide(root) : undefined;
     return {
       hidden: root?.attrs['show'] === '0',
+      ...(pageText ? { pageText } : {}),
       notes: notesPath ? notesOf(parts.get(notesPath)) : '',
       animated: timing.some((t) => descendants(t, (n) => ANIMATIONS.has(n.name)).length > 0),
       deck: root
@@ -167,6 +171,65 @@ export async function readPptxDeck(path: string): Promise<PptxDeck> {
     };
   });
   return { size, slides };
+}
+
+function textOfSlide(root: XmlNode): string | undefined {
+  let text = '';
+  for (const paragraph of descendants(root, (node) => node.name === 'a:p')) {
+    for (const piece of paragraph.children) {
+      const words =
+        piece.name === 'a:br' ? ' ' : (piece.children.find((node) => node.name === 'a:t')?.text ?? '');
+      if (text.length + words.length + 1 > MAX_PAGE_TEXT) return undefined;
+      text += words;
+    }
+    if (text.length < MAX_PAGE_TEXT) text += ' ';
+  }
+  return text.trim();
+}
+
+function pageWords(text: string | undefined): string[] {
+  return [
+    ...new Set(
+      text
+        ?.normalize('NFKC')
+        .toLowerCase()
+        .match(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]*/gu)
+        ?.filter((word) => !/^\p{N}+$/u.test(word)) ?? [],
+    ),
+  ].sort();
+}
+
+/**
+ * Reject a count-based match only when the PDF's words identify another slide uniquely and neither set of words
+ * contains the other. A picture, repeated text or a partial extraction leaves the original count check in use.
+ */
+export function keynotePagesShifted(
+  slides: readonly PptxSlide[],
+  drawn: { total: number; pages: readonly { index: number; pageText?: string }[] },
+): boolean {
+  if (!drawn.pages.some((page) => page.pageText)) return false;
+  const indices = slides.flatMap((slide, index) =>
+    drawn.total === slides.length || !slide.hidden ? [index] : [],
+  );
+  if (indices.length !== drawn.total) return false;
+  const words = slides.map((slide) => pageWords(slide.pageText));
+  const byWords = new Map<string, number | null>();
+  for (const [index, list] of words.entries()) {
+    const key = list.join(' ');
+    if (key !== '') byWords.set(key, byWords.has(key) ? null : index);
+  }
+  return drawn.pages.some((page) => {
+    const expectedIndex = indices[page.index];
+    const expected = expectedIndex === undefined ? undefined : words[expectedIndex];
+    if (!expected?.length) return false;
+    const actual = pageWords(page.pageText);
+    const match = byWords.get(actual.join(' '));
+    if (typeof match !== 'number' || match === expectedIndex) return false;
+    if (actual.length === expected.length) return true;
+    const [shorter, longer] = actual.length < expected.length ? [actual, expected] : [expected, actual];
+    const includes = new Set(longer);
+    return shorter.some((word) => !includes.has(word));
+  });
 }
 
 /**

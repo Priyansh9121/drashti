@@ -1,9 +1,9 @@
 import { AnnotationMode, getDocument } from 'pdfjs-dist';
 import { drawEditablePdf } from './editable-main';
-import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import * as pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs';
 import type { PictureAssetKind } from '../../../shared/pictures';
-import { fitPage, inShare, tidyNotes } from '../../../shared/pictures';
+import { fitPage, inShare, MAX_PAGE_TEXT, tidyNotes } from '../../../shared/pictures';
 
 /*
  * The hidden window that draws a PDF's pages as pictures (Session 15): each
@@ -46,6 +46,32 @@ async function commentsOf(doc: PDFDocumentProxy, n: number): Promise<string> {
       .filter((text) => text.trim() !== '')
       .join('\n\n'),
   );
+}
+
+/** A small complete sample, without making text extraction a condition for drawing a page. */
+async function pageTextOf(page: PDFPageProxy): Promise<string | undefined> {
+  type TextReader = ReadableStreamDefaultReader<{ items: { str?: string }[] }>;
+  let reader: TextReader | undefined;
+  try {
+    reader = page.streamTextContent().getReader() as TextReader;
+    let text = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return text;
+      for (const { str } of value.items) {
+        if (!str) continue;
+        if (text.length + str.length + 1 > MAX_PAGE_TEXT) {
+          await reader.cancel();
+          return undefined;
+        }
+        text += str + ' ';
+      }
+    }
+  } catch {
+    return undefined;
+  } finally {
+    reader?.releaseLock();
+  }
 }
 
 async function draw(): Promise<void> {
@@ -118,8 +144,9 @@ async function draw(): Promise<void> {
       ctx.drawImage(sheet, at.x, at.y);
       const png = await canvasPng(canvas);
       const notes = await commentsOf(doc, i + 1);
+      const pageText = job.readPageText ? await pageTextOf(page) : undefined;
       page.cleanup();
-      if (!(await window.drashti.pictures.page({ index: i, png, notes }))) break;
+      if (!(await window.drashti.pictures.page({ index: i, png, notes, pageText }))) break;
     } catch {
       failed.push(i);
     }
