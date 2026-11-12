@@ -9,10 +9,12 @@ import {
   REST,
   searchAnimations,
 } from './lower-third-animations';
+import { DESIGN_MOTIONS } from './lower-third-designs';
 import { fontChoice, LOWER_THIRD_FONT_CHOICES, LOWER_THIRD_FONTS } from './lower-third-fonts';
 import { STUDIO_BOX_MOVES, studioUnitMoves } from './lower-third-moves';
 import {
   animationName,
+  BEST_LOWER_THIRD_TEMPLATES,
   CATALOGUE,
   FAMILIES,
   familyOf,
@@ -431,9 +433,23 @@ describe('the model: a lower third that hides itself, its out, its style', () =>
     expect(gone.unit(0).opacity).toBe(0);
   });
 
+  it('offers twenty curated templates and covers the picker’s directions, feels and speeds', () => {
+    expect(BEST_LOWER_THIRD_TEMPLATES).toHaveLength(20);
+    expect(new Set(BEST_LOWER_THIRD_TEMPLATES.map((template) => template.id)).size).toBe(20);
+    expect(new Set(LOWER_THIRD_TEMPLATES.map((template) => template.direction))).toEqual(
+      new Set(['left', 'right', 'up', 'down', 'centre']),
+    );
+    expect(new Set(LOWER_THIRD_TEMPLATES.map((template) => template.feel))).toEqual(
+      new Set(['quick', 'elegant', 'bold', 'calm']),
+    );
+    expect(new Set(LOWER_THIRD_TEMPLATES.map((template) => template.speed))).toEqual(
+      new Set(['quick', 'steady', 'slow']),
+    );
+  });
+
   it('templates use placeholder words only, each a lower third the library takes, from what is offered', () => {
     expect(LOWER_THIRD_TEMPLATES.length).toBeGreaterThanOrEqual(6);
-    const offeredIds = new Set(OFFERED_ANIMATIONS.map((a) => a.id));
+    const offeredIds = new Set([...OFFERED_ANIMATIONS.map((a) => a.id), ...Object.keys(DESIGN_MOTIONS)]);
     for (const t of LOWER_THIRD_TEMPLATES) {
       expect(lowerThirdInputSchema.safeParse(t.input).success, t.name).toBe(true);
       for (const line of t.input.lines.filter((l) => l.trim() !== ''))

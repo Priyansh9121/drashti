@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { animationById } from '../../../../shared/lower-third-animations';
-import { LOWER_THIRD_TEMPLATES, type LowerThirdTemplate } from '../../../../shared/lower-third-studio';
+import {
+  BEST_LOWER_THIRD_TEMPLATES,
+  LOWER_THIRD_TEMPLATES,
+  type LowerThirdTemplate,
+} from '../../../../shared/lower-third-studio';
 import { Button, IconButton } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import { Dialog } from '../../ui/Dialog';
@@ -40,7 +44,7 @@ const isIdList = (value: unknown): value is string[] =>
 function templatesIn(collection: Collection, favourites: readonly string[], recent: readonly string[]) {
   switch (collection) {
     case 'best':
-      return LOWER_THIRD_TEMPLATES.slice(0, 20);
+      return BEST_LOWER_THIRD_TEMPLATES;
     case 'all':
       return LOWER_THIRD_TEMPLATES;
     case 'favourites':

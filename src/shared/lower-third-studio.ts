@@ -6,6 +6,7 @@ import {
   LOWER_THIRD_ANIMATIONS,
   searchAnimations,
 } from './lower-third-animations';
+import { DESIGN_MOTIONS, LOWER_THIRD_DESIGNS } from './lower-third-designs';
 import type { LowerThirdMotion, LowerThirdStyle } from './lower-third-styles';
 import type { LowerThirdInput, LowerThirdLook } from './lower-thirds';
 import { DEFAULT_LOWER_THIRD_LOOK, LOWER_THIRD_SECONDS } from './lower-thirds';
@@ -525,7 +526,7 @@ const MAKINGS: readonly TemplateMaking[] = [
  * Templates to start from, with placeholder words only, each from what is offered (a choice left out of OFFERED
  * falls back: the default animation, a box, no moving background).
  */
-export const LOWER_THIRD_TEMPLATES: readonly LowerThirdTemplate[] = MAKINGS.map((m) => {
+const STUDIO_TEMPLATES: readonly LowerThirdTemplate[] = MAKINGS.map((m) => {
   const look: LowerThirdLook = {
     ...DEFAULT_LOWER_THIRD_LOOK,
     ...m.look,
@@ -544,6 +545,56 @@ export const LOWER_THIRD_TEMPLATES: readonly LowerThirdTemplate[] = MAKINGS.map(
     input: { lines: [...m.lines], look, where: 'both', animation, ...out },
   };
 });
+
+export const LOWER_THIRD_TEMPLATES: readonly LowerThirdTemplate[] = [
+  ...STUDIO_TEMPLATES,
+  ...LOWER_THIRD_DESIGNS.map(({ id, name, feel, animation, look }): LowerThirdTemplate => {
+    const { direction, kind, speed } = DESIGN_MOTIONS[animation];
+    return {
+      id,
+      name,
+      direction,
+      kind,
+      feel,
+      speed,
+      input: {
+        lines: ['Placeholder name', 'Placeholder role', ''],
+        look: { ...DEFAULT_LOWER_THIRD_LOOK, ...look, style: styleOr(look.style) },
+        where: 'both',
+        animation,
+      },
+    };
+  }),
+];
+
+const BEST_IDS = [
+  'name-title',
+  'news-band',
+  'gold-underline',
+  'midnight-bulletin',
+  'white-nameplate',
+  'blue-speaker-strip',
+  'silver-outline',
+  'copper-ribbon',
+  'emerald-labels',
+  'slate-labels',
+  'soft-blue-pill',
+  'ivory-caption',
+  'gujarati',
+  'hindi',
+  'outline',
+  'cream-ribbon',
+  'indigo-slant',
+  'mint-name-and-role',
+  'lavender-labels',
+  'charcoal-glass',
+];
+
+/** A mix of directions, speeds and looks. Fill any gaps if a design is taken out after Performance. */
+export const BEST_LOWER_THIRD_TEMPLATES: readonly LowerThirdTemplate[] = [
+  ...BEST_IDS.flatMap((id) => LOWER_THIRD_TEMPLATES.filter((template) => template.id === id)),
+  ...LOWER_THIRD_TEMPLATES.filter((template) => !BEST_IDS.includes(template.id)),
+].slice(0, 20);
 
 /** Every animation the library has that the studio does not offer (left out of OFFERED, or never in it). */
 export const NOT_OFFERED: readonly LowerThirdAnimation[] = LOWER_THIRD_ANIMATIONS.filter(
