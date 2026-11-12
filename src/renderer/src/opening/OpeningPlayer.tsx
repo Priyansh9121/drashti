@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type OpeningPlan, OPENING_TIMES, OPENING_ZOOM } from '../../../shared/opening';
 import { cx } from '../ui/cx';
 import { LitLamp } from '../ui/Mark';
+import { photoWait } from './opening-order';
 import { openingSound, type OpeningSoundPlayer } from './opening-sound';
 
 /*
@@ -17,7 +18,7 @@ import { openingSound, type OpeningSoundPlayer } from './opening-sound';
  * frame. Changing the motion setting cancels the zoom without moving the end of the fade.
  */
 
-/** The longest an unreadable photo can hold up the opening. */
+/** The longest an unreadable photo can hold up the opening, once nothing else holds it (opening-order.ts). */
 const READY_WAIT = 600;
 /** The zoom is centred on the photo's upper middle, so its subject stays where it is. */
 const ORIGIN = '50% 35%';
@@ -107,34 +108,38 @@ export function OpeningPlayer({
   const ready = selected !== null;
   const showPhoto = photo !== null && selected?.decoded !== false;
 
+  // The photo decoded (or found unreadable) and the sound made, from the start, its hold too; the first word kept.
   useLayoutEffect(() => {
     const image = ref.current?.querySelector<HTMLImageElement>('[data-opening-photo]');
     const made = soundUrl ? openingSound(soundUrl) : null;
     sound.current = made;
     let cancelled = false;
-    let settled = false;
-    let decoded = false;
-    const picture = image?.decode().then(
-      () => {
-        decoded = true;
-      },
-      () => undefined,
-    );
-    const settle = () => {
-      if (cancelled || settled) return;
-      settled = true;
-      clearTimeout(timer);
-      setPrepared({ photo, decoded });
-    };
-    const timer = setTimeout(settle, READY_WAIT);
-    void (picture ?? Promise.resolve()).then(settle);
+    const decoding = image
+      ? image.decode().then(
+          () => true,
+          () => false,
+        )
+      : Promise.resolve(false);
+    void decoding.then((decoded) => {
+      if (!cancelled) setPrepared((was) => (was?.photo === photo ? was : { photo, decoded }));
+    });
     return () => {
       cancelled = true;
-      clearTimeout(timer);
       made?.stop();
       if (sound.current === made) sound.current = null;
     };
   }, [photo, soundUrl]);
+  // Not ready, it waits READY_WAIT at most, counted once nothing else holds it: then the lamp lights in its place.
+  useEffect(() => {
+    const wait = photoWait(held, READY_WAIT);
+    if (ready || wait === null) return;
+    const timer = setTimeout(() => {
+      setPrepared((was) => (was?.photo === photo ? was : { photo, decoded: false }));
+    }, wait);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [held, photo, ready]);
 
   useLayoutEffect(() => {
     const root = ref.current;

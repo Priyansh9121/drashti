@@ -44,9 +44,9 @@ export function stillAfterHold(f: Pick<StartFacts, 'waitedOut' | 'screensWarming
 
 /**
  * How long waiting for its photo may still hold the opening up before the lamp lights in its place (ms, from now), or
- * null for no limit yet.
+ * null for no limit yet: while something else holds it, the photo holds nothing up, and the window starting underneath
+ * can keep the page busy for longer than the limit (CI's Mac, Session 57).
  */
 export function photoWait(held: boolean, limitMs: number): number | null {
-  void held;
-  return limitMs;
+  return held ? null : limitMs;
 }
