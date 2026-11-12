@@ -16,6 +16,7 @@ import {
   slideEditorClosed,
   slideEditorWindow,
 } from './helpers';
+import { importItem } from './import-details';
 import { makeTestVideo } from './test-media';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
@@ -157,13 +158,19 @@ test('lyrics with lines in two scripts come in as a kirtan, and the editor calls
   writeFileSync(file, '[Verse]\nનમૂનાની પંક્તિ\nNamūnānī pankti\n\nબીજી પંક્તિ\nBījī pankti\n');
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('presentation-list'), [file]);
-  // The report says what was mapped.
-  const report = win.getByTestId('import-report');
-  // Under "Imported with notes" (it is listed again under "Imported").
-  await expect(report.getByTestId('report-item').first()).toContainText(
-    'A kirtan: its lines are Gujarati (every slide) and Transliteration (every slide), each line’s language going by its script.',
-  );
-  await report.getByRole('button', { name: 'Close' }).first().click();
+  await expect
+    .poll(() => importItem(win, file))
+    .toMatchObject({
+      outcome: 'imported',
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'kirtan',
+          message:
+            'A kirtan: its lines are Gujarati (every slide) and Transliteration (every slide), each line’s language going by its script.',
+        }),
+      ]),
+    });
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
   const id = await open(win, 'Placeholder Two Scripts');
   expect(await tracks(win, id)).toEqual([
     { gu: ['નમૂનાની પંક્તિ'], translit: ['Namūnānī pankti'] },

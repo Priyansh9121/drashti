@@ -7,6 +7,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import { dropboxStandIn, fileLink } from './dropbox-stand-in';
 import type { PageGlobals } from './helpers';
 import { launchApp, openLibrary, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import { pasteLink } from './paste-link';
 import { makeTestTone } from './test-media';
 
 /*
@@ -176,11 +177,11 @@ test('Audio lists its audio playlists directly, with no Music heading or ? of it
     await expect(empty).toContainText('drop');
   }
   await expectNoSeriousA11yIssues(win, 'Audio with no audio playlists');
-  // From a Link…: the link dialog, for a sound.
+  // From a Link… opens the paste field, for a sound.
   await win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
-  await expect(win.getByTestId('link-kind-youtube')).toBeVisible();
+  await expect(win.getByTestId('link-text')).toBeVisible();
   await win.keyboard.press('Escape');
-  await expect(win.getByTestId('link-kind-youtube')).toHaveCount(0);
+  await expect(win.getByTestId('link-text')).toHaveCount(0);
   // Create playlist: one, named in place, then listed straight under Audio.
   await win.getByTestId('music-empty').getByRole('button', { name: 'Create playlist' }).click();
   const name = win.getByRole('textbox', { name: 'Name of the audio playlist' });
@@ -214,14 +215,8 @@ test('From a Link… in Audio: a sound from a Dropbox link goes into a new audio
     await operatorReady(win);
     await win.setViewportSize({ width: 1280, height: 720 });
     await win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
-    const dialog = win.getByTestId('link-dialog');
-    await expect(dialog).toBeVisible();
-    await win.getByTestId('link-kind-dropbox').click();
-    await win.getByTestId('link-text').fill(fileLink('toneAAAAAAAAAAA', 'Placeholder link tone.wav'));
-    await expect(win.getByTestId('link-name')).toHaveText('Placeholder link tone.wav');
-    // Where it goes: into Audio, never a playlist of the slides.
-    await expect(win.getByTestId('link-into-audio')).toContainText('a new audio playlist');
-    await win.getByTestId('link-download').click();
+    await pasteLink(win, fileLink('toneAAAAAAAAAAA', 'Placeholder link tone.wav'));
+    await expect(win.getByTestId('import-report')).toHaveCount(0);
     // Downloaded and imported: in a new audio playlist, listed straight under Audio.
     await expect
       .poll(

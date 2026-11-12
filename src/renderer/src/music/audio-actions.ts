@@ -1,5 +1,4 @@
 import type { DragEvent } from 'react';
-import { itemsMadeBy } from '../../../shared/import-items';
 import type { NewItem } from '../../../shared/playlists';
 import { useConvert } from '../library/convert-store';
 import { copyFor } from '../library/converting';
@@ -63,11 +62,7 @@ export async function addSoundsMade(playlistId: string | null, made: readonly Ne
 
 /** Files from the computer: imported as any import is, then the sounds among them into the audio playlist. */
 export async function importSoundsInto(playlistId: string | null, paths: readonly string[]): Promise<void> {
-  if (paths.length === 0) return;
-  const result = await importPaths([...paths], undefined, { report: false });
-  if (!result?.ok) return;
-  const report = await window.drashti.library.getImportReport(result.run.id);
-  await addSoundsMade(playlistId, itemsMadeBy(report?.items ?? [], [...paths]));
+  await importPaths([...paths], undefined, (made) => addSoundsMade(playlistId, made));
 }
 
 /** Import (Audio's +): the system's dialog for sounds, then into the audio playlist shown (a new one when none). */
