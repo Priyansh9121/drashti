@@ -2875,6 +2875,8 @@ function start(): void {
   let eventsStreamWas: StreamStatus | null = null;
   let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
   let conversionActivityChanged: (() => void) | undefined;
+  // Edit slides' PDF reading waiting for the show (Session 57): each wait's check, told when the stream changes.
+  const pdfReadWaits = new Set<() => void>();
   const countStreams = streamCounter((kind) => behind?.service.count(kind));
   const streamKeys = new StreamKeyStore(
     join(app.getPath('userData'), 'stream-keys.json'),
@@ -2916,6 +2918,7 @@ function start(): void {
     statusChanged: (status) => {
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
+      for (const check of [...pdfReadWaits]) check();
       eventsOut.emit(streamEvents(eventsStreamWas, status));
       eventsStreamWas = status;
       // Each stream and recording started, counted for the Access List (Session 54): never what.
@@ -4124,6 +4127,7 @@ function start(): void {
   handle(IPC.slideEditor.fontFamilies, (event) =>
     isLetIn() && editorWindow.isPage(event.sender) ? systemFontFamilies() : [],
   );
+  const pdfReadIdle = () => !streaming.inUse() && nothingUp(engine.snapshot().state.layers);
   const slideEdits = registerSlidesIpc({
     choosePdfFile: async (e) => {
       const parent = BrowserWindow.fromWebContents(e.sender);
@@ -4152,6 +4156,27 @@ function start(): void {
       const result = await documentReaders.read(request);
       if (!result.ok && result.retainOutput) sourceOutputQuarantined = true;
       return result;
+    },
+    // After the requested PDF pages have opened, the reading behind ends its job whenever the show needs the computer
+    // (anything up, or the stream on air or recording), and waits here, outside every queue, until the show is idle.
+    showBusy: () => !pdfReadIdle(),
+    waitForPdfIdle: (signal) => {
+      if (signal.aborted || pdfReadIdle()) return Promise.resolve(!signal.aborted);
+      return new Promise<boolean>((resolve) => {
+        const finish = (allowed: boolean) => {
+          offEngine();
+          pdfReadWaits.delete(check);
+          signal.removeEventListener('abort', stop);
+          resolve(allowed);
+        };
+        const check = () => {
+          if (pdfReadIdle()) finish(true);
+        };
+        const stop = () => finish(false);
+        const offEngine = engine.onChange(check);
+        pdfReadWaits.add(check);
+        signal.addEventListener('abort', stop, { once: true });
+      });
     },
     sourceWrite: sourceWrite(libraryDb, () => imports.giveWay()),
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),

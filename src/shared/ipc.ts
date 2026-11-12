@@ -73,6 +73,8 @@ import type {
   EditDoc,
   EditSlidesOpen,
   EditSlidesResult,
+  EditSourceRequest,
+  EditSourceUpdate,
   SaveSlidesResult,
   SlidesSaved,
 } from './slide-edit';
@@ -701,6 +703,7 @@ export const IPC = {
     open: 'slideeditor:open',
     /** main -> the editor: open this presentation's slides (the window was open already). */
     edit: 'slideeditor:edit',
+    sourcePrepared: 'slideeditor:source-prepared',
     dirty: 'slideeditor:dirty',
     close: 'slideeditor:close',
     /** main -> the editor: its window was asked to close with changes not saved (ask first). */
@@ -1328,7 +1331,10 @@ export interface InvokeContract {
   [IPC.playlists.share]: { args: [playlistId: string, on: boolean]; result: PlaylistResult };
   [IPC.playlists.setRepeat]: { args: [playlistId: string, settings: RepeatSettings]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
-  [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
+  [IPC.library.slidesForEdit]: {
+    args: [presentationId: string, source?: EditSourceRequest];
+    result: EditSlidesResult;
+  };
   [IPC.library.linkPdfPage]: {
     args: [
       presentationId: string,
@@ -1725,6 +1731,7 @@ export interface EventContract {
   [IPC.lowerThirds.edit]: NonNullable<StudioOpen>;
   [IPC.lowerThirds.askClose]: null;
   [IPC.slideEditor.edit]: EditSlidesOpen;
+  [IPC.slideEditor.sourcePrepared]: EditSourceUpdate;
   [IPC.slideEditor.askClose]: null;
   [IPC.slideEditor.edited]: SlidesSaved;
   [IPC.wallpapers.changed]: WallpapersView;
