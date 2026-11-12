@@ -404,6 +404,33 @@ describe('the model: a lower third that hides itself, its out, its style', () =>
     });
   });
 
+  it('animates the design accent, panel, name and role at different times', () => {
+    const template = LOWER_THIRD_TEMPLATES.find((t) => t.id === 'gold-underline');
+    expect(template).toBeDefined();
+    const animation = animationById(template?.input.animation ?? '');
+    const length = animationLength(animation, 'in', 2);
+    const out = animationLength(animation, 'out', 2);
+    const beginning = animationFrame(animation, 'in', 0, 2);
+    const accentOnly = animationFrame(animation, 'in', length * 0.15, 2);
+    const nameBeforeRole = animationFrame(animation, 'in', length * 0.5, 2);
+    const atRest = animationFrame(animation, 'in', length, 2);
+    expect(beginning).toMatchObject({ accent: { opacity: 0 }, panel: { opacity: 0 } });
+    expect(accentOnly).toMatchObject({ accent: { opacity: 1 } });
+    expect(accentOnly.unit(0).opacity).toBe(0);
+    expect(nameBeforeRole.unit(0).opacity).toBeGreaterThan(0);
+    expect(nameBeforeRole.unit(0).transform).toContain('translate');
+    expect(nameBeforeRole.unit(1).opacity).toBe(0);
+    expect(atRest).toMatchObject({ accent: REST, panel: REST });
+    expect(atRest.unit(0)).toEqual(REST);
+    expect(atRest.unit(1)).toEqual(REST);
+    const leaving = animationFrame(animation, 'out', out * 0.5, 2);
+    expect(leaving.unit(0)).toEqual(nameBeforeRole.unit(0));
+    expect(leaving.unit(1).opacity).toBe(0);
+    const gone = animationFrame(animation, 'out', out, 2);
+    expect(gone).toMatchObject({ accent: { opacity: 0 }, panel: { opacity: 0 } });
+    expect(gone.unit(0).opacity).toBe(0);
+  });
+
   it('templates use placeholder words only, each a lower third the library takes, from what is offered', () => {
     expect(LOWER_THIRD_TEMPLATES.length).toBeGreaterThanOrEqual(6);
     const offeredIds = new Set(OFFERED_ANIMATIONS.map((a) => a.id));
