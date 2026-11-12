@@ -6,25 +6,12 @@ import { deckOnWindows } from '../deck-converters';
 import type * as DeckConverters from '../deck-converters';
 import { makeTestPptx } from '../testing/make-pptx';
 import { runDeck } from './deck-flow';
-import type * as Bake from './bake';
 
-const legacy = vi.hoisted(() => ({ movieStartsBeforePictures: false }));
-vi.mock('./bake', async (original) => {
-  const actual = await original<typeof Bake>();
-  return {
-    ...actual,
-    bakeDeck: (baker, request, options) => {
-      const ready = options.pdfReady;
-      if (!legacy.movieStartsBeforePictures || !ready) return actual.bakeDeck(baker, request, options);
-      return actual.bakeDeck(baker, request, {
-        ...options,
-        pdfReady: (pdf, deck) => {
-          void ready(pdf, deck);
-        },
-      });
-    },
-  } satisfies typeof actual;
-});
+/*
+ * Windows: a deck's pictures are in the library, with the slides that move marked Preparing, before PowerPoint starts
+ * making the movie (Session 57, C2 part 3). The clock here is the test's own: fixed step times (the PDF 40, the drawing
+ * 100, the movie 500), so it proves the order, not how long a real Windows PowerPoint takes.
+ */
 
 vi.mock('../deck-converters', async (original) => ({
   ...(await original<typeof DeckConverters>()),
@@ -38,19 +25,7 @@ vi.mock('./timed-copy', () => ({
   },
 }));
 
-it.each([
-  {
-    name: 'previous Windows scheduling',
-    baseline: true,
-    expected: { firstPicturesMs: 640, movieStartMs: 40, movieDoneMs: 540 },
-  },
-  {
-    name: 'Windows pictures visible before the movie',
-    baseline: false,
-    expected: { firstPicturesMs: 140, movieStartMs: 140, movieDoneMs: 640 },
-  },
-])('$name', async ({ name, baseline, expected }) => {
-  legacy.movieStartsBeforePictures = baseline;
+it('Windows pictures visible before the movie, each slide its own picture in order', async () => {
   const work = await mkdtemp(join(tmpdir(), 'drashti-windows-preview-'));
   const file = join(work, 'Placeholder deck.ppt');
   let wakeDrawing: () => void = () => undefined;
@@ -72,7 +47,6 @@ it.each([
     );
     let elapsed = 0;
     let firstPicturesMs = -1;
-    let firstPicturesWallMs = -1;
     let movieStartMs = -1;
     let movieDoneMs = -1;
     vi.mocked(deckOnWindows).mockImplementation(async (job) => {
@@ -89,10 +63,8 @@ it.each([
       }
       return { ok: true };
     });
-    const from = performance.now();
     const early = vi.fn<NonNullable<Parameters<typeof runDeck>[1]['early']>>(() => {
       firstPicturesMs = elapsed;
-      firstPicturesWallMs = Math.round(performance.now() - from);
       return Promise.resolve();
     });
     running = runDeck(
@@ -134,15 +106,29 @@ it.each([
     await new Promise<void>((resolve) => setImmediate(resolve));
     finishDrawing();
     expect((await running).kind).toBe('pictures');
-    const previews = early.mock.calls[0]?.[0].groups.flatMap((group) => group.slides);
-    expect(previews?.map((slide) => [slide.elements[0]?.kind, slide.deck?.preparing === true])).toEqual([
-      ['image', true],
-      ['image', false],
+    const parsed = early.mock.calls[0]?.[0];
+    const pictureOf = (mediaId: string) =>
+      basename(parsed?.media[Number(mediaId.slice(mediaId.lastIndexOf(':') + 1))]?.originalPath ?? '');
+    expect(
+      parsed?.groups
+        .flatMap((group) => group.slides)
+        .map((slide) => {
+          const picture = slide.elements[0];
+          return [
+            picture?.kind,
+            picture?.kind === 'image' ? pictureOf(picture.mediaId) : null,
+            slide.deck?.preparing === true,
+          ];
+        }),
+    ).toEqual([
+      ['image', 'Placeholder-0.png', true],
+      ['image', 'Placeholder-1.png', false],
     ]);
-    process.stdout.write(
-      `Windows PowerPoint preview unit clock (ms) ${JSON.stringify({ platform: process.platform, name, firstPicturesMs, movieStartMs, movieDoneMs, firstPicturesWallMs })}\n`,
-    );
-    expect({ firstPicturesMs, movieStartMs, movieDoneMs }).toEqual(expected);
+    expect({ firstPicturesMs, movieStartMs, movieDoneMs }).toEqual({
+      firstPicturesMs: 140,
+      movieStartMs: 140,
+      movieDoneMs: 640,
+    });
   } finally {
     finishDrawing();
     await running;
@@ -153,7 +139,6 @@ it.each([
 // The part 3 review's LOW-2 (Session 57): cancelling, or going on air, while the pictures are drawn stops the Windows
 // path before it writes the movie's timed copy or asks PowerPoint for the movie.
 it('a cancel while the pictures are drawn writes no timed copy for the movie and asks for no movie', async () => {
-  legacy.movieStartsBeforePictures = false;
   const work = await mkdtemp(join(tmpdir(), 'drashti-windows-preview-cancel-'));
   const file = join(work, 'Placeholder deck.ppt');
   let wakeDrawing: () => void = () => undefined;

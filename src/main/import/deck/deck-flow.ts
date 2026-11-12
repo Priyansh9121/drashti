@@ -171,8 +171,9 @@ export async function runDeck(
   let drawnLast: PicturesResult | null = null;
   for (const baker of bakers) {
     const work = await mkdtemp(join(request.work, 'bake-'));
-    // Every shown slide's picture, drawn as soon as the app has saved the PDF, while the movie is made; and (Session 56)
-    // the slides written as those pictures at once, the ones that move marked as preparing.
+    // Every shown slide's picture, drawn as soon as the app has saved the PDF (while the movie is made; on Windows before
+    // PowerPoint starts it, Session 57); and (Session 56) the slides written as those pictures at once, the ones that
+    // move marked as preparing.
     const early: { drawing: Promise<Drawn | null> | null; written: Promise<void> | null } = {
       drawing: null,
       written: null,
