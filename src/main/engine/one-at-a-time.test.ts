@@ -121,18 +121,17 @@ function setup() {
       allowsOverrun: false,
     },
   ]);
-  /** Both covers on, as the operator turns them on. */
   const cover = () => {
-    engine.dispatch({ type: 'setWallpaper', on: true });
     engine.dispatch({ type: 'setBlackout', on: true });
-    expect(covers(engine.current)).toEqual({ blackout: true, wallpaper: true });
+    expect(covers(engine.current)).toEqual(BLACKOUT);
   };
   return { engine, transport, elapse, cover, now: () => clock };
 }
 
 const covers = (s: EngineState) => ({ blackout: s.blackout, wallpaper: s.wallpaper });
 const OFF = { blackout: false, wallpaper: false };
-const ON = { blackout: true, wallpaper: true };
+const BLACKOUT = { blackout: true, wallpaper: false };
+const WALLPAPER = { blackout: false, wallpaper: true };
 
 const setVideo = (mediaId: string): EngineCommand => ({
   type: 'setBackground',
@@ -146,6 +145,33 @@ function backgroundVideo(s: EngineState): string | null {
   if (bg?.kind === 'media' && bg.media === 'video') return bg.mediaId;
   return bg?.kind === 'input' ? bg.inputId : null;
 }
+
+describe('LIVE’s Wallpaper and Black-out replace each other', () => {
+  it('switches covers in one change and reveals the same slide when the last cover comes off', () => {
+    const { engine } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+    const layers = engine.current.layers;
+    engine.dispatch({ type: 'toggleWallpaper' });
+    expect(covers(engine.current)).toEqual(WALLPAPER);
+
+    const rev = engine.rev;
+    engine.dispatch({ type: 'toggleBlackout' });
+    expect(covers(engine.current)).toEqual(BLACKOUT);
+    expect(engine.rev).toBe(rev + 1);
+    engine.dispatch({ type: 'toggleWallpaper' });
+    expect(covers(engine.current)).toEqual(WALLPAPER);
+    engine.dispatch({ type: 'toggleWallpaper' });
+
+    expect(covers(engine.current)).toEqual(OFF);
+    expect(engine.current.layers).toBe(layers);
+  });
+
+  it('recovers Black-out from a show saved with both covers', () => {
+    const { engine } = setup();
+    engine.restore({ slide: null, background: null, blackout: true, wallpaper: true });
+    expect(covers(engine.current)).toEqual(BLACKOUT);
+  });
+});
 
 describe('LIVE shows one thing at a time (Session 56): a video going up takes the covers off', () => {
   const ways: { name: string; run: (s: ReturnType<typeof setup>) => void; video: string }[] = [
@@ -243,7 +269,7 @@ describe('LIVE shows one thing at a time (Session 56): a video going up takes th
     cover();
     engine.dispatch(play('i-tune'));
     expect(engine.current.layers.audio?.mediaId).toBe('tune');
-    expect(covers(engine.current)).toEqual(ON);
+    expect(covers(engine.current)).toEqual(BLACKOUT);
   });
 });
 
@@ -319,7 +345,7 @@ describe('LIVE shows one thing at a time (Session 56): the engine by itself neve
     cover();
     elapse(4000);
     expect(engine.current.layers.slide?.slide.id).toBe('t2');
-    expect(covers(engine.current)).toEqual(ON);
+    expect(covers(engine.current)).toEqual(BLACKOUT);
     expect(engine.current.layers.background).toBeNull();
   });
 
@@ -459,7 +485,7 @@ describe('LIVE shows one thing at a time (Session 56): a slide or a picture put 
     engine.dispatch({ type: 'showMessage', message: { id: 'm1', text: 'Placeholder message' } });
     engine.dispatch({ type: 'clearLayer', layer: 'slide' });
     engine.dispatch({ type: 'clearAll' });
-    expect(covers(engine.current)).toEqual(ON);
+    expect(covers(engine.current)).toEqual(BLACKOUT);
   });
 
   it('a slide moving on by itself leaves the covers on', () => {
@@ -468,6 +494,6 @@ describe('LIVE shows one thing at a time (Session 56): a slide or a picture put 
     cover();
     elapse(4000);
     expect(engine.current.layers.slide?.slide.id).toBe('t2');
-    expect(covers(engine.current)).toEqual(ON);
+    expect(covers(engine.current)).toEqual(BLACKOUT);
   });
 });
