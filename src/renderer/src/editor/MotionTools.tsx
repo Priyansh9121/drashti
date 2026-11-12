@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { type DeckEffect, type DeckSlide, stepCount } from '../../../shared/deck';
 import type { ElementMotion } from '../../../shared/model';
 import { elementMotionSchema } from '../../../shared/model-schema';
 import { hasElementMotion } from '../../../shared/element-motion';
@@ -72,12 +73,55 @@ function Seconds({
   );
 }
 
+const IMPORTED_EFFECTS: Record<DeckEffect['kind'], string> = {
+  appear: 'Appear',
+  fade: 'Fade',
+  fly: 'Fly',
+  wipe: 'Wipe',
+  zoom: 'Zoom',
+  spin: 'Spin',
+  pulse: 'Pulse',
+};
+
+function ImportedMotion({ deck }: { deck: DeckSlide }) {
+  const clicks = stepCount(deck) - 1;
+  const effects = deck.motion?.effects ?? [];
+  return (
+    <>
+      <Divider />
+      <Cluster name="PowerPoint animations">
+        <div className="max-w-52 space-y-1 text-xs text-muted" data-testid="imported-motion">
+          <p>{clicks === 1 ? '1 click' : `${String(clicks)} clicks`}</p>
+          {effects.length > 0 && (
+            <ol aria-label="PowerPoint animation order" className="max-h-16 overflow-y-auto">
+              {effects.map((effect, index) => (
+                <li key={index}>
+                  {effect.step === 0 ? 'With the slide' : `Click ${String(effect.step)}`} ·{' '}
+                  {IMPORTED_EFFECTS[effect.kind]}
+                </li>
+              ))}
+            </ol>
+          )}
+          {deck.motion?.approximate && (
+            <p>
+              {deck.steps.length
+                ? 'This slide keeps PowerPoint’s video until you edit it.'
+                : 'This slide uses the closest effects Drashti can play.'}
+            </p>
+          )}
+        </div>
+      </Cluster>
+    </>
+  );
+}
+
 export function MotionTools() {
   const doc = useEditor((s) => s.doc);
   const slideId = useEditor((s) => s.slideId);
   const ids = useEditor((s) => s.selection);
   const preview = useEditor((s) => s.previewAt);
   const slide = doc ? findSlide(doc, slideId) : undefined;
+  if (slide?.deck?.motion) return <ImportedMotion deck={slide.deck} />;
   const selected = slide?.elements.filter((el) => ids.includes(el.id)) ?? [];
   const disabled = !selected.length || Boolean(slide?.deck);
   const update = (phase: Phase, field: 'kind' | 'delayMs' | 'durationMs', value: string | number) => {

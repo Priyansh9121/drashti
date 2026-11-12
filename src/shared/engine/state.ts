@@ -69,7 +69,8 @@ import type { CaptionsShown } from '../captions';
  */
 // 25 (Part 17b): native normalized vector paths travel with slides to every player.
 // 26 adds private live captions; 27 reserves the offline helpers’ version. Each additive predecessor reads whole.
-export const ENGINE_STATE_VERSION = 27;
+// 28 carries PowerPoint's editable click effects and native transitions to every screen.
+export const ENGINE_STATE_VERSION = 28;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -81,6 +82,7 @@ export const ENGINE_STATE_VERSION = 27;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
+    version === 27 ||
     version === 26 ||
     version === 25 ||
     version === 24 ||

@@ -86,8 +86,12 @@ function fileName(label: string, part: string, fallback: string): string {
 
 /** Media references for the presentation, each file once. */
 class MediaRefs {
-  readonly list: ParsedMediaRef[] = [];
   private readonly at = new Map<string, number>();
+
+  constructor(readonly list: ParsedMediaRef[] = []) {
+    for (const [index, media] of list.entries()) this.at.set(media.originalPath, index);
+  }
+
   ref(
     path: string,
     kind: ParsedMediaRef['kind'],
@@ -193,6 +197,46 @@ function clipOf(m: PptxMedia, durationMs: number | null): { startMs: number; end
   const endMs =
     m.trim.endMs > 0 && durationMs !== null ? Math.max(m.trim.startMs + 1, durationMs - m.trim.endMs) : null;
   return { startMs: m.trim.startMs, endMs };
+}
+
+/** A deck's own media retains the same trims, poster, fades and across-slide rules in either playback path. */
+function sourceMedia(
+  m: PptxMedia,
+  taken: Taken,
+  refs: MediaRefs,
+  posters: ReadonlyMap<string, string>,
+  sourcePath: string,
+  start: DeckMedia['start'],
+  step: (group: number) => number,
+  keynote: KeynoteMedia | null = null,
+): DeckMedia {
+  const clip = clipOf(m, taken.durationMs);
+  const mediaId = refs.ref(
+    taken.path,
+    m.kind,
+    m.part ? `${sourcePath}#${m.part}` : taken.path,
+    clip ? { startMs: clip.startMs, endMs: clip.endMs, markers: [] } : undefined,
+  );
+  const poster = m.poster ? posters.get(m.poster) : undefined;
+  return {
+    kind: m.kind,
+    mediaId,
+    box: m.box,
+    ...(poster ? { posterId: refs.ref(poster, 'image', `${sourcePath}#${m.poster ?? ''}`) } : {}),
+    ...(clip ? { clip } : {}),
+    loop: keynote?.loop ?? m.loop,
+    volume: keynote?.volume ?? m.volume,
+    ...(m.muted ? { muted: true } : {}),
+    ...(m.fadeInMs > 0 ? { fadeInMs: m.fadeInMs } : {}),
+    ...(m.fadeOutMs > 0 ? { fadeOutMs: m.fadeOutMs } : {}),
+    start,
+    ...(m.kind === 'audio' && m.acrossSlides
+      ? { acrossSlides: m.acrossSlides, ...(m.name ? { name: m.name } : {}) }
+      : {}),
+    ...(m.hideWhenStopped ? { hideWhenStopped: true } : {}),
+    ...(m.enterGroup !== null ? { enterStep: step(m.enterGroup) } : {}),
+    ...(m.exitGroup !== null ? { exitStep: step(m.exitGroup) } : {}),
+  };
 }
 
 const frameOf = (box: PptxMedia['box'], width: number, height: number) => ({
@@ -401,16 +445,6 @@ export async function bakedPresentation(
         baked.baker === 'keynote' && m.acrossSlides === null
           ? keynoteFor(m, planned.index + 1, baked.keynoteMedia)
           : null;
-      const clip = clipOf(m, taken.durationMs);
-      if (clip) trimmed++;
-      const mediaId = refs.ref(
-        taken.path,
-        m.kind,
-        m.part ? `${sourcePath}#${m.part}` : taken.path,
-        clip ? { startMs: clip.startMs, endMs: clip.endMs, markers: [] } : undefined,
-      );
-      const loop = told ? told.loop : m.loop;
-      const volume = told ? told.volume : m.volume;
       // A sound set to play across slides (Session 54): the deck's own, with its slide or at its click, playing on
       // across its slides from the audio layer; one only a click on it starts stays on its slide.
       const isAcross = m.kind === 'audio' && m.acrossSlides !== null;
@@ -427,27 +461,19 @@ export async function bakedPresentation(
         const stepFrom = cut?.steps[step]?.fromMs ?? groupAt;
         start = { step, offsetMs: Math.max(0, Math.round(groupAt - stepFrom + m.start.offsetMs)) };
       }
-      const poster = m.poster ? posters.get(m.poster) : undefined;
-      deckMedia.push({
-        kind: m.kind,
-        mediaId,
-        box: m.box,
-        ...(poster ? { posterId: refs.ref(poster, 'image', `${sourcePath}#${m.poster ?? ''}`) } : {}),
-        ...(clip ? { clip } : {}),
-        loop,
-        volume,
-        ...(m.muted ? { muted: true } : {}),
-        ...(m.fadeInMs > 0 ? { fadeInMs: m.fadeInMs } : {}),
-        ...(m.fadeOutMs > 0 ? { fadeOutMs: m.fadeOutMs } : {}),
+      const entry = sourceMedia(
+        m,
+        taken,
+        refs,
+        posters,
+        sourcePath,
         start,
-        ...(isAcross && m.acrossSlides
-          ? { acrossSlides: m.acrossSlides, ...(m.name ? { name: m.name } : {}) }
-          : {}),
-        ...(m.hideWhenStopped ? { hideWhenStopped: true } : {}),
-        // Shown only from its entrance and until its exit, where the deck animates it in or out (C review).
-        ...(m.enterGroup !== null ? { enterStep: stepOfGroup(d?.groups ?? [], m.enterGroup) } : {}),
-        ...(m.exitGroup !== null ? { exitStep: stepOfGroup(d?.groups ?? [], m.exitGroup) } : {}),
-      });
+        (group) => stepOfGroup(d?.groups ?? [], group),
+        told,
+      );
+      if (entry.clip) trimmed++;
+      deckMedia.push(entry);
+      const { mediaId, loop, volume } = entry;
       if (m.kind === 'video') {
         videos++;
         const element: MediaElement = {
@@ -862,6 +888,65 @@ export function noAppIssue(d: { media: number }): ImportIssue {
  * and volume (its trims as the file's own start and end points), and a sound that starts with its slide as the
  * slide's sound. `pages` are the pictures' slides in order, one per shown slide. Returns the media refs to add.
  */
+export async function addNativeDeckMedia(
+  parsed: ParsedPresentation,
+  deck: PptxDeck,
+  deckFile: string,
+  sourcePath: string,
+  work: string,
+  ffmpeg: string | null,
+  deckDir: string,
+  indices: readonly number[],
+): Promise<void> {
+  const slides = parsed.groups.flatMap((group) => group.slides);
+  const active = indices.filter((_, i) => slides[i]?.deck?.steps.length === 0);
+  if (
+    !active.some((index) => {
+      const page = deck.slides[index]?.deck;
+      return page && (page.media.length > 0 || page.transition?.sound);
+    })
+  )
+    return;
+  const { media, posters, sounds } = await takeMedia(deckFile, deckDir, deck.slides, active, work, ffmpeg);
+  const refs = new MediaRefs(parsed.media);
+  for (const [n, index] of indices.entries()) {
+    const slide = slides[n];
+    const source = deck.slides[index]?.deck;
+    if (!slide?.deck?.motion || slide.deck.steps.length > 0 || !source) continue;
+    const target = slide.deck;
+    const step = (group: number) => stepOfGroup(source.groups, group);
+    for (const m of source.media) {
+      const taken = media.get(m.part ?? m.link ?? '');
+      if (!taken) continue;
+      const start: DeckMedia['start'] =
+        'clicked' in m.start
+          ? { clicked: true }
+          : { step: step(m.start.group), offsetMs: Math.round(m.start.offsetMs) };
+      const entry = sourceMedia(m, taken, refs, posters, sourcePath, start, step);
+      target.media.push(entry);
+      if (m.kind !== 'video') continue;
+      const poster = slide.elements.find((el) => el.kind === 'image' && el.sourceShapeId === m.shapeId);
+      const video: MediaElement = {
+        id: poster?.id ?? `deck-video-${target.media.length}`,
+        sourceShapeId: m.shapeId,
+        ...(poster?.sourceGroupIds ? { sourceGroupIds: poster.sourceGroupIds } : {}),
+        kind: 'video',
+        frame: poster?.frame ?? frameOf(m.box, parsed.width, parsed.height),
+        fit: 'stretch',
+        mediaId: entry.mediaId,
+        ...(entry.loop ? { loop: true } : {}),
+        ...(entry.muted ? { volume: 0 } : entry.volume < 1 ? { volume: entry.volume } : {}),
+      };
+      if (poster) slide.elements = slide.elements.map((el) => (el === poster ? video : el));
+      else slide.elements.push(video);
+    }
+    const sound = source.transition?.sound?.part;
+    const file = sound ? sounds.get(sound) : undefined;
+    if (file && target.transition)
+      target.transition.soundId = refs.ref(file, 'audio', `${sourcePath}#${sound}`);
+  }
+}
+
 export async function addDeckMedia(
   parsed: ParsedPresentation,
   deck: PptxDeck,

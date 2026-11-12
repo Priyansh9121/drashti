@@ -138,6 +138,7 @@ describe('PowerPoint slide transitions', () => {
     expect(shown?.transition).toEqual(wipe);
     expect(shown?.stepAt).toBe((shown?.shownAt ?? 0) + 650);
 
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
     engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 1 });
     const jump = engine.current.layers.slide;
     expect(jump?.transition).toBeUndefined();
