@@ -16,7 +16,9 @@ describe('the deck PowerPoint’s own movie is compared against', () => {
     const file = await writeComparisonDeck(dir);
     const deck = await readPptxDeck(file);
     expect(deck.slides).toHaveLength(COMPARISON_SLIDES.length);
-    expect(COMPARISON_SLIDES.map((slide) => slide.marker)).toEqual(COMPARISON_SLIDES.map((_, i) => 20 + 4 * i));
+    expect(COMPARISON_SLIDES.map((slide) => slide.marker)).toEqual(
+      COMPARISON_SLIDES.map((_, i) => 20 + 4 * i),
+    );
     const motion = (name: string) =>
       deck.slides[COMPARISON_SLIDES.findIndex((slide) => slide.name === name)]?.deck?.motion;
     // A whole size is written #ppt_w and #ppt_h, as PowerPoint writes it, never #ppt_w*1 (PowerPoint plays both the
