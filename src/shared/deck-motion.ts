@@ -14,7 +14,8 @@ export function deckElementTargets(element: SlideElement): readonly string[] {
   const groups = element.sourceGroupIds ?? [];
   if (!element.sourceShapeId) return groups;
   const targets = [...groups, element.sourceShapeId];
-  if (element.kind === 'shape') targets.push(deckBackgroundTarget(element.sourceShapeId));
+  if (element.kind === 'shape' || element.kind === 'image')
+    targets.push(deckBackgroundTarget(element.sourceShapeId));
   return targets;
 }
 
