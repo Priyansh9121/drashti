@@ -1,3 +1,6 @@
+import { nativeDeckMotion, stepCount } from '../../shared/deck';
+import { deckSlideAt } from '../../shared/deck-show';
+import { nextScheduledChange, slidePictureReadyAt, waitForSlidePicture } from './slide-picture';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { type CommandResult, type EngineCommand, parseEngineCommand } from '../../shared/engine/commands';
@@ -6,7 +9,8 @@ import type { EngineState } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
 import type { PresentationDoc } from '../../shared/library';
-import type { Lang } from '../../shared/model';
+import type { CapturedPicture } from '../../shared/pdf-copy';
+import type { Lang, RenderSlide } from '../../shared/model';
 import { fillMessage, type MessageTemplate, messageItemId } from '../../shared/messages';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
@@ -140,6 +144,21 @@ export interface NetworkDeps {
     state(): EngineState;
   };
   reads: NetworkReads;
+  /**
+   * The stream is on air or recording (Session 50's rule: background work stays off then): a phone's Save captures
+   * nothing, and answers with the slide as it starts (C6's review, MEDIUM 3).
+   */
+  onAir?(): boolean;
+  /**
+   * Captures a settled native slide once in the private renderer, while `current` holds and until `signal` stops it
+   * (the end of the capture's time: slide-picture.ts): its pixels, which the network's process makes a PNG (png.ts).
+   */
+  nativeSlidePicture?(
+    slide: RenderSlide,
+    looks: EngineState['pictures'],
+    current: () => boolean,
+    signal: AbortSignal,
+  ): Promise<CapturedPicture | null>;
   /** What a phone reads to mirror the operator window (Session 54, D5: mirror-answers.ts). */
   mirror: MirrorReads;
   /**
@@ -421,9 +440,12 @@ export class NetworkService implements EngineTransport {
   /** The phone's own (Session 55, Part 9), or null where it cannot. */
   private readonly phone: PhoneAnswers | null;
   private readonly audioChanges: RateLimiter;
+  private readonly slideSaves: RateLimiter;
+  private savingSlide = false;
 
   constructor(private readonly deps: NetworkDeps) {
     this.audioChanges = new RateLimiter(5, 30, () => deps.now());
+    this.slideSaves = new RateLimiter(5, 30, () => deps.now());
     this.desktop = deps.desktop
       ? new DesktopAnswers(deps.desktop, {
           // At the computer's yes, long after the ask: still let in, the phone still paired, Simple Mode not refusing.
@@ -716,12 +738,16 @@ export class NetworkService implements EngineTransport {
     let answer: unknown;
     try {
       // The open windows take the computer a while to list (Session 54): checked alike, answered once listed.
-      if (question.kind === 'request')
-        answer =
-          question.request.op === 'windows'
-            ? await this.windows(question.request)
-            : this.answer(question.request);
-      else if (question.kind === 'pair') answer = this.pair(question.code, question.address);
+      if (question.kind === 'request') {
+        const request = question.request;
+        if (request.op === 'windows') answer = await this.windows(request);
+        else if (
+          request.op === 'presentation' &&
+          (request.args as Record<string, unknown> | null)?.['format'] === 'png'
+        )
+          answer = await this.presentationPicture(request);
+        else answer = this.answer(request);
+      } else if (question.kind === 'pair') answer = this.pair(question.code, question.address);
       // No file while Drashti is not let in (Session 54): a preview, a picture, an original, a shared sound.
       else if (!this.letIn()) answer = null;
       else if (question.kind === 'sound') answer = this.deps.reads.sharedSound(question.mediaId);
@@ -953,6 +979,91 @@ export class NetworkService implements EngineTransport {
     if (request.op !== 'windows' || !this.desktop)
       return deny(404, 'Drashti cannot list windows for a phone here.');
     return this.desktop.windows(checked.device);
+  }
+
+  async presentationPicture(request: DeviceRequest): Promise<DeviceAnswer> {
+    const checked = this.checked(request);
+    if ('status' in checked) return checked;
+    const { device, args } = checked;
+    const id = idSchema.safeParse(args['presentationId']);
+    const slideId = idSchema.safeParse(args['slideId']);
+    const rawClick = args['click'];
+    const click = typeof rawClick === 'string' && /^\d{1,4}$/u.test(rawClick) ? Number(rawClick) : -1;
+    if (
+      request.op !== 'presentation' ||
+      args['format'] !== 'png' ||
+      !id.success ||
+      !slideId.success ||
+      click < 0
+    )
+      return deny(400, 'Choose a slide and a click to save.');
+    if (!this.slideSaves.take(device.id))
+      return deny(429, 'Too many pictures at once. Wait a moment, then try again.');
+    const doc = this.deps.reads.presentation(id.data);
+    const stored = doc?.groups
+      .flatMap((group) => group.slides)
+      .find((slide) => slide.id === slideId.data || slide.slide.id === slideId.data)?.slide;
+    const read = () => this.deps.engine.state();
+    const up = read().layers.slide;
+    const original = up?.presentationId === id.data && stored?.id === up.slide.id ? up.slide : stored;
+    if (!original || !nativeDeckMotion(original.deck) || click >= stepCount(original.deck))
+      return deny(404, 'That slide or click is no longer available. Open the deck again.');
+    const fallback = () => {
+      const picture = deckSlideAt(original, 0).elements.find(
+        (element) => element.kind === 'image' && !element.hidden,
+      );
+      return picture?.kind === 'image'
+        ? ok({ mediaId: picture.mediaId })
+        : deny(409, 'This slide couldn’t be saved now. Try again when the screens are still.');
+    };
+    const onAir = () => this.deps.onAir?.() === true;
+    if (!this.deps.nativeSlidePicture || this.savingSlide || onAir()) return fallback();
+    const now = () => this.deps.now();
+    // When the capture must be over by (C6's review, MEDIUM 2): nothing the engine has scheduled may fall before it.
+    let endsAt = -Infinity;
+    const current = () => {
+      const at = now();
+      const screens = read();
+      return (
+        !('status' in this.checked(request)) &&
+        !onAir() &&
+        slidePictureReadyAt(screens, at) <= at &&
+        nextScheduledChange(screens, at) > endsAt
+      );
+    };
+    this.savingSlide = true;
+    const stop = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const ends = await waitForSlidePicture(read, now);
+      if (ends !== null) endsAt = ends;
+      if (ends === null || !current()) {
+        const guard = this.checked(request);
+        return 'status' in guard ? guard : fallback();
+      }
+      timer = setTimeout(
+        () => {
+          stop.abort();
+        },
+        Math.max(0, endsAt - now()),
+      );
+      const { deck: _deck, ...slide } = deckSlideAt(original, click);
+      const all = read().pictures;
+      const looks: EngineState['pictures'] = {};
+      for (const element of slide.elements) {
+        if (element.kind !== 'image') continue;
+        const look = all[element.mediaId];
+        if (look) looks[element.mediaId] = look;
+      }
+      const picture = await this.deps.nativeSlidePicture(slide, looks, current, stop.signal);
+      const guard = this.checked(request);
+      if ('status' in guard) return guard;
+      // Its pixels as captured: the network's process makes the PNG (C6's review, MEDIUM 1).
+      return picture && current() ? ok({ picture }) : fallback();
+    } finally {
+      clearTimeout(timer);
+      this.savingSlide = false;
+    }
   }
 
   answer(request: DeviceRequest): DeviceAnswer {

@@ -19,6 +19,15 @@ export interface OnScreens {
   kept: Framing;
 }
 
+export interface NativeSlideSave {
+  presentationId: string;
+  slideId: string;
+  slide: number;
+  click: number;
+}
+
+type ViewerSave = { mediaId: string; name: string } | { mediaId: string; slide: number } | NativeSlideSave;
+
 export interface ViewerPage {
   /** Names what it shows; the phone's own zoom starts again from the whole when another page comes. */
   key: string;
@@ -40,7 +49,7 @@ export interface ViewerPage {
    * Save picture… (Session 55, Part 5): the picture this page is (a picture, or a deck's slide's), and its name, or
    * its slide's number (named after what is looked through: "<deck>_3").
    */
-  save?: { mediaId: string; name: string } | { mediaId: string; slide: number };
+  save?: ViewerSave | ((state: EngineState | null) => ViewerSave | null);
 }
 
 interface Viewer {

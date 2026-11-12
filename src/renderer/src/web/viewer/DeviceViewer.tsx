@@ -31,7 +31,7 @@ import {
 } from './live-zoom';
 import { backCloses, closeOnStop, closeViewer, turnPage, useViewer } from './viewer-store';
 import { ZoomSurface } from './ZoomSurface';
-import { savePictureHere } from './save-picture';
+import { saveNativeSlideHere, savePictureHere } from './save-picture';
 import { clampView, type View, WHOLE, zoomedAt } from './zoom-math';
 
 /*
@@ -152,21 +152,24 @@ function Viewer() {
           </p>
         </div>
         {live && <LiveBadge />}
-        {page.save && (
+        {(typeof page.save === 'function' ? page.save(state) : page.save) && (
           // Save picture… (Session 55, Part 5): the phone's Share sheet, or a download where it has none.
           <Button
             size="lg"
             icon={ImageDown}
             data-testid="viewer-save"
             onClick={() => {
-              const save = page.save;
+              const current = useEngine.getState().state;
+              const save = typeof page.save === 'function' ? page.save(current) : page.save;
               if (!save) return;
               const name = 'name' in save ? save.name : `${of ?? 'Slide'}_${String(save.slide)}`;
-              void savePictureHere(save.mediaId, name, state?.pictures[save.mediaId] ?? null).then(
-                (problem) => {
-                  if (problem) useTapNotice.setState({ text: problem });
-                },
-              );
+              const saved =
+                'presentationId' in save
+                  ? saveNativeSlideHere(save, name, current?.pictures ?? {})
+                  : savePictureHere(save.mediaId, name, current?.pictures[save.mediaId] ?? null);
+              void saved.then((problem) => {
+                if (problem) useTapNotice.setState({ text: problem });
+              });
             }}
           >
             Save

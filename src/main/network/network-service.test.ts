@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { PresentationDoc } from '../../shared/library';
+import type { CapturedPicture } from '../../shared/pdf-copy';
+import type { RenderSlide } from '../../shared/model';
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
 import { DEVICE_KINDS, type NetworkStatus, PAIRING_CODE_TTL_MS } from '../../shared/network';
-import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
+import { DEVICE_OPS, type DeviceOp, type DeviceRequest, REMOTE_COMMANDS } from '../../shared/network-api';
 import { messageItemId } from '../../shared/messages';
 import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import type { ScreenSwitches } from '../../shared/screen-switches';
@@ -14,7 +17,7 @@ import { DeviceRepo } from '../db/devices';
 import { simpleModeRefusesWhole } from '../simple-mode';
 import type { SimplePhoneScope } from '../simple-mode-phones';
 import type { NetworkWorker } from './network-worker';
-import { NetworkService, OP_CHANNEL } from './network-service';
+import { NetworkService, OP_CHANNEL, type NetworkDeps } from './network-service';
 import { hashToken } from './tokens';
 import type { FromNetworkWorker, ToNetworkWorker } from './worker/protocol';
 
@@ -65,6 +68,9 @@ function setup(
     locked?: boolean;
     lockEverything?: boolean;
     letIn?: { now: boolean };
+    presentation?: NetworkDeps['reads']['presentation'];
+    capture?: NetworkDeps['nativeSlidePicture'];
+    onAir?: NetworkDeps['onAir'];
     /** This computer's addresses and name on the network as a test gives them (the guides' pictures, Session 55). */
     shown?: { addresses: string[]; localName: string };
   } = {},
@@ -114,10 +120,12 @@ function setup(
       snapshot: () => ({ kind: 'snapshot', version: ENGINE_STATE_VERSION, rev: 0, state, sentAt: 0 }),
       state: () => state,
     },
+    nativeSlidePicture: options.capture,
+    ...(options.onAir ? { onAir: options.onAir } : {}),
     reads: {
       playlists: () => [],
       items: () => [],
-      presentation: () => null,
+      presentation: options.presentation ?? (() => null),
       library: (offset, limit) => {
         const all = Array.from({ length: 250 }, (_, i) => ({
           id: `p${String(i).padStart(3, '0')}`,
@@ -222,6 +230,248 @@ function setup(
     },
   };
 }
+
+const slideForPicture: RenderSlide = {
+  id: 'placeholder-slide',
+  width: 960,
+  height: 540,
+  background: '#ffffff',
+  elements: [
+    {
+      id: 'placeholder-image',
+      kind: 'image',
+      mediaId: 'placeholder-picture',
+      fit: 'fit',
+      frame: { x: 0, y: 0, width: 960, height: 540 },
+    },
+  ],
+  deck: {
+    steps: [],
+    media: [],
+    motion: { stepsMs: [0, 300], effects: [], approximate: false },
+  },
+};
+
+/** Two captured pixels (made-up values): the network's process makes them a PNG (png.ts). */
+const captured: CapturedPicture = {
+  width: 2,
+  height: 1,
+  pixels: new Uint8Array([10, 20, 30, 255, 40, 50, 60, 255]),
+  order: 'bgra',
+};
+
+function pictureSetup() {
+  const capture = vi.fn<NonNullable<NetworkDeps['nativeSlidePicture']>>(() => Promise.resolve(captured));
+  const doc: PresentationDoc = {
+    id: 'placeholder-deck',
+    name: 'Placeholder deck',
+    width: 960,
+    height: 540,
+    arrangements: [],
+    selectedArrangementId: null,
+    transition: null,
+    loop: false,
+    kirtan: null,
+    source: null,
+    groups: [
+      {
+        id: 'placeholder-group',
+        name: '',
+        color: null,
+        slides: [
+          {
+            id: slideForPicture.id,
+            index: 0,
+            label: '',
+            notes: '',
+            slide: slideForPicture,
+            cues: [],
+            transition: null,
+            autoAdvanceMs: null,
+            macroId: null,
+          },
+        ],
+      },
+    ],
+  };
+  const letIn = { now: true };
+  const onAir = { now: false };
+  const t = setup({
+    capture,
+    presentation: (id) => (id === doc.id ? doc : null),
+    letIn,
+    onAir: () => onAir.now,
+  });
+  const remote = t.devices.add({
+    name: 'Placeholder phone',
+    kind: 'remote',
+    tokenHash: hashToken('placeholder-remote'),
+  });
+  const stage = t.devices.add({
+    name: 'Placeholder stage',
+    kind: 'stage',
+    tokenHash: hashToken('placeholder-stage'),
+  });
+  const request: DeviceRequest = {
+    deviceId: remote.id,
+    op: 'presentation',
+    address: PHONE,
+    args: {
+      format: 'png',
+      presentationId: doc.id,
+      slideId: slideForPicture.id,
+      click: '1',
+    },
+  };
+  return { ...t, capture, letIn, onAir, stage, request };
+}
+
+describe('saving a native click from a paired phone', () => {
+  it('uses presentation read authority, refuses unknown slides or clicks, and bounds the phone’s requests', async () => {
+    const t = pictureSetup();
+    const args = t.request.args as Record<string, unknown>;
+    const save = (change: Record<string, unknown>) =>
+      t.service.presentationPicture({ ...t.request, args: { ...args, ...change } });
+    expect(await t.service.presentationPicture({ ...t.request, deviceId: 'unpaired' })).toMatchObject({
+      status: 401,
+    });
+    expect(await t.service.presentationPicture({ ...t.request, deviceId: t.stage.id })).toMatchObject({
+      status: 403,
+    });
+    expect(await save({ click: '1.5' })).toMatchObject({ status: 400 });
+    expect(await save({ click: '2' })).toMatchObject({ status: 404 });
+    expect(await save({ slideId: 'missing-slide' })).toMatchObject({ status: 404 });
+    expect(t.capture).not.toHaveBeenCalled();
+    expect(await save({})).toMatchObject({ status: 200, body: { picture: captured } });
+    expect(t.capture.mock.calls[0]?.[0]).not.toHaveProperty('deck');
+    for (let i = 0; i < 27; i++) expect(await save({})).toMatchObject({ status: 200 });
+    expect(await save({})).toMatchObject({ status: 429 });
+  });
+
+  it('waits for the native effect, holds one capture slot and rechecks access before replying', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = pictureSetup();
+      t.state.layers.slide = {
+        presentationId: 'placeholder-deck',
+        slideIndex: 0,
+        slide: slideForPicture,
+        notes: '',
+        shownAt: 1_000_000,
+        stepAt: 1_000_000,
+        step: 1,
+      };
+      const pending = t.service.presentationPicture(t.request);
+      expect(await t.service.presentationPicture(t.request)).toMatchObject({
+        status: 200,
+        body: { mediaId: 'placeholder-picture' },
+      });
+      expect(t.capture).not.toHaveBeenCalled();
+      t.tick(299);
+      await vi.advanceTimersByTimeAsync(299);
+      expect(t.capture).not.toHaveBeenCalled();
+      t.capture.mockImplementationOnce(() => {
+        t.letIn.now = false;
+        return Promise.resolve(captured);
+      });
+      t.tick(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(t.capture).toHaveBeenCalledTimes(1);
+      expect(await pending).toMatchObject({ status: 503 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back without capturing when a slow zoom outlasts the settle wait', async () => {
+    const t = pictureSetup();
+    t.state.layers.slide = {
+      presentationId: 'placeholder-deck',
+      slideIndex: 0,
+      slide: slideForPicture,
+      notes: '',
+      shownAt: 1_000_000,
+      transition: { kind: 'zoom', durationMs: 500 },
+    };
+    expect(await t.service.presentationPicture(t.request)).toMatchObject({
+      status: 200,
+      body: { mediaId: 'placeholder-picture' },
+    });
+    expect(t.capture).not.toHaveBeenCalled();
+  });
+
+  it('answers with the slide as it starts while the stream is on air or recording, and stops a capture then', async () => {
+    const t = pictureSetup();
+    // C6's review, MEDIUM 3: no new background work while the stream is on air or recording.
+    t.onAir.now = true;
+    expect(await t.service.presentationPicture(t.request)).toMatchObject({
+      status: 200,
+      body: { mediaId: 'placeholder-picture' },
+    });
+    expect(t.capture).not.toHaveBeenCalled();
+    t.onAir.now = false;
+    t.capture.mockImplementationOnce((_slide, _looks, current) => {
+      // The stream goes on air while the capture runs: its next step finds it no longer wanted.
+      t.onAir.now = true;
+      expect(current()).toBe(false);
+      return Promise.resolve(captured);
+    });
+    expect(await t.service.presentationPicture(t.request)).toMatchObject({
+      status: 200,
+      body: { mediaId: 'placeholder-picture' },
+    });
+    expect(t.capture).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers with the slide as it starts when the slide moves on by itself within the capture’s time', async () => {
+    const t = pictureSetup();
+    // Repeat Slides or the slide's timing: on to the next in 4 s (C6's review, MEDIUM 2).
+    t.state.autoAdvance = { startedAt: 1_000_000 - 1_000, durationMs: 5_000 };
+    expect(await t.service.presentationPicture(t.request)).toMatchObject({
+      status: 200,
+      body: { mediaId: 'placeholder-picture' },
+    });
+    expect(t.capture).not.toHaveBeenCalled();
+  });
+
+  it('stops the capture 9 s after the phone asked at most, so the network’s process always has its answer', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = pictureSetup();
+      t.state.layers.slide = {
+        presentationId: 'placeholder-deck',
+        slideIndex: 0,
+        slide: slideForPicture,
+        notes: '',
+        shownAt: 1_000_000,
+        transition: { kind: 'dissolve', durationMs: 2_000 },
+      };
+      let signal: AbortSignal | undefined;
+      let done: ((value: null) => void) | undefined;
+      t.capture.mockImplementationOnce((...args: unknown[]) => {
+        signal = args[3] as AbortSignal | undefined;
+        return new Promise<null>((resolve) => {
+          done = resolve;
+        });
+      });
+      const pending = t.service.presentationPicture(t.request);
+      t.tick(2_000);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(t.capture).toHaveBeenCalledTimes(1);
+      // Its own 8 s would end 10 s after the ask, when the network's process gives up waiting.
+      t.tick(6_999);
+      await vi.advanceTimersByTimeAsync(6_999);
+      expect(signal?.aborted).toBe(false);
+      t.tick(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(signal?.aborted).toBe(true);
+      done?.(null);
+      expect(await pending).toMatchObject({ status: 200, body: { mediaId: 'placeholder-picture' } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe('the network in the main process', () => {
   it('is off until turned on, then starts the worker and hands it the devices and the state', () => {
