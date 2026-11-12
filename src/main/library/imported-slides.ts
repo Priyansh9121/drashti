@@ -65,7 +65,7 @@ function bakedObject(
       Math.abs(item.frame.width - canvas.width) <= 1 &&
       Math.abs(item.frame.height - canvas.height) <= 1,
   );
-  if (!picture || picture.kind !== 'image') return null;
+  if (picture?.kind !== 'image') return null;
   // Existing page pictures include the letterbox. Map the source rectangle through the same fit.
   const { frame } = element;
   const rad = ((element.rotation ?? 0) * Math.PI) / 180;
