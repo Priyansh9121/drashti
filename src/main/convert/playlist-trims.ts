@@ -6,7 +6,6 @@ import { mediaMarkersSchema, type MediaMarkers } from '../../shared/markers';
 import { idSchema } from '../../shared/model-schema';
 import type { RowTrimRequest, RowTrimResult } from '../../shared/trim';
 import type { TrimMarkerEdits, TrimmedVideos } from '../db/trimmed';
-import { sha256File } from '../import/media-store';
 import { isInside } from '../media/contained';
 import type { FitResult } from './convert-service';
 import { TARGET_FORMAT } from './plan';
@@ -36,6 +35,7 @@ const keptTrimSchema = z.object({
 });
 const keptTrimsSchema = z.array(keptTrimSchema);
 type KeptTrim = z.infer<typeof keptTrimSchema>;
+type KeptRequest = NonNullable<KeptTrim['request']>;
 
 function fileIdentity(file: string): string | null {
   const stat = lstatSync(file, { bigint: true, throwIfNoEntry: false });
@@ -54,6 +54,10 @@ interface PlaylistTrimsDeps {
   ): { id: string; done: Promise<FitResult> };
   cancel(id: string): boolean;
   isLive(itemId: string, mediaId: string): boolean;
+  /** Background work may go on (Q57-7): nothing up on LIVE, no stream on air or recording, not quitting. */
+  quiet(): boolean;
+  /** A file's sha256 and length, read off Main's thread (library/hash-off-main.ts); stops when `signal` aborts. */
+  hash(file: string, signal: AbortSignal): Promise<{ sha256: string; bytes: number }>;
   kept: {
     load(): unknown;
     save(cuts: KeptTrim[]): void;
@@ -75,6 +79,8 @@ interface PendingTrim {
   copy?: TrimCopy;
   preserveOnClose?: boolean;
   wake: (() => void) | null;
+  /** Stops checking the finished file (the show started, or the cut stopped). */
+  stopCheck?: () => void;
 }
 
 const CHANGED = {
@@ -115,6 +121,13 @@ export class PlaylistTrims {
   private readonly pending = new Map<string, PendingTrim>();
   private readonly copies: Set<TrimCopy>;
   private interrupted: KeptTrim[];
+  /** The start notice has named the cuts that cannot carry on. */
+  private reported = false;
+  /**
+   * The cuts accepted before Drashti closed (TR-5): held until the start is known (resumeWhenQuiet), then waiting for
+   * a quiet moment, going, and done.
+   */
+  private resuming: 'held' | 'waiting' | 'going' | 'done' = 'held';
   private closed = false;
 
   constructor(private readonly deps: PlaylistTrimsDeps) {
@@ -126,19 +139,55 @@ export class PlaylistTrims {
     return [...this.pending.keys()];
   }
 
-  /** Continue accepted work only when the row and its original still match. */
-  async resumeInterrupted(): Promise<void> {
+  /**
+   * The start is known (index.ts: the operator window has loaded and the stream's own restart is done, then the same
+   * 10 s as kept conversions): the cuts accepted before Drashti closed carry on at the first quiet moment.
+   */
+  resumeWhenQuiet(): void {
+    if (this.resuming !== 'held' || this.closed) return;
+    this.resuming = 'waiting';
+    this.activityChanged();
+  }
+
+  /** A cut accepted before Drashti closed can carry on: its row, its original and the original's file are as they were. */
+  private canResume(cut: KeptTrim): { row: TrimSource; request: KeptRequest; mediaDir: string } | null {
+    const request = cut.request;
+    if (!request) return null;
+    const row = this.deps.repo.row(cut.itemId);
+    if (row?.mediaId !== cut.mediaId || row.sourceId !== request.sourceId || row.sourcePath !== request.sourcePath)
+      return null;
+    try {
+      const mediaDir = realpathSync.native(this.deps.mediaDir);
+      const source = realpathSync.native(join(mediaDir, row.sourcePath));
+      return isInside(mediaDir, source) && fileIdentity(source) === request.sourceIdentity
+        ? { row, request, mediaDir }
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Carry on the accepted cuts, one by one, while quiet (Q57-7): the show starting stops it until the next quiet
+   * moment. A finished cut is taken in without encoding it again; a waiting one is made again from its request.
+   */
+  private async resumeInterrupted(): Promise<void> {
+    this.resuming = 'going';
     for (const cut of [...this.interrupted]) {
       if (this.closed) return;
-      const request = cut.request;
-      const row = this.deps.repo.row(cut.itemId);
-      if (!request || row?.mediaId !== cut.mediaId || this.pending.has(cut.itemId)) continue;
-      if (row.sourceId !== request.sourceId || row.sourcePath !== request.sourcePath) continue;
+      if (!this.interrupted.includes(cut)) continue;
+      if (!this.deps.quiet()) {
+        this.resuming = 'waiting';
+        return;
+      }
+      const start = this.canResume(cut);
+      if (!start) {
+        // The start notice names it (or has, and the operator changed its row since): Trim is opened again.
+        if (this.reported) this.removeInterrupted(cut);
+        continue;
+      }
+      const { row, request, mediaDir } = start;
       try {
-        const mediaDir = realpathSync.native(this.deps.mediaDir);
-        const source = realpathSync.native(join(mediaDir, row.sourcePath));
-        if (!isInside(mediaDir, source) || fileIdentity(source) !== request.sourceIdentity) continue;
-
         const savedCopy = cut.copy;
         const copy =
           savedCopy &&
@@ -150,6 +199,7 @@ export class PlaylistTrims {
           const pending: PendingTrim = { queueId: null, kept: cut, copy, wake: null };
           this.pending.set(cut.itemId, pending);
           this.deps.pendingChanged(this.list());
+          this.removeInterrupted(cut);
           void this.finish(
             row,
             pending,
@@ -159,15 +209,22 @@ export class PlaylistTrims {
             request.endMs,
             request.points,
           );
-          this.removeInterrupted(cut);
-        } else {
-          const result = await this.apply(cut.itemId, { mediaId: cut.mediaId, points: request.points });
-          if (result.ok) this.removeInterrupted(cut);
+          continue;
         }
+        const result = await this.applyRequest(cut.itemId, { mediaId: cut.mediaId, points: request.points });
+        if (this.closed) return;
+        this.removeInterrupted(cut);
+        if (!result.ok && result.message !== CHANGED.message)
+          this.deps.notice(cutFailed(cut.name, result.message));
       } catch {
-        // The operator can reopen Trim when the original or a saved cut could not be checked.
+        if (this.closed) return;
+        this.removeInterrupted(cut);
+        this.deps.notice(cutFailed(cut.name, ''));
       }
     }
+    this.resuming = 'done';
+    // Copies that nothing carries on now (their cut let go, or from before cuts carried on) go to the Trash.
+    await this.cleanupCopies();
   }
 
   private removeInterrupted(cut: KeptTrim): void {
@@ -175,12 +232,25 @@ export class PlaylistTrims {
     this.keepWaiting();
   }
 
-  /** The operator reads this once at startup, after the window can show a notice. */
-  reportInterrupted(): string | null {
-    if (this.interrupted.length === 0) return null;
-    const missed = this.interrupted.filter((cut) => this.deps.repo.row(cut.itemId)?.mediaId === cut.mediaId);
-    this.interrupted = [];
+  /** The operator's own Trim or Reset of a row takes the place of that row's cut accepted before Drashti closed. */
+  private forgetInterrupted(itemId: string): void {
+    if (!this.interrupted.some((cut) => cut.itemId === itemId)) return;
+    this.interrupted = this.interrupted.filter((cut) => cut.itemId !== itemId);
     this.keepWaiting();
+  }
+
+  /**
+   * The operator reads this once at startup, after the window can show a notice. It waits for no FFmpeg: it names
+   * the cuts that cannot carry on (their row, original or original's file changed, or a record from before cuts
+   * carried on), by the cheap checks alone; the rest carry on once the start is known.
+   */
+  reportInterrupted(): string | null {
+    this.reported = true;
+    const cannot = this.interrupted.filter((cut) => this.canResume(cut) === null);
+    if (cannot.length === 0) return null;
+    this.interrupted = this.interrupted.filter((cut) => !cannot.includes(cut));
+    this.keepWaiting();
+    const missed = cannot.filter((cut) => this.deps.repo.row(cut.itemId)?.mediaId === cut.mediaId);
     if (missed.length === 0) return null;
     const names = new Intl.ListFormat('en').format([...new Set(missed.map((cut) => `“${cut.name}”`))]);
     return missed.length === 1
@@ -188,12 +258,29 @@ export class PlaylistTrims {
       : `The cuts of ${names} weren’t made because Drashti closed. Open Trim and save them again.`;
   }
 
-  /** A finished copy can replace its row only after that row's video has come off. */
+  /**
+   * The show, the stream or a recording changed. A finished copy can replace its row only after that row's video has
+   * come off; checking it, and carrying on the accepted cuts, stop while anything is up and go on once quiet.
+   */
   activityChanged(): void {
-    for (const pending of this.pending.values()) pending.wake?.();
+    const quiet = this.deps.quiet();
+    for (const pending of this.pending.values()) {
+      if (!quiet) pending.stopCheck?.();
+      pending.wake?.();
+    }
+    if (quiet && this.resuming === 'waiting' && !this.closed)
+      void this.resumeInterrupted().catch(() => {
+        this.resuming = 'done';
+      });
   }
 
-  async apply(itemId: string, { mediaId, points }: RowTrimRequest): Promise<RowTrimResult> {
+  /** The operator's Trim of a row: it takes the place of any cut of that row accepted before Drashti closed. */
+  async apply(itemId: string, request: RowTrimRequest): Promise<RowTrimResult> {
+    this.forgetInterrupted(itemId);
+    return this.applyRequest(itemId, request);
+  }
+
+  private async applyRequest(itemId: string, { mediaId, points }: RowTrimRequest): Promise<RowTrimResult> {
     const row = this.deps.repo.row(itemId);
     if (row?.mediaId !== mediaId || this.closed) return CHANGED;
     const before = this.deps.repo.view(itemId);
@@ -300,6 +387,7 @@ export class PlaylistTrims {
   }
 
   reset(itemId: string, mediaId: string): RowTrimResult {
+    this.forgetInterrupted(itemId);
     const row = this.deps.repo.row(itemId);
     if (row?.mediaId !== mediaId) return CHANGED;
     return this.resetRow(row);
@@ -346,12 +434,15 @@ export class PlaylistTrims {
     this.pending.clear();
     for (const pending of pendingCuts) {
       pending.preserveOnClose = pending.kept?.request !== undefined;
+      pending.stopCheck?.();
       pending.wake?.();
       if (pending.queueId !== null) this.deps.cancel(pending.queueId);
     }
   }
 
   private keepWaiting(): void {
+    // What was accepted when Drashti closed stays as it was saved then.
+    if (this.closed) return;
     const kept = new Map(this.interrupted.map((cut) => [cut.itemId, cut]));
     for (const pending of this.pending.values())
       if (pending.kept) kept.set(pending.kept.itemId, pending.kept);
@@ -361,6 +452,7 @@ export class PlaylistTrims {
   private clear(itemId: string, pending: PendingTrim): void {
     if (this.pending.get(itemId) !== pending) return;
     this.pending.delete(itemId);
+    pending.stopCheck?.();
     pending.wake?.();
     if (pending.kept) this.keepWaiting();
     this.deps.pendingChanged(this.list());
@@ -410,6 +502,51 @@ export class PlaylistTrims {
     }
   }
 
+  /** Wait (woken by activityChanged, Stop and quitting) until `ready` holds. */
+  private async waitUntil(pending: PendingTrim, ready: () => boolean): Promise<void> {
+    while (!ready()) {
+      await new Promise<void>((resolve) => {
+        pending.wake = () => {
+          if (!ready()) return;
+          pending.wake = null;
+          resolve();
+        };
+      });
+    }
+  }
+
+  /**
+   * Probe and hash a finished cut (Q57-7): only while nothing is up and the stream is neither on air nor recording,
+   * the bytes read off Main's thread. The show starting stops the check, and it goes again at the next quiet moment.
+   * Null once the cut is no longer pending.
+   */
+  private async checkWhenQuiet(
+    pending: PendingTrim,
+    stillPending: () => boolean,
+    file: string,
+  ): Promise<{ info: MediaInfo; sha256: string | null; bytes: number } | null> {
+    for (;;) {
+      await this.waitUntil(pending, () => !stillPending() || this.deps.quiet());
+      if (!stillPending()) return null;
+      const attempt = new AbortController();
+      pending.stopCheck = () => {
+        attempt.abort();
+      };
+      try {
+        const info = await this.deps.readInfo(file);
+        if (!stillPending()) return null;
+        if (attempt.signal.aborted) continue;
+        if (!info.video || info.video.still || !info.durationMs) return { info, sha256: null, bytes: 0 };
+        const { sha256, bytes } = await this.deps.hash(file, attempt.signal);
+        return { info, sha256, bytes };
+      } catch (error) {
+        if (!attempt.signal.aborted) throw error;
+      } finally {
+        pending.stopCheck = undefined;
+      }
+    }
+  }
+
   private async finish(
     row: TrimSource,
     pending: PendingTrim,
@@ -432,26 +569,18 @@ export class PlaylistTrims {
         this.deps.notice(cutFailed(row.sourceName, ''));
         return;
       }
-      const info = await this.deps.readInfo(unclaimed);
-      if (!stillPending()) return;
-      if (!info.video || info.video.still || !info.durationMs) {
+      const checked = await this.checkWhenQuiet(pending, stillPending, unclaimed);
+      if (!checked) return;
+      const { info, sha256, bytes } = checked;
+      if (!info.video || info.video.still || !info.durationMs || sha256 === null) {
         this.deps.notice(
           `The cut of “${row.sourceName}” has no video frames. Choose a longer part and save it again.`,
         );
         return;
       }
-      const { sha256, bytes } = await sha256File(unclaimed);
-      // The show may have started while the finished file was being checked. Recheck after every wake,
+      // The show may have started since the finished file was checked. Recheck after every wake,
       // then publish in the same turn, so the live row keeps what it does when the current video ends.
-      while (stillPending() && this.deps.isLive(row.itemId, row.mediaId)) {
-        await new Promise<void>((resolve) => {
-          pending.wake = () => {
-            if (stillPending() && this.deps.isLive(row.itemId, row.mediaId)) return;
-            pending.wake = null;
-            resolve();
-          };
-        });
-      }
+      await this.waitUntil(pending, () => !stillPending() || !this.deps.isLive(row.itemId, row.mediaId));
       if (!stillPending()) return;
       const ext = extname(unclaimed);
       const adopted = this.deps.repo.adopt(
