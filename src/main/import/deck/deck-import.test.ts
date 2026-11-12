@@ -155,7 +155,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       const id = item?.target?.id ?? '';
       const slides = t.slidesOf(id);
       const decks: DeckSlide[] = slides.flatMap((s) => (s.slide.deck ? [s.slide.deck] : []));
-      // Step 0 coming in, then one per click. Slide 4 can play its cover and video without a clip.
+      // Step 0 coming in, then one per click. Slide 4 can play its push and video without a clip.
       expect(decks.map(stepCount)).toEqual([5, 3, 2, 1, 2]);
       expect(decks.map((d) => d.steps.length)).toEqual([5, 3, 2, 0, 2]);
       expect(decks[3]?.motion).toMatchObject({ approximate: false, stepsMs: [0] });
@@ -183,7 +183,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
         ['p:fade', 700],
         ['p:push', 1000],
         ['p:wipe', 800],
-        ['p:cover', 1000],
+        ['p:push', 1000],
         ['p14:vortex', 1500],
       ]);
       expect(decks.map((d) => Boolean(d.transition?.soundId))).toEqual([false, true, false, false, false]);

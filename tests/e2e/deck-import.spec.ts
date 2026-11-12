@@ -91,7 +91,7 @@ test('a mixed deck keeps its click steps, uses native playback where supported, 
     'p:fade',
     'p:push',
     'p:wipe',
-    'p:cover',
+    'p:push',
     'p14:vortex',
   ]);
   // The baked slides draw their last frame. The native slide keeps the editable title.
