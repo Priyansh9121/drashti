@@ -5011,6 +5011,8 @@ function start(): void {
       snapshot: () => withoutCaptions(engine.snapshot()),
       state: () => stateWithoutCaptions(engine.current),
     },
+    // A phone's Save captures nothing while the stream is on air or recording (C6's review, MEDIUM 3).
+    onAir: () => streaming.inUse() || testOnAir,
     nativeSlidePicture: async (slide, looks, current, signal) => {
       const stop = new AbortController();
       const off = engine.onChange(() => {
