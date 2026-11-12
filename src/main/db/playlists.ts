@@ -511,7 +511,7 @@ export class PlaylistRepo {
   /** A playlist's items as the show engine plays them, or null if the playlist does not exist (or was removed). */
   playItems(playlistId: string): PlayItem[] | null {
     // A template is never run: only playlists made from it are.
-    if (!this.isOpenPlaylist(playlistId, false) || this.isTemplate(playlistId)) return null;
+    if (!this.activePlaylist(playlistId)) return null;
     return this.itemsOf(playlistId).map((item): PlayItem => {
       switch (item.kind) {
         case 'presentation':
@@ -696,6 +696,39 @@ export class PlaylistRepo {
         )
         .get(id) !== undefined
     );
+  }
+
+  /** An existing non-template playlist that can be opened and played. */
+  activePlaylist(id: string): boolean {
+    return this.isOpenPlaylist(id, false) && !this.isTemplate(id);
+  }
+
+  /** Whether the given row is still in the playlist. */
+  activeItem(playlistId: string, itemId: string): boolean {
+    return (
+      this.db
+        .prepare('SELECT 1 FROM playlist_items WHERE playlist_id = ? AND id = ? AND deleted_at IS NULL')
+        .get(playlistId, itemId) !== undefined
+    );
+  }
+
+  /** A presentation or passage in an active playlist, in the exact row when played from a cursor. */
+  playsPresentation(presentationId: string, from?: { playlistId: string; itemId: string }): boolean {
+    if (from === undefined) {
+      const key = parsePassageId(presentationId);
+      return key
+        ? this.lists("kind = 'shastra' AND passage = ?", JSON.stringify(key))
+        : this.listsPresentation(presentationId);
+    }
+    const item = this.db
+      .prepare(
+        'SELECT kind, presentation_id, passage FROM playlist_items WHERE playlist_id = ? AND id = ? AND deleted_at IS NULL',
+      )
+      .get(from.playlistId, from.itemId) as
+      { kind: string; presentation_id: string | null; passage: string | null } | undefined;
+    if (item?.kind === 'presentation') return item.presentation_id === presentationId;
+    const key = item?.kind === 'shastra' ? keyOf(item.passage) : null;
+    return key !== null && passageId(key) === presentationId;
   }
 
   private isOpenPlaylist(id: string, folder: boolean): boolean {

@@ -167,6 +167,22 @@ Since Session 54 the phone remote mirrors the operator window, laid out for the 
 | `POST /api/v1/playing/play`           | `{"playing":{"layer":"background"}}`                                                                    | Plays what was paused on from where it waits (a file played once to its end, from its start point again; a deck's video or sound waiting for its click, from its start point); Simple Mode too. Lengths and markers of a slide's and the box's videos are in the state's `videoFiles`, by media id.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `POST /api/v1/shastra`                | `{"reference":"SD 14"}`                                                                                 | Puts up a passage from a book by its reference, with each loaded book's own abbreviations: `SD 14`, a range `SD 14-16`, or with a section `Vach G.Pr. 1`. Answers with `reference`, as the screens write it. A reference that names nothing is refused (404) with why ("No loaded book is called “XY”…"). The passage plays like a presentation (its id is in `status.live.presentationId`; `GET /api/v1/presentations/{id}` gives its slides), and Next goes on through it. Simple Mode refuses direct reference puts (403); a passage already in its permitted playlist may play through that row.                                                                                                                                                                                                                        |
 
+### Editing audio playlists
+
+| Request                                  | Body                            | What it does                                                                    |
+| ---------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------- |
+| `GET /api/v1/music/audio`                |                                 | Lists the audio playlists and their tracks, plus the Music steps aside setting. |
+| `POST /api/v1/music/new`                 | {"name":"Placeholder playlist"} | Creates an audio playlist.                                                      |
+| `POST /api/v1/music/{id}/rename`         | {"name":"Placeholder renamed"}  | Renames an audio playlist.                                                      |
+| `POST /api/v1/music/{id}/delete`         | {}                              | Deletes the audio playlist and stops it if it is playing.                       |
+| `POST /api/v1/music/{id}/restore`        | {}                              | Puts back a deleted audio playlist.                                             |
+| `POST /api/v1/music/{id}/options`        | {"loop":true,"shuffle":false}   | Saves loop and shuffle for the audio playlist.                                  |
+| `POST /api/v1/music/{id}/tracks/add`     | {"mediaIds":["…"],"at":0}       | Adds sounds by library ID at a track position. Omit at to add them at the end.  |
+| `POST /api/v1/music/tracks/{id}/move`    | {"to":0}                        | Moves a track to a zero-based position in its audio playlist.                   |
+| `POST /api/v1/music/tracks/{id}/delete`  | {}                              | Removes a track from its audio playlist.                                        |
+| `POST /api/v1/music/tracks/{id}/restore` | {"at":0}                        | Puts back a removed track at its previous position.                             |
+| `POST /api/v1/music/steps-aside`         | {"on":true}                     | Changes whether Music steps aside.                                              |
+
 ## Announcements (Announcements devices)
 
 ```sh
