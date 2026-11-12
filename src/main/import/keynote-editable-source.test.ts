@@ -86,7 +86,7 @@ describe('the editable Keynote export', () => {
 
     const result = await convertToPdf('keynote', input, work, { platform: 'darwin' });
 
-    expect(result).toMatchObject({ ok: true, editablePptx: expect.any(String) });
+    expect(result.ok && result.editablePptx).toEqual(expect.any(String));
     if (!result.ok || !('editablePptx' in result) || typeof result.editablePptx !== 'string')
       throw new Error('Missing editable Keynote export.');
     expect(dirname(result.editablePptx)).toBe(work);
@@ -103,16 +103,19 @@ describe('the editable Keynote export', () => {
     expect(readFileSync(input)).toEqual(source);
   });
 
-  it.each(['corrupt', 'timed out'] as const)('keeps the PDF if the editable export is %s', async (exported) => {
-    standInKeynote(exported);
+  it.each(['corrupt', 'timed out'] as const)(
+    'keeps the PDF if the editable export is %s',
+    async (exported) => {
+      standInKeynote(exported);
 
-    const result = await convertToPdf('keynote', input, work, { platform: 'darwin' });
+      const result = await convertToPdf('keynote', input, work, { platform: 'darwin' });
 
-    expect(result).toMatchObject({ ok: true, shownOnly: true });
-    if (!result.ok) throw new Error('Missing PDF fallback.');
-    expect(result).not.toHaveProperty('editablePptx');
-    expect(readFileSync(result.pdf)).toEqual(pdf);
-    expect(result.slides?.map(({ notes }) => notes)).toEqual(shownNotes.split('\u001e'));
-    expect(readdirSync(work).some((name) => name.startsWith('convert-'))).toBe(false);
-  });
+      expect(result).toMatchObject({ ok: true, shownOnly: true });
+      if (!result.ok) throw new Error('Missing PDF fallback.');
+      expect(result).not.toHaveProperty('editablePptx');
+      expect(readFileSync(result.pdf)).toEqual(pdf);
+      expect(result.slides?.map(({ notes }) => notes)).toEqual(shownNotes.split('\u001e'));
+      expect(readdirSync(work).some((name) => name.startsWith('convert-'))).toBe(false);
+    },
+  );
 });

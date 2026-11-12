@@ -772,19 +772,11 @@ async function walk(
       if (Math.abs(rect.width / cx - rect.height / cy) > 0.00001)
         ctx.issues.add('Non-uniform group scaling may change editable text spacing.');
       result.push(
-        ...(await walk(
-          node,
-          part,
-          m,
-          flip !== flag(attr(xfrm, 'flipH')),
-          ctx,
-          inherited,
-          {
-            id: group?.id ?? ctx.id(),
-            sourceIds: sourceShapeId ? [...(group?.sourceIds ?? []), sourceShapeId] : (group?.sourceIds ?? []),
-            hidden,
-          },
-        )),
+        ...(await walk(node, part, m, flip !== flag(attr(xfrm, 'flipH')), ctx, inherited, {
+          id: group?.id ?? ctx.id(),
+          sourceIds: sourceShapeId ? [...(group?.sourceIds ?? []), sourceShapeId] : (group?.sourceIds ?? []),
+          hidden,
+        })),
       );
     } else if (kind === 'sp' || kind === 'pic' || kind === 'cxnSp') {
       const objects = await objectOf(node, part, parent, flip, ctx);

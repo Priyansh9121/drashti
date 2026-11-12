@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { constants as fsConstants, existsSync } from 'node:fs';
-import { copyFile, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, userInfo } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
 import type { PictureSource } from '../../shared/pictures';
@@ -270,13 +270,15 @@ export const CONVERT_LIMITS: ConvertLimits = {
   perMovieSecondMs: 6_000,
 };
 
-/** A Keynote file is also saved as PowerPoint to count its builds, unless it is bigger than this. */
-const BUILDS_MAX_BYTES = 100 * 1024 * 1024;
+/** A Keynote file up to this size is also exported as PowerPoint for editing and counting builds. */
+const KEYNOTE_PPTX_MAX_BYTES = 100 * 1024 * 1024;
 
 export type Converted =
   | {
       ok: true;
       pdf: string;
+      /** Keynote’s readable PowerPoint export, retained in the caller’s work folder. */
+      editablePptx?: string;
       /** Each slide, as the app told it (null: the file itself is read for them, or none). */
       slides: PptxSlide[] | null;
       /** The notes are for shown slides only, already in the PDF's order. */
@@ -874,15 +876,15 @@ async function convertOnMac(
     if (!opened.ok) return opened.failed;
     const { doc, slides, copy } = opened.document;
     const inside = dirname(copy);
-    const ext = copyExt(input);
     const name = session.name;
 
-    // ---- save it as PDF (and a Keynote file as PowerPoint too, for its builds) -------------
+    // Save the PDF first so a failure in the optional Keynote export leaves the pictures available.
     const pdf = join(work, 'pictures.pdf');
     const inApp = join(inside, 'pictures.pdf');
-    const pptx = join(inside, 'builds.pptx');
-    const wantBuilds =
-      converter === 'keynote' && ext === '.key' && (await stat(input)).size <= BUILDS_MAX_BYTES;
+    const wantEditablePptx =
+      converter === 'keynote' &&
+      copyExt(input) === '.key' &&
+      (await stat(input)).size <= KEYNOTE_PPTX_MAX_BYTES;
     const seconds = Math.ceil((limits.saveMs + limits.perSlideMs * Math.max(slides, 1)) / 1000);
     const pdfFrom = performance.now();
     const saved =
@@ -895,15 +897,10 @@ async function convertOnMac(
               'repeat with s in (slides of d)',
               'if skipped of s is false then set end of noteList to (presenter notes of s)',
               'end repeat',
-              'if (item 3 of argv) is not "" then',
-              'try',
-              'export d to (POSIX file (item 3 of argv)) as Microsoft PowerPoint',
-              'end try',
-              'end if',
               "set AppleScript's text item delimiters to (ASCII character 30)",
               'return noteList as text',
             ],
-            [doc, inApp, wantBuilds ? pptx : ''],
+            [doc, inApp],
             seconds,
           )
         : await session.tell(
@@ -929,24 +926,46 @@ async function convertOnMac(
     session.log('saved as PDF');
 
     let fileSlides: PptxSlide[] | null = null;
-    let shownOnly = false;
-    if (converter === 'keynote') {
-      if (wantBuilds && exists(pptx)) {
+    let editablePptx: string | undefined;
+    const remainingMs = seconds * 1000 - (performance.now() - pdfFrom);
+    if (wantEditablePptx && remainingMs > 0) {
+      const pptx = join(inside, 'builds.pptx');
+      const exported = await session.tell(
+        [
+          'set d to document id (item 1 of argv)',
+          'export d to (POSIX file (item 2 of argv)) as Microsoft PowerPoint',
+        ],
+        [doc, pptx],
+        Math.ceil(remainingMs / 1000),
+      );
+      if (exported.aborted || session.signal?.aborted) return cancelled();
+      if (exported.timedOut || errorNumber(exported.stderr) === TIMED_OUT) {
+        session.stuck('saving an editable copy');
+      } else if (exported.code === 0) {
         try {
-          fileSlides = await readPptx(pptx);
+          const exportedSlides = await readPptx(pptx);
+          if (session.signal?.aborted) return cancelled();
+          if (exportedSlides.length > 0 && (slides === 0 || exportedSlides.length === slides)) {
+            fileSlides = exportedSlides;
+            const retained = join(work, 'keynote-editable.pptx');
+            await rename(pptx, retained);
+            editablePptx = retained;
+          }
         } catch {
-          // Its builds cannot be counted: the notes come from Keynote itself.
+          // Keep the PDF if the export could not be read or retained.
         }
       }
-      if (!fileSlides) {
-        shownOnly = true;
-        fileSlides = saved.stdout
-          .replace(/\n$/u, '')
-          .split('\u001e')
-          .map((n) => ({ hidden: false, notes: tidyNotes(n), animated: false }));
-      }
     }
-    return { ok: true, pdf, slides: fileSlides, shownOnly };
+    if (session.signal?.aborted) return cancelled();
+
+    const shownOnly = converter === 'keynote' && !fileSlides;
+    if (shownOnly) {
+      fileSlides = saved.stdout
+        .replace(/\n$/u, '')
+        .split('\u001e')
+        .map((n) => ({ hidden: false, notes: tidyNotes(n), animated: false }));
+    }
+    return { ok: true, pdf, slides: fileSlides, shownOnly, ...(editablePptx ? { editablePptx } : {}) };
   });
 }
 
