@@ -1048,7 +1048,8 @@ export class ConvertService {
     const size = statSync(source, { throwIfNoEntry: false })?.size ?? 0;
     const estimate = Math.ceil(size * fraction);
     const free = this.deps.freeBytes(out);
-    if (free - estimate >= KEEP_FREE_BYTES) return null;
+    const needsSpace = free - estimate < KEEP_FREE_BYTES;
+    if (!needsSpace) return null;
     const advice = `Free up some space, then ${action} again.`;
     return action === 'save it'
       ? `This cut needs about ${formatBytes(estimate)}, and only ${gb(free)} is free on this disk (Drashti keeps 2 GB free). ${advice}`
