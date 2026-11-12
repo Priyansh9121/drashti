@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { animationById } from '../../../../shared/lower-third-animations';
 import {
   BEST_LOWER_THIRD_TEMPLATES,
@@ -37,6 +37,22 @@ const FILTERS = {
 } as const;
 const FILTER_KEYS = ['direction', 'kind', 'feel', 'speed'] as const;
 
+const FILTER_OPTIONS = new Map(
+  FILTER_KEYS.map((key) => [
+    key,
+    Object.entries(FILTERS[key].values).filter(([value]) =>
+      LOWER_THIRD_TEMPLATES.some((t) => t[key] === value),
+    ),
+  ]),
+);
+const DIRECTIONS: Record<LowerThirdTemplate['direction'], string> = {
+  left: 'From the left',
+  right: 'From the right',
+  up: 'From below',
+  down: 'From above',
+  centre: 'In the centre',
+};
+
 const TEMPLATE_BY_ID = new Map(LOWER_THIRD_TEMPLATES.map((template) => [template.id, template]));
 const isIdList = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((id: unknown) => typeof id === 'string');
@@ -57,6 +73,86 @@ function templatesIn(collection: Collection, favourites: readonly string[], rece
   }
 }
 
+const TemplateTile = memo(function TemplateTile({
+  template,
+  active,
+  favourite,
+  onPlay,
+  onStop,
+  onChoose,
+  onFavourite,
+}: {
+  template: LowerThirdTemplate;
+  active: boolean;
+  favourite: boolean;
+  onPlay: (id: string) => void;
+  onStop: (id: string) => void;
+  onChoose: (template: LowerThirdTemplate) => void;
+  onFavourite: (id: string) => void;
+}) {
+  const { id, name, direction, kind, feel, speed } = template;
+  const description = [
+    FILTERS.kind.values[kind],
+    DIRECTIONS[direction],
+    FILTERS.feel.values[feel] + ' feel',
+    FILTERS.speed.values[speed] + ' speed',
+  ].join('. ');
+  return (
+    <li
+      className="relative min-w-0"
+      onPointerEnter={(event) => {
+        if (event.pointerType !== 'touch') onPlay(id);
+      }}
+      onPointerLeave={() => {
+        onStop(id);
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) onStop(id);
+      }}
+    >
+      <button
+        type="button"
+        className="w-full overflow-hidden rounded-lg border border-field bg-panel-2 text-left hover:border-accent"
+        data-testid="studio-template"
+        data-template={id}
+        data-style={template.input.look.style ?? 'box'}
+        data-direction={direction}
+        data-kind={kind}
+        data-feel={feel}
+        data-speed={speed}
+        aria-description={description}
+        onFocus={(event) => {
+          if (event.currentTarget.matches(':focus-visible')) onPlay(id);
+        }}
+        onClick={() => {
+          onChoose(template);
+        }}
+      >
+        <StudioPreview
+          key={active ? 'play' : 'still'}
+          input={template.input}
+          play={0}
+          backdrop="picture"
+          thumbnail={active ? 'play' : 'still'}
+        />
+        <span className="block truncate px-3 py-2 text-sm font-medium">{name}</span>
+      </button>
+      <IconButton
+        icon={Star}
+        label={'Favourite ' + name}
+        aria-pressed={favourite}
+        variant={favourite ? 'strong' : 'secondary'}
+        size="sm"
+        tooltipSide="bottom"
+        className={cx('absolute top-2 right-2', favourite && '[&_svg]:fill-current')}
+        onClick={() => {
+          onFavourite(id);
+        }}
+      />
+    </li>
+  );
+});
+
 function Gallery({
   favourites,
   recent,
@@ -74,21 +170,34 @@ function Gallery({
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState({ direction: '', kind: '', feel: '', speed: '' });
   const [playing, setPlaying] = useState<string | null>(null);
-  const stop = (id: string) => {
+  const favouritesButton = useRef<HTMLButtonElement>(null);
+  const stop = useCallback((id: string) => {
     setPlaying((current) => (current === id ? null : current));
-  };
-  const words = query.toLowerCase().trim().split(/\s+/u);
-  const available = templatesIn(collection, favourites, recent);
-  const matches = available.filter((template) => {
-    const animation = animationById(template.input.animation);
-    const text = [template.name, animation.name, ...FILTER_KEYS.map((key) => template[key])]
-      .join(' ')
-      .toLowerCase();
-    return (
-      FILTER_KEYS.every((key) => !filters[key] || filters[key] === template[key]) &&
-      words.every((word) => text.includes(word))
-    );
-  });
+  }, []);
+  const favourite = useCallback(
+    (id: string) => {
+      if (collection === 'favourites') favouritesButton.current?.focus();
+      onFavourite(id);
+    },
+    [collection, onFavourite],
+  );
+  const available = useMemo(
+    () => templatesIn(collection, favourites, recent),
+    [collection, favourites, recent],
+  );
+  const matches = useMemo(() => {
+    const words = query.toLowerCase().trim().split(/\s+/u);
+    return available.filter((template) => {
+      const animation = animationById(template.input.animation);
+      const text = [template.name, animation.name, ...FILTER_KEYS.map((key) => template[key])]
+        .join(' ')
+        .toLowerCase();
+      return (
+        FILTER_KEYS.every((key) => !filters[key] || filters[key] === template[key]) &&
+        words.every((word) => text.includes(word))
+      );
+    });
+  }, [available, filters, query]);
   const empty =
     available.length === 0 && collection === 'favourites'
       ? 'Star a template to keep it here.'
@@ -109,6 +218,7 @@ function Gallery({
           {COLLECTION_KEYS.map((key) => (
             <Button
               key={key}
+              {...(key === 'favourites' ? { ref: favouritesButton } : {})}
               variant={key === collection ? 'strong' : 'ghost'}
               size="sm"
               aria-pressed={key === collection}
@@ -143,7 +253,7 @@ function Gallery({
                 }}
               >
                 <option value="">Any</option>
-                {Object.entries(FILTERS[key].values).map(([value, name]) => (
+                {FILTER_OPTIONS.get(key)?.map(([value, name]) => (
                   <option key={value} value={value}>
                     {name}
                   </option>
@@ -160,57 +270,18 @@ function Gallery({
           </p>
         ) : (
           <ul aria-label="Templates" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {matches.map((template) => {
-              const active = playing === template.id;
-              const favourite = favourites.includes(template.id);
-              return (
-                <li key={template.id} className="relative min-w-0">
-                  <button
-                    type="button"
-                    className="w-full overflow-hidden rounded-lg border border-field bg-panel-2 text-left hover:border-accent"
-                    data-testid="studio-template"
-                    data-template={template.id}
-                    data-style={template.input.look.style ?? 'box'}
-                    onPointerEnter={(event) => {
-                      if (event.pointerType !== 'touch') setPlaying(template.id);
-                    }}
-                    onPointerLeave={() => {
-                      stop(template.id);
-                    }}
-                    onFocus={(event) => {
-                      if (event.currentTarget.matches(':focus-visible')) setPlaying(template.id);
-                    }}
-                    onBlur={() => {
-                      stop(template.id);
-                    }}
-                    onClick={() => {
-                      onChoose(template);
-                    }}
-                  >
-                    <StudioPreview
-                      key={active ? 'play' : 'still'}
-                      input={template.input}
-                      play={0}
-                      backdrop="picture"
-                      thumbnail={active ? 'play' : 'still'}
-                    />
-                    <span className="block truncate px-3 py-2 text-sm font-medium">{template.name}</span>
-                  </button>
-                  <IconButton
-                    icon={Star}
-                    label={`Favourite ${template.name}`}
-                    aria-pressed={favourite}
-                    variant={favourite ? 'strong' : 'secondary'}
-                    size="sm"
-                    tooltipSide="bottom"
-                    className={cx('absolute top-2 right-2', favourite && '[&_svg]:fill-current')}
-                    onClick={() => {
-                      onFavourite(template.id);
-                    }}
-                  />
-                </li>
-              );
-            })}
+            {matches.map((template) => (
+              <TemplateTile
+                key={template.id}
+                template={template}
+                active={playing === template.id}
+                favourite={favourites.includes(template.id)}
+                onPlay={setPlaying}
+                onStop={stop}
+                onChoose={onChoose}
+                onFavourite={favourite}
+              />
+            ))}
           </ul>
         )}
       </div>
@@ -218,8 +289,13 @@ function Gallery({
   );
 }
 
-export function TemplatePicker() {
-  const [open, setOpen] = useState(false);
+export function TemplatePicker({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const [favourites, setFavourites] = usePersistentState('lower-third-template-favourites', [], isIdList);
   const [recent, setRecent] = usePersistentState('lower-third-template-recent', [], isIdList);
 
@@ -234,7 +310,7 @@ export function TemplatePicker() {
         data-testid="studio-templates"
         onClick={(event) => {
           event.currentTarget.focus();
-          setOpen(true);
+          onOpenChange(true);
         }}
       >
         Templates
@@ -244,7 +320,7 @@ export function TemplatePicker() {
           favourites={favourites}
           recent={recent}
           onClose={() => {
-            setOpen(false);
+            onOpenChange(false);
           }}
           onFavourite={(id) => {
             setFavourites(
@@ -252,7 +328,7 @@ export function TemplatePicker() {
             );
           }}
           onChoose={(template) => {
-            setOpen(false);
+            onOpenChange(false);
             makeNew(template.input, () => {
               setRecent([template.id, ...recent.filter((id) => id !== template.id)].slice(0, 20));
             });

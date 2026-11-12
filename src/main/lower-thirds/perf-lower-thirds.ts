@@ -36,8 +36,8 @@ interface Played {
   lowerThird: LowerThird;
   /** How long it is held between its in and its out (a background: long enough to measure it moving). */
   holdMs: number;
-  /** What is measured: its in and out, or its moving background while held. */
-  measure: 'moving' | 'held';
+  /** Existing animation rows, held backgrounds, or each phase of a complete design. */
+  measure: 'moving' | 'held' | 'phases';
 }
 
 const LINES = ['Placeholder name', 'Placeholder title'];
@@ -92,7 +92,7 @@ export function playedRows(): Played[] {
       row: 'template ' + template.id,
       lowerThird: { ...template.input, id: 'perf-lt-template-' + template.id },
       holdMs: HOLD_MS,
-      measure: 'moving',
+      measure: 'phases',
     })),
   ];
 }
@@ -108,7 +108,10 @@ const COUNT = `(() => {
     if (el) {
       const phase = el.getAttribute('data-lt-phase');
       const kind = phase === 'in' || phase === 'out' ? 'moving' : phase === 'still' ? 'held' : null;
-      if (kind) id = el.getAttribute('data-lt-id').slice(8) + '|' + kind;
+      if (kind) {
+        const row = el.getAttribute('data-lt-id').slice(8);
+        id = row + '|' + (row.startsWith('template-') && kind === 'moving' ? phase : kind);
+      }
     }
     if (id !== (cur ? cur.id : null)) {
       if (cur) {
@@ -145,6 +148,21 @@ export function keptOf(c: Counted | undefined, fps = 60): number | null {
   return Math.min(1, c.frames / (c.ms / (1000 / fps)));
 }
 
+/** Score a design phase by its pace and by the share of frames over its full scheduled length. */
+export function keptOfPhase(c: Counted | undefined, fps: number, durationMs: number): number | null {
+  const pace = keptOf(c, fps);
+  if (!c || pace === null) return null;
+  // The first sampled frame begins the interval. COUNT counts only its following callbacks.
+  const expectedFrames = Math.max(1, Math.floor((durationMs * fps) / 1000));
+  return Math.min(pace, (c.frames + 1) / expectedFrames);
+}
+
+function durationOf(lowerThird: LowerThird, phase: 'in' | 'out'): number {
+  const id = phase === 'out' ? (lowerThird.outAnimation ?? lowerThird.animation) : lowerThird.animation;
+  const animation = animationById(id);
+  return animationLength(animation, phase, cutIntoUnits(shownLines(lowerThird.lines), animation).units);
+}
+
 export function lowerThirdsScenario(deps: ScenarioDeps): ScenarioRun {
   // Each screen, and how many frames a second it draws: an output the display's 60, the stream's page its own.
   const screens = (): { page: Pick<BrowserWindow, 'webContents'>; fps: number }[] => {
@@ -166,13 +184,10 @@ export function lowerThirdsScenario(deps: ScenarioDeps): ScenarioRun {
       // Each row in turn: in, held, out, the next once it has gone.
       for (const p of rows) {
         const lt = p.lowerThird;
-        const words = shownLines(lt.lines);
-        const entrance = animationById(lt.animation);
-        const exit = animationById(lt.outAnimation ?? lt.animation);
         deps.engine.dispatch({ type: 'showLowerThird', lowerThird: lt });
-        await sleep(animationLength(entrance, 'in', cutIntoUnits(words, entrance).units) + p.holdMs);
+        await sleep(durationOf(lt, 'in') + p.holdMs);
         deps.engine.dispatch({ type: 'hideLowerThird' });
-        await sleep(animationLength(exit, 'out', cutIntoUnits(words, exit).units) + AFTER_MS);
+        await sleep(durationOf(lt, 'out') + AFTER_MS);
       }
       const counted = screens();
       const seen = (await Promise.all(
@@ -181,16 +196,23 @@ export function lowerThirdsScenario(deps: ScenarioDeps): ScenarioRun {
       const percent = (k: number | null) => (k === null ? 'unseen' : `${String(Math.round(k * 100))}%`);
       // Each row's worst screen, and the rows not smooth on one of them.
       const results = rows.map((p) => {
-        const key = `${p.lowerThird.id.slice(8)}|${p.measure}`;
-        const kept = seen.map((s, i) => keptOf(s?.[key], counted[i]?.fps ?? 60));
-        const worst = kept.some((k) => k === null) ? null : Math.min(...(kept as number[]));
+        const id = p.lowerThird.id.slice(8);
+        const kept = seen.flatMap((screen, i) => {
+          const fps = counted[i]?.fps ?? 60;
+          if (p.measure !== 'phases') return [keptOf(screen?.[id + '|' + p.measure], fps)];
+          return (['in', 'out'] as const).map((phase) =>
+            keptOfPhase(screen?.[id + '|' + phase], fps, durationOf(p.lowerThird, phase)),
+          );
+        });
+        const worst =
+          kept.length === 0 || kept.some((k) => k === null) ? null : Math.min(...(kept as number[]));
         return { row: p.row, worst, smooth: worst !== null && worst >= 0.9 };
       });
       const rough = results.filter((r) => !r.smooth);
       return {
         checks: [
           {
-            name: 'every row of the Lower Thirds studio’s offered set kept 9 in 10 of its frames on every screen (60 a second)',
+            name: 'every lower-thirds row and each design entrance and exit kept 9 in 10 of its frames on every screen',
             ok: seen.length > 0 && rough.length === 0,
             detail:
               rough.length === 0
