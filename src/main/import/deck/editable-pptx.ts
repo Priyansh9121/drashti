@@ -719,9 +719,15 @@ function nonVisualProperties(node: XmlNode): Node {
   return child(wrapper, 'cNvPr');
 }
 
-function drawingId(node: XmlNode): string | undefined {
-  const id = attr(nonVisualProperties(node), 'id')?.trim();
+function drawingId(properties: Node): string | undefined {
+  const id = attr(properties, 'id')?.trim();
   return id && /^\d{1,10}$/u.test(id) ? id : undefined;
+}
+
+interface WalkGroup {
+  id: string;
+  sourceIds: string[];
+  hidden: boolean;
 }
 
 async function walk(
@@ -731,15 +737,16 @@ async function walk(
   flip: boolean,
   ctx: Context,
   inherited = false,
-  groupId?: string,
-  sourceGroupIds: string[] = [],
+  group?: WalkGroup,
 ): Promise<SlideElement[]> {
   const result: SlideElement[] = [];
   for (const node of kids(tree)) {
     const kind = nameOf(node);
     if (inherited && placeholder(node)) continue;
     // Layout and master parts have their own ID spaces. Slide timing addresses this slide's tree.
-    const sourceShapeId = inherited ? undefined : drawingId(node);
+    const properties = nonVisualProperties(node);
+    const sourceShapeId = inherited ? undefined : drawingId(properties);
+    const hidden = group?.hidden === true || flag(attr(properties, 'hidden'));
     if (kind === 'grpSp') {
       const xfrm = child(child(node, 'grpSpPr'), 'xfrm'),
         rect = rawRect(xfrm);
@@ -772,18 +779,24 @@ async function walk(
           flip !== flag(attr(xfrm, 'flipH')),
           ctx,
           inherited,
-          groupId ?? ctx.id(),
-          sourceShapeId ? [...sourceGroupIds, sourceShapeId] : sourceGroupIds,
+          {
+            id: group?.id ?? ctx.id(),
+            sourceIds: sourceShapeId ? [...(group?.sourceIds ?? []), sourceShapeId] : (group?.sourceIds ?? []),
+            hidden,
+          },
         )),
       );
     } else if (kind === 'sp' || kind === 'pic' || kind === 'cxnSp') {
       const objects = await objectOf(node, part, parent, flip, ctx);
+      const name = cutText(attr(properties, 'name')?.trim() ?? '', 200);
       result.push(
         ...objects.map((el) => ({
           ...el,
-          ...(groupId ? { groupId } : {}),
+          ...(group && !el.groupId ? { groupId: group.id } : {}),
+          ...(name ? { name } : {}),
+          ...(hidden ? { hidden } : {}),
           ...(sourceShapeId ? { sourceShapeId } : {}),
-          ...(sourceGroupIds.length > 0 ? { sourceGroupIds } : {}),
+          ...(group?.sourceIds.length ? { sourceGroupIds: group.sourceIds } : {}),
         })),
       );
     } else if (kind === 'AlternateContent') {
@@ -796,8 +809,7 @@ async function walk(
           flip,
           ctx,
           inherited,
-          groupId,
-          sourceGroupIds,
+          group,
         )),
       );
     } else if (!['nvGrpSpPr', 'grpSpPr', 'extLst'].includes(kind)) {

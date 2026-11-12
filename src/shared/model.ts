@@ -193,6 +193,10 @@ interface ElementBase {
   frame: Rect;
   /** Degrees clockwise, about the frame's centre; left out for none. */
   rotation?: number;
+  /** The object's name from its source deck, when it has one. */
+  name?: string;
+  /** Kept in the editor's object list while omitted from the slide. */
+  hidden?: boolean;
   /** This object's own OOXML drawing ID. One source shape can produce a fill and a text element. */
   sourceShapeId?: string;
   /** OOXML drawing IDs of enclosing groups, outermost first, for animations targeting a group. */

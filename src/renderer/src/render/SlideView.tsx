@@ -604,7 +604,7 @@ export function timerBoxStyle(el: TimerElement): CSSProperties {
  * words, or a Timer (Session 50).
  */
 export const darkensBehind = (el: SlideElement): boolean =>
-  el.kind === 'timer' || (el.kind === 'text' && el.text.trim() !== '');
+  !el.hidden && (el.kind === 'timer' || (el.kind === 'text' && el.text.trim() !== ''));
 
 /**
  * A shape, drawn as SVG so its outline sits on its edge (half inside, half
@@ -1029,6 +1029,7 @@ function MovingElement({
 }
 
 export function ElementView(props: Parameters<typeof ElementBody>[0] & { previewAt?: number }) {
+  if (props.el.hidden) return null;
   const at = props.previewAt ?? props.startedAt;
   const motion = props.el.motion;
   if (
@@ -1158,7 +1159,7 @@ export const SlideView = memo(function SlideView({
               }}
             />
           ) : null,
-          text === 'only' && el.kind !== 'text' ? null : el.id === deckPicture &&
+          el.hidden || (text === 'only' && el.kind !== 'text') ? null : el.id === deckPicture &&
             deck &&
             step &&
             el.kind === 'image' ? (
