@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import type { MediaElement, TextElement } from '../../../shared/model';
+import type { MediaElement, SlideElement, TextElement } from '../../../shared/model';
 import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { copyElements, pasteElements } from './clipboard';
-import { findSlide, newSlide, rotateElements, scaleElements } from './ops';
+import {
+  copySlide,
+  duplicateElements,
+  findSlide,
+  moveElements,
+  newSlide,
+  rotateElements,
+  scaleElements,
+} from './ops';
 
 /* The slide editor: several elements resized and turned together; copy and paste between slides and presentations. */
 
@@ -131,5 +139,55 @@ describe('copy and paste', () => {
       ['translit', 26.67, true],
     ]);
     expect(el.style.outline?.width).toBe(1.33);
+  });
+});
+
+describe('PowerPoint animation targets on copied objects', () => {
+  const drawing = { sourceShapeId: '17', sourceGroupIds: ['3', '5'] };
+  const name = 'Placeholder animated object';
+  const frame = { x: 100, y: 100, width: 600, height: 200 };
+  const sourceDoc = () =>
+    doc(undefined, [
+      slide('a', [text('source', frame, { ...drawing, name })]),
+      slide('b', [text('target', frame, drawing)]),
+    ]);
+
+  function expectCopyWithoutTarget(copy: SlideElement | undefined) {
+    expect(copy).toMatchObject({ kind: 'text', name, text: 'Placeholder words' });
+    expect(copy).not.toHaveProperty('sourceShapeId');
+    expect(copy).not.toHaveProperty('sourceGroupIds');
+  }
+
+  it('drops the source target from Duplicate and keeps it on the original', () => {
+    const result = duplicateElements(sourceDoc(), 'a', ['source']);
+    expect(result.ids).toHaveLength(1);
+    const elements = findSlide(result.doc, 'a')?.elements ?? [];
+    expect(elements[0]).toMatchObject(drawing);
+    expectCopyWithoutTarget(elements.find((element) => element.id === result.ids[0]));
+  });
+
+  it.each([
+    { action: 'Paste', destination: 'a', inPlace: false },
+    { action: 'Paste in place', destination: 'a', inPlace: true },
+    { action: 'Paste onto another slide', destination: 'b', inPlace: false },
+  ])('$action drops the source target without changing the existing objects', ({ destination, inPlace }) => {
+    const original = sourceDoc();
+    expect(copyElements(original, 'a', ['source'])).toBe(1);
+    const result = pasteElements(original, destination, { inPlace });
+    if (!result) throw new Error('The copied placeholder object did not paste');
+    expect(result.ids).toHaveLength(1);
+    const elements = findSlide(result.doc, destination)?.elements ?? [];
+    expect(elements[0]).toMatchObject(drawing);
+    expect(findSlide(result.doc, 'a')?.elements[0]).toMatchObject(drawing);
+    expectCopyWithoutTarget(elements.find((element) => element.id === result.ids[0]));
+  });
+
+  it('keeps the targets when copying a whole slide or moving an original object', () => {
+    const original = sourceDoc();
+    const sourceSlide = findSlide(original, 'a');
+    if (!sourceSlide) throw new Error('Missing generated source slide');
+    expect(copySlide(sourceSlide).elements[0]).toMatchObject(drawing);
+    const moved = moveElements(original, 'a', ['source'], { x: 24, y: 24 });
+    expect(findSlide(moved, 'a')?.elements[0]).toMatchObject(drawing);
   });
 });

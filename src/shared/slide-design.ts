@@ -12,24 +12,28 @@ export function composeSlide(
   ownsBackground = false,
   masterCanvas?: Size,
 ): RenderSlide {
-  if (slide.deck) return slide;
+  const own = slide.elements.some((element) => element.hidden)
+    ? { ...slide, elements: slide.elements.filter((element) => !element.hidden) }
+    : slide;
+  if (own.deck) return own;
   const behind = design?.skipMaster ? null : master;
   const backdrop =
     design?.backdrop ?? (slide.background === null && !ownsBackground ? behind?.design?.backdrop : undefined);
-  if (!design && !behind) return slide;
+  if (!design && !behind) return own;
+  const masterElements = behind?.elements.filter((element) => !element.hidden) ?? [];
   return {
-    ...slide,
+    ...own,
     background: slide.background ?? (ownsBackground ? null : behind?.background) ?? null,
     ...(backdrop ? { backdrop } : {}),
     ...(behind
       ? {
           elements: [
-            ...fitElements(behind.elements, masterCanvas ?? slide, slide).map((el) =>
+            ...fitElements(masterElements, masterCanvas ?? slide, slide).map((el) =>
               el.kind === 'text' ? { ...el, everyScreen: true } : el,
             ),
-            ...slide.elements,
+            ...own.elements,
           ],
-          masterElementIds: behind.elements.map((el) => el.id),
+          masterElementIds: masterElements.map((el) => el.id),
         }
       : {}),
     fullSlide: true,

@@ -1,7 +1,7 @@
 import { constants, setPriority } from 'node:os';
 import { isAbsolute, relative, sep } from 'node:path';
 import { z } from 'zod';
-import { EDITABLE_SOURCE_LIMITS } from '../../shared/editable-source';
+import { EDITABLE_SOURCE_LIMITS, pptxAssetTokens } from '../../shared/editable-source';
 import { readEditablePptx } from '../import/deck/editable-pptx';
 import { MEDIA_REF } from '../import/model';
 import type { FromPptxReader, PptxPage, ToPptxReader } from './pptx-reader-protocol';
@@ -54,11 +54,7 @@ port.on('message', ({ data }: { data: unknown }) => {
           failed.push(sourceIndex);
           continue;
         }
-        const needed = new Set(
-          page.elements.flatMap((element) =>
-            element.kind === 'image' || element.kind === 'video' ? [element.mediaId] : [],
-          ),
-        );
+        const needed = pptxAssetTokens(page.elements);
         const assets: PptxPage['assets'] = [];
         for (const [index, asset] of native.media.entries()) {
           const token = `${MEDIA_REF}${String(index)}`;
@@ -83,7 +79,7 @@ port.on('message', ({ data }: { data: unknown }) => {
         type: 'prepared',
         jobId: job.jobId,
         pages,
-        total: native.slides.length,
+        total: native.sourceCount,
         failed,
       };
       if (Buffer.byteLength(JSON.stringify(message), 'utf8') > EDITABLE_SOURCE_LIMITS.jobMetadataBytes)

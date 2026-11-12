@@ -10,7 +10,8 @@ import { loadMedia } from '../library/library-store';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
 import { OversetMark, OversetWatch } from '../render/measure';
-import { Button, IconButton } from '../ui/Button';
+import { Button } from '../ui/Button';
+import { Tooltip } from '../ui/Tooltip';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog, useFocusTrap } from '../ui/Dialog';
 import { KeepChangesDialog, SAVES_LIBRARY, savesLive } from '../ui/KeepChanges';
@@ -53,6 +54,7 @@ import {
 import { FindPanel } from './FindPanel';
 import { Inspector } from './Inspector';
 import { MediaPicker, naturalSize } from './MediaPicker';
+import type { Point } from './geometry';
 import {
   addElement,
   addSlideAfter,
@@ -171,6 +173,64 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     if (pendingPick.current.busy) pendingPick.current.save = force;
     else void saveSlides(force);
   }, []);
+  const placeMedia = (
+    load: (
+      presentationId: string,
+    ) => Promise<{ id: string; kind: 'image' | 'video' } | { message: string } | null>,
+    at?: Point,
+  ) => {
+    const before = useEditor.getState();
+    if (
+      !before.doc ||
+      !before.slideId ||
+      before.saving ||
+      before.askDiscard ||
+      before.sourceConversion ||
+      before.pdfDrawing ||
+      pendingPick.current.busy
+    )
+      return;
+    finishTextEditing();
+    const target = { presentationId: before.doc.presentationId, slideId: before.slideId };
+    const request = pendingPick.current.id + 1;
+    pendingPick.current = { id: request, busy: true, save: null };
+    setPickingBusy(true);
+    const current = () => alive.current && pendingPick.current.id === request;
+    void (async () => {
+      try {
+        const media = await load(target.presentationId);
+        if (!media || !current()) return;
+        if ('message' in media) {
+          tell(media.message);
+          return;
+        }
+        const size = await naturalSize(media);
+        if (!current()) return;
+        const now = useEditor.getState();
+        const slide = now.doc ? findSlide(now.doc, target.slideId) : undefined;
+        if (now.doc?.presentationId !== target.presentationId || !slide) return;
+        const element = newMedia({ ...media, ...(size ?? {}) }, slideCanvas(slide, now.doc), at);
+        commit(
+          addElement(now.doc, slide.id, element),
+          now.slideId === slide.id ? { select: [element.id] } : {},
+        );
+        const queuedSave = pendingPick.current.save;
+        if (queuedSave !== null) void saveSlides(queuedSave);
+      } catch {
+        if (current()) tell('Drashti couldn’t add the picture or video. Choose it again.');
+      } finally {
+        if (current()) cancelPicking();
+      }
+    })();
+  };
+  const pictureFromComputer = (path: string | null, at?: Point) => {
+    if (pdfJob.current || picking !== null) return;
+    placeMedia(async (presentationId) => {
+      const result = await window.drashti.slideEditor.addPicture(presentationId, path);
+      if (!result.ok) return { message: result.message };
+      return result.mediaId ? { id: result.mediaId, kind: 'image' } : null;
+    }, at);
+  };
   const mac = platform === 'darwin';
   const mod = mac ? '⌘' : 'Ctrl+';
   const pdfPage = isPdfPage(doc, slideId);
@@ -401,7 +461,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       data-testid="slide-editor"
       className="flex h-screen flex-col bg-ink text-fg focus:outline-none"
     >
-      <header className="flex shrink-0 items-center gap-2 border-b border-line bg-panel px-3 py-1.5">
+      <header className="flex shrink-0 items-center gap-1.5 border-b border-line bg-panel px-3 py-1.5">
         <h1 id={titleId} className="min-w-24 flex-[1_1_8rem] text-sm font-bold">
           <Truncate text={`Slides of “${name}”`} />
         </h1>
@@ -411,6 +471,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           items={pdfEditorTabs(GROUPS, pdfPage)}
           value={shownGroup}
           size="sm"
+          className="max-xl:[&_svg]:hidden"
           onChange={(next) => {
             const now = useEditor.getState();
             if (next !== 'pdf') {
@@ -419,16 +480,16 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             } else useEditor.setState({ group: next });
           }}
         />
-        <span className="mx-1 h-6 w-px shrink-0 bg-line" aria-hidden="true" />
-        <IconButton icon={Undo2} label="Undo" kbd={`${mod}Z`} disabled={!canUndo} onClick={undoAny} />
-        <IconButton
-          icon={Redo2}
-          label="Redo"
-          kbd={mac ? '⇧⌘Z' : 'Ctrl+Y'}
-          disabled={!canRedo}
-          onClick={redoAny}
-        />
-        <span className="mx-1 h-6 w-px shrink-0 bg-line" aria-hidden="true" />
+        <Tooltip content="Undo the last change" kbd={`${mod}Z`} side="bottom">
+          <Button size="sm" variant="ghost" icon={Undo2} disabled={!canUndo} onClick={undoAny}>
+            Undo
+          </Button>
+        </Tooltip>
+        <Tooltip content="Redo the change you undid" kbd={mac ? '⇧⌘Z' : 'Ctrl+Y'} side="bottom">
+          <Button size="sm" variant="ghost" icon={Redo2} disabled={!canRedo} onClick={redoAny}>
+            Redo
+          </Button>
+        </Tooltip>
         {!pdfRowVisible && (
           <Button
             size="sm"
@@ -484,6 +545,11 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           Writing the PDF copy…
         </p>
       )}
+      {pickingBusy && picking === null && (
+        <p className="border-b border-line px-3 py-1 text-xs text-muted" role="status">
+          Adding the picture…
+        </p>
+      )}
       <TabPanel
         group="editor"
         id={shownGroup}
@@ -503,6 +569,8 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               onPicture={() => {
                 setPicking('picture');
               }}
+              onPictureFile={() => pictureFromComputer(null)}
+              pictureBusy={pickingBusy}
               onSound={() => setPicking('sound')}
             />
           )}
@@ -615,7 +683,14 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           <div className="flex min-h-0 flex-1">
             {!strip && <SlideList doc={doc} current={slideId} />}
             <div className="relative flex min-w-0 flex-1">
-              <Canvas platform={platform} />
+              <Canvas
+                platform={platform}
+                onPictureDrop={(file, at) => {
+                  const path = window.drashti.files.pathFor(file);
+                  if (path) pictureFromComputer(path, at);
+                  else tell('Drop a picture file from this computer.');
+                }}
+              />
               {finding && (
                 <FindPanel
                   onClose={() => {
@@ -645,27 +720,8 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               return;
             }
             if (m.kind === 'audio') return;
-            const kind = m.kind;
-            const chosenFor = useEditor.getState();
-            if (!chosenFor.doc || !chosenFor.slideId) return;
-            const target = { presentationId: chosenFor.doc.presentationId, slideId: chosenFor.slideId };
-            const request = pendingPick.current.id + 1;
-            pendingPick.current = { id: request, busy: true, save: null };
-            setPickingBusy(true);
-            void naturalSize({ id: m.id, kind }).then((size) => {
-              if (!alive.current || pendingPick.current.id !== request) return;
-              const s = useEditor.getState();
-              const current = s.doc ? findSlide(s.doc, target.slideId) : undefined;
-              if (s.doc?.presentationId !== target.presentationId || !current) {
-                cancelPicking();
-                return;
-              }
-              const el = newMedia({ id: m.id, kind, ...(size ?? {}) }, slideCanvas(current, s.doc));
-              commit(addElement(s.doc, current.id, el), current.id === s.slideId ? { select: [el.id] } : {});
-              const queuedSave = pendingPick.current.save;
-              cancelPicking();
-              if (queuedSave !== null) void saveSlides(queuedSave);
-            });
+            const media = { id: m.id, kind: m.kind };
+            placeMedia(() => Promise.resolve(media));
           }}
         />
       )}
@@ -869,6 +925,7 @@ function SlideList({
             <ol className={horizontal ? 'flex gap-2' : 'space-y-2'}>
               {g.slides.map((s, index) => {
                 const n = numbers.get(s.id) ?? 0;
+                const label = `Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}${overset.has(s.id) ? ', words run past a box' : ''}`;
                 const here = s.id === current;
                 const marker = dropAt?.groupId === g.id && dropAt.index === index;
                 return (
@@ -902,7 +959,8 @@ function SlideList({
                       data-testid="editor-slide-thumb"
                       data-slide-id={s.id}
                       aria-current={here ? 'true' : undefined}
-                      aria-label={`Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}${overset.has(s.id) ? ', words run past a box' : ''}`}
+                      aria-label={label}
+                      title={label}
                       onDragStart={(e) => {
                         finishTextEditing();
                         e.dataTransfer.effectAllowed = 'move';

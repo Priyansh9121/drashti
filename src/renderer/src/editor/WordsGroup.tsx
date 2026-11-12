@@ -35,10 +35,13 @@ import type { MenuPlace } from '../ui/Menu';
 import { Menu, menuBelow } from '../ui/Menu';
 import { Toggle } from '../ui/Toggle';
 import { Cluster, Divider } from './RibbonParts';
+import { SystemFontOptions } from './FontOptions';
 import { commit, useEditor, useEditorLook } from './editor-store';
 import type { BoxPatch, TextPatch } from './ops';
 import { findSlide, mapElements, styleBox } from './ops';
 import {
+  formatEditedParagraphs,
+  formatTextBox,
   indentLine,
   listLines,
   outdentLine,
@@ -269,10 +272,14 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
         now,
         slide.id,
         boxes.map((b) => b.id),
-        (e) => (e.kind === 'text' ? { ...e, style: { ...e.style, ...box } } : e),
+        (e) => (e.kind === 'text' ? formatTextBox(e, box) : e),
       ),
       coalesce ? { coalesce } : {},
     );
+    if (active) {
+      const draft = formatEditedParagraphs(active.view.state, box);
+      if (draft.docChanged) active.view.dispatch(draft);
+    }
   };
   /** Bullets or numbering: the lines typed in (the selection's), or every line of each box selected. */
   const setList = (next: { mark: ListMark } | null) => {
@@ -339,16 +346,13 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
           }}
         >
           <option value="">The language’s own</option>
-          {!fontKnown && shown.font !== null && (
-            <option value={shown.font} disabled>
-              {shown.font} (not one of Drashti’s)
-            </option>
-          )}
+          {!fontKnown && shown.font !== null && <option value={shown.font}>{shown.font}</option>}
           {LOWER_THIRD_FONTS.map((f) => (
             <option key={f} value={f}>
               {f}
             </option>
           ))}
+          <SystemFontOptions current={shown.font} />
         </Select>
         <NumberTool
           label="Size"
