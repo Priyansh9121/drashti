@@ -4,7 +4,8 @@ import { deckMotionFrame, deckSplitShows } from './deck-motion';
 
 /*
  * PowerPoint's own movie of the comparison deck, measured frame by frame (Session 57, 13 Nov 2026: the lead's run 1,
- * measured by h-c3probe; assister/s57-notes/posts/lead-pptx-compare.md, "Run 1, measured"). Each effect runs 700 ms
+ * measured by h-c3probe; assister/s57-notes/posts/lead-pptx-compare.md, "Run 1, measured"; and run 2, measured by
+ * h-p3run2's probe, assister/s57-notes/logs/lead/pptx-run2/). Each effect runs 700 ms
  * from its click on a 64 × 38 box at (94, 51) of a 320 × 180 slide. A sample is one frame of the movie: its time after
  * the click, and the box's centre, size and turn, and how much of it shows (its opacity times its area, as a share of
  * the box's own; the movie's whole box reads 0.995 of its colour, so each is divided by that), all measured from the
@@ -79,6 +80,31 @@ describe('effects Drashti draws as PowerPoint’s own movie shows them', () => {
     ]);
   });
 
+  it('floats in and out and grows and shrinks with a smooth start and end along the same half-cosines (run 2)', () => {
+    // A smooth start of 25 % and a smooth end of 50 % on the effect itself, as run 1's eased Fly had them.
+    const eased = { accel: 0.25, decel: 0.5 };
+    expectLikePowerPoint(effect('float', 'in', { direction: 'up', distance: 0.08, ...eased }), [
+      [195, 126, 81.03, 63.85, 37.9, 0.2402],
+      [360, 126.02, 75.65, 63.91, 37.96, 0.6261],
+      [525, 125.99, 71.02, 63.97, 37.94, 0.9216],
+    ]);
+    expectLikePowerPoint(effect('float', 'out', { direction: 'down', distance: 0.08, ...eased }), [
+      [193.3, 126.01, 73.68, 63.95, 37.99, 0.7578],
+      [358.3, 125.99, 79.07, 63.95, 38.02, 0.3769],
+      [523.3, 125.96, 83.28, 64.04, 37.71, 0.0724],
+    ]);
+    expectLikePowerPoint(effect('grow-shrink', 'emphasis', { scale: 1.5, ...eased }), [
+      [193.3, 126.17, 70, 71.66, 42.67, 1.2573],
+      [358.3, 126, 70.14, 83.98, 49.67, 1.7156],
+      [523.3, 126.16, 70.16, 93.66, 55.66, 2.1437],
+    ]);
+    expectLikePowerPoint(effect('grow-shrink', 'emphasis', { scale: 0.5, ...eased }), [
+      [195, 126.18, 70, 56.35, 33.36, 0.7729],
+      [360, 126, 70.17, 43.99, 26.32, 0.4764],
+      [525, 126.16, 70.16, 34.33, 20.32, 0.2864],
+    ]);
+  });
+
   it('turns Grow & Turn and Shrink & Turn a quarter turn as they scale and fade', () => {
     expectLikePowerPoint(effect('zoom', 'in', { fade: true, scale: 0, degrees: 90 }), [
       [193.3, 126.07, 70.11, 17.68, 10.56, 0.0211, 64.9],
@@ -125,6 +151,28 @@ describe('effects Drashti draws as PowerPoint’s own movie shows them', () => {
       [458.3, 137.84, 114.67, 130.33, 77.33, 4.1447],
       [590, 131.5, 90.33, 94.31, 55.98, 2.1709],
       [656.7, 128.32, 78.17, 75.98, 45.04, 1.407],
+    ]);
+  });
+
+  it('leaves by Basic Zoom Out, In Slightly and In To Screen Center as their tracks say, each evenly (run 2)', () => {
+    // Each its entrance played backwards, as PowerPoint writes them: Out to PowerPoint's own large size (8 times this
+    // box; its first frames, while 3 % of the box is still a pixel of its size), In Slightly to 2/3, In To Screen
+    // Center to nothing at the slide's centre.
+    const large = '(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*';
+    expectLikePowerPoint(effect('zoom', 'out', { zoomAway: { w: `${large}#ppt_w`, h: `${large}#ppt_h` } }), [
+      [61.7, 126.17, 70.17, 103.66, 61.67, 2.6291],
+      [95, 126, 70, 124.68, 73.99, 3.794],
+      [128.3, 126, 70, 146, 86.68, 5.204],
+    ]);
+    expectLikePowerPoint(effect('zoom', 'out', { zoomAway: { w: '2/3*#ppt_w', h: '2/3*#ppt_h' } }), [
+      [195, 126.02, 70.15, 58.01, 34.35, 0.8191],
+      [391.7, 126, 70.16, 51.98, 31.02, 0.6623],
+      [590, 126.01, 69.99, 45.98, 27.38, 0.5176],
+    ]);
+    expectLikePowerPoint(effect('zoom', 'out', { zoomAway: { w: '0', h: '0', x: '0.5', y: '0.5' } }), [
+      [193.3, 135.51, 75.66, 46.32, 27.36, 0.5206],
+      [391.7, 145.17, 81.33, 28.32, 16.69, 0.194],
+      [590, 154.68, 86.98, 10.07, 5.94, 0.0251],
     ]);
   });
 
