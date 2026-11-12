@@ -29,7 +29,14 @@ import type { AppInfo, TaskProgress } from './app-info';
 import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
-import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
+import type {
+  AutomaticImportNotice,
+  ImportOptions,
+  ImportProgress,
+  ImportReport,
+  ImportResult,
+  ImportRunSummary,
+} from './import';
 import type {
   LibraryChange,
   NewFromWordsResult,
@@ -409,6 +416,8 @@ export interface DrashtiBridge {
     importPaths(paths: string[], options?: ImportOptions): Promise<ImportResult>;
     cancelImport(runId: string): Promise<boolean>;
     onImportProgress(listener: (progress: ImportProgress) => void): () => void;
+    onAutomaticImportNotice(listener: (notice: AutomaticImportNotice) => void): () => void;
+    takeAutomaticImportNotices(): Promise<AutomaticImportNotice[]>;
     listImportRuns(): Promise<ImportRunSummary[]>;
     getImportReport(runId: string): Promise<ImportReport | null>;
     /** Ask for files or a folder to import (a system dialog); [] when cancelled. */

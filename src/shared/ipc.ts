@@ -39,7 +39,14 @@ import type { AppInfo, TaskProgress } from './app-info';
 import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
-import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
+import type {
+  AutomaticImportNotice,
+  ImportOptions,
+  ImportProgress,
+  ImportReport,
+  ImportResult,
+  ImportRunSummary,
+} from './import';
 import type {
   LibraryChange,
   NewFromWordsResult,
@@ -425,6 +432,8 @@ export const IPC = {
     revealPresentation: 'library:reveal-presentation',
     /** main -> operator: how an import is going. */
     importProgress: 'library:import-progress',
+    automaticImportNotice: 'library:automatic-import-notice',
+    takeAutomaticImportNotices: 'library:take-automatic-import-notices',
     /** main -> operator: presentations, props, messages or themes were added or changed. */
     changed: 'library:changed',
     /**
@@ -1362,6 +1371,7 @@ export interface InvokeContract {
   [IPC.library.cancelImport]: { args: [runId: string]; result: boolean };
   [IPC.library.listImportRuns]: { args: []; result: ImportRunSummary[] };
   [IPC.library.getImportReport]: { args: [runId: string]; result: ImportReport | null };
+  [IPC.library.takeAutomaticImportNotices]: { args: []; result: AutomaticImportNotice[] };
   [IPC.library.pickImportPaths]: { args: [kind: 'files' | 'folder' | 'sounds']; result: string[] };
   [IPC.library.relinkMedia]: { args: [mediaIds?: string[]]; result: ImportResult };
   [IPC.library.setArrangement]: {
@@ -1675,6 +1685,7 @@ export interface EventContract {
   [IPC.appearance.open]: { at: number };
   [IPC.engine.message]: EngineMessage;
   [IPC.library.importProgress]: ImportProgress;
+  [IPC.library.automaticImportNotice]: AutomaticImportNotice;
   [IPC.library.changed]: { at: number; what: LibraryChange };
   [IPC.library.extrasChanged]: { on: boolean };
   [IPC.app.safeAreasChanged]: { on: boolean };
