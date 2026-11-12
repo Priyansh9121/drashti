@@ -109,8 +109,13 @@ export function fileMenuEntries(
       icon: target.edit.label === 'Picture editor…' ? SlidersHorizontal : SquarePen,
       onSelect: target.edit.run,
     });
-  if (target.trim)
-    editing.push({ label: 'Trim (start, end and markers)…', icon: Bookmark, onSelect: target.trim });
+  if (target.trim) {
+    const label =
+      target.kind === 'video' && target.place === 'playlist'
+        ? 'Trim (start, end and markers)…'
+        : 'Start, end and markers…';
+    editing.push({ label, icon: Bookmark, onSelect: target.trim });
+  }
   for (const later of added) if (!simple || later.simple) editing.push(...later.items(target));
   group(editing);
   const naming: MenuEntry[] = [];

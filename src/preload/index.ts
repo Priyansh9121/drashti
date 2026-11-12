@@ -364,6 +364,7 @@ const bridge: DrashtiBridge = {
     rowTrim: (itemId) => invoke(IPC.media.rowTrim, itemId),
     applyRowTrim: (itemId, request) => invoke(IPC.media.applyRowTrim, itemId, request),
     resetRowTrim: (itemId, mediaId) => invoke(IPC.media.resetRowTrim, itemId, mediaId),
+    stopRowTrim: (itemId, mediaId) => invoke(IPC.media.stopRowTrim, itemId, mediaId),
     preparingTrims: () => invoke(IPC.media.preparingTrims),
     onPreparingTrims: (listener) => on(IPC.media.preparingTrimsChanged, listener),
     saves: () => invoke(IPC.media.saves),

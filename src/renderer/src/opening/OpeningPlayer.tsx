@@ -171,7 +171,11 @@ export function OpeningPlayer({
       data-opening-held={held ? 'true' : 'false'}
       data-photos={showPhoto ? 1 : 0}
       aria-hidden="true"
-      className={cx('isolate overflow-hidden bg-black', className)}
+      className={cx(
+        'isolate overflow-hidden bg-black',
+        coverWhilePreparing && 'will-change-[opacity]',
+        className,
+      )}
       style={{ visibility: !held && !ready && !coverWhilePreparing ? 'hidden' : undefined }}
     >
       {showPhoto ? (
@@ -182,7 +186,10 @@ export function OpeningPlayer({
           draggable={false}
           decoding="async"
           // The whole photo, never cut to the window's shape (the black around it).
-          className="absolute inset-0 size-full object-contain"
+          className={cx(
+            'absolute inset-0 size-full object-contain',
+            coverWhilePreparing && 'will-change-[opacity,transform]',
+          )}
           style={{ opacity: 0 }}
         />
       ) : (

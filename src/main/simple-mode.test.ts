@@ -554,11 +554,12 @@ describe('Simple Mode locks', () => {
     expect(SIMPLE_MODE_BOUNDED.get(IPC.media.setMarkers)?.(['m-in', markers], noMusic)).toBe(true);
   });
 
-  it('reads, saves and resets a Trim only on playlist video rows in Simple Mode', () => {
+  it('reads, saves, resets and stops a Trim only on playlist video rows in Simple Mode', () => {
     for (const [channel, args] of [
       [IPC.media.rowTrim, []],
       [IPC.media.applyRowTrim, [{ mediaId: 'm-in', points: { startMs: 500, endMs: 1000, markers: [] } }]],
       [IPC.media.resetRowTrim, ['m-in']],
+      [IPC.media.stopRowTrim, ['m-in']],
     ] as const) {
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
       expect(simpleModeRefusesWhole(channel), channel).toBe(true);
