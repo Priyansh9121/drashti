@@ -361,7 +361,7 @@ import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/mo
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
 import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
-import { backgroundItemId, type EngineState, nothingUp } from '../shared/engine/state';
+import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
 import { PhoneFiles } from './network/phone-files';
@@ -3931,16 +3931,7 @@ function start(): void {
       const ffmpeg = saveFfmpeg();
       return ffmpeg ? frameAtOrBefore(ffmpeg, file, atMs) : Promise.resolve(null);
     },
-    isLive: (itemId, mediaId) => {
-      const { live, layers } = engine.current;
-      const bg = layers.background;
-      return (
-        bg?.kind === 'media' &&
-        bg.media === 'video' &&
-        bg.mediaId === mediaId &&
-        backgroundItemId(bg, live.playlist?.itemId) === itemId
-      );
-    },
+    isLive: (itemId, mediaId) => rowVideoLive(engine.current, itemId, mediaId),
     quiet: trimWorkQuiet,
     hash: (file, signal) => hashOffMain(file, signal),
     kept: {
