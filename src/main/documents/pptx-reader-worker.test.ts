@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import type * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
@@ -15,7 +16,7 @@ vi.mock('./pptx-source-timing', () => ({ readEditableWithTiming: vi.fn() }));
 
 const { fileSizes } = vi.hoisted(() => ({ fileSizes: new Map<string, number>() }));
 vi.mock('node:fs/promises', async (original) => ({
-  ...(await original<typeof import('node:fs/promises')>()),
+  ...(await original<typeof fs>()),
   lstat: (file: string) => Promise.resolve({ isFile: () => fileSizes.has(file), size: fileSizes.get(file) }),
 }));
 
