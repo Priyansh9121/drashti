@@ -62,6 +62,68 @@ const BOX =
 const plainWords = (props = BOX) =>
   wordsShape('<a:p><a:pPr/><a:r><a:t>Placeholder plain words</a:t></a:r></a:p>', props);
 
+/*
+ * The real round trip's slides 4 and 5 (13 Nov, run 5 on phase1 28041612), in the shape Keynote's PowerPoint copy wrote
+ * them, placeholder words only. Its master keeps Keynote's title and body styles left-aligned and its "other" style
+ * (its slide number's) right-aligned at 12 pt.
+ */
+const KEYNOTE_STYLES = {
+  'ppt/presentation.xml': PRESENTATION(
+    `<p:defaultTextStyle>${level('l', 1800, '<a:srgbClr val="000000"/>')}</p:defaultTextStyle>`,
+  ),
+  'ppt/slideMasters/slideMaster1.xml': MASTER(
+    `<p:titleStyle>${level('l', 4400, '<a:srgbClr val="000000"/>')}</p:titleStyle>` +
+      `<p:bodyStyle>${level('l', 2800, '<a:srgbClr val="000000"/>')}</p:bodyStyle>` +
+      `<p:otherStyle>${level('r', 1200, '<a:schemeClr val="tx1"/>')}</p:otherStyle>`,
+  ),
+};
+const TITLE_BOX = '<a:xfrm><a:off x="1524000" y="1122363"/><a:ext cx="9144000" cy="2387600"/></a:xfrm>';
+const SUBTITLE_BOX = '<a:xfrm><a:off x="1524000" y="3602038"/><a:ext cx="9144000" cy="1655762"/></a:xfrm>';
+/** PowerPoint's Title Slide layout as the round trip's deck writes it: places only, unless a subtitle list is given. */
+const titleLayout = (subtitleList = '') => {
+  const box = (id: number, ph: string, at: string, list = '') =>
+    `<p:sp><p:nvSpPr><p:cNvPr id="${String(id)}" name="Placeholder layout box ${String(id)}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr>${ph}</p:nvPr></p:nvSpPr><p:spPr>${at}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle>${list}</a:lstStyle><a:p><a:r><a:rPr lang="en-US" dirty="0"/><a:t>Placeholder layout words</a:t></a:r></a:p></p:txBody></p:sp>`;
+  return `<p:sldLayout ${NS} type="title"><p:cSld name="Title Slide"><p:spTree>${box(2, '<p:ph type="ctrTitle"/>', TITLE_BOX)}${box(3, '<p:ph type="subTitle" idx="1"/>', SUBTITLE_BOX, subtitleList)}</p:spTree></p:cSld></p:sldLayout>`;
+};
+/** A placeholder's words as Keynote writes them: white, with no alignment of their own. */
+const keynotePlaceholder = (id: number, ph: string, at: string, words: string) =>
+  `<p:sp><p:nvSpPr><p:cNvPr id="${String(id)}" name="${words} box"/><p:cNvSpPr txBox="1"/><p:nvPr>${ph}</p:nvPr></p:nvSpPr><p:spPr>${at}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr/><a:lstStyle><a:lvl1pPr><a:defRPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:defRPr></a:lvl1pPr></a:lstStyle><a:p><a:pPr/><a:r><a:t>${words}</a:t></a:r></a:p></p:txBody></p:sp>`;
+const titleSlide = (subtitle: string) =>
+  slideXml(
+    keynotePlaceholder(45, '<p:ph type="ctrTitle"/>', TITLE_BOX, 'Placeholder title 4') +
+      keynotePlaceholder(46, subtitle, SUBTITLE_BOX, 'Placeholder subtitle 4'),
+  );
+
+/** One of the table styles Keynote writes into every copy, the one its table names: white borders all round. */
+const KEYNOTE_TABLE_STYLE = '{4C3C2611-4C71-4FC5-86AE-919BDF0F9419}';
+const keynoteTableStyles = () => {
+  const border = (side: string, width = 12700) =>
+    `<a:${side}><a:ln w="${String(width)}" cap="flat"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:prstDash val="solid"/><a:round/></a:ln></a:${side}>`;
+  const part = (name: string, bold: string, words: string, bottom: number, fill: string) =>
+    `<a:${name}><a:tcTxStyle b="${bold}" i="off"><a:font><a:latin typeface="Arial"/><a:ea typeface="Arial"/><a:cs typeface="Arial"/></a:font><a:srgbClr val="${words}"/></a:tcTxStyle><a:tcStyle><a:tcBdr>${border('left')}${border('right')}${border('top')}${border('bottom', bottom)}${border('insideH')}${border('insideV')}</a:tcBdr><a:fill><a:solidFill>${fill}</a:solidFill></a:fill></a:tcStyle></a:${name}>`;
+  return `<a:tblStyleLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" def="{5940675A-B579-460E-94D1-54222C63F5DA}"><a:tblStyle styleId="${KEYNOTE_TABLE_STYLE}" styleName=""><a:tblBg/>${part('wholeTbl', 'off', '000000', 12700, '<a:srgbClr val="CDD2F2"/>')}${part('firstRow', 'on', 'FFFFFF', 38100, '<a:schemeClr val="accent1"/>')}</a:tblStyle></a:tblStyleLst>`;
+};
+const TABLE_WORDS = [
+  ['Placeholder head 1', 'Placeholder head 2', 'Placeholder head 3'],
+  ['Placeholder cell 1', 'Placeholder cell 2', 'Placeholder cell 3'],
+  ['Placeholder cell 4', 'Placeholder cell 5', 'Placeholder cell 6'],
+];
+/**
+ * Slide 5's table as Keynote wrote it: each cell's four borders a width with no colour, its own fill (the header row's
+ * blue, none below), its words left-aligned and white; and, unless `styled` is false, Keynote's table style named.
+ */
+const keynoteTable = (styled = true) => {
+  const borders = ['lnL', 'lnR', 'lnT', 'lnB']
+    .map((side) => `<a:${side} w="12700"><a:miter lim="400000"/></a:${side}>`)
+    .join('');
+  const cell = (words: string, head: boolean) =>
+    `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr algn="l">${head ? '<a:defRPr b="0" sz="1800"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:defRPr>' : '<a:defRPr sz="1800"/>'}</a:pPr><a:r><a:rPr${head ? ' b="1"' : ''} sz="2400"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:sym typeface="Arial"/></a:rPr><a:t>${words}</a:t></a:r></a:p></a:txBody><a:tcPr marL="45720" marR="45720" marT="45720" marB="45720" anchor="t" anchorCtr="0" horzOverflow="overflow">${borders}${head ? '<a:solidFill><a:srgbClr val="35618F"/></a:solidFill>' : '<a:noFill/>'}</a:tcPr></a:tc>`;
+  const rows = TABLE_WORDS.map(
+    (row, r) => `<a:tr h="731520">${row.map((words) => cell(words, r === 0)).join('')}</a:tr>`,
+  ).join('');
+  return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="51" name="Placeholder table"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="548640" y="1828800"/><a:ext cx="9601201" cy="2194561"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstCol="0" firstRow="1" lastCol="0" lastRow="0" bandCol="0" bandRow="0" rtl="0">${styled ? `<a:tableStyleId>${KEYNOTE_TABLE_STYLE}</a:tableStyleId>` : ''}</a:tblPr><a:tblGrid>${'<a:gridCol w="3200400"/>'.repeat(3)}</a:tblGrid>${rows}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+};
+
 describe("Keynote's PowerPoint copy", () => {
   it('reads every text box left-aligned in its own font, with no outline and no extra shape beside it', async () => {
     const deck = await readKeynoteCopy();
@@ -154,5 +216,86 @@ describe('the text style and line of a plain text box', () => {
     expect(elements[1]).toMatchObject({ fill: null, outline: { color: '#aa2244', width: (2 * 4) / 3 } });
     expect(elements[3]).toMatchObject({ name: 'Placeholder styled shape', fill: '#22bb44' });
     expect(elements[3]?.kind === 'shape' && elements[3].outline?.width).toBe(4);
+  });
+});
+
+describe("Keynote's copy of a title slide and a table (the real round trip's slides 4 and 5)", () => {
+  it('reads a subtitle in the master’s body style, as PowerPoint does, where the deck gives no alignment', async () => {
+    // `subTitle` as the round trip's deck has it; `body` (idx 1) as Keynote's copy of it wrote it.
+    for (const ph of ['<p:ph type="subTitle" idx="1"/>', '<p:ph type="body" sz="quarter" idx="1"/>']) {
+      const [title, subtitle] = text(
+        await readSlide(titleSlide(ph), {
+          ...KEYNOTE_STYLES,
+          'ppt/slideLayouts/slideLayout1.xml': titleLayout(),
+        }),
+      );
+      for (const [box, words, points] of [
+        [title, 'Placeholder title 4', 44],
+        [subtitle, 'Placeholder subtitle 4', 28],
+      ] as const) {
+        if (box?.kind !== 'text') throw new Error('A Keynote placeholder was not read.');
+        expect(box).toMatchObject({ text: words, style: { align: 'left', color: '#ffffff' } });
+        expect(box.style.fontSize).toBeCloseTo((points * 4) / 3);
+      }
+    }
+  });
+
+  it('reads PowerPoint’s own subtitle centred as before, with the body style’s spacing and no bullet', async () => {
+    // The Office theme's body style (bullets, hanging indent, 90% lines, 10 pt before) and other style, and its Title
+    // Slide layout's subtitle, which turns the body style's bullet and indent off.
+    const body =
+      '<a:lvl1pPr marL="228600" indent="-228600" algn="l"><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:spcBef><a:spcPts val="1000"/></a:spcBef><a:buFont typeface="Arial"/><a:buChar char="•"/><a:defRPr sz="2800"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="+mn-lt"/></a:defRPr></a:lvl1pPr>';
+    const subtitle = (
+      await readSlide(
+        slideXml(
+          '<p:sp><p:nvSpPr><p:cNvPr id="3" name="Placeholder subtitle"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="subTitle" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" dirty="0"/><a:t>Placeholder PowerPoint subtitle</a:t></a:r></a:p></p:txBody></p:sp>',
+        ),
+        {
+          'ppt/presentation.xml': PRESENTATION(
+            `<p:defaultTextStyle>${level('l', 1800, '<a:schemeClr val="tx1"/>')}</p:defaultTextStyle>`,
+          ),
+          'ppt/slideMasters/slideMaster1.xml': MASTER(
+            `<p:bodyStyle>${body}</p:bodyStyle><p:otherStyle>${level('l', 1800, '<a:schemeClr val="tx1"/>')}</p:otherStyle>`,
+          ),
+          'ppt/slideLayouts/slideLayout1.xml': titleLayout(
+            '<a:lvl1pPr marL="0" indent="0" algn="ctr"><a:buNone/><a:defRPr sz="2400"/></a:lvl1pPr>',
+          ),
+        },
+      )
+    )[0];
+    if (subtitle?.kind !== 'text') throw new Error('The PowerPoint subtitle was not read.');
+    expect(subtitle.style).toMatchObject({
+      align: 'center',
+      fontSize: 32,
+      color: '#101820',
+      lineHeight: 1.08,
+    });
+    const [run] = subtitle.runs ?? [];
+    expect(run).not.toHaveProperty('list');
+    expect(run?.paragraph).toMatchObject({ align: 'center', marginLeft: 0, indent: 0, lineHeight: 1.08 });
+    expect(run?.paragraph?.spaceBefore).toBeCloseTo((10 * 4) / 3, 4);
+  });
+
+  it('draws no cell border written as a width with no colour, whatever its table style’s borders', async () => {
+    // Keynote draws this table with no lines at all (the run's still of slide 5 as it came in): its gridlines are off.
+    for (const styled of [true, false]) {
+      const elements = await readSlide(slideXml(keynoteTable(styled)), {
+        ...KEYNOTE_STYLES,
+        'ppt/tableStyles.xml': keynoteTableStyles(),
+      });
+      const shapes = elements.flatMap((el) => (el.kind === 'shape' ? [el] : []));
+      expect(shapes.filter((el) => el.shape === 'line' || el.outline)).toEqual([]);
+      expect(shapes.map((el) => el.fill)).toEqual(['#35618f', '#35618f', '#35618f']);
+      // Its words as Keynote wrote them: each cell left-aligned and white, in its own place.
+      expect(
+        text(elements).map(
+          (el) => el.kind === 'text' && [el.tableCell, el.text, el.style.align, el.style.color],
+        ),
+      ).toEqual(
+        TABLE_WORDS.flatMap((row, r) =>
+          row.map((words, c) => [{ row: r, column: c, rowSpan: 1, columnSpan: 1 }, words, 'left', '#ffffff']),
+        ),
+      );
+    }
   });
 });
