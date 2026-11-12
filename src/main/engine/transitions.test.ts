@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { DeckNativeTransition } from '../../shared/deck-transition';
 import type { SlideCue } from '../../shared/library';
 import type { Transition } from '../../shared/model';
 import { ShowEngine } from './show-engine';
@@ -112,5 +113,34 @@ describe('transitions', () => {
       blackout: false,
     });
     expect(fresh.engine.current.layers.slide).not.toHaveProperty('transition');
+  });
+});
+
+describe('PowerPoint slide transitions', () => {
+  it('starts the whole-slide transition on Next and starts automatic effects at its exact end', () => {
+    const { engine, source } = setup();
+    const wipe: DeckNativeTransition = { kind: 'wipe', durationMs: 650, deckEffect: 'wipe', direction: 'up' };
+    source.set('deck', [
+      textSlide('previous', 'Placeholder previous slide'),
+      {
+        ...textSlide('incoming', 'Placeholder incoming slide'),
+        deck: {
+          media: [],
+          steps: [],
+          motion: { effects: [], stepsMs: [200], approximate: false },
+          transition: { name: 'p:wipe', durationMs: 650, nativeTransition: wipe },
+        },
+      },
+    ]);
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    engine.dispatch({ type: 'next' });
+    const shown = engine.current.layers.slide;
+    expect(shown?.transition).toEqual(wipe);
+    expect(shown?.stepAt).toBe((shown?.shownAt ?? 0) + 650);
+
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 1 });
+    const jump = engine.current.layers.slide;
+    expect(jump?.transition).toBeUndefined();
+    expect(jump?.stepAt).toBe(jump?.shownAt);
   });
 });
