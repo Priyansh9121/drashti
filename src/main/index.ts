@@ -2069,12 +2069,13 @@ function start(): void {
     if (!s) return null;
     const displayId = manager.status().find((st) => st.screenId === screenId)?.displayId;
     const d = listDisplays().find((x) => x.id === displayId);
+    const role = screenRepo.groupRole(s.groupId) ?? 'audience';
     return {
       screenId: s.id,
       screenName: s.name,
       groupId: s.groupId,
       groupName: screenRepo.groupName(s.groupId) ?? '',
-      role: screenRepo.groupRole(s.groupId) ?? 'audience',
+      role,
       feed: s.feed,
       canvasWidth: s.canvasWidth,
       canvasHeight: s.canvasHeight,
@@ -2092,7 +2093,7 @@ function start(): void {
       // Audience off (Session 51; the switch's reconcile sends every output its context again).
       hall: hallHere(),
       // No warm-up where Chromium draws without a graphics chip (Session 57).
-      ...warmUpFact(warmUps, outputWindows.get(screenId), outputNames.get(screenId) ?? 'an output'),
+      ...warmUpFact(warmUps, outputWindows.get(screenId), outputNames.get(screenId) ?? 'an output', role),
     };
   };
   // An output open before Chromium said how it draws is sent its context again once it skips its warm-up (Session 57).
