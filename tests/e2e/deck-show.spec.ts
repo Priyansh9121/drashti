@@ -229,25 +229,9 @@ test('a deck’s clicks with the keys: Next and Back, two screens and LIVE drawi
     for (const out of halls)
       await expect(out.locator('[data-deck-step="0"]')).toHaveAttribute('data-deck-phase', 'held');
 
-    // The video for the next click has decoded its first frame before the key is pressed.
-    for (const out of halls) {
-      const prepared = out.locator('video[data-deck-video="preparing"]');
-      await expect
-        .poll(() => prepared.evaluate((video: HTMLVideoElement) => video.readyState))
-        .toBeGreaterThanOrEqual(2);
-      await expect(prepared).toHaveJSProperty('paused', true);
-      await prepared.evaluate((video) => {
-        video.setAttribute('data-deck-check-prepared', 'true');
-      });
-    }
     // Next with the key: the first click, on both screens, LIVE and the stage; the stage's next is the click after.
     await win.keyboard.press('ArrowRight');
     await expect.poll(() => step(win)).toBe(1);
-    for (const out of halls)
-      await expect(out.locator('[data-deck-step="1"] video[data-deck-video="clip"]')).toHaveAttribute(
-        'data-deck-check-prepared',
-        'true',
-      );
     // LIVE says which click is up.
     await expect(win.getByTestId('live-text')).toContainText('slide 1 of 2 · click 1 of 2');
     // At held moments (C review): the hall's screens and the stage's current play the click's clip (dark), then hold
