@@ -2,9 +2,9 @@ import { constants, setPriority } from 'node:os';
 import { isAbsolute, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { EDITABLE_SOURCE_LIMITS, pptxAssetTokens } from '../../shared/editable-source';
-import { readEditablePptx } from '../import/deck/editable-pptx';
 import { MEDIA_REF } from '../import/model';
 import type { FromPptxReader, PptxPage, ToPptxReader } from './pptx-reader-protocol';
+import { readEditableWithTiming } from './pptx-source-timing';
 
 const startSchema = z
   .object({
@@ -13,6 +13,7 @@ const startSchema = z
     file: z.string().max(32_768).refine(isAbsolute),
     outDir: z.string().max(32_768).refine(isAbsolute),
     sourcePages: z.array(z.number().int().min(0).max(1_000_000)).min(1).max(EDITABLE_SOURCE_LIMITS.pages),
+    timingPages: z.array(z.number().int().min(0).max(1_000_000)).max(EDITABLE_SOURCE_LIMITS.pages).optional(),
   })
   .strict();
 const parentPort = (): typeof process.parentPort | undefined => process.parentPort;
@@ -43,7 +44,12 @@ port.on('message', ({ data }: { data: unknown }) => {
   const job = parsed.data;
   void (async () => {
     try {
-      const native = await readEditablePptx(job.file, job.outDir);
+      // W6's review N4: the asked pages' clicks and transition too, read as alpha.17's import reads them.
+      const { editable: native, decks } = await readEditableWithTiming(
+        job.file,
+        job.outDir,
+        job.timingPages ?? [],
+      );
       const pages: PptxPage[] = [];
       const failed: number[] = [];
       for (const sourceIndex of job.sourcePages) {
@@ -65,6 +71,7 @@ port.on('message', ({ data }: { data: unknown }) => {
           assets.push({ token, relative: path, kind: asset.kind });
         }
         if (assets.length !== needed.size) throw new Error('Unresolved native asset.');
+        const deck = decks.get(sourceIndex);
         pages.push({
           sourceIndex,
           width: native.width,
@@ -73,17 +80,25 @@ port.on('message', ({ data }: { data: unknown }) => {
           elements: page.elements,
           assets,
           issues: page.issues,
+          ...(deck ? { deck } : {}),
         });
       }
-      const message: FromPptxReader = {
-        type: 'prepared',
-        jobId: job.jobId,
-        pages,
-        total: native.sourceCount,
-        failed,
+      const within = (sent: PptxPage[]): FromPptxReader | null => {
+        const message: FromPptxReader = {
+          type: 'prepared',
+          jobId: job.jobId,
+          pages: sent,
+          total: native.sourceCount,
+          failed,
+        };
+        return Buffer.byteLength(JSON.stringify(message), 'utf8') > EDITABLE_SOURCE_LIMITS.jobMetadataBytes
+          ? null
+          : message;
       };
-      if (Buffer.byteLength(JSON.stringify(message), 'utf8') > EDITABLE_SOURCE_LIMITS.jobMetadataBytes)
-        throw new Error('Metadata limit.');
+      // Clicks too many to send leave the pages as they were read before: those slides keep today's behaviour.
+      const message =
+        within(pages) ?? (decks.size > 0 ? within(pages.map(({ deck: _deck, ...page }) => page)) : null);
+      if (!message) throw new Error('Metadata limit.');
       if (cancelled) throw new Error('Cancelled.');
       reply(message);
     } catch {
