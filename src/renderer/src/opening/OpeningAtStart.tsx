@@ -3,7 +3,13 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { OPENING_HOLD_MS, type OpeningEnd, type OpeningPlan } from '../../../shared/opening';
 import { motionOff } from '../ui/motion';
-import { openingHolds, stillAfterHold, type StartFacts, windowMayStart } from './opening-order';
+import {
+  afterCoverFrame,
+  openingHolds,
+  stillAfterHold,
+  type StartFacts,
+  windowMayStart,
+} from './opening-order';
 import { OpeningPlayer } from './OpeningPlayer';
 
 /*
@@ -195,16 +201,11 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
       chosen.disconnect();
     };
   }, [plan]);
-  // Its black over the window: the window starts underneath in the frame that draws it, never before (it would show).
+  // The black cover is mounted. Give it a frame before starting the window underneath when one is available.
   useEffect(() => {
-    if (!plan) return;
-    const frame = requestAnimationFrame(() => {
-      setCovered(true);
-    });
-    return () => {
-      cancelAnimationFrame(frame);
-    };
-  }, [plan]);
+    if (!plan || state !== 'playing') return;
+    return afterCoverFrame(() => setCovered(true));
+  }, [plan, state]);
 
   const facts: StartFacts = {
     plan: plan ? 'plays' : state === 'over' ? 'none' : 'asking',
@@ -247,6 +248,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
           plan={plan}
           still={still}
           held={openingHolds(facts)}
+          prepare={!screensWarming || waitedOut}
           className="absolute inset-0"
           // The window starts under its black: the black stays until the photo is ready.
           coverWhilePreparing
