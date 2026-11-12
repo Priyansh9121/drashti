@@ -23,6 +23,11 @@ export function pictureSourceOf(ext: string): PictureSource | null {
 /** At most this many pages of one document become slides; the report says when there were more. */
 export const MAX_PICTURE_PAGES = 400;
 
+/** Per-page text used only to compare two exports of a Keynote deck. */
+export const MAX_PAGE_TEXT = 4096;
+
+export type DrawPdf = (pdf: string, outDir: string, readPageText?: boolean) => Promise<PicturesResult>;
+
 /** What the hidden window is asked to draw (it asks for it when it has loaded). */
 export interface PictureJob {
   /** The PDF's bytes. */
@@ -31,6 +36,7 @@ export interface PictureJob {
   width: number;
   height: number;
   maxPages: number;
+  readPageText?: boolean;
   /**
    * The pages this window draws (Session 56: several windows draw a document's pages at once while nothing is on the
    * screens or the stream): every `every`th from `from`, or the pages listed (from 0). Left out: every page.
@@ -53,6 +59,7 @@ export interface PicturePage {
   png: Uint8Array;
   /** The page's comments (sticky notes), as a PDF's speaker notes: '' when it has none. */
   notes: string;
+  pageText?: string;
 }
 
 /** How the drawing ended. */
@@ -71,6 +78,10 @@ export type PictureAssetKind = 'standardFontDataUrl' | 'wasmUrl' | 'cMapUrl';
 /** A file pdf.js may ask for: a plain name, nothing that could reach another folder. */
 export const PICTURE_ASSET_NAME = /^[A-Za-z0-9_.-]{1,80}$/u;
 
+export interface DrawnPicturePage extends Pick<PicturePage, 'index' | 'notes' | 'pageText'> {
+  file: string;
+}
+
 /** What the main process gives the import for a drawn document. */
 export type PicturesResult =
   | {
@@ -78,7 +89,7 @@ export type PicturesResult =
       width: number;
       height: number;
       /** Each page drawn, in order: which page it is (from 0), its PNG on disk and its comments. */
-      pages: { index: number; file: string; notes: string }[];
+      pages: DrawnPicturePage[];
       /** Pages in the document (more than were drawn when it is over the limit). */
       total: number;
       failed: number[];
