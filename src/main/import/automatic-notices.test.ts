@@ -12,6 +12,24 @@ it('keeps a notice when the old operator page goes away before it can receive it
   expect(notices.take()).toEqual([]);
 });
 
+it('delivers notices produced during a reload once the new page asks', () => {
+  const send = vi.fn(() => true);
+  const notices = automaticImportNotices(send);
+  const before = { runId: 'placeholder-before-reload' };
+  const during = { runId: 'placeholder-during-reload' };
+  const after = { runId: 'placeholder-after-reload' };
+  expect(notices.take()).toEqual([]);
+  notices.publish(before);
+  expect(send).toHaveBeenCalledWith(before);
+  notices.pause();
+  notices.publish(during);
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(notices.take()).toEqual([during]);
+  notices.publish(after);
+  expect(send).toHaveBeenNthCalledWith(2, after);
+  expect(notices.take()).toEqual([]);
+});
+
 it('keeps the newest 50 notices until the operator page is ready', () => {
   const send = vi.fn(() => true);
   const notices = automaticImportNotices(send);
