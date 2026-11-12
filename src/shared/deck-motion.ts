@@ -165,8 +165,10 @@ function outsideSlide(edge: DeckEffectDirection, bounds: Rect, slide: Size): [nu
 }
 
 /**
- * SMIL's accelerate and decelerate (PowerPoint's smooth start and smooth end): the effect speeds up evenly over its
- * first share, runs at an even pace, and slows evenly over its last share, ending on time.
+ * PowerPoint's smooth start and smooth end (its accelerate and decelerate, shares of the effect's length), as its own
+ * movie shows them (13 Nov 2026, within half a pixel): the effect's speed rises from nothing along half a cosine over
+ * its first share, runs evenly, and falls back to nothing along half a cosine over its last share, ending on time.
+ * SMIL's ramps are straight; PowerPoint's are not. Only a deck's own PowerPoint effects are eased so.
  */
 export function smoothedProgress(progress: number, accel = 0, decel = 0): number {
   if (progress <= 0) return 0;
@@ -175,11 +177,12 @@ export function smoothedProgress(progress: number, accel = 0, decel = 0): number
   const a = total > 1 ? accel / total : accel;
   const d = total > 1 ? decel / total : decel;
   if (a <= 0 && d <= 0) return progress;
+  // The even pace that makes up for the time spent speeding up and slowing down.
   const rate = 1 / (1 - a / 2 - d / 2);
-  if (progress < a) return (rate * progress * progress) / (2 * a);
+  if (progress < a) return (rate / 2) * (progress - (a / Math.PI) * Math.sin((Math.PI * progress) / a));
   if (progress <= 1 - d) return rate * (progress - a / 2);
-  const left = 1 - progress;
-  return 1 - (rate * left * left) / (2 * d);
+  const into = progress - (1 - d);
+  return rate * (1 - d - a / 2) + (rate / 2) * (into + (d / Math.PI) * Math.sin((Math.PI * into) / d));
 }
 
 /** A ball's fall and its three smaller bounces, landing at 1 (the common "bounce out" curve). */
