@@ -1,6 +1,11 @@
 import { nativeDeckMotion, stepCount } from '../../shared/deck';
 import { deckSlideAt } from '../../shared/deck-show';
-import { nextScheduledChange, slidePictureReadyAt, waitForSlidePicture } from './slide-picture';
+import {
+  nextScheduledChange,
+  PNG_MARGIN_MS,
+  slidePictureReadyAt,
+  waitForSlidePicture,
+} from './slide-picture';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { type CommandResult, type EngineCommand, parseEngineCommand } from '../../shared/engine/commands';
@@ -951,6 +956,7 @@ export class NetworkService implements EngineTransport {
    * Every request's checks: Drashti let in, the device still paired, its kind, Simple Mode's lock (in the window's
    * words), and in Simple Mode what a phone may ask for there (Session 55: only what its window does, in the phone's
    * words), each before anything runs.
+   * A library operation spends a rate-limit token here. Call this only once per library request.
    */
   private checked(
     request: DeviceRequest,
@@ -1008,29 +1014,31 @@ export class NetworkService implements EngineTransport {
     const original = up?.presentationId === id.data && stored?.id === up.slide.id ? up.slide : stored;
     if (!original || !nativeDeckMotion(original.deck) || click >= stepCount(original.deck))
       return deny(404, 'That slide or click is no longer available. Open the deck again.');
-    const fallback = () => {
+    const afterStream = 'Try again after streaming or recording stops to save this click.';
+    const afterMotion = 'Try again when the screens are still to save this click.';
+    const inAMoment = 'Try saving this click again in a moment.';
+    const fallback = (retry: string) => {
       const picture = deckSlideAt(original, 0).elements.find(
         (element) => element.kind === 'image' && !element.hidden,
       );
       return picture?.kind === 'image'
-        ? ok({ mediaId: picture.mediaId })
-        : deny(409, 'This slide couldn’t be saved now. Try again when the screens are still.');
+        ? ok({ mediaId: picture.mediaId, message: `This is the slide as it starts. ${retry}` })
+        : deny(409, `This slide couldn’t be saved now. ${retry}`);
     };
     const onAir = () => this.deps.onAir?.() === true;
-    if (!this.deps.nativeSlidePicture || this.savingSlide || onAir()) return fallback();
+    if (onAir()) return fallback(afterStream);
+    if (!this.deps.nativeSlidePicture || this.savingSlide) return fallback(inAMoment);
     const now = () => this.deps.now();
-    // When the capture must be over by (C6's review, MEDIUM 2): nothing the engine has scheduled may fall before it.
+    // Keep the whole quiet window clear of scheduled changes, including the network's PNG encode.
     let endsAt = -Infinity;
-    const current = () => {
+    const captureEndsAt = () => endsAt - PNG_MARGIN_MS;
+    const screensStill = () => {
       const at = now();
       const screens = read();
-      return (
-        !('status' in this.checked(request)) &&
-        !onAir() &&
-        slidePictureReadyAt(screens, at) <= at &&
-        nextScheduledChange(screens, at) > endsAt
-      );
+      return slidePictureReadyAt(screens, at) <= at && nextScheduledChange(screens, at) > endsAt;
     };
+    const current = () =>
+      now() < captureEndsAt() && !('status' in this.checked(request)) && !onAir() && screensStill();
     this.savingSlide = true;
     const stop = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1039,13 +1047,13 @@ export class NetworkService implements EngineTransport {
       if (ends !== null) endsAt = ends;
       if (ends === null || !current()) {
         const guard = this.checked(request);
-        return 'status' in guard ? guard : fallback();
+        return 'status' in guard ? guard : fallback(onAir() ? afterStream : afterMotion);
       }
       timer = setTimeout(
         () => {
           stop.abort();
         },
-        Math.max(0, endsAt - now()),
+        Math.max(0, captureEndsAt() - now()),
       );
       const { deck: _deck, ...slide } = deckSlideAt(original, click);
       const all = read().pictures;
@@ -1059,7 +1067,8 @@ export class NetworkService implements EngineTransport {
       const guard = this.checked(request);
       if ('status' in guard) return guard;
       // Its pixels as captured: the network's process makes the PNG (C6's review, MEDIUM 1).
-      return picture && current() ? ok({ picture }) : fallback();
+      if (picture && current()) return ok({ picture });
+      return fallback(onAir() ? afterStream : screensStill() ? inAMoment : afterMotion);
     } finally {
       clearTimeout(timer);
       this.savingSlide = false;

@@ -474,8 +474,8 @@ function floatLook(behaviours: readonly XmlNode[], entering: boolean): NativeLoo
     if (distance > 1 || look) return null;
     const direction =
       property === 'ppt_x' ? (displacement < 0 ? 'left' : 'right') : displacement < 0 ? 'up' : 'down';
-    // Not yet compared with PowerPoint's own movie.
-    look = { kind: 'float', direction, distance, partial: true };
+    // As PowerPoint's own movie shows it (13 Nov 2026): its straight move and even fade, within half a pixel.
+    look = { kind: 'float', direction, distance };
   }
   return look;
 }
@@ -491,8 +491,9 @@ function turnOf(track: XmlNode | undefined, entering: boolean): number | null {
 }
 
 /**
- * Grow & Turn (Shrink & Turn as it leaves): the gallery Zoom's scale and fade, turning as it grows. Not yet compared
- * with PowerPoint's own movie.
+ * Grow & Turn (Shrink & Turn as it leaves): the gallery Zoom's scale and fade, turning as it grows. As PowerPoint writes
+ * it, it plays as PowerPoint's own movie shows it (13 Nov 2026: within half a pixel and a degree); a size or turn Drashti
+ * cannot read is drawn the closest way.
  */
 function growAndTurn(behaviours: readonly XmlNode[], entering: boolean): NativeLook {
   const turns = behaviours.filter(
@@ -505,7 +506,7 @@ function growAndTurn(behaviours: readonly XmlNode[], entering: boolean): NativeL
   const degrees = turns.length === 1 ? turnOf(turns[0], entering) : null;
   return scale === null || degrees === null
     ? { kind: 'zoom', fade: true, partial: true }
-    : { kind: 'zoom', fade: true, scale, ...(degrees === 0 ? {} : { degrees }), partial: true };
+    : { kind: 'zoom', fade: true, scale, ...(degrees === 0 ? {} : { degrees }) };
 }
 
 const OUTLINES = ['circle', 'box', 'diamond', 'plus'] as const;
@@ -563,8 +564,8 @@ function nativeLook(
         kid(scale, 'p:to') === undefined &&
         cTnOf(scale ?? NONE)?.attrs['fill'] !== 'remove'
       )
-        // Not yet compared with PowerPoint's own movie.
-        return { kind: 'grow-shrink', scale: amount, partial: true };
+        // As PowerPoint's own movie shows it (13 Nov 2026): an even scale about its centre, within half a pixel.
+        return { kind: 'grow-shrink', scale: amount };
     }
     return null;
   }
@@ -747,9 +748,9 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
     background ||
     paragraphs ||
     !ease ||
-    // A smooth start or end: played as SMIL defines it, but not yet compared with PowerPoint's own movie.
-    ease[0] > 0 ||
-    ease[1] > 0 ||
+    // A smooth start or end is played with PowerPoint's own ramps (shared/deck-motion.ts, smoothedProgress), compared
+    // with its movie for a Fly (13 Nov 2026); any other effect so eased keeps PowerPoint's video until its own is.
+    ((ease[0] > 0 || ease[1] > 0) && look.kind !== 'fly') ||
     durationMs < 0 ||
     (durationMs === 0 && look.kind !== 'appear') ||
     behaviours.some(

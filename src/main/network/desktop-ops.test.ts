@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
-import type { InvokeChannel } from '../../shared/ipc';
+import { IPC, type InvokeChannel } from '../../shared/ipc';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { DEVICE_OPS, type DeviceOp } from '../../shared/network-api';
 import {
@@ -118,7 +118,7 @@ const QUEUE: AnnouncementsView = {
   earlier: [announcement('a-3', 'ended')],
 };
 
-function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
+function setup(options: { locked?: boolean; letIn?: boolean; audioTrackIds?: readonly string[] } = {}) {
   const db = openDatabase(':memory:');
   const devices = new DeviceRepo(db);
   const calls: Call[] = [];
@@ -155,6 +155,7 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
       return id === 'pl-1' ? 'playlist' : id === 'folder' ? 'folder' : id === 'template' ? 'template' : null;
     },
     listsMedia: () => false,
+    inMusic: (id) => options.audioTrackIds?.includes(id) === true,
     listsPresentation: () => false,
   };
   const playScope = {
@@ -192,6 +193,14 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
       calls.push({ what, args });
       return answer(...args);
     };
+  const unexpectedPhoneAction = () => {
+    throw new Error('This fixture supports only renaming a track.');
+  };
+  const refused = (channel: InvokeChannel, args?: readonly unknown[]) => {
+    if (!locked) return false;
+    const within = bounds.get(channel);
+    return within ? args === undefined || !within(args) : SIMPLE_MODE_LOCKED.includes(channel);
+  };
   const service = new NetworkService({
     devices,
     settings: { get: () => undefined, set: () => undefined },
@@ -400,13 +409,33 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
           boxes.push({ question, answer: resolve });
         }),
     },
+    phone: options.audioTrackIds
+      ? {
+          wallpapers: {
+            view: unexpectedPhoneAction,
+            choose: unexpectedPhoneAction,
+            rename: unexpectedPhoneAction,
+            remove: unexpectedPhoneAction,
+            restore: unexpectedPhoneAction,
+          },
+          quickBar: { view: unexpectedPhoneAction, set: unexpectedPhoneAction },
+          looks: { look: unexpectedPhoneAction, photo: unexpectedPhoneAction, set: unexpectedPhoneAction },
+          rename: {
+            media: (id, name) => {
+              calls.push({ what: 'renameMedia', args: [id, name] });
+              return { ok: true };
+            },
+            presentation: unexpectedPhoneAction,
+          },
+          whenEnds: unexpectedPhoneAction,
+        }
+      : undefined,
     playMusic: () => ({ ok: true as const }),
     announcements: {
       submit: () => ({ status: 202, body: { ok: true } }),
       statusFor: () => ({ status: 404, body: { ok: false } }),
     },
-    refused: (channel: InvokeChannel, args?: readonly unknown[]) =>
-      locked && (SIMPLE_MODE_LOCKED.includes(channel) || bounds.get(channel)?.(args ?? []) === false),
+    refused,
     simple: () =>
       locked
         ? {
@@ -439,6 +468,7 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
     service.windows({ address: PHONE, deviceId, op: 'windows', args: {} });
   return {
     listWindows,
+    refused,
     lookups,
     setInputs: (v: { inputs?: VideoInput[]; access?: CameraAccess; cameras?: string[] | null }) => {
       inputs = v.inputs ?? inputs;
@@ -498,6 +528,12 @@ const OPS: [DeviceOp, Record<string, unknown>][] = [
   ['screens.identify', {}],
   ['switch', { which: 'stage', on: false }],
 ];
+
+it('refuses a bounded Simple Mode channel when no window arguments were supplied', () => {
+  const { refused } = setup({ locked: true });
+  expect(refused(IPC.library.importPaths, [])).toBe(false);
+  expect(refused(IPC.library.importPaths)).toBe(true);
+});
 
 describe('the phone as a full Drashti: the computer’s screens and Audience and Stage (Session 54)', () => {
   it('lets a Remote alone do them, and none at all while Drashti is not let in', () => {
@@ -1033,6 +1069,14 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       { what: 'restoreItems', args: [['item-1']] },
       { what: 'addItems', args: ['pl-1', null, add.items] },
     ]);
+  });
+
+  it('renames a sound on an Audio playlist in Simple Mode and refuses an unlisted sound', () => {
+    const { ask, remote, calls } = setup({ locked: true, audioTrackIds: ['sound-in-audio'] });
+    const name = 'Placeholder renamed track';
+    expect(ask(remote, 'media.rename', { mediaId: 'sound-in-audio', name }).status).toBe(200);
+    expect(ask(remote, 'media.rename', { mediaId: 'sound-unlisted', name }).status).toBe(403);
+    expect(calls).toEqual([{ what: 'renameMedia', args: ['sound-in-audio', name] }]);
   });
 
   it('caps playlist and row id lists before looking up any ids in Simple Mode', () => {

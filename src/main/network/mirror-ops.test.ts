@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
-import type { InvokeChannel } from '../../shared/ipc';
+import { IPC, type InvokeChannel } from '../../shared/ipc';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
 import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
 import type { MusicView } from '../../shared/music';
@@ -100,6 +100,12 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     },
   };
   const state = initialEngineState();
+  const refused = (channel: InvokeChannel, args?: readonly unknown[]) => {
+    if (options.lockEverything === true) return true;
+    if (options.locked !== true) return false;
+    const within = bounds.get(channel);
+    return within ? args === undefined || !within(args) : SIMPLE_MODE_LOCKED.includes(channel);
+  };
   const service = new NetworkService({
     devices,
     settings: { get: () => undefined, set: () => undefined },
@@ -171,10 +177,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       submit: () => ({ status: 202, body: { ok: true } }),
       statusFor: () => ({ status: 404, body: { ok: false } }),
     },
-    refused: (channel: InvokeChannel, args?: readonly unknown[]) =>
-      options.lockEverything === true ||
-      (options.locked === true &&
-        (SIMPLE_MODE_LOCKED.includes(channel) || bounds.get(channel)?.(args ?? []) === false)),
+    refused,
     // Simple Mode as a phone's request is weighed (Session 55, the owner's answer of 30 Oct 2026).
     simple: () => (options.locked === true ? ONE : null),
     changed: () => undefined,
@@ -191,6 +194,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
   };
   return {
     service,
+    refused,
     commands,
     played,
     state,
@@ -208,6 +212,12 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
 /** The new reads and the actions that put something up. */
 const READS = ['keys', 'media', 'lowerThirds', 'music'] as const satisfies readonly DeviceOp[];
 const PUTS = ['media.show', 'lowerThird.show'] as const satisfies readonly DeviceOp[];
+
+it('refuses a bounded Simple Mode channel when no window arguments were supplied', () => {
+  const { refused } = setup({ locked: true });
+  expect(refused(IPC.library.importPaths, [])).toBe(false);
+  expect(refused(IPC.library.importPaths)).toBe(true);
+});
 
 describe('the phone as a mirror of the operator window (Session 54, D5)', () => {
   it('lets a Remote read the media, the lower thirds, the audio playlists and the keys', () => {

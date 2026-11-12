@@ -700,7 +700,10 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                   role="status"
                   className="pointer-events-none absolute left-3 top-3 z-10 rounded bg-panel px-2 py-1 text-sm text-muted shadow"
                 >
-                  <span>Preparing…</span> <span>You can edit this page once it’s ready.</span>
+                  <span>Preparing…</span>{' '}
+                  <span>
+                    Reading continues when nothing is on the screens and streaming and recording are off.
+                  </span>
                 </div>
               )}
               {finding && (
@@ -941,7 +944,7 @@ function SlideList({
             <ol className={horizontal ? 'flex gap-2' : 'space-y-2'}>
               {g.slides.map((s, index) => {
                 const n = numbers.get(s.id) ?? 0;
-                const label = `Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}${overset.has(s.id) ? ', words run past a box' : ''}${preparing.has(s.id) ? ', preparing' : ''}`;
+                const label = `Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}${overset.has(s.id) ? ', words run past a box' : ''}${preparing.has(s.id) ? ', preparing when the screens are clear and streaming and recording are off' : ''}`;
                 const here = s.id === current;
                 const marker = dropAt?.groupId === g.id && dropAt.index === index;
                 return (

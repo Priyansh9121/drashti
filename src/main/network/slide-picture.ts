@@ -21,10 +21,12 @@ import { type ChosenWallpaper, wallpaperFrame } from '../../shared/wallpapers';
 
 /** The longest a phone's Save waits for the hall screens to settle. */
 export const SETTLE_MS = 3_000;
-/** The capture's own time limit (pdf-copy-session.ts). */
+/** The most quiet time reserved for a capture and encoding together. */
 export const CAPTURE_MS = 8_000;
-/** The network's process waits 10 s for Main's answer (worker/run.ts): a phone's Save is answered within 9. */
+/** The network's process waits 10 s for Main's answer (worker/run.ts). */
 export const ANSWER_MS = 9_000;
+/** Keep the last second of the quiet window for making the PNG in the network's process. */
+export const PNG_MARGIN_MS = 1_000;
 /** A moment past a change that was due, for the engine to have made it before the screens are looked at again. */
 const PAST_MS = 50;
 
@@ -35,6 +37,26 @@ const BANNER_IN_MS = 300;
  * longest (Calm's change takes 400 ms); and going out.
  */
 const SLIDE_LOWER_THIRD_MS = { in: 120 + (LOWER_THIRD_MAX_LINES - 1) * 60 + 360, out: 310 };
+
+/** Stop the capture on the engine's own change, as well as on its deadline. */
+export async function captureWithShowAbort<T>(
+  subscribe: (listener: () => void) => () => void,
+  current: () => boolean,
+  deadline: AbortSignal,
+  capture: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const stop = new AbortController();
+  const check = () => {
+    if (!current()) stop.abort();
+  };
+  const off = subscribe(check);
+  try {
+    check();
+    return await capture(AbortSignal.any([deadline, stop.signal]));
+  } finally {
+    off();
+  }
+}
 
 const timeOf = (transition: Transition | undefined) =>
   transition?.kind === 'zoom'
@@ -202,7 +224,7 @@ export function nextScheduledChange(state: EngineState, now: number): number {
 
 /**
  * Wait (SETTLE_MS at most) until nothing on the hall screens moves and nothing the engine has scheduled falls within a
- * capture's time from then; then when the capture must be over by (its own limit, within ANSWER_MS of the ask), or
+ * capture and PNG encode from then; then the end of that quiet window (within ANSWER_MS of the ask), or
  * null for the slide as it starts.
  */
 export async function waitForSlidePicture(

@@ -11,6 +11,7 @@ import {
   launchApp,
   operatorPage,
   operatorReady,
+  relaunchApp,
   type PageGlobals,
 } from './helpers';
 import { testFfmpeg } from './stream-helpers';
@@ -381,6 +382,51 @@ test('Reset to original clears legacy playback points for just that playlist row
     expect(stored).toMatchObject(legacyPoints);
   } finally {
     await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a Trim accepted while the show is busy continues after a clean restart', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-resume-trim-'));
+  const first = await launchApp({ DRASHTI_TEST_ON_AIR_HOOK: '1' });
+  let app = first.app;
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const file = join(dir, 'Placeholder restart clip.mp4');
+    numberedVideo(file);
+    const before = stamp(file);
+    const [mediaId = ''] = await importAndGetIds(win, [file]);
+    const { playlistId, rowId } = await makeVideoPlaylist(win, mediaId, 'Placeholder restart trim');
+    await onAir(app, true);
+    const points = { startMs: 800, endMs: 2400, markers: [] };
+    const accepted = await win.evaluate(
+      ({ rowId, mediaId, points }) =>
+        (globalThis as PageGlobals).drashti.media.applyRowTrim(rowId, { mediaId, points }),
+      { rowId, mediaId, points },
+    );
+    expect(accepted).toEqual({ ok: true });
+    expect(await items(win, playlistId)).toMatchObject([{ id: rowId, mediaId }]);
+    await app.close();
+
+    app = (await relaunchApp(first.userData)).app;
+    const reopened = await operatorPage(app);
+    await operatorReady(reopened);
+    await expect
+      .poll(
+        async () => {
+          const [row] = await items(reopened, playlistId);
+          return row?.kind === 'media' && row.id === rowId && row.mediaId !== mediaId;
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+    expect(
+      await reopened.evaluate((id) => (globalThis as PageGlobals).drashti.media.rowTrim(id), rowId),
+    ).toMatchObject({ sourceId: mediaId, markers: points });
+    expect(stamp(file)).toEqual(before);
+  } finally {
+    await app.close().catch(() => undefined);
     rmSync(dir, { recursive: true, force: true });
   }
 });
