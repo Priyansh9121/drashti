@@ -544,15 +544,18 @@ function zoomTracks(behaviours: readonly XmlNode[], entering: boolean): DeckEffe
  * Basic Zoom, as PowerPoint's own movie shows it (13 Nov 2026): each of its tracks played evenly as written, from where
  * the shape is away from rest to where it rests. In grows from nothing where the shape stands (and leaves back to
  * nothing); Out, In Slightly, In From Screen Center and Out From Screen Bottom start from the size and place their
- * tracks say, PowerPoint's own formulas of the shape's place and size, worked out for the shape as it is drawn. Those
- * were compared coming in; one that leaves to another size or place is drawn so, but keeps PowerPoint's video until
- * it is compared.
+ * tracks say, PowerPoint's own formulas of the shape's place and size, worked out for the shape as it is drawn; leaving,
+ * Out, In Slightly and In To Screen Center end there (run 2, each within a pixel). One that moves away still showing
+ * (Out To Screen Bottom) is drawn so but keeps PowerPoint's video: its last frame, a sliver across the slide's foot,
+ * measured 0.26 px thinner in PowerPoint's movie than its own formulas say, more than the comparison lets through.
  */
 function basicZoom(behaviours: readonly XmlNode[], entering: boolean): NativeLook {
   if (zoomLimit(behaviours, entering) === 0) return { kind: 'zoom' };
   const zoomAway = zoomTracks(behaviours, entering);
   if (!zoomAway) return { kind: 'zoom', partial: true };
-  return { kind: 'zoom', zoomAway, ...(entering ? {} : { partial: true }) };
+  const moves = zoomAway.x !== undefined || zoomAway.y !== undefined;
+  const vanishes = zoomAway.w === '0' && zoomAway.h === '0';
+  return { kind: 'zoom', zoomAway, ...(!entering && moves && !vanishes ? { partial: true } : {}) };
 }
 
 /**
@@ -753,6 +756,9 @@ function matchesVisibilitySet(
   return phase === 'out' && value === 'hidden' && (clock.start === end || clock.end === end);
 }
 
+/** The effects whose smooth start and end were compared with PowerPoint's own movie (runs 1 and 2, 13 Nov 2026). */
+const EASED_AS_POWERPOINT: ReadonlySet<DeckEffect['kind']> = new Set(['fly', 'float', 'grow-shrink']);
+
 function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedule: NativeSchedule): void {
   const behaviours = [
     ...(VISUAL_BEHAVIOURS.has(node.name) ? [node] : []),
@@ -815,8 +821,9 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
     paragraphs ||
     !ease ||
     // A smooth start or end is played with PowerPoint's own ramps (shared/deck-motion.ts, smoothedProgress), compared
-    // with its movie for a Fly (13 Nov 2026); any other effect so eased keeps PowerPoint's video until its own is.
-    ((ease[0] > 0 || ease[1] > 0) && look.kind !== 'fly') ||
+    // with its movie for a Fly, a Float and a Grow/Shrink (13 Nov 2026, runs 1 and 2); any other effect so eased keeps
+    // PowerPoint's video until its own is.
+    ((ease[0] > 0 || ease[1] > 0) && !EASED_AS_POWERPOINT.has(look.kind)) ||
     durationMs < 0 ||
     (durationMs === 0 && look.kind !== 'appear') ||
     behaviours.some(
