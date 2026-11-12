@@ -798,6 +798,21 @@ function lineOutline(line: Node, ctx: Context): Outline | null {
   const color = fillOf([line], ctx, '#000000');
   return color ? { color, width: Math.max(0.01, Math.min(100, number(attr(line, 'w'), EMU) / EMU)) } : null;
 }
+function linePlacement(rect: Rect, matrix: Matrix) {
+  const a = at(matrix, rect.x, rect.y),
+    b = at(matrix, rect.x + rect.width, rect.y + rect.height);
+  const width = Math.hypot(b.x - a.x, b.y - a.y) / EMU;
+  return {
+    frame: {
+      x: round((a.x + b.x) / 2 / EMU - width / 2),
+      y: round((a.y + b.y) / 2 / EMU - 0.5),
+      width: Math.max(0.01, round(width)),
+      height: 1,
+    },
+    rotation: round(((Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 360) % 360),
+  };
+}
+
 interface SourcePaint {
   color: string | null;
   gradient?: GradientFill;
@@ -961,6 +976,7 @@ async function tableObjects(
   if (!columns || !heights) return null;
   const groupId = ctx.id();
   const elements: SlideElement[] = [];
+  const borders: SlideElement[] = [];
   for (const [row, rowNode] of rows.entries()) {
     const cells = kids(rowNode, 'tc');
     const complete = cells.length === grid.length;
@@ -982,11 +998,9 @@ async function tableObjects(
       if (!place) return null;
       const props = child(cell, 'tcPr');
       const paint = await shapePaintOf([{ props, part }], ctx, null);
-      const edge = kids(props).find((node) => ['lnL', 'lnR', 'lnT', 'lnB'].includes(nameOf(node)));
-      const outline = lineOutline(edge, ctx);
       if (paint.picture)
         elements.push({ id: ctx.id(), kind: 'image', groupId, ...place, ...paint.picture, fit: 'stretch' });
-      if (paint.color || outline || paint.gradient) {
+      if (paint.color || paint.gradient) {
         elements.push({
           id: ctx.id(),
           kind: 'shape',
@@ -995,7 +1009,6 @@ async function tableObjects(
           fill: paint.color,
           cornerRadius: 0,
           opacity: 1,
-          outline,
           ...(paint.gradient ? { gradient: paint.gradient } : {}),
         });
       }
@@ -1003,10 +1016,34 @@ async function tableObjects(
       const text = textElement(node, [node], box, matrix, flipX, ctx, true);
       if (!text) return null;
       elements.push({ ...text, groupId, tableCell: { row, column, rowSpan, columnSpan } });
+      const edges = [
+        ['lnL', { ...box, width: 0 }],
+        ['lnR', { ...box, x: box.x + box.width, width: 0 }],
+        ['lnT', { ...box, height: 0 }],
+        ['lnB', { ...box, y: box.y + box.height, height: 0 }],
+      ] as const;
+      for (const [name, edge] of edges) {
+        const outline = lineOutline(child(props, name), ctx);
+        if (outline) {
+          borders.push({
+            id: ctx.id(),
+            kind: 'shape',
+            shape: 'line',
+            groupId,
+            ...linePlacement(edge, matrix),
+            fill: null,
+            cornerRadius: 0,
+            opacity: 1,
+            outline,
+          });
+        }
+      }
+      if (elements.length + borders.length > MAX_ELEMENTS) return null;
       column += complete ? 1 : columnSpan;
     }
   }
-  return elements;
+  // Draw the edges over both cells' fills at a shared boundary.
+  return [...elements, ...borders];
 }
 
 function unsupported(node: XmlNode, ctx: Context): void {
@@ -1130,21 +1167,7 @@ async function objectOf(
   }
   const fill = paint.color;
   if (fill || outline || shape === 'line') {
-    let place = placement;
-    if (shape === 'line') {
-      const a = at(matrix, rect.x, rect.y),
-        b = at(matrix, rect.x + rect.width, rect.y + rect.height);
-      const width = Math.hypot(b.x - a.x, b.y - a.y) / EMU;
-      place = {
-        frame: {
-          x: round((a.x + b.x) / 2 / EMU - width / 2),
-          y: round((a.y + b.y) / 2 / EMU - 0.5),
-          width: Math.max(0.01, round(width)),
-          height: 1,
-        },
-        rotation: round(((Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 360) % 360),
-      };
-    }
+    const place = shape === 'line' ? linePlacement(rect, matrix) : placement;
     output.push({
       id: ctx.id(),
       kind: 'shape',

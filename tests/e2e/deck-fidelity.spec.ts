@@ -36,16 +36,24 @@ const graphic = (id: string, x: string, data: string) =>
   '" y="914400"/><a:ext cx="3048000" cy="609600"/></p:xfrm><a:graphic><a:graphicData>' +
   data +
   '</a:graphicData></a:graphic></p:graphicFrame>';
-const cell = (words: string) =>
+const cell = (words: string, borders = '') =>
   '<a:tc><a:txBody><a:bodyPr/><a:p>' +
   text(words) +
-  '</a:p></a:txBody><a:tcPr><a:solidFill><a:srgbClr val="eeeeee"/></a:solidFill></a:tcPr></a:tc>';
+  '</a:p></a:txBody><a:tcPr>' +
+  borders +
+  '<a:solidFill><a:srgbClr val="eeeeee"/></a:solidFill></a:tcPr></a:tc>';
 const table = graphic(
   '6',
   '914400',
   '<a:tbl><a:tblGrid><a:gridCol w="1524000"/><a:gridCol w="1524000"/></a:tblGrid><a:tr h="609600">' +
-    cell('Placeholder first cell') +
-    cell('Placeholder second cell') +
+    cell(
+      'Placeholder first cell',
+      '<a:lnL w="19050"><a:solidFill><a:srgbClr val="AA2244"/></a:solidFill></a:lnL>',
+    ) +
+    cell(
+      'Placeholder second cell',
+      '<a:lnT><a:noFill/></a:lnT><a:lnB w="38100"><a:solidFill><a:srgbClr val="22AA44"/></a:solidFill></a:lnB>',
+    ) +
     '</a:tr></a:tbl>',
 );
 const chart = graphic('7', '5486400', '<c:chart xmlns:c="c" r:id="rUnavailable"/>');
@@ -74,6 +82,9 @@ test('a PowerPoint slide keeps its editable cells, aligned words and hidden obje
       'right',
     );
     await expect(canvas.locator('[data-slide-crop]')).toHaveCount(1);
+    await expect(canvas.locator('[data-shape="line"] line')).toHaveCount(2);
+    await expect(canvas.locator('line[stroke="#aa2244"]')).toHaveAttribute('stroke-width', '2');
+    await expect(canvas.locator('line[stroke="#22aa44"]')).toHaveAttribute('stroke-width', '4');
 
     await canvas.getByText('Placeholder second cell', { exact: true }).dblclick();
     const typing = editor.getByTestId('text-editing');
