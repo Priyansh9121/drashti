@@ -107,7 +107,7 @@ describe('the deck PowerPoint’s own movie is compared against', () => {
     expect(Math.max(...COMPARISON_SLIDES.map((slide) => slide.marker))).toBeLessThanOrEqual(255);
   });
 
-  it('adds what run 1 did not measure, each as PowerPoint writes it: eased Float and Grow/Shrink, Basic Zoom leaving, and Shape', () => {
+  it('adds what run 1 left unmeasured, each as PowerPoint writes it', () => {
     // A smooth start of 25 % and end of 50 % on the effect itself, as run 1's eased Fly had them.
     const eased = { accel: 0.25, decel: 0.5, durationMs: 700 };
     expect(motion('Float In Up · smooth start and end')).toMatchObject({
