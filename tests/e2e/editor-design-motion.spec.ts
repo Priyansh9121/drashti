@@ -232,6 +232,10 @@ test('notes still being typed from the Slides group survive native close and Sav
     await expect(editor.getByTestId('slides-notes')).toBeVisible();
     await editor.getByTestId('slides-notes').click();
     await ed.getByTestId('slides-notes-text').fill('Placeholder notes kept while still typing');
+    // Closed once the typing has reached the editor: it holds the notes as a change (its Save, no longer Done), and it
+    // tells Main so as it shows it. A person can't close it before their keys land; on CI's Mac the close from Main
+    // came within 125 ms of the typing, before the page had told Main (Session 55's gate).
+    await expect(editor.getByTestId('save-slides')).toHaveText(/^Save/u);
     await app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find((w) =>
         w.webContents.getURL().includes('slide-editor.html'),
