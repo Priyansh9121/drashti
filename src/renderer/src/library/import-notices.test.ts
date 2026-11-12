@@ -96,6 +96,22 @@ const deckOf = (
   issues,
 });
 
+it('shows which imported slide uses an approximation for its animation', () => {
+  const message = 'Placeholder slide 2 uses the closest playable effect.';
+  showImportFailures(
+    reportOf([
+      {
+        ...deckOf('Placeholder slides', [
+          { severity: 'warning', code: 'deck-motion-approximated', message, fix: null },
+        ]),
+        sourcePath: '/placeholder/deck.pptx',
+        format: 'pictures',
+      },
+    ]),
+  );
+  expect(useImportNotices.getState().notices).toMatchObject([{ text: `“Placeholder slides” · ${message}` }]);
+});
+
 /** Words typed in an old Gujarati or Hindi font, as the import names them (main/import/legacy-fonts.ts). */
 const oldFont = (font: string): ImportIssue => ({
   severity: 'warning',
