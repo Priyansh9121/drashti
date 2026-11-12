@@ -167,6 +167,7 @@ export function LowerThirdView({
   canvas,
   place,
   lift = 0,
+  frozenAt,
 }: {
   layer: LowerThirdLayer | null;
   /** The one just hidden, and when (state.lowerThirdOff): its out plays from then. */
@@ -176,12 +177,14 @@ export function LowerThirdView({
   place: 'hall' | 'stream';
   /** Canvas pixels to keep clear at the bottom (the ticker's band). */
   lift?: number;
+  /** A template thumbnail paints one frame at this clock time. */
+  frozenAt?: number | undefined;
 }) {
   // Drawn again when the clock jumps (a test holding it, the warm-up, a node's or a phone's clock set) and at the
   // frame its in or out is over (below). Every drawing, whatever asked for it, draws what the engine's time says now.
   const [, redraw] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => onClockJump(redraw), []);
-  const now = engineNow();
+  useEffect(() => (frozenAt === undefined ? onClockJump(redraw) : undefined), [frozenAt]);
+  const now = frozenAt ?? engineNow();
   const run = runFor(layer, off, place, now);
   // The words and look follow the layer (one changed while up keeps its time).
   const shown = run.layer;
@@ -198,6 +201,7 @@ export function LowerThirdView({
   // frame its in or out is over, drawn again at once, still (or gone), before that frame is shown. Started and
   // stopped as each drawing is put on the page, so no frame paints a move it no longer draws.
   useLayoutEffect(() => {
+    if (frozenAt !== undefined) return;
     const moving = phase === 'in' || phase === 'out';
     if (!moving && (phase === 'gone' || motion === 'none')) return;
     const drawing = { phase, animation, units, length, motion, shownAt };
@@ -218,7 +222,7 @@ export function LowerThirdView({
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [phase, start, length, animation, units, motion, shownAt]);
+  }, [phase, start, length, animation, units, motion, shownAt, frozenAt]);
   // After every drawing, before it is shown: as at the moment it was worked out for.
   useLayoutEffect(() => {
     paintBand(
