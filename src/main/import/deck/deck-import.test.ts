@@ -667,8 +667,10 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
 
       // An explicit replace still updates the earlier deck in place.
       const explicit = setup();
-      const first = await explicit.run({ baker: false, converters: 'stand-in' });
+      const first = await explicit.run({ baker: 'stand-in', converters: 'stand-in', onAir: true });
+      expect(explicit.report(first.id)?.items[0]?.outcome).toBe('imported');
       const firstId = explicit.report(first.id)?.items[0]?.target?.id ?? '';
+      expect(explicit.slidesOf(firstId).every((s) => !s.slide.deck)).toBe(true);
       const replacement = await explicit.run({
         baker: 'stand-in',
         converters: 'stand-in',

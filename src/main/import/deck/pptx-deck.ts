@@ -326,7 +326,7 @@ function nativeStart(tn: XmlNode, at: number, schedule: NativeSchedule): number 
 
 type NativeLook = Pick<
   DeckEffect,
-  'kind' | 'direction' | 'degrees' | 'fade' | 'distance' | 'splitAxis' | 'scale'
+  'kind' | 'direction' | 'verticalDirection' | 'degrees' | 'fade' | 'distance' | 'splitAxis' | 'scale'
 > & { partial?: true };
 type Direction = NonNullable<DeckEffect['direction']>;
 
@@ -336,6 +336,7 @@ const FLY_FROM = new Map<string, Direction>([
   ['4', 'up'],
   ['8', 'right'],
 ]);
+const DIAGONAL_FLY = new Set(['3', '6', '9', '12']);
 const OPPOSITE: Record<Direction, Direction> = {
   down: 'up',
   left: 'right',
@@ -373,6 +374,31 @@ function animationProperty(behaviour: XmlNode): string | undefined {
   return kid(kid(kid(behaviour, 'p:cBhvr'), 'p:attrNameLst'), 'p:attrName')?.text.trim();
 }
 
+/** A diagonal Fly has one linear track per axis, with the object's far edge outside the slide. */
+function diagonalFly(behaviours: readonly XmlNode[], entering: boolean): NativeLook | null {
+  const tracks = behaviours.filter((node) => node.name === 'p:anim');
+  if (tracks.length !== 2) return null;
+  const fromEdge = (axis: 'x' | 'y', extent: 'w' | 'h') => {
+    const track = tracks.find((node) => animationProperty(node) === `ppt_${axis}`);
+    const points = track ? animationValues(track) : null;
+    if (!points) return null;
+    const [away, rest] = entering ? points : [points[1], points[0]];
+    if (rest !== `#ppt_${axis}`) return null;
+    const half = `#ppt_${extent}/2`;
+    if (away === `-${half}` || away === `0-${half}`) return 'min';
+    if (away === `1+${half}`) return 'max';
+    return null;
+  };
+  const horizontal = fromEdge('x', 'w');
+  const vertical = fromEdge('y', 'h');
+  if (!horizontal || !vertical) return null;
+  return {
+    kind: 'fly',
+    direction: (horizontal === 'min') === entering ? 'right' : 'left',
+    verticalDirection: (vertical === 'min') === entering ? 'down' : 'up',
+  };
+}
+
 function uniformScale(point: XmlNode | undefined): number | null {
   const x = num(point?.attrs['x']);
   const y = num(point?.attrs['y']);
@@ -401,7 +427,7 @@ function zoomLimit(behaviours: readonly XmlNode[], entering: boolean): number | 
         : small.startsWith(`${base}*`)
           ? num(small.slice(base.length + 1))
           : small.endsWith(`*${base}`)
-            ? num(small.slice(0, -base.length - 1))
+            ? num(small.replace(`*${base}`, ''))
             : null;
     if (factor === null || factor < 0 || factor > 10) return null;
     dimensions.set(property, factor);
@@ -467,7 +493,9 @@ function nativeLook(
   if (preset === '1' && behaviours.some((n) => n.name === 'p:set')) return { kind: 'appear' };
   if (preset === '10' && filter === 'fade') return { kind: 'fade' };
   if (preset === '2') {
-    const direction = FLY_FROM.get(tn.attrs['presetSubtype'] ?? '');
+    const subtype = tn.attrs['presetSubtype'] ?? '';
+    if (DIAGONAL_FLY.has(subtype)) return diagonalFly(behaviours, phase === 'in');
+    const direction = FLY_FROM.get(subtype);
     return direction ? { kind: 'fly', direction: phase === 'out' ? OPPOSITE[direction] : direction } : null;
   }
   if (preset === '22') {
@@ -512,6 +540,25 @@ function unsupportedTiming(tn: XmlNode): boolean {
     (num(decel) ?? 0) > 0 ||
     kid(tn, 'p:endCondLst') !== undefined
   );
+}
+
+/** Office writes a visibility set alongside a fade or move, at its first or last frame. */
+function matchesVisibilitySet(
+  behaviour: XmlNode,
+  clock: TimeWindow | undefined,
+  phase: DeckEffect['phase'],
+  start: number,
+  end: number,
+): boolean {
+  const value = kid(kid(behaviour, 'p:to'), 'p:strVal')?.attrs['val'];
+  if (
+    animationProperty(behaviour) !== 'style.visibility' ||
+    clock?.end == null ||
+    clock.end - clock.start !== 1
+  )
+    return false;
+  if (phase === 'in') return value === 'visible' && clock.start === start;
+  return phase === 'out' && value === 'hidden' && (clock.start === end || clock.end === end);
 }
 
 function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedule: NativeSchedule): void {
@@ -565,7 +612,11 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
     partial ||
     durationMs < 0 ||
     (durationMs === 0 && look.kind !== 'appear') ||
-    behaviours.some((b) => b.name !== 'p:set' && !played.includes(b.name)) ||
+    behaviours.some(
+      (b) =>
+        !played.includes(b.name) &&
+        (b.name !== 'p:set' || !matchesVisibilitySet(b, schedule.byNode.get(b), phase, start, end)),
+    ) ||
     clocks.some((w) => w.start !== start || w.end !== end)
   )
     schedule.approximate = true;

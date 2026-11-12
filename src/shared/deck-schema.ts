@@ -37,6 +37,7 @@ const effectSchema = z.looseObject({
   delayMs: ms,
   durationMs: ms,
   direction: z.enum(['left', 'right', 'up', 'down']).optional(),
+  verticalDirection: z.enum(['up', 'down']).optional(),
   degrees: z.number().optional(),
   fade: z.literal(true).optional(),
   distance: z.number().min(0).max(1).optional(),
