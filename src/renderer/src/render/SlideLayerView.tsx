@@ -213,6 +213,15 @@ function paintLayers(els: Layers, how: Paint, p: number): void {
   };
   set(els.in, frame ? String(frame.in.opacity) : '', frame?.in.transform ?? '', frame?.in.clip);
   set(els.out, frame ? String(frame.out.opacity) : '', frame?.out.transform ?? '', frame?.out.clip);
+  // A deck's own transition only (13 Nov 2026): PowerPoint's Wipe band (a mask) and the shade of the slide its Cover or
+  // Uncover moves (a filter). Written only when set or to clear them, so nothing else ever touches them.
+  const deckOnly = (el: HTMLDivElement | null, mask = '', filter = '') => {
+    if (!el) return;
+    if (el.style.maskImage !== mask) el.style.maskImage = mask;
+    if (el.style.filter !== filter) el.style.filter = filter;
+  };
+  deckOnly(els.in, frame?.in.mask, frame?.in.filter);
+  deckOnly(els.out, frame?.out.mask, frame?.out.filter);
   if (els.out) els.out.style.zIndex = native?.deckEffect === 'uncover' ? '1' : '';
   if (els.black) els.black.style.opacity = frame ? String(frame.black) : '0';
   const move = kind === null ? null : how.move;
