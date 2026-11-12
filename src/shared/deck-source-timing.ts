@@ -2,7 +2,7 @@ import type { DeckEffect, DeckMedia, DeckSlide } from './deck';
 import { deckSlideSchema } from './deck-schema';
 import type { PageSize } from './document-page';
 import type { PreparedSourcePage } from './editable-source';
-import type { Rect } from './model';
+import type { MediaElement, Rect } from './model';
 import type { EditSlide } from './slide-edit';
 
 /*
@@ -22,8 +22,7 @@ import type { EditSlide } from './slide-edit';
 export function wantsSourceTiming(slide: EditSlide, allowLegacyVideos = false): boolean {
   const page = slide.documentPage;
   const deck = slide.deck;
-  if (!page || page.ext !== 'pptx' || page.edited || !deck || deck.steps.length === 0 || deck.motion)
-    return false;
+  if (page?.ext !== 'pptx' || page.edited || !deck || deck.steps.length === 0 || deck.motion) return false;
   if (!deck.media.some((media) => media.kind === 'video')) return true;
 
   const available = new Map<string, number>();
@@ -76,7 +75,7 @@ export function withSourceVideoShapes(
       ? [{ id: element.sourceShapeId, frame: element.frame }]
       : [],
   );
-  const videos = slide.elements.filter((element) => element.kind === 'video');
+  const videos = slide.elements.filter((element): element is MediaElement => element.kind === 'video');
   const matched = new Map<string, string>();
   const usedShapes = new Set<string>();
   for (const media of deck.media) {
