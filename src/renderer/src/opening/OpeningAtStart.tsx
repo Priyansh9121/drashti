@@ -28,6 +28,9 @@ let asked: Promise<OpeningPlan | null> | null = null;
 /** Whether the window underneath has opened: its controls drawn with their first data, the page then idle (ui/motion.ts). */
 const windowOpen = () => document.documentElement.hasAttribute('data-opened');
 
+// Allow regular frames on slow displays and reject the long gaps caused by loading the operator window.
+const OPENING_FRAME_BUDGET_MS = 50;
+
 export function OpeningAtStart({ children }: { children: ReactNode }) {
   const [plan, setPlan] = useState<OpeningPlan | null>(null);
   const [state, setState] = useState<'playing' | 'shield' | 'over'>('playing');
@@ -35,8 +38,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
   const [screensWarming, setScreensWarming] = useState(false);
   /** Its black has drawn its first frame over the window. */
   const [covered, setCovered] = useState(false);
-  /** The window underneath seen to open (what it is now is read from the page as this renders). */
-  const [, setOpenedSeen] = useState(false);
+  const [windowFrameReady, setWindowFrameReady] = useState(false);
   /** It has held for OPENING_HOLD_MS. */
   const [waitedOut, setWaitedOut] = useState(false);
   const screensUp = useRef(false);
@@ -145,16 +147,37 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
       clearTimeout(wait);
     };
   }, [plan]);
-  // The window underneath opening, seen as it happens.
+  // The opened attribute can arrive before the window has caught up with painting. Keep black across any
+  // long gaps that follow it. The same hold timer above also caps this wait.
   useEffect(() => {
-    const watch = new MutationObserver(() => {
-      if (windowOpen()) setOpenedSeen(true);
-    });
+    if (!plan || !covered || state !== 'playing' || screensWarming || waitedOut || windowFrameReady) return;
+    let previous: number | null = null;
+    let frame = 0;
+    const sample = (at: number) => {
+      if (
+        previous !== null &&
+        at - previous <= OPENING_FRAME_BUDGET_MS &&
+        performance.now() - at <= OPENING_FRAME_BUDGET_MS
+      ) {
+        setWindowFrameReady(true);
+        return;
+      }
+      previous = at;
+      frame = requestAnimationFrame(sample);
+    };
+    const watch = new MutationObserver(begin);
+    function begin() {
+      if (!windowOpen()) return;
+      watch.disconnect();
+      frame = requestAnimationFrame(sample);
+    }
     watch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-opened'] });
+    begin();
     return () => {
       watch.disconnect();
+      cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [covered, plan, screensWarming, state, waitedOut, windowFrameReady]);
   useEffect(() => {
     if (!plan) return;
     const check = () => {
@@ -188,6 +211,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
     covered,
     screensWarming,
     windowOpened: windowOpen(),
+    windowFrameReady,
     waitedOut,
     ended: state !== 'playing',
   };
