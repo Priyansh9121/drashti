@@ -118,7 +118,7 @@ export class WarmUpChoices {
 /** An output window as Main and a node keep them (the part of BrowserWindow used here). */
 export interface WarmUpWindow {
   isDestroyed(): boolean;
-  readonly webContents: { readonly id: number };
+  readonly webContents: { readonly id: number; isDestroyed(): boolean };
 }
 
 /** An output's context fact: { noGpu: true } once it skips its warm-up; nothing while it warms up as before. */
