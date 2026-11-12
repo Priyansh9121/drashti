@@ -263,6 +263,135 @@ describe('PowerPoint slide animation timing', () => {
     });
   });
 
+  /** One click with one effect of these behaviours, read as a slide of its own. */
+  const alone = (preset: string, cls: 'entr' | 'exit' | 'emph', children: string, attributes = '') =>
+    read(
+      parallel(
+        10,
+        delay('indefinite'),
+        parallel(
+          11,
+          delay(0),
+          parallel(
+            12,
+            delay(0),
+            children,
+            `nodeType="clickEffect" presetClass="${cls}" presetID="${preset}"${attributes ? ` ${attributes}` : ''}`,
+          ),
+        ),
+      ),
+    ).motion;
+  /** A linear track of one property, its values as PowerPoint writes them (a number or a formula). */
+  const track = (
+    shape: number,
+    clock: number,
+    property: string,
+    from: string,
+    to: string,
+    ms = 500,
+    timing = '',
+  ) =>
+    `<p:anim calcmode="lin" valueType="num"><p:cBhvr><p:cTn id="${String(clock)}" dur="${String(ms)}" fill="hold"${timing}/><p:tgtEl><p:spTgt spid="${String(shape)}"/></p:tgtEl><p:attrNameLst><p:attrName>${property}</p:attrName></p:attrNameLst></p:cBhvr><p:tavLst><p:tav tm="0"><p:val>${from}</p:val></p:tav><p:tav tm="100000"><p:val>${to}</p:val></p:tav></p:tavLst></p:anim>`;
+  const number = (value: number) => `<p:fltVal val="${String(value)}"/>`;
+  const formula = (value: string) => `<p:strVal val="${value}"/>`;
+  const fadeOf = (shape: number, clock: number, direction: 'in' | 'out', ms = 500) =>
+    `<p:animEffect transition="${direction}" filter="fade"><p:cBhvr><p:cTn id="${String(clock)}" dur="${String(ms)}"/><p:tgtEl><p:spTgt spid="${String(shape)}"/></p:tgtEl></p:cBhvr></p:animEffect>`;
+  const filtered = (shape: number, filter: string, direction: 'in' | 'out' = 'in', ms = 500) =>
+    `<p:animEffect transition="${direction}" filter="${filter}"><p:cBhvr><p:cTn id="${String(shape + 300)}" dur="${String(ms)}"/><p:tgtEl><p:spTgt spid="${String(shape)}"/></p:tgtEl></p:cBhvr></p:animEffect>`;
+
+  it('reads the gallery Zoom as PowerPoint writes it, its width and height growing from the number 0', () => {
+    const zoom =
+      track(2, 21, 'ppt_w', number(0), formula('#ppt_w')) +
+      track(2, 22, 'ppt_h', number(0), formula('#ppt_h')) +
+      fadeOf(2, 23, 'in');
+    expect(alone('53', 'entr', zoom)).toMatchObject({
+      approximate: false,
+      effects: [{ shapeId: '2', phase: 'in', kind: 'zoom', fade: true, scale: 0, durationMs: 500 }],
+    });
+  });
+
+  it('turns Grow & Turn and Shrink & Turn while they scale and fade', () => {
+    const turn = (direction: 'in' | 'out') => {
+      const [small, full] =
+        direction === 'in' ? [number(0), formula('#ppt_w')] : [formula('#ppt_w'), number(0)];
+      const [tall, high] =
+        direction === 'in' ? [number(0), formula('#ppt_h')] : [formula('#ppt_h'), number(0)];
+      const [turned, upright] = direction === 'in' ? [number(90), number(0)] : [number(0), number(90)];
+      return (
+        track(2, 21, 'ppt_w', small, full) +
+        track(2, 22, 'ppt_h', tall, high) +
+        track(2, 23, 'style.rotation', turned, upright) +
+        fadeOf(2, 24, direction)
+      );
+    };
+    for (const [direction, cls] of [
+      ['in', 'entr'],
+      ['out', 'exit'],
+    ] as const)
+      expect(alone('31', cls, turn(direction))).toMatchObject({
+        approximate: false,
+        effects: [{ phase: direction, kind: 'zoom', fade: true, scale: 0, degrees: 90, durationMs: 500 }],
+      });
+  });
+
+  it('plays Split in from both edges as well as out from the middle', () => {
+    expect(alone('16', 'entr', filtered(2, 'barn(inVertical)'))).toMatchObject({
+      approximate: false,
+      effects: [{ kind: 'split', splitAxis: 'x', inward: true, durationMs: 500 }],
+    });
+    expect(alone('16', 'exit', filtered(2, 'barn(inHorizontal)', 'out'))).toMatchObject({
+      approximate: false,
+      effects: [{ phase: 'out', kind: 'split', splitAxis: 'y', inward: true }],
+    });
+  });
+
+  it('plays a smooth start and smooth end, the effect’s own or the one its behaviours share', () => {
+    const fly = (timing: string, own = '') =>
+      alone(
+        '2',
+        'entr',
+        track(2, 21, 'ppt_x', formula('#ppt_x'), formula('#ppt_x'), 500, timing) +
+          track(2, 22, 'ppt_y', formula('1+#ppt_h/2'), formula('#ppt_y'), 500, timing),
+        `presetSubtype="4"${own}`,
+      );
+    expect(fly(' decel="100000"')).toMatchObject({
+      approximate: false,
+      effects: [{ kind: 'fly', direction: 'up', decel: 1 }],
+    });
+    expect(fly('', ' accel="25000" decel="50000"')).toMatchObject({
+      approximate: false,
+      effects: [{ kind: 'fly', accel: 0.25, decel: 0.5 }],
+    });
+    expect(fly(' decel="100000"', ' accel="50000"')?.approximate).toBe(true);
+  });
+
+  it('draws Shape, Wheel, Random Bars and Bounce, keeping PowerPoint’s video where one can be made', () => {
+    expect(alone('6', 'entr', filtered(2, 'circle(out)'))).toMatchObject({
+      approximate: true,
+      effects: [{ kind: 'shape', shape: 'circle', durationMs: 500 }],
+    });
+    expect(alone('6', 'exit', filtered(2, 'diamond(in)', 'out'))).toMatchObject({
+      approximate: true,
+      effects: [{ phase: 'out', kind: 'shape', shape: 'diamond', inward: true }],
+    });
+    expect(alone('21', 'entr', filtered(2, 'wheel(4)'))).toMatchObject({
+      approximate: true,
+      effects: [{ kind: 'wheel', spokes: 4 }],
+    });
+    expect(alone('14', 'entr', filtered(2, 'randombar(horizontal)'))).toMatchObject({
+      approximate: true,
+      effects: [{ kind: 'bars', bars: 'horizontal' }],
+    });
+    const bounce =
+      filtered(2, 'wipe(down)', 'in', 580) +
+      track(2, 21, 'ppt_x', formula('#ppt_x-0.25'), formula('#ppt_x'), 1822) +
+      track(2, 22, 'ppt_y', formula('#ppt_y-0.25'), formula('#ppt_y'), 664);
+    expect(alone('26', 'entr', bounce)).toMatchObject({
+      approximate: true,
+      effects: [{ kind: 'bounce', delayMs: 0, durationMs: 1822 }],
+    });
+  });
+
   it('keeps the click, whole shape, parallel delays, and previous end for each effect', () => {
     const automatic = parallel(
       10,
@@ -360,7 +489,7 @@ describe('PowerPoint slide animation timing', () => {
     });
   });
 
-  it('reveals the whole text box at its first paragraph entrance and hides it at its last paragraph exit', () => {
+  it('shows and hides each paragraph of a paragraph build at its own click, never before', () => {
     const click = (id: number, phase: 'in' | 'out', index: number) =>
       parallel(
         id,
@@ -384,14 +513,36 @@ describe('PowerPoint slide animation timing', () => {
       );
     const slide = read(click(10, 'in', 0) + click(20, 'in', 1) + click(30, 'out', 0) + click(40, 'out', 1));
     expect(stepsOf(slide.groups)).toBe(5);
+    // Still PowerPoint's video where one can be made: Drashti fades each paragraph by itself.
     expect(slide.motion).toMatchObject({
       approximate: true,
       effects: [
-        { shapeId: '3', step: 1, phase: 'in', kind: 'fade', durationMs: 250 },
-        { shapeId: '3', step: 2, phase: 'emphasis', kind: 'pulse', durationMs: 250 },
-        { shapeId: '3', step: 3, phase: 'emphasis', kind: 'pulse', durationMs: 250 },
-        { shapeId: '3', step: 4, phase: 'out', kind: 'fade', durationMs: 250 },
+        { shapeId: '3', step: 1, phase: 'in', kind: 'fade', durationMs: 250, paragraphs: [0, 0] },
+        { shapeId: '3', step: 2, phase: 'in', kind: 'fade', durationMs: 250, paragraphs: [1, 1] },
+        { shapeId: '3', step: 3, phase: 'out', kind: 'fade', durationMs: 250, paragraphs: [0, 0] },
+        { shapeId: '3', step: 4, phase: 'out', kind: 'fade', durationMs: 250, paragraphs: [1, 1] },
       ],
+    });
+  });
+
+  it('keeps a word-by-word or letter-by-letter build for PowerPoint’s video', () => {
+    const effect = parallel(
+      10,
+      delay('indefinite'),
+      parallel(
+        11,
+        delay(0),
+        behaviour('animEffect', 3, 400, 'filter="fade" transition="in"'),
+        'nodeType="clickEffect" presetClass="entr" presetID="10"',
+      ).replace(
+        '<p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>',
+        '<p:stCondLst><p:cond delay="0"/></p:stCondLst><p:iterate type="lt"><p:tmPct val="10000"/></p:iterate><p:childTnLst>',
+      ),
+    );
+    expect(effect).toContain('<p:iterate');
+    expect(read(effect).motion).toMatchObject({
+      approximate: true,
+      effects: [{ shapeId: '3', kind: 'fade' }],
     });
   });
 
