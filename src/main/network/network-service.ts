@@ -1,6 +1,6 @@
 import { nativeDeckMotion, stepCount } from '../../shared/deck';
 import { deckSlideAt } from '../../shared/deck-show';
-import { slidePictureReadyAt, waitForSlidePicture } from './slide-picture';
+import { nextScheduledChange, slidePictureReadyAt, waitForSlidePicture } from './slide-picture';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { type CommandResult, type EngineCommand, parseEngineCommand } from '../../shared/engine/commands';
@@ -145,11 +145,15 @@ export interface NetworkDeps {
   reads: NetworkReads;
   /** The stream is on air or recording (Session 50's rule: background work stays off then). Not looked at yet (red). */
   onAir?(): boolean;
-  /** Captures a settled native slide once in the private renderer. */
+  /**
+   * Captures a settled native slide once in the private renderer, while `current` holds and until `signal` stops it
+   * (the end of the capture's time: slide-picture.ts).
+   */
   nativeSlidePicture?(
     slide: RenderSlide,
     looks: EngineState['pictures'],
     current: () => boolean,
+    signal: AbortSignal,
   ): Promise<Uint8Array | null>;
   /** What a phone reads to mirror the operator window (Session 54, D5: mirror-answers.ts). */
   mirror: MirrorReads;
@@ -1008,16 +1012,33 @@ export class NetworkService implements EngineTransport {
     };
     if (!this.deps.nativeSlidePicture || this.savingSlide) return fallback();
     const now = () => this.deps.now();
+    // When the capture must be over by (C6's review, MEDIUM 2): nothing the engine has scheduled may fall before it.
+    let endsAt = -Infinity;
     const current = () => {
       const at = now();
-      return !('status' in this.checked(request)) && slidePictureReadyAt(read(), at) <= at;
+      const screens = read();
+      return (
+        !('status' in this.checked(request)) &&
+        slidePictureReadyAt(screens, at) <= at &&
+        nextScheduledChange(screens, at) > endsAt
+      );
     };
     this.savingSlide = true;
+    const stop = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      if ((await waitForSlidePicture(read, now)) === null || !current()) {
+      const ends = await waitForSlidePicture(read, now);
+      if (ends !== null) endsAt = ends;
+      if (ends === null || !current()) {
         const guard = this.checked(request);
         return 'status' in guard ? guard : fallback();
       }
+      timer = setTimeout(
+        () => {
+          stop.abort();
+        },
+        Math.max(0, endsAt - now()),
+      );
       const { deck: _deck, ...slide } = deckSlideAt(original, click);
       const all = read().pictures;
       const looks: EngineState['pictures'] = {};
@@ -1026,11 +1047,12 @@ export class NetworkService implements EngineTransport {
         const look = all[element.mediaId];
         if (look) looks[element.mediaId] = look;
       }
-      const png = await this.deps.nativeSlidePicture(slide, looks, current);
+      const png = await this.deps.nativeSlidePicture(slide, looks, current, stop.signal);
       const guard = this.checked(request);
       if ('status' in guard) return guard;
       return png?.byteLength && current() ? ok({ png }) : fallback();
     } finally {
+      clearTimeout(timer);
       this.savingSlide = false;
     }
   }

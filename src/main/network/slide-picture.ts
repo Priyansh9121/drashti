@@ -4,8 +4,8 @@ import { playingNow } from '../../shared/engine/playing';
 import type { EngineState, LowerThirdLayer, MessageItem } from '../../shared/engine/state';
 import { DEFAULT_LIVE_GROUP_LOOK, shows } from '../../shared/looks';
 import { animationById, animationLength, cutIntoUnits } from '../../shared/lower-third-animations';
-import { shownLines } from '../../shared/lower-thirds';
-import { playbackAtMs, playbackSpanMs } from '../../shared/media';
+import { lowerThirdGoesAt, shownLines } from '../../shared/lower-thirds';
+import { playbackAtMs, playbackLeftMs, playbackSpanMs } from '../../shared/media';
 import { messageAnimation } from '../../shared/message-look';
 import { SLOW_ZOOM_MS, type Transition } from '../../shared/model';
 import { ZOOM_GLIDE_MS } from '../../shared/picture-look';
@@ -25,6 +25,8 @@ export const SETTLE_MS = 3_000;
 export const CAPTURE_MS = 8_000;
 /** The network's process waits 10 s for Main's answer (worker/run.ts): a phone's Save is answered within 9. */
 export const ANSWER_MS = 9_000;
+/** A moment past a change that was due, for the engine to have made it before the screens are looked at again. */
+const PAST_MS = 50;
 
 /** The band of standard messages comes in over Calm's 250 ms or Bold's 300 (render/entrance.ts). */
 const BANNER_IN_MS = 300;
@@ -162,20 +164,64 @@ export function slidePictureReadyAt(state: EngineState, now: number): number {
   return readyAt;
 }
 
-/** When the engine next changes the screens by itself; Infinity when nothing is due. Not looked at yet (red). */
-export function nextScheduledChange(_state: EngineState, _now: number): number {
-  return Infinity;
+/**
+ * When the engine next changes the screens by itself (C6's review, MEDIUM 2): the slide moving on (Repeat Slides, a
+ * slide's timing), a message's or a lower third's time up, the chosen wallpaper's next fade where it shows, and the
+ * background video's end with nothing over it (show-engine.ts videoEndFor: the wallpaper or the next row). Infinity
+ * when nothing is due; a moment already past counts (the engine is about to act).
+ */
+export function nextScheduledChange(state: EngineState, now: number): number {
+  const { messages, lowerThird, background, slide, pip } = state.layers;
+  const due = [
+    state.autoAdvance ? state.autoAdvance.startedAt + state.autoAdvance.durationMs : Infinity,
+    ...messages.map((m) => m.until ?? Infinity),
+    lowerThirdGoesAt(lowerThird) ?? Infinity,
+  ];
+  const wallpaper = wallpaperGoingRound(state);
+  if (wallpaper) {
+    // Its next fade, or its next cut with none; the one under way is motion now.
+    const { each, fade, start } = wallpaperTimes(wallpaper, now);
+    const fades = start + each - fade;
+    due.push(fades >= now ? fades : fades + each);
+  }
+  if (
+    background?.kind === 'media' &&
+    background.media === 'video' &&
+    !background.loop &&
+    background.seek?.paused !== true &&
+    background.durationMs &&
+    !slide &&
+    !pip
+  ) {
+    // Only while still to come: one that ended and stayed (Freeze, or no wallpaper chosen) is still.
+    const left = playbackLeftMs(background, background.durationMs, now);
+    if (left > 0) due.push(now + left);
+  }
+  return Math.min(...due);
 }
 
-/** Wait for the screens to settle; then when the capture must be over by, or null for the slide as it starts. */
+/**
+ * Wait (SETTLE_MS at most) until nothing on the hall screens moves and nothing the engine has scheduled falls within a
+ * capture's time from then; then when the capture must be over by (its own limit, within ANSWER_MS of the ask), or
+ * null for the slide as it starts.
+ */
 export async function waitForSlidePicture(
   state: () => EngineState,
   now: () => number,
 ): Promise<number | null> {
-  const at = now();
-  const delay = slidePictureReadyAt(state(), at) - at;
-  if (delay > SETTLE_MS) return null;
-  if (delay > 0) await new Promise<void>((resolve) => setTimeout(resolve, delay));
-  const then = now();
-  return slidePictureReadyAt(state(), then) <= then ? then + CAPTURE_MS : null;
+  const asked = now();
+  const endsFrom = (start: number) => Math.min(start + CAPTURE_MS, asked + ANSWER_MS);
+  for (;;) {
+    const at = now();
+    const screens = state();
+    const ready = slidePictureReadyAt(screens, at);
+    if (ready - asked > SETTLE_MS) return null;
+    const due = nextScheduledChange(screens, at);
+    if (ready <= at && due > endsFrom(at)) return endsFrom(at);
+    // Past a change due before a capture from then could end (looked at again once the engine has made it), else to
+    // the end of what moves.
+    const until = due <= endsFrom(ready) ? Math.max(due, at) + PAST_MS : ready;
+    if (until - asked > SETTLE_MS) return null;
+    await new Promise<void>((resolve) => setTimeout(resolve, until - at));
+  }
 }
