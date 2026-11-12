@@ -69,6 +69,7 @@ function setup(
     letIn?: { now: boolean };
     presentation?: NetworkDeps['reads']['presentation'];
     capture?: NetworkDeps['nativeSlidePicture'];
+    onAir?: NetworkDeps['onAir'];
     /** This computer's addresses and name on the network as a test gives them (the guides' pictures, Session 55). */
     shown?: { addresses: string[]; localName: string };
   } = {},
@@ -119,6 +120,7 @@ function setup(
       state: () => state,
     },
     nativeSlidePicture: options.capture,
+    ...(options.onAir ? { onAir: options.onAir } : {}),
     reads: {
       playlists: () => [],
       items: () => [],
@@ -286,7 +288,13 @@ function pictureSetup() {
     ],
   };
   const letIn = { now: true };
-  const t = setup({ capture, presentation: (id) => (id === doc.id ? doc : null), letIn });
+  const onAir = { now: false };
+  const t = setup({
+    capture,
+    presentation: (id) => (id === doc.id ? doc : null),
+    letIn,
+    onAir: () => onAir.now,
+  });
   const remote = t.devices.add({
     name: 'Placeholder phone',
     kind: 'remote',
@@ -308,7 +316,7 @@ function pictureSetup() {
       click: '1',
     },
   };
-  return { ...t, capture, letIn, stage, request };
+  return { ...t, capture, letIn, onAir, stage, request };
 }
 
 describe('saving a native click from a paired phone', () => {
@@ -383,6 +391,29 @@ describe('saving a native click from a paired phone', () => {
       body: { mediaId: 'placeholder-picture' },
     });
     expect(t.capture).not.toHaveBeenCalled();
+  });
+
+  it('answers with the slide as it starts while the stream is on air or recording, and stops a capture then', async () => {
+    const t = pictureSetup();
+    // C6's review, MEDIUM 3: no new background work while the stream is on air or recording.
+    t.onAir.now = true;
+    expect(await t.service.presentationPicture(t.request)).toMatchObject({
+      status: 200,
+      body: { mediaId: 'placeholder-picture' },
+    });
+    expect(t.capture).not.toHaveBeenCalled();
+    t.onAir.now = false;
+    t.capture.mockImplementationOnce((_slide, _looks, current) => {
+      // The stream goes on air while the capture runs: its next step finds it no longer wanted.
+      t.onAir.now = true;
+      expect(current()).toBe(false);
+      return Promise.resolve(new Uint8Array([137, 80, 78, 71]));
+    });
+    expect(await t.service.presentationPicture(t.request)).toMatchObject({
+      status: 200,
+      body: { mediaId: 'placeholder-picture' },
+    });
+    expect(t.capture).toHaveBeenCalledTimes(1);
   });
 
   it('answers with the slide as it starts when the slide moves on by itself within the capture’s time', async () => {
