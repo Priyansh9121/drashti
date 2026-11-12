@@ -1,8 +1,14 @@
 import type { BrowserWindow } from 'electron';
 import { animationById, animationLength, cutIntoUnits } from '../../shared/lower-third-animations';
-import { BAND_INTROS, FAMILIES, idFor, OFFERED } from '../../shared/lower-third-studio';
+import {
+  BAND_INTROS,
+  FAMILIES,
+  idFor,
+  LOWER_THIRD_TEMPLATES,
+  OFFERED,
+} from '../../shared/lower-third-studio';
 import type { LowerThirdLook } from '../../shared/lower-thirds';
-import { DEFAULT_LOWER_THIRD_LOOK, type LowerThird } from '../../shared/lower-thirds';
+import { DEFAULT_LOWER_THIRD_LOOK, type LowerThird, shownLines } from '../../shared/lower-thirds';
 import type { ScenarioDeps, ScenarioRun } from '../perf-scenarios';
 import { PROGRAM_FPS } from '../stream/program-window';
 import { plural } from '../../shared/text';
@@ -19,7 +25,8 @@ import { plural } from '../../shared/text';
  * direction at its steady speed (in, a moment held, out); each way a band comes in, with lines fading in; each style,
  * sliding in and out; each moving background, held four seconds. Each screen counts its animation frames (its own
  * frame callbacks) while a row moves, against what it draws a second (an output 60, the stream's page its own 30): a
- * row keeps 9 in 10 of them on every screen, or it is not smooth. Placeholder words only.
+ * row keeps 9 in 10 of them on every screen, or it is not smooth. Each new template plays its complete design.
+ * Placeholder words only.
  */
 
 /** One row of OFFERED, as the lower third the scenario plays for it. */
@@ -53,7 +60,7 @@ export function playedRows(): Played[] {
     measure: hold === BACKGROUND_HOLD_MS ? 'held' : 'moving',
   });
   const lineFade = FAMILIES.find((f) => f.family === 'line-fade');
-  return OFFERED.flatMap((r): Played[] => {
+  const offered = OFFERED.flatMap((r): Played[] => {
     switch (r.kind) {
       case 'animation': {
         const family = FAMILIES.find((f) => f.family === r.family);
@@ -76,6 +83,18 @@ export function playedRows(): Played[] {
         return [made(`background ${r.key}`, 'fade-steady', { motion: r.key }, BACKGROUND_HOLD_MS)];
     }
   });
+  const designs = LOWER_THIRD_TEMPLATES.filter(
+    (template) => animationById(template.input.animation).composition,
+  );
+  return [
+    ...offered,
+    ...designs.map((template): Played => ({
+      row: 'template ' + template.id,
+      lowerThird: { ...template.input, id: 'perf-lt-template-' + template.id },
+      holdMs: HOLD_MS,
+      measure: 'moving',
+    })),
+  ];
 }
 
 /** Each screen counts its frames while a lower third the scenario plays moves (its in and out) or is held. */
@@ -147,11 +166,13 @@ export function lowerThirdsScenario(deps: ScenarioDeps): ScenarioRun {
       // Each row in turn: in, held, out, the next once it has gone.
       for (const p of rows) {
         const lt = p.lowerThird;
-        const units = cutIntoUnits(LINES, animationById(lt.animation)).units;
+        const words = shownLines(lt.lines);
+        const entrance = animationById(lt.animation);
+        const exit = animationById(lt.outAnimation ?? lt.animation);
         deps.engine.dispatch({ type: 'showLowerThird', lowerThird: lt });
-        await sleep(animationLength(animationById(lt.animation), 'in', units) + p.holdMs);
+        await sleep(animationLength(entrance, 'in', cutIntoUnits(words, entrance).units) + p.holdMs);
         deps.engine.dispatch({ type: 'hideLowerThird' });
-        await sleep(animationLength(animationById(lt.animation), 'out', units) + AFTER_MS);
+        await sleep(animationLength(exit, 'out', cutIntoUnits(words, exit).units) + AFTER_MS);
       }
       const counted = screens();
       const seen = (await Promise.all(
@@ -174,7 +195,7 @@ export function lowerThirdsScenario(deps: ScenarioDeps): ScenarioRun {
             detail:
               rough.length === 0
                 ? `all ${plural(results.length, 'row')} smooth`
-                : `not smooth (delete these rows of OFFERED): ${rough.map((r) => `${r.row} ${percent(r.worst)}`).join(', ')}`,
+                : `not smooth: ${rough.map((r) => `${r.row} ${percent(r.worst)}`).join(', ')}`,
           },
         ],
         summary: `scenario lower-thirds: ${plural(seen.length, 'screen')} (the stream’s page last when on), each row’s frames kept on its worst screen: ${results.map((r) => `${r.row} ${percent(r.worst)}`).join(', ')}`,

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import type { LowerThirdLayer } from '../../../shared/engine/state';
-import type { LowerThirdAnimation, Pose } from '../../../shared/lower-third-animations';
+import type { AnimationFrame, LowerThirdAnimation, Pose } from '../../../shared/lower-third-animations';
 import {
   animationById,
   animationFrame,
@@ -12,13 +12,15 @@ import {
 } from '../../../shared/lower-third-animations';
 import {
   type Css,
+  DEFAULT_ACCENT,
   type LowerThirdMotion,
   motionAt,
   motionIsFill,
   motionPieces,
+  type StyleDrawing,
   styleDrawing,
 } from '../../../shared/lower-third-styles';
-import { shownLines, showsOn } from '../../../shared/lower-thirds';
+import { type LowerThirdLook, shownLines, showsOn } from '../../../shared/lower-thirds';
 import type { Size } from '../../../shared/scaling';
 import { engineNow, onClockJump } from './clock';
 import { fontFamilyFor } from './fonts';
@@ -116,6 +118,15 @@ function paintMotion(root: HTMLElement, motion: LowerThirdMotion, t: number): vo
   }
 }
 
+function paintDesign(band: HTMLElement, frame?: AnimationFrame): void {
+  const accent = band.querySelector<HTMLElement>('[data-lt-accent]');
+  if (accent) put(accent, frame?.accent ?? REST);
+  const panel = band.querySelector<HTMLElement>('[data-lt-design-panel]');
+  if (panel) put(panel, frame?.panel ?? REST);
+  for (const line of band.querySelectorAll<HTMLElement>('[data-lt-design-line]'))
+    put(line, frame?.unit(Number(line.dataset['ltDesignLine'])) ?? REST);
+}
+
 /**
  * A lower third `t` ms into its in or out (still: at rest), set straight on its band and units: frame by frame,
  * and after every drawing; its moving background by the time since it went up.
@@ -134,10 +145,12 @@ function paintBand(
   if (phase !== 'in' && phase !== 'out') {
     put(band, REST);
     for (const el of unitEls) put(el, REST);
+    if (animation.composition) paintDesign(band);
     return;
   }
   const frame = animationFrame(animation, phase, t, units);
   put(band, frame.box);
+  if (animation.composition) paintDesign(band, frame);
   for (const el of unitEls) put(el, frame.unit(Number(el.dataset['ltUnit'])));
 }
 
@@ -159,6 +172,21 @@ function Shape({ css, pieces, index }: { css: Css; pieces: Css[]; index: number 
       ))}
     </div>
   );
+}
+
+function designRule(look: LowerThirdLook, style: StyleDrawing, size: number): Css {
+  const right = look.align === 'right';
+  const centre = look.align === 'centre';
+  return {
+    position: 'absolute',
+    bottom: style.style === 'underline' ? 0 : -size * 0.14,
+    left: centre ? (style.fullWidth ? '42%' : '23%') : right ? 'auto' : 0,
+    right: right ? 0 : 'auto',
+    width: style.fullWidth ? '16%' : centre ? '54%' : '72%',
+    height: Math.max(1, size * 0.055),
+    borderRadius: 999,
+    background: look.accent ?? DEFAULT_ACCENT,
+  };
 }
 
 export function LowerThirdView({
@@ -238,6 +266,9 @@ export function LowerThirdView({
   const size = (canvas.height * look.size) / 100;
   const justify = look.align === 'left' ? 'flex-start' : look.align === 'right' ? 'flex-end' : 'center';
   const style = styleDrawing(look, size);
+  const composing = animation.composition !== undefined;
+  const designed = composing || animationById(shown.animation).composition !== undefined;
+  const accent = style.accent ?? (designed ? designRule(look, style, size) : null);
   const motionPiecesCss = motionPieces(motion, look);
   // The sweep is the colour itself: under it, its panel has none of its own.
   const panelCss = (css: Css): Css => (motionIsFill(motion) ? { ...css, background: 'transparent' } : css);
@@ -278,8 +309,22 @@ export function LowerThirdView({
           lineHeight: 1.25,
         }}
       >
-        {style.fill !== 'lines' && <Shape css={panelCss(style.shape)} pieces={motionPiecesCss} index={0} />}
-        {style.accent && <div aria-hidden="true" data-lt-accent="" style={style.accent} />}
+        {style.fill !== 'lines' &&
+          (composing ? (
+            <div data-lt-design-panel="" style={{ position: 'absolute', inset: 0 }}>
+              <Shape css={panelCss(style.shape)} pieces={motionPiecesCss} index={0} />
+            </div>
+          ) : (
+            <Shape css={panelCss(style.shape)} pieces={motionPiecesCss} index={0} />
+          ))}
+        {accent && (
+          <div
+            key={composing ? 'design-accent' : 'accent'}
+            aria-hidden="true"
+            data-lt-accent=""
+            style={accent}
+          />
+        )}
         {pieces.map((line, i) => {
           const text = line.map((p) => p.text).join('');
           const lang = detectLang(text);
@@ -293,7 +338,8 @@ export function LowerThirdView({
                 data-lt-unit={p.unit}
                 style={{
                   display: animation.unit === 'line' ? 'block' : 'inline-block',
-                  whiteSpace: 'pre',
+                  whiteSpace: composing ? 'pre-wrap' : 'pre',
+                  ...(composing ? { overflowWrap: 'anywhere' } : {}),
                 }}
               >
                 {p.text}
@@ -311,10 +357,29 @@ export function LowerThirdView({
                 fontSize: i === 0 ? size : size * 0.7,
                 ...(style.textShadow ? { textShadow: style.textShadow } : {}),
                 ...(own as CSSProperties),
-                ...(style.fill === 'lines' && motionIsFill(motion) ? { background: 'transparent' } : {}),
+                ...(style.fill === 'lines' && (composing || motionIsFill(motion))
+                  ? { background: 'transparent' }
+                  : {}),
+                ...(designed && style.style === 'underline' ? { borderBottomColor: 'transparent' } : {}),
               }}
             >
-              {style.fill === 'lines' ? (
+              {composing ? (
+                <>
+                  {style.fill === 'lines' && (
+                    <div data-lt-design-line={i} style={{ position: 'absolute', inset: 0 }}>
+                      <Shape
+                        css={panelCss({
+                          background: own['background'] ?? 'transparent',
+                          borderRadius: own['borderRadius'] ?? 0,
+                        })}
+                        pieces={motionPiecesCss}
+                        index={i}
+                      />
+                    </div>
+                  )}
+                  <div style={{ position: 'relative', overflow: 'hidden' }}>{words}</div>
+                </>
+              ) : style.fill === 'lines' ? (
                 <>
                   {/* Each line its own block of colour: the moving background in each, under its words. */}
                   <Shape
