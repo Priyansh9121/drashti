@@ -384,6 +384,55 @@ describe('saving a native click from a paired phone', () => {
     });
     expect(t.capture).not.toHaveBeenCalled();
   });
+
+  it('answers with the slide as it starts when the slide moves on by itself within the capture’s time', async () => {
+    const t = pictureSetup();
+    // Repeat Slides or the slide's timing: on to the next in 4 s (C6's review, MEDIUM 2).
+    t.state.autoAdvance = { startedAt: 1_000_000 - 1_000, durationMs: 5_000 };
+    expect(await t.service.presentationPicture(t.request)).toMatchObject({
+      status: 200,
+      body: { mediaId: 'placeholder-picture' },
+    });
+    expect(t.capture).not.toHaveBeenCalled();
+  });
+
+  it('stops the capture 9 s after the phone asked at most, so the network’s process always has its answer', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = pictureSetup();
+      t.state.layers.slide = {
+        presentationId: 'placeholder-deck',
+        slideIndex: 0,
+        slide: slideForPicture,
+        notes: '',
+        shownAt: 1_000_000,
+        transition: { kind: 'dissolve', durationMs: 2_000 },
+      };
+      let signal: AbortSignal | undefined;
+      let done: ((value: null) => void) | undefined;
+      t.capture.mockImplementationOnce((...args: unknown[]) => {
+        signal = args[3] as AbortSignal | undefined;
+        return new Promise<null>((resolve) => {
+          done = resolve;
+        });
+      });
+      const pending = t.service.presentationPicture(t.request);
+      t.tick(2_000);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(t.capture).toHaveBeenCalledTimes(1);
+      // Its own 8 s would end 10 s after the ask, when the network's process gives up waiting.
+      t.tick(6_999);
+      await vi.advanceTimersByTimeAsync(6_999);
+      expect(signal?.aborted).toBe(false);
+      t.tick(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(signal?.aborted).toBe(true);
+      done?.(null);
+      expect(await pending).toMatchObject({ status: 200, body: { mediaId: 'placeholder-picture' } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('the network in the main process', () => {

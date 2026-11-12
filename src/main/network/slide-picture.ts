@@ -64,11 +64,27 @@ export function slidePictureReadyAt(state: EngineState, now: number): number {
   return readyAt;
 }
 
-export async function waitForSlidePicture(state: () => EngineState, now: () => number): Promise<boolean> {
+/** The longest a phone's Save waits for the hall screens to settle. */
+export const SETTLE_MS = 3_000;
+/** The capture's own time limit (pdf-copy-session.ts). */
+export const CAPTURE_MS = 8_000;
+/** The network's process waits 10 s for Main's answer (worker/run.ts): a phone's Save is answered within 9. */
+export const ANSWER_MS = 9_000;
+
+/** When the engine next changes the screens by itself; Infinity when nothing is due. Not looked at yet (red). */
+export function nextScheduledChange(_state: EngineState, _now: number): number {
+  return Infinity;
+}
+
+/** Wait for the screens to settle; then when the capture must be over by, or null for the slide as it starts. */
+export async function waitForSlidePicture(
+  state: () => EngineState,
+  now: () => number,
+): Promise<number | null> {
   const at = now();
   const delay = slidePictureReadyAt(state(), at) - at;
-  if (delay > 3_000) return false;
+  if (delay > SETTLE_MS) return null;
   if (delay > 0) await new Promise<void>((resolve) => setTimeout(resolve, delay));
   const then = now();
-  return slidePictureReadyAt(state(), then) <= then;
+  return slidePictureReadyAt(state(), then) <= then ? then + CAPTURE_MS : null;
 }

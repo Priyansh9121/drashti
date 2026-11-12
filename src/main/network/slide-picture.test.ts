@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AUDIENCE_TIMER_FADE_MS } from '../../shared/audience-timer';
 import {
   type EngineState,
@@ -8,10 +8,11 @@ import {
 } from '../../shared/engine/state';
 import { roleLook } from '../../shared/looks';
 import { animationLength, LOWER_THIRD_ANIMATIONS } from '../../shared/lower-third-animations';
+import { NEW_LOWER_THIRD } from '../../shared/lower-thirds';
 import { DEFAULT_MESSAGE_LOOK, messageAnimation } from '../../shared/message-look';
 import type { RenderSlide } from '../../shared/model';
 import { ZOOM_GLIDE_MS } from '../../shared/picture-look';
-import { slidePictureReadyAt } from './slide-picture';
+import { nextScheduledChange, slidePictureReadyAt, waitForSlidePicture } from './slide-picture';
 
 /*
  * When the hall screens are still enough for a phone's Save at a click (C6's review, HIGH): besides the slide's own
@@ -186,5 +187,159 @@ describe('when the hall screens are still for a phone’s Save', () => {
       s.layers.slide = slideLayer(NOW - 100);
     });
     expect(slidePictureReadyAt(plain, NOW)).toBe(NOW);
+  });
+});
+
+/** A wallpaper going round while nothing is up: each picture 10 s, fading into the next over 1.5 s. */
+const roundWallpaper = (since: number) => ({
+  id: 'placeholder-wallpaper',
+  name: 'Placeholder wallpaper',
+  pictures: ['placeholder-a', 'placeholder-b'],
+  secondsEach: 10,
+  fadeMs: 1500,
+  since,
+});
+
+describe('what the engine has scheduled for the hall screens (C6’s review, MEDIUM 2)', () => {
+  it('is nothing when nothing is due', () => {
+    expect(nextScheduledChange(initialEngineState(), NOW)).toBe(Infinity);
+  });
+
+  it('is the soonest of the slide moving on and a message’s or a lower third’s time up', () => {
+    const lowerThird = {
+      ...NEW_LOWER_THIRD,
+      id: 'placeholder-lower-third',
+      lines: ['Placeholder name', '', ''],
+      seconds: 5,
+      shownAt: NOW - 2_000,
+    };
+    const due = stateWith((s) => {
+      s.autoAdvance = { startedAt: NOW - 1_000, durationMs: 5_000 };
+      s.layers.messages = [{ ...message, until: NOW + 6_000 }];
+      s.layers.lowerThird = lowerThird;
+    });
+    expect(nextScheduledChange(due, NOW)).toBe(NOW + 3_000);
+    expect(nextScheduledChange({ ...due, layers: { ...due.layers, lowerThird: null } }, NOW)).toBe(
+      NOW + 4_000,
+    );
+    // Past its moment, the engine is about to act: due now.
+    const late = stateWith((s) => {
+      s.autoAdvance = { startedAt: NOW - 6_000, durationMs: 5_000 };
+    });
+    expect(nextScheduledChange(late, NOW)).toBe(NOW - 1_000);
+  });
+
+  it('is the wallpaper’s next fade where it shows, and the next after the one under way', () => {
+    const between = stateWith((s) => {
+      s.chosenWallpaper = roundWallpaper(NOW - 1_000);
+    });
+    expect(nextScheduledChange(between, NOW)).toBe(NOW + 7_500);
+    const fading = stateWith((s) => {
+      s.chosenWallpaper = roundWallpaper(NOW - 9_000);
+    });
+    expect(nextScheduledChange(fading, NOW)).toBe(NOW + 9_500);
+    // A cut (no fade) changes the picture at the end of its seconds.
+    const cut = stateWith((s) => {
+      s.chosenWallpaper = { ...roundWallpaper(NOW - 1_000), fadeMs: 0 };
+    });
+    expect(nextScheduledChange(cut, NOW)).toBe(NOW + 9_000);
+    // Hidden by a slide: nothing to see.
+    const hidden = stateWith((s) => {
+      s.chosenWallpaper = roundWallpaper(NOW - 1_000);
+      s.layers.slide = slideLayer(NOW - 60_000);
+    });
+    expect(nextScheduledChange(hidden, NOW)).toBe(Infinity);
+  });
+
+  it('is the background video’s end with nothing over it, when the engine acts on it', () => {
+    const video = {
+      kind: 'media' as const,
+      mediaId: 'placeholder-video',
+      media: 'video' as const,
+      fit: 'fit' as const,
+      loop: false,
+      startedAt: NOW - 1_000,
+      durationMs: 5_000,
+    };
+    const playing = stateWith((s) => {
+      s.layers.background = video;
+    });
+    expect(nextScheduledChange(playing, NOW)).toBe(NOW + 4_000);
+    const looping = stateWith((s) => {
+      s.layers.background = { ...video, loop: true };
+    });
+    expect(nextScheduledChange(looping, NOW)).toBe(Infinity);
+    const under = stateWith((s) => {
+      s.layers.background = video;
+      s.layers.slide = slideLayer(NOW - 60_000);
+    });
+    expect(nextScheduledChange(under, NOW)).toBe(Infinity);
+    const ended = stateWith((s) => {
+      s.layers.background = { ...video, startedAt: NOW - 6_000 };
+    });
+    expect(nextScheduledChange(ended, NOW)).toBe(Infinity);
+  });
+});
+
+describe('waiting for a capture’s quiet time', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The engine's clock and the timers, moved on together. */
+  function clock() {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    return { now: () => Date.now(), pass: (ms: number) => vi.advanceTimersByTimeAsync(ms) };
+  }
+
+  it('answers with the slide as it starts at once when the slide moves on within the capture’s time', async () => {
+    const c = clock();
+    const s = stateWith((x) => {
+      x.autoAdvance = { startedAt: NOW - 1_000, durationMs: 5_000 };
+    });
+    let answer: number | null | undefined;
+    void waitForSlidePicture(() => s, c.now).then((a) => {
+      answer = a;
+    });
+    await c.pass(0);
+    expect(answer).toBeNull();
+  });
+
+  it('waits past the wallpaper’s fade due in a second, then has its time to itself', async () => {
+    const c = clock();
+    // Its next fade from 1 s to 2.5 s from now, and the one after 11 s from now.
+    const s = stateWith((x) => {
+      x.chosenWallpaper = roundWallpaper(NOW - 7_500);
+    });
+    let answer: number | null | undefined;
+    void waitForSlidePicture(() => s, c.now).then((a) => {
+      answer = a;
+    });
+    await c.pass(2_499);
+    expect(answer).toBeUndefined();
+    await c.pass(1);
+    // 8 s from then would pass 9 s from the ask: it ends 9 s from the ask.
+    expect(answer).toBe(NOW + 9_000);
+  });
+
+  it('waits past a message’s time up and its going out, as the engine takes it off', async () => {
+    const c = clock();
+    const s = stateWith((x) => {
+      x.layers.messages = [{ ...message, shownAt: NOW - 60_000, until: NOW + 500 }];
+    });
+    // The engine at the message's time: off, going out from then (engine/timed.ts).
+    setTimeout(() => {
+      s.layers.messages = [];
+      s.messagesOff = [{ message, at: NOW + 500 }];
+    }, 500);
+    let answer: number | null | undefined;
+    void waitForSlidePicture(() => s, c.now).then((a) => {
+      answer = a;
+    });
+    await c.pass(500 + messageOut - 1);
+    expect(answer).toBeUndefined();
+    await c.pass(1);
+    expect(answer).toBe(Math.min(NOW + 500 + messageOut + 8_000, NOW + 9_000));
   });
 });
