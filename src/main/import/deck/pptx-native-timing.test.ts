@@ -320,6 +320,58 @@ describe('PowerPoint slide animation timing', () => {
     });
   });
 
+  it('plays Basic Zoom exactly only as a plain zoom from nothing where the shape stands, keeping PowerPoint’s video for its other variants', () => {
+    const grow = (width: string, height: string, ...moves: string[]) =>
+      alone(
+        '23',
+        'entr',
+        track(2, 21, 'ppt_w', width, formula('#ppt_w')) +
+          track(2, 22, 'ppt_h', height, formula('#ppt_h')) +
+          moves.join(''),
+      );
+    // In: its width and height grow from the number 0 where the shape stands, as Drashti draws it.
+    expect(grow(number(0), number(0))).toMatchObject({
+      approximate: false,
+      effects: [{ shapeId: '2', phase: 'in', kind: 'zoom', durationMs: 500 }],
+    });
+    // Leaving the same way: shrinking to nothing where it stands.
+    expect(
+      alone(
+        '23',
+        'exit',
+        track(2, 21, 'ppt_w', formula('#ppt_w'), number(0)) +
+          track(2, 22, 'ppt_h', formula('#ppt_h'), number(0)),
+      ),
+    ).toMatchObject({ approximate: false, effects: [{ phase: 'out', kind: 'zoom', durationMs: 500 }] });
+    // The other variants start from another size, or move as they grow. Drashti still draws them as that zoom where
+    // no video can be made, but they have not been compared with PowerPoint's own movie.
+    const large = (base: string) => formula(`(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*${base}`);
+    const fromCentre = [
+      track(2, 23, 'ppt_x', number(0.5), formula('#ppt_x')),
+      track(2, 24, 'ppt_y', number(0.5), formula('#ppt_y')),
+    ];
+    const fromBottom = [
+      track(2, 23, 'ppt_x', number(0.5), formula('#ppt_x')),
+      track(
+        2,
+        24,
+        'ppt_y',
+        formula('1+(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*#ppt_h/2'),
+        formula('#ppt_y'),
+      ),
+    ];
+    for (const [variant, motion] of [
+      ['In Slightly', grow(formula('2/3*#ppt_w'), formula('2/3*#ppt_h'))],
+      ['Out', grow(large('#ppt_w'), large('#ppt_h'))],
+      ['In From Screen Center', grow(number(0), number(0), ...fromCentre)],
+      ['Out From Screen Bottom', grow(large('#ppt_w'), large('#ppt_h'), ...fromBottom)],
+    ] as const)
+      expect(motion, variant).toMatchObject({
+        approximate: true,
+        effects: [{ shapeId: '2', phase: 'in', kind: 'zoom', durationMs: 500 }],
+      });
+  });
+
   it('turns Grow & Turn and Shrink & Turn while they scale and fade, keeping PowerPoint’s video where one can be made', () => {
     const turn = (direction: 'in' | 'out') => {
       const [small, full] =
@@ -448,7 +500,11 @@ describe('PowerPoint slide animation timing', () => {
             parallel(
               26,
               delay(200),
-              behaviour('animScale', 6, 150),
+              // Basic Zoom, growing from nothing where the shape stands.
+              behaviour('animScale', 6, 150).replace(
+                '</p:animScale>',
+                '<p:from x="0" y="0"/><p:to x="100000" y="100000"/></p:animScale>',
+              ),
               'nodeType="withEffect" presetClass="entr" presetID="23"',
             ),
         ),
