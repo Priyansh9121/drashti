@@ -42,6 +42,7 @@ describe('the lower-thirds scenario', () => {
   });
 
   it('offers the rechecked lower-third designs that passed both Performance runs', () => {
+    // Two-core Windows runs 43195014134, 43195085796 and 43200188333: Silver 4.5% design-lift, Purple 5% design-lower, Lavender 4.5% design-centre-wipe, Emerald 5% design-slide-left, Midnight 5% design-reveal-down, Sea green 4.5% design-reveal-up.
     const previouslyHeldBack = [
       'silver-outline',
       'purple-outline',

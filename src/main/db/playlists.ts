@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Statement } from 'better-sqlite3';
 import { z } from 'zod';
 import { ownOrderId } from '../../shared/order';
 import { cutText } from '../../shared/text';
@@ -260,6 +261,11 @@ export type InputLookup = (name: string) => VideoInput | null;
 
 export class PlaylistRepo {
   private readonly shastra: ShastraRepo;
+  /**
+   * kindOf's look-up, prepared at its first use and kept (Session 57): Simple Mode's bounds ask it for every id a
+   * paired phone's Undo sends, up to 1,000 at once.
+   */
+  private kindStmt: Statement<[string], { is_folder: number; is_template: number }> | null = null;
 
   /**
    * `input`: this computer's video input of a name (Session 51), for the items naming one; none when left out
@@ -668,8 +674,8 @@ export class PlaylistRepo {
    * folder playlist too), a folder of playlists, or a template; a deleted one too (for its Undo). Null: none.
    */
   kindOf(id: string): 'playlist' | 'folder' | 'template' | null {
-    const row = this.db.prepare('SELECT is_folder, is_template FROM playlists WHERE id = ?').get(id) as
-      { is_folder: number; is_template: number } | undefined;
+    this.kindStmt ??= this.db.prepare('SELECT is_folder, is_template FROM playlists WHERE id = ?');
+    const row = this.kindStmt.get(id);
     if (!row) return null;
     if (row.is_template === 1) return 'template';
     return row.is_folder === 1 ? 'folder' : 'playlist';

@@ -4,10 +4,12 @@ import { readFile } from 'node:fs/promises';
 import { constants, setPriority } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { PdfCopyJob, PdfCopyPage, PdfPrintPage } from '../../shared/pdf-copy';
+import type { CapturedPicture, PdfCopyJob, PdfCopyPage, PdfPrintPage } from '../../shared/pdf-copy';
 import { PICTURE_ASSET_NAME, type PictureAssetKind } from '../../shared/pictures';
 
 const LIMIT = 64 * 1024 * 1024;
+/** The most a phone's picture may hold as pixels: 3840 x 2160, a 1920 x 1080 slide on a display at twice the size. */
+const PICTURE_PIXELS_LIMIT = 3840 * 2160 * 4;
 const MAX_PAGES = 400;
 const DEADLINE_MS = 180_000;
 const printPageSchema = z.object({
@@ -40,13 +42,15 @@ export interface PdfCopySessionDeps {
     target: { width: number; height: number },
     signal: AbortSignal,
   ): Promise<Uint8Array>;
+  /** The byte order of a captured picture's pixels on this computer (index.ts finds it); left out, blue first. */
+  pixelOrder?(): CapturedPicture['order'];
 }
 interface ActiveCopy {
   win: BrowserWindow;
   job: PdfCopyJob;
   signal: AbortSignal;
   current(): boolean;
-  finish(data: Uint8Array | null): void;
+  finish(data: Uint8Array | CapturedPicture | null): void;
   taken: boolean;
   captures: number;
   captureBytes: number;
@@ -61,13 +65,36 @@ export class PdfCopySession {
 
   constructor(private readonly deps: PdfCopySessionDeps) {}
 
+  async picture(
+    slide: Extract<PdfCopyJob['pages'][number], { kind: 'native' }>['slide'],
+    looks: NonNullable<PdfCopyJob['picture']>['looks'],
+    current: () => boolean,
+    signal: AbortSignal,
+  ): Promise<CapturedPicture | null> {
+    const scale = Math.min(1, 1920 / Math.max(slide.width, slide.height));
+    const out = await this.start(
+      { pages: [{ kind: 'native', slide }], sources: [], picture: { scale, looks } },
+      current,
+      signal,
+    );
+    return out instanceof Uint8Array ? null : out;
+  }
+
   async run(
     plan: Omit<PdfCopyJob, 'id'>,
     current: () => boolean,
     signal: AbortSignal,
   ): Promise<Uint8Array | null> {
-    if (this.active || signal.aborted || !current() || !plan.pages.length || plan.pages.length > MAX_PAGES)
-      return null;
+    const out = await this.start(plan, current, signal);
+    return out instanceof Uint8Array ? out : null;
+  }
+
+  private async start(
+    plan: Omit<PdfCopyJob, 'id'>,
+    current: () => boolean,
+    signal: AbortSignal,
+  ): Promise<Uint8Array | CapturedPicture | null> {
+    if (!plan.pages.length || plan.pages.length > MAX_PAGES) return null;
     if (plan.sources.reduce((total, source) => total + source.data.length, 0) > 256 * 1024 * 1024)
       return null;
     const ids = new Set(plan.sources.map((source) => source.id));
@@ -87,6 +114,11 @@ export class PdfCopySession {
       )
         return null;
     }
+    if (signal.aborted || !current()) return null;
+    // A phone's picture is the lowest of this window's jobs (C6's review, LOW 1): the operator's copy ends it (the
+    // phone gets the slide as it starts) and goes ahead, while a picture never waits for another job.
+    if (this.active?.job.picture && !plan.picture) this.active.finish(null);
+    if (this.active) return null;
     let win: BrowserWindow;
     try {
       win = this.deps.open();
@@ -95,7 +127,7 @@ export class PdfCopySession {
     }
     return new Promise((resolve) => {
       let ended = false;
-      const finish = (data: Uint8Array | null) => {
+      const finish = (data: Uint8Array | CapturedPicture | null) => {
         if (ended) return;
         ended = true;
         clearTimeout(timer);
@@ -118,7 +150,7 @@ export class PdfCopySession {
         fresh: null,
       };
       const abort = () => finish(null);
-      const timer = setTimeout(abort, DEADLINE_MS);
+      const timer = setTimeout(abort, plan.picture ? 8_000 : DEADLINE_MS);
       this.active = active;
       signal.addEventListener('abort', abort, { once: true });
       win.webContents.once('render-process-gone', abort);
@@ -166,12 +198,19 @@ export class PdfCopySession {
       active.captures >= 128
     )
       return null;
+    // A phone's picture that cannot be made ends at once: the phone gets the slide as it starts without waiting out
+    // the job's time (C6's review, LOW 4).
+    const refuse = () => {
+      if (active.job.picture) active.finish(null);
+      return null;
+    };
     const page = active.job.pages[index];
-    if (page?.kind !== 'native') return null;
-    const width = Math.ceil((page.slide.width * 4) / 3),
-      height = Math.ceil((page.slide.height * 4) / 3);
+    if (page?.kind !== 'native') return refuse();
+    const scale = active.job.picture?.scale ?? 4 / 3;
+    const width = Math.ceil(page.slide.width * scale);
+    const height = Math.ceil(page.slide.height * scale);
     // Bound viewport and screenshot memory as well as compressed output bytes.
-    if (width * height > 4_000_000) return null;
+    if (width * height > 4_000_000) return refuse();
     active.printing = true;
     active.captures++;
     try {
@@ -184,7 +223,23 @@ export class PdfCopySession {
         { x: 0, y: 0, width, height },
         { stayHidden: true },
       );
-      if (this.own(sender) !== active || image.isEmpty()) return null;
+      if (this.own(sender) !== active) return null;
+      if (image.isEmpty()) return refuse();
+      if (active.job.picture) {
+        // Never encoded on Main's thread (C6's review, MEDIUM 1): its pixels as captured (a copy) go on to the
+        // network's process, which makes the PNG. The hidden page is told nothing back.
+        const { width: wide, height: high } = image.getSize();
+        const pixels = image.toBitmap();
+        if (wide < 1 || high < 1 || pixels.length !== wide * high * 4 || pixels.length > PICTURE_PIXELS_LIMIT)
+          return refuse();
+        active.finish({
+          width: wide,
+          height: high,
+          pixels: new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.length),
+          order: this.deps.pixelOrder?.() ?? 'bgra',
+        });
+        return null;
+      }
       const data = image.toPNG();
       active.captureBytes += data.length;
       if (data.length > 32 * 1024 * 1024 || active.captureBytes > LIMIT) return null;
@@ -201,6 +256,7 @@ export class PdfCopySession {
     const active = this.own(sender);
     if (
       !active ||
+      active.job.picture ||
       typeof index !== 'number' ||
       !active.taken ||
       active.job.id !== id ||
@@ -248,6 +304,7 @@ export class PdfCopySession {
     const checked = z.array(printPageSchema).length(1).safeParse(raw);
     if (
       !active ||
+      active.job.picture ||
       typeof index !== 'number' ||
       active.job.id !== id ||
       active.next !== index ||
@@ -279,7 +336,7 @@ export class PdfCopySession {
     const checked = finishedSchema.safeParse(raw);
     if (!active || !checked.success || checked.data.id !== active.job.id) return false;
     const value = checked.data;
-    if (value.error) {
+    if (active.job.picture || value.error) {
       active.finish(null);
       return true;
     }
