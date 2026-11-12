@@ -180,7 +180,7 @@ describe('keeping a generated PPTX editable', () => {
     );
   });
 
-  it('keeps only the painted table edges, with their own colour and width', async () => {
+  it('keeps only painted table edges and joins their corner with both stroke widths', async () => {
     const { elements } = await read(
       slideXml(
         graphic(
@@ -197,13 +197,13 @@ describe('keeping a generated PPTX editable', () => {
       {
         shape: 'line',
         rotation: 90,
-        frame: { x: -35, y: 64.5, width: 90, height: 1 },
+        frame: { x: -36, y: 65.5, width: 92, height: 1 },
         outline: { color: '#aa2244', width: 2 },
       },
       {
         shape: 'line',
         rotation: 0,
-        frame: { x: 10, y: 109.5, width: 300, height: 1 },
+        frame: { x: 9, y: 109.5, width: 301, height: 1 },
         outline: { color: '#22aa44', width: 4 },
       },
     ]);
