@@ -179,10 +179,10 @@ it.each([
   mkdirSync(mediaDir);
   writeFileSync(source, key);
   const db = openDatabase(join(root, 'drashti.sqlite'));
-  const flow = vi.spyOn(deckFlow, 'runDeck').mockImplementationOnce(async ({ work, fileName }) => {
+  const flow = vi.spyOn(deckFlow, 'runDeck').mockImplementationOnce(({ work, fileName }) => {
     const editablePptx = join(work, 'editable-source.pptx');
     writeFileSync(editablePptx, pptx);
-    return {
+    return Promise.resolve({
       kind: 'baked',
       editablePptx,
       editablePptxSlideCount: slides.length,
@@ -212,7 +212,7 @@ it.each([
         media: [],
         issues: [],
       },
-    };
+    });
   });
   try {
     const media = new MediaStore(db, { dir: mediaDir, freeBytes: () => 1024 ** 4 });
