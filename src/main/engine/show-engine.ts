@@ -2270,13 +2270,13 @@ export class ShowEngine {
     // Over the operator's sound (Session 55, Part 7: the owner's answer of 30 Oct), the music playing on under it.
     const up = this.state.layers.audio;
     const under = operatorSound(up);
-    const audio = acrossLayer(
-      start,
-      { presentationId, slideIndex },
-      at,
-      under ? (under.over ?? null) : up,
-      this.libraryOf(start.mediaId, undefined),
-    );
+    const playing = under ? (under.over ?? null) : up;
+    const carryAt = playing?.mediaId === start.mediaId ? playing.startedAt : undefined;
+    const points = this.pointsFor(start.mediaId, under ? 'over' : 'audio', carryAt);
+    const audio = acrossLayer(start, { presentationId, slideIndex }, at, playing, {
+      ...this.lengthOf(start.mediaId),
+      ...points,
+    });
     if (!audio) return null;
     return { type: 'audio/set', audio: under ? { ...under, over: audio } : audio };
   }

@@ -867,8 +867,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       {
         committed: ({ item, wrote, marked }) => {
           if (!phase || !('early' in phase)) addToTotals(totals, item);
+          if (ctx.options.automatic) told(marked);
           ctx.onWrote?.(wrote);
-          told(marked);
+          if (!ctx.options.automatic) told(marked);
         },
         failed: (error) => {
           failed(
