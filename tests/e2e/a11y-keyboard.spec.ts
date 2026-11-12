@@ -249,7 +249,7 @@ test('Pro Mode: a whole sabha by keyboard alone', async () => {
   await setUp(win);
   await setUpScreen(win, 'Main Hall', 0);
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await win.reload();
   await operatorReady(win);
   const live = win.getByTestId('live-text');

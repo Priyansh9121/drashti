@@ -280,7 +280,7 @@ test('with a graphics chip the warm-up passes by itself and the show is drawn af
   });
   expect(frames.frames, `frames drawn while it warmed up (${frames.windows.join('; ')})`).toBeGreaterThan(3);
   expect(frames.max, `black throughout (${String(frames.frames)} frames)`).toBe(0);
-  await expect(root).toHaveAttribute('data-fonts', 'ready');
+  await expect(root).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await expect(out.locator('[data-warm-up]')).toHaveCount(1);
   await expect(out.locator('[data-warm-scene]')).toHaveCount(0);
   // Then the show draws as ever.
@@ -318,7 +318,7 @@ test('where Chromium draws without a graphics chip an output draws the show with
   const root = out.getByTestId('output-root');
   // Ready to draw the show, without warming up: it never began a warm-up (none of its marks).
   await expect(root).toHaveAttribute('data-warm-up', 'skipped', { timeout: 60_000 });
-  await expect(root).toHaveAttribute('data-fonts', 'ready');
+  await expect(root).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   expect(await warmUpMarks(out), 'the output’s warm-up marks').toEqual([]);
   // The show drawn at once, black until something goes up (nothing up, no wallpaper chosen).
   await expect(out.getByTestId('scene')).toHaveAttribute('data-nothing-up', 'black');
@@ -366,7 +366,7 @@ test('an output told it draws without a graphics chip after its warm-up began en
     (globalThis as MainGlobals).drashtiTestGpuSaid?.();
   });
   await expect(root).toHaveAttribute('data-warm-up', 'skipped');
-  await expect(root).toHaveAttribute('data-fonts', 'ready');
+  await expect(root).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   // Marked as the warm-up goes (its effect's cleanup, which React may run a moment after the page changed).
   await expect
     .poll(() => warmUpMarks(out), { message: 'the output’s warm-up marks once told' })

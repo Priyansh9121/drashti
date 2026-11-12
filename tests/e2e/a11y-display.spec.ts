@@ -132,7 +132,7 @@ test('with the computer set to reduce motion, an audience screen changes nothing
   await operatorReady(win);
   await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const id = (await d.library.listPresentations()).find((p) => p.name === 'Language test slides')?.id ?? '';

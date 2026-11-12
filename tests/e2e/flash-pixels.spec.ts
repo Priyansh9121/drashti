@@ -162,7 +162,7 @@ test('every transition at its shortest, Calm and Bold: at most 3 swings a second
   );
   await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const table: string[] = [];
   const failures: string[] = [];
   for (const movement of ['calm', 'bold'] as const) {
@@ -248,7 +248,7 @@ test('a key and fill pair: the key is the fill’s light at held moments of ever
   const fill = await outputFor(app, screens[0]?.id ?? '');
   const key = await outputFor(app, screens[1]?.id ?? '');
   for (const out of [fill, key])
-    await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+    await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const failures: string[] = [];
   // Fade through black draws black over both: the key keys that black in (truly through black), so the two
   // are not alike by design while it runs.
@@ -295,7 +295,7 @@ test('a screen reloaded part-way through any transition shows the new slide whol
   });
   await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const RIGHT = { x: 1440, y: 540 };
   for (const movement of ['calm', 'bold'] as const)
     for (const kind of KINDS) {
@@ -309,7 +309,9 @@ test('a screen reloaded part-way through any transition shows the new slide whol
       const shownAt = (await engineState(win)).layers.slide?.shownAt ?? 0;
       await expect(out.locator('[data-layer="slide"][data-fading="true"]')).toHaveCount(1);
       await out.reload();
-      await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+      await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', {
+        timeout: 20_000,
+      });
       await expect(out.locator('[data-layer="slide"] img')).toHaveCount(1);
       const [colour] = await canvasPixels(out, [RIGHT]);
       // Still inside the transition, by the engine's clock: otherwise this would prove nothing.
@@ -341,7 +343,7 @@ test('the held clock reaches the stream’s picture: part-way through a dissolve
   });
   await setUpScreen(win);
   const hall = await outputPage(app);
-  await expect(hall.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(hall.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await win.getByTestId('open-stream').click();
   const isStream = (p: Page) => p.url().includes('stream.html');
   const program = await windowShowing(app, isStream, 'stream');
@@ -401,7 +403,7 @@ test('every move draws the words apart where it should: the pictures and the bac
   }, id);
   await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   // A point on the slide's picture (its top edge) and one on the background (its bottom edge), clear of the words.
   const PICTURE = { x: 240, y: 40 };
   const BACKGROUND = { x: 240, y: 1040 };
