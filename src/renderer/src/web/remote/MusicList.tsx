@@ -13,6 +13,7 @@ import { tap } from '../taps';
 import { loadMusic, useMirror } from './mirror-store';
 import { musicRowAction } from './music-row';
 import { PhoneQuestion } from './PhoneSheet';
+import { askRename } from './phone-tools-store';
 
 const MUSIC = '/api/v1/music';
 const playlistPath = (id: string) => MUSIC + '/' + encodeURIComponent(id);
@@ -262,6 +263,32 @@ export function MusicList() {
                     onClick={() => void change(trackPath(track.id) + '/move', { to: index + 1 })}
                   >
                     Move down
+                  </Button>
+                  <Button
+                    size="lg"
+                    className="min-h-12"
+                    aria-label={`Rename track: ${track.name}`}
+                    disabled={busy}
+                    onClick={() =>
+                      askRename({
+                        what: 'the track',
+                        name: track.name,
+                        save: async (name) => {
+                          const result = await api(
+                            `/api/v1/media/${encodeURIComponent(track.mediaId)}/rename`,
+                            {
+                              method: 'POST',
+                              body: { name },
+                            },
+                          );
+                          if (!result.ok) return result.message;
+                          await loadMusic();
+                          return null;
+                        },
+                      })
+                    }
+                  >
+                    Rename track
                   </Button>
                   <Button
                     size="lg"
