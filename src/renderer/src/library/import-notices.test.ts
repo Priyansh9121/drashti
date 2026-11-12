@@ -143,6 +143,9 @@ it('names the old fonts an import met in one line, each font once, with nothing 
   // An old font is installed, never tried again or looked for: no Try again, no Find….
   expect(fonts?.retry).toBeUndefined();
   expect(fonts?.findMissing).toBeUndefined();
+  // Drawn whole, so every font can be read (ImportNoticeLine); a file's own line stays one line.
+  expect(fonts?.whole).toBe(true);
+  expect(missing?.whole).toBeUndefined();
   expect(missing?.findMissing).toBeTypeOf('function');
   expect(damaged?.retry).toBeTypeOf('function');
 });
