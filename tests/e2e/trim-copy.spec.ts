@@ -204,6 +204,39 @@ test('Trim waits while on air, cuts exact frames in the same row, and widens or 
 
     await onAir(app, true);
     await openTrim();
+    const preview = dialog.locator('video');
+    await preview.evaluate(async (video) => {
+      if (!(video instanceof HTMLVideoElement)) throw new Error('Trim’s preview is missing.');
+      if (video.readyState < HTMLMediaElement.HAVE_METADATA)
+        await new Promise<void>((resolve) =>
+          video.addEventListener('loadedmetadata', () => resolve(), { once: true }),
+        );
+      await new Promise<void>((resolve) => {
+        const atFirstSeek: VideoFrameRequestCallback = (_now, { mediaTime }) => {
+          if (Math.abs(mediaTime - 0.8) < 0.001) resolve();
+          else video.requestVideoFrameCallback(atFirstSeek);
+        };
+        video.requestVideoFrameCallback(atFirstSeek);
+        video.currentTime = 0.8;
+      });
+    });
+    const here = dialog.getByRole('button', { name: 'Here', exact: true }).first();
+    await here.evaluate((button) => {
+      const video = button.closest('form')?.querySelector('video');
+      if (!(button instanceof HTMLButtonElement) || !video) throw new Error('Trim’s preview is missing.');
+      // Use Here in the same turn as a seek, before the new frame can be presented.
+      video.currentTime = 1.2;
+      button.click();
+    });
+    await expect(dialog.getByTestId('markers-start')).toHaveValue('0:01.2');
+    await here.evaluate((button) => {
+      const video = button.closest('form')?.querySelector('video');
+      if (!video) throw new Error('Trim’s preview is missing.');
+      video.currentTime = 1.6;
+      button.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', bubbles: true }));
+    });
+    await expect(dialog.getByTestId('markers-start')).toHaveValue('0:01.6');
+
     await saveCut('0:01.415', '0:04.6');
     await expect(preparing).toHaveText('Preparing');
     await holdStill(() => !existsSync(cut), 2200, 'the stream is on air');
