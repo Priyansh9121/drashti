@@ -337,6 +337,68 @@ describe('trimming a playlist video', () => {
     expect(await readFile(x.original, 'utf8')).toBe('placeholder original');
   });
 
+  it('shows black-and-silence points from the copy in original time', async () => {
+    const x = await setup();
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(() => expect(x.repo.row(x.itemId)?.mediaId).not.toBe('original'));
+    const cutId = x.repo.row(x.itemId)?.mediaId ?? '';
+    x.media.setMarkers(cutId, { ...NO_MARKERS, startMs: 250, endMs: 1550 });
+
+    expect(x.repo.view(x.itemId)?.markers).toMatchObject({ startMs: 750, endMs: 2050 });
+  });
+
+  it('keeps black-and-silence points as playback bounds inside a wider copy', async () => {
+    const x = await setup();
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(() => expect(x.repo.row(x.itemId)?.mediaId).not.toBe('original'));
+    const firstId = x.repo.row(x.itemId)?.mediaId ?? '';
+    x.media.setMarkers(firstId, { ...NO_MARKERS, startMs: 250, endMs: 1550 });
+
+    const wider = join(dir, 'Placeholder wider.mp4');
+    await writeFile(wider, 'placeholder wider trim');
+    expect(
+      await x.service.apply(x.itemId, {
+        mediaId: firstId,
+        points: { ...NO_MARKERS, startMs: 200, endMs: 3000 },
+      }),
+    ).toEqual({ ok: true });
+    x.finish({ ok: true, copy: wider });
+    await vi.waitFor(() => expect(x.repo.row(x.itemId)?.mediaId).not.toBe(firstId));
+    expect(x.repo.row(x.itemId)).toMatchObject({ cutStartMs: 200, cutEndMs: 3000 });
+    expect(x.media.markersOf(x.repo.row(x.itemId)?.mediaId ?? '')).toMatchObject({
+      startMs: 550,
+      endMs: 1850,
+    });
+    expect(x.repo.view(x.itemId)?.markers).toMatchObject({ startMs: 750, endMs: 2050 });
+  });
+
+  it('restores the playlist reset when the operator undoes black-and-silence points', async () => {
+    const x = await setup();
+    const original = { ...NO_MARKERS, endMs: 3400 };
+    const detected = { startMs: 800, endMs: null };
+    x.media.setMarkers('original', original);
+    expect(x.service.reset(x.itemId, 'original')).toEqual({ ok: true });
+    expect(x.repo.view(x.itemId)?.markers).toEqual(NO_MARKERS);
+
+    expect(x.repo.setSoundEdges('original', detected)).toEqual({ startMs: null, endMs: 3400 });
+    expect(x.repo.view(x.itemId)?.markers).toMatchObject(detected);
+    const marker = { id: 'new', name: 'Placeholder cue', atMs: 2200 };
+    x.media.setMarkers('original', { ...detected, markers: [marker] });
+
+    // The Sound Undo uses the ordinary marker setter and preserves any intervening cue edits.
+    x.media.setMarkers('original', { ...original, markers: [marker] });
+    expect(x.repo.view(x.itemId)?.markers).toEqual({ ...NO_MARKERS, markers: [marker] });
+    const otherRowId = x.playlists.itemsOf(x.another)[0]?.id ?? '';
+    expect(x.repo.view(otherRowId)?.markers).toEqual({ ...original, markers: [marker] });
+
+    // A later manual change, even back to the same detection, consumes the reset normally.
+    x.media.setMarkers('original', { ...detected, markers: [marker] });
+    x.media.setMarkers('original', { ...original, markers: [marker] });
+    expect(x.repo.view(x.itemId)?.markers).toEqual({ ...original, markers: [marker] });
+  });
+
   it('refuses to reset a video’s row while that row is live', async () => {
     const x = await setup();
     expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
