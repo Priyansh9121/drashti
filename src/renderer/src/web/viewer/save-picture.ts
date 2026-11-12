@@ -99,7 +99,9 @@ export async function saveNativeSlideHere(
       if (response.ok && 'mediaId' in reply && typeof reply.mediaId === 'string') {
         return (
           (await savePictureHere(reply.mediaId, name, looks[reply.mediaId] ?? null)) ??
-          'This is the slide as it starts. Try again when the screens are still to save this click.'
+          ('message' in reply && typeof reply.message === 'string'
+            ? reply.message
+            : 'This is the slide as it starts. Try again when the screens are still to save this click.')
         );
       }
       if ('message' in reply && typeof reply.message === 'string') return reply.message;
