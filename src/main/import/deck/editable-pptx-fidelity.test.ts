@@ -49,7 +49,14 @@ describe('keeping a generated PPTX editable', () => {
     expect(box.runs?.find((run) => run.text === 'Placeholder bullet')).toMatchObject({
       list: 'disc',
       level: 2,
-      paragraph: { align: 'left', marginLeft: 24, marginRight: 12, indent: -12, lineHeight: 1.08, bullet: '•' },
+      paragraph: {
+        align: 'left',
+        marginLeft: 24,
+        marginRight: 12,
+        indent: -12,
+        lineHeight: 1.08,
+        bullet: '•',
+      },
     });
     expect(box.runs?.find((run) => run.softBreak)).toMatchObject({ text: '\n', softBreak: true });
     expect(box.runs?.find((run) => run.text === 'Placeholder justified words')).toMatchObject({
