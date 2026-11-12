@@ -878,7 +878,7 @@ export function Canvas({
           ref={stage}
           role="application"
           aria-roledescription="slide"
-          aria-label="The slide. Tab chooses the next element, the arrow keys move it (Shift for ten pixels), Enter types in a text box, Delete removes. Copy, Cut and Paste work on elements; Shift with Paste puts them exactly where they were."
+          aria-label="The slide. Tab chooses the next element, the arrow keys move it (Shift for ten pixels), Enter types in a text box, Delete removes. Shift plus F10 opens the object menu. Copy, Cut and Paste work on elements; Shift with Paste puts them exactly where they were."
           aria-describedby="editor-canvas-status"
           tabIndex={0}
           data-testid="editor-canvas"

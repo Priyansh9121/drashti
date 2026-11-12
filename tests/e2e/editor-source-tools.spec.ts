@@ -52,7 +52,13 @@ test('the editor offers source table cells, text direction, paragraph styling an
     await inspector.getByRole('button', { name: 'Edit row 1, column 2' }).click();
     const typing = editor.getByTestId('text-editing');
     await expect(typing).toBeFocused();
-    await typing.fill('Placeholder updated cell');
+    await typing.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+    await ed.keyboard.insertText('Placeholder updated cell');
+    await typing.press('Escape');
+    await canvas.getByText('Placeholder updated cell', { exact: true }).click();
+    await canvas.getByText('Placeholder left cell', { exact: true }).dblclick();
+    await expect(typing).toBeFocused();
+    await expect(typing).toHaveText('Placeholder left cell');
     await typing.press('Escape');
 
     const pane = editor.getByTestId('editor-objects');
