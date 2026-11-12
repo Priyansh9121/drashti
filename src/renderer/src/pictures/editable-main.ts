@@ -31,7 +31,7 @@ export async function drawEditablePdf(
   let total = 0;
   const failed: number[] = [];
   let jobBytes = 0;
-  let stopped = false;
+  const preparation = { stopped: false };
   let error: string | undefined;
   try {
     const doc = await task.promise;
@@ -60,7 +60,7 @@ export async function drawEditablePdf(
               total,
             }))
           ) {
-            stopped = true;
+            preparation.stopped = true;
             throw new Error('Editable source preparation stopped.');
           }
           checkTime();
@@ -92,7 +92,7 @@ export async function drawEditablePdf(
       } finally {
         page?.cleanup();
       }
-      if (stopped) break;
+      if (preparation.stopped) break;
     }
   } catch {
     error = 'This PDF could not be prepared safely. Saved playback is unchanged.';

@@ -28,9 +28,12 @@ it('returns only fully accepted PDF pages when the preparation budget ends', asy
   writeFileSync(file, clippedDeckPdf(4));
   const win = new HiddenWindow();
   const sender = { id: win.webContents.id } as WebContents;
-  const { promise: opened, resolve: didOpen } = Promise.withResolvers<void>();
+  let didOpen: (() => void) | undefined;
+  const opened = new Promise<void>((resolve) => {
+    didOpen = resolve;
+  });
   const session = new EditablePdfSessions(() => {
-    didOpen();
+    didOpen?.();
     return win as unknown as BrowserWindow;
   });
   let reading: Promise<PreparedSource> | undefined;
