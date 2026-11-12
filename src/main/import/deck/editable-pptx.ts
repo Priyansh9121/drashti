@@ -45,6 +45,7 @@ export interface EditablePptx {
 }
 
 const EMU = 9525;
+const DEFAULT_LINE_HEIGHT = 1.2;
 const MAX_XML = 8 * 1024 * 1024;
 const MAX_XML_TOTAL = 64 * 1024 * 1024;
 const MAX_IMAGE = 32 * 1024 * 1024;
@@ -434,11 +435,15 @@ function paragraphNodes(chain: XmlNode[], paragraph: XmlNode, ctx: Context): Nod
       ? 'bodyStyle'
       : 'otherStyle';
   const masterStyle = child(child(ctx.master?.root, 'txStyles'), styleName);
+  const presentation = [child(ctx.defaults, 'defPPr'), child(ctx.defaults, levelName)];
+  const master = [child(masterStyle, 'defPPr'), child(masterStyle, levelName)];
+  const last = chain.at(-1);
+  // A plain text box takes the presentation's default text style, as PowerPoint and Keynote draw it; the master's
+  // "other" style (where Keynote keeps its slide number's right alignment) only fills in what that leaves out, as
+  // in a deck with no default text style. Placeholders and table cells keep the master's style on top.
+  const plainBox = !ph && last !== undefined && nameOf(last) === 'sp';
   return [
-    child(ctx.defaults, 'defPPr'),
-    child(ctx.defaults, levelName),
-    child(masterStyle, 'defPPr'),
-    child(masterStyle, levelName),
+    ...(plainBox ? [...master, ...presentation] : [...presentation, ...master]),
     ...chain.flatMap((shape) => {
       const body = child(shape, 'txBody'),
         list = child(body, 'lstStyle');
@@ -602,7 +607,7 @@ function bulletStyle(
   if (glyph) return { bullet: glyph };
   // Some writers already supply Unicode (for example U+2022 with Symbol).
   if (position > 0xff && !/[\p{Co}\p{Cs}]/u.test(character)) return { bullet: cutText(character, 8) };
-  ctx.issues.add('Some symbol bullets use a dot. Change them in Bullets and Numbering.');
+  ctx.issues.add('Some symbol bullets use a dot. Change them with Bullets or Numbering in Words.');
   return {};
 }
 
@@ -631,7 +636,10 @@ function paragraphOf(
   if (indent !== undefined) paragraph.indent = pixels(indent, -16_384);
   const spacing = attr(child(lastChild(nodes, 'lnSpc'), 'spcPct'), 'val');
   if (spacing !== undefined)
-    paragraph.lineHeight = Math.max(0.1, Math.min(5, number(spacing, 100_000) / 100_000));
+    paragraph.lineHeight = Math.max(
+      0.1,
+      Math.min(5, round(DEFAULT_LINE_HEIGHT * (number(spacing, 100_000) / 100_000))),
+    );
 
   const children = [...nodes].reverse().flatMap((node) => kids(node));
   const bullet = children.find((node) => ['buNone', 'buChar', 'buAutoNum', 'buBlip'].includes(nameOf(node)));
@@ -768,7 +776,7 @@ function textElement(
       color: first?.color ?? '#000000',
       align,
       verticalAlign: anchor === 'ctr' ? 'middle' : anchor === 'b' ? 'bottom' : 'top',
-      lineHeight: paragraph?.lineHeight ?? 1.2,
+      lineHeight: paragraph?.lineHeight ?? DEFAULT_LINE_HEIGHT,
       shadow: false,
       ...(!clipToBox || lastChild(bodies, 'normAutofit') ? { shrinkToFit: true } : {}),
       ...(clipToBox ? { clipToBox: true } : {}),
@@ -793,6 +801,21 @@ function lineOutline(line: Node, ctx: Context): Outline | null {
   if (!line || child(line, 'noFill')) return null;
   const color = fillOf([line], ctx, '#000000');
   return color ? { color, width: Math.max(0.01, Math.min(100, number(attr(line, 'w'), EMU) / EMU)) } : null;
+}
+/**
+ * A shape's line given a width but no colour anywhere, with no style line to take one from, draws nothing in
+ * PowerPoint and Keynote (Keynote writes one on every text box and shape). A line with a colour, or a style's
+ * line (PowerPoint's own shapes), reads as before.
+ */
+function colourlessLine(chain: XmlNode[], props: Node[]): boolean {
+  const lines = props.flatMap((item) => kids(item, 'ln'));
+  return (
+    lines.length > 0 &&
+    !lines.some((line) =>
+      kids(line).some((n) => ['noFill', 'solidFill', 'gradFill', 'pattFill'].includes(nameOf(n))),
+    ) &&
+    !chain.some((shape) => child(child(shape, 'style'), 'lnRef'))
+  );
 }
 interface SourcePaint {
   color: string | null;
@@ -1113,7 +1136,8 @@ async function objectOf(
   }
   const output: SlideElement[] = [];
   const paint = await shapePaintOf(paints, ctx, referenceColor(chain, 'fillRef', ctx));
-  const outline = lineOutline(lastChild(props, 'ln'), ctx);
+  const outline =
+    shape !== 'line' && colourlessLine(chain, props) ? null : lineOutline(lastChild(props, 'ln'), ctx);
   if (paint.picture) {
     output.push({
       id: ctx.id(),

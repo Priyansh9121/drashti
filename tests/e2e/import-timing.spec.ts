@@ -16,6 +16,7 @@ import {
   openLibrary,
   operatorPage,
   operatorReady,
+  sizeSlideEditor,
   slideEditorWindow,
 } from './helpers';
 import { testFfmpeg } from './stream-helpers';
@@ -207,7 +208,7 @@ for (const p of PLACEHOLDERS.filter((x) => !real || x.kind === 'deck')) {
         .click();
       const editFrom = Date.now();
       await win.getByTestId('edit-slides').click();
-      const { editor } = await slideEditorWindow(app);
+      const { ed, editor } = await slideEditorWindow(app);
       await expect(
         editor
           .getByTestId('editor-slide')
@@ -215,6 +216,17 @@ for (const p of PLACEHOLDERS.filter((x) => !real || x.kind === 'deck')) {
           .filter({ hasText: '1. Velora tamsin orvel' }),
       ).toBeVisible({ timeout: 10 * 60_000 });
       const editMs = Date.now() - editFrom;
+      if (p.kind === 'pdf' && p.count === 100) {
+        await sizeSlideEditor(app, ed, { width: 1024, height: 645 });
+        const last = editor.getByTestId('editor-slide-thumb').last();
+        await expect(last).toHaveAttribute('data-source-preparing', 'true');
+        await last.click();
+        await expect(editor.getByText('Preparing…', { exact: true })).toBeVisible();
+        await expect(
+          editor.getByTestId('editor-slide').locator('[data-element]').filter({ hasText: '100.' }),
+        ).toBeVisible({ timeout: 30_000 });
+        await expect(last).not.toHaveAttribute('data-source-preparing', 'true');
+      }
       const row: Row = { ...steps, name: p.name, importMs, editMs };
       rows.push(row);
       console.log(`Import timing: ${JSON.stringify(row)}`);
