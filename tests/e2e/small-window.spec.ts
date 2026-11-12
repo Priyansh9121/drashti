@@ -86,6 +86,33 @@ for (const mode of ['pro', 'simple'] as const) {
   }
 }
 
+test('Pro Mode at 1024 × 645: Audio stays inside the live column when it scrolls', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  await win.evaluate(async () => {
+    const list = await (globalThis as PageGlobals).drashti.music.create('Placeholder audio');
+    if (!list.ok) throw new Error('Could not create the audio playlist');
+  });
+
+  const live = win.getByRole('complementary', { name: 'Live', exact: true });
+  const announcement = live.getByTestId('audio-group').getByTestId('chosen-said');
+  await expect(announcement).toHaveCount(1);
+  await live.getByTestId('group-more-tools-toggle').click();
+  await live.getByTestId('lower-thirds-panel').scrollIntoViewIfNeeded();
+
+  // A screen-reader announcement below the visible part of the column used to escape its scroll area.
+  const staysInColumn = await announcement.evaluate(
+    (el) => el instanceof HTMLElement && el.closest('aside')?.contains(el.offsetParent) === true,
+  );
+  expect(staysInColumn).toBe(true);
+  expect(await live.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await win.evaluate(() => document.scrollingElement?.scrollHeight)).toBe(CI_WINDOW.height);
+  await expect(win.getByRole('contentinfo', { name: 'Status' })).toBeInViewport({ ratio: 1 });
+  await app.close();
+});
+
 /**
  * A bar along the bottom as it is laid out now: what does not fit (it scrolls sideways, a button sticks out of it
  * or lies over another, a button's words or key cut off), and its buttons left to right (the higher first where

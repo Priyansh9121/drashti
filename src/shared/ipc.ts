@@ -1,6 +1,6 @@
 import type { SlidePictureResult } from './slide-picture';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
-import type { PdfJob, PdfPage, PdfDone } from './editable-source';
+import type { PdfJob, PdfPage, PdfPageReceipt, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { ReadyReport } from './ready';
 import type { QuickBarResult, QuickPin } from './quick-bar';
@@ -1147,7 +1147,7 @@ export interface InvokeContract {
     result: { ok: true } | { ok: false; message: string };
   };
   [IPC.pictures.job]: { args: []; result: PdfJob | null };
-  [IPC.pictures.page]: { args: [page: PdfPage]; result: boolean };
+  [IPC.pictures.page]: { args: [page: PdfPage]; result: PdfPageReceipt };
   [IPC.pictures.done]: { args: [done: PdfDone]; result: null };
   [IPC.pictures.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
   [IPC.pdfExport.job]: { args: []; result: PdfCopyJob | null };

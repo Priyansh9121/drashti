@@ -368,7 +368,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
             <Middle platform={platform} />
           }
           right={
-            <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
+            <aside className="relative flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
               <LivePreview />
               <NextBack platform={platform} run={run} />
               {/* The time bar for what plays (Session 54), under Next and Back so they never move. */}
