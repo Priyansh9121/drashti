@@ -377,6 +377,7 @@ describe('putting edited slides back', () => {
   const savedPlacement = {
     motion: { in: { kind: 'fade', delayMs: 0, durationMs: 600 } },
     groupId: 'placeholder-placement-group',
+    hidden: true,
     flipX: true,
     flipY: true,
   };
