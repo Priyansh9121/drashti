@@ -73,6 +73,7 @@ import { holdClock } from './placeholder-slides';
 import { makeDeckMedia, makeTestDeck, TRIAL_SLIDES } from '../../src/main/import/testing/make-deck';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
+import { addTestPptxShadow } from '../../src/main/import/testing/pptx-shadow';
 import { makeZip } from '../../src/main/import/testing/zip-writer';
 import { dropboxStandIn, folderLink } from './dropbox-stand-in';
 import { longPress } from './phone-gestures';
@@ -1574,11 +1575,16 @@ test('Import from a Link: the Dropbox paste field, status and failure notices', 
     video,
   ]);
   expect(made.status, made.stderr.toString()).toBe(0);
+  // A slide Drashti cannot draw itself (a shadow), so the deck still needs PowerPoint or Keynote and its notice shows:
+  // since IM-6 (Session 57) a still deck Drashti can draw comes in with no converter.
+  const deck = join(work, 'Placeholder deck.pptx');
+  writeFileSync(
+    deck,
+    makeTestPptx([{ color: '1E3A8A', text: 'Placeholder slide', notes: 'Placeholder note' }]),
+  );
+  await addTestPptxShadow(deck);
   const zip = makeZip([
-    {
-      name: 'Placeholder deck.pptx',
-      data: makeTestPptx([{ color: '1E3A8A', text: 'Placeholder slide', notes: 'Placeholder note' }]),
-    },
+    { name: 'Placeholder deck.pptx', data: readFileSync(deck) },
     { name: 'Videos/Placeholder 2160p.mp4', data: readFileSync(video) },
     { name: 'Read me.txt', data: 'placeholder words' },
   ]);
