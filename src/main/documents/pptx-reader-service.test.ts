@@ -86,6 +86,21 @@ describe('PPTX source utility lifecycle', () => {
     expect(t.child.killed).toBe(1);
   });
 
+  it.each([0, 1])('passes a source note only for its own failed page (%s)', async (index) => {
+    const t = setup();
+    const pending = t.read(t.request);
+    await vi.waitFor(() => expect(t.child.sent).toHaveLength(1), { interval: 1 });
+    const start = t.child.sent[0];
+    if (start?.type !== 'read') throw new Error('No source start.');
+    const failedNotes = { [index]: ['Placeholder source page exceeds the 500-object editing limit.'] };
+    t.child.message({ type: 'prepared', jobId: start.jobId, pages: [], total: 1, failed: [0], failedNotes });
+    await vi.waitFor(() => expect(t.child.killed).toBe(1), { interval: 1 });
+    t.child.exit(0);
+    expect(await pending).toMatchObject(
+      index === 0 ? { ok: true, pages: [], failed: [0], failedNotes } : { ok: false },
+    );
+  });
+
   it('cancels with a bounded grace and quarantines unconfirmed output without spawning another child', async () => {
     vi.useFakeTimers();
     const t = setup();
