@@ -82,6 +82,7 @@ export const LIST_NAMES: Record<ListMark, string> = {
   a: 'a. b. c.',
   A: 'A. B. C.',
   i: 'i. ii. iii.',
+  I: 'I. II. III.',
 };
 
 /** A colour that may see through (#rrggbbaa): the picker changes the colour, and keeps how much it sees through. */
