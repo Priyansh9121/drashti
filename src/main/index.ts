@@ -364,6 +364,7 @@ import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
+import { captureWithShowAbort } from './network/slide-picture';
 import { PhoneFiles } from './network/phone-files';
 import { AnnouncementService } from './network/announcement-service';
 import { AnnouncementRepo } from './db/announcements';
@@ -3376,6 +3377,7 @@ function start(): void {
   const pdfGeometry = new PdfPrintGeometry();
   const pdfCopies = new PdfCopySession({
     open: createPdfCopyWindow,
+    scaleFactor: (win) => electronScreen.getDisplayMatching(win.getBounds()).scaleFactor,
     assetDirs: (kind) => {
       const folder = kind === 'wasmUrl' ? 'wasm' : kind === 'cMapUrl' ? 'cmaps' : 'standard_fonts';
       return [
@@ -5098,18 +5100,13 @@ function start(): void {
     },
     // A phone's Save captures nothing while the stream is on air or recording (C6's review, MEDIUM 3).
     onAir: () => streaming.inUse() || testOnAir,
-    nativeSlidePicture: async (slide, looks, current, signal) => {
-      const stop = new AbortController();
-      const off = engine.onChange(() => {
-        if (!current()) stop.abort();
-      });
-      try {
-        // Stopped by an engine change it must not run through, or at the end of its time (network/slide-picture.ts).
-        return await pdfCopies.picture(slide, looks, current, AbortSignal.any([signal, stop.signal]));
-      } finally {
-        off();
-      }
-    },
+    nativeSlidePicture: (slide, looks, current, signal) =>
+      captureWithShowAbort(
+        (changed) => engine.onChange(changed),
+        current,
+        signal,
+        (stopped) => pdfCopies.picture(slide, looks, current, stopped),
+      ),
     reads: {
       playlists: () => playlists.tree(),
       items: (playlistId) => playlists.itemsOf(playlistId),

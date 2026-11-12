@@ -364,7 +364,10 @@ describe('saving a native click from a paired phone', () => {
       const pending = t.service.presentationPicture(t.request);
       expect(await t.service.presentationPicture(t.request)).toMatchObject({
         status: 200,
-        body: { mediaId: 'placeholder-picture' },
+        body: {
+          mediaId: 'placeholder-picture',
+          message: 'This is the slide as it starts. Try saving this click again in a moment.',
+        },
       });
       expect(t.capture).not.toHaveBeenCalled();
       t.tick(299);
@@ -395,7 +398,10 @@ describe('saving a native click from a paired phone', () => {
     };
     expect(await t.service.presentationPicture(t.request)).toMatchObject({
       status: 200,
-      body: { mediaId: 'placeholder-picture' },
+      body: {
+        mediaId: 'placeholder-picture',
+        message: 'This is the slide as it starts. Try again when the screens are still to save this click.',
+      },
     });
     expect(t.capture).not.toHaveBeenCalled();
   });
@@ -406,7 +412,11 @@ describe('saving a native click from a paired phone', () => {
     t.onAir.now = true;
     expect(await t.service.presentationPicture(t.request)).toMatchObject({
       status: 200,
-      body: { mediaId: 'placeholder-picture' },
+      body: {
+        mediaId: 'placeholder-picture',
+        message:
+          'This is the slide as it starts. Try again after streaming or recording stops to save this click.',
+      },
     });
     expect(t.capture).not.toHaveBeenCalled();
     t.onAir.now = false;
@@ -418,7 +428,11 @@ describe('saving a native click from a paired phone', () => {
     });
     expect(await t.service.presentationPicture(t.request)).toMatchObject({
       status: 200,
-      body: { mediaId: 'placeholder-picture' },
+      body: {
+        mediaId: 'placeholder-picture',
+        message:
+          'This is the slide as it starts. Try again after streaming or recording stops to save this click.',
+      },
     });
     expect(t.capture).toHaveBeenCalledTimes(1);
   });
@@ -434,7 +448,7 @@ describe('saving a native click from a paired phone', () => {
     expect(t.capture).not.toHaveBeenCalled();
   });
 
-  it('stops the capture 9 s after the phone asked at most, so the network’s process always has its answer', async () => {
+  it('stops capture a second before the quiet window closes so the network can make the PNG', async () => {
     vi.useFakeTimers();
     try {
       const t = pictureSetup();
@@ -447,8 +461,10 @@ describe('saving a native click from a paired phone', () => {
         transition: { kind: 'dissolve', durationMs: 2_000 },
       };
       let signal: AbortSignal | undefined;
+      let current: (() => boolean) | undefined;
       let done: ((value: null) => void) | undefined;
       t.capture.mockImplementationOnce((...args: unknown[]) => {
+        current = args[2] as (() => boolean) | undefined;
         signal = args[3] as AbortSignal | undefined;
         return new Promise<null>((resolve) => {
           done = resolve;
@@ -458,11 +474,13 @@ describe('saving a native click from a paired phone', () => {
       t.tick(2_000);
       await vi.advanceTimersByTimeAsync(2_000);
       expect(t.capture).toHaveBeenCalledTimes(1);
-      // Its own 8 s would end 10 s after the ask, when the network's process gives up waiting.
-      t.tick(6_999);
-      await vi.advanceTimersByTimeAsync(6_999);
+      // The quiet window ends nine seconds after the ask. The network keeps the last second.
+      t.tick(5_999);
+      await vi.advanceTimersByTimeAsync(5_999);
       expect(signal?.aborted).toBe(false);
+      expect(current?.()).toBe(true);
       t.tick(1);
+      expect(current?.()).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
       expect(signal?.aborted).toBe(true);
       done?.(null);
