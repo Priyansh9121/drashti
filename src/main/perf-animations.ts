@@ -441,9 +441,12 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
           );
         }
       }
-      // The deck: in (its first step's clip, the deck's push inside it), then two clicks.
+      // The deck: in (its first step's clip, the deck's push inside it), then two clicks. A plain slide goes up first,
+      // so the deck comes in each time rather than going live again where it already is.
+      const away = () => press('(away from the deck)', 'slide', 0, goLive(slidesId, 0), SETTLE_MS);
       progress('the deck');
       for (let i = 0; i < SHORT_RUNS && inTime('the deck'); i++) {
+        await away();
         await press('deck slide in (step 0)', 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 800);
         await press('deck click', 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
         await press('deck click', 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
@@ -451,6 +454,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       // One more click after the slide has stood still 20 s: Chromium may suspend a paused video after about 15 s, and
       // the next step's clip waits paused at its start. Measured only in time; it never marks the check out of time.
       if (Date.now() < deadline) {
+        await away();
         await press('deck slide in, then 20 s still', 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 20_000);
         await press('deck click after 20 s still', 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
       } else progress('out of time: no click after 20 s still');
