@@ -48,6 +48,8 @@ export interface EditablePdfDone {
 }
 export type PdfJob = PictureJob | EditablePdfJob;
 export type PdfPage = PicturePage | EditablePdfPageWire | EditablePdfCheckpoint;
+/** Main may keep an editable page’s saved picture and continue with the next page. */
+export type PdfPageReceipt = boolean | 'skipped';
 export type PdfDone = PicturesDone | EditablePdfDone;
 
 /** Prepared PPTX object whose picture is taken from this occurrence’s retained source slide. */

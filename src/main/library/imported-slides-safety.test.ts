@@ -16,6 +16,7 @@ import {
 import { DEFAULT_THEME } from '../../shared/themes';
 import { PresentationRepo } from '../db/presentations';
 import { SettingsRepo } from '../db/settings';
+import type { SourceReader } from '../documents/source-reader';
 import { sourceWrite } from '../documents/source-write';
 import { MediaStore } from '../import/media-store';
 import { OriginalsStore } from '../import/originals-store';
@@ -38,7 +39,11 @@ beforeEach(() => handlers.clear());
 type World = ReturnType<typeof originalWorld>;
 type Opened = Extract<EditSlidesResult, { ok: true }>;
 
-function register(w: World, presentations: PresentationRepo) {
+function register(
+  w: World,
+  presentations: PresentationRepo,
+  sourceReader: SourceReader = nativeSourceReader,
+) {
   const published: string[][] = [];
   registerSlidesIpc({
     db: w.db,
@@ -47,7 +52,7 @@ function register(w: World, presentations: PresentationRepo) {
     settings: new SettingsRepo(w.db),
     fromOperator: () => true,
     mayPrepareSource: () => true,
-    sourceReader: nativeSourceReader,
+    sourceReader,
     sourceWrite: sourceWrite(w.db),
     lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
     changed: (ids) => {
@@ -242,6 +247,24 @@ describe('imported editor provenance and legacy safety', () => {
       }
     });
   }
+  it('keeps the saved picture when Main rejects its page and gives no retry advice', async () => {
+    const w = originalWorld();
+    try {
+      const imported = await w.importPdf();
+      const presentations = new PresentationRepo(w.db);
+      register(w, presentations, ({ sourcePages }) =>
+        Promise.resolve({ ok: true, total: 1, pages: [], failed: [...sourcePages] }),
+      );
+      const opened = await open(imported.id);
+      expect(opened.doc.groups[0]?.slides[0]?.elements.map(({ kind }) => kind)).toEqual(['image']);
+      expect(opened.sourceIssues).toEqual([
+        'Some source pages could not be prepared and stay as their saved pictures.',
+      ]);
+    } finally {
+      w.clean();
+    }
+  });
+
   it('keeps an untouched PDF playback canvas when only the document default changes', async () => {
     const w = originalWorld();
     try {
