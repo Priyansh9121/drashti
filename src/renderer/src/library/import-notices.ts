@@ -12,6 +12,8 @@ interface ImportNotice {
    * older one's takes its place.
    */
   about?: string[];
+  /** Drawn whole, its words wrapping (an import's old fonts, which the admin writes down), never cut off. */
+  whole?: true;
 }
 
 export const useImportNotices = create<{ notices: ImportNotice[] }>(() => ({ notices: [] }));
@@ -125,6 +127,7 @@ function oldFontsNotice(report: ImportReport): Omit<ImportNotice, 'id'> | null {
   const what = `the old ${one ? 'font' : 'fonts'} ${quoted([...fonts.values()])}: install ${one ? 'it' : 'them'} on this computer and on each node, then quit and start Drashti again on each.`;
   return {
     about: [...fonts.keys()].map((key) => `old-font:${key}`),
+    whole: true,
     text:
       items.length === 1
         ? `“${nameOf(first)}” · This presentation uses ${what}`
