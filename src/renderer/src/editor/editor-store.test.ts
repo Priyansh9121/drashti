@@ -55,14 +55,15 @@ describe('the editor’s Undo and Redo', () => {
     });
   });
 
-  it('can select one object inside a group without ungrouping it', () => {
+  it('expands a visible selection to its hidden group member and can still select a member alone', () => {
     const frame = { x: 0, y: 0, width: 200, height: 100 };
     const shape = { kind: 'shape' as const, frame, fill: '#336699', opacity: 1, cornerRadius: 0 };
     const grouped = mapSlide(doc, 's', (slide) => ({
       ...slide,
       elements: [
-        { ...shape, id: 'one', groupId: 'group' },
+        { ...shape, id: 'one', groupId: 'group', hidden: true },
         { ...shape, id: 'two', groupId: 'group' },
+        { ...shape, id: 'outside', hidden: true },
       ],
     }));
     useEditor.setState({ doc: grouped });
