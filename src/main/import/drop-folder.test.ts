@@ -166,6 +166,9 @@ describe('the drop folder', () => {
     await put('Movie.mp4.part', 'half a copy');
     await put('~$Slides.png', 'an editor’s lock file');
     await put('.hidden.png', 'never');
+    await put('desktop.ini', 'placeholder');
+    await put('Thumbs.db', 'placeholder');
+    if (process.platform !== 'win32') await put('Icon\r', 'placeholder');
     const h = setup();
     expect(await h.service.setFolder(folder)).toMatchObject({ ok: true });
     // Seen once: nothing is taken before it has held still.
@@ -501,6 +504,7 @@ describe('the drop folder', () => {
 
   it('passes over names left while writing', () => {
     expect(['a.png', 'b.mp4'].every(droppedName)).toBe(true);
+    expect(['desktop.ini', 'Thumbs.db', 'Icon\r'].filter(droppedName)).toEqual([]);
     expect(
       ['.a.png', '~$b.png', 'c.part', 'd.crdownload', 'e.download', 'f.tmp', 'g.mp4.partial'].some(
         droppedName,
