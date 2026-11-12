@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { emptyTotals, NO_COUNTS } from '../../../shared/import';
-import type { ImportReport } from '../../../shared/import';
+import type { ImportIssue, ImportItemReport, ImportReport } from '../../../shared/import';
 import {
   dismissAllImportNotices,
   findImportMedia,
@@ -65,4 +65,142 @@ it('finds the missing files for the imported presentation and dismisses its noti
 
   expect(find).toHaveBeenCalledExactlyOnceWith(['placeholder-video']);
   expect(useImportNotices.getState().notices).toEqual([]);
+});
+
+/** A finished import of these items. */
+const reportOf = (items: ImportItemReport[]): ImportReport => ({
+  id: 'placeholder-run',
+  paths: items.map((item) => item.sourcePath),
+  status: 'done',
+  startedAt: '2026-11-12T00:00:00Z',
+  finishedAt: '2026-11-12T00:00:01Z',
+  totals: emptyTotals(),
+  message: null,
+  items,
+});
+
+/** A presentation that came in (or, with `outcome`, did not), with these issues. */
+const deckOf = (
+  name: string,
+  issues: ImportIssue[],
+  outcome: ImportItemReport['outcome'] = 'imported',
+): ImportItemReport => ({
+  id: `item-${name}`,
+  sourcePath: `/placeholder/${name}.pro6`,
+  format: 'pp6',
+  outcome,
+  name,
+  target: outcome === 'imported' ? { kind: 'presentation', id: `presentation-${name}` } : null,
+  counts: NO_COUNTS,
+  message: outcome === 'imported' ? null : 'Placeholder: this file looks damaged. Repair it, then try again.',
+  issues,
+});
+
+/** Words typed in an old Gujarati or Hindi font, as the import names them (main/import/legacy-fonts.ts). */
+const oldFont = (font: string): ImportIssue => ({
+  severity: 'warning',
+  code: 'legacy-font',
+  message: `Text in the legacy Gujarati font “${font}” (one text box) is kept as typed: it shows correctly only where that font is installed, and cannot be searched or transliterated until it is converted.`,
+  fix: { kind: 'convert-font', font },
+});
+
+/** What to do: on this computer and on each node, which draws these slides itself (admin guide, section 11). */
+const INSTALL_IT = 'install it on this computer and on each node, then quit and start Drashti again on each.';
+const INSTALL_THEM =
+  'install them on this computer and on each node, then quit and start Drashti again on each.';
+
+it('names the old fonts an import met in one line, each font once, with nothing to try again and nothing to find', () => {
+  const retry = vi.fn(() => Promise.resolve());
+  const find = vi.fn(() => Promise.resolve(true));
+  showImportFailures(
+    reportOf([
+      deckOf('Placeholder Hymn', [
+        oldFont('Placeholder Gopika'),
+        oldFont('Placeholder Kruti Dev'),
+        {
+          severity: 'warning',
+          code: 'missing-media',
+          message: 'Missing media: Placeholder video.mov.',
+          fix: { kind: 'relink-media', mediaId: 'placeholder-video' },
+        },
+      ]),
+      // The same font in another case is the same font.
+      deckOf('Placeholder Song', [oldFont('placeholder gopika')]),
+      // Refused: it did not come in, so its font is not named until it does.
+      deckOf('Placeholder Damaged', [oldFont('Placeholder Terafont')], 'failed'),
+    ]),
+    retry,
+    find,
+  );
+
+  const notices = useImportNotices.getState().notices;
+  expect(notices.map((notice) => notice.text)).toEqual([
+    `“Placeholder Hymn” and 1 more · These presentations use the old fonts “Placeholder Gopika” and “Placeholder Kruti Dev”: ${INSTALL_THEM}`,
+    '“Placeholder Hymn” · Missing media: Placeholder video.mov.',
+    '“Placeholder Damaged” · Placeholder: this file looks damaged. Repair it, then try again.',
+  ]);
+  const [fonts, missing, damaged] = notices;
+  // An old font is installed, never tried again or looked for: no Try again, no Find….
+  expect(fonts?.retry).toBeUndefined();
+  expect(fonts?.findMissing).toBeUndefined();
+  expect(missing?.findMissing).toBeTypeOf('function');
+  expect(damaged?.retry).toBeTypeOf('function');
+});
+
+it('keeps every refused file’s Try again in the four lines shown, however many old fonts the import met', () => {
+  const retry = vi.fn(() => Promise.resolve());
+  const fonts = [
+    'Placeholder Gopika',
+    'Placeholder Kruti Dev',
+    'Placeholder Terafont',
+    'Placeholder LMG-Arun',
+    'Placeholder Shree Guj',
+  ];
+  showImportFailures(
+    reportOf([
+      deckOf(
+        'Placeholder Hymn',
+        fonts.map((font) => oldFont(font)),
+      ),
+      deckOf('Placeholder Damaged One', [], 'failed'),
+      deckOf('Placeholder Damaged Two', [], 'failed'),
+      deckOf('Placeholder Damaged Three', [], 'failed'),
+    ]),
+    retry,
+  );
+
+  const notices = useImportNotices.getState().notices;
+  expect(notices.map((notice) => notice.text)).toEqual([
+    `“Placeholder Hymn” · This presentation uses the old fonts “Placeholder Gopika”, “Placeholder Kruti Dev”, “Placeholder Terafont”, “Placeholder LMG-Arun” and “Placeholder Shree Guj”: ${INSTALL_THEM}`,
+    '“Placeholder Damaged One” · Placeholder: this file looks damaged. Repair it, then try again.',
+    '“Placeholder Damaged Two” · Placeholder: this file looks damaged. Repair it, then try again.',
+    '“Placeholder Damaged Three” · Placeholder: this file looks damaged. Repair it, then try again.',
+  ]);
+  // The window shows the newest four lines (NoticeArea): each refused file's Try again is among them.
+  expect(notices.slice(0, 4).filter((notice) => notice.retry !== undefined)).toHaveLength(3);
+});
+
+it('says each old font once in the notices: a later line naming every font of an earlier one, in any case, takes its place', () => {
+  const texts = () => useImportNotices.getState().notices.map((notice) => notice.text);
+  showImportFailures(reportOf([deckOf('Placeholder Hymn', [oldFont('Placeholder Gopika')])]));
+  showImportNotice('Placeholder notice in between.');
+  showImportFailures(reportOf([deckOf('Placeholder Prayer', [oldFont('Placeholder Kruti Dev')])]));
+  showImportFailures(reportOf([deckOf('Placeholder Song', [oldFont('PLACEHOLDER GOPIKA')])]));
+
+  // Gopika's earlier line goes; Kruti Dev's stays, as the new line does not name it.
+  expect(texts()).toEqual([
+    `“Placeholder Song” · This presentation uses the old font “PLACEHOLDER GOPIKA”: ${INSTALL_IT}`,
+    `“Placeholder Prayer” · This presentation uses the old font “Placeholder Kruti Dev”: ${INSTALL_IT}`,
+    'Placeholder notice in between.',
+  ]);
+
+  showImportFailures(
+    reportOf([
+      deckOf('Placeholder Psalm', [oldFont('Placeholder Kruti Dev'), oldFont('Placeholder Gopika')]),
+    ]),
+  );
+  expect(texts()).toEqual([
+    `“Placeholder Psalm” · This presentation uses the old fonts “Placeholder Kruti Dev” and “Placeholder Gopika”: ${INSTALL_THEM}`,
+    'Placeholder notice in between.',
+  ]);
 });
