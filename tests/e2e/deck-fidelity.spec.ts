@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
   editablePptxFixture,
+  REL_NS,
+  relationshipsXml,
   slideXml,
   wordsShape,
 } from '../../src/main/import/testing/editable-pptx-fixture';
@@ -43,16 +45,22 @@ const graphic = (id: string, x: string, data: string) =>
   '" y="914400"/><a:ext cx="3048000" cy="609600"/></p:xfrm><a:graphic><a:graphicData>' +
   data +
   '</a:graphicData></a:graphic></p:graphicFrame>';
-const cell = (words: string, borders = '') =>
+const cell = (words: string, borders = '', directFill = true) =>
   '<a:tc><a:txBody><a:bodyPr/><a:p>' +
   text(words) +
   '</a:p></a:txBody><a:tcPr>' +
   borders +
-  '<a:solidFill><a:srgbClr val="eeeeee"/></a:solidFill></a:tcPr></a:tc>';
+  (directFill ? '<a:solidFill><a:srgbClr val="eeeeee"/></a:solidFill>' : '') +
+  '</a:tcPr></a:tc>';
+const tableStyleId = '{01234567-89AB-CDEF-0123-456789ABCDEF}';
+const tableStyles = `<a:tblStyleLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" def="${tableStyleId}">
+  <a:tblStyle styleId="${tableStyleId}" styleName="Placeholder"><a:wholeTbl><a:tcStyle><a:fill>
+    <a:solidFill><a:srgbClr val="41678A"/></a:solidFill>
+  </a:fill></a:tcStyle></a:wholeTbl></a:tblStyle></a:tblStyleLst>`;
 const table = graphic(
   '6',
   '914400',
-  '<a:tbl><a:tblGrid><a:gridCol w="1524000"/><a:gridCol w="1524000"/></a:tblGrid><a:tr h="609600">' +
+  `<a:tbl><a:tblPr><a:tableStyleId>${tableStyleId}</a:tableStyleId></a:tblPr><a:tblGrid><a:gridCol w="1524000"/><a:gridCol w="1524000"/></a:tblGrid><a:tr h="609600">` +
     cell(
       'Placeholder first cell',
       '<a:lnL w="19050"><a:solidFill><a:srgbClr val="AA2244"/></a:solidFill></a:lnL>',
@@ -60,6 +68,7 @@ const table = graphic(
     cell(
       'Placeholder second cell',
       '<a:lnT><a:noFill/></a:lnT><a:lnB w="38100"><a:solidFill><a:srgbClr val="22AA44"/></a:solidFill></a:lnB>',
+      false,
     ) +
     '</a:tr></a:tbl>',
 );
@@ -70,7 +79,19 @@ test('a PowerPoint slide keeps its editable cells, aligned words and hidden obje
   const { app, userData } = await launchApp({ DRASHTI_TEST_DECK_CONVERTER: '1' });
   try {
     const file = join(userData, 'Placeholder fidelity.pptx');
-    writeFileSync(file, editablePptxFixture({ slides: [slideXml(hidden + boxes + table + chart)] }));
+    writeFileSync(
+      file,
+      editablePptxFixture({
+        slides: [slideXml(hidden + boxes + table + chart)],
+        parts: {
+          'ppt/tableStyles.xml': tableStyles,
+          'ppt/_rels/presentation.xml.rels': relationshipsXml(
+            `<Relationship Id="rId1" Type="${REL_NS}/slide" Target="slides/slide1.xml"/>` +
+              `<Relationship Id="rIdStyle" Type="${REL_NS}/tableStyles" Target="tableStyles.xml"/>`,
+          ),
+        },
+      }),
+    );
     const checksum = hashFile(file);
     const win = await operatorPage(app);
     await operatorReady(win);
@@ -121,6 +142,8 @@ test('a PowerPoint slide keeps its editable cells, aligned words and hidden obje
     await expect(canvas.locator('[data-shape="line"] line')).toHaveCount(2);
     await expect(canvas.locator('line[stroke="#aa2244"]')).toHaveAttribute('stroke-width', '2');
     await expect(canvas.locator('line[stroke="#22aa44"]')).toHaveAttribute('stroke-width', '4');
+    await expect(canvas.locator('[data-shape="rectangle"] rect[fill="#41678a"]')).toHaveCount(1);
+    await expect(canvas.locator('[data-shape="rectangle"] rect[fill="#eeeeee"]')).toHaveCount(1);
 
     await canvas.getByText('Placeholder second cell', { exact: true }).dblclick();
     const typing = editor.getByTestId('text-editing');

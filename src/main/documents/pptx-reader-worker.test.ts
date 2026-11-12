@@ -34,6 +34,7 @@ it('reports the invalid page and still returns its valid sibling', async () => {
       ],
     },
     decks: new Map(),
+    sourceVideoShapeIds: new Map(),
   });
 
   const port = new EventEmitter();

@@ -25,6 +25,7 @@ export interface NativePptx {
   pages: Map<number, NativePage>;
   indices: number[];
   exact: boolean;
+  still: boolean;
 }
 
 function editableMediaIndex(ref: string): number {
@@ -61,15 +62,18 @@ export async function prepareNativePptx(
   source: PptxDeck,
   file: string,
   work: string,
+  noPictureConverter?: () => Promise<boolean>,
 ): Promise<NativePptx | null> {
-  if (!source.slides.some((slide) => !slide.hidden && (slide.animated || moves(slide)))) return null;
+  const indices = source.slides.flatMap((slide, index) => (slide.hidden ? [] : [index]));
+  if (indices.length === 0) return null;
+  const still = !source.slides.some((slide) => !slide.hidden && (slide.animated || moves(slide)));
+  if (still && !(await noPictureConverter?.())) return null;
   let editable: EditablePptx;
   try {
     editable = await readEditablePptx(file, await mkdtemp(join(work, 'native-pptx-')));
   } catch {
     return null;
   }
-  const indices = source.slides.flatMap((slide, index) => (slide.hidden ? [] : [index]));
   const pages = new Map<number, NativePage>();
   for (const page of editable.slides) {
     const slide = source.slides[page.sourceIndex];
@@ -103,9 +107,12 @@ export async function prepareNativePptx(
         ? {}
         : { deckAdvanceMs: transition.advanceMs }),
     };
-    const needsStill = page.elements.some(
-      (el) => (el.kind === 'image' || el.kind === 'video') && !editable.media[editableMediaIndex(el.mediaId)],
-    );
+    const needsStill =
+      (still && page.issues.length > 0) ||
+      page.elements.some(
+        (el) =>
+          (el.kind === 'image' || el.kind === 'video') && !editable.media[editableMediaIndex(el.mediaId)],
+      );
     if (deckSlideSchema.safeParse(native).success)
       pages.set(page.sourceIndex, { editable: page, deck: native, needsStill });
   }
@@ -114,6 +121,7 @@ export async function prepareNativePptx(
     editable,
     indices,
     pages,
+    still,
     exact: indices.every((index) => {
       const page = pages.get(index);
       return page?.deck.motion?.approximate === false && !page.needsStill;

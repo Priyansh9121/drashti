@@ -29,6 +29,11 @@ export const pptxPageSchema = z
       .unknown()
       .transform((value) => sourceTimingDeck(value))
       .optional(),
+    sourceVideoShapeIds: z
+      .array(z.string().regex(/^\d{1,10}$/u))
+      .max(EDITABLE_SOURCE_LIMITS.pageElements)
+      .refine((ids) => new Set(ids).size === ids.length)
+      .optional(),
   })
   .strict();
 
