@@ -105,3 +105,52 @@ test('the editor offers source table cells, text direction, paragraph styling an
     await app.close();
   }
 });
+
+test('a solid Fill or switching Filled off clears an imported shape gradient', async () => {
+  const { app, userData } = await launchApp({ DRASHTI_TEST_DECK_CONVERTER: '1' });
+  try {
+    const title = 'Placeholder gradient shape';
+    const file = join(userData, title + '.pptx');
+    const gradient = wordsShape('').replace(
+      '</p:spPr>',
+      '<a:prstGeom prst="rect"/><a:gradFill><a:gsLst>' +
+        '<a:gs pos="0"><a:srgbClr val="112233"/></a:gs>' +
+        '<a:gs pos="100000"><a:srgbClr val="8899AA"/></a:gs>' +
+        '</a:gsLst><a:lin ang="5400000" scaled="1"/></a:gradFill></p:spPr>',
+    );
+    writeFileSync(file, editablePptxFixture({ slides: [slideXml(gradient)] }));
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const [id] = await importAndGetIds(win, [file]);
+    if (!id) throw new Error('The generated gradient deck was not imported');
+    const { ed, editor } = await openEditor(app, win, title);
+    await sizeSlideEditor(app, ed, { width: 1024, height: 645 });
+
+    const shape = editor.getByTestId('editor-slide').locator('svg[data-shape="rectangle"]');
+    const paint = shape.locator('rect');
+    await expect(paint).toHaveAttribute('fill', /^url/);
+    await shape.click();
+    const fill = editor.getByTestId('field-fill');
+    const filled = editor.getByTestId('field-filled');
+    await fill.fill('#123456');
+    await expect(paint).toHaveAttribute('fill', '#123456');
+
+    await ed.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(paint).toHaveAttribute('fill', /^url/);
+    await filled.click();
+    await expect(paint).toHaveAttribute('fill', 'none');
+    await expect(fill).toHaveCount(0);
+    await filled.click();
+    await fill.fill('#654321');
+    await expect(paint).toHaveAttribute('fill', '#654321');
+
+    await editor.getByTestId('save-slides').click();
+    await slideEditorClosed(app);
+    const [saved] = await publicSlides(win, id);
+    const savedShape = saved?.slide.elements.find((element) => element.kind === 'shape');
+    expect(savedShape).toMatchObject({ fill: '#654321' });
+    expect(savedShape).not.toHaveProperty('gradient');
+  } finally {
+    await app.close();
+  }
+});
