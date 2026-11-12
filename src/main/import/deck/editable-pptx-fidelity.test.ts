@@ -43,7 +43,8 @@ describe('keeping a generated PPTX editable', () => {
     ).replace('<a:bodyPr ', '<a:bodyPr vert="vert" ');
     const { elements } = await read(slideXml(words));
     const box = elements.find((el) => el.kind === 'text');
-    expect(box).toMatchObject({ style: { clipToBox: true, writingMode: 'vertical-rl' } });
+    expect(box).toMatchObject({ style: { shrinkToFit: true, writingMode: 'vertical-rl' } });
+    expect(box).not.toMatchObject({ style: { clipToBox: true } });
     if (box?.kind !== 'text') throw new Error('The editable words are missing.');
     expect(box.runs?.find((run) => run.text === 'Placeholder bullet')).toMatchObject({
       list: 'disc',

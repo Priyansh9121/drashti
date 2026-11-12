@@ -433,6 +433,8 @@ export function useShrinkToFit(
   again?: unknown,
 ): void {
   const on = el.style.shrinkToFit === true;
+  const vertical = el.style.writingMode !== undefined;
+  const noWrap = el.style.noWrap === true;
   const report = useMeasureReport();
   const passive = !on && report === null;
   const [fontsLoaded, setFontsLoaded] = useState(0);
@@ -456,18 +458,29 @@ export function useShrinkToFit(
     if (b.style.getPropertyValue('--fit') !== '') b.style.removeProperty('--fit');
     if (b.hasAttribute('data-fit')) b.removeAttribute('data-fit');
     // These nodes stay mounted through text and font changes. Use the browser's completed sizes.
-    return observeTextSizes(b, w, ({ height, wordsHeight }) => {
-      const over = wordsHeight > height + 0.5;
+    return observeTextSizes(b, w, ({ width, height, wordsHeight }) => {
+      const over = wordsHeight > (vertical ? width : height) + 0.5;
       if (b.hasAttribute('data-overset') !== over) b.toggleAttribute('data-overset', over);
     });
-  }, [box, words, passive]);
+  }, [box, words, passive, vertical]);
   useLayoutEffect(() => {
     if (passive) return undefined;
     const b = box.current;
     const w = words.current;
     if (!b || !w) return undefined;
+    const isOver = () => {
+      if (vertical)
+        return (
+          Math.max(w.offsetWidth, w.scrollWidth) > b.clientWidth + 0.5 ||
+          (noWrap && Math.max(w.offsetHeight, w.scrollHeight) > b.clientHeight + 0.5)
+        );
+      return (
+        w.offsetHeight > b.clientHeight + 0.5 ||
+        (noWrap && Math.max(w.offsetWidth, w.scrollWidth) > b.clientWidth + 0.5)
+      );
+    };
     const reportOver = (fit: number) => {
-      const over = w.offsetHeight > b.clientHeight + 0.5;
+      const over = isOver();
       if (over) b.setAttribute('data-overset', '');
       else b.removeAttribute('data-overset');
       report?.(el.id, { over, fit });
@@ -480,7 +493,7 @@ export function useShrinkToFit(
     }
     const fits = (fit: number) => {
       b.style.setProperty('--fit', String(fit));
-      return w.offsetHeight <= b.clientHeight + 0.5;
+      return !isOver();
     };
     let lo = 1;
     if (!fits(1)) {
@@ -499,7 +512,7 @@ export function useShrinkToFit(
     // The words still past the box, at that fit.
     reportOver(lo);
     return undefined;
-  }, [box, words, el, on, passive, fontsLoaded, again, report]);
+  }, [box, words, el, on, passive, vertical, noWrap, fontsLoaded, again, report]);
 }
 
 /** How a text box is drawn (the slide editor draws the box it edits the same way). */
@@ -519,8 +532,8 @@ export function textBoxStyle(el: TextElement): CSSProperties {
     fontWeight: s.fontWeight,
     lineHeight: s.lineHeight,
     color: s.color,
-    whiteSpace: 'pre-wrap',
-    overflowWrap: 'anywhere',
+    whiteSpace: s.noWrap ? 'pre' : 'pre-wrap',
+    overflowWrap: s.noWrap ? undefined : 'anywhere',
     fontKerning: 'normal',
     // A glow (Session 55, Part 17a) with its shadow; with none, the shadow as it always was.
     textShadow: glowing(s.glow)
@@ -574,7 +587,8 @@ function TextView({
         ref={words}
         data-darken={band ? 'band' : undefined}
         style={{
-          inlineSize: '100%',
+          inlineSize: el.style.noWrap ? 'max-content' : '100%',
+          ...(el.style.noWrap ? { minInlineSize: '100%' } : {}),
           flexShrink: 0,
           // The band behind the lines: its spread is drawn outside them, so the words lie exactly as without it.
           ...(band

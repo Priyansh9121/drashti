@@ -128,8 +128,10 @@ export interface TextStyle {
   glow?: Glow | null;
   /** Make the words smaller until they fit the box (never bigger than they are set). */
   shrinkToFit?: boolean;
-  /** Crop imported words to the text rectangle. */
+  /** Crop words to the text rectangle when the source requests clipping. */
   clipToBox?: boolean;
+  /** Preserve only explicit breaks in a source text box that does not wrap. */
+  noWrap?: boolean;
   writingMode?: 'vertical-rl' | 'vertical-lr' | 'sideways-lr';
   textOrientation?: 'upright';
 }

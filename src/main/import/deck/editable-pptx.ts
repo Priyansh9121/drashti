@@ -641,6 +641,7 @@ function textElement(
   );
   if (!frame) return null;
   const anchor = lowToHighValue(bodies, 'anchor');
+  const clipToBox = ['vertOverflow', 'horzOverflow'].some((key) => lowToHighValue(bodies, key) === 'clip');
   const paragraph = first?.paragraph;
   const align = paragraph?.align === 'justify' ? 'left' : (paragraph?.align ?? 'left');
   return {
@@ -659,8 +660,9 @@ function textElement(
       verticalAlign: anchor === 'ctr' ? 'middle' : anchor === 'b' ? 'bottom' : 'top',
       lineHeight: paragraph?.lineHeight ?? 1.2,
       shadow: false,
-      clipToBox: true,
-      ...(lastChild(bodies, 'normAutofit') ? { shrinkToFit: true } : {}),
+      ...(!clipToBox || lastChild(bodies, 'normAutofit') ? { shrinkToFit: true } : {}),
+      ...(clipToBox ? { clipToBox: true } : {}),
+      ...(lowToHighValue(bodies, 'wrap') === 'none' ? { noWrap: true } : {}),
       ...textDirection(bodies),
     },
   };
