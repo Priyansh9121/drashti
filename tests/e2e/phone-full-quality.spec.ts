@@ -505,6 +505,7 @@ test('Look closer saves the native deck click showing on the screens', async () 
     DRASHTI_TEST_DECK_CONVERTER: '1',
     DRASHTI_WINDOWED_OUTPUTS: '1',
     DRASHTI_EXTRA_DISPLAYS: '1',
+    DRASHTI_TEST_ON_AIR_HOOK: '1',
   });
   const phone = await device('chromium');
   try {
@@ -598,6 +599,17 @@ test('Look closer saves the native deck click showing on the screens', async () 
     expect(after?.type).toBe('image/png');
     expect(after?.width ?? 0).toBeGreaterThanOrEqual(960);
     expect(after?.ink ?? 0).toBeGreaterThan((before?.ink ?? 0) + 80);
+    // While the stream is on air or recording nothing is captured (C6's review, MEDIUM 3): the phone gets the slide as
+    // it starts, or is told to try again, never a capture.
+    await app.evaluate(() => {
+      (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true);
+    });
+    const onAir = p.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname.startsWith('/api/v1/presentations/') && url.searchParams.get('format') === 'png';
+    });
+    await save.click();
+    expect((await onAir).headers()['content-type']).toContain('application/json');
   } finally {
     await phone.close();
     await app.close();
