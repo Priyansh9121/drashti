@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import type { LowerThirdLayer } from '../../../shared/engine/state';
-import type { AnimationFrame, LowerThirdAnimation, Pose } from '../../../shared/lower-third-animations';
+import type { AnimationFrame, LowerThirdAnimation } from '../../../shared/lower-third-animations';
 import {
   animationById,
   animationFrame,
@@ -24,6 +24,7 @@ import { type LowerThirdLook, shownLines, showsOn } from '../../../shared/lower-
 import type { Size } from '../../../shared/scaling';
 import { engineNow, onClockJump } from './clock';
 import { fontFamilyFor } from './fonts';
+import { paintLowerThirdPose } from './lower-third-paint';
 import { detectLang } from '../../../shared/text-runs';
 import { textLang } from './lang';
 
@@ -81,15 +82,6 @@ function runFor(
   return { layer: null, phase: 'gone', start: 0 };
 }
 
-/** Set a pose on an element (an empty value leaves it as it is). */
-function put(el: HTMLElement, pose: Pose): void {
-  el.style.opacity = pose.opacity === 1 ? '' : String(pose.opacity);
-  el.style.transform = pose.transform;
-  el.style.clipPath = pose.clip;
-  el.style.transformOrigin = pose.origin;
-  el.style.filter = pose.filter ?? '';
-}
-
 /** How a lower third is drawn: what it is doing, its animation, how many units its words have, and its length. */
 interface Drawing {
   phase: Phase;
@@ -120,11 +112,11 @@ function paintMotion(root: HTMLElement, motion: LowerThirdMotion, t: number): vo
 
 function paintDesign(band: HTMLElement, frame?: AnimationFrame): void {
   const accent = band.querySelector<HTMLElement>('[data-lt-accent]');
-  if (accent) put(accent, frame?.accent ?? REST);
+  if (accent) paintLowerThirdPose(accent.style, frame?.accent ?? REST);
   const panel = band.querySelector<HTMLElement>('[data-lt-design-panel]');
-  if (panel) put(panel, frame?.panel ?? REST);
+  if (panel) paintLowerThirdPose(panel.style, frame?.panel ?? REST);
   for (const line of band.querySelectorAll<HTMLElement>('[data-lt-design-line]'))
-    put(line, frame?.unit(Number(line.dataset['ltDesignLine'])) ?? REST);
+    paintLowerThirdPose(line.style, frame?.unit(Number(line.dataset['ltDesignLine'])) ?? REST);
 }
 
 /**
@@ -143,15 +135,15 @@ function paintBand(
   root.dataset['ltAt'] = phase === 'in' || phase === 'out' ? String(Math.round(Math.min(t, length))) : '';
   if (phase !== 'gone') paintMotion(root, motion, now - shownAt);
   if (phase !== 'in' && phase !== 'out') {
-    put(band, REST);
-    for (const el of unitEls) put(el, REST);
+    paintLowerThirdPose(band.style, REST);
+    for (const el of unitEls) paintLowerThirdPose(el.style, REST);
     if (animation.composition) paintDesign(band);
     return;
   }
   const frame = animationFrame(animation, phase, t, units);
-  put(band, frame.box);
+  paintLowerThirdPose(band.style, frame.box);
   if (animation.composition) paintDesign(band, frame);
-  for (const el of unitEls) put(el, frame.unit(Number(el.dataset['ltUnit'])));
+  for (const el of unitEls) paintLowerThirdPose(el.style, frame.unit(Number(el.dataset['ltUnit'])));
 }
 
 /** A shape of colour (the band's, or a line's), with the moving background's pieces inside it. */
