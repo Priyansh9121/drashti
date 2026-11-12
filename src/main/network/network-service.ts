@@ -951,6 +951,7 @@ export class NetworkService implements EngineTransport {
    * Every request's checks: Drashti let in, the device still paired, its kind, Simple Mode's lock (in the window's
    * words), and in Simple Mode what a phone may ask for there (Session 55: only what its window does, in the phone's
    * words), each before anything runs.
+   * A library operation spends a rate-limit token here. Call this only once per library request.
    */
   private checked(
     request: DeviceRequest,
