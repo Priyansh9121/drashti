@@ -1,10 +1,20 @@
 import { expect, test } from '@playwright/test';
 import { OPENING_DEFAULT_PHOTO_URL } from '../../src/shared/opening';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
 
 type TimingGlobals = typeof globalThis & {
   openingDecode?: { previewVisible: boolean | null; readyAt: number | null };
+  /** Each frame the operator window drew as Drashti started (the order test below). */
+  openingOrder?: OrderFrame[];
 };
+
+/** A frame of the operator window as Drashti starts: the window underneath opened, and the opening there and moving. */
+interface OrderFrame {
+  opened: boolean;
+  cover: boolean;
+  held: string | null;
+  moving: boolean;
+}
 
 test('the Opening preview waits for its photo and starts all tracks on one two-second timeline', async () => {
   const { app } = await launchApp();
@@ -64,6 +74,56 @@ test('the Opening preview waits for its photo and starts all tracks on one two-s
     expect(timing.starts).toEqual([start, start, start]);
     expect(start).toBeGreaterThanOrEqual(timing.readyAt);
     expect(Math.max(...timing.ends)).toBe(2000);
+  } finally {
+    await app.close();
+  }
+});
+
+test('as Drashti starts, the opening holds its black until the window underneath has opened, then moves its two seconds over a started window', async () => {
+  // On CI's Mac the window starting underneath took the main thread for a second at a time while the opening moved
+  // (2,633 ms for its 2,000, Session 57's measurement): it starts under the black instead, and the opening moves once
+  // it has opened (its controls drawn with their first data, the page then idle: ui/motion.ts's data-opened).
+  test.setTimeout(120_000);
+  // A library started once and quit on purpose, so the next start is a person's start of the same version.
+  const first = await launchApp();
+  await operatorReady(await operatorPage(first.app));
+  await first.app.close();
+  const { app } = await relaunchApp(first.userData, { DRASHTI_TEST_OPENING: '1' });
+  try {
+    const win = await operatorPage(app);
+    // Every frame from here on: whether the window underneath had opened, and whether the opening was there and moving.
+    await win.evaluate(() => {
+      const seen: OrderFrame[] = [];
+      (globalThis as TimingGlobals).openingOrder = seen;
+      const look = () => {
+        const player = document.querySelector('[data-testid="opening"]');
+        seen.push({
+          opened: document.documentElement.hasAttribute('data-opened'),
+          cover: player !== null,
+          held: player?.getAttribute('data-opening-held') ?? null,
+          moving: player !== null && player.getAnimations({ subtree: true }).length > 0,
+        });
+        if (seen.length < 6000) requestAnimationFrame(look);
+      };
+      look();
+    });
+    const cover = win.getByTestId('opening-start');
+    await expect(cover).toBeVisible({ timeout: 15_000 });
+    // It ends by itself.
+    await expect(cover).toHaveCount(0, { timeout: 20_000 });
+    const seen = await win.evaluate(() => (globalThis as TimingGlobals).openingOrder ?? []);
+    const moved = seen.findIndex((f) => f.moving);
+    expect(moved, 'the opening moved').toBeGreaterThanOrEqual(0);
+    expect(seen[moved]?.opened, 'the window underneath had opened when the opening first moved').toBe(true);
+    // Until then it held, black, over the window.
+    const came = seen.findIndex((f) => f.cover);
+    expect(came, 'the opening came before it moved').toBeLessThanOrEqual(moved);
+    expect(
+      seen.slice(came, moved).every((f) => f.cover && !f.moving),
+      'black and still from when it came until it moved',
+    ).toBe(true);
+    // And the window underneath is the operator's, with its controls.
+    await operatorReady(win);
   } finally {
     await app.close();
   }
