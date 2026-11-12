@@ -377,6 +377,7 @@ test('a row’s Trim in Simple Mode saves and resets a cut; Trim black and silen
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 
   await simple.getByTestId('simple-clear-all').click();
+  await expect.poll(async () => (await layers(win)).background).toBeNull();
   await reopenTrim();
   await reset.click();
   await expect(dialog).toHaveCount(0);
