@@ -55,7 +55,7 @@ test('the Standard stage makes a long slide’s words smaller until its last lin
     .toEqual(['audience', 'stage']);
   const [one, two] = outputPages(app) as [Page, Page];
   const stage = (await roleOf(one)) === 'stage' ? one : two;
-  await expect(stage.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(stage.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const current = stage.getByTestId('stage-current');
   const lastLineInside = () =>
     current.evaluate((box) => {

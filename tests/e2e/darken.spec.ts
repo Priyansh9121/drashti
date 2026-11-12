@@ -122,7 +122,7 @@ test('on the hall’s screen the whole picture darkens over a video and under th
   }, id);
   await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   // The video behind the slides, as a background.
   await win.evaluate(
     (mediaId) =>

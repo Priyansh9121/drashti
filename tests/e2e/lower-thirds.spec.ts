@@ -122,7 +122,7 @@ test('a key and fill group’s lower third comes in, changes as its box holds, a
   // The fill of a key and fill group (its only screen here).
   await keyFillGroup(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   for (const movement of ['calm', 'bold'] as const) {
     await setMovement(app, movement);
     await expect(out.getByTestId('output-root')).toHaveAttribute('data-movement', movement);

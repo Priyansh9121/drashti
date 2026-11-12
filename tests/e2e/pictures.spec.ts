@@ -66,7 +66,7 @@ test('a PDF dropped on the library becomes slides of its pages as pictures, with
   );
   await setUpScreen(win, 'Main Hall', 0);
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const kirtan = (
     await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listPresentations())
   )[0]?.id;

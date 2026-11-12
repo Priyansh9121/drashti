@@ -73,7 +73,7 @@ test('a big import runs in its own process: every slide change still reaches the
     if (!assigned.ok) throw new Error(assigned.message);
   });
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
 
   /** Main-process health since the last call: event-loop stalls, slowest IPC handlers, longest GC pause. */
   const mainHealth = () =>

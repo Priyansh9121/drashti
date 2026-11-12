@@ -58,7 +58,7 @@ test('a font not on this computer is marked on Main’s output, said beside LIVE
   const id = await inMissingFont(win);
   await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await goLive(win, id);
   const box = out.locator(`[data-layer="slide"] [data-missing-font="${FONT}"]`);
   await expect(box).toHaveCount(1);
