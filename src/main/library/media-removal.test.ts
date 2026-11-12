@@ -8,7 +8,7 @@ import { MediaRepo } from '../db/media';
 import { PlaylistRepo } from '../db/playlists';
 import { WallpaperRepo } from '../db/wallpapers';
 import { AudioPlaylistRepo } from '../db/audio-playlists';
-import { MediaRemoval } from './media-removal';
+import { MediaRemoval, TrimCleanup } from './media-removal';
 
 it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => {
   const root = mkdtempSync(join(tmpdir(), 'drashti-unused-trims-'));
@@ -69,6 +69,48 @@ it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => 
   } finally {
     db.close();
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('keeps unused-cut work off startup and pauses it while a show or stream is up', async () => {
+  vi.useFakeTimers();
+  try {
+    let quiet = true;
+    const sweep = vi.fn(
+      (signal: AbortSignal) =>
+        new Promise<void>((resolve) => {
+          signal.addEventListener('abort', () => resolve(), { once: true });
+        }),
+    );
+    const cleanup = new TrimCleanup(() => quiet, sweep, vi.fn());
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sweep).not.toHaveBeenCalled();
+
+    quiet = false;
+    cleanup.open();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sweep).not.toHaveBeenCalled();
+
+    quiet = true;
+    cleanup.activityChanged();
+    expect(sweep).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sweep).toHaveBeenCalledTimes(1);
+    const [active] = sweep.mock.calls[0] ?? [];
+    quiet = false;
+    cleanup.activityChanged();
+    expect(active?.aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sweep).toHaveBeenCalledTimes(1);
+
+    quiet = true;
+    cleanup.activityChanged();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sweep).toHaveBeenCalledTimes(2);
+    cleanup.close();
+    expect(sweep.mock.calls[1]?.[0].aborted).toBe(true);
+  } finally {
+    vi.useRealTimers();
   }
 });
 
