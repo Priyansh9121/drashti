@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { rename, rm } from 'node:fs/promises';
+import { mkdir, rename, rm, statfs, writeFile } from 'node:fs/promises';
 import { basename, join, relative, sep } from 'node:path';
 import { formatBytes } from '../../shared/format';
 import {
@@ -66,6 +66,8 @@ export interface LinkServiceDeps {
   /** The stream is on air or recording. */
   onAir(): boolean;
   freeBytes(dir: string): number;
+  /** Tests can supply space without depending on the disk running them. */
+  freeBytesAsync?(dir: string): Promise<number>;
   /** "Drashti downloads" in Movies (Mac) or Videos (Windows). */
   defaultFolder: string;
   lastFolder: { get(): string | null; set(dir: string): void };
@@ -123,6 +125,10 @@ export interface LinkServiceDeps {
   /** Its PDFs and pictures, imported by the one button: each at the end of its folder's part. How many. */
   addToFolderPlaylist?(input: { playlistId: string; runId: string; files: FolderFile[] }): number;
 }
+
+type DownloadFolder = { ok: true; folder: string; fallback: boolean } | { ok: false; message: string };
+
+type PreparedDownload = Extract<DownloadFolder, { ok: true }> & { free: number };
 
 const WAITING_FOR = 'the stream is on air or recording';
 const LOOK_WAITS = 'Links: looking at a YouTube link waits while the stream is on air or recording';
@@ -420,8 +426,7 @@ export class LinkService {
 
   /** The operator pasted a link. Look it up and start with the download defaults. */
   start(text: string, audio: boolean, intoOpenPlaylist: boolean): LinkResult {
-    if (this.busy || (this.automatic !== null && this.state.phase === 'looked'))
-      return this.refuse('A download is going on. Wait for it to finish, or stop it first.');
+    if (this.busy) return this.refuse('A download is going on. Wait for it to finish, or stop it first.');
     const kind = linkKind(text);
     if (kind === null) return this.refuse('Paste a share link from YouTube or Dropbox.');
     return this.beginLook(kind, text, { audio, intoOpenPlaylist });
@@ -474,6 +479,7 @@ export class LinkService {
     this.set({
       phase: 'looking',
       retryable: false,
+      folder: this.deps.lastFolder.get() ?? this.deps.defaultFolder,
       folderFallback: false,
       folderFiles: [],
       kind,
@@ -511,12 +517,12 @@ export class LinkService {
       `Links: looked at a YouTube video link (${tallest === undefined ? 'sound only' : `up to ${heightLabel(tallest)}`})`,
     );
     this.set({
-      phase: 'looked',
+      phase: this.automatic ? 'looking' : 'looked',
       look: { shape: 'video', name: m.details.title, size: null, video: m.details },
       waitingFor: null,
       message: null,
     });
-    this.downloadAutomatically();
+    void this.downloadAutomatically();
   }
 
   private looked(m: Extract<FromWorker, { type: 'looked' }>): void {
@@ -536,11 +542,11 @@ export class LinkService {
       'info',
       `Links: looked at a ${this.kindWord()} ${checked.shape} link${look.size !== null ? ` (${formatBytes(look.size)})` : ''}`,
     );
-    this.set({ phase: 'looked', look, message: null });
-    this.downloadAutomatically();
+    this.set({ phase: this.automatic ? 'looking' : 'looked', look, message: null });
+    void this.downloadAutomatically();
   }
 
-  private downloadAutomatically(): void {
+  private async downloadAutomatically(): Promise<void> {
     const automatic = this.automatic;
     if (!automatic) return;
     const video = this.state.look?.video;
@@ -553,11 +559,30 @@ export class LinkService {
       return;
     }
     const choice = video ? { type: automatic.audio ? 'mp3' : 'mp4', height } : null;
+    const stillChecking = () => this.automatic === automatic && this.state.phase === 'looking';
     try {
-      const result = this.download(choice);
+      const ready = await this.folderForPaste();
+      if (!stillChecking()) return;
+      if (!ready.ok) {
+        this.set({ phase: 'failed', message: ready.message, retryable: true });
+        return;
+      }
+      const free = await (this.deps.freeBytesAsync?.(ready.folder) ??
+        statfs(ready.folder).then((space) => space.bavail * space.bsize));
+      if (!stillChecking()) return;
+      const result = this.startDownload(choice, { ...ready, free });
       if (!result.ok) this.set({ phase: 'failed', message: result.message, retryable: true });
     } catch {
-      void this.failed('Drashti couldn’t start the download. Try again.', 'start');
+      if (this.automatic !== automatic || this.state.phase === 'stopped') return;
+      if (stillChecking()) {
+        this.set({
+          phase: 'failed',
+          message: 'Drashti couldn’t start the download. Try again.',
+          retryable: true,
+        });
+      } else {
+        await this.failed('Drashti couldn’t start the download. Try again.', 'start');
+      }
     }
   }
 
@@ -630,61 +655,71 @@ export class LinkService {
   // ---- downloading ---------------------------------------------------------------
 
   /** Check an existing folder with a real, exclusive write, without recreating a disconnected path. */
-  private checkWritableFolder(folder: string): void {
+  private async checkWritableFolder(folder: string): Promise<void> {
     const probe = join(folder, `.drashti-download-${randomUUID()}.part`);
-    writeFileSync(probe, '', { flag: 'wx' });
+    await writeFile(probe, '', { flag: 'wx' });
     try {
-      rmSync(probe);
-    } catch (error) {
+      await rm(probe);
+    } catch {
+      // Windows can hold a newly written file briefly. Keep the probe for cleanup.
       this.remember(probe);
-      throw error;
     }
   }
 
-  private downloadFolder(): { ok: true; folder: string } | { ok: false; message: string } {
+  private async folderForPaste(): Promise<DownloadFolder> {
     const current = this.state.folder;
     const usual = this.deps.defaultFolder;
     try {
-      if (!this.automatic || current === usual) {
-        mkdirSync(current, { recursive: true });
-        return { ok: true, folder: current };
+      if (current === usual) {
+        await mkdir(usual, { recursive: true });
+        return { ok: true, folder: usual, fallback: false };
       }
       try {
-        this.checkWritableFolder(current);
-        return { ok: true, folder: current };
+        await this.checkWritableFolder(current);
+        return { ok: true, folder: current, fallback: false };
       } catch {
-        mkdirSync(usual, { recursive: true });
-        this.checkWritableFolder(usual);
-        this.set({ folder: usual, folderFallback: true });
-        try {
-          this.deps.lastFolder.set(usual);
-        } catch {
-          this.deps.log('warn', 'Links: the usual downloads folder could not be remembered');
-        }
-        return { ok: true, folder: usual };
+        await mkdir(usual, { recursive: true });
+        await this.checkWritableFolder(usual);
+        return { ok: true, folder: usual, fallback: true };
       }
     } catch (error) {
-      this.deps.log(
-        'warn',
-        `Links: the folder to save in could not be made (${String((error as NodeJS.ErrnoException).code)})`,
-      );
-      return {
-        ok: false,
-        message: `Drashti could not save there. ${fileProblem(error, this.automatic ? 'own' : 'write')}`,
-      };
+      return this.folderProblem(error, 'own');
     }
+  }
+
+  private folderForManualDownload(): DownloadFolder {
+    const folder = this.state.folder;
+    try {
+      mkdirSync(folder, { recursive: true });
+      return { ok: true, folder, fallback: false };
+    } catch (error) {
+      return this.folderProblem(error, 'write');
+    }
+  }
+
+  private folderProblem(error: unknown, where: 'own' | 'write'): Extract<DownloadFolder, { ok: false }> {
+    this.deps.log(
+      'warn',
+      `Links: the folder to save in could not be made (${String((error as NodeJS.ErrnoException).code)})`,
+    );
+    return { ok: false, message: `Drashti could not save there. ${fileProblem(error, where)}` };
   }
 
   download(choice?: unknown): LinkResult {
     if (this.busy) return this.refuse('A download is going on already.');
+    if (this.state.phase !== 'looked') return this.refuse('Paste a link first.');
+    return this.startDownload(choice);
+  }
+
+  private startDownload(choice: unknown, prepared?: PreparedDownload): LinkResult {
     const checked = this.checked;
     const look = this.state.look;
-    if (this.state.phase !== 'looked' || !checked || !look) return this.refuse('Paste a link first.');
-    if (look.video) return this.youtubeDownload(checked.url, look.video, choice);
-    const ready = this.downloadFolder();
+    if (!checked || !look) return this.refuse('Paste a link first.');
+    if (look.video) return this.youtubeDownload(checked.url, look.video, choice, prepared);
+    const ready = prepared ?? this.folderForManualDownload();
     if (!ready.ok) return this.refuse(ready.message);
-    const { folder } = ready;
-    const free = this.deps.freeBytes(folder);
+    const { folder, fallback } = ready;
+    const free = prepared?.free ?? this.deps.freeBytes(folder);
     if (this.automatic && free - (look.size ?? 0) < LINK_KEEP_FREE_BYTES)
       return this.refuse(
         'This download would leave less than 2 GB free for the show. Free up space, then try again.',
@@ -703,6 +738,8 @@ export class LinkService {
     this.held = this.deps.onAir();
     this.set({
       phase: this.held ? 'waiting' : 'downloading',
+      folder,
+      folderFallback: fallback,
       waitingFor: this.held ? WAITING_FOR : null,
       progress: { done: 0, total: look.size },
       message: null,
@@ -753,13 +790,14 @@ export class LinkService {
     link: string,
     video: NonNullable<NonNullable<LinkView['look']>['video']>,
     raw: unknown,
+    prepared?: PreparedDownload,
   ): LinkResult {
     const picked = this.youtubeChoice(video, raw);
     if (!picked.ok) return this.refuse(picked.message);
-    const ready = this.downloadFolder();
+    const ready = prepared ?? this.folderForManualDownload();
     if (!ready.ok) return this.refuse(ready.message);
-    const { folder } = ready;
-    const free = this.deps.freeBytes(folder);
+    const { folder, fallback } = ready;
+    const free = prepared?.free ?? this.deps.freeBytes(folder);
     if (this.automatic && free - (picked.bytes ?? 0) < LINK_KEEP_FREE_BYTES)
       return this.refuse(
         'This download would leave less than 2 GB free for the show. Free up space, then try again.',
@@ -776,13 +814,14 @@ export class LinkService {
     if (!run.ok) return this.refuse(run.message);
     // yt-dlp's part-files and its finished file stay under a hidden name until Drashti names the file.
     this.part = join(folder, `.drashti-youtube-${randomUUID()}`);
-    mkdirSync(this.part, { recursive: true });
     this.remember(this.part);
     this.downloadedBytes = 0;
     this.held = this.deps.onAir();
     const choice = { type: picked.choice.type, height: picked.choice.height };
     this.set({
       phase: this.held ? 'waiting' : 'downloading',
+      folder,
+      folderFallback: fallback,
       waitingFor: this.held ? WAITING_FOR : null,
       progress: { done: 0, total: picked.bytes },
       message: null,
@@ -1122,7 +1161,7 @@ export class LinkService {
 
   /** Stop the download (or unpacking): nothing of it is kept. */
   stop(): LinkResult {
-    if (this.job === 'look') {
+    if (this.state.phase === 'looking') {
       this.endWorker();
       this.set({ phase: this.automatic ? 'stopped' : 'idle', waitingFor: null, message: null });
       return this.answer();
@@ -1151,6 +1190,7 @@ export class LinkService {
 
   /** Drashti is quitting: stop, and remove every part-file now. */
   close(): void {
+    this.automatic = null;
     this.endWorker();
     for (const path of this.unpacking()) this.temps.add(path);
     for (const path of this.temps) {
