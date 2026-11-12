@@ -1,7 +1,10 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { animationById, animationLength } from '../../src/shared/lower-third-animations';
-import type { LowerThirdInput } from '../../src/shared/lower-thirds';
+import { DESIGN_MOTIONS, isDesignMotion } from '../../src/shared/lower-third-design-motions';
+import type { LowerThirdTemplate } from '../../src/shared/lower-third-templates';
+import { LOWER_THIRD_TEMPLATES } from '../../src/shared/lower-third-templates';
+import type { LowerThird, LowerThirdInput } from '../../src/shared/lower-thirds';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../src/shared/lower-thirds';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { isExpectedStudioDiscardClose } from './expected-studio-close';
@@ -404,6 +407,187 @@ test('a name and role design saves, draws its parts in order and hides at the ex
   await expect(onScreen).toHaveAttribute('data-lt-animation', 'fade-quick');
   expect(await height()).toBeCloseTo(wrappedHeight, 1);
   await holdClock(app, null);
+  await app.close();
+});
+
+/** The first design offered (one the Performance run leaves out is not) that `fits` picks. */
+function offeredDesign(
+  what: string,
+  fits: (
+    template: LowerThirdTemplate,
+    motion: (typeof DESIGN_MOTIONS)[keyof typeof DESIGN_MOTIONS],
+  ) => boolean,
+): LowerThirdTemplate {
+  const found = LOWER_THIRD_TEMPLATES.find(
+    (t) => isDesignMotion(t.input.animation) && fits(t, DESIGN_MOTIONS[t.input.animation]),
+  );
+  if (!found) throw new Error(`No design is offered ${what}`);
+  return found;
+}
+
+/** A design's line on the screen, as drawn now: its words and the box that lets them rise from behind the line. */
+interface WordsInTheirBox {
+  text: string;
+  /** The box cuts off what reaches past it. */
+  overflow: string;
+  /** The box's room past the words' line box on each side, in ems of the line's own size. */
+  room: { top: number; bottom: number; left: number; right: number };
+  /** How far the words are past the box's bottom edge (on their way up) and past its top edge (on their way down). */
+  below: number;
+  above: number;
+}
+
+const wordsInTheirBoxes = (out: Page): Promise<WordsInTheirBox[]> =>
+  out.getByTestId('lower-third-layer').evaluate((root) => {
+    // The screen's canvas is scaled to its window (the layer is the canvas's width): an em in the window's pixels.
+    const scale = root.getBoundingClientRect().width / (root as HTMLElement).offsetWidth;
+    return [...root.querySelectorAll<HTMLElement>('[data-lt-unit]')].map((words) => {
+      const box = words.parentElement ?? words;
+      const b = box.getBoundingClientRect();
+      const w = words.getBoundingClientRect();
+      const em = parseFloat(getComputedStyle(box).fontSize) * scale;
+      const ems = (px: number) => Math.round((px / em) * 1000) / 1000;
+      return {
+        text: words.textContent,
+        overflow: getComputedStyle(box).overflow,
+        room: {
+          top: ems(w.top - b.top),
+          bottom: ems(b.bottom - w.bottom),
+          left: ems(w.left - b.left),
+          right: ems(b.right - w.right),
+        },
+        below: ems(w.top - b.bottom),
+        above: ems(b.top - w.bottom),
+      };
+    });
+  });
+
+/**
+ * Where the band, its accent, its panel, its lines' blocks and its words are drawn (window pixels): as drawn, and with
+ * the words' boxes given no room. The same both ways when the room moves nothing.
+ */
+const drawnWithAndWithoutRoom = (out: Page): Promise<{ drawn: number[]; withoutRoom: number[] }> =>
+  out.getByTestId('lower-third-layer').evaluate((root) => {
+    const parts = () =>
+      [
+        ...root.querySelectorAll(
+          '[data-lt-band], [data-lt-accent], [data-lt-design-panel], [data-lt-design-line], [data-lt-unit]',
+        ),
+      ].flatMap((part) => {
+        const r = part.getBoundingClientRect();
+        return [r.left, r.top, r.width, r.height];
+      });
+    const boxes = [...root.querySelectorAll<HTMLElement>('[data-lt-unit]')].map((w) => w.parentElement ?? w);
+    const kept = boxes.map((box) => box.getAttribute('style') ?? '');
+    const drawn = parts();
+    for (const box of boxes) {
+      box.style.padding = '0';
+      box.style.margin = '0';
+    }
+    const withoutRoom = parts();
+    boxes.forEach((box, i) => {
+      box.setAttribute('style', kept[i] ?? '');
+    });
+    return { drawn, withoutRoom };
+  });
+
+test('a design’s words keep the marks above and below their letters: their box has room past them on every side, nothing moves for it, and rising or dropping words still start hidden behind its edge (Gujarati and Hindi placeholders)', async () => {
+  test.setTimeout(150_000);
+  const { app, win, out } = await start({ DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const onScreen = out.getByTestId('lower-third-layer');
+  // A line box is 1.25 em of the design's Latin font, and Gujarati and Hindi vowel signs (ૈ ે િ ી above, ુ ૂ ु ू below)
+  // reach up to about 0.19 em past it: the box keeps 0.3 em at least past the words, and the words' first visible
+  // moment on their way up or down is 0.15 em at least past its edge. Placeholder words only.
+  const designs = [
+    {
+      design: offeredDesign(
+        'in Oswald whose name rises',
+        (t, m) => t.input.look.font === 'Oswald' && m.nameFrom === 'up',
+      ),
+      lines: ['નમૂના નામ', 'नमूना भूमिका'],
+    },
+    {
+      design: offeredDesign(
+        'in Hind whose name rises',
+        (t, m) => t.input.look.font === 'Hind' && m.nameFrom === 'up',
+      ),
+      lines: ['નમૂના નામ', 'નમૂના ભૂમિકા'],
+    },
+    {
+      design: offeredDesign(
+        'in Noto Serif whose name drops',
+        (t, m) => t.input.look.font === 'Noto Serif' && m.nameFrom === 'down',
+      ),
+      lines: ['नमूना नाम', 'નમૂના ભૂમિકા'],
+    },
+    {
+      design: offeredDesign('in the words style (its dark halo)', (t) => t.input.look.style === 'words'),
+      lines: ['નમૂના નામ', 'नमूना भूमिका'],
+    },
+  ];
+  for (const [n, { design, lines }] of designs.entries()) {
+    const animation = animationById(design.input.animation);
+    const motion = DESIGN_MOTIONS[design.input.animation as keyof typeof DESIGN_MOTIONS];
+    const lowerThird: LowerThird = {
+      id: `placeholder-design-${String(n)}`,
+      lines: [...lines, ''],
+      look: design.input.look,
+      where: 'hall',
+      animation: animation.id,
+    };
+    const shown = await win.evaluate(
+      (l) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'showLowerThird', lowerThird: l }),
+      lowerThird,
+    );
+    expect(shown, design.name).toMatchObject({ ok: true });
+    const shownAt = (await snapshot(win)).state.layers.lowerThird?.shownAt ?? 0;
+    await expect(onScreen).toHaveAttribute('data-lt-id', lowerThird.id);
+
+    // Each line on its way up or down, at its first visible moment: wholly past its box's edge, marks and all.
+    const timing = animation.timing;
+    const starts = timing.box * 0.5 + (timing.lead ?? 0);
+    for (const [i, from] of [motion.nameFrom, motion.roleFrom].entries()) {
+      if (from !== 'up' && from !== 'down') continue;
+      const at = Math.round(starts + i * (timing.stagger ?? 0)) + 1;
+      await holdClock(app, shownAt + at);
+      await expect(onScreen).toHaveAttribute('data-lt-at', String(at));
+      const line = (await wordsInTheirBoxes(out))[i];
+      const what = `${design.name}, line ${String(i + 1)} (${line?.text ?? ''}) coming ${from} at ${String(at)} ms`;
+      console.info(what, JSON.stringify(line));
+      expect
+        .soft(from === 'up' ? line?.below : line?.above, `${what}: past its box’s edge (ems)`)
+        .toBeGreaterThanOrEqual(0.15);
+    }
+
+    // At rest: room past the words on every side, and nothing drawn anywhere else for it.
+    const inLength = animationLength(animation, 'in', 2);
+    await holdClock(app, shownAt + inLength);
+    await expect(onScreen).toHaveAttribute('data-lt-phase', 'still');
+    const rows = await wordsInTheirBoxes(out);
+    console.info(`${design.name} (${design.input.look.font}) at rest`, JSON.stringify(rows));
+    expect(rows, design.name).toHaveLength(2);
+    for (const [i, line] of rows.entries()) {
+      const what = `${design.name}, line ${String(i + 1)} (${line.text})`;
+      expect.soft(line.overflow, what).toBe('hidden');
+      for (const side of ['top', 'bottom', 'left', 'right'] as const)
+        expect
+          .soft(line.room[side], `${what}: room past the words, ${side} (ems)`)
+          .toBeGreaterThanOrEqual(0.3);
+    }
+    const { drawn, withoutRoom } = await drawnWithAndWithoutRoom(out);
+    expect(withoutRoom, design.name).toHaveLength(drawn.length);
+    const moved = Math.max(
+      ...drawn.map((v, i) => Math.abs(v - (withoutRoom[i] ?? Number.POSITIVE_INFINITY))),
+    );
+    expect.soft(moved, `${design.name}: what moves for the room (window pixels)`).toBeLessThan(0.05);
+
+    await holdClock(app, null);
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'hideLowerThird' }));
+    const off = (await snapshot(win)).state.lowerThirdOff?.at ?? 0;
+    await holdClock(app, off + animationLength(animation, 'out', 2));
+    await expect(onScreen).toHaveCount(0);
+    await holdClock(app, null);
+  }
   await app.close();
 });
 
