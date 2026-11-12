@@ -154,7 +154,11 @@ export class PlaylistTrims {
     const request = cut.request;
     if (!request) return null;
     const row = this.deps.repo.row(cut.itemId);
-    if (row?.mediaId !== cut.mediaId || row.sourceId !== request.sourceId || row.sourcePath !== request.sourcePath)
+    if (
+      row?.mediaId !== cut.mediaId ||
+      row.sourceId !== request.sourceId ||
+      row.sourcePath !== request.sourcePath
+    )
       return null;
     try {
       const mediaDir = realpathSync.native(this.deps.mediaDir);
@@ -173,8 +177,10 @@ export class PlaylistTrims {
    */
   private async resumeInterrupted(): Promise<void> {
     this.resuming = 'going';
+    // Read anew after each wait: Drashti may close meanwhile.
+    const closed = () => this.closed;
     for (const cut of [...this.interrupted]) {
-      if (this.closed) return;
+      if (closed()) return;
       if (!this.interrupted.includes(cut)) continue;
       if (!this.deps.quiet()) {
         this.resuming = 'waiting';
@@ -212,12 +218,12 @@ export class PlaylistTrims {
           continue;
         }
         const result = await this.applyRequest(cut.itemId, { mediaId: cut.mediaId, points: request.points });
-        if (this.closed) return;
+        if (closed()) return;
         this.removeInterrupted(cut);
         if (!result.ok && result.message !== CHANGED.message)
           this.deps.notice(cutFailed(cut.name, result.message));
       } catch {
-        if (this.closed) return;
+        if (closed()) return;
         this.removeInterrupted(cut);
         this.deps.notice(cutFailed(cut.name, ''));
       }

@@ -136,7 +136,9 @@ function earlierCuts(ids: readonly string[] = ['held', 'newer']) {
   const trashDir = join(root, 'Trash');
   mkdirSync(mediaDir);
   mkdirSync(trashDir);
-  db.exec("INSERT INTO media (id, kind, name, path) VALUES ('original', 'video', 'Original', 'original.mp4')");
+  db.exec(
+    "INSERT INTO media (id, kind, name, path) VALUES ('original', 'video', 'Original', 'original.mp4')",
+  );
   writeFileSync(join(mediaDir, 'original.mp4'), 'Placeholder original.');
   for (const id of ids) {
     const bytes = `Placeholder ${id} cut.`;
@@ -236,9 +238,9 @@ it('keeps a cut that the show saved last would put back after a crash', async ()
   const x = earlierCuts();
   try {
     const removal = new MediaRemoval(x.db, { onScreens: () => new Set(), putBack: () => new Set(['held']) });
-    expect(await removal.trashUnusedTrims(x.mediaDir, x.trash, () => true, new AbortController().signal)).toBe(
-      0,
-    );
+    expect(
+      await removal.trashUnusedTrims(x.mediaDir, x.trash, () => true, new AbortController().signal),
+    ).toBe(0);
     expect(x.trash).not.toHaveBeenCalled();
     expect(x.exists('held')).toBe(true);
   } finally {
@@ -250,7 +252,7 @@ it('keeps a cut that the show saved last would put back after a crash', async ()
 function countJsonPasses(db: Db): () => number {
   let passes = 0;
   const prepare = db.prepare.bind(db);
-  vi.spyOn(db, 'prepare').mockImplementation(((source: string) => {
+  vi.spyOn(db, 'prepare').mockImplementation((source: string) => {
     const statement = prepare(source);
     if (!source.includes('json_tree')) return statement;
     return new Proxy(statement, {
@@ -263,7 +265,7 @@ function countJsonPasses(db: Db): () => number {
         };
       },
     });
-  }) as typeof db.prepare);
+  });
   return () => passes;
 }
 

@@ -60,7 +60,10 @@ function sameFile(file: string, before: BigIntStats): boolean {
  * earlier in this run can come back by Oops, Put it back or Back. A cut no row uses now could otherwise be put up
  * again from the Trash.
  */
-export function sweepQuiet(show: { readonly current: EngineState; readonly remembersEarlier: boolean }): boolean {
+export function sweepQuiet(show: {
+  readonly current: EngineState;
+  readonly remembersEarlier: boolean;
+}): boolean {
   return nothingUp(show.current.layers) && !show.remembersEarlier;
 }
 
@@ -310,7 +313,9 @@ export class MediaRemoval {
 
     // The last check, for all of them at once, in the same turn as the first move.
     const ready = unused(
-      checked.filter(({ row, file, before }) => stillManaged.get(row) !== undefined && sameFile(file, before)),
+      checked.filter(
+        ({ row, file, before }) => stillManaged.get(row) !== undefined && sameFile(file, before),
+      ),
     );
     const checkedAt = revision.get(0)?.stamp;
     let gone = 0;
@@ -318,7 +323,8 @@ export class MediaRemoval {
       // Anything else written to the library since that check (an edit, an import, bookkeeping) could name the
       // rest: they wait for a later start.
       if (paused() || revision.get(gone)?.stamp !== checkedAt) break;
-      if (usedNow(row, file, inUse()) || stillManaged.get(row) === undefined || !sameFile(file, before)) continue;
+      if (usedNow(row, file, inUse()) || stillManaged.get(row) === undefined || !sameFile(file, before))
+        continue;
       try {
         await trash(file);
         gone += forget.run(row).changes;

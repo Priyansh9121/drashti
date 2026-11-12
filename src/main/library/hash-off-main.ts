@@ -27,8 +27,8 @@ export interface FileHash {
 
 /** The file's sha256 (hex) and length in bytes, read off Main's thread. Rejects when `signal` aborts. */
 export function hashOffMain(file: string, signal?: AbortSignal): Promise<FileHash> {
-  signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
     const worker = new Worker(HASH_WORKER, { eval: true, workerData: file });
     const abort = () => {
       void worker.terminate();
