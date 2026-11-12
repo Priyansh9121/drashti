@@ -1,3 +1,4 @@
+import { DESIGN_MOTIONS, type DesignMotionId, isDesignMotion } from './lower-third-design-motions';
 import { STUDIO_BOX_MOVES, studioUnitMoves } from './lower-third-moves';
 
 /*
@@ -43,6 +44,9 @@ export const REST: Pose = { opacity: 1, transform: '', clip: '', origin: '' };
 export interface AnimationFrame {
   box: Pose;
   unit(i: number): Pose;
+  /** A template's background and accent move independently of its words. */
+  panel?: Pose;
+  accent?: Pose;
 }
 
 /** An entry in the library. */
@@ -59,6 +63,8 @@ export interface LowerThirdAnimation {
   pose(p: number, unit?: number): Pose;
   /** For a box move, how long its in takes (ms); for a unit move, its own timing. */
   timing: Timing;
+  /** A template's independent accent move. Its band timing moves the panel behind the words. */
+  composition?: { accentMs: number; accent(p: number): Pose };
 }
 
 interface Timing {
@@ -498,9 +504,59 @@ function build(): LowerThirdAnimation[] {
   return out;
 }
 
+/** A template's panel opens from the chosen edge, independently of its text. */
+const designClip = {
+  left: (cut: number) => [0, cut, 0, 0],
+  right: (cut: number) => [0, 0, 0, cut],
+  up: (cut: number) => [cut, 0, 0, 0],
+  down: (cut: number) => [0, 0, cut, 0],
+  centre: (cut: number) => [0, cut / 2, 0, cut / 2],
+} satisfies Record<Direction | 'centre', (cut: number) => [number, number, number, number]>;
+
+function designAnimation(id: string, design: (typeof DESIGN_MOTIONS)[DesignMotionId]): LowerThirdAnimation {
+  const ms = (steady: number) => Math.round(steady * SPEED[design.speed].factor);
+  const band = (p: number): Pose => {
+    // The accent draws first, then the panel opens behind it.
+    const at = clamp01((p - 0.3) / 0.7);
+    if (design.kind === 'pop')
+      return pose(fadeIn(at, 0.45), { transform: [scale(0.76 + 0.24 * bounce(at))] });
+    const eased = smooth(at);
+    if (design.kind === 'slide') {
+      const [x, y] = FROM[design.direction];
+      return pose(fadeIn(at, 0.45), {
+        transform: [translate(x * 45 * (1 - eased), y * 55 * (1 - eased), '%')],
+      });
+    }
+    return pose(at > 0 ? 1 : 0, { clip: designClip[design.direction]((1 - eased) * 100) });
+  };
+  const origin =
+    design.direction === 'right' ? 'right center' : design.direction === 'centre' ? 'center' : 'left center';
+  return {
+    id,
+    name: design.name,
+    unit: 'line',
+    speed: design.speed,
+    keywords: [design.kind, design.direction, 'name', 'role'],
+    timing: { box: ms(420), lead: ms(90), stagger: ms(150), each: ms(350), band },
+    composition: {
+      accentMs: ms(300),
+      accent: (p) => pose(p > 0 ? 1 : 0, { transform: [scale(smooth(p), 1)], origin }),
+    },
+    pose: (p, line) => {
+      const [x, y] = FROM[line === 0 ? design.nameFrom : design.roleFrom];
+      const remaining = 1 - smooth(p);
+      // Words rising or dropping into place start past their box's room (0.35 em, LowerThirdView) and the vowel
+      // signs that reach about 0.19 em past a 1.25 em line: hidden behind its edge until they move.
+      return pose(fadeIn(p, 0.45), { transform: [translate(x * 85 * remaining, y * 145 * remaining, '%')] });
+    },
+  };
+}
+
 /** Every animation, in the order the search lists them. */
 export const LOWER_THIRD_ANIMATIONS: readonly LowerThirdAnimation[] = build();
 const BY_ID = new Map(LOWER_THIRD_ANIMATIONS.map((a) => [a.id, a]));
+// Template choreography is kept by id with a saved lower third and offered through Templates.
+const DESIGNS_BY_ID = new Map<DesignMotionId, LowerThirdAnimation>();
 
 /** The animation a new lower third starts with. */
 export const DEFAULT_ANIMATION = 'slide-left-steady';
@@ -515,10 +571,18 @@ const FALLBACK = ((): LowerThirdAnimation => {
 
 /** An animation by its id (the default for one this Drashti does not know). */
 export function animationById(id: string): LowerThirdAnimation {
-  return BY_ID.get(id) ?? FALLBACK;
+  const standard = BY_ID.get(id);
+  if (standard) return standard;
+  if (!isDesignMotion(id)) return FALLBACK;
+  const ready = DESIGNS_BY_ID.get(id);
+  if (ready) return ready;
+  const motion = designAnimation(id, DESIGN_MOTIONS[id]);
+  DESIGNS_BY_ID.set(id, motion);
+  return motion;
 }
 
 export const isAnimation = (id: string): boolean => BY_ID.has(id);
+export const isLowerThirdAnimation = (id: string): boolean => isAnimation(id) || isDesignMotion(id);
 
 /** How long a phase takes (ms), for a lower third with so many units of its kind (lines, words or letters). */
 export function animationLength(a: LowerThirdAnimation, phase: 'in' | 'out', units: number): number {
@@ -553,8 +617,13 @@ export function animationFrame(
   }
   const band = (timing.band ?? ((p: number) => pose(p, {})))(clamp01(at / timing.box));
   const start = timing.box * 0.5 + (timing.lead ?? 0);
+  const composition = a.composition;
   return {
-    box: band,
+    box: composition ? REST : band,
+    ...(composition && {
+      panel: band,
+      accent: composition.accent(clamp01(at / composition.accentMs)),
+    }),
     unit: (i) => a.pose(clamp01((at - start - i * (timing.stagger ?? 0)) / (timing.each ?? 1)), i),
   };
 }
