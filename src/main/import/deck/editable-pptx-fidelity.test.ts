@@ -209,6 +209,34 @@ describe('keeping a generated PPTX editable', () => {
     ]);
   });
 
+  it('applies table style tints and shades in linear light', async () => {
+    const part = (name: string, effect: string, value: number) =>
+      `<a:${name}><a:tcStyle><a:fill><a:solidFill><a:srgbClr val="4472C4"><a:${effect} val="${String(value)}"/></a:srgbClr></a:solidFill></a:fill></a:tcStyle></a:${name}>`;
+    const style =
+      '<a:tableStyle styleId="{01234567-89AB-CDEF-0123-456789ABCDEF}" styleName="Placeholder">' +
+      part('wholeTbl', 'tint', 20_000) +
+      part('band1H', 'tint', 40_000) +
+      part('band2H', 'shade', 40_000) +
+      '</a:tableStyle>';
+    const row = '<a:tr h="285750"><a:tc><a:txBody><a:bodyPr/><a:p/></a:txBody><a:tcPr/></a:tc></a:tr>';
+    const { elements } = await read(
+      slideXml(
+        graphic(
+          '<a:tbl><a:tblPr firstRow="1" bandRow="1">' +
+            style +
+            '</a:tblPr><a:tblGrid><a:gridCol w="2857500"/></a:tblGrid>' +
+            row.repeat(3) +
+            '</a:tbl>',
+        ),
+      ),
+    );
+    expect(elements.flatMap((el) => (el.kind === 'shape' ? [el.fill] : []))).toEqual([
+      '#e9ebf5',
+      '#cfd5ea',
+      '#2a4981',
+    ]);
+  });
+
   it('applies the referenced table style, conditional parts and explicit cell overrides', async () => {
     const styleId = '{01234567-89AB-CDEF-0123-456789ABCDEF}';
     const solid = (value: string, kind = 'srgbClr') =>
