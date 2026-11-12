@@ -47,7 +47,7 @@ export class PlaylistTrims {
 
   async apply(itemId: string, { mediaId, points }: RowTrimRequest): Promise<RowTrimResult> {
     const row = this.deps.repo.row(itemId);
-    if (!row || row.mediaId !== mediaId || this.closed) return CHANGED;
+    if (row?.mediaId !== mediaId || this.closed) return CHANGED;
     if (this.pending.has(itemId))
       return { ok: false, message: 'This video is already being trimmed. Wait for Preparing to clear.' };
 
@@ -108,7 +108,7 @@ export class PlaylistTrims {
 
   reset(itemId: string, mediaId: string): RowTrimResult {
     const row = this.deps.repo.row(itemId);
-    if (!row || row.mediaId !== mediaId || !this.deps.repo.reset(row)) return CHANGED;
+    if (row?.mediaId !== mediaId || !this.deps.repo.reset(row)) return CHANGED;
     const pending = this.pending.get(itemId);
     if (pending) {
       if (pending.queueId !== null) this.deps.cancel(pending.queueId);
@@ -149,7 +149,7 @@ export class PlaylistTrims {
         if (stillPending() && !result.stopped) this.deps.notice(result.message);
         return;
       }
-      unclaimed = result.copy;
+      unclaimed = result.copy && isInside(mediaDir, result.copy) ? result.copy : null;
       if (!stillPending()) return;
       if (!unclaimed) {
         this.deps.notice(FAILED);

@@ -19,4 +19,10 @@ CREATE TABLE playlist_trim_resets (
   CHECK (start_ms IS NOT NULL OR end_ms IS NOT NULL)
 );
 CREATE INDEX playlist_trim_resets_by_original ON playlist_trim_resets(original_id);
+CREATE TRIGGER playlist_trim_reset_after_marker_edit AFTER UPDATE OF markers ON media
+WHEN json_extract(OLD.markers, '$.startMs') IS NOT json_extract(NEW.markers, '$.startMs')
+  OR json_extract(OLD.markers, '$.endMs') IS NOT json_extract(NEW.markers, '$.endMs')
+BEGIN
+  DELETE FROM playlist_trim_resets WHERE original_id = NEW.id;
+END;
 `;
