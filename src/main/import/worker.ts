@@ -89,11 +89,11 @@ const onAir = (): Promise<boolean> =>
 
 /** PDFs the main process is drawing for this import (Session 15), by request. */
 const drawing = new Map<string, (result: PicturesResult) => void>();
-const drawPdf = (pdf: string, outDir: string): Promise<PicturesResult> =>
+const drawPdf = (pdf: string, outDir: string, readPageText?: boolean): Promise<PicturesResult> =>
   new Promise((resolve) => {
     const requestId = randomUUID();
     drawing.set(requestId, resolve);
-    post({ type: 'draw-pdf', requestId, pdf, outDir });
+    post({ type: 'draw-pdf', requestId, pdf, outDir, readPageText });
   });
 
 function openLibrary(file: string, expected: number): Db {

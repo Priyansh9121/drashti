@@ -16,6 +16,7 @@ import { runImport } from './pipeline';
 import { scanPaths } from './scan';
 import { makeTestPdf } from './testing/make-pdf';
 import { makeTestPptx } from './testing/make-pptx';
+import { addTestPptxShadow } from './testing/pptx-shadow';
 import { makeZip } from './testing/zip-writer';
 
 /*
@@ -348,10 +349,11 @@ describe('importing a document as pictures', () => {
     expect(t.asked).toHaveLength(1);
   });
 
-  it('says plainly to save a PowerPoint file as PDF when nothing here can', async () => {
+  it('says plainly to save a PowerPoint file as PDF when a visible slide needs a converter', async () => {
     const t = setup(threePages);
     const deck = join(t.dir, 'Placeholder deck.pptx');
     writeFileSync(deck, makeTestPptx([{ color: '1E3A8A', text: 'Placeholder' }]));
+    await addTestPptxShadow(deck);
     const run = await t.run([deck], false);
     expect(run.totals).toMatchObject({ failed: 1, imported: 0 });
     const item = t.report(run.id)?.items[0];

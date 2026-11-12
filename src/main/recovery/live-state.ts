@@ -503,11 +503,27 @@ export interface LiveStateWriterOptions {
   /** The clock (tests). */
   now?: () => Date;
   log?: (message: string) => void;
+  /**
+   * How a save writes its partial file and moves it over the saved one (tests: a disk that fails now and then, as
+   * Windows' does while a scanner or a reader holds a file). The file system's own unless given.
+   */
+  writeFile?: (file: string, text: string) => Promise<void>;
+  rename?: (from: string, to: string) => Promise<void>;
 }
 
 /**
+ * After a save that fails, the newest show is saved again this long after (Session 57), then twice as long after
+ * each failure in a row, up to RETRY_MAX_MS: soon after a moment's hold on a file (a scanner, a reader), and never a
+ * busy loop on a disk that keeps failing.
+ */
+const RETRY_FIRST_MS = 250;
+const RETRY_MAX_MS = 5000;
+
+/**
  * Writes what is live: after a change (at most every `throttleMs`), in the
- * background, replacing the file whole so it is never half-written.
+ * background, replacing the file whole so it is never half-written. A save
+ * that fails is tried again by itself, with the newest show (Session 57):
+ * the next change may never come.
  */
 export class LiveStateWriter {
   readonly session = randomUUID();
@@ -519,6 +535,12 @@ export class LiveStateWriter {
   private alive: NodeJS.Timeout | null = null;
   private latest: EngineState | null = null;
   private saved: EngineState | null = null;
+  /** The next try after a failed save (Session 57). */
+  private retry: NodeJS.Timeout | null = null;
+  /** Saves that failed in a row: the first is logged, and the one that works after them. */
+  private failures = 0;
+  /** stop() was called (a crash in tests, or the clean quit), until start(): a failed save is not tried again. */
+  private stopped = false;
 
   constructor(
     private readonly files: RecoveryFiles,
@@ -532,6 +554,7 @@ export class LiveStateWriter {
    * the start has read what the run before left, and again every `aliveMs` until Drashti quits.
    */
   start(state: EngineState): void {
+    this.stopped = false;
     // Until this run's first save lands, the file holds the show the start found (put back after a crash).
     this.saved ??= state;
     this.update(state);
@@ -563,15 +586,20 @@ export class LiveStateWriter {
       this.heartbeat = null;
     }
     this.pending = state;
+    // Saved at a change's own pace, also while a failed save waits for its next try: this saves the newest.
+    this.cancelRetry();
     this.timer ??= setTimeout(() => {
       this.timer = null;
       const next = this.pending;
       this.pending = null;
-      if (next) {
-        const saved = savedFrom(next, this.session, this.now());
-        this.writing = this.writing.then(() => this.write(saved, next));
-      }
+      if (next) this.save(next);
     }, this.throttleMs);
+  }
+
+  /** Saves this state after the saves before it: in order, so never an older show over a newer one. */
+  private save(state: EngineState): void {
+    const saved = savedFrom(state, this.session, this.now());
+    this.writing = this.writing.then(() => this.write(saved, state));
   }
 
   /** Wait for writes already started (tests). */
@@ -585,8 +613,10 @@ export class LiveStateWriter {
 
   /** No more saves: what a crash leaves (tests). */
   stop(): void {
+    this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.cancelRetry();
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.heartbeat = null;
     if (this.alive) clearInterval(this.alive);
@@ -597,20 +627,52 @@ export class LiveStateWriter {
   private async write(saved: SavedLive, state: EngineState): Promise<void> {
     const partial = `${this.files.state}.${randomUUID()}.tmp`;
     try {
-      await writeFile(partial, JSON.stringify(saved));
-      await rename(partial, this.files.state);
+      await (this.options.writeFile ?? writeFile)(partial, JSON.stringify(saved));
+      await (this.options.rename ?? rename)(partial, this.files.state);
       this.saved = state;
     } catch (error) {
+      // Said once for failures in a row, and tried again by itself: the next change may never come (Session 57).
+      this.failures += 1;
+      if (this.failures === 1)
+        this.options.log?.(`Could not save the live state: ${(error as Error).message}`);
+      this.tryAgainLater();
       await rm(partial, { force: true }).catch(() => undefined);
-      // The next change writes again.
-      this.options.log?.(`Could not save the live state: ${(error as Error).message}`);
+      return;
     }
+    if (this.failures > 0) {
+      const failed = this.failures === 1 ? '1 failed save' : `${this.failures} failed saves`;
+      this.options.log?.(`Saved the live state again, after ${failed}`);
+    }
+    this.failures = 0;
+    this.cancelRetry();
+  }
+
+  /**
+   * After a failed save, the newest show is saved again by itself (Session 57): RETRY_FIRST_MS on, twice as long
+   * after each failure in a row, up to RETRY_MAX_MS. One try waits at a time, none while a change waits to be saved
+   * (that saves the newest), and none after stop(): a crash, or the clean quit (no try comes after its save and mark).
+   */
+  private tryAgainLater(): void {
+    if (this.stopped || this.timer || this.retry) return;
+    const wait = Math.min(RETRY_FIRST_MS * 2 ** (this.failures - 1), RETRY_MAX_MS);
+    this.retry = setTimeout(() => {
+      this.retry = null;
+      if (this.latest) this.save(this.latest);
+    }, wait);
+    // It never keeps a process up by itself (Node's, in tests); Drashti's own runs on, so it comes.
+    this.retry.unref();
+  }
+
+  private cancelRetry(): void {
+    if (this.retry) clearTimeout(this.retry);
+    this.retry = null;
   }
 
   /**
    * Drashti is quitting on purpose: save the show as it is now and write the
    * clean-quit mark, synchronously, so both are on disk before the process
    * ends and name this run (Session 20: even a run that changed nothing).
+   * A save that failed before it is not tried again after it (Session 57).
    */
   markClean(): void {
     this.stop();
