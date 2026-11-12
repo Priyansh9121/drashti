@@ -43,7 +43,11 @@ export function nativeDeckFixture(unsupported = false): Buffer {
     30,
     'filter="wipe(right)" transition="in"',
   );
-  const zoom = effect(32, 5, '23', 'afterEffect', 'entr', 'animScale', 250, 40);
+  // Basic Zoom, growing from nothing where the shape stands.
+  const zoom = effect(32, 5, '23', 'afterEffect', 'entr', 'animScale', 250, 40).replace(
+    '</p:animScale>',
+    '<p:from x="0" y="0"/><p:to x="100000" y="100000"/></p:animScale>',
+  );
   // PowerPoint starts a new sub-group after the Wipe's 30 ms delay and 300 ms run.
   const second = parallel(33, wipe, delay(0)) + parallel(34, zoom, delay(330));
   const third =
