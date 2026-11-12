@@ -5,6 +5,7 @@ import type { MediaMarkers, PlaybackMarker } from '../../../shared/markers';
 import { markerTime, parseMarkerTime } from '../../../shared/markers';
 import { mediaUrl } from '../../../shared/media';
 import type { MediaSummary, PlaylistItemInfo } from '../../../shared/playlists';
+import type { RowTrimView } from '../../../shared/trim';
 import { useEngine } from '../engine/engine-store';
 import { useNotice } from '../operator/actions';
 import { Button, IconButton } from '../ui/Button';
@@ -31,14 +32,38 @@ import { Timeline } from './Timeline';
  * and Save as MP4... (the part copied as it is from the clean frame at or
  * before its start, which the dialog says first).
  *
- * Session 56: Simple Mode's row menu has it too (the owner: "Trim as in Pro
- * Mode … it never makes a copy"), without Save as MP4… (`copies` false).
+ * Session 57: a playlist video's Trim prepares a frame-exact copy for
+ * that row in both modes. The Media list still has the file's own markers
+ * and Pro Mode's Save as MP4 export.
  */
 
-export const useMarkersDialog = create<{ media: MediaSummary | null }>(() => ({ media: null }));
+export const useMarkersDialog = create<{ media: MediaSummary | null; trim: RowTrimView | null }>(() => ({
+  media: null,
+  trim: null,
+}));
 
 export function openMarkers(media: MediaSummary): void {
-  useMarkersDialog.setState({ media });
+  useMarkersDialog.setState({ media, trim: null });
+}
+
+export async function openPlaylistTrim(itemId: string): Promise<void> {
+  const trim = await window.drashti.media.rowTrim(itemId);
+  if (!trim) {
+    useNotice.setState({ text: 'The original video is unavailable. Check the file in Media.' });
+    return;
+  }
+  useMarkersDialog.setState({
+    trim,
+    media: {
+      id: trim.sourceId,
+      name: trim.sourceName,
+      kind: 'video',
+      missing: false,
+      unplayable: null,
+      format: null,
+      convertedTo: null,
+    },
+  });
 }
 
 /** A playlist's media item as this dialog takes it (Session 26e: it opens from a card and the slide grid too). */
@@ -53,15 +78,16 @@ export const markersMedia = (item: Extract<PlaylistItemInfo, { kind: 'media' }>)
 });
 
 const close = () => {
-  useMarkersDialog.setState({ media: null });
+  useMarkersDialog.setState({ media: null, trim: null });
 };
 
 /** `copies`: whether it offers Save as MP4… (a copy of the part): Pro Mode's, never Simple Mode's (Session 56). */
 export function MarkersDialog({ copies = true }: { copies?: boolean } = {}) {
   const media = useMarkersDialog((s) => s.media);
+  const trim = useMarkersDialog((s) => s.trim);
   const [loaded, setLoaded] = useState<{ id: string; markers: MediaMarkers } | null>(null);
   useEffect(() => {
-    if (!media) return;
+    if (!media || trim) return;
     let live = true;
     void window.drashti.media.markers(media.id).then((markers) => {
       if (live) setLoaded({ id: media.id, markers });
@@ -69,12 +95,22 @@ export function MarkersDialog({ copies = true }: { copies?: boolean } = {}) {
     return () => {
       live = false;
     };
-  }, [media]);
-  if (!media || loaded?.id !== media.id) return null;
+  }, [media, trim]);
+  if (!media) return null;
+  if (trim)
+    return <MarkersForm key={trim.itemId} media={media} start={trim.markers} copies={false} trim={trim} />;
+  if (loaded?.id !== media.id) return null;
   return <MarkersForm key={media.id} media={media} start={loaded.markers} copies={copies} />;
 }
 
-const timeText = (ms: number | null) => (ms === null ? '' : markerTime(ms));
+function trimTime(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  const seconds = (ms % 60_000) / 1000;
+  return `${String(minutes)}:${seconds
+    .toFixed(3)
+    .padStart(6, '0')
+    .replace(/0{1,2}$/u, '')}`;
+}
 
 /** Where a part saved from `startMs` begins: the clean frame at or before it (asked once typing stops). */
 function useKeyframe(mediaId: string, startMs: number, video: boolean): number | null {
@@ -101,11 +137,15 @@ function MarkersForm({
   media,
   start,
   copies,
+  trim,
 }: {
   media: MediaSummary;
   start: MediaMarkers;
   copies: boolean;
+  trim?: RowTrimView;
 }) {
+  const pointTime = trim ? trimTime : markerTime;
+  const timeText = (ms: number | null) => (ms === null ? '' : pointTime(ms));
   const preview = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   const [startText, setStartText] = useState(timeText(start.startMs));
   const [endText, setEndText] = useState(timeText(start.endMs));
@@ -122,6 +162,7 @@ function MarkersForm({
   const [name, setName] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   // On the screens or the sound now: saving moves its points at once (the engine refreshes them).
   const playing = useEngine((s) => {
     const layers = s.state?.layers;
@@ -172,6 +213,7 @@ function MarkersForm({
     ...(name.trim() !== '' ? ['a new marker’s name'] : []),
   ];
   const requestClose = () => {
+    if (submitting) return;
     if (lostParts.length > 0) setAsking(true);
     else close();
   };
@@ -182,26 +224,54 @@ function MarkersForm({
       setProblem('Write a time as minutes and seconds, for example 1:05.5.');
       return;
     }
-    const result = await window.drashti.media.setMarkers(media.id, {
-      startMs,
-      endMs,
-      markers: [...markers].sort((a, b) => a.atMs - b.atMs),
-    });
-    if (result.ok) close();
-    else setProblem(result.message);
+    const points = { startMs, endMs, markers: [...markers].sort((a, b) => a.atMs - b.atMs) };
+    setSubmitting(true);
+    try {
+      const result = trim
+        ? await window.drashti.media.applyRowTrim(trim.itemId, { mediaId: trim.mediaId, points })
+        : await window.drashti.media.setMarkers(media.id, points);
+      if (result.ok) close();
+      else setProblem(result.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const reset = async () => {
+    if (!trim) return;
+    setSubmitting(true);
+    try {
+      const result = await window.drashti.media.resetRowTrim(trim.itemId, trim.mediaId);
+      if (result.ok) close();
+      else setProblem(result.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
   const Player = media.kind === 'video' ? 'video' : 'audio';
   return (
     <Dialog
-      title={`Start, end and markers: ${media.name}`}
+      title={trim ? `Trim: ${media.name}` : `Start, end and markers: ${media.name}`}
       size={isVideo ? 'lg' : 'md'}
       onClose={requestClose}
       closeLabel="Close markers"
       testId="markers-dialog"
       footer={
         <>
-          <Button onClick={requestClose}>Cancel</Button>
-          <Button variant="primary" type="submit" form="markers-form" data-testid="markers-save">
+          {trim?.canReset && (
+            <Button disabled={submitting} onClick={() => void reset()}>
+              Reset to original
+            </Button>
+          )}
+          <Button onClick={requestClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            type="submit"
+            form="markers-form"
+            data-testid="markers-save"
+            disabled={submitting}
+          >
             Save
           </Button>
         </>
@@ -212,7 +282,7 @@ function MarkersForm({
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          void save();
+          if (!submitting) void save();
         }}
         onKeyDown={(e) => {
           // I and O: the start or the end at the play head (not while typing in a box).
@@ -220,10 +290,10 @@ function MarkersForm({
           if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
           if (e.key === 'i' || e.key === 'I') {
             e.preventDefault();
-            setStartText(markerTime(shown()));
+            setStartText(pointTime(shown()));
           } else if (e.key === 'o' || e.key === 'O') {
             e.preventDefault();
-            setEndText(markerTime(shown()));
+            setEndText(pointTime(shown()));
           }
         }}
       >
@@ -262,10 +332,10 @@ function MarkersForm({
               playheadMs={playheadMs}
               keyframeMs={keyframeMs}
               onStart={(ms) => {
-                setStartText(ms <= 0 ? '' : markerTime(ms));
+                setStartText(ms <= 0 ? '' : pointTime(ms));
               }}
               onEnd={(ms) => {
-                setEndText(ms >= durationMs ? '' : markerTime(ms));
+                setEndText(ms >= durationMs ? '' : pointTime(ms));
               }}
               onSeek={(ms) => {
                 if (preview.current) preview.current.currentTime = ms / 1000;
@@ -286,9 +356,11 @@ function MarkersForm({
           </div>
         )}
         <p className="text-xs text-muted">
-          {copies
-            ? 'It plays between its start and end points wherever it is used (a background video loops between them), and the markers can be jumped to while it plays, from under the live picture or a phone. The preview is silent: only the audio player makes sound.'
-            : 'It plays between its start and end points wherever it is used (a background video loops between them), and its markers show on its time bar under the live picture. Its file is never cut or copied. The preview is silent: only the audio player makes sound.'}
+          {trim
+            ? 'Saving prepares a new video for this row after the show or stream ends. The preview is silent.'
+            : copies
+              ? 'It plays between its start and end points wherever it is used (a background video loops between them), and the markers can be jumped to while it plays, from under the live picture or a phone. The preview is silent: only the audio player makes sound.'
+              : 'It plays between its start and end points wherever it is used (a background video loops between them), and its markers show on its time bar under the live picture. Its file is never cut or copied. The preview is silent: only the audio player makes sound.'}
         </p>
         <div className="flex flex-wrap gap-4">
           <Field label="Start (empty: the beginning)">
@@ -300,7 +372,7 @@ function MarkersForm({
                 className="w-24"
                 onChange={(e) => setStartText(e.target.value)}
               />
-              <Button type="button" size="sm" onClick={() => setStartText(markerTime(shown()))}>
+              <Button type="button" size="sm" onClick={() => setStartText(pointTime(shown()))}>
                 Here
               </Button>
             </div>
@@ -314,7 +386,7 @@ function MarkersForm({
                 className="w-24"
                 onChange={(e) => setEndText(e.target.value)}
               />
-              <Button type="button" size="sm" onClick={() => setEndText(markerTime(shown()))}>
+              <Button type="button" size="sm" onClick={() => setEndText(pointTime(shown()))}>
                 Here
               </Button>
             </div>
@@ -451,7 +523,7 @@ function MarkersForm({
           name={<>the markers of “{media.name}”</>}
           lost={`You changed ${lostParts.join(', ').replace(/, ([^,]*)$/u, ' and $1')}.`}
           live={
-            playing
+            playing && !trim
               ? `“${media.name}” is playing now: saving moves its start, end and markers at once.`
               : undefined
           }

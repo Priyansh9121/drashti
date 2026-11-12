@@ -117,7 +117,15 @@ import type {
   TimerCue,
 } from './playlists';
 import type { RepeatSettings } from './repeat';
-import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from './trim';
+import type {
+  KeyframeResult,
+  RowTrimRequest,
+  RowTrimResult,
+  RowTrimView,
+  SaveJob,
+  SaveRequest,
+  SaveResult,
+} from './trim';
 import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
@@ -300,6 +308,7 @@ export interface DrashtiBridge {
   /** Import from a Link (Session 25b, operator window, Pro Mode). */
   links: {
     view(): Promise<LinkView>;
+    start(text: string, audio: boolean, intoOpenPlaylist: boolean): Promise<LinkResult>;
     look(kind: LinkKind, link: string): Promise<LinkResult>;
     pickFolder(): Promise<LinkResult>;
     /** Download what was looked at: a YouTube video with its type and quality. */
@@ -562,6 +571,10 @@ export interface DrashtiBridge {
     saveStill(mediaId: string, jpeg: Uint8Array): Promise<SaveStillResult>;
     /** Convert files Drashti cannot play (in turn, in the background). */
     convert(mediaIds: string[]): Promise<ConvertResult>;
+    /** Try a failed automatic conversion again. */
+    retryConversion(jobId: string): Promise<ConvertResult>;
+    /** Stop making a smaller copy of a linked video. */
+    cancelLinkConversion(jobId: string): Promise<ConvertResult>;
     /** Cancel one conversion, or every one not finished (null). */
     cancelConversion(jobId: string | null): Promise<ConvertResult>;
     conversions(): Promise<ConversionJob[]>;
@@ -578,6 +591,11 @@ export interface DrashtiBridge {
     keyframe(mediaId: string, startMs: number): Promise<KeyframeResult>;
     /** Save the part as an MP4 where the operator chooses (a save dialog), in the background. */
     saveTrim(request: SaveRequest): Promise<SaveResult>;
+    rowTrim(itemId: string): Promise<RowTrimView | null>;
+    applyRowTrim(itemId: string, request: RowTrimRequest): Promise<RowTrimResult>;
+    resetRowTrim(itemId: string, mediaId: string): Promise<RowTrimResult>;
+    preparingTrims(): Promise<string[]>;
+    onPreparingTrims(listener: (itemIds: string[]) => void): () => void;
     saves(): Promise<SaveJob[]>;
     onSaves(listener: (jobs: SaveJob[]) => void): () => void;
     stopSave(jobId: string): Promise<boolean>;

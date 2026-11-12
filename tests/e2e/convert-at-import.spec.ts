@@ -19,12 +19,13 @@ import {
   relaunchApp,
 } from './helpers';
 import { testFfmpeg } from './stream-helpers';
+import { makeTestImage } from './test-media';
 
 /*
  * Every video and sound file (Session 50): an import reads each with the bundled FFmpeg, and what Drashti's
- * player cannot play is converted by itself, one file at a time, never while the stream is on air or
- * recording. Until it is converted it says "Converting…" and cannot go live; the import report says what was
- * converted; a file that already plays is never converted. Session 51: HEVC too where this computer cannot play
+ * player cannot play is converted by itself, one file at a time, after the show, stream and recording are idle.
+ * While it waits or converts it says "Converting…" and cannot go live. Media says what was converted.
+ * Session 51: HEVC too where this computer cannot play
  * it (the test gives the answer: DRASHTI_TEST_PLAYS_HEVC); a conversion waiting when Drashti quits starts again
  * at the next start; a converted original added again anywhere uses its copy. Generated media only (FFmpeg's
  * test picture and tone, a second each, 64 × 48), deleted at the end.
@@ -108,27 +109,22 @@ test('an MKV with AC-3 sound, an AVI, a WMA and an AIFF are converted by themsel
     await onAir(app, true);
     await openLibrary(win);
     await dropFiles(win, win.getByTestId('library-drop'), names.map(at));
-    const report = win.getByTestId('import-report');
-    await expect(report).toBeVisible({ timeout: 60_000 });
-    const line = (name: string) => report.getByTestId('report-item').filter({ hasText: name }).first();
-    for (const name of Object.keys(converted)) {
-      await expect(line(name)).toContainText(`Drashti cannot play ${name} as it is: `);
-      await expect(line(name)).toContainText('It converts it by itself');
-      await expect(line(name).getByTestId('report-converting')).toHaveText('Converting…');
-    }
-    await expect(line('Placeholder katha.mkv')).toContainText('H.264 video with AC-3 sound (Matroska)');
-    for (const name of plays) await expect(line(name)).not.toContainText('cannot play');
-    await expect(report.getByTestId('report-converted')).toContainText(
-      'Converting 4 files Drashti cannot play as they are, one at a time: each is used everywhere once it is done, and the originals stay as they are.',
-    );
-    // Nothing for the operator to do: none is offered for Convert.
-    await expect(report.getByTestId('report-convert-all')).toHaveCount(0);
+    await expect
+      .poll(async () => (await conversions(win)).map((job) => job.name).sort(), { timeout: 60_000 })
+      .toEqual(Object.keys(converted).sort());
+    await expect(win.getByTestId('import-report')).toHaveCount(0);
+    await expect(
+      win.getByTestId('import-result').getByRole('button', { name: 'Report', exact: true }),
+    ).toHaveCount(0);
 
-    // Until it is converted it cannot go live: in a playlist it says “Converting…”, and the show refuses it.
+    // While a file waits for conversion, Media shows why and the show refuses it.
     const imported = await listMedia(win);
     const idOf = (name: string) => imported.find((m) => m.name === name)?.id ?? '';
     for (const name of Object.keys(converted))
-      expect(imported.find((m) => m.name === name)?.unplayable).not.toBeNull();
+      expect(imported.find((m) => m.name === name)).toMatchObject({ unplayable: expect.any(String) });
+    expect(imported.find((m) => m.name === 'Placeholder katha.mkv')?.unplayable).toBe(
+      'H.264 video with AC-3 sound (Matroska)',
+    );
     for (const name of plays) expect(imported.find((m) => m.name === name)?.unplayable).toBeNull();
     const { playlistId, itemId } = await win.evaluate(async (mediaId) => {
       const d = (globalThis as PageGlobals).drashti;
@@ -144,11 +140,13 @@ test('an MKV with AC-3 sound, an AVI, a WMA and an AIFF are converted by themsel
         { playlistId, itemId },
       );
     expect(await play()).toMatchObject({ ok: false, error: 'not-playable' });
-    await report.getByRole('button', { name: 'Close' }).click();
     await win.getByRole('tab', { name: 'Media' }).click();
-    const note = (name: string) =>
-      win.getByTestId('media-row').filter({ hasText: name }).getByTestId('media-note');
-    for (const name of Object.keys(converted)) await expect(note(name)).toHaveText('Converting…');
+    for (const name of Object.keys(converted)) {
+      await expect(noteOf(win, name)).toHaveText('Converting…');
+      await expect(
+        win.getByTestId('media-row').filter({ hasText: name }).getByTestId('convert-one'),
+      ).toHaveCount(0);
+    }
     await closeLibrary(win);
     await win
       .getByTestId('playlists')
@@ -196,28 +194,81 @@ test('an MKV with AC-3 sound, an AVI, a WMA and an AIFF are converted by themsel
       .poll(async () => (await snapshot(win)).state.layers.background)
       .toMatchObject({ mediaId: copyId });
 
-    // The report says what was converted.
-    await win.getByTestId('import-result').getByRole('button', { name: 'Report' }).click();
-    await expect(report).toBeVisible();
-    for (const [name, copy] of Object.entries(converted))
-      await expect(line(name).getByTestId('report-converted-file')).toHaveText(`Converted: ${copy}`);
-    const summary = report.getByTestId('report-converted');
-    await expect(summary).toContainText('Converted 4 files Drashti could not play as they were: ');
-    for (const copy of Object.values(converted)) await expect(summary).toContainText(copy);
-    await expect(summary).toContainText(
-      'The copies are used everywhere, and the originals stay as they are.',
-    );
-    await report.getByRole('button', { name: 'Close' }).click();
+    // Media shows every converted original and the format of its copy.
     await openLibrary(win);
     await win.getByRole('tab', { name: 'Media' }).click();
-    await expect(note('Placeholder katha.mkv')).toHaveText('Converted to .mp4');
-    await expect(note('Placeholder bhajan.wma')).toHaveText('Converted to .m4a');
+    for (const [name, copy] of Object.entries(converted))
+      await expect(noteOf(win, name)).toHaveText(`Converted to ${copy.slice(copy.lastIndexOf('.'))}`);
     await app.close();
   } finally {
     await app.close().catch(() => undefined);
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+for (const mode of ['Pro Mode', 'Simple Mode']) {
+  test(`conversion waits for Clear all while a picture is up in ${mode}`, async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-convert-show-'));
+    const sound = join(dir, 'Placeholder sound.wma');
+    const { app } = await launchApp();
+    try {
+      const win = await operatorPage(app);
+      await operatorReady(win);
+      make(['-f', 'lavfi', '-i', 'sine=r=48000:d=1', '-c:a', 'wmav2', sound]);
+      const picture = await makeTestImage(win, join(dir, 'Placeholder picture.png'));
+      const [mediaId = ''] = await importAndGetIds(win, [picture]);
+      const ids = await win.evaluate(async (mediaId) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const made = await d.playlists.create('Placeholder show', null, false);
+        if (!made.ok) throw new Error(made.message);
+        const playlistId = made.ids[0] ?? '';
+        const added = await d.playlists.addItems(playlistId, null, [{ kind: 'media', mediaId }]);
+        if (!added.ok) throw new Error(added.message);
+        return { playlistId, itemId: added.ids[0] ?? '' };
+      }, mediaId);
+      await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder show' }).click();
+      if (mode === 'Simple Mode') {
+        await win.getByTestId('app-header').getByRole('button', { name: mode, exact: true }).dblclick();
+        await expect(win.getByTestId('simple-mode')).toBeVisible();
+      }
+
+      const played = await win.evaluate(
+        (ids) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'playItem', ...ids }),
+        ids,
+      );
+      expect(played).toMatchObject({ ok: true });
+      expect((await snapshot(win)).state.layers.background).toMatchObject({ mediaId });
+      const imported = await importOne(win, sound);
+      expect(imported.codes).toEqual(['converting-media']);
+      await expect
+        .poll(async () => (await conversions(win))[0])
+        .toMatchObject({
+          mediaId: imported.id,
+          state: 'waiting',
+          note: 'Waits while the show is on, then carries on by itself.',
+          byItself: true,
+        });
+      await holdStill(
+        async () => (await conversions(win))[0]?.state === 'waiting',
+        3200,
+        'the live picture keeps conversion waiting beyond the normal startup delay',
+      );
+
+      expect(
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' })),
+      ).toMatchObject({ ok: true });
+      await expect
+        .poll(async () => (await conversions(win))[0], { timeout: 60_000 })
+        .toMatchObject({
+          state: 'done',
+          convertedName: 'Placeholder sound.m4a',
+        });
+    } finally {
+      await app.close().catch(() => undefined);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
 
 test('HEVC is converted by itself at import where this computer cannot play it; where it can, it plays as it is; unless told, as the window says (Session 51)', async () => {
   test.setTimeout(240_000);

@@ -52,7 +52,7 @@ function CueBackground({ cue, background }: { cue: BackgroundCue; background: Me
       {cue.unplayable !== null && (
         <span
           data-testid="thumb-unplayable"
-          title={`${cue.name}: ${cue.unplayable}. Drashti cannot play it yet; see the import report.`}
+          title={`${cue.name}: ${cue.unplayable}. Drashti can’t play it yet. Check the file in Media.`}
           className="absolute top-0.5 left-0.5 origin-top-left scale-75"
         >
           <CannotPlayBadge mediaId={mediaId} />
