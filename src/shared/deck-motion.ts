@@ -134,7 +134,7 @@ export function deckMotionFrame(
       frame.y += slide.height * y * shift;
     }
     if (effect.kind === 'wipe')
-      frame.wipe = { edge: entering ? direction : opposite[direction], fraction: 1 - amount };
+      frame.wipe = { edge: direction, fraction: 1 - amount };
     if (effect.kind === 'split') frame.wipe = { axis: effect.splitAxis ?? 'x', fraction: 1 - amount };
     if (effect.kind === 'zoom') frame.scale *= amount + (effect.scale ?? 0) * (1 - amount);
   }
