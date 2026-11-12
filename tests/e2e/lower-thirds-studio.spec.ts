@@ -188,6 +188,64 @@ test('Lower Thirds opens the studio, a window of its own with a live preview: on
   await app.close();
 });
 
+test('the template picker plays one preview, filters the grid and keeps favourites and recent choices', async () => {
+  const { app, win } = await start();
+  const studio = await openStudio(app, win);
+  await sizeStudio(app, studio, CI_WINDOW);
+  const trigger = studio.getByTestId('studio-templates');
+  const picker = studio.getByRole('dialog', { name: 'Lower third templates' });
+  const search = picker.getByRole('searchbox', { name: 'Search templates' });
+  const tile = picker.getByRole('button', { name: 'News band', exact: true });
+  const favourite = picker.getByRole('button', { name: 'Favourite News band' });
+  const tiles = picker.getByTestId('studio-template');
+
+  await trigger.click();
+  await expect(search).toBeFocused();
+  await expectInView(picker, 'the template picker at the CI window size');
+  await expect(picker.getByRole('button', { name: 'Best 20' })).toHaveAttribute('aria-pressed', 'true');
+  expect(await tiles.count()).toBeGreaterThan(1);
+  await expectNoSeriousA11yIssues(studio, 'the template picker');
+
+  await tile.hover();
+  await expect(tile.locator('[data-template-preview]')).toHaveAttribute('data-preview-playing', 'true');
+  await expect(picker.locator('[data-preview-playing="true"]')).toHaveCount(1);
+  await search.hover();
+  await expect(picker.locator('[data-preview-playing="true"]')).toHaveCount(0);
+
+  await picker.getByRole('button', { name: 'All templates' }).click();
+  await search.fill('NEWS BAND');
+  await expect(tiles).toHaveCount(1);
+  await picker.getByLabel('Direction', { exact: true }).selectOption('left');
+  await expect(tiles).toHaveCount(0);
+  await picker.getByLabel('Direction', { exact: true }).selectOption('right');
+  await picker.getByLabel('Kind', { exact: true }).selectOption('wipe');
+  await picker.getByLabel('Feel', { exact: true }).selectOption('bold');
+  await picker.getByLabel('Speed', { exact: true }).selectOption('steady');
+  await expect(tile).toBeVisible();
+  await favourite.click();
+  await expect(favourite).toHaveAttribute('aria-pressed', 'true');
+
+  await studio.keyboard.press('Escape');
+  await expect(picker).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await studio.reload();
+  await trigger.click();
+  await picker.getByRole('button', { name: 'Favourites', exact: true }).click();
+  await expect(tiles).toHaveCount(1);
+  await expect(favourite).toHaveAttribute('aria-pressed', 'true');
+
+  await tile.focus();
+  await expect(tile.locator('[data-template-preview]')).toHaveAttribute('data-preview-playing', 'true');
+  await tile.press('Enter');
+  await expect(picker).toHaveCount(0);
+  await expect(studio.getByTestId('lower-third-line').first()).toHaveValue('Placeholder name');
+  await trigger.click();
+  await picker.getByRole('button', { name: 'Recently used', exact: true }).click();
+  await expect(tiles).toHaveCount(1);
+  await expect(tile).toBeVisible();
+  await app.close();
+});
+
 test('R: one set to hide itself after 5 seconds goes by itself, playing its out; one made before the studio shows as it did, a box going out the way it came', async () => {
   test.setTimeout(150_000);
   const { app, win, out } = await start();
