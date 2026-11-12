@@ -183,13 +183,11 @@ describe('runImport', () => {
       ['text', 'imported', 'Song B'],
       ['media', 'imported', 'Loop.mp4'],
     ]);
-    expect(report?.items.slice(6).map((item) => [item.format, item.outcome, item.name])).toEqual(
-      expect.arrayContaining([
-        ['unknown', 'unsupported', 'Old order.doc'],
-        ['unknown', 'unsupported', 'Notes.odt'],
-        ['unknown', 'unsupported', 'Other notes.odt'],
-      ]),
-    );
+    expect(report?.items.slice(6).map((item) => [item.format, item.outcome, item.name])).toEqual([
+      ['unknown', 'unsupported', 'Notes.odt'],
+      ['unknown', 'unsupported', 'Old order.doc'],
+      ['unknown', 'unsupported', 'Other notes.odt'],
+    ]);
     expect(report?.items[0]?.message).toBe(
       'This Word file could not be read: it may be damaged. If it opens in Word, save it again there and import that.',
     );
@@ -198,8 +196,8 @@ describe('runImport', () => {
       'An old Word document (.doc) is not read: open it in Word and save it as a Word Document (.docx), then import that.',
     );
     expect(report?.items.filter((item) => item.name?.endsWith('.odt')).map((item) => item.message)).toEqual([
-      'Drashti doesn’t read .odt files.',
-      'Drashti doesn’t read .odt files.',
+      'Drashti doesn’t read .odt files. Save it in a supported format and import it again.',
+      'Drashti doesn’t read .odt files. Save it in a supported format and import it again.',
     ]);
     // A Word file's presentation says where it came from, as a text file's does.
     const service = t.presentations.get(report?.items[2]?.target?.id ?? '');

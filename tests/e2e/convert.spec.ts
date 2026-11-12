@@ -134,7 +134,7 @@ test('convert all: each kind becomes what Drashti plays, the original stays, wha
     if (!added.ok) throw new Error(added.message);
     return { playlistId: made.ids[0] ?? '', itemId: added.ids[0] ?? '' };
   }, avi);
-  // An HEVC video (which plays only where the computer can decode it) is on the screens while it converts.
+  // A manual Convert waits while the original HEVC video is up.
   const hevc = idOf('Placeholder hevc.mp4');
   await win.evaluate(
     (mediaId) =>
@@ -150,19 +150,33 @@ test('convert all: each kind becomes what Drashti plays, the original stays, wha
     await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.convert([id]), hevc),
   ).toMatchObject({ ok: true });
 
+  const hevcJob = () =>
+    win.evaluate(async (id) => {
+      const jobs = await (globalThis as PageGlobals).drashti.media.conversions();
+      return jobs.find((job) => job.mediaId === id);
+    }, hevc);
+  await expect.poll(hevcJob).toMatchObject({
+    state: 'waiting',
+    note: 'Waits while the show is on, then carries on by itself.',
+    convertedId: null,
+  });
+  // The picture and its playback stay put while the job waits. The output may learn its length meanwhile.
+  const { durationMs: _now, ...still } = { durationMs: 0, ...(await snapshot(win)).state.layers.background };
+  const { durationMs: _then, ...was } = { durationMs: 0, ...live };
+  expect(still).toEqual(was);
+  expect(
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' })),
+  ).toMatchObject({ ok: true });
+
   // The media list offers Convert all, once the HEVC video's own conversion has ended (while one goes the
   // bar says so instead; a slow computer takes a while: Session 26, a Windows runner).
   await openLibrary(win);
   await win.getByRole('tab', { name: 'Media' }).click();
-  await expect
-    .poll(
-      async () =>
-        (await win.evaluate(() => (globalThis as PageGlobals).drashti.media.conversions())).find(
-          (j) => j.mediaId === hevc,
-        )?.state,
-      { timeout: 120_000 },
-    )
-    .toBe('done');
+  await expect.poll(hevcJob, { timeout: 120_000 }).toMatchObject({
+    state: 'done',
+    convertedId: expect.any(String),
+    convertedName: 'Placeholder hevc.mp4',
+  });
   const bar = win.getByTestId('convert-bar');
   await expect(bar).toContainText('5 files Drashti cannot play');
   await expectNoSeriousA11yIssues(win, 'the media list with files to convert');
@@ -209,16 +223,21 @@ test('convert all: each kind becomes what Drashti plays, the original stays, wha
     'Converted: everything that used it now uses Placeholder old clip.mp4',
   );
 
-  // What was on the screens carries on as it was, until it is taken down (the HEVC was converted too).
-  await expect
-    .poll(async () => (await listMedia(win)).find((m) => m.name === 'Placeholder hevc.mp4')?.convertedTo, {
-      timeout: 60_000,
-    })
-    .toBe('Placeholder hevc.mp4');
-  // Still the same playback (its length may have been learned meanwhile, as the output played it).
-  const { durationMs: _now, ...still } = { durationMs: 0, ...(await snapshot(win)).state.layers.background };
-  const { durationMs: _then, ...was } = { durationMs: 0, ...live };
-  expect(still).toEqual(was);
+  // After Clear all and conversion, the HEVC copy can be put up again.
+  const hevcCopy = (await hevcJob())?.convertedId;
+  expect(hevcCopy).not.toBe(hevc);
+  expect(after.find((m) => m.id === hevc)?.convertedTo).toBe('Placeholder hevc.mp4');
+  expect(
+    await win.evaluate(
+      (mediaId) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'setBackground',
+          background: { kind: 'media', mediaId, media: 'video', fit: 'fill', loop: true },
+        }),
+      hevcCopy ?? '',
+    ),
+  ).toMatchObject({ ok: true });
+  expect((await snapshot(win)).state.layers.background).toMatchObject({ mediaId: hevcCopy });
   // The playlist uses the copy now: playing the item again shows it.
   const copyId = after.find((m) => m.name === 'Placeholder old clip.mp4')?.id;
   const items = await win.evaluate(

@@ -264,6 +264,22 @@ describe('importing ProPresenter 6 files', () => {
       outcome: 'skipped',
       target: { id: newId },
     });
+
+    t.write(
+      'Placeholder Hymn.pro6',
+      hymn({
+        groups: [
+          {
+            name: 'Placeholder replacement',
+            slides: [{ text: [{ rtf: cocoaRtf([['Replacement', 72, [255, 255, 255]]]) }] }],
+          },
+        ],
+      }),
+    );
+    const replaced = (await t.run([file], { onConflict: 'replace' })).report?.items[0];
+    expect(replaced).toMatchObject({ outcome: 'replaced', target: { id: newId } });
+    expect(t.presentations.get(newId)?.groups.map((g) => g.name)).toEqual(['Placeholder replacement']);
+    expect(t.presentations.get(id)?.groups).toEqual(original);
   });
 
   it('keeps templates in their own library', async () => {

@@ -21,6 +21,8 @@ export interface ConversionJob {
   message: string | null;
   /** Whether retrying a failed conversion may help. */
   retryable?: boolean;
+  /** A linked video waiting for a copy no taller than this. */
+  maxHeight?: number;
   /** When done: the converted copy, its name, and the conversion (for Undo). */
   convertedId: string | null;
   convertedName: string | null;

@@ -1618,7 +1618,17 @@ test('Import from a Link: the Dropbox paste field, status and failure notices', 
     await barAndStatus(win, 'import-link-status');
     await onAir(false);
     await linkFinished(win, 180_000);
-    expect((await linkView(win)).fitted).toEqual(['Videos/Placeholder 2160p.mp4']);
+    await expect
+      .poll(
+        () =>
+          win.evaluate(async () =>
+            (await (globalThis as PageGlobals).drashti.media.conversions()).find(
+              (job) => job.name === 'Placeholder 2160p.mp4',
+            ),
+          ),
+        { timeout: 180_000 },
+      )
+      .toMatchObject({ maxHeight: 1080, state: 'done' });
     await expect(notices.filter({ hasText: 'Read me.txt' })).toBeVisible();
     await expect(notices.filter({ hasText: 'Placeholder deck' })).toBeVisible();
     await shot(win, 'import-link-report');

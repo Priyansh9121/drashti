@@ -2,11 +2,17 @@ import { create } from 'zustand';
 import { kindRank, partsInFolderOrder } from '../../../shared/folder-order';
 import type { ImportReport } from '../../../shared/import';
 import { itemsMadeBy } from '../../../shared/import-items';
-import { checkLink, linkKind, type LinkView, waitingKind } from '../../../shared/links';
+import {
+  checkLink,
+  DEFAULT_LINK_MAX_HEIGHT,
+  linkKind,
+  type LinkView,
+  waitingKind,
+} from '../../../shared/links';
 import type { NewItem } from '../../../shared/playlists';
 import { showImportFailures, showImportNotice } from '../library/import-notices';
-import { importPaths } from '../library/import-store';
-import { addSoundsMade, importSoundsInto } from '../music/audio-actions';
+import { importPaths, relinkMedia } from '../library/import-store';
+import { addSoundsMade } from '../music/audio-actions';
 import { nameAfter } from '../playlists/add-made';
 import { importIntoPlaylist, loadTree, openPlaylist, usePlaylists } from '../playlists/playlist-store';
 import { landInPlaylist, linkPlaylistId } from './link-playlist';
@@ -66,23 +72,15 @@ async function takeImported(view: LinkView, request: LinkRequest): Promise<void>
   if (!report) return;
 
   const playlistId = view.playlist?.id ?? request.playlistId;
+  const options = view.kind === 'dropbox' ? { maxVideoHeight: DEFAULT_LINK_MAX_HEIGHT } : undefined;
+  const { audio } = request;
   const retry = (paths: string[]) =>
-    request.audio
-      ? importSoundsInto(request.audio.playlistId, paths)
+    audio
+      ? importPaths(paths, options, (made) => addSoundsMade(audio.playlistId, made))
       : playlistId
-        ? importIntoPlaylist(playlistId, null, paths)
-        : importPaths(paths, undefined, null);
-  // A smaller video prepared for import is temporary. Only the original downloaded files can be retried here.
-  const folder = view.saved?.folder;
-  if (folder && view.fitted.length > 0) {
-    const saved = report.items.filter((item) => {
-      const rest = item.sourcePath.startsWith(folder) ? item.sourcePath.slice(folder.length) : '';
-      return rest.startsWith('/') || rest.startsWith('\\');
-    });
-    const temporary = report.items.filter((item) => !saved.includes(item));
-    showImportFailures({ ...report, items: saved }, retry);
-    showImportFailures({ ...report, items: temporary, message: null });
-  } else showImportFailures(report, retry);
+        ? importIntoPlaylist(playlistId, null, paths, null, options)
+        : importPaths(paths, options, null);
+  showImportFailures(report, retry, relinkMedia);
 
   if (view.playlist) {
     await loadTree();
@@ -113,9 +111,13 @@ async function takeImported(view: LinkView, request: LinkRequest): Promise<void>
 }
 
 function heard(view: LinkView): void {
+  const { request, view: previous } = useLinks.getState();
   useLinks.setState({ view });
-  const { request } = useLinks.getState();
   if (view.link !== request?.url) return;
+  if (view.folderFallback && !previous?.folderFallback)
+    showImportNotice(
+      'The previous downloads folder couldn’t be used. Look in Drashti downloads when the download finishes.',
+    );
   if (view.phase !== 'done' && view.phase !== 'failed' && view.phase !== 'stopped') return;
   useLinks.setState({ request: null });
   if (view.phase === 'stopped') return;

@@ -128,7 +128,8 @@ describe('a conversion waiting when Drashti quits (Session 51)', () => {
     expect(resumed.seen.jobs).toMatchObject([
       { mediaId: 'm-tall', state: 'waiting', note: ON_AIR, maxHeight: 1080, byItself: true },
     ]);
-    resumed.service.cancel(resumed.seen.jobs[0]?.id);
+    expect(resumed.service.cancelLinkConversion(null)).toMatchObject({ ok: false });
+    expect(resumed.service.cancelLinkConversion(resumed.seen.jobs[0]?.id)).toMatchObject({ ok: true });
     expect(kept.value).toEqual([]);
     expect(resumed.seen.jobs[0]?.state).toBe('cancelled');
     expect(resumed.seen.jobs[0]?.convertedId).toBeNull();

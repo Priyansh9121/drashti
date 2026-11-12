@@ -3771,6 +3771,11 @@ function start(): void {
       ? conversions.retryImported(id)
       : { ok: false as const, message: 'Only the operator window can retry a conversion.' },
   );
+  handle(IPC.media.cancelLinkConversion, (e, id) =>
+    fromOperator(e)
+      ? conversions.cancelLinkConversion(id)
+      : { ok: false as const, message: 'Only the operator window can stop a link conversion.' },
+  );
   handle(IPC.media.cancelConversion, (e, id) =>
     fromOperator(e)
       ? conversions.cancel(id)
@@ -3872,8 +3877,9 @@ function start(): void {
     if (!options.success) return { ok: false, message: 'Those import options are not valid.' };
     if (!paths.data.every((p) => isAbsolute(p)))
       return { ok: false, message: 'Import needs full file paths.' };
-    // Simple Mode's own limits (Session 55, Part 18), whatever the window asked.
-    return imports.start(paths.data, mode === 'simple' ? SIMPLE_IMPORT : options.data);
+    // Simple Mode keeps its own formats and conflict policy. A retried link can carry the 1080p cap.
+    const simpleOptions = { ...SIMPLE_IMPORT, maxVideoHeight: options.data.maxVideoHeight };
+    return imports.start(paths.data, mode === 'simple' ? simpleOptions : options.data);
   };
 
   // ---- IPC ----------------------------------------------------------------
@@ -4403,12 +4409,13 @@ function start(): void {
       });
       return picked.canceled ? null : (picked.filePaths[0] ?? null);
     },
-    importFiles: async (paths) => {
+    importFiles: async (paths, maxVideoHeight) => {
       // Its videos' start and end points go past their black and silence (Session 55, Part 7): known by their paths,
       // as the import ends before its run comes back here.
       for (const path of paths) linkPaths.add(path);
-      // Simple Mode's own limits (Session 55, Part 18), as its Add files… has them.
-      const result = await imports.start(paths, mode === 'simple' ? SIMPLE_IMPORT : {});
+      // The cap is set here for pasted Dropbox links. The playable original can be added while its copy waits.
+      const options = { ...(mode === 'simple' ? SIMPLE_IMPORT : {}), maxVideoHeight };
+      const result = await imports.start(paths, options);
       if (!result.ok) for (const path of paths) linkPaths.delete(path);
       return result.ok ? { ok: true, runId: result.run.id } : { ok: false, message: result.message };
     },

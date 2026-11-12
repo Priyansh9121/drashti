@@ -630,6 +630,21 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(t.repo.content(originalId)).toEqual(original);
       expect(t.slidesOf(originalId).every((s) => !s.slide.deck)).toBe(true);
       expect(t.slidesOf(newId).map((s) => s.slide.deck?.steps.length)).toEqual([5, 3, 2, 1, 2]);
+
+      // An explicit replace still updates the earlier deck in place.
+      const explicit = setup();
+      const first = await explicit.run({ baker: false, converters: 'stand-in' });
+      const firstId = explicit.report(first.id)?.items[0]?.target?.id ?? '';
+      const replacement = await explicit.run({
+        baker: 'stand-in',
+        converters: 'stand-in',
+        decision: 'replace',
+      });
+      expect(explicit.report(replacement.id)?.items[0]).toMatchObject({
+        outcome: 'replaced',
+        target: { id: firstId },
+      });
+      expect(explicit.slidesOf(firstId).map((s) => s.slide.deck?.steps.length)).toEqual([5, 3, 2, 1, 2]);
     }, 240_000);
 
     it('a deck that came in as pictures, answered Replace but whose animations cannot be made, is kept untouched', async () => {
