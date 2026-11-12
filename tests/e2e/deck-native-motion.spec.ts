@@ -90,7 +90,9 @@ test('PowerPoint clicks play on the screen without Office and survive a text edi
       const incoming = out.locator('[data-layer="slide"] [data-slide-in]').last();
       await holdClock(app, (next?.shownAt ?? 0) + 325);
       await expect(out.locator('[data-layer="slide"]')).toHaveAttribute('data-transition', 'wipe');
-      await expect(incoming).not.toHaveCSS('clip-path', 'none');
+      // PowerPoint's Wipe: the incoming slide through a soft band one slide long (a mask), no hard edge.
+      await expect(incoming).toHaveCSS('mask-image', /^linear-gradient\(/u);
+      await expect(incoming).toHaveCSS('clip-path', 'none');
       await holdClock(app, (next?.shownAt ?? 0) + 650);
       await expect(out.locator('[data-layer="slide"]')).not.toHaveAttribute('data-fading', 'true');
       await holdClock(app, null);
