@@ -14,7 +14,7 @@ const written = (route: string) => route.replace(/:[a-z]+/gu, '{id}');
 describe('the API documentation', () => {
   it('the compatibility overview names the engine state version this build sends', () => {
     const overview =
-      /`ENGINE_STATE_VERSION` in `src\/shared\/engine\/state\.ts`, (\d+) since Session 55/u.exec(docs);
+      /`ENGINE_STATE_VERSION` in `src\/shared\/engine\/state\.ts`, (\d+) since Session \d+/u.exec(docs);
     expect(overview, 'the documented current state version').not.toBeNull();
     expect(Number(overview?.[1])).toBe(ENGINE_STATE_VERSION);
   });

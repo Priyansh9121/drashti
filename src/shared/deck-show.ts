@@ -1,4 +1,13 @@
-import { type DeckDrashtiTransition, type DeckMedia, type DeckSlide, type DeckStep, stepCount } from './deck';
+import {
+  type DeckDrashtiTransition,
+  type DeckMedia,
+  type DeckMotion,
+  type DeckSlide,
+  type DeckStep,
+  nativeDeckMotion,
+  stepCount,
+} from './deck';
+import { settledDeckElements } from './deck-motion';
 import type { SlideLayer, VideoClips } from './engine/state';
 import type { RenderSlide, Transition } from './model';
 
@@ -19,6 +28,14 @@ export function deckStep(deck: DeckSlide | undefined, index: number): DeckStep |
   return deck.steps[Math.min(Math.max(0, Math.floor(index)), deck.steps.length - 1)];
 }
 
+/** How long the baked clip or the editable effects of a step run. */
+export function stepDurationMs(deck: DeckSlide | undefined, index: number): number {
+  const motion = nativeDeckMotion(deck);
+  return motion
+    ? (motion.stepsMs[Math.min(Math.max(0, Math.floor(index)), motion.stepsMs.length - 1)] ?? 0)
+    : (deckStep(deck, index)?.clipMs ?? 0);
+}
+
 /** The step a slide layer shows: its own, never past its deck's last (0 for any other slide). */
 export function stepOf(layer: Pick<SlideLayer, 'slide' | 'step'>): number {
   return Math.min(Math.max(0, layer.step ?? 0), lastStep(layer.slide.deck));
@@ -30,9 +47,8 @@ export function takingTime(t: Transition | undefined): Transition | undefined {
 }
 
 /** When the step a slide layer shows plays, by the engine's clock. */
-export interface StepTiming {
+interface DeckStepClock {
   index: number;
-  step: DeckStep;
   /** The engine's time at its clip's start (0 ms into it): it may be before the step was shown (`stepFromMs`). */
   clipAt: number;
   /** The engine's time its clip ends: its last frame is held from then, or its hold goes round from then. */
@@ -48,27 +64,48 @@ export interface StepTiming {
   shownAt: number;
 }
 
-/** When a slide layer's step plays: null for a slide with no deck (or a deck saved with no steps). */
-export function stepTiming(
-  layer: Pick<SlideLayer, 'slide' | 'step' | 'stepAt' | 'stepFromMs' | 'shownAt'>,
-): StepTiming | null {
-  const deck = layer.slide.deck;
-  const index = stepOf(layer);
-  const step = deckStep(deck, index);
-  if (!deck || !step) return null;
+export interface StepTiming extends DeckStepClock {
+  step: DeckStep;
+}
+
+export interface NativeStepTiming extends DeckStepClock {
+  motion: DeckMotion;
+  durationMs: number;
+}
+
+export type DeckVideoTiming = StepTiming | NativeStepTiming;
+type TimingLayer = Pick<SlideLayer, 'slide' | 'step' | 'stepAt' | 'stepFromMs' | 'shownAt'>;
+
+function stepClock(layer: TimingLayer, index: number, durationMs: number): DeckStepClock {
   const shownAt = layer.stepAt ?? layer.shownAt;
   const from = Math.max(0, layer.stepFromMs ?? 0);
   const clipAt = shownAt - from;
-  const own = index > 0 && from === 0 ? deck.stepTransitions?.[index] : undefined;
+  const own = index > 0 && from === 0 ? layer.slide.deck?.stepTransitions?.[index] : undefined;
   return {
     index,
-    step,
     clipAt,
-    endsAt: clipAt + Math.max(0, step.clipMs),
-    still: from >= step.clipMs,
+    endsAt: clipAt + Math.max(0, durationMs),
+    still: from >= durationMs,
     drashti: own && takingTime(own.transition) ? own : null,
     shownAt,
   };
+}
+
+/** When a baked step's video plays. */
+export function stepTiming(layer: TimingLayer): StepTiming | null {
+  const index = stepOf(layer);
+  const step = deckStep(layer.slide.deck, index);
+  return step ? { ...stepClock(layer, index, step.clipMs), step } : null;
+}
+
+/** When an editable step's motion plays, including a zero-length effect waiting for its start. */
+export function nativeStepTiming(layer: TimingLayer): NativeStepTiming | null {
+  const motion = nativeDeckMotion(layer.slide.deck);
+  if (!motion) return null;
+  const index = stepOf(layer);
+  const durationMs = motion.stepsMs[index] ?? 0;
+  const clock = stepClock(layer, index, durationMs);
+  return { ...clock, still: clock.still && (layer.stepFromMs ?? 0) > 0, motion, durationMs };
 }
 
 /**
@@ -78,7 +115,7 @@ export function stepTiming(
  */
 export function deckPictureId(slide: RenderSlide): string | null {
   const deck = slide.deck;
-  if (!deck) return null;
+  if (!deck || nativeDeckMotion(deck)) return null;
   const lasts = new Set(deck.steps.map((s) => s.lastId));
   const pictures = slide.elements.filter((e) => e.kind === 'image');
   return (pictures.find((e) => e.kind === 'image' && lasts.has(e.mediaId)) ?? pictures[0])?.id ?? null;
@@ -89,6 +126,11 @@ export function deckPictureId(slide: RenderSlide): string | null {
  * The same slide when it has no deck.
  */
 export function deckSlideAt(slide: RenderSlide, index: number): RenderSlide {
+  const motion = nativeDeckMotion(slide.deck);
+  if (motion) {
+    const step = Math.min(Math.max(0, Math.floor(index)), lastStep(slide.deck));
+    return { ...slide, elements: settledDeckElements(slide, motion, step) };
+  }
   const id = deckPictureId(slide);
   const last = deckStep(slide.deck, index)?.lastId;
   if (id === null || !last) return slide;
@@ -105,7 +147,9 @@ export function deckSlideAt(slide: RenderSlide, index: number): RenderSlide {
  * deck's own transition into the slide is; come back to (Back), at once. Null when it does not show at this step: it
  * is hidden there, never its poster.
  */
-export function videoShowsFrom(m: DeckMedia, timing: StepTiming): number | null {
+export function videoShowsFrom(m: DeckMedia, timing: DeckVideoTiming): number | null {
+  // Native slides animate the video and its poster in the same wrapper as the other shapes.
+  if (!('step' in timing)) return -Infinity;
   const enter = m.enterStep ?? 0;
   if (timing.index < enter || timing.index >= (m.exitStep ?? Infinity)) return null;
   if (timing.index > enter || timing.still) return -Infinity;
@@ -143,6 +187,7 @@ export function deckClips(deck: DeckSlide | undefined): VideoClips {
  */
 export function deckPictures(deck: DeckSlide | undefined): string[] {
   const ids = new Set<string>();
+  if (deck?.sourceStillId) ids.add(deck.sourceStillId);
   for (const s of deck?.steps ?? []) {
     ids.add(s.clipId);
     ids.add(s.lastId);

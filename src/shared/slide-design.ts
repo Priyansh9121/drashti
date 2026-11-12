@@ -1,3 +1,4 @@
+import { nativeDeckMotion } from './deck';
 import type { RenderSlide, SlideDesign } from './model';
 import type { EditDoc, EditSlide } from './slide-edit';
 import { slideCanvas } from './document-page';
@@ -15,11 +16,12 @@ export function composeSlide(
   const own = slide.elements.some((element) => element.hidden)
     ? { ...slide, elements: slide.elements.filter((element) => !element.hidden) }
     : slide;
-  if (own.deck) return own;
+  const nativeDeck = nativeDeckMotion(own.deck);
+  if (own.deck && !nativeDeck) return own;
   const behind = design?.skipMaster ? null : master;
   const backdrop =
     design?.backdrop ?? (slide.background === null && !ownsBackground ? behind?.design?.backdrop : undefined);
-  if (!design && !behind) return own;
+  if (!design && !behind) return nativeDeck ? { ...own, fullSlide: true } : own;
   const masterElements = behind?.elements.filter((element) => !element.hidden) ?? [];
   return {
     ...own,

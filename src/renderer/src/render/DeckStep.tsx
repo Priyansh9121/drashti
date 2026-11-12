@@ -8,11 +8,22 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { DeckMedia, DeckSlide } from '../../../shared/deck';
-import { deckStep, type StepTiming, stepTiming, videoShowsFrom } from '../../../shared/deck-show';
+import { nativeDeckMotion, type DeckMedia, type DeckSlide } from '../../../shared/deck';
+import {
+  deckSlideAt,
+  deckStep,
+  type DeckVideoTiming,
+  lastStep,
+  nativeStepTiming,
+  type StepTiming,
+  stepTiming,
+  takingTime,
+  videoShowsFrom,
+} from '../../../shared/deck-show';
 import type { SlideLayer } from '../../../shared/engine/state';
 import type { RenderSlide } from '../../../shared/model';
 import {
+  mediaUrl,
   type PlaybackClip,
   type PlaybackSeek,
   playbackAtMs,
@@ -20,6 +31,9 @@ import {
   playbackSpanMs,
 } from '../../../shared/media';
 import { engineNow, onClockJump } from './clock';
+import { NativeDeckMotion } from './NativeDeckElement';
+import { PlacedInParent } from './Placed';
+import { SlideView } from './SlideView';
 import { useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
 import { startPlayback } from './playback';
@@ -38,6 +52,12 @@ import { type StageStill, stageStill } from './stage-deck';
  * Drashti's own transition goes from that last frame to its clip (over the step's own motion) or to its own last frame
  * (instead of it), frame by frame from the engine's time, as a slide's transition does. A phone draws no video: the
  * step before's last frame while the step moves, then its own, each a small preview.
+ *
+ * On the spot (Session 57, item 6: a click's clip began to load only at the press, 55-150 ms late and part-way in; a
+ * slide's first, 0.2-1.1 s): while a step is up, the next click's clip waits loaded to its first frame, paused and out
+ * of sight, and Next plays that very element (kept by its key); a slide's first clip is the one the outputs'
+ * Preloader loaded and decoded ahead for the slide Next shows (DeckClipAhead), taken as it comes in. Nothing is loaded
+ * twice.
  */
 
 /** A picture or a video filling the box it is drawn in, fitted as the deck's picture is. */
@@ -78,53 +98,154 @@ function Still({
   );
 }
 
-/** A clip or a hold of the deck's, played from the engine's time: from `startedAt`, once or going round. */
+/** What a step's video is to it: its clip, its hold, or the next click's clip waiting for Next. */
+type StepVideoRole = 'clip' | 'hold' | 'preparing';
+
+/** What a step's clip or hold tells it: it has its first frame (it can show), or it cannot be loaded or played. */
+interface StepVideoTold {
+  onFrame: () => void;
+  onError: () => void;
+}
+
+/**
+ * The next slide's first clip, loaded and decoded ahead by this page's Preloader (Session 57, item 6), until the
+ * slide's step takes it (FirstClip); null when none is held. One a page: a page has one Preloader, and Next shows one
+ * slide.
+ */
+let ahead: { url: string; video: HTMLVideoElement; taken: boolean } | null = null;
+
+/** The element the Preloader holds for this file, decoded, now the caller's to play and let go of; else null. */
+function takeClipAhead(url: string): HTMLVideoElement | null {
+  const held = ahead;
+  if (held?.url !== url) return null;
+  ahead = null;
+  held.taken = true;
+  held.video.removeAttribute('data-preload');
+  held.video.removeAttribute('data-state');
+  return held.video;
+}
+
+/**
+ * The outputs' Preloader's way of loading a deck's slide's first clip ahead (output/Preloader.tsx; Session 57, item
+ * 6): as its other videos, muted, out of sight and never played, but in an element of its own that the slide's step
+ * takes as it is, decoded, when that slide comes in (FirstClip), so the clip plays from the press. A new element there
+ * took 0.2 to 1.1 s to load and draw (the measurement before).
+ */
+export function DeckClipAhead({ mediaId }: { mediaId: string }) {
+  const attempt = useMediaAttempt(mediaId);
+  const holder = useRef<HTMLSpanElement | null>(null);
+  // An effect, not a layout effect: when this goes at the moment its slide comes in, the slide's step (its layout
+  // effect, first) has taken the element by then, and it is not let go of here.
+  useEffect(() => {
+    const host = holder.current;
+    if (!host) return;
+    const url = mediaUrl(mediaId, attempt);
+    const video = document.createElement('video');
+    const held = { url, video, taken: false };
+    video.muted = true;
+    video.playsInline = true;
+    video.disablePictureInPicture = true;
+    video.preload = 'auto';
+    video.setAttribute('data-preload', mediaId);
+    video.setAttribute('data-state', 'loading');
+    const loaded = () => {
+      if (!held.taken) video.setAttribute('data-state', 'ready');
+    };
+    const failed = () => {
+      if (!held.taken) video.setAttribute('data-state', 'failed');
+    };
+    video.addEventListener('loadeddata', loaded, { once: true });
+    video.addEventListener('error', failed, { once: true });
+    host.append(video);
+    video.src = url;
+    ahead = held;
+    return () => {
+      video.removeEventListener('loadeddata', loaded);
+      video.removeEventListener('error', failed);
+      if (ahead === held) ahead = null;
+      // Taken: the step plays it now, and lets go of it.
+      if (held.taken) return;
+      video.removeAttribute('src');
+      video.load();
+      video.remove();
+    };
+  }, [mediaId, attempt]);
+  return <span ref={holder} />;
+}
+
+/**
+ * A clip or a hold of the deck's, played from the engine's time: from `startedAt`, once or going round. The next
+ * click's clip (`startedAt` null; Session 57, item 6) is loaded to its first frame and kept paused, out of sight,
+ * while the step before it is up: at Next it is the step's clip (the same key), the very element, and plays from where
+ * the clip is by then, at once, with nothing loaded at the press. The step finds it by its role.
+ */
 function StepVideo({
   mediaId,
   startedAt,
   loop,
   fit,
-  holder,
   onFrame,
   onError,
   role,
 }: {
   mediaId: string;
-  startedAt: number;
+  /** When it plays from, by the engine's time; null while it waits for Next (the next click's). */
+  startedAt: number | null;
   loop: boolean;
   fit: CSSProperties['objectFit'];
-  /** Where the step keeps it, to show it or not frame by frame. */
-  holder: RefObject<HTMLVideoElement | null>;
-  onFrame: () => void;
-  onError: () => void;
-  role: 'clip' | 'hold';
-}) {
+  role: StepVideoRole;
+} & Partial<StepVideoTold>) {
   const attempt = useMediaAttempt(mediaId);
+  const own = useRef<HTMLVideoElement | null>(null);
   const told = useRef({ onFrame, onError });
   useLayoutEffect(() => {
     told.current = { onFrame, onError };
   });
-  useEffect(() => {
-    const v = holder.current;
+  // Waiting for Next when it goes (its step taken back past, or its slide gone): its file let go of then, as a
+  // playback's stop lets go of a playing one's.
+  const waiting = useRef(false);
+  useLayoutEffect(() => {
+    const v = own.current;
+    return () => {
+      if (!waiting.current || !v?.hasAttribute('src')) return;
+      v.removeAttribute('src');
+      v.load();
+    };
+  }, []);
+  // A layout effect: a clip already loaded has its first frame before the press's frame is drawn.
+  useLayoutEffect(() => {
+    const v = own.current;
     if (!v) return;
+    if (startedAt === null) {
+      // Out of sight while it waits, whatever it showed as a clip before (a step taken back while its clip played).
+      waiting.current = true;
+      v.style.opacity = '0';
+      v.style.transform = '';
+      v.style.mixBlendMode = '';
+      const url = mediaUrl(mediaId, attempt);
+      if (v.getAttribute('src') !== url) v.src = url;
+      return;
+    }
+    waiting.current = false;
     // A hold starts as its clip ends, later than now: playback.ts waits for it at its start until then.
-    const stop = startPlayback(v, {
+    return startPlayback(v, {
       mediaId,
       attempt,
       startedAt,
+      // A clip may be the next click's, loaded already (above): it plays from where it is. A hold loads as before.
+      reuseLoadedSource: role === 'clip',
       timing: () => ({ loop }),
       onFrame: () => {
-        told.current.onFrame();
+        told.current.onFrame?.();
       },
       onError: () => {
-        told.current.onError();
+        told.current.onError?.();
       },
     });
-    return stop;
-  }, [holder, mediaId, attempt, startedAt, loop]);
+  }, [mediaId, attempt, startedAt, loop, role]);
   return (
     <video
-      ref={holder}
+      ref={own}
       data-deck-video={role}
       data-media-id={mediaId}
       muted
@@ -134,6 +255,61 @@ function StepVideo({
       style={{ ...filling(fit), opacity: 0 }}
     />
   );
+}
+
+/**
+ * A slide's first clip (its coming in), played from the engine's time as any clip is (StepVideo), in an element made
+ * here: the one this page's Preloader loaded and decoded ahead for the slide Next shows (DeckClipAhead), taken as it
+ * is, else a new one. In a box of its own (React keeps the box; the element is this one's), its fit the box's.
+ */
+function FirstClip({
+  mediaId,
+  startedAt,
+  fit,
+  onFrame,
+  onError,
+}: {
+  mediaId: string;
+  startedAt: number;
+  fit: CSSProperties['objectFit'];
+} & StepVideoTold) {
+  const attempt = useMediaAttempt(mediaId);
+  const slot = useRef<HTMLDivElement | null>(null);
+  const told = useRef({ onFrame, onError });
+  useLayoutEffect(() => {
+    told.current = { onFrame, onError };
+  });
+  useLayoutEffect(() => {
+    const host = slot.current;
+    if (!host) return;
+    const v = takeClipAhead(mediaUrl(mediaId, attempt)) ?? document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.disablePictureInPicture = true;
+    v.preload = 'auto';
+    v.setAttribute('data-deck-video', 'clip');
+    v.setAttribute('data-media-id', mediaId);
+    Object.assign(v.style, filling('inherit'), { opacity: '0', transform: '', mixBlendMode: '' });
+    host.append(v);
+    const stop = startPlayback(v, {
+      mediaId,
+      attempt,
+      startedAt,
+      reuseLoadedSource: true,
+      timing: () => ({ loop: false }),
+      onFrame: () => {
+        told.current.onFrame();
+      },
+      onError: () => {
+        told.current.onError();
+      },
+    });
+    return () => {
+      stop();
+      v.remove();
+    };
+  }, [mediaId, attempt, startedAt]);
+  return <div ref={slot} data-deck-slot="" style={filling(fit)} />;
 }
 
 /** What a step draws at a moment, by the engine's time. */
@@ -174,11 +350,18 @@ function DeckStepLive({
   const movement = useContext(SlideMovementContext);
   const { index, step, clipAt, endsAt, still, drashti, shownAt } = timing;
   const before = index > 0 ? deckStep(deck, index - 1)?.lastId : (underId ?? undefined);
+  // The next click's clip (Session 57, item 6), waiting loaded while this step is up: none after the last click, for a
+  // click with no motion (shown still), or one Drashti's own transition comes instead of (its clip never played).
+  const following = deck.steps[index + 1];
+  const followingOwn = deck.stepTransitions?.[index + 1];
+  const waitingClip =
+    (following?.clipMs ?? 0) > 0 &&
+    !(followingOwn?.mode === 'instead' && takingTime(followingOwn.transition) !== undefined)
+      ? (following?.clipId ?? null)
+      : null;
   const rootRef = useRef<HTMLDivElement | null>(null);
   const underRef = useRef<HTMLImageElement | null>(null);
-  const clipRef = useRef<HTMLVideoElement | null>(null);
   const lastRef = useRef<HTMLImageElement | null>(null);
-  const holdRef = useRef<HTMLVideoElement | null>(null);
   const blackRef = useRef<HTMLDivElement | null>(null);
   // Whether the clip has its first frame (until then the step before's still shows), failed (its last frame shows at
   // once), and whether the hold has its first frame (until then the last frame shows): each this screen's own loading,
@@ -204,12 +387,16 @@ function DeckStepLive({
 
   /** Every picture of the step as the engine's time has it at `now`. */
   const paint = (now: number) => {
+    const root = rootRef.current;
+    // Its clip and hold by their roles (the next click's clip, waiting, is neither, and stays out of sight).
+    const video = (role: StepVideoRole) =>
+      root?.querySelector<HTMLVideoElement>(`video[data-deck-video="${role}"]`) ?? null;
     const e = {
-      root: rootRef.current,
+      root,
       under: underRef.current,
-      clip: clipRef.current,
+      clip: video('clip'),
       last: lastRef.current,
-      hold: holdRef.current,
+      hold: video('hold'),
       black: blackRef.current,
     };
     const phase = stepPhase(timing, now, { hold: holdReady, clipFailed });
@@ -273,22 +460,48 @@ function DeckStepLive({
         <Still key={before} mediaId={before} fit={fit} holder={underRef} role="under" />
       )}
       <Still key={step.lastId} mediaId={step.lastId} fit={fit} holder={lastRef} role="last" />
-      {/* Drashti's own transition instead of the step's motion: its clip is never played. */}
-      {!still && drashti?.mode !== 'instead' && (
+      {/* Drashti's own transition instead of the step's motion: its clip is never played. A slide's first clip may be
+          the Preloader's, decoded ahead; a click's is the one that waited for it (its key, as it waited, below). */}
+      {!still &&
+        drashti?.mode !== 'instead' &&
+        (index === 0 ? (
+          <FirstClip
+            key={`clip:0:${step.clipId}`}
+            mediaId={step.clipId}
+            startedAt={clipAt}
+            fit={fit}
+            onFrame={() => {
+              setClipReady(true);
+            }}
+            onError={() => {
+              setClipFailed(true);
+            }}
+          />
+        ) : (
+          <StepVideo
+            key={`clip:${String(index)}:${step.clipId}`}
+            mediaId={step.clipId}
+            startedAt={clipAt}
+            loop={false}
+            fit={fit}
+            onFrame={() => {
+              setClipReady(true);
+            }}
+            onError={() => {
+              setClipFailed(true);
+            }}
+            role="clip"
+          />
+        ))}
+      {/* The next click's clip, loaded and paused, out of sight, until Next makes it this step's clip. */}
+      {waitingClip !== null && (
         <StepVideo
-          key={`clip:${clipKey}`}
-          mediaId={step.clipId}
-          startedAt={clipAt}
+          key={`clip:${String(index + 1)}:${waitingClip}`}
+          mediaId={waitingClip}
+          startedAt={null}
           loop={false}
           fit={fit}
-          holder={clipRef}
-          onFrame={() => {
-            setClipReady(true);
-          }}
-          onError={() => {
-            setClipFailed(true);
-          }}
-          role="clip"
+          role="preparing"
         />
       )}
       {step.holdId && (
@@ -298,7 +511,6 @@ function DeckStepLive({
           startedAt={endsAt}
           loop
           fit={fit}
-          holder={holdRef}
           onFrame={() => {
             setHoldReady(true);
           }}
@@ -387,20 +599,34 @@ const INSET: CSSProperties = { position: 'absolute', inset: 0 };
  */
 export function StageDeckNow({ layer, testId }: { layer: SlideLayer; testId?: string }) {
   const { slide, step, stepAt, stepFromMs, shownAt } = layer;
-  const timing = useMemo(
-    () => stepTiming({ slide, step, stepAt, stepFromMs, shownAt }),
-    [slide, step, stepAt, stepFromMs, shownAt],
-  );
+  const { timing, native } = useMemo(() => {
+    const layer = { slide, step, stepAt, stepFromMs, shownAt };
+    return { timing: stepTiming(layer), native: nativeStepTiming(layer) };
+  }, [slide, step, stepAt, stepFromMs, shownAt]);
   // The still that showed before this slide came (C review): under its first step's clip until that can be drawn,
   // as the hall's screens and LIVE keep the slide before up, so the stage never shows nothing for a moment.
   const now = stageStill(
     null,
     `${slide.id}@${String(shownAt)}`,
-    timing ? (deckStep(slide.deck, timing.index)?.lastId ?? null) : null,
+    timing
+      ? (deckStep(slide.deck, timing.index)?.lastId ?? null)
+      : native?.index === lastStep(slide.deck)
+        ? (slide.deck?.sourceStillId ?? null)
+        : null,
   );
   const [kept, setKept] = useState<StageStill>(now);
   const next = stageStill(kept, now.key, now.still);
   if (next !== kept) setKept(next);
+  if (native)
+    return (
+      <div data-testid={testId} data-stage-deck="now" style={STAGE_DECK}>
+        <PlacedInParent content={slide} mode="fit" className="absolute inset-0">
+          <NativeDeckMotion slide={slide} timing={native}>
+            <SlideView slide={slide} startedAt={shownAt} clips={layer.clips} seeks={layer.seeks} />
+          </NativeDeckMotion>
+        </PlacedInParent>
+      </div>
+    );
   if (!slide.deck || !timing) return null;
   return (
     <div data-testid={testId} data-stage-deck="now" style={STAGE_DECK}>
@@ -428,7 +654,13 @@ export function StageDeckNext({
   if (!slide.deck) return null;
   return (
     <div data-testid={testId} data-stage-deck="next" style={STAGE_DECK}>
-      <DeckStepStill deck={slide.deck} index={step} style={INSET} />
+      {nativeDeckMotion(slide.deck) ? (
+        <PlacedInParent content={slide} mode="fit" className="absolute inset-0">
+          <SlideView slide={deckSlideAt(slide, step)} media="still" />
+        </PlacedInParent>
+      ) : (
+        <DeckStepStill deck={slide.deck} index={step} style={INSET} />
+      )}
     </div>
   );
 }
@@ -480,7 +712,7 @@ export function useDeckCover(
   clock: { startedAt: number; loop: boolean; clip?: PlaybackClip; seek?: PlaybackSeek },
   durationMs: number | null,
   /** The step its slide shows (C review): it is hidden outside its entrance and its exit, never its poster. */
-  timing: StepTiming | null = null,
+  timing: DeckVideoTiming | null = null,
 ): DeckCover {
   const [, redraw] = useState(0);
   const now = engineNow();

@@ -1,3 +1,4 @@
+import type { DeckNativeTransition } from '../../../shared/deck-transition';
 import type { Movement } from '../../../shared/looks';
 import type { Transition, TransitionKind } from '../../../shared/model';
 import { SLOW_ZOOM_MS, SLOW_ZOOM_SCALE } from '../../../shared/model';
@@ -33,6 +34,8 @@ export interface SlideFrame {
   opacity: number;
   /** A CSS transform ('' for none). */
   transform: string;
+  /** A wipe's clip on the whole slide. */
+  clip?: string;
 }
 
 /** A part of a slide while a move runs (its words): its opacity, transform and clip ('' for none). */
@@ -104,6 +107,82 @@ export function transitionFrame(
     }
     case 'cut':
       return { in: { opacity: 1, transform: '' }, out: { opacity: 0, transform: '' }, black: 0, add: false };
+  }
+}
+
+/** The original PowerPoint effect draws entire slides, even on Calm screens. */
+export function deckTransitionFrame(
+  transition: DeckNativeTransition,
+  progress: number,
+  movement: Movement = 'calm',
+): TransitionFrame {
+  const elapsed = clamp(progress) * transition.durationMs;
+  const original = powerPointFrame(
+    transition,
+    elapsed / (transition.deckDurationMs ?? transition.durationMs),
+  );
+  const over = transition.over;
+  if (!over || over.durationMs <= 0) return original;
+  const outer = transitionFrame(over.kind, elapsed / over.durationMs, movement);
+  const transform = (a: SlideFrame, b: SlideFrame) => [a.transform, b.transform].filter(Boolean).join(' ');
+  return {
+    in: {
+      ...original.in,
+      opacity: original.in.opacity * outer.in.opacity,
+      transform: transform(outer.in, original.in),
+    },
+    out: {
+      ...original.out,
+      opacity: clamp(outer.out.opacity + original.out.opacity * outer.in.opacity),
+      transform: transform(outer.out, original.out),
+    },
+    black: Math.max(original.black * outer.in.opacity, outer.black),
+    add: original.add && outer.add,
+  };
+}
+
+function powerPointFrame(transition: DeckNativeTransition, progress: number): TransitionFrame {
+  const p = clamp(progress);
+  const settled: SlideFrame = { opacity: 1, transform: '' };
+  const direction = transition.direction ?? 'left';
+  const horizontal = direction === 'left' || direction === 'right';
+  const toward = direction === 'left' || direction === 'up' ? -1 : 1;
+  const shift = (fraction: number) =>
+    fraction === 0 ? '' : `translate${horizontal ? 'X' : 'Y'}(${String(fraction * toward * 100)}%)`;
+  switch (transition.deckEffect) {
+    case 'push':
+    case 'cover':
+    case 'uncover': {
+      const e = easeInOut(p);
+      return {
+        in: { ...settled, transform: transition.deckEffect === 'uncover' ? '' : shift(e - 1) },
+        out: { ...settled, transform: transition.deckEffect === 'cover' ? '' : shift(e) },
+        black: 0,
+        add: false,
+      };
+    }
+    case 'wipe': {
+      const edge = `${String((1 - p) * 100)}%`;
+      const clip = {
+        left: `inset(0 0 0 ${edge})`,
+        right: `inset(0 ${edge} 0 0)`,
+        up: `inset(${edge} 0 0 0)`,
+        down: `inset(0 0 ${edge} 0)`,
+      }[direction];
+      return { in: { ...settled, clip }, out: settled, black: 0, add: false };
+    }
+    case 'zoom': {
+      const e = easeInOut(p);
+      return {
+        in: { opacity: e, transform: e === 1 ? '' : `scale(${String(0.5 + e * 0.5)})` },
+        out: settled,
+        black: 0,
+        add: false,
+      };
+    }
+    case 'fade-black':
+    case 'dissolve':
+      return transitionFrame(transition.deckEffect, p);
   }
 }
 

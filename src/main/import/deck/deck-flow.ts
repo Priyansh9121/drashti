@@ -6,7 +6,19 @@ import type { Converter } from '../deck-converters';
 import type { ParsedPresentation } from '../model';
 import type { PptxDeck, PptxSlide } from '../pictures';
 import { type BakeOptions, bakeDeck, type BakeResult } from './bake';
-import { bakedPresentation, preparingPresentation, stillDeckIssue, whyPictures } from './deck-import';
+import {
+  addNativeDeckMedia,
+  bakedPresentation,
+  preparingPresentation,
+  stillDeckIssue,
+  whyPictures,
+} from './deck-import';
+import {
+  applyNativePages,
+  compactNativeAssets,
+  nativePresentation,
+  prepareNativePptx,
+} from './native-deck-import';
 import { type Baker, movieChoice } from './plan';
 
 /*
@@ -46,7 +58,7 @@ export function pagesOfShown(
 }
 
 export type DeckFlow =
-  | { kind: 'baked'; parsed: ParsedPresentation; sourceIndices?: number[] }
+  | { kind: 'baked'; parsed: ParsedPresentation; sourceIndices?: number[]; editablePptx?: string }
   | {
       kind: 'pictures';
       /** The pictures an app saved while it tried (null: save them as PDF as before). */
@@ -121,7 +133,34 @@ export async function runDeck(
     issues,
     cancelled: result?.why.kind === 'cancelled',
   });
+  const input = source === 'pptx' && read ? await prepareNativePptx(read, file, request.work) : null;
   const first = bakers[0];
+  const deckDir = request.sourceDir ?? dirname(file);
+  const withNativeMedia = (parsed: ParsedPresentation, indices: number[]) =>
+    read
+      ? addNativeDeckMedia(
+          parsed,
+          read,
+          file,
+          request.sourcePath,
+          join(request.work, 'native-media'),
+          options.ffmpeg,
+          deckDir,
+          indices,
+        )
+      : Promise.resolve();
+  const fromNative = async (): Promise<DeckFlow | null> => {
+    if (!input || !read || options.signal?.aborted) return null;
+    const parsed = nativePresentation(request.fileName, read, input);
+    if (!parsed) return null;
+    await withNativeMedia(parsed, input.indices);
+    compactNativeAssets(parsed);
+    return { kind: 'baked', parsed, sourceIndices: input.indices };
+  };
+  if (input?.exact || !first) {
+    const native = await fromNative();
+    if (native) return native;
+  }
   if (!first) return pictures(null, []);
   // Nothing on it moves (Session 56): no movie is made; it comes in as its pictures straight away.
   if (read && movieChoice(read.slides).moving.size === 0) return pictures(null, [stillDeckIssue()]);
@@ -232,14 +271,27 @@ export async function runDeck(
       const sourceIndices = choice
         ? result.baked.deck.slides.flatMap((slide, index) => (slide.hidden ? [] : [index]))
         : result.baked.plan.slides.map((slide) => slide.index);
-      return { kind: 'baked', parsed, sourceIndices };
+      if (input) {
+        applyNativePages(parsed, input, sourceIndices);
+        await withNativeMedia(parsed, sourceIndices);
+        compactNativeAssets(parsed);
+      }
+      return {
+        kind: 'baked',
+        parsed,
+        sourceIndices,
+        ...(source === 'key' ? { editablePptx: result.baked.deckFile } : {}),
+      };
     }
     last = result;
     // Only an app that could not do it at all gives way to the next.
     if (result.why.kind !== 'app') break;
     tried.push({ baker, reason: result.why.reason });
   }
-  return pictures(last, last ? [whyPictures(last.why, last.baker, options.kept)] : [], drawnLast);
+  return (
+    (last?.why.kind === 'app' && !options.kept ? await fromNative() : null) ??
+    pictures(last, last ? [whyPictures(last.why, last.baker, options.kept)] : [], drawnLast)
+  );
 }
 
 /** The pages of an app's PDF as drawn, and the deck they are of. */
