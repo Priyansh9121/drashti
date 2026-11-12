@@ -227,15 +227,38 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
   });
 
   it('opens Shape from the centre, or closes it in from the edges, and leaves nothing clipped at the end', () => {
+    // Its edge where PowerPoint's soft edge is half-way: from half that edge's width (14 % of the way) before the
+    // middle to half past the corners, evenly, so it is where Drashti's old edge was only half-way through.
     const box: DeckEffect = { ...effect, kind: 'shape', shape: 'box' };
     expect(clipAt(187.5, box)).toBe('polygon(25% 25%, 75% 25%, 75% 75%, 25% 75%)');
+    expect(clipAt(131.25, box)).toBe('polygon(39.25% 39.25%, 60.75% 39.25%, 60.75% 60.75%, 39.25% 60.75%)');
     const inward: DeckEffect = { ...box, shape: 'diamond', inward: true };
     expect(clipAt(187.5, inward)).toBe(
       'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 50% 0%, 100% 50%, 50% 100%, 0% 50%, 50% 0%)',
     );
-    const circle = clipAt(75, { ...box, shape: 'circle' });
-    expect(circle.startsWith('polygon(50% 50%, 50% 50%')).toBe(true);
+    // PowerPoint's circle is an ellipse of the shape's own proportions, through its corners at the end.
+    const circle = clipAt(187.5, { ...box, shape: 'circle' });
+    expect(circle.startsWith('polygon(85.355% 50%, ')).toBe(true);
+    expect(circle.split(', ')[18]).toBe('50% 85.355%');
+    expect(clipAt(75, { ...box, shape: 'circle' }).startsWith('polygon(50% 50%, 50% 50%')).toBe(true);
+    // PowerPoint's plus: two bars across the whole shape, widening from its middle lines.
+    expect(clipAt(187.5, { ...box, shape: 'plus' })).toBe(
+      'polygon(25% 0%, 75% 0%, 75% 25%, 100% 25%, 100% 75%, 75% 75%, 75% 100%, 25% 100%, 25% 75%, 0% 75%, 0% 25%, 25% 25%)',
+    );
     expect(at(300, [box]).wipe).toBeNull();
+  });
+
+  it('leaves by Shape the way PowerPoint does: its edges travel as they come in, hiding what they pass', () => {
+    // Out: a hole opening from the middle, the corners last.
+    const box: DeckEffect = { ...effect, kind: 'shape', shape: 'box', phase: 'out' };
+    expect(clipAt(131.25, box)).toBe(
+      'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 39.25% 39.25%, 60.75% 39.25%, 60.75% 60.75%, 39.25% 60.75%, 39.25% 39.25%)',
+    );
+    // In: closing from the edges to the middle, the middle last.
+    expect(clipAt(131.25, { ...box, shape: 'diamond', inward: true })).toBe(
+      'polygon(50% -28.5%, 128.5% 50%, 50% 128.5%, -28.5% 50%)',
+    );
+    expect(at(300, [box])).toMatchObject({ opacity: 0, wipe: null });
   });
 
   it('sweeps Wheel’s spokes clockwise from twelve o’clock', () => {
