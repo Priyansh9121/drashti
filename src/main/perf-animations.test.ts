@@ -110,5 +110,68 @@ describe('the animations scenario', () => {
       expect(kept[0]?.steps).toHaveLength(3);
       expect(kept[0]?.steps.every((s) => s.clipMs === 1500 && s.clipId !== '' && s.lastId !== '')).toBe(true);
     });
+
+    it('makes table slides as the import keeps an editable PowerPoint table of 250 cells, words fitting and shrinking (MS-1)', async () => {
+      dir = mkdtempSync(join(tmpdir(), 'drashti-perf-animations-'));
+      db = openDatabase(':memory:');
+      const run = startScenario('animations', { db, mediaDir: dir, ffmpeg, engine: engine(), outputs: () => [] });
+      // Made before the check's measured part: the reader of a deck's editable copy, on a generated deck.
+      await run.begin();
+      const repo = new PresentationRepo(db);
+      const table = repo.list().find((p) => p.name === 'Placeholder perf table slides');
+      const slides = repo.get(table?.id ?? '')?.groups.flatMap((g) => g.slides) ?? [];
+      expect(slides).toHaveLength(4);
+      const cells = (s: (typeof slides)[number]) =>
+        s.slide.elements.flatMap((e) => (e.kind === 'text' && e.tableCell ? [e] : []));
+      for (const s of slides) {
+        // Every cell its own text box, measuring itself on each screen (shrink to fit), as an imported deck's are.
+        expect(cells(s)).toHaveLength(250);
+        expect(cells(s).every((c) => c.style.shrinkToFit === true)).toBe(true);
+        expect(new Set(cells(s).map((c) => `${String(c.tableCell?.row)},${String(c.tableCell?.column)}`)).size).toBe(
+          250,
+        );
+        // Within the editable reader's 500 objects a slide, its fills and edges included; on with the editor's fade.
+        expect(s.slide.elements.length).toBeLessThanOrEqual(500);
+        expect(s.slide.elements.some((e) => e.kind === 'shape')).toBe(true);
+        expect(s.transition).toEqual({ kind: 'dissolve', durationMs: 800 });
+      }
+      // The second two are the same tables with words longer than their cells: each box makes them smaller.
+      const [fitA, fitB, shrinkA, shrinkB] = slides;
+      const longest = (s: (typeof slides)[number] | undefined) =>
+        s ? Math.max(...cells(s).map((c) => c.text.length)) : 0;
+      expect(Math.min(longest(shrinkA), longest(shrinkB))).toBeGreaterThan(
+        2 * Math.max(longest(fitA), longest(fitB)),
+      );
+    });
+
+    it('makes deck slides Drashti plays itself, each with its own picture, its effects and a sound (DK-6)', () => {
+      dir = mkdtempSync(join(tmpdir(), 'drashti-perf-animations-'));
+      db = openDatabase(':memory:');
+      startScenario('animations', { db, mediaDir: dir, ffmpeg, engine: engine(), outputs: () => [] });
+      const repo = new PresentationRepo(db);
+      const own = repo.list().find((p) => p.name === 'Placeholder perf deck Drashti plays');
+      const slides = repo.get(own?.id ?? '')?.groups.flatMap((g) => g.slides) ?? [];
+      expect(slides.length).toBeGreaterThanOrEqual(4);
+      const pictures = new Set<string>();
+      for (const s of slides) {
+        const deck = s.slide.deck;
+        // No clip: its effects drawn by Drashti from its shapes, on the engine's time.
+        expect(deck?.steps).toEqual([]);
+        expect(deck?.motion?.effects.length).toBeGreaterThan(0);
+        const shapes = new Set(s.slide.elements.flatMap((e) => (e.sourceShapeId ? [e.sourceShapeId] : [])));
+        expect(deck?.motion?.effects.every((e) => shapes.has(e.shapeId))).toBe(true);
+        // Its first effect starts with the slide, a fade (seen from its first frame).
+        expect(deck?.motion?.effects[0]).toMatchObject({ step: 0, phase: 'in', kind: 'fade', delayMs: 0 });
+        // A sound that starts with it.
+        expect(deck?.media).toEqual([
+          expect.objectContaining({ kind: 'audio', start: { step: 0, offsetMs: 0 }, loop: false }),
+        ]);
+        // Reached by a cut: what comes is the slide itself, once its picture is drawn.
+        expect(s.transition).toEqual({ kind: 'cut', durationMs: 0 });
+        for (const e of s.slide.elements) if (e.kind === 'image') pictures.add(e.mediaId);
+      }
+      // Each slide's own picture, never drawn before its jump: every jump is a cold one.
+      expect(pictures.size).toBe(slides.length);
+    });
   });
 });
