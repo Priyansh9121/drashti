@@ -7,7 +7,7 @@ import type { PlayingRef } from '../../shared/engine/playing';
 import type { MusicRun, PipLayer } from '../../shared/engine/state';
 import type { MediaMarkers } from '../../shared/markers';
 import { playbackAtMs } from '../../shared/media';
-import type { MediaElement, RenderSlide } from '../../shared/model';
+import type { MediaElement, RenderSlide, SlideCue } from '../../shared/model';
 import { simpleModeRefuses } from '../../shared/mode';
 import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import { ShowEngine } from './show-engine';
@@ -493,5 +493,162 @@ describe('the time bar in the show (Session 54)', () => {
     expect(bg?.seek).toEqual({ at: 990_000, toMs: 25_000, paused: true });
     if (bg) expect(playbackAtMs(bg, 60_000, now())).toBe(25_000);
     expect(engine.current.layers.pip?.seeks).toEqual(box.seeks);
+  });
+});
+
+describe('automatic imports keep the points of a file already playing', () => {
+  const oldClip = { startMs: 10_000, endMs: 40_000 };
+  const newClip = { startMs: 3000, endMs: 9000 };
+  const newMarks = [{ id: 'm2', name: 'Placeholder new marker', atMs: 6000 }];
+  const oldMarks = [{ id: 'm1', name: 'Placeholder chorus', atMs: 20_000 }];
+  const putBox = {
+    type: 'showPip',
+    source: { kind: 'media', mediaId: 'clipped' },
+  } as const;
+
+  function setupImport() {
+    const live = setup();
+    const automaticImport = () => {
+      live.markers['clipped'] = { ...newClip, markers: newMarks };
+    };
+    return { ...live, automaticImport };
+  }
+
+  it('keeps the background points through Next to the same video cue', () => {
+    const { engine, source, automaticImport, elapse } = setupImport();
+    const cue: SlideCue = {
+      kind: 'background',
+      label: '',
+      name: 'Placeholder video',
+      missing: false,
+      unplayable: null,
+      background: { kind: 'media', mediaId: 'clipped', media: 'video', fit: 'fit', loop: false },
+    };
+    source.set(
+      'videos',
+      [textSlide('s1', 'Placeholder one'), textSlide('s2', 'Placeholder two')],
+      [[cue], [cue]],
+    );
+    engine.dispatch(goLive(0));
+    const startedAt = background(engine)?.startedAt;
+    expect(background(engine)).toMatchObject({ clip: oldClip, marks: oldMarks });
+    automaticImport();
+    elapse(1000);
+    expect(engine.dispatch({ type: 'next' })).toMatchObject({ changed: true });
+    expect(engine.current.layers.slide?.slideIndex).toBe(1);
+    expect(background(engine)).toMatchObject({ startedAt, clip: oldClip, marks: oldMarks });
+  });
+
+  it.each(['background', 'audio'] as const)('keeps the points when the same %s is chosen again', (layer) => {
+    const { engine, automaticImport, elapse } = setupImport();
+    const choose = layer === 'background' ? setVideo('clipped') : playSound('clipped');
+    const current = () => engine.current.layers[layer];
+    engine.dispatch(choose);
+    const playing = current();
+    expect(playing).toMatchObject({ clip: oldClip, marks: oldMarks });
+    automaticImport();
+    elapse(1000);
+    engine.dispatch(choose);
+    expect(current()).toEqual(playing);
+  });
+
+  it.each(['background', 'audio'] as const)('jumps to the marker the %s still displays', (layer) => {
+    const { engine, automaticImport, now } = setupImport();
+    engine.dispatch(layer === 'background' ? setVideo('clipped') : playSound('clipped'));
+    automaticImport();
+    expect(engine.dispatch({ type: 'jumpToMarker', layer, markerId: 'm1' })).toMatchObject({ ok: true });
+    expect(engine.current.layers[layer]).toMatchObject({ seek: { at: now(), toMs: 20_000 } });
+    expect(engine.dispatch({ type: 'jumpToMarker', layer, markerId: 'm2' })).toMatchObject({ ok: false });
+  });
+
+  it('keeps the points and marker ticks on Back with the same box up', () => {
+    const { engine, automaticImport } = setupImport();
+    engine.dispatch(putBox);
+    engine.dispatch(goLive(1));
+    engine.dispatch({ type: 'next' });
+    const box = engine.current.layers.pip;
+    expect(box?.clips).toEqual({ clipped: oldClip });
+    automaticImport();
+    expect(engine.dispatch({ type: 'back' })).toMatchObject({ changed: true });
+    expect(engine.current.layers.slide?.slideIndex).toBe(1);
+    expect(engine.current.layers.pip).toEqual(box);
+    expect(engine.current.videoFiles?.clipped?.marks).toEqual(oldMarks);
+  });
+
+  it('keeps the box video between the same points when shown again in a new place', () => {
+    const { engine, automaticImport, elapse } = setupImport();
+    engine.dispatch(putBox);
+    const shownAt = engine.current.layers.pip?.shownAt;
+    automaticImport();
+    elapse(1000);
+    const place = { ...DEFAULT_PIP_PLACE, x: 0.2 };
+    expect(engine.dispatch({ ...putBox, place })).toMatchObject({ changed: true });
+    expect(engine.current.layers.pip).toMatchObject({ shownAt, place, clips: { clipped: oldClip } });
+    expect(engine.current.videoFiles?.clipped?.marks).toEqual(oldMarks);
+  });
+
+  it('carries on from the same points and marker ticks when putting back a slide and box', () => {
+    const { engine, automaticImport } = setupImport();
+    engine.dispatch(goLive(0));
+    engine.dispatch(putBox);
+    automaticImport();
+    engine.dispatch({ type: 'clearAll' });
+    expect(engine.dispatch({ type: 'putBack' })).toMatchObject({ changed: true });
+    expect(engine.current.layers.slide?.clips).toEqual({ clipped: oldClip });
+    expect(engine.current.layers.pip?.clips).toEqual({ clipped: oldClip });
+    expect(engine.current.videoFiles?.clipped?.marks).toEqual(oldMarks);
+  });
+
+  it('takes the new points and marker ticks on a fresh play after Clear all', () => {
+    const { engine, automaticImport, elapse } = setupImport();
+    engine.dispatch(setVideo('clipped'));
+    engine.dispatch(goLive(0));
+    engine.dispatch(putBox);
+    automaticImport();
+    engine.dispatch({ type: 'clearAll' });
+    elapse(1000);
+    engine.dispatch(setVideo('clipped'));
+    engine.dispatch(goLive(0));
+    engine.dispatch(putBox);
+    expect(background(engine)).toMatchObject({ clip: newClip, marks: newMarks });
+    expect(engine.current.layers.slide?.clips).toEqual({ clipped: newClip });
+    expect(engine.current.layers.pip?.clips).toEqual({ clipped: newClip });
+    expect(engine.current.videoFiles?.clipped?.marks).toEqual(newMarks);
+  });
+
+  it('uses the operator’s new points and markers at once, through the next carry-on', () => {
+    const { engine, markers, automaticImport } = setupImport();
+    engine.dispatch(setVideo('clipped'));
+    engine.dispatch(goLive(0));
+    engine.dispatch(putBox);
+    automaticImport();
+    const clip = { startMs: 1000, endMs: 12_000 };
+    const marks = [{ id: 'manual', name: 'Placeholder edit', atMs: 4000 }];
+    markers['clipped'] = { ...clip, markers: marks };
+    expect(engine.refreshMarkers('clipped')).toMatchObject({ changed: true });
+    engine.dispatch(setVideo('clipped'));
+    expect(background(engine)).toMatchObject({ clip, marks });
+    expect(engine.current.layers.slide?.clips).toEqual({ clipped: clip });
+    expect(engine.current.layers.pip?.clips).toEqual({ clipped: clip });
+    expect(engine.current.videoFiles?.clipped?.marks).toEqual(marks);
+  });
+
+  it('restores the current library points after a restart', () => {
+    const { engine, markers, automaticImport } = setupImport();
+    engine.dispatch(setVideo('clipped'));
+    engine.dispatch(putBox);
+    automaticImport();
+    const restored = setup();
+    restored.markers['clipped'] = markers['clipped']!;
+    const { background: savedBackground, pip } = engine.current.layers;
+    expect(
+      restored.engine.restore({ slide: null, background: savedBackground, blackout: false, pip }),
+    ).toMatchObject({
+      background: true,
+      pip: true,
+    });
+    expect(background(restored.engine)).toMatchObject({ clip: newClip, marks: newMarks });
+    expect(restored.engine.current.layers.pip?.clips).toEqual({ clipped: newClip });
+    expect(restored.engine.current.videoFiles?.clipped?.marks).toEqual(newMarks);
   });
 });
