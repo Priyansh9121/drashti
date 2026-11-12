@@ -27,9 +27,9 @@ describe('where a phone’s files go, in its words', () => {
       addFilesWords({ maxBytes: UPLOAD_MAX_BYTES, openPlaylist: null, simplePlaylist: 'Sabha, 4 Nov 2026' }),
     ).toEqual({
       files:
-        'A picture, video, sound, PDF, PowerPoint or Keynote file, up to 2 GB, goes whole to the end of Simple Mode’s playlist “Sabha, 4 Nov 2026”. It never goes on the screens by itself.',
+        'A picture, video, sound, PDF, PowerPoint or Keynote file, up to 2 GB, goes whole to the end of the playlist open on Drashti, “Sabha, 4 Nov 2026”. It never goes on the screens by itself.',
       photos:
-        'Add photos puts pictures at the end of Simple Mode’s playlist, “Sabha, 4 Nov 2026”. They never go on the screens by themselves.',
+        'Add photos puts pictures at the end of the playlist open on Drashti, “Sabha, 4 Nov 2026”. They never go on the screens by themselves.',
     });
   });
 
@@ -44,9 +44,9 @@ describe('where a phone’s files go, in its words', () => {
       }),
     ).toEqual({
       files:
-        'A file up to 2 GB goes whole: a picture, PDF, PowerPoint or Keynote file to the end of Simple Mode’s playlist “Placeholder going round”, and a video or sound into “Added from Phones”, since a Repeat Slides playlist holds no videos or sounds. Nothing goes on the screens by itself.',
+        'A file up to 2 GB goes whole: a picture, PDF, PowerPoint or Keynote file to the end of the playlist open on Drashti, “Placeholder going round”, and a video or sound into “Added from Phones”, since a Repeat Slides playlist holds no videos or sounds. Nothing goes on the screens by itself.',
       photos:
-        'Add photos puts pictures at the end of Simple Mode’s playlist, “Placeholder going round”. They never go on the screens by themselves.',
+        'Add photos puts pictures at the end of the playlist open on Drashti, “Placeholder going round”. They never go on the screens by themselves.',
     });
   });
 });

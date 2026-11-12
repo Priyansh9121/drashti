@@ -311,9 +311,17 @@ describe('the playlist’s rows on a phone (Session 55, Part 9)', () => {
     });
   });
 
-  it('in Simple Mode holds what its window’s menu has (Rename and Delete), and what is this phone’s own (looking, saving)', () => {
+  it('in Simple Mode offers all four ways to end a video and keeps Pro-only edits and pins out', () => {
     expect(ids(itemRow('picture'), { simple: true })).toEqual(['look', 'save', 'rename', 'remove']);
-    expect(ids(itemRow('video'), { simple: true })).toEqual(['look', 'rename', 'remove']);
+    expect(ids(itemRow('video'), { simple: true })).toEqual([
+      'look',
+      'whenEnds:wallpaper',
+      'whenEnds:next',
+      'whenEnds:loop*',
+      'whenEnds:freeze',
+      'rename',
+      'remove',
+    ]);
     expect(ids(itemRow('sound'), { simple: true })).toEqual(['rename', 'remove']);
     expect(ids(slideRow('Placeholder deck_1'), { simple: true })).toEqual(['look', 'save', 'remove']);
     expect(ids(itemRow('i-talk'), { simple: true })).toEqual(['rename', 'remove']);

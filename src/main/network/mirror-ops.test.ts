@@ -4,6 +4,7 @@ import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/st
 import type { InvokeChannel } from '../../shared/ipc';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
 import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
+import type { MusicView } from '../../shared/music';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
 import type { RemoteMedia } from '../../shared/network-mirror';
 import { openDatabase } from '../db/database';
@@ -24,13 +25,26 @@ const PHONE = '192.168.1.20';
 
 /** What a phone is told in Simple Mode for what its window does not do (shared/mode.ts simplePhoneRefusalText). */
 const PHONE_WORDS =
-  'Simple Mode on Drashti’s computer: a phone does only what Simple Mode does there (its playlist “Placeholder Hall Pictures”, Next and Back, Clear all, Black-out and the Wallpaper). On the Drashti computer, a double-click on Pro Mode leaves it.';
+  'Simple Mode on Drashti’s computer: a phone does only what Simple Mode does there (playlists, playback and Audio). On the Drashti computer, a double-click on Pro Mode leaves it.';
 
 /**
  * Simple Mode's one playlist (Session 55, Part 18): here the Repeat Slides playlist "repeat-1", adopted from Pro Mode,
  * with a picture (m-pic) in it. A phone does only what Simple Mode's window does (the owner's answer of 30 Oct 2026).
  */
+const repeatLists = {
+  kindOf: (id: string) =>
+    id === 'repeat-1' || id === 'repeat-2'
+      ? ('playlist' as const)
+      : id === 'template'
+        ? ('template' as const)
+        : null,
+  listsMedia: (id: string) => id === 'm-pic',
+  listsPresentation: () => false,
+  activePlaylist: (id: string) => id === 'repeat-1' || id === 'repeat-2',
+  activeItem: (id: string, itemId: string) => id === 'repeat-1' && ['item-1', 'item-2'].includes(itemId),
+};
 const ONE: SimplePhoneScope = {
+  ...repeatLists,
   playlistId: 'repeat-1',
   playlistOf: (itemId) => (['item-1', 'item-2'].includes(itemId) ? 'repeat-1' : null),
   holdsMedia: (mediaId) => mediaId === 'm-pic',
@@ -52,6 +66,38 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
   const devices = new DeviceRepo(db);
   const commands: EngineCommand[] = [];
   const played: (string | null | undefined)[] = [];
+  const audioView: MusicView = {
+    playlists: [{ id: 'music-1', name: 'Placeholder tunes', loop: false, shuffle: false, tracks: [] }],
+    lastId: null,
+  };
+  const audioCalls: unknown[][] = [];
+  const playIndexes: number[] = [];
+  let clock = 1_000_000;
+  let stepsAside = true;
+  const recordAudio =
+    (action: string) =>
+    (...args: unknown[]) => {
+      audioCalls.push([action, ...args]);
+      return { ok: true as const, id: 'music-1', view: audioView };
+    };
+  const audio = {
+    music: {
+      view: () => audioView,
+      create: recordAudio('create'),
+      rename: recordAudio('rename'),
+      remove: recordAudio('remove'),
+      restore: recordAudio('restore'),
+      setOptions: recordAudio('options'),
+      addTracks: recordAudio('addTracks'),
+      moveTrack: recordAudio('moveTrack'),
+      removeTrack: recordAudio('removeTrack'),
+      restoreTrack: recordAudio('restoreTrack'),
+    },
+    stepsAside: () => stepsAside,
+    setStepsAside: (on: boolean) => {
+      stepsAside = on;
+    },
+  };
   const state = initialEngineState();
   const service = new NetworkService({
     devices,
@@ -114,8 +160,10 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
           ? (({ 'item-1': 0, 'item-2': 2 } as Record<string, number>)[itemId] ?? null)
           : null,
     },
-    playMusic: (_who, playlistId) => {
+    audio,
+    playMusic: (_who, playlistId, index) => {
       played.push(playlistId);
+      playIndexes.push(index);
       return { ok: true as const };
     },
     announcements: {
@@ -128,14 +176,30 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     simple: () => (options.locked === true ? ONE : null),
     changed: () => undefined,
     log: () => undefined,
-    now: () => 1_000_000,
+    now: () => clock,
   });
   const remote = service.pairForCheck('remote', 'Placeholder phone').id;
   const stage = service.pairForCheck('stage', 'Placeholder tablet').id;
   const poster = service.pairForCheck('announcements', 'Placeholder poster').id;
   const ask = (deviceId: string, op: DeviceOp, args: Record<string, unknown> = {}) =>
     service.answer({ address: PHONE, deviceId, op, args });
-  return { service, commands, played, state, remote, stage, poster, ask };
+  const advance = (ms: number) => {
+    clock += ms;
+  };
+  return {
+    service,
+    commands,
+    played,
+    state,
+    remote,
+    stage,
+    poster,
+    ask,
+    audioView,
+    audioCalls,
+    playIndexes,
+    advance,
+  };
 }
 
 /** The new reads and the actions that put something up. */
@@ -256,16 +320,13 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     }
   });
 
-  it('in Simple Mode puts up no lower third, Media or music a phone chooses, in words and with nothing taken off first; plays on the music paused (Session 55, the owner’s answer of 30 Oct 2026)', () => {
+  it('in Simple Mode plays Audio playlists and still refuses lower thirds and Media puts', () => {
     const { ask, remote, commands, played, state } = setup({ locked: true });
     for (const [op, args] of [
       ['lowerThird.show', { lowerThirdId: 'lt-1' }],
       // Even a picture its one playlist has: Simple Mode's window puts up its rows, never Media's.
       ['media.show', { mediaId: 'm-pic' }],
       ['media.show', { mediaId: 'm-tune' }],
-      ['music.play', { playlistId: 'music-1' }],
-      // Nothing paused: "on" would start the one played last.
-      ['music.play', {}],
     ] as const)
       expect(ask(remote, op, args), `${op} ${JSON.stringify(args)}`).toEqual({
         status: 403,
@@ -273,8 +334,10 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
       });
     // Not even Media's first step, the slide taken off.
     expect(commands).toEqual([]);
-    expect(played).toEqual([]);
-    // The music paused (from Pro Mode, say): on from there, as the time bar's Play does (question 14).
+    expect(ask(remote, 'music.play', { playlistId: 'music-1' }).status).toBe(200);
+    // Play with nothing paused starts the last audio playlist.
+    expect(ask(remote, 'music.play', {}).status).toBe(200);
+    // A paused track resumes from there.
     state.layers.audio = {
       id: 'track',
       title: 'Placeholder tune',
@@ -293,8 +356,8 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
       pausedAtMs: 2000,
     };
     expect(ask(remote, 'music.play', {}).status).toBe(200);
-    expect(ask(remote, 'music.play', { playlistId: 'music-1' }).status).toBe(403);
-    expect(played).toEqual([null]);
+    expect(ask(remote, 'music.play', { playlistId: 'music-1' }).status).toBe(200);
+    expect(played).toEqual(['music-1', null, null, 'music-1']);
     // Taking a lower third off stays, so nothing can stay stuck on the screens.
     expect(ask(remote, 'command', { type: 'hideLowerThird' }).status).toBe(200);
     expect(commands).toEqual([{ type: 'hideLowerThird' }]);
@@ -346,14 +409,14 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
       ]);
       expect(ask(remote, 'repeat.start', { slideIndex: 1 }).status).toBe(locked ? 403 : 404);
       expect(ask(stage, 'repeat.start', { playlistId: 'repeat-1' }).status).toBe(403);
-      // In Simple Mode its one playlist only (here repeat-1), as its window starts it (Session 55, the owner's answer
-      // of 30 Oct 2026); another is refused in words.
-      if (locked)
-        expect(ask(remote, 'repeat.start', { playlistId: 'repeat-2' })).toEqual({
+      if (locked) {
+        expect(ask(remote, 'repeat.start', { playlistId: 'repeat-2' }).status).toBe(200);
+        expect(ask(remote, 'repeat.start', { playlistId: 'template' })).toEqual({
           status: 403,
           body: { ok: false, message: PHONE_WORDS },
         });
-      expect(commands).toHaveLength(4);
+      }
+      expect(commands).toHaveLength(locked ? 5 : 4);
     }
     expect(DEVICE_OPS['repeat.start']).toEqual(['remote']);
   });
@@ -371,6 +434,103 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
       body: { ok: false, message: 'Which audio playlist?' },
     });
     expect(played).toEqual(['music-1', null, null]);
+  });
+
+  it('filters audio before paging, leaving the unfiltered list alone', () => {
+    const { ask, remote } = setup();
+    expect(ask(remote, 'media', { kind: 'audio', limit: '1' })).toMatchObject({
+      status: 200,
+      body: { media: [MEDIA[2]], offset: 0, total: 1 },
+    });
+    expect(ask(remote, 'media', { kind: 'audio', offset: '1' })).toMatchObject({
+      status: 200,
+      body: { media: [], offset: 1, total: 1 },
+    });
+    expect(ask(remote, 'media', { limit: '1' })).toMatchObject({
+      status: 200,
+      body: { media: [MEDIA[0]], total: MEDIA.length },
+    });
+  });
+
+  it('lets a Simple Mode Remote use Audio, with typed arguments and the current view in each answer', () => {
+    const { ask, remote, stage, poster, audioView, audioCalls, played, playIndexes } = setup({
+      locked: true,
+    });
+    const cases = [
+      ['music.new', { name: 'Placeholder tunes' }, ['create', 'Placeholder tunes']],
+      [
+        'music.rename',
+        { playlistId: 'music-1', name: 'Placeholder sounds' },
+        ['rename', 'music-1', 'Placeholder sounds'],
+      ],
+      ['music.remove', { playlistId: 'music-1' }, ['remove', 'music-1']],
+      ['music.restore', { playlistId: 'music-1' }, ['restore', 'music-1']],
+      [
+        'music.options',
+        { playlistId: 'music-1', loop: true, shuffle: false },
+        ['options', 'music-1', { loop: true, shuffle: false }],
+      ],
+      [
+        'music.addTracks',
+        { playlistId: 'music-1', mediaIds: ['m-tune'] },
+        ['addTracks', 'music-1', ['m-tune'], null],
+      ],
+      ['music.moveTrack', { trackId: 'track-1', to: 1 }, ['moveTrack', 'track-1', 1]],
+      ['music.removeTrack', { trackId: 'track-1' }, ['removeTrack', 'track-1']],
+      ['music.restoreTrack', { trackId: 'track-1', at: 1 }, ['restoreTrack', 'track-1', 1]],
+    ] as const;
+    expect(ask(remote, 'music.audio')).toMatchObject({
+      status: 200,
+      body: { ok: true, view: audioView, stepsAside: true },
+    });
+    for (const [op, args] of cases) {
+      expect(ask(remote, op, args), op).toMatchObject({
+        status: 200,
+        body: { ok: true, view: audioView, stepsAside: true, id: 'music-1' },
+      });
+      expect(ask(stage, op, args).status, op).toBe(403);
+      expect(ask(poster, op, args).status, op).toBe(403);
+    }
+    expect(audioCalls).toEqual(cases.map(([, , call]) => call));
+    expect(ask(remote, 'music.stepsAside', { on: false })).toMatchObject({
+      status: 200,
+      body: { ok: true, view: audioView, stepsAside: false },
+    });
+    expect(ask(remote, 'music.moveTrack', { trackId: 'track-1', to: -1 }).status).toBe(400);
+    expect(ask(remote, 'music.options', { playlistId: 'music-1', loop: 'yes' }).status).toBe(400);
+    expect(audioCalls).toHaveLength(cases.length);
+    expect(ask(remote, 'music.play', { playlistId: 'music-1', index: 2 }).status).toBe(200);
+    expect(ask(remote, 'music.play', { playlistId: 'music-1', index: -1 }).status).toBe(400);
+    expect(played).toEqual(['music-1']);
+    expect(playIndexes).toEqual([2]);
+  });
+
+  it.each([false, true])('limits Audio changes to each phone, with Simple Mode %s', (locked) => {
+    const { ask, service, remote, audioCalls, advance } = setup({ locked });
+    const name = { name: 'Placeholder tunes' };
+    for (let i = 0; i < 30; i++) expect(ask(remote, 'music.new', name).status).toBe(200);
+    for (const [op, args] of [
+      ['music.new', name],
+      ['music.rename', { playlistId: 'music-1', name: 'Placeholder sounds' }],
+      ['music.remove', { playlistId: 'music-1' }],
+      ['music.restore', { playlistId: 'music-1' }],
+      ['music.options', { playlistId: 'music-1', loop: true, shuffle: false }],
+      ['music.addTracks', { playlistId: 'music-1', mediaIds: ['m-tune'] }],
+      ['music.moveTrack', { trackId: 'track-1', to: 1 }],
+      ['music.removeTrack', { trackId: 'track-1' }],
+      ['music.restoreTrack', { trackId: 'track-1', at: 1 }],
+      ['music.stepsAside', { on: false }],
+    ] as const)
+      expect(ask(remote, op, args).status, op).toBe(429);
+    expect(audioCalls).toHaveLength(30);
+    expect(ask(remote, 'music.audio')).toMatchObject({ status: 200, body: { stepsAside: true } });
+    expect(ask(remote, 'music.play', { playlistId: 'music-1' }).status).toBe(200);
+    const other = service.pairForCheck('remote', 'Placeholder second phone').id;
+    expect(ask(other, 'music.new', name).status).toBe(200);
+    advance(100);
+    expect(ask(remote, 'music.new', name).status).toBe(429);
+    advance(100);
+    expect(ask(remote, 'music.new', name).status).toBe(200);
   });
 
   it('refuses each with Simple Mode’s words when its window request is locked, as the window would be', () => {
