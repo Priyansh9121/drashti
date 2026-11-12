@@ -143,12 +143,32 @@ function deckRow(deck: DeckSlide | undefined, old: SlideRow | undefined): { deck
 
 /** The keys of an element's stored data that Drashti knows, per kind (the rest are kept as they are). */
 const PLACEMENT_KEYS = ['groupId', 'flipX', 'flipY', 'motion', 'name', 'hidden'] as const;
+// An optional setting the editor clears, such as a picture clip or video play bar, must stay cleared on save.
+const MEDIA_KEYS = new Set([
+  ...PLACEMENT_KEYS,
+  'mediaId',
+  'fit',
+  'loop',
+  'opacity',
+  'volume',
+  'playBar',
+  'crop',
+  'pictureClip',
+]);
 const KNOWN: Record<SlideElement['kind'], ReadonlySet<string>> = {
-  text: new Set([...PLACEMENT_KEYS, 'text', 'lang', 'style', 'runs', 'opacity', 'everyScreen']),
-  shape: new Set([...PLACEMENT_KEYS, 'shape', 'path', 'fill', 'cornerRadius', 'opacity', 'outline']),
-  // A video's play bar on the screens (Session 54): known, so unticking it in the editor takes it away.
-  image: new Set([...PLACEMENT_KEYS, 'mediaId', 'fit', 'loop', 'opacity', 'volume', 'playBar', 'crop']),
-  video: new Set([...PLACEMENT_KEYS, 'mediaId', 'fit', 'loop', 'opacity', 'volume', 'playBar', 'crop']),
+  text: new Set([...PLACEMENT_KEYS, 'text', 'lang', 'style', 'runs', 'opacity', 'everyScreen', 'tableCell']),
+  shape: new Set([
+    ...PLACEMENT_KEYS,
+    'shape',
+    'path',
+    'fill',
+    'gradient',
+    'cornerRadius',
+    'opacity',
+    'outline',
+  ]),
+  image: MEDIA_KEYS,
+  video: MEDIA_KEYS,
   // A timer on a slide (Session 50).
   timer: new Set([...PLACEMENT_KEYS, 'timerId', 'style', 'lastMinute', 'atZero', 'opacity']),
 };

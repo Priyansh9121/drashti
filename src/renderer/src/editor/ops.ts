@@ -148,6 +148,12 @@ export function addElement(doc: EditDoc, slideId: string, el: SlideElement): Edi
   return mapSlide(doc, slideId, (s) => ({ ...s, elements: [...s.elements, el] }));
 }
 
+/** Copy one object independently of its source slide's click animation. */
+export function copyElement(el: SlideElement): SlideElement {
+  const { sourceShapeId: _shape, sourceGroupIds: _groups, ...copy } = structuredClone(el);
+  return { ...copy, id: newId() };
+}
+
 /** Copies of some elements, a little down and to the right, on top; returns the copies' ids. */
 export function duplicateElements(
   doc: EditDoc,
@@ -161,8 +167,7 @@ export function duplicateElements(
     slide.elements
       .filter((el) => ids.includes(el.id))
       .map((el) => ({
-        ...structuredClone(el),
-        id: newId(),
+        ...copyElement(el),
         frame: { ...el.frame, x: el.frame.x + offset, y: el.frame.y + offset },
       })),
   );
