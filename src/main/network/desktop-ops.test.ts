@@ -196,8 +196,11 @@ function setup(options: { locked?: boolean; letIn?: boolean; audioTrackIds?: rea
   const unexpectedPhoneAction = () => {
     throw new Error('This fixture supports only renaming a track.');
   };
-  const refused = (channel: InvokeChannel, args?: readonly unknown[]) =>
-    locked && (SIMPLE_MODE_LOCKED.includes(channel) || bounds.get(channel)?.(args ?? []) === false);
+  const refused = (channel: InvokeChannel, args?: readonly unknown[]) => {
+    if (!locked) return false;
+    const within = bounds.get(channel);
+    return within ? args === undefined || !within(args) : SIMPLE_MODE_LOCKED.includes(channel);
+  };
   const service = new NetworkService({
     devices,
     settings: { get: () => undefined, set: () => undefined },
