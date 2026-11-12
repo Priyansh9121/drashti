@@ -206,9 +206,16 @@ test('a node that hears no Main let in for 2 minutes (20 s here) goes black, and
     const out = await nodeScreen(main, node, nodeId);
     await goLive(main);
     await expect(out.locator('[data-layer="slide"]')).toHaveCount(1, { timeout: 20_000 });
-    // Main quits: the node keeps its last picture for a while, then goes black.
-    await main.app.close();
-    await expect(out.locator('[data-layer="slide"]')).toHaveCount(1);
+    // Check the held picture at the link’s loss, while Main may still be finishing its quit.
+    const link = node.page.getByTestId('node-link-state');
+    await expect(link).toHaveText('Online');
+    const quitting = main.app.close();
+    try {
+      await expect(link).not.toHaveText('Online', { timeout: 20_000 });
+      await expect(out.locator('[data-layer="slide"]')).toHaveCount(1);
+    } finally {
+      await quitting;
+    }
     await expect(out.getByTestId('stopped-cover')).toHaveAttribute('data-stopped', 'black', {
       timeout: 40_000,
     });
