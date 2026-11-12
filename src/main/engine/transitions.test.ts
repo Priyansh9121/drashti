@@ -144,4 +144,32 @@ describe('PowerPoint slide transitions', () => {
     expect(jump?.transition).toBeUndefined();
     expect(jump?.stepAt).toBe(jump?.shownAt);
   });
+
+  it('keeps the PowerPoint motion when an operator chooses a longer transition over it', () => {
+    const { engine, source } = setup();
+    const wipe: DeckNativeTransition = { kind: 'wipe', durationMs: 650, deckEffect: 'wipe', direction: 'up' };
+    source.set('deck', [
+      textSlide('previous', 'Placeholder previous slide'),
+      {
+        ...textSlide('incoming', 'Placeholder incoming slide'),
+        deck: {
+          media: [],
+          steps: [],
+          motion: { effects: [], stepsMs: [200], approximate: false },
+          transition: { name: 'p:wipe', durationMs: 650, nativeTransition: wipe },
+          drashti: { mode: 'over', transition: dissolve(900) },
+        },
+      },
+    ]);
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    engine.dispatch({ type: 'next' });
+    const shown = engine.current.layers.slide;
+    expect(shown?.transition).toMatchObject({
+      ...wipe,
+      durationMs: 900,
+      deckDurationMs: 650,
+      over: dissolve(900),
+    });
+    expect(shown?.stepAt).toBe((shown?.shownAt ?? 0) + 650);
+  });
 });
