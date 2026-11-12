@@ -34,6 +34,7 @@ import {
   blurOfId,
   copyMediaId,
   copyOfId,
+  IMAGE_FILE_FILTER,
   MEDIA_ID_PATTERN,
   MEDIA_SCHEME,
 } from '../shared/media';
@@ -3571,6 +3572,8 @@ function start(): void {
   ]);
   for (const c of [IPC.library.importPaths, IPC.library.pickImportPaths, IPC.library.relinkMedia])
     edits.delete(c);
+  // The slide editor's picture import joins the same queue.
+  edits.delete(IPC.slideEditor.addPicture);
   setGiveWay((channel) => {
     if (imports.activeRunId === null || !edits.has(channel)) return null;
     // Usually the lock is free (the import holds it only while it writes a group): go at once.
@@ -4021,10 +4024,44 @@ function start(): void {
   stops.add('slide editor', () => {
     editorWindow.close();
   });
+  // Simple Mode may edit presentations that its playlists hold. An unscoped read lists PDFs for Insert pages.
+  const mayEditSlides = (presentationId?: string) =>
+    !stops.done &&
+    !quitStarted &&
+    documentQuit?.closing !== true &&
+    isLetIn() &&
+    (mode === 'pro'
+      ? !simpleAccess()
+      : presentationId === undefined || aPlaylistsPresentation(simpleScope(), presentationId));
   handleSlideEditor({
     editor: editorWindow,
     fromOperator,
     exists: (presentationId) => presentations.content(presentationId) !== null,
+    pictures: {
+      allowed: mayEditSlides,
+      choose: async (e) => {
+        const parent = BrowserWindow.fromWebContents(e.sender);
+        if (!parent) return null;
+        const picked = await dialog.showOpenDialog(parent, {
+          title: 'Choose a picture for this slide',
+          buttonLabel: 'Add picture',
+          properties: ['openFile'],
+          filters: [IMAGE_FILE_FILTER],
+        });
+        return picked.canceled ? null : (picked.filePaths[0] ?? null);
+      },
+      importFile: async (file) => {
+        const done = await imports.start([file], mode === 'simple' ? SIMPLE_IMPORT : {});
+        if (!done.ok) return done;
+        const item = importRepo.report(done.run.id)?.items[0];
+        if (item?.target?.kind === 'media') return { ok: true, mediaId: item.target.id };
+        const issue = item?.issues.find((problem) => problem.severity === 'error');
+        return {
+          ok: false,
+          message: issue?.message ?? 'Drashti couldn’t add that picture. Choose another picture.',
+        };
+      },
+    },
     // The show's F-keys from the editor's window: pressed in the operator window's page, which acts on them.
     showKey: (key) => {
       const page = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null;
@@ -4056,16 +4093,8 @@ function start(): void {
     settings,
     // The operator window, and the slide editor's own window (Session 55, Part 17a).
     fromOperator: (e) => fromOperator(e) || editorWindow.isPage(e.sender),
-    // Pro Mode's; and Simple Mode's (Session 56: Pro's slide editor there too) for a presentation its playlists hold, as
-    // its lock bounds the editor's save; the library's PDFs listed for Insert pages (naming none) are a read.
     mayPrepareSource: (e, presentationId) =>
-      !stops.done &&
-      !quitStarted &&
-      documentQuit?.closing !== true &&
-      isLetIn() &&
-      (mode === 'pro'
-        ? !simpleAccess()
-        : presentationId === undefined || aPlaylistsPresentation(simpleScope(), presentationId)) &&
+      mayEditSlides(presentationId) &&
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
     sourceReader: async (request) => {

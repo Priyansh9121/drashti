@@ -148,6 +148,12 @@ export function addElement(doc: EditDoc, slideId: string, el: SlideElement): Edi
   return mapSlide(doc, slideId, (s) => ({ ...s, elements: [...s.elements, el] }));
 }
 
+/** Copy one object independently of its source slide's click animation. */
+export function copyElement(el: SlideElement): SlideElement {
+  const { sourceShapeId: _shape, sourceGroupIds: _groups, ...copy } = structuredClone(el);
+  return { ...copy, id: newId() };
+}
+
 /** Copies of some elements, a little down and to the right, on top; returns the copies' ids. */
 export function duplicateElements(
   doc: EditDoc,
@@ -161,8 +167,7 @@ export function duplicateElements(
     slide.elements
       .filter((el) => ids.includes(el.id))
       .map((el) => ({
-        ...structuredClone(el),
-        id: newId(),
+        ...copyElement(el),
         frame: { ...el.frame, x: el.frame.x + offset, y: el.frame.y + offset },
       })),
   );
@@ -173,6 +178,18 @@ export function duplicateElements(
 }
 
 export type Arrange = 'front' | 'forward' | 'backward' | 'back';
+
+export function canMoveInOrder(
+  elements: readonly SlideElement[],
+  selected: readonly string[],
+  step: 1 | -1,
+): boolean {
+  const ids = new Set(selected);
+  return elements.some((element, i) => {
+    const next = elements[i + step];
+    return ids.has(element.id) && next !== undefined && !ids.has(next.id);
+  });
+}
 
 /** Bring elements to the front or one step forward, or send them back (the order is bottom to top). */
 export function arrange(doc: EditDoc, slideId: string, ids: readonly string[], how: Arrange): EditDoc {
@@ -255,10 +272,11 @@ export function newShape(
   };
 }
 
-/** A picture or video at its own proportions, half the slide wide at most, in the middle. */
+/** A picture or video at its own proportions, centred on the drop point or on the slide. */
 export function newMedia(
   media: { id: string; kind: 'image' | 'video'; width?: number; height?: number },
   size: { width: number; height: number },
+  at?: Point,
 ): MediaElement {
   const ratio = media.width && media.height ? media.width / media.height : 16 / 9;
   let width = size.width * 0.5;
@@ -267,14 +285,16 @@ export function newMedia(
     height = size.height * 0.6;
     width = height * ratio;
   }
+  width = Math.max(1, Math.round(width));
+  height = Math.max(1, Math.round(height));
   return {
     id: newId(),
     kind: media.kind,
     frame: {
-      x: Math.round((size.width - width) / 2),
-      y: Math.round((size.height - height) / 2),
-      width: Math.round(width),
-      height: Math.round(height),
+      x: Math.round(Math.max(0, Math.min(size.width - width, (at?.x ?? size.width / 2) - width / 2))),
+      y: Math.round(Math.max(0, Math.min(size.height - height, (at?.y ?? size.height / 2) - height / 2))),
+      width,
+      height,
     },
     mediaId: media.id,
     fit: 'fit',
