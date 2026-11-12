@@ -8,6 +8,7 @@ import type { MediaSummary, PlaylistItemInfo } from '../../../shared/playlists';
 import type { RowTrimView } from '../../../shared/trim';
 import { useEngine } from '../engine/engine-store';
 import { useNotice } from '../operator/actions';
+import { useTrimPreparing } from '../playlists/PreparingMark';
 import { Button, IconButton } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { KeepChangesDialog } from '../ui/KeepChanges';
@@ -165,6 +166,7 @@ function MarkersForm({
   const [problem, setProblem] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const preparing = useTrimPreparing(trim?.itemId);
   // On the screens or the sound now: saving moves its points at once (the engine refreshes them).
   const playing = useEngine((s) => {
     const layers = s.state?.layers;
@@ -236,6 +238,7 @@ function MarkersForm({
     else close();
   };
   const save = async () => {
+    if (submitting || preparing) return;
     const startMs = startText.trim() === '' ? null : parseMarkerTime(startText);
     const endMs = endText.trim() === '' ? null : parseMarkerTime(endText);
     if ((startText.trim() !== '' && startMs === null) || (endText.trim() !== '' && endMs === null)) {
@@ -265,6 +268,16 @@ function MarkersForm({
       setSubmitting(false);
     }
   };
+  const stop = async () => {
+    if (!trim) return;
+    setSubmitting(true);
+    try {
+      const result = await window.drashti.media.stopRowTrim(trim.itemId, trim.mediaId);
+      setProblem(result.ok ? null : result.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
   const Player = media.kind === 'video' ? 'video' : 'audio';
   return (
     <Dialog
@@ -275,6 +288,11 @@ function MarkersForm({
       testId="markers-dialog"
       footer={
         <>
+          {preparing && (
+            <Button disabled={submitting} onClick={() => void stop()}>
+              Stop
+            </Button>
+          )}
           {trim?.canReset && (
             <Button disabled={submitting} onClick={() => void reset()}>
               Reset to original
@@ -288,7 +306,7 @@ function MarkersForm({
             type="submit"
             form="markers-form"
             data-testid="markers-save"
-            disabled={submitting}
+            disabled={submitting || preparing}
           >
             Save
           </Button>
