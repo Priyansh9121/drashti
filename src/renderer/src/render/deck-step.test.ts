@@ -1,6 +1,8 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { StepTiming } from '../../../shared/deck-show';
-import { stepPhase } from './DeckStep';
+import { DeckStepView, stepPhase } from './DeckStep';
 
 /*
  * What a deck's step draws at a moment of the engine's time (Session 54, C2): its clip while it plays, then its last
@@ -19,6 +21,26 @@ const timing = (more: Partial<StepTiming> = {}): StepTiming => ({
   ...more,
 });
 const ready = { hold: true, clipFailed: false };
+
+describe('a baked deck prepares its next click', () => {
+  it('mounts one muted video for the next step before Next', () => {
+    const current = timing();
+    const steps = [
+      { clipId: 'c0', lastId: 'l0', clipMs: 1000 },
+      current.step,
+      { clipId: 'c2', lastId: 'l2', clipMs: 700 },
+    ];
+    const html = renderToStaticMarkup(
+      createElement(DeckStepView, {
+        deck: { steps, media: [] },
+        timing: current,
+        style: {},
+      }),
+    );
+    expect(html.match(/data-deck-video="preparing"/gu)).toHaveLength(1);
+    expect(html).toMatch(/<video[^>]*data-deck-video="preparing"[^>]*data-media-id="c2"[^>]*>/u);
+  });
+});
 
 describe('what a deck’s step draws at a moment (Session 54, C2)', () => {
   it('its clip while it plays, then its hold once there is one (else its last frame), by the engine’s time', () => {
