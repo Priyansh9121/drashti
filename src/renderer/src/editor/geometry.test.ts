@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as geometry from './geometry';
 import {
   alignMoves,
   boundsOf,
@@ -80,6 +81,23 @@ describe('turned frames', () => {
     expect(hitTest(elements, point, 6, 'top')).toBe('middle');
     expect(hitTest(elements, point, 6, 'middle')).toBe('bottom');
     expect(hitTest(elements, point, 6, 'bottom')).toBe('top');
+  });
+
+  it('keeps the selected object under a right-click and picks a different object at a new point', () => {
+    const elements = [
+      { id: 'under', frame: { x: 0, y: 0, width: 100, height: 100 } },
+      { id: 'over', frame: { x: 50, y: 50, width: 100, height: 100 } },
+    ];
+    const menuTarget = (Reflect.get(geometry, 'menuTarget') ??
+      ((items, _selected, point, slop) => hitTest(items, point, slop))) as (
+      items: typeof elements,
+      selected: readonly string[],
+      point: geometry.Point,
+      slop: number,
+    ) => string | null;
+    expect(menuTarget(elements, ['under'], { x: 75, y: 75 }, 6)).toBe('under');
+    expect(menuTarget(elements, ['under'], { x: 110, y: 75 }, 6)).toBe('over');
+    expect(menuTarget(elements, ['under'], { x: 500, y: 500 }, 6)).toBeNull();
   });
 
   it('starts from the top at a new point and ignores nearby boxes while cycling exact hits', () => {
