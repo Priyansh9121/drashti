@@ -7,6 +7,8 @@ interface ImportNotice {
   text: string;
   retry?: () => Promise<unknown>;
   findMissing?: () => Promise<boolean>;
+  /** What it is about, where only one notice may say it: a newer one takes an older one's place. */
+  about?: string;
 }
 
 export const useImportNotices = create<{ notices: ImportNotice[] }>(() => ({ notices: [] }));
@@ -15,8 +17,12 @@ let nextId = 0;
 
 function show(notices: Omit<ImportNotice, 'id'>[]): void {
   if (notices.length === 0) return;
+  const said = new Set(notices.flatMap((notice) => (notice.about ? [notice.about] : [])));
   useImportNotices.setState((s) => ({
-    notices: [...notices.map((notice) => ({ ...notice, id: ++nextId })), ...s.notices],
+    notices: [
+      ...notices.map((notice) => ({ ...notice, id: ++nextId })),
+      ...s.notices.filter((notice) => notice.about === undefined || !said.has(notice.about)),
+    ],
   }));
 }
 
@@ -64,6 +70,41 @@ const missingParts = new Set([
   'unsupported-element',
 ]);
 
+const nameOf = (item: ImportItemReport): string =>
+  item.name ?? item.sourcePath.split(/[\\/]/u).at(-1) ?? 'File';
+
+/**
+ * Words typed in an old (legacy) Gujarati or Hindi font are kept as typed and drawn in that font, so they read right
+ * only where it is installed (main/import/legacy-fonts.ts): a line for each font an import met, however many of its
+ * presentations use it, and one in the stack for each font. Installing it is the only answer: no Try again, no Find….
+ * Drashti draws in it once it is on the computer and Drashti has started again; importing again would change nothing.
+ */
+function oldFontNotices(report: ImportReport): Omit<ImportNotice, 'id'>[] {
+  const fonts = new Map<string, { font: string; first: ImportItemReport; items: Set<string> }>();
+  for (const item of report.items) {
+    // A refused file did not come in: its fonts are named once it does.
+    if (item.outcome === 'failed' || item.outcome === 'unsupported') continue;
+    for (const issue of item.issues) {
+      if (issue.code !== 'legacy-font' || issue.fix?.kind !== 'convert-font') continue;
+      const font = issue.fix.font.trim();
+      if (font === '') continue;
+      // A font's name in any case is the same font, as the computer finds it.
+      const key = font.toLowerCase();
+      const use = fonts.get(key);
+      if (use) use.items.add(item.id);
+      else fonts.set(key, { font, first: item, items: new Set([item.id]) });
+    }
+  }
+  const install = 'install it on this computer, then quit and start Drashti again.';
+  return [...fonts].map(([key, { font, first, items }]) => ({
+    about: `old-font:${key}`,
+    text:
+      items.size === 1
+        ? `“${nameOf(first)}” · This presentation uses the old font “${font}”: ${install}`
+        : `“${nameOf(first)}” and ${String(items.size - 1)} more · These presentations use the old font “${font}”: ${install}`,
+  }));
+}
+
 function noticeFor(
   item: ImportItemReport,
   retry?: (paths: string[]) => Promise<unknown>,
@@ -80,7 +121,7 @@ function noticeFor(
       );
   if (reasons.length === 0) return null;
 
-  const filename = item.name ?? item.sourcePath.split(/[\\/]/u).at(-1) ?? 'File';
+  const filename = nameOf(item);
   const fix = item.issues.find(
     (issue) => issue.code !== 'missing-presentation' && issue.fix?.kind === 'import-again',
   )?.fix;
@@ -107,10 +148,14 @@ export function showImportFailures(
   retry?: (paths: string[]) => Promise<unknown>,
   findMissing?: (mediaIds: string[]) => Promise<boolean>,
 ): void {
-  const notices = report.items.flatMap((item) => {
-    const notice = noticeFor(item, retry, findMissing);
-    return notice ? [notice] : [];
-  });
+  // The old fonts first: a few lines that matter to the whole library, above any file's own.
+  const notices = [
+    ...oldFontNotices(report),
+    ...report.items.flatMap((item) => {
+      const notice = noticeFor(item, retry, findMissing);
+      return notice ? [notice] : [];
+    }),
+  ];
   if (report.message !== null && report.status !== 'cancelled') notices.push({ text: report.message });
   show(notices);
 }
