@@ -1,10 +1,10 @@
 import { mkdtemp } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { ImportIssue } from '../../../shared/import';
-import type { PictureSource, PicturesResult } from '../../../shared/pictures';
+import type { DrawPdf, PictureSource, PicturesResult } from '../../../shared/pictures';
 import type { Converter } from '../deck-converters';
 import type { ParsedPresentation } from '../model';
-import type { PptxDeck, PptxSlide } from '../pictures';
+import { keynotePagesShifted, type PptxDeck, type PptxSlide } from '../pictures';
 import { type BakeOptions, bakeDeck, type BakeResult } from './bake';
 import {
   addNativeDeckMedia,
@@ -39,13 +39,13 @@ import { type Baker, movieChoice } from './plan';
  */
 export function pagesOfShown(
   slides: readonly PptxSlide[],
-  drawn: { total: number; pages: readonly { index: number; file: string }[] },
+  drawn: { total: number; pages: readonly { index: number; file: string; pageText?: string }[] },
   need: ReadonlySet<number>,
 ): Map<number, string> | null {
   const shown = slides.flatMap((s, i) => (s.hidden ? [] : [i]));
   // The k-th shown slide, the deck's i-th: the PDF's k-th page, or its i-th when it has every slide.
   const byShown = drawn.total === shown.length;
-  if (!byShown && drawn.total !== slides.length) return null;
+  if ((!byShown && drawn.total !== slides.length) || keynotePagesShifted(slides, drawn)) return null;
   const pageOf = (k: number, i: number) => (byShown ? k : i);
   const files = new Map(drawn.pages.map((p) => [p.index, p.file]));
   const out = new Map<number, string>();
@@ -114,7 +114,7 @@ export async function runDeck(
     /** Keynote or PowerPoint started by Drashti itself (Session 31: the leftovers record). */
     appStarted?: (pid: number, app: 'PowerPoint' | 'Keynote') => void;
     /** Draws a PDF's pages as pictures: the slides that come in as their pictures (Session 56). */
-    drawPdf?: (pdf: string, outDir: string) => Promise<PicturesResult>;
+    drawPdf?: DrawPdf;
     /**
      * The slides as their pictures as soon as those are drawn (Session 56), with each one's own index in the deck: the
      * slides that move marked as preparing while their clips are made. The import writes them at once; the deck with
@@ -194,7 +194,8 @@ export async function runDeck(
           const draw = options.drawPdf;
           if (!draw || early.drawing) return;
           const pages = join(work, 'pages');
-          const drawing = (options.steps?.time('pictures', () => draw(pdf, pages)) ?? draw(pdf, pages)).then(
+          const drawPages = () => draw(pdf, pages, source === 'key');
+          const drawing = (options.steps?.time('pictures', drawPages) ?? drawPages()).then(
             (drawn): Drawn => ({ deck, drawn }),
             () => null,
           );
@@ -231,12 +232,11 @@ export async function runDeck(
       if (choice) {
         const drawPdf = options.drawPdf;
         const pdf = result.pdf;
+        const drawPages = pdf && drawPdf ? () => drawPdf(pdf, join(work, 'pages'), source === 'key') : null;
         const drawn =
           done?.drawn ??
-          (pdf && drawPdf
-            ? await (options.steps?.time('pictures', () => drawPdf(pdf, join(work, 'pages'))) ??
-                drawPdf(pdf, join(work, 'pages')))
-            : null);
+          (drawPages ? await (options.steps?.time('pictures', drawPages) ?? drawPages()) : null);
+        drawnLast = drawn;
         still = drawn?.ok
           ? pagesOfShown(result.baked.deck.slides, drawn, new Set([...choice.pictures, ...choice.leadIns]))
           : null;

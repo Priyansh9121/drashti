@@ -105,6 +105,37 @@ describe('drawing a PDF as pictures (the main process)', () => {
     expect(w.destroyed).toBe(true);
   });
 
+  it.each([false, true])('returns bounded page text only for a requesting job (%s)', async (readPageText) => {
+    const t = setup();
+    const out = join(t.dir, 'pages');
+    const drawn = t.pictures.draw(t.pdf, out, undefined, readPageText);
+    const w = await t.opened();
+    const sender = t.sender(w.webContents.id);
+    const job = t.pictures.job(sender);
+    if (readPageText) expect(job).toHaveProperty('readPageText', true);
+    else expect(job).not.toHaveProperty('readPageText');
+    await t.pictures.page(sender, { index: 0, png: PNG, notes: '', pageText: 'Placeholder slide words' });
+    await t.pictures.page(sender, { index: 1, png: PNG, notes: '', pageText: 'x'.repeat(4097) });
+    t.pictures.done(sender, { total: 2, failed: [] });
+    expect(await drawn).toMatchObject({
+      ok: true,
+      pages: [
+        {
+          index: 0,
+          file: join(out, 'page-0001.png'),
+          notes: '',
+          ...(readPageText ? { pageText: 'Placeholder slide words' } : {}),
+        },
+        { index: 1, file: join(out, 'page-0002.png'), notes: '' },
+      ],
+    });
+    const result = await drawn;
+    expect(result.ok && result.pages.map((page) => page.pageText)).toEqual([
+      readPageText ? 'Placeholder slide words' : undefined,
+      undefined,
+    ]);
+  });
+
   it('keeps nothing that is not a PNG, or past the last page it may draw', async () => {
     const t = setup();
     const out = join(t.dir, 'pages');

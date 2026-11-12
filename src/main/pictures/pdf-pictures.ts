@@ -6,6 +6,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { availableParallelism, constants, setPriority } from 'node:os';
 import { join } from 'node:path';
 import type {
+  DrawnPicturePage,
   PageShare,
   PictureAssetKind,
   PictureJob,
@@ -13,7 +14,13 @@ import type {
   PicturesDone,
   PicturesResult,
 } from '../../shared/pictures';
-import { inShare, MAX_PICTURE_PAGES, PICTURE_ASSET_NAME, tidyNotes } from '../../shared/pictures';
+import {
+  inShare,
+  MAX_PAGE_TEXT,
+  MAX_PICTURE_PAGES,
+  PICTURE_ASSET_NAME,
+  tidyNotes,
+} from '../../shared/pictures';
 import type { ScreenConfig } from '../../shared/screens';
 import { fileProblem } from '../plain-errors';
 import { cutText } from '../../shared/text';
@@ -85,7 +92,7 @@ interface Drawing {
   /** The windows drawing it, the first first: each with its job (its share of the pages) and whether it is done. */
   windows: { win: BrowserWindow; job: PictureJob; done: boolean }[];
   outDir: string;
-  pages: Map<number, { index: number; file: string; notes: string }>;
+  pages: Map<number, DrawnPicturePage>;
   failed: Set<number>;
   /** The document's pages, as a window said. */
   total: number;
@@ -155,13 +162,23 @@ export class PdfPictures {
   }
 
   /** Draw every page of a PDF (up to the limit) into `outDir` as PNGs. */
-  draw(pdfPath: string, outDir: string, signal?: AbortSignal): Promise<PicturesResult> {
-    const run = this.turn.then(() => this.drawNow(pdfPath, outDir, signal));
+  draw(
+    pdfPath: string,
+    outDir: string,
+    signal?: AbortSignal,
+    readPageText?: boolean,
+  ): Promise<PicturesResult> {
+    const run = this.turn.then(() => this.drawNow(pdfPath, outDir, signal, readPageText));
     this.turn = run.catch(() => undefined);
     return run;
   }
 
-  private async drawNow(pdfPath: string, outDir: string, signal?: AbortSignal): Promise<PicturesResult> {
+  private async drawNow(
+    pdfPath: string,
+    outDir: string,
+    signal?: AbortSignal,
+    readPageText?: boolean,
+  ): Promise<PicturesResult> {
     if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
     let data: Buffer;
     try {
@@ -212,6 +229,7 @@ export class PdfPictures {
         width,
         height,
         maxPages: MAX_PICTURE_PAGES,
+        ...(readPageText ? { readPageText } : {}),
         ...(share ? { share } : {}),
       });
       const drawing: Drawing = {
@@ -301,7 +319,8 @@ export class PdfPictures {
     const of = this.windowOf(sender);
     if (!of) return false;
     const { d, at } = of;
-    const share = d.windows[at]?.job.share;
+    const job = d.windows[at]?.job;
+    const share = job?.share;
     // A window drawing beside the first stops at its next page once the show has started (Session 56).
     const goOn = () => !d.stopped && !(at > 0 && share && 'every' in share && this.deps.wide?.() !== true);
     const page = raw as Partial<PicturePage> | null;
@@ -321,7 +340,15 @@ export class PdfPictures {
     const file = join(d.outDir, `page-${String(index + 1).padStart(4, '0')}.png`);
     await writeFile(file, png);
     const notes = page?.notes;
-    d.pages.set(index, { index, file, notes: tidyNotes(typeof notes === 'string' ? notes : '') });
+    const pageText = page?.pageText;
+    d.pages.set(index, {
+      index,
+      file,
+      notes: tidyNotes(typeof notes === 'string' ? notes : ''),
+      ...(job?.readPageText && typeof pageText === 'string' && pageText.length <= MAX_PAGE_TEXT
+        ? { pageText }
+        : {}),
+    });
     return goOn();
   }
 

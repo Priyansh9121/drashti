@@ -961,7 +961,7 @@ async function convertOnMac(
       if (exported.aborted || session.signal?.aborted) return cancelled();
       if (!exportFailed) {
         try {
-          const exportedSlides = await readPptx(pptx);
+          const exportedSlides = await readPptx(pptx, true);
           if (session.signal?.aborted) return cancelled();
           if (exportedSlides.length > 0 && (slides === 0 || exportedSlides.length === slides)) {
             fileSlides = exportedSlides;
