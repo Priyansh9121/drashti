@@ -596,8 +596,10 @@ const SPLITS = new Map<string, NativeLook>([
 
 /**
  * Office's own reveal filters (ECMA-376 §19.5.3) that Drashti draws as clips: Shape's circle, box, diamond and plus,
- * Wheel's spokes and Random Bars. Not yet compared with PowerPoint's own movie, so a slide using one keeps PowerPoint's
- * video wherever one can be made, and plays these where none can.
+ * Wheel's spokes and Random Bars. A slide using one keeps PowerPoint's video wherever one can be made, and plays these
+ * where none can. Shape is drawn as PowerPoint's own movie shows it (13 Nov 2026, run 2: its outlines, its pace and
+ * its exits' way round), but with a hard edge where PowerPoint's is soft, so it comes close, not the same; Wheel and
+ * Random Bars are not yet compared.
  */
 function filterLook(filter: string | undefined): NativeLook | null {
   if (!filter) return null;
