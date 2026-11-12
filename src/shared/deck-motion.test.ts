@@ -75,6 +75,23 @@ describe('a deck whose editable shapes play each click', () => {
     const invalid = { ...deck, motion: { ...motion, effects: [{ ...effect, step: 7 }] } };
     expect(deckFromJson(deckToJson(invalid))).toBeNull();
   });
+
+  it('round-trips Basic Zoom’s far end as PowerPoint’s own formulas, and nothing else in their place', () => {
+    const out = '(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*';
+    const zoomAway = { w: `${out}#ppt_w`, h: `${out}#ppt_h`, x: '0.5', y: `1+${out}#ppt_h/2` };
+    const zoom = {
+      ...deck,
+      motion: { ...motion, effects: [{ ...effect, kind: 'zoom' as const, zoomAway }] },
+    };
+    expect(deckFromJson(deckToJson(zoom))).toEqual(zoom);
+    for (const bad of ['', '<script>', '#ppt_w;1', 'x'.repeat(201)]) {
+      const stored = {
+        ...zoom,
+        motion: { ...motion, effects: [{ ...effect, zoomAway: { ...zoomAway, w: bad } }] },
+      };
+      expect(deckFromJson(deckToJson(stored)), bad).toBeNull();
+    }
+  });
 });
 
 describe('PowerPoint effects from the engine step clock', () => {

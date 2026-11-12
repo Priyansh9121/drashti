@@ -282,6 +282,7 @@ describe('a slide imported before alpha.17, and its kept PowerPoint file', () =>
       distance: 0.5,
       splitAxis: 'x',
       scale: 2,
+      zoomAway: { w: '2/3*#ppt_w', h: '2/3*#ppt_h', x: '0.5', y: '1+#ppt_h/2' },
       shape: 'circle',
       inward: true,
       spokes: 4,

@@ -1,5 +1,6 @@
 import type { DeckEffect, DeckEffectDirection, DeckMotion } from './deck';
 import type { Rect, RenderSlide, SlideElement, TextElement, TextRun } from './model';
+import { pptxFormula } from './pptx-formula';
 import { fitElements } from './slide-size';
 
 type Size = Pick<RenderSlide, 'width' | 'height'>;
@@ -196,6 +197,41 @@ export function smoothedProgress(progress: number, accel = 0, decel = 0): number
   return rate * (1 - d - a / 2) + (rate / 2) * (into + (d / Math.PI) * Math.sin((Math.PI * into) / d));
 }
 
+/**
+ * Basic Zoom away from rest (DeckEffect.zoomAway) for a shape at `bounds`: its PowerPoint formulas worked out for the
+ * shape as it is drawn, as its scale there and how far its centre is from where it rests (px). Null when they cannot
+ * be (a shape with no size, a formula Drashti does not read): then it zooms from nothing, as Basic Zoom In does.
+ */
+function zoomedAway(
+  away: NonNullable<DeckEffect['zoomAway']>,
+  bounds: Rect,
+  slide: Size,
+): { scale: number; x: number; y: number } | null {
+  if (!(slide.width > 0) || !(slide.height > 0)) return null;
+  const place = {
+    x: (bounds.x + bounds.width / 2) / slide.width,
+    y: (bounds.y + bounds.height / 2) / slide.height,
+    w: bounds.width / slide.width,
+    h: bounds.height / slide.height,
+  };
+  // Its width and height grow alike (the reader checks): the larger is the surer.
+  const wide = place.w >= place.h;
+  const size = pptxFormula(wide ? away.w : away.h);
+  const own = wide ? place.w : place.h;
+  const scale = size && own > 0 ? size(place) / own : Number.NaN;
+  const at = (formula: string | undefined, rest: number) =>
+    formula === undefined ? rest : (pptxFormula(formula)?.(place) ?? Number.NaN);
+  const x = at(away.x, place.x);
+  const y = at(away.y, place.y);
+  if (!Number.isFinite(scale) || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const within = (value: number, limit: number) => Math.min(limit, Math.max(-limit, value));
+  return {
+    scale: within(scale, 100),
+    x: within(x - place.x, 10) * slide.width,
+    y: within(y - place.y, 10) * slide.height,
+  };
+}
+
 /** A ball's fall and its three smaller bounces, landing at 1 (the common "bounce out" curve). */
 function bounced(progress: number): number {
   const n = 7.5625;
@@ -280,7 +316,12 @@ export function deckMotionFrame(
     if (effect.kind === 'wheel') frame.wipe = { spokes: effect.spokes ?? 1, amount };
     if (effect.kind === 'bars') frame.wipe = { bars: effect.bars ?? 'horizontal', amount };
     if (effect.kind === 'zoom') {
-      frame.scale *= amount + (effect.scale ?? 0) * (1 - amount);
+      const away = effect.zoomAway ? zoomedAway(effect.zoomAway, bounds, slide) : null;
+      frame.scale *= amount + Math.max(0, away?.scale ?? effect.scale ?? 0) * (1 - amount);
+      if (away) {
+        frame.x += away.x * (1 - amount);
+        frame.y += away.y * (1 - amount);
+      }
       if (effect.degrees) frame.rotation += effect.degrees * (1 - amount);
     }
   }
