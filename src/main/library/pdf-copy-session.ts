@@ -4,10 +4,12 @@ import { readFile } from 'node:fs/promises';
 import { constants, setPriority } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { PdfCopyJob, PdfCopyPage, PdfPrintPage } from '../../shared/pdf-copy';
+import type { CapturedPicture, PdfCopyJob, PdfCopyPage, PdfPrintPage } from '../../shared/pdf-copy';
 import { PICTURE_ASSET_NAME, type PictureAssetKind } from '../../shared/pictures';
 
 const LIMIT = 64 * 1024 * 1024;
+/** The most a phone's picture may hold as pixels: 3840 x 2160, a 1920 x 1080 slide on a display at twice the size. */
+const PICTURE_PIXELS_LIMIT = 3840 * 2160 * 4;
 const MAX_PAGES = 400;
 const DEADLINE_MS = 180_000;
 const printPageSchema = z.object({
@@ -40,13 +42,15 @@ export interface PdfCopySessionDeps {
     target: { width: number; height: number },
     signal: AbortSignal,
   ): Promise<Uint8Array>;
+  /** The byte order of a captured picture's pixels on this computer (index.ts finds it); left out, blue first. */
+  pixelOrder?(): CapturedPicture['order'];
 }
 interface ActiveCopy {
   win: BrowserWindow;
   job: PdfCopyJob;
   signal: AbortSignal;
   current(): boolean;
-  finish(data: Uint8Array | null): void;
+  finish(data: Uint8Array | CapturedPicture | null): void;
   taken: boolean;
   captures: number;
   captureBytes: number;
@@ -61,18 +65,19 @@ export class PdfCopySession {
 
   constructor(private readonly deps: PdfCopySessionDeps) {}
 
-  picture(
+  async picture(
     slide: Extract<PdfCopyJob['pages'][number], { kind: 'native' }>['slide'],
     looks: NonNullable<PdfCopyJob['picture']>['looks'],
     current: () => boolean,
     signal: AbortSignal,
-  ): Promise<Uint8Array | null> {
+  ): Promise<CapturedPicture | null> {
     const scale = Math.min(1, 1920 / Math.max(slide.width, slide.height));
-    return this.run(
+    const out = await this.start(
       { pages: [{ kind: 'native', slide }], sources: [], picture: { scale, looks } },
       current,
       signal,
     );
+    return out instanceof Uint8Array ? null : out;
   }
 
   async run(
@@ -80,6 +85,15 @@ export class PdfCopySession {
     current: () => boolean,
     signal: AbortSignal,
   ): Promise<Uint8Array | null> {
+    const out = await this.start(plan, current, signal);
+    return out instanceof Uint8Array ? out : null;
+  }
+
+  private async start(
+    plan: Omit<PdfCopyJob, 'id'>,
+    current: () => boolean,
+    signal: AbortSignal,
+  ): Promise<Uint8Array | CapturedPicture | null> {
     if (!plan.pages.length || plan.pages.length > MAX_PAGES) return null;
     if (plan.sources.reduce((total, source) => total + source.data.length, 0) > 256 * 1024 * 1024)
       return null;
@@ -113,7 +127,7 @@ export class PdfCopySession {
     }
     return new Promise((resolve) => {
       let ended = false;
-      const finish = (data: Uint8Array | null) => {
+      const finish = (data: Uint8Array | CapturedPicture | null) => {
         if (ended) return;
         ended = true;
         clearTimeout(timer);
@@ -211,12 +225,25 @@ export class PdfCopySession {
       );
       if (this.own(sender) !== active) return null;
       if (image.isEmpty()) return refuse();
+      if (active.job.picture) {
+        // Never encoded on Main's thread (C6's review, MEDIUM 1): its pixels as captured (a copy) go on to the
+        // network's process, which makes the PNG. The hidden page is told nothing back.
+        const { width: wide, height: high } = image.getSize();
+        const pixels = image.toBitmap();
+        if (wide < 1 || high < 1 || pixels.length !== wide * high * 4 || pixels.length > PICTURE_PIXELS_LIMIT)
+          return refuse();
+        active.finish({
+          width: wide,
+          height: high,
+          pixels: new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.length),
+          order: this.deps.pixelOrder?.() ?? 'bgra',
+        });
+        return null;
+      }
       const data = image.toPNG();
       active.captureBytes += data.length;
-      if (data.length > 32 * 1024 * 1024 || active.captureBytes > LIMIT) return refuse();
-      const bytes = new Uint8Array(data);
-      if (active.job.picture) active.finish(bytes);
-      return bytes;
+      if (data.length > 32 * 1024 * 1024 || active.captureBytes > LIMIT) return null;
+      return new Uint8Array(data);
     } catch {
       active.finish(null);
       return null;

@@ -272,6 +272,7 @@ import { SourceQuitGate } from './documents/source-quit-gate';
 import { PdfPrintGeometry } from './documents/pdf-geometry-service';
 import { systemFontFamilies } from './documents/system-fonts';
 import { PdfCopySession } from './library/pdf-copy-session';
+import { capturedPixelOrder } from './library/pixel-order';
 import { PdfEditor } from './library/pdf-editor';
 import { createPdfCopyWindow } from './library/pdf-copy-window';
 import { openGalleryWindow } from './windows/gallery-window';
@@ -3330,6 +3331,8 @@ function start(): void {
       ];
     },
     normalize: pdfGeometry.normalize,
+    // A phone's picture leaves Main as its pixels (C6's review): their byte order on this computer.
+    pixelOrder: capturedPixelOrder,
   });
   handle(IPC.pdfExport.job, (e) => pdfCopies.job(e.sender));
   handle(IPC.pdfExport.capture, (e, id, index) => pdfCopies.capture(e.sender, id, index));

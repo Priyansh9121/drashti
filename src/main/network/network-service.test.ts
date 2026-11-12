@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PresentationDoc } from '../../shared/library';
+import type { CapturedPicture } from '../../shared/pdf-copy';
 import type { RenderSlide } from '../../shared/model';
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
@@ -251,10 +252,16 @@ const slideForPicture: RenderSlide = {
   },
 };
 
+/** Two captured pixels (made-up values): the network's process makes them a PNG (png.ts). */
+const captured: CapturedPicture = {
+  width: 2,
+  height: 1,
+  pixels: new Uint8Array([10, 20, 30, 255, 40, 50, 60, 255]),
+  order: 'bgra',
+};
+
 function pictureSetup() {
-  const capture = vi.fn<NonNullable<NetworkDeps['nativeSlidePicture']>>(() =>
-    Promise.resolve(new Uint8Array([137, 80, 78, 71])),
-  );
+  const capture = vi.fn<NonNullable<NetworkDeps['nativeSlidePicture']>>(() => Promise.resolve(captured));
   const doc: PresentationDoc = {
     id: 'placeholder-deck',
     name: 'Placeholder deck',
@@ -335,7 +342,7 @@ describe('saving a native click from a paired phone', () => {
     expect(await save({ click: '2' })).toMatchObject({ status: 404 });
     expect(await save({ slideId: 'missing-slide' })).toMatchObject({ status: 404 });
     expect(t.capture).not.toHaveBeenCalled();
-    expect(await save({})).toMatchObject({ status: 200, body: { png: new Uint8Array([137, 80, 78, 71]) } });
+    expect(await save({})).toMatchObject({ status: 200, body: { picture: captured } });
     expect(t.capture.mock.calls[0]?.[0]).not.toHaveProperty('deck');
     for (let i = 0; i < 27; i++) expect(await save({})).toMatchObject({ status: 200 });
     expect(await save({})).toMatchObject({ status: 429 });
@@ -365,7 +372,7 @@ describe('saving a native click from a paired phone', () => {
       expect(t.capture).not.toHaveBeenCalled();
       t.capture.mockImplementationOnce(() => {
         t.letIn.now = false;
-        return Promise.resolve(new Uint8Array([137, 80, 78, 71]));
+        return Promise.resolve(captured);
       });
       t.tick(1);
       await vi.advanceTimersByTimeAsync(1);
@@ -407,7 +414,7 @@ describe('saving a native click from a paired phone', () => {
       // The stream goes on air while the capture runs: its next step finds it no longer wanted.
       t.onAir.now = true;
       expect(current()).toBe(false);
-      return Promise.resolve(new Uint8Array([137, 80, 78, 71]));
+      return Promise.resolve(captured);
     });
     expect(await t.service.presentationPicture(t.request)).toMatchObject({
       status: 200,

@@ -42,6 +42,7 @@ import type { Uploads } from './uploads';
 import type { ArrivedFile, ArrivedOutcome, UploadPolicy } from '../../shared/phone-files';
 import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
 import { COULD_NOT } from './messages';
+import { isCapturedPicture, pngOf } from './png';
 import { audioRoutes } from './audio-routes';
 import { mirrorRoutes } from './mirror-routes';
 import { desktopRoutes } from './desktop-routes';
@@ -749,16 +750,18 @@ export class NetworkServer {
         answer.status === 200 &&
         reply &&
         typeof reply === 'object' &&
-        'png' in reply &&
-        reply.png instanceof Uint8Array
+        'picture' in reply
       ) {
+        // A phone's picture of a deck's click: made a PNG here, never on Main's thread (C6's review, MEDIUM 1).
+        if (!isCapturedPicture(reply.picture)) throw new Error('A captured picture was not whole.');
+        const png = await pngOf(reply.picture);
         res.writeHead(200, {
           ...SECURITY_HEADERS,
           'Content-Type': 'image/png',
-          'Content-Length': reply.png.byteLength,
+          'Content-Length': png.byteLength,
           'Cache-Control': 'no-store',
         });
-        res.end(reply.png);
+        res.end(png);
         return;
       }
       this.json(res, answer.status, reply);
