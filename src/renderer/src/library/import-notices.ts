@@ -15,7 +15,7 @@ let nextId = 0;
 function show(notices: Omit<ImportNotice, 'id'>[]): void {
   if (notices.length === 0) return;
   useImportNotices.setState((s) => ({
-    notices: [...s.notices, ...notices.map((notice) => ({ ...notice, id: ++nextId }))],
+    notices: [...notices.map((notice) => ({ ...notice, id: ++nextId })), ...s.notices],
   }));
 }
 
