@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { caseLine, caseRow, framePeriod, measureRun, type MotionRecord } from './motion-measure';
+import {
+  caseLine,
+  caseRow,
+  framePeriod,
+  intervalStats,
+  measureRun,
+  type MotionRecord,
+  stillIntervals,
+  stillLine,
+} from './motion-measure';
 
 /*
  * Item 6 (Session 57: animations on the spot): the arithmetic the Performance check's animations scenario judges each
@@ -182,5 +191,29 @@ describe('a case’s row, from its runs', () => {
     expect(line).toBe(
       'dissolve 800 (800 ms, 3 runs): delay median 25 ms, p95 25 ms; length 800 ms (+0); frames median 16.7, p95 16.7, longest 16.7 ms, 0 of 141 over 1.5×',
     );
+  });
+});
+
+describe('a screen’s still frames, between the cases', () => {
+  it('are the intervals between the frames it drew in a stretch where nothing moved, summed up as a case’s are', () => {
+    const at = frames(0, 100, { 40: 20 });
+    const still = stillIntervals(at, at[30] ?? 0, at[60] ?? 0);
+    // Frames 30 to 59: 29 intervals, one of them 20 ms late.
+    expect(still).toHaveLength(29);
+    const stats = intervalStats(still, PERIOD);
+    expect(stats?.count).toBe(29);
+    expect(stats?.median).toBeCloseTo(PERIOD, 6);
+    expect(stats?.max).toBeCloseTo(PERIOD + 20, 6);
+    expect(stats?.over).toBe(1);
+    expect(intervalStats([], PERIOD)).toBeNull();
+    expect(stillIntervals(at, 5000, 6000)).toEqual([]);
+  });
+
+  it('read as one line, beside the cases', () => {
+    const at = frames(0, 100, { 40: 20 });
+    expect(stillLine(intervalStats(stillIntervals(at, at[30] ?? 0, at[60] ?? 0), PERIOD))).toBe(
+      'still frames (nothing moving, between the cases): median 16.7, p95 16.7, longest 36.7 ms, 1 of 29 over 1.5×',
+    );
+    expect(stillLine(null)).toBe('still frames (nothing moving, between the cases): none');
   });
 });
