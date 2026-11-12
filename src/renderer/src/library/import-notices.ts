@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { formatBytes } from '../../../shared/format';
-import type { ImportItemReport, ImportReport } from '../../../shared/import';
+import type { ImportItemReport, ImportReport, RefusedImport } from '../../../shared/import';
 
 interface ImportNotice {
   id: number;
@@ -38,6 +38,10 @@ export function showImportNotice(text: string, retry?: () => Promise<unknown>): 
   show([{ text, retry }]);
 }
 
+export function showRefusedImports(refused: readonly RefusedImport[]): void {
+  show(refused.map(({ name, reason }) => ({ text: `“${name}” · ${reason}` })));
+}
+
 export function dismissImportNotice(id: number): void {
   useImportNotices.setState((s) => ({ notices: s.notices.filter((notice) => notice.id !== id) }));
 }
@@ -62,6 +66,7 @@ export async function retryImportNotice(notice: ImportNotice): Promise<void> {
 
 const missingParts = new Set([
   'bundle-entry',
+  'calendar-note',
   'deck-media-unmatched',
   'deck-motion-approximated',
   'deck-pictures',
@@ -75,6 +80,7 @@ const missingParts = new Set([
   'pictures-hidden',
   'pictures-notes-unmatched',
   'pictures-too-many',
+  'shastra-note',
   'unsupported-element',
 ]);
 

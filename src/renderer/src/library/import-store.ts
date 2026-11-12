@@ -11,7 +11,7 @@ import type { NewItem } from '../../../shared/playlists';
 import type { UsedIn } from '../../../shared/media-removal';
 import { useEngine } from '../engine/engine-store';
 import { openImportDestination, usePlaylists } from '../playlists/playlist-store';
-import { showImportFailures, showImportNotice } from './import-notices';
+import { showImportFailures, showImportNotice, showRefusedImports } from './import-notices';
 import type { ShownItem } from './library-store';
 import {
   chooseNothing,
@@ -89,7 +89,7 @@ export function watchImports(): void {
 
 function showAutomaticImportNotice(notice: AutomaticImportNotice): void {
   if ('refused' in notice) {
-    for (const { name, reason } of notice.refused) showImportNotice(`“${name}” · ${reason}`);
+    showRefusedImports(notice.refused);
     return;
   }
   void window.drashti.library
