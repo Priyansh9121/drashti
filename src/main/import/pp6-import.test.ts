@@ -239,7 +239,7 @@ describe('importing ProPresenter 6 files', () => {
     expect(logoMedia).toEqual({ name: 'Logo.png', missing: 0 });
   });
 
-  it('knows a presentation by its own id: unchanged is skipped (even moved), changed asks, replace keeps it', async () => {
+  it('knows a presentation by its own id: unchanged is skipped even when moved, changed keeps both', async () => {
     const t = setup();
     const file = t.write('Placeholder Hymn.pro6', hymn());
     const first = await t.run([file]);
@@ -253,10 +253,17 @@ describe('importing ProPresenter 6 files', () => {
       ],
     });
     t.write('Placeholder Hymn.pro6', changed);
-    expect((await t.run([file])).report?.items[0]).toMatchObject({ outcome: 'conflict', target: { id } });
-    const replaced = await t.run([file], { decisions: { [file]: 'replace' } });
-    expect(replaced.report?.items[0]).toMatchObject({ outcome: 'replaced', target: { id } });
-    expect(t.presentations.get(id)?.groups.map((g) => g.slides.length)).toEqual([1]);
+    const original = t.presentations.get(id)?.groups;
+    const kept = (await t.run([file])).report?.items[0];
+    expect(kept?.outcome).toBe('kept-both');
+    const newId = kept?.target?.id ?? '';
+    expect(newId).not.toBe(id);
+    expect(t.presentations.get(id)?.groups).toEqual(original);
+    expect(t.presentations.get(newId)?.groups.map((g) => g.slides.length)).toEqual([1]);
+    expect((await t.run([file])).report?.items[0]).toMatchObject({
+      outcome: 'skipped',
+      target: { id: newId },
+    });
   });
 
   it('keeps templates in their own library', async () => {
