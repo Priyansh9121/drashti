@@ -147,6 +147,19 @@ describe('ImportService', () => {
     expect(onMarked).toHaveBeenCalledTimes(1);
   });
 
+  it('passes an automatic import’s points to the playback hold callback only', async () => {
+    const onMarked = vi.fn<NonNullable<ImportServiceDeps['onMarked']>>();
+    const onAutoMarked = vi.fn<NonNullable<ImportServiceDeps['onAutoMarked']>>();
+    const { service, workers } = setup({ onMarked, onAutoMarked });
+    const done = service.start(['/presentations'], { automatic: true });
+    const worker = workers[0];
+    worker?.emit({ type: 'marked', runId: worker.runId, mediaIds: ['m1'] });
+    expect(onMarked).not.toHaveBeenCalled();
+    expect(onAutoMarked).toHaveBeenCalledExactlyOnceWith(['m1']);
+    worker?.emit({ type: 'finished', run: summary(worker.runId) });
+    await expect(done).resolves.toMatchObject({ ok: true });
+  });
+
   it('tells each import whether this computer plays HEVC; one starting before the window has said waits for it (Session 51)', async () => {
     let tell: (plays: boolean | null) => void = () => undefined;
     const answer = new Promise<boolean | null>((resolve) => {

@@ -44,6 +44,8 @@ describe('scanPaths', () => {
       '.hidden.txt': 'x',
       'a/.DS_Store': 'x',
       'Thumbs.db': 'x',
+      'desktop.ini': 'x',
+      ...(process.platform === 'win32' ? {} : { 'Icon\r': 'x' }),
       '__MACOSX/a/Song 1.txt': 'x',
       'notes.docx': 'x',
       'old notes.doc': 'x',
