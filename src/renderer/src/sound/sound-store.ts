@@ -13,7 +13,7 @@ import { evenWords, soundMenuEntries, trimmedWords } from './sound-words';
  * - A video's or sound's Even loudness (L), a tick in its right-click menu (the one menu: files/file-menu.ts): ticked,
  *   it plays at the even level, unticked as it is in its file. What was measured, and what that does, is said.
  * - Trim black and silence (M), in a video's menu: its start and end points set past the black and silence at its
- *   start and end, with Undo; the file is never cut, and Trim (start, end and markers)… changes the points.
+ *   start and end, with Undo to restore the old playback points.
  */
 
 export const useSound = create<{ view: SoundView | null }>(() => ({ view: null }));

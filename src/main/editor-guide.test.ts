@@ -77,17 +77,21 @@ describe('alpha.14 editor instructions in the bundled guide', () => {
 
   it('keeps the Simple phone playlist, Play and photo destination exceptions explicit', () => {
     const phone = passage('The phone in Simple Mode.');
-    // Several playlists (alpha.16): the phone opens the playlist open on the computer and follows it.
-    expect(phone).toContain('opens the playlist open there');
-    expect(phone).toContain('follows it when another is opened');
+    // Item 7 (alpha.17): the phone starts with the playlist open on the computer and can open any other; Pause, Play
+    // and the time bar work there, and Audio; marker jumps stay Pro Mode's.
+    expect(phone).toContain('starts with the playlist open there');
+    expect(phone).toContain('can open any other');
     expect(phone).toContain('Rename');
     expect(phone).toContain('Remove');
     expect(phone).toContain('Undo');
-    expect(phone).toContain('Play resumes');
-    expect(phone).toContain('Pause and marker jumps');
+    expect(phone).toContain('Pause and Play and the time bar');
+    expect(phone).toContain('Audio');
+    expect(phone).toContain('Marker jumps');
+    expect(phone).toContain('stay in Pro Mode');
     expect(phone).toContain('refused');
-    // Question 5 (alpha.15): a phone's files go to the end of the open playlist, a PDF or deck once the stream has ended.
-    expect(phone).toContain('goes to the end of the open playlist');
+    // Question 5 (alpha.15): a phone's files go to the end of the playlist open on the computer, a PDF or deck once the
+    // stream has ended.
+    expect(phone).toContain('goes to the end of the playlist open on the Drashti computer');
     expect(phone).toContain('a PDF or deck waits');
     expect(phone).not.toContain('Added from Phones');
     expect(source).not.toContain("and a phone's markers still jump");

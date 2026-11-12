@@ -106,7 +106,13 @@ test('Design edits one master on the canvas and keeps it behind the presentation
     const canvas = await editor.getByTestId('editor-canvas').boundingBox();
     if (!canvas) throw new Error('no canvas');
     await ed.mouse.dblclick(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2);
-    await editor.locator('[data-editing="true"] .ProseMirror').fill('Placeholder revised master');
+    // The words chosen with the keys, as a person chooses them. fill() chooses with a DOM range instead,
+    // and the box's own check just after it takes the keyboard can put the double-click's caret back first.
+    const typing = editor.locator('[data-editing="true"] .ProseMirror');
+    await expect(typing).toBeFocused();
+    await typing.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+    await ed.keyboard.insertText('Placeholder revised master');
+    await expect(typing).toHaveText('Placeholder revised master');
     await editor.getByTestId('master-done').click();
     await editor.getByTestId('save-slides').click();
     await slideEditorClosed(app);

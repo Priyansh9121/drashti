@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { constants as fsConstants, existsSync } from 'node:fs';
-import { copyFile, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, userInfo } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
 import type { PictureSource } from '../../shared/pictures';
@@ -247,7 +247,7 @@ export interface ConvertLimits {
   openMaxMs: number;
   /** An app that has not answered for this long is asking a question nobody sees (or is stuck). */
   silentMs: number;
-  /** For saving as PDF: this, and `perSlideMs` for each slide. */
+  /** Base time for saving a PDF or an editable Keynote export. PDFs get `perSlideMs` for each slide too. */
   saveMs: number;
   perSlideMs: number;
   /**
@@ -270,13 +270,15 @@ export const CONVERT_LIMITS: ConvertLimits = {
   perMovieSecondMs: 6_000,
 };
 
-/** A Keynote file is also saved as PowerPoint to count its builds, unless it is bigger than this. */
-const BUILDS_MAX_BYTES = 100 * 1024 * 1024;
+/** A Keynote file up to this size is also exported as PowerPoint for editing and counting builds. */
+const KEYNOTE_PPTX_MAX_BYTES = 100 * 1024 * 1024;
 
 export type Converted =
   | {
       ok: true;
       pdf: string;
+      /** Keynote’s readable PowerPoint export, retained in the caller’s work folder. */
+      editablePptx?: string;
       /** Each slide, as the app told it (null: the file itself is read for them, or none). */
       slides: PptxSlide[] | null;
       /** The notes are for shown slides only, already in the PDF's order. */
@@ -461,6 +463,8 @@ export interface MacSession {
   pids(): Promise<number[]>;
   /** What to tell the operator when the app stopped answering, or making progress, while `when`. */
   stuck(when: string): ConvertFailed;
+  /** Record a stopped or closed app after the optional editable export fails. */
+  editableExportFailed(result: Ran): void;
   /** What to tell the operator when asking the app failed while `when`, trying to `what` ("save it as PDF"). */
   fromError(r: Ran, when: string, what: string): ConvertFailed;
   /** Close a document Drashti opened, never saving it. */
@@ -521,8 +525,9 @@ export async function withMacSession<T>(
   /**
    * `answering` is false once the app has stopped answering (it is asking a question nobody sees). `othersSeen`:
    * something not Drashti's copy was seen open in it (Session 54, C review), so it is never quit or stopped.
+   * `gone` keeps cleanup from addressing the app after this session has exited.
    */
-  const state = { answering: true, tookFront: false, othersSeen: false };
+  const state = { answering: true, gone: false, tookFront: false, othersSeen: false };
   /**
    * Whether the app has the front, taken from whatever had it (Drashti, as a rule). For Keynote
    * that is a question about the file in front of the operator: given a file as a double-click
@@ -581,6 +586,19 @@ export async function withMacSession<T>(
       `${name} could not ${what}`,
       `${name} could not ${what}${detail ? ` (${detail})` : ''}. ${byHand(app.converter)}`,
     );
+  };
+  const editableExportFailed = (result: Ran) => {
+    const error = errorNumber(result.stderr);
+    const wasCancelled = result.aborted || signal?.aborted;
+    if (error !== null && GONE.has(error)) {
+      state.answering = false;
+      state.gone = true;
+      if (!wasCancelled) log(`${name} closed while saving an editable copy. Drashti kept the PDF.`);
+    } else if (!wasCancelled && (result.timedOut || error === TIMED_OUT)) {
+      state.answering = false;
+      const action = before.length > 0 || state.othersSeen ? ` Look at ${name} and answer it.` : '';
+      log(`${name} stopped answering while saving an editable copy. Drashti kept the PDF.${action}`);
+    }
   };
   const tell = (body: string[], args: string[], seconds: number, own?: AbortSignal) =>
     tellApp(app, body, args, seconds, own && signal ? AbortSignal.any([signal, own]) : (own ?? signal));
@@ -835,6 +853,7 @@ export async function withMacSession<T>(
       tell,
       pids: () => pidsOf(app),
       stuck: silentFail,
+      editableExportFailed,
       fromError,
       close,
       savedAs,
@@ -846,9 +865,11 @@ export async function withMacSession<T>(
     const closeFrom = performance.now();
     clearInterval(watching);
     for (const document of [...opened]) await close(document);
-    if (before.length > 0) log('left open, as the operator had it');
-    else if (state.othersSeen) log('left open: something else was opened in it meanwhile');
-    else await quitIfIdle(app, before, stem, state.answering, log);
+    if (!state.gone) {
+      if (before.length > 0) log('left open, as the operator had it');
+      else if (state.othersSeen) log('left open: something else was opened in it meanwhile');
+      else await quitIfIdle(app, before, stem, state.answering, log);
+    }
     // Quit, stopped, or left open for something the operator opened in it: no longer Drashti's own.
     for (const pid of ours) options.ended?.(pid);
     // The app took the front from Drashti: give the operator's window the keys back.
@@ -874,15 +895,15 @@ async function convertOnMac(
     if (!opened.ok) return opened.failed;
     const { doc, slides, copy } = opened.document;
     const inside = dirname(copy);
-    const ext = copyExt(input);
     const name = session.name;
 
-    // ---- save it as PDF (and a Keynote file as PowerPoint too, for its builds) -------------
+    // Save the PDF first so a failure in the optional Keynote export leaves the pictures available.
     const pdf = join(work, 'pictures.pdf');
     const inApp = join(inside, 'pictures.pdf');
-    const pptx = join(inside, 'builds.pptx');
-    const wantBuilds =
-      converter === 'keynote' && ext === '.key' && (await stat(input)).size <= BUILDS_MAX_BYTES;
+    const wantEditablePptx =
+      converter === 'keynote' &&
+      copyExt(input) === '.key' &&
+      (await stat(input)).size <= KEYNOTE_PPTX_MAX_BYTES;
     const seconds = Math.ceil((limits.saveMs + limits.perSlideMs * Math.max(slides, 1)) / 1000);
     const pdfFrom = performance.now();
     const saved =
@@ -895,15 +916,10 @@ async function convertOnMac(
               'repeat with s in (slides of d)',
               'if skipped of s is false then set end of noteList to (presenter notes of s)',
               'end repeat',
-              'if (item 3 of argv) is not "" then',
-              'try',
-              'export d to (POSIX file (item 3 of argv)) as Microsoft PowerPoint',
-              'end try',
-              'end if',
               "set AppleScript's text item delimiters to (ASCII character 30)",
               'return noteList as text',
             ],
-            [doc, inApp, wantBuilds ? pptx : ''],
+            [doc, inApp],
             seconds,
           )
         : await session.tell(
@@ -929,24 +945,45 @@ async function convertOnMac(
     session.log('saved as PDF');
 
     let fileSlides: PptxSlide[] | null = null;
-    let shownOnly = false;
-    if (converter === 'keynote') {
-      if (wantBuilds && exists(pptx)) {
+    let editablePptx: string | undefined;
+    if (wantEditablePptx) {
+      const pptx = join(inside, 'builds.pptx');
+      const exported = await session.tell(
+        [
+          'set d to document id (item 1 of argv)',
+          'export d to (POSIX file (item 2 of argv)) as Microsoft PowerPoint',
+        ],
+        [doc, pptx],
+        Math.max(1, seconds),
+      );
+      const exportFailed = exported.code !== 0 || exported.timedOut;
+      if (exportFailed) session.editableExportFailed(exported);
+      if (exported.aborted || session.signal?.aborted) return cancelled();
+      if (!exportFailed) {
         try {
-          fileSlides = await readPptx(pptx);
+          const exportedSlides = await readPptx(pptx);
+          if (session.signal?.aborted) return cancelled();
+          if (exportedSlides.length > 0 && (slides === 0 || exportedSlides.length === slides)) {
+            fileSlides = exportedSlides;
+            const retained = join(work, 'keynote-editable.pptx');
+            await rename(pptx, retained);
+            editablePptx = retained;
+          }
         } catch {
-          // Its builds cannot be counted: the notes come from Keynote itself.
+          // Keep the PDF if the export could not be read or retained.
         }
       }
-      if (!fileSlides) {
-        shownOnly = true;
-        fileSlides = saved.stdout
-          .replace(/\n$/u, '')
-          .split('\u001e')
-          .map((n) => ({ hidden: false, notes: tidyNotes(n), animated: false }));
-      }
     }
-    return { ok: true, pdf, slides: fileSlides, shownOnly };
+    if (session.signal?.aborted) return cancelled();
+
+    const shownOnly = converter === 'keynote' && !fileSlides;
+    if (shownOnly) {
+      fileSlides = saved.stdout
+        .replace(/\n$/u, '')
+        .split('\u001e')
+        .map((n) => ({ hidden: false, notes: tidyNotes(n), animated: false }));
+    }
+    return { ok: true, pdf, slides: fileSlides, shownOnly, ...(editablePptx ? { editablePptx } : {}) };
   });
 }
 

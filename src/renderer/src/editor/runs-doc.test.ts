@@ -3,6 +3,7 @@ import { EditorState, TextSelection } from 'prosemirror-state';
 import { describe, expect, it } from 'vitest';
 import type { TextElement, TextRun } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
+import { drawnLines } from '../../../shared/text-lists';
 import { arrange, duplicateElements, patchRun, styleBox } from './ops';
 import {
   docOf,
@@ -57,6 +58,35 @@ describe('words in the text editor and back', () => {
   it('keeps legacy-font text as it is', () => {
     const runs: TextRun[] = [{ text: 'nmUnO pHelI', font: 'Gopika', legacy: true, lang: null }];
     expect(runsOf(docOf(schema, box(runs)))).toEqual(runs);
+  });
+
+  it('keeps a source paragraph’s alignment and bullet when all of its words are replaced', () => {
+    const source: TextRun = {
+      text: 'Placeholder source',
+      list: 'disc',
+      paragraph: { align: 'justify', marginLeft: 48, indent: -20, bullet: '◇' },
+    };
+    const state = EditorState.create({ doc: docOf(schema, box([source])), schema });
+    const changed = state.tr.replaceWith(1, 1 + source.text.length, schema.text('Placeholder replacement'));
+    expect(runsOf(changed.doc)).toEqual([{ ...source, text: 'Placeholder replacement' }]);
+  });
+
+  it('continues an imported numbered list past a soft break and a new paragraph', () => {
+    const paragraph = { align: 'right' as const, startAt: 5 };
+    const source: TextRun[] = [
+      { text: 'Placeholder first part', list: '1', paragraph },
+      { text: '\n', list: '1', paragraph, softBreak: true },
+      { text: 'Placeholder continuation', list: '1', paragraph },
+    ];
+    const doc = docOf(schema, box(source));
+    expect(runsOf(doc)).toEqual(source);
+    let state = EditorState.create({ doc, schema });
+    state = state.apply(state.tr.setSelection(TextSelection.atEnd(doc)));
+    splitLine(state, (tr) => {
+      state = state.apply(tr);
+    });
+    state = state.apply(state.tr.insertText('Placeholder next paragraph'));
+    expect(drawnLines(runsOf(state.doc)).map((line) => line.mark.label)).toEqual(['5.', '6.']);
   });
 
   it('reads a box without runs as plain text, and gives plain text back', () => {
