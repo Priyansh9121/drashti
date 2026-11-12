@@ -41,6 +41,8 @@ export interface EditablePptx {
   width: number;
   height: number;
   slides: EditablePptxSlide[];
+  /** Notes for omitted pages, keyed by their index in the source deck. */
+  failedNotes?: Record<number, string[]>;
   media: ParsedMediaRef[];
 }
 
@@ -1807,6 +1809,7 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
     return ref;
   };
   const slides: EditablePptxSlide[] = [];
+  const failedNotes: Record<number, string[]> = {};
   for (const [sourceIndex, id] of ids.entries()) {
     const rel = presentation.rels.get(attr(id, 'r:id') ?? '');
     const slide =
@@ -1890,7 +1893,12 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       await append(slide);
     } catch (error) {
       // An absent source page stays as its retained picture. The rest of the deck is still editable.
-      if (error instanceof EditableObjectLimit) continue;
+      if (error instanceof EditableObjectLimit) {
+        failedNotes[sourceIndex] = [
+          `PowerPoint source page ${String(sourceIndex + 1)} exceeds the ${String(MAX_ELEMENTS)}-object editing limit and stays as its saved picture.`,
+        ];
+        continue;
+      }
       throw error;
     }
     slides.push({
@@ -1901,6 +1909,14 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       issues: [...issues],
     });
   }
-  if (slides.length === 0) throw new Error('No source slide could be read safely.');
-  return { sourceCount: ids.length, width, height, slides, media };
+  const hasFailedNotes = Object.keys(failedNotes).length > 0;
+  if (slides.length === 0 && !hasFailedNotes) throw new Error('No source slide could be read safely.');
+  return {
+    sourceCount: ids.length,
+    width,
+    height,
+    slides,
+    media,
+    ...(hasFailedNotes ? { failedNotes } : {}),
+  };
 }
