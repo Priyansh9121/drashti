@@ -567,6 +567,34 @@ describe('automatic imports keep the points of a file already playing', () => {
     expect(engine.dispatch({ type: 'jumpToMarker', layer, markerId: 'm2' })).toMatchObject({ ok: false });
   });
 
+  it('keeps the live slide video’s points when that slide is clicked again', () => {
+    const { engine, automaticImport, elapse } = setupImport();
+    engine.dispatch(goLive(0));
+    const shownAt = engine.current.layers.slide?.shownAt;
+    automaticImport();
+    elapse(1000);
+    engine.dispatch(goLive(0));
+    expect(engine.current.layers.slide).toMatchObject({ shownAt, clips: { clipped: oldClip } });
+    expect(playingOf(engine.current, onSlide('clipped'))?.marks).toEqual(oldMarks);
+  });
+
+  it('keeps the live slide video’s points when an edit refreshes its words', () => {
+    const { engine, source, automaticImport, elapse } = setupImport();
+    engine.dispatch(goLive(0));
+    const shownAt = engine.current.layers.slide?.shownAt;
+    automaticImport();
+    elapse(1000);
+    const edited = textSlide('v1', 'Placeholder edited words');
+    source.set('videos', [{ ...edited, elements: [videoEl('v1-a', 'clipped', true), ...edited.elements] }]);
+    engine.refreshLive('videos');
+    const slide = engine.current.layers.slide;
+    expect(slide?.slide.elements).toContainEqual(
+      expect.objectContaining({ text: 'Placeholder edited words' }),
+    );
+    expect(slide).toMatchObject({ shownAt, clips: { clipped: oldClip } });
+    expect(playingOf(engine.current, onSlide('clipped'))?.marks).toEqual(oldMarks);
+  });
+
   it('keeps the points and marker ticks on Back with the same box up', () => {
     const { engine, automaticImport } = setupImport();
     engine.dispatch(putBox);
