@@ -206,9 +206,7 @@ describe('Import from a Link: Dropbox', () => {
         return { id: 'folder-playlist', name };
       },
     });
-    const service = h.service as LinkService & {
-      start(link: string, audio: boolean, intoOpenPlaylist: boolean): ReturnType<LinkService['look']>;
-    };
+    const { service } = h;
     expect(service.start(FOLDER_LINK, false, true).ok).toBe(true);
     await until(() => service.view().phase === 'done');
     expect(service.view()).toMatchObject({
@@ -656,6 +654,24 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
       return false;
     }
   };
+
+  it('automatically downloads at the highest offered quality up to 1080p, even with an old 2160p setting', async () => {
+    const h = await youtube();
+    h.service.setMaxHeight(2160);
+    expect(h.service.start(LINK, false, false).ok).toBe(true);
+    await until(() => h.service.view().phase === 'done', 60_000);
+    expect(h.service.view()).toMatchObject({ kind: 'youtube', choice: { type: 'mp4', height: 1080 } });
+    expect(files(h.folder)).toEqual(['Placeholder video.mp4']);
+    expect(h.stored.maxHeight).toBe(2160);
+  });
+
+  it('automatically downloads YouTube as audio when the operator pastes from Audio', async () => {
+    const h = await youtube();
+    expect(h.service.start(LINK, true, false).ok).toBe(true);
+    await until(() => h.service.view().phase === 'done', 60_000);
+    expect(h.service.view()).toMatchObject({ kind: 'youtube', choice: { type: 'mp3', height: null } });
+    expect(files(h.folder)).toEqual(['Placeholder video.mp3']);
+  });
 
   it('looks, refuses a download above the setting, then saves under the title, with no tick asked', async () => {
     const h = await youtube();

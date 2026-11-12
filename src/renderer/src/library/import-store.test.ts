@@ -44,7 +44,7 @@ beforeEach(() => {
       },
       playlists: {
         addItems,
-        tree: () => Promise.resolve([]),
+        tree: () => Promise.resolve([{ id: 'playlist-start' }, { id: 'playlist-opened-later' }]),
         templates: () => Promise.resolve([]),
         items: () => Promise.resolve([]),
       },
@@ -65,6 +65,6 @@ describe('importing from the library or window', () => {
   it('does not open a report when there is nothing live', async () => {
     await importPaths([path]);
 
-    expect(useImports.getState()).not.toMatchObject({ report: expect.anything() });
+    expect(Object.hasOwn(useImports.getState(), 'report')).toBe(false);
   });
 });

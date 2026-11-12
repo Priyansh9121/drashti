@@ -628,10 +628,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     animate?: boolean;
   }
 
-  /**
-   * Whether a presentation file goes ahead: unchanged since it was imported (skipped), changed (the
-   * operator chooses, or has chosen), or new. Recorded when it goes no further.
-   */
+  /** An unchanged file is skipped. A changed file is kept beside the earlier import by default. */
   const decideEarlier = (
     file: ScannedFile,
     where: Where,
@@ -649,10 +646,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       earlier.find((e) => e.sourceHash === hash) ??
       (earlier.length === 0 ? presentations.findByHash(kind, hash) : null);
     time('lookup', t);
-    // A deck imported as pictures only, which can now come in with its animations (Session 54, C2): asked first, as
-    // a changed file is (C review: replacing it loses what was changed in it since), and only on the answer.
+    // When a deck can now come in with its animations, keep the earlier pictures and any edits beside it.
     if (same && again?.(same.id)) {
-      const decided = ctx.options.decisions?.[where.sourcePath] ?? ctx.options.onConflict ?? 'ask';
+      const decided = ctx.options.decisions?.[where.sourcePath] ?? ctx.options.onConflict ?? 'keep-both';
       if (decided === 'ask') {
         record({
           ...base,
@@ -693,7 +689,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     const latest = earlier[0] ?? null;
     let choice: ConflictChoice | null = null;
     if (latest) {
-      const decided = ctx.options.decisions?.[where.sourcePath] ?? ctx.options.onConflict ?? 'ask';
+      const decided = ctx.options.decisions?.[where.sourcePath] ?? ctx.options.onConflict ?? 'keep-both';
       if (decided === 'ask') {
         record({
           ...base,
@@ -1033,8 +1029,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             () => true,
           )
         : true;
-    // Unchanged since it was imported, or waiting for the operator's choice: nothing to draw. A deck that came in
-    // as pictures only comes in again in its place, with its animations, where they can be made now.
+    // An unchanged deck needs no more drawing, unless its animations can now be imported.
     const decided = decideEarlier(
       file,
       where,
@@ -1935,8 +1930,6 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     });
   };
 
-  const unknown = new Map<string, string[]>();
-
   async function importOne(file: ScannedFile, where: Where): Promise<void> {
     const name = basename(file.path).toLowerCase();
     const ext = extOf(file.path);
@@ -2004,9 +1997,18 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           await importPp7(file, where, 'playlist');
           return;
         }
-        const list = unknown.get(ext) ?? [];
-        list.push(where.sourcePath);
-        unknown.set(ext, list);
+        record({
+          sourcePath: where.sourcePath,
+          format: 'unknown',
+          outcome: 'unsupported',
+          name: basename(file.path),
+          target: null,
+          counts: NO_COUNTS,
+          message: ext
+            ? `Drashti doesn’t read .${ext} files.`
+            : 'This file has no extension Drashti can read.',
+          issues: [],
+        });
       }
     }
   }
@@ -2073,24 +2075,6 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     // From here on the import writes little: the main process need not wait for it to give way.
     ctx.way?.loop(false);
 
-    // Files Drashti does not read: one line per type, never dropped silently.
-    for (const [ext, paths] of unknown) {
-      const label = ext ? `.${ext}` : 'no extension';
-      const examples = paths.slice(0, 5).map((p) => basename(p.split(BUNDLE_SEP).pop() ?? p));
-      record(
-        {
-          sourcePath: paths[0] ?? '',
-          format: 'unknown',
-          outcome: 'unsupported',
-          name: ext ? `${label} files` : 'Files with no extension',
-          target: null,
-          counts: NO_COUNTS,
-          message: `${paths.length === 1 ? '1 file' : `${paths.length.toLocaleString('en')} files`} (${label}) not imported: Drashti does not read this type. ${paths.length === 1 ? 'File' : 'For example'}: ${examples.join(', ')}${paths.length > examples.length ? ', …' : ''}.`,
-          issues: [],
-        },
-        paths.length,
-      );
-    }
     commit();
 
     const message =

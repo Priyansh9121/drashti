@@ -7,18 +7,19 @@ import { expect, it, vi } from 'vitest';
 import { openDatabase } from '../db/database';
 import { ConvertService } from './convert-service';
 
-vi.mock('node:child_process', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('node:child_process')>()),
+vi.mock(import('node:child_process'), async (importOriginal) => ({
+  ...(await importOriginal()),
   spawn: vi.fn(),
 }));
 
 vi.mock('./read-info', () => ({
   PROBE_MS: 30_000,
-  readInfo: async () => ({
-    durationMs: 1000,
-    video: null,
-    audio: { codec: 'wmav2' },
-  }),
+  readInfo: () =>
+    Promise.resolve({
+      durationMs: 1000,
+      video: null,
+      audio: { codec: 'wmav2' },
+    }),
 }));
 
 it('puts an automatic conversion back in the queue if a show starts as its encoder finishes', async () => {
@@ -34,7 +35,7 @@ it('puts an automatic conversion back in the queue if a show starts as its encod
   let busy: string | null = null;
   const children: { child: EventEmitter; part: string }[] = [];
   vi.mocked(spawn).mockImplementation((_command, args) => {
-    const part = Array.isArray(args) ? args.at(-1) : undefined;
+    const part: unknown = Array.isArray(args) ? args.at(-1) : undefined;
     if (typeof part !== 'string') throw new Error('The encoder was not given a part-file.');
     const child = Object.assign(new EventEmitter(), {
       stderr: new EventEmitter(),

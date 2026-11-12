@@ -4,7 +4,8 @@ import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import { useEngine } from '../engine/engine-store';
 import type { AppInfo } from '../../../shared/app-info';
 import { describeAppInfo } from '../../../shared/app-info';
-import { cancelImport, dismissFinished, openReport, useImports } from '../library/import-store';
+import { cancelImport, dismissFinished, useImports } from '../library/import-store';
+import { dismissImportNotice, retryImportNotice, useImportNotices } from '../library/import-notices';
 import { connectSound, useSound } from '../screens/sound-store';
 import { Button } from '../ui/Button';
 import { AlertTriangle, CalendarDays, Info, Volume2, X } from '../ui/icons';
@@ -82,18 +83,17 @@ export function describeRun(run: {
   if (t.presentations > 0) parts.push(`Imported ${plural(t.presentations, 'presentation')}`);
   if (t.media > 0) parts.push(plural(t.media, 'media file'));
   if (t.skipped > 0) parts.push(`${t.skipped.toLocaleString('en')} already in the library`);
-  if (t.conflicts > 0) parts.push(`${plural(t.conflicts, 'file')} changed: choose what to do`);
+  if (t.conflicts > 0) parts.push(`${plural(t.conflicts, 'changed file')} left out`);
   if (t.failed > 0) parts.push(plural(t.failed, 'problem'));
   if (t.unsupported > 0) parts.push(`${plural(t.unsupported, 'item')} not imported`);
   if (run.status === 'cancelled') parts.push('cancelled');
   return parts.length > 0 ? parts.join(' · ') : 'Nothing to import';
 }
 
-/** An import under way (with Cancel), or how the last one went (with its report). */
+/** An import under way with Cancel, or a brief summary of the latest import. */
 function ImportStatus() {
   const runs = useImports((s) => s.runs);
   const finished = useImports((s) => s.finished);
-  const error = useImports((s) => s.error);
   const list = Object.values(runs);
   const active = list.find((r) => r.phase !== 'queued') ?? list[0];
   const waiting = list.length - (active ? 1 : 0);
@@ -118,16 +118,6 @@ function ImportStatus() {
       </div>
     );
   }
-  if (error)
-    return (
-      <div className="flex min-w-0 items-center gap-1.5 text-warning-fg" role="alert">
-        <AlertTriangle size={13} aria-hidden="true" className="shrink-0" />
-        <Truncate text={error} />
-        <button type="button" aria-label="Dismiss" onClick={dismissFinished} className="shrink-0 rounded-sm">
-          <X size={13} aria-hidden="true" />
-        </button>
-      </div>
-    );
   if (finished)
     return (
       <div
@@ -136,9 +126,6 @@ function ImportStatus() {
       >
         {finished.totals.failed > 0 && <AlertTriangle size={13} aria-label="Problems" className="shrink-0" />}
         <Truncate text={describeRun(finished)} />
-        <Button variant="secondary" size="sm" className="h-5" onClick={() => void openReport(finished.id)}>
-          Report
-        </Button>
         <Button variant="ghost" size="sm" className="h-5" onClick={dismissFinished}>
           Dismiss
         </Button>
@@ -303,7 +290,7 @@ export function StatusBar({
         <NodeWarnings />
         <BackupWarning />
         <UpdateStatus />
-        <LinkStatus />
+        <LinkStatus platform={info?.platform ?? 'darwin'} />
         <SoundStatus onOpen={onOpenScreens} />
         <TodayStatus onOpen={onOpenCalendar} />
         {/* Ahead of what comes and goes: an import's long line runs on under the version's words, never under a button. */}
@@ -330,13 +317,49 @@ export function StatusBar({
  */
 export function NoticeArea() {
   const notice = useNotice((s) => s.text);
-  if (!notice) return null;
+  const imports = useImportNotices((s) => s.notices);
+  if (!notice && imports.length === 0) return null;
+  const shown = imports.slice(0, 4);
+  const more = imports.length - shown.length;
   return (
-    // An anchor with no height on the bars' top edge: the card stands on it, over the bottom of the columns.
+    // An anchor with no height on the bars' top edge: the notices stand over the bottom of the columns.
     <div className="relative z-30 h-0 shrink-0">
-      <div className="pointer-events-none absolute right-3 bottom-2 flex w-[min(22rem,calc(100vw-1.5rem))] justify-end">
-        {/* A new notice arrives (rising 6 px) as the last one leaves. */}
-        <NoticeCard key={notice} notice={notice} />
+      <div className="pointer-events-none absolute right-3 bottom-2 flex w-[min(38rem,calc(100vw-1.5rem))] flex-col items-end gap-1">
+        {more > 0 && (
+          <span className="rounded-md bg-panel-3/75 px-2 py-1 text-xs text-fg">
+            {plural(more, 'more import notice')}
+          </span>
+        )}
+        {shown.map((item) => (
+          <div
+            key={item.id}
+            role="alert"
+            data-testid="import-notice"
+            className="flex max-w-full items-center gap-1.5 rounded-md border border-line/60 border-l-2 border-l-accent bg-panel-3/75 px-2 py-1 text-xs text-fg"
+          >
+            <Info size={13} aria-hidden="true" className="shrink-0 text-accent" />
+            <Truncate text={item.text} />
+            {item.retry && (
+              <Button
+                size="sm"
+                className="pointer-events-auto h-5 shrink-0"
+                onClick={() => void retryImportNotice(item)}
+              >
+                Try again
+              </Button>
+            )}
+            <button
+              type="button"
+              aria-label="Dismiss import notice"
+              title={item.text}
+              onClick={() => dismissImportNotice(item.id)}
+              className="pointer-events-auto -mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm hover:bg-panel-2"
+            >
+              <X size={12} aria-hidden="true" />
+            </button>
+          </div>
+        ))}
+        {notice && <NoticeCard key={notice} notice={notice} />}
       </div>
     </div>
   );
@@ -351,7 +374,7 @@ function NoticeCard({ notice }: { notice: string }) {
       role="alert"
       data-testid="operator-notice"
       data-motion={arriving}
-      className="pointer-events-none flex max-w-full items-start gap-1.5 rounded-md border border-line/60 border-l-2 border-l-accent bg-panel-3/75 px-2 py-1.5 text-xs leading-snug text-fg"
+      className="pointer-events-none flex max-w-[min(22rem,100%)] items-start gap-1.5 rounded-md border border-line/60 border-l-2 border-l-accent bg-panel-3/75 px-2 py-1.5 text-xs leading-snug text-fg"
     >
       <Info size={13} aria-hidden="true" className="mt-px shrink-0 text-accent" />
       <p className="min-w-0 flex-1 break-words">{notice}</p>
