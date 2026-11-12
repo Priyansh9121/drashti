@@ -19,7 +19,7 @@ import { connectOutput, useOutput } from './output-store';
 import { Preloader } from './Preloader';
 import { DisplayNumber } from './SetupCards';
 import { reportRenderError } from '../ui/render-errors';
-import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
+import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { ClockStyleContext } from '../render/clock-style';
 import { LiveHere } from '../render/live-here';
 import { useStopFade } from '../render/StopFade';
@@ -188,9 +188,9 @@ function Output() {
   }, []);
   // None where Chromium draws without a graphics chip (Session 57): Main says so in this screen's context once
   // Chromium has said how it draws, a warm-up begun before then ending there, and it holds from then. A test that
-  // keeps the warm-up drawn still sees it.
+  // keeps the warm-up drawn still sees it, unless it held it only until then (DRASHTI_TEST_GPU_SAID=late).
   const [noGpu, setNoGpu] = useState(false);
-  if (!noGpu && !HOLD_WARM_UP && context?.noGpu === true) setNoGpu(true);
+  if (!noGpu && (!HOLD_WARM_UP || NO_GPU_ENDS_HOLD) && context?.noGpu === true) setNoGpu(true);
   const [testThrow, setTestThrow] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(
