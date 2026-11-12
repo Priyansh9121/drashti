@@ -20,6 +20,9 @@ const capturedImage = (width: number, height: number, empty = false) => ({
 });
 const metadata = [{ ref: { num: 3, gen: 0 }, view: [0, 0, 480, 319.91998], rotate: 0 }];
 class Window extends EventEmitter {
+  constructor(private readonly displayScale = 1) {
+    super();
+  }
   destroyed = false;
   setContentSize = vi.fn();
   webContents = Object.assign(new EventEmitter(), {
@@ -28,7 +31,12 @@ class Window extends EventEmitter {
     printToPDF: vi.fn(() => Promise.resolve(bytes())),
     executeJavaScript: vi.fn(() => Promise.resolve(undefined)),
     capturePage: vi.fn((rect: { width: number; height: number }) =>
-      Promise.resolve(capturedImage(rect.width, rect.height)),
+      Promise.resolve(
+        capturedImage(
+          Math.round(rect.width * this.displayScale),
+          Math.round(rect.height * this.displayScale),
+        ),
+      ),
     ),
   });
   isDestroyed() {
@@ -40,8 +48,8 @@ class Window extends EventEmitter {
     this.emit('closed');
   }
 }
-function setup(size = { width: 480, height: 320 }, picture = false) {
-  const win = new Window();
+function setup(size = { width: 480, height: 320 }, picture = false, displayScale = 1) {
+  const win = new Window(displayScale);
   const admission = { allowed: true };
   const normalize = vi.fn(
     (
@@ -53,6 +61,7 @@ function setup(size = { width: 480, height: 320 }, picture = false) {
   );
   const session = new PdfCopySession({
     open: () => win as unknown as BrowserWindow,
+    scaleFactor: () => displayScale,
     assetDirs: () => [],
     normalize,
   });
@@ -109,6 +118,32 @@ it('draws a smaller native slide up to 1920 pixels on its long side', async () =
   expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
   expect(s.win.setContentSize).toHaveBeenCalledWith(1920, 1080);
   expect(await s.result).toMatchObject({ width: 1920, height: 1080 });
+});
+
+it.each([
+  { width: 1280, height: 720, cssHeight: 540, pictureHeight: 1080 },
+  { width: 960, height: 720, cssHeight: 720, pictureHeight: 1440 },
+])(
+  'captures a $width by $height slide at 1920 device pixels on a 2× display',
+  async ({ width, height, cssHeight, pictureHeight }) => {
+    const s = setup({ width, height }, true, 2);
+    expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
+    expect(s.win.setContentSize).toHaveBeenCalledWith(960, cssHeight);
+    expect(s.win.webContents.capturePage).toHaveBeenCalledWith(
+      { x: 0, y: 0, width: 960, height: cssHeight },
+      { stayHidden: true },
+    );
+    expect(await s.result).toMatchObject({ width: 1920, height: pictureHeight });
+  },
+);
+
+it('checks the actual capture dimensions before copying a bitmap if its display changes', async () => {
+  const s = setup({ width: 960, height: 720 }, true, 2);
+  const toBitmap = vi.fn(() => Buffer.alloc(0));
+  s.win.webContents.capturePage.mockResolvedValueOnce({ ...capturedImage(3840, 2880), toBitmap });
+  expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
+  expect(toBitmap).not.toHaveBeenCalled();
+  expect(await s.result).toBeNull();
 });
 
 it('ends a phone picture whose pixels are not its size, at once', async () => {
