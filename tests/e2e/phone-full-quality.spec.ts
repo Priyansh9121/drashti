@@ -574,13 +574,26 @@ test('Look closer saves the native deck click showing on the screens', async () 
           (globalThis as unknown as { savedDeckImages: { type: string; width: number; ink: number }[] })
             .savedDeckImages,
       );
-    await save.click();
-    await expect.poll(async () => (await saved()).length).toBe(1);
+    const saveClick = async (click: number, count: number) => {
+      const ready = p.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname.startsWith('/api/v1/presentations/') &&
+          url.searchParams.get('format') === 'png' &&
+          url.searchParams.get('click') === String(click)
+        );
+      });
+      await save.click();
+      const response = await ready;
+      expect(response.status()).toBe(200);
+      expect(response.headers()['content-type']).toBe('image/png');
+      await expect.poll(async () => (await saved()).length).toBe(count);
+    };
+    await saveClick(0, 1);
     await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'next' }));
     await expect(out.locator('[data-deck-motion-target="2"]')).toHaveCSS('opacity', '1');
     await expect(target).toHaveCSS('opacity', '1');
-    await save.click();
-    await expect.poll(async () => (await saved()).length).toBe(2);
+    await saveClick(1, 2);
     const [before, after] = await saved();
     expect(after?.type).toBe('image/png');
     expect(after?.width ?? 0).toBeGreaterThanOrEqual(960);
