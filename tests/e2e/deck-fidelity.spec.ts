@@ -26,7 +26,7 @@ const hidden = wordsShape('<a:p>' + text('Placeholder hidden drawing') + '</a:p>
 const boxes = wordsShape(
   '<a:p><a:pPr algn="just"><a:spcBef><a:spcPts val="1800"/></a:spcBef><a:spcAft><a:spcPts val="2400"/></a:spcAft></a:pPr>' +
     text('Placeholder justified words') +
-    '</a:p><a:p><a:pPr algn="r"><a:spcBef><a:spcPts val="1200"/></a:spcBef></a:pPr>' +
+    '</a:p><a:p><a:pPr algn="r"><a:lnSpc><a:spcPts val="1800"/></a:lnSpc><a:spcBef><a:spcPts val="1200"/></a:spcBef></a:pPr>' +
     text('Placeholder aligned right') +
     '</a:p><a:p><a:pPr><a:buClr><a:srgbClr val="336699"/></a:buClr><a:buSzPts val="1350"/>' +
     '<a:buChar char="◆"/></a:pPr>' +
@@ -124,6 +124,12 @@ test('a PowerPoint slide keeps its editable cells, aligned words and hidden obje
         Number.parseFloat(getComputedStyle(element).fontSize),
     );
     expect(beforeInEm).toBeCloseTo(16 / 24, 2);
+    const lineHeightInEm = await right.evaluate(
+      (element) =>
+        Number.parseFloat(getComputedStyle(element.parentElement ?? element).lineHeight) /
+        Number.parseFloat(getComputedStyle(element).fontSize),
+    );
+    expect(lineHeightInEm).toBeCloseTo(1, 2);
     const fittedBox = justified.locator('xpath=ancestor::*[@data-element][1]');
     await expect(fittedBox).toHaveAttribute('data-fit', /^0\.[0-9]+$/u);
     const bullet = canvas.locator('[data-list-marker="disc"]');
