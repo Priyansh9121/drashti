@@ -17,6 +17,7 @@ import { type PptxDeckSlide, stepsOf } from './pptx-deck';
 interface NativePage {
   editable: EditablePptxSlide;
   deck: DeckSlide;
+  needsStill: boolean;
 }
 
 export interface NativePptx {
@@ -24,6 +25,10 @@ export interface NativePptx {
   pages: Map<number, NativePage>;
   indices: number[];
   exact: boolean;
+}
+
+function editableMediaIndex(ref: string): number {
+  return ref.startsWith(MEDIA_REF) ? Number(ref.slice(MEDIA_REF.length)) : -1;
 }
 
 function nativeMotion(source: PptxDeckSlide, page: EditablePptxSlide): DeckMotion {
@@ -98,15 +103,21 @@ export async function prepareNativePptx(
         ? {}
         : { deckAdvanceMs: transition.advanceMs }),
     };
+    const needsStill = page.elements.some(
+      (el) => (el.kind === 'image' || el.kind === 'video') && !editable.media[editableMediaIndex(el.mediaId)],
+    );
     if (deckSlideSchema.safeParse(native).success)
-      pages.set(page.sourceIndex, { editable: page, deck: native });
+      pages.set(page.sourceIndex, { editable: page, deck: native, needsStill });
   }
   if (pages.size === 0) return null;
   return {
     editable,
     indices,
     pages,
-    exact: indices.every((index) => pages.get(index)?.deck.motion?.approximate === false),
+    exact: indices.every((index) => {
+      const page = pages.get(index);
+      return page?.deck.motion?.approximate === false && !page.needsStill;
+    }),
   };
 }
 
@@ -115,14 +126,14 @@ function nativeSlide(
   candidate: NativePage,
   input: NativePptx,
   references: Map<number, string>,
+  still?: string,
 ): Pick<ParsedSlide, 'background' | 'deck' | 'elements'> {
   const { editable, deck } = candidate;
   const elements = editable.elements.flatMap((el): SlideElement[] => {
     if (el.kind !== 'image' && el.kind !== 'video') return [el];
-    if (!el.mediaId.startsWith(MEDIA_REF)) return [];
-    const i = Number(el.mediaId.slice(MEDIA_REF.length));
+    const i = editableMediaIndex(el.mediaId);
     const asset = input.editable.media[i];
-    if (!asset) return [];
+    if (!asset) return still && el.kind === 'image' && el.crop ? [{ ...el, mediaId: still }] : [];
     let mediaId = references.get(i);
     if (!mediaId) {
       mediaId = mediaRef(parsed.media.length);
@@ -153,7 +164,8 @@ export function nativePresentation(
   source: PptxDeck,
   input: NativePptx,
 ): ParsedPresentation | null {
-  if (input.pages.size !== input.indices.length) return null;
+  if (input.pages.size !== input.indices.length || [...input.pages.values()].some((page) => page.needsStill))
+    return null;
   const parsed: ParsedPresentation = {
     name: nameFromFile(basename(fileName)),
     ref: null,
@@ -222,8 +234,20 @@ export function applyNativePages(
       };
       return;
     }
+    const still = candidate.needsStill ? slide.deck?.steps.at(-1)?.lastId : undefined;
+    if (
+      candidate.needsStill &&
+      (!still ||
+        candidate.editable.elements.some(
+          (el) =>
+            (el.kind === 'image' || el.kind === 'video') &&
+            !input.editable.media[editableMediaIndex(el.mediaId)] &&
+            (el.kind !== 'image' || !el.crop),
+        ))
+    )
+      return;
     if (motion.approximate) parsed.issues.push(approximation(n));
-    Object.assign(slide, nativeSlide(parsed, candidate, input, references));
+    Object.assign(slide, nativeSlide(parsed, candidate, input, references, still));
   });
   // An unsupported incoming transition may begin on the previous slide's baked still.
   for (const [index, slide] of slides.entries()) {
@@ -237,15 +261,14 @@ export function applyNativePages(
 /** Only retain assets the final slides use, including stills that an adjacent baked transition names. */
 export function compactNativeAssets(parsed: ParsedPresentation): void {
   const slides = parsed.groups.flatMap((group) => group.slides);
-  const indexOf = (ref: string) => (ref.startsWith(MEDIA_REF) ? Number(ref.slice(MEDIA_REF.length)) : -1);
   const used = new Set<number>();
   for (const slide of slides) {
     for (const el of slide.elements)
-      if (el.kind === 'image' || el.kind === 'video') used.add(indexOf(el.mediaId));
+      if (el.kind === 'image' || el.kind === 'video') used.add(editableMediaIndex(el.mediaId));
     for (const cue of slide.cues) if (cue.media !== null) used.add(cue.media);
     if (!slide.deck) continue;
-    for (const id of deckMediaIds(slide.deck)) used.add(indexOf(id));
-    if (slide.deck.after) used.add(indexOf(slide.deck.after));
+    for (const id of deckMediaIds(slide.deck)) used.add(editableMediaIndex(id));
+    if (slide.deck.after) used.add(editableMediaIndex(slide.deck.after));
   }
   const indices = new Map<number, number>();
   const media = parsed.media.filter((_, index) => {
@@ -255,7 +278,7 @@ export function compactNativeAssets(parsed: ParsedPresentation): void {
   });
   if (media.length === parsed.media.length) return;
   const map = (ref: string) => {
-    const index = indices.get(indexOf(ref));
+    const index = indices.get(editableMediaIndex(ref));
     return index === undefined ? ref : mediaRef(index);
   };
   for (const slide of slides) {

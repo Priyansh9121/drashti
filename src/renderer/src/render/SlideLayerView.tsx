@@ -192,7 +192,7 @@ function paintUnits(els: Layers, how: Paint, p: number): void {
 function paintLayers(els: Layers, how: Paint, p: number): void {
   const { kind, movement, native } = how;
   const frame = native
-    ? deckTransitionFrame(native, p)
+    ? deckTransitionFrame(native, p, movement)
     : kind === null
       ? null
       : transitionFrame(kind, p, movement);
@@ -498,10 +498,18 @@ export function SlideLayerView({
   const adds =
     fading &&
     off !== null &&
-    (native ? deckTransitionFrame(native, 0) : transitionFrame(kind, 0, movement)).add;
+    (native ? deckTransitionFrame(native, 0, movement) : transitionFrame(kind, 0, movement)).add;
   // A Bold move (Session 27): the words drawn apart, above both slides' pictures, shapes and colour, which
   // only dissolve. Slides as designed only (a lower third has its own); none for a cut or a Calm dissolve.
   const move = fading ? moveNow : null;
+  // Two independently moving edges can expose a corner of the canvas. Keep the outgoing still under both.
+  const underlay =
+    fading &&
+    native?.over?.kind === 'slide' &&
+    native.deckEffect !== 'dissolve' &&
+    native.deckEffect !== 'fade-black'
+      ? off
+      : null;
   return (
     <div
       ref={rootRef}
@@ -516,9 +524,23 @@ export function SlideLayerView({
         position: 'absolute',
         inset: 0,
         isolation: fading ? 'isolate' : undefined,
-        overflow: fading && kind === 'slide' ? 'hidden' : undefined,
+        overflow: fading && (kind === 'slide' || native?.over?.kind === 'slide') ? 'hidden' : undefined,
       }}
     >
+      {underlay && (
+        <div aria-hidden="true" style={{ position: 'absolute', inset: 0 }}>
+          <DrawnSlide
+            layer={underlay}
+            canvas={canvas}
+            scaling={scaling}
+            languages={languages}
+            slides={slides}
+            movement={movement}
+            timers={timers}
+            settled
+          />
+        </div>
+      )}
       {shown.map((l) => {
         const incoming = l === on;
         const settled = !incoming && on !== null && keyOf(l) === keyOf(on);
@@ -589,11 +611,17 @@ export function SlideLayerView({
         </div>
       )}
       {/* A fade through black: black over both, whole half-way. */}
-      {fading && kind === 'fade-black' && (
+      {fading && (kind === 'fade-black' || native?.over?.kind === 'fade-black') && (
         <div
           ref={blackRef}
           data-slide-black=""
-          style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0 }}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: '#000',
+            opacity: 0,
+            zIndex: native ? 2 : undefined,
+          }}
         />
       )}
     </div>

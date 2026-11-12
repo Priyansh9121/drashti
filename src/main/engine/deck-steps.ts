@@ -191,7 +191,15 @@ export function deckShow(
     const native = nativeDeckMotion(deck) ? deck.transition?.nativeTransition : undefined;
     if (native) {
       const startsAt = at + native.durationMs;
-      const transition = own?.mode === 'over' ? takingTime(own.transition) : native;
+      const over = own?.mode === 'over' ? takingTime(own.transition) : undefined;
+      const transition = over
+        ? {
+            ...native,
+            durationMs: Math.max(native.durationMs, over.durationMs),
+            deckDurationMs: native.durationMs,
+            over,
+          }
+        : native;
       return {
         step: 0,
         fromMs: 0,

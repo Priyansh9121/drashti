@@ -2,6 +2,7 @@ import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { slidesOf } from '../../../shared/slide-edit';
 import { slideCanvas } from '../../../shared/document-page';
 import { masterContribution } from '../../../shared/slide-design';
+import { deckAfterEdit } from '../../../shared/deck-edit-motion';
 
 export const SOURCE_CONVERSION_WARNING = {
   title: 'Edit this animated slide',
@@ -72,8 +73,13 @@ export function convertSourceContent(next: EditDoc, ids: readonly string[]): Edi
         ...group,
         slides: group.slides.map((slide) => {
           if (!changed.has(slide.id) || !slide.documentPage || slide.documentPage.edited) return slide;
-          const { deck: _deck, ...native } = slide;
-          return { ...native, documentPage: { ...slide.documentPage, edited: true } };
+          const { deck, ...native } = slide;
+          const motion = deckAfterEdit(deck);
+          return {
+            ...native,
+            documentPage: { ...slide.documentPage, edited: true },
+            ...(motion ? { deck: motion } : {}),
+          };
         }),
       };
     }),
@@ -81,7 +87,11 @@ export function convertSourceContent(next: EditDoc, ids: readonly string[]): Edi
 }
 
 export const needsSourceConversion = (slide: EditSlide): boolean =>
-  !!slide.deck && !!slide.documentPage && !slide.documentPage.edited;
+  !!slide.documentPage &&
+  !slide.documentPage.edited &&
+  !!slide.deck &&
+  slide.deck.steps.length > 0 &&
+  (!slide.deck.motion || slide.deck.motion.approximate);
 
 const identity = (slide: EditSlide): string => {
   const source = slide.documentPage;

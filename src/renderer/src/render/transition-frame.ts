@@ -111,7 +111,37 @@ export function transitionFrame(
 }
 
 /** The original PowerPoint effect draws entire slides, even on Calm screens. */
-export function deckTransitionFrame(transition: DeckNativeTransition, progress: number): TransitionFrame {
+export function deckTransitionFrame(
+  transition: DeckNativeTransition,
+  progress: number,
+  movement: Movement = 'calm',
+): TransitionFrame {
+  const elapsed = clamp(progress) * transition.durationMs;
+  const original = powerPointFrame(
+    transition,
+    elapsed / (transition.deckDurationMs ?? transition.durationMs),
+  );
+  const over = transition.over;
+  if (!over || over.durationMs <= 0) return original;
+  const outer = transitionFrame(over.kind, elapsed / over.durationMs, movement);
+  const transform = (a: SlideFrame, b: SlideFrame) => [a.transform, b.transform].filter(Boolean).join(' ');
+  return {
+    in: {
+      ...original.in,
+      opacity: original.in.opacity * outer.in.opacity,
+      transform: transform(outer.in, original.in),
+    },
+    out: {
+      ...original.out,
+      opacity: clamp(outer.out.opacity + original.out.opacity * outer.in.opacity),
+      transform: transform(outer.out, original.out),
+    },
+    black: Math.max(original.black * outer.in.opacity, outer.black),
+    add: original.add && outer.add,
+  };
+}
+
+function powerPointFrame(transition: DeckNativeTransition, progress: number): TransitionFrame {
   const p = clamp(progress);
   const settled: SlideFrame = { opacity: 1, transform: '' };
   const direction = transition.direction ?? 'left';
