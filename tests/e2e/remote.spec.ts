@@ -105,9 +105,8 @@ test('the remote’s waits are said as a status, and its empty places say where 
       p.getByText('There are no messages yet: they are made in Drashti on the computer'),
     ).toBeVisible();
     await p.getByTestId('remote-tab-playlist').click();
-    await expect(
-      p.getByText('There are no playlists yet: they are made in Drashti on the computer, in Pro Mode.'),
-    ).toBeVisible();
+    await expect(p.getByText('Choose Manage playlists… to make a playlist.')).toBeVisible();
+    await expect(p.getByRole('button', { name: 'Manage playlists…' })).toBeVisible();
     await expectNoSeriousA11yIssues(p, 'the remote with no playlists');
     await p.getByTestId('remote-tab-library').click();
     await expect(
