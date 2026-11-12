@@ -5,7 +5,8 @@ import { nativePptxTransition } from './pptx-native-transition';
 /*
  * Which of a deck's PowerPoint transitions Drashti draws as PowerPoint does (exact), and which only come close
  * (approximate: a slide using one keeps PowerPoint's own video wherever one can be made). Measured against PowerPoint's
- * own movie of a generated deck, frame by frame (13 Nov 2026).
+ * own movie of a generated deck, frame by frame (13 Nov 2026): Push, Wipe, Cover and Uncover within a pixel or two at
+ * 320 x 180 in every direction (render/transition-frame.test.ts holds the movie's frames).
  */
 
 const read = (xml: string, durationMs = 700) => nativePptxTransition(parseXml(xml), durationMs);
@@ -17,23 +18,23 @@ const DIRECTIONS = [
 ] as const;
 
 describe('a deck’s PowerPoint transition, drawn by Drashti', () => {
-  it('Wipe, Cover and Uncover only come close to PowerPoint’s, in every direction: approximate, the effect kept', () => {
+  it('Wipe, Cover and Uncover are drawn as PowerPoint’s movie draws them, in every direction: exact', () => {
     for (const [dir, direction] of DIRECTIONS) {
       expect(read(`<p:wipe dir="${dir}"/>`), `wipe ${dir}`).toEqual({
         transition: { kind: 'wipe', deckEffect: 'wipe', durationMs: 700, direction },
-        approximate: true,
+        approximate: false,
       });
       expect(read(`<p:cover dir="${dir}"/>`), `cover ${dir}`).toEqual({
         transition: { kind: 'slide', deckEffect: 'cover', durationMs: 700, direction },
-        approximate: true,
+        approximate: false,
       });
       expect(read(`<p:pull dir="${dir}"/>`), `uncover ${dir}`).toEqual({
         transition: { kind: 'slide', deckEffect: 'uncover', durationMs: 700, direction },
-        approximate: true,
+        approximate: false,
       });
     }
     // No direction written: PowerPoint's own, from the left.
-    expect(read('<p:wipe/>')).toMatchObject({ transition: { direction: 'left' }, approximate: true });
+    expect(read('<p:wipe/>')).toMatchObject({ transition: { direction: 'left' }, approximate: false });
   });
 
   it('Push, Fade, Fade Through Black and Zoom are drawn as PowerPoint draws them: exact', () => {
