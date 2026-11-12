@@ -244,6 +244,8 @@ const BEST_IDS = [
   'mint-name-and-role',
   'copper-and-charcoal',
   'charcoal-glass',
+  'lavender-labels',
+  'midnight-bulletin',
 ];
 
 /** A mix of directions, speeds and looks. Fill any gaps if a design is taken out after Performance. */
