@@ -3,6 +3,7 @@ import { type IncomingMessage, request } from 'node:http';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { crc32, inflateSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { STOPPED_REFUSAL } from '../../shared/access';
@@ -147,6 +148,41 @@ function call(
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
+/** A PNG read back: each chunk's CRC checked, its header, and its rows as stored (each with its filter byte first). */
+function readPng(png: Uint8Array): {
+  width: number;
+  height: number;
+  depth: number;
+  colour: number;
+  rows: Buffer;
+} {
+  const data = Buffer.from(png);
+  expect(data.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  let at = 8;
+  let header: Buffer | null = null;
+  const stored: Buffer[] = [];
+  let ended = false;
+  while (at < data.length) {
+    const length = data.readUInt32BE(at);
+    const type = data.toString('latin1', at + 4, at + 8);
+    const body = data.subarray(at + 8, at + 8 + length);
+    expect(data.readUInt32BE(at + 8 + length)).toBe(crc32(data.subarray(at + 4, at + 8 + length)));
+    if (type === 'IHDR') header = body;
+    else if (type === 'IDAT') stored.push(body);
+    else if (type === 'IEND') ended = true;
+    at += 12 + length;
+  }
+  expect(ended).toBe(true);
+  if (!header) throw new Error('The PNG has no header.');
+  return {
+    width: header.readUInt32BE(0),
+    height: header.readUInt32BE(4),
+    depth: header[8] ?? 0,
+    colour: header[9] ?? 0,
+    rows: inflateSync(Buffer.concat(stored)),
+  };
+}
+
 function feed(
   port: number,
   headers: Record<string, string> = {},
@@ -234,26 +270,57 @@ describe('connections at once (Sessions 31–36, SEC-11)', () => {
 });
 
 describe('the network server', () => {
-  it('forwards the phone’s lowercase slide query and sends the captured PNG', async () => {
+  it('forwards the phone’s lowercase slide query and makes the PNG here from the captured pixels', async () => {
     const { host, port } = await start();
-    const png = new Uint8Array([137, 80, 78, 71]);
+    // Two pixels as the computer captured them (blue, green, red, then alpha; the second half see-through).
+    const picture = { width: 2, height: 1, pixels: new Uint8Array([10, 20, 30, 255, 40, 50, 60, 128]) };
+    let order = 'bgra';
     host.request = (request) => {
       host.requests.push(request);
-      return Promise.resolve({ status: 200, body: { png } });
+      return Promise.resolve({ status: 200, body: { ok: true, picture: { ...picture, order } } });
     };
-    const response = await fetch(
-      `http://127.0.0.1:${String(port)}/api/v1/presentations/placeholder-deck?format=png&slide=placeholder-slide&click=1`,
-      { headers: bearer(REMOTE_TOKEN) },
-    );
+    const save = () =>
+      fetch(
+        `http://127.0.0.1:${String(port)}/api/v1/presentations/placeholder-deck?format=png&slide=placeholder-slide&click=1`,
+        { headers: bearer(REMOTE_TOKEN) },
+      );
+    const response = await save();
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('image/png');
-    expect(new Uint8Array(await response.arrayBuffer())).toEqual(png);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    // C6's review, MEDIUM 1: made in the network's own process, never on Main's thread: red, green, blue, over black.
+    expect(readPng(new Uint8Array(await response.arrayBuffer()))).toEqual({
+      width: 2,
+      height: 1,
+      depth: 8,
+      colour: 2,
+      rows: Buffer.from([0, 30, 20, 10, 60, 50, 40]),
+    });
+    order = 'rgba';
+    expect(readPng(new Uint8Array(await (await save()).arrayBuffer())).rows).toEqual(
+      Buffer.from([0, 10, 20, 30, 40, 50, 60]),
+    );
     expect(host.requests).toMatchObject([
       {
         op: 'presentation',
         args: { presentationId: 'placeholder-deck', format: 'png', slideId: 'placeholder-slide', click: '1' },
       },
+      { op: 'presentation' },
     ]);
+  });
+
+  it('never sends pixels that are not the picture’s size', async () => {
+    const { host, port } = await start();
+    host.request = () =>
+      Promise.resolve({
+        status: 200,
+        body: { ok: true, picture: { width: 2, height: 2, pixels: new Uint8Array(8), order: 'bgra' } },
+      });
+    const response = await fetch(
+      `http://127.0.0.1:${String(port)}/api/v1/presentations/placeholder-deck?format=png&slide=placeholder-slide&click=1`,
+      { headers: bearer(REMOTE_TOKEN) },
+    );
+    expect(response.headers.get('Content-Type')).not.toBe('image/png');
   });
 
   it('serves the pages, and nothing by a path that escapes', async () => {
