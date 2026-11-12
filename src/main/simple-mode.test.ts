@@ -569,6 +569,7 @@ describe('Simple Mode locks', () => {
     for (const channel of [
       IPC.slideEditor.open,
       IPC.slideEditor.copy,
+      IPC.slideEditor.addPicture,
       IPC.library.saveSlides,
       IPC.library.restoreRevision,
     ]) {
@@ -581,6 +582,8 @@ describe('Simple Mode locks', () => {
     // Another playlist's (the playlists, as Pro Mode's left column has them); never one only a template holds, or none.
     expect(within(IPC.slideEditor.open, 'p-other', null)).toBe(true);
     expect(within(IPC.slideEditor.open, 'p-out', null)).toBe(false);
+    expect(within(IPC.slideEditor.addPicture, 'p-in')).toBe(true);
+    expect(within(IPC.slideEditor.addPicture, 'p-out')).toBe(false);
     expect(within(IPC.library.saveSlides, 'p-in', { presentationId: 'p-in' }, 'stamp', false)).toBe(true);
     expect(within(IPC.library.saveSlides, 'p-out', { presentationId: 'p-out' }, 'stamp', false)).toBe(false);
     expect(within(IPC.library.saveSlides, 42, {}, 'stamp', false)).toBe(false);

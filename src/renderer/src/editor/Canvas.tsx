@@ -1,9 +1,8 @@
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Rect, ShapeElement, SlideElement, TextElement, TextRun } from '../../../shared/model';
-import { SHAPE_NAMES } from '../../../shared/model';
 import { groupedSelection } from '../../../shared/element-groups';
-import type { EditDoc } from '../../../shared/slide-edit';
+import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { legacyFontOf } from '../../../shared/slide-edit';
 import { editingCanvas } from '../../../shared/document-page';
 import { useMedia } from '../library/library-store';
@@ -34,6 +33,7 @@ import {
   HANDLE_AT,
   HANDLES,
   hitTest,
+  menuTarget,
   overlaps,
   resizeFrame,
   rotatePoint,
@@ -45,8 +45,6 @@ import {
 } from './geometry';
 import type { TextPatch } from './ops';
 import {
-  deleteElements,
-  duplicateElements,
   findSlide,
   mapElements,
   moveElements,
@@ -57,18 +55,25 @@ import {
   addElement,
   newId,
 } from './ops';
-import { copyElements, pasteElements } from './clipboard';
 import { finishTextEditing, TextBoxEditor } from './TextBoxEditor';
 import { SafeAreas } from './SafeAreas';
 import { connectSafeAreas } from './safe-areas-store';
-import { cutText } from '../../../shared/text';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ZoomIn, ZoomOut } from '../ui/icons';
+import { isMenuKey, menuBelow, menuPlace, type MenuPlace } from '../ui/Menu';
 import type { Zoom } from './zoom';
 import { scaleFor, zoomBy, zoomIn, zoomLabel, zoomOut, zoomScroll } from './zoom';
 import { pdfMark } from './pdf-marks';
 import type { PdfCanvasTool } from './pdf-marks';
+import { elementDescription } from './objects';
+import { ObjectMenu } from './ObjectMenu';
+import {
+  copySelectedObjects,
+  deleteSelectedObjects,
+  duplicateSelectedObjects,
+  pasteSelectedObjects,
+} from './object-actions';
 
 /*
  * The slide being edited, scaled to fit, drawn by the same renderer as the
@@ -89,6 +94,7 @@ const PAD = 32;
 const SNAP_PX = 8;
 /** Moves under this (screen pixels) are a click, not a drag. */
 const DRAG_PX = 3;
+const CLICK_DISTANCE_PX = 6;
 /** Handles, screen pixels. */
 const HANDLE_PX = 10;
 
@@ -107,6 +113,14 @@ interface PdfPointerPreview {
   element: ShapeElement;
 }
 
+interface ObjectClick {
+  point: Point;
+  top: string;
+  picked: string;
+  pressed: string;
+  individual: boolean;
+}
+
 type Drag =
   | {
       kind: 'move';
@@ -116,8 +130,7 @@ type Drag =
       box: Rect;
       lines: SnapLines;
       dragging: boolean;
-      /** Pressed on one of several selected: a click (no drag) leaves only this one selected. */
-      narrowTo: string | null;
+      click: ObjectClick | null;
     }
   | {
       kind: 'resize';
@@ -140,24 +153,6 @@ type Drag =
 /** The angle (degrees) from `c` to `p`. */
 const angleOf = (c: Point, p: Point) => (Math.atan2(p.y - c.y, p.x - c.x) * 180) / Math.PI;
 
-const KIND_NAME: Record<SlideElement['kind'], string> = {
-  text: 'Text box',
-  shape: 'Shape',
-  image: 'Picture',
-  video: 'Video',
-  timer: 'Timer',
-};
-
-/** How an element is read out: its kind and words, or its kind. */
-export function elementName(el: SlideElement): string {
-  if (el.kind === 'text') {
-    const words = el.text.trim().replace(/\s+/gu, ' ');
-    return words ? `${KIND_NAME.text}: ${cutText(words, 40)}` : `${KIND_NAME.text} (empty)`;
-  }
-  if (el.kind === 'shape') return SHAPE_NAMES[el.shape ?? 'rectangle'];
-  return KIND_NAME[el.kind];
-}
-
 const CURSOR: Record<Handle, string> = {
   nw: 'nwse-resize',
   se: 'nwse-resize',
@@ -178,7 +173,13 @@ const keepMeasure: MeasureReport = (id, measured) => {
   useEditor.setState({ measured: measured === null ? rest : { ...rest, [id]: measured } });
 };
 
-export function Canvas({ platform }: { platform: string }) {
+export function Canvas({
+  platform,
+  onPictureDrop,
+}: {
+  platform: string;
+  onPictureDrop: (file: File, at: Point) => void;
+}) {
   // View › Show Safe Areas: its switch, from the main process.
   useEffect(() => {
     connectSafeAreas();
@@ -187,6 +188,7 @@ export function Canvas({ platform }: { platform: string }) {
   const slideId = useEditor((s) => s.slideId);
   const selection = useEditor((s) => s.selection);
   const editing = useEditor((s) => s.editing);
+  const editingAt = useEditor((s) => s.editingAt);
   const zoom = useEditor((s) => s.zoom);
   const aids = useEditor((s) => s.aids);
   const previewAt = useEditor((s) => s.previewAt);
@@ -249,7 +251,13 @@ export function Canvas({ platform }: { platform: string }) {
   const drag = useRef<Drag | null>(null);
   const [guides, setGuides] = useState<Guides | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
-  const [editAt, setEditAt] = useState<Point | null>(null);
+  const [objectMenu, setObjectMenu] = useState<{
+    at: MenuPlace;
+    slideId: string;
+    target: string | null;
+  } | null>(null);
+  const lastClick = useRef<(ObjectClick & { slide: EditSlide; selection: readonly string[] }) | null>(null);
+  const firstClick = useRef<{ slide: EditSlide; pressed: string | null } | null>(null);
   const pdfPointer = useRef<PdfPointerGesture | null>(null);
   const [pdfDraft, setPdfDraft] = useState<PdfPointerPreview | null>(null);
   const cancelPdfPointer = () => {
@@ -281,11 +289,15 @@ export function Canvas({ platform }: { platform: string }) {
   const left = Math.max(PAD, (size.width - width) / 2);
   const top = Math.max(PAD, (size.height - height) / 2);
   const elements = slide.elements;
+  const visible = elements.filter((el) => !el.hidden);
   const rendered = renderEditedSlide(doc, slide);
   const fixedIds = new Set(rendered.masterElementIds);
-  const fixed = rendered.elements.filter((el) => fixedIds.has(el.id));
+  const fixed = rendered.elements.filter((el) => fixedIds.has(el.id) && !el.hidden);
   // The words the whole-picture darkening goes under: the first box with any, or a Timer (Session 50).
-  const wholeUnder = slide.darken?.kind === 'whole' ? rendered.elements.find(darkensBehind)?.id : undefined;
+  const wholeUnder =
+    slide.darken?.kind === 'whole'
+      ? rendered.elements.find((el) => !el.hidden && darkensBehind(el))?.id
+      : undefined;
   const wholeDarkening =
     wholeUnder && slide.darken ? (
       <div
@@ -322,7 +334,7 @@ export function Canvas({ platform }: { platform: string }) {
   const linesWithout = (ids: readonly string[]) => {
     const lines = snapLines(
       pageSize,
-      elements.filter((e) => !ids.includes(e.id)).map((e) => boundsOf(e)),
+      visible.filter((e) => !ids.includes(e.id)).map((e) => boundsOf(e)),
     );
     return {
       x: [
@@ -339,6 +351,8 @@ export function Canvas({ platform }: { platform: string }) {
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const previous = lastClick.current;
+    lastClick.current = null;
     if (e.button !== 0) return;
     const intent = useEditor.getState();
     if (intent.pdfTool && slide.documentPage?.ext === 'pdf') {
@@ -367,10 +381,9 @@ export function Canvas({ platform }: { platform: string }) {
     const p = pointOf(e);
     const handle = target.closest<HTMLElement>('[data-handle]')?.dataset['handle'];
     const guide = target.closest<HTMLElement>('[data-guide-axis]');
-    const hit = hitTest(elements, p, 6 / scale);
-    // Typing in a box: clicks inside it place the caret; anywhere else ends the typing.
-    if (editing) {
-      if (hit === editing && !handle && !guide) return;
+    // Typing in a box: clicks inside it place the caret, even if the box sits below other objects.
+    if (intent.editing) {
+      if (target.closest<HTMLElement>('[data-editing]')?.dataset['element'] === intent.editing) return;
       finishTextEditing();
     }
     e.preventDefault();
@@ -440,17 +453,28 @@ export function Canvas({ platform }: { platform: string }) {
     }
     e.currentTarget.setPointerCapture(e.pointerId);
     const additive = e.shiftKey || (platform === 'darwin' ? e.metaKey : e.ctrlKey);
+    const hit = hitTest(elements, p, 6 / scale);
     if (hit) {
+      const repeat =
+        !additive &&
+        previous?.slide === slide &&
+        previous.top === hit &&
+        previous.selection === now.selection &&
+        Math.hypot(p.x - previous.point.x, p.y - previous.point.y) * scale <= CLICK_DISTANCE_PX;
+      const pressed = repeat ? previous.picked : hit;
       let ids = now.selection;
-      const members = groupedSelection(elements, [hit]);
+      const members = groupedSelection(elements, [pressed]);
+      const insideSelectedGroup = members.length > 1 && members.every((id) => ids.includes(id));
       if (additive)
         ids = members.every((id) => ids.includes(id))
           ? ids.filter((id) => !members.includes(id))
           : [...ids, ...members];
-      else if (!ids.includes(hit)) ids = members;
-      select(ids);
+      else if (!ids.includes(pressed)) ids = members;
+      select(ids, { expandGroups: additive });
       ids = useEditor.getState().selection;
-      if (!ids.includes(hit)) return;
+      if (!ids.includes(pressed)) return;
+      const picked =
+        repeat && !insideSelectedGroup ? (hitTest(elements, p, 6 / scale, pressed) ?? hit) : pressed;
       const moving = elements.filter((el) => ids.includes(el.id));
       drag.current = {
         kind: 'move',
@@ -460,7 +484,9 @@ export function Canvas({ platform }: { platform: string }) {
         box: unionOf(moving.map((el) => boundsOf(el))) ?? { x: 0, y: 0, width: 0, height: 0 },
         lines: linesWithout(ids),
         dragging: false,
-        narrowTo: !additive && ids.length > 1 ? hit : null,
+        click: additive
+          ? null
+          : { point: p, top: hit, picked, pressed, individual: insideSelectedGroup || picked !== pressed },
       };
       return;
     }
@@ -591,7 +617,7 @@ export function Canvas({ platform }: { platform: string }) {
     }
   };
 
-  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>, canceled = false) => {
     const mark = pdfPointer.current;
     if (mark) {
       pdfPointer.current = null;
@@ -640,15 +666,18 @@ export function Canvas({ platform }: { platform: string }) {
     if (d.kind === 'marquee') {
       const box = marquee;
       setMarquee(null);
-      if (box && box.width * scale > DRAG_PX && box.height * scale > DRAG_PX) {
-        const inside = elements.filter((el) => overlaps(boundsOf(el), box)).map((el) => el.id);
+      if (!canceled && box && box.width * scale > DRAG_PX && box.height * scale > DRAG_PX) {
+        const inside = visible.filter((el) => overlaps(boundsOf(el), box)).map((el) => el.id);
         select([...new Set([...d.base, ...inside])]);
       }
       return;
     }
-    // A click on one of several selected elements (pressed there to drag them all, but not moved).
-    if (d.kind === 'move' && !d.dragging && d.narrowTo) {
-      select([d.narrowTo]);
+    // Change the pick only on a click. A drag still moves the object held when the pointer went down.
+    if (!canceled && d.kind === 'move' && !d.dragging && d.click) {
+      const { picked, individual } = d.click;
+      if (individual) select([picked], { expandGroups: false });
+      else if (d.ids.length > 1) select([picked]);
+      lastClick.current = { ...d.click, slide, selection: useEditor.getState().selection };
       return;
     }
     endGesture();
@@ -660,22 +689,39 @@ export function Canvas({ platform }: { platform: string }) {
       useEditor.setState({ pdfTool: null });
       return;
     }
-    onPointerUp(e);
+    onPointerUp(e, true);
+  };
+
+  const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Chromium counts the clicks in a double-click. The second press may land on a new selection handle.
+    if (e.detail !== 1) return;
+    const click = lastClick.current;
+    firstClick.current = { slide, pressed: click?.slide === slide ? click.pressed : null };
   };
 
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const hit = hitTest(elements, pointOf(e), 6 / scale);
-    const el = elements.find((x) => x.id === hit);
-    if (el?.kind !== 'text') return;
-    const legacy = legacyFontOf(el);
-    if (legacy) {
-      tell(
-        `These words are typed in a legacy font (${legacy}): the box can be moved and resized, but its words cannot be edited yet.`,
-      );
-      return;
-    }
-    setEditAt({ x: e.clientX, y: e.clientY });
-    startEditing(el.id);
+    const first = firstClick.current;
+    firstClick.current = null;
+    lastClick.current = null;
+    const now = useEditor.getState();
+    if (now.editing || now.pdfTool || now.pdfDrawing) return;
+    const textBoxes = visible.filter((element) => element.kind === 'text');
+    const pressed = first?.slide === slide ? first.pressed : null;
+    const target = textBoxes.some((box) => box.id === pressed)
+      ? pressed
+      : hitTest(textBoxes, pointOf(e), CLICK_DISTANCE_PX / scale);
+    if (target) startEditing(target, { x: e.clientX, y: e.clientY });
+  };
+
+  const openObjectMenu = (at: MenuPlace, point?: Point) => {
+    const before = useEditor.getState();
+    if (before.pdfTool || before.pdfDrawing || before.sourceConversion) return;
+    finishTextEditing();
+    const now = useEditor.getState();
+    const target = point ? menuTarget(elements, now.selection, point, 6 / scale) : (single?.id ?? null);
+    if (point && (!target || !now.selection.includes(target))) select(target ? [target] : []);
+    stage.current?.focus({ preventScroll: true });
+    setObjectMenu({ at, slideId: slide.id, target });
   };
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -694,6 +740,12 @@ export function Canvas({ platform }: { platform: string }) {
       return;
     }
     if (editing || e.target !== e.currentTarget) return;
+    if (isMenuKey(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      openObjectMenu(menuBelow(e.currentTarget));
+      return;
+    }
     const mod = platform === 'darwin' ? e.metaKey : e.ctrlKey;
     const now = useEditor.getState();
     if (!now.doc) return;
@@ -710,37 +762,32 @@ export function Canvas({ platform }: { platform: string }) {
       commit(moveElements(now.doc, slide.id, selection, arrow), { coalesce: `nudge:${selection.join(',')}` });
       return;
     }
-    if (e.key === 'Tab' && !mod && !e.altKey && elements.length > 0) {
+    if (e.key === 'Tab' && !mod && !e.altKey && visible.length > 0) {
       // The next (or previous) element in order; past the last, Tab goes on to the controls.
-      const at = single ? elements.indexOf(single) : e.shiftKey ? elements.length : -1;
-      const next = elements[at + (e.shiftKey ? -1 : 1)];
+      const at = single && !single.hidden ? visible.indexOf(single) : e.shiftKey ? visible.length : -1;
+      const next = visible[at + (e.shiftKey ? -1 : 1)];
       if (next) {
         e.preventDefault();
-        select([next.id]);
+        select([next.id], { expandGroups: false });
       }
       return;
     }
     if (e.key === 'Enter' && single?.kind === 'text') {
       e.preventDefault();
-      const legacy = legacyFontOf(single);
-      if (legacy)
-        tell(
-          `These words are typed in a legacy font (${legacy}): the box can be moved and resized, but its words cannot be edited yet.`,
-        );
-      else {
-        setEditAt(null);
-        startEditing(single.id);
-      }
+      startEditing(single.id);
       return;
     }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length > 0) {
       e.preventDefault();
-      commit(deleteElements(now.doc, slide.id, selection), { select: [] });
+      deleteSelectedObjects();
       return;
     }
     if (mod && e.key.toLowerCase() === 'a') {
       e.preventDefault();
-      select(elements.map((x) => x.id));
+      select(
+        visible.map((x) => x.id),
+        { expandGroups: false },
+      );
       return;
     }
     // ⌘B, ⌘I and ⌘U (Ctrl on Windows): the text boxes selected, bold, italic or underlined, and back (Session 55,
@@ -777,41 +824,27 @@ export function Canvas({ platform }: { platform: string }) {
     }
     if (mod && e.key.toLowerCase() === 'd' && selection.length > 0) {
       e.preventDefault();
-      const copied = duplicateElements(now.doc, slide.id, selection);
-      commit(copied.doc, { select: copied.ids });
+      duplicateSelectedObjects();
       return;
     }
     // Paste in place (Mod+Shift+V): exactly where they were. (Mod+V comes as the window's paste.)
     if (mod && e.shiftKey && e.key.toLowerCase() === 'v') {
       e.preventDefault();
       pastedInPlaceAt.current = e.timeStamp;
-      paste(true);
+      pasteSelectedObjects(true);
     }
   };
 
-  /** Paste what was copied onto this slide (one step for Undo); the pasted elements are selected. */
-  const paste = (inPlace: boolean) => {
-    const now = useEditor.getState();
-    if (!now.doc || now.editing) return;
-    const pasted = pasteElements(now.doc, slide.id, { inPlace });
-    if (pasted) commit(pasted.doc, { select: pasted.ids });
-  };
   // The window's Copy, Cut and Paste (the Edit menu and its keys) while the slide has the focus.
   const onCopy = (e: React.ClipboardEvent<HTMLDivElement>) => {
     if (editing || e.target !== e.currentTarget || selection.length === 0) return;
-    const now = useEditor.getState();
-    if (!now.doc) return;
     e.preventDefault();
-    const n = copyElements(now.doc, slide.id, selection);
-    tell(n === 1 ? 'Copied 1 element.' : `Copied ${n} elements.`);
+    copySelectedObjects();
   };
   const onCut = (e: React.ClipboardEvent<HTMLDivElement>) => {
     if (editing || e.target !== e.currentTarget || selection.length === 0) return;
-    const now = useEditor.getState();
-    if (!now.doc) return;
     e.preventDefault();
-    copyElements(now.doc, slide.id, selection);
-    commit(deleteElements(now.doc, slide.id, selection), { select: [] });
+    copySelectedObjects(true);
   };
   const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     if (editing || e.target !== e.currentTarget) return;
@@ -820,14 +853,14 @@ export function Canvas({ platform }: { platform: string }) {
     const inPlaceAt = pastedInPlaceAt.current;
     pastedInPlaceAt.current = null;
     if (inPlaceAt !== null && e.timeStamp - inPlaceAt < 300) return;
-    paste(false);
+    pasteSelectedObjects();
   };
 
   const status =
     selected.length === 0
       ? 'Nothing selected'
       : single
-        ? `${elementName(single)} selected, at ${Math.round(single.frame.x)}, ${Math.round(single.frame.y)}, ${Math.round(single.frame.width)} by ${Math.round(single.frame.height)}`
+        ? `${elementDescription(single)} selected, at ${Math.round(single.frame.x)}, ${Math.round(single.frame.y)}, ${Math.round(single.frame.width)} by ${Math.round(single.frame.height)}`
         : `${selected.length} elements selected`;
 
   return (
@@ -845,7 +878,7 @@ export function Canvas({ platform }: { platform: string }) {
           ref={stage}
           role="application"
           aria-roledescription="slide"
-          aria-label="The slide. Tab chooses the next element, the arrow keys move it (Shift for ten pixels), Enter types in a text box, Delete removes. Copy, Cut and Paste work on elements; Shift with Paste puts them exactly where they were."
+          aria-label="The slide. Tab chooses the next element, the arrow keys move it (Shift for ten pixels), Enter types in a text box, Delete removes. Shift plus F10 opens the object menu. Copy, Cut and Paste work on elements; Shift with Paste puts them exactly where they were."
           aria-describedby="editor-canvas-status"
           tabIndex={0}
           data-testid="editor-canvas"
@@ -860,7 +893,28 @@ export function Canvas({ platform }: { platform: string }) {
           onLostPointerCapture={() => {
             if (pdfPointer.current) cancelPdfPointer();
           }}
+          onClick={onClick}
           onDoubleClick={onDoubleClick}
+          onContextMenu={(e) => {
+            if (e.target instanceof Element && e.target.closest('[data-editing]')) return;
+            e.preventDefault();
+            openObjectMenu(menuPlace(e), e.clientX === 0 && e.clientY === 0 ? undefined : pointOf(e));
+          }}
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes('Files')) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+          }}
+          onDrop={(e) => {
+            if (!e.dataTransfer.types.includes('Files')) return;
+            e.preventDefault();
+            if (e.dataTransfer.files.length !== 1) {
+              tell('Drop one picture at a time.');
+              return;
+            }
+            const file = e.dataTransfer.files.item(0);
+            if (file) onPictureDrop(file, pagePoint(e));
+          }}
           onKeyDown={onKeyDown}
           onCopy={onCopy}
           onCut={onCut}
@@ -908,13 +962,13 @@ export function Canvas({ platform }: { platform: string }) {
               )}
               {/* Each text box's measure, for the inspector (words past the box, the size drawn); what the
                 slide's transliteration is of, for its words' lang (Sessions 31–36, I18N-4). */}
-              <TranslitSourceContext.Provider value={translitSource(elements)}>
+              <TranslitSourceContext.Provider value={translitSource(visible)}>
                 <MeasureContext.Provider value={keepMeasure}>
-                  {elements.map((el) => [
+                  {visible.map((el) => [
                     // Darkening behind the words (Sessions 31–36, SLD-3), as the screens draw it.
                     el.id === wholeUnder ? wholeDarkening : null,
                     el.id === editing && el.kind === 'text' ? (
-                      <TextBoxEditor key={el.id} el={el} slideId={slide.id} at={editAt} />
+                      <TextBoxEditor key={el.id} el={el} slideId={slide.id} at={editingAt} />
                     ) : (
                       <ElementView
                         key={el.id}
@@ -1026,6 +1080,14 @@ export function Canvas({ platform }: { platform: string }) {
         </p>
       </div>
       <ZoomBar zoom={zoom} fit={fit} />
+      {objectMenu?.slideId === slide.id && (
+        <ObjectMenu
+          at={objectMenu.at}
+          slide={slide}
+          target={objectMenu.target}
+          onClose={() => setObjectMenu(null)}
+        />
+      )}
     </div>
   );
 }
