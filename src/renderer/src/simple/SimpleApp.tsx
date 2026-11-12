@@ -371,8 +371,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           </aside>
         }
       />
-      <LinkDialog />
       <NoticeArea />
+      <LinkDialog />
       <LayerBar platform={platform} run={run} simple />
       <StatusBar info={info} onOpenScreens={null} />
       {/* A row's right-click menu, its Delete's question when it is up, and From a Link…. */}

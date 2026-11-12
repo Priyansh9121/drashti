@@ -4441,13 +4441,12 @@ function start(): void {
         settings.set('links.playlist', id);
       },
     },
-    // A Dropbox video taller than that: Drashti's own conversion makes a copy that tall first (it waits
-    // while on air).
+    // A Dropbox video above the cap is fitted in the background after the show, stream and recording are idle.
     fitVideo: (path, outDir, maxHeight, report) =>
       conversions.fitHeight(path, outDir, {
         maxHeight,
         waiting: (note) => {
-          report(note === null ? null : 'the stream is on air or recording', null);
+          report(note, null);
         },
         progress: (fraction) => {
           report(null, fraction);

@@ -141,6 +141,7 @@ const RETRYABLE = new Set([
   'redirects',
   'short',
   'space',
+  'start',
   'upcoming',
 ]);
 
@@ -416,7 +417,8 @@ export class LinkService {
 
   /** The operator pasted a link. Look it up and start with the download defaults. */
   start(text: string, audio: boolean, intoOpenPlaylist: boolean): LinkResult {
-    if (this.busy) return this.refuse('A download is going on. Wait for it to finish, or stop it first.');
+    if (this.busy || (this.automatic !== null && this.state.phase === 'looked'))
+      return this.refuse('A download is going on. Wait for it to finish, or stop it first.');
     const kind = linkKind(text);
     if (kind === null) return this.refuse('Paste a share link from YouTube or Dropbox.');
     return this.beginLook(kind, text, { audio, intoOpenPlaylist });
@@ -547,8 +549,12 @@ export class LinkService {
       return;
     }
     const choice = video ? { type: automatic.audio ? 'mp3' : 'mp4', height } : null;
-    const result = this.download(choice);
-    if (!result.ok) this.set({ phase: 'failed', message: result.message, retryable: true });
+    try {
+      const result = this.download(choice);
+      if (!result.ok) this.set({ phase: 'failed', message: result.message, retryable: true });
+    } catch {
+      void this.failed('Drashti couldn’t start the download. Try again.', 'start');
+    }
   }
 
   /** Start again with a new link (what was saved stays where it is). */
@@ -780,7 +786,7 @@ export class LinkService {
     const work = this.part;
     const look = this.state.look;
     if (!work || !look) return;
-    this.endWorker();
+    this.beginSaving();
     const folder = this.state.folder;
     const ext = m.file.toLowerCase().endsWith('.mp3') ? 'mp3' : 'mp4';
     try {
@@ -853,7 +859,7 @@ export class LinkService {
       });
       return;
     }
-    this.endWorker();
+    this.beginSaving();
     try {
       const target = await claimFile(folder, safeName(m.name ?? look.name, 'Dropbox download'));
       await rename(part, target);
@@ -871,10 +877,16 @@ export class LinkService {
   }
 
   private async unpacked(m: Extract<FromWorker, { type: 'unpacked' }>): Promise<void> {
-    this.endWorker();
+    this.beginSaving();
     this.temps.delete(m.folder);
     await this.clearTemps();
     await this.saved(m.folder, m.files, this.downloadedBytes);
+  }
+
+  /** The worker finished the download. Take Stop away before naming or cleaning up its files. */
+  private beginSaving(): void {
+    this.set({ phase: 'importing', waitingFor: null, progress: null });
+    this.endWorker();
   }
 
   /** Saved under real names: list them, then import what is taken. */
@@ -1077,7 +1089,7 @@ export class LinkService {
       return this.answer();
     }
     if (this.state.phase === 'importing' || this.state.phase === 'converting')
-      return this.refuse('The download is saved and its import is under way.');
+      return this.refuse('The download is finishing and its import will carry on.');
     if (!this.busy) return this.answer();
     this.endWorker();
     this.deps.log('info', `Links: a ${this.kindWord()} download was stopped`);
