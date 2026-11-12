@@ -145,7 +145,11 @@ export function caseRow(name: string, setMs: number, runs: readonly MotionRun[],
 
 const ms = (v: number) => String(Math.round(v));
 const tenth = (v: number) => (Math.round(v * 10) / 10).toFixed(1);
-const signed = (v: number) => `${v >= 0 ? '+' : ''}${ms(v)}`;
+/** Rounded first, so a hair under nothing reads +0. */
+const signed = (v: number) => {
+  const r = Math.round(v);
+  return `${r >= 0 ? '+' : ''}${String(r === 0 ? 0 : r)}`;
+};
 
 /** A case's row in one line, as the check's summary says it. */
 export function caseLine(row: CaseRow): string {

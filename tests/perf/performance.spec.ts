@@ -321,8 +321,9 @@ async function measureOpening(): Promise<void> {
       period,
     );
     runs.push({ ...run, launchedAt, appearedAt, movableAt });
+    const ms = (v: number | null) => (v === null ? '?' : `${String(Math.round(v))} ms`);
     console.log(
-      `opening run ${String(i + 1)}: started ${String(appearedAt === null ? '?' : Math.round(appearedAt - launchedAt))} ms after the launch, might move ${String(movableAt === null || appearedAt === null ? '?' : Math.round(movableAt - appearedAt))} ms after it came, first moved ${String(run.delay === null ? 'never' : `${String(Math.round(run.delay))} ms`)} after that, for ${String(run.length === null ? '-' : Math.round(run.length))} ms`,
+      `opening run ${String(i + 1)}: came ${ms(appearedAt === null ? null : appearedAt - launchedAt)} after the launch, might move ${ms(movableAt === null || appearedAt === null ? null : movableAt - appearedAt)} after it came, first moved ${ms(run.delay)} after that, for ${ms(run.length)}`,
     );
     await app.close();
   }
