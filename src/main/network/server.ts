@@ -104,6 +104,8 @@ export type StartResult = { ok: true; port: number } | { ok: false; message: str
 
 /** Limits: requests, bodies, connections and how far a slow phone may fall behind. */
 const MAX_BODY = 16 * 1024;
+/** Undo can restore a folder’s 1,000 UUIDs in one request. Other routes keep the general limit. */
+const MAX_PLAYLIST_RESTORE_BODY = 48 * 1024;
 const MAX_FEED_MESSAGE = 4 * 1024;
 const MAX_CLIENTS = 100;
 const MAX_CLIENTS_PER_ADDRESS = 10;
@@ -324,11 +326,11 @@ class HttpError extends Error {
   }
 }
 
-function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+function readJson(req: IncomingMessage, maxBytes = MAX_BODY): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const type = req.headers['content-type'] ?? '';
     const declared = Number(req.headers['content-length'] ?? '0');
-    if (declared > MAX_BODY) {
+    if (declared > maxBytes) {
       // Answer at once; what the device is still sending is read and dropped (the server's request
       // timeout bounds it), so the answer reaches it instead of a reset connection.
       req.resume();
@@ -339,7 +341,7 @@ function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
     let size = 0;
     req.on('data', (chunk: Buffer) => {
       size += chunk.length;
-      if (size > MAX_BODY) {
+      if (size > maxBytes) {
         reject(new HttpError(413, 'That request is too large.'));
         return;
       }
@@ -733,7 +735,10 @@ export class NetworkServer {
         return;
       }
       // A POST's JSON body, or a GET's query (strings only).
-      const body = req.method === 'POST' ? await readJson(req) : apiQuery(req.url ?? '');
+      const body =
+        req.method === 'POST'
+          ? await readJson(req, r.op === 'playlist.restore' ? MAX_PLAYLIST_RESTORE_BODY : MAX_BODY)
+          : apiQuery(req.url ?? '');
       const args = r.args ? r.args(body, params) : {};
       const answer = await this.host.request({ deviceId: device.id, op: r.op, args, address });
       this.json(res, answer.status, answer.body);
