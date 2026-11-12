@@ -385,11 +385,27 @@ describe('putting edited slides back', () => {
     ...Object.entries(savedPlacement).flatMap(([key, value]) =>
       (['text', 'shape', 'image', 'video', 'timer'] as const).map((kind) => ({ kind, key, value })),
     ),
-    ...(['image', 'video'] as const).map((kind) => ({
-      kind,
-      key: 'crop',
-      value: { x: 0.1, y: 0.2, width: 0.7, height: 0.6 },
-    })),
+    ...(['image', 'video'] as const).flatMap((kind) => [
+      { kind, key: 'crop', value: { x: 0.1, y: 0.2, width: 0.7, height: 0.6 } },
+      { kind, key: 'pictureClip', value: { shape: 'ellipse' } },
+    ]),
+    {
+      kind: 'shape' as const,
+      key: 'gradient',
+      value: {
+        kind: 'linear',
+        angle: 45,
+        stops: [
+          { offset: 0, color: '#123456' },
+          { offset: 1, color: '#abcdef' },
+        ],
+      },
+    },
+    {
+      kind: 'text' as const,
+      key: 'tableCell',
+      value: { row: 1, column: 2, rowSpan: 1, columnSpan: 2 },
+    },
   ];
 
   it.each(placementCases)(
@@ -409,7 +425,8 @@ describe('putting edited slides back', () => {
           timer: { timerId: 'placeholder-timer', style: original['style'] },
         };
         const future = { note: 'Placeholder future data', nested: [1, 2, 3] };
-        const savedJson = JSON.stringify({ ...byKind[kind], [key]: value, future }, null, 2);
+        const source = { sourceShapeId: '17', sourceGroupIds: ['2', '6'] };
+        const savedJson = JSON.stringify({ ...byKind[kind], [key]: value, ...source, future }, null, 2);
         db.prepare('UPDATE elements SET kind = ?, props = ? WHERE id = ?').run(kind, savedJson, target.id);
         const before = repo.content(id);
         if (!before) throw new Error('missing saved placeholder');
@@ -435,6 +452,7 @@ describe('putting edited slides back', () => {
         const props = JSON.parse(row.props) as Record<string, unknown>;
         expect(props).not.toHaveProperty(key);
         expect(props['future']).toEqual(future);
+        expect(props).toMatchObject(source);
         for (const untouched of before.elements.filter((e) => e.id !== target.id))
           expect(after.elements.find((e) => e.id === untouched.id)).toEqual(untouched);
 
@@ -446,6 +464,7 @@ describe('putting edited slides back', () => {
           .flatMap((s) => s.elements)
           .find((element) => element.id === target.id);
         expect(reopenedElement).not.toHaveProperty(key);
+        expect(reopenedElement).toMatchObject(source);
         expect(JSON.parse(reopened.elements.find((e) => e.id === target.id)?.props ?? '{}')).toHaveProperty(
           'future',
           future,
