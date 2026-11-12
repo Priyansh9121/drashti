@@ -62,6 +62,19 @@ export function photoWait(held: boolean, limitMs: number): number | null {
 
 /** Start the app underneath the opening once the black cover can draw. */
 export function afterCoverFrame(covered: () => void): () => void {
-  const frame = requestAnimationFrame(covered);
-  return () => cancelAnimationFrame(frame);
+  let waiting = true;
+  const cancel = () => {
+    waiting = false;
+    cancelAnimationFrame(frame);
+    clearTimeout(limit);
+  };
+  const ready = () => {
+    if (!waiting) return;
+    cancel();
+    covered();
+  };
+  const frame = requestAnimationFrame(ready);
+  // A minimized or covered window can stop getting frames. The black cover is already mounted.
+  const limit = setTimeout(ready, 100);
+  return cancel;
 }

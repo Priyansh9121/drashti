@@ -201,11 +201,11 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
       chosen.disconnect();
     };
   }, [plan]);
-  // Its black over the window: the window starts underneath in the frame that draws it, never before (it would show).
+  // The black cover is mounted. Give it a frame before starting the window underneath when one is available.
   useEffect(() => {
-    if (!plan) return;
+    if (!plan || state !== 'playing') return;
     return afterCoverFrame(() => setCovered(true));
-  }, [plan]);
+  }, [plan, state]);
 
   const facts: StartFacts = {
     plan: plan ? 'plays' : state === 'over' ? 'none' : 'asking',
