@@ -545,7 +545,9 @@ function designAnimation(id: string, design: (typeof DESIGN_MOTIONS)[DesignMotio
     pose: (p, line) => {
       const [x, y] = FROM[line === 0 ? design.nameFrom : design.roleFrom];
       const remaining = 1 - smooth(p);
-      return pose(fadeIn(p, 0.45), { transform: [translate(x * 85 * remaining, y * 105 * remaining, '%')] });
+      // Words rising or dropping into place start past their box's room (0.35 em, LowerThirdView) and the vowel
+      // signs that reach about 0.19 em past a 1.25 em line: hidden behind its edge until they move.
+      return pose(fadeIn(p, 0.45), { transform: [translate(x * 85 * remaining, y * 145 * remaining, '%')] });
     },
   };
 }

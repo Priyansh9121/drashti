@@ -385,6 +385,9 @@ export function LowerThirdView({
               lang={textLang(text)}
               style={{
                 position: 'relative',
+                // A design's line keeps its words' box, room and all (below), to itself: the box's margins never
+                // join the next line's, so nothing moves for the room.
+                ...(designed ? { display: 'flow-root' } : {}),
                 fontFamily: fontFamilyFor(look.font, lang),
                 fontSize: i === 0 ? size : size * 0.7,
                 ...(style.textShadow ? { textShadow: style.textShadow } : {}),
@@ -413,6 +416,11 @@ export function LowerThirdView({
                     style={{
                       position: 'relative',
                       overflow: 'hidden',
+                      // Room past the words, taken back by the margin so nothing moves: their line box is the
+                      // Latin font's, and the tops and tails of Gujarati and Hindi vowel signs, and the words
+                      // style's dark halo, reach past it.
+                      padding: '0.35em',
+                      margin: '-0.35em',
                       ...(!composing ? { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } : {}),
                     }}
                   >
