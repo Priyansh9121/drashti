@@ -48,20 +48,6 @@ export const LOWER_THIRD_DESIGNS: readonly Design[] = [
     look: { style: 'accent', band: '#173a77', accent: '#75ccff', align: 'right', font: 'Oswald', size: 6.5 },
   },
   {
-    id: 'silver-outline',
-    name: 'Silver outline',
-    feel: 'elegant',
-    animation: 'design-centre-wipe',
-    look: {
-      style: 'outline',
-      band: '#20252d',
-      accent: '#cdd9e7',
-      align: 'centre',
-      font: 'Noto Serif',
-      weight: 400,
-    },
-  },
-  {
     id: 'copper-ribbon',
     name: 'Copper ribbon',
     feel: 'elegant',
@@ -166,13 +152,6 @@ export const LOWER_THIRD_DESIGNS: readonly Design[] = [
     feel: 'calm',
     animation: 'design-reveal-up',
     look: { style: 'box', band: '#123d3d', accent: '#72dbbd', align: 'centre', font: 'Hind', weight: 400 },
-  },
-  {
-    id: 'purple-outline',
-    name: 'Purple outline',
-    feel: 'bold',
-    animation: 'design-lower',
-    look: { style: 'outline', band: '#251940', accent: '#c6a8ff', font: 'Montserrat', size: 6 },
   },
   {
     id: 'amber-side-bar',
@@ -325,22 +304,6 @@ export const LOWER_THIRD_DESIGNS: readonly Design[] = [
     feel: 'calm',
     animation: 'design-draw-rise',
     look: { style: 'words', band: '#171717', accent: '#ffffff', font: 'Noto Sans', weight: 500, bottom: 12 },
-  },
-  {
-    id: 'lavender-labels',
-    name: 'Lavender labels',
-    feel: 'elegant',
-    animation: 'design-centre-wipe',
-    look: {
-      style: 'split',
-      band: '#efebff',
-      accent: '#d0c2f8',
-      text: '#292044',
-      align: 'centre',
-      font: 'Noto Serif',
-      weight: 400,
-      bandOpacity: 1,
-    },
   },
   {
     id: 'forest-labels',

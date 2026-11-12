@@ -232,7 +232,7 @@ const BEST_IDS = [
   'midnight-bulletin',
   'white-nameplate',
   'blue-speaker-strip',
-  'silver-outline',
+  'teal-band',
   'copper-ribbon',
   'emerald-labels',
   'slate-labels',
@@ -244,7 +244,7 @@ const BEST_IDS = [
   'cream-ribbon',
   'indigo-slant',
   'mint-name-and-role',
-  'lavender-labels',
+  'copper-and-charcoal',
   'charcoal-glass',
 ];
 
