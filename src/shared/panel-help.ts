@@ -101,7 +101,7 @@ export const PANEL_HELP = {
   phones: {
     title: 'Phones',
     doc: 'operator',
-    text: 'Phones and tablets on the local Wi-Fi pair as a remote, stage display or for announcements: in Pro Mode turn on Let paired phones and tablets connect, then check Connected. A remote shows playlist slide rows, menus, protected show swipes and wallpapers; Simple Mode names its own playlist, permits its rows and clears, and refuses Pro-only actions. Phones and tablets may add files allows Add from this Phone… into Added from Phones and Add photos into the ordinary playlist open in Pro Mode; in Simple Mode a phone’s files go to the end of its one playlist, but a video or sound goes into Added from Phones when that playlist is a Repeat Slides one, and nothing a phone adds goes live by itself.',
+    text: 'Phones and tablets on the local Wi-Fi pair as a remote, stage display or for announcements: in Pro Mode turn on Let paired phones and tablets connect, then check Connected. A remote shows playlist slide rows, menus, protected show swipes and wallpapers; in Simple Mode it opens and changes any playlist, with Pause, Play, the time bar and Audio, and refuses Pro-only actions. Phones and tablets may add files allows Add from this Phone… into Added from Phones and Add photos into the ordinary playlist open in Pro Mode; in Simple Mode a phone’s files go to the end of the playlist open on the computer, but a video or sound goes into Added from Phones when that playlist is a Repeat Slides one, and nothing a phone adds goes live by itself.',
     guide: '**Phones** (if a phone remote or a stage tablet is used)',
   },
   announcements: {
