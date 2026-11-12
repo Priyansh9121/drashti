@@ -126,10 +126,11 @@ export function practiceStep(p: Practice, action: PracticeAction, count = LINES.
       return p.index === null ? p : next({ index: null, cleared: action === 'clearAll' ? p.index : null });
     case 'putBack':
       return p.cleared === null ? p : next({ index: p.cleared, cleared: null });
+    // One cover at a time, as in a show (Session 57, one-at-a-time.ts): the one put on takes the other off.
     case 'toggleBlackout':
-      return next({ blackout: !p.blackout });
+      return next(p.blackout ? { blackout: false } : { blackout: true, wallpaper: false });
     case 'toggleWallpaper':
-      return next({ wallpaper: !p.wallpaper });
+      return next(p.wallpaper ? { wallpaper: false } : { wallpaper: true, blackout: false });
   }
 }
 
