@@ -58,7 +58,7 @@ describe('reading a deck’s slides, as C1’s trial wrote them down', () => {
       ['p:fade', 700],
       ['p:push', 1000],
       ['p:wipe', 800],
-      ['p:cover', 1000],
+      ['p:push', 1000],
       ['p14:vortex', 1500],
       ['p:split', 600],
     ]);
@@ -146,7 +146,7 @@ describe('the movie’s plan', () => {
       ['p:fade', 700],
       ['p:push', 1000],
       ['p:wipe', 800],
-      ['p:cover', 1000],
+      ['p:push', 1000],
       ['p14:vortex', 1500],
     ]);
     const groups = (i: number) => plan.slides[i]?.groups.map((g) => [g.startMs, g.endMs]);
@@ -379,7 +379,7 @@ describe('the timed copy', () => {
       'p:fade',
       'p:push',
       'p:wipe',
-      'p:cover',
+      'p:push',
       'p14:vortex',
       'p:split',
     ]);
