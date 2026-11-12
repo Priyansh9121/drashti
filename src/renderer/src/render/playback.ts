@@ -10,6 +10,20 @@ import {
 } from '../../../shared/media';
 import { engineNow } from './clock';
 
+/**
+ * A late start caught up (Session 57, C3's review M1; render/DeckStep.tsx alone asks): a deck's first clip whose first
+ * frame came in after the engine's time had it there (a cold jump: each screen's own decoding), played from that frame
+ * at `at`, `lateMs` behind the engine's time.
+ */
+export interface PlaybackCatchUp {
+  /** When it plays from that frame (the engine's time). */
+  at: number;
+  /** How far behind the engine's time it is then (ms). */
+  lateMs: number;
+  /** The fastest it may play to catch up (1.1: a tenth faster). */
+  maxRate: number;
+}
+
 export interface PlaybackOptions {
   mediaId: string;
   /** A later try at loading it (a node's copy that landed after the first try failed). */
@@ -35,9 +49,10 @@ export interface PlaybackOptions {
    * How it plays now (Session 14), read at every check so a change lands
    * without loading the file again: whether it loops, its start and end
    * points, and a jump to a marker (or the time bar's move, paused or not:
-   * Session 54). Left out: the element's own loop, the whole file.
+   * Session 54). Left out: the element's own loop, the whole file. A deck's first clip that came in late (Session
+   * 57) says so (`catchUp`).
    */
-  timing?: () => { loop: boolean; clip?: PlaybackClip; seek?: PlaybackSeek };
+  timing?: () => { loop: boolean; clip?: PlaybackClip; seek?: PlaybackSeek; catchUp?: PlaybackCatchUp };
 }
 
 /** A playback: call it to stop; resync() checks it against the clock at once (after a jump). */
