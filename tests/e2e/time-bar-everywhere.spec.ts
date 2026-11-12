@@ -401,7 +401,7 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   await app.close();
 });
 
-test('in Simple Mode, a phone’s Pause of a sound is dimmed (Part 9: refused in the main process, so not offered), and its Play still plays on one paused before (as the window’s own Play does since Session 55); a sound from its Media is dimmed there, one of Simple Mode’s playlist goes up', async () => {
+test('in Simple Mode a phone pauses, moves and plays a sound from a playlist; Media puts stay dimmed', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -480,11 +480,17 @@ test('in Simple Mode, a phone’s Pause of a sound is dimmed (Part 9: refused in
     await p.getByTestId('remote-item').filter({ hasText: 'Placeholder second tone' }).click();
     await expect.poll(async () => (await snapshot(win)).layers.audio?.mediaId).toBe(second);
     await p.getByTestId('remote-tab-show').click();
-    // Its Pause dimmed (a phone in Simple Mode has Play only: main/simple-mode-phones.ts), and it plays on.
-    await expect(phoneRow.getByRole('button', { name: 'Pause' })).toBeDisabled({ timeout: 15_000 });
-    const playing = (await soundTiming(win)).seek;
-    expect((await soundTiming(win)).seek).toEqual(playing);
-    await inStep(heard(second), () => soundTiming(win), 'still playing, its Pause not offered');
+    const pause = phoneRow.getByRole('button', { name: 'Pause' });
+    await expect(pause).toBeEnabled({ timeout: 15_000 });
+    await pause.click();
+    await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
+    const pausedAt = (await soundTiming(win)).seek?.toMs ?? 0;
+    await phoneRow.getByRole('slider').press('ArrowRight');
+    await expect.poll(async () => (await soundTiming(win)).seek?.toMs ?? 0).toBeGreaterThan(pausedAt + 4500);
+    expect((await soundTiming(win)).seek?.paused).toBe(true);
+    await phoneRow.getByRole('button', { name: 'Play' }).click();
+    await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
+    await inStep(heard(second), () => soundTiming(win), 'played from the new position in Simple Mode');
   } finally {
     await phone.close();
   }

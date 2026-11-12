@@ -14,8 +14,8 @@ import { wallpaperNameSchema } from './wallpapers';
  * - a picture's look (Part 5's Picture editor): read, and kept;
  * - Rename… of a picture, video, sound or presentation, as the one right-click menu's;
  * - a video row's When it ends (Part 6).
- * And Simple Mode as a phone is told of it with the hall (GET /api/v1/hall `simple`), so it shows only what Simple Mode
- * allows and opens Simple Mode's playlist.
+ * The hall response (GET /api/v1/hall `simple`) tells a phone which controls to show and which playlist is open
+ * on Drashti when Simple Mode starts. The phone can then open another playlist.
  */
 
 /** A wallpaper as a phone lists it: its pictures by id (drawn as small previews), and whether it goes round. */
@@ -32,9 +32,8 @@ export interface RemoteWallpapers {
 }
 
 /**
- * Simple Mode on Drashti's computer, as the hall tells a phone (null in Pro Mode): its one playlist (null before it
- * has one), and the words a phone shows once for what it dims or hides (shared/mode.ts simplePhoneRefusalText: true for
- * this computer's access, naming that playlist).
+ * Simple Mode on Drashti's computer, as the hall tells a phone (null in Pro Mode): the playlist open on the
+ * computer (null if none), and the words a phone shows once based on this computer's access.
  */
 export interface RemoteSimple {
   playlistId: string | null;

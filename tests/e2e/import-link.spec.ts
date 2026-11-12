@@ -303,6 +303,9 @@ test('Dropbox: a 4K file imports and another paste works while its 1080p copy wa
       state: 'waiting',
       note: 'Waits while the show is on, then carries on by itself.',
     });
+  await expect(
+    win.getByTestId('open-playlist').getByTestId('playlist-item').getByText('Making a 1080p copy…'),
+  ).toBeVisible();
   const conversion = win.getByTestId('link-conversion-status');
   await expect(conversion).toContainText('Waits while the show is on, then carries on by itself.');
   await expect(
@@ -392,7 +395,7 @@ test('Dropbox: a saved 2160p setting does not lift the pasted link’s 1080p cap
   await app.close();
 });
 
-test('Dropbox: a missing saved folder falls back to Drashti downloads and says so once', async () => {
+test('Dropbox: a missing saved folder falls back once and is used again when it returns', async () => {
   test.setTimeout(180_000);
   const work = mkdtempSync(join(tmpdir(), 'drashti-link-fallback-e2e-'));
   const clip = makeVideo(join(work, 'clip.mp4'), '320x180');
@@ -420,15 +423,17 @@ test('Dropbox: a missing saved folder falls back to Drashti downloads and says s
   const notice = win
     .getByTestId('import-notice')
     .filter({ hasText: 'The previous downloads folder couldn’t be used.' });
-  await expect(notice).toContainText('Drashti downloads');
+  await expect(notice).toContainText('This download was saved in Drashti downloads.');
   expect(existsSync(previous)).toBe(false);
   expect(readFileSync(join(chosen, name)).equals(clip)).toBe(true);
   await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder fallback');
+  mkdirSync(previous);
   await chooseMenuItem(app, 'import-from-link');
   await pasteLink(win, url);
   await linkFinished(win, 60_000);
   await expect(notice).toHaveCount(1);
-  expect(readFileSync(join(chosen, 'Placeholder fallback (2).mp4')).equals(clip)).toBe(true);
+  expect(readFileSync(join(previous, name)).equals(clip)).toBe(true);
+  expect(existsSync(join(chosen, 'Placeholder fallback (2).mp4'))).toBe(false);
   await app.close();
 });
 

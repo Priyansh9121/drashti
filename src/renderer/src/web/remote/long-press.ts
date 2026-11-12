@@ -52,6 +52,8 @@ export function longPressProps(open: () => void) {
       open();
     },
     onPointerDown: (e: PointerEvent<HTMLElement>) => {
+      // A new press on this row is independent of the lift that opened its menu.
+      if (e.isPrimary && press.openedOn === e.currentTarget) press.openedOn = null;
       if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
       stop();
       press.pointerId = e.pointerId;
