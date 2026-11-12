@@ -4,9 +4,9 @@
  * at every frame the page draws it keeps when that frame began (ms since the epoch, this computer's clock), and for
  * each part it watches (a track) whether that part looks different from the frame before. What a part looks like is
  * what the frame shows of it: every element of it that can be seen (its opacity with its ancestors', its box on the
- * page, its transform, clip and filter; a video's time), in the page's order; an element nobody can see (no opacity,
- * no box, or off the page) counts as not there, so a slide gone to nothing and then taken away changes nothing.
- * shared/motion-measure.ts works out each case's delay, length and evenness from it.
+ * page, its transform, clip, mask and filter; a video's time), in the page's order; an element nobody can see (no
+ * opacity, no box, or off the page) counts as not there, so a slide gone to nothing and then taken away changes
+ * nothing. shared/motion-measure.ts works out each case's delay, length and evenness from it.
  *
  * It looks at the very frame drawn: a ResizeObserver's callback comes after the frame's animation callbacks (the
  * page's own transitions are painted in theirs) and its layout, before it is painted, so a change the main process
@@ -104,9 +104,14 @@ function seenOpacity(el: Element, known: Map<Element, number>): number {
   return seen;
 }
 
-/** What of an element's own style moves it on the screen, beyond how much of it shows and its box. */
-export const movedLook = (style: Pick<CSSStyleDeclaration, 'transform' | 'clipPath' | 'filter'>): string =>
-  `${style.transform}|${style.clipPath}|${style.filter}`;
+/**
+ * What of an element's own style moves it on the screen, beyond how much of it shows and its box: its transform, clip,
+ * mask and filter. A deck Drashti plays itself moves by a mask alone (13 Nov 2026): its own Wipe over the whole slide
+ * coming in, a Split over its shape's box; its Cover and Uncover shade the moving slide with a filter.
+ */
+export const movedLook = (
+  style: Pick<CSSStyleDeclaration, 'transform' | 'clipPath' | 'maskImage' | 'filter'>,
+): string => `${style.transform}|${style.clipPath}|${style.maskImage}|${style.filter}`;
 
 /** What an element shows of itself at this frame, or null when it shows nothing. */
 function lookOf(el: Element, known: Map<Element, number>): string | null {

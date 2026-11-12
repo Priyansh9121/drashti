@@ -4,11 +4,12 @@ import { join } from 'node:path';
 import type { EngineCommand } from '../shared/engine/commands';
 import type { DeckEffect, DeckSlide } from '../shared/deck';
 import { nativeStepTiming } from '../shared/deck-show';
+import type { DeckNativeTransition } from '../shared/deck-transition';
 import type { LowerThird, LowerThirdLook } from '../shared/lower-thirds';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../shared/lower-thirds';
 import { animationById, animationLength, cutIntoUnits } from '../shared/lower-third-animations';
 import { FAMILIES, idFor } from '../shared/lower-third-studio';
-import type { TextStyle, TransitionKind } from '../shared/model';
+import type { Rect, SlideElement, TextStyle, TransitionKind } from '../shared/model';
 import {
   caseLine,
   caseRow,
@@ -45,7 +46,13 @@ import { sw } from './switches';
  * - a lower third in and out: three styles (box, band, glass) and one of the heaviest (letter by letter with a blur,
  *   glass, sparkles behind);
  * - Black-out on and off, and the Wallpaper (a placeholder picture chosen) on and off.
- * Then, last, each only while there is time left for it (Session 57's leftovers, h-left2's MS-1, DK-6 and DK-2):
+ * Then, each only while there is time left for all of it:
+ * - a deck Drashti plays itself (13 Nov 2026, the review of h-p3tr's part B and h-p3fx's Split), as dissolve 800 was
+ *   measured (one hall screen, no other window open): by Next its slides come in by its own Wipe (a mask over the whole
+ *   slide coming in), Cover and Uncover (the moving slide shaded, a filter) and Push (transforms only: the control),
+ *   then two shapes of its last slide come in and go out by Split (a mask the size of each), a click each;
+ * then Session 57's leftovers (h-left2's MS-1, DK-6 and DK-2), left out of the two-core streaming check (after3's ran
+ * into its 14-minute stop with them):
  * - a slide of an imported, editable PowerPoint table of 250 cells (each cell a text box that measures itself on the
  *   screen), its words fitting their cells and then too long for them, coming on with the editor's fade;
  * - a jump to a deck slide Drashti plays itself (no clip: its effects drawn from its shapes, on the engine's time),
@@ -141,6 +148,43 @@ const SECOND = ' (screen 2)';
 const DK2_RUNS = 3;
 const DK2_WINDOWS = 'windows without a Preloader';
 
+/**
+ * A deck Drashti plays itself, its own transitions (13 Nov 2026): each at 700 ms (PowerPoint's movie that Wipe, Cover
+ * and Uncover were drawn after), from the right but Uncover's, up; each row named so in the tables.
+ */
+const DECK_OWN_MS = 700;
+const DECK_OWN: readonly { row: string; name: string; transition: DeckNativeTransition }[] = [
+  {
+    row: 'deck Drashti plays: its Wipe 700',
+    name: 'wipe',
+    transition: { kind: 'wipe', deckEffect: 'wipe', direction: 'left', durationMs: DECK_OWN_MS },
+  },
+  {
+    row: 'deck Drashti plays: its Cover 700',
+    name: 'cover',
+    transition: { kind: 'slide', deckEffect: 'cover', direction: 'left', durationMs: DECK_OWN_MS },
+  },
+  {
+    row: 'deck Drashti plays: its Uncover 700',
+    name: 'pull',
+    transition: { kind: 'slide', deckEffect: 'uncover', direction: 'up', durationMs: DECK_OWN_MS },
+  },
+  {
+    row: 'deck Drashti plays: its Push 700 (the control)',
+    name: 'push',
+    transition: { kind: 'slide', deckEffect: 'push', direction: 'left', durationMs: DECK_OWN_MS },
+  },
+];
+/** Its last slide's two shapes, in by Split at its first click and out at its second (PowerPoint's own 0.5 s). */
+const DECK_SPLIT_MS = 500;
+const DECK_SPLIT_IN = 'deck Drashti plays: shapes in by Split 500';
+const DECK_SPLIT_OUT = 'deck Drashti plays: shapes out by Split 500';
+/** Its first slide, put up by a cut before each round: only by Next from the slide before is a deck's own played. */
+const DECK_OWN_FIRST = '(to the first slide of the deck Drashti plays)';
+/** One round of it: its first slide, its four transitions, its two clicks, each then still SETTLE_MS. */
+const DECK_OWN_ROUND_MS =
+  SETTLE_MS + DECK_OWN.length * (DECK_OWN_MS + SETTLE_MS) + 2 * (DECK_SPLIT_MS + SETTLE_MS);
+
 /** How long a screen opened for a case may take to be ready: its page loaded, its fonts in, its warm-up done. */
 const SCREEN_LIMIT_MS = 20_000;
 
@@ -175,6 +219,26 @@ const LINES = ['Placeholder name', 'Placeholder title'];
 const PAGE_LIMIT_MS = 5000;
 /** The cases stop pressing after this long, measuring those done: the check's own time limit is 14 min in all. */
 const BUDGET_MS = 6 * 60_000;
+/**
+ * Or once Drashti has been up this long, if that comes first: the check stops it 14 minutes from its start
+ * (tests/perf/performance.spec.ts), and the cases measured must be read and written before then (after3's two-core
+ * streaming check lost its figures to that stop, 13 Nov 2026).
+ */
+const UP_TO_MS = 12 * 60_000;
+
+/** When the cases stop pressing, from `now`, Drashti up `upMs`: at their budget's end, or at its 12 minutes up. */
+export function casesUntil(now: number, upMs: number): { at: number; by: 'budget' | 'uptime' } {
+  const budget = now + BUDGET_MS;
+  const uptime = now + UP_TO_MS - upMs;
+  return uptime < budget ? { at: uptime, by: 'uptime' } : { at: budget, by: 'budget' };
+}
+
+/**
+ * Whether Session 57's leftovers (MS-1, DK-6, DK-2) are pressed in a check: in every one but two-core streaming, which
+ * ran into its 14-minute stop with them (after3, 13 Nov 2026). Each still only while there is time for it.
+ */
+export const leftoversIn = (check: { streaming: boolean; twoCores: boolean }): boolean =>
+  !(check.streaming && check.twoCores);
 /** The lines it writes as it goes (tests/perf/performance.spec.ts prints them). */
 export const PROGRESS = 'PERF-ANIMATIONS';
 
@@ -328,6 +392,98 @@ const NATIVE_MOTION: DeckEffect[] = [
     durationMs: NATIVE_FLY_MS,
   },
 ];
+
+/**
+ * The deck Drashti plays itself, its own transitions (13 Nov 2026), as its import keeps a deck it can play from the
+ * deck's shapes (import/deck/native-deck-import.ts): its first slide, then one coming in by each of DECK_OWN, every one
+ * over the same full-slide picture (a deck's own background, drawn once) with its title and a line; on the last, a
+ * shape and words its two clicks bring in and take out by Split. A jump to any of them is a cut.
+ */
+function deckOwnSlides(picture: string) {
+  const words = (id: string, shapeId: string, text: string, frame: Rect, fontSize: number): SlideElement => ({
+    id,
+    kind: 'text',
+    frame,
+    text,
+    lang: 'en',
+    style: { ...WORDS, fontSize, shrinkToFit: true },
+    sourceShapeId: shapeId,
+  });
+  const split = (shapeId: string, axis: 'x' | 'y', inward: boolean): DeckEffect[] =>
+    [1, 2].map((step): DeckEffect => ({
+      shapeId,
+      step,
+      phase: step === 1 ? 'in' : 'out',
+      kind: 'split',
+      splitAxis: axis,
+      ...(inward ? { inward: true as const } : {}),
+      delayMs: 0,
+      durationMs: DECK_SPLIT_MS,
+    }));
+  return [null, ...DECK_OWN].map((own, i) => {
+    const last = i === DECK_OWN.length;
+    const elements: SlideElement[] = [
+      {
+        id: 'picture',
+        kind: 'image',
+        frame: { x: 0, y: 0, width: 1920, height: 1080 },
+        mediaId: picture,
+        fit: 'fill',
+        sourceShapeId: '2',
+      },
+      words(
+        'title',
+        '3',
+        `Placeholder deck title ${String(i + 1)}`,
+        { x: 160, y: 120, width: 1600, height: 200 },
+        80,
+      ),
+      words('line', '4', 'A placeholder line on the slide', { x: 160, y: 360, width: 1600, height: 140 }, 56),
+      ...(last
+        ? [
+            {
+              id: 'split-shape',
+              kind: 'shape' as const,
+              shape: 'rectangle' as const,
+              fill: '#f3c46bcc',
+              cornerRadius: 24,
+              opacity: 1,
+              frame: { x: 160, y: 600, width: 760, height: 320 },
+              outline: { color: '#5a2a48', width: 4 },
+              sourceShapeId: '5',
+            },
+            words(
+              'split-words',
+              '6',
+              'Placeholder words in by Split',
+              { x: 1000, y: 600, width: 760, height: 320 },
+              64,
+            ),
+          ]
+        : []),
+    ];
+    const deck: DeckSlide = {
+      steps: [],
+      media: [],
+      ...(own
+        ? { transition: { name: own.name, durationMs: DECK_OWN_MS, nativeTransition: own.transition } }
+        : {}),
+      motion: last
+        ? {
+            effects: [...split('5', 'x', false), ...split('6', 'y', true)].sort((a, b) => a.step - b.step),
+            stepsMs: [0, DECK_SPLIT_MS, DECK_SPLIT_MS],
+            approximate: false,
+          }
+        : { effects: [], stepsMs: [0], approximate: false },
+    };
+    return {
+      label: `Placeholder deck slide Drashti plays, its own transitions ${String(i + 1)}`,
+      transition: { kind: 'cut' as const, durationMs: 0 },
+      elements,
+      deck,
+    };
+  });
+}
 
 /** A press from the operator window, through its own bridge (as its keys and buttons send it), timed there. */
 const PRESS = (command: EngineCommand) => `(async () => {
@@ -575,6 +731,13 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       },
     ],
   });
+  // A deck Drashti plays itself, coming in by its own transitions (13 Nov 2026): every slide over one picture of its
+  // own (a hue no other picture has: the library keeps a picture's bytes once).
+  const deckOwnId = repo.insert({
+    libraryId,
+    name: 'Placeholder perf deck Drashti plays, its own transitions',
+    groups: [{ name: '', slides: deckOwnSlides(makePicture(deps, 'animations-deck-own', 270, null)) }],
+  });
   const pressed: Pressed[] = [];
   const operator = (): BrowserWindow | null => {
     const w = deps.operator?.() ?? null;
@@ -757,18 +920,26 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
     },
     end: async () => {
       progress('the cases begin');
-      // The cases stop pressing at this budget, measuring those done, so the check always ends in its time.
-      const deadline = Date.now() + BUDGET_MS;
+      const streaming = (sw('DRASHTI_PERF_STREAM') ?? '') !== '';
+      const twoCores = sw('DRASHTI_PERF_HANDICAP') === '1';
+      // The cases stop pressing at this budget, or once Drashti has been up 12 minutes, measuring those done, so the
+      // check always ends in its time.
+      const until = casesUntil(Date.now(), process.uptime() * 1000);
+      const deadline = until.at;
+      /** Why a case was not pressed: out of the cases' time, or Drashti up 12 minutes (its check stops at 14). */
+      const stopped =
+        until.by === 'uptime' ? `Drashti up ${String(UP_TO_MS / 60_000)} minutes` : 'out of time';
       const skipped = new Set<string>();
       const inTime = (name: string) => {
         if (Date.now() < deadline) return true;
+        if (until.by === 'uptime' && skipped.size === 0) note(`${stopped}: no more cases pressed`);
         skipped.add(name);
         return false;
       };
-      /** A case of Session 57's leftovers starts only with time left for all its runs; out of time, it is said. */
+      /** A case of the last ones starts only with time left for all its runs; out of time, it is said. */
       const timeFor = (ms: number, what: string) => {
         if (deadline - Date.now() >= ms) return true;
-        note(`out of time: no ${what}`);
+        note(`${stopped}: no ${what}`);
         return false;
       };
       const output = deps.outputs()[0];
@@ -862,12 +1033,40 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         await away();
         await press('deck slide in, then 20 s still', 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 20_000);
         await press('deck click after 20 s still', 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
-      } else progress('out of time: no click after 20 s still');
+      } else progress(`${stopped}: no click after 20 s still`);
+      // A deck Drashti plays itself (13 Nov 2026), as dissolve 800 was measured (one hall screen, no other window
+      // open), before the leftovers, so it runs on two cores too: from its first slide (a cut) by Next, its own Wipe,
+      // Cover, Uncover and Push, then its last slide's shapes in by Split and out by Split, a click each. Only when
+      // there is time for all its rounds, never marking the check out of time.
+      if (
+        timeFor(SHORT_RUNS * DECK_OWN_ROUND_MS, 'deck Drashti plays itself (its own transitions, its Splits)')
+      ) {
+        progress(
+          'a deck Drashti plays itself: its own Wipe, Cover, Uncover and Push, its shapes in and out by Split',
+        );
+        for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++) {
+          await press(DECK_OWN_FIRST, 'slide', 0, goLive(deckOwnId, 0), SETTLE_MS);
+          for (const own of DECK_OWN)
+            await press(own.row, 'slide', DECK_OWN_MS, { type: 'next' }, DECK_OWN_MS + SETTLE_MS);
+          for (const row of [DECK_SPLIT_IN, DECK_SPLIT_OUT])
+            await press(row, 'nativeDeck', DECK_SPLIT_MS, { type: 'next' }, DECK_SPLIT_MS + SETTLE_MS);
+        }
+      }
       // Session 57's leftovers last (MS-1, DK-6, DK-2), as the click after 20 s still: each only when there is time
-      // for all its runs, never marking the check out of time.
+      // for all its runs, never marking the check out of time; and never in the two-core streaming check, which ran
+      // into its 14-minute stop with them (after3).
+      const leftovers = leftoversIn({ streaming, twoCores });
+      if (!leftovers)
+        note(
+          'left out of the two-core streaming check, for its time: the table slides (MS-1), the jump to a deck slide Drashti plays itself (DK-6) and the deck with the windows without a Preloader (DK-2)',
+        );
       // MS-1: a slide of 250 cells, each a text box that measures itself as it comes; back and forth, as a fade.
-      if (!table) note('no table slides to press');
-      else if (timeFor(2 * SHORT_RUNS * (DEFAULT_MS + TABLE_SETTLE_MS), 'table slides')) {
+      if (leftovers && !table) note('no table slides to press');
+      else if (
+        leftovers &&
+        table &&
+        timeFor(2 * SHORT_RUNS * (DEFAULT_MS + TABLE_SETTLE_MS), 'table slides')
+      ) {
         progress('table slides, 250 cells (MS-1)');
         for (const [k, name] of TABLE_CASES.entries())
           for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++)
@@ -884,7 +1083,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       let secondRecord: ProbeRecord | null = null;
       const jumpsFrom = pressed.length;
       const jumpRunMs = SETTLE_MS + NATIVE_STEP_MS + NATIVE_SETTLE_MS;
-      if (timeFor(NATIVE_HUES.length * jumpRunMs, 'jump to a deck slide Drashti plays itself')) {
+      if (leftovers && timeFor(NATIVE_HUES.length * jumpRunMs, 'jump to a deck slide Drashti plays itself')) {
         closeCase();
         const opened = await openScreen('audience');
         if (typeof opened === 'string')
@@ -921,7 +1120,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       // DK-2: the deck's clicks again, with every window that loads nothing ahead open (each one more paused clip).
       let windows: WindowsOpen | null = null;
       const dk2RunMs = SETTLE_MS + 3 * (CLIP_MS + 800);
-      if (timeFor(DK2_RUNS * dk2RunMs, `deck clicks with the ${DK2_WINDOWS} open`)) {
+      if (leftovers && timeFor(DK2_RUNS * dk2RunMs, `deck clicks with the ${DK2_WINDOWS} open`)) {
         closeCase();
         windows = await openWindowsWithoutPreloader(second?.displayId);
         progress(`the deck with the ${DK2_WINDOWS} (DK-2): ${windowsLine(windows)}`);
@@ -957,7 +1156,6 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       const unseen = rows.filter((r) => r.seen === 0 && !r.name.endsWith(SECOND)).map((r) => r.name);
       const unseenSecond = rows.filter((r) => r.seen === 0 && r.name.endsWith(SECOND)).map((r) => r.name);
       if (unseenSecond.length > 0) notes.push(`never seen on screen 2: ${unseenSecond.join(', ')}`);
-      const streaming = (sw('DRASHTI_PERF_STREAM') ?? '') !== '';
       keep(streaming, {
         measured,
         rows,
@@ -970,6 +1168,9 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         nativeJump,
         windows,
         secondRuns,
+        // What could stop the cases (their budget, or Drashti up 12 minutes), and whether the leftovers were pressed.
+        stops: until.by,
+        leftovers,
       });
       const fromMain = pressed.filter((p) => p.from === 'main').length;
       return {
