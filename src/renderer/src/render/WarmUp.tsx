@@ -17,6 +17,7 @@ import { engineNow, pauseClock } from './clock';
 import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
 import { SPLIT_MS, WARM_DECK_TRANSITIONS, warmDeckTransition, withSplits } from './warm-up-deck';
+import { WARM_UP_FAILS } from './warm-up-mode';
 
 /*
  * Warming the GPU, unseen (Session 27). A GPU makes each new kind of drawing (a "pipeline") the first time
@@ -385,6 +386,14 @@ export function warmScenes(): WarmScene[] {
 const trees = new WeakMap<Element, ShadowRoot>();
 
 /**
+ * Tests only: an element that throws as it renders, drawn in the scene a test names as that scene comes part-way
+ * (WARM_UP_FAILS, DRASHTI_TEST_WARM_UP_FAILS: a packaged Drashti never asks for it), as a bug in any scene would.
+ */
+function FailForTests(): never {
+  throw new Error('A test asked this warm-up scene to fail as it drew');
+}
+
+/**
  * Draws the warm-up for a few frames, then calls `onDone` (never, when `hold`: a test looks at it). The
  * parent shows the show once it is done; nothing of the show is drawn meanwhile.
  */
@@ -623,6 +632,7 @@ export function WarmUp({
                         matte={matte}
                         ticker={ticker}
                       />
+                      {step.phase === 'during' && s.key === WARM_UP_FAILS && <FailForTests />}
                     </div>
                   </div>
                 ))}
