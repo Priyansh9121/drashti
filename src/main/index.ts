@@ -1014,6 +1014,11 @@ async function runPerformanceTestWithScenario(ctx: PerfRun): ReturnType<typeof r
       ctx.stream.setLayout('slides');
     },
     operator: ctx.operator,
+    // The animations scenario's second hall screen and stage screen (Session 57, DK-6 and DK-2): pretend displays,
+    // only under the motion probe's test switch, never in an installed Drashti.
+    ...(!packaged() && sw('DRASHTI_TEST_MOTION_PROBE') === '1'
+      ? { pretendDisplays: changeExtraDisplays }
+      : {}),
   });
   return runPerformanceTestWithNodes({ ...ctx, scenario });
 }
