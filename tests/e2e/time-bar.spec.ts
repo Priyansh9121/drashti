@@ -520,7 +520,9 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode on Drashti’s computer');
       const simpleBar = row.getByRole('slider', { name: 'Time of the background video', exact: true });
       await expect(simpleBar).toBeVisible();
-      await clickAlong(p, simpleBar, 0.7);
+      const simpleBox = await simpleBar.boundingBox();
+      if (!simpleBox) throw new Error('The phone’s Simple Mode time bar is missing.');
+      await simpleBar.click({ position: { x: simpleBox.width * 0.7, y: simpleBox.height / 2 } });
       await expect
         .poll(async () => Math.abs(((await backgroundTiming(win)).seek?.toMs ?? 0) - durationMs * 0.7))
         .toBeLessThan(200);
