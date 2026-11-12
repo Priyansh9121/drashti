@@ -81,6 +81,9 @@ const IMPORTED_EFFECTS: Record<DeckEffect['kind'], string> = {
   zoom: 'Zoom',
   spin: 'Spin',
   pulse: 'Pulse',
+  float: 'Float',
+  split: 'Split',
+  'grow-shrink': 'Grow/Shrink',
 };
 
 function ImportedMotion({ deck }: { deck: DeckSlide }) {

@@ -33,11 +33,15 @@ const effectSchema = z.looseObject({
   shapeId: idSchema,
   step: z.number().int().min(0).max(9999),
   phase: z.enum(['in', 'out', 'emphasis']),
-  kind: z.enum(['appear', 'fade', 'fly', 'wipe', 'zoom', 'spin', 'pulse']),
+  kind: z.enum(['appear', 'fade', 'fly', 'wipe', 'zoom', 'spin', 'pulse', 'float', 'split', 'grow-shrink']),
   delayMs: ms,
   durationMs: ms,
   direction: z.enum(['left', 'right', 'up', 'down']).optional(),
   degrees: z.number().optional(),
+  fade: z.literal(true).optional(),
+  distance: z.number().min(0).max(1).optional(),
+  splitAxis: z.enum(['x', 'y']).optional(),
+  scale: z.number().min(0).max(10).optional(),
 });
 
 const motionSchema = z

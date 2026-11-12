@@ -25,12 +25,20 @@ export interface DeckEffect {
   /** Zero runs with the slide; the following steps are one per click. */
   step: number;
   phase: 'in' | 'out' | 'emphasis';
-  kind: 'appear' | 'fade' | 'fly' | 'wipe' | 'zoom' | 'spin' | 'pulse';
+  kind: 'appear' | 'fade' | 'fly' | 'wipe' | 'zoom' | 'spin' | 'pulse' | 'float' | 'split' | 'grow-shrink';
   delayMs: number;
   durationMs: number;
   /** The direction of travel. */
   direction?: DeckEffectDirection;
   degrees?: number;
+  /** Gallery Zoom fades during its scale. */
+  fade?: true;
+  /** Float's travel as a fraction of the slide along its direction. */
+  distance?: number;
+  /** Split expands or contracts around the center along this axis. */
+  splitAxis?: 'x' | 'y';
+  /** Gallery Zoom's outer scale or Grow/Shrink's final scale. */
+  scale?: number;
 }
 
 export interface DeckMotion {

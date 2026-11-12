@@ -32,27 +32,37 @@ export function nativeDeckFixture(unsupported = false): Buffer {
   const first =
     effect(21, 2, '1', 'clickEffect', 'entr', 'set', 1) +
     effect(22, 3, '2', 'withEffect', 'entr', 'anim', 400, 80, '', 'presetSubtype="4"');
-  const second =
-    effect(
-      31,
-      4,
-      '22',
-      'clickEffect',
-      'entr',
-      'animEffect',
-      300,
-      30,
-      'filter="wipe(right)" transition="in"',
-    ) + effect(32, 5, '23', 'afterEffect', 'entr', 'animScale', 250, 40);
+  const wipe = effect(
+    31,
+    4,
+    '22',
+    'clickEffect',
+    'entr',
+    'animEffect',
+    300,
+    30,
+    'filter="wipe(right)" transition="in"',
+  );
+  const zoom = effect(32, 5, '23', 'afterEffect', 'entr', 'animScale', 250, 40);
+  // PowerPoint starts a new sub-group after the Wipe's 30 ms delay and 300 ms run.
+  const second = parallel(33, wipe, delay(0)) + parallel(34, zoom, delay(330));
   const third =
     effect(41, 5, '8', 'clickEffect', 'emph', 'animRot', 300, 0, 'by="21600000"') +
     effect(42, 2, '10', 'withEffect', 'exit', 'animEffect', 200, 30, 'filter="fade" transition="out"');
   const automatic = parallel(
     10,
-    effect(11, 6, '10', 'withEffect', 'entr', 'animEffect', 180, 80, 'filter="fade" transition="in"'),
+    parallel(
+      12,
+      effect(11, 6, '10', 'withEffect', 'entr', 'animEffect', 180, 80, 'filter="fade" transition="in"'),
+      delay(0),
+    ),
     `${delay('indefinite')}<p:cond evt="onBegin" delay="0"><p:tn val="2"/></p:cond>`,
   );
-  const groups = automatic + click(20, first) + click(30, second) + click(40, third);
+  const groups =
+    automatic +
+    click(20, parallel(23, first, delay(0))) +
+    click(30, second) +
+    click(40, parallel(43, third, delay(0)));
   const timing = `<p:timing><p:tnLst><p:par><p:cTn id="1" nodeType="tmRoot"><p:childTnLst><p:seq><p:cTn id="2" nodeType="mainSeq"><p:childTnLst>${groups}</p:childTnLst></p:cTn></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>`;
   const animated = slideXml(
     words(2, 'Placeholder appear', 914_400, 914_400) +

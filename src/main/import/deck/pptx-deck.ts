@@ -287,6 +287,7 @@ interface NativeSchedule {
   windows: Map<string, TimeWindow>;
   byNode: Map<XmlNode, TimeWindow>;
   effects: DeckEffect[];
+  textRangeEffects: Set<DeckEffect>;
   approximate: boolean;
 }
 
@@ -301,19 +302,11 @@ const VISUAL_BEHAVIOURS = new Set([
 ]);
 const EFFECT_NODE_TYPES = new Set(['clickEffect', 'withEffect', 'afterEffect']);
 
-function nativeStart(
-  tn: XmlNode,
-  at: number,
-  previous: TimeWindow | undefined,
-  schedule: NativeSchedule,
-): number {
+function nativeStart(tn: XmlNode, at: number, schedule: NativeSchedule): number {
   const conditions = kids(kid(tn, 'p:stCondLst') ?? NONE);
-  const type = tn.attrs['nodeType'];
-  // Direct siblings can follow each other. In an already timed sub-group, its first effect uses the parent clock.
-  const relative = type === 'afterEffect' ? previous?.end : type === 'withEffect' ? previous?.start : at;
-  const origin = relative ?? at;
-  if (conditions.length === 0) return origin;
+  if (conditions.length === 0) return at;
 
+  // A par's children share its clock. PowerPoint encodes After Previous in a new delayed par.
   let first = Infinity;
   for (const cond of conditions) {
     const delay = num(cond.attrs['delay']);
@@ -322,7 +315,7 @@ function nativeStart(
     const id = kid(cond, 'p:tn')?.attrs['val'];
     const window = id === undefined ? undefined : schedule.windows.get(id);
     const base =
-      evt === undefined ? origin : evt === 'onBegin' ? window?.start : evt === 'onEnd' ? window?.end : null;
+      evt === undefined ? at : evt === 'onBegin' ? window?.start : evt === 'onEnd' ? window?.end : null;
     if (base == null) schedule.approximate = true;
     else first = Math.min(first, base + Math.max(0, delay));
   }
@@ -331,7 +324,10 @@ function nativeStart(
   return at;
 }
 
-type NativeLook = Pick<DeckEffect, 'kind' | 'direction' | 'degrees'>;
+type NativeLook = Pick<
+  DeckEffect,
+  'kind' | 'direction' | 'degrees' | 'fade' | 'distance' | 'splitAxis' | 'scale'
+> & { partial?: true };
 type Direction = NonNullable<DeckEffect['direction']>;
 
 const FLY_FROM = new Map<string, Direction>([
@@ -353,6 +349,91 @@ const WIPE = new Map<string, Direction>([
   ['wipe(right)', 'right'],
 ]);
 
+/** A pair of linear coordinates at the start and end of one animation behaviour. */
+function animationValues(behaviour: XmlNode): [string, string] | null {
+  const mode = behaviour.attrs['calcmode'];
+  if (mode !== undefined && mode !== 'lin') return null;
+  const values = kids(kid(behaviour, 'p:tavLst') ?? NONE);
+  const [first, last] = values;
+  if (
+    values.length !== 2 ||
+    first?.attrs['tm'] !== '0' ||
+    last?.attrs['tm'] !== '100000' ||
+    first.attrs['fmla'] ||
+    last.attrs['fmla']
+  )
+    return null;
+  const value = (n: XmlNode) => kid(kid(n, 'p:val'), 'p:strVal')?.attrs['val']?.replace(/\s+/gu, '');
+  const from = value(first);
+  const to = value(last);
+  return from !== undefined && to !== undefined ? [from, to] : null;
+}
+
+function animationProperty(behaviour: XmlNode): string | undefined {
+  return kid(kid(kid(behaviour, 'p:cBhvr'), 'p:attrNameLst'), 'p:attrName')?.text.trim();
+}
+
+function uniformScale(point: XmlNode | undefined): number | null {
+  const x = num(point?.attrs['x']);
+  const y = num(point?.attrs['y']);
+  return x !== null && x === y && x >= 0 && x <= 1_000_000 ? x / 100_000 : null;
+}
+
+function zoomLimit(behaviours: readonly XmlNode[], entering: boolean): number | null {
+  const scales = behaviours.filter((node) => node.name === 'p:animScale' || node.name === 'p:anim');
+  const [first] = scales;
+  if (scales.length === 1 && first?.name === 'p:animScale') {
+    const from = uniformScale(kid(first, 'p:from'));
+    const to = uniformScale(kid(first, 'p:to'));
+    return (entering ? to : from) === 1 ? (entering ? from : to) : null;
+  }
+  const dimensions = new Map<string, number>();
+  for (const node of scales) {
+    const property = animationProperty(node);
+    const points = animationValues(node);
+    if (!points || (property !== 'ppt_w' && property !== 'ppt_h')) return null;
+    const base = `#${property}`;
+    const [small, full] = entering ? points : [points[1], points[0]];
+    if (full !== base || dimensions.has(property)) return null;
+    const factor =
+      small === '0'
+        ? 0
+        : small.startsWith(`${base}*`)
+          ? num(small.slice(base.length + 1))
+          : small.endsWith(`*${base}`)
+            ? num(small.slice(0, -base.length - 1))
+            : null;
+    if (factor === null || factor < 0 || factor > 10) return null;
+    dimensions.set(property, factor);
+  }
+  const width = dimensions.get('ppt_w');
+  return width !== undefined && dimensions.get('ppt_h') === width ? width : null;
+}
+
+function floatLook(behaviours: readonly XmlNode[], entering: boolean): NativeLook | null {
+  const movement = behaviours.filter((node) => node.name === 'p:anim');
+  let look: NativeLook | null = null;
+  for (const node of movement) {
+    const property = animationProperty(node);
+    const points = animationValues(node);
+    if (!points || (property !== 'ppt_x' && property !== 'ppt_y')) return null;
+    const [away, rest] = entering ? points : [points[1], points[0]];
+    const origin = `#${property}`;
+    if (rest !== origin || !away.startsWith(origin)) return null;
+    if (away === origin) continue;
+    const offset = away.slice(origin.length);
+    if (!/^[+-](?:\d+\.?\d*|\.\d+)$/u.test(offset)) return null;
+    const displacement = Number(offset) * (entering ? -1 : 1);
+    const distance = Math.abs(displacement);
+    if (distance === 0) continue;
+    if (distance > 1 || look) return null;
+    const direction =
+      property === 'ppt_x' ? (displacement < 0 ? 'left' : 'right') : displacement < 0 ? 'up' : 'down';
+    look = { kind: 'float', direction, distance };
+  }
+  return look;
+}
+
 function nativeLook(
   tn: XmlNode,
   phase: DeckEffect['phase'],
@@ -362,12 +443,27 @@ function nativeLook(
   if (phase === 'emphasis') {
     const rot = behaviours.find((n) => n.name === 'p:animRot');
     const degrees = num(rot?.attrs['by']);
-    return tn.attrs['presetClass'] === 'emph' && preset === '8' && degrees !== null
-      ? { kind: 'spin', degrees: degrees / 60_000 }
-      : null;
+    if (tn.attrs['presetClass'] !== 'emph') return null;
+    if (preset === '8' && degrees !== null) return { kind: 'spin', degrees: degrees / 60_000 };
+    if (preset === '6') {
+      const scale = behaviours.find((node) => node.name === 'p:animScale');
+      const amount = uniformScale(kid(scale, 'p:by'));
+      if (
+        amount !== null &&
+        amount > 0 &&
+        kid(scale, 'p:from') === undefined &&
+        kid(scale, 'p:to') === undefined &&
+        cTnOf(scale ?? NONE)?.attrs['fill'] !== 'remove'
+      )
+        return { kind: 'grow-shrink', scale: amount };
+    }
+    return null;
   }
   if (tn.attrs['presetClass'] !== 'entr' && tn.attrs['presetClass'] !== 'exit') return null;
-  const filter = behaviours.find((n) => n.name === 'p:animEffect')?.attrs['filter']?.toLowerCase();
+  const filter = behaviours
+    .find((n) => n.name === 'p:animEffect')
+    ?.attrs['filter']?.trim()
+    .toLowerCase();
   if (preset === '1' && behaviours.some((n) => n.name === 'p:set')) return { kind: 'appear' };
   if (preset === '10' && filter === 'fade') return { kind: 'fade' };
   if (preset === '2') {
@@ -380,6 +476,15 @@ function nativeLook(
   }
   if (preset === '23' && behaviours.some((n) => n.name === 'p:anim' || n.name === 'p:animScale'))
     return { kind: 'zoom' };
+  if (preset === '53' && filter === 'fade') {
+    const scale = zoomLimit(behaviours, phase === 'in');
+    return scale === null ? { kind: 'zoom', fade: true, partial: true } : { kind: 'zoom', fade: true, scale };
+  }
+  if ((preset === '42' || preset === '47') && filter === 'fade') return floatLook(behaviours, phase === 'in');
+  if (preset === '16') {
+    if (filter === 'barn(outvertical)') return { kind: 'split', splitAxis: 'x' };
+    if (filter === 'barn(outhorizontal)') return { kind: 'split', splitAxis: 'y' };
+  }
   return null;
 }
 
@@ -391,6 +496,9 @@ const PLAYED_BEHAVIOURS: Record<DeckEffect['kind'], readonly string[]> = {
   zoom: ['p:anim', 'p:animScale'],
   spin: ['p:animRot'],
   pulse: [],
+  float: ['p:anim', 'p:animEffect'],
+  split: ['p:animEffect'],
+  'grow-shrink': ['p:animScale'],
 };
 
 function unsupportedTiming(tn: XmlNode): boolean {
@@ -419,22 +527,27 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
     schedule.approximate = true;
     return;
   }
-  // Draw attention to a text box when only part of its words animated; keep the other words visible.
   const subtarget = targets.some((target) => kids(target).length > 0);
+  const textRange = targets.some((target) => kid(target, 'p:txEl') !== undefined);
   const cls = tn.attrs['presetClass'];
   const transition = behaviours.find((n) => n.name === 'p:animEffect')?.attrs['transition'];
-  const phase = subtarget
-    ? 'emphasis'
-    : cls === 'entr'
-      ? 'in'
-      : cls === 'exit'
-        ? 'out'
-        : transition === 'in' || transition === 'out'
-          ? transition
-          : 'emphasis';
+  const phase =
+    subtarget && !textRange
+      ? 'emphasis'
+      : cls === 'entr'
+        ? 'in'
+        : cls === 'exit'
+          ? 'out'
+          : cls === undefined && (transition === 'in' || transition === 'out')
+            ? transition
+            : 'emphasis';
   const native = subtarget ? null : nativeLook(tn, phase, behaviours);
-  const look: NativeLook = native ?? { kind: phase === 'emphasis' ? 'pulse' : 'fade' };
-  const played = PLAYED_BEHAVIOURS[look.kind];
+  const selected: NativeLook = native ?? { kind: phase === 'emphasis' ? 'pulse' : 'fade' };
+  const { partial, ...look } = selected;
+  const played =
+    look.kind === 'zoom' && look.fade
+      ? [...PLAYED_BEHAVIOURS.zoom, 'p:animEffect']
+      : PLAYED_BEHAVIOURS[look.kind];
   const clocks = behaviours
     .filter((b) => played.includes(b.name))
     .map((b) => schedule.byNode.get(b))
@@ -449,34 +562,56 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
   }
   if (
     !native ||
+    partial ||
     durationMs < 0 ||
     (durationMs === 0 && look.kind !== 'appear') ||
     behaviours.some((b) => b.name !== 'p:set' && !played.includes(b.name)) ||
     clocks.some((w) => w.start !== start || w.end !== end)
   )
     schedule.approximate = true;
-  schedule.effects.push({
+  const effect: DeckEffect = {
     shapeId,
     step: schedule.step,
     phase,
     ...look,
     delayMs,
     durationMs: Math.max(0, durationMs),
-  });
+  };
+  if (textRange) schedule.textRangeEffects.add(effect);
+  schedule.effects.push(effect);
+}
+
+/** The whole box comes in with its first paragraph and leaves with its last. Keep the intervening clicks. */
+function wholeBoxEffects(schedule: NativeSchedule): DeckEffect[] {
+  const effects = schedule.effects.sort((a, b) => a.step - b.step || a.delayMs - b.delayMs);
+  if (schedule.textRangeEffects.size === 0) return effects;
+  const first = new Map<string, DeckEffect>();
+  const last = new Map<string, DeckEffect>();
+  for (const effect of effects) {
+    if (!schedule.textRangeEffects.has(effect)) continue;
+    if (effect.phase === 'in' && !first.has(effect.shapeId)) first.set(effect.shapeId, effect);
+    if (effect.phase === 'out') last.set(effect.shapeId, effect);
+  }
+  return effects.map((effect) =>
+    schedule.textRangeEffects.has(effect) &&
+    effect !== first.get(effect.shapeId) &&
+    effect !== last.get(effect.shapeId)
+      ? { ...effect, phase: 'emphasis', kind: 'pulse' }
+      : effect,
+  );
 }
 
 /** Resolve time-node references and parallel/serial delays relative to this click. */
 function scheduleNative(
   node: XmlNode,
   at: number,
-  previous: TimeWindow | undefined,
   schedule: NativeSchedule,
   insideEffect = false,
   click = false,
 ): TimeWindow {
   const tn = cTnOf(node);
   if (!tn) return { start: at, end: at };
-  const start = click ? at : nativeStart(tn, at, previous, schedule);
+  const start = click ? at : nativeStart(tn, at, schedule);
   const window: TimeWindow = { start, end: null };
   const id = tn.attrs['id'];
   if (id !== undefined) schedule.windows.set(id, window);
@@ -492,16 +627,14 @@ function scheduleNative(
       EFFECT_NODE_TYPES.has(tn.attrs['nodeType'] ?? '') ||
       VISUAL_BEHAVIOURS.has(node.name));
   let end = start;
-  let prior: TimeWindow | undefined;
   for (const child of kids(kid(tn, 'p:childTnLst') ?? NONE)) {
-    prior = scheduleNative(
+    const timed = scheduleNative(
       child,
       node.name === 'p:seq' ? end : start,
-      prior,
       schedule,
       insideEffect || effect,
     );
-    end = Math.max(end, prior.end ?? prior.start);
+    end = Math.max(end, timed.end ?? timed.start);
   }
 
   const duration = num(tn.attrs['dur']);
@@ -527,6 +660,7 @@ function readNativeMotion(timing: XmlNode | undefined): PptxDeckSlide['motion'] 
     windows: new Map(anchors),
     byNode: new Map(),
     effects: [],
+    textRangeEffects: new Set(),
     approximate: false,
   };
   for (const group of mainGroups(timing)) {
@@ -535,10 +669,10 @@ function readNativeMotion(timing: XmlNode | undefined): PptxDeckSlide['motion'] 
       schedule.step++;
       schedule.windows = new Map(anchors);
     }
-    scheduleNative(group, 0, undefined, schedule, false, click);
+    scheduleNative(group, 0, schedule, false, click);
   }
   return {
-    effects: schedule.effects.sort((a, b) => a.step - b.step || a.delayMs - b.delayMs),
+    effects: wholeBoxEffects(schedule),
     approximate: schedule.approximate || visual.some((n) => !schedule.byNode.has(n)),
   };
 }

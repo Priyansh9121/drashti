@@ -1,5 +1,6 @@
 import type { DeckEffect, DeckEffectDirection, DeckMotion } from './deck';
 import type { Rect, RenderSlide, SlideElement } from './model';
+import { fitElements } from './slide-size';
 
 type Size = Pick<RenderSlide, 'width' | 'height'>;
 export function deckElementTargets(element: SlideElement): readonly string[] {
@@ -43,10 +44,7 @@ export function deckEffectsByTarget(effects: readonly DeckEffect[]): Map<string,
   return byTarget;
 }
 
-interface DeckWipe {
-  edge: DeckEffectDirection;
-  fraction: number;
-}
+type DeckWipe = { edge: DeckEffectDirection; fraction: number } | { axis: 'x' | 'y'; fraction: number };
 
 export interface DeckMotionFrame {
   opacity: number;
@@ -61,6 +59,7 @@ export interface DeckMotionFrame {
 }
 
 const opposite = { left: 'right', right: 'left', up: 'down', down: 'up' } as const;
+const travel = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] } as const;
 
 function outsideSlide(edge: DeckEffectDirection, bounds: Rect, slide: Size): [number, number] {
   switch (edge) {
@@ -95,6 +94,7 @@ export function deckMotionFrame(
     nextAt: null,
   };
 
+  let opacity = 1;
   for (const effect of effects) {
     if (effect.step > step) break;
     const local = effect.step < step ? Infinity : elapsedMs - effect.delayMs;
@@ -107,13 +107,15 @@ export function deckMotionFrame(
     if (effect.phase === 'emphasis') {
       if (effect.kind === 'spin') frame.rotation += (effect.degrees ?? 360) * progress;
       if (effect.kind === 'pulse' && progress < 1) frame.scale *= 1 + 0.12 * Math.sin(Math.PI * progress);
+      if (effect.kind === 'grow-shrink') frame.scale *= 1 + ((effect.scale ?? 1) - 1) * progress;
       continue;
     }
 
     const entering = effect.phase === 'in';
     const amount = entering ? progress : 1 - progress;
-    frame.opacity = effect.kind === 'fade' ? amount : entering || progress < 1 ? 1 : 0;
+    frame.opacity = entering || progress < 1 ? 1 : 0;
     if (progress >= 1) continue;
+    if (effect.kind === 'fade' || effect.kind === 'float' || effect.fade) opacity *= amount;
     const direction = effect.direction ?? 'left';
     if (effect.kind === 'fly') {
       const edge = entering ? opposite[direction] : direction;
@@ -121,10 +123,18 @@ export function deckMotionFrame(
       frame.x += x * (1 - amount);
       frame.y += y * (1 - amount);
     }
+    if (effect.kind === 'float') {
+      const [x, y] = travel[direction];
+      const shift = (effect.distance ?? 0) * (entering ? -1 : 1) * (1 - amount);
+      frame.x += slide.width * x * shift;
+      frame.y += slide.height * y * shift;
+    }
     if (effect.kind === 'wipe')
       frame.wipe = { edge: entering ? direction : opposite[direction], fraction: 1 - amount };
-    if (effect.kind === 'zoom') frame.scale *= amount;
+    if (effect.kind === 'split') frame.wipe = { axis: effect.splitAxis ?? 'x', fraction: 1 - amount };
+    if (effect.kind === 'zoom') frame.scale *= amount + (effect.scale ?? 0) * (1 - amount);
   }
+  frame.opacity *= opacity;
   return frame;
 }
 
@@ -134,7 +144,19 @@ const percentage = (part: number, total: number): number =>
 /** Clip all of a group's rendered parts at the same slide position. */
 export function deckWipeClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
   if (!wipe) return '';
-  const { edge, fraction } = wipe;
+  const { fraction } = wipe;
+  if ('axis' in wipe) {
+    const half = fraction / 2;
+    if (wipe.axis === 'x') {
+      const left = percentage(target.x + target.width * half - frame.x, frame.width);
+      const right = percentage(frame.x + frame.width - target.x - target.width * (1 - half), frame.width);
+      return `inset(0% ${String(right)}% 0% ${String(left)}%)`;
+    }
+    const top = percentage(target.y + target.height * half - frame.y, frame.height);
+    const bottom = percentage(frame.y + frame.height - target.y - target.height * (1 - half), frame.height);
+    return `inset(${String(top)}% 0% ${String(bottom)}% 0%)`;
+  }
+  const { edge } = wipe;
   const top = edge === 'up' ? percentage(target.y + target.height * fraction - frame.y, frame.height) : 0;
   const right =
     edge === 'right'
@@ -165,6 +187,21 @@ function turnedAbout(element: SlideElement, target: Rect, degrees: number): Slid
   };
 }
 
+function scaledAbout(element: SlideElement, target: Rect, scale: number): SlideElement {
+  const span = Math.max(1, target.width, target.height);
+  const size = { width: span, height: span };
+  const [scaled] = fitElements([element], size, { width: span * scale, height: span * scale });
+  if (!scaled) return element;
+  return {
+    ...scaled,
+    frame: {
+      ...scaled.frame,
+      x: scaled.frame.x + (target.x + target.width / 2) * (1 - scale),
+      y: scaled.frame.y + (target.y + target.height / 2) * (1 - scale),
+    },
+  };
+}
+
 /** A still at the end of a click, for Next on LIVE, a phone or a stage screen. */
 export function settledDeckElements(slide: RenderSlide, motion: DeckMotion, step: number): SlideElement[] {
   const effects = deckEffectsByTarget(motion.effects);
@@ -185,6 +222,7 @@ export function settledDeckElements(slide: RenderSlide, motion: DeckMotion, step
       const degrees = pose.rotation % 360;
       const target = bounds.get(id);
       if (degrees !== 0 && target) drawn = turnedAbout(drawn, target, degrees);
+      if (pose.scale !== 1 && target) drawn = scaledAbout(drawn, target, pose.scale);
     }
     return [drawn];
   });
