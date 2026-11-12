@@ -61,8 +61,8 @@ export function withSourceTiming(
   deck: DeckSlide | undefined,
   read: DeckSlide | undefined,
 ): DeckSlide | undefined {
-  const motion = read?.motion;
-  if (!deck || !motion || deck.motion || deck.steps.length === 0) return deck;
+  if (!deck || !read?.motion || deck.motion || deck.steps.length === 0) return deck;
+  const motion = read.motion;
   if (motion.stepsMs.length !== deck.steps.length) return deck;
   const transition = read.transition;
   if (!transition && motion.stepsMs.length === 1 && motion.effects.length === 0 && !motion.approximate)
