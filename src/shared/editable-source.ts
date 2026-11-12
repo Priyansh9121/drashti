@@ -18,6 +18,8 @@ export interface EditablePdfJob {
   data: Uint8Array;
   sourcePages: number[];
   limits: typeof EDITABLE_SOURCE_LIMITS;
+  /** Time left when the hidden renderer claims the job. */
+  timeBudgetMs: number;
 }
 export interface EditablePdfPageWire {
   mode: 'editable-source';
@@ -33,6 +35,8 @@ export interface EditablePdfCheckpoint {
   mode: 'editable-checkpoint';
   jobId: string;
   sourceIndex: number;
+  /** Count from the opened PDF, so Main can report an interrupted preparation. */
+  total?: number;
 }
 export interface EditablePdfDone {
   mode: 'editable-source';

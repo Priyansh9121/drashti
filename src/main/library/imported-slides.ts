@@ -316,7 +316,7 @@ export class ImportedSlides {
           }
           if (parsed.failed.length)
             issues.push(
-              'Some pages of the original could not be matched to their slides. Those slides still show as before.',
+              'Some source pages stay as their saved pictures. Open the original to edit those pages.',
             );
         } catch {
           if (!allowed()) throw new Error('Source preparation cancelled.');
