@@ -5,6 +5,7 @@ import {
   deckParagraphEffects,
   deckParagraphRuns,
 } from '../../../shared/deck-motion';
+import { takingTime } from '../../../shared/deck-show';
 import type { SlideElement } from '../../../shared/model';
 
 /** Clicks with no surviving target in the editable slide's motion. */
@@ -12,9 +13,16 @@ export function emptyClicks(deck: DeckSlide, elements: readonly SlideElement[]):
   const motion = nativeDeckMotion(deck);
   if (!motion) return [];
 
-  const used = new Set(Object.keys(deck.stepTransitions ?? {}).map(Number));
-  for (const { start } of deck.media) {
-    if ('step' in start) used.add(start.step);
+  const used = new Set<number>();
+  for (const [step, own] of Object.entries(deck.stepTransitions ?? {})) {
+    if (takingTime(own.transition)) used.add(Number(step));
+  }
+  // A deck video plays through its visible object. A deck sound has no such object.
+  const videos = new Set(
+    elements.flatMap((element) => (element.kind === 'video' && !element.hidden ? [element.mediaId] : [])),
+  );
+  for (const { start, kind, mediaId } of deck.media) {
+    if ('step' in start && (kind === 'audio' || videos.has(mediaId))) used.add(start.step);
   }
   const targets = new Set<string>();
   const builds = deckParagraphEffects(motion.effects);

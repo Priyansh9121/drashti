@@ -108,19 +108,19 @@ export function ImportedMotion({ deck, elements }: { deck: DeckSlide; elements?:
   const empty = elements ? emptyClicks(deck, elements) : [];
   const emptyNote =
     empty.length === 1
-      ? `Click ${String(empty[0])} has nothing left to move. Check it before going live.`
+      ? `Click ${String(empty[0])} has nothing left to move. Next shows no change there. Check it before going live.`
       : empty.length > 1
-        ? `Clicks ${empty.join(', ')} have nothing left to move. Check them before going live.`
+        ? `Clicks ${empty.slice(0, -1).join(', ')} and ${String(empty.at(-1))} have nothing left to move. Next shows no change there. Check them before going live.`
         : null;
   const notes = [
     emptyNote,
-    effects.some((effect) => effect.paragraphs)
-      ? 'Added paragraphs share the preceding build’s click.'
-      : null,
     deck.motion?.approximate
       ? deck.steps.length
-        ? 'PowerPoint’s video plays until you edit this slide.'
-        : 'This slide uses the closest playable effects.'
+        ? 'This slide keeps PowerPoint’s video until you edit it.'
+        : 'This slide uses the closest effects Drashti can play.'
+      : null,
+    effects.some((effect) => effect.paragraphs)
+      ? 'An added paragraph comes in with the point before it.'
       : null,
   ].filter((note) => note !== null);
   return (
@@ -150,7 +150,7 @@ export function ImportedMotion({ deck, elements }: { deck: DeckSlide; elements?:
           {notes.length > 0 && (
             <ul
               aria-label="PowerPoint animation notes"
-              className="max-h-16 w-52 shrink-0 space-y-1 overflow-y-auto"
+              className="max-h-21 w-52 shrink-0 space-y-1 overflow-y-auto"
               tabIndex={0}
             >
               {notes.map((note) => (
