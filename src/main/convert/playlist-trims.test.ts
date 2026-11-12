@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_MARKERS } from '../../shared/markers';
 import type { Db } from '../db/database';
 import { openDatabase } from '../db/database';
+import { sha256File } from '../import/media-store';
 import { MediaRepo } from '../db/media';
 import { PlaylistRepo } from '../db/playlists';
 import { TrimmedVideos } from '../db/trimmed';
@@ -59,6 +60,9 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
   const notice = vi.fn();
   let liveMedia: string | null = null;
   const isLive = vi.fn((item: string, media: string) => item === itemId && media === liveMedia);
+  // Nothing up on LIVE (and no stream or recording): background work may go on.
+  const quiet = vi.fn(() => liveMedia === null);
+  const hash = vi.fn((file: string, _signal: AbortSignal) => sha256File(file));
   let stored: KeptTrim[] = [];
   const kept = {
     load: () => stored,
@@ -107,6 +111,8 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     markersChanged: vi.fn(),
     notice,
     isLive,
+    quiet,
+    hash,
     kept,
     copies,
     trash,
@@ -135,6 +141,8 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     rowChanged,
     notice,
     isLive,
+    quiet,
+    hash,
     kept,
     show: (media: string | null) => {
       liveMedia = media;
@@ -499,6 +507,85 @@ describe('trimming a playlist video', () => {
     expect(x.repo.view(x.itemId)?.markers).toEqual(request.points);
     expect(x.kept.load()).toEqual([]);
     expect(x.copies.load()).toEqual([]);
+  });
+
+  it('names at once only the cuts that cannot carry on; the rest carry on once the start is known and nothing is up', async () => {
+    const x = await setup();
+    db.prepare(
+      "INSERT INTO media (id, kind, name, path) VALUES ('second', 'video', 'Placeholder second.mp4', 'second.mp4')",
+    ).run();
+    await writeFile(join(dir, 'second.mp4'), 'placeholder second original');
+    const [secondRow = ''] = x.playlists.addItems(x.playlist, null, [{ kind: 'media', mediaId: 'second' }]);
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    expect(await x.service.apply(secondRow, { ...request, mediaId: 'second' })).toEqual({ ok: true });
+    x.service.close();
+    // The second original changed while Drashti was closed: its cut cannot carry on.
+    await writeFile(join(dir, 'second.mp4'), 'placeholder replacement of the second original');
+
+    const restarted = x.restart();
+    // The start notice waits for no FFmpeg: it names the cut that cannot carry on, and only that one.
+    expect(restarted.reportInterrupted()).toBe(
+      'The cut of “Placeholder second.mp4” wasn’t made because Drashti closed. Open Trim and save it again.',
+    );
+    expect(restarted.reportInterrupted()).toBeNull();
+    expect(x.queue).toHaveBeenCalledTimes(2);
+    // Recovery put a video back on LIVE: the cut waits for the start to be known, then for nothing to be up.
+    x.show('original');
+    restarted.resumeWhenQuiet();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(x.queue).toHaveBeenCalledTimes(2);
+    expect(restarted.list()).toEqual([]);
+    x.show(null);
+    restarted.activityChanged();
+    await vi.waitFor(() => expect(x.queue).toHaveBeenCalledTimes(3));
+    expect(x.queue.mock.calls[2]?.[0]).toMatchObject({ path: x.original, startMs: 500, endMs: 2500 });
+    expect(restarted.list()).toEqual([x.itemId]);
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(() => expect(restarted.list()).toEqual([]));
+    expect(x.repo.view(x.itemId)?.markers).toEqual(request.points);
+  });
+
+  it('checks a finished cut off Main’s thread, and only while nothing is up', async () => {
+    const x = await setup();
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    // Another video is up on LIVE (not this row's).
+    x.show('another');
+    const asked = x.quiet.mock.calls.length;
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(() => expect(x.quiet.mock.calls.length).toBeGreaterThan(asked));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(x.hash).not.toHaveBeenCalled();
+    expect(x.rowChanged).not.toHaveBeenCalled();
+    expect(x.service.list()).toEqual([x.itemId]);
+
+    x.show(null);
+    await vi.waitFor(() => expect(x.rowChanged).toHaveBeenCalledOnce());
+    expect(x.hash).toHaveBeenCalledExactlyOnceWith(x.output, expect.any(AbortSignal));
+  });
+
+  it('stops checking a finished cut when the show starts, and checks it again once nothing is up', async () => {
+    const x = await setup();
+    let checking: AbortSignal | undefined;
+    x.hash.mockImplementationOnce(
+      (_file, signal) =>
+        new Promise((_resolve, reject) => {
+          checking = signal;
+          signal.addEventListener('abort', () => reject(new Error('Stopped.')), { once: true });
+        }),
+    );
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(() => expect(x.hash).toHaveBeenCalledOnce());
+    x.show('another');
+    expect(checking?.aborted).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(x.hash).toHaveBeenCalledOnce();
+    expect(x.rowChanged).not.toHaveBeenCalled();
+
+    x.show(null);
+    await vi.waitFor(() => expect(x.rowChanged).toHaveBeenCalledOnce());
+    expect(x.hash).toHaveBeenCalledTimes(2);
+    expect(x.notice).not.toHaveBeenCalled();
   });
 
   it('reports an old interruption record once and preserves a changed source', async () => {
