@@ -389,6 +389,21 @@ describe('the model: a lower third that hides itself, its out, its style', () =>
     ).toBe(false);
   });
 
+  it('classifies templates by the motion they show and the feel they offer', () => {
+    expect(LOWER_THIRD_TEMPLATES.find((t) => t.id === 'news-band')).toMatchObject({
+      direction: 'right',
+      kind: 'wipe',
+      feel: 'bold',
+      speed: 'steady',
+    });
+    expect(LOWER_THIRD_TEMPLATES.find((t) => t.id === 'outline')).toMatchObject({
+      direction: 'centre',
+      kind: 'letters',
+      feel: 'calm',
+      speed: 'steady',
+    });
+  });
+
   it('templates use placeholder words only, each a lower third the library takes, from what is offered', () => {
     expect(LOWER_THIRD_TEMPLATES.length).toBeGreaterThanOrEqual(6);
     const offeredIds = new Set(OFFERED_ANIMATIONS.map((a) => a.id));
