@@ -9,6 +9,7 @@ const pointer = (target: HTMLElement, id: number, type = 'touch', x = 0): Pointe
     currentTarget: target,
     pointerId: id,
     pointerType: type,
+    isPrimary: true,
     clientX: x,
     clientY: 0,
   }) as PointerEvent<HTMLElement>;
@@ -53,6 +54,25 @@ describe('a phone row’s long press', () => {
     const fresh = click(target);
     props.onClickCapture(fresh.event);
     expect(fresh.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it.each(['touch', 'mouse'])('lets a fresh %s press act on the same row after its menu', (type) => {
+    const target = row();
+    const props = press.longPressProps(vi.fn());
+    props.onPointerDown(pointer(target, 1));
+    vi.advanceTimersByTime(press.LONG_PRESS_MS);
+    props.onPointerUp(pointer(target, 1));
+
+    const lift = click(target);
+    props.onClickCapture(lift.event);
+    expect(lift.preventDefault).toHaveBeenCalledOnce();
+
+    props.onPointerDown(pointer(target, 2, type));
+    props.onPointerUp(pointer(target, 2, type));
+    const fresh = click(target);
+    props.onClickCapture(fresh.event);
+    expect(fresh.preventDefault).not.toHaveBeenCalled();
+    expect(fresh.stopPropagation).not.toHaveBeenCalled();
   });
 
   it('ignores a mouse hover and another pointer’s move, lift, cancel or leave while its own finger is held', () => {

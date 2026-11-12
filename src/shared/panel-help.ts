@@ -29,7 +29,7 @@ export const PANEL_HELP = {
   library: {
     title: 'The library',
     doc: 'operator',
-    text: 'Every presentation, picture, video and sound on this computer: type a few letters of a kirtan’s title or words in the search box to find it, then press Add to playlist. Import… brings more in (From a Link… offers the playlist the last download went into), and a file Drashti can’t play says Converting… while Drashti converts it by itself. In Media, one click puts up a video input (Add a Video Input… names a camera or a mixer’s output), Show a Window… another app’s window, and Picture in Picture… something small in a corner; right-click a video input, or drag it, to put it in a playlist instead.',
+    text: 'Every presentation, picture, video and sound on this computer: type a few letters of a kirtan’s title or words in the search box to find it, then press Add to playlist. Import… brings more in, straight into the open playlist too (From a Link… takes a pasted YouTube or Dropbox link), and a file Drashti can’t play says Converting… until Drashti has converted it by itself, once nothing is up or playing. In Media, one click puts up a video input (Add a Video Input… names a camera or a mixer’s output), Show a Window… another app’s window, and Picture in Picture… something small in a corner; right-click a video input, or drag it, to put it in a playlist instead.',
     guide: 'the **Library**',
   },
   slides: {
@@ -83,7 +83,7 @@ export const PANEL_HELP = {
   controls: {
     title: 'Show controls',
     doc: 'operator',
-    text: 'Clear all, the layers’ clear buttons in the order of their keys, the Wallpaper and Black-out, each with its key; a button with nothing of its own up is dimmed, so what is on the screens shows at a glance. Each changes the hall’s screens at once: the Wallpaper puts the chosen wallpaper up instead of the picture, and Put it back, straight after Clear all, brings back what it took off. One thing at a time: a slide, picture or video put up takes the Wallpaper and Black-out off, and either going on takes a video off.',
+    text: 'Clear all, the layers’ clear buttons in the order of their keys, the Wallpaper and Black-out, each with its key; a button with nothing of its own up is dimmed, so what is on the screens shows at a glance. Each changes the hall’s screens at once: the Wallpaper puts the chosen wallpaper up instead of the picture, and Put it back, straight after Clear all, brings back what it took off. One thing at a time: a slide, picture or video put up takes the Wallpaper and Black-out off, and either going on takes the other and a video off.',
     guide: '**Covering and clearing:**',
   },
   nextback: {
@@ -101,7 +101,7 @@ export const PANEL_HELP = {
   phones: {
     title: 'Phones',
     doc: 'operator',
-    text: 'Phones and tablets on the local Wi-Fi pair as a remote, stage display or for announcements: in Pro Mode turn on Let paired phones and tablets connect, then check Connected. A remote shows playlist slide rows, menus, protected show swipes and wallpapers; Simple Mode names its own playlist, permits its rows and clears, and refuses Pro-only actions. Phones and tablets may add files allows Add from this Phone… into Added from Phones and Add photos into the ordinary playlist open in Pro Mode; in Simple Mode a phone’s files go to the end of its one playlist, but a video or sound goes into Added from Phones when that playlist is a Repeat Slides one, and nothing a phone adds goes live by itself.',
+    text: 'Phones and tablets on the local Wi-Fi pair as a remote, stage display or for announcements: in Pro Mode turn on Let paired phones and tablets connect, then check Connected. A remote shows playlist slide rows, menus, protected show swipes and wallpapers; in Simple Mode it opens and changes any playlist, with Pause, Play, the time bar and Audio, and refuses Pro-only actions. Phones and tablets may add files allows Add from this Phone… into Added from Phones and Add photos into the ordinary playlist open in Pro Mode; in Simple Mode a phone’s files go to the end of the playlist open on the computer, but a video or sound goes into Added from Phones when that playlist is a Repeat Slides one, and nothing a phone adds goes live by itself.',
     guide: '**Phones** (if a phone remote or a stage tablet is used)',
   },
   announcements: {
