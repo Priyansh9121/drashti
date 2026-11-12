@@ -14,8 +14,8 @@ export interface TrimCopyInput {
   alpha?: boolean;
   startMs: number;
   endMs: number;
-  progress?(fraction: number | null): void;
-  waiting?(note: string | null): void;
+  progress?: (fraction: number | null) => void;
+  waiting?: (note: string | null) => void;
 }
 
 type VideoTarget = 'mp4' | 'webm-alpha';
@@ -31,7 +31,9 @@ function trimCopyArgs(input: TrimCopyInput, target: VideoTarget, output: string,
   const decoder = codec === 'vp8' ? 'libvpx' : codec === 'vp9' ? 'libvpx-vp9' : null;
   // VP8 and VP9's native decoders omit the separate WebM alpha plane.
   const alphaDecoder = target === 'webm-alpha' && decoder ? ['-c:V:0', decoder] : [];
-  const encoding = args.slice(inputAt + 2, -1).map((arg) => (arg === '0:v:0' ? '0:V:0' : arg));
+  const encoding = args.slice(inputAt + 2, -1);
+  encoding[encoding.indexOf('0:v:0')] = '0:V:0';
+  if (target === 'mp4') encoding[encoding.indexOf('+faststart')] = '+faststart+use_metadata_tags';
   return [
     ...args.slice(0, inputAt),
     '-nostdin',
@@ -76,18 +78,18 @@ export function queueTrimCopy(conversions: Pick<ConvertService, 'saveCopy'>, inp
 /** FFmpeg's native VP8 and VP9 decoders report alpha separately from their pixel format. */
 export async function readTrimInfo(ffmpeg: string, file: string): Promise<MediaInfo> {
   let tail = '';
-  let hasWebmAlpha = false;
+  const alpha = { detected: false };
   const info = await readInfo(ffmpeg, file, {
     onSpawn: (child) => {
       child.stderr?.on('data', (chunk: Buffer) => {
-        if (hasWebmAlpha) return;
+        if (alpha.detected) return;
         const text = tail + chunk.toString();
-        hasWebmAlpha = /^\s*alpha_mode[ \t]*:[ \t]*1\s*$/imu.test(text);
+        alpha.detected = /^\s*alpha_mode[ \t]*:[ \t]*1\s*$/imu.test(text);
         tail = text.slice(-100);
       });
     },
   });
-  return hasWebmAlpha && info.video && /^vp[89]$/u.test(info.video.codec)
+  return alpha.detected && info.video && /^vp[89]$/u.test(info.video.codec)
     ? { ...info, video: { ...info.video, pixFmt: 'yuva420p' } }
     : info;
 }

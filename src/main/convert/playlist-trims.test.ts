@@ -56,7 +56,7 @@ async function setup() {
   const service = new PlaylistTrims({
     repo,
     mediaDir: dir,
-    readInfo: async (path) => ({ ...info, durationMs: path === output ? 2000 : info.durationMs }),
+    readInfo: (path) => Promise.resolve({ ...info, durationMs: path === output ? 2000 : info.durationMs }),
     queue,
     cancel: () => true,
     pendingChanged,
@@ -125,7 +125,11 @@ describe('trimming a playlist video', () => {
     });
     expect(x.media.markersOf('original')).toEqual(oldPoints);
     expect(x.repo.playsFull(x.itemId, 'original', oldPoints)).toBe(true);
-    expect(x.repo.playsFull(x.itemId, 'original', { ...oldPoints, startMs: 150 })).toBe(false);
+    const editedPoints = { ...oldPoints, startMs: 150 };
+    x.media.setMarkers('original', editedPoints);
+    expect(x.repo.view(x.itemId)?.markers).toEqual(editedPoints);
+    x.media.setMarkers('original', oldPoints);
+    expect(x.repo.playsFull(x.itemId, 'original', oldPoints)).toBe(false);
     expect(await readFile(x.original, 'utf8')).toBe('placeholder original');
     expect((await stat(x.original)).mtimeMs).toBe(mtime);
   });
