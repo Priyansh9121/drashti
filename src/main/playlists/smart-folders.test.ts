@@ -121,7 +121,7 @@ function setup(db: Db = openDatabase(':memory:'), maxFiles?: number, air = { on:
     playlists,
     importFiles,
     report: (runId) => ({ items: reports.get(runId) ?? [] }),
-    ...{ importNotice },
+    importNotice,
     changed: () => undefined,
     views: (v) => views.push(v),
     log: (level, message) => {
@@ -149,7 +149,21 @@ function setup(db: Db = openDatabase(':memory:'), maxFiles?: number, air = { on:
         i.kind === 'header' ? `# ${i.label}` : `${i.label}${'gone' in i && i.gone ? ' (gone)' : ''}`,
       );
   const view = (id: string) => service.views().find((v) => v.playlistId === id);
-  return { db, playlists, presentations, service, imports, importNotice, views, clock, held, settle, shown, view };
+  return {
+    db,
+    playlists,
+    presentations,
+    service,
+    imports,
+    reports,
+    importNotice,
+    views,
+    clock,
+    held,
+    settle,
+    shown,
+    view,
+  };
 }
 
 const folder = () => join(root, 'Sabha');
@@ -349,12 +363,14 @@ describe('a smart playlist following a folder', () => {
   it('a file that will not import is not tried again until it changes', async () => {
     await put('Bad.jpg', 'broken');
     await put('Good.jpg', 'fine');
-    const { service, settle, shown, imports, importNotice } = setup();
+    const { service, settle, shown, imports, reports, importNotice } = setup();
     const made = await service.create(folder());
     const id = made.ok ? made.id : '';
     await settle(id);
     expect(shown(id)).toEqual(['Good.jpg']);
-    expect(importNotice).toHaveBeenCalledWith({ runId: expect.any(String) });
+    const [runId] = reports.keys();
+    expect(runId).toBeDefined();
+    expect(importNotice).toHaveBeenCalledWith({ runId });
     await settle(id);
     expect(imports).toHaveLength(1);
     expect(importNotice).toHaveBeenCalledTimes(1);
