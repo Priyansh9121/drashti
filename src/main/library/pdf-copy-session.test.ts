@@ -103,6 +103,14 @@ it('returns a phone picture only from Main’s capture of its owned hidden windo
   expect(s.win.isDestroyed()).toBe(true);
 });
 
+it('draws a smaller native slide up to 1920 pixels on its long side', async () => {
+  const s = setup({ width: 1280, height: 720 }, true);
+  expect(s.job.picture).toMatchObject({ scale: 1.5 });
+  expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
+  expect(s.win.setContentSize).toHaveBeenCalledWith(1920, 1080);
+  expect(await s.result).toMatchObject({ width: 1920, height: 1080 });
+});
+
 it('ends a phone picture whose pixels are not its size, at once', async () => {
   const s = setup({ width: 1280, height: 720 }, true);
   s.win.webContents.capturePage.mockImplementationOnce(() =>
