@@ -145,6 +145,35 @@ describe('keeping a generated PPTX editable', () => {
     );
   });
 
+  it('keeps only the painted table edges, with their own colour and width', async () => {
+    const { elements } = await read(
+      slideXml(
+        graphic(
+          '<a:tbl><a:tblGrid><a:gridCol w="2857500"/></a:tblGrid><a:tr h="857250"><a:tc>' +
+            '<a:txBody><a:bodyPr/><a:p><a:r><a:t>Placeholder cell</a:t></a:r></a:p></a:txBody>' +
+            '<a:tcPr><a:lnT><a:noFill/></a:lnT>' +
+            '<a:lnL w="19050"><a:solidFill><a:srgbClr val="AA2244"/></a:solidFill></a:lnL>' +
+            '<a:lnB w="38100"><a:solidFill><a:srgbClr val="22AA44"/></a:solidFill></a:lnB>' +
+            '</a:tcPr></a:tc></a:tr></a:tbl>',
+        ),
+      ),
+    );
+    expect(elements.filter((element) => element.kind === 'shape')).toMatchObject([
+      {
+        shape: 'line',
+        rotation: 90,
+        frame: { x: -35, y: 64.5, width: 90, height: 1 },
+        outline: { color: '#aa2244', width: 2 },
+      },
+      {
+        shape: 'line',
+        rotation: 0,
+        frame: { x: 10, y: 109.5, width: 300, height: 1 },
+        outline: { color: '#22aa44', width: 4 },
+      },
+    ]);
+  });
+
   it('keeps unequal table cells, spanning and empty cells editable as one group', async () => {
     const cell = (words: string, props = '') =>
       '<a:tc ' +
