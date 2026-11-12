@@ -657,7 +657,7 @@ test('Look closer saves the native deck click showing on the screens', async () 
       expect(response.status()).toBe(200);
       expect(response.headers()['content-type']).toContain('application/json');
       expect(await response.json()).toMatchObject({ mediaId: expect.any(String), message });
-      await expect(p.getByText(message, { exact: true })).toBeVisible();
+      await expect(viewer.getByText(message, { exact: true })).toBeVisible();
       await expect.poll(async () => (await saved()).length).toBe(count);
       expect((await saved()).at(-1)).toMatchObject({ width: 1, height: 1, rgb });
     };
