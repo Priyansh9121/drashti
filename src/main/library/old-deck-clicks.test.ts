@@ -14,8 +14,10 @@ import { PresentationRepo } from '../db/presentations';
 import { SettingsRepo } from '../db/settings';
 import type { SourceReader } from '../documents/source-reader';
 import { sourceWrite } from '../documents/source-write';
+import * as nativeImport from '../import/deck/native-deck-import';
 import { MediaStore } from '../import/media-store';
 import { OriginalsStore } from '../import/originals-store';
+import { editablePicture } from '../import/testing/editable-pptx-fixture';
 import { makeTestDeck, placeholderDeckMedia, type TestDeckSlide } from '../import/testing/make-deck';
 import { nativeSourceReader } from '../import/testing/native-source-reader';
 import { originalWorld } from '../import/testing/original-fixture';
@@ -117,7 +119,8 @@ async function save(id: string, opened: Opened): Promise<SaveSlidesResult> {
 
 /** The generated deck kept as an original, as an import keeps it, and placeholder media for its clips. */
 async function kept(w: World, slides: readonly TestDeckSlide[], name: string) {
-  const bytes = makeTestDeck(slides, placeholderDeckMedia());
+  // The reader extracts the video's poster as its editable source picture.
+  const bytes = makeTestDeck(slides, { ...placeholderDeckMedia(), poster1: editablePicture() });
   const file = join(w.root, `${name}.pptx`);
   writeFileSync(file, bytes);
   const originals = new OriginalsStore(w.db, w.mediaDir, { freeBytes: () => 1024 ** 4 });
@@ -385,6 +388,31 @@ describe('a deck slide imported before alpha.17 keeps its clicks through an edit
       ).toBe(true);
       expect(readFileSync(old.file)).toEqual(old.bytes);
     } finally {
+      w.clean();
+    }
+  });
+
+  it('keeps the saved clips on a page that needs its still', async () => {
+    const w = originalWorld();
+    const prepare = nativeImport.prepareNativePptx;
+    const prepareWithMissingMedia = vi
+      .spyOn(nativeImport, 'prepareNativePptx')
+      .mockImplementationOnce(async (...args) => {
+        const result = await prepare(...args);
+        const page = result?.pages.get(0);
+        if (!page) throw new Error('The placeholder page was not prepared');
+        page.needsStill = true;
+        return result;
+      });
+    try {
+      const old = await oldDeck(w);
+      const prepared = only(await open(old.id));
+      expect(
+        prepared.elements.some((element) => element.kind === 'text' && element.text.includes(WORDS)),
+      ).toBe(true);
+      expect(prepared.deck).toEqual(old.deck);
+    } finally {
+      prepareWithMissingMedia.mockRestore();
       w.clean();
     }
   });
