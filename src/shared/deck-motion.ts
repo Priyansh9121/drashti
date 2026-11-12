@@ -129,9 +129,20 @@ function undrawn(run: TextRun): TextRun {
   };
 }
 
+/** A Split at one moment (deckSplitShows says how much of its shape shows where). */
+interface DeckSplit {
+  axis: 'x' | 'y';
+  /** PowerPoint's "In": both moving edges travel from the box's own edges to its middle; else from the middle out. */
+  inward: boolean;
+  /** It hides what its edges pass (an exit), rather than showing it (an entrance). */
+  leaving: boolean;
+  /** How far through the effect, its smooth start and end applied: 0 to 1. */
+  progress: number;
+}
+
 type DeckWipe =
   | { edge: DeckEffectDirection; fraction: number }
-  | { axis: 'x' | 'y'; fraction: number; inward?: true }
+  | DeckSplit
   | { shape: NonNullable<DeckEffect['shape']>; inward: boolean; amount: number }
   | { spokes: number; amount: number }
   | { bars: NonNullable<DeckEffect['bars']>; amount: number };
@@ -260,8 +271,9 @@ export function deckMotionFrame(
     if (effect.kind === 'split')
       frame.wipe = {
         axis: effect.splitAxis ?? 'x',
-        fraction: 1 - amount,
-        ...(effect.inward ? { inward: true as const } : {}),
+        inward: effect.inward === true,
+        leaving: !entering,
+        progress,
       };
     if (effect.kind === 'shape')
       frame.wipe = { shape: effect.shape ?? 'circle', inward: effect.inward === true, amount };
@@ -407,17 +419,70 @@ function bars(kind: NonNullable<DeckEffect['bars']>, target: Rect, amount: numbe
 }
 
 /**
+ * How wide PowerPoint draws a Split's soft edge, as a share of the way each edge travels (half the box): its own movie
+ * of all eight Splits (13 Nov 2026) fits 13.2-13.8 %.
+ */
+const SPLIT_SOFTNESS = 0.135;
+
+/**
  * How much of a Split's shape shows at `at` along its axis, from −1 (one edge) through 0 (the middle) to 1 (the other
- * edge): 0 to 1. Any other wipe, or none, shows it whole.
+ * edge): 0 to 1. Any other wipe, or none, shows it whole. As PowerPoint draws it (its own movie, 13 Nov 2026): both
+ * edges travel from the middle out (from the box's own edges in, for its "In"), each soft, the middle of its soft edge
+ * running evenly from half its width before the start to half its width past the end; what they pass shows as the
+ * shape comes in, and is hidden as it leaves (so an exit's "In" closes from both edges to the middle).
  */
 export function deckSplitShows(wipe: DeckWipe | null, at: number): number {
   if (!wipe || !('axis' in wipe)) return 1;
-  const fromMiddle = Math.abs(at) / 2;
-  const half = wipe.fraction / 2;
-  return (wipe.inward ? fromMiddle >= half : fromMiddle <= 0.5 - half) ? 1 : 0;
+  const fromMiddle = Math.min(1, Math.abs(at));
+  // How far an edge travels before it reaches here.
+  const way = wipe.inward ? 1 - fromMiddle : fromMiddle;
+  const passed = Math.min(1, Math.max(0, ((1 + SPLIT_SOFTNESS) * wipe.progress - way) / SPLIT_SOFTNESS));
+  return wipe.leaving ? 1 - passed : passed;
 }
 
-/** Clip all of a group's rendered parts at the same slide position. */
+/** Where a Split's look bends along its axis (−1 to 1), with how much shows there: straight between them. */
+function splitStops(split: DeckSplit): [number, number][] {
+  const reach = (1 + SPLIT_SOFTNESS) * split.progress;
+  // Where the soft edge starts and ends, as distances from the middle.
+  const bends = (
+    split.inward ? [1 - reach, 1 - reach + SPLIT_SOFTNESS] : [reach - SPLIT_SOFTNESS, reach]
+  ).filter((d) => d > 0 && d < 1);
+  const half = [0, ...bends, 1].map((d): [number, number] => [d, deckSplitShows(split, d)]);
+  const all = [
+    ...half
+      .slice(1)
+      .map(([d, shows]): [number, number] => [-d, shows])
+      .reverse(),
+    ...half,
+  ];
+  // A stop in the middle of an even stretch adds nothing.
+  return all.filter(
+    ([, shows], i) =>
+      i === 0 || i === all.length - 1 || all[i - 1]?.[1] !== shows || all[i + 1]?.[1] !== shows,
+  );
+}
+
+/**
+ * A Split's soft edges as a CSS mask over one of a group's rendered parts drawn at `frame`, at the same slide position
+ * across the whole group (`target`): a linear gradient along its axis. '' for any other wipe, none, or while nothing is
+ * hidden. (Its cost on the screens: the shape drawn through one more layer, the size of its own box, while it runs.)
+ */
+export function deckWipeMask(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
+  if (!wipe || !('axis' in wipe)) return '';
+  const across = wipe.axis === 'x';
+  const length = across ? frame.width : frame.height;
+  if (!(length > 0)) return '';
+  const stops = splitStops(wipe);
+  if (stops.every(([, shows]) => shows >= 1)) return '';
+  const middle = across ? target.x + target.width / 2 : target.y + target.height / 2;
+  const half = (across ? target.width : target.height) / 2;
+  const start = across ? frame.x : frame.y;
+  const at = (d: number) => `${String(Math.round(((middle + d * half - start) / length) * 100_000) / 1000)}%`;
+  const ink = (shows: number) => `rgb(0 0 0 / ${String(Math.round(shows * 10_000) / 10_000)})`;
+  return `linear-gradient(${across ? 'to right' : 'to bottom'}, ${stops.map(([d, shows]) => `${ink(shows)} ${at(d)}`).join(', ')})`;
+}
+
+/** Clip all of a group's rendered parts at the same slide position. A Split is drawn by its mask (deckWipeMask). */
 export function deckWipeClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
   if (!wipe) return '';
   if ('shape' in wipe) {
@@ -430,38 +495,8 @@ export function deckWipeClip(wipe: DeckWipe | null, target: Rect, frame: Rect): 
     const points = bars(wipe.bars, target, wipe.amount);
     return points.length > 0 ? polygon(points, frame) : 'inset(50% 50% 50% 50%)';
   }
-  const { fraction } = wipe;
-  if ('axis' in wipe) {
-    const half = fraction / 2;
-    if (wipe.inward) {
-      // The two halves come in from the edges and meet in the middle: the gap between them still hidden.
-      const { x, y, width, height } = target;
-      const gap: Point[] =
-        wipe.axis === 'x'
-          ? [
-              [x + width * (0.5 - half), y],
-              [x + width * (0.5 + half), y],
-              [x + width * (0.5 + half), y + height],
-              [x + width * (0.5 - half), y + height],
-            ]
-          : [
-              [x, y + height * (0.5 - half)],
-              [x + width, y + height * (0.5 - half)],
-              [x + width, y + height * (0.5 + half)],
-              [x, y + height * (0.5 + half)],
-            ];
-      return polygon(around(target, gap), frame, true);
-    }
-    if (wipe.axis === 'x') {
-      const left = percentage(target.x + target.width * half - frame.x, frame.width);
-      const right = percentage(frame.x + frame.width - target.x - target.width * (1 - half), frame.width);
-      return `inset(0% ${String(right)}% 0% ${String(left)}%)`;
-    }
-    const top = percentage(target.y + target.height * half - frame.y, frame.height);
-    const bottom = percentage(frame.y + frame.height - target.y - target.height * (1 - half), frame.height);
-    return `inset(${String(top)}% 0% ${String(bottom)}% 0%)`;
-  }
-  const { edge } = wipe;
+  if ('axis' in wipe) return '';
+  const { edge, fraction } = wipe;
   const top = edge === 'up' ? percentage(target.y + target.height * fraction - frame.y, frame.height) : 0;
   const right =
     edge === 'right'

@@ -5,6 +5,7 @@ import {
   deckMotionFrame,
   deckParagraphRuns,
   deckWipeClip,
+  deckWipeMask,
   smoothedProgress,
 } from './deck-motion';
 import { deckFromJson, deckMediaIds, deckToJson, mapDeckMedia } from './deck-schema';
@@ -160,7 +161,11 @@ describe('PowerPoint effects from the engine step clock', () => {
     const floating = at(1, 187.5, [float]);
     expect(floating).toMatchObject({ opacity: 0.5, x: 0, moving: true });
     expect(floating.y).toBeCloseTo(43.2, 4);
-    expect(deckWipeClip(at(1, 187.5, [split]).wipe, bounds, bounds)).toBe('inset(0% 25% 0% 25%)');
+    // Split: its middle shows half-way, with PowerPoint's soft edges, as a mask (never a clip).
+    expect(deckWipeClip(at(1, 187.5, [split]).wipe, bounds, bounds)).toBe('');
+    expect(deckWipeMask(at(1, 187.5, [split]).wipe, bounds, bounds)).toBe(
+      'linear-gradient(to right, rgb(0 0 0 / 0) 0%, rgb(0 0 0 / 0) 21.625%, rgb(0 0 0 / 1) 28.375%, rgb(0 0 0 / 1) 71.625%, rgb(0 0 0 / 0) 78.375%, rgb(0 0 0 / 0) 100%)',
+    );
     expect(at(1, 187.5, [grow]).scale).toBe(1.25);
     expect(at(2, 0, [grow])).toMatchObject({ scale: 1.5, moving: false });
     const resized = { ...slide, deck: { ...loaded, motion: { ...loaded.motion, effects: [grow] } } };
@@ -235,11 +240,23 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
     expect(at(300, [bars]).wipe).toBeNull();
   });
 
-  it('brings Split in from both edges, the gap closing in the middle', () => {
+  it('brings Split in from both edges, the gap closing in the middle, with PowerPoint’s soft edges', () => {
     const split: DeckEffect = { ...effect, kind: 'split', splitAxis: 'x', inward: true };
-    expect(clipAt(187.5, split)).toBe(
-      'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 25% 0%, 75% 0%, 75% 100%, 25% 100%, 25% 0%)',
+    expect(clipAt(187.5, split)).toBe('');
+    expect(deckWipeMask(at(187.5, [split]).wipe, bounds, bounds)).toBe(
+      'linear-gradient(to right, rgb(0 0 0 / 1) 0%, rgb(0 0 0 / 1) 21.625%, rgb(0 0 0 / 0) 28.375%, rgb(0 0 0 / 0) 71.625%, rgb(0 0 0 / 1) 78.375%, rgb(0 0 0 / 1) 100%)',
     );
+    // Leaving the same way (PowerPoint's In): hidden from both edges in, so the middle goes last.
+    const leaving = deckWipeMask(at(187.5, [{ ...split, phase: 'out' }]).wipe, bounds, bounds);
+    expect(leaving).toBe(
+      'linear-gradient(to right, rgb(0 0 0 / 0) 0%, rgb(0 0 0 / 0) 21.625%, rgb(0 0 0 / 1) 28.375%, rgb(0 0 0 / 1) 71.625%, rgb(0 0 0 / 0) 78.375%, rgb(0 0 0 / 0) 100%)',
+    );
+    // Up and down, and nothing to mask once it has come in, or before it starts to leave.
+    expect(deckWipeMask(at(187.5, [{ ...split, splitAxis: 'y' }]).wipe, bounds, bounds)).toMatch(
+      /^linear-gradient\(to bottom, /u,
+    );
+    expect(at(300, [split]).wipe).toBeNull();
+    expect(deckWipeMask(at(75, [{ ...split, phase: 'out' }]).wipe, bounds, bounds)).toBe('');
   });
 
   it('drops Bounce in from above the slide and lands it in place', () => {
