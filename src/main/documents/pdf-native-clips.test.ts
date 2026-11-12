@@ -147,7 +147,69 @@ describe('editing generated PDF pages with clipping and masks', () => {
   });
 });
 
+function effectDeckPdf(paint: readonly string[][]): Buffer {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  const kids: string[] = [];
+  for (const commands of paint) {
+    const body = [...commands, `0 0 0 rg BT /F1 24 Tf 1 0 0 1 36 1030 Tm (${PDF_EDITABLE_WORDS}) Tj ET`].join(
+      '\n',
+    );
+    const contents = objects.push(`<< /Length ${body.length} >>\nstream\n${body}\nendstream`);
+    const page = objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1920 1080] /Contents ${contents} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`,
+    );
+    kids.push(`${page} 0 R`);
+  }
+  objects[1] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${kids.length} >>`;
+  let pdf = '%PDF-1.4\n';
+  const xref = ['0000000000 65535 f \n'];
+  for (const [index, object] of objects.entries()) {
+    xref.push(`${String(pdf.length).padStart(10, '0')} 00000 n \n`);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  return Buffer.from(
+    `${pdf}xref\n0 ${xref.length}\n${xref.join('')}trailer\n<< /Root 1 0 R /Size ${xref.length} >>\nstartxref\n${pdf.length}\n%%EOF\n`,
+  );
+}
+
+const smallPaint = (count: number) =>
+  Array.from({ length: count }, (_, i) => {
+    const x = 26 + (i % 10) * 176;
+    const y = 50 + Math.floor(i / 10) * 180;
+    return `q ${x} ${y} 24 18 re W n 1 0 0 rg ${x - 4} ${y - 4} 32 26 re f Q`;
+  });
+
 describe('long and complex generated PDFs', () => {
+  it('keeps forty small effects editable on a generated 1920 by 1080 page', async () => {
+    await withPage(effectDeckPdf([smallPaint(40)]), async (doc, page) => {
+      const result = await editablePdfPage(doc, page, pdfjs.OPS);
+      expect(result).toMatchObject({ width: 1920, height: 1080 });
+      const images = result.elements.filter((element) => element.kind === 'image');
+      expect(images).toHaveLength(40);
+      expect(result.assets).toHaveLength(40);
+      expect(result.elements).toContainEqual(
+        expect.objectContaining({ kind: 'text', text: PDF_EDITABLE_WORDS }),
+      );
+      for (const [index, { frame }] of images.entries()) {
+        const x = 26 + (index % 10) * 176;
+        const y = 1080 - 50 - Math.floor(index / 10) * 180 - 18;
+        expect(Math.abs(frame.x - x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(frame.y - y)).toBeLessThanOrEqual(1);
+        expect(frame.width).toBeGreaterThanOrEqual(24);
+        expect(frame.height).toBeGreaterThanOrEqual(18);
+        expect(frame.width).toBeLessThanOrEqual(26);
+        expect(frame.height).toBeLessThanOrEqual(20);
+      }
+      const last = result.assets.at(-1);
+      if (!last) throw new Error('The generated clipped paint is missing.');
+      expect(await centerPixel(last.png)).toEqual([255, 0, 0, 255]);
+    });
+  });
+
   it('measures preparation of a generated 100-page clipped document', async () => {
     const count = 100;
     const source = clippedDeckPdf(count);
@@ -193,7 +255,11 @@ describe('long and complex generated PDFs', () => {
 
   it('keeps the saved middle picture when that page exceeds its paint budget', async () => {
     const world = originalWorld();
-    const source = clippedDeckPdf(3, 1);
+    const fullPaint = Array.from(
+      { length: 40 },
+      () => 'q 0 0 1920 1080 re W n 0 0 1 rg 0 0 1920 1080 re f Q',
+    );
+    const source = effectDeckPdf([smallPaint(3), fullPaint, smallPaint(3)]);
     try {
       writeFileSync(world.source, source);
       const { id } = await world.importPdf({
