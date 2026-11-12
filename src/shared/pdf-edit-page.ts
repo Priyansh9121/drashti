@@ -59,8 +59,39 @@ const PAINT = ['fillText', 'strokeText', 'fill', 'stroke', 'drawImage', 'fillRec
 type ContextMethod = (typeof PAINT)[number] | 'save' | 'restore' | 'clip';
 type Matrix = [number, number, number, number, number, number];
 type ClipBounds = [left: number, top: number, right: number, bottom: number];
-// Each isolated effect render also scans the full canvas for its painted pixels.
+// The sum of the destination pixels in the isolated effect renders and their alpha scans.
 const MAX_EFFECT_RASTER_PIXELS = 64 * 1024 * 1024;
+interface RasterArea {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+interface PdfPaintBounds {
+  length: number;
+  isEmpty(index: number): boolean;
+  minX(index: number): number;
+  minY(index: number): number;
+  maxX(index: number): number;
+  maxY(index: number): number;
+}
+
+/** PDF.js records outward-rounded fractions of the page. Keep a pixel for antialiasing at each edge. */
+function paintArea(boxes: PdfPaintBounds | null, index: number, page: RasterArea): RasterArea {
+  if (!boxes || index >= boxes.length || boxes.isEmpty(index)) return page;
+  const { width, height } = page;
+  const left = boxes.minX(index) * width;
+  const top = boxes.minY(index) * height;
+  const right = boxes.maxX(index) * width;
+  const bottom = boxes.maxY(index) * height;
+  if (![left, top, right, bottom].every(Number.isFinite)) return page;
+  const x = Math.max(0, Math.floor(left) - 1);
+  const y = Math.max(0, Math.floor(top) - 1);
+  const w = Math.min(width, Math.ceil(right) + 1) - x;
+  const h = Math.min(height, Math.ceil(bottom) + 1) - y;
+  // An unrecorded or unusable box still gets its whole-page budget and raster.
+  return w > 0 && h > 0 ? { x, y, width: w, height: h } : page;
+}
 function matrixOf(values: readonly number[]): Matrix {
   const [a, b, c, d, e, f] = values;
   if (
@@ -416,8 +447,14 @@ export async function editablePdfPage(
 
   const calls = new Map<number, PaintCall[]>();
   const painted = new Set<number>();
-  async function render(allowed?: ReadonlySet<number>): Promise<ReturnType<CanvasFactory['create']>> {
-    const target = factory.create(width, height);
+  const pageComposites = new Set<number>();
+  const wholePage = { x: 0, y: 0, width, height };
+  async function render(
+    allowed?: ReadonlySet<number>,
+    area: RasterArea = wholePage,
+  ): Promise<ReturnType<CanvasFactory['create']>> {
+    const target = factory.create(area.width, area.height);
+    const recording = hasEffects && !allowed;
     const ctx = target.context;
     const originals = new Map<ContextMethod, DrawingContext[ContextMethod]>();
     let current: number | null = null;
@@ -435,7 +472,7 @@ export async function editablePdfPage(
       });
     };
     try {
-      if (hasEffects && !allowed) {
+      if (recording) {
         // PDF.js mirrors clips and save/restore back to this canvas while it paints masks.
         const stack: (ClipBounds | null | undefined)[] = [];
         observe('save', () => {
@@ -460,6 +497,22 @@ export async function editablePdfPage(
             );
           if (allowed) return allowed.has(current);
           painted.add(current);
+          if (recording && method === 'drawImage' && current === list.fnArray.length - 1) {
+            // PDF.js can composite the whole transparent page after the final operator.
+            const [image, x, y] = args;
+            if (
+              args.length === 3 &&
+              x === 0 &&
+              y === 0 &&
+              image &&
+              typeof image === 'object' &&
+              'width' in image &&
+              'height' in image &&
+              image.width === width &&
+              image.height === height
+            )
+              pageComposites.add(current);
+          }
           const isText = show.has(list.fnArray[current]);
           if (isText && (method === 'strokeText' || method === 'stroke')) outlinedText.add(current);
           if (!hasEffects && pathSnapshots.has(current) && method === 'fill') {
@@ -505,11 +558,13 @@ export async function editablePdfPage(
         });
       }
       await page.render({
-        // A non-null canvas makes PDF.js ignore canvasContext and request alpha:false.
-        // Force the factory's existing transparent context for separable paint.
-        canvas: null,
-        canvasContext: target.context as never,
+        // PDF.js only records operator bounds with a canvas. Give the reference pass the factory's
+        // existing transparent context even though PDF.js would request alpha:false on a new one.
+        canvas: recording ? ({ width, height, getContext: () => ctx } as never) : null,
+        canvasContext: ctx as never,
+        recordOperations: recording,
         viewport,
+        transform: area.x || area.y ? [1, 0, 0, 1, -area.x, -area.y] : undefined,
         annotationMode: 0,
         background: 'rgba(0,0,0,0)',
         operationsFilter(index, actual) {
@@ -642,8 +697,19 @@ export async function editablePdfPage(
   }
   if (painted.size > 500)
     throw new Error('This page has too many separately painted objects to edit safely.');
-  if (hasEffects && (painted.size - native.size) * width * height > MAX_EFFECT_RASTER_PIXELS)
-    throw new Error('This page has too much clipped or masked paint to edit safely.');
+  const areas = new Map<number, RasterArea>();
+  if (hasEffects) {
+    const boxes = page.recordedBBoxes as PdfPaintBounds | null;
+    let pixels = 0;
+    for (const index of painted) {
+      if (native.has(index)) continue;
+      const area = pageComposites.has(index) ? wholePage : paintArea(boxes, index, wholePage);
+      pixels += area.width * area.height;
+      if (pixels > MAX_EFFECT_RASTER_PIXELS)
+        throw new Error('This page has too much clipped or masked paint to edit safely.');
+      areas.set(index, area);
+    }
+  }
   const elements: SlideElement[] = [],
     assets: EditablePdfPage['assets'] = [];
   for (const index of [...painted].sort((a, b) => a - b)) {
@@ -653,16 +719,17 @@ export async function editablePdfPage(
       elements.push(text);
       continue;
     }
-    const target = await render(new Set([index]));
+    const area = areas.get(index) ?? wholePage;
+    const target = await render(new Set([index]), area);
     try {
-      const pixels = target.context.getImageData(0, 0, width, height).data;
-      let left = width,
-        top = height,
+      const pixels = target.context.getImageData(0, 0, area.width, area.height).data;
+      let left = area.width,
+        top = area.height,
         right = -1,
         bottom = -1;
-      for (let y = 0; y < height; y++)
-        for (let x = 0; x < width; x++) {
-          if (pixels[(y * width + x) * 4 + 3] === 0) continue;
+      for (let y = 0; y < area.height; y++)
+        for (let x = 0; x < area.width; x++) {
+          if (pixels[(y * area.width + x) * 4 + 3] === 0) continue;
           left = Math.min(left, x);
           top = Math.min(top, y);
           right = Math.max(right, x);
@@ -694,8 +761,8 @@ export async function editablePdfPage(
           mediaId: id,
           fit: 'stretch',
           frame: {
-            x: left / scale,
-            y: top / scale,
+            x: (area.x + left) / scale,
+            y: (area.y + top) / scale,
             width: crop.canvas.width / scale,
             height: crop.canvas.height / scale,
           },
