@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
 import { connectEngine } from '../engine/engine-store';
-import { ImportReportDialog } from '../library/ImportReport';
 import { importPaths, watchImports } from '../library/import-store';
 import { loadLibrary, useLibraryTab, watchLibrary } from '../library/library-store';
 import { useDragging } from '../playlists/drag';
@@ -20,7 +19,7 @@ import { connectAppearance } from '../appearance/appearance-store';
 import { undoRemoval } from '../library/undo';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
 import { WallpapersPanel } from '../wallpapers/WallpapersPanel';
-import { dropFolders, loadTree, watchPlaylists } from '../playlists/playlist-store';
+import { dropFolders, loadTree, openImportDestination, watchPlaylists } from '../playlists/playlist-store';
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
@@ -269,7 +268,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       const paths = Array.from(e.dataTransfer.files)
         .map((f) => window.drashti.files.pathFor(f))
         .filter((p) => p !== '');
-      if (paths.length > 0) void dropFolders(paths, (files) => importPaths(files));
+      const destination = openImportDestination();
+      if (paths.length > 0) void dropFolders(paths, (files) => importPaths(files, undefined, destination));
     };
     window.addEventListener('dragover', over);
     window.addEventListener('drop', drop);
@@ -406,12 +406,12 @@ function ProApp({ info }: { info: AppInfo | null }) {
         />
       )}
       <NoticeArea />
+      <LinkDialog />
       {/* The quick bar (Session 55, Part 8), just above the bar of clears: hidden when empty. */}
       <QuickBar platform={platform} run={run} />
       <LayerBar platform={platform} run={run} />
       <StatusBar info={info} onOpenScreens={openScreens} onOpenCalendar={openCalendar} />
 
-      <ImportReportDialog platform={platform} />
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
       <MediaRemoveConfirm undoKey={shortcutText('undo', platform)} />
@@ -444,7 +444,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {/* File › Live Captions… (Session 55, Part 10). */}
       <CaptionsDialog />
       <UpdatesDialog />
-      <LinkDialog platform={platform} />
       <KeysSheet platform={platform} />
       <ScreenSwitchAsk platform={platform} />
       <GuidesDialog />

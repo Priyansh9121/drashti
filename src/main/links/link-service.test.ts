@@ -122,6 +122,29 @@ function inProcessWorker(): LinkWorker {
   };
 }
 
+/** Lets a test deliver a worker event and act before any following file-system work settles. */
+function controlledWorkers() {
+  const workers: { messages: ToWorker[]; send(message: FromWorker): void }[] = [];
+  const spawn = (): LinkWorker => {
+    const messages: ToWorker[] = [];
+    let receive: (message: FromWorker) => void = () => {
+      throw new Error('Worker has no listener');
+    };
+    workers.push({ messages, send: (message) => receive(message) });
+    return {
+      post: (message) => {
+        messages.push(message);
+      },
+      onMessage: (listener) => {
+        receive = listener;
+      },
+      onExit: () => undefined,
+      kill: () => undefined,
+    };
+  };
+  return { workers, spawn };
+}
+
 interface Harness {
   service: LinkService;
   folder: string;
@@ -138,6 +161,7 @@ async function harness(over: Partial<LinkServiceDeps> = {}): Promise<Harness> {
   const origin = await standIn();
   const root = mkdtempSync(join(tmpdir(), 'drashti-links-'));
   const folder = join(root, 'Saved here');
+  mkdirSync(folder);
   const logs: string[] = [];
   const imported: string[][] = [];
   const views: LinkView[] = [];
@@ -192,6 +216,132 @@ const files = (dir: string): string[] =>
     .sort();
 
 describe('Import from a Link: Dropbox', () => {
+  it.each(['missing', 'unwritable'] as const)(
+    'saves in the usual folder when the saved folder is %s',
+    async (problem) => {
+      const root = mkdtempSync(join(tmpdir(), 'drashti-link-fallback-'));
+      const previous = join(root, 'Previous downloads');
+      const fallback = join(root, 'Drashti downloads');
+      if (problem === 'unwritable') writeFileSync(previous, 'placeholder');
+      let remembered = previous;
+      const { service } = await harness({
+        defaultFolder: fallback,
+        lastFolder: {
+          get: () => remembered,
+          set: (folder) => {
+            remembered = folder;
+          },
+        },
+      });
+
+      expect(service.start(FILE_LINK, false, false).ok).toBe(true);
+      await until(() => ['done', 'failed'].includes(service.view().phase));
+      expect(service.view()).toMatchObject({
+        phase: 'done',
+        folderFallback: true,
+        saved: { folder: fallback },
+      });
+      expect(files(fallback)).toEqual(['Placeholder clip.mp4']);
+      expect(remembered).toBe(fallback);
+      if (problem === 'missing') expect(existsSync(previous)).toBe(false);
+      else expect(readFileSync(previous, 'utf8')).toBe('placeholder');
+
+      expect(service.start(FILE_LINK, false, false).ok).toBe(true);
+      await until(() => service.view().phase === 'done');
+      expect(service.view().folder).toBe(fallback);
+      expect(service.view()).toMatchObject({ folderFallback: false });
+    },
+  );
+
+  it('passes the saved original to the import with a cap without waiting for the link fitter', async () => {
+    let fitCalls = 0;
+    const imported: { paths: string[]; maxHeight?: number }[] = [];
+    const h = await harness({
+      fitVideo: () => {
+        fitCalls++;
+        return Promise.resolve({ ok: true, copy: null });
+      },
+      importFiles: (paths, maxHeight?: number) => {
+        imported.push({ paths, maxHeight });
+        return Promise.resolve({ ok: true, runId: 'run-placeholder' });
+      },
+    });
+
+    expect(h.service.start(FILE_LINK, false, false).ok).toBe(true);
+    await until(() => h.service.view().phase === 'done');
+    expect(fitCalls).toBe(0);
+    expect(imported).toEqual([{ paths: [join(h.folder, 'Placeholder clip.mp4')], maxHeight: 1080 }]);
+  });
+
+  it('turns an automatic download setup exception into a retryable failure', async () => {
+    const { workers, spawn } = controlledWorkers();
+    const h = await harness({
+      spawn,
+      freeBytes: () => {
+        throw new Error('placeholder setup exception');
+      },
+    });
+    expect(h.service.start(FILE_LINK, false, false).ok).toBe(true);
+    expect(workers).toHaveLength(1);
+    expect(() =>
+      workers[0]?.send({ type: 'looked', name: 'Placeholder clip.mp4', size: VIDEO.length, zip: false }),
+    ).not.toThrow();
+    await until(() => h.service.view().phase === 'failed');
+    expect(h.service.view()).toMatchObject({
+      message: 'Drashti couldn’t start the download. Try again.',
+      retryable: true,
+    });
+    expect(h.logs.join(' ')).not.toContain('placeholder setup exception');
+  });
+
+  it('does not accept Stop once a completed download is being saved for import', async () => {
+    const { workers, spawn } = controlledWorkers();
+    const h = await harness({ spawn });
+    expect(h.service.start(FILE_LINK, false, false).ok).toBe(true);
+    workers[0]?.send({ type: 'looked', name: 'Placeholder clip.mp4', size: VIDEO.length, zip: false });
+    const job = workers[1]?.messages.find((message) => message.type === 'download');
+    if (!job) throw new Error('The automatic download did not start');
+    writeFileSync(job.part, VIDEO);
+    workers[1]?.send({ type: 'downloaded', name: 'Placeholder clip.mp4', bytes: VIDEO.length, zip: false });
+    expect(h.service.stop().ok).toBe(false);
+    await until(() => h.service.view().phase === 'done');
+    expect(files(h.folder)).toEqual(['Placeholder clip.mp4']);
+    expect(h.imported).toEqual([[join(h.folder, 'Placeholder clip.mp4')]]);
+  });
+
+  it('imports a pasted folder immediately, including its PDFs and pictures, into the open playlist’s import run', async () => {
+    folderZip = makeDropboxLikeZip([
+      { path: 'Opening.mp4', data: VIDEO },
+      { path: 'Week 1/Placeholder.pdf', data: 'placeholder pdf' },
+      { path: 'Placeholder.JPG', data: 'placeholder picture' },
+      { path: 'Read me.txt', data: 'placeholder words' },
+    ]);
+    const made: string[] = [];
+    const h = await harness({
+      folderPlaylist: ({ name }) => {
+        made.push(name);
+        return { id: 'folder-playlist', name };
+      },
+    });
+    const { service } = h;
+    expect(service.start(FOLDER_LINK, false, true).ok).toBe(true);
+    await until(() => service.view().phase === 'done');
+    expect(service.view()).toMatchObject({
+      kind: 'dropbox',
+      waiting: [],
+      playlist: null,
+      notTaken: [{ name: 'Read me.txt' }],
+      runId: 'run-placeholder',
+    });
+    expect(h.imported).toHaveLength(1);
+    expect(h.imported[0]?.map((path) => path.split(/[\\/]/u).at(-1)).sort()).toEqual([
+      'Opening.mp4',
+      'Placeholder.JPG',
+      'Placeholder.pdf',
+    ]);
+    expect(made).toEqual([]);
+  });
+
   it('saves a folder link’s files in a folder of their own, and imports only the PowerPoint and the MP4', async () => {
     const h = await harness();
     expect(h.service.look('dropbox', FOLDER_LINK).ok).toBe(true);
@@ -621,6 +771,24 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
       return false;
     }
   };
+
+  it('automatically downloads at the highest offered quality up to 1080p, even with an old 2160p setting', async () => {
+    const h = await youtube();
+    h.service.setMaxHeight(2160);
+    expect(h.service.start(LINK, false, false).ok).toBe(true);
+    await until(() => h.service.view().phase === 'done', 60_000);
+    expect(h.service.view()).toMatchObject({ kind: 'youtube', choice: { type: 'mp4', height: 1080 } });
+    expect(files(h.folder)).toEqual(['Placeholder video.mp4']);
+    expect(h.stored.maxHeight).toBe(2160);
+  });
+
+  it('automatically downloads YouTube as audio when the operator pastes from Audio', async () => {
+    const h = await youtube();
+    expect(h.service.start(LINK, true, false).ok).toBe(true);
+    await until(() => h.service.view().phase === 'done', 60_000);
+    expect(h.service.view()).toMatchObject({ kind: 'youtube', choice: { type: 'mp3', height: null } });
+    expect(files(h.folder)).toEqual(['Placeholder video.mp3']);
+  });
 
   it('looks, refuses a download above the setting, then saves under the title, with no tick asked', async () => {
     const h = await youtube();

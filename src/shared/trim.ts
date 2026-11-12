@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { mediaMarkersSchema } from './markers';
+import type { MediaMarkers } from './markers';
 import { idSchema } from './model-schema';
 
 /*
@@ -55,3 +57,26 @@ export type KeyframeResult = { ok: true; atMs: number } | { ok: false; message: 
 
 /** The save started (null: the operator closed the save dialog), or why it cannot be. */
 export type SaveResult = { ok: true; job: SaveJob | null } | { ok: false; message: string };
+
+/** The original video and the playlist row's cut, both in the original's time. */
+export interface RowTrimView {
+  itemId: string;
+  mediaId: string;
+  sourceId: string;
+  sourceName: string;
+  canReset: boolean;
+  markers: MediaMarkers;
+}
+
+export interface RowTrimRequest {
+  /** The video still expected in the row when it is saved. */
+  mediaId: string;
+  points: MediaMarkers;
+}
+
+export const rowTrimRequestSchema: z.ZodType<RowTrimRequest> = z.object({
+  mediaId: idSchema,
+  points: mediaMarkersSchema,
+});
+
+export type RowTrimResult = { ok: true } | { ok: false; message: string };

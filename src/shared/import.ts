@@ -8,8 +8,7 @@ export type ConflictChoice = 'replace' | 'keep-both' | 'skip';
 
 export interface ImportOptions {
   /**
-   * Changed files: 'ask' (the default) writes nothing for them and lists them
-   * as conflicts, so the operator can choose; or one choice for all of them.
+   * Changed files are kept beside the earlier import by default. Callers can set another policy.
    */
   onConflict?: 'ask' | ConflictChoice;
   /** Choices for single files, by source path (the answers to an earlier run's conflicts). */
@@ -20,6 +19,8 @@ export interface ImportOptions {
    * (import-schema.ts takes no such field).
    */
   simple?: true;
+  /** Link imports and saved-link retries can request a smaller background copy of tall videos. */
+  maxVideoHeight?: number;
 }
 
 /** How Drashti read a file. */
@@ -61,8 +62,8 @@ export type IssueFix =
   | { kind: 'import-again'; sourcePath: string }
   | { kind: 'free-space'; neededBytes: number }
   | { kind: 'convert-font'; font: string }
-  /** A file Drashti cannot play as it is: convert it (src/main/convert/), with what that makes. */
-  | { kind: 'convert-media'; mediaId: string; advice: string };
+  /** A background conversion of an imported file, optionally to fit a linked video's height limit. */
+  | { kind: 'convert-media'; mediaId: string; advice: string; maxHeight?: number };
 
 export interface ImportIssue {
   severity: IssueSeverity;

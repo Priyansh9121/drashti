@@ -100,7 +100,15 @@ import type {
 } from './playlists';
 import type { RepeatSettings } from './repeat';
 import type { GuideId, GuideRead } from './guides';
-import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from './trim';
+import type {
+  KeyframeResult,
+  RowTrimRequest,
+  RowTrimResult,
+  RowTrimView,
+  SaveJob,
+  SaveRequest,
+  SaveResult,
+} from './trim';
 import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
@@ -315,6 +323,7 @@ export const IPC = {
    */
   links: {
     view: 'links:view',
+    start: 'links:start',
     look: 'links:look',
     pickFolder: 'links:pick-folder',
     download: 'links:download',
@@ -446,6 +455,8 @@ export const IPC = {
     saveStill: 'media:save-still',
     /** Convert media Drashti cannot play, one after another (operator window only). */
     convert: 'media:convert',
+    retryConversion: 'media:retry-conversion',
+    cancelLinkConversion: 'media:cancel-link-conversion',
     cancelConversion: 'media:cancel-conversion',
     conversions: 'media:conversions',
     /** Put back the original everywhere the conversion moved it (Undo). */
@@ -465,6 +476,11 @@ export const IPC = {
      */
     keyframe: 'media:keyframe',
     saveTrim: 'media:save-trim',
+    rowTrim: 'media:row-trim',
+    applyRowTrim: 'media:apply-row-trim',
+    resetRowTrim: 'media:reset-row-trim',
+    preparingTrims: 'media:preparing-trims',
+    preparingTrimsChanged: 'media:preparing-trims-changed',
     saves: 'media:saves',
     stopSave: 'media:stop-save',
     showSave: 'media:show-save',
@@ -1214,6 +1230,7 @@ export interface InvokeContract {
   [IPC.updates.setAutoCheck]: { args: [on: boolean]; result: UpdateResult };
   [IPC.updates.showFile]: { args: []; result: null };
   [IPC.links.view]: { args: []; result: LinkView };
+  [IPC.links.start]: { args: [text: string, audio: boolean, intoOpenPlaylist: boolean]; result: LinkResult };
   [IPC.links.look]: { args: [kind: LinkKind, link: string]; result: LinkResult };
   [IPC.links.pickFolder]: { args: []; result: LinkResult };
   [IPC.links.download]: { args: [choice?: YouTubeChoice | null]; result: LinkResult };
@@ -1375,6 +1392,8 @@ export interface InvokeContract {
   };
   [IPC.media.saveStill]: { args: [mediaId: string, jpeg: Uint8Array]; result: SaveStillResult };
   [IPC.media.convert]: { args: [mediaIds: string[]]; result: ConvertResult };
+  [IPC.media.retryConversion]: { args: [jobId: string]; result: ConvertResult };
+  [IPC.media.cancelLinkConversion]: { args: [jobId: string]; result: ConvertResult };
   [IPC.media.cancelConversion]: { args: [jobId: string | null]; result: ConvertResult };
   [IPC.media.conversions]: { args: []; result: ConversionJob[] };
   [IPC.media.playsHevc]: { args: []; result: boolean | null };
@@ -1401,6 +1420,10 @@ export interface InvokeContract {
   [IPC.media.photo]: { args: [mediaId: string]; result: boolean };
   [IPC.media.savePicture]: { args: [mediaId: string, name: string]; result: SavePictureResult };
   [IPC.media.saveTrim]: { args: [request: SaveRequest]; result: SaveResult };
+  [IPC.media.rowTrim]: { args: [itemId: string]; result: RowTrimView | null };
+  [IPC.media.applyRowTrim]: { args: [itemId: string, request: RowTrimRequest]; result: RowTrimResult };
+  [IPC.media.resetRowTrim]: { args: [itemId: string, mediaId: string]; result: RowTrimResult };
+  [IPC.media.preparingTrims]: { args: []; result: string[] };
   [IPC.media.saves]: { args: []; result: SaveJob[] };
   [IPC.media.stopSave]: { args: [jobId: string]; result: boolean };
   [IPC.media.showSave]: { args: [jobId: string]; result: null };
@@ -1701,6 +1724,7 @@ export interface EventContract {
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];
+  [IPC.media.preparingTrimsChanged]: string[];
   [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: { role: 'preview' | 'encoder' | 'speech' };
   [IPC.stream.context]: ProgramContext;

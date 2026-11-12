@@ -191,6 +191,7 @@ const bridge: DrashtiBridge = {
   },
   links: {
     view: () => invoke(IPC.links.view),
+    start: (text, audio, intoOpenPlaylist) => invoke(IPC.links.start, text, audio, intoOpenPlaylist),
     look: (kind, link) => invoke(IPC.links.look, kind, link),
     pickFolder: () => invoke(IPC.links.pickFolder),
     download: (choice) => invoke(IPC.links.download, choice ?? null),
@@ -348,6 +349,8 @@ const bridge: DrashtiBridge = {
   media: {
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
     convert: (mediaIds) => invoke(IPC.media.convert, mediaIds),
+    retryConversion: (jobId) => invoke(IPC.media.retryConversion, jobId),
+    cancelLinkConversion: (jobId) => invoke(IPC.media.cancelLinkConversion, jobId),
     cancelConversion: (jobId) => invoke(IPC.media.cancelConversion, jobId),
     conversions: () => invoke(IPC.media.conversions),
     onConversions: (listener) => on(IPC.media.conversionsChanged, listener),
@@ -356,6 +359,11 @@ const bridge: DrashtiBridge = {
     undoConversion: (conversionId) => invoke(IPC.media.undoConversion, conversionId),
     keyframe: (mediaId, startMs) => invoke(IPC.media.keyframe, mediaId, startMs),
     saveTrim: (request) => invoke(IPC.media.saveTrim, request),
+    rowTrim: (itemId) => invoke(IPC.media.rowTrim, itemId),
+    applyRowTrim: (itemId, request) => invoke(IPC.media.applyRowTrim, itemId, request),
+    resetRowTrim: (itemId, mediaId) => invoke(IPC.media.resetRowTrim, itemId, mediaId),
+    preparingTrims: () => invoke(IPC.media.preparingTrims),
+    onPreparingTrims: (listener) => on(IPC.media.preparingTrimsChanged, listener),
     saves: () => invoke(IPC.media.saves),
     onSaves: (listener) => on(IPC.media.savesChanged, listener),
     stopSave: (jobId) => invoke(IPC.media.stopSave, jobId),

@@ -59,6 +59,7 @@ import { up as pageSize } from './migrations/064-page-size';
 import { up as originalLocations } from './migrations/065-original-locations';
 import { up as captions } from './migrations/066-captions';
 import { up as aiSabhas } from './migrations/068-ai-sabhas';
+import { up as trimmedVideos } from './migrations/072-trimmed-videos';
 import { up as sanskritCaptions } from './migrations/069-sanskrit-captions';
 import { plural } from '../../shared/text';
 
@@ -140,6 +141,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 66, name: 'live captions', up: captions },
   // 067 is unused; preserve each part’s allocated migration numbers.
   { version: 68, name: 'approved AI sabha suggestions', up: aiSabhas },
+  { version: 72, name: 'trimmed videos and their originals', up: trimmedVideos },
   { version: 69, name: 'Sanskrit captions', up: sanskritCaptions },
 ];
 

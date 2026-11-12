@@ -5,34 +5,16 @@ import type { NewItem, PlaylistItemInfo, PlaylistNode } from '../../../shared/pl
 import { useLibrary } from '../library/library-store';
 import { useMode } from '../operator/mode-store';
 import { usePlaylists } from '../playlists/playlist-store';
-import { chosenTarget, landInPlaylist, linkTarget, useLanded } from './link-playlist';
-import {
-  addToNow,
-  anotherLink,
-  chooseAddTo,
-  connectLinks,
-  newPlaylistName,
-  startDownload,
-  useLinks,
-} from './link-store';
-
-/*
- * Where a download from a link goes (Session 54, F1): the playlist chosen last, offered first; with none, a new
- * one named before the download starts; when it is in, that playlist opens with the new item chosen, never up
- * by itself. The main process is stood in for by a fake that keeps playlists as src/main/db/playlists.ts does.
- * Placeholder names only.
- */
+import { landInPlaylist, linkPlaylistId, useLanded } from './link-playlist';
+import { importLink, newPlaylistName, useLinks } from './link-store';
 
 let tree: PlaylistNode[] = [];
 let itemsOf: Record<string, PlaylistItemInfo[]> = {};
 let refuseAdding = false;
-const remembered: string[] = [];
 const made: string[] = [];
-const downloads: unknown[] = [];
+const downloads: [url: string, audio: boolean, intoOpenPlaylist: boolean][] = [];
 const commands: EngineCommand[] = [];
 let heard: ((view: LinkView) => void) | null = null;
-/** The playlist the main process keeps as the one a download went into last. */
-let keptLast: string | null = null;
 
 const node = (id: string, name: string, isFolder = false): PlaylistNode => ({
   id,
@@ -74,8 +56,6 @@ beforeEach(() => {
   tree = [];
   itemsOf = {};
   refuseAdding = false;
-  keptLast = null;
-  remembered.length = 0;
   made.length = 0;
   downloads.length = 0;
   commands.length = 0;
@@ -118,26 +98,22 @@ beforeEach(() => {
           return () => undefined;
         },
         onOpen: () => () => undefined,
-        download: (choice: unknown) => {
-          downloads.push(choice);
-          return answer({ ...VIEW, phase: 'downloading' });
+        start: (url: string, audio: boolean, intoOpenPlaylist: boolean) => {
+          downloads.push([url, audio, intoOpenPlaylist]);
+          return answer({ ...VIEW, link: url, phase: 'looking' });
         },
-        setPlaylist: (id: string) => {
-          remembered.push(id);
-          return answer({ ...VIEW, lastPlaylist: id });
-        },
-        // Another link: the dialog afresh, the playlist chosen last as the main process keeps it.
-        reset: () => answer({ ...VIEW, phase: 'idle', look: null, lastPlaylist: keptLast }),
       },
       library: {
         getImportReport: (runId: string) =>
           Promise.resolve({
             id: runId,
+            message: null,
             paths: ['/placeholder/Placeholder video.mp4'],
             items: [
               {
                 sourcePath: '/placeholder/Placeholder video.mp4',
                 outcome: 'imported',
+                issues: [],
                 target: { kind: 'media', id: 'media-new' },
               },
             ],
@@ -155,12 +131,7 @@ beforeEach(() => {
   useLibrary.setState({ item: null });
   useLanded.setState({ itemId: null });
   useMode.setState({ mode: 'pro' });
-  useLinks.setState({
-    view: VIEW,
-    open: true,
-    addTo: null,
-    choice: { type: 'mp4', height: null },
-  });
+  useLinks.setState({ view: VIEW, open: true, audio: null, request: null });
 });
 
 /** The playlists, as the window last read them. */
@@ -170,38 +141,21 @@ async function playlists(...nodes: PlaylistNode[]): Promise<void> {
   await Promise.resolve();
 }
 
-describe('where a download from a link goes, to begin with', () => {
-  it('is the playlist chosen last, offered first even with another open', async () => {
+describe('where a download from a link goes', () => {
+  it('uses the playlist open when the link is pasted, even after another playlist received a link', async () => {
     await playlists(node('sunday', 'Placeholder Sunday'), node('youth', 'Placeholder Youth'));
     usePlaylists.setState({ openId: 'sunday' });
-    expect(linkTarget('youth', 'Placeholder video')).toEqual({ kind: 'playlist', id: 'youth' });
+    useLinks.setState({ view: { ...VIEW, lastPlaylist: 'youth' } });
+    expect(linkPlaylistId()).toBe('sunday');
   });
 
-  it('else the open playlist; else a new one named after what the link holds; never no playlist', async () => {
-    await playlists(node('sunday', 'Placeholder Sunday'), node('youth', 'Placeholder Youth'));
-    usePlaylists.setState({ openId: 'sunday' });
-    expect(linkTarget(null, 'Placeholder video')).toEqual({ kind: 'playlist', id: 'sunday' });
-    // The one chosen last, since deleted: the open one.
-    expect(linkTarget('gone', 'Placeholder video')).toEqual({ kind: 'playlist', id: 'sunday' });
-    usePlaylists.setState({ openId: null });
-    expect(linkTarget(null, 'Placeholder video')).toEqual({ kind: 'new', name: 'Placeholder video' });
-    // No playlist at all (a folder is not one): a new one, whose name the dialog asks for.
-    await playlists(node('folder', 'Placeholder folder', true));
-    expect(linkTarget('folder', 'Placeholder video')).toEqual({ kind: 'new', name: 'Placeholder video' });
-  });
-
-  it('is the one chosen in the dialog while it is there', async () => {
-    await playlists(node('sunday', 'Placeholder Sunday'), node('youth', 'Placeholder Youth'));
-    expect(chosenTarget({ kind: 'playlist', id: 'sunday' }, 'youth', 'Placeholder video')).toEqual({
-      kind: 'playlist',
-      id: 'sunday',
-    });
-    expect(chosenTarget({ kind: 'none' }, 'youth', 'Placeholder video')).toEqual({ kind: 'none' });
-    // Deleted meanwhile: where it goes to begin with.
-    expect(chosenTarget({ kind: 'playlist', id: 'gone' }, 'youth', 'Placeholder video')).toEqual({
-      kind: 'playlist',
-      id: 'youth',
-    });
+  it('uses no open destination if a playlist is closed, missing or a folder', async () => {
+    await playlists(node('sunday', 'Placeholder Sunday'), node('folder', 'Placeholder Folder', true));
+    expect(linkPlaylistId()).toBeNull();
+    usePlaylists.setState({ openId: 'folder' });
+    expect(linkPlaylistId()).toBeNull();
+    usePlaylists.setState({ openId: 'gone' });
+    expect(linkPlaylistId()).toBeNull();
   });
 });
 
@@ -222,7 +176,7 @@ describe('a new playlist’s name, to begin with', () => {
 });
 
 describe('when a download is in', () => {
-  it('lands in the playlist chosen, which is remembered and opens with the new item chosen, never up by itself', async () => {
+  it('lands in the playlist chosen, which opens with the new item chosen, never up by itself', async () => {
     await playlists(node('sunday', 'Placeholder Sunday'), node('youth', 'Placeholder Youth'));
     // Sunday open, its kirtan's slides in the middle.
     const kirtan: PlaylistItemInfo = {
@@ -242,7 +196,6 @@ describe('when a download is in', () => {
       { kind: 'media', mediaId: 'media-new' },
     ]);
     expect(name).toBe('Placeholder Youth');
-    expect(remembered).toEqual(['youth']);
     const state = usePlaylists.getState();
     expect(state.openId).toBe('youth');
     const [first] = itemsOf['youth'] ?? [];
@@ -254,25 +207,23 @@ describe('when a download is in', () => {
     expect(useLibrary.getState().item?.id).toBe('kirtan');
   });
 
-  it('with no playlist, makes the one named before the download, remembers it and opens it', async () => {
+  it('with no playlist, makes one named after the download and opens it', async () => {
     const name = await landInPlaylist({ kind: 'new', name: 'Placeholder Downloads' }, [
       { kind: 'media', mediaId: 'media-new' },
     ]);
     expect(made).toEqual(['Placeholder Downloads']);
     expect(name).toBe('Placeholder Downloads');
-    expect(remembered).toEqual(['made-1']);
     expect(usePlaylists.getState().openId).toBe('made-1');
     expect(usePlaylists.getState().marked).toEqual([itemsOf['made-1']?.[0]?.id]);
   });
 
-  it('remembers and opens nothing when nothing went in', async () => {
+  it('opens nothing when nothing went in', async () => {
     await playlists(node('youth', 'Placeholder Youth'));
     refuseAdding = true;
     expect(await landInPlaylist({ kind: 'playlist', id: 'youth' }, [{ kind: 'media', mediaId: 'm' }])).toBe(
       null,
     );
     expect(await landInPlaylist({ kind: 'none' }, [{ kind: 'media', mediaId: 'm' }])).toBe(null);
-    expect(remembered).toEqual([]);
     expect(usePlaylists.getState().openId).toBeNull();
   });
 
@@ -290,36 +241,24 @@ describe('when a download is in', () => {
   });
 });
 
-describe('Download in the dialog', () => {
-  it('with no playlist, takes a new one named after the video, made and opened when the download is in', async () => {
-    connectLinks();
-    expect(await startDownload()).toBe(true);
-    expect(downloads).toHaveLength(1);
+describe('pasting a link', () => {
+  it('starts automatically and makes a playlist named after the video if none is open', async () => {
+    expect(await importLink('https://youtu.be/AAAAAAAAAAA')).toBe(true);
+    expect(downloads).toEqual([['https://www.youtube.com/watch?v=AAAAAAAAAAA', false, false]]);
     heard?.({ ...VIEW, phase: 'done', runId: 'run-1', saved: { folder: '/placeholder', files: ['x.mp4'] } });
     await expect.poll(() => usePlaylists.getState().openId).toBe('made-1');
     expect(made).toEqual(['Placeholder video']);
-    expect(remembered).toEqual(['made-1']);
   });
 
-  it('keeps a playlist chosen by its own From a Link… when Another link is pressed (Session 54’s review)', async () => {
+  it('adds to the playlist open at paste time even if another opens before the download finishes', async () => {
     await playlists(node('a', 'Placeholder A'), node('b', 'Placeholder B'));
-    keptLast = 'a';
-    useLinks.setState({ view: { ...VIEW, lastPlaylist: 'a' } });
     usePlaylists.setState({ openId: 'b' });
-    chooseAddTo({ kind: 'playlist', id: 'b' });
-    await anotherLink();
-    expect(addToNow(useLinks.getState())).toEqual({ kind: 'playlist', id: 'b' });
-    // No playlist, or a new one (made by the last download, and now the one chosen last), starts afresh.
-    for (const chosen of [{ kind: 'none' as const }, { kind: 'new' as const, name: 'Placeholder video' }]) {
-      chooseAddTo(chosen);
-      await anotherLink();
-      expect(addToNow(useLinks.getState())).toEqual({ kind: 'playlist', id: 'a' });
-    }
-  });
-
-  it('never starts with a new playlist’s name left empty', async () => {
-    useLinks.setState({ addTo: { kind: 'new', name: '  ' } });
-    expect(await startDownload()).toBe(false);
-    expect(downloads).toEqual([]);
+    useLinks.setState({ view: { ...VIEW, lastPlaylist: 'a' } });
+    expect(await importLink('https://youtu.be/AAAAAAAAAAA')).toBe(true);
+    expect(downloads).toEqual([['https://www.youtube.com/watch?v=AAAAAAAAAAA', false, true]]);
+    usePlaylists.setState({ openId: 'a' });
+    heard?.({ ...VIEW, phase: 'done', runId: 'run-2', saved: { folder: '/placeholder', files: ['x.mp4'] } });
+    await expect.poll(() => itemsOf['b']?.map((item) => item.label)).toEqual(['Placeholder video.mp4']);
+    expect(itemsOf['a']).toBeUndefined();
   });
 });
