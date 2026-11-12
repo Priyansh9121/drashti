@@ -353,6 +353,45 @@ describe('putting edited slides back', () => {
     expect(JSON.parse(applySlideEdit(rows, asSaved(doc)).slides[0]?.deck ?? 'null')).toEqual(deck);
   });
 
+  it('stores the native timeline accepted by Main for an edited source slide and its copy', () => {
+    const { db, repo, id } = stored();
+    try {
+      const before = repo.content(id);
+      if (!before) throw new Error('Missing placeholder presentation');
+      const { doc } = editDocOf(before, 'Placeholder native playback');
+      const group = doc.groups[0];
+      const source = group?.slides[0];
+      if (!group || !source) throw new Error('Missing placeholder slide');
+      const deck = {
+        steps: [],
+        media: [],
+        motion: { approximate: false, stepsMs: [0], effects: [] },
+      };
+      source.deck = deck;
+      source.documentPage = { sha256: '0'.repeat(64), ext: 'pptx', page: 0, edited: true };
+      group.slides.push({ ...structuredClone(source), id: 'placeholder-copy' });
+      const rows = {
+        ...before,
+        slides: before.slides.map((row) =>
+          row.id === source.id
+            ? {
+                ...row,
+                deck: JSON.stringify({
+                  ...deck,
+                  steps: [{ clipId: 'placeholder-clip', clipMs: 400, lastId: 'placeholder-still' }],
+                }),
+              }
+            : row,
+        ),
+      };
+      const saved = applySlideEdit(rows, asSaved(doc));
+      expect(JSON.parse(saved.slides[0]?.deck ?? 'null')).toEqual(deck);
+      expect(JSON.parse(saved.slides[group.slides.length - 1]?.deck ?? 'null')).toEqual(deck);
+    } finally {
+      db.close();
+    }
+  });
+
   it('keeps data it does not know, and elements it cannot read in their place', () => {
     const { repo, id } = stored();
     const before = repo.content(id);
