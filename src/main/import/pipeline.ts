@@ -603,10 +603,13 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       const shown = replaced.slice(0, 3).join(', ');
       const more = replaced.length > 3 ? ` and ${plural(replaced.length - 3, 'other', 'others')}` : '';
       const one = replaced.length === 1;
+      const when = ctx.options.automatic
+        ? '. The new points and markers take effect the next time the media plays.'
+        : `, and what is up playing ${one ? 'it' : 'them'} moved to them at once.`;
       issues.push({
         severity: 'info',
         code: 'markers-replaced',
-        message: `${shown}${more} ${one ? 'was' : 'were'} in the library already, with other start and end points or markers: ${one ? 'it has' : 'they have'} this import’s now, and what is up playing ${one ? 'it' : 'them'} moved to them at once.`,
+        message: `${shown}${more} ${one ? 'was' : 'were'} in the library already, with other start and end points or markers: ${one ? 'it has' : 'they have'} this import’s now${when}`,
         fix: null,
       });
     }
@@ -864,8 +867,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       {
         committed: ({ item, wrote, marked }) => {
           if (!phase || !('early' in phase)) addToTotals(totals, item);
+          if (ctx.options.automatic) told(marked);
           ctx.onWrote?.(wrote);
-          told(marked);
+          if (!ctx.options.automatic) told(marked);
         },
         failed: (error) => {
           failed(

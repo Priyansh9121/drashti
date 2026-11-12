@@ -68,7 +68,6 @@ export async function retryImportNotice(notice: ImportNotice): Promise<void> {
 
 const missingParts = new Set([
   'bundle-entry',
-  'calendar-note',
   'deck-media-unmatched',
   'deck-motion-approximated',
   'deck-pictures',
@@ -82,9 +81,11 @@ const missingParts = new Set([
   'pictures-hidden',
   'pictures-notes-unmatched',
   'pictures-too-many',
-  'shastra-note',
   'unsupported-element',
 ]);
+
+const deckWarningNotices = new Set(['deck-other-app', 'pictures-converter']);
+const warningNotices = new Set(['calendar-note', 'shastra-note', ...deckWarningNotices]);
 
 const nameOf = (item: ImportItemReport): string =>
   item.name ?? item.sourcePath.split(/[\\/]/u).at(-1) ?? 'File';
@@ -144,12 +145,25 @@ function noticeFor(
   const refused = failed || item.outcome === 'unsupported';
   const reasons = refused
     ? [item.message ?? 'Drashti couldn’t bring it in.']
-    : item.issues.flatMap((issue) =>
-        issue.severity === 'error' || missingParts.has(issue.code) || issue.code.endsWith('-left-out')
-          ? [issue.message]
-          : [],
-      );
+    : item.issues.flatMap((issue) => {
+        if (issue.code === 'markers-replaced')
+          return [issue.message + ' Check the new points and markers before playing the media again.'];
+        if (
+          issue.severity === 'error' ||
+          missingParts.has(issue.code) ||
+          (issue.severity === 'warning' && warningNotices.has(issue.code)) ||
+          issue.code.endsWith('-left-out')
+        )
+          return [issue.message];
+        return [];
+      });
   if (reasons.length === 0) return null;
+  const whole =
+    !refused &&
+    item.issues.some(
+      ({ code, severity }) =>
+        code === 'markers-replaced' || (severity === 'warning' && deckWarningNotices.has(code)),
+    );
 
   const filename = nameOf(item);
   const fix = item.issues.find(
@@ -167,6 +181,7 @@ function noticeFor(
     space?.kind === 'free-space' ? ` Free up ${formatBytes(space.neededBytes)} and try again.` : '';
   return {
     text: `“${filename}” · ${[...new Set(reasons)].join(' ')}${freeSpace}`,
+    ...(whole ? { whole: true as const } : {}),
     retry: retry && path && canRetry ? () => retry([path]) : undefined,
     findMissing: findMissing && missing.length > 0 ? () => findMissing(missing) : undefined,
   };
