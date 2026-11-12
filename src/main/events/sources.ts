@@ -19,6 +19,12 @@ export interface Emitted {
   kind: EventKind;
   data: Record<string, string | number | boolean | null>;
   words?: Record<string, string>;
+  /**
+   * Only to the addresses that asked for this kind's words: a click on a deck's slide Drashti plays itself, sent for
+   * the words it brings (W6's review L11). An address with ids only gets what it always did, one event as the slide
+   * goes up.
+   */
+  onlyWithWords?: true;
 }
 
 /**

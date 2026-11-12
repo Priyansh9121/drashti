@@ -224,40 +224,46 @@ describe('events from a deck’s slide Drashti plays itself', () => {
       words: { text },
     },
   ];
+  /** A click, sent again for its words: only to the addresses that asked for them (the lead, on the review's M1). */
+  const clicked = (step: number, text: string) =>
+    sent(step, text).map((e) => ({ ...e, onlyWithWords: true }));
 
-  it('sends only the words on the screens at the click showing, again at each click, Back’s too', () => {
-    // Coming in: the title and the box that goes at click 2; nothing of click 1's, no point of the list yet.
+  it('sends only the words on the screens at the click showing, again at each click for the words, Back’s too', () => {
+    // Coming in, for every address: the title and the box that goes at click 2; nothing of click 1's, no point of the
+    // list yet.
     expect(engineEvents(empty, at(0))).toEqual(
       sent(0, 'Placeholder title\nPlaceholder leaving at click two'),
     );
     // Click 1: its box and the list's first point come in; the second point is still to come.
     expect(engineEvents(at(0), at(1))).toEqual(
-      sent(
+      clicked(
         1,
         'Placeholder title\nPlaceholder leaving at click two\nPlaceholder in at click one\nPlaceholder first point',
       ),
     );
     // Click 2: the box that went is gone from the words too.
     expect(engineEvents(at(1), at(2))).toEqual(
-      sent(
+      clicked(
         2,
         'Placeholder title\nPlaceholder in at click one\nPlaceholder first point\nPlaceholder second point',
       ),
     );
     // Back to click 1: as the screens show it again.
     expect(engineEvents(at(2), at(1, { stepAt: 4000, stepFromMs: 200 }))).toEqual(
-      sent(
+      clicked(
         1,
         'Placeholder title\nPlaceholder leaving at click two\nPlaceholder in at click one\nPlaceholder first point',
       ),
     );
-    // Come back to from the slide after: shown again, at its last click.
-    expect(engineEvents(empty, at(2, { shownAt: 9000, stepAt: 9000 }))).toEqual(
-      sent(
-        2,
-        'Placeholder title\nPlaceholder in at click one\nPlaceholder first point\nPlaceholder second point',
-      ),
-    );
+    // Come back to from the slide after, or shown again from one of its own clicks: a new showing, for every address,
+    // at its last click.
+    for (const before of [empty, at(1)])
+      expect(engineEvents(before, at(2, { shownAt: 9000, stepAt: 9000 }))).toEqual(
+        sent(
+          2,
+          'Placeholder title\nPlaceholder in at click one\nPlaceholder first point\nPlaceholder second point',
+        ),
+      );
     // The same click shown settled (Back undoing a Next while it moved) changes no words: nothing is sent.
     expect(engineEvents(at(1), at(1, { stepAt: 3000, stepFromMs: 200 }))).toEqual([]);
   });
