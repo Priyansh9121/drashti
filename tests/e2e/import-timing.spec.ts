@@ -215,6 +215,16 @@ for (const p of PLACEHOLDERS.filter((x) => !real || x.kind === 'deck')) {
           .filter({ hasText: '1. Velora tamsin orvel' }),
       ).toBeVisible({ timeout: 10 * 60_000 });
       const editMs = Date.now() - editFrom;
+      if (p.kind === 'pdf' && p.count === 100) {
+        const last = editor.getByTestId('editor-slide-thumb').last();
+        await expect(last).toHaveAttribute('data-source-preparing', 'true');
+        await last.click();
+        await expect(editor.getByText('Preparing…', { exact: true })).toBeVisible();
+        await expect(
+          editor.getByTestId('editor-slide').locator('[data-element]').filter({ hasText: '100.' }),
+        ).toBeVisible();
+        await expect(last).not.toHaveAttribute('data-source-preparing', 'true');
+      }
       const row: Row = { ...steps, name: p.name, importMs, editMs };
       rows.push(row);
       console.log(`Import timing: ${JSON.stringify(row)}`);
