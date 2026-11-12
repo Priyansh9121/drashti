@@ -3,14 +3,19 @@ import { cutText } from './text';
 /*
  * A render error in one of Drashti's own windows (Session 23), as the window
  * reports it to the main process for the log. An output draws black when its
- * scene fails, and the main process reloads it once (src/main/watchdog.ts).
+ * scene fails, and the main process reloads it once (src/main/watchdog.ts). One
+ * in a page's GPU warm-up reloads nothing: the warm-up ended there, and the page
+ * draws the show (Session 57).
  */
 
 export interface RenderErrorReport {
   /** Which kind of window: output, operator, node, stream, gallery. */
   where: string;
-  /** Caught by an error boundary (the window drew its fallback), or not caught (React left the page empty). */
-  kind: 'caught' | 'uncaught';
+  /**
+   * Caught by an error boundary (the window drew its fallback), not caught (React left the page empty), or caught by
+   * the GPU warm-up's own boundary (Session 57: the warm-up ended there, and the page draws the show without it).
+   */
+  kind: 'caught' | 'uncaught' | 'warm-up';
   message: string;
   /** The error's stack and React's component stack, cut short. */
   stack: string | null;
@@ -44,7 +49,12 @@ export function parseRenderErrorReport(raw: unknown): RenderErrorReport | null {
   const text = (v: unknown, max: number) => (typeof v === 'string' ? cutText(v, max) : null);
   const where = text(r['where'], 40);
   const message = text(r['message'], 500);
-  if (where === null || message === null || (r['kind'] !== 'caught' && r['kind'] !== 'uncaught')) return null;
+  if (
+    where === null ||
+    message === null ||
+    (r['kind'] !== 'caught' && r['kind'] !== 'uncaught' && r['kind'] !== 'warm-up')
+  )
+    return null;
   return {
     where,
     kind: r['kind'],
