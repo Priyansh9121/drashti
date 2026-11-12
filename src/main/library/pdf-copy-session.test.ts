@@ -56,8 +56,9 @@ function setup(size = { width: 480, height: 320 }, picture = false, displayScale
       _signal: AbortSignal,
     ) => Promise.resolve(new Uint8Array(data)),
   );
+  const open = vi.fn(() => win as unknown as BrowserWindow);
   const session = new PdfCopySession({
-    open: () => win as unknown as BrowserWindow,
+    open,
     scaleFactor: () => displayScale,
     assetDirs: () => [],
     normalize,
@@ -80,7 +81,7 @@ function setup(size = { width: 480, height: 320 }, picture = false, displayScale
   const other = { id: 202 } as WebContents;
   const job = session.job(own);
   if (!job) throw new Error('The private generated job was not admitted.');
-  return { win, admission, normalize, session, signal, result, own, other, job };
+  return { win, open, admission, normalize, session, signal, result, own, other, job };
 }
 
 it('returns a phone picture only from Main’s capture of its owned hidden window, as its pixels, never encoded on Main', async () => {
@@ -111,6 +112,7 @@ it('returns a phone picture only from Main’s capture of its owned hidden windo
 
 it('draws a smaller native slide up to 1920 pixels on its long side', async () => {
   const s = setup({ width: 1280, height: 720 }, true);
+  expect(s.open).toHaveBeenCalledWith({ width: 1280, height: 720 });
   expect(s.job.picture).toMatchObject({ scale: 1.5 });
   expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
   expect(s.win.setContentSize).toHaveBeenCalledWith(1920, 1080);

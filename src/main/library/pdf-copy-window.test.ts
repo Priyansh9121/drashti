@@ -38,8 +38,6 @@ it('anchors the hidden capture at the display’s top-left before the window gro
   );
 });
 
-const openForPhone: (slide: { width: number; height: number }) => void = createPdfCopyWindow;
-
 it('uses the stable display scale for a 4:3 phone capture on a laptop above a 2× TV', () => {
   const tv = {
     id: 2,
@@ -54,7 +52,7 @@ it('uses the stable display scale for a 4:3 phone capture on a laptop above a 2�
     overlap(rect, primary.bounds) >= overlap(rect, tv.bounds) ? primary : tv,
   );
 
-  openForPhone({ width: 960, height: 720 });
+  createPdfCopyWindow({ width: 960, height: 720 });
   expect(makeWindow).toHaveBeenCalledWith(
     expect.objectContaining({ x: tv.bounds.x, y: tv.bounds.y, width: 320, height: 200, show: false }),
   );
@@ -64,8 +62,17 @@ it('keeps the original top-left when neither display keeps its scale on growth',
   const tv = { id: 2, bounds: { x: 24, y: 672, width: 1920, height: 1080 }, scaleFactor: 2 };
   getAllDisplays.mockReturnValue([primary, tv]);
   getDisplayMatching.mockImplementation((rect) => (rect.y === primary.bounds.y ? tv : primary));
-  openForPhone({ width: 960, height: 720 });
+  createPdfCopyWindow({ width: 960, height: 720 });
   expect(makeWindow).toHaveBeenCalledWith(
     expect.objectContaining({ x: primary.bounds.x, y: primary.bounds.y, show: false }),
   );
+});
+
+it('uses the same origin and scale on a single display for phone pictures and PDFs', () => {
+  createPdfCopyWindow({ width: 960, height: 720 });
+  expect(makeWindow).toHaveBeenCalledWith(
+    expect.objectContaining({ x: primary.bounds.x, y: primary.bounds.y, show: false }),
+  );
+  expect(getDisplayMatching).toHaveBeenCalledWith({ x: 24, y: -96, width: 1920, height: 1440 });
+  expect(getAllDisplays).not.toHaveBeenCalled();
 });
