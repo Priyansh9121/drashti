@@ -51,11 +51,15 @@ const RESET_LIVE = 'Take the video off before resetting this row.';
 
 function cutFailed(name: string, reason: string): string {
   const failed = `Drashti couldn’t make the cut of “${name}”.`;
-  if (reason.includes('2 GB free')) return `${failed} Free up some disk space, then open Trim and save it again.`;
+  if (reason.includes('2 GB free'))
+    return `${failed} Free up some disk space, then open Trim and save it again.`;
   if (reason.endsWith('Install Drashti again.')) return `${failed} Install Drashti again.`;
   if (reason.startsWith('Stopped: saving it took longer than '))
     return `${failed} It took too long. Choose a shorter part and save it again.`;
-  if (reason.startsWith('Drashti could not write in its own folder:') || reason.startsWith('Drashti could not save it there:'))
+  if (
+    reason.startsWith('Drashti could not write in its own folder:') ||
+    reason.startsWith('Drashti could not save it there:')
+  )
     return `${failed} Ask the admin to check Drashti’s media folder, then open Trim and save it again.`;
   return `${failed} Open Trim and save it again.`;
 }
@@ -65,7 +69,7 @@ function resetMarkerEdits(before: MediaMarkers, after: MediaMarkers): TrimMarker
   const changed = after.markers.filter((marker) => {
     const old = previous.get(marker.id);
     previous.delete(marker.id);
-    return !old || marker.atMs !== old.atMs || marker.name !== old.name;
+    return old?.atMs !== marker.atMs || old.name !== marker.name;
   });
   const removed = [...previous.keys()];
   return changed.length || removed.length ? { changed, removed } : undefined;
@@ -194,7 +198,10 @@ export class PlaylistTrims {
     if (this.deps.isLive(row.itemId, row.mediaId)) return { ok: false, message: RESET_LIVE };
     const reset = this.deps.repo.reset(row, edits);
     if (reset === 'too-many-markers')
-      return { ok: false, message: 'The original can hold up to 50 markers. Remove a marker and save again.' };
+      return {
+        ok: false,
+        message: 'The original can hold up to 50 markers. Remove a marker and save again.',
+      };
     if (reset === 'changed') return CHANGED;
     const pending = this.pending.get(row.itemId);
     if (pending) {
