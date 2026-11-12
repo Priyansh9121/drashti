@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { SHASTRA_SLOT, slotCategoryName } from '../../shared/playlists';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PLAYLIST_IDS_MAX, SHASTRA_SLOT, slotCategoryName } from '../../shared/playlists';
 import { type Db, openDatabase } from './database';
 import { PlaylistRepo } from './playlists';
 import { PresentationRepo } from './presentations';
@@ -213,6 +213,36 @@ describe('playlists the operator edits', () => {
     playlists.remove([folder]);
     expect(playlists.listsMedia('loop')).toBe(false);
     expect([folder, list].map((id) => playlists.kindOf(id))).toEqual(['folder', 'playlist']);
+  });
+
+  it('prepares its look-up of what an id is once, so a phone’s Undo of 1,000 playlists in Simple Mode makes one statement, not 1,000 (Session 57)', () => {
+    const folder = playlists.create('Placeholder week', null, true) ?? '';
+    const list = playlists.create('Placeholder sabha', folder, false) ?? '';
+    const template = playlists.create('Placeholder template', null, false, true) ?? '';
+    const deleted = playlists.create('Placeholder deleted', null, false) ?? '';
+    playlists.remove([deleted]);
+    const kinds: Record<string, 'folder' | 'playlist' | 'template'> = {
+      [folder]: 'folder',
+      [list]: 'playlist',
+      [template]: 'template',
+      [deleted]: 'playlist',
+    };
+    // As many ids as a phone's restore may send: each of the four above in turn, then one naming none.
+    const named = [folder, list, template, deleted];
+    const ids = Array.from({ length: PLAYLIST_IDS_MAX }, (_, i) => named[i % 5] ?? `nowhere-${i}`);
+    const expected = ids.map((id) => kinds[id] ?? null);
+    // A repo that has looked up no id yet, as Main's is at its first request.
+    const repo = new PlaylistRepo(db);
+    const prepare = vi.spyOn(db, 'prepare');
+    try {
+      expect(ids.map((id) => repo.kindOf(id))).toEqual(expected);
+      expect(prepare).toHaveBeenCalledTimes(1);
+      // The next request's look-ups prepare nothing more.
+      expect(ids.map((id) => repo.kindOf(id))).toEqual(expected);
+      expect(prepare).toHaveBeenCalledTimes(1);
+    } finally {
+      prepare.mockRestore();
+    }
   });
 
   it('hands the show engine what each item plays, and why the others are stepped over', () => {

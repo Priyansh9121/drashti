@@ -224,6 +224,12 @@ export interface OutputContext {
    * first audience group, and its screen's canvas (on a node, the node's own first); null with none.
    */
   hall?: HallPicture | null;
+  /**
+   * Chromium draws this computer's screens without a graphics chip (Session 57, main/outputs/warm-up-choice.ts):
+   * there is nothing for the GPU's warm-up to warm, so the screen draws the show without one. Absent with a chip,
+   * and until Chromium has said how it draws: then it warms up as before.
+   */
+  noGpu?: true;
 }
 
 /** What an output window says about how it draws (every few seconds). */

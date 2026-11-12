@@ -48,6 +48,7 @@ import { windowIcon } from '../windows/app-icon';
 import { pageAlive, sendToPage } from '../windows/send';
 import { loadPage } from '../windows/renderer';
 import { watchLoadFailures } from '../outputs/load-failures';
+import { followOutputs, type WarmUpChoices, warmUpFact } from '../outputs/warm-up-choice';
 import { secureWebPreferences } from '../windows/web-preferences';
 import { LinkClient, openMediaFromMain, pairWithMain } from './link-client';
 import { MediaCache } from './media-cache';
@@ -78,6 +79,8 @@ export interface NodeAppDeps {
   windowed: boolean;
   watchdog: RendererWatchdog;
   sleepGuard: SleepGuard;
+  /** Whether each output warms its graphics chip up (Session 57): not where Chromium draws without one. */
+  warmUps: WarmUpChoices;
   /** Tests only: this computer's clock as if it were this far off, to stand in for another computer's. */
   clockSkewMs: number;
   /** This computer's name (as Main lists the node, and its window says). */
@@ -379,6 +382,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       // A stage layout's audience picture box (Session 50): this node's own first audience screen's picture; with
       // none, Main's hall as Main sent it with this stage screen (Session 51), never every layer.
       hall: hallPictureOfScreens(paired?.screens ?? [], s.hall ?? null),
+      // No warm-up where Chromium draws without a graphics chip (Session 57), as on Main.
+      ...warmUpFact(deps.warmUps, outputWindows.get(screenId), outputNames.get(screenId) ?? 'an output'),
     };
   };
   const sendContexts = () => {
@@ -387,6 +392,11 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       if (context) sendToPage(win, IPC.output.context, context);
     }
   };
+  // An output open before Chromium said how it draws is sent its context again once it skips its warm-up (Session 57).
+  followOutputs(deps.warmUps, outputWindows, outputNames, (screenId, win) => {
+    const context = contextFor(screenId);
+    if (context) sendToPage(win, IPC.output.context, context);
+  });
   // Hung and stale outputs (Session 23; ../outputs/heartbeat.ts): as on Main, an output whose reports
   // stop, or stop showing the show, is crashed into the watchdog's reload.
   const heartbeat = new OutputHeartbeat({
@@ -452,6 +462,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         loadedSinceStopped.add(config.id);
       });
       window.on('closed', () => {
+        deps.warmUps.forget(h.webContentsId);
         if (outputWindows.get(config.id) === window) {
           outputWindows.delete(config.id);
           heartbeat.closed(config.id);
