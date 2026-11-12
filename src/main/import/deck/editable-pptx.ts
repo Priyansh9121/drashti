@@ -443,9 +443,12 @@ function paragraphNodes(chain: XmlNode[], paragraph: XmlNode, ctx: Context): Nod
   const levelName = `lvl${String(level + 1)}pPr`;
   const ph = placeholder(chain.at(-1));
   const type = attr(ph, 'type') ?? 'obj';
+  // A subtitle takes the master's body style, as PowerPoint draws it (its Title Slide layout turns that style's bullet
+  // and indent off for the subtitle). The "other" style is for the words no title or body style covers: a slide
+  // number's, a table's.
   const styleName = ['title', 'ctrTitle'].includes(type)
     ? 'titleStyle'
-    : ph && ['body', 'obj'].includes(type)
+    : ph && ['body', 'obj', 'subTitle'].includes(type)
       ? 'bodyStyle'
       : 'otherStyle';
   const masterStyle = child(child(ctx.master?.root, 'txStyles'), styleName);
@@ -903,11 +906,13 @@ function colourlessLine(chain: XmlNode[], props: Node[]): boolean {
   const lines = props.flatMap((item) => kids(item, 'ln'));
   return (
     lines.length > 0 &&
-    !lines.some((line) =>
-      kids(line).some((n) => ['noFill', 'solidFill', 'gradFill', 'pattFill'].includes(nameOf(n))),
-    ) &&
+    !lines.some(paintedLine) &&
     !chain.some((shape) => child(child(shape, 'style'), 'lnRef'))
   );
+}
+/** A line that says how it is painted, or that it isn't, rather than giving only its width. */
+function paintedLine(line: Node): boolean {
+  return kids(line).some((n) => ['noFill', 'solidFill', 'gradFill', 'pattFill'].includes(nameOf(n)));
 }
 interface SourcePaint {
   color: string | null;
@@ -1302,7 +1307,10 @@ async function tableObjects(
         const edge = { vertical, boundary, start, end };
         const direct = child(props, name);
         if (direct) {
-          addTableEdge(edges, { ...edge, outline: lineOutline(direct, ctx), priority: Infinity });
+          // The cell's own line wins over its table style's. One with a width but no colour draws nothing: Keynote
+          // writes a cell with no gridlines so, whatever its table style's borders.
+          const outline = paintedLine(direct) ? lineOutline(direct, ctx) : null;
+          addTableEdge(edges, { ...edge, outline, priority: Infinity });
           continue;
         }
         for (const region of regions) {
