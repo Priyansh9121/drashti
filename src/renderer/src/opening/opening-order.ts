@@ -59,3 +59,9 @@ export function stillAfterHold(f: Pick<StartFacts, 'waitedOut' | 'screensWarming
 export function photoWait(held: boolean, limitMs: number): number | null {
   return held ? null : limitMs;
 }
+
+/** Start the app underneath the opening once the black cover can draw. */
+export function afterCoverFrame(covered: () => void): () => void {
+  const frame = requestAnimationFrame(covered);
+  return () => cancelAnimationFrame(frame);
+}

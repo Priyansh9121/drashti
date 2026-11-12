@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { openingHolds, photoWait, stillAfterHold, type StartFacts, windowMayStart } from './opening-order';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  afterCoverFrame,
+  openingHolds,
+  photoWait,
+  stillAfterHold,
+  type StartFacts,
+  windowMayStart,
+} from './opening-order';
 
 /*
  * The order of Drashti's start under the opening (Session 57, item 6). On CI's Mac the window starting underneath took
@@ -34,6 +41,27 @@ describe('the window underneath', () => {
     expect(windowMayStart(covered)).toBe(true);
     // Under the screens' hold too, as before.
     expect(windowMayStart({ ...covered, screensWarming: true })).toBe(true);
+  });
+
+  it('starts within 100 ms even if a hidden window gets no animation frame', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 1),
+    );
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const covered = vi.fn();
+    const dispose = afterCoverFrame(covered);
+    try {
+      vi.advanceTimersByTime(99);
+      expect(covered).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(covered).toHaveBeenCalledOnce();
+    } finally {
+      dispose();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
   });
 
   it('starts at once when the opening ends, by a key or a click', () => {
