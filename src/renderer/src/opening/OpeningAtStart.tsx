@@ -1,8 +1,9 @@
-import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { OPENING_HOLD_MS, type OpeningEnd, type OpeningPlan } from '../../../shared/opening';
 import { motionOff } from '../ui/motion';
+import { openingHolds, stillAfterHold, type StartFacts, windowMayStart } from './opening-order';
 import { OpeningPlayer } from './OpeningPlayer';
 
 /*
@@ -13,19 +14,33 @@ import { OpeningPlayer } from './OpeningPlayer';
  * finger is up and its click has come. It never moves while the hall's screens are still getting ready (their warm-up
  * waits for frames on time): it holds, black, until the main process says they have all drawn, and plays still if that
  * takes longer than OPENING_HOLD_MS.
+ *
+ * The window starts underneath as soon as the opening's black covers it (Session 57, item 6; opening-order.ts), and
+ * the opening holds, black, until the window has opened (its controls drawn with their first data, the page then
+ * idle: ui/motion.ts), so its two seconds run with nothing starting under them: on CI's Mac the window's start had
+ * taken the main thread for a second at a time while it moved. That hold is OPENING_HOLD_MS at most too, and then it
+ * moves as it would.
  */
 
 /** Asked once a page (StrictMode's second effect, or a window loaded again, is told no by the main process anyway). */
 let asked: Promise<OpeningPlan | null> | null = null;
 
+/** Whether the window underneath has opened: its controls drawn with their first data, the page then idle (ui/motion.ts). */
+const windowOpen = () => document.documentElement.hasAttribute('data-opened');
+
 export function OpeningAtStart({ children }: { children: ReactNode }) {
-  const [appStarted, setAppStarted] = useState(false);
-  const startApp = useCallback(() => startTransition(() => setAppStarted(true)), []);
   const [plan, setPlan] = useState<OpeningPlan | null>(null);
   const [state, setState] = useState<'playing' | 'shield' | 'over'>('playing');
   /** Waiting for the hall's screens to draw (the plan's hold). */
-  const [held, setHeld] = useState(false);
+  const [screensWarming, setScreensWarming] = useState(false);
+  /** Its black has drawn its first frame over the window. */
+  const [covered, setCovered] = useState(false);
+  /** The window underneath seen to open (what it is now is read from the page as this renders). */
+  const [, setOpenedSeen] = useState(false);
+  /** It has held for OPENING_HOLD_MS. */
+  const [waitedOut, setWaitedOut] = useState(false);
   const screensUp = useRef(false);
+  const warming = useRef(false);
   const playing = useRef(false);
   const dismissed = useRef(false);
   const end = useRef<(how: OpeningEnd) => void>(() => undefined);
@@ -34,7 +49,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
     // Listened for before it is asked, so a word that comes with the answer is never missed.
     const off = window.drashti.opening.onScreens(() => {
       screensUp.current = true;
-      setHeld(false);
+      setScreensWarming(false);
     });
     asked ??= window.drashti.opening.atStart().catch(() => null);
     void asked.then((p) => {
@@ -49,7 +64,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
         end.current('key');
         return;
       }
-      setHeld(p.hold === true && !screensUp.current);
+      setScreensWarming(p.hold === true && !screensUp.current);
       setPlan(p);
     });
     return () => {
@@ -115,17 +130,31 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
   );
   // Still with reduced motion or Interface motion Off, as it starts, or as soon as either comes on while it plays.
   const [still, setStill] = useState(motionOff);
-  // The screens not drawn within OPENING_HOLD_MS: it plays still, so it never moves beside their warm-up.
   useEffect(() => {
-    if (!held) return;
+    warming.current = screensWarming;
+  });
+  // It holds OPENING_HOLD_MS at most; the screens not drawn by then, it plays still, so it never moves beside their
+  // warm-up (and stays still should they draw while it plays).
+  useEffect(() => {
+    if (!plan) return;
     const wait = setTimeout(() => {
-      setStill(true);
-      setHeld(false);
+      setWaitedOut(true);
+      if (stillAfterHold({ waitedOut: true, screensWarming: warming.current })) setStill(true);
     }, OPENING_HOLD_MS);
     return () => {
       clearTimeout(wait);
     };
-  }, [held]);
+  }, [plan]);
+  // The window underneath opening, seen as it happens.
+  useEffect(() => {
+    const watch = new MutationObserver(() => {
+      if (windowOpen()) setOpenedSeen(true);
+    });
+    watch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-opened'] });
+    return () => {
+      watch.disconnect();
+    };
+  }, []);
   useEffect(() => {
     if (!plan) return;
     const check = () => {
@@ -143,14 +172,26 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
       chosen.disconnect();
     };
   }, [plan]);
-  // During the intentional black hold, App can start as soon as the hold has covered the window.
+  // Its black over the window: the window starts underneath in the frame that draws it, never before (it would show).
   useEffect(() => {
-    if (!held) return;
-    const frame = requestAnimationFrame(startApp);
-    return () => cancelAnimationFrame(frame);
-  }, [held, startApp]);
+    if (!plan) return;
+    const frame = requestAnimationFrame(() => {
+      setCovered(true);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [plan]);
 
-  const mountApp = appStarted || state !== 'playing';
+  const facts: StartFacts = {
+    plan: plan ? 'plays' : state === 'over' ? 'none' : 'asking',
+    covered,
+    screensWarming,
+    windowOpened: windowOpen(),
+    waitedOut,
+    ended: state !== 'playing',
+  };
+  const mountApp = windowMayStart(facts);
   if (!plan || state === 'over') return <>{mountApp && children}</>;
   const cover = createPortal(
     <div
@@ -181,10 +222,10 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
         <OpeningPlayer
           plan={plan}
           still={still}
-          held={held}
+          held={openingHolds(facts)}
           className="absolute inset-0"
-          onFirstFrame={startApp}
-          coverWhilePreparing={appStarted}
+          // The window starts under its black: the black stays until the photo is ready.
+          coverWhilePreparing
           onDone={() => {
             end.current('itself');
           }}

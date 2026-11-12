@@ -12,9 +12,9 @@ import { openingSound, type OpeningSoundPlayer } from './opening-sound';
  * (reduced motion, or Interface motion Off): the photo comes and goes with a plain fade, nothing moving. With the
  * mandir's photo, the pack's sound plays gently beside it (opening-sound.ts), started with it.
  *
- * The photo and sound prepare together, including while the hall screens are getting ready. Once visible, the
- * compositor runs the opacity and transform tracks on one frame. Changing the motion setting cancels the zoom
- * without moving the end of the fade.
+ * The photo and sound prepare together, including while it holds (for the hall's screens, or at start for the window
+ * starting underneath: OpeningAtStart.tsx). Once visible, the compositor runs the opacity and transform tracks on one
+ * frame. Changing the motion setting cancels the zoom without moving the end of the fade.
  */
 
 /** The longest an unreadable photo can hold up the opening. */
@@ -71,7 +71,6 @@ export function OpeningPlayer({
   still,
   held = false,
   onDone,
-  onFirstFrame,
   coverWhilePreparing = false,
   className,
   testId = 'opening',
@@ -83,19 +82,17 @@ export function OpeningPlayer({
   held?: boolean;
   /** It played to its end (its fade done). */
   onDone?: () => void;
-  onFirstFrame?: () => void;
+  /** Black while its photo prepares (at start, over the window starting underneath), else nothing shown till then. */
   coverWhilePreparing?: boolean;
   className?: string;
   testId?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const done = useRef(onDone);
-  const firstFrame = useRef(onFirstFrame);
   const motion = useRef(still);
   const zoom = useRef<Animation | undefined>(undefined);
   useLayoutEffect(() => {
     done.current = onDone;
-    firstFrame.current = onFirstFrame;
     motion.current = still;
     if (still) {
       zoom.current?.cancel();
@@ -145,14 +142,9 @@ export function OpeningPlayer({
     const playing = animate(root, motion.current);
     zoom.current = playing.zoom;
     let cancelled = false;
-    let frame = 0;
     void playing.fade.ready
       .then(() => {
-        if (cancelled) return;
-        if (showPhoto) sound.current?.start();
-        frame = requestAnimationFrame(() => {
-          frame = requestAnimationFrame(() => firstFrame.current?.());
-        });
+        if (!cancelled && showPhoto) sound.current?.start();
       })
       .catch(() => undefined);
     void playing.fade.finished
@@ -162,7 +154,6 @@ export function OpeningPlayer({
       .catch(() => undefined);
     return () => {
       cancelled = true;
-      cancelAnimationFrame(frame);
       for (const animation of playing.out) animation.cancel();
       zoom.current = undefined;
     };
