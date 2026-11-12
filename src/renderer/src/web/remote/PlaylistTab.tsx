@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { PresentationDoc } from '../../../../shared/library';
+import { hasFolder, playlistFolders } from '../../../../shared/playlist-folders';
 import type { PlaylistItemInfo } from '../../../../shared/playlists';
 import { backgroundCueOf } from '../../../../shared/library';
 import { useEngine } from '../../engine/engine-store';
@@ -8,15 +9,18 @@ import { PreviewPicture } from '../../render/previews';
 import { SlideView } from '../../render/SlideView';
 import { groupDocId, groupName, type MiddleRow } from '../../playlists/rows';
 import { Badge, LiveBadge } from '../../ui/Badge';
+import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
-import { ChevronDown, ChevronRight, Image, Music, Video } from '../../ui/icons';
+import { ChevronDown, ChevronRight, Image, ListMusic, Music, Video } from '../../ui/icons';
 import { api } from '../device';
 import { tap } from '../taps';
 import { LookAtMedia } from '../viewer/LookCloser';
+import { openSheet } from './desktop-store';
 import { itemLine } from './item-line';
 import { longPressProps } from './long-press';
 import { phoneRows, rowTap } from './phone-rows';
 import { readDocsFor, toggleFolded, usePhoneTools } from './phone-tools-store';
+import { playlistPaths } from './playlist-paths';
 import { isRepeatPlaylist, repeatItemUp } from './repeat';
 import { RepeatStart } from './RepeatStart';
 import { openRowMenu } from './row-actions';
@@ -31,7 +35,7 @@ import { Wallpapers } from './Wallpapers';
  * and a row a slide under it, "<name>_N" with a small picture and a text slide's first line; a row each for a picture,
  * video, sound or video input (a picture or video looked at, or played, on this phone with the button beside it).
  * One tap puts a row up, LIVE marking the one up; a long press opens its menu (row-actions.ts). Under the rows the
- * wallpapers, as the window has them under its playlists (Part 6). In Simple Mode only Simple Mode's playlist.
+ * wallpapers, as the window has them under its playlists. In either mode the phone can open and manage playlists.
  */
 
 const post = (path: string, body: Record<string, unknown>) => () =>
@@ -275,20 +279,65 @@ function Rows({
   );
 }
 
+/** A playlist made from a folder can be browsed one folder at a time. */
+function FolderRows({ playlistId, items }: { playlistId: string; items: PlaylistItemInfo[] }) {
+  const [folder, setFolder] = useState('');
+  const view = useMemo(() => playlistFolders(items), [items]);
+  const path = hasFolder(view, folder) ? folder : '';
+  const rows = useMemo(
+    () => items.filter((item) => item.kind !== 'header' && view.folderOf.get(item.id) === path),
+    [items, view, path],
+  );
+  return (
+    <>
+      {view.folders.length > 0 && (
+        <label className="block space-y-1 text-base text-muted">
+          <span>Folder in this playlist</span>
+          <select
+            className="h-12 w-full rounded-lg border border-field bg-panel-2 px-3 text-base text-fg"
+            value={path}
+            data-testid="remote-playlist-folder"
+            onChange={(e) => setFolder(e.target.value)}
+          >
+            <option value="">Top folder</option>
+            {view.folders.map((child) => (
+              <option key={child.path} value={child.path}>
+                {child.path}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <Rows playlistId={playlistId} items={rows} repeat={false} />
+    </>
+  );
+}
+
 export function PlaylistTab() {
   const playlists = useRemote((s) => s.playlists);
   const playlistId = useRemote((s) => s.playlistId);
   const items = useRemote((s) => s.items);
-  const simple = useSimple();
   const repeat = useRemote((s) => isRepeatPlaylist(s.playlists, s.playlistId));
-  // In Simple Mode only its one playlist is offered (Part 9; its window shows that one alone).
-  const offered = simple ? (playlists ?? []).filter((p) => p.id === simple.playlistId) : (playlists ?? []);
+  const paths = useMemo(() => playlistPaths(playlists ?? []), [playlists]);
+  const offered = (playlists ?? []).filter((p) => !p.isFolder);
+  const open = offered.find((p) => p.id === playlistId);
+  const byFolder = open?.kind === 'smart' || open?.fromFolder === true;
   return (
     <div className="space-y-6">
       <section className="space-y-3" aria-labelledby="playlist-title">
-        <h2 id="playlist-title" className="text-base font-bold tracking-wider text-muted uppercase">
-          Playlist
-        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 id="playlist-title" className="flex-1 text-base font-bold tracking-wider text-muted uppercase">
+            Playlist
+          </h2>
+          <Button
+            size="lg"
+            icon={ListMusic}
+            data-testid="remote-open-playlists"
+            onClick={() => openSheet('playlists')}
+          >
+            Manage playlists…
+          </Button>
+        </div>
         {playlists && offered.length > 0 ? (
           <select
             aria-label="Which playlist"
@@ -299,14 +348,13 @@ export function PlaylistTab() {
           >
             {offered.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {paths.get(p.id) ?? p.name}
+                {p.kind === 'smart' ? ' · Smart playlist' : ''}
               </option>
             ))}
           </select>
         ) : playlists ? (
-          <p className="text-base text-muted">
-            There are no playlists yet: they are made in Drashti on the computer, in Pro Mode.
-          </p>
+          <p className="text-base text-muted">Choose Manage playlists… to make a playlist.</p>
         ) : (
           <p role="status" className="text-base text-muted">
             Loading the playlists…
@@ -315,7 +363,11 @@ export function PlaylistTab() {
         {repeat && playlistId && <RepeatStart playlistId={playlistId} />}
         <UndoLine where="rows" testId="remote-rows-undo" />
         {playlistId && items ? (
-          <Rows playlistId={playlistId} items={items} repeat={repeat} />
+          byFolder ? (
+            <FolderRows key={playlistId} playlistId={playlistId} items={items} />
+          ) : (
+            <Rows playlistId={playlistId} items={items} repeat={repeat} />
+          )
         ) : (
           <ul data-testid="remote-items" />
         )}

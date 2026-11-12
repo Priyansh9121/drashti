@@ -426,7 +426,7 @@ test('Simple Mode’s bar moves, pauses and plays what plays as Pro Mode’s (no
 });
 
 for (const engine of ['chromium', 'webkit'] as Engine[]) {
-  test(`the phone’s bar (${engine}): the same rows under its live picture; a tap or a drag moves what plays in step on the screen, Pause and Play too; Simple Mode shows a read-only bar and disabled Pause, refuses scripted move and Pause with 403, and lets Play resume`, async () => {
+  test(`the phone’s bar (${engine}): the same rows under its live picture; a tap or a drag moves what plays in step on the screen, Pause and Play too; Simple Mode also allows Pause, Play and moving`, async () => {
     test.setTimeout(180_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -461,7 +461,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
-      // A paired script still tests the server's refusals when Part 9 no longer offers those actions on the phone.
+      // A paired script also checks the same move through the HTTP route.
       // Generated at run time, kept in memory and never printed, as in simple-phone.spec.ts.
       const script = await pairToken(win, port, 'remote', 'Placeholder time-bar script');
       const playing = p.getByTestId('remote-time-bars');
@@ -509,8 +509,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
       await inStep(copies, () => backgroundTiming(win), 'played on from the phone');
 
-      // Simple Mode on the computer, the video left paused: Part 9's phone shows why once and offers only Play.
-      // The bar is read-only and Pause is disabled; a paired script asking anyway still gets a refusal in words.
+      // The same bar in Simple Mode, with the video still paused across the change.
       await row.getByRole('button', { name: 'Pause' }).click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
       await win
@@ -519,47 +518,37 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
         .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode on Drashti’s computer');
-      const simpleBar = row.getByRole('progressbar', { name: 'Time of the background video', exact: true });
+      const simpleBar = row.getByRole('slider', { name: 'Time of the background video', exact: true });
       await expect(simpleBar).toBeVisible();
-      await expect(row.getByRole('slider')).toHaveCount(0);
-      await expect(row.getByRole('button', { name: 'Play' })).toBeEnabled();
-      const seek = (await backgroundTiming(win)).seek;
-      await clickAlong(p, simpleBar, 0.9);
-      expect((await backgroundTiming(win)).seek).toEqual(seek);
-      const refusedMove = await apiCall(port, '/api/v1/playing/move', {
+      const simpleBox = await simpleBar.boundingBox();
+      if (!simpleBox) throw new Error('The phone’s Simple Mode time bar is missing.');
+      await simpleBar.click({ position: { x: simpleBox.width * 0.7, y: simpleBox.height / 2 } });
+      await expect
+        .poll(async () => Math.abs(((await backgroundTiming(win)).seek?.toMs ?? 0) - durationMs * 0.7))
+        .toBeLessThan(200);
+      expect((await backgroundTiming(win)).seek?.paused).toBe(true);
+      const moved = await apiCall(port, '/api/v1/playing/move', {
         method: 'POST',
         token: script,
-        body: { playing: { layer: 'background' }, toMs: Math.round(durationMs * 0.9) },
+        body: { playing: { layer: 'background' }, toMs: Math.round(durationMs * 0.5) },
       });
-      // In the phone's own words since Session 56: Simple Mode's window moves and pauses what plays, a phone does not.
-      expect(refusedMove.status).toBe(403);
-      expect(refusedMove.json).toMatchObject({
-        ok: false,
-        error: 'forbidden',
-        message: expect.stringContaining('Simple Mode on Drashti’s computer'),
-      });
-      expect((await backgroundTiming(win)).seek).toEqual(seek);
+      expect(moved.status).toBe(200);
+      await expect
+        .poll(async () => (await backgroundTiming(win)).seek)
+        .toMatchObject({
+          toMs: Math.round(durationMs * 0.5),
+          paused: true,
+        });
+      await heldAt(copies, (durationMs * 0.5) / 1000, 'moved while paused in Simple Mode');
       await row.getByRole('button', { name: 'Play' }).click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
       await inStep(copies, () => backgroundTiming(win), 'played on from the phone in Simple Mode');
-      await expect(row.getByRole('button', { name: 'Pause' })).toBeDisabled();
-      const playedOn = (await backgroundTiming(win)).seek;
-      const refusedPause = await apiCall(port, '/api/v1/playing/pause', {
-        method: 'POST',
-        token: script,
-        body: { playing: { layer: 'background' } },
-      });
-      expect(refusedPause.status).toBe(403);
-      expect(refusedPause.json).toMatchObject({
-        ok: false,
-        error: 'forbidden',
-        message: expect.stringContaining('Simple Mode on Drashti’s computer'),
-      });
-      expect((await backgroundTiming(win)).seek).toEqual(playedOn);
-      await inStep(
+      await row.getByRole('button', { name: 'Pause' }).click();
+      await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
+      await heldAt(
         copies,
-        () => backgroundTiming(win),
-        'still playing in step after Simple Mode refused Pause',
+        ((await backgroundTiming(win)).seek?.toMs ?? 0) / 1000,
+        'paused from the phone in Simple Mode',
       );
     } finally {
       await phone.close();

@@ -5,13 +5,15 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
+import type * as FsPromises from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { IPC } from '../../shared/ipc';
 import { DEFAULT_LINK_MAX_HEIGHT, type LinkHeight, type LinkView } from '../../shared/links';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
@@ -52,6 +54,40 @@ const ZIP = makeZip([
   { name: 'Read me.txt', data: 'placeholder words' },
 ]);
 
+const probe = vi.hoisted(() => ({
+  pause: null as Promise<void> | null,
+  denyRemoval: false,
+  path: null as string | null,
+  removed: false,
+}));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof FsPromises>();
+  return {
+    ...actual,
+    async writeFile(...args: Parameters<typeof actual.writeFile>) {
+      const [path, data] = args;
+      if (
+        (probe.pause || probe.denyRemoval) &&
+        typeof path === 'string' &&
+        data === '' &&
+        path.includes('.drashti-download-') &&
+        path.endsWith('.part')
+      ) {
+        probe.path = path;
+        if (probe.pause) await probe.pause;
+      }
+      await actual.writeFile(...args);
+    },
+    async rm(...args: Parameters<typeof actual.rm>) {
+      if (args[0] === probe.path && probe.denyRemoval)
+        throw Object.assign(new Error('Placeholder file is still in use.'), { code: 'EBUSY' });
+      await actual.rm(...args);
+      if (args[0] === probe.path) probe.removed = true;
+    },
+  };
+});
+
 let server: Server | null = null;
 let requests = 0;
 /** What the stand-in serves for a folder link (the plain zip unless a test says otherwise). */
@@ -88,6 +124,10 @@ async function standIn(): Promise<string> {
 }
 
 afterEach(async () => {
+  probe.pause = null;
+  probe.denyRemoval = false;
+  probe.path = null;
+  probe.removed = false;
   folderZip = ZIP;
   const s = server;
   server = null;
@@ -172,6 +212,7 @@ async function harness(over: Partial<LinkServiceDeps> = {}): Promise<Harness> {
     spawn: inProcessWorker,
     onAir: () => air.on,
     freeBytes: () => 100 * 1024 ** 3,
+    freeBytesAsync: (folder) => Promise.resolve(over.freeBytes?.(folder) ?? 100 * 1024 ** 3),
     defaultFolder: join(root, 'Drashti downloads'),
     lastFolder: { get: () => folder, set: () => undefined },
     pickFolder: () => Promise.resolve(null),
@@ -216,6 +257,46 @@ const files = (dir: string): string[] =>
     .sort();
 
 describe('Import from a Link: Dropbox', () => {
+  it('keeps Stop available while checking the saved folder, and does not start a stopped download', async () => {
+    const { workers, spawn } = controlledWorkers();
+    const { service } = await harness({ spawn });
+    let release = (): void => undefined;
+    probe.pause = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    try {
+      expect(service.start(FILE_LINK, false, false).ok).toBe(true);
+      workers[0]?.send({ type: 'looked', name: 'Placeholder clip.mp4', size: VIDEO.length, zip: false });
+      expect(probe.path).toEqual(expect.any(String));
+      expect(workers).toHaveLength(1);
+      expect(service.view().phase).toBe('looking');
+      expect(service.stop()).toMatchObject({ ok: true, view: { phase: 'stopped' } });
+      release();
+      await until(() => probe.removed);
+      expect(workers).toHaveLength(1);
+      expect(service.view()).toMatchObject({ phase: 'stopped', saved: null });
+    } finally {
+      release();
+      service.close();
+    }
+  });
+
+  it('uses the saved folder when the probe writes and its removal is temporarily refused', async () => {
+    probe.denyRemoval = true;
+    const { service, folder, record } = await harness();
+    try {
+      expect(service.start(FILE_LINK, false, false).ok).toBe(true);
+      await until(() => ['done', 'failed'].includes(service.view().phase));
+      expect(service.view()).toMatchObject({ phase: 'done', folderFallback: false, saved: { folder } });
+      expect(probe.path).toEqual(expect.any(String));
+      expect(JSON.parse(readFileSync(record, 'utf8'))).toEqual([probe.path]);
+      expect(readFileSync(join(folder, 'Placeholder clip.mp4'))).toEqual(VIDEO);
+    } finally {
+      service.close();
+    }
+  });
+
   it.each(['missing', 'unwritable'] as const)(
     'saves in the usual folder when the saved folder is %s',
     async (problem) => {
@@ -242,14 +323,19 @@ describe('Import from a Link: Dropbox', () => {
         saved: { folder: fallback },
       });
       expect(files(fallback)).toEqual(['Placeholder clip.mp4']);
-      expect(remembered).toBe(fallback);
+      expect(remembered).toBe(previous);
       if (problem === 'missing') expect(existsSync(previous)).toBe(false);
-      else expect(readFileSync(previous, 'utf8')).toBe('placeholder');
+      else {
+        expect(readFileSync(previous, 'utf8')).toBe('placeholder');
+        rmSync(previous);
+      }
+      mkdirSync(previous);
 
       expect(service.start(FILE_LINK, false, false).ok).toBe(true);
       await until(() => service.view().phase === 'done');
-      expect(service.view().folder).toBe(fallback);
-      expect(service.view()).toMatchObject({ folderFallback: false });
+      expect(service.view()).toMatchObject({ folderFallback: false, saved: { folder: previous } });
+      expect(files(previous)).toEqual(['Placeholder clip.mp4']);
+      expect(files(fallback)).toEqual(['Placeholder clip.mp4']);
     },
   );
 
@@ -299,6 +385,7 @@ describe('Import from a Link: Dropbox', () => {
     const h = await harness({ spawn });
     expect(h.service.start(FILE_LINK, false, false).ok).toBe(true);
     workers[0]?.send({ type: 'looked', name: 'Placeholder clip.mp4', size: VIDEO.length, zip: false });
+    await until(() => workers[1]?.messages.some((message) => message.type === 'download') === true);
     const job = workers[1]?.messages.find((message) => message.type === 'download');
     if (!job) throw new Error('The automatic download did not start');
     writeFileSync(job.part, VIDEO);
