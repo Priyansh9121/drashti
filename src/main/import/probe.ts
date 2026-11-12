@@ -400,7 +400,7 @@ export function unplayableIssue(name: string, probe: MediaProbe, mediaId: string
   return {
     severity: 'warning',
     code: 'unplayable-media',
-    message: `Drashti cannot ${probe.kind === 'image' ? 'show' : 'play'} ${name} as it is: ${probe.format}. Convert it here (in the report, or in the media list).`,
+    message: `Drashti cannot ${probe.kind === 'image' ? 'show' : 'play'} ${name} as it is: ${probe.format}. Convert it in Media.`,
     fix: { kind: 'convert-media', mediaId, advice: unplayableAdvice(probe) },
   };
 }
@@ -421,8 +421,24 @@ export function convertingIssue(name: string, probe: MediaProbe, mediaId: string
 /** The report's lines for a media file as the import stored it: none when it plays (Session 50). */
 export function playIssues(
   name: string,
-  stored: { probe: MediaProbe; mediaId: string; convert?: boolean },
+  stored: { probe: MediaProbe; mediaId: string; convert?: boolean; maxHeight?: number },
 ): ImportIssue[] {
+  if (stored.maxHeight !== undefined) {
+    const height = String(stored.maxHeight);
+    return [
+      {
+        severity: 'info',
+        code: 'converting-media',
+        message: `Drashti will make a copy of ${name} at up to ${height}p when the show, stream and recording are idle.`,
+        fix: {
+          kind: 'convert-media',
+          mediaId: stored.mediaId,
+          advice: `Make a copy at up to ${height}p.`,
+          maxHeight: stored.maxHeight,
+        },
+      },
+    ];
+  }
   if (stored.convert) return [convertingIssue(name, stored.probe, stored.mediaId)];
   return stored.probe.playable === false ? [unplayableIssue(name, stored.probe, stored.mediaId)] : [];
 }
