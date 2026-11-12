@@ -189,6 +189,9 @@ it('names the old fonts an import met in one line, each font once, with nothing 
   // An old font is installed, never tried again or looked for: no Try again, no Find….
   expect(fonts?.retry).toBeUndefined();
   expect(fonts?.findMissing).toBeUndefined();
+  // Drawn whole, so every font can be read (ImportNoticeLine); a file's own line stays one line.
+  expect(fonts?.whole).toBe(true);
+  expect(missing?.whole).toBeUndefined();
   expect(missing?.findMissing).toBeTypeOf('function');
   expect(damaged?.retry).toBeTypeOf('function');
 });
@@ -226,7 +229,7 @@ it('keeps every refused file’s Try again in the four lines shown, however many
   expect(notices.slice(0, 4).filter((notice) => notice.retry !== undefined)).toHaveLength(3);
 });
 
-it('says each old font once in the notices: a later line naming every font of an earlier one, in any case, takes its place', () => {
+it('a later old-fonts line naming every font of an earlier one, in any case, takes its place; one naming another font leaves it', () => {
   const texts = () => useImportNotices.getState().notices.map((notice) => notice.text);
   showImportFailures(reportOf([deckOf('Placeholder Hymn', [oldFont('Placeholder Gopika')])]));
   showImportNotice('Placeholder notice in between.');
