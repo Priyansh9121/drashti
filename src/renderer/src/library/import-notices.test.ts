@@ -183,7 +183,7 @@ it('keeps every refused file’s Try again in the four lines shown, however many
   expect(notices.slice(0, 4).filter((notice) => notice.retry !== undefined)).toHaveLength(3);
 });
 
-it('says each old font once in the notices: a later line naming every font of an earlier one, in any case, takes its place', () => {
+it('a later old-fonts line naming every font of an earlier one, in any case, takes its place; one naming another font leaves it', () => {
   const texts = () => useImportNotices.getState().notices.map((notice) => notice.text);
   showImportFailures(reportOf([deckOf('Placeholder Hymn', [oldFont('Placeholder Gopika')])]));
   showImportNotice('Placeholder notice in between.');
