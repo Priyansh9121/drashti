@@ -5011,13 +5011,14 @@ function start(): void {
       snapshot: () => withoutCaptions(engine.snapshot()),
       state: () => stateWithoutCaptions(engine.current),
     },
-    nativeSlidePicture: async (slide, looks, current) => {
+    nativeSlidePicture: async (slide, looks, current, signal) => {
       const stop = new AbortController();
       const off = engine.onChange(() => {
         if (!current()) stop.abort();
       });
       try {
-        return await pdfCopies.picture(slide, looks, current, stop.signal);
+        // Stopped by an engine change it must not run through, or at the end of its time (network/slide-picture.ts).
+        return await pdfCopies.picture(slide, looks, current, AbortSignal.any([signal, stop.signal]));
       } finally {
         off();
       }
