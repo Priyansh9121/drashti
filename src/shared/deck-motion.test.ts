@@ -248,13 +248,18 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
     expect(at(300, [bounce])).toMatchObject({ y: 0, moving: false });
   });
 
-  it('eases a smooth start and end as SMIL does, ending on time', () => {
-    expect(smoothedProgress(0.5, 0, 1)).toBe(0.75);
-    expect(smoothedProgress(0.5, 1, 0)).toBe(0.25);
-    expect(smoothedProgress(0.25, 0.5, 0.5)).toBe(0.125);
+  it('eases a smooth start and end as PowerPoint does, its speed rising and falling along half-cosines, ending on time', () => {
+    // A smooth end over the whole effect, half-way: 1/2 + 1/π of the way (SMIL's straight ramp would be 3/4).
+    expect(smoothedProgress(0.5, 0, 1)).toBeCloseTo(0.5 + 1 / Math.PI, 12);
+    expect(smoothedProgress(0.5, 1, 0)).toBeCloseTo(0.5 - 1 / Math.PI, 12);
+    expect(smoothedProgress(0.25, 0.5, 0.5)).toBeCloseTo(0.25 - 0.5 / Math.PI, 12);
+    // The even middle, at the speed that makes up for the ramps.
+    expect(smoothedProgress(0.5, 0.25, 0.25)).toBeCloseTo(0.5, 12);
+    expect(smoothedProgress(0.3, 0.25, 0.5)).toBeCloseTo(1.6 * (0.3 - 0.125), 12);
     expect(smoothedProgress(1, 0.5, 0.5)).toBe(1);
+    expect(smoothedProgress(0, 0.5, 0.5)).toBe(0);
     const fly: DeckEffect = { ...effect, kind: 'fly', direction: 'up', decel: 1 };
-    expect(at(187.5, [fly]).y).toBe(245);
+    expect(at(187.5, [fly]).y).toBeCloseTo(980 * (0.5 - 1 / Math.PI), 9);
   });
 });
 
