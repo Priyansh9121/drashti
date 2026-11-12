@@ -6,10 +6,12 @@ import { join } from 'node:path';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { dropboxStandIn, fileLink, type StandIn } from './dropbox-stand-in';
+import { dropPaths } from './folder-drop';
 import type { PageGlobals } from './helpers';
 import {
   chooseMenuItem,
   closeLibrary,
+  dropFiles,
   launchApp,
   openLibrary,
   operatorPage,
@@ -22,8 +24,10 @@ import { makeTestImage } from './test-media';
 /*
  * Session 26a step 6: the preview headed LIVE, with no Next under it (the
  * stage screen and the remote keep theirs); Edit layout… on the stage
- * screen's panel; and imports added to the open playlist. Links use a Dropbox
- * stand-in and a fake yt-dlp. Placeholder files and made-up links only.
+ * screen's panel; and imports added to the open playlist, but for the
+ * library's own drop place and Import…, which bring them into the library
+ * only (Q57-11, the owner, 12 Nov 2026). Links use a Dropbox stand-in and a
+ * fake yt-dlp. Placeholder files and made-up links only.
  */
 
 const FAKE_YT_DLP = join(__dirname, 'fake-yt-dlp.cjs');
@@ -33,6 +37,26 @@ const labels = (win: Page) =>
   win
     .getByTestId('playlist-item')
     .evaluateAll((els) => els.map((e) => e.querySelector('[data-label]')?.textContent.trim() ?? ''));
+
+/** The library's media and presentations, by name. */
+const mediaNames = (win: Page) =>
+  win.evaluate(async () =>
+    (await (globalThis as PageGlobals).drashti.library.listMedia()).map((item) => item.name),
+  );
+const presentationNames = (win: Page) =>
+  win.evaluate(async () =>
+    (await (globalThis as PageGlobals).drashti.library.listPresentations()).map((item) => item.name),
+  );
+
+/** The open playlist's whole order, as kept (Session 44: the window shows it a folder at a time). */
+const shown = (win: Page) =>
+  win.evaluate(async () => {
+    const open = document.querySelector('[data-testid="playlist-node"][data-open="true"]');
+    const all = await (globalThis as PageGlobals).drashti.playlists.items(
+      open?.getAttribute('data-node-id') ?? '',
+    );
+    return all.map((i) => (i.kind === 'header' ? `# ${i.label}` : i.label));
+  });
 
 async function playlists(win: Page, names: string[]): Promise<string[]> {
   return win.evaluate(async (list) => {
@@ -87,7 +111,7 @@ test('the preview is headed LIVE with no Next under it; Edit layout… opens the
   await app.close();
 });
 
-test('Files… puts both pictures in the open playlist and library, with Undo for the playlist rows', async () => {
+test('the library’s Import › Files… and a drop on its list bring pictures into the library only, never the open playlist (Q57-11); dropped on the window they go into the open playlist too, with Undo for its rows', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -97,27 +121,38 @@ test('Files… puts both pictures in the open playlist and library, with Undo fo
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Sunday' }).click();
   await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder Sunday');
 
+  // Each its own colour: the library keeps one copy of the same picture.
   const a = await makeTestImage(win, join(dir, 'Placeholder A.png'), { color: '#1e3a8a' });
   const b = await makeTestImage(win, join(dir, 'Placeholder B.png'), { color: '#7c2d12' });
+  const c = await makeTestImage(win, join(dir, 'Placeholder C.png'), { color: '#365314' });
+  const d = await makeTestImage(win, join(dir, 'Placeholder D.png'), { color: '#581c87' });
   await app.evaluate(
     ({ dialog }, files) => {
       dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: files });
     },
     [a, b],
   );
+  // The library's Import… › Files…, then a picture dropped on its list: each into the library.
   await openLibrary(win);
   await win.getByTestId('library-sheet').getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'Files…' }).click();
-  await expect.poll(() => labels(win)).toEqual(['Placeholder A.png', 'Placeholder B.png']);
+  await expect
+    .poll(() => mediaNames(win))
+    .toEqual(expect.arrayContaining(['Placeholder A.png', 'Placeholder B.png']));
+  await dropFiles(win, win.getByTestId('library-drop'), [c]);
+  await expect.poll(() => mediaNames(win)).toContain('Placeholder C.png');
+  // A picture dropped on the window (on LIVE) goes into the open playlist too, and it alone: what came in through
+  // the library never does.
+  await dropFiles(win, win.getByTestId('live-preview'), [d], { overlay: false });
+  await expect.poll(() => labels(win)).toEqual(['Placeholder D.png']);
   await expect(win.getByTestId('import-report')).toHaveCount(0);
   await expect(win.getByTestId('import-result').getByRole('button', { name: 'Report' })).toHaveCount(0);
   await closeLibrary(win);
   await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/ }).click();
   await expect.poll(() => labels(win)).toEqual([]);
-  const media = await win.evaluate(async () =>
-    (await (globalThis as PageGlobals).drashti.library.listMedia()).map((item) => item.name),
+  expect(await mediaNames(win)).toEqual(
+    expect.arrayContaining(['Placeholder A.png', 'Placeholder B.png', 'Placeholder C.png', 'Placeholder D.png']),
   );
-  expect(media).toEqual(expect.arrayContaining(['Placeholder A.png', 'Placeholder B.png']));
   await app.close();
 });
 
@@ -169,14 +204,16 @@ test('a Dropbox file link, and a YouTube download, each land in the open playlis
   await app.close();
 });
 
-test('a folder imported with Import › A Folder… goes into the open playlist in its folders’ order, with headers (Session 26c)', async () => {
+test('a folder imported with the library’s Import › A Folder… comes into the library only, never the open playlist (Q57-11); a folder of lyrics dropped on the open playlist goes into it in its folders’ order, with headers (Session 26c)', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
   await win.setViewportSize({ width: 1280, height: 720 });
   await playlists(win, ['Placeholder Sabha']);
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Sabha' }).click();
-  const root = join(mkdtempSync(join(tmpdir(), 'drashti-add-folder-')), 'Placeholder Sabha');
+  await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder Sabha');
+  const work = mkdtempSync(join(tmpdir(), 'drashti-add-folder-'));
+  const root = join(work, 'Placeholder Sabha');
   for (const sub of ['', 'Week 2', 'Week 10/Deep']) mkdirSync(join(root, sub), { recursive: true });
   await makeTestImage(win, join(root, 'b cover.png'), { color: '#1e3a8a' });
   await makeTestImage(win, join(root, 'A cover.png'), { color: '#7c2d12' });
@@ -189,28 +226,27 @@ test('a folder imported with Import › A Folder… goes into the open playlist 
   await openLibrary(win);
   await win.getByTestId('library-sheet').getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'A Folder…' }).click();
+  // Its pictures and its words, into the library.
+  await expect
+    .poll(() => mediaNames(win))
+    .toEqual(expect.arrayContaining(['A cover.png', 'b cover.png', 'Darshan.png', 'Late.png']));
+  await expect.poll(() => presentationNames(win)).toContain('Placeholder words');
   await closeLibrary(win);
   await expect(win.getByTestId('import-report')).toHaveCount(0);
-  // The playlist's whole order, as kept (Session 44: the window shows it a folder at a time).
-  const shown = () =>
-    win.evaluate(async () => {
-      const open = document.querySelector('[data-testid="playlist-node"][data-open="true"]');
-      const all = await (globalThis as PageGlobals).drashti.playlists.items(
-        open?.getAttribute('data-node-id') ?? '',
-      );
-      return all.map((i) => (i.kind === 'header' ? `# ${i.label}` : i.label));
-    });
-  // Folder by folder, depth first, A→Z with numbers in order (2 before 10), presentations before pictures.
+
+  // A folder of only lyrics (no smart playlist follows lyrics) dropped on the open playlist goes into it, and it
+  // alone: the folder imported through the library never does.
+  const lyrics = join(work, 'Placeholder Lyrics');
+  for (const sub of ['', 'Week 2', 'Week 10/Deep']) mkdirSync(join(lyrics, sub), { recursive: true });
+  writeFileSync(join(lyrics, 'b verse.txt'), 'Placeholder verse b\n');
+  writeFileSync(join(lyrics, 'A verse.txt'), 'Placeholder verse a\n');
+  writeFileSync(join(lyrics, 'Week 2', 'Second week.txt'), 'Placeholder second week\n');
+  writeFileSync(join(lyrics, 'Week 10', 'Deep', 'Late words.txt'), 'Placeholder late words\n');
+  await dropPaths(win, win.getByTestId('open-playlist'), [lyrics]);
+  // Folder by folder, depth first, A→Z with numbers in order (2 before 10), a header before each subfolder's part.
   await expect
-    .poll(shown)
-    .toEqual([
-      'A cover.png',
-      'b cover.png',
-      '# Week 2',
-      'Placeholder words',
-      'Darshan.png',
-      '# Week 10 › Deep',
-      'Late.png',
-    ]);
+    .poll(() => shown(win))
+    .toEqual(['A verse', 'b verse', '# Week 2', 'Second week', '# Week 10 › Deep', 'Late words']);
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
   await app.close();
 });
