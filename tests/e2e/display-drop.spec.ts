@@ -1,7 +1,7 @@
 import type { ElectronApplication } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import { launchApp, operatorPage, outputPage, outputReady, setUpScreen } from './helpers';
 
 /*
  * A display that drops for a moment (Sessions 31–36, ROB-4): projectors and HDMI converters often do as
@@ -44,6 +44,9 @@ test('a display that drops for a moment keeps its output: hidden, then back on i
     )
     .toBe('Extra display 1');
   const output = await outputPage(app);
+  // Ready to draw the show (its fonts in, its GPU warmed up: Session 27) before the slide is waited for: on a
+  // fresh CI Mac that took longer than the 10 s the words get (Session 57: a job's first test).
+  await outputReady(output);
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const first = (await d.library.listPresentations())[0]?.id ?? '';

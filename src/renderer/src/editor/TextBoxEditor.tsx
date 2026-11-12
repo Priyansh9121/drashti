@@ -164,7 +164,10 @@ function listDecorations(doc: PMNode, el: TextElement): DecorationSet {
     if (!attrs.list && !first.paragraph) return;
     const size = first.size ?? el.style.fontSize;
     const line = drawn?.mark.mark ? drawn.mark : { mark: attrs.list, level: attrs.level, label: null };
-    const style = paragraphLineStyle(line, size, first.paragraph);
+    const style = paragraphLineStyle(line, size, first.paragraph, {
+      before: !continued && (el.style.spaceAtTextEdges === true || i > 0),
+      after: !attrs.brk?.softBreak && (el.style.spaceAtTextEdges === true || i < lines.length - 1),
+    });
     decorations.push(
       Decoration.node(at, at + node.nodeSize, {
         style: cssText(continued ? { ...style, textIndent: undefined } : style),
