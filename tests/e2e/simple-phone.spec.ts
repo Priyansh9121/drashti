@@ -511,6 +511,16 @@ test('a Simple Mode phone manages Audio and plays a chosen track', async () => {
     await expect.poll(async () => (await state(win)).layers.audio?.pausedAtMs).toBeDefined();
     await audio.getByRole('button', { name: 'Play music', exact: true }).click();
     await expect.poll(async () => (await state(win)).layers.audio?.pausedAtMs).toBeUndefined();
+    await track.getByRole('button', { name: 'Rename track: Placeholder first tone' }).click();
+    const renameTrack = p.getByTestId('remote-rename');
+    await renameTrack.getByLabel('Its new name').fill('Placeholder renamed tone');
+    await renameTrack.getByTestId('remote-rename-save').click();
+    await expect(track.filter({ hasText: 'Placeholder renamed tone' })).toBeVisible();
+    await expect
+      .poll(async () =>
+        (await music()).playlists[0]?.tracks.some((t) => t.name === 'Placeholder renamed tone'),
+      )
+      .toBe(true);
     await editor.getByRole('button', { name: 'Rename playlist', exact: true }).click();
     await p.getByTestId('remote-audio-name').fill('Placeholder renamed audio');
     await p.getByRole('button', { name: 'Save name', exact: true }).click();
