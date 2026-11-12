@@ -1,8 +1,9 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { deckWithOldFonts } from '../../src/main/import/testing/deck-font-fixture';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
@@ -165,4 +166,69 @@ test('an import names its old fonts in one notice, drawn whole, bottom right in 
   await expect(fonts).toHaveCount(0);
   await expect(refused).toBeVisible();
   await app.close();
+});
+
+test('a deck names its old fonts and calendar and book imports name entries left out', async () => {
+  const work = mkdtempSync(join(tmpdir(), 'drashti-file-notices-'));
+  const deck = join(work, 'Placeholder font deck.pptx');
+  const calendar = join(work, 'placeholder-calendar.json');
+  const book = join(work, 'placeholder-book.json');
+  writeFileSync(deck, deckWithOldFonts());
+  const day = {
+    date: '2026-11-12',
+    samvat: 1001,
+    month: { gu: 'નમૂનો', en: 'Placeholder month' },
+    paksha: { gu: 'નમૂનો', en: 'Placeholder half' },
+    tithi: { gu: 'નમૂનો', en: 'Placeholder day' },
+  };
+  writeFileSync(
+    calendar,
+    JSON.stringify({
+      format: 'drashti-calendar',
+      version: 1,
+      name: 'Placeholder calendar',
+      days: [day, day],
+    }),
+  );
+  writeFileSync(
+    book,
+    JSON.stringify({
+      format: 'drashti-shastra',
+      version: 1,
+      name: 'Placeholder book',
+      abbreviation: 'PB',
+      items: [
+        { number: 1, text: { en: 'Placeholder words.' } },
+        { number: 2, text: {} },
+      ],
+    }),
+  );
+
+  const { app } = await launchApp({ DRASHTI_TEST_DECK_CONVERTER: '1' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await sizeOperatorWindow(app, win, CI_WINDOW);
+    await openLibrary(win);
+    await dropFiles(win, win.getByTestId('library-drop'), [deck, calendar, book]);
+
+    const notices = win.getByTestId('import-notice');
+    const fonts = notices.filter({ hasText: 'old fonts' });
+    await expect(fonts).toHaveCount(1);
+    await expect(fonts).toContainText('Placeholder font deck');
+    await expect(fonts).toContainText('Gopika');
+    await expect(fonts).toContainText('Kruti Dev 010');
+    await expect(fonts).toContainText(INSTALL_THEM);
+
+    const calendarNotice = notices.filter({ hasText: 'Placeholder calendar' });
+    await expect(calendarNotice).toHaveCount(1);
+    await expect(calendarNotice).toContainText('2026-11-12 is given twice: the first is kept.');
+    const bookNotice = notices.filter({ hasText: 'Placeholder book' });
+    await expect(bookNotice).toHaveCount(1);
+    await expect(bookNotice).toContainText('2 has no words: it was left out.');
+    await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+  } finally {
+    await app.close().catch(() => undefined);
+    rmSync(work, { recursive: true, force: true });
+  }
 });
