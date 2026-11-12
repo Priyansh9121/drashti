@@ -287,11 +287,7 @@ describe("Keynote's copy of a title slide and a table (the real round trip's sli
       expect(shapes.filter((el) => el.shape === 'line' || el.outline)).toEqual([]);
       expect(shapes.map((el) => el.fill)).toEqual(['#35618f', '#35618f', '#35618f']);
       // Its words as Keynote wrote them: each cell left-aligned and white, in its own place.
-      expect(
-        text(elements).map(
-          (el) => el.kind === 'text' && [el.tableCell, el.text, el.style.align, el.style.color],
-        ),
-      ).toEqual(
+      expect(text(elements).map((el) => [el.tableCell, el.text, el.style.align, el.style.color])).toEqual(
         TABLE_WORDS.flatMap((row, r) =>
           row.map((words, c) => [{ row: r, column: c, rowSpan: 1, columnSpan: 1 }, words, 'left', '#ffffff']),
         ),
