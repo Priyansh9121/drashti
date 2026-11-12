@@ -8,6 +8,7 @@ import {
   type PreparedSource,
   type PreparedSourcePage,
 } from '../../shared/editable-source';
+import { sourceTimingDeck } from '../../shared/deck-source-timing';
 import { hexColorSchema, slideElementSchema } from '../../shared/model-schema';
 import { sourceCheckpoint, sourceTimeLeft, type SourceReader } from './source-reader';
 import type { PptxReaderChild } from './pptx-reader-protocol';
@@ -39,6 +40,8 @@ const resultSchema = z
                   .strict(),
               )
               .max(EDITABLE_SOURCE_LIMITS.pageElements),
+            // A timed page's clicks and transition (W6's review N4): checked on its own, below.
+            deck: z.unknown().optional(),
           })
           .strict(),
       )
@@ -64,6 +67,7 @@ export function pptxReader(spawn: () => PptxReaderChild, options: ReaderOptions 
     if (isActive() || request.ext !== 'pptx' || !(await sourceCheckpoint(request))) return failed();
     if (isActive()) return failed();
     const selected = new Set(request.sourcePages);
+    const timing = new Set((request.timingPages ?? []).filter((index) => selected.has(index)));
     if (
       !selected.size ||
       selected.size > EDITABLE_SOURCE_LIMITS.pages ||
@@ -253,7 +257,10 @@ export function pptxReader(spawn: () => PptxReaderChild, options: ReaderOptions 
                 publish(failed());
                 return;
               }
-              pages.push({ ...page, assets });
+              // Clicks that don't read leave the page as it was read before: its slide keeps today's behaviour.
+              const { deck: sent, ...read } = page;
+              const deck = timing.has(page.sourceIndex) ? sourceTimingDeck(sent) : undefined;
+              pages.push({ ...read, assets, ...(deck ? { deck } : {}) });
             }
             if ([...requested].some((index) => !completed.has(index) && !failedPages.has(index))) {
               publish(failed());
@@ -277,6 +284,7 @@ export function pptxReader(spawn: () => PptxReaderChild, options: ReaderOptions 
           file: request.file,
           outDir: request.outDir,
           sourcePages: request.sourcePages,
+          ...(timing.size > 0 ? { timingPages: [...timing] } : {}),
         });
         if (request.signal.aborted) abort();
       } catch {
