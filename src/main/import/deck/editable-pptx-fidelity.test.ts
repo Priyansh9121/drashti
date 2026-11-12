@@ -70,6 +70,29 @@ describe('keeping a generated PPTX editable', () => {
     expect(resized.runs?.[0]?.paragraph).toMatchObject({ spaceBefore: 10, spaceAfter: 3 });
   });
 
+  it('keeps fixed line spacing in slide pixels and permits a proportional override', async () => {
+    const words = wordsShape(
+      '<a:p><a:r><a:rPr sz="1200"/><a:t>Placeholder fixed line</a:t></a:r></a:p>' +
+        '<a:p><a:pPr><a:lnSpc><a:spcPct val="90000"/></a:lnSpc></a:pPr>' +
+        '<a:r><a:rPr sz="3000"/><a:t>Placeholder proportional line</a:t></a:r></a:p>',
+    ).replace(
+      '<a:lstStyle/>',
+      '<a:lstStyle><a:lvl1pPr><a:lnSpc><a:spcPts val="1800"/></a:lnSpc></a:lvl1pPr></a:lstStyle>',
+    );
+    const { elements } = await read(slideXml(words));
+    const box = elements.find((el) => el.kind === 'text');
+    if (box?.kind !== 'text') throw new Error('The editable words are missing.');
+    expect(box.runs?.find((run) => run.text === 'Placeholder fixed line')?.paragraph).toMatchObject({
+      lineHeightPx: 24,
+    });
+    const proportional = box.runs?.find((run) => run.text === 'Placeholder proportional line')?.paragraph;
+    expect(proportional).toMatchObject({ lineHeight: 1.08 });
+    expect(proportional).not.toHaveProperty('lineHeightPx');
+    const [resized] = fitElements([box], { width: 1280, height: 720 }, { width: 640, height: 360 });
+    if (resized?.kind !== 'text') throw new Error('The resized words are missing.');
+    expect(resized.runs?.[0]?.paragraph).toMatchObject({ lineHeightPx: 12 });
+  });
+
   it('keeps paragraph alignment, bullets, hanging indents and vertical words inside their box', async () => {
     const words = wordsShape(
       '<a:p><a:pPr algn="l" lvl="2" marL="228600" marR="114300" indent="-114300"><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:buChar char="•"/></a:pPr><a:r><a:t>Placeholder bullet</a:t></a:r><a:br/><a:r><a:t>Placeholder continuation</a:t></a:r></a:p>' +
@@ -180,7 +203,7 @@ describe('keeping a generated PPTX editable', () => {
     );
   });
 
-  it('keeps only the painted table edges, with their own colour and width', async () => {
+  it('keeps only painted table edges and joins their corner with both stroke widths', async () => {
     const { elements } = await read(
       slideXml(
         graphic(
@@ -197,13 +220,13 @@ describe('keeping a generated PPTX editable', () => {
       {
         shape: 'line',
         rotation: 90,
-        frame: { x: -35, y: 64.5, width: 90, height: 1 },
+        frame: { x: -36, y: 65.5, width: 92, height: 1 },
         outline: { color: '#aa2244', width: 2 },
       },
       {
         shape: 'line',
         rotation: 0,
-        frame: { x: 10, y: 109.5, width: 300, height: 1 },
+        frame: { x: 9, y: 109.5, width: 301, height: 1 },
         outline: { color: '#22aa44', width: 4 },
       },
     ]);
@@ -418,6 +441,17 @@ describe('keeping a generated PPTX editable', () => {
     ]);
   });
 
+  it('returns the limit note when the only source page is over the object cap', async () => {
+    const words = wordsShape('<a:p><a:r><a:t>Placeholder words</a:t></a:r></a:p>');
+    await expect(read(slideXml(words.repeat(501)))).resolves.toMatchObject({
+      sourceCount: 1,
+      slides: [],
+      failedNotes: {
+        0: ['PowerPoint source page 1 exceeds the 500-object editing limit and stays as its saved picture.'],
+      },
+    });
+  });
+
   it('keeps a table within the remaining object budget and isolates an over-limit slide', async () => {
     const root = mkdtempSync(join(tmpdir(), 'drashti-placeholder-table-cap-'));
     roots.push(root);
@@ -438,6 +472,11 @@ describe('keeping a generated PPTX editable', () => {
     const deck = await readEditablePptx(file, join(root, 'prepared'));
     expect(deck.sourceCount).toBe(3);
     expect(deck.slides.map((slide) => slide.sourceIndex)).toEqual([0, 2]);
+    expect(deck).toMatchObject({
+      failedNotes: {
+        1: ['PowerPoint source page 2 exceeds the 500-object editing limit and stays as its saved picture.'],
+      },
+    });
     expect(deck.slides[0]?.elements).toHaveLength(500);
     expect(deck.slides[0]?.elements.at(-1)).toMatchObject({ kind: 'image', crop: { width: 300 / 1280 } });
     expect(deck.slides[1]?.elements).toMatchObject([{ kind: 'text', text: 'Placeholder readable words' }]);

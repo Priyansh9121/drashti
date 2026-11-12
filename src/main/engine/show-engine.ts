@@ -1426,6 +1426,9 @@ export class ShowEngine {
       deck?: { step: number; stepAt: number; stepFromMs: number };
     } = {},
   ): EngineAction {
+    const shown = this.state.layers.slide;
+    const carryAt =
+      shown?.presentationId === presentationId && shown.slideIndex === slideIndex ? shown.shownAt : undefined;
     return {
       type: 'slide/show',
       presentationId,
@@ -1444,7 +1447,7 @@ export class ShowEngine {
       ...(how.deck ? { deck: how.deck } : {}),
       // Its videos play between their files' points as the library has them (Session 52), however it goes up; a deck's
       // own videos and sounds between its trims (Session 54, C2).
-      ...this.slideClipsOf(played.slide),
+      ...this.slideClipsOf(played.slide, carryAt),
     };
   }
 

@@ -173,11 +173,10 @@ export function runsOf(doc: PMNode): TextRun[] {
 }
 
 function formatParagraph(paragraph: TextParagraph, { align, lineHeight }: BoxPatch): TextParagraph {
-  return {
-    ...paragraph,
-    ...(align === undefined ? {} : { align }),
-    ...(lineHeight === undefined ? {} : { lineHeight }),
-  };
+  const aligned = align === undefined ? paragraph : { ...paragraph, align };
+  if (lineHeight === undefined) return aligned;
+  const { lineHeightPx: _fixed, ...rest } = aligned;
+  return { ...rest, lineHeight };
 }
 
 /** A whole-box alignment or spacing change also updates the source paragraph overrides. */

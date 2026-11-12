@@ -203,19 +203,76 @@ describe('the text style and line of a plain text box', () => {
   });
 
   it('draws no outline for a line with a width but no colour, and keeps a coloured line and a style’s line', async () => {
-    const styled = (line: string) =>
-      `<p:sp><p:nvSpPr><p:cNvPr id="5" name="Placeholder styled shape"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${BOX}${line}</p:spPr><p:style><a:lnRef idx="2"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="1"><a:schemeClr val="accent2"/></a:fillRef><a:effectRef idx="0"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></p:style></p:sp>`;
+    const styled = (line: string, index = 2) =>
+      `<p:sp><p:nvSpPr><p:cNvPr id="5" name="Placeholder styled shape"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${BOX}${line}</p:spPr><p:style><a:lnRef idx="${String(index)}"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="1"><a:schemeClr val="accent2"/></a:fillRef><a:effectRef idx="0"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></p:style></p:sp>`;
     const elements = await readSlide(
       slideXml(
         plainWords(`${BOX}<a:ln w="12700"><a:miter lim="400000"/></a:ln>`) +
           plainWords(`${BOX}<a:ln w="25400"><a:solidFill><a:srgbClr val="AA2244"/></a:solidFill></a:ln>`) +
-          styled('<a:ln w="38100"/>'),
+          styled('<a:ln w="38100"/>') +
+          styled('<a:ln w="38100"/>', 0) +
+          styled('<a:ln><a:noFill/></a:ln>'),
       ),
     );
-    expect(elements.map((el) => el.kind)).toEqual(['text', 'shape', 'text', 'shape']);
+    expect(elements.map((el) => el.kind)).toEqual(['text', 'shape', 'text', 'shape', 'shape', 'shape']);
     expect(elements[1]).toMatchObject({ fill: null, outline: { color: '#aa2244', width: (2 * 4) / 3 } });
     expect(elements[3]).toMatchObject({ name: 'Placeholder styled shape', fill: '#22bb44' });
-    expect(elements[3]?.kind === 'shape' && elements[3].outline?.width).toBe(4);
+    expect.soft(elements[3]).toMatchObject({ outline: { width: 4, color: '#aa2244' } });
+    expect.soft(elements[4]).toMatchObject({ fill: '#22bb44', outline: null });
+    expect(elements[5]).toMatchObject({ fill: '#22bb44', outline: null });
+  });
+
+  it('uses Office-theme style lines for a shape and a connector without direct lines', async () => {
+    const lines = [6350, 12700, 19050]
+      .map(
+        (width) => `<a:ln w="${String(width)}"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln>`,
+      )
+      .join('');
+    const theme =
+      '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Placeholder Office">' +
+      '<a:themeElements><a:clrScheme name="Placeholder"><a:accent1><a:srgbClr val="4472C4"/></a:accent1></a:clrScheme>' +
+      '<a:fmtScheme name="Placeholder"><a:lnStyleLst>' +
+      lines +
+      '</a:lnStyleLst></a:fmtScheme></a:themeElements></a:theme>';
+    const style = (index: number, shade = '') =>
+      `<p:style><a:lnRef idx="${String(index)}"><a:schemeClr val="accent1">${shade}</a:schemeClr></a:lnRef></p:style>`;
+    const rectangle =
+      '<p:sp><p:nvSpPr><p:cNvPr id="10" name="Placeholder rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>' +
+      '<p:spPr>' +
+      BOX +
+      '</p:spPr>' +
+      style(2, '<a:shade val="15000"/>') +
+      '</p:sp>';
+    const connector = (id: number, name: string, line: string) =>
+      `<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="${String(id)}" name="${name}"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>` +
+      '<p:spPr>' +
+      BOX.replace('prst="rect"', 'prst="line"') +
+      line +
+      '</p:spPr>' +
+      style(1) +
+      '</p:cxnSp>';
+    const elements = await readSlide(
+      slideXml(
+        rectangle +
+          connector(11, 'Placeholder connector', '') +
+          connector(12, 'Placeholder no outline', '<a:ln><a:noFill/></a:ln>'),
+      ),
+      { 'ppt/theme/theme1.xml': theme },
+    );
+    expect(elements).toHaveLength(2);
+    expect(elements[0]).toMatchObject({
+      kind: 'shape',
+      shape: 'rectangle',
+      name: 'Placeholder rectangle',
+      outline: { color: '#172c51', width: 4 / 3 },
+    });
+    expect(elements[1]).toMatchObject({
+      kind: 'shape',
+      shape: 'line',
+      name: 'Placeholder connector',
+      fill: null,
+      outline: { color: '#4472c4', width: 2 / 3 },
+    });
   });
 });
 
