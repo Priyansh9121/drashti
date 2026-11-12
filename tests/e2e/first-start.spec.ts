@@ -7,6 +7,7 @@ import {
   operatorPage,
   operatorReady,
   outputPage,
+  outputReady,
   type OutputGlobals,
   type PageGlobals,
   setUpScreen,
@@ -139,6 +140,10 @@ test('the practice show: placeholder slides on this screen only, reaching no out
   await setUpScreen(win, 'Main Hall', 0);
   const output = await outputPage(app);
   await expect(output.getByTestId('output-root')).toBeVisible();
+  // Ready to draw the show (its fonts in, its GPU warmed up: Session 27) before its first frame is waited for: on
+  // a fresh CI Mac that took longer than the 10 s the frame gets (Session 57: a job's first test, the output's
+  // page busy for 7 s).
+  await outputReady(output);
   const beforeEngine = await engine(win);
   const library = () =>
     win.evaluate(async () => {
