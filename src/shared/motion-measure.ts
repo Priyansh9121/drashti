@@ -172,6 +172,85 @@ export function stillLine(stats: CaseRow['intervals']): string {
   return `still frames (nothing moving, between the cases): ${stats ? framesText(stats) : 'none'}`;
 }
 
+/**
+ * One jump to a deck slide Drashti plays itself (Session 57, DK-6: no clip, its effects drawn from its shapes on the
+ * engine's time), on each hall screen: the engine's own times, and each screen's first frames.
+ */
+export interface JumpOnScreens {
+  /** When the engine put the slide up, and when its first effect starts by the engine (its step's clock and delay). */
+  shownAt: number;
+  effectAt: number;
+  /** Each screen's first frame showing the slide (ms since the epoch); null where it never did in the run's time. */
+  arrivedAt: readonly (number | null)[];
+  /** Each screen's first frame with one of its effects moving; null where none moved. */
+  movedAt: readonly (number | null)[];
+}
+
+/** A spread of figures: the median and the most. */
+export interface Spread {
+  median: number;
+  max: number;
+}
+
+export interface JumpFigures {
+  runs: number;
+  /**
+   * Per screen, in the runs it showed the slide: how long after the engine's time it did, and how long after its
+   * first effect's start (by the engine) that effect first moved there.
+   */
+  screens: { seen: number; arrival: Spread | null; effect: Spread | null }[];
+  /** The second screen against the first, in the runs both showed it (either way round); null with one screen. */
+  apart: { arrival: Spread | null; effect: Spread | null } | null;
+}
+
+const spread = (values: readonly number[]): Spread | null =>
+  values.length > 0 ? { median: percentileOf(values, 0.5), max: Math.max(...values) } : null;
+
+/** A jump's runs together: each screen against the engine's time, and the first two screens against each other. */
+export function jumpFigures(jumps: readonly JumpOnScreens[]): JumpFigures {
+  const count = Math.max(0, ...jumps.map((j) => Math.max(j.arrivedAt.length, j.movedAt.length)));
+  const screens = Array.from({ length: count }, (_, s) => {
+    const arrival: number[] = [];
+    const effect: number[] = [];
+    for (const j of jumps) {
+      const came = j.arrivedAt[s] ?? null;
+      const moved = j.movedAt[s] ?? null;
+      if (came !== null) arrival.push(came - j.shownAt);
+      if (moved !== null) effect.push(moved - j.effectAt);
+    }
+    return { seen: arrival.length, arrival: spread(arrival), effect: spread(effect) };
+  });
+  const between = (of: (j: JumpOnScreens) => readonly (number | null)[]) =>
+    spread(
+      jumps.flatMap((j) => {
+        const [one = null, two = null] = of(j);
+        return one === null || two === null ? [] : [Math.abs(two - one)];
+      }),
+    );
+  return {
+    runs: jumps.length,
+    screens,
+    apart: count < 2 ? null : { arrival: between((j) => j.arrivedAt), effect: between((j) => j.movedAt) },
+  };
+}
+
+/** A jump's figures in one line, as the check's summary says them. */
+export function jumpLine(f: JumpFigures): string {
+  const head = `a jump to a deck slide Drashti plays itself (${String(f.runs)} run${f.runs === 1 ? '' : 's'}, ${String(f.screens.length)} screen${f.screens.length === 1 ? '' : 's'})`;
+  const screens = f.screens.map((s, i) => {
+    const which = `screen ${String(i + 1)}`;
+    if (!s.arrival) return `${which} never showed it`;
+    const moved = s.effect
+      ? `moved its first effect ${signed(s.effect.median)} ms from its start (the most ${signed(s.effect.max)})`
+      : 'moved no effect';
+    return `${which} showed it ${signed(s.arrival.median)} ms from the engine’s time (the most ${signed(s.arrival.max)}), ${moved}`;
+  });
+  const apart = f.apart
+    ? `; screens apart: ${f.apart.arrival ? `${ms(f.apart.arrival.median)} ms showing it (the most ${ms(f.apart.arrival.max)})` : 'never both showing it'}, ${f.apart.effect ? `${ms(f.apart.effect.median)} ms moving it (the most ${ms(f.apart.effect.max)})` : 'never both moving it'}`
+    : '';
+  return `${head}: ${screens.join('; ')}${apart}`;
+}
+
 /** A case's row in one line, as the check's summary says it. */
 export function caseLine(row: CaseRow): string {
   const head = `${row.name} (${row.setMs > 0 ? `${ms(row.setMs)} ms` : 'a cut'}, ${String(row.runs)} run${row.runs === 1 ? '' : 's'})`;
