@@ -193,6 +193,10 @@ interface ElementBase {
   frame: Rect;
   /** Degrees clockwise, about the frame's centre; left out for none. */
   rotation?: number;
+  /** This object's own OOXML drawing ID. One source shape can produce a fill and a text element. */
+  sourceShapeId?: string;
+  /** OOXML drawing IDs of enclosing groups, outermost first, for animations targeting a group. */
+  sourceGroupIds?: string[];
   /** Editor groups are flat and local to a slide. Every renderer keeps the members as ordinary elements. */
   groupId?: string;
   /** Reflect the content in its frame, after its rotation. */
