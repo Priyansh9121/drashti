@@ -588,12 +588,14 @@ test('started again with no internet within the 15 days of an answer that let it
 
 test('started again within the 15 days after a revoke: Drashti opens at once, and stops at the list’s first answer', async () => {
   test.setTimeout(120_000);
-  const first = await launchApp(FAST);
+  // Keep the cached allowance valid for the restart even if CI takes a while to close and relaunch Main.
+  const grace = { ...FAST, DRASHTI_TEST_ACCESS_STOP_MS: String(10 * 60_000) };
+  const first = await launchApp(grace);
   await operatorReady(await operatorPage(first.app));
   await first.app.close();
   const list = standInOf(first.userData);
   revoke(list, PLACEHOLDER_PERSON);
-  const { app } = await relaunchApp(first.userData, FAST);
+  const { app } = await relaunchApp(first.userData, grace);
   const watch = closedWatch(app);
   try {
     // Open at once, then the list's answer (revoked) stops everything: only Quit works.
