@@ -5,7 +5,8 @@ import { PRACTICE_ID, PRACTICE_START, practiceSlides, practiceState, practiceSte
 /*
  * The practice show (Session 26g): Next, Back, Black-out, the Wallpaper (the Logo's place since Session 55), Clear
  * all and Put it back as in a
- * show, on placeholder slides, as a state the operator window draws and nothing else ever sees.
+ * show, on placeholder slides, as a state the operator window draws and nothing else ever sees. Black-out and the
+ * Wallpaper take each other off, as in a show (Session 57).
  */
 
 const run = (...actions: Parameters<typeof practiceStep>[1][]): Practice =>
@@ -45,13 +46,32 @@ describe('the practice show', () => {
   });
 
   it('Black-out and the Wallpaper cover the slide without clearing it', () => {
-    const p = run('next', 'toggleBlackout', 'toggleWallpaper');
+    const p = run('next', 'toggleBlackout');
     const state = practiceState(p);
     expect(state.blackout).toBe(true);
-    expect(state.wallpaper).toBe(true);
+    expect(state.wallpaper).toBe(false);
     expect(state.layers.slide?.slideIndex).toBe(0);
     const back = practiceState(run('next', 'toggleBlackout', 'toggleBlackout'));
     expect(back.blackout).toBe(false);
+    const wallpaper = practiceState(run('next', 'toggleWallpaper'));
+    expect(wallpaper).toMatchObject({ blackout: false, wallpaper: true });
+    expect(wallpaper.layers.slide?.slideIndex).toBe(0);
+  });
+
+  it('shows one cover at a time, as a show does: the one put on last takes the other off, in one step', () => {
+    const covers = (p: Practice) => ({ blackout: p.blackout, wallpaper: p.wallpaper });
+    const blackout = run('next', 'toggleBlackout');
+    const wallpaper = practiceStep(blackout, 'toggleWallpaper');
+    expect(covers(wallpaper)).toEqual({ blackout: false, wallpaper: true });
+    expect(wallpaper.rev).toBe(blackout.rev + 1);
+    const again = practiceStep(wallpaper, 'toggleBlackout');
+    expect(covers(again)).toEqual({ blackout: true, wallpaper: false });
+    // The last one off: the slide as it was, Put it back still offered after Clear all.
+    expect(covers(practiceStep(again, 'toggleBlackout'))).toEqual({ blackout: false, wallpaper: false });
+    expect(practiceStep(again, 'toggleBlackout').index).toBe(0);
+    const cleared = run('next', 'clearAll', 'toggleWallpaper', 'toggleBlackout');
+    expect(covers(cleared)).toEqual({ blackout: true, wallpaper: false });
+    expect(practiceState(cleared).canPutBack).toBe(true);
   });
 
   it('draws as an engine state of its own: the practice presentation, what comes next, nothing else', () => {

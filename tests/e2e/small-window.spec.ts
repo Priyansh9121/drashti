@@ -361,9 +361,9 @@ test('the welcome and the practice show at 1024 × 645, every button clickable; 
   await lastKey.scrollIntoViewIfNeeded();
   await expect(lastKey).toBeInViewport();
 
-  // The practice show works the layer bar as a show does: nothing up; then a slide, Black-out and the Wallpaper on
-  // (the Logo until Session 55); then Clear all, Put it back offered with the Wallpaper and Black-out still on (the
-  // bar at its widest).
+  // The practice show works the layer bar as a show does: nothing up; then a slide and Black-out on, then the
+  // Wallpaper (the Logo until Session 55) in Black-out's place, one cover at a time as in a show (Session 57); then
+  // Clear all, Put it back offered with the Wallpaper on, then with Black-out back in its place.
   await expectBarAtEveryWidth(
     win,
     'layer-bar',
@@ -372,22 +372,38 @@ test('the welcome and the practice show at 1024 × 645, every button clickable; 
   );
   await win.keyboard.press('ArrowRight');
   await win.keyboard.press('b');
-  await win.keyboard.press('F12');
-  await expect(win.getByTestId('wallpaper-button')).toHaveText(/Wallpaper is on/u);
   await expect(win.getByTestId('blackout-button')).toHaveText(/Black-out is on/u);
   await expectBarAtEveryWidth(
     win,
     'layer-bar',
-    proBar('Clear all F1', ['slide'], 'Wallpaper is on F12', 'Black-out is on B'),
-    'a slide up, the Wallpaper and Black-out on',
+    proBar('Clear all F1', ['slide'], 'Wallpaper F12', 'Black-out is on B'),
+    'a slide up, Black-out on',
+  );
+  await win.keyboard.press('F12');
+  await expect(win.getByTestId('wallpaper-button')).toHaveText(/Wallpaper is on/u);
+  await expect(win.getByTestId('blackout-button')).not.toHaveText(/Black-out is on/u);
+  await expectBarAtEveryWidth(
+    win,
+    'layer-bar',
+    proBar('Clear all F1', ['slide'], 'Wallpaper is on F12', 'Black-out B'),
+    'a slide up, the Wallpaper on in Black-out’s place',
   );
   await win.keyboard.press('F1');
   await expect(win.getByTestId('put-back')).toBeVisible();
   await expectBarAtEveryWidth(
     win,
     'layer-bar',
-    proBar('Put it back', [], 'Wallpaper is on F12', 'Black-out is on B'),
-    'Put it back offered, the Wallpaper and Black-out on',
+    proBar('Put it back', [], 'Wallpaper is on F12', 'Black-out B'),
+    'Put it back offered, the Wallpaper on',
+  );
+  await win.keyboard.press('b');
+  await expect(win.getByTestId('blackout-button')).toHaveText(/Black-out is on/u);
+  await expect(win.getByTestId('wallpaper-button')).not.toHaveText(/Wallpaper is on/u);
+  await expectBarAtEveryWidth(
+    win,
+    'layer-bar',
+    proBar('Put it back', [], 'Wallpaper F12', 'Black-out is on B'),
+    'Put it back offered, Black-out on in the Wallpaper’s place',
   );
   await app.close();
 });
