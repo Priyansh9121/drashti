@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { nativeDeckFixture } from '../../src/main/import/deck/native-deck-fixture';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -493,6 +494,102 @@ test('a deck looked through on a phone plays each click’s motion once and hold
     await phone.close();
   }
   await app.close();
+});
+
+test('Look closer saves the native deck click showing on the screens', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-save-native-deck-'));
+  const file = join(dir, 'Placeholder Save click.pptx');
+  writeFileSync(file, nativeDeckFixture());
+  const { app } = await launchApp({
+    ...NETWORK_ENV,
+    DRASHTI_TEST_DECK_CONVERTER: '1',
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '1',
+  });
+  const phone = await device('chromium');
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const [id = ''] = await importAndGetIds(win, [file]);
+    expect(id).not.toBe('');
+    await setUpScreen(win, 'Main Hall', 1);
+    const out = await outputPage(app);
+    await outputReady(out);
+    const { base } = await networkOn(win);
+    const p = phone.page;
+    await p.setViewportSize({ width: 375, height: 812 });
+    await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.evaluate(() => {
+      const images: { type: string; width: number; ink: number }[] = [];
+      Object.assign(globalThis, { savedDeckImages: images });
+      Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+      Object.defineProperty(navigator, 'share', {
+        configurable: true,
+        value: async ({ files }: { files: File[] }) => {
+          const file = files[0];
+          if (!file) throw new Error('Missing saved picture.');
+          const bitmap = await createImageBitmap(file);
+          const canvas = document.createElement('canvas');
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error('Missing test canvas.');
+          ctx.drawImage(bitmap, 0, 0);
+          bitmap.close();
+          const { width, height } = canvas;
+          // The first click brings in Placeholder appear at the top. Count ink in that region only.
+          const { data } = ctx.getImageData(
+            Math.floor(width * 0.06),
+            Math.floor(height * 0.11),
+            Math.floor(width * 0.39),
+            Math.floor(height * 0.12),
+          );
+          let ink = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            if ([0, 1, 2].some((c) => Math.abs((data[i + c] ?? 0) - (data[c] ?? 0)) > 30)) ink++;
+          }
+          images.push({ type: file.type, width, ink });
+        },
+      });
+    });
+    await win.evaluate(
+      (presentationId) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'goLive',
+          presentationId,
+          slideIndex: 0,
+        }),
+      id,
+    );
+    await p.getByTestId('remote-look-closer').click();
+    const viewer = p.getByTestId('viewer');
+    const target = viewer.locator('[data-deck-motion-target="2"]');
+    await expect(target).toHaveCSS('opacity', '0');
+    const save = viewer.getByTestId('viewer-save');
+    await expect(save).toBeVisible();
+    const saved = () =>
+      p.evaluate(
+        () =>
+          (globalThis as unknown as { savedDeckImages: { type: string; width: number; ink: number }[] })
+            .savedDeckImages,
+      );
+    await save.click();
+    await expect.poll(async () => (await saved()).length).toBe(1);
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'next' }));
+    await expect(out.locator('[data-deck-motion-target="2"]')).toHaveCSS('opacity', '1');
+    await expect(target).toHaveCSS('opacity', '1');
+    await save.click();
+    await expect.poll(async () => (await saved()).length).toBe(2);
+    const [before, after] = await saved();
+    expect(after?.type).toBe('image/png');
+    expect(after?.width ?? 0).toBeGreaterThanOrEqual(960);
+    expect(after?.ink ?? 0).toBeGreaterThan((before?.ink ?? 0) + 80);
+  } finally {
+    await phone.close();
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('a video playing on the phone stops, and the viewer closes, the moment Drashti stops (Session 54, D1/D2 review)', async () => {
