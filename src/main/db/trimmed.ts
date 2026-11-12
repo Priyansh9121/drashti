@@ -74,7 +74,7 @@ export class TrimmedVideos {
       mediaId: row.mediaId,
       sourceId: row.sourceId,
       sourceName: row.sourceName,
-      canReset: row.mediaId !== row.sourceId,
+      canReset: row.mediaId !== row.sourceId || markers.startMs !== null || markers.endMs !== null,
       markers,
     };
   }
@@ -172,10 +172,15 @@ export class TrimmedVideos {
   reset(row: TrimSource): boolean {
     return this.db
       .transaction(() => {
-        if (row.mediaId === row.sourceId || !this.current(row)) return false;
-        if (!this.playlists.retarget(row.itemId, { kind: 'media', mediaId: row.sourceId })) return false;
+        if (!this.current(row)) return false;
+        const original = this.media.markersOf(row.sourceId) ?? NO_MARKERS;
+        const { startMs, endMs } = original;
+        if (row.mediaId === row.sourceId) {
+          if ((startMs === null && endMs === null) || this.playsFull(row.itemId, row.mediaId, original))
+            return false;
+        } else if (!this.playlists.retarget(row.itemId, { kind: 'media', mediaId: row.sourceId }))
+          return false;
         this.db.prepare('DELETE FROM playlist_trim_resets WHERE item_id = ?').run(row.itemId);
-        const { startMs, endMs } = this.media.markersOf(row.sourceId) ?? NO_MARKERS;
         if (startMs !== null || endMs !== null)
           this.db
             .prepare(

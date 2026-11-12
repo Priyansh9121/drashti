@@ -31,7 +31,7 @@ const pointWords = (ms: number | null, end: boolean) =>
 
 /** Where a video plays now, past its black and silence (Trim black and silence's notice). */
 export const trimmedWords = (name: string, points: { startMs: number; endMs: number | null }): string =>
-  `“${name}” now plays from ${pointWords(points.startMs, false)} to ${pointWords(points.endMs, true)}, past the black and silence. Its file is not cut: Trim (start, end and markers)… changes the points.`;
+  `“${name}” now plays from ${pointWords(points.startMs, false)} to ${pointWords(points.endMs, true)}, past the black and silence. Choose Undo to restore the old playback points.`;
 
 /**
  * The one menu's items for a video or a sound (files/file-menu.ts: added after Trim): Trim black and silence for a
