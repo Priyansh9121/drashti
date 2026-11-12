@@ -111,7 +111,7 @@ test('the preview is headed LIVE with no Next under it; Edit layout… opens the
   await app.close();
 });
 
-test('the library’s Import › Files… and a drop on its list bring pictures into the library only, never the open playlist (Q57-11); dropped on the window they go into the open playlist too, with Undo for its rows', async () => {
+test('the library’s Import and drops on the list and title bring pictures into the library only, never the open playlist (Q57-11); dropped on the window they go into the open playlist too, with Undo for its rows', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -126,6 +126,17 @@ test('the library’s Import › Files… and a drop on its list bring pictures 
   const b = await makeTestImage(win, join(dir, 'Placeholder B.png'), { color: '#7c2d12' });
   const c = await makeTestImage(win, join(dir, 'Placeholder C.png'), { color: '#365314' });
   const d = await makeTestImage(win, join(dir, 'Placeholder D.png'), { color: '#581c87' });
+  const listFolder = join(dir, 'Placeholder list folder');
+  const titleFolder = join(dir, 'Placeholder title folder');
+  mkdirSync(listFolder);
+  mkdirSync(titleFolder);
+  await makeTestImage(win, join(listFolder, 'Placeholder E.png'), { color: '#854d0e' });
+  await makeTestImage(win, join(titleFolder, 'Placeholder F.png'), { color: '#0f766e' });
+  const playlistNames = () =>
+    win.evaluate(async () =>
+      (await (globalThis as PageGlobals).drashti.playlists.tree()).map((item) => item.name).sort(),
+    );
+  const originalPlaylists = await playlistNames();
   await app.evaluate(
     ({ dialog }, files) => {
       dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: files });
@@ -141,6 +152,18 @@ test('the library’s Import › Files… and a drop on its list bring pictures 
     .toEqual(expect.arrayContaining(['Placeholder A.png', 'Placeholder B.png']));
   await dropFiles(win, win.getByTestId('library-drop'), [c]);
   await expect.poll(() => mediaNames(win)).toContain('Placeholder C.png');
+  await dropPaths(win, win.getByTestId('library-drop'), [listFolder]);
+  await expect.poll(() => mediaNames(win)).toContain('Placeholder E.png');
+  expect(await playlistNames()).toEqual(originalPlaylists);
+  await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder Sunday');
+  expect(await labels(win)).toEqual([]);
+
+  const title = win.getByTestId('library-sheet').getByRole('heading', { name: 'Library', exact: true });
+  await dropPaths(win, title, [titleFolder]);
+  await expect.poll(() => mediaNames(win)).toContain('Placeholder F.png');
+  expect(await playlistNames()).toEqual(originalPlaylists);
+  await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder Sunday');
+  expect(await labels(win)).toEqual([]);
   // A picture dropped on the window (on LIVE) goes into the open playlist too, and it alone: what came in through
   // the library never does.
   await dropFiles(win, win.getByTestId('live-preview'), [d], { overlay: false });
@@ -156,6 +179,8 @@ test('the library’s Import › Files… and a drop on its list bring pictures 
       'Placeholder B.png',
       'Placeholder C.png',
       'Placeholder D.png',
+      'Placeholder E.png',
+      'Placeholder F.png',
     ]),
   );
   await app.close();
