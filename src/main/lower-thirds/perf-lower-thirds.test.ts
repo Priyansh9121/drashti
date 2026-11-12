@@ -3,9 +3,10 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isAnimation } from '../../shared/lower-third-animations';
 import { OFFERED } from '../../shared/lower-third-studio';
+import { LOWER_THIRD_TEMPLATES } from '../../shared/lower-third-templates';
 import { lowerThirdSchema } from '../../shared/lower-thirds';
 import { isPerfScenario } from '../perf-scenarios';
-import { keptOf, playedRows } from './perf-lower-thirds';
+import { keptOf, keptOfPhase, playedRows } from './perf-lower-thirds';
 
 /*
  * The Performance check's lower-thirds scenario (Session 55, Part 16): it plays every row of the studio's offered set,
@@ -16,8 +17,8 @@ import { keptOf, playedRows } from './perf-lower-thirds';
 const APP = join(__dirname, '..', '..', '..');
 
 describe('the lower-thirds scenario', () => {
-  it('plays each row of OFFERED once, as a lower third the library takes, with placeholder words', () => {
-    const rows = playedRows();
+  it('plays each row of OFFERED once, as a lower third the library takes, with placeholder words', async () => {
+    const rows = (await playedRows()).filter((r) => !r.row.startsWith('template '));
     expect(rows).toHaveLength(OFFERED.length);
     expect(new Set(rows.map((r) => r.lowerThird.id)).size).toBe(rows.length);
     for (const r of rows) {
@@ -40,6 +41,21 @@ describe('the lower-thirds scenario', () => {
       expect(r.lowerThird.look.style).toBe(r.row.slice('style '.length));
   });
 
+  it('measures each new name-and-role design with its own complete look and animation', async () => {
+    const designs = LOWER_THIRD_TEMPLATES.filter((template) =>
+      template.input.animation.startsWith('design-'),
+    );
+    const measured = (await playedRows()).filter((r) => r.row.startsWith('template '));
+    expect(designs.length).toBeGreaterThanOrEqual(34);
+    expect(measured).toHaveLength(designs.length);
+    expect(new Set(measured.map((r) => r.lowerThird.id)).size).toBe(designs.length);
+    for (const design of designs) {
+      const row = measured.find((r) => r.row === 'template ' + design.id);
+      expect(row?.lowerThird, design.name).toEqual({ ...design.input, id: 'perf-lt-template-' + design.id });
+      expect(row?.measure).toBe('phases');
+    }
+  });
+
   it('a row keeps 9 in 10 of its frames at 54 a second on an output, 27 on the stream’s page; none seen is none', () => {
     expect(keptOf({ frames: 54, ms: 1000, worst: 20 })).toBeCloseTo(0.9, 5);
     // The stream's page draws 30 a second: 27 of them is 9 in 10.
@@ -47,6 +63,12 @@ describe('the lower-thirds scenario', () => {
     expect(keptOf({ frames: 70, ms: 1000, worst: 16 })).toBe(1);
     expect(keptOf({ frames: 0, ms: 0, worst: 0 })).toBeNull();
     expect(keptOf(undefined)).toBeNull();
+  });
+
+  it('catches a design phase that disappears or paints only a smooth middle section', () => {
+    expect(keptOfPhase(undefined, 60, 336)).toBeNull();
+    expect(keptOfPhase({ frames: 12, ms: 200, worst: 17 }, 60, 1000)).toBeCloseTo(13 / 60);
+    expect(keptOfPhase({ frames: 8, ms: (8 * 1000) / 30, worst: 34 }, 30, 336)).toBeCloseTo(0.9);
   });
 
   it('is a scenario of the check, and the Performance workflow offers it', () => {

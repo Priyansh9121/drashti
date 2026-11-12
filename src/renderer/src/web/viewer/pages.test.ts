@@ -95,6 +95,45 @@ describe('a deck looked through on a phone (Session 54, D1/D2 review)', () => {
     expect(pages.map((p) => (p.onScreens?.(state) ?? null) !== null)).toEqual([false, true, false]);
     expect(pages.map((p) => p.live?.(up(2)) ?? false)).toEqual([false, false, true]);
   });
+
+  /** A deck's slide Drashti plays itself (W6): no PowerPoint video, its clicks in its own motion. */
+  const NATIVE: DeckSlide = {
+    steps: [],
+    media: [],
+    motion: {
+      effects: [
+        { shapeId: '2', step: 1, phase: 'in', kind: 'fade', delayMs: 0, durationMs: 300 },
+        { shapeId: '3', step: 2, phase: 'in', kind: 'fade', delayMs: 0, durationMs: 300 },
+      ],
+      stepsMs: [0, 300, 300],
+      approximate: false,
+    },
+  };
+  const played = (deck: DeckSlide): OrderedSlide => {
+    const s = ordered(0, false);
+    return { ...s, slide: { ...s.slide, slide: { ...s.slide.slide, deck } } };
+  };
+
+  it('is a page for each click of a deck slide Drashti plays itself, as of one with PowerPoint’s video', () => {
+    const pages = slidePages('deck', played(NATIVE));
+    expect(pages.map((p) => p.title)).toEqual([
+      '1 · Placeholder group',
+      '1 · Placeholder group · click 1 of 2',
+      '1 · Placeholder group · click 2 of 2',
+    ]);
+    // Opened while the screens show its second click: from that click's page, the only one live.
+    expect(presentationPages('deck', [played(NATIVE), ordered(1, false)], 0, 2)).toMatchObject({ start: 2 });
+    const state = up(2);
+    const layer = state.layers.slide;
+    if (!layer) throw new Error('no slide up');
+    const shown = {
+      ...state,
+      layers: { ...state.layers, slide: { ...layer, slide: played(NATIVE).slide.slide } },
+    };
+    expect(pages.map((p) => p.live?.(shown) ?? false)).toEqual([false, false, true]);
+    // A deck slide left with no clicks (an alpha.16 deck's, edited): one page, as before.
+    expect(slidePages('deck', played({ steps: [], media: [] }))).toHaveLength(1);
+  });
 });
 
 describe('a picture looked at on a phone while it is the background (Session 54, D1/D2 review)', () => {

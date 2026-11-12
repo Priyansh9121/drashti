@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { nativeDeckMotion, stepCount } from '../../../../shared/deck';
 import { stepOf } from '../../../../shared/deck-show';
 import type { EngineState } from '../../../../shared/engine/state';
 import { backgroundCueOf } from '../../../../shared/library';
@@ -148,7 +149,8 @@ function deckStepPage(presentationId: string, s: OrderedSlide, index: number, st
  * Next and Previous go click by click as the deck does.
  */
 export function slidePages(presentationId: string, s: OrderedSlide): ViewerPage[] {
-  const steps = s.slide.slide.deck?.steps.length ?? 0;
+  const deck = s.slide.slide.deck;
+  const steps = nativeDeckMotion(deck) ? stepCount(deck) : (deck?.steps.length ?? 0);
   if (steps === 0) return [slidePage(presentationId, s)];
   return Array.from({ length: steps }, (_, index) => deckStepPage(presentationId, s, index, steps));
 }

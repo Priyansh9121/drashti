@@ -30,6 +30,28 @@ const doneSchema = z
     error: z.string().max(300).optional(),
   })
   .strict();
+/*
+ * The hidden window's reply for one page, as its protocol has it (Session 57): this job, a page asked for, and each
+ * field of its kind, its lists no longer than any page's (the page reader stops at 500 painted objects, each one
+ * element and at most one picture, and says at most five things: pdf-edit-page.ts). A reply that breaks the protocol
+ * stops the whole job, as before, so Main never reads an over-long list twice. One whose page fails Main's own checks
+ * (validateEditablePdfPage: its size, its words and shapes, its pictures and their bytes) leaves only that page as its
+ * saved picture, as a page over the output budget does: the rest of the PDF is still made editable.
+ */
+const pageReplySchema = z
+  .object({
+    mode: z.literal('editable-source'),
+    jobId: z.string().max(512),
+    sourceIndex: z.number().int().min(0),
+    width: z.number(),
+    height: z.number(),
+    elements: z.array(z.unknown()).max(EDITABLE_SOURCE_LIMITS.pageElements),
+    assets: z
+      .array(z.object({ token: z.string(), png: z.instanceof(Uint8Array) }))
+      .max(EDITABLE_SOURCE_LIMITS.pageElements),
+    issues: z.array(z.unknown()).max(100),
+  })
+  .strict();
 const failure = (): PreparedSource => ({
   ok: false,
   message: 'This PDF’s words and shapes could not be read safely. The slides still show as before.',
@@ -225,16 +247,19 @@ export class EditablePdfSessions {
           session.finish(failure());
           return false;
         }
-        const parsed = validateEditablePdfPage(raw, session.job.jobId, session.requested);
+        const reply = pageReplySchema.safeParse(raw);
         if (
-          !parsed ||
-          session.pages.has(parsed.page.sourceIndex) ||
-          session.skipped.has(parsed.page.sourceIndex) ||
-          (session.total !== null && parsed.page.sourceIndex >= session.total)
+          !reply.success ||
+          reply.data.jobId !== session.job.jobId ||
+          !session.requested.has(reply.data.sourceIndex) ||
+          session.pages.has(reply.data.sourceIndex) ||
+          session.skipped.has(reply.data.sourceIndex) ||
+          (session.total !== null && reply.data.sourceIndex >= session.total)
         ) {
           session.finish(failure());
           return false;
         }
+        const parsed = validateEditablePdfPage(raw, session.job.jobId, session.requested);
         if (
           !(await sourceCheckpoint(session.request)) ||
           this.isStopped(session) ||
@@ -244,11 +269,12 @@ export class EditablePdfSessions {
           return false;
         }
         if (
+          !parsed ||
           session.assetBytes + parsed.assetBytes > EDITABLE_SOURCE_LIMITS.jobAssetBytes ||
           session.metadataBytes + parsed.metadataBytes > EDITABLE_SOURCE_LIMITS.jobMetadataBytes
         ) {
-          // A valid page that exceeds the remaining output budget keeps its saved picture.
-          session.skipped.add(parsed.page.sourceIndex);
+          // A page failing Main's checks, or one past the remaining output budget, keeps its saved picture.
+          session.skipped.add(reply.data.sourceIndex);
           return true;
         }
         const assets: PreparedSourcePage['assets'] = [];

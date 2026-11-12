@@ -480,7 +480,7 @@ test('a Simple Mode phone manages Audio and plays a chosen track', async () => {
     }
     await track
       .nth(1)
-      .getByRole('button', { name: /^Move Placeholder second tone.* up$/u })
+      .getByRole('button', { name: /^Move up: Placeholder second tone/u })
       .click();
     await expect
       .poll(async () => (await music()).playlists[0]?.tracks[0]?.name)
@@ -504,7 +504,7 @@ test('a Simple Mode phone manages Audio and plays a chosen track', async () => {
     await editor.getByRole('button', { name: 'Shuffle', exact: true }).click();
     await track
       .nth(1)
-      .getByRole('button', { name: /^Play Placeholder first tone/u })
+      .getByRole('button', { name: /^Play track: Placeholder first tone/u })
       .click();
     await expect.poll(async () => (await state(win)).layers.audio?.title).toContain('Placeholder first tone');
     await audio.getByRole('button', { name: 'Pause music', exact: true }).click();
