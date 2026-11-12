@@ -36,6 +36,26 @@ const BANNER_IN_MS = 300;
  */
 const SLIDE_LOWER_THIRD_MS = { in: 120 + (LOWER_THIRD_MAX_LINES - 1) * 60 + 360, out: 310 };
 
+/** Stop the capture on the engine's own change, as well as on its deadline. */
+export async function captureWithShowAbort<T>(
+  subscribe: (listener: () => void) => () => void,
+  current: () => boolean,
+  deadline: AbortSignal,
+  capture: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const stop = new AbortController();
+  const check = () => {
+    if (!current()) stop.abort();
+  };
+  const off = subscribe(check);
+  try {
+    check();
+    return await capture(AbortSignal.any([deadline, stop.signal]));
+  } finally {
+    off();
+  }
+}
+
 const timeOf = (transition: Transition | undefined) =>
   transition?.kind === 'zoom'
     ? Math.max(transition.durationMs, transition.spanMs ?? SLOW_ZOOM_MS)
