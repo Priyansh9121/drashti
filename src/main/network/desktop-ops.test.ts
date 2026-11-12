@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
-import type { InvokeChannel } from '../../shared/ipc';
+import { IPC, type InvokeChannel } from '../../shared/ipc';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { DEVICE_OPS, type DeviceOp } from '../../shared/network-api';
 import {
@@ -196,6 +196,8 @@ function setup(options: { locked?: boolean; letIn?: boolean; audioTrackIds?: rea
   const unexpectedPhoneAction = () => {
     throw new Error('This fixture supports only renaming a track.');
   };
+  const refused = (channel: InvokeChannel, args?: readonly unknown[]) =>
+    locked && (SIMPLE_MODE_LOCKED.includes(channel) || bounds.get(channel)?.(args ?? []) === false);
   const service = new NetworkService({
     devices,
     settings: { get: () => undefined, set: () => undefined },
@@ -430,8 +432,7 @@ function setup(options: { locked?: boolean; letIn?: boolean; audioTrackIds?: rea
       submit: () => ({ status: 202, body: { ok: true } }),
       statusFor: () => ({ status: 404, body: { ok: false } }),
     },
-    refused: (channel: InvokeChannel, args?: readonly unknown[]) =>
-      locked && (SIMPLE_MODE_LOCKED.includes(channel) || bounds.get(channel)?.(args ?? []) === false),
+    refused,
     simple: () =>
       locked
         ? {
@@ -464,6 +465,7 @@ function setup(options: { locked?: boolean; letIn?: boolean; audioTrackIds?: rea
     service.windows({ address: PHONE, deviceId, op: 'windows', args: {} });
   return {
     listWindows,
+    refused,
     lookups,
     setInputs: (v: { inputs?: VideoInput[]; access?: CameraAccess; cameras?: string[] | null }) => {
       inputs = v.inputs ?? inputs;
@@ -523,6 +525,12 @@ const OPS: [DeviceOp, Record<string, unknown>][] = [
   ['screens.identify', {}],
   ['switch', { which: 'stage', on: false }],
 ];
+
+it('refuses a bounded Simple Mode channel when no window arguments were supplied', () => {
+  const { refused } = setup({ locked: true });
+  expect(refused(IPC.library.importPaths, [])).toBe(false);
+  expect(refused(IPC.library.importPaths)).toBe(true);
+});
 
 describe('the phone as a full Drashti: the computer’s screens and Audience and Stage (Session 54)', () => {
   it('lets a Remote alone do them, and none at all while Drashti is not let in', () => {
