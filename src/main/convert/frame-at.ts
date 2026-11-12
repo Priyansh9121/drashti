@@ -29,6 +29,9 @@ export function frameAtOrBefore(ffmpeg: string, file: string, atMs: number): Pro
         '-sn',
         '-vf',
         'showinfo',
+        // With the original timestamps, stop a second past the requested point even if Main goes away.
+        '-to',
+        ((atMs + 1000) / 1000).toFixed(3),
         '-fps_mode:v',
         'passthrough',
         '-f',

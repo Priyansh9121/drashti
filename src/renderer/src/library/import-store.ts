@@ -163,9 +163,14 @@ export function importPaths(
   return importAgain(paths);
 }
 
-/** The Import button: a system dialog for files or a folder. */
-export async function importWithDialog(kind: 'files' | 'folder'): Promise<void> {
-  const destination = openImportDestination();
+/**
+ * The Import button: a system dialog for files or a folder. What it makes goes where `destination` says, taken before
+ * the dialog opens: the open playlist too by default, or null for the library only (the library's own Import…, Q57-11).
+ */
+export async function importWithDialog(
+  kind: 'files' | 'folder',
+  destination: ImportDestination | null = openImportDestination(),
+): Promise<void> {
   const paths = await window.drashti.library.pickImportPaths(kind);
   await importPaths(paths, undefined, destination);
 }

@@ -37,7 +37,7 @@ interface KeptTrim {
   name: string;
 }
 
-async function setup() {
+async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<number | null>(atMs)) {
   const media = new MediaRepo(db);
   const playlists = new PlaylistRepo(db);
   const repo = new TrimmedVideos(db, media, playlists);
@@ -75,7 +75,7 @@ async function setup() {
     readInfo: (path: string) =>
       Promise.resolve({ ...info, durationMs: path === output ? 2000 : info.durationMs }),
     queue,
-    frameAt: (_path: string, atMs: number) => Promise.resolve(atMs),
+    frameAt,
     cancel: () => true,
     pendingChanged,
     rowChanged,
@@ -128,12 +128,65 @@ describe('trimming a playlist video', () => {
     const x = await setup();
     x.media.setMarkers('original', request.points);
     expect(x.repo.view(x.itemId)?.canReset).toBe(true);
-    expect(await x.service.apply(x.itemId, { mediaId: 'original', points: NO_MARKERS })).toEqual({
-      ok: true,
-    });
+    expect(
+      await x.service.apply(x.itemId, {
+        mediaId: 'original',
+        points: { ...request.points, startMs: null, endMs: null },
+      }),
+    ).toEqual({ ok: true });
     expect(x.queue).not.toHaveBeenCalled();
     expect(x.repo.view(x.itemId)?.markers).toMatchObject({ startMs: null, endMs: null });
     expect(x.media.markersOf('original')).toEqual(request.points);
+  });
+
+  it('keeps the marker edits made while resetting a cut in the same save', async () => {
+    const x = await setup();
+    const removed = { id: 'remove', name: 'Placeholder to remove', atMs: 1500 };
+    const untouched = { id: 'keep', name: 'Placeholder to keep', atMs: 1800 };
+    const added = { id: 'new', name: 'Placeholder new cue', atMs: 800 };
+    const original = { startMs: 100, endMs: 3000, markers: [removed, untouched] };
+    x.media.setMarkers('original', original);
+    expect(
+      await x.service.apply(x.itemId, {
+        ...request,
+        points: { ...request.points, markers: [...request.points.markers, removed, untouched] },
+      }),
+    ).toEqual({ ok: true });
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(() => {
+      expect(x.repo.view(x.itemId)?.mediaId).not.toBe('original');
+    });
+
+    const cut = x.repo.view(x.itemId);
+    if (!cut) throw new Error('The cut is missing.');
+    expect(
+      await x.service.apply(x.itemId, {
+        mediaId: cut.mediaId,
+        points: {
+          ...NO_MARKERS,
+          markers: [...cut.markers.markers.filter((m) => m.id !== removed.id), added],
+        },
+      }),
+    ).toEqual({ ok: true });
+    expect(x.repo.view(x.itemId)).toMatchObject({
+      mediaId: 'original',
+      markers: { ...NO_MARKERS, markers: [added, untouched] },
+    });
+    expect(x.media.markersOf('original')).toEqual({ ...original, markers: [added, untouched] });
+  });
+
+  it('uses the requested start when the preceding frame could not be read', async () => {
+    const x = await setup(() => Promise.resolve(null));
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    expect(x.queue).toHaveBeenCalledWith(expect.objectContaining({ startMs: request.points.startMs }));
+  });
+
+  it('keeps the original when Start snaps to its first frame and End is empty', async () => {
+    const x = await setup(() => Promise.resolve(0));
+    const points = { ...NO_MARKERS, startMs: 10, markers: request.points.markers };
+    expect(await x.service.apply(x.itemId, { mediaId: 'original', points })).toEqual({ ok: true });
+    expect(x.queue).not.toHaveBeenCalled();
+    expect(x.media.markersOf('original')).toEqual({ ...points, startMs: null });
   });
 
   it('saves markers alone when the playback points have not changed', async () => {
@@ -266,6 +319,21 @@ describe('trimming a playlist video', () => {
     });
     expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
     expect(x.kept.load()).toEqual([{ itemId: x.itemId, mediaId: 'original', name: 'Placeholder.mp4' }]);
+  });
+
+  it.each([
+    ['Drashti’s copy of FFmpeg is missing. Install Drashti again.', 'Install Drashti again.'],
+    [
+      'Stopped: saving it took longer than 13 minutes (four times its length, and 5 minutes more), so FFmpeg may be stuck.',
+      'It took too long. Choose a shorter part and save it again.',
+    ],
+  ])('keeps the next step when making a cut fails: %s', async (message, help) => {
+    const x = await setup();
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    x.finish({ ok: false, message });
+    await vi.waitFor(() => {
+      expect(x.notice).toHaveBeenCalledWith(`Drashti couldn’t make the cut of “Placeholder.mp4”. ${help}`);
+    });
   });
 
   it('names a failed cut and keeps the free-space instruction', async () => {
