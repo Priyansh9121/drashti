@@ -111,19 +111,25 @@ export function measureRun(record: MotionRecord, window: CaseWindow, periodMs: n
   };
 }
 
-/** Intervals summed up as a case's row has them. Not built yet. */
-export function intervalStats(_intervals: readonly number[], _periodMs: number): CaseRow['intervals'] {
-  return null;
+/** Intervals summed up as a case's row has them: median, p95, the longest, how many, and how many over 1.5 periods. */
+export function intervalStats(intervals: readonly number[], periodMs: number): CaseRow['intervals'] {
+  if (intervals.length === 0) return null;
+  return {
+    median: percentileOf(intervals, 0.5),
+    p95: percentileOf(intervals, 0.95),
+    max: Math.max(...intervals),
+    count: intervals.length,
+    over: intervals.filter((i) => i > periodMs * 1.5).length,
+  };
 }
 
-/** The intervals between a screen's frames in a stretch. Not built yet. */
-export function stillIntervals(_frames: readonly number[], _from: number, _until: number): number[] {
-  return [];
-}
-
-/** The still frames in one line. Not built yet. */
-export function stillLine(_stats: CaseRow['intervals']): string {
-  return '';
+/**
+ * The intervals between the frames a screen drew from `from` until `until` (ms since the epoch): between the cases,
+ * where nothing watched moves, how evenly the screen draws anyway (a virtual machine's own unevenness, say).
+ */
+export function stillIntervals(frames: readonly number[], from: number, until: number): number[] {
+  const within = frames.filter((at) => at >= from && at < until);
+  return within.slice(1).map((at, i) => at - (within[i] ?? at));
 }
 
 /** A case's runs together, and whether it is late or uneven at this frame period. */
@@ -135,16 +141,7 @@ export function caseRow(name: string, setMs: number, runs: readonly MotionRun[],
   const delay =
     delays.length > 0 ? { median: percentileOf(delays, 0.5), p95: percentileOf(delays, 0.95) } : null;
   const lengthMedian = lengths.length > 0 ? percentileOf(lengths, 0.5) : null;
-  const frames =
-    intervals.length > 0
-      ? {
-          median: percentileOf(intervals, 0.5),
-          p95: percentileOf(intervals, 0.95),
-          max: Math.max(...intervals),
-          count: intervals.length,
-          over: intervals.filter((i) => i > periodMs * 1.5).length,
-        }
-      : null;
+  const frames = intervalStats(intervals, periodMs);
   return {
     name,
     setMs,
@@ -166,6 +163,15 @@ const signed = (v: number) => {
   return `${r >= 0 ? '+' : ''}${String(r === 0 ? 0 : r)}`;
 };
 
+/** Intervals in words: median, p95, the longest, and how many over 1.5 frame periods. */
+const framesText = (i: NonNullable<CaseRow['intervals']>) =>
+  `median ${tenth(i.median)}, p95 ${tenth(i.p95)}, longest ${tenth(i.max)} ms, ${String(i.over)} of ${String(i.count)} over 1.5×`;
+
+/** The still frames between the cases in one line, beside the cases'. */
+export function stillLine(stats: CaseRow['intervals']): string {
+  return `still frames (nothing moving, between the cases): ${stats ? framesText(stats) : 'none'}`;
+}
+
 /** A case's row in one line, as the check's summary says it. */
 export function caseLine(row: CaseRow): string {
   const head = `${row.name} (${row.setMs > 0 ? `${ms(row.setMs)} ms` : 'a cut'}, ${String(row.runs)} run${row.runs === 1 ? '' : 's'})`;
@@ -176,9 +182,7 @@ export function caseLine(row: CaseRow): string {
       ? `length ${ms(row.length.median)} ms (${signed(row.length.off)})`
       : 'length one frame'
     : 'length -';
-  const frames = row.intervals
-    ? `frames median ${tenth(row.intervals.median)}, p95 ${tenth(row.intervals.p95)}, longest ${tenth(row.intervals.max)} ms, ${String(row.intervals.over)} of ${String(row.intervals.count)} over 1.5×`
-    : 'no frames between';
+  const frames = row.intervals ? `frames ${framesText(row.intervals)}` : 'no frames between';
   const marks = [row.late ? 'LATE' : '', row.uneven ? 'UNEVEN' : ''].filter((m) => m !== '').join(' ');
   return `${head}${seen}: delay median ${ms(row.delay.median)} ms, p95 ${ms(row.delay.p95)} ms; ${length}; ${frames}${marks ? ` ${marks}` : ''}`;
 }
