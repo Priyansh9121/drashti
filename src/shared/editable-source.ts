@@ -105,5 +105,16 @@ export interface PreparedSourcePage {
   deck?: DeckSlide;
 }
 export type PreparedSource =
-  | { ok: true; pages: PreparedSourcePage[]; total: number; failed: number[] }
+  | {
+      ok: true;
+      pages: PreparedSourcePage[];
+      /** The pages in the document, as read; 0 for a PDF job the show stopped before its page count (all `unread`). */
+      total: number;
+      failed: number[];
+      /**
+       * Pages not read yet because the show needed the computer (Session 57: Edit slides' PDF reading behind the
+       * editor ends its job there); never failed, they are read in a new job once the show is idle.
+       */
+      unread?: number[];
+    }
   | { ok: false; message: string; retainOutput?: true };

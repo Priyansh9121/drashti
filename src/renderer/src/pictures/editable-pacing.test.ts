@@ -197,8 +197,27 @@ describe('preparing a PDF for Edit slides in the hidden window (Session 57)', ()
 
   it('still leaves a page that runs past its share of the time as its saved picture, and goes on', async () => {
     core.steps = 4;
-    // 12 s on the first page: past its 8 s; the next two quick.
+    // 12 s on the first of four pages: past its 8 s; the next three quick.
     core.stepMs = (page) => (page === 0 ? 3_000 : 0);
+    await drawEditablePdf(job(4), Assets);
+    expect(pages()).toEqual([1, 2, 3]);
+    expect(finished).toMatchObject({ total: 100, failed: [0] });
+  });
+
+  // Leftovers PX-2 (W5's review): with only a few pages asked, a heavy page gets its whole fair share of the time, as
+  // alpha.16 gave it, instead of 8 s; a page past even that share still stays its saved picture.
+  it('gives a heavy page its whole share of the time when only a few pages are asked', async () => {
+    core.steps = 4;
+    core.stepMs = () => 3_000;
+    await drawEditablePdf(job(1), Assets);
+    expect(pages()).toEqual([0]);
+    expect(finished).toMatchObject({ total: 100, failed: [] });
+  });
+
+  it('still leaves a page past its fair share as its saved picture when only a few pages are asked', async () => {
+    core.steps = 4;
+    // 70 s on the first of three pages: past its share (178 s ÷ 3); the next two quick.
+    core.stepMs = (page) => (page === 0 ? 17_500 : 0);
     await drawEditablePdf(job(3), Assets);
     expect(pages()).toEqual([1, 2]);
     expect(finished).toMatchObject({ total: 100, failed: [0] });
