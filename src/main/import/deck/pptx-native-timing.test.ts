@@ -186,7 +186,7 @@ describe('PowerPoint slide animation timing', () => {
     }
   });
 
-  it('reads the gallery Zoom, Float, Split and symmetric Grow/Shrink with their durations, keeping PowerPoint’s video only for Split', () => {
+  it('reads the gallery Zoom, Float, Split and symmetric Grow/Shrink with their durations, all as PowerPoint plays them', () => {
     const click = (id: number, preset: string, cls: 'entr' | 'exit' | 'emph', children: string) =>
       parallel(
         id,
@@ -235,19 +235,18 @@ describe('PowerPoint slide animation timing', () => {
         click(40, '16', 'entr', split) +
         click(50, '6', 'emph', grow),
     );
-    // Compared with PowerPoint's own movie: the gallery Zoom (12 Nov), Float in and out and Grow/Shrink (13 Nov), all
-    // within a pixel (shared/deck-motion-powerpoint.test.ts), so Drashti plays them itself. Split is drawn by Drashti
-    // where no video can be made, and keeps PowerPoint's video wherever one can be.
+    // Compared with PowerPoint's own movie: the gallery Zoom (12 Nov), Float in and out, Grow/Shrink and Split (13 Nov),
+    // all within a pixel (shared/deck-motion-powerpoint.test.ts), so Drashti plays them itself.
     for (const [preset, cls, children] of [
       ['53', 'entr', zoom],
       ['42', 'entr', float(3, 'in')],
       ['47', 'exit', float(4, 'out')],
+      ['16', 'entr', split],
       ['6', 'emph', grow],
     ] as const)
       expect(read(click(20, preset, cls, children)).motion?.approximate, `preset ${preset}`).toBe(false);
-    expect(read(click(20, '16', 'entr', split)).motion?.approximate).toBe(true);
     expect(slide.motion).toMatchObject({
-      approximate: true,
+      approximate: false,
       effects: [
         { shapeId: '2', step: 1, phase: 'in', kind: 'zoom', fade: true, durationMs: 300 },
         {
@@ -400,15 +399,26 @@ describe('PowerPoint slide animation timing', () => {
     expect(alone('31', 'entr', turn('in').replace(number(90), formula('#ppt_w')))?.approximate).toBe(true);
   });
 
-  it('plays Split in from both edges as well as out from the middle, keeping PowerPoint’s video where one can be made', () => {
-    expect(alone('16', 'entr', filtered(2, 'barn(inVertical)'))).toMatchObject({
-      approximate: true,
-      effects: [{ kind: 'split', splitAxis: 'x', inward: true, durationMs: 500 }],
-    });
-    expect(alone('16', 'exit', filtered(2, 'barn(inHorizontal)', 'out'))).toMatchObject({
-      approximate: true,
-      effects: [{ phase: 'out', kind: 'split', splitAxis: 'y', inward: true }],
-    });
+  it('plays Split in from both edges as well as out from the middle, coming in and leaving, as PowerPoint does', () => {
+    // PowerPoint's "In" (barn(in…)) moves both edges from the box's own edges to its middle; "Out" from the middle to
+    // the edges. Compared with its own movie (13 Nov), all eight within a pixel.
+    for (const [filter, axis] of [
+      ['barn(inVertical)', 'x'],
+      ['barn(inHorizontal)', 'y'],
+      ['barn(outVertical)', 'x'],
+      ['barn(outHorizontal)', 'y'],
+    ] as const) {
+      const inward = filter.startsWith('barn(in') ? { inward: true } : {};
+      expect(alone('16', 'entr', filtered(2, filter)), filter).toMatchObject({
+        approximate: false,
+        effects: [{ phase: 'in', kind: 'split', splitAxis: axis, ...inward, durationMs: 500 }],
+      });
+      expect(alone('16', 'exit', filtered(2, filter, 'out')), filter).toMatchObject({
+        approximate: false,
+        effects: [{ phase: 'out', kind: 'split', splitAxis: axis, ...inward, durationMs: 500 }],
+      });
+    }
+    expect(alone('16', 'entr', filtered(2, 'barn(outVertical)'))?.effects[0]).not.toHaveProperty('inward');
   });
 
   it('plays a Fly’s smooth start and smooth end exactly, the effect’s own or the one its behaviours share', () => {

@@ -406,6 +406,17 @@ function bars(kind: NonNullable<DeckEffect['bars']>, target: Rect, amount: numbe
   return points;
 }
 
+/**
+ * How much of a Split's shape shows at `at` along its axis, from −1 (one edge) through 0 (the middle) to 1 (the other
+ * edge): 0 to 1. Any other wipe, or none, shows it whole.
+ */
+export function deckSplitShows(wipe: DeckWipe | null, at: number): number {
+  if (!wipe || !('axis' in wipe)) return 1;
+  const fromMiddle = Math.abs(at) / 2;
+  const half = wipe.fraction / 2;
+  return (wipe.inward ? fromMiddle >= half : fromMiddle <= 0.5 - half) ? 1 : 0;
+}
+
 /** Clip all of a group's rendered parts at the same slide position. */
 export function deckWipeClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
   if (!wipe) return '';
