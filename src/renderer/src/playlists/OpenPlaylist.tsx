@@ -16,7 +16,7 @@ import { useLibrary } from '../library/library-store';
 import { CannotPlayBadge, mediaKindIcon, mediaProblem } from '../library/MediaList';
 import { useExtras } from '../library/extras-store';
 import { useLandedInView } from '../links/link-playlist';
-import { chooseAddTo, openLinkDialog } from '../links/link-store';
+import { openLinkDialog } from '../links/link-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
@@ -992,10 +992,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
               icon={Link2}
               data-testid="playlist-from-link"
               title="Download from a link and add it at the end of this playlist"
-              onClick={() => {
-                chooseAddTo({ kind: 'playlist', id: openId });
-                openLinkDialog();
-              }}
+              onClick={openLinkDialog}
             >
               From a Link…
             </Button>

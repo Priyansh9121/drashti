@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { ConversionJob } from '../../../shared/convert';
 import { offeredForUndo } from './converting';
+import { showImportNotice } from './import-notices';
 import { pushRemoval } from './undo';
 
 /*
@@ -27,6 +28,7 @@ interface ConvertStore {
 export const useConvert = create<ConvertStore>(() => ({ jobs: [], error: null, playsHevc: null }));
 
 const undoable = new Set<string>();
+const failureNotices = new Set<string>();
 let connected = false;
 
 function accept(jobs: ConversionJob[]): void {
@@ -34,6 +36,13 @@ function accept(jobs: ConversionJob[]): void {
   // Each conversion the operator asked for that finishes can be undone (the original used again where it was); one
   // Drashti did by itself is not offered (Session 50).
   for (const job of jobs) {
+    if (job.byItself && job.state === 'failed' && !failureNotices.has(job.id)) {
+      failureNotices.add(job.id);
+      showImportNotice(
+        `Couldn’t convert “${job.name}”. ${job.message ?? 'Check the file and import it again.'}`,
+        job.retryable ? () => retryConversion(job.id) : undefined,
+      );
+    }
     if (!job.conversionId || undoable.has(job.conversionId)) continue;
     if (!offeredForUndo(job)) {
       if (job.state === 'done') undoable.add(job.conversionId);
@@ -64,13 +73,18 @@ export function connectConversions(): void {
   void window.drashti.media.conversions().then((jobs) => {
     // Conversions already finished before this window opened are not offered for Undo here.
     for (const j of jobs) if (j.conversionId) undoable.add(j.conversionId);
-    useConvert.setState({ jobs });
+    accept(jobs);
   });
 }
 
 export async function convert(mediaIds: string[]): Promise<void> {
   const result = await window.drashti.media.convert(mediaIds);
   useConvert.setState(result.ok ? { jobs: result.jobs, error: null } : { error: result.message });
+}
+
+async function retryConversion(jobId: string): Promise<void> {
+  const result = await window.drashti.media.retryConversion(jobId);
+  if (!result.ok) showImportNotice(result.message);
 }
 
 export async function cancelConversion(jobId: string | null): Promise<void> {

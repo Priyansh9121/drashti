@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import { itemsMadeBy } from '../../../shared/import-items';
 import type { Wallpaper, WallpaperResult, WallpapersView } from '../../../shared/wallpapers';
 import { refusedWords } from '../../../shared/wallpapers';
 import { askRename } from '../files/FileMenu';
 import { useConvert } from '../library/convert-store';
 import { copyFor } from '../library/converting';
 import { importPaths } from '../library/import-store';
+import { showImportNotice } from '../library/import-notices';
 import { pushRemoval } from '../library/undo';
 import { useNotice } from '../operator/actions';
 import { drawQuotes } from './quote-pictures';
@@ -95,19 +95,15 @@ export async function addWallpapers(mediaIds: readonly string[], into: string | 
 export async function addWallpaperFiles(paths: readonly string[], into: string | null = null): Promise<void> {
   if (paths.length === 0) return;
   const sorted = await api().sortFiles([...paths]);
-  const said = refusedWords(sorted.refused);
-  if (said !== null) useNotice.setState({ text: said });
-  if (sorted.pictures.length === 0) return;
-  const result = await importPaths(sorted.pictures, undefined, { report: false });
-  if (!result?.ok) return;
-  const report = await window.drashti.library.getImportReport(result.run.id);
-  // A picture Drashti converted by itself goes in as its copy (Session 50).
-  const jobs = useConvert.getState().jobs;
-  const ids = itemsMadeBy(report?.items ?? [], sorted.pictures).flatMap((i) =>
-    i.kind === 'media' ? [copyFor(i.mediaId, jobs)] : [],
-  );
-  // Nothing made: the import's own report line says why.
-  await addWallpapers(ids, into);
+  for (const refused of sorted.refused) {
+    const message = refusedWords([refused]);
+    if (message !== null) showImportNotice(message);
+  }
+  await importPaths(sorted.pictures, undefined, async (made) => {
+    const jobs = useConvert.getState().jobs;
+    const ids = made.flatMap((item) => (item.kind === 'media' ? [copyFor(item.mediaId, jobs)] : []));
+    await addWallpapers(ids, into);
+  });
 }
 
 /** Import…: the system's dialog for pictures. */

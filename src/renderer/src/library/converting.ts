@@ -1,11 +1,10 @@
 import type { ConversionJob } from '../../../shared/convert';
 import { isHevc } from '../../../shared/convert';
 import type { MediaSummary } from '../../../shared/playlists';
-import { plural } from '../../../shared/text';
 
 /*
  * A file Drashti converts, as the operator window says it (Session 50): "Converting…" from the moment it
- * waits until it is converted, on its row in Media, on a playlist's item, in Audio and in the import report.
+ * waits until it is converted, on its row in Media, on a playlist's item and in Audio.
  * Until then it cannot go live: the library marks it as a file Drashti cannot play, and the show refuses it.
  */
 
@@ -66,25 +65,4 @@ export function mediaProblem(
 export function copyFor(mediaId: string, jobs: readonly ConversionJob[]): string {
   const job = jobFor(jobs, mediaId);
   return job?.state === 'done' && job.convertedId !== null ? job.convertedId : mediaId;
-}
-
-/** A few names, and how many more: "A, B and C"; "A, B, C, D, E and 2 more". */
-export function someNames(names: readonly string[], most = 5): string {
-  if (names.length <= 1) return names[0] ?? '';
-  if (names.length <= most) return `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
-  return `${names.slice(0, most).join(', ')} and ${String(names.length - most)} more`;
-}
-
-/**
- * The import report's word on what Drashti converts by itself (Session 50): how many it is converting, and
- * what it converted. Null when there is nothing to say.
- */
-export function convertedSummary(converting: number, converted: readonly string[]): string | null {
-  const done = converted.length;
-  if (converting > 0) {
-    const many = converting + done > 1;
-    return `Converting ${plural(converting, 'file')} Drashti cannot play as ${converting === 1 ? 'it is' : 'they are'}, one at a time${done > 0 ? ` (${String(done)} done: ${someNames(converted)})` : ''}: ${many ? 'each is' : 'it is'} used everywhere once it is done, and ${many ? 'the originals stay as they are' : 'the original stays as it is'}.`;
-  }
-  if (done === 0) return null;
-  return `Converted ${plural(done, 'file')} Drashti could not play as ${done === 1 ? 'it was' : 'they were'}: ${someNames(converted)}. ${done === 1 ? 'The copy is used everywhere, and the original stays as it is' : 'The copies are used everywhere, and the originals stay as they are'}.`;
 }
