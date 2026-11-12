@@ -299,6 +299,7 @@ export interface DrashtiBridge {
   /** Import from a Link (Session 25b, operator window, Pro Mode). */
   links: {
     view(): Promise<LinkView>;
+    start(text: string, audio: boolean, intoOpenPlaylist: boolean): Promise<LinkResult>;
     look(kind: LinkKind, link: string): Promise<LinkResult>;
     pickFolder(): Promise<LinkResult>;
     /** Download what was looked at: a YouTube video with its type and quality. */
@@ -561,6 +562,10 @@ export interface DrashtiBridge {
     saveStill(mediaId: string, jpeg: Uint8Array): Promise<SaveStillResult>;
     /** Convert files Drashti cannot play (in turn, in the background). */
     convert(mediaIds: string[]): Promise<ConvertResult>;
+    /** Try a failed automatic conversion again. */
+    retryConversion(jobId: string): Promise<ConvertResult>;
+    /** Stop making a smaller copy of a linked video. */
+    cancelLinkConversion(jobId: string): Promise<ConvertResult>;
     /** Cancel one conversion, or every one not finished (null). */
     cancelConversion(jobId: string | null): Promise<ConvertResult>;
     conversions(): Promise<ConversionJob[]>;

@@ -54,6 +54,8 @@ export type MediaImportResult =
       probe: MediaProbe;
       /** Converted by itself (Session 50): it cannot play as it is, and FFmpeg can make a copy that does. */
       convert?: boolean;
+      /** A linked video taller than this gets a smaller copy in the background. */
+      maxHeight?: number;
       /**
        * A missing item merged into the one with its bytes took the points its import gave it (Session 55, Q20):
        * what is up playing that one moves to them.
@@ -82,6 +84,8 @@ export interface StagedMedia {
   read?: boolean;
   /** To be converted by itself once it is in the library (Session 50). */
   convert?: boolean;
+  /** A linked video's height limit, when its original is taller. */
+  maxHeight?: number;
   /**
    * How long it is, as FFmpeg read it (Session 55, Part 7, P3): kept with it at import, so a stage layout's time left
    * and the last 10 seconds know it before it has played. Left out where FFmpeg did not say.
@@ -195,13 +199,17 @@ export class MediaStore {
     kind: MediaKind,
     file: string,
     probe: MediaProbe,
-  ): Promise<Pick<StagedMedia, 'probe' | 'read' | 'convert' | 'durationMs'>> {
+    maxVideoHeight?: number,
+  ): Promise<Pick<StagedMedia, 'probe' | 'read' | 'convert' | 'maxHeight' | 'durationMs'>> {
     if (kind === 'image' || !this.options.readInfo) return { probe };
     const info = await this.options.readInfo(file).catch(() => null);
     if (!info || info.timedOut) return { probe };
     const verdict = atImport(kind, info, this.options.playsHevc ?? null);
     if (verdict === 'unread') return { probe };
-    const moving = kind === 'video' && info.video !== null && !info.video.still;
+    const video = info.video;
+    const moving = kind === 'video' && video !== null && !video.still;
+    const maxHeight =
+      moving && maxVideoHeight !== undefined && video.height > maxVideoHeight ? maxVideoHeight : undefined;
     return {
       probe: {
         playable: verdict === 'plays' ? true : verdict === 'convert' ? false : null,
@@ -210,6 +218,7 @@ export class MediaStore {
       },
       read: true,
       ...(verdict === 'convert' ? { convert: true } : {}),
+      ...(maxHeight === undefined ? {} : { maxHeight }),
       // Its length, kept with it (Session 55, P3).
       ...(info.durationMs !== null && info.durationMs > 0 ? { durationMs: info.durationMs } : {}),
     };
@@ -302,7 +311,10 @@ export class MediaStore {
    * free space first. Never touches the original. No library rows (see
    * addStaged), so it never runs inside a group of database writes.
    */
-  async stage(path: string): Promise<{ ok: true; staged: StagedMedia } | { ok: false; issue: ImportIssue }> {
+  async stage(
+    path: string,
+    maxVideoHeight?: number,
+  ): Promise<{ ok: true; staged: StagedMedia } | { ok: false; issue: ImportIssue }> {
     const kind = mediaKindOf(path);
     const name = basename(path);
     if (!kind) {
@@ -390,7 +402,13 @@ export class MediaStore {
     const probe = await probeMedia(target);
     return {
       ok: true,
-      staged: { kind, name, rel, ...hashed, ...(await this.readWithFfmpeg(kind, target, probe)) },
+      staged: {
+        kind,
+        name,
+        rel,
+        ...hashed,
+        ...(await this.readWithFfmpeg(kind, target, probe, maxVideoHeight)),
+      },
     };
   }
 
@@ -411,8 +429,8 @@ export class MediaStore {
    */
   addStaged(staged: StagedMedia, source: MediaSource): Extract<MediaImportResult, { mediaId: string }> {
     const existing = this.bySha(staged.sha256);
-    // Converted by itself once it is in the library (Session 50).
-    const convert = staged.convert ? { convert: true } : {};
+    const height = staged.maxHeight === undefined ? {} : { maxHeight: staged.maxHeight };
+    const convert = { ...(staged.convert ? { convert: true } : {}), ...height };
     if (existing) {
       // Imported before playability was known (or, Session 50, read by FFmpeg now): record it.
       this.markPlayable(existing.id, staged);
@@ -433,6 +451,7 @@ export class MediaStore {
           bytes: staged.bytes,
           name: copy.name,
           probe: copy.probe,
+          ...height,
         };
       // Deleted from the library (Session 26a), its file perhaps gone for good: brought back to life,
       // everywhere that still pointed at it.

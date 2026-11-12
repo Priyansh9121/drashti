@@ -315,6 +315,7 @@ export const IPC = {
    */
   links: {
     view: 'links:view',
+    start: 'links:start',
     look: 'links:look',
     pickFolder: 'links:pick-folder',
     download: 'links:download',
@@ -446,6 +447,8 @@ export const IPC = {
     saveStill: 'media:save-still',
     /** Convert media Drashti cannot play, one after another (operator window only). */
     convert: 'media:convert',
+    retryConversion: 'media:retry-conversion',
+    cancelLinkConversion: 'media:cancel-link-conversion',
     cancelConversion: 'media:cancel-conversion',
     conversions: 'media:conversions',
     /** Put back the original everywhere the conversion moved it (Undo). */
@@ -1214,6 +1217,7 @@ export interface InvokeContract {
   [IPC.updates.setAutoCheck]: { args: [on: boolean]; result: UpdateResult };
   [IPC.updates.showFile]: { args: []; result: null };
   [IPC.links.view]: { args: []; result: LinkView };
+  [IPC.links.start]: { args: [text: string, audio: boolean, intoOpenPlaylist: boolean]; result: LinkResult };
   [IPC.links.look]: { args: [kind: LinkKind, link: string]; result: LinkResult };
   [IPC.links.pickFolder]: { args: []; result: LinkResult };
   [IPC.links.download]: { args: [choice?: YouTubeChoice | null]; result: LinkResult };
@@ -1375,6 +1379,8 @@ export interface InvokeContract {
   };
   [IPC.media.saveStill]: { args: [mediaId: string, jpeg: Uint8Array]; result: SaveStillResult };
   [IPC.media.convert]: { args: [mediaIds: string[]]; result: ConvertResult };
+  [IPC.media.retryConversion]: { args: [jobId: string]; result: ConvertResult };
+  [IPC.media.cancelLinkConversion]: { args: [jobId: string]; result: ConvertResult };
   [IPC.media.cancelConversion]: { args: [jobId: string | null]; result: ConvertResult };
   [IPC.media.conversions]: { args: []; result: ConversionJob[] };
   [IPC.media.playsHevc]: { args: []; result: boolean | null };

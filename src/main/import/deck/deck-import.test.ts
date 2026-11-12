@@ -619,29 +619,32 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
         'Its 2 videos came in as real videos where the slides have them, with the time bar under LIVE; they start as their slide goes up.',
       );
 
-      // Imported again where its movie can be made: the operator is asked first, as for a changed file (what they
-      // changed in the pictures' slides would go), and nothing changes until they answer.
-      const asked = await t.run({ baker: 'stand-in', converters: 'stand-in' });
-      const question = t.report(asked.id)?.items[0];
-      expect(question?.outcome).toBe('conflict');
-      expect(question?.issues).toEqual([
-        {
-          severity: 'warning',
-          code: 'deck-can-animate',
-          message:
-            'Placeholder trial.pptx can now come in with its animations. Replace “Placeholder trial” with it (what was changed in it since is lost), or keep both?',
-          fix: { kind: 'choose', sourcePath: deck },
-        },
-      ]);
-      expect(t.slidesOf(item?.target?.id ?? '').every((s) => !s.slide.deck)).toBe(true);
-      // Replace, as answered: in place of the pictures, with its animations.
-      const again = await t.run({ baker: 'stand-in', converters: 'stand-in', decision: 'replace' });
-      const replaced = t.report(again.id)?.items[0];
-      expect(replaced?.outcome).toBe('replaced');
-      expect(replaced?.target?.id).toBe(item?.target?.id);
-      expect(t.slidesOf(item?.target?.id ?? '').map((s) => s.slide.deck?.steps.length)).toEqual([
-        5, 3, 2, 1, 2,
-      ]);
+      // Import again with animations when they are available. The older pictures keep their own slides.
+      const originalId = item?.target?.id ?? '';
+      const original = t.repo.content(originalId);
+      const again = await t.run({ baker: 'stand-in', converters: 'stand-in' });
+      const kept = t.report(again.id)?.items[0];
+      expect(kept?.outcome).toBe('kept-both');
+      const newId = kept?.target?.id ?? '';
+      expect(newId).not.toBe(originalId);
+      expect(t.repo.content(originalId)).toEqual(original);
+      expect(t.slidesOf(originalId).every((s) => !s.slide.deck)).toBe(true);
+      expect(t.slidesOf(newId).map((s) => s.slide.deck?.steps.length)).toEqual([5, 3, 2, 1, 2]);
+
+      // An explicit replace still updates the earlier deck in place.
+      const explicit = setup();
+      const first = await explicit.run({ baker: false, converters: 'stand-in' });
+      const firstId = explicit.report(first.id)?.items[0]?.target?.id ?? '';
+      const replacement = await explicit.run({
+        baker: 'stand-in',
+        converters: 'stand-in',
+        decision: 'replace',
+      });
+      expect(explicit.report(replacement.id)?.items[0]).toMatchObject({
+        outcome: 'replaced',
+        target: { id: firstId },
+      });
+      expect(explicit.slidesOf(firstId).map((s) => s.slide.deck?.steps.length)).toEqual([5, 3, 2, 1, 2]);
     }, 240_000);
 
     it('a deck that came in as pictures, answered Replace but whose animations cannot be made, is kept untouched', async () => {
