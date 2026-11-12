@@ -29,6 +29,18 @@ export const DEVICE_OPS = {
   hall: ['remote'],
   /** Play the audio playlist: on from where it was paused, or the one played last (Session 14). */
   'music.play': ['remote'],
+  // Audio under LIVE: the same lists, tracks and controls as on the operator computer.
+  'music.audio': ['remote'],
+  'music.new': ['remote'],
+  'music.rename': ['remote'],
+  'music.remove': ['remote'],
+  'music.restore': ['remote'],
+  'music.options': ['remote'],
+  'music.addTracks': ['remote'],
+  'music.moveTrack': ['remote'],
+  'music.removeTrack': ['remote'],
+  'music.restoreTrack': ['remote'],
+  'music.stepsAside': ['remote'],
   /** The loaded Shastra texts: name, abbreviation, how many items (Session 12). */
   'shastra.texts': ['remote'],
   /** Put up a Shastra passage by its reference ("SD 14", "Vach G.Pr. 1", "SD 14-16"). */
@@ -243,7 +255,7 @@ export const REMOTE_COMMANDS = [
   'setStageMessage',
   'clearStageMessage',
   'skip',
-  // The time bar (Session 54): what plays moved, paused or played on, as under LIVE (Simple Mode refuses the move).
+  // The time bar under LIVE moves, pauses or plays on in both modes.
   'moveTo',
   'pausePlaying',
   'resumePlaying',

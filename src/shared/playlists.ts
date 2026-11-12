@@ -234,7 +234,8 @@ export interface TemplateRequest {
 // An id, or a Shastra passage's (which can be longer).
 const id = idSchema;
 export const playlistIdSchema = id;
-export const idListSchema = z.array(id).min(1).max(1000);
+export const PLAYLIST_IDS_MAX = 1000;
+export const idListSchema = z.array(id).min(1).max(PLAYLIST_IDS_MAX);
 export const playlistNameSchema = z.string().trim().min(1).max(200);
 export const newItemsSchema: z.ZodType<NewItem[]> = z
   .array(

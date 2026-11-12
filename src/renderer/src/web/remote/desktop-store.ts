@@ -21,7 +21,7 @@ import { loadMedia } from './mirror-store';
  */
 
 /** The sheets a phone opens over the remote to set up the computer's things. */
-export type DesktopSheet = 'screens' | 'inputs' | 'pip' | 'library' | 'midi' | 'queue';
+export type DesktopSheet = 'screens' | 'inputs' | 'pip' | 'library' | 'playlists' | 'midi' | 'queue';
 
 interface DesktopView {
   /** The sheet open now, or null. */
