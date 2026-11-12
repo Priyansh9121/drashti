@@ -1,8 +1,8 @@
-import { lstatSync, realpathSync } from 'node:fs';
+import { type BigIntStats, lstatSync, realpathSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
-import { Worker } from 'node:worker_threads';
+import { type EngineState, nothingUp } from '../../shared/engine/state';
 import type { MediaUsage, UsedIn } from '../../shared/media-removal';
 import { USED_IN_NAMES } from '../../shared/media-removal';
 import { stillPath } from '../media/media-protocol';
@@ -10,6 +10,7 @@ import { removeCopiesOf } from '../media/sharpened';
 import { removeBlurredOf } from '../media/blurred';
 import { isInside } from '../media/contained';
 import type { Db } from '../db/database';
+import { hashOffMain } from './hash-off-main';
 
 /*
  * Deleting media from the library (Session 26a; migration 36). Media could
@@ -29,6 +30,40 @@ import type { Db } from '../db/database';
 
 const placeholders = (n: number) => Array.from({ length: n }, () => '?').join(', ');
 
+/** An earlier Trim cut in the library: its row, its file in Media, and the sha256 its cut was saved with. */
+interface TrimRow {
+  id: string;
+  path: string;
+  sha256: string;
+}
+
+/** The same regular file as `before`, at its own real path (no link): nothing replaced or moved it since. */
+function sameFile(file: string, before: BigIntStats): boolean {
+  try {
+    const now = lstatSync(file, { bigint: true, throwIfNoEntry: false });
+    return (
+      now !== undefined &&
+      now.isFile() &&
+      now.dev === before.dev &&
+      now.ino === before.ino &&
+      now.size === before.size &&
+      now.mtimeNs === before.mtimeNs &&
+      realpathSync.native(file) === file
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The show lets the unused Trim cuts sweep run (Session 57; review HIGH-1 of d487b875): nothing is up, and nothing
+ * earlier in this run can come back by Oops, Put it back or Back. A cut no row uses now could otherwise be put up
+ * again from the Trash.
+ */
+export function sweepQuiet(show: { readonly current: EngineState; readonly remembersEarlier: boolean }): boolean {
+  return nothingUp(show.current.layers) && !show.remembersEarlier;
+}
+
 const usedIn = (rows: readonly { name: string }[]): UsedIn => ({
   names: rows.slice(0, USED_IN_NAMES).map((r) => r.name),
   count: rows.length,
@@ -40,6 +75,8 @@ export class MediaRemoval {
     private readonly deps: {
       /** Media on the screens now (and playing on the audio layer). */
       onScreens: () => ReadonlySet<string>;
+      /** Media a crash now would put back on the screens (the show saved last): the unused Trim cuts keep it. */
+      putBack?: () => ReadonlySet<string>;
     },
   ) {}
 
@@ -148,7 +185,13 @@ export class MediaRemoval {
     })();
   }
 
-  /** Reclaim earlier managed Trim cuts only in a quiet turn after the window opens. */
+  /**
+   * Earlier Trim cuts that nothing uses any more go to the computer's Trash (Session 57, TR-3), in a quiet moment
+   * after the window opens: never one up now or in what a crash now would put back (`putBack`), and only while
+   * `quiet` holds (index.ts: nothing up, nothing Oops, Put it back or Back could bring back, no stream or
+   * recording). The library's JSON is read twice at most: once before the hashes, and once for all the cuts left
+   * just before they move. Any other library write while they move leaves the rest for a later start.
+   */
   async trashUnusedTrims(
     mediaDir: string,
     trash: (file: string) => Promise<void>,
@@ -165,7 +208,7 @@ export class MediaRemoval {
            AND NOT EXISTS (SELECT 1 FROM playlist_items i WHERE i.media_id = m.id)
          ORDER BY m.id`,
       )
-      .all() as { id: string; path: string; sha256: string }[];
+      .all() as TrimRow[];
     if (rows.length === 0) return 0;
 
     // Include soft-deleted rows for Undo, plus durable media uses outside the removal dialog's summary.
@@ -210,23 +253,10 @@ export class MediaRemoval {
          FROM possible, json_tree(CASE WHEN json_valid(data) THEN data ELSE NULL END) j
         WHERE j.type = 'text' AND j.atom IN (SELECT id FROM candidates)`,
     );
-    // An editor can save while the file is hashed. Rebuild the shared set only if the DB changed.
-    // Subtract the rows this pass has marked missing, since those writes cannot add a reference.
+    // Every write to the library: this connection's (less the rows this pass has marked) and another's commit.
     const revision = this.db.prepare<[number], { stamp: string }>(
       'SELECT (total_changes() - ?) || char(58) || data_version AS stamp FROM pragma_data_version',
     );
-    const ids = JSON.stringify(rows.map(({ id }) => id));
-    let jsonReferences = new Set<string>();
-    let scannedAt: string | undefined;
-    let gone = 0;
-    const inJson = (id: string) => {
-      const current = revision.get(gone)?.stamp;
-      if (scannedAt === undefined || scannedAt !== current) {
-        jsonReferences = new Set(scanJson.all(ids).map((found) => found.id));
-        scannedAt = current;
-      }
-      return jsonReferences.has(id);
-    };
     const stillManaged = this.db.prepare(
       `SELECT 1 FROM trimmed_videos t JOIN media m ON m.id = t.media_id
         WHERE m.id = @id AND m.path = @path AND m.sha256 = @sha256
@@ -238,42 +268,62 @@ export class MediaRemoval {
     );
     const root = realpathSync.native(mediaDir);
     const slash = (path: string) => path.replaceAll('\\', '/');
-    for (const row of rows) {
-      await setImmediate();
-      if (paused()) break;
-      const file = resolve(root, row.path);
-      if (isAbsolute(row.path) || !isInside(root, file)) continue;
-      const lookup = {
+    const inUse = () => new Set([...this.deps.onScreens(), ...(this.deps.putBack?.() ?? [])]);
+    const usedNow = (row: TrimRow, file: string, up: ReadonlySet<string>) =>
+      up.has(row.id) ||
+      used.get({
         id: row.id,
         path: slash(row.path),
         absolute: slash(resolve(mediaDir, row.path)),
         real: slash(file),
-      };
-      const referenced = () =>
-        this.deps.onScreens().has(row.id) || used.get(lookup) !== undefined || inJson(row.id);
-      if (referenced()) continue;
+      }) !== undefined;
+    // The cheap checks for each cut, then one pass over the library's JSON for all of them at once.
+    const unused = <T extends { row: TrimRow; file: string }>(cuts: readonly T[]): T[] => {
+      const up = inUse();
+      const left = cuts.filter(({ row, file }) => !usedNow(row, file, up));
+      if (left.length === 0) return left;
+      const named = new Set(scanJson.all(JSON.stringify(left.map(({ row }) => row.id))).map(({ id }) => id));
+      return left.filter(({ row }) => !named.has(row.id));
+    };
+
+    const inMedia = rows.flatMap((row) => {
+      const file = resolve(root, row.path);
+      return isAbsolute(row.path) || !isInside(root, file) ? [] : [{ row, file }];
+    });
+    const checked: { row: TrimRow; file: string; before: BigIntStats }[] = [];
+    for (const { row, file } of unused(inMedia)) {
+      await setImmediate();
+      if (paused()) return 0;
       try {
         const before = lstatSync(file, { bigint: true });
         if (!before.isFile() || realpathSync.native(file) !== file) continue;
-        const sha256 = await hashTrimFile(file, signal);
-        if (paused()) break;
-        const after = lstatSync(file, { bigint: true });
-        if (
-          sha256 !== row.sha256 ||
-          before.dev !== after.dev ||
-          before.ino !== after.ino ||
-          before.size !== after.size ||
-          before.mtimeNs !== after.mtimeNs ||
-          !after.isFile() ||
-          realpathSync.native(file) !== file ||
-          stillManaged.get(row) === undefined ||
-          referenced()
-        )
-          continue;
+        const { sha256 } = await hashOffMain(file, signal);
+        if (paused()) return 0;
+        // Only the bytes Drashti wrote, the same file before and after the hash.
+        if (sha256 === row.sha256 && sameFile(file, before)) checked.push({ row, file, before });
+      } catch {
+        // A file the system could not check stays in the library for the next start.
+      }
+    }
+    await setImmediate();
+    if (paused() || checked.length === 0) return 0;
+
+    // The last check, for all of them at once, in the same turn as the first move.
+    const ready = unused(
+      checked.filter(({ row, file, before }) => stillManaged.get(row) !== undefined && sameFile(file, before)),
+    );
+    const checkedAt = revision.get(0)?.stamp;
+    let gone = 0;
+    for (const { row, file, before } of ready) {
+      // Anything else written to the library since that check (an edit, an import, bookkeeping) could name the
+      // rest: they wait for a later start.
+      if (paused() || revision.get(gone)?.stamp !== checkedAt) break;
+      if (usedNow(row, file, inUse()) || stillManaged.get(row) === undefined || !sameFile(file, before)) continue;
+      try {
         await trash(file);
         gone += forget.run(row).changes;
       } catch {
-        // A file the system could not check or move stays in the library for the next start.
+        // A file the system could not move stays in the library for the next start.
       }
     }
     return gone;
@@ -312,7 +362,10 @@ export class MediaRemoval {
   }
 }
 
-/** Start once the operator window has opened. Yield to a show, a stream, or a recording. */
+/**
+ * Start once the operator window has opened, `delayMs` into a quiet moment (as long as kept conversions wait after
+ * the start, AFTER_START_MS). Yield to a show, a stream, or a recording.
+ */
 export class TrimCleanup {
   private opened = false;
   private closed = false;
@@ -323,6 +376,7 @@ export class TrimCleanup {
     private readonly quiet: () => boolean,
     private readonly sweep: (signal: AbortSignal) => Promise<void>,
     private readonly failed: (error: unknown) => void,
+    private readonly delayMs = 10_000,
   ) {}
 
   open(): void {
@@ -336,7 +390,7 @@ export class TrimCleanup {
       this.pause();
       return;
     }
-    if (!this.timer && !this.running) this.timer = setTimeout(() => this.start(), 2_000).unref();
+    if (!this.timer && !this.running) this.timer = setTimeout(() => this.start(), this.delayMs).unref();
   }
 
   close(): void {
@@ -363,34 +417,4 @@ export class TrimCleanup {
         else this.closed = true;
       });
   }
-}
-
-/** Stream the bytes in a worker so even a long video does not hash on Electron's main thread. */
-function hashTrimFile(file: string, signal: AbortSignal): Promise<string> {
-  signal.throwIfAborted();
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(
-      `
-        const { parentPort, workerData } = require('node:worker_threads');
-        const { createReadStream } = require('node:fs');
-        const { createHash } = require('node:crypto');
-        const hash = createHash('sha256');
-        (async () => {
-          for await (const chunk of createReadStream(workerData)) hash.update(chunk);
-          parentPort.postMessage(hash.digest('hex'));
-        })().catch((error) => { throw error; });
-      `,
-      { eval: true, workerData: file },
-    );
-    const abort = () => {
-      void worker.terminate();
-    };
-    signal.addEventListener('abort', abort, { once: true });
-    worker.once('message', resolve);
-    worker.once('error', reject);
-    worker.once('exit', () => {
-      signal.removeEventListener('abort', abort);
-      reject(new Error('The Trim file hash stopped before it finished.'));
-    });
-  });
 }

@@ -471,6 +471,14 @@ export class ShowEngine {
     return this.state;
   }
 
+  /**
+   * Oops, Put it back or Back can still bring back something from earlier in this run (Session 57): until none can,
+   * the unused Trim cuts wait (library/media-removal.ts, sweepQuiet).
+   */
+  get remembersEarlier(): boolean {
+    return this.cleared !== null || this.oopsSteps.length > 0 || this.steps.length > 0;
+  }
+
   get rev(): number {
     return this.revision;
   }
