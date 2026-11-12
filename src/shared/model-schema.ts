@@ -233,6 +233,9 @@ export const textRunSchema: z.ZodType<TextRun> = z.object({
       lineHeight: num.positive().max(5).optional(),
       bullet: z.string().max(8).optional(),
       bulletFont: z.string().max(200).optional(),
+      bulletColor: hexColorSchema.optional(),
+      bulletSize: num.positive().max(2000).optional(),
+      bulletScale: num.min(0.25).max(4).optional(),
       startAt: num.int().min(1).max(32_767).optional(),
     })
     .optional(),

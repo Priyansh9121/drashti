@@ -1,8 +1,9 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readEditablePptx } from '../import/deck/editable-pptx';
+import * as nativeImport from '../import/deck/native-deck-import';
 import { makeTestDeck, placeholderDeckMedia, type TestDeckSlide } from '../import/testing/make-deck';
 import { makeTestPptx } from '../import/testing/make-pptx';
 import { readEditableWithTiming } from './pptx-source-timing';
@@ -85,6 +86,27 @@ describe('the document reader’s clicks for a slide imported before alpha.17', 
     const both = await readEditableWithTiming(file, folder(), [1, 0]);
     expect([...both.decks.keys()].sort()).toEqual([0, 1]);
     expect(both.decks.get(1)?.motion?.effects.map((effect) => effect.shapeId)).toEqual(['4']);
+  });
+
+  it('keeps the editable copy but leaves a page that needs its still out of the timing map', async () => {
+    const prepare = nativeImport.prepareNativePptx;
+    const prepareWithMissingMedia = vi
+      .spyOn(nativeImport, 'prepareNativePptx')
+      .mockImplementationOnce(async (...args) => {
+        const result = await prepare(...args);
+        const page = result?.pages.get(0);
+        if (!page) throw new Error('The placeholder page was not prepared');
+        page.needsStill = true;
+        return result;
+      });
+    try {
+      const file = deckFile(makeTestDeck(SLIDES, placeholderDeckMedia()));
+      const timed = await readEditableWithTiming(file, folder(), [0, 1]);
+      expect(timed.editable.slides.map((slide) => slide.sourceIndex)).toEqual([0, 1]);
+      expect([...timed.decks.keys()]).toEqual([1]);
+    } finally {
+      prepareWithMissingMedia.mockRestore();
+    }
   });
 
   it('reads the editable copy alone when no page is asked, or nothing in the deck moves', async () => {

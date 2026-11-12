@@ -8,10 +8,8 @@ import {
   type PreparedSource,
   type PreparedSourcePage,
 } from '../../shared/editable-source';
-import { sourceTimingDeck } from '../../shared/deck-source-timing';
-import { hexColorSchema, slideElementSchema } from '../../shared/model-schema';
 import { sourceCheckpoint, sourceTimeLeft, type SourceReader } from './source-reader';
-import type { PptxReaderChild } from './pptx-reader-protocol';
+import { pptxPageSchema, type PptxReaderChild } from './pptx-reader-protocol';
 
 const resultSchema = z
   .object({
@@ -19,37 +17,7 @@ const resultSchema = z
     jobId: z.string().min(1).max(512),
     total: z.number().int().min(0).max(2_000),
     failed: z.array(z.number().int().min(0)).max(EDITABLE_SOURCE_LIMITS.pages),
-    pages: z
-      .array(
-        z
-          .object({
-            sourceIndex: z.number().int().min(0),
-            width: z.number().min(16).max(16_384),
-            height: z.number().min(16).max(16_384),
-            background: hexColorSchema.nullable(),
-            elements: z.array(slideElementSchema).max(EDITABLE_SOURCE_LIMITS.pageElements),
-            issues: z.array(z.string().max(300)).max(100),
-            assets: z
-              .array(
-                z
-                  .object({
-                    token: z.string().min(1).max(512),
-                    relative: z.string().min(1).max(32_768),
-                    kind: z.enum(['image', 'video', 'audio']),
-                  })
-                  .strict(),
-              )
-              .max(EDITABLE_SOURCE_LIMITS.pageElements),
-            // A timed page's clicks and transition (W6's review N4), only their known parts; anything else is
-            // dropped here, never failing the reply, and only an asked page's are taken (below).
-            deck: z
-              .unknown()
-              .transform((value) => sourceTimingDeck(value))
-              .optional(),
-          })
-          .strict(),
-      )
-      .max(EDITABLE_SOURCE_LIMITS.pages),
+    pages: z.array(pptxPageSchema).max(EDITABLE_SOURCE_LIMITS.pages),
   })
   .strict();
 const failed = (): PreparedSource => ({
