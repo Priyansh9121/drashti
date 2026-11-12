@@ -81,7 +81,8 @@ export function LinkDialog() {
 function linkProgress(view: LinkView): string | null {
   switch (view.phase) {
     case 'looking':
-      return view.waitingFor ? 'Link check waits while the stream is in use' : 'Checking link…';
+      if (view.waitingFor) return 'Link check waits while the stream is in use';
+      return view.look ? 'Checking where to save the download…' : 'Checking link…';
     case 'waiting':
       return 'Download waits while the stream is in use';
     case 'downloading': {
