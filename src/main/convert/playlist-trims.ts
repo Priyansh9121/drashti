@@ -23,6 +23,7 @@ interface PlaylistTrimsDeps {
   mediaDir: string;
   readInfo(path: string): Promise<MediaInfo>;
   frameAt(path: string, atMs: number): Promise<number | null>;
+  spaceProblem(path: string, durationMs: number | null, lengthMs: number): string | null;
   queue(input: TrimCopyInput): { id: string; done: Promise<FitResult> };
   cancel(id: string): boolean;
   isLive(itemId: string, mediaId: string): boolean;
@@ -164,6 +165,9 @@ export class PlaylistTrims {
         return before.canReset
           ? this.resetRow(row, resetMarkerEdits(before.markers, points))
           : this.saveMarkers(row, { ...points, startMs: null, endMs: null });
+
+      const space = this.deps.spaceProblem(path, info.durationMs, endMs - startMs);
+      if (space) return { ok: false, message: space };
 
       pending.kept = { itemId, mediaId, name: row.sourceName };
       this.keepWaiting();

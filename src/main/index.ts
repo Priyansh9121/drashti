@@ -3882,6 +3882,8 @@ function start(): void {
       load: () => settings.get('playlistTrimsWaiting'),
       save: (cuts) => laterSetting('playlistTrimsWaiting', cuts),
     },
+    spaceProblem: (file, durationMs, lengthMs) =>
+      conversions.trimSpaceProblem(file, dirname(file), durationMs, lengthMs),
     queue: (input) => queueTrimCopy(conversions, input),
     cancel: (id) => conversions.cancelFile(id),
     pendingChanged: (ids) => sendToOperator(IPC.media.preparingTrimsChanged, ids),
