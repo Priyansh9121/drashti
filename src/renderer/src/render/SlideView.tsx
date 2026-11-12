@@ -337,7 +337,10 @@ export function listMarkerBoxStyle(
     ...(line.label === null && !first.paragraph?.bullet
       ? {}
       : {
-          fontFamily: fontFamilyFor(first.font ?? el.style.fontFamily, first.lang ?? el.lang),
+          fontFamily: fontFamilyFor(
+            first.paragraph?.bulletFont ?? first.font ?? el.style.fontFamily,
+            first.lang ?? el.lang,
+          ),
           ...(line.label === null ? { color: first.color } : listMarkerStyle(line.mark, first)),
         }),
   };

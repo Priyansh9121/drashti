@@ -108,6 +108,8 @@ export interface TextParagraph {
   indent?: number;
   lineHeight?: number;
   bullet?: string;
+  /** The source bullet’s font when it differs from the paragraph’s words. */
+  bulletFont?: string;
   startAt?: number;
 }
 

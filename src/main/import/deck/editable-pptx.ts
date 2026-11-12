@@ -503,7 +503,114 @@ const NUMBERED_LISTS: Record<string, ListMark> = {
   hindiNum: 'hi',
 };
 
-function paragraphOf(nodes: Node[], xScale: number): Pick<TextRun, 'paragraph' | 'list' | 'level'> {
+// Common bullet shapes in the symbol fonts. Unicode WG2 N4384 documents the Wingdings
+// and Webdings positions. Use widely available glyphs of the same shape where possible.
+const SYMBOL_BULLETS = new Map<string, Readonly<Record<number, string>>>([
+  [
+    'wingdings',
+    {
+      0x6c: '●',
+      0x6e: '■',
+      0x71: '❑',
+      0x72: '❒',
+      0x75: '◆',
+      0x76: '❖',
+      0x9f: '•',
+      0xa7: '▪',
+      0xab: '★',
+      0xd8: '➢',
+      0xe8: '➔',
+      0xfb: '✗',
+      0xfc: '✓',
+      0xfd: '☒',
+      0xfe: '☑',
+    },
+  ],
+  [
+    'wingdings2',
+    {
+      0x4f: '✗',
+      0x50: '✓',
+      0x51: '☒',
+      0x52: '☑',
+      0x53: '☒',
+      0x54: '☒',
+      0x98: '●',
+      0x99: '○',
+      0xa2: '■',
+      0xa3: '□',
+      0xaf: '◇',
+      0xb1: '◈',
+    },
+  ],
+  [
+    'wingdings3',
+    {
+      0x21: '←',
+      0x22: '→',
+      0x23: '↑',
+      0x24: '↓',
+      0x70: '▲',
+      0x71: '▼',
+      0x72: '△',
+      0x73: '▽',
+      0x74: '◀',
+      0x75: '▶',
+      0x76: '◁',
+      0x77: '▷',
+    },
+  ],
+  [
+    'webdings',
+    {
+      0x61: '✔',
+      0x63: '□',
+      0x67: '■',
+      0x6e: '●',
+    },
+  ],
+  [
+    'symbol',
+    {
+      0xa7: '♣',
+      0xa8: '♦',
+      0xa9: '♥',
+      0xaa: '♠',
+      0xab: '↔',
+      0xac: '←',
+      0xad: '↑',
+      0xae: '→',
+      0xaf: '↓',
+      0xb7: '•',
+    },
+  ],
+]);
+
+function bulletStyle(
+  character: string,
+  family: string | undefined,
+  ctx: Context,
+): Pick<TextParagraph, 'bullet' | 'bulletFont'> {
+  const key = family?.toLowerCase().replace(/\s+/gu, '');
+  const glyphs = SYMBOL_BULLETS.get(key === 'symbolmt' ? 'symbol' : (key ?? ''));
+  if (!glyphs) {
+    return { bullet: cutText(character, 8), ...(family ? { bulletFont: cutText(family, 200) } : {}) };
+  }
+  const code = character.codePointAt(0) ?? 0;
+  const position = code >= 0xf000 && code <= 0xf0ff ? code - 0xf000 : code;
+  const glyph = character.length === 1 ? glyphs[position] : undefined;
+  if (glyph) return { bullet: glyph };
+  // Some writers already supply Unicode (for example U+2022 with Symbol).
+  if (position > 0xff && !/[\p{Co}\p{Cs}]/u.test(character)) return { bullet: cutText(character, 8) };
+  ctx.issues.add('Some symbol bullets use a dot. Change them in Bullets and Numbering.');
+  return {};
+}
+
+function paragraphOf(
+  nodes: Node[],
+  xScale: number,
+  ctx: Context,
+): Pick<TextRun, 'paragraph' | 'list' | 'level'> {
   const alignment = lowToHighValue(nodes, 'algn') ?? 'l';
   const align =
     alignment === 'ctr'
@@ -526,17 +633,20 @@ function paragraphOf(nodes: Node[], xScale: number): Pick<TextRun, 'paragraph' |
   if (spacing !== undefined)
     paragraph.lineHeight = Math.max(0.1, Math.min(5, number(spacing, 100_000) / 100_000));
 
-  const bullet = [...nodes]
-    .reverse()
-    .flatMap((node) => kids(node))
-    .find((node) => ['buNone', 'buChar', 'buAutoNum', 'buBlip'].includes(nameOf(node)));
+  const children = [...nodes].reverse().flatMap((node) => kids(node));
+  const bullet = children.find((node) => ['buNone', 'buChar', 'buAutoNum', 'buBlip'].includes(nameOf(node)));
   if (!bullet || nameOf(bullet) === 'buNone') return { paragraph };
   const level = Math.min(MAX_LIST_LEVEL, Math.max(0, Math.trunc(number(lowToHighValue(nodes, 'lvl'), 0))));
   const startAt = attr(bullet, 'startAt');
   if (nameOf(bullet) === 'buAutoNum' && startAt !== undefined)
     paragraph.startAt = Math.min(32_767, Math.max(1, Math.trunc(number(startAt, 1))));
   const character = attr(bullet, 'char');
-  if (character) paragraph.bullet = cutText(character, 8);
+  if (character) {
+    const font = children.find((node) => ['buFont', 'buFontTx'].includes(nameOf(node)));
+    const typeface = attr(font, 'typeface')?.trim();
+    const family = typeface?.startsWith('+') ? ctx.theme.fonts[typeface] : typeface;
+    Object.assign(paragraph, bulletStyle(character, family, ctx));
+  }
   const numbering = (attr(bullet, 'type') ?? '').replace(/(?:Period|ParenR|ParenBoth|Plain)$/u, '');
   return {
     paragraph,
@@ -589,7 +699,7 @@ function textElement(
   for (const [index, paragraph] of paragraphs.entries()) {
     const nodes = paragraphNodes(chain, paragraph, ctx);
     const defaults = nodes.map((n) => child(n, 'defRPr'));
-    const formatting = paragraphOf(nodes, xScale);
+    const formatting = paragraphOf(nodes, xScale, ctx);
     const push = (words: string, style: Node[], softBreak = false) =>
       runs.push({
         ...runOf(words, style, ctx, scale, fallback),

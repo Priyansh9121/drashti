@@ -316,7 +316,7 @@ export class ImportedSlides {
           }
           if (parsed.failed.length)
             issues.push(
-              'Some source pages stay as their saved pictures. Open the original to edit those pages.',
+              'Some source pages could not be prepared and stay as their saved pictures. Reopen Edit slides to try again.',
             );
         } catch {
           if (!allowed()) throw new Error('Source preparation cancelled.');
