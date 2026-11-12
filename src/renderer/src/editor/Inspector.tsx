@@ -606,6 +606,7 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
 function ShapeSection({ el, change }: { el: ShapeElement; change: Change }) {
   const kind = el.shape ?? 'rectangle';
   const outline = el.outline ?? null;
+  const fill = el.fill ?? el.gradient?.stops[0]?.color ?? null;
   const set = (patch: Partial<ShapeElement>, coalesce?: string) => {
     change([el.id], (e) => (e.kind === 'shape' ? { ...e, ...patch } : e), coalesce);
   };
@@ -647,19 +648,19 @@ function ShapeSection({ el, change }: { el: ShapeElement; change: Change }) {
         <>
           <Toggle
             label="Filled"
-            checked={el.fill !== null}
+            checked={fill !== null}
             data-testid="field-filled"
             onChange={(on) => {
-              set({ fill: on ? '#000000' : null });
+              set({ fill: on ? '#000000' : null, gradient: undefined });
             }}
           />
-          {el.fill !== null && (
+          {fill !== null && (
             <Field label="Fill" layout="inline" className="pl-2">
               <ColorInput
                 data-testid="field-fill"
-                value={el.fill.slice(0, 7)}
+                value={fill.slice(0, 7)}
                 onChange={(e) => {
-                  set({ fill: withSameAlpha(e.target.value, el.fill) }, `fill:${el.id}`);
+                  set({ fill: withSameAlpha(e.target.value, fill), gradient: undefined }, `fill:${el.id}`);
                 }}
               />
             </Field>
