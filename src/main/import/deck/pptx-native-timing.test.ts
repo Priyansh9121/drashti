@@ -595,6 +595,41 @@ describe('PowerPoint slide animation timing', () => {
     });
   });
 
+  it('brings an animated attached shape in with its first point without animating the whole text box', () => {
+    const fadeIn = (target: string, id: number) =>
+      behaviour('animEffect', 3, 250, 'filter="fade" transition="in"', target).replace(
+        'id="103"',
+        `id="${id}"`,
+      );
+    const group = parallel(
+      10,
+      delay('indefinite'),
+      parallel(
+        11,
+        delay(0),
+        parallel(
+          12,
+          delay(0),
+          fadeIn('<p:bg/>', 13),
+          'nodeType="clickEffect" presetClass="entr" presetID="10"',
+        ) +
+          parallel(
+            14,
+            delay(0),
+            fadeIn('<p:txEl><p:pRg st="0" end="0"/></p:txEl>', 15),
+            'nodeType="withEffect" presetClass="entr" presetID="10"',
+          ),
+      ),
+    );
+    expect(read(group).motion).toMatchObject({
+      approximate: true,
+      effects: [
+        { shapeId: 'background:3', step: 1, phase: 'in', kind: 'fade', durationMs: 250 },
+        { shapeId: '3', step: 1, phase: 'in', kind: 'fade', durationMs: 250, paragraphs: [0, 0] },
+      ],
+    });
+  });
+
   it('keeps a word-by-word or letter-by-letter build for PowerPoint’s video', () => {
     const effect = parallel(
       10,
