@@ -90,7 +90,7 @@ export function hasFont(family: string): boolean {
 export function missingFontsOf(el: TextElement): string[] {
   const names = new Set([
     ...namedFamilies(el.style.fontFamily),
-    ...(el.runs ?? []).flatMap((r) => namedFamilies(r.font)),
+    ...(el.runs ?? []).flatMap((r) => [...namedFamilies(r.font), ...namedFamilies(r.paragraph?.bulletFont)]),
   ]);
   return [...names].filter((f) => !hasFont(f));
 }
