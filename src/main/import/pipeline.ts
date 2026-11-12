@@ -1184,7 +1184,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
               page: editablePptx && !matchesCopy ? index : (indices[index] ?? index),
             };
           }
-          await addDeckFonts(flow.parsed, matchesCopy ? editablePptx : undefined);
+          await addDeckFonts(flow.parsed, editablePptx);
           told.how = 'baked';
           told.slides = slideCount(flow.parsed);
           // Its pictures changed or deleted meanwhile: the operator's edit wins (Session 56).
@@ -1421,7 +1421,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         notesUnmatched: !shifted && slides !== null && notes === null && slides.some((sl) => sl.notes !== ''),
       });
       parsed.issues.splice(1, 0, ...deckIssues, ...picturesMediaIssues(added));
-      if (!shifted) await addDeckFonts(parsed, keynoteExport?.file);
+      await addDeckFonts(parsed, keynoteExport?.file);
       told.how = 'pictures';
       told.slides = slideCount(parsed);
       // In place of its slides shown as these pictures while its animations were tried (Session 56), unless changed.

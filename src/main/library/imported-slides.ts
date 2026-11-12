@@ -456,7 +456,11 @@ export class ImportedSlides {
             }
             if (!allowed()) throw new Error('Source preparation cancelled.');
             for (const native of parsed.pages) await takePage(native.sourceIndex, native);
-            failed ||= parsed.failed.length > 0;
+            for (const index of parsed.failed) {
+              const notes = parsed.failedNotes?.[index];
+              if (notes?.length) issues.push(...notes);
+              else failed = true;
+            }
             if (!parsed.unread?.length) break;
             sourcePages = parsed.unread;
             if (!(await waitForIdle(guard.signal, true)) || !allowed())

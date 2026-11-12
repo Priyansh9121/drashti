@@ -10,6 +10,7 @@ import { makeZip } from './zip-writer';
 export interface TestPptxSlide {
   color: string;
   text: string;
+  font?: string;
   notes?: string;
   hidden?: boolean;
   /** The words come in with a fade (an entrance animation). */
@@ -52,7 +53,7 @@ export type TestPptxShape = '16:9' | '4:3';
 const WIDTH: Record<TestPptxShape, number> = { '16:9': 12192000, '4:3': 9144000 };
 
 function slideXml(slide: TestPptxSlide, shape: TestPptxShape): string {
-  return `${XML}<p:sld ${NS}${slide.hidden ? ' show="0"' : ''}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="${slide.color}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree>${GROUP}<p:sp><p:nvSpPr><p:cNvPr id="2" name="Placeholder words"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="914400" y="2743200"/><a:ext cx="${String(WIDTH[shape] - 2 * 914400)}" cy="1371600"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="4000" dirty="0"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>${escape(slide.text)}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>${slide.animated ? FADE_IN : ''}</p:sld>`;
+  return `${XML}<p:sld ${NS}${slide.hidden ? ' show="0"' : ''}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="${slide.color}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree>${GROUP}<p:sp><p:nvSpPr><p:cNvPr id="2" name="Placeholder words"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="914400" y="2743200"/><a:ext cx="${String(WIDTH[shape] - 2 * 914400)}" cy="1371600"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="4000" dirty="0"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>${slide.font ? `<a:latin typeface="${escape(slide.font).replace(/"/gu, '&quot;')}"/>` : ''}</a:rPr><a:t>${escape(slide.text)}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>${slide.animated ? FADE_IN : ''}</p:sld>`;
 }
 
 function notesXml(notes: string): string {
