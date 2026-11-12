@@ -324,6 +324,11 @@ const READ = `(() => {
   };
 })()`;
 
+/** The scenario, set up. Not built yet: a fault while it sets up is thrown as it comes. */
+export function scenarioFor(name: PerfScenario, deps: ScenarioDeps): Promise<ScenarioRun> {
+  return Promise.resolve(startScenario(name, deps));
+}
+
 export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioRun {
   const background = (v: Video) => {
     deps.engine.dispatch({
