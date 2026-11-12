@@ -5,6 +5,7 @@ import {
   sourceTimingPages,
   wantsSourceTiming,
   withSourceTiming,
+  withSourceVideoShapes,
 } from './deck-source-timing';
 import type { SlideElement } from './model';
 import type { EditSlide } from './slide-edit';
@@ -157,6 +158,47 @@ describe('a slide imported before alpha.17, and its kept PowerPoint file', () =>
     const older = slide(withVideo, {}, [video(null)]);
     expect(withSourceTiming(older, read)).toBe(withVideo);
     expect(withSourceTiming(slide(withVideo, {}, [video('4')]), read)?.motion).toEqual(motion);
+  });
+
+  it('matches two uses of the same video by their boxes on differently sized canvases', () => {
+    const first = video(null);
+    const second = { ...first, id: 'second', frame: { ...first.frame, x: 102 } };
+    const deck = {
+      ...withVideo,
+      media: withVideo.media.flatMap((item) =>
+        item.kind === 'video' ? [item, { ...item, box: { ...item.box, x: 0.08 } }] : [item],
+      ),
+    };
+    const legacy = slide(deck, {}, [first, second]);
+    const saved = { width: 1280, height: 720 };
+    const poster = (sourceShapeId: string, x: number): SlideElement => ({
+      id: `poster-${sourceShapeId}`,
+      kind: 'image',
+      sourceShapeId,
+      mediaId: 'placeholder-poster',
+      fit: 'stretch',
+      frame: { x, y: 75, width: 300, height: 225 },
+    });
+    const source = {
+      width: 1000,
+      height: 750,
+      sourceVideoShapeIds: ['4', '6'],
+      elements: [poster('5', 500), poster('6', 80), poster('4', 500)],
+    };
+    const identified = withSourceVideoShapes(legacy, saved, source);
+    expect(identified.elements.map((element) => element.sourceShapeId)).toEqual(['4', '6']);
+    expect(wantsSourceTiming(identified)).toBe(true);
+    expect(wantsSourceTiming(slide(deck, {}, [video('4'), second]))).toBe(false);
+
+    const ambiguous = {
+      ...source,
+      sourceVideoShapeIds: ['4', '6', '7'],
+      elements: [...source.elements, poster('7', 500)],
+    };
+    expect(withSourceVideoShapes(legacy, saved, ambiguous)).toBe(legacy);
+    expect(
+      withSourceVideoShapes(legacy, saved, { ...source, elements: [poster('4', 500), poster('6', 83)] }),
+    ).toBe(legacy);
   });
 
   it('keeps the read clicks and the deck’s transition beside the slide’s clips, as the import keeps them', () => {
