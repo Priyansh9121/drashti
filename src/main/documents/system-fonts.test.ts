@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createSystemFontFamilies } from './system-fonts';
 
 type OnExit = (error: Error | null, stdout: string) => void;
 type ExecFile = (file: string, args: string[], options: unknown, done: OnExit) => void;
@@ -6,21 +7,13 @@ type ExecFile = (file: string, args: string[], options: unknown, done: OnExit) =
 const execFile = vi.hoisted(() => vi.fn<ExecFile>());
 vi.mock('node:child_process', () => ({ execFile }));
 
-async function fontFamiliesOn(platform: NodeJS.Platform) {
-  // @ts-expect-error The production module is added after the red run.
-  const { createSystemFontFamilies } = (await import('./system-fonts')) as {
-    createSystemFontFamilies: (platform: NodeJS.Platform) => () => Promise<readonly string[]>;
-  };
-  return createSystemFontFamilies(platform);
-}
-
 describe('the editor’s installed font families', () => {
   beforeEach(() => {
     execFile.mockReset();
   });
 
   it('asks AppKit only on the first request and shares the result with concurrent editors', async () => {
-    const read = await fontFamiliesOn('darwin');
+    const read = createSystemFontFamilies('darwin');
     expect(execFile).not.toHaveBeenCalled();
     execFile.mockImplementation((_file, _args, _options, done) => {
       queueMicrotask(() => done(null, '["Placeholder Serif"," Placeholder Sans ","placeholder sans"]'));
@@ -43,7 +36,7 @@ describe('the editor’s installed font families', () => {
   });
 
   it('keeps Unicode Windows font names and discards paths and malformed entries', async () => {
-    const read = await fontFamiliesOn('win32');
+    const read = createSystemFontFamilies('win32');
     const stdout = JSON.stringify([
       'Placeholder Sans',
       'નમૂના ફૉન્ટ',
@@ -76,19 +69,19 @@ describe('the editor’s installed font families', () => {
   });
 
   it('keeps command errors and unparseable output inside Main', async () => {
-    const readMac = await fontFamiliesOn('darwin');
+    const readMac = createSystemFontFamilies('darwin');
     execFile.mockImplementation((_file, _args, _options, done) => {
       done(new Error('Placeholder private path /Placeholder/Fonts'), '["Placeholder incomplete font"]');
     });
     expect(await readMac()).toEqual([]);
 
-    const readWindows = await fontFamiliesOn('win32');
+    const readWindows = createSystemFontFamilies('win32');
     execFile.mockImplementation((_file, _args, _options, done) => done(null, 'Placeholder broken JSON'));
     expect(await readWindows()).toEqual([]);
   });
 
   it('returns an empty list on an unsupported platform without starting a process', async () => {
-    const read = await fontFamiliesOn('linux');
+    const read = createSystemFontFamilies('linux');
     expect(await read()).toEqual([]);
     expect(execFile).not.toHaveBeenCalled();
   });

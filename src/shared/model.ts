@@ -101,6 +101,16 @@ export const isNumberMark = (mark: ListMark): mark is NumberMark =>
 /** How far in a list's line can go: levels 0 (the first) to 4. */
 export const MAX_LIST_LEVEL = 4;
 
+export interface TextParagraph {
+  align: TextAlign | 'justify';
+  marginLeft?: number;
+  marginRight?: number;
+  indent?: number;
+  lineHeight?: number;
+  bullet?: string;
+  startAt?: number;
+}
+
 export interface TextStyle {
   /** CSS font-family list; the renderer adds the bundled Noto fonts as fallbacks. */
   fontFamily: string | null;
@@ -118,6 +128,10 @@ export interface TextStyle {
   glow?: Glow | null;
   /** Make the words smaller until they fit the box (never bigger than they are set). */
   shrinkToFit?: boolean;
+  /** Crop imported words to the text rectangle. */
+  clipToBox?: boolean;
+  writingMode?: 'vertical-rl' | 'vertical-lr' | 'sideways-lr';
+  textOrientation?: 'upright';
 }
 
 /**
@@ -154,6 +168,10 @@ export interface TextRun {
   list?: ListMark;
   /** How far in that list's line is: 1 to MAX_LIST_LEVEL; left out for the first level. */
   level?: number;
+  /** Source paragraph formatting, carried with its words and the paragraph break. */
+  paragraph?: TextParagraph;
+  /** An explicit line break within the same source paragraph. */
+  softBreak?: boolean;
   /** Language of this run; when a source gives none it is detected from the script. */
   lang?: Lang | null;
   /**
@@ -209,6 +227,13 @@ interface ElementBase {
   motion?: ElementMotion;
 }
 
+export interface TableCell {
+  row: number;
+  column: number;
+  rowSpan: number;
+  columnSpan: number;
+}
+
 export interface TextElement extends ElementBase {
   kind: 'text';
   /** The plain text (all runs joined): for search, thumbnails and tests. */
@@ -225,6 +250,7 @@ export interface TextElement extends ElementBase {
    * screen shows (a title or a footer, not one of the tracks).
    */
   everyScreen?: boolean;
+  tableCell?: TableCell;
 }
 
 /**
@@ -271,6 +297,15 @@ export interface NativePath {
   lineJoin: 'miter' | 'round' | 'bevel';
 }
 
+export interface GradientStop {
+  offset: number;
+  color: string;
+}
+
+export type GradientFill =
+  | { kind: 'linear'; angle: number; stops: GradientStop[] }
+  | { kind: 'radial'; x: number; y: number; stops: GradientStop[] };
+
 export interface ShapeElement extends ElementBase {
   kind: 'shape';
   /** Left out: a rectangle (every shape before Session 7 was one). */
@@ -279,6 +314,7 @@ export interface ShapeElement extends ElementBase {
   path?: NativePath;
   /** "#rrggbb" or "#rrggbbaa"; null for none (an outline only, or a line). */
   fill: string | null;
+  gradient?: GradientFill;
   /** Rectangles only: how round the corners are, in slide pixels. */
   cornerRadius: number;
   opacity: number;
@@ -303,6 +339,8 @@ export interface MediaElement extends ElementBase {
   playBar?: boolean;
   /** The portion kept on this slide, in shares of its picture; independent of its library look. */
   crop?: Rect;
+  /** The source shape whose fill this picture provides. */
+  pictureClip?: { shape: Exclude<ShapeKind, 'line' | 'path'>; cornerRadius?: number };
 }
 
 /**
