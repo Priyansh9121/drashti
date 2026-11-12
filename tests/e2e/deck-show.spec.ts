@@ -887,7 +887,7 @@ test('a failed click clip appears when its late copy becomes available', async (
     await dispatch(win, { type: 'next' });
     const at = await stepAt(win);
     expect(at).toBeGreaterThan(0);
-    expect(await holdClock(app, at + 250)).toBe(true);
+    expect(await holdClock(app, at + 250)).toBe(1);
     const shown = out.locator('[data-deck-step="1"]');
     const clip = shown.locator('video[data-deck-video="clip"]');
     await expect.poll(() => clip.evaluate((video: HTMLVideoElement) => video.error !== null)).toBe(true);
