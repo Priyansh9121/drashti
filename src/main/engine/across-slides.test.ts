@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DeckMedia, DeckSlide } from '../../shared/deck';
 import type { AudioCue, SlideCue } from '../../shared/library';
+import type { MediaMarkers } from '../../shared/markers';
 import type { RenderSlide, Transition } from '../../shared/model';
 import { LiveStateWriter, toRestore } from '../recovery/live-state';
 import { ShowEngine } from './show-engine';
@@ -87,13 +88,16 @@ function setup(slides: RenderSlide[], cues: SlideCue[][] = []) {
   source.set('deck', chained(slides), cues, { transition: dissolve(600) });
   source.set('plain', [textSlide('x', 'Placeholder one')]);
   let clock = 50_000;
+  const markers: Record<string, MediaMarkers> = {};
   const engine = new ShowEngine(source, new RecordingTransport(), () => clock, undefined, {
     defaultTransition: () => dissolve(300),
     mediaLength: (id) => (id === 'music' ? 90_000 : null),
+    mediaMarkers: (id) => markers[id] ?? null,
   });
   return {
     engine,
     source,
+    markers,
     elapse: (ms: number) => {
       clock += ms;
     },
@@ -237,6 +241,27 @@ describe('a sound set to play across slides (Session 54)', () => {
     expect(sound(engine)).toEqual(playing);
     engine.dispatch({ type: 'next' });
     expect(sound(engine)).toBeNull();
+  });
+
+  it('keeps an across-slides soundtrack’s points when another deck carries on with it after an automatic import', () => {
+    const { engine, source, markers, elapse } = setup(fourSlides(3));
+    source.set('another-deck', chained(fourSlides(3)));
+    const oldClip = { startMs: 1000, endMs: 80_000 };
+    const oldMarks = [{ id: 'old', name: 'Placeholder old', atMs: 20_000 }];
+    markers['music'] = { ...oldClip, markers: oldMarks };
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    const startedAt = sound(engine)?.startedAt;
+    expect(sound(engine)).toMatchObject({ clip: oldClip, marks: oldMarks });
+    markers['music'] = { startMs: 10_000, endMs: 60_000, markers: [] };
+    engine.holdPoints(['music']);
+    elapse(2000);
+    engine.dispatch({ type: 'goLive', presentationId: 'another-deck', slideIndex: 0 });
+    expect(sound(engine)).toMatchObject({
+      startedAt,
+      clip: oldClip,
+      marks: oldMarks,
+      across: { presentationId: 'another-deck' },
+    });
   });
 
   it('stops at Clear all and at the sound’s own clear, and the slides after never start it again', () => {
