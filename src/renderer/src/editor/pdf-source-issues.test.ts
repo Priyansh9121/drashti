@@ -181,7 +181,7 @@ describe('a page still being read from its PDF (Session 57, C2 part 1)', () => {
   });
 
   it('takes a prepared page’s deck with it, keeping the editor’s own transitions', async () => {
-    const own = { transition: { kind: 'fade' as const, durationMs: 400 }, mode: 'over' as const };
+    const own = { transition: { kind: 'dissolve' as const, durationMs: 400 }, mode: 'over' as const };
     const stored = {
       ...imported,
       deck: { steps: [], media: [], stepTransitions: { 1: own } },

@@ -152,7 +152,7 @@ async function setup() {
   /** Where the hidden window waits before a page (by its index), until the test lets it go on. */
   const gates = new Map<number, { wait: Promise<void>; open: () => void }>();
   const gate = (index: number) => {
-    let open = () => undefined as void;
+    let open: () => void = () => undefined;
     const wait = new Promise<void>((resolve) => {
       open = resolve;
     });
