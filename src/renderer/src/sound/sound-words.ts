@@ -30,8 +30,16 @@ const pointWords = (ms: number | null, end: boolean) =>
   ms === null || (!end && ms === 0) ? (end ? 'its end' : 'its start') : markerTime(ms);
 
 /** Where a video plays now, past its black and silence (Trim black and silence's notice). */
-export const trimmedWords = (name: string, points: { startMs: number; endMs: number | null }): string =>
-  `“${name}” now plays from ${pointWords(points.startMs, false)} to ${pointWords(points.endMs, true)}, past the black and silence. Choose Undo to restore the old playback points.`;
+export function trimmedWords(
+  name: string,
+  points: { startMs: number; endMs: number | null },
+  simple = false,
+): string {
+  const action = simple
+    ? 'Open Trim to change them back.'
+    : 'Choose Undo to restore the old playback points.';
+  return `“${name}” now plays from ${pointWords(points.startMs, false)} to ${pointWords(points.endMs, true)}, past the black and silence. ${action}`;
+}
 
 /**
  * The one menu's items for a video or a sound (files/file-menu.ts: added after Trim): Trim black and silence for a
