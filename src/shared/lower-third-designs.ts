@@ -20,13 +20,6 @@ export const LOWER_THIRD_DESIGNS: readonly Design[] = [
     look: { style: 'underline', band: '#282014', accent: '#e2b96f', font: 'Libre Baskerville', weight: 400 },
   },
   {
-    id: 'midnight-bulletin',
-    name: 'Midnight bulletin',
-    feel: 'bold',
-    animation: 'design-slide-left',
-    look: { style: 'band', band: '#12243b', accent: '#78d8ff', font: 'Oswald', size: 6, bandOpacity: 1 },
-  },
-  {
     id: 'white-nameplate',
     name: 'White nameplate',
     feel: 'quick',
@@ -60,13 +53,6 @@ export const LOWER_THIRD_DESIGNS: readonly Design[] = [
       font: 'Noto Serif',
       size: 5.5,
     },
-  },
-  {
-    id: 'emerald-labels',
-    name: 'Emerald labels',
-    feel: 'bold',
-    animation: 'design-slide-left',
-    look: { style: 'split', band: '#114636', accent: '#0e5746', font: 'Hind', size: 6, bandOpacity: 1 },
   },
   {
     id: 'slate-labels',
@@ -145,13 +131,6 @@ export const LOWER_THIRD_DESIGNS: readonly Design[] = [
       bandOpacity: 1,
       bottom: 4,
     },
-  },
-  {
-    id: 'sea-green-nameplate',
-    name: 'Sea green nameplate',
-    feel: 'calm',
-    animation: 'design-reveal-up',
-    look: { style: 'box', band: '#123d3d', accent: '#72dbbd', align: 'centre', font: 'Hind', weight: 400 },
   },
   {
     id: 'amber-side-bar',
