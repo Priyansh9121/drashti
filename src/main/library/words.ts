@@ -29,6 +29,7 @@ import { nfc, sameText } from '../../shared/nfc';
  */
 
 interface TextProps {
+  hidden?: boolean;
   text: string;
   lang: Lang | null;
   style: TextStyle;
@@ -44,7 +45,7 @@ function textProps(row: ElementRow): TextProps | null {
   if (row.kind !== 'text') return null;
   try {
     const p = JSON.parse(row.props) as Partial<TextProps>;
-    if (typeof p.text !== 'string' || typeof p.style !== 'object') return null;
+    if (p.hidden === true || typeof p.text !== 'string' || typeof p.style !== 'object') return null;
     return p as TextProps;
   } catch {
     return null;

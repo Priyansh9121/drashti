@@ -59,6 +59,8 @@ const PAINT = ['fillText', 'strokeText', 'fill', 'stroke', 'drawImage', 'fillRec
 type ContextMethod = (typeof PAINT)[number] | 'save' | 'restore' | 'clip';
 type Matrix = [number, number, number, number, number, number];
 type ClipBounds = [left: number, top: number, right: number, bottom: number];
+// Each isolated effect render also scans the full canvas for its painted pixels.
+const MAX_EFFECT_RASTER_PIXELS = 64 * 1024 * 1024;
 function matrixOf(values: readonly number[]): Matrix {
   const [a, b, c, d, e, f] = values;
   if (
@@ -150,8 +152,9 @@ function rectangleBounds(commands: readonly NativePathCommand[]): ClipBounds | u
 }
 
 function formBounds(value: unknown): ClipBounds | undefined {
-  if (!Array.isArray(value) || value.length !== 4) return undefined;
-  const bounds: readonly unknown[] = value;
+  if (!Array.isArray(value) && !(value instanceof Float32Array)) return undefined;
+  const bounds: readonly unknown[] = value instanceof Float32Array ? Array.from(value) : value;
+  if (bounds.length !== 4) return undefined;
   const [x1, y1, x2, y2] = bounds;
   if (
     typeof x1 !== 'number' ||
@@ -320,8 +323,8 @@ export async function editablePdfPage(
     const value: unknown = list.argsArray[index];
     return Array.isArray(value) ? (value as unknown[]) : [];
   };
-  const content = await page.getTextContent({ disableNormalization: true });
   if (list.fnArray.length > 20_000) throw new Error('This page has too many objects to edit safely.');
+  const content = await page.getTextContent({ disableNormalization: true });
   const factory = doc.canvasFactory as CanvasFactory;
   const show = new Set([
     ops['showText'],
@@ -342,7 +345,9 @@ export async function editablePdfPage(
   const pathSnapshots = new Map<number, { commands: NativePathCommand[]; fillRule: 'nonzero' | 'evenodd' }>();
   const clipBounds = new Map<number, ClipBounds>();
   const textMasks = new Set<number>();
+  const groupedWords = new Set<number>();
   const textModes: number[] = [];
+  let groupDepth = 0;
   let textMode = 0;
   let clipsNextPath = false;
   let hasEffects = false;
@@ -364,7 +369,12 @@ export async function editablePdfPage(
       textMode = Number(args[0]);
       if (textMode >= 4) hasEffects = true;
     }
-    if (show.has(fn) && textMode >= 4) textMasks.add(index);
+    if (fn === ops['beginGroup']) groupDepth++;
+    if (fn === ops['endGroup']) groupDepth = Math.max(0, groupDepth - 1);
+    if (show.has(fn)) {
+      if (textMode >= 4) textMasks.add(index);
+      if (groupDepth && textMode !== 3 && textMode !== 7) groupedWords.add(index);
+    }
     if (fn === ops['setGState']) {
       const states: unknown = args[0];
       if (!Array.isArray(states)) throw new Error('This page has an unsupported graphics state.');
@@ -467,7 +477,12 @@ export async function editablePdfPage(
             });
             pathCalls.set(current, values);
           }
-          if (isText && !textMasks.has(current) && (method === 'fillText' || method === 'fill')) {
+          if (
+            isText &&
+            !textMasks.has(current) &&
+            !groupedWords.has(current) &&
+            (method === 'fillText' || method === 'fill')
+          ) {
             const m = ctx.getTransform();
             const x = method === 'fillText' ? Number(args[1]) : 0,
               y = method === 'fillText' ? Number(args[2]) : 0;
@@ -518,9 +533,9 @@ export async function editablePdfPage(
   factory.destroy(reference);
   const native = new Map<number, SlideElement>();
   for (const [index, path] of pathSnapshots) {
-    await control.checkpoint?.();
     const values = pathCalls.get(index);
     if (values?.length !== 1) continue;
+    await control.checkpoint?.();
     const call = values[0];
     if (!call) continue;
     const shape = nativePdfPath(index, path.commands, call, scale, path.fillRule);
@@ -627,6 +642,8 @@ export async function editablePdfPage(
   }
   if (painted.size > 500)
     throw new Error('This page has too many separately painted objects to edit safely.');
+  if (hasEffects && (painted.size - native.size) * width * height > MAX_EFFECT_RASTER_PIXELS)
+    throw new Error('This page has too much clipped or masked paint to edit safely.');
   const elements: SlideElement[] = [],
     assets: EditablePdfPage['assets'] = [];
   for (const index of [...painted].sort((a, b) => a - b)) {
@@ -692,9 +709,17 @@ export async function editablePdfPage(
   }
   if (hasEffects && assets.length)
     issues.push('Clipped or masked graphics stay as pictures. You can move or remove those pictures.');
-  if ([...painted].some((index) => show.has(list.fnArray[index]) && !native.has(index)))
+  if (assets.length && [...groupedWords].some((index) => !native.has(index)))
     issues.push(
-      'Some rotated, outlined or unusual-font text stays as a separate picture. It can be moved or removed, but its words cannot be retyped.',
+      'Words drawn in PDF transparency groups stay in pictures. Add a text box to write new words.',
+    );
+  if (
+    [...painted].some(
+      (index) => show.has(list.fnArray[index]) && !native.has(index) && !groupedWords.has(index),
+    )
+  )
+    issues.push(
+      'Some clipped, rotated, outlined or unusual-font text stays as a separate picture. It can be moved or removed, but its words cannot be retyped.',
     );
   if (
     !hasEffects &&

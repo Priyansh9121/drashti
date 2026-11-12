@@ -191,4 +191,75 @@ describe('keeping a generated PPTX editable', () => {
       height: 90 / 720,
     });
   });
+
+  it('reads the other slides when a single source slide is damaged', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'drashti-placeholder-partial-deck-'));
+    roots.push(root);
+    const file = join(root, 'Placeholder partial deck.pptx');
+    writeFileSync(
+      file,
+      editablePptxFixture({
+        slides: [
+          '<p:sld xmlns:p="p"><broken',
+          slideXml(wordsShape('<a:p><a:r><a:t>Placeholder readable slide</a:t></a:r></a:p>')),
+        ],
+      }),
+    );
+    const deck = await readEditablePptx(file, join(root, 'prepared'));
+    expect(deck.sourceCount).toBe(2);
+    expect(deck.slides).toMatchObject([
+      { sourceIndex: 1, elements: [{ kind: 'text', text: 'Placeholder readable slide' }] },
+    ]);
+  });
+
+  it('keeps local objects editable when an inherited layout part is unreadable', async () => {
+    const { slides, elements } = await read(
+      slideXml(wordsShape('<a:p><a:r><a:t>Placeholder standalone words</a:t></a:r></a:p>')),
+      { 'ppt/slideLayouts/slideLayout1.xml': '<p:sldLayout xmlns:p="p"><broken' },
+    );
+    expect(elements).toMatchObject([{ kind: 'text', text: 'Placeholder standalone words' }]);
+    expect(slides[0]?.issues.join(' ')).toMatch(/layout/u);
+  });
+
+  it('keeps a chart’s source ID on its embedded compatibility picture', async () => {
+    const chartNamespace = 'http://schemas.openxmlformats.org/drawingml/2006/chart';
+    const chart = graphic('<c:chart r:id="rChart"/>')
+      .replace('<a:graphicData>', '<a:graphicData uri="' + chartNamespace + '">')
+      .replace('</p:nvGraphicFramePr>', '<p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>');
+    const preview =
+      '<p:pic><p:nvPicPr><p:cNvPr id="42" name="Placeholder preview"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>' +
+      '<p:blipFill><a:blip r:embed="rPreview"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>' +
+      '<p:spPr><a:xfrm><a:off x="95250" y="190500"/><a:ext cx="2857500" cy="857250"/></a:xfrm>' +
+      '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>';
+    const alternate =
+      '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:c="' +
+      chartNamespace +
+      '"><mc:Choice Requires="c">' +
+      chart +
+      '</mc:Choice><mc:Fallback>' +
+      preview +
+      '</mc:Fallback></mc:AlternateContent>';
+    const { elements, media } = await read(slideXml(alternate), {
+      'ppt/charts/chart1.xml': '<c:chartSpace xmlns:c="' + chartNamespace + '"><c:chart/></c:chartSpace>',
+      'ppt/media/placeholder-preview.png': editablePicture(),
+      'ppt/slides/_rels/slide1.xml.rels': relationshipsXml(
+        '<Relationship Id="rChart" Type="' +
+          REL_NS +
+          '/chart" Target="../charts/chart1.xml"/><Relationship Id="rPreview" Type="' +
+          REL_NS +
+          '/image" Target="../media/placeholder-preview.png"/>',
+      ),
+    });
+
+    expect(media).toHaveLength(1);
+    expect(elements).toMatchObject([
+      {
+        kind: 'image',
+        mediaId: 'media-ref:0',
+        sourceShapeId: '7',
+        name: 'Placeholder object',
+        frame: { x: 10, y: 20, width: 300, height: 90 },
+      },
+    ]);
+  });
 });

@@ -354,8 +354,8 @@ export function langsOfRows(elements: readonly ElementRow[]): Lang[] {
   for (const e of elements) {
     if (e.kind !== 'text') continue;
     try {
-      const p = JSON.parse(e.props) as { text?: unknown; lang?: unknown; runs?: unknown };
-      if (typeof p.text !== 'string') continue;
+      const p = JSON.parse(e.props) as { text?: unknown; lang?: unknown; runs?: unknown; hidden?: unknown };
+      if (p.hidden === true || typeof p.text !== 'string') continue;
       const lang = typeof p.lang === 'string' ? (p.lang as BoxWords['lang']) : null;
       boxes.push(
         Array.isArray(p.runs) ? { text: p.text, lang, runs: p.runs as TextRun[] } : { text: p.text, lang },

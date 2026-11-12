@@ -240,6 +240,7 @@ const counted = (n: number, one: string, many: string) => `${String(n)} ${n === 
 /** What the report says about a document made into pictures. */
 export function picturesIssues(details: {
   source: PictureSource;
+  editableSource?: 'pdf' | 'pptx';
   converter: Converter | null;
   /** Another app was tried first and could not do it: why, in a few words. */
   firstTried?: { converter: Converter; reason: string } | null;
@@ -253,12 +254,20 @@ export function picturesIssues(details: {
   notesUnmatched: boolean;
 }): ImportIssue[] {
   const name = (c: Converter) => (c === 'keynote' ? 'Keynote' : 'PowerPoint');
-  const editing =
-    details.source === 'pdf'
-      ? 'Open Edit slides to change supported words, pictures and shapes in Drashti’s own copy. The original file is kept; some fonts or objects may look different.'
-      : details.source === 'pptx'
-        ? 'Open Edit slides to change supported PowerPoint objects in Drashti’s own copy. The original file is kept; some fonts or objects may look different.'
-        : 'Open Edit slides and link a matching PDF reading copy to edit this deck’s own words and shapes. The original file is kept.';
+  let editing: string;
+  if (details.source === 'key' && details.editableSource === 'pptx') {
+    editing =
+      'Open Edit slides to change Keynote’s words, pictures and supported shapes from its PowerPoint copy. The original file is kept.';
+  } else if (details.source === 'pdf' || details.editableSource === 'pdf') {
+    editing =
+      'Open Edit slides to change supported words, pictures and shapes in Drashti’s own copy. The original file is kept; some fonts or objects may look different.';
+  } else if (details.source === 'pptx') {
+    editing =
+      'Open Edit slides to change supported PowerPoint objects in Drashti’s own copy. The original file is kept; some fonts or objects may look different.';
+  } else {
+    editing =
+      'Open Edit slides and link a matching PDF reading copy to edit this deck’s own words and shapes. The original file is kept.';
+  }
   const issues: ImportIssue[] = [
     {
       severity: 'info',

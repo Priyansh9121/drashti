@@ -43,7 +43,10 @@ function child(code = 0, output = '', error = '') {
 }
 
 /** Exercise the real session's private copy and cleanup, with every subprocess stood in. */
-function standInKeynote(exported: 'good' | 'corrupt' | 'timed out') {
+function standInKeynote(
+  exported: 'good' | 'corrupt' | 'timed out' | -600 | -609,
+  hooks: { afterPdf?: () => void; onPptx?: () => void } = {},
+) {
   spawn.mockImplementation((command, args) => {
     if (command === 'pgrep') return child(0, '12345\n');
     if (command === 'lsappinfo' || command === 'open') return child();
@@ -53,9 +56,15 @@ function standInKeynote(exported: 'good' | 'corrupt' | 'timed out') {
       return child(0, 'Placeholder document ID\n3');
 
     const pdfPath = args.find((arg) => extname(arg) === '.pdf');
-    if (pdfPath) writeFileSync(pdfPath, pdf);
+    if (pdfPath) {
+      writeFileSync(pdfPath, pdf);
+      hooks.afterPdf?.();
+    }
     const pptxPath = args.find((arg) => extname(arg) === '.pptx');
     if (pptxPath) {
+      hooks.onPptx?.();
+      if (typeof exported === 'number')
+        return child(1, '', 'Placeholder Keynote exited (' + String(exported) + ')');
       if (exported === 'timed out') return child(1, '', 'Placeholder export timed out (-1712)');
       writeFileSync(pptxPath, exported === 'good' ? pptx : 'Placeholder damaged PowerPoint export');
     }
@@ -77,6 +86,7 @@ describe('the editable Keynote export', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     spawn.mockReset();
     rmSync(work, { recursive: true, force: true });
   });
@@ -118,4 +128,72 @@ describe('the editable Keynote export', () => {
       expect(readdirSync(work).some((name) => name.startsWith('convert-'))).toBe(false);
     },
   );
+
+  it('allows a useful bounded PowerPoint export after Keynote spends its PDF budget', async () => {
+    const now = vi.spyOn(performance, 'now').mockReturnValue(0);
+    standInKeynote('good', {
+      afterPdf() {
+        now.mockReturnValue(68_999);
+      },
+    });
+
+    const result = await convertToPdf('keynote', input, work, { platform: 'darwin' });
+
+    expect(result.ok && result.editablePptx).toEqual(expect.any(String));
+    const call = spawn.mock.calls.find(
+      ([command, args]) =>
+        command === 'osascript' && args.some((arg) => arg.includes('as Microsoft PowerPoint')),
+    );
+    const limit = call?.[1].find((arg) => arg.startsWith('with timeout of '));
+    const seconds = Number(/with timeout of (\d+) seconds/u.exec(limit ?? '')?.[1]);
+    expect(seconds).toBeGreaterThanOrEqual(15);
+    expect(seconds).toBeLessThanOrEqual(69);
+  });
+
+  it('keeps the PDF and tells the operator what to do when their Keynote stops answering', async () => {
+    standInKeynote('timed out');
+    const log = vi.fn<(line: string) => void>();
+
+    const result = await convertToPdf('keynote', input, work, { platform: 'darwin', log });
+
+    if (!result.ok) throw new Error('Missing PDF fallback.');
+    expect(readFileSync(result.pdf)).toEqual(pdf);
+    expect(result).not.toHaveProperty('editablePptx');
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/look at Keynote and answer it/iu));
+  });
+
+  it.each([-600, -609] as const)('keeps the PDF without addressing Keynote after error %i', async (code) => {
+    standInKeynote(code);
+    const result = await convertToPdf('keynote', input, work, { platform: 'darwin' });
+
+    if (!result.ok) throw new Error('Missing PDF fallback.');
+    expect(readFileSync(result.pdf)).toEqual(pdf);
+    expect(result).not.toHaveProperty('editablePptx');
+    const exportIndex = spawn.mock.calls.findIndex(
+      ([command, args]) =>
+        command === 'osascript' && args.some((arg) => arg.includes('as Microsoft PowerPoint')),
+    );
+    expect(exportIndex).toBeGreaterThanOrEqual(0);
+    const laterCommands = spawn.mock.calls.slice(exportIndex + 1).map(([command]) => command);
+    expect(laterCommands).not.toContain('osascript');
+    expect(laterCommands).not.toContain('open');
+    expect(readdirSync(work).some((name) => name.startsWith('convert-'))).toBe(false);
+  });
+
+  it('honors cancellation during the optional export', async () => {
+    const controller = new AbortController();
+    standInKeynote('good', {
+      onPptx() {
+        queueMicrotask(() => controller.abort());
+      },
+    });
+
+    const result = await convertToPdf('keynote', input, work, {
+      platform: 'darwin',
+      signal: controller.signal,
+    });
+
+    expect(result).toMatchObject({ ok: false, cancelled: true });
+    expect(readdirSync(work)).not.toContain('keynote-editable.pptx');
+  });
 });
