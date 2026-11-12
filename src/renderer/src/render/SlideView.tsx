@@ -230,8 +230,9 @@ const LEVEL_STEP = 1.5;
  * How a list's mark is drawn (Session 55, Part 17a): a bullet is a shape in its line's colour, the same on every
  * screen whatever fonts it has; a number is its words, up against the line's own, in the line's colour.
  */
-export function listMarkerStyle(mark: ListMark, look: Pick<TextRun, 'color'>): CSSProperties {
-  const color = look.color ?? 'currentColor';
+export function listMarkerStyle(mark: ListMark, look: Pick<TextRun, 'color' | 'paragraph'>): CSSProperties {
+  const markerColor = look.paragraph?.bulletColor ?? look.color;
+  const color = markerColor ?? 'currentColor';
   switch (mark) {
     case 'disc':
       return {
@@ -281,7 +282,7 @@ export function listMarkerStyle(mark: ListMark, look: Pick<TextRun, 'color'>): C
       };
     default:
       return {
-        color: look.color,
+        color: markerColor,
         textAlign: 'right',
         paddingRight: '0.3em',
         whiteSpace: 'nowrap',
@@ -329,6 +330,7 @@ export function listMarkerBoxStyle(
   el: TextElement,
 ): CSSProperties {
   const size = first.size ?? el.style.fontSize;
+  const markerSize = first.paragraph?.bulletSize ?? size * (first.paragraph?.bulletScale ?? 1);
   const room = line.label === null ? BULLET_ROOM : NUMBER_ROOM;
   const indent = first.paragraph?.marginLeft === undefined ? undefined : first.paragraph.indent;
   const markerRoom = indent !== undefined && indent < 0 ? -indent : room * size;
@@ -339,7 +341,7 @@ export function listMarkerBoxStyle(
       : { width: fitted(markerRoom), marginLeft: fitted(-markerRoom) }),
     textIndent: 0,
     textAlign: 'center',
-    fontSize: fitted(size),
+    fontSize: fitted(markerSize),
     fontWeight: first.weight,
     ...(line.label === null && !first.paragraph?.bullet
       ? {}
@@ -348,7 +350,9 @@ export function listMarkerBoxStyle(
             first.paragraph?.bulletFont ?? first.font ?? el.style.fontFamily,
             first.lang ?? el.lang,
           ),
-          ...(line.label === null ? { color: first.color } : listMarkerStyle(line.mark, first)),
+          ...(line.label === null
+            ? { color: first.paragraph?.bulletColor ?? first.color }
+            : listMarkerStyle(line.mark, first)),
         }),
   };
 }
