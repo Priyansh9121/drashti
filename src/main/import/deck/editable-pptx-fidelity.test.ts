@@ -257,8 +257,12 @@ describe('keeping a generated PPTX editable', () => {
   it('draws a shared table edge once across a spanning cell', async () => {
     const paint = '<a:solidFill><a:srgbClr val="AA2244"/></a:solidFill>';
     const cell = (attributes: string, edge: string) =>
-      '<a:tc ' + attributes + '><a:txBody><a:bodyPr/><a:p><a:r><a:t>Placeholder</a:t></a:r></a:p>' +
-      '</a:txBody><a:tcPr>' + edge + '</a:tcPr></a:tc>';
+      '<a:tc ' +
+      attributes +
+      '><a:txBody><a:bodyPr/><a:p><a:r><a:t>Placeholder</a:t></a:r></a:p>' +
+      '</a:txBody><a:tcPr>' +
+      edge +
+      '</a:tcPr></a:tc>';
     const { elements } = await read(
       slideXml(
         graphic(
@@ -274,7 +278,12 @@ describe('keeping a generated PPTX editable', () => {
       ),
     );
     expect(elements.filter((element) => element.kind === 'shape')).toMatchObject([
-      { shape: 'line', frame: { width: 90, height: 1 }, rotation: 90, outline: { color: '#aa2244', width: 1 } },
+      {
+        shape: 'line',
+        frame: { width: 90, height: 1 },
+        rotation: 90,
+        outline: { color: '#aa2244', width: 1 },
+      },
     ]);
   });
 
@@ -286,7 +295,8 @@ describe('keeping a generated PPTX editable', () => {
     const cell = '<a:tc><a:txBody><a:bodyPr/><a:p/></a:txBody><a:tcPr/></a:tc>';
     const table = graphic(
       '<a:tbl><a:tblGrid><a:gridCol w="100"/><a:gridCol w="100"/></a:tblGrid><a:tr h="100">' +
-        cell.repeat(2) + '</a:tr></a:tbl>',
+        cell.repeat(2) +
+        '</a:tr></a:tbl>',
     );
     writeFileSync(
       file,
