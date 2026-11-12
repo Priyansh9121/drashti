@@ -100,10 +100,12 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     },
   };
   const state = initialEngineState();
-  const refused = (channel: InvokeChannel, args?: readonly unknown[]) =>
-    options.lockEverything === true ||
-    (options.locked === true &&
-      (SIMPLE_MODE_LOCKED.includes(channel) || bounds.get(channel)?.(args ?? []) === false));
+  const refused = (channel: InvokeChannel, args?: readonly unknown[]) => {
+    if (options.lockEverything === true) return true;
+    if (options.locked !== true) return false;
+    const within = bounds.get(channel);
+    return within ? args === undefined || !within(args) : SIMPLE_MODE_LOCKED.includes(channel);
+  };
   const service = new NetworkService({
     devices,
     settings: { get: () => undefined, set: () => undefined },
