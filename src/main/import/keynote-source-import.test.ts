@@ -7,6 +7,7 @@ import { documentPageFromJson } from '../../shared/document-page';
 import { openDatabase } from '../db/database';
 import { PresentationRepo } from '../db/presentations';
 import type * as Converters from './deck-converters';
+import * as deckFlow from './deck/deck-flow';
 import { readEditablePptx } from './deck/editable-pptx';
 import { MediaStore } from './media-store';
 import { OriginalsStore } from './originals-store';
@@ -145,3 +146,102 @@ it.each(['matched', 'mismatched', 'no export'] as const)(
     }
   },
 );
+
+it.each([
+  {
+    label: 'valid',
+    indices: [0, 2],
+    expected: [
+      ['pptx', 0],
+      ['pptx', 2],
+    ],
+  },
+  {
+    label: 'duplicate',
+    indices: [0, 0],
+    expected: [
+      ['key', 0],
+      ['key', 1],
+    ],
+  },
+  {
+    label: 'out of range',
+    indices: [0, 3],
+    expected: [
+      ['key', 0],
+      ['key', 1],
+    ],
+  },
+])('uses the baked Keynote copy only for valid page indices ($label)', async ({ indices, expected }) => {
+  const root = mkdtempSync(join(tmpdir(), 'drashti-keynote-baked-source-'));
+  const source = join(root, 'Placeholder Keynote.key');
+  const mediaDir = join(root, 'Media');
+  mkdirSync(mediaDir);
+  writeFileSync(source, key);
+  const db = openDatabase(join(root, 'drashti.sqlite'));
+  const flow = vi.spyOn(deckFlow, 'runDeck').mockImplementationOnce(({ work, fileName }) => {
+    const editablePptx = join(work, 'editable-source.pptx');
+    writeFileSync(editablePptx, pptx);
+    return Promise.resolve({
+      kind: 'baked',
+      editablePptx,
+      editablePptxSlideCount: slides.length,
+      sourceIndices: indices,
+      parsed: {
+        name: fileName,
+        ref: null,
+        width: 960,
+        height: 540,
+        notes: '',
+        groups: [
+          {
+            name: 'Placeholder group',
+            color: null,
+            slides: indices.map(() => ({
+              label: 'Placeholder page',
+              notes: '',
+              enabled: true,
+              background: '#000000',
+              elements: [],
+              cues: [],
+            })),
+          },
+        ],
+        arrangements: [],
+        selectedArrangement: null,
+        media: [],
+        issues: [],
+      },
+    });
+  });
+  try {
+    const media = new MediaStore(db, { dir: mediaDir, freeBytes: () => 1024 ** 4 });
+    const written: string[] = [];
+    const result = await runImport({
+      db,
+      media,
+      runId: randomUUID(),
+      paths: [source],
+      options: {},
+      baker: false,
+      tempDir: root,
+      drawPdf: () => Promise.reject(new Error('The baked Keynote copy should not draw a PDF.')),
+      onWrote: ({ presentationId }) => written.push(presentationId),
+    });
+    expect(result.totals).toMatchObject({ imported: 1, failed: 0 });
+    expect(flow).toHaveBeenCalledOnce();
+    const stored = new PresentationRepo(db).content(written[0] ?? '');
+    expect(
+      stored?.slides.map((slide) => {
+        const ref = documentPageFromJson(slide.document_page);
+        return [ref?.ext, ref?.page];
+      }),
+    ).toEqual(expected);
+    const originals = new OriginalsStore(db, mediaDir).list();
+    expect(originals.some((original) => original.ext === 'pptx')).toBe(expected[0]?.[0] === 'pptx');
+  } finally {
+    flow.mockRestore();
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
