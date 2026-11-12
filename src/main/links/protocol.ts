@@ -59,7 +59,7 @@ export type FromWorker =
   | { type: 'yt-downloaded'; file: string; bytes: number }
   | {
       type: 'failed';
-      code: LinkErrorCode | 'unpack' | YoutubeProblemCode;
+      code: LinkErrorCode | 'start' | 'unpack' | YoutubeProblemCode;
       message: string;
       /** For an unpack: which rule stopped it (a short code for the log, never a name). */
       rule?: UnzipRule;

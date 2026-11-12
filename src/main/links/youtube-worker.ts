@@ -86,7 +86,7 @@ export function youtubeWorker(
       pending = null;
       post({
         type: 'failed',
-        code: 'name',
+        code: 'start',
         message: 'Drashti couldn’t make a place for the download. Check the downloads folder and try again.',
       });
       return;
