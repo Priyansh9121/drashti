@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isAnimation } from '../../shared/lower-third-animations';
-import { OFFERED } from '../../shared/lower-third-studio';
+import { LOWER_THIRD_TEMPLATES, OFFERED } from '../../shared/lower-third-studio';
 import { lowerThirdSchema } from '../../shared/lower-thirds';
 import { isPerfScenario } from '../perf-scenarios';
 import { keptOf, playedRows } from './perf-lower-thirds';
@@ -17,7 +17,7 @@ const APP = join(__dirname, '..', '..', '..');
 
 describe('the lower-thirds scenario', () => {
   it('plays each row of OFFERED once, as a lower third the library takes, with placeholder words', () => {
-    const rows = playedRows();
+    const rows = playedRows().filter((r) => !r.row.startsWith('template '));
     expect(rows).toHaveLength(OFFERED.length);
     expect(new Set(rows.map((r) => r.lowerThird.id)).size).toBe(rows.length);
     for (const r of rows) {
@@ -38,6 +38,21 @@ describe('the lower-thirds scenario', () => {
     }
     for (const r of rows.filter((x) => x.row.startsWith('style ')))
       expect(r.lowerThird.look.style).toBe(r.row.slice('style '.length));
+  });
+
+  it('measures each new name-and-role design with its own complete look and animation', () => {
+    const designs = LOWER_THIRD_TEMPLATES.filter((template) =>
+      template.input.animation.startsWith('design-'),
+    );
+    const measured = playedRows().filter((r) => r.row.startsWith('template '));
+    expect(designs.length).toBeGreaterThanOrEqual(35);
+    expect(measured).toHaveLength(designs.length);
+    expect(new Set(measured.map((r) => r.lowerThird.id)).size).toBe(designs.length);
+    for (const design of designs) {
+      const row = measured.find((r) => r.row === 'template ' + design.id);
+      expect(row?.lowerThird, design.name).toEqual({ ...design.input, id: 'perf-lt-template-' + design.id });
+      expect(row?.measure).toBe('moving');
+    }
   });
 
   it('a row keeps 9 in 10 of its frames at 54 a second on an output, 27 on the stream’s page; none seen is none', () => {

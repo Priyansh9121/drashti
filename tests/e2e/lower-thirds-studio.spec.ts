@@ -1,5 +1,6 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { animationById, animationLength } from '../../src/shared/lower-third-animations';
 import type { LowerThirdInput } from '../../src/shared/lower-thirds';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../src/shared/lower-thirds';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -15,6 +16,7 @@ import {
   setUpScreen,
   windowShowing,
 } from './helpers';
+import { holdClock } from './placeholder-slides';
 import { CI_WINDOW } from './window-size';
 
 /*
@@ -30,8 +32,10 @@ import { CI_WINDOW } from './window-size';
 const isStudio = (p: Page) => p.url().includes('lower-thirds.html');
 const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
 
-async function start(): Promise<{ app: ElectronApplication; win: Page; out: Page }> {
-  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
+async function start(
+  env: Record<string, string> = {},
+): Promise<{ app: ElectronApplication; win: Page; out: Page }> {
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', ...env });
   const win = await operatorPage(app);
   await operatorReady(win);
   await win.setViewportSize({ width: 1440, height: 900 });
@@ -262,6 +266,52 @@ test('the template picker plays one preview, filters the grid and keeps favourit
   await picker.getByRole('button', { name: 'Recently used', exact: true }).click();
   await expect(tiles).toHaveCount(1);
   await expect(tile).toBeVisible();
+  await app.close();
+});
+
+test('a name and role design saves, draws its parts in order and hides at the exact end of its exit', async () => {
+  const { app, win, out } = await start({ DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const studio = await openStudio(app, win);
+  await studio.getByTestId('studio-templates').click();
+  await studio.getByRole('button', { name: 'Gold underline', exact: true }).click();
+  await expect(studio.getByTestId('lower-third-line').nth(1)).toHaveValue('Placeholder role');
+  await studio.getByTestId('lower-third-save').click();
+  await expect(studio.getByTestId('studio-row').filter({ hasText: 'Placeholder name' })).toHaveAttribute(
+    'data-saved',
+    'true',
+  );
+  await studio.getByTestId('studio-show').click();
+  const animation = animationById('design-draw-rise');
+  const length = animationLength(animation, 'in', 2);
+  await expect.poll(async () => (await snapshot(win)).state.layers.lowerThird?.animation).toBe(animation.id);
+  const shown = (await snapshot(win)).state.layers.lowerThird;
+  const shownAt = shown?.shownAt ?? 0;
+  const onScreen = out.getByTestId('lower-third-layer');
+  const accent = onScreen.locator('[data-lt-accent]');
+  const lines = onScreen.locator('[data-lt-unit]');
+  await holdClock(app, shownAt + Math.round(length * 0.15));
+  await expect(onScreen).toHaveAttribute('data-lt-phase', 'in');
+  await expect(accent).not.toHaveCSS('transform', 'none');
+  await expect(lines.nth(0)).toHaveCSS('opacity', '0');
+  await expect(lines.nth(1)).toHaveCSS('opacity', '0');
+  await holdClock(app, shownAt + Math.round(length * 0.5));
+  await expect(lines.nth(0)).not.toHaveCSS('opacity', '0');
+  await expect(lines.nth(1)).toHaveCSS('opacity', '0');
+  await holdClock(app, shownAt + length);
+  await expect(onScreen).toHaveAttribute('data-lt-phase', 'still');
+  await expect(lines.nth(1)).toHaveCSS('opacity', '1');
+  await holdClock(app, null);
+
+  await studio.getByTestId('studio-show').click();
+  await expect.poll(async () => (await snapshot(win)).state.lowerThirdOff?.at ?? 0).toBeGreaterThan(0);
+  const hiddenAt = (await snapshot(win)).state.lowerThirdOff?.at ?? 0;
+  const outLength = animationLength(animation, 'out', 2);
+  await holdClock(app, hiddenAt + Math.round(outLength * 0.5));
+  await expect(onScreen).toHaveAttribute('data-lt-phase', 'out');
+  await expect(lines.nth(1)).toHaveCSS('opacity', '0');
+  await holdClock(app, hiddenAt + outLength);
+  await expect(onScreen).toHaveCount(0);
+  await holdClock(app, null);
   await app.close();
 });
 
