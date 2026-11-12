@@ -1,4 +1,13 @@
-import type { Glow, Outline, Rect, SlideElement, TextRun, TextShadow, TextStyle } from './model';
+import type {
+  Glow,
+  Outline,
+  Rect,
+  SlideElement,
+  TextParagraph,
+  TextRun,
+  TextShadow,
+  TextStyle,
+} from './model';
 import type { EditDoc, EditSlide, RunLook, SlideLook } from './slide-edit';
 import { placeContent, type Size } from './scaling';
 import { slideCanvas } from './document-page';
@@ -27,6 +36,18 @@ function styleAt(style: TextStyle, scale: number): TextStyle {
   };
 }
 
+/** Scale the paragraph's fixed spacing with its text size. */
+export function scaleParagraphSpacing(paragraph: TextParagraph, scale: number): TextParagraph {
+  const { lineHeightPx, spaceBefore, spaceAfter } = paragraph;
+  if (lineHeightPx === undefined && spaceBefore === undefined && spaceAfter === undefined) return paragraph;
+  return {
+    ...paragraph,
+    ...(lineHeightPx !== undefined ? { lineHeightPx: Math.min(16_384, lineHeightPx * scale) } : {}),
+    ...(spaceBefore !== undefined ? { spaceBefore: Math.min(16_384, spaceBefore * scale) } : {}),
+    ...(spaceAfter !== undefined ? { spaceAfter: Math.min(16_384, spaceAfter * scale) } : {}),
+  };
+}
+
 function runAt<T extends RunLook | TextRun>(run: T, scale: number): T {
   const paragraph = 'paragraph' in run ? run.paragraph : undefined;
   return {
@@ -36,25 +57,7 @@ function runAt<T extends RunLook | TextRun>(run: T, scale: number): T {
     ...(run.shadow !== undefined ? { shadow: shadowAt(run.shadow, scale) } : {}),
     ...(run.outline !== undefined ? { outline: outlineAt(run.outline, scale) } : {}),
     ...(run.glow !== undefined ? { glow: glowAt(run.glow, scale) } : {}),
-    ...(paragraph &&
-    (paragraph.lineHeightPx !== undefined ||
-      paragraph.spaceBefore !== undefined ||
-      paragraph.spaceAfter !== undefined)
-      ? {
-          paragraph: {
-            ...paragraph,
-            ...(paragraph.lineHeightPx !== undefined
-              ? { lineHeightPx: Math.min(16_384, paragraph.lineHeightPx * scale) }
-              : {}),
-            ...(paragraph.spaceBefore !== undefined
-              ? { spaceBefore: Math.min(16_384, paragraph.spaceBefore * scale) }
-              : {}),
-            ...(paragraph.spaceAfter !== undefined
-              ? { spaceAfter: Math.min(16_384, paragraph.spaceAfter * scale) }
-              : {}),
-          },
-        }
-      : {}),
+    ...(paragraph ? { paragraph: scaleParagraphSpacing(paragraph, scale) } : {}),
   };
 }
 
