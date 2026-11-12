@@ -58,7 +58,7 @@ export interface ImportServiceDeps {
    */
   baker?(): boolean | 'stand-in';
   /** Draw a PDF's pages as pictures for the worker (Session 15): it cannot open the window that draws. */
-  drawPdf?(pdf: string, outDir: string, signal: AbortSignal): Promise<PicturesResult>;
+  drawPdf?(pdf: string, outDir: string, signal: AbortSignal, readPageText?: boolean): Promise<PicturesResult>;
   log(level: 'info' | 'warn', message: string): void;
   /** Bring the operator's window back to the front (Keynote or PowerPoint took it, Session 16). */
   refocus?(): void;
@@ -264,7 +264,7 @@ export class ImportService {
           break;
         case 'draw-pdf': {
           const drawn = this.deps.drawPdf
-            ? this.deps.drawPdf(m.pdf, m.outDir, active.drawing.signal)
+            ? this.deps.drawPdf(m.pdf, m.outDir, active.drawing.signal, m.readPageText)
             : Promise.resolve<PicturesResult>({ ok: false, message: 'Pictures cannot be made here.' });
           void drawn
             .catch((error: unknown): PicturesResult => ({ ok: false, message: String(error) }))

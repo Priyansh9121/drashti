@@ -517,7 +517,7 @@ async function keynoteOnMac(
       await copyFile(ownCopy, deckFile);
       // Its sounds across slides as the deck plays them (Session 54, keynote-music.ts): a .pptx's own say across how
       // many slides, how loud and whether they loop; a .key's soundtrack plays across the whole deck, at full volume.
-      deck = keynoteMusic(await readPptxDeck(deckFile), { original: read, movieSound: null });
+      deck = keynoteMusic(await readPptxDeck(deckFile, true), { original: read, movieSound: null });
       const choice = movieChoice(deck.slides);
       let leaving = leavesOut(choice);
       const all = keynotePlan(deck.slides);
