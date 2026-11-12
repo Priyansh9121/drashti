@@ -9,6 +9,7 @@ import type { EngineState } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
 import type { PresentationDoc } from '../../shared/library';
+import type { CapturedPicture } from '../../shared/pdf-copy';
 import type { Lang, RenderSlide } from '../../shared/model';
 import { fillMessage, type MessageTemplate, messageItemId } from '../../shared/messages';
 import { STOPPED_REFUSAL } from '../../shared/access';
@@ -150,14 +151,14 @@ export interface NetworkDeps {
   onAir?(): boolean;
   /**
    * Captures a settled native slide once in the private renderer, while `current` holds and until `signal` stops it
-   * (the end of the capture's time: slide-picture.ts).
+   * (the end of the capture's time: slide-picture.ts): its pixels, which the network's process makes a PNG (png.ts).
    */
   nativeSlidePicture?(
     slide: RenderSlide,
     looks: EngineState['pictures'],
     current: () => boolean,
     signal: AbortSignal,
-  ): Promise<Uint8Array | null>;
+  ): Promise<CapturedPicture | null>;
   /** What a phone reads to mirror the operator window (Session 54, D5: mirror-answers.ts). */
   mirror: MirrorReads;
   /**
@@ -1052,10 +1053,11 @@ export class NetworkService implements EngineTransport {
         const look = all[element.mediaId];
         if (look) looks[element.mediaId] = look;
       }
-      const png = await this.deps.nativeSlidePicture(slide, looks, current, stop.signal);
+      const picture = await this.deps.nativeSlidePicture(slide, looks, current, stop.signal);
       const guard = this.checked(request);
       if ('status' in guard) return guard;
-      return png?.byteLength && current() ? ok({ png }) : fallback();
+      // Its pixels as captured: the network's process makes the PNG (C6's review, MEDIUM 1).
+      return picture && current() ? ok({ picture }) : fallback();
     } finally {
       clearTimeout(timer);
       this.savingSlide = false;

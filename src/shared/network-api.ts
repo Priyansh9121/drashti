@@ -304,7 +304,10 @@ export interface DeviceRequest {
   address: string;
 }
 
-/** The main process's answer: an HTTP status and response body (including a presentation’s requested PNG). */
+/**
+ * The main process's answer: an HTTP status and response body (a phone's picture of a deck's click as its captured
+ * pixels, which the network's process makes a PNG).
+ */
 export interface DeviceAnswer {
   status: number;
   body: unknown;
