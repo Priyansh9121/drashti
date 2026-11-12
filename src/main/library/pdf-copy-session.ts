@@ -131,7 +131,7 @@ export class PdfCopySession {
       if (picture) {
         const displayScale = this.deps.scaleFactor?.(opened) ?? 1;
         const factor = Number.isFinite(displayScale) ? Math.max(1, displayScale) : 1;
-        pictureLongSide = Math.max(1, Math.floor(PICTURE_LONG_SIDE / factor));
+        pictureLongSide = Math.max(1, PICTURE_LONG_SIDE / factor);
       }
     } catch {
       if (opened && !opened.isDestroyed()) opened.destroy();
@@ -226,9 +226,14 @@ export class PdfCopySession {
     };
     const page = active.job.pages[index];
     if (page?.kind !== 'native') return refuse();
-    const scale = active.job.picture?.scale ?? 4 / 3;
-    const width = Math.min(active.pictureLongSide, Math.ceil(page.slide.width * scale));
-    const height = Math.min(active.pictureLongSide, Math.ceil(page.slide.height * scale));
+    const longSide = Math.max(page.slide.width, page.slide.height);
+    // Draw the phone image at the exact device scale and keep the integer capture inside the drawn slide.
+    const cssPixels = (side: number) =>
+      active.job.picture
+        ? Math.max(1, Math.floor((side / longSide) * active.pictureLongSide))
+        : Math.ceil(side * (4 / 3));
+    const width = cssPixels(page.slide.width);
+    const height = cssPixels(page.slide.height);
     // Bound viewport and screenshot memory as well as compressed output bytes.
     if (width * height > 4_000_000) return refuse();
     active.printing = true;
