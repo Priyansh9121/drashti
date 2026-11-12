@@ -128,6 +128,37 @@ const onAir = (app: ElectronApplication, on: boolean) =>
 const items = (win: Page, playlistId: string) =>
   win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.items(id), playlistId);
 
+const legacyPoints = { startMs: 400, endMs: 5500 };
+
+const markLegacy = (win: Page, mediaId: string) =>
+  win.evaluate(
+    ({ mediaId, points }) =>
+      (globalThis as PageGlobals).drashti.media.setMarkers(mediaId, { ...points, markers: [] }),
+    { mediaId, points: legacyPoints },
+  );
+
+const makeVideoPlaylist = (win: Page, mediaId: string, name: string) =>
+  win.evaluate(
+    async ({ mediaId, name }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const made = await d.playlists.create(name, null, false);
+      if (!made.ok) throw new Error(made.message);
+      const playlistId = made.ids[0] ?? '';
+      const added = await d.playlists.addItems(playlistId, null, [{ kind: 'media', mediaId }]);
+      if (!added.ok) throw new Error(added.message);
+      return { playlistId, rowId: added.ids[0] ?? '' };
+    },
+    { mediaId, name },
+  );
+
+const videoRow = (win: Page, rowId: string) =>
+  win.getByTestId('playlist-item').and(win.locator(`[data-item-id="${rowId}"]`));
+
+const background = (win: Page) =>
+  win.evaluate(
+    async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background,
+  );
+
 test('Trim waits while on air, cuts exact frames in the same row, and widens or resets from the original', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-trim-copy-'));
   const { app, userData } = await launchApp({ DRASHTI_TEST_ON_AIR_HOOK: '1' });
@@ -140,38 +171,21 @@ test('Trim waits while on air, cuts exact frames in the same row, and widens or 
     const sourceBefore = stamp(source);
     const [mediaId = ''] = await importAndGetIds(win, [source]);
     expect(mediaId).not.toBe('');
-    const legacyPoints = { startMs: 400, endMs: 5500 };
-    const marked = await win.evaluate(
-      ({ mediaId, legacyPoints }) =>
-        (globalThis as PageGlobals).drashti.media.setMarkers(mediaId, { ...legacyPoints, markers: [] }),
-      { mediaId, legacyPoints },
-    );
-    expect(marked.ok).toBe(true);
+    expect((await markLegacy(win, mediaId)).ok).toBe(true);
     const sha = sourceBefore.sha256;
     const original = join(userData, 'Media', sha.slice(0, 2), `${sha}.mp4`);
     const originalBefore = stamp(original);
     const cut = join(dirname(original), 'Placeholder numbered trimmed.mp4');
     const playlistName = 'Placeholder trim playlist';
-    const { edited, other } = await win.evaluate(
-      async ({ mediaId, playlistName }) => {
-        const d = (globalThis as PageGlobals).drashti;
-        const make = async (name: string) => {
-          const made = await d.playlists.create(name, null, false);
-          if (!made.ok) throw new Error(made.message);
-          const playlistId = made.ids[0] ?? '';
-          const added = await d.playlists.addItems(playlistId, null, [{ kind: 'media', mediaId }]);
-          if (!added.ok) throw new Error(added.message);
-          return { playlistId, rowId: added.ids[0] ?? '' };
-        };
-        const edited = await make(playlistName);
-        const set = await d.playlists.setWhenEnds(edited.rowId, 'freeze');
-        if (!set.ok) throw new Error(set.message);
-        return { edited, other: await make('Placeholder other playlist') };
-      },
-      { mediaId, playlistName },
+    const edited = await makeVideoPlaylist(win, mediaId, playlistName);
+    const other = await makeVideoPlaylist(win, mediaId, 'Placeholder other playlist');
+    const set = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.playlists.setWhenEnds(id, 'freeze'),
+      edited.rowId,
     );
+    expect(set.ok).toBe(true);
     await win.getByTestId('playlist-node').filter({ hasText: playlistName }).click();
-    const row = win.getByTestId('playlist-item').and(win.locator(`[data-item-id="${edited.rowId}"]`));
+    const row = videoRow(win, edited.rowId);
     const name = row.locator('[data-label]');
     await expect(name).toHaveText('Placeholder numbered.mp4');
     const dialog = win.getByTestId('markers-dialog');
@@ -190,20 +204,14 @@ test('Trim waits while on air, cuts exact frames in the same row, and widens or 
 
     await onAir(app, true);
     await openTrim();
-    await saveCut('0:01.4', '0:04.6');
+    await saveCut('0:01.415', '0:04.6');
     await expect(preparing).toHaveText('Preparing');
     await holdStill(() => !existsSync(cut), 2200, 'the stream is on air');
     expect(await items(win, edited.playlistId)).toMatchObject([{ id: edited.rowId, mediaId }]);
 
     // The pending row can go live using the original. Taking the stream off air alone does not release the cut.
     await row.click();
-    await expect
-      .poll(() =>
-        win.evaluate(
-          async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background,
-        ),
-      )
-      .toMatchObject({ kind: 'media', mediaId });
+    await expect.poll(() => background(win)).toMatchObject({ kind: 'media', mediaId });
     await onAir(app, false);
     await holdStill(() => !existsSync(cut), 2200, 'the original is still live');
     await expect(preparing).toHaveText('Preparing');
@@ -218,13 +226,7 @@ test('Trim waits while on air, cuts exact frames in the same row, and widens or 
     expect(framesOf(cut)).toEqual(Array.from({ length: 80 }, (_, i) => 35 + i));
 
     await row.click();
-    await expect
-      .poll(() =>
-        win.evaluate(
-          async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background,
-        ),
-      )
-      .toMatchObject({ kind: 'media', mediaId: first.mediaId });
+    await expect.poll(() => background(win)).toMatchObject({ kind: 'media', mediaId: first.mediaId });
     await win.getByRole('button', { name: 'Clear all' }).click();
 
     await openTrim();
@@ -265,22 +267,71 @@ test('Trim waits while on air, cuts exact frames in the same row, and widens or 
     await expect.poll(currentMedia).toBe(mediaId);
     await expect(name).toHaveText('Placeholder numbered.mp4');
     expect(await items(win, other.playlistId)).toMatchObject([{ id: other.rowId, mediaId }]);
-    const background = () =>
-      win.evaluate(
-        async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background,
-      );
     await row.click();
-    await expect.poll(background).toMatchObject({ kind: 'media', mediaId });
-    expect(await background()).not.toHaveProperty('clip');
+    await expect.poll(() => background(win)).toMatchObject({ kind: 'media', mediaId });
+    expect(await background(win)).not.toHaveProperty('clip');
     await win.getByRole('button', { name: 'Clear all' }).click();
     await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder other playlist' }).click();
-    await win
-      .getByTestId('playlist-item')
-      .and(win.locator(`[data-item-id="${other.rowId}"]`))
-      .click();
-    await expect.poll(background).toMatchObject({ kind: 'media', mediaId, clip: legacyPoints });
+    await videoRow(win, other.rowId).click();
+    await expect.poll(() => background(win)).toMatchObject({ kind: 'media', mediaId, clip: legacyPoints });
     expect(stamp(source)).toEqual(sourceBefore);
     expect(stamp(original)).toEqual(originalBefore);
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Reset to original clears legacy playback points for just that playlist row', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-trim-legacy-'));
+  const { app } = await launchApp();
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await sizeOperatorWindow(app, win, CI_WINDOW);
+    const file = join(dir, 'Placeholder legacy.mp4');
+    numberedVideo(file);
+    const [mediaId = ''] = await importAndGetIds(win, [file]);
+    expect(mediaId).not.toBe('');
+    expect((await markLegacy(win, mediaId)).ok).toBe(true);
+    const first = await makeVideoPlaylist(win, mediaId, 'Placeholder legacy playlist');
+    const other = await makeVideoPlaylist(win, mediaId, 'Placeholder second playlist');
+    const select = (name: string) => win.getByTestId('playlist-node').filter({ hasText: name }).click();
+    const clear = () => win.getByRole('button', { name: 'Clear all' }).click();
+
+    await select('Placeholder legacy playlist');
+    const row = videoRow(win, first.rowId);
+    await row.click();
+    await expect.poll(() => background(win)).toMatchObject({ kind: 'media', mediaId, clip: legacyPoints });
+    await clear();
+    await row.click({ button: 'right' });
+    await win.getByRole('menuitem', { name: 'Reset to original', exact: true }).click();
+    await row.click();
+    await expect.poll(() => background(win)).toMatchObject({ kind: 'media', mediaId });
+    expect(await background(win)).not.toHaveProperty('clip');
+    expect(await items(win, first.playlistId)).toMatchObject([{ id: first.rowId, mediaId }]);
+    await clear();
+
+    await select('Placeholder second playlist');
+    const otherRow = videoRow(win, other.rowId);
+    await otherRow.click();
+    await expect.poll(() => background(win)).toMatchObject({ kind: 'media', mediaId, clip: legacyPoints });
+    await clear();
+
+    // Clearing both fields in Trim also puts the original video back in this row.
+    await otherRow.click({ button: 'right' });
+    await win.getByRole('menuitem', { name: 'Trim (start, end and markers)…' }).click();
+    const dialog = win.getByTestId('markers-dialog');
+    await dialog.getByTestId('markers-start').fill('');
+    await dialog.getByTestId('markers-end').fill('');
+    await dialog.getByTestId('markers-save').click();
+    await expect(dialog).toHaveCount(0);
+    await otherRow.click();
+    await expect.poll(() => background(win)).toMatchObject({ kind: 'media', mediaId });
+    expect(await background(win)).not.toHaveProperty('clip');
+    expect(await items(win, other.playlistId)).toMatchObject([{ id: other.rowId, mediaId }]);
+    const stored = await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.markers(id), mediaId);
+    expect(stored).toMatchObject(legacyPoints);
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });
