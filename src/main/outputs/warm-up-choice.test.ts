@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ScreenRole } from '../../shared/screens';
 import { followOutputs, type WarmUpWindow, WarmUpChoices, warmUpFact, warmsUp } from './warm-up-choice';
 
 /*
@@ -85,7 +86,8 @@ function main(compositing: () => unknown) {
     names.set(screenId, `output "${name}"`);
   };
   /** What its context says (Main's contextFor). */
-  const fact = (screenId: string) => warmUpFact(choices, windows.get(screenId), names.get(screenId) ?? '');
+  const fact = (screenId: string, role?: ScreenRole) =>
+    warmUpFact(choices, windows.get(screenId), names.get(screenId) ?? '', role);
   followOutputs(choices, windows, names, (screenId) => {
     if (failing.has(screenId)) throw new Error('Object has been destroyed');
     sent.push(screenId);
@@ -99,6 +101,19 @@ const asBefore = (compositing: string, name: string) =>
   `Warm-up: as before, a graphics chip (gpu_compositing ${compositing}), for output "${name}"`;
 
 describe('Main’s choice for each output window', () => {
+  it.each([
+    { feature: 'enabled', context: {} },
+    { feature: 'disabled_software', context: { noGpu: true } },
+  ])('logs none (stage) for a stage output with $feature compositing', ({ feature, context }) => {
+    const m = main(() => feature);
+    m.choices.gpuSaid();
+    m.open('stage', 7, 'Stage');
+    expect(m.fact('stage', 'stage')).toEqual(context);
+    expect(m.fact('stage', 'stage')).toEqual(context);
+    expect(m.lines).toEqual(['Warm-up: none (stage), for output "Stage"']);
+    expect(m.sent).toEqual([]);
+  });
+
   it('until Chromium has said how it draws, every output warms up: its status says disabled then, chip or not', () => {
     // Measured 12 Nov 2026 on a Mac with a graphics chip: disabled_software until the first gpu-info-update.
     const m = main(() => 'disabled_software');
