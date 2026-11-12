@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, truncateSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -59,6 +59,44 @@ const names = (db: Db) =>
   (db.prepare('SELECT name FROM presentations ORDER BY name').all() as { name: string }[]).map((r) => r.name);
 
 describe('runImport', () => {
+  it('asks the background queue to cap a tall linked video without marking it unplayable', async () => {
+    const t = setup({
+      readInfo: (file) =>
+        Promise.resolve({
+          container: 'mov,mp4,m4a,3gp,3g2,mj2',
+          durationMs: 1000,
+          video: {
+            codec: 'h264',
+            pixFmt: 'yuv420p',
+            width: 1920,
+            height: readFileSync(file, 'utf8') === 'Placeholder tall bytes' ? 2160 : 1080,
+            still: false,
+          },
+          audio: null,
+        }),
+    });
+    const tall = t.write('Placeholder tall.mp4', 'Placeholder tall bytes');
+    const small = t.write('Placeholder small.mp4', 'Placeholder small bytes');
+    const ordinary = await t.run([tall]);
+    expect(ordinary.report?.items[0]?.issues).toEqual([]);
+
+    const linked = { simple: true as const, maxVideoHeight: 1080 };
+    const { report } = await t.run([tall, small], linked);
+    const originalId = ordinary.report?.items[0]?.target?.id;
+    expect(report?.items.find((item) => item.sourcePath === tall)).toMatchObject({
+      outcome: 'skipped',
+      target: { kind: 'media', id: originalId },
+      issues: [
+        { code: 'converting-media', fix: { kind: 'convert-media', mediaId: originalId, maxHeight: 1080 } },
+      ],
+    });
+    expect(report?.items.find((item) => item.sourcePath === small)).toMatchObject({
+      outcome: 'imported',
+      issues: [],
+    });
+    expect(t.db.prepare('SELECT playable FROM media WHERE id = ?').pluck().get(originalId)).toBe(1);
+  });
+
   it('gives way between files when the main process waits to write, its group committed (Session 16)', async () => {
     const t = setup();
     for (let i = 1; i <= 4; i++)
