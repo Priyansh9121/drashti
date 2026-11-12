@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Pose } from './lower-third-animations';
+import { parseEngineCommand } from './engine/commands';
 import {
   animationById,
   animationFrame,
   animationLength,
   isAnimation,
+  isLowerThirdAnimation,
   LOWER_THIRD_ANIMATIONS,
   REST,
   searchAnimations,
@@ -36,7 +38,7 @@ import {
   motionPieces,
   styleDrawing,
 } from './lower-third-styles';
-import type { LowerThirdLook } from './lower-thirds';
+import type { LowerThirdInput, LowerThirdLook } from './lower-thirds';
 import {
   DEFAULT_LOWER_THIRD_LOOK,
   lowerThirdInputSchema,
@@ -458,5 +460,89 @@ describe('the model: a lower third that hides itself, its out, its style', () =>
       if (t.input.look.motion) expect(OFFERED_MOTIONS, t.name).toContain(t.input.look.motion);
     }
     expect(new Set(LOWER_THIRD_TEMPLATES.map((t) => t.name)).size).toBe(LOWER_THIRD_TEMPLATES.length);
+  });
+});
+
+describe('the designs’ moves: kept with every lower third made from a design', () => {
+  it('are these ten, each drawn by the library as a design (never deleted: a design is left out in lower-third-designs.ts)', () => {
+    expect(Object.keys(DESIGN_MOTIONS)).toEqual([
+      'design-draw-rise',
+      'design-draw-drop',
+      'design-lift',
+      'design-lower',
+      'design-centre-wipe',
+      'design-centre-pop',
+      'design-slide-left',
+      'design-slide-right',
+      'design-reveal-up',
+      'design-reveal-down',
+    ]);
+    for (const id of Object.keys(DESIGN_MOTIONS)) {
+      expect(isLowerThirdAnimation(id), id).toBe(true);
+      expect(animationById(id).id, id).toBe(id);
+      expect(animationById(id).composition, id).toBeDefined();
+    }
+  });
+
+  it('one saved from a design left out (Silver outline, not smooth in the Performance check) still parses, goes up as a show command and draws as a design', () => {
+    expect(LOWER_THIRD_TEMPLATES.map((t) => t.id)).not.toContain('silver-outline');
+    const saved: LowerThirdInput = {
+      lines: ['Placeholder name', 'Placeholder role', ''],
+      look: {
+        ...DEFAULT_LOWER_THIRD_LOOK,
+        style: 'outline',
+        band: '#20252d',
+        accent: '#cdd9e7',
+        align: 'centre',
+        font: 'Noto Serif',
+        weight: 400,
+      },
+      where: 'both',
+      animation: 'design-centre-wipe',
+    };
+    expect(lowerThirdInputSchema.safeParse(saved).success).toBe(true);
+    expect(
+      parseEngineCommand({ type: 'showLowerThird', lowerThird: { id: 'placeholder-saved', ...saved } }),
+    ).toMatchObject({ ok: true });
+    const drawn = animationById(saved.animation);
+    expect(drawn.id).toBe('design-centre-wipe');
+    expect(drawn.composition).toBeDefined();
+    expect(animationFrame(drawn, 'in', 0, 2).panel).toBeDefined();
+  });
+
+  it('every one at its first, middle and last frame, in and out: valid; its accent, panel, name and role unseen at the start, at rest at the end of the in and gone at the end of the out', () => {
+    for (const id of Object.keys(DESIGN_MOTIONS)) {
+      const a = animationById(id);
+      for (const units of [1, 2, 3]) {
+        const parts = (f: ReturnType<typeof animationFrame>): Pose[] => [
+          f.panel ?? REST,
+          f.accent ?? REST,
+          ...Array.from({ length: units }, (_, i) => f.unit(i)),
+        ];
+        for (const phase of ['in', 'out'] as const) {
+          const length = animationLength(a, phase, units);
+          for (const t of [0, length / 3, length / 2, length]) {
+            const f = animationFrame(a, phase, t, units);
+            const what = `${a.name}: ${phase} at ${String(t)} (${String(units)})`;
+            // The band itself stays; its panel and accent move.
+            expect(f.box, what).toEqual(REST);
+            expect(f.panel, what).toBeDefined();
+            expect(f.accent, what).toBeDefined();
+            for (const part of parts(f)) {
+              valid(part, what);
+              expect(part.filter, what).toBeUndefined();
+            }
+          }
+        }
+        const what = `${a.name} (${String(units)})`;
+        expect(parts(animationFrame(a, 'in', 0, units)).every(unseen), `${what}: unseen at the start`).toBe(
+          true,
+        );
+        const last = animationFrame(a, 'in', animationLength(a, 'in', units), units);
+        for (const part of parts(last)) expect(part, `${what}: at rest at the end of its in`).toEqual(REST);
+        const gone = animationFrame(a, 'out', animationLength(a, 'out', units), units);
+        expect(parts(gone).every(unseen), `${what}: gone at the end of its out`).toBe(true);
+      }
+    }
   });
 });

@@ -13,7 +13,15 @@ interface DesignMotion {
   roleFrom: From;
 }
 
-/** The band and accent move first, followed by the name and role in their own directions. */
+/**
+ * The designs' moves: the band and accent move first, followed by the name and role in their own directions.
+ *
+ * The library of every lower third made from a design: a lower third keeps its move's id (never its design's), so
+ * each move here is kept with the lower thirds saved with it. Never delete one: a lower third saved with it could
+ * no longer go up, nor be saved again. A design that is not smooth (the Performance check) is left out by deleting
+ * it from lower-third-designs.ts: its move stays here, and one saved from it still draws as it was saved (Part 16's
+ * rule, lower-third-studio.ts).
+ */
 export const DESIGN_MOTIONS = {
   'design-draw-rise': {
     name: 'Draw the line, then rise and slide',
