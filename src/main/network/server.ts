@@ -174,7 +174,7 @@ const ROUTES: Route[] = [
     'presentation',
     (q, p) => ({
       presentationId: p['id'],
-      ...(q['format'] === 'png' ? { format: 'png', slideId: q['slideId'], click: q['click'] } : {}),
+      ...(q['format'] === 'png' ? { format: 'png', slideId: q['slide'], click: q['click'] } : {}),
     }),
     PRESENTATION_ID,
   ),

@@ -84,7 +84,7 @@ export async function saveNativeSlideHere(
   looks: Record<string, PictureLook>,
 ): Promise<string | null> {
   const token = current()?.token;
-  const query = new URLSearchParams({ format: 'png', slideId: slide.slideId, click: String(slide.click) });
+  const query = new URLSearchParams({ format: 'png', slide: slide.slideId, click: String(slide.click) });
   try {
     const response = await fetch(
       `/api/v1/presentations/${encodeURIComponent(slide.presentationId)}?${query.toString()}`,
