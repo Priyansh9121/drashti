@@ -3884,7 +3884,19 @@ function start(): void {
     },
     spaceProblem: (file, durationMs, lengthMs) =>
       conversions.trimSpaceProblem(file, dirname(file), durationMs, lengthMs),
-    queue: (input) => queueTrimCopy(conversions, input),
+    copies: {
+      load: () => settings.get('playlistTrimCopies'),
+      save: (copies) => settings.set('playlistTrimCopies', copies),
+    },
+    trash: (file) => shell.trashItem(file),
+    queue: (input, beforePublish) =>
+      queueTrimCopy(
+        {
+          saveCopy: (source, dest, info, copy) =>
+            conversions.saveCopy(source, dest, info, { ...copy, beforePublish }),
+        },
+        input,
+      ),
     cancel: (id) => conversions.cancelFile(id),
     pendingChanged: (ids) => sendToOperator(IPC.media.preparingTrimsChanged, ids),
     rowChanged: (added) => {
@@ -3897,6 +3909,7 @@ function start(): void {
     markersChanged: (id) => engine.refreshMarkers(id),
     notice: (text) => sendToOperator(IPC.app.notice, { text }),
   });
+  void playlistTrims.cleanupCopies();
   const offTrimActivity = engine.onChange(() => playlistTrims.activityChanged());
   stops.add('playlist trims', () => {
     offTrimActivity();
