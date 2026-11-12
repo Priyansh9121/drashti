@@ -6,9 +6,11 @@ import { createRequire } from 'node:module';
 import { constants, getPriority, setPriority, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { letInBeforeStart } from '../e2e/access';
-import { QUIET } from '../e2e/helpers';
+import { launchApp, operatorPage, operatorReady, QUIET, relaunchApp } from '../e2e/helpers';
 import { freePort, testFfmpeg } from '../e2e/stream-helpers';
 import { recoveryAgainstBudget } from '../e2e/recovery-figure';
+import { caseLine, caseRow, framePeriod, measureRun, type MotionRun } from '../../src/shared/motion-measure';
+import { OPENING_MS } from '../../src/shared/opening';
 
 /*
  * The performance check, started by hand (pnpm test:perf, or the
@@ -232,6 +234,112 @@ test('after a crash the screens come back: the recovery figure (Sessions 31–36
     test.info().annotations.push({ type: 'recovery', description: line });
   });
 });
+
+/** The motion probe's record of the operator window (render/motion-probe.ts), as the page gives it. */
+interface ProbeRead {
+  frames: number[];
+  changes: Record<string, number[]>;
+  states: Record<string, string[]>;
+}
+
+/** The opening's runs (Session 57, item 6): each start's. */
+const OPENING_RUNS = 3;
+
+test('the opening as Drashti starts: from when it may move to its first frame, its two seconds, and how even its frames are (the animations scenario)', async () => {
+  // The opening plays only as a person starts Drashti, in the operator window, never in a self-test (main/opening/
+  // opening-start.ts): the animations scenario's checks above never see it, so it is measured here, with the motion
+  // probe in the operator window (DRASHTI_TEST_MOTION_PROBE, the workflow's with this scenario). No screen is set up:
+  // CI has one display, where a screen would cover the operator window; so the opening never waits for screens here
+  // (OPENING_HOLD_MS at most on a mandir computer), and what is measured is its own start, length and frames.
+  test.skip(
+    process.env['DRASHTI_PERF_SCENARIO'] !== 'animations',
+    'Measured with the animations scenario only',
+  );
+  test.setTimeout(300_000);
+  // Under the handicap as the checks above were (Windows' two cores; a Mac's two busy processes, while it runs).
+  const load = handicap();
+  if (load.what) console.log(load.what);
+  try {
+    await measureOpening();
+  } finally {
+    load.stop();
+  }
+});
+
+/** The opening's runs, each a start of Drashti with it asked for, measured in the operator window. */
+async function measureOpening(): Promise<void> {
+  // A library started once and quit on purpose, so each start after it is a person's start of the same version.
+  const first = await launchApp();
+  await operatorReady(await operatorPage(first.app));
+  await first.app.close();
+  const runs: (MotionRun & { launchedAt: number; appearedAt: number | null; movableAt: number | null })[] =
+    [];
+  let period = 1000 / 60;
+  for (let i = 0; i < OPENING_RUNS; i++) {
+    const launchedAt = Date.now();
+    const { app } = await relaunchApp(first.userData, {
+      DRASHTI_TEST_OPENING: '1',
+      DRASHTI_TEST_MOTION_PROBE: '1',
+    });
+    const win = await operatorPage(app);
+    const read = () =>
+      win.evaluate(() => {
+        const probe = (globalThis as { drashtiMotionProbe?: { read(a: number, b: number): unknown } })
+          .drashtiMotionProbe;
+        return (probe?.read(0, Number.MAX_SAFE_INTEGER) ?? null) as {
+          frames: number[];
+          changes: Record<string, number[]>;
+          states: Record<string, string[]>;
+        } | null;
+      });
+    // Until it has come and gone (it ends by itself after its two seconds).
+    await expect
+      .poll(
+        async () => {
+          const r = await read();
+          return (
+            r !== null &&
+            (r.states['opening-shown'] ?? []).at(-1) === '' &&
+            (r.changes['opening'] ?? []).length > 0
+          );
+        },
+        { timeout: 30_000, intervals: [250] },
+      )
+      .toBe(true);
+    const r = (await read()) as ProbeRead;
+    period = framePeriod(r.frames);
+    const shown = r.changes['opening-shown'] ?? [];
+    const said = r.states['opening-shown'] ?? [];
+    const at = (i: number | undefined) => (i === undefined ? null : (r.frames[i] ?? null));
+    // When it came (black over the window), and when it might move: at once, or once the screens had drawn.
+    const appearedAt = at(shown[0]);
+    const movableAt = at(shown[said.findIndex((s) => s === 'false')]);
+    const pressAt = movableAt ?? appearedAt ?? launchedAt;
+    const run = measureRun(
+      { frames: r.frames, changes: r.changes['opening'] ?? [] },
+      { pressAt, until: pressAt + 10_000 },
+      period,
+    );
+    runs.push({ ...run, launchedAt, appearedAt, movableAt });
+    console.log(
+      `opening run ${String(i + 1)}: started ${String(appearedAt === null ? '?' : Math.round(appearedAt - launchedAt))} ms after the launch, might move ${String(movableAt === null || appearedAt === null ? '?' : Math.round(movableAt - appearedAt))} ms after it came, first moved ${String(run.delay === null ? 'never' : `${String(Math.round(run.delay))} ms`)} after that, for ${String(run.length === null ? '-' : Math.round(run.length))} ms`,
+    );
+    await app.close();
+  }
+  const row = caseRow('opening', OPENING_MS, runs, period);
+  const line = `scenario animations, the opening (the operator window's own frames): frame period ${period.toFixed(2)} ms; ${caseLine(row)}`;
+  console.log(line);
+  test.info().annotations.push({ type: 'performance', description: line });
+  const dir = process.env['DRASHTI_PERF_RAW'];
+  if (dir) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, `opening-${process.platform}.json`),
+      JSON.stringify({ platform: process.platform, handicap: HANDICAP, period, row, runs }),
+    );
+  }
+  expect(row.seen, line).toBe(OPENING_RUNS);
+}
 
 /**
  * Each slide change's raw times, as JSON, where DRASHTI_PERF_RAW says (the Performance workflow keeps them

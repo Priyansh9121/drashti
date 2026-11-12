@@ -972,6 +972,7 @@ function runPerformanceTestWithScenario(ctx: PerfRun): ReturnType<typeof runPerf
     streamSlides: () => {
       ctx.stream.setLayout('slides');
     },
+    operator: ctx.operator,
   });
   return runPerformanceTestWithNodes({ ...ctx, scenario });
 }

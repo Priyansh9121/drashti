@@ -26,6 +26,8 @@ export const devServerUrl = (): string | undefined =>
 const holdWarmUp = (): boolean => !packaged() && sw('DRASHTI_TEST_HOLD_WARM_UP') === '1';
 /** Tests only: pages draw the show at once, as translated (Session 55: the opening's test of screens drawn). */
 const skipWarmUp = (): boolean => !packaged() && sw('DRASHTI_TEST_SKIP_WARM_UP') === '1';
+/** Tests only: the audience screens and the operator window keep the motion probe's record (Session 57, item 6). */
+const motionProbe = (): boolean => !packaged() && sw('DRASHTI_TEST_MOTION_PROBE') === '1';
 
 /**
  * Run translated (an Intel build under Rosetta on an Apple-silicon Mac, x64 under Windows' emulation): pages
@@ -40,11 +42,12 @@ export function loadPage(
   page: RendererPage,
   given: Record<string, string> = {},
 ): Promise<void> {
-  const query = holdWarmUp()
+  const warm = holdWarmUp()
     ? { ...given, warmUp: 'hold' }
     : translated() || skipWarmUp()
       ? { ...given, warmUp: 'skip' }
       : given;
+  const query = motionProbe() ? { ...warm, motionProbe: '1' } : warm;
   const dev = devServerUrl();
   if (dev) {
     const url = new URL(`${page}.html`, dev.endsWith('/') ? dev : dev + '/');
