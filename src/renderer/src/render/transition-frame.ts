@@ -36,6 +36,13 @@ export interface SlideFrame {
   transform: string;
   /** A wipe's clip on the whole slide. */
   clip?: string;
+  /**
+   * A deck's own transition only: a CSS mask-image on the whole slide. None draws one now: PowerPoint's Wipe band was
+   * one, until it dropped frames on Windows while streaming (Q57-28, 13 Nov 2026).
+   */
+  mask?: string;
+  /** A deck's own transition only: a CSS filter on the whole slide (the slide PowerPoint's Cover or Uncover moves). */
+  filter?: string;
 }
 
 /** A part of a slide while a move runs (its words): its opacity, transform and clip ('' for none). */
@@ -150,18 +157,28 @@ function powerPointFrame(transition: DeckNativeTransition, progress: number): Tr
   const shift = (fraction: number) =>
     fraction === 0 ? '' : `translate${horizontal ? 'X' : 'Y'}(${String(fraction * toward * 100)}%)`;
   switch (transition.deckEffect) {
-    case 'push':
-    case 'cover':
-    case 'uncover': {
+    case 'push': {
       const e = easeInOut(p);
       return {
-        in: { ...settled, transform: transition.deckEffect === 'uncover' ? '' : shift(e - 1) },
-        out: { ...settled, transform: transition.deckEffect === 'cover' ? '' : shift(e) },
+        in: { ...settled, transform: shift(e - 1) },
+        out: { ...settled, transform: shift(e) },
         black: 0,
         add: false,
       };
     }
+    case 'cover':
+    case 'uncover': {
+      // PowerPoint's own curve, and the slide it moves a little darker while the transition runs.
+      const e = SLIDE_CURVES[transition.deckEffect][horizontal ? 'across' : 'down'](p);
+      const moving: SlideFrame = { ...settled, ...(p > 0 && p < 1 ? { filter: MOVING_SHADE } : {}) };
+      return transition.deckEffect === 'cover'
+        ? { in: { ...moving, transform: shift(e - 1) }, out: settled, black: 0, add: false }
+        : { in: settled, out: { ...moving, transform: shift(e) }, black: 0, add: false };
+    }
     case 'wipe': {
+      // A hard edge moving evenly from the incoming slide's own side (Q57-28, 13 Nov 2026). PowerPoint's is a soft band
+      // one slide long, but drawn as a mask over the whole slide it dropped frames on Windows while streaming, so a
+      // deck's Wipe only comes close (import/deck/pptx-native-transition.ts marks it approximate).
       const edge = `${String((1 - p) * 100)}%`;
       const clip = {
         left: `inset(0 0 0 ${edge})`,
@@ -185,6 +202,87 @@ function powerPointFrame(transition: DeckNativeTransition, progress: number): Tr
       return transitionFrame(transition.deckEffect, p);
   }
 }
+
+/*
+ * A deck's own Cover and Uncover as PowerPoint's own movie draws them (13 Nov 2026: the comparison's movie of a
+ * generated deck, measured frame by frame at 320 x 180 against this drawing; Push already matched within a pixel).
+ *
+ * Cover and Uncover move their slide (Cover's incoming, Uncover's outgoing) on PowerPoint's own curve, not an easing:
+ * measured every 21st of the way, across and up or down apart (PowerPoint's differ by up to 2.6% of the way), and
+ * read between those points by a monotone cubic. PowerPoint draws that slide ×0.986 darker while the transition runs.
+ */
+
+/**
+ * A monotone curve through values at even steps from 0 to 1 (Fritsch and Carlson's cubic: it never overshoots, so the
+ * slide never moves back).
+ */
+function evenCurve(values: readonly number[]): (p: number) => number {
+  const n = values.length - 1;
+  const v = (i: number) => values[i] ?? 0;
+  const slope = Array.from({ length: n }, (_, i) => (v(i + 1) - v(i)) * n);
+  const s = (i: number) => slope[i] ?? 0;
+  const tangent = values.map((_, i) =>
+    i === 0 ? s(0) : i === n ? s(n - 1) : s(i - 1) * s(i) <= 0 ? 0 : (s(i - 1) + s(i)) / 2,
+  );
+  for (let i = 0; i < n; i++) {
+    if (s(i) === 0) {
+      tangent[i] = 0;
+      tangent[i + 1] = 0;
+      continue;
+    }
+    const a = (tangent[i] ?? 0) / s(i);
+    const b = (tangent[i + 1] ?? 0) / s(i);
+    if (a * a + b * b > 9) {
+      const k = 3 / Math.sqrt(a * a + b * b);
+      tangent[i] = k * a * s(i);
+      tangent[i + 1] = k * b * s(i);
+    }
+  }
+  return (p) => {
+    if (p <= 0) return v(0);
+    if (p >= 1) return v(n);
+    const i = Math.min(n - 1, Math.floor(p * n));
+    const t = p * n - i;
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return (
+      (2 * t3 - 3 * t2 + 1) * v(i) +
+      ((t3 - 2 * t2 + t) * (tangent[i] ?? 0)) / n +
+      (-2 * t3 + 3 * t2) * v(i + 1) +
+      ((t3 - t2) * (tangent[i + 1] ?? 0)) / n
+    );
+  };
+}
+
+/**
+ * How far PowerPoint's Cover and Uncover have moved their slide (0: where it starts, 1: in place) every 21st of the
+ * transition (33.3 ms of 700, the movie's frames), each direction's frames read there and the two of an axis averaged.
+ */
+const SLIDE_CURVES = {
+  cover: {
+    across: evenCurve([
+      0, 0, 0, 0.0024, 0.0188, 0.0419, 0.07, 0.1112, 0.1799, 0.285, 0.4271, 0.5773, 0.718, 0.8268, 0.8945,
+      0.9372, 0.9627, 0.9799, 0.9913, 0.9974, 1, 1,
+    ]),
+    down: evenCurve([
+      0, 0, 0, 0, 0.0191, 0.0452, 0.0791, 0.128, 0.2005, 0.3107, 0.4476, 0.5967, 0.736, 0.8391, 0.905, 0.9427,
+      0.9648, 0.9808, 0.9916, 0.9967, 1, 1,
+    ]),
+  },
+  uncover: {
+    across: evenCurve([
+      0, 0.0025, 0.0088, 0.0211, 0.041, 0.0671, 0.1022, 0.1488, 0.2207, 0.3215, 0.4507, 0.5925, 0.7212,
+      0.8224, 0.8865, 0.9281, 0.9579, 0.981, 0.9966, 1, 1, 1,
+    ]),
+    down: evenCurve([
+      0, 0, 0.0042, 0.0121, 0.0283, 0.0513, 0.0803, 0.125, 0.194, 0.2979, 0.4366, 0.5857, 0.7257, 0.8289,
+      0.8965, 0.9384, 0.9638, 0.9818, 0.9935, 1, 1, 1,
+    ]),
+  },
+} as const;
+
+/** The slide PowerPoint's Cover or Uncover moves, drawn this much darker while the transition runs (measured). */
+const MOVING_SHADE = 'brightness(0.986)';
 
 /** Whether a transition takes time (a cut, or anything of no length, does not). */
 export const takesTime = (t: Transition | undefined): t is Transition =>

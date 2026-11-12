@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cloudOf, droppedName, type DropFolderView } from '../../shared/drop-folder';
-import { NO_COUNTS, type ImportItemReport } from '../../shared/import';
+import { NO_COUNTS, type ImportItemReport, type ImportOptions } from '../../shared/import';
 import { SOUND_EXTENSIONS } from '../../shared/media';
 import { openDatabase, type Db } from '../db/database';
 import { MediaRemoval } from '../library/media-removal';
@@ -39,6 +39,7 @@ function setup(options: { db?: Db; maxBytes?: number; air?: { on: boolean }; sim
   const settings = new Map<string, unknown>();
   const reports = new Map<string, ImportItemReport[]>();
   const imports: { names: string[]; bytes: number[] }[] = [];
+  const importOptions: ImportOptions[] = [];
   const notices: string[] = [];
   const importNotice = vi.fn();
   const views: DropFolderView[] = [];
@@ -47,7 +48,8 @@ function setup(options: { db?: Db; maxBytes?: number; air?: { on: boolean }; sim
   const watching = { failed: null as (() => void) | null, count: 0 };
   const scheduled: { ms: number; run: () => void }[] = [];
   let mediaChanged = 0;
-  const importFiles = async (paths: string[]) => {
+  const importFiles = async (paths: string[], options: ImportOptions) => {
+    importOptions.push(options);
     const items: ImportItemReport[] = [];
     const bytes: number[] = [];
     for (const path of paths) {
@@ -141,6 +143,7 @@ function setup(options: { db?: Db; maxBytes?: number; air?: { on: boolean }; sim
     service,
     settings,
     imports,
+    importOptions,
     notices,
     reports,
     importNotice,
@@ -166,6 +169,9 @@ describe('the drop folder', () => {
     await put('Movie.mp4.part', 'half a copy');
     await put('~$Slides.png', 'an editor’s lock file');
     await put('.hidden.png', 'never');
+    await put('desktop.ini', 'placeholder');
+    await put('Thumbs.db', 'placeholder');
+    if (process.platform !== 'win32') await put('Icon\r', 'placeholder');
     const h = setup();
     expect(await h.service.setFolder(folder)).toMatchObject({ ok: true });
     // Seen once: nothing is taken before it has held still.
@@ -178,6 +184,7 @@ describe('the drop folder', () => {
     await h.service.scan();
     expect(h.imports.map((i) => i.names.sort())).toEqual([['Clip.webm', 'Darshan.png', 'Talk.mp3']]);
     expect(h.dropped()).toEqual(['Clip.webm', 'Darshan.png', 'Talk.mp3']);
+    expect(h.importOptions).toEqual([{ automatic: true }]);
     expect(h.service.view().notTaken).toEqual([
       {
         name: 'Notes.pdf',
@@ -378,6 +385,7 @@ describe('the drop folder', () => {
     air.on = false;
     expect(await h.service.importAnyway('Huge.mp4')).toMatchObject({ ok: true, view: { notTaken: [] } });
     expect(h.dropped()).toEqual(['Huge.mp4']);
+    expect(h.importOptions).toEqual([{}]);
   });
 
   it('takes a file once (after a restart too), again only when it changes; a file gone leaves its media', async () => {
@@ -501,6 +509,7 @@ describe('the drop folder', () => {
 
   it('passes over names left while writing', () => {
     expect(['a.png', 'b.mp4'].every(droppedName)).toBe(true);
+    expect(['desktop.ini', 'Thumbs.db', 'Icon\r'].filter(droppedName)).toEqual([]);
     expect(
       ['.a.png', '~$b.png', 'c.part', 'd.crdownload', 'e.download', 'f.tmp', 'g.mp4.partial'].some(
         droppedName,

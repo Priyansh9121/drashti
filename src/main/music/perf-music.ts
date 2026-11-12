@@ -37,8 +37,8 @@ function tone(seconds: number, hz: number): Buffer {
   return Buffer.concat([header, data]);
 }
 
-/** A generated tone in the check's media folder, as a sound in its library. */
-function addTone(db: Db, mediaDir: string, name: string, seconds: number, hz: number): string {
+/** A generated tone in the check's media folder, as a sound in its library (the animations scenario's deck's too). */
+export function addTone(db: Db, mediaDir: string, name: string, seconds: number, hz: number): string {
   mkdirSync(join(mediaDir, 'perf'), { recursive: true });
   const path = `perf/${name}.wav`;
   writeFileSync(join(mediaDir, path), tone(seconds, hz));

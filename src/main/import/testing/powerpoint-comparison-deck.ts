@@ -17,12 +17,17 @@ import { DECK_HEIGHT, DECK_WIDTH, makeTestDeck, placeholderDeckMedia } from './m
 /*
  * Tests only (Session 57): the deck PowerPoint's own movie is compared against, frame by frame (C3's comparison
  * harness, fixture.mjs, in C3's Codex work folder; brought here by h-p3fx so that a new export takes it from the repo).
- * Coloured boxes only, no words: one slide per effect and variant (Float in and out, Split in and out both ways, Grow &
- * Turn and Shrink & Turn, Grow/Shrink, a Fly with a smooth start and end, and Basic Zoom's In, Out, In Slightly, In From
- * Screen Center and Out From Screen Bottom), then Push, Wipe, Cover and Uncover in each direction, each after a
- * reference slide. Each slide carries a gray marker in its top left corner, 4 levels lighter than the slide before, so
- * a probe finds it in the movie. Each effect runs 700 ms from its click on a red 64 × 38 box at (94, 51) of a 320 ×
- * 180 slide.
+ * Coloured boxes only, no words: one slide per effect and variant.
+ * - Run 1 (12 Nov 2026; its movie measured 13 Nov), first and as it was: Float in and out, Split in and out both ways,
+ *   Grow & Turn and Shrink & Turn, Grow/Shrink, a Fly with a smooth start and end, and Basic Zoom's In, Out, In
+ *   Slightly, In From Screen Center and Out From Screen Bottom; then Push, Wipe, Cover and Uncover in each direction,
+ *   each after a reference slide.
+ * - Run 2 (h-p3run2, 13 Nov), what run 1 left unmeasured: Float in and out and Grow/Shrink with a smooth start and
+ *   end, Basic Zoom leaving to another size or place, and Shape (circle, box, diamond, plus; In and Out) coming in and
+ *   leaving.
+ * Each slide carries a gray marker in its top left corner, 4 levels lighter than the slide before (run 1's from 20,
+ * run 2's from 22, so every marker stays a gray), so a probe finds it in the movie. Each effect runs 700 ms from its
+ * click on a red 64 × 38 box at (94, 51) of a 320 × 180 slide.
  */
 
 export const COMPARISON_WIDTH = 320;
@@ -129,6 +134,68 @@ const MOTIONS: ComparisonMotion[] = [
   ]),
 ];
 
+/** A smooth start of 25 % and a smooth end of 50 %, on the effect itself, as run 1's eased Fly had them. */
+const EASED = { accel: 25_000, decel: 50_000 };
+/** PowerPoint's own size for Basic Zoom's Out: 8 times a shape under 0.3 of the slide, twice one the slide's size. */
+const LARGE = '(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*';
+/** Shape's outlines, each PowerPoint's own effect (its preset) under the one name. */
+const OUTLINES = [
+  ['Circle', 6],
+  ['Box', 4],
+  ['Diamond', 8],
+  ['Plus', 13],
+] as const;
+
+/**
+ * Run 2's effects (h-p3run2, 13 Nov 2026), each as PowerPoint writes it. Basic Zoom leaving: each the entrance of that
+ * name played backwards, from where the shape rests to where that entrance starts, in PowerPoint's own formulas.
+ * Shape: PowerPoint's filter for each outline, In and Out, with its preset's subtype (16 for In, 32 for Out).
+ * (PowerPoint plays an effect's behaviours as written, whatever its subtype: run 1's zooms had none.)
+ */
+const RUN2_MOTIONS: ComparisonMotion[] = [
+  effect('Float In Up · smooth start and end', 'in', 42, [position('y', '#ppt_y+0.08', '#ppt_y')], {
+    filter: 'fade',
+    subtype: 4,
+    ...EASED,
+  }),
+  effect('Float Out Down · smooth start and end', 'out', 47, [position('y', '#ppt_y', '#ppt_y+0.08')], {
+    filter: 'fade',
+    subtype: 1,
+    ...EASED,
+  }),
+  effect('Grow/Shrink 150% · smooth start and end', 'emphasis', 6, [], { relativeScale: 150_000, ...EASED }),
+  effect('Grow/Shrink 50% · smooth start and end', 'emphasis', 6, [], { relativeScale: 50_000, ...EASED }),
+  effect('Basic Zoom exit · Out', 'out', 23, [
+    track('ppt_w', '#ppt_w', `${LARGE}#ppt_w`),
+    track('ppt_h', '#ppt_h', `${LARGE}#ppt_h`),
+  ]),
+  effect('Basic Zoom exit · In Slightly', 'out', 23, [
+    track('ppt_w', '#ppt_w', '2/3*#ppt_w'),
+    track('ppt_h', '#ppt_h', '2/3*#ppt_h'),
+  ]),
+  effect('Basic Zoom exit · In To Screen Center', 'out', 23, [
+    ...scale(1, 0),
+    position('x', '#ppt_x', 0.5),
+    position('y', '#ppt_y', 0.5),
+  ]),
+  effect('Basic Zoom exit · Out To Screen Bottom', 'out', 23, [
+    track('ppt_w', '#ppt_w', `${LARGE}#ppt_w`),
+    track('ppt_h', '#ppt_h', `${LARGE}#ppt_h`),
+    position('x', '#ppt_x', 0.5),
+    position('y', '#ppt_y', `1+${LARGE}#ppt_h/2`),
+  ]),
+  ...(['in', 'out'] as const).flatMap((phase) =>
+    OUTLINES.flatMap(([outline, preset]) =>
+      (['In', 'Out'] as const).map((way) =>
+        effect(`Shape ${phase} · ${outline} ${way}`, phase, preset, [], {
+          filter: `${outline.toLowerCase()}(${way.toLowerCase()})`,
+          subtype: way === 'In' ? 16 : 32,
+        }),
+      ),
+    ),
+  ),
+];
+
 export type ComparisonDirection = 'left' | 'right' | 'up' | 'down';
 
 export interface ComparisonSlide {
@@ -136,7 +203,7 @@ export interface ComparisonSlide {
   bg: string;
   motion?: ComparisonMotion;
   transition?: { kind: 'push' | 'wipe' | 'cover' | 'uncover'; dir: string; direction: ComparisonDirection };
-  /** The gray of its marker (each slide 4 lighter than the one before). */
+  /** The gray of its marker: 4 lighter than the slide before it in its run (run 1's from 20, run 2's from 22). */
   marker: number;
   /** Its effect's or transition's length (ms), or 0. */
   duration: number;
@@ -149,20 +216,39 @@ const DIRECTIONS: [string, ComparisonDirection][] = [
   ['d', 'down'],
 ];
 
-/** Every slide of the deck, in order. */
+type Scene = Omit<ComparisonSlide, 'marker' | 'duration'>;
+const timed = (scenes: readonly Scene[], firstMarker: number): ComparisonSlide[] =>
+  scenes.map((scene, index) => ({
+    ...scene,
+    marker: firstMarker + 4 * index,
+    duration: scene.motion || scene.transition ? DURATION : 0,
+  }));
+
+/** Run 1's slides: the first of the deck, as they were, so that run 1's results stay comparable. */
+const RUN1: readonly ComparisonSlide[] = timed(
+  [
+    ...MOTIONS.map((motion) => ({ name: motion.name, motion, bg: '292929' })),
+    ...(['push', 'wipe', 'cover', 'uncover'] as const).flatMap((kind) =>
+      DIRECTIONS.flatMap(([dir, direction]): Scene[] => [
+        { name: `Reference for ${kind} ${direction}`, bg: RED },
+        { name: `${kind} ${direction}`, transition: { kind, dir, direction }, bg: BLUE },
+      ]),
+    ),
+  ],
+  20,
+);
+
+/** How many of the deck's slides are run 1's (its first). */
+export const COMPARISON_RUN1_SLIDES = RUN1.length;
+
+/** Every slide of the deck, in order: run 1's, then run 2's (their markers from 22, between run 1's). */
 export const COMPARISON_SLIDES: readonly ComparisonSlide[] = [
-  ...MOTIONS.map((motion) => ({ name: motion.name, motion, bg: '292929' })),
-  ...(['push', 'wipe', 'cover', 'uncover'] as const).flatMap((kind) =>
-    DIRECTIONS.flatMap(([dir, direction]) => [
-      { name: `Reference for ${kind} ${direction}`, bg: RED },
-      { name: `${kind} ${direction}`, transition: { kind, dir, direction }, bg: BLUE },
-    ]),
+  ...RUN1,
+  ...timed(
+    RUN2_MOTIONS.map((motion) => ({ name: motion.name, motion, bg: '292929' })),
+    22,
   ),
-].map((scene, index) => ({
-  ...scene,
-  marker: 20 + 4 * index,
-  duration: 'motion' in scene || 'transition' in scene ? DURATION : 0,
-}));
+];
 
 function partOf(xml: string): TreeElement {
   const [part] = elementsOf(parseTree(xml));

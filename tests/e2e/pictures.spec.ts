@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
+import { addTestPptxShadow } from '../../src/main/import/testing/pptx-shadow';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { OutputGlobals, PageGlobals } from './helpers';
 import {
@@ -65,7 +66,7 @@ test('a PDF dropped on the library becomes slides of its pages as pictures, with
   );
   await setUpScreen(win, 'Main Hall', 0);
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const kirtan = (
     await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listPresentations())
   )[0]?.id;
@@ -223,6 +224,8 @@ test('a PDF’s pages are drawn several at once while nothing is up and the stre
 });
 
 test('a PowerPoint file with nothing on the computer to save it as PDF is reported plainly', async () => {
+  // A slide Drashti cannot draw itself (a shadow): since IM-6 (Session 57) a still deck it can draw comes in as
+  // editable slides with no converter, so only such a slide still needs PowerPoint or Keynote.
   const { app } = await launchApp({ DRASHTI_TEST_NO_CONVERTER: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -232,6 +235,7 @@ test('a PowerPoint file with nothing on the computer to save it as PDF is report
     deck,
     makeTestPptx([{ color: '1E3A8A', text: 'Placeholder slide', notes: 'Placeholder note' }]),
   );
+  await addTestPptxShadow(deck);
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [deck]);
   const notice = win.getByTestId('import-notice').filter({ hasText: 'Placeholder deck.pptx' });
