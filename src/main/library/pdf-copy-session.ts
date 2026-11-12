@@ -8,6 +8,7 @@ import type { CapturedPicture, PdfCopyJob, PdfCopyPage, PdfPrintPage } from '../
 import { PICTURE_ASSET_NAME, type PictureAssetKind } from '../../shared/pictures';
 
 const LIMIT = 64 * 1024 * 1024;
+const PICTURE_LONG_SIDE = 1920;
 /** The most a phone's picture may hold as pixels: 3840 x 2160, a 1920 x 1080 slide on a display at twice the size. */
 const PICTURE_PIXELS_LIMIT = 3840 * 2160 * 4;
 const MAX_PAGES = 400;
@@ -34,6 +35,8 @@ const finishedSchema = z.object({
 
 export interface PdfCopySessionDeps {
   open(): BrowserWindow;
+  /** The scale of the display that contains the hidden window. */
+  scaleFactor?(win: BrowserWindow): number;
   assetDirs(kind: PictureAssetKind): string[];
   /** Runs only on bytes just printed here; the output geometry worker never receives imported PDFs. */
   normalize(
@@ -48,6 +51,7 @@ export interface PdfCopySessionDeps {
 interface ActiveCopy {
   win: BrowserWindow;
   job: PdfCopyJob;
+  pictureLongSide: number;
   signal: AbortSignal;
   current(): boolean;
   finish(data: Uint8Array | CapturedPicture | null): void;
@@ -71,7 +75,7 @@ export class PdfCopySession {
     current: () => boolean,
     signal: AbortSignal,
   ): Promise<CapturedPicture | null> {
-    const scale = Math.min(1, 1920 / Math.max(slide.width, slide.height));
+    const scale = PICTURE_LONG_SIDE / Math.max(slide.width, slide.height);
     const out = await this.start(
       { pages: [{ kind: 'native', slide }], sources: [], picture: { scale, looks } },
       current,
@@ -119,12 +123,21 @@ export class PdfCopySession {
     // phone gets the slide as it starts) and goes ahead, while a picture never waits for another job.
     if (this.active?.job.picture && !plan.picture) this.active.finish(null);
     if (this.active) return null;
-    let win: BrowserWindow;
+    const picture = plan.picture;
+    let opened: BrowserWindow | undefined;
+    let pictureLongSide = Infinity;
     try {
-      win = this.deps.open();
+      opened = this.deps.open();
+      if (picture) {
+        const displayScale = this.deps.scaleFactor?.(opened) ?? 1;
+        const factor = Number.isFinite(displayScale) ? Math.max(1, displayScale) : 1;
+        pictureLongSide = Math.max(1, Math.floor(PICTURE_LONG_SIDE / factor));
+      }
     } catch {
+      if (opened && !opened.isDestroyed()) opened.destroy();
       return null;
     }
+    const win = opened;
     return new Promise((resolve) => {
       let ended = false;
       const finish = (data: Uint8Array | CapturedPicture | null) => {
@@ -138,7 +151,14 @@ export class PdfCopySession {
       };
       const active: ActiveCopy = {
         win,
-        job: { ...plan, id: randomUUID() },
+        job: {
+          ...plan,
+          ...(picture
+            ? { picture: { ...picture, scale: (picture.scale * pictureLongSide) / PICTURE_LONG_SIDE } }
+            : {}),
+          id: randomUUID(),
+        },
+        pictureLongSide,
         signal,
         current,
         finish,
@@ -207,8 +227,8 @@ export class PdfCopySession {
     const page = active.job.pages[index];
     if (page?.kind !== 'native') return refuse();
     const scale = active.job.picture?.scale ?? 4 / 3;
-    const width = Math.ceil(page.slide.width * scale);
-    const height = Math.ceil(page.slide.height * scale);
+    const width = Math.min(active.pictureLongSide, Math.ceil(page.slide.width * scale));
+    const height = Math.min(active.pictureLongSide, Math.ceil(page.slide.height * scale));
     // Bound viewport and screenshot memory as well as compressed output bytes.
     if (width * height > 4_000_000) return refuse();
     active.printing = true;
@@ -229,9 +249,11 @@ export class PdfCopySession {
         // Never encoded on Main's thread (C6's review, MEDIUM 1): its pixels as captured (a copy) go on to the
         // network's process, which makes the PNG. The hidden page is told nothing back.
         const { width: wide, height: high } = image.getSize();
-        const pixels = image.toBitmap();
-        if (wide < 1 || high < 1 || pixels.length !== wide * high * 4 || pixels.length > PICTURE_PIXELS_LIMIT)
+        const bytes = wide * high * 4;
+        if (wide < 1 || high < 1 || !Number.isSafeInteger(bytes) || bytes > PICTURE_PIXELS_LIMIT)
           return refuse();
+        const pixels = image.toBitmap();
+        if (pixels.length !== bytes) return refuse();
         active.finish({
           width: wide,
           height: high,
