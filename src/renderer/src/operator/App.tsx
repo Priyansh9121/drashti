@@ -405,8 +405,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
           }
         />
       )}
-      <LinkDialog />
       <NoticeArea />
+      <LinkDialog />
       {/* The quick bar (Session 55, Part 8), just above the bar of clears: hidden when empty. */}
       <QuickBar platform={platform} run={run} />
       <LayerBar platform={platform} run={run} />
