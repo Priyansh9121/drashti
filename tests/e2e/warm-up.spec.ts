@@ -23,6 +23,9 @@ const HOLD = { DRASHTI_TEST_HOLD_WARM_UP: '1' };
 /** How Main reads Chromium's gpu_compositing once Chromium has said how it draws (a test switch, Session 57). */
 const WITH_A_CHIP = { DRASHTI_TEST_GPU_COMPOSITING: 'enabled' };
 const WITHOUT_A_CHIP = { DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software' };
+/** The log's line for an output without a graphics chip. */
+const SKIPPED =
+  /^Warm-up: skipped, no graphics chip \(gpu_compositing disabled_software\), for output ".+"$/u;
 
 /** What Drashti's log has said of its outputs' warm-ups (Session 57), each line from its "Warm-up:". */
 function warmUpLines(userData: string): string[] {
@@ -33,6 +36,26 @@ function warmUpLines(userData: string): string[] {
     .filter((line) => line.includes('Warm-up: '))
     .map((line) => line.slice(line.indexOf('Warm-up: ')).trimEnd());
 }
+
+/**
+ * The log says which Main chose for the output: once for each output window (one made again, after a display change
+ * say, is decided afresh and said again), and never the other choice.
+ */
+async function expectSaid(userData: string, said: RegExp): Promise<void> {
+  await expect
+    .poll(() => warmUpLines(userData).length, { message: 'the log’s Warm-up lines' })
+    .toBeGreaterThan(0);
+  for (const line of warmUpLines(userData)) expect(line).toMatch(said);
+}
+
+/** A page's warm-up marks for a trace (render/WarmUp.tsx), in the order they came. */
+const warmUpMarks = (page: Page) =>
+  page.evaluate(() =>
+    performance
+      .getEntriesByType('mark')
+      .map((m) => m.name)
+      .filter((name) => name.startsWith('drashti-warm-up')),
+  );
 
 /** The Lower Thirds studio's font families (Session 55, Part 16), bundled with Drashti. */
 const STUDIO_FAMILIES = LOWER_THIRD_FONT_CHOICES.filter((c) => c.bundled === 'studio').flatMap(
@@ -255,14 +278,11 @@ test('with a graphics chip the warm-up passes by itself and the show is drawn af
   // And once it has drawn, every face of the Lower Thirds studio's fonts comes (Session 55), as in the LIVE picture.
   await expect.poll(async () => Object.keys(await studioFonts(out)), { timeout: 15_000 }).toEqual(['loaded']);
   await expect.poll(async () => Object.keys(await studioFonts(win)), { timeout: 15_000 }).toEqual(['loaded']);
-  // The log says which Main chose, once for the output (Session 57).
-  await expect
-    .poll(() => warmUpLines(userData))
-    .toEqual([
-      expect.stringMatching(
-        /^Warm-up: as before, a graphics chip \(gpu_compositing enabled\), for output ".+"$/u,
-      ),
-    ]);
+  // The log says which Main chose for the output (Session 57).
+  await expectSaid(
+    userData,
+    /^Warm-up: as before, a graphics chip \(gpu_compositing enabled\), for output ".+"$/u,
+  );
   await app.close();
 });
 
@@ -288,15 +308,7 @@ test('where Chromium draws without a graphics chip an output draws the show with
   // Ready to draw the show, without warming up: it never began a warm-up (none of its marks).
   await expect(root).toHaveAttribute('data-warm-up', 'skipped', { timeout: 60_000 });
   await expect(root).toHaveAttribute('data-fonts', 'ready');
-  expect(
-    await out.evaluate(() =>
-      performance
-        .getEntriesByType('mark')
-        .map((m) => m.name)
-        .filter((name) => name.startsWith('drashti-warm-up')),
-    ),
-    'the output’s warm-up marks',
-  ).toEqual([]);
+  expect(await warmUpMarks(out), 'the output’s warm-up marks').toEqual([]);
   // The show drawn at once, black until something goes up (nothing up, no wallpaper chosen).
   await expect(out.getByTestId('scene')).toHaveAttribute('data-nothing-up', 'black');
   expect(await brightest(out), 'the whole output').toBe(0);
@@ -304,13 +316,7 @@ test('where Chromium draws without a graphics chip an output draws the show with
   await goLive(win, id, 0);
   await expect.poll(() => brightest(out), { timeout: 15_000 }).toBeGreaterThan(40);
   await expect(root).toHaveAttribute('data-warm-up', 'skipped');
-  // The log says which Main chose, once for the output.
-  await expect
-    .poll(() => warmUpLines(userData))
-    .toEqual([
-      expect.stringMatching(
-        /^Warm-up: skipped, no graphics chip \(gpu_compositing disabled_software\), for output ".+"$/u,
-      ),
-    ]);
+  // The log says which Main chose for the output.
+  await expectSaid(userData, SKIPPED);
   await app.close();
 });
