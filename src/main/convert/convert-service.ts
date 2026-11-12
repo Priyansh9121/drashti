@@ -218,6 +218,8 @@ export interface CopyOptions {
   lengthMs: number;
   /** Wait while show layers are up, including when a show starts during the copy. */
   waitForShow?: boolean;
+  /** Record a managed Trim copy before it can appear at its final path. */
+  beforePublish?(temporary: string, destination: string): void;
   progress?(fraction: number | null): void;
   waiting?(note: string | null): void;
 }
@@ -1030,6 +1032,25 @@ export class ConvertService {
     if (job) void this.runFile(job);
   }
 
+  /** Reserve the estimated output size, with 50% headroom for a part with a higher bitrate. */
+  trimSpaceProblem(source: string, out: string, durationMs: number | null, lengthMs: number): string | null {
+    const fraction = durationMs !== null && durationMs > 0 ? Math.min(1, (lengthMs / durationMs) * 1.5) : 1;
+    return this.fileSpaceProblem(source, out, fraction, 'save it');
+  }
+
+  private fileSpaceProblem(
+    source: string,
+    out: string,
+    fraction: number,
+    action: 'save it' | 'import it',
+  ): string | null {
+    const size = statSync(source, { throwIfNoEntry: false })?.size ?? 0;
+    const free = this.deps.freeBytes(out);
+    return free - Math.ceil(size * fraction) < KEEP_FREE_BYTES
+      ? `Only ${gb(free)} is free on this disk, and Drashti keeps 2 GB free. Free up some space, then ${action} again.`
+      : null;
+  }
+
   private async runFile(job: FileJob): Promise<void> {
     const ffmpeg = this.deps.ffmpegPath();
     const height = String(job.options.maxHeight);
@@ -1055,13 +1076,11 @@ export class ConvertService {
       done({ ok: false, message: 'Drashti could not write in its own folder: ask the admin.' });
       return;
     }
-    const size = existsSync(job.source) ? statSync(job.source).size : 0;
-    const free = this.deps.freeBytes(out);
-    if (free - size < KEEP_FREE_BYTES) {
-      done({
-        ok: false,
-        message: `Only ${gb(free)} is free on this disk, and Drashti keeps 2 GB free. Free up some space, then ${saving ? 'save it' : 'import it'} again.`,
-      });
+    const space = job.copy
+      ? this.trimSpaceProblem(job.source, out, job.info.durationMs, job.copy.lengthMs)
+      : this.fileSpaceProblem(job.source, out, 1, 'import it');
+    if (space) {
+      done({ ok: false, message: space });
       return;
     }
     const tmp = join(out, `.${job.id}.mp4`);
@@ -1166,6 +1185,7 @@ export class ConvertService {
       : job.dest;
     try {
       // Publish a show-gated copy in the same turn as the last activity check.
+      job.copy?.beforePublish?.(tmp, dest);
       if (job.waitForShow) renameSync(tmp, dest);
       else await rename(tmp, dest);
     } catch {

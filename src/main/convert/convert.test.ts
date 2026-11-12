@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ConversionJob } from '../../shared/convert';
 import { type Db, openDatabase } from '../db/database';
 import { sha256File } from '../import/media-store';
-import { ConvertService } from './convert-service';
+import { ConvertService, KEEP_FREE_BYTES } from './convert-service';
 import { copyFinder } from './relink';
 import { trimArgs } from './trim';
 import { ffmpegHere } from '../testing/ffmpeg-here';
@@ -393,12 +393,13 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
     const before = await sha256File(source);
     db = openDatabase(join(dir, 'drashti.sqlite'));
     let busy: string | null = 'Waits while the stream is on air or recording.';
+    let free = 100 * 1024 ** 3;
     service = new ConvertService({
       db,
       mediaDir: join(dir, 'Media'),
       ffmpegPath: () => ffmpeg,
       busy: () => busy,
-      freeBytes: () => 100 * 1024 ** 3,
+      freeBytes: () => free,
       changed: () => undefined,
       libraryChanged: () => undefined,
       log: () => undefined,
@@ -424,12 +425,35 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
     expect(await saved.done).toEqual({ ok: true, copy: join(out, 'Part.mp4') });
     expect(describeFile(join(out, 'Part.mp4'))).toMatch(/Duration: 00:00:02\.0/u);
     expect(await sha256File(source)).toEqual(before);
+    // Enough for half the original plus a margin, even though the whole original would not fit.
+    free = KEEP_FREE_BYTES + Math.ceil(before.bytes * 0.8);
     // Saved again under a name taken meanwhile: beside it, never over it.
-    const again = service.saveCopy(source, join(out, 'Part.mp4'), info, {
+    const publication: { dest: string; complete: boolean; alreadyThere: boolean }[] = [];
+    const copy = {
+      args: (tmp: string) => trimArgs(source, tmp, 1000, 3000),
+      lengthMs: 2000,
+      waitForShow: true,
+      beforePublish: (temporary: string, dest: string) => {
+        publication.push({ dest, complete: existsSync(temporary), alreadyThere: existsSync(dest) });
+      },
+    };
+    const again = service.saveCopy(source, join(out, 'Part.mp4'), info, copy);
+    expect(await again.done).toEqual({ ok: true, copy: join(out, 'Part (2).mp4') });
+    expect(publication).toEqual([{ dest: join(out, 'Part (2).mp4'), complete: true, alreadyThere: false }]);
+
+    // The job-start check still catches disk space lost while a cut is waiting.
+    busy = 'Waits while the stream is on air or recording.';
+    const tooLittle = service.saveCopy(source, join(out, 'Too little.mp4'), info, {
       args: (tmp) => trimArgs(source, tmp, 1000, 3000),
       lengthMs: 2000,
     });
-    expect(await again.done).toEqual({ ok: true, copy: join(out, 'Part (2).mp4') });
+    free = KEEP_FREE_BYTES + Math.floor(before.bytes * 0.5);
+    busy = null;
+    const refused = await tooLittle.done;
+    expect(refused.ok).toBe(false);
+    expect(refused.ok ? '' : refused.message).toContain('Free up some space');
+    expect(existsSync(join(out, 'Too little.mp4'))).toBe(false);
+
     // Stopped while it waits: nothing is left.
     busy = 'Waits while the stream is on air or recording.';
     const stopped = service.saveCopy(source, join(out, 'Stopped.mp4'), info, {

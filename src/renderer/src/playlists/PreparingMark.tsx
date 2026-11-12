@@ -64,10 +64,15 @@ function connectTrimJobs(): void {
   });
 }
 
+export function useTrimPreparing(itemId: string | undefined): boolean {
+  useEffect(() => {
+    if (itemId !== undefined) connectTrimJobs();
+  }, [itemId]);
+  return useTrimJobs((s) => itemId !== undefined && s.pending.has(itemId));
+}
+
 export function TrimPreparing({ itemId }: { itemId: string }) {
-  useEffect(connectTrimJobs, []);
-  const pending = useTrimJobs((s) => s.pending.has(itemId));
-  if (!pending) return null;
+  if (!useTrimPreparing(itemId)) return null;
   return (
     <Badge
       tone="info"

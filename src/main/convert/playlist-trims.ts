@@ -1,5 +1,6 @@
-import { realpath, rm } from 'node:fs/promises';
-import { basename, extname, join, relative, sep } from 'node:path';
+import { lstatSync, realpathSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
+import { basename, extname, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { MediaMarkers } from '../../shared/markers';
 import { idSchema } from '../../shared/model-schema';
@@ -17,19 +18,35 @@ type TrimSource = NonNullable<ReturnType<TrimmedVideos['row']>>;
 const keptTrimSchema = z.object({ itemId: idSchema, mediaId: idSchema, name: z.string().min(1) });
 const keptTrimsSchema = z.array(keptTrimSchema);
 type KeptTrim = z.infer<typeof keptTrimSchema>;
+const trimCopiesSchema = z.array(z.object({ path: z.string().min(1), identity: z.string().min(1) }));
+type TrimCopy = z.infer<typeof trimCopiesSchema>[number];
+
+function fileIdentity(file: string): string | null {
+  const stat = lstatSync(file, { bigint: true, throwIfNoEntry: false });
+  return stat?.isFile() ? [stat.dev, stat.ino, stat.size, stat.mtimeNs].join(':') : null;
+}
 
 interface PlaylistTrimsDeps {
   repo: TrimmedVideos;
   mediaDir: string;
   readInfo(path: string): Promise<MediaInfo>;
   frameAt(path: string, atMs: number): Promise<number | null>;
-  queue(input: TrimCopyInput): { id: string; done: Promise<FitResult> };
+  spaceProblem(path: string, durationMs: number | null, lengthMs: number): string | null;
+  queue(
+    input: TrimCopyInput,
+    beforePublish: (temporary: string, destination: string) => void,
+  ): { id: string; done: Promise<FitResult> };
   cancel(id: string): boolean;
   isLive(itemId: string, mediaId: string): boolean;
   kept: {
     load(): unknown;
     save(cuts: KeptTrim[]): void;
   };
+  copies: {
+    load(): unknown;
+    save(copies: TrimCopy[]): void;
+  };
+  trash(file: string): Promise<void>;
   pendingChanged(ids: string[]): void;
   rowChanged(added: string | null): void;
   markersChanged(mediaId: string): void;
@@ -39,6 +56,7 @@ interface PlaylistTrimsDeps {
 interface PendingTrim {
   queueId: string | null;
   kept: KeptTrim | null;
+  copy?: TrimCopy;
   wake: (() => void) | null;
 }
 
@@ -78,11 +96,13 @@ function resetMarkerEdits(before: MediaMarkers, after: MediaMarkers): TrimMarker
 /** A row keeps playing its current video until the queued cut has been checked and saved. */
 export class PlaylistTrims {
   private readonly pending = new Map<string, PendingTrim>();
+  private readonly copies: Set<TrimCopy>;
   private interrupted: KeptTrim[];
   private closed = false;
 
   constructor(private readonly deps: PlaylistTrimsDeps) {
     this.interrupted = keptTrimsSchema.safeParse(deps.kept.load()).data ?? [];
+    this.copies = new Set(trimCopiesSchema.safeParse(deps.copies.load()).data ?? []);
   }
 
   list(): string[] {
@@ -115,7 +135,11 @@ export class PlaylistTrims {
     if (points.startMs === null && points.endMs === null && before.canReset)
       return this.resetRow(row, resetMarkerEdits(before.markers, points));
     if (this.pending.has(itemId))
-      return { ok: false, message: 'This video is already being trimmed. Wait for Preparing to clear.' };
+      return {
+        ok: false,
+        message:
+          'This video is already being trimmed. Wait for Preparing to clear, or open Trim again and press Stop.',
+      };
     if ((points.startMs ?? 0) === (before.markers.startMs ?? 0) && points.endMs === before.markers.endMs)
       return this.saveMarkers(row, points);
 
@@ -161,16 +185,22 @@ export class PlaylistTrims {
           ? this.resetRow(row, resetMarkerEdits(before.markers, points))
           : this.saveMarkers(row, { ...points, startMs: null, endMs: null });
 
+      const space = this.deps.spaceProblem(path, info.durationMs, endMs - startMs);
+      if (space) return { ok: false, message: space };
+
       pending.kept = { itemId, mediaId, name: row.sourceName };
       this.keepWaiting();
-      const queued = this.deps.queue({
-        path,
-        name: row.sourceName,
-        info,
-        alpha: row.sourceFormat?.includes('video with transparency'),
-        startMs,
-        endMs,
-      });
+      const queued = this.deps.queue(
+        {
+          path,
+          name: row.sourceName,
+          info,
+          alpha: row.sourceFormat?.includes('video with transparency'),
+          startMs,
+          endMs,
+        },
+        (temporary, destination) => this.rememberCopy(mediaDir, pending, temporary, destination),
+      );
       pending.queueId = queued.id;
       // Store the first whole millisecond of the frame, so reopening and widening starts on the same frame.
       void this.finish(row, pending, queued.done, mediaDir, Math.ceil(startMs - 0.000_001), endMs, points);
@@ -194,6 +224,25 @@ export class PlaylistTrims {
     return this.resetRow(row);
   }
 
+  stop(itemId: string, mediaId: string): RowTrimResult {
+    const row = this.deps.repo.row(itemId);
+    if (this.closed || row?.mediaId !== mediaId) return CHANGED;
+    if (!this.cancelPending(itemId))
+      return {
+        ok: false,
+        message: 'This cut is no longer preparing. Open Trim again to see the video’s points.',
+      };
+    return { ok: true };
+  }
+
+  private cancelPending(itemId: string): boolean {
+    const pending = this.pending.get(itemId);
+    if (!pending) return false;
+    if (pending.queueId !== null) this.deps.cancel(pending.queueId);
+    this.clear(itemId, pending);
+    return true;
+  }
+
   private resetRow(row: TrimSource, edits?: TrimMarkerEdits): RowTrimResult {
     if (this.deps.isLive(row.itemId, row.mediaId)) return { ok: false, message: RESET_LIVE };
     const reset = this.deps.repo.reset(row, edits);
@@ -203,11 +252,7 @@ export class PlaylistTrims {
         message: 'The original can hold up to 50 markers. Remove a marker and save again.',
       };
     if (reset === 'changed') return CHANGED;
-    const pending = this.pending.get(row.itemId);
-    if (pending) {
-      if (pending.queueId !== null) this.deps.cancel(pending.queueId);
-      this.clear(row.itemId, pending);
-    }
+    this.cancelPending(row.itemId);
     this.deps.rowChanged(null);
     if (edits) this.deps.markersChanged(row.sourceId);
     return { ok: true };
@@ -238,6 +283,47 @@ export class PlaylistTrims {
     this.deps.pendingChanged(this.list());
   }
 
+  /** The settings write completes before ConvertService publishes the cut. */
+  private rememberCopy(mediaDir: string, pending: PendingTrim, temporary: string, destination: string): void {
+    if (!pending.kept || this.pending.get(pending.kept.itemId) !== pending)
+      throw new Error('The cut stopped before publication.');
+    if (!isInside(mediaDir, temporary) || !isInside(mediaDir, destination))
+      throw new Error('The cut is outside the Media folder.');
+    const identity = fileIdentity(temporary);
+    if (!identity) throw new Error('The temporary cut is missing.');
+    const copy = { path: relative(mediaDir, destination).split(sep).join('/'), identity };
+    pending.copy = copy;
+    this.copies.add(copy);
+    this.deps.copies.save([...this.copies]);
+  }
+
+  /** Retry cleanup for copies left between publication and adoption at the previous start. */
+  async cleanupCopies(): Promise<void> {
+    for (const copy of [...this.copies]) await this.discardCopy(copy);
+  }
+
+  private async discardCopy(copy: TrimCopy): Promise<void> {
+    try {
+      const mediaDir = realpathSync.native(this.deps.mediaDir);
+      const candidate = resolve(mediaDir, copy.path);
+      if (isInside(mediaDir, candidate) && fileIdentity(candidate) === copy.identity) {
+        const real = realpathSync.native(candidate);
+        if (
+          isInside(mediaDir, real) &&
+          relative(mediaDir, real).split(sep).join('/') === copy.path &&
+          !this.deps.repo.referencesFile(copy.path, real)
+        ) {
+          await this.deps.trash(real);
+        }
+      }
+      this.copies.delete(copy);
+      this.deps.copies.save([...this.copies]);
+    } catch {
+      // Leave the record for the next start if the file could not be checked or moved.
+      this.copies.add(copy);
+    }
+  }
+
   private async finish(
     row: TrimSource,
     pending: PendingTrim,
@@ -247,7 +333,6 @@ export class PlaylistTrims {
     endMs: number,
     points: MediaMarkers,
   ): Promise<void> {
-    let unclaimed: string | null = null;
     const stillPending = () => this.pending.get(row.itemId) === pending;
     try {
       const result = await done;
@@ -255,7 +340,7 @@ export class PlaylistTrims {
         if (stillPending() && !result.stopped) this.deps.notice(cutFailed(row.sourceName, result.message));
         return;
       }
-      unclaimed = result.copy && isInside(mediaDir, result.copy) ? result.copy : null;
+      const unclaimed = result.copy && isInside(mediaDir, result.copy) ? result.copy : null;
       if (!stillPending()) return;
       if (!unclaimed) {
         this.deps.notice(cutFailed(row.sourceName, ''));
@@ -300,7 +385,6 @@ export class PlaylistTrims {
         points,
       );
       if (adopted) {
-        unclaimed = null;
         this.deps.rowChanged(adopted);
       } else if (this.deps.repo.row(row.itemId)) {
         this.deps.notice(CHANGED.message);
@@ -308,7 +392,7 @@ export class PlaylistTrims {
     } catch {
       if (stillPending()) this.deps.notice(cutFailed(row.sourceName, ''));
     } finally {
-      if (unclaimed) await rm(unclaimed, { force: true }).catch(() => undefined);
+      if (pending.copy) await this.discardCopy(pending.copy);
       this.clear(row.itemId, pending);
     }
   }
