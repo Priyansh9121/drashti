@@ -140,10 +140,10 @@ describe('the Wallpaper (Session 55, in the Logo’s place)', () => {
     expect(engine.current.layers).toBe(layers);
   });
 
-  it('comes back after a restart, with black-out', () => {
+  it('leaves Black-out up after restoring a show saved with both covers', () => {
     const { engine } = sabha();
     const put = engine.restore({ slide: null, background: null, blackout: true, wallpaper: true });
-    expect(put).toMatchObject({ wallpaper: true, blackout: true });
-    expect(engine.current.wallpaper).toBe(true);
+    expect(put).toMatchObject({ wallpaper: false, blackout: true });
+    expect(engine.current.wallpaper).toBe(false);
   });
 });
