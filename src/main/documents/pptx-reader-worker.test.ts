@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { tmpdir } from 'node:os';
+import * as os from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import type { ShapeElement } from '../../shared/model';
@@ -7,7 +7,7 @@ import type { FromPptxReader } from './pptx-reader-protocol';
 import { readEditableWithTiming } from './pptx-source-timing';
 
 vi.mock('node:os', async (original) => ({
-  ...(await original<typeof import('node:os')>()),
+  ...(await original<typeof os>()),
   setPriority: vi.fn(),
 }));
 vi.mock('./pptx-source-timing', () => ({ readEditableWithTiming: vi.fn() }));
@@ -48,8 +48,8 @@ it('reports the invalid page and still returns its valid sibling', async () => {
       data: {
         type: 'read',
         jobId: 'placeholder-job',
-        file: join(tmpdir(), 'Placeholder.pptx'),
-        outDir: tmpdir(),
+        file: join(os.tmpdir(), 'Placeholder.pptx'),
+        outDir: os.tmpdir(),
         sourcePages: [0, 1, 2],
       },
     });
