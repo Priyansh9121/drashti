@@ -567,7 +567,7 @@ it('fits a thousand playlist IDs in one paired Undo request under its own body l
   const request = host.requests[0];
   expect(request?.op).toBe('playlist.restore');
   expect((request?.args as { ids?: string[] } | undefined)?.ids).toHaveLength(1000);
-  expect((await call(port, '/api/v1/command', { method: 'POST', headers, body })).status).toBe(413);
+  expect((await call(port, '/api/v1/playlists/new', { method: 'POST', headers, body })).status).toBe(413);
   expect(
     (
       await call(port, '/api/v1/playlists/restore', {
