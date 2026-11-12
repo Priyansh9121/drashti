@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { create } from 'zustand';
 import type { RenderSlide } from '../../../shared/model';
 import { Badge } from '../ui/Badge';
 import { Loader } from '../ui/icons';
@@ -40,6 +42,38 @@ export function PresentationPreparing({ presentationId }: { presentationId: stri
       icon={Loader}
       data-testid="item-preparing"
       title={`${count === 1 ? 'A slide' : `${String(count)} slides`} of it still being prepared: ${count === 1 ? 'its animations are' : 'their animations are'} being made, and Next waits for ${count === 1 ? 'it' : 'each'}.`}
+    >
+      Preparing
+    </Badge>
+  );
+}
+
+const useTrimJobs = create<{ pending: ReadonlySet<string> }>(() => ({ pending: new Set() }));
+let connected = false;
+
+function connectTrimJobs(): void {
+  if (connected) return;
+  connected = true;
+  let received = false;
+  window.drashti.media.onPreparingTrims((ids) => {
+    received = true;
+    useTrimJobs.setState({ pending: new Set(ids) });
+  });
+  void window.drashti.media.preparingTrims().then((ids) => {
+    if (!received) useTrimJobs.setState({ pending: new Set(ids) });
+  });
+}
+
+export function TrimPreparing({ itemId }: { itemId: string }) {
+  useEffect(connectTrimJobs, []);
+  const pending = useTrimJobs((s) => s.pending.has(itemId));
+  if (!pending) return null;
+  return (
+    <Badge
+      tone="info"
+      icon={Loader}
+      data-testid="trim-preparing"
+      title="Drashti is preparing the cut. The current video plays until it’s ready."
     >
       Preparing
     </Badge>

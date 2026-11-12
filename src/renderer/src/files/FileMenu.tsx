@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { KeyboardEvent, MouseEvent, PointerEvent } from 'react';
 import { create } from 'zustand';
 import { NAME_MAX } from '../../../shared/media-removal';
+import type { RowTrimView } from '../../../shared/trim';
+import { openPlaylistTrim } from '../markers/MarkersDialog';
 import { useNotice } from '../operator/actions';
 import { useMode } from '../operator/mode-store';
 import { Button } from '../ui/Button';
@@ -183,7 +185,37 @@ export function FileMenu({ platform }: { platform: string }) {
   const open = useFileMenu((s) => s.open);
   // Simple Mode's has Rename and Delete (Session 55, Part 18), and Trim, When it ends and Edit slides… (Session 56).
   const simple = useMode((s) => s.mode === 'simple');
-  const entries = open ? fileMenuEntries(open.target, platform, { simple }) : [];
+  const target = open?.target;
+  const itemId = target?.kind === 'video' ? target.itemId : undefined;
+  const [loaded, setLoaded] = useState<{ target: FileTarget; trim: RowTrimView | null } | null>(null);
+  useEffect(() => {
+    if (!target || !itemId) return;
+    let current = true;
+    void window.drashti.media.rowTrim(itemId).then((trim) => {
+      if (current) setLoaded({ target, trim });
+    });
+    return () => {
+      current = false;
+    };
+  }, [itemId, target]);
+
+  const trim = loaded?.target === target ? loaded?.trim : null;
+  const openTrim =
+    itemId && (target?.trim || trim?.canReset) ? () => void openPlaylistTrim(itemId) : undefined;
+  const entries = target
+    ? fileMenuEntries(openTrim ? { ...target, trim: openTrim } : target, platform, { simple })
+    : [];
+  if (trim?.canReset && trim.mediaId === target?.mediaId) {
+    const afterTrim = entries.findIndex((entry) => entry.onSelect === openTrim) + 1;
+    entries.splice(afterTrim, 0, {
+      label: 'Reset to original',
+      onSelect: () => {
+        void window.drashti.media.resetRowTrim(trim.itemId, trim.mediaId).then((result) => {
+          if (!result.ok) useNotice.setState({ text: result.message });
+        });
+      },
+    });
+  }
   return (
     <>
       {open && entries.length > 0 && (
