@@ -113,6 +113,8 @@ export type PreparedSource =
       /** The pages in the document, as read; 0 for a PDF job the show stopped before its page count (all `unread`). */
       total: number;
       failed: number[];
+      /** Reasons for specific failed source pages, keyed by their index from 0. */
+      failedNotes?: Record<number, string[]>;
       /**
        * Pages not read yet because the show needed the computer (Session 57: Edit slides' PDF reading behind the
        * editor ends its job there); never failed, they are read in a new job once the show is idle.

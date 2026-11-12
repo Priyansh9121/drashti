@@ -309,7 +309,8 @@ export function paragraphLineStyle(
 ): CSSProperties {
   const base = listLineStyle(line, size);
   if (!paragraph) return base;
-  const { align, marginLeft, marginRight, indent, lineHeight, spaceBefore, spaceAfter } = paragraph;
+  const { align, marginLeft, marginRight, indent, lineHeight, lineHeightPx, spaceBefore, spaceAfter } =
+    paragraph;
   const indentWords = indent !== undefined && (line.mark === null || indent > 0) ? fitted(indent) : undefined;
   return {
     ...base,
@@ -319,7 +320,7 @@ export function paragraphLineStyle(
     ...(space.before && spaceBefore !== undefined ? { paddingBlockStart: fitted(spaceBefore) } : {}),
     ...(space.after && spaceAfter !== undefined ? { paddingBlockEnd: fitted(spaceAfter) } : {}),
     textIndent: indentWords,
-    lineHeight,
+    lineHeight: lineHeightPx === undefined ? lineHeight : fitted(lineHeightPx),
   };
 }
 

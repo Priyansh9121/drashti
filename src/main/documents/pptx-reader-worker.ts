@@ -57,12 +57,15 @@ port.on('message', ({ data }: { data: unknown }) => {
       } = await readEditableWithTiming(job.file, job.outDir, job.timingPages ?? []);
       const pages: PptxPage[] = [];
       const failed: number[] = [];
+      const failedNotes: Record<number, string[]> = {};
       for (const sourceIndex of job.sourcePages) {
         await new Promise((resolve) => setTimeout(resolve, 10));
         if (cancelled) throw new Error('Cancelled.');
         const page = native.slides.find((entry) => entry.sourceIndex === sourceIndex);
         if (!page) {
           failed.push(sourceIndex);
+          const notes = native.failedNotes?.[sourceIndex];
+          if (notes?.length) failedNotes[sourceIndex] = notes;
           continue;
         }
         const needed = pptxAssetTokens(page.elements);
@@ -105,6 +108,7 @@ port.on('message', ({ data }: { data: unknown }) => {
           pages: sent,
           total: native.sourceCount,
           failed,
+          ...(Object.keys(failedNotes).length > 0 ? { failedNotes } : {}),
         };
         return Buffer.byteLength(JSON.stringify(message), 'utf8') > EDITABLE_SOURCE_LIMITS.jobMetadataBytes
           ? null

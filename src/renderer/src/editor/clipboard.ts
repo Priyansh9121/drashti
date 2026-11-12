@@ -1,6 +1,7 @@
 import { slideCanvas } from '../../../shared/document-page';
 import type { Outline, Rect, SlideElement, TextShadow } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
+import { scaleParagraphSpacing } from '../../../shared/slide-size';
 import { copyElement, findSlide, mapSlide } from './ops';
 import { freshGroups } from '../../../shared/element-groups';
 
@@ -90,6 +91,7 @@ function rescaled(el: SlideElement, sx: number, sy: number): SlideElement {
               ...run,
               ...(run.size !== undefined ? { size: r2(run.size * k) } : {}),
               ...(run.letterSpacing !== undefined ? { letterSpacing: r2(run.letterSpacing * k) } : {}),
+              ...(run.paragraph ? { paragraph: scaleParagraphSpacing(run.paragraph, k) } : {}),
             })),
           }
         : {}),
