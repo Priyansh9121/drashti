@@ -49,7 +49,11 @@ function setup(
   const outDir = join(root, 'generated');
   const stop = new AbortController();
   const win = new HiddenWindow();
-  const session = new EditablePdfSessions(() => win as unknown as BrowserWindow);
+  let opens = 0;
+  const session = new EditablePdfSessions(() => {
+    opens++;
+    return win as unknown as BrowserWindow;
+  });
   const sender = { id: win.webContents.id } as WebContents;
   const handed: Streamed[] = [];
   const request = {
@@ -66,7 +70,7 @@ function setup(
     ...extra({ handed, stop }),
   };
   const result = session.readNow(request);
-  return { outDir, stop, win, session, sender, result, handed };
+  return { outDir, stop, win, session, sender, result, handed, opens: () => opens };
 }
 
 afterEach(() => {
@@ -238,5 +242,50 @@ describe('streaming a PDF’s pages to the open editor (Session 57, C2 part 1)',
     expect(budget.assetBytes).toBe(EDITABLE_SOURCE_LIMITS.jobAssetBytes - 4);
     expect(budget.metadataBytes).toBeGreaterThan(0);
     expect(readdirSync(t.outDir)).toEqual([]);
+  });
+  // The delta review's LOW-1: a job never starts during the show, nor sends the window its PDF then.
+  it('a job asked while the show needs the computer reads, copies and opens nothing: every page unread', async () => {
+    const t = setup([2, 0, 1], () => ({ pdfHold: () => true }));
+    try {
+      const outcome = await Promise.race([
+        t.result,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 200)),
+      ]);
+      expect(t.opens(), 'no hidden window').toBe(0);
+      expect(outcome).toEqual({ ok: true, pages: [], total: 0, failed: [], unread: [2, 0, 1] });
+    } finally {
+      t.stop.abort();
+      await t.result;
+    }
+  });
+
+  it('a window asking for its job as the show turns busy gets none, and the job ends with every page unread', async () => {
+    let held = false;
+    const t = setup([0, 1], () => ({ pdfHold: () => held }));
+    try {
+      await vi.waitFor(() => expect(t.opens()).toBe(1), { interval: 1 });
+      held = true;
+      expect(t.session.job(t.sender), 'the PDF is not sent').toBeNull();
+      const outcome = await Promise.race([
+        t.result,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 200)),
+      ]);
+      expect(outcome).toEqual({ ok: true, pages: [], total: 0, failed: [], unread: [0, 1] });
+      expect(t.win.destroyed).toBe(true);
+      expect(readdirSync(t.outDir)).toEqual([]);
+    } finally {
+      t.stop.abort();
+      await t.result;
+    }
+  });
+
+  it('a hold before the window has said its page count leaves every page unread, not failed', async () => {
+    let held = false;
+    const t = setup([0, 1], () => ({ pdfHold: () => held }));
+    const jobId = await jobOf(t);
+    held = true;
+    expect(await t.session.page(t.sender, checkpoint(jobId, 0))).toBe(false);
+    expect(await t.result).toEqual({ ok: true, pages: [], total: 0, failed: [], unread: [0, 1] });
+    expect(t.win.destroyed).toBe(true);
   });
 });
