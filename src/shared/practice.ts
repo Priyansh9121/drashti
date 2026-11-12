@@ -110,22 +110,23 @@ export type PracticeAction =
 /** One step of the practice show, as the real show takes it (a little simpler: one presentation). */
 export function practiceStep(p: Practice, action: PracticeAction, count = LINES.length): Practice {
   const next = (change: Partial<Practice>): Practice => ({ ...p, ...change, rev: p.rev + 1 });
+  const show = (index: number) => next({ index, cleared: null, blackout: false, wallpaper: false });
   if (typeof action === 'object') {
     if (action.goTo < 0 || action.goTo >= count) return p;
-    return next({ index: action.goTo, cleared: null });
+    return show(action.goTo);
   }
   switch (action) {
     case 'next':
-      if (p.index === null) return next({ index: 0, cleared: null });
-      return p.index + 1 < count ? next({ index: p.index + 1, cleared: null }) : p;
+      if (p.index === null) return show(0);
+      return p.index + 1 < count ? show(p.index + 1) : p;
     case 'previous':
     case 'back':
-      return p.index !== null && p.index > 0 ? next({ index: p.index - 1, cleared: null }) : p;
+      return p.index !== null && p.index > 0 ? show(p.index - 1) : p;
     case 'clearAll':
     case 'clearSlide':
       return p.index === null ? p : next({ index: null, cleared: action === 'clearAll' ? p.index : null });
     case 'putBack':
-      return p.cleared === null ? p : next({ index: p.cleared, cleared: null });
+      return p.cleared === null ? p : show(p.cleared);
     // One cover at a time, as in a show (Session 57, one-at-a-time.ts): the one put on takes the other off.
     case 'toggleBlackout':
       return next(p.blackout ? { blackout: false } : { blackout: true, wallpaper: false });
