@@ -230,9 +230,14 @@ export function pptxReader(spawn: () => PptxReaderChild, options: ReaderOptions 
                 return;
               }
               // Clicks that don't read leave the page as it was read before: its slide keeps today's behaviour.
-              const { deck: sent, ...read } = page;
+              const { deck: sent, sourceVideoShapeIds, ...read } = page;
               const deck = timing.has(page.sourceIndex) ? sent : undefined;
-              pages.push({ ...read, assets, ...(deck ? { deck } : {}) });
+              pages.push({
+                ...read,
+                assets,
+                ...(deck ? { deck } : {}),
+                ...(deck && sourceVideoShapeIds ? { sourceVideoShapeIds } : {}),
+              });
             }
             if ([...requested].some((index) => !completed.has(index) && !failedPages.has(index))) {
               publish(failed());

@@ -109,6 +109,8 @@ export async function runDeck(
   request: DeckFlowRequest,
   options: BakeOptions & {
     onAir: () => Promise<boolean>;
+    /** A still PowerPoint can be drawn here only when no picture converter is selected. */
+    noPictureConverter?: () => Promise<boolean>;
     /** The deck came in as pictures before: if its animations cannot be made, that import is kept as it was. */
     kept?: boolean;
     /** Keynote or PowerPoint started by Drashti itself (Session 31: the leftovers record). */
@@ -139,7 +141,10 @@ export async function runDeck(
     issues,
     cancelled: result?.why.kind === 'cancelled',
   });
-  const input = source === 'pptx' && read ? await prepareNativePptx(read, file, request.work) : null;
+  const input =
+    source === 'pptx' && read
+      ? await prepareNativePptx(read, file, request.work, options.noPictureConverter)
+      : null;
   const first = bakers[0];
   const deckDir = request.sourceDir ?? dirname(file);
   const withNativeMedia = (parsed: ParsedPresentation, indices: number[]) =>
@@ -159,7 +164,12 @@ export async function runDeck(
     if (!input || !read || options.signal?.aborted) return null;
     const parsed = nativePresentation(request.fileName, read, input);
     if (!parsed) return null;
-    await withNativeMedia(parsed, input.indices);
+    if (input.still) {
+      for (const group of parsed.groups)
+        for (const slide of group.slides) if (slide.deck?.deckAdvanceMs === undefined) delete slide.deck;
+    } else {
+      await withNativeMedia(parsed, input.indices);
+    }
     compactNativeAssets(parsed);
     return { kind: 'baked', parsed, sourceIndices: input.indices };
   };

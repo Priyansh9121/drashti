@@ -1,3 +1,4 @@
+import { EDITABLE_SOURCE_LIMITS } from '../../shared/editable-source';
 import type { DeckSlide } from '../../shared/deck';
 import { type EditablePptx, readEditablePptx } from '../import/deck/editable-pptx';
 import { prepareNativePptx } from '../import/deck/native-deck-import';
@@ -16,6 +17,7 @@ export interface EditableWithTiming {
   editable: EditablePptx;
   /** Each asked page's clicks and transition, as alpha.17's import reads them, by the deck's own index. */
   decks: Map<number, DeckSlide>;
+  sourceVideoShapeIds: Map<number, string[]>;
 }
 
 /**
@@ -28,17 +30,27 @@ export async function readEditableWithTiming(
   timingPages: readonly number[],
 ): Promise<EditableWithTiming> {
   if (timingPages.length > 0) {
-    const native = await readPptxDeck(file)
-      .then((deck) => prepareNativePptx(deck, file, outDir))
+    const timed = await readPptxDeck(file)
+      .then(async (source) => {
+        const native = await prepareNativePptx(source, file, outDir);
+        if (!native) return null;
+        const decks = new Map<number, DeckSlide>();
+        const sourceVideoShapeIds = new Map<number, string[]>();
+        for (const index of timingPages) {
+          const page = native.pages.get(index);
+          if (!page || page.needsStill) continue;
+          decks.set(index, page.deck);
+          const videos = source.slides[index]?.deck?.media ?? [];
+          const ids = [
+            ...new Set(videos.filter((media) => media.kind === 'video').map((media) => media.shapeId)),
+          ];
+          if (ids.length > 0 && ids.length <= EDITABLE_SOURCE_LIMITS.pageElements)
+            sourceVideoShapeIds.set(index, ids);
+        }
+        return { editable: native.editable, decks, sourceVideoShapeIds };
+      })
       .catch(() => null);
-    if (native) {
-      const decks = new Map<number, DeckSlide>();
-      for (const index of timingPages) {
-        const page = native.pages.get(index);
-        if (page && !page.needsStill) decks.set(index, page.deck);
-      }
-      return { editable: native.editable, decks };
-    }
+    if (timed) return timed;
   }
-  return { editable: await readEditablePptx(file, outDir), decks: new Map() };
+  return { editable: await readEditablePptx(file, outDir), decks: new Map(), sourceVideoShapeIds: new Map() };
 }

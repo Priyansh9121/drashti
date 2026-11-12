@@ -20,11 +20,11 @@ export const nativeSourceReader: SourceReader = async (request) => {
   const failed: number[] = [];
   if (request.ext === 'pptx') {
     // As the document reader does (W6's review N4): the asked pages' clicks too, checked as Main checks them.
-    const { editable: native, decks } = await readEditableWithTiming(
-      request.file,
-      request.outDir,
-      request.timingPages ?? [],
-    );
+    const {
+      editable: native,
+      decks,
+      sourceVideoShapeIds,
+    } = await readEditableWithTiming(request.file, request.outDir, request.timingPages ?? []);
     for (const sourceIndex of request.sourcePages) {
       if (isAborted() || !(await request.checkpoint())) return { ok: false, message: 'Cancelled.' };
       const page = native.slides.find((entry) => entry.sourceIndex === sourceIndex);
@@ -38,6 +38,7 @@ export const nativeSourceReader: SourceReader = async (request) => {
         ),
       );
       const deck = sourceTimingDeck(decks.get(sourceIndex));
+      const videoIds = sourceVideoShapeIds.get(sourceIndex);
       pages.push({
         sourceIndex,
         width: native.width,
@@ -46,6 +47,7 @@ export const nativeSourceReader: SourceReader = async (request) => {
         elements: page.elements,
         issues: page.issues,
         ...(deck ? { deck } : {}),
+        ...(deck && videoIds ? { sourceVideoShapeIds: videoIds } : {}),
         assets: native.media.flatMap((asset, index) => {
           const token = `${MEDIA_REF}${String(index)}`;
           return tokens.has(token) ? [{ token, file: asset.originalPath, kind: asset.kind }] : [];
