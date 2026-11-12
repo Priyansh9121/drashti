@@ -200,6 +200,45 @@ describe('a file played once to an end point', () => {
     }
   });
 
+  it('opted in, takes a file still loading as it comes, and loads afresh another file or one that failed', () => {
+    vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
+    const options = (onFrame = vi.fn()) => ({
+      mediaId: 'clip',
+      startedAt: Date.now(),
+      reuseLoadedSource: true,
+      onFrame,
+    });
+    // Next pressed before the next click's clip had loaded: no second load; its first frame as it comes, then it plays.
+    const loading = new FakeMedia(6);
+    loading.src = mediaUrl('clip');
+    const onFrame = vi.fn();
+    const stopLoading = startPlayback(loading as unknown as HTMLMediaElement, options(onFrame));
+    try {
+      expect(loading.sourceAssignments).toBe(1);
+      expect(onFrame).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(10);
+      expect(onFrame).toHaveBeenCalledTimes(1);
+      expect(loading.paused).toBe(false);
+      expect(loading.sourceAssignments).toBe(1);
+    } finally {
+      stopLoading();
+    }
+    // Another file in the element, or this one failed: loaded again, as without the option.
+    const other = new FakeMedia(6);
+    other.src = mediaUrl('another clip');
+    const failed = Object.assign(new FakeMedia(6), { error: { code: 4 } });
+    failed.src = mediaUrl('clip');
+    vi.advanceTimersByTime(10);
+    for (const v of [other, failed]) {
+      const stop = startPlayback(v as unknown as HTMLMediaElement, options());
+      try {
+        expect(v.sourceAssignments).toBe(2);
+      } finally {
+        stop();
+      }
+    }
+  });
+
   it('stops within a frame of its end point, between the checks', () => {
     // 2.137 s falls between two quarter-second checks: the next one would come 0.11 s past it.
     const v = new FakeMedia(6);
