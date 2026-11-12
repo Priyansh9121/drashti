@@ -53,9 +53,6 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
   const another = playlists.createAtTop('Other placeholder playlist');
   playlists.addItems(another, null, [{ kind: 'media', mediaId: 'original' }]);
   let resolveCopy: (value: FitResult) => void = () => undefined;
-  const done = new Promise<FitResult>((resolve) => {
-    resolveCopy = resolve;
-  });
   const pendingChanged = vi.fn();
   const cancel = vi.fn(() => true);
   const rowChanged = vi.fn();
@@ -72,6 +69,9 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
   let beforePublish: ((tmp: string, dest: string) => void) | undefined;
   const queue = vi.fn((_input: TrimCopyInput, publish?: (tmp: string, dest: string) => void) => {
     beforePublish = publish;
+    const done = new Promise<FitResult>((resolve) => {
+      resolveCopy = resolve;
+    });
     return { id: 'copy', done };
   });
   const publish = (tmp = output, dest = output) => {
@@ -392,36 +392,72 @@ describe('trimming a playlist video', () => {
     );
   });
 
-  it('keeps an accepted cut’s interruption marker across quit and tells the operator once at restart', async () => {
+  it('queues a waiting cut again with its accepted points after restart', async () => {
     const x = await setup();
     expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
-    expect(x.kept.load()).toEqual([{ itemId: x.itemId, mediaId: 'original', name: 'Placeholder.mp4' }]);
+    expect(x.kept.load()).toMatchObject([
+      { itemId: x.itemId, mediaId: 'original', request: { points: request.points } },
+    ]);
     x.service.close();
     x.finish({ ok: false, stopped: true, message: 'Stopped.' });
-    expect(x.kept.load()).toEqual([{ itemId: x.itemId, mediaId: 'original', name: 'Placeholder.mp4' }]);
 
     const restarted = x.restart();
-    expect(restarted.reportInterrupted()).toBe(
-      'The cut of “Placeholder.mp4” wasn’t made because Drashti closed. Open Trim and save it again.',
-    );
+    await restarted.resumeInterrupted();
+    expect(x.queue).toHaveBeenCalledTimes(2);
+    expect(x.queue.mock.calls[1]?.[0]).toMatchObject({ startMs: 500, endMs: 2500 });
+    expect(restarted.list()).toEqual([x.itemId]);
     expect(restarted.reportInterrupted()).toBeNull();
-    expect(x.kept.load()).toEqual([]);
     expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
+
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(() => expect(restarted.list()).toEqual([]));
+    expect(x.repo.view(x.itemId)?.markers).toEqual(request.points);
   });
 
-  it('discards a cut that finished while its row was live if Drashti closes before adoption', async () => {
+  it('resumes a completed cut without encoding again and keeps the live video in place', async () => {
     const x = await setup();
     expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
     x.show('original');
     x.finish({ ok: true, copy: x.output });
     await vi.waitFor(() => expect(x.isLive).toHaveBeenCalledWith(x.itemId, 'original'));
-
     x.service.close();
-    await vi.waitFor(async () => {
-      await expect(stat(x.output)).rejects.toMatchObject({ code: 'ENOENT' });
-    });
+
+    const restarted = x.restart();
+    await restarted.resumeInterrupted();
+    await restarted.cleanupCopies();
+    expect(x.queue).toHaveBeenCalledOnce();
+    expect(restarted.list()).toEqual([x.itemId]);
     expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
-    expect(x.kept.load()).toEqual([{ itemId: x.itemId, mediaId: 'original', name: 'Placeholder.mp4' }]);
+    expect(await readFile(x.output, 'utf8')).toBe('placeholder trim');
+    expect(x.trash).not.toHaveBeenCalled();
+
+    x.show(null);
+    restarted.activityChanged();
+    await vi.waitFor(() => expect(restarted.list()).toEqual([]));
+    expect(x.repo.view(x.itemId)?.markers).toEqual(request.points);
+    expect(x.kept.load()).toEqual([]);
+    expect(x.copies.load()).toEqual([]);
+  });
+
+  it('reports an old interruption record once and preserves a changed source', async () => {
+    const x = await setup();
+    x.kept.save([{ itemId: x.itemId, mediaId: 'original', name: 'Placeholder.mp4' }]);
+    const legacy = x.restart();
+    await legacy.resumeInterrupted();
+    expect(legacy.reportInterrupted()).toBe(
+      'The cut of “Placeholder.mp4” wasn’t made because Drashti closed. Open Trim and save it again.',
+    );
+    expect(legacy.reportInterrupted()).toBeNull();
+
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    x.service.close();
+    x.finish({ ok: false, stopped: true, message: 'Stopped.' });
+    await writeFile(x.original, 'placeholder replacement of the original');
+    const restarted = x.restart();
+    await restarted.resumeInterrupted();
+    expect(x.queue).toHaveBeenCalledOnce();
+    expect(restarted.reportInterrupted()).toContain('Open Trim and save it again.');
+    expect(await readFile(x.original, 'utf8')).toBe('placeholder replacement of the original');
   });
 
   it.each([
