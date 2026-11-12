@@ -1,5 +1,5 @@
 import type { BrowserWindow, WebContents } from 'electron';
-import type { PdfJob, PreparedSource } from '../../shared/editable-source';
+import type { PdfJob, PdfPageReceipt, PreparedSource } from '../../shared/editable-source';
 import type { SourceRead } from '../documents/source-reader';
 import { EditablePdfSessions } from './editable-pdf-session';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -296,7 +296,7 @@ export class PdfPictures {
   }
 
   /** A page as drawn: kept as a PNG in the import's folder. False tells the window to stop. */
-  async page(sender: WebContents, raw: unknown): Promise<boolean> {
+  async page(sender: WebContents, raw: unknown): Promise<PdfPageReceipt> {
     if (this.editable.owns(sender)) return this.editable.page(sender, raw);
     const of = this.windowOf(sender);
     if (!of) return false;
