@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NetworkChange } from '../../../../shared/network';
 import type { RemoteSimple } from '../../../../shared/network-phone';
+import type { PlaylistItemInfo, PlaylistNode } from '../../../../shared/playlists';
 import type * as RemoteStore from './remote-store';
 
 const feed = vi.hoisted(() => ({ changed: [] as ((what: NetworkChange) => void)[] }));
@@ -34,6 +35,27 @@ const reply = (at: number, mode: RemoteSimple | null, groupId?: string) => {
   if (!resolve) throw new Error('No pending hall read');
   resolve(answer(mode, groupId));
 };
+
+const json = (body: unknown) =>
+  new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+const playlist = (id: string, fields: Partial<PlaylistNode> = {}): PlaylistNode => ({
+  id,
+  name: `Placeholder ${id}`,
+  isFolder: false,
+  kind: 'normal',
+  parentId: null,
+  itemCount: 0,
+  placeholders: 0,
+  imported: false,
+  template: false,
+  ...fields,
+});
+const header = (id: string): PlaylistItemInfo => ({
+  id,
+  kind: 'header',
+  label: `Placeholder ${id}`,
+  color: null,
+});
 
 beforeEach(async () => {
   vi.resetModules();
@@ -91,5 +113,68 @@ describe('Simple Mode reads on a phone', () => {
     reply(3, simple, 'fourth');
     await vi.waitFor(() => expect(remote.useRemote.getState().hall?.groupId).toBe('fourth'));
     expect(remote.useRemote.getState().simpleSaid).toBe(false);
+  });
+});
+
+describe('the phone’s open playlist', () => {
+  function listsFromComputer(lists: PlaylistNode[]): void {
+    fetcher.mockImplementation((url) => {
+      if (url === '/api/v1/playlists') return Promise.resolve(json({ ok: true, playlists: lists }));
+      if (typeof url === 'string' && url.endsWith('/items')) {
+        return Promise.resolve(json({ ok: true, items: [] }));
+      }
+      return new Promise<Response>((resolve) => replies.push(resolve));
+    });
+  }
+
+  it('lists folders and smart playlists while leaving templates out', async () => {
+    const folder = playlist('folder', { isFolder: true });
+    const smart = playlist('smart', { kind: 'smart', parentId: folder.id });
+    const ordinary = playlist('one');
+    listsFromComputer([folder, smart, ordinary, playlist('template', { template: true })]);
+    await remote.loadPlaylists();
+    expect(remote.useRemote.getState().playlists).toEqual([folder, smart, ordinary]);
+    expect(remote.useRemote.getState().playlistId).toBe('one');
+  });
+
+  it('opens the desktop playlist on entering Simple Mode, then keeps the phone’s choice until it is gone', async () => {
+    const lists = [playlist('one'), playlist('two'), playlist('three')];
+    listsFromComputer(lists);
+    changed('mode');
+    reply(0, { ...simple, playlistId: 'two' });
+    await vi.waitFor(() => expect(remote.useRemote.getState().playlistId).toBe('two'));
+    await remote.showPlaylist('one');
+
+    changed('mode');
+    reply(1, { ...simple, playlistId: 'three' });
+    await vi.waitFor(() => expect(remote.useRemote.getState().hall?.simple?.playlistId).toBe('three'));
+    await remote.loadPlaylists();
+    expect(remote.useRemote.getState().playlistId).toBe('one');
+
+    lists.shift();
+    await remote.loadPlaylists();
+    expect(remote.useRemote.getState().playlistId).toBe('three');
+  });
+
+  it('clears the previous playlist’s rows while reading the next one', async () => {
+    remote.useRemote.setState({ items: [header('old')] });
+    const reading = remote.showPlaylist('two');
+    const whileReading = remote.useRemote.getState();
+    replies[0]?.(json({ ok: true, items: [header('new')] }));
+    await reading;
+    expect(whileReading).toMatchObject({ playlistId: 'two', items: null });
+    expect(remote.useRemote.getState().items).toEqual([header('new')]);
+  });
+
+  it('ignores a stale rows reply after leaving and reopening the same playlist', async () => {
+    const stale = remote.showPlaylist('one');
+    const other = remote.showPlaylist('two');
+    const latest = remote.showPlaylist('one');
+    replies[2]?.(json({ ok: true, items: [header('latest')] }));
+    await latest;
+    replies[1]?.(json({ ok: true, items: [header('other')] }));
+    replies[0]?.(json({ ok: true, items: [header('stale')] }));
+    await Promise.all([other, stale]);
+    expect(remote.useRemote.getState().items).toEqual([header('latest')]);
   });
 });
