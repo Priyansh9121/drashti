@@ -109,7 +109,7 @@ test('tight imported PowerPoint boxes and table cells fit their words on both wr
   const column = 'Placeholder vertical first column';
   const cellWords = 'Placeholder words that wrap inside a narrow table cell';
   const horizontal = wordsShape(
-    '<a:p>' + text(line) + '</a:p>',
+    '<a:p><a:pPr><a:lnSpc><a:spcPct val="90000"/></a:lnSpc></a:pPr>' + text(line) + '</a:p>',
     '<a:xfrm><a:off x="914400" y="1828800"/><a:ext cx="1524000" cy="381000"/></a:xfrm>',
   ).replace('bIns="0"/>', 'bIns="0" wrap="none"><a:spAutoFit/></a:bodyPr>');
   const vertical = wordsShape(
@@ -156,6 +156,10 @@ test('tight imported PowerPoint boxes and table cells fit their words on both wr
       ).toBe(true);
     }
     await expect(canvas.locator('[data-element]').filter({ hasText: line })).toHaveCSS('white-space', 'pre');
+    await expect(canvas.locator('[data-line]').filter({ hasText: line })).toHaveAttribute(
+      'style',
+      /line-height: 1\.08/u,
+    );
   } finally {
     await app.close();
   }

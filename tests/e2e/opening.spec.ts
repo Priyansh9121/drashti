@@ -310,6 +310,13 @@ test('while the hall’s screens are still getting ready it never moves: it wait
   const win = await operatorPage(app);
   await expect(opening(win)).toBeVisible({ timeout: 15_000 });
   const player = win.getByTestId('opening');
+  expect(
+    await player.evaluate((el) => ({
+      held: el.getAttribute('data-opening-held'),
+      photos: el.querySelectorAll('[data-opening-photo]').length,
+    })),
+    'the hall screens are still warming and the opening has not loaded its photo',
+  ).toEqual({ held: 'true', photos: 0 });
   await expect(player).toHaveAttribute('data-opening-motion', 'still', { timeout: 10_000 });
   await expect(player).toHaveAttribute('data-opening-held', 'false');
   await expect(player.locator('[data-opening-photo]')).toHaveCount(1);

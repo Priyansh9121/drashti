@@ -45,6 +45,7 @@ export interface EditablePptx {
 }
 
 const EMU = 9525;
+const DEFAULT_LINE_HEIGHT = 1.2;
 const MAX_XML = 8 * 1024 * 1024;
 const MAX_XML_TOTAL = 64 * 1024 * 1024;
 const MAX_IMAGE = 32 * 1024 * 1024;
@@ -606,7 +607,7 @@ function bulletStyle(
   if (glyph) return { bullet: glyph };
   // Some writers already supply Unicode (for example U+2022 with Symbol).
   if (position > 0xff && !/[\p{Co}\p{Cs}]/u.test(character)) return { bullet: cutText(character, 8) };
-  ctx.issues.add('Some symbol bullets use a dot. Change them in Bullets and Numbering.');
+  ctx.issues.add('Some symbol bullets use a dot. Change them with Bullets or Numbering in Words.');
   return {};
 }
 
@@ -635,7 +636,10 @@ function paragraphOf(
   if (indent !== undefined) paragraph.indent = pixels(indent, -16_384);
   const spacing = attr(child(lastChild(nodes, 'lnSpc'), 'spcPct'), 'val');
   if (spacing !== undefined)
-    paragraph.lineHeight = Math.max(0.1, Math.min(5, number(spacing, 100_000) / 100_000));
+    paragraph.lineHeight = Math.max(
+      0.1,
+      Math.min(5, round(DEFAULT_LINE_HEIGHT * (number(spacing, 100_000) / 100_000))),
+    );
 
   const children = [...nodes].reverse().flatMap((node) => kids(node));
   const bullet = children.find((node) => ['buNone', 'buChar', 'buAutoNum', 'buBlip'].includes(nameOf(node)));
@@ -772,7 +776,7 @@ function textElement(
       color: first?.color ?? '#000000',
       align,
       verticalAlign: anchor === 'ctr' ? 'middle' : anchor === 'b' ? 'bottom' : 'top',
-      lineHeight: paragraph?.lineHeight ?? 1.2,
+      lineHeight: paragraph?.lineHeight ?? DEFAULT_LINE_HEIGHT,
       shadow: false,
       ...(!clipToBox || lastChild(bodies, 'normAutofit') ? { shrinkToFit: true } : {}),
       ...(clipToBox ? { clipToBox: true } : {}),
