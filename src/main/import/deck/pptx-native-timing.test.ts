@@ -519,7 +519,9 @@ describe('PowerPoint slide animation timing', () => {
       approximate: false,
       effects: [{ kind: 'grow-shrink', scale: 1.5, decel: 1 }],
     });
-    expect(alone('6', 'emph', grow.replace(' decel="100000"', ''), 'accel="25000" decel="50000"')).toMatchObject({
+    expect(
+      alone('6', 'emph', grow.replace(' decel="100000"', ''), 'accel="25000" decel="50000"'),
+    ).toMatchObject({
       approximate: false,
       effects: [{ kind: 'grow-shrink', scale: 1.5, accel: 0.25, decel: 0.5 }],
     });
@@ -533,7 +535,8 @@ describe('PowerPoint slide animation timing', () => {
       alone(
         '23',
         'entr',
-        track(2, 21, 'ppt_w', number(0), formula('#ppt_w')) + track(2, 22, 'ppt_h', number(0), formula('#ppt_h')),
+        track(2, 21, 'ppt_w', number(0), formula('#ppt_w')) +
+          track(2, 22, 'ppt_h', number(0), formula('#ppt_h')),
         'accel="50000"',
       ),
     ).toMatchObject({ approximate: true, effects: [{ kind: 'zoom', accel: 0.5 }] });
