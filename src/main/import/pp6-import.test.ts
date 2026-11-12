@@ -586,12 +586,17 @@ describe('a ProPresenter 6 video’s start and end points (Session 14)', () => {
     const messages = transport.messages.length;
     t.write('Placeholder Marked Third.pro6', marked('P6-MARKED-3', { in: 2400, out: 4200 }));
     const automatic = { onConflict: 'replace', automatic: true } as const;
+    const autoMarked: string[][] = [];
     const followed = await t.run([join(t.source, 'Placeholder Marked Third.pro6')], automatic, (ids) => {
-      for (const id of ids) engine.refreshMarkers(id);
+      autoMarked.push(ids);
+      engine.holdPoints(ids);
     });
+    expect(autoMarked).toEqual([[row.id]]);
     expect(repo.markersOf(row.id)).toMatchObject({ startMs: 4000, endMs: 7000 });
     expect(engine.current.layers.background).toEqual(playing);
     expect(transport.messages).toHaveLength(messages);
+    engine.dispatch(play);
+    expect(engine.current.layers.background).toEqual(playing);
     const automaticItem = followed.report?.items.find((i) => i.format === 'pp6');
     expect(automaticItem?.issues.find((i) => i.code === 'markers-replaced')?.message).toContain(
       'The new points and markers take effect the next time the media plays.',

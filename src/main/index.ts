@@ -3566,6 +3566,7 @@ function start(): void {
     onMarked: (mediaIds) => {
       for (const mediaId of mediaIds) engine.refreshMarkers(mediaId);
     },
+    onAutoMarked: (mediaIds) => engine.holdPoints(mediaIds),
     onFinished: (run) => {
       // An import can change what comes next (a replaced presentation, a filled playlist). It can also find a file
       // the library was missing (Find missing media…, or the same file imported again): the slides are read again,
