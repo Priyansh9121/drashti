@@ -14,6 +14,7 @@ import { PresentationRepo } from '../db/presentations';
 import { SettingsRepo } from '../db/settings';
 import type { SourceReader } from '../documents/source-reader';
 import { sourceWrite } from '../documents/source-write';
+import * as nativeImport from '../import/deck/native-deck-import';
 import { MediaStore } from '../import/media-store';
 import { OriginalsStore } from '../import/originals-store';
 import { makeTestDeck, placeholderDeckMedia, type TestDeckSlide } from '../import/testing/make-deck';
@@ -385,6 +386,31 @@ describe('a deck slide imported before alpha.17 keeps its clicks through an edit
       ).toBe(true);
       expect(readFileSync(old.file)).toEqual(old.bytes);
     } finally {
+      w.clean();
+    }
+  });
+
+  it('keeps the saved clips on a page that needs its still', async () => {
+    const w = originalWorld();
+    const prepare = nativeImport.prepareNativePptx;
+    const prepareWithMissingMedia = vi
+      .spyOn(nativeImport, 'prepareNativePptx')
+      .mockImplementationOnce(async (...args) => {
+        const result = await prepare(...args);
+        const page = result?.pages.get(0);
+        if (!page) throw new Error('The placeholder page was not prepared');
+        page.needsStill = true;
+        return result;
+      });
+    try {
+      const old = await oldDeck(w);
+      const prepared = only(await open(old.id));
+      expect(
+        prepared.elements.some((element) => element.kind === 'text' && element.text.includes(WORDS)),
+      ).toBe(true);
+      expect(prepared.deck).toEqual(old.deck);
+    } finally {
+      prepareWithMissingMedia.mockRestore();
       w.clean();
     }
   });
