@@ -1,15 +1,29 @@
+import { lstat } from 'node:fs/promises';
 import { constants, setPriority } from 'node:os';
-import { isAbsolute, relative, sep } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { EDITABLE_SOURCE_LIMITS, pptxAssetTokens } from '../../shared/editable-source';
 import { MEDIA_REF } from '../import/model';
 import {
+  pptxFramesWithinLimit,
   pptxPageSchema,
   type FromPptxReader,
   type PptxPage,
   type ToPptxReader,
 } from './pptx-reader-protocol';
 import { readEditableWithTiming } from './pptx-source-timing';
+
+async function pageAssetBytes(root: string, assets: PptxPage['assets']): Promise<number | null> {
+  let bytes = 0;
+  const files = new Set(assets.map((asset) => asset.relative));
+  for (const file of files) {
+    const stat = await lstat(join(root, file)).catch(() => null);
+    if (!stat?.isFile()) return null;
+    bytes += stat.size;
+    if (bytes > EDITABLE_SOURCE_LIMITS.pageAssetBytes) break;
+  }
+  return bytes;
+}
 
 const startSchema = z
   .object({
@@ -57,12 +71,15 @@ port.on('message', ({ data }: { data: unknown }) => {
       } = await readEditableWithTiming(job.file, job.outDir, job.timingPages ?? []);
       const pages: PptxPage[] = [];
       const failed: number[] = [];
+      const failedNotes: Record<number, string[]> = {};
       for (const sourceIndex of job.sourcePages) {
         await new Promise((resolve) => setTimeout(resolve, 10));
         if (cancelled) throw new Error('Cancelled.');
         const page = native.slides.find((entry) => entry.sourceIndex === sourceIndex);
         if (!page) {
           failed.push(sourceIndex);
+          const notes = native.failedNotes?.[sourceIndex];
+          if (notes?.length) failedNotes[sourceIndex] = notes;
           continue;
         }
         const needed = pptxAssetTokens(page.elements);
@@ -95,8 +112,26 @@ port.on('message', ({ data }: { data: unknown }) => {
           ...(deck ? { deck } : {}),
           ...(deck && videoIds ? { sourceVideoShapeIds: videoIds } : {}),
         });
-        if (checked.success) pages.push(checked.data);
-        else failed.push(sourceIndex);
+        if (!checked.success) {
+          failed.push(sourceIndex);
+          if (!pptxFramesWithinLimit(page.elements))
+            failedNotes[sourceIndex] = [
+              `PowerPoint source page ${String(sourceIndex + 1)} has a drawing outside the editing limits and stays as its saved picture.`,
+            ];
+          continue;
+        }
+        const bytes = await pageAssetBytes(job.outDir, assets);
+        if (bytes === null || bytes > EDITABLE_SOURCE_LIMITS.pageAssetBytes) {
+          failed.push(sourceIndex);
+          if (bytes !== null) {
+            const limit = String(EDITABLE_SOURCE_LIMITS.pageAssetBytes / 1024 ** 2);
+            failedNotes[sourceIndex] = [
+              `PowerPoint source page ${String(sourceIndex + 1)} uses more than ${limit} MB of media for editing and stays as its saved picture.`,
+            ];
+          }
+          continue;
+        }
+        pages.push(checked.data);
       }
       const within = (sent: PptxPage[]): FromPptxReader | null => {
         const message: FromPptxReader = {
@@ -105,6 +140,7 @@ port.on('message', ({ data }: { data: unknown }) => {
           pages: sent,
           total: native.sourceCount,
           failed,
+          ...(Object.keys(failedNotes).length > 0 ? { failedNotes } : {}),
         };
         return Buffer.byteLength(JSON.stringify(message), 'utf8') > EDITABLE_SOURCE_LIMITS.jobMetadataBytes
           ? null

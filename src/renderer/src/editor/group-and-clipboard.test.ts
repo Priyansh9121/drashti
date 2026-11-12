@@ -140,6 +140,44 @@ describe('copy and paste', () => {
     ]);
     expect(el.style.outline?.width).toBe(1.33);
   });
+
+  it('scales fixed line spacing and paragraph gaps when pasting into a larger slide', () => {
+    const words = text(
+      't',
+      { x: 100, y: 100, width: 400, height: 200 },
+      {
+        runs: [
+          {
+            text: 'Placeholder exact',
+            size: 24,
+            paragraph: { align: 'left', lineHeightPx: 24, spaceBefore: 8, spaceAfter: 4 },
+          },
+          {
+            text: 'Placeholder proportional',
+            paragraph: { align: 'center', lineHeight: 1.2, spaceBefore: 0, spaceAfter: 10 },
+          },
+          { text: 'Placeholder continuation' },
+        ],
+      },
+    );
+    const small = doc({ width: 1280, height: 720 }, [slide('s', [words])]);
+    const big = doc(undefined, [slide('b')]);
+    copyElements(small, 's', ['t']);
+    const pasted = findSlide(pasteElements(big, 'b')?.doc ?? big, 'b')?.elements[0];
+    if (pasted?.kind !== 'text') throw new Error('Expected pasted text');
+    expect(pasted.runs).toEqual([
+      {
+        text: 'Placeholder exact',
+        size: 36,
+        paragraph: { align: 'left', lineHeightPx: 36, spaceBefore: 12, spaceAfter: 6 },
+      },
+      {
+        text: 'Placeholder proportional',
+        paragraph: { align: 'center', lineHeight: 1.2, spaceBefore: 0, spaceAfter: 15 },
+      },
+      { text: 'Placeholder continuation' },
+    ]);
+  });
 });
 
 describe('PowerPoint animation targets on copied objects', () => {

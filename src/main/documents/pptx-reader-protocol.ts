@@ -1,7 +1,16 @@
 import { z } from 'zod';
 import { sourceTimingDeck } from '../../shared/deck-source-timing';
 import { EDITABLE_SOURCE_LIMITS, type PreparedSourcePage } from '../../shared/editable-source';
+import type { Rect } from '../../shared/model';
 import { hexColorSchema, slideElementSchema } from '../../shared/model-schema';
+
+export function pptxFramesWithinLimit(elements: readonly { frame: Rect }[]): boolean {
+  return elements.every(({ frame }) =>
+    Object.values(frame).every(
+      (value: unknown) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1_000_000,
+    ),
+  );
+}
 
 /** Both sides check a page's shape, while Main also checks the job and the files it names. */
 export const pptxPageSchema = z
@@ -10,7 +19,10 @@ export const pptxPageSchema = z
     width: z.number().min(16).max(16_384),
     height: z.number().min(16).max(16_384),
     background: hexColorSchema.nullable(),
-    elements: z.array(slideElementSchema).max(EDITABLE_SOURCE_LIMITS.pageElements),
+    elements: z
+      .array(slideElementSchema)
+      .max(EDITABLE_SOURCE_LIMITS.pageElements)
+      .refine(pptxFramesWithinLimit),
     issues: z.array(z.string().max(300)).max(100),
     assets: z
       .array(
@@ -51,7 +63,14 @@ export type PptxPage = Omit<PreparedSourcePage, 'assets'> & {
   assets: { token: string; relative: string; kind: 'image' | 'video' | 'audio' }[];
 };
 export type FromPptxReader =
-  | { type: 'prepared'; jobId: string; pages: PptxPage[]; total: number; failed: number[] }
+  | {
+      type: 'prepared';
+      jobId: string;
+      pages: PptxPage[];
+      total: number;
+      failed: number[];
+      failedNotes?: Record<number, string[]>;
+    }
   | { type: 'failed'; jobId: string };
 
 export interface PptxReaderChild {

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { TextElement } from '../../../shared/model';
+import { textRunSchema } from '../../../shared/model-schema';
 import { DEFAULT_THEME } from '../../../shared/themes';
 import { practiceSlides } from '../../../shared/practice';
 import { sampleKirtanSlide } from '../../../shared/setup';
 import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/readable';
 import { newTextBox } from '../editor/ops';
-import { listMarkerStyle, runStyle, TEXT_SHADOW, textBoxStyle } from './SlideView';
+import { listMarkerStyle, paragraphLineStyle, runStyle, TEXT_SHADOW, textBoxStyle } from './SlideView';
 
 /*
  * Gujarati, Hindi and Sanskrit drawn upright with no letter-spacing (Sessions 31–36, I18N-2): what a file
@@ -133,4 +134,28 @@ describe('the Words group’s looks, as every screen draws them (Session 55, Par
       textAlign: 'right',
     });
   });
+});
+
+it('draws old paragraph rows with the same proportional line height', () => {
+  const row = textRunSchema.parse({
+    text: 'Placeholder old row',
+    paragraph: { align: 'center', lineHeight: 1.08 },
+  });
+  const css = paragraphLineStyle({ mark: null, level: 0, label: null }, 24, row.paragraph, {
+    before: false,
+    after: false,
+  });
+  expect(css).toMatchObject({ textAlign: 'center', lineHeight: 1.08 });
+});
+
+it('draws fixed point spacing in pixels at the box’s current fit', () => {
+  const row = textRunSchema.parse({
+    text: 'Placeholder fixed row',
+    paragraph: { align: 'left', lineHeightPx: 24 },
+  });
+  const css = paragraphLineStyle({ mark: null, level: 0, label: null }, 16, row.paragraph, {
+    before: false,
+    after: false,
+  });
+  expect(css.lineHeight).toBe('calc(var(--fit, 1) * 24px)');
 });

@@ -33,7 +33,7 @@ vi.mock('./deck-converters', async (original) => {
 
 const key = makeZip([{ name: 'Index/Document.iwa', data: Buffer.alloc(16) }]);
 const pptx = makeTestPptx([
-  { text: 'Placeholder first slide', color: '204060' },
+  { text: 'Placeholder first slide', color: '204060', font: 'Kruti Dev 010' },
   { text: 'Placeholder skipped slide', color: '204060', hidden: true },
   { text: 'Placeholder last slide', color: '204060' },
 ]);
@@ -130,6 +130,15 @@ it.each(['matched', 'uncertain', 'shifted', 'shifted without notes', 'mismatched
 
       expect(result.totals).toMatchObject({ imported: 1, failed: 0 });
       expect(convert).toHaveBeenCalledTimes(1);
+      const hasFontNotice = new ImportRepo(db)
+        .report(result.id)
+        ?.items[0]?.issues.some(
+          (issue) =>
+            issue.code === 'legacy-font' &&
+            issue.fix?.kind === 'convert-font' &&
+            issue.fix.font === 'Kruti Dev 010',
+        );
+      expect(hasFontNotice).toBe(kind !== 'no export');
       const stored = new PresentationRepo(db).content(written[0] ?? '');
       const refs = stored?.slides.map((slide) => documentPageFromJson(slide.document_page));
       const originals = new OriginalsStore(db, mediaDir);
@@ -277,6 +286,9 @@ it.each([
     });
     expect(result.totals).toMatchObject({ imported: 1, failed: 0 });
     expect(flow).toHaveBeenCalledOnce();
+    expect(new ImportRepo(db).report(result.id)?.items[0]?.issues).toContainEqual(
+      expect.objectContaining({ code: 'legacy-font', fix: { kind: 'convert-font', font: 'Kruti Dev 010' } }),
+    );
     const stored = new PresentationRepo(db).content(written[0] ?? '');
     expect(
       stored?.slides.map((slide) => {

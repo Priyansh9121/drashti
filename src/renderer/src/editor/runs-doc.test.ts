@@ -7,6 +7,7 @@ import { drawnLines } from '../../../shared/text-lists';
 import { arrange, duplicateElements, patchRun, styleBox } from './ops';
 import {
   docOf,
+  formatTextBox,
   indentLine,
   listLines,
   outdentLine,
@@ -427,4 +428,15 @@ describe('⌘B, ⌘I and ⌘U while typing (Session 55, Part 17a)', () => {
     press(toggleWords('bold', () => 700));
     expect(runsOf(state.doc)[1]).toEqual({ text: 'words', italic: true, strike: true, weight: 400 });
   });
+});
+
+it('replaces imported fixed spacing when the operator changes line spacing', () => {
+  const paragraph = { align: 'left' as const, lineHeightPx: 24 };
+  const original = box([{ text: 'Placeholder fixed spacing', paragraph }]);
+  expect(formatTextBox(original, { align: 'center' }).runs?.[0]?.paragraph).toMatchObject({
+    lineHeightPx: 24,
+  });
+  const formatted = formatTextBox(original, { lineHeight: 1.4 }).runs?.[0]?.paragraph;
+  expect(formatted).toMatchObject({ lineHeight: 1.4 });
+  expect(formatted).not.toHaveProperty('lineHeightPx');
 });
