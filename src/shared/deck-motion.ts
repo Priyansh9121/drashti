@@ -2,12 +2,7 @@ import type { DeckEffect, DeckEffectDirection, DeckMotion } from './deck';
 import type { Rect, RenderSlide, SlideElement } from './model';
 
 type Size = Pick<RenderSlide, 'width' | 'height'>;
-interface SourceShape {
-  sourceShapeId?: string;
-  sourceGroupIds?: readonly string[];
-}
-
-export function deckElementTargets(element: SlideElement & SourceShape): readonly string[] {
+export function deckElementTargets(element: SlideElement): readonly string[] {
   const groups = element.sourceGroupIds ?? [];
   return element.sourceShapeId ? [...groups, element.sourceShapeId] : groups;
 }

@@ -154,7 +154,7 @@ for (const kind of ['typing', 'drag'] as const) {
 
       const after = rawContent(s.userData, s.id);
       expect(after.slides.map((row) => row.id)).toEqual(s.before.slides.map((row) => row.id));
-      expect(after.slides[1]?.deck).toBeNull();
+      expect(after.slides[1]?.deck).not.toBe(s.before.slides[1]?.deck);
       for (const index of [0, 2]) {
         const old = s.before.slides[index];
         expect(old).toBeDefined();
@@ -169,7 +169,11 @@ for (const kind of ['typing', 'drag'] as const) {
         await unchangedClicks(s.win, s.id, index);
       }
       const publicAfter = await publicSlides(s.win, s.id);
-      expect(publicAfter[1]?.slide.deck).toBeUndefined();
+      expect(publicAfter[1]?.slide.deck).toMatchObject({
+        steps: [],
+        motion: { approximate: true, stepsMs: [0, 100, 100] },
+      });
+      await unchangedClicks(s.win, s.id, 1);
       const oldMiddle = JSON.parse(s.before.slides[1]?.deck ?? 'null') as {
         steps?: { lastId: string }[];
       } | null;

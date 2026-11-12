@@ -164,6 +164,7 @@ describe('PowerPoint slide animation timing', () => {
         approximate: true,
         effects: [
           { shapeId: '2', step: 1, phase: 'emphasis', kind: 'pulse', delayMs: 35, durationMs: 650 },
+          { shapeId: '3', step: 2, phase: 'emphasis', kind: 'pulse', delayMs: 0, durationMs: 250 },
           { shapeId: '4', step: 2, phase: 'in', kind: 'fade', delayMs: 50, durationMs: 430 },
         ],
       },

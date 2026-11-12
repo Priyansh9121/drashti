@@ -407,27 +407,32 @@ function unsupportedTiming(tn: XmlNode): boolean {
 }
 
 function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedule: NativeSchedule): void {
-  const targets = all(node, (n) => n.name === 'p:spTgt');
-  const shapeId = targets[0]?.attrs['spid'];
-  if (!shapeId || targets.some((n) => n.attrs['spid'] !== shapeId || kids(n).length > 0)) {
-    schedule.approximate = true;
-    return;
-  }
   const behaviours = [
     ...(VISUAL_BEHAVIOURS.has(node.name) ? [node] : []),
     ...all(node, (n) => VISUAL_BEHAVIOURS.has(n.name)),
   ];
+  const targets = behaviours.flatMap((behaviour) =>
+    kids(kid(kid(behaviour, 'p:cBhvr'), 'p:tgtEl') ?? NONE).filter((target) => target.name === 'p:spTgt'),
+  );
+  const shapeId = targets[0]?.attrs['spid'];
+  if (!shapeId || targets.some((target) => target.attrs['spid'] !== shapeId)) {
+    schedule.approximate = true;
+    return;
+  }
+  // Draw attention to a text box when only part of its words animated; keep the other words visible.
+  const subtarget = targets.some((target) => kids(target).length > 0);
   const cls = tn.attrs['presetClass'];
   const transition = behaviours.find((n) => n.name === 'p:animEffect')?.attrs['transition'];
-  const phase =
-    cls === 'entr'
+  const phase = subtarget
+    ? 'emphasis'
+    : cls === 'entr'
       ? 'in'
       : cls === 'exit'
         ? 'out'
         : transition === 'in' || transition === 'out'
           ? transition
           : 'emphasis';
-  const native = nativeLook(tn, phase, behaviours);
+  const native = subtarget ? null : nativeLook(tn, phase, behaviours);
   const look: NativeLook = native ?? { kind: phase === 'emphasis' ? 'pulse' : 'fade' };
   const played = PLAYED_BEHAVIOURS[look.kind];
   const clocks = behaviours
