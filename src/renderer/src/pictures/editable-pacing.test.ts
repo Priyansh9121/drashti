@@ -11,7 +11,15 @@ import { drawEditablePdf } from './editable-main';
  * stand-in PDF and a stand-in page reader whose steps take only the time the test says, on a clock of the test's own.
  */
 
-const clock = vi.hoisted(() => ({ now: 0, pauses: [] as number[], working: 0, longest: 0 }));
+/** The test's clock; `overrun`: how many times longer than asked a pause takes (CI's Mac: about four). */
+const clock = vi.hoisted(() => ({
+  now: 0,
+  pauses: [] as number[],
+  waited: 0,
+  overrun: 1,
+  working: 0,
+  longest: 0,
+}));
 /** Each page's steps (the page reader's own checkpoints) and how long each step's work takes, by page. */
 const core = vi.hoisted(() => ({ steps: 10, stepMs: (_page: number): number => 0 }));
 
@@ -66,6 +74,8 @@ let finished: { total: number; failed: number[] } | null = null;
 beforeEach(() => {
   clock.now = 0;
   clock.pauses = [];
+  clock.waited = 0;
+  clock.overrun = 1;
   clock.working = 0;
   clock.longest = 0;
   core.steps = 10;
@@ -73,10 +83,11 @@ beforeEach(() => {
   sent = [];
   finished = null;
   vi.spyOn(performance, 'now').mockImplementation(() => clock.now);
-  // A pause takes exactly what it asks for on the test's clock, and ends the work in hand.
+  // A pause takes what it asks for on the test's clock (times the overrun), and ends the work in hand.
   vi.stubGlobal('setTimeout', (resume: () => void, ms = 0) => {
     clock.pauses.push(ms);
-    clock.now += ms;
+    clock.now += ms * clock.overrun;
+    clock.waited += ms * clock.overrun;
     if (ms > 0) clock.working = 0;
     queueMicrotask(resume);
     return 0;
@@ -135,6 +146,25 @@ describe('preparing a PDF for Edit slides in the hidden window (Session 57)', ()
       last = message.at;
     }
     expect(clock.now - last).toBeLessThanOrEqual(100);
+  });
+
+  it('where a pause takes four times as long as asked (CI’s Mac), gives way less often: about a fifth of the time', async () => {
+    // As CI's Mac read the placeholder's pages: 75 ms a page, and a "10 ms" pause took 38 ms on average.
+    clock.overrun = 4;
+    core.stepMs = () => 7.5;
+    await drawEditablePdf(job(100), Assets);
+    expect(pages()).toHaveLength(100);
+    const work = 100 * 10 * 7.5;
+    // It gave way for 10 ms after each 50 ms of work, so 40 ms after each 50 ms: nearly as long as it worked.
+    expect(clock.waited, `${String(clock.pauses.length)} pauses`).toBeLessThanOrEqual(work * 0.3);
+    expect(clock.waited).toBeGreaterThanOrEqual(work * 0.15);
+    // Never long without a pause, nor without asking Main.
+    expect(clock.longest).toBeLessThanOrEqual(260);
+    let last = 0;
+    for (const message of sent) {
+      expect(message.at - last).toBeLessThanOrEqual(300);
+      last = message.at;
+    }
   });
 
   it('still leaves a page that runs past its share of the time as its saved picture, and goes on', async () => {
