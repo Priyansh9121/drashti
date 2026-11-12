@@ -14,6 +14,7 @@ import {
   operatorReady,
   showExtras,
 } from './helpers';
+import { importItem } from './import-details';
 
 /*
  * Books, never Shastra, wherever a person sees it (the owner's words, 3 Nov 2026, for alpha.15). The operator window
@@ -128,7 +129,7 @@ test('the operator window: the Books tab, its dialogs, notices and errors, a pas
     'true',
   );
 
-  // Two books dropped on the library, with a book Drashti cannot read and a JSON file that is no book: the report.
+  // Two books dropped on the library, plus two files that each get their own notice.
   await library.getByTestId('library-tab-presentations').click();
   await dropFiles(win, win.getByTestId('library-drop'), [
     files.granth,
@@ -136,14 +137,23 @@ test('the operator window: the Books tab, its dialogs, notices and errors, a pas
     files.broken,
     files.other,
   ]);
-  const report = win.getByTestId('import-report');
-  await expect(report).toContainText(
-    'Loaded: 21 items. Find a passage in Books by typing its reference, for example “PG 1”.',
-  );
-  await expect(report).toContainText('This is not a book Drashti can read');
-  await expect(report).toContainText('A JSON file that is not a book or a calendar Drashti knows');
-  await saysBooks(win, 'the import report');
-  await report.getByRole('button', { name: 'Open in Books' }).first().click();
+  await expect
+    .poll(() => importItem(win, files.granth))
+    .toMatchObject({
+      outcome: 'imported',
+      message: 'Loaded: 21 items. Find a passage in Books by typing its reference, for example “PG 1”.',
+    });
+  const notices = win.getByTestId('import-notice');
+  const broken = notices.filter({ hasText: 'placeholder-broken.json' });
+  const other = notices.filter({ hasText: 'placeholder-other.json' });
+  await expect(broken).toContainText('This is not a book Drashti can read');
+  await expect(other).toContainText('A JSON file that is not a book or a calendar Drashti knows');
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
+  await saysBooks(win, 'the import notices');
+  await broken.getByRole('button', { name: 'Dismiss import notice' }).click();
+  await other.getByRole('button', { name: 'Dismiss import notice' }).click();
+  await library.getByTestId('library-tab-shastra').click();
+  await panel.getByTestId('open-shastra-texts').click();
 
   // The books' own dialog, and removing one, asked first.
   const dialog = win.getByTestId('shastra-texts-dialog');

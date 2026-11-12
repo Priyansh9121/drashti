@@ -19,6 +19,7 @@ const choiceSchema = z.enum(['replace', 'keep-both', 'skip']);
 export const importOptionsSchema: z.ZodType<ImportOptions> = z
   .object({
     onConflict: z.enum(['ask', 'replace', 'keep-both', 'skip']).optional(),
+    maxVideoHeight: z.literal(1080).optional(),
     decisions: z
       .record(pathSchema, choiceSchema)
       .refine((d) => Object.keys(d).length <= 10_000, 'too many decisions')
