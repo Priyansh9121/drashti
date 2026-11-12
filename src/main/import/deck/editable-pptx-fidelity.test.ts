@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { slideElementSchema } from '../../../shared/model-schema';
+import { fitElements } from '../../../shared/slide-size';
 import {
   editablePicture,
   editablePptxFixture,
@@ -35,6 +36,40 @@ const graphic = (data: string) =>
   '</a:graphicData></a:graphic></p:graphicFrame>';
 
 describe('keeping a generated PPTX editable', () => {
+  it('keeps paragraph spacing in points or percentages, with local overrides', async () => {
+    const run = (size: number, words: string) =>
+      `<a:r><a:rPr sz="${String(size)}"/><a:t>${words}</a:t></a:r>`;
+    const words = wordsShape(
+      '<a:p><a:pPr><a:spcBef><a:spcPct val="50000"/></a:spcBef><a:spcAft><a:spcPct val="25%"/></a:spcAft></a:pPr>' +
+        run(1200, 'Placeholder first run ') +
+        run(3000, 'Placeholder large run') +
+        '<a:br/>' +
+        run(1800, 'Placeholder continuation') +
+        '</a:p><a:p><a:pPr><a:spcBef><a:spcPts val="0"/></a:spcBef></a:pPr>' +
+        run(2400, 'Placeholder zero before') +
+        '</a:p><a:p>' +
+        run(2400, 'Placeholder inherited spacing') +
+        '</a:p>',
+    )
+      .replace('<a:bodyPr ', '<a:bodyPr spcFirstLastPara="1" ')
+      .replace(
+        '<a:lstStyle/>',
+        '<a:lstStyle><a:lvl1pPr><a:spcBef><a:spcPts val="600"/></a:spcBef><a:spcAft><a:spcPts val="300"/></a:spcAft></a:lvl1pPr></a:lstStyle>',
+      );
+    const { elements } = await read(slideXml(words));
+    const box = elements.find((el) => el.kind === 'text');
+    if (box?.kind !== 'text') throw new Error('The editable words are missing.');
+    expect(box.style).toMatchObject({ spaceAtTextEdges: true });
+    const paragraph = (text: string) => box.runs?.find((run) => run.text === text)?.paragraph;
+    expect(paragraph('Placeholder first run ')).toMatchObject({ spaceBefore: 20, spaceAfter: 6 });
+    expect(paragraph('Placeholder continuation')).toEqual(paragraph('Placeholder first run '));
+    expect(paragraph('Placeholder zero before')).toMatchObject({ spaceBefore: 0, spaceAfter: 4 });
+    expect(paragraph('Placeholder inherited spacing')).toMatchObject({ spaceBefore: 8, spaceAfter: 4 });
+    const [resized] = fitElements([box], { width: 1280, height: 720 }, { width: 640, height: 360 });
+    if (resized?.kind !== 'text') throw new Error('The resized words are missing.');
+    expect(resized.runs?.[0]?.paragraph).toMatchObject({ spaceBefore: 10, spaceAfter: 3 });
+  });
+
   it('keeps paragraph alignment, bullets, hanging indents and vertical words inside their box', async () => {
     const words = wordsShape(
       '<a:p><a:pPr algn="l" lvl="2" marL="228600" marR="114300" indent="-114300"><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:buChar char="•"/></a:pPr><a:r><a:t>Placeholder bullet</a:t></a:r><a:br/><a:r><a:t>Placeholder continuation</a:t></a:r></a:p>' +
