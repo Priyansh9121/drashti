@@ -792,6 +792,25 @@ describe('restart recovery', () => {
     expect(toRestore(files)).toBeNull();
   });
 
+  it('knows the show a crash now would put back: the one saved last, kept when a later save fails (Session 57)', async () => {
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    const first = live();
+    // Until this run's first save lands, the file holds the show the start found (put back after a crash).
+    writer.start(first);
+    expect(writer.savedState).toBe(first);
+    await pause(30);
+    await writer.settle();
+    expect(writer.savedState).toBe(first);
+    const second = live({ slideIndex: 3 });
+    await saved(writer, second);
+    expect(writer.savedState).toBe(second);
+    // A save that fails leaves the file as it was, and with it what a crash would put back.
+    rmSync(dir, { recursive: true, force: true });
+    await saved(writer, live({ withBackground: false }));
+    expect(writer.savedState).toBe(second);
+    writer.stop();
+  });
+
   it('validates an optional background origin without a new engine version', async () => {
     const writer = new LiveStateWriter(files, { throttleMs: 10 });
     await saved(writer, live());
