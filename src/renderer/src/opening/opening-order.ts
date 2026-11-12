@@ -41,3 +41,12 @@ export function windowMayStart(f: StartFacts): boolean {
 export function stillAfterHold(f: Pick<StartFacts, 'waitedOut' | 'screensWarming'>): boolean {
   return f.waitedOut && f.screensWarming;
 }
+
+/**
+ * How long waiting for its photo may still hold the opening up before the lamp lights in its place (ms, from now), or
+ * null for no limit yet.
+ */
+export function photoWait(held: boolean, limitMs: number): number | null {
+  void held;
+  return limitMs;
+}
