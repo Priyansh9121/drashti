@@ -6849,7 +6849,11 @@ function start(): void {
   operatorWindow.webContents.on('did-start-loading', () => {
     switchQuestion.asking(null);
   });
+  operatorWindow.webContents.on('did-start-navigation', ({ isMainFrame, isSameDocument }) => {
+    if (isMainFrame && !isSameDocument) importNotices.pause();
+  });
   operatorWindow.webContents.on('render-process-gone', () => {
+    importNotices.pause();
     switchQuestion.asking(null);
   });
   // Whether this computer plays HEVC video (Session 51), unless a test gave the answer: asked once the operator window
