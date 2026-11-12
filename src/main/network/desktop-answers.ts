@@ -243,6 +243,7 @@ export const LIBRARY_OPS = [
   'playlist.restoreItems',
 ] as const satisfies readonly DesktopOp[];
 export type LibraryOp = (typeof LIBRARY_OPS)[number];
+const isLibraryOp = (op: string): op is LibraryOp => LIBRARY_OPS.some((entry) => entry === op);
 
 /** The ops that read only (all others are limited per phone; the windows' list too, which takes the computer a while). */
 const READS: ReadonlySet<DesktopOp> = new Set(['screens', 'inputs', 'midi', 'queue', 'stage.layouts']);
@@ -402,9 +403,13 @@ export class DesktopAnswers {
     };
   }
 
+  /** Checked for a paired phone before Simple Mode reads the rows of a library change. */
+  admitLibraryChange(op: string, deviceId: string): boolean {
+    return !isLibraryOp(op) || this.libraryChanges.take(deviceId);
+  }
+
   answer(op: DesktopOp, args: Record<string, unknown>, device: { id: string }, who: string): DeviceAnswer {
-    const limit = (LIBRARY_OPS as readonly DesktopOp[]).includes(op) ? this.libraryChanges : this.changes;
-    if (!READS.has(op) && !limit.take(device.id))
+    if (!READS.has(op) && !isLibraryOp(op) && !this.changes.take(device.id))
       return deny(429, 'Too many changes at once: wait a moment, then try again.');
     const s = this.acts.screens;
     const done = (result: ScreensResult, did: string): DeviceAnswer => {
