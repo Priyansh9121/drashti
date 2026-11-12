@@ -3,12 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { deckOnWindows } from '../deck-converters';
+import type * as DeckConverters from '../deck-converters';
 import { makeTestPptx } from '../testing/make-pptx';
 import { runDeck } from './deck-flow';
+import type * as Bake from './bake';
 
 const legacy = vi.hoisted(() => ({ movieStartsBeforePictures: false }));
 vi.mock('./bake', async (original) => {
-  const actual = await original<typeof import('./bake')>();
+  const actual = await original<typeof Bake>();
   return {
     ...actual,
     bakeDeck: (baker, request, options) => {
@@ -25,7 +27,7 @@ vi.mock('./bake', async (original) => {
 });
 
 vi.mock('../deck-converters', async (original) => ({
-  ...(await original<typeof import('../deck-converters')>()),
+  ...(await original<typeof DeckConverters>()),
   deckOnWindows: vi.fn<typeof deckOnWindows>(),
 }));
 vi.mock('./timed-copy', () => ({ writeTimedCopy: () => Promise.resolve() }));
