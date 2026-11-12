@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, join } from 'node:path';
+import { VIDEO_EXTENSIONS } from '../../shared/media';
 import { safeName } from '../links/names';
 import type { ConvertService, CopyOptions } from './convert-service';
 import { convertArgs, hasAlpha, TARGET_EXT } from './plan';
@@ -64,7 +65,11 @@ function trimCopyArgs(input: TrimCopyInput, target: VideoTarget, output: string,
 export function queueTrimCopy(conversions: Pick<ConvertService, 'saveCopy'>, input: TrimCopyInput) {
   const target = input.alpha === true || hasAlpha(input.info) ? 'webm-alpha' : 'mp4';
   const name = safeName(input.name, 'Video');
-  const dest = join(dirname(input.path), `${basename(name, extname(name))} trimmed.${TARGET_EXT[target]}`);
+  const extension = extname(name);
+  const title = VIDEO_EXTENSIONS.includes(extension.slice(1).toLowerCase())
+    ? basename(name, extension)
+    : name;
+  const dest = join(dirname(input.path), `${title} trimmed.${TARGET_EXT[target]}`);
   const id = randomUUID();
   const copy: CopyOptions = {
     args: (tmp) => trimCopyArgs(input, target, tmp, id),
