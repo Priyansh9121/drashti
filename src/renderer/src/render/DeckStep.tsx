@@ -433,24 +433,30 @@ function DeckStepLive({
   // Once the clip has its first frame, how much later than the engine's time it ends (a cold jump's first clip that
   // came in late, less what it makes up a tenth faster; else 0); null while the clip is loading.
   const clipKey = `${step.clipId}@${String(clipAt)}`;
+  const clipAttempt = useMediaAttempt(step.clipId);
   const newClip = () => ({
     key: clipKey,
+    attempt: clipAttempt,
     deadline:
       index === 0 && !still && engineNow() < shownAt + FRESH_DECK_ENTRY_MS
         ? shownAt + FIRST_FRAME_WAIT_MS
         : null,
     delayMs: null as number | null,
+    failed: false,
   });
   const [frame, setFrame] = useState(newClip);
-  const clipReady = frame.delayMs !== null;
-  const endsAt = timing.endsAt + (frame.delayMs ?? 0);
-  const [clipFailed, setClipFailed] = useState(false);
   const [holdReady, setHoldReady] = useState(false);
   if (frame.key !== clipKey) {
     setFrame(newClip());
-    setClipFailed(false);
+  } else if (frame.attempt !== clipAttempt) {
+    // The same clip at the same engine time gets a new source when the node's copy lands.
+    setFrame({ ...frame, attempt: clipAttempt, delayMs: null, failed: false });
   }
-  const recordFrame = (delayMs = 0) => setFrame((f) => (f.key === clipKey ? { ...f, delayMs } : f));
+  const clipReady = frame.delayMs !== null;
+  const clipFailed = frame.failed;
+  const endsAt = timing.endsAt + (frame.delayMs ?? 0);
+  const updateFrame = (change: { delayMs?: number; failed: boolean }) =>
+    setFrame((f) => (f.key === clipKey && f.attempt === clipAttempt ? { ...f, ...change } : f));
   const holdKey = `${step.holdId ?? ''}@${String(endsAt)}`;
   const [seenHold, setSeenHold] = useState(holdKey);
   if (seenHold !== holdKey) {
@@ -556,13 +562,8 @@ function DeckStepLive({
             clipEndsAt={timing.endsAt}
             deadline={frame.deadline}
             fit={fit}
-            onFrame={(lateEndMs) => {
-              setClipFailed(false);
-              recordFrame(lateEndMs);
-            }}
-            onError={() => {
-              setClipFailed(true);
-            }}
+            onFrame={(delayMs) => updateFrame({ delayMs, failed: false })}
+            onError={() => updateFrame({ failed: true })}
           />
         ) : (
           <StepVideo
@@ -571,12 +572,8 @@ function DeckStepLive({
             startedAt={clipAt}
             loop={false}
             fit={fit}
-            onFrame={() => {
-              recordFrame();
-            }}
-            onError={() => {
-              setClipFailed(true);
-            }}
+            onFrame={() => updateFrame({ delayMs: 0, failed: false })}
+            onError={() => updateFrame({ failed: true })}
             role="clip"
           />
         ))}

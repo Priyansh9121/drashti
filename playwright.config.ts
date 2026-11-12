@@ -5,7 +5,9 @@ export default defineConfig({
   // One temporary folder for the run, removed at the end (tests/global-setup.ts).
   globalSetup: './tests/global-setup.ts',
   timeout: 90_000,
-  expect: { timeout: 10_000 },
+  // 20 s (Session 57): a fresh CI Mac's first app, its first output's fonts and warm-up, or its first window, can take
+  // longer than 10 s; a condition must still come true, and timings the tests prove are their own explicit limits.
+  expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
   // On CI (Sessions 31–36, TST-3): a .only left in fails the run, and so does a test that passes only on
