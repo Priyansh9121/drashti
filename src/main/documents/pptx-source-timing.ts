@@ -35,7 +35,7 @@ export async function readEditableWithTiming(
       const decks = new Map<number, DeckSlide>();
       for (const index of timingPages) {
         const page = native.pages.get(index);
-        if (page) decks.set(index, page.deck);
+        if (page && !page.needsStill) decks.set(index, page.deck);
       }
       return { editable: native.editable, decks };
     }

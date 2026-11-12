@@ -9,7 +9,7 @@ import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network
 import type { RemoteMedia } from '../../shared/network-mirror';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
-import { SIMPLE_MODE_LOCKED } from '../simple-mode';
+import { SIMPLE_MODE_LOCKED, simpleModeBounds } from '../simple-mode';
 import type { SimplePhoneScope } from '../simple-mode-phones';
 import { NetworkService, OP_CHANNEL } from './network-service';
 
@@ -62,6 +62,7 @@ const MEDIA: RemoteMedia[] = [
 ];
 
 function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
+  const bounds = simpleModeBounds(() => ONE);
   const db = openDatabase(':memory:');
   const devices = new DeviceRepo(db);
   const commands: EngineCommand[] = [];
@@ -170,8 +171,10 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       submit: () => ({ status: 202, body: { ok: true } }),
       statusFor: () => ({ status: 404, body: { ok: false } }),
     },
-    refused: (channel: InvokeChannel) =>
-      options.lockEverything === true || (options.locked === true && SIMPLE_MODE_LOCKED.includes(channel)),
+    refused: (channel: InvokeChannel, args?: readonly unknown[]) =>
+      options.lockEverything === true ||
+      (options.locked === true &&
+        (SIMPLE_MODE_LOCKED.includes(channel) || bounds.get(channel)?.(args ?? []) === false)),
     // Simple Mode as a phone's request is weighed (Session 55, the owner's answer of 30 Oct 2026).
     simple: () => (options.locked === true ? ONE : null),
     changed: () => undefined,
@@ -452,58 +455,61 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     });
   });
 
-  it('lets a Simple Mode Remote use Audio, with typed arguments and the current view in each answer', () => {
-    const { ask, remote, stage, poster, audioView, audioCalls, played, playIndexes } = setup({
-      locked: true,
-    });
-    const cases = [
-      ['music.new', { name: 'Placeholder tunes' }, ['create', 'Placeholder tunes']],
-      [
-        'music.rename',
-        { playlistId: 'music-1', name: 'Placeholder sounds' },
-        ['rename', 'music-1', 'Placeholder sounds'],
-      ],
-      ['music.remove', { playlistId: 'music-1' }, ['remove', 'music-1']],
-      ['music.restore', { playlistId: 'music-1' }, ['restore', 'music-1']],
-      [
-        'music.options',
-        { playlistId: 'music-1', loop: true, shuffle: false },
-        ['options', 'music-1', { loop: true, shuffle: false }],
-      ],
-      [
-        'music.addTracks',
-        { playlistId: 'music-1', mediaIds: ['m-tune'] },
-        ['addTracks', 'music-1', ['m-tune'], null],
-      ],
-      ['music.moveTrack', { trackId: 'track-1', to: 1 }, ['moveTrack', 'track-1', 1]],
-      ['music.removeTrack', { trackId: 'track-1' }, ['removeTrack', 'track-1']],
-      ['music.restoreTrack', { trackId: 'track-1', at: 1 }, ['restoreTrack', 'track-1', 1]],
-    ] as const;
-    expect(ask(remote, 'music.audio')).toMatchObject({
-      status: 200,
-      body: { ok: true, view: audioView, stepsAside: true },
-    });
-    for (const [op, args] of cases) {
-      expect(ask(remote, op, args), op).toMatchObject({
+  it.each([false, true])(
+    'lets a Remote use Audio and play the chosen index, with Simple Mode %s',
+    (locked) => {
+      const { ask, remote, stage, poster, audioView, audioCalls, played, playIndexes } = setup({ locked });
+      const cases = [
+        ['music.new', { name: 'Placeholder tunes' }, ['create', 'Placeholder tunes']],
+        [
+          'music.rename',
+          { playlistId: 'music-1', name: 'Placeholder sounds' },
+          ['rename', 'music-1', 'Placeholder sounds'],
+        ],
+        ['music.remove', { playlistId: 'music-1' }, ['remove', 'music-1']],
+        ['music.restore', { playlistId: 'music-1' }, ['restore', 'music-1']],
+        [
+          'music.options',
+          { playlistId: 'music-1', loop: true, shuffle: false },
+          ['options', 'music-1', { loop: true, shuffle: false }],
+        ],
+        [
+          'music.addTracks',
+          { playlistId: 'music-1', mediaIds: ['m-tune'] },
+          ['addTracks', 'music-1', ['m-tune'], null],
+        ],
+        ['music.moveTrack', { trackId: 'track-1', to: 1 }, ['moveTrack', 'track-1', 1]],
+        ['music.removeTrack', { trackId: 'track-1' }, ['removeTrack', 'track-1']],
+        ['music.restoreTrack', { trackId: 'track-1', at: 1 }, ['restoreTrack', 'track-1', 1]],
+      ] as const;
+      expect(ask(remote, 'music.audio')).toMatchObject({
         status: 200,
-        body: { ok: true, view: audioView, stepsAside: true, id: 'music-1' },
+        body: { ok: true, view: audioView, stepsAside: true },
       });
-      expect(ask(stage, op, args).status, op).toBe(403);
-      expect(ask(poster, op, args).status, op).toBe(403);
-    }
-    expect(audioCalls).toEqual(cases.map(([, , call]) => call));
-    expect(ask(remote, 'music.stepsAside', { on: false })).toMatchObject({
-      status: 200,
-      body: { ok: true, view: audioView, stepsAside: false },
-    });
-    expect(ask(remote, 'music.moveTrack', { trackId: 'track-1', to: -1 }).status).toBe(400);
-    expect(ask(remote, 'music.options', { playlistId: 'music-1', loop: 'yes' }).status).toBe(400);
-    expect(audioCalls).toHaveLength(cases.length);
-    expect(ask(remote, 'music.play', { playlistId: 'music-1', index: 2 }).status).toBe(200);
-    expect(ask(remote, 'music.play', { playlistId: 'music-1', index: -1 }).status).toBe(400);
-    expect(played).toEqual(['music-1']);
-    expect(playIndexes).toEqual([2]);
-  });
+      for (const [op, args] of cases) {
+        expect(ask(remote, op, args), op).toMatchObject({
+          status: 200,
+          body: { ok: true, view: audioView, stepsAside: true, id: 'music-1' },
+        });
+        expect(ask(stage, op, args).status, op).toBe(403);
+        expect(ask(poster, op, args).status, op).toBe(403);
+      }
+      expect(audioCalls).toEqual(cases.map(([, , call]) => call));
+      expect(ask(remote, 'music.stepsAside', { on: false })).toMatchObject({
+        status: 200,
+        body: { ok: true, view: audioView, stepsAside: false },
+      });
+      expect(ask(remote, 'music.moveTrack', { trackId: 'track-1', to: -1 }).status).toBe(400);
+      expect(ask(remote, 'music.moveTrack', { trackId: 'track-1', to: '1' }).status).toBe(locked ? 403 : 400);
+
+      expect(ask(remote, 'music.options', { playlistId: 'music-1', loop: 'yes' }).status).toBe(400);
+      expect(audioCalls).toHaveLength(cases.length);
+      expect(ask(remote, 'music.play', { playlistId: 'music-1', index: 2 }).status).toBe(200);
+      expect(ask(remote, 'music.play', { playlistId: 'music-1', index: -1 }).status).toBe(400);
+      expect(played).toEqual(['music-1']);
+      expect(playIndexes).toEqual([2]);
+    },
+  );
 
   it.each([false, true])('limits Audio changes to each phone, with Simple Mode %s', (locked) => {
     const { ask, service, remote, audioCalls, advance } = setup({ locked });
