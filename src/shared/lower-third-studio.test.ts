@@ -435,6 +435,10 @@ describe('the model: a lower third that hides itself, its out, its style', () =>
 
   it('offers twenty curated templates and covers the picker’s directions, feels and speeds', () => {
     expect(BEST_LOWER_THIRD_TEMPLATES).toHaveLength(20);
+    expect(BEST_LOWER_THIRD_TEMPLATES.slice(-2).map((template) => template.id)).toEqual([
+      'lavender-labels',
+      'midnight-bulletin',
+    ]);
     expect(new Set(BEST_LOWER_THIRD_TEMPLATES.map((template) => template.id)).size).toBe(20);
     expect(new Set(LOWER_THIRD_TEMPLATES.map((template) => template.direction))).toEqual(
       new Set(['left', 'right', 'up', 'down', 'centre']),
