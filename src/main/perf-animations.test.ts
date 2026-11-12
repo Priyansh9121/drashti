@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { EngineCommand } from '../shared/engine/commands';
+import { deckFromJson } from '../shared/deck-schema';
 import { type Db, openDatabase } from './db/database';
 import { PresentationRepo } from './db/presentations';
 import { isPerfScenario, scenarioFor, startScenario } from './perf-scenarios';
@@ -60,7 +61,7 @@ describe('the animations scenario', () => {
         engine: engine(),
         outputs: () => [],
       }),
-    ).rejects.toThrow(/^The animations scenario could not set up: The scenarios need the bundled FFmpeg/u);
+    ).rejects.toThrow(/^The scenarios need the bundled FFmpeg/u);
   });
 
   describe.skipIf(!ffmpegHere(ffmpeg))('set up on a library, with FFmpeg', () => {
@@ -98,10 +99,16 @@ describe('the animations scenario', () => {
         ].flatMap((k) => [k, k]),
       );
       // The deck's one slide reads back with its three steps, each a clip and its last frame.
-      const deckSlides = repo.get(deck?.id ?? '')?.groups.flatMap((g) => g.slides) ?? [];
-      expect(deckSlides).toHaveLength(1);
-      expect(deckSlides[0]?.deck?.steps).toHaveLength(3);
-      expect(deckSlides[0]?.deck?.steps.every((s) => s.clipMs === 1500 && s.clipId && s.lastId)).toBe(true);
+      const kept = (
+        db
+          .prepare(
+            'SELECT s.deck FROM slides s JOIN slide_groups g ON g.id = s.group_id WHERE g.presentation_id = ?',
+          )
+          .all(deck?.id ?? '') as { deck: string | null }[]
+      ).map((r) => deckFromJson(r.deck));
+      expect(kept).toHaveLength(1);
+      expect(kept[0]?.steps).toHaveLength(3);
+      expect(kept[0]?.steps.every((s) => s.clipMs === 1500 && s.clipId !== '' && s.lastId !== '')).toBe(true);
     });
   });
 });

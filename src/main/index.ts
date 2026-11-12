@@ -139,7 +139,7 @@ import {
 } from './ipc/handle';
 import { readOrDefault } from './ipc/read-or-default';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
-import { isPerfScenario, startScenario } from './perf-scenarios';
+import { isPerfScenario, scenarioFor } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { SoundRepo } from './db/sound';
 import { SoundPass } from './sound/sound-pass';
@@ -955,10 +955,13 @@ type PerfRun = Parameters<typeof runPerformanceTest>[0] & {
   program: () => Pick<Electron.BrowserWindow, 'webContents'> | null;
 };
 
-/** The performance check with a heavy case for the screens (DRASHTI_PERF_SCENARIO; Session 15). */
-function runPerformanceTestWithScenario(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
+/**
+ * The performance check with a heavy case for the screens (DRASHTI_PERF_SCENARIO; Session 15). Session 57: a fault
+ * while the case sets up fails the check at once, with its message (scenarioFor).
+ */
+async function runPerformanceTestWithScenario(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
   if (!perfScenario) return runPerformanceTestWithNodes(ctx);
-  const scenario = startScenario(perfScenario, {
+  const scenario = await scenarioFor(perfScenario, {
     db: ctx.library.db,
     mediaDir: ctx.library.mediaDir,
     ffmpeg: ctx.ffmpegPath(),
