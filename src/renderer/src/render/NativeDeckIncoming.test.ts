@@ -42,3 +42,26 @@ it('keeps the outgoing slide while an early click waits for the incoming transit
   const showing = nextShowing({ on: incoming, off: previous, fade }, pressed, 2200);
   expect(showing).toMatchObject({ on: incoming, off: previous, fade });
 });
+
+it('shows an edit made while an early click waits for the incoming transition, not the click’s older slide, once it ends', () => {
+  const previous = { ...layer, slideIndex: 0, slide: { ...layer.slide, id: 'previous' }, shownAt: 1000 };
+  const fade = { kind: native.kind, start: layer.shownAt, ms: native.durationMs, native };
+  const pressed = { ...incoming, step: 1, stepAt: 2600 };
+  const waiting = nextShowing({ on: incoming, off: previous, fade }, pressed, 2200);
+  // Edited during the transition, on the same click (the engine keeps it): still a slide Drashti plays itself, or no
+  // longer one (an older deck's slide whose clicks an edit does not keep).
+  const edits: [string, SlideLayer][] = [
+    ['still one Drashti plays itself', { ...pressed, slide: { ...pressed.slide } }],
+    [
+      'no longer one Drashti plays itself',
+      { ...pressed, slide: { ...pressed.slide, deck: { steps: [], media: [] } } },
+    ],
+  ];
+  for (const [what, edited] of edits) {
+    const showing = nextShowing(waiting, edited, 2300);
+    // As the transition ends, SlideLayerView puts through the click that waited, if any.
+    const done = { on: showing.on, off: null, fade: null };
+    const after = showing.afterTransition ? nextShowing(done, showing.afterTransition, 2700) : done;
+    expect(after.on, what).toBe(edited);
+  }
+});
