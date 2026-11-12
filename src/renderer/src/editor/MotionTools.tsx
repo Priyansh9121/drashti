@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { type DeckEffect, type DeckSlide, stepCount } from '../../../shared/deck';
-import type { ElementMotion } from '../../../shared/model';
+import type { ElementMotion, SlideElement } from '../../../shared/model';
 import { elementMotionSchema } from '../../../shared/model-schema';
 import { hasElementMotion } from '../../../shared/element-motion';
 import { renderEditedSlide } from '../../../shared/slide-design';
@@ -12,6 +12,7 @@ import { commit, useEditor } from './editor-store';
 import { findSlide, mapElements } from './ops';
 import { finishTextEditing } from './TextBoxEditor';
 import { Cluster, Divider } from './RibbonParts';
+import { emptyClicks } from './empty-clicks';
 
 const EFFECTS = {
   in: [
@@ -101,43 +102,61 @@ function importedEffect(effect: DeckEffect): string {
 }
 
 /** An imported slide's PowerPoint animations: how many clicks, each effect in order, and what plays them. */
-export function ImportedMotion({ deck }: { deck: DeckSlide }) {
+export function ImportedMotion({ deck, elements }: { deck: DeckSlide; elements?: readonly SlideElement[] }) {
   const clicks = stepCount(deck) - 1;
   const effects = deck.motion?.effects ?? [];
+  const empty = elements ? emptyClicks(deck, elements) : [];
+  const emptyNote =
+    empty.length === 1
+      ? `Click ${String(empty[0])} has nothing left to move. Next shows no change there. Check it before going live.`
+      : empty.length > 1
+        ? `Clicks ${empty.slice(0, -1).join(', ')} and ${String(empty.at(-1))} have nothing left to move. Next shows no change there. Check them before going live.`
+        : null;
+  const notes = [
+    emptyNote,
+    deck.motion?.approximate
+      ? deck.steps.length
+        ? 'This slide keeps PowerPoint’s video until you edit it.'
+        : 'This slide uses the closest effects Drashti can play.'
+      : null,
+    effects.some((effect) => effect.paragraphs)
+      ? 'An added paragraph comes in with the point before it.'
+      : null,
+  ].filter((note) => note !== null);
   return (
     <>
       <Divider />
       <Cluster name="PowerPoint animations">
-        <div className="max-w-52 space-y-1 text-xs text-muted" data-testid="imported-motion">
-          <p>{clicks === 1 ? '1 click' : `${String(clicks)} clicks`}</p>
-          {effects.length > 0 && (
-            <ol
-              aria-label="PowerPoint animation order"
-              className="max-h-16 overflow-y-auto"
-              // Four lines show and a longer list scrolls; a line can wrap at the panel's width, so even a short
-              // list can scroll. The keys reach it whenever it is there.
+        <div className="flex items-start gap-2 text-xs text-muted" data-testid="imported-motion">
+          <div className="w-52 shrink-0 space-y-1">
+            <p>{clicks === 1 ? '1 click' : `${String(clicks)} clicks`}</p>
+            {effects.length > 0 && (
+              <ol
+                aria-label="PowerPoint animation order"
+                className="max-h-16 overflow-y-auto"
+                // A line can wrap at this width (an effect's name and its paragraph range), so even a short
+                // list can scroll. The keys reach it whenever it is there.
+                tabIndex={0}
+              >
+                {effects.map((effect, index) => (
+                  <li key={index}>
+                    {effect.step === 0 ? 'With the slide' : `Click ${String(effect.step)}`} ·{' '}
+                    {importedEffect(effect)}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+          {notes.length > 0 && (
+            <ul
+              aria-label="PowerPoint animation notes"
+              className="max-h-21 w-52 shrink-0 space-y-1 overflow-y-auto"
               tabIndex={0}
             >
-              {effects.map((effect, index) => (
-                <li key={index}>
-                  {effect.step === 0 ? 'With the slide' : `Click ${String(effect.step)}`} ·{' '}
-                  {importedEffect(effect)}
-                </li>
+              {notes.map((note) => (
+                <li key={note}>{note}</li>
               ))}
-            </ol>
-          )}
-          {effects.some((effect) => effect.paragraphs) && (
-            <p>Added paragraphs appear with the built paragraph before them.</p>
-          )}
-          {clicks > 0 && (
-            <p>Deleting an animated shape or paragraph can leave a click with no visible change.</p>
-          )}
-          {deck.motion?.approximate && (
-            <p>
-              {deck.steps.length
-                ? 'This slide keeps PowerPoint’s video until you edit it.'
-                : 'This slide uses the closest effects Drashti can play.'}
-            </p>
+            </ul>
           )}
         </div>
       </Cluster>
@@ -151,7 +170,8 @@ export function MotionTools() {
   const ids = useEditor((s) => s.selection);
   const preview = useEditor((s) => s.previewAt);
   const slide = doc ? findSlide(doc, slideId) : undefined;
-  if (slide?.deck?.motion) return <ImportedMotion deck={slide.deck} />;
+  if (doc && slide?.deck?.motion)
+    return <ImportedMotion deck={slide.deck} elements={renderEditedSlide(doc, slide).elements} />;
   const selected = slide?.elements.filter((el) => ids.includes(el.id)) ?? [];
   const disabled = !selected.length || Boolean(slide?.deck);
   const update = (phase: Phase, field: 'kind' | 'delayMs' | 'durationMs', value: string | number) => {
