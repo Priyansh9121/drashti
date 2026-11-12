@@ -1,9 +1,8 @@
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Rect, ShapeElement, SlideElement, TextElement, TextRun } from '../../../shared/model';
-import { SHAPE_NAMES } from '../../../shared/model';
 import { groupedSelection } from '../../../shared/element-groups';
-import type { EditDoc } from '../../../shared/slide-edit';
+import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { legacyFontOf } from '../../../shared/slide-edit';
 import { editingCanvas } from '../../../shared/document-page';
 import { useMedia } from '../library/library-store';
@@ -61,7 +60,6 @@ import { copyElements, pasteElements } from './clipboard';
 import { finishTextEditing, TextBoxEditor } from './TextBoxEditor';
 import { SafeAreas } from './SafeAreas';
 import { connectSafeAreas } from './safe-areas-store';
-import { cutText } from '../../../shared/text';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ZoomIn, ZoomOut } from '../ui/icons';
@@ -69,6 +67,7 @@ import type { Zoom } from './zoom';
 import { scaleFor, zoomBy, zoomIn, zoomLabel, zoomOut, zoomScroll } from './zoom';
 import { pdfMark } from './pdf-marks';
 import type { PdfCanvasTool } from './pdf-marks';
+import { elementName, type SlideObject } from './objects';
 
 /*
  * The slide being edited, scaled to fit, drawn by the same renderer as the
@@ -107,6 +106,13 @@ interface PdfPointerPreview {
   element: ShapeElement;
 }
 
+interface ObjectClick {
+  point: Point;
+  top: string;
+  picked: string;
+  pressed: string;
+}
+
 type Drag =
   | {
       kind: 'move';
@@ -116,8 +122,7 @@ type Drag =
       box: Rect;
       lines: SnapLines;
       dragging: boolean;
-      /** Pressed on one of several selected: a click (no drag) leaves only this one selected. */
-      narrowTo: string | null;
+      click: ObjectClick | null;
     }
   | {
       kind: 'resize';
@@ -139,24 +144,6 @@ type Drag =
 
 /** The angle (degrees) from `c` to `p`. */
 const angleOf = (c: Point, p: Point) => (Math.atan2(p.y - c.y, p.x - c.x) * 180) / Math.PI;
-
-const KIND_NAME: Record<SlideElement['kind'], string> = {
-  text: 'Text box',
-  shape: 'Shape',
-  image: 'Picture',
-  video: 'Video',
-  timer: 'Timer',
-};
-
-/** How an element is read out: its kind and words, or its kind. */
-export function elementName(el: SlideElement): string {
-  if (el.kind === 'text') {
-    const words = el.text.trim().replace(/\s+/gu, ' ');
-    return words ? `${KIND_NAME.text}: ${cutText(words, 40)}` : `${KIND_NAME.text} (empty)`;
-  }
-  if (el.kind === 'shape') return SHAPE_NAMES[el.shape ?? 'rectangle'];
-  return KIND_NAME[el.kind];
-}
 
 const CURSOR: Record<Handle, string> = {
   nw: 'nwse-resize',
@@ -187,6 +174,7 @@ export function Canvas({ platform }: { platform: string }) {
   const slideId = useEditor((s) => s.slideId);
   const selection = useEditor((s) => s.selection);
   const editing = useEditor((s) => s.editing);
+  const editingAt = useEditor((s) => s.editingAt);
   const zoom = useEditor((s) => s.zoom);
   const aids = useEditor((s) => s.aids);
   const previewAt = useEditor((s) => s.previewAt);
@@ -249,7 +237,7 @@ export function Canvas({ platform }: { platform: string }) {
   const drag = useRef<Drag | null>(null);
   const [guides, setGuides] = useState<Guides | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
-  const [editAt, setEditAt] = useState<Point | null>(null);
+  const lastClick = useRef<(ObjectClick & { slide: EditSlide; selection: readonly string[] }) | null>(null);
   const pdfPointer = useRef<PdfPointerGesture | null>(null);
   const [pdfDraft, setPdfDraft] = useState<PdfPointerPreview | null>(null);
   const cancelPdfPointer = () => {
@@ -280,12 +268,16 @@ export function Canvas({ platform }: { platform: string }) {
   // Where the slide sits: in the middle while it fits, else PAD in from the scrolled area's edges.
   const left = Math.max(PAD, (size.width - width) / 2);
   const top = Math.max(PAD, (size.height - height) / 2);
-  const elements = slide.elements;
+  const elements: readonly SlideObject[] = slide.elements;
+  const visible = elements.filter((el) => !el.hidden);
   const rendered = renderEditedSlide(doc, slide);
   const fixedIds = new Set(rendered.masterElementIds);
-  const fixed = rendered.elements.filter((el) => fixedIds.has(el.id));
+  const fixed = rendered.elements.filter((el: SlideObject) => fixedIds.has(el.id) && !el.hidden);
   // The words the whole-picture darkening goes under: the first box with any, or a Timer (Session 50).
-  const wholeUnder = slide.darken?.kind === 'whole' ? rendered.elements.find(darkensBehind)?.id : undefined;
+  const wholeUnder =
+    slide.darken?.kind === 'whole'
+      ? rendered.elements.find((el: SlideObject) => !el.hidden && darkensBehind(el))?.id
+      : undefined;
   const wholeDarkening =
     wholeUnder && slide.darken ? (
       <div
@@ -322,7 +314,7 @@ export function Canvas({ platform }: { platform: string }) {
   const linesWithout = (ids: readonly string[]) => {
     const lines = snapLines(
       pageSize,
-      elements.filter((e) => !ids.includes(e.id)).map((e) => boundsOf(e)),
+      visible.filter((e) => !ids.includes(e.id)).map((e) => boundsOf(e)),
     );
     return {
       x: [
@@ -339,6 +331,8 @@ export function Canvas({ platform }: { platform: string }) {
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const previous = lastClick.current;
+    lastClick.current = null;
     if (e.button !== 0) return;
     const intent = useEditor.getState();
     if (intent.pdfTool && slide.documentPage?.ext === 'pdf') {
@@ -367,10 +361,9 @@ export function Canvas({ platform }: { platform: string }) {
     const p = pointOf(e);
     const handle = target.closest<HTMLElement>('[data-handle]')?.dataset['handle'];
     const guide = target.closest<HTMLElement>('[data-guide-axis]');
-    const hit = hitTest(elements, p, 6 / scale);
-    // Typing in a box: clicks inside it place the caret; anywhere else ends the typing.
-    if (editing) {
-      if (hit === editing && !handle && !guide) return;
+    // Typing in a box: clicks inside it place the caret, even if the box sits below other objects.
+    if (intent.editing) {
+      if (target.closest<HTMLElement>('[data-editing]')?.dataset['element'] === intent.editing) return;
       finishTextEditing();
     }
     e.preventDefault();
@@ -440,17 +433,26 @@ export function Canvas({ platform }: { platform: string }) {
     }
     e.currentTarget.setPointerCapture(e.pointerId);
     const additive = e.shiftKey || (platform === 'darwin' ? e.metaKey : e.ctrlKey);
+    const hit = hitTest(elements, p, 6 / scale);
     if (hit) {
+      const repeat =
+        !additive &&
+        previous?.slide === slide &&
+        previous.top === hit &&
+        previous.selection === now.selection &&
+        Math.hypot(p.x - previous.point.x, p.y - previous.point.y) * scale <= DRAG_PX;
+      const pressed = repeat ? previous.picked : hit;
       let ids = now.selection;
-      const members = groupedSelection(elements, [hit]);
+      const members = groupedSelection(elements, [pressed]);
       if (additive)
         ids = members.every((id) => ids.includes(id))
           ? ids.filter((id) => !members.includes(id))
           : [...ids, ...members];
-      else if (!ids.includes(hit)) ids = members;
-      select(ids);
+      else if (!ids.includes(pressed)) ids = members;
+      select(ids, { expandGroups: additive });
       ids = useEditor.getState().selection;
-      if (!ids.includes(hit)) return;
+      if (!ids.includes(pressed)) return;
+      const picked = repeat ? (hitTest(elements, p, 6 / scale, pressed) ?? hit) : hit;
       const moving = elements.filter((el) => ids.includes(el.id));
       drag.current = {
         kind: 'move',
@@ -460,7 +462,7 @@ export function Canvas({ platform }: { platform: string }) {
         box: unionOf(moving.map((el) => boundsOf(el))) ?? { x: 0, y: 0, width: 0, height: 0 },
         lines: linesWithout(ids),
         dragging: false,
-        narrowTo: !additive && ids.length > 1 ? hit : null,
+        click: additive ? null : { point: p, top: hit, picked, pressed },
       };
       return;
     }
@@ -591,7 +593,7 @@ export function Canvas({ platform }: { platform: string }) {
     }
   };
 
-  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>, canceled = false) => {
     const mark = pdfPointer.current;
     if (mark) {
       pdfPointer.current = null;
@@ -640,15 +642,18 @@ export function Canvas({ platform }: { platform: string }) {
     if (d.kind === 'marquee') {
       const box = marquee;
       setMarquee(null);
-      if (box && box.width * scale > DRAG_PX && box.height * scale > DRAG_PX) {
-        const inside = elements.filter((el) => overlaps(boundsOf(el), box)).map((el) => el.id);
+      if (!canceled && box && box.width * scale > DRAG_PX && box.height * scale > DRAG_PX) {
+        const inside = visible.filter((el) => overlaps(boundsOf(el), box)).map((el) => el.id);
         select([...new Set([...d.base, ...inside])]);
       }
       return;
     }
-    // A click on one of several selected elements (pressed there to drag them all, but not moved).
-    if (d.kind === 'move' && !d.dragging && d.narrowTo) {
-      select([d.narrowTo]);
+    // Change the pick only on a click. A drag still moves the object held when the pointer went down.
+    if (!canceled && d.kind === 'move' && !d.dragging && d.click) {
+      const { picked, pressed } = d.click;
+      if (picked !== pressed) select([picked], { expandGroups: false });
+      else if (d.ids.length > 1) select([picked]);
+      lastClick.current = { ...d.click, slide, selection: useEditor.getState().selection };
       return;
     }
     endGesture();
@@ -660,22 +665,14 @@ export function Canvas({ platform }: { platform: string }) {
       useEditor.setState({ pdfTool: null });
       return;
     }
-    onPointerUp(e);
+    onPointerUp(e, true);
   };
 
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const hit = hitTest(elements, pointOf(e), 6 / scale);
-    const el = elements.find((x) => x.id === hit);
-    if (el?.kind !== 'text') return;
-    const legacy = legacyFontOf(el);
-    if (legacy) {
-      tell(
-        `These words are typed in a legacy font (${legacy}): the box can be moved and resized, but its words cannot be edited yet.`,
-      );
-      return;
-    }
-    setEditAt({ x: e.clientX, y: e.clientY });
-    startEditing(el.id);
+    const click = lastClick.current;
+    lastClick.current = null;
+    // The second press of a double-click edits the box it pressed, before its single-click pick cycles.
+    if (click?.slide === slide) startEditing(click.pressed, { x: e.clientX, y: e.clientY });
   };
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -722,15 +719,7 @@ export function Canvas({ platform }: { platform: string }) {
     }
     if (e.key === 'Enter' && single?.kind === 'text') {
       e.preventDefault();
-      const legacy = legacyFontOf(single);
-      if (legacy)
-        tell(
-          `These words are typed in a legacy font (${legacy}): the box can be moved and resized, but its words cannot be edited yet.`,
-        );
-      else {
-        setEditAt(null);
-        startEditing(single.id);
-      }
+      startEditing(single.id);
       return;
     }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length > 0) {
@@ -908,13 +897,13 @@ export function Canvas({ platform }: { platform: string }) {
               )}
               {/* Each text box's measure, for the inspector (words past the box, the size drawn); what the
                 slide's transliteration is of, for its words' lang (Sessions 31–36, I18N-4). */}
-              <TranslitSourceContext.Provider value={translitSource(elements)}>
+              <TranslitSourceContext.Provider value={translitSource(visible)}>
                 <MeasureContext.Provider value={keepMeasure}>
-                  {elements.map((el) => [
+                  {visible.map((el) => [
                     // Darkening behind the words (Sessions 31–36, SLD-3), as the screens draw it.
                     el.id === wholeUnder ? wholeDarkening : null,
                     el.id === editing && el.kind === 'text' ? (
-                      <TextBoxEditor key={el.id} el={el} slideId={slide.id} at={editAt} />
+                      <TextBoxEditor key={el.id} el={el} slideId={slide.id} at={editingAt} />
                     ) : (
                       <ElementView
                         key={el.id}

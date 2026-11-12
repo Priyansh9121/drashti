@@ -80,24 +80,26 @@ export function contains(p: Placed, point: Point, slack = 0): boolean {
   );
 }
 
-/** The topmost element under the point (the list is bottom to top), or null. */
+/** The topmost visible hit, or the one underneath the last pick at this point. */
 export function hitTest(
-  elements: readonly (Placed & { id: string })[],
+  elements: readonly (Placed & { id: string; hidden?: boolean })[],
   point: Point,
   slack = 0,
+  after?: string,
 ): string | null {
-  if (slack > 0) {
-    // A nearby frame’s tolerance must not cover an exact hit on the visible frame below it.
-    for (let i = elements.length - 1; i >= 0; i--) {
-      const el = elements[i];
-      if (el && contains(el, point)) return el.id;
-    }
-  }
+  const exact: string[] = [];
+  const nearby: string[] = [];
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
-    if (el && contains(el, point, slack)) return el.id;
+    if (!el || el.hidden) continue;
+    if (contains(el, point)) exact.push(el.id);
+    else if (slack > 0 && contains(el, point, slack)) nearby.push(el.id);
   }
-  return null;
+  // A nearby frame's tolerance must not cover an exact hit on a frame below it.
+  const hits = exact.length ? exact : nearby;
+  if (!hits.length) return null;
+  const previous = after === undefined ? -1 : hits.indexOf(after);
+  return hits[(previous + 1) % hits.length] ?? null;
 }
 
 /** Whether two upright boxes overlap. */

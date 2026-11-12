@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { useMemo } from 'react';
 import type { EditDoc, SlideLook } from '../../../shared/slide-edit';
-import { slidesOf } from '../../../shared/slide-edit';
+import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
 import { findSlide } from './ops';
 import type { Measured } from '../render/measure';
 import type { Zoom } from './zoom';
 import type { PdfCanvasTool } from './pdf-marks';
+import type { Point } from './geometry';
+import type { SlideObject } from './objects';
 import { groupedSelection } from '../../../shared/element-groups';
 import { sizeLook } from '../../../shared/slide-size';
 import { slideCanvas } from '../../../shared/document-page';
@@ -62,6 +64,8 @@ export interface EditorView {
   selection: string[];
   /** The text box being typed in. */
   editing: string | null;
+  /** Where to put the caret when a pointer opened this text box. */
+  editingAt: Point | null;
   past: EditStep[];
   future: EditStep[];
   /** The last step that later ones may join (arrow-key nudges). */
@@ -114,6 +118,7 @@ const closed: EditorView = {
   slideId: null,
   selection: [],
   editing: null,
+  editingAt: null,
   past: [],
   future: [],
   coalesce: null,
@@ -143,7 +148,7 @@ export const useEditor = create<EditorView>(() => closed);
 const sourceGate = new SourceConversionGate();
 let sourcePromptView: Pick<
   EditorView,
-  'group' | 'selection' | 'editing' | 'previewAt' | 'made' | 'pdfTool'
+  'group' | 'selection' | 'editing' | 'editingAt' | 'previewAt' | 'made' | 'pdfTool'
 > | null = null;
 
 function requestSourceConversion(ids: readonly string[], resume?: () => void, next?: EditDoc): boolean {
@@ -156,6 +161,7 @@ function requestSourceConversion(ids: readonly string[], resume?: () => void, ne
       group: s.group,
       selection: s.selection,
       editing: s.editing,
+      editingAt: s.editingAt,
       previewAt: s.previewAt,
       made: s.made.filter((id) => present.has(id)),
       pdfTool: s.pdfTool,
@@ -422,14 +428,15 @@ export function noteOutside(step: { undo: () => void; redo: () => void }): void 
   });
 }
 
-export function select(ids: readonly string[]): void {
+export function select(ids: readonly string[], { expandGroups = true } = {}): void {
   const s = useEditor.getState();
   if (!s.doc) return;
   const elements = findSlide(s.doc, s.slideId)?.elements ?? [];
   useEditor.setState({
-    selection: validSelection(s.doc, s.slideId, groupedSelection(elements, ids)),
+    selection: validSelection(s.doc, s.slideId, expandGroups ? groupedSelection(elements, ids) : ids),
     previewAt: null,
     editing: null,
+    editingAt: null,
   });
 }
 
@@ -441,15 +448,18 @@ export function showSlide(slideId: string): void {
     slideId,
     selection: [],
     editing: null,
+    editingAt: null,
     previewAt: null,
     pdfTool: null,
     pdfDrawing: false,
   });
 }
 
-export function startEditing(elementId: string): void {
+export function startEditing(elementId: string, at: Point | null = null): void {
   const s = useEditor.getState();
-  const element = s.doc ? findSlide(s.doc, s.slideId)?.elements.find((el) => el.id === elementId) : undefined;
+  const element: SlideObject | undefined = s.doc
+    ? findSlide(s.doc, s.slideId)?.elements.find((el) => el.id === elementId)
+    : undefined;
   if (element?.kind !== 'text') {
     // Insert Text calls commit then starts typing. Its proposed element is not
     // published until the pending content change is accepted.
@@ -458,11 +468,19 @@ export function startEditing(elementId: string): void {
       proposed &&
       findSlide(proposed, s.slideId)?.elements.some((el) => el.id === elementId && el.kind === 'text')
     )
-      sourceGate.pending?.after.push(() => startEditing(elementId));
+      sourceGate.pending?.after.push(() => startEditing(elementId, at));
     return;
   }
-  if (!allowSourceContent(s.slideId, () => startEditing(elementId))) return;
-  useEditor.setState({ editing: elementId, selection: [elementId], previewAt: null });
+  if (element.hidden) return;
+  const legacy = legacyFontOf(element);
+  if (legacy) {
+    tell(
+      `These words are typed in a legacy font (${legacy}): the box can be moved and resized, but its words cannot be edited yet.`,
+    );
+    return;
+  }
+  if (!allowSourceContent(s.slideId, () => startEditing(elementId, at))) return;
+  useEditor.setState({ editing: elementId, editingAt: at, selection: [elementId], previewAt: null });
 }
 
 /** Tell the operator something, in the editor. */
@@ -476,6 +494,7 @@ export function stopEditing(): void {
   const elements = s.doc ? findSlide(s.doc, s.slideId)?.elements : undefined;
   useEditor.setState({
     editing: null,
+    editingAt: null,
     ...(s.editing && elements ? { selection: groupedSelection(elements, s.selection) } : {}),
   });
 }
