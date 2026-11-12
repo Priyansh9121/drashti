@@ -276,9 +276,19 @@ export async function readZipEntries(
   want: (name: string) => boolean,
   maxBytes = 8 * 1024 * 1024,
 ): Promise<Map<string, Buffer>> {
+  const out = new Map<string, Buffer>();
+  for await (const [name, bytes] of iterateZipEntries(path, want, maxBytes)) out.set(name, bytes);
+  return out;
+}
+
+/** Read selected parts one at a time, so a caller that only inspects them can discard each as it goes. */
+export async function* iterateZipEntries(
+  path: string,
+  want: (name: string) => boolean,
+  maxBytes = 8 * 1024 * 1024,
+): AsyncGenerator<[string, Buffer]> {
   const fh = await open(path, 'r');
   try {
-    const out = new Map<string, Buffer>();
     for (const entry of await listOpen(fh)) {
       if (entry.isDirectory || !want(entry.name) || entry.size > maxBytes || entry.compressedSize > maxBytes)
         continue;
@@ -288,9 +298,8 @@ export async function readZipEntries(
         throw new ZipError(`Broken entry ${entry.name}.`);
       const dataStart = entry.offset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28);
       const raw = await readAt(fh, dataStart, entry.compressedSize);
-      out.set(entry.name, entry.method === 8 ? inflateRawSync(raw, { maxOutputLength: maxBytes }) : raw);
+      yield [entry.name, entry.method === 8 ? inflateRawSync(raw, { maxOutputLength: maxBytes }) : raw];
     }
-    return out;
   } finally {
     await fh.close();
   }
