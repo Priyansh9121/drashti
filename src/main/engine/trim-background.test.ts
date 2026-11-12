@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import { rowVideoLive } from '../../shared/engine/state';
 import type { MediaMarkers } from '../../shared/markers';
 import { savedFrom, toRestore } from '../recovery/live-state';
 import { MemoryPlaylistSource } from './playlist-source';
@@ -86,4 +87,27 @@ it.each(['legacy', 'current'] as const)('restores the reset background from a %s
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+it('counts a row’s video as live from its row, or while that row is LIVE and the same video is chosen again', () => {
+  const x = fixture();
+  const engine = x.engine();
+  expect(x.play(engine, 'reset').ok).toBe(true);
+  expect(rowVideoLive(engine.current, 'reset', 'video')).toBe(true);
+  expect(rowVideoLive(engine.current, 'reset', 'another video')).toBe(false);
+  // Chosen again straight from Media: the same file carries on, with no row of its own.
+  engine.dispatch({
+    type: 'setBackground',
+    background: { kind: 'media', mediaId: 'video', media: 'video', fit: 'fit', loop: false },
+  });
+  expect(engine.current.layers.background).toMatchObject({ mediaId: 'video', sourceItemId: null });
+  expect(rowVideoLive(engine.current, 'reset', 'video')).toBe(true);
+
+  // Left under another row's slide, the video is still its own row's.
+  const under = x.engine();
+  expect(x.play(under, 'reset').ok).toBe(true);
+  expect(x.play(under, 'words-row').ok).toBe(true);
+  expect(rowVideoLive(under.current, 'reset', 'video')).toBe(true);
+  under.dispatch({ type: 'clearAll' });
+  expect(rowVideoLive(under.current, 'reset', 'video')).toBe(false);
 });
