@@ -212,6 +212,7 @@ async function harness(over: Partial<LinkServiceDeps> = {}): Promise<Harness> {
     spawn: inProcessWorker,
     onAir: () => air.on,
     freeBytes: () => 100 * 1024 ** 3,
+    freeBytesAsync: (folder) => Promise.resolve(over.freeBytes?.(folder) ?? 100 * 1024 ** 3),
     defaultFolder: join(root, 'Drashti downloads'),
     lastFolder: { get: () => folder, set: () => undefined },
     pickFolder: () => Promise.resolve(null),

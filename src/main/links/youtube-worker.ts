@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs';
+import { mkdirSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { YouTubeType } from '../../shared/links';
 import type { FromWorker, ToWorker } from './protocol';
@@ -80,6 +80,17 @@ export function youtubeWorker(
   const startDownload = () => {
     const m = pending;
     if (!m || held || stopped || current) return;
+    try {
+      mkdirSync(m.workDir, { recursive: true });
+    } catch {
+      pending = null;
+      post({
+        type: 'failed',
+        code: 'name',
+        message: 'Drashti couldn’t make a place for the download. Check the downloads folder and try again.',
+      });
+      return;
+    }
     why = null;
     // yt-dlp counts each part on its own (the picture, then the sound): add them up, and only ever
     // say more than before (a run started again after a hold counts its parts again).
