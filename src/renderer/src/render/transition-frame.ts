@@ -36,6 +36,10 @@ export interface SlideFrame {
   transform: string;
   /** A wipe's clip on the whole slide. */
   clip?: string;
+  /** A deck's own transition only: a CSS mask-image on the whole slide (PowerPoint's Wipe, its soft band). */
+  mask?: string;
+  /** A deck's own transition only: a CSS filter on the whole slide (the slide PowerPoint's Cover or Uncover moves). */
+  filter?: string;
 }
 
 /** A part of a slide while a move runs (its words): its opacity, transform and clip ('' for none). */
