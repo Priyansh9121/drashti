@@ -284,7 +284,12 @@ describe('Shape as PowerPoint’s own movie shows it (run 2)', () => {
     const points = body
       .replace(/^evenodd,\s*/u, '')
       .split(',')
-      .map((pair) => pair.trim().split(/\s+/u).map((v) => Number.parseFloat(v) / 100))
+      .map((pair) =>
+        pair
+          .trim()
+          .split(/\s+/u)
+          .map((v) => Number.parseFloat(v) / 100),
+      )
       .map(([x = 0, y = 0]): [number, number] => [x * box.width, y * box.height]);
     return (y) => {
       const list: [number, number][] = [];
