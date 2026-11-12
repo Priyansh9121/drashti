@@ -1,6 +1,10 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import type { LowerThirdInput } from '../../src/shared/lower-thirds';
+import { animationById, animationLength } from '../../src/shared/lower-third-animations';
+import { DESIGN_MOTIONS, isDesignMotion } from '../../src/shared/lower-third-design-motions';
+import type { LowerThirdTemplate } from '../../src/shared/lower-third-templates';
+import { LOWER_THIRD_TEMPLATES } from '../../src/shared/lower-third-templates';
+import type { LowerThird, LowerThirdInput } from '../../src/shared/lower-thirds';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../src/shared/lower-thirds';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { isExpectedStudioDiscardClose } from './expected-studio-close';
@@ -15,6 +19,7 @@ import {
   setUpScreen,
   windowShowing,
 } from './helpers';
+import { holdClock } from './placeholder-slides';
 import { CI_WINDOW } from './window-size';
 
 /*
@@ -30,8 +35,10 @@ import { CI_WINDOW } from './window-size';
 const isStudio = (p: Page) => p.url().includes('lower-thirds.html');
 const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
 
-async function start(): Promise<{ app: ElectronApplication; win: Page; out: Page }> {
-  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
+async function start(
+  env: Record<string, string> = {},
+): Promise<{ app: ElectronApplication; win: Page; out: Page }> {
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', ...env });
   const win = await operatorPage(app);
   await operatorReady(win);
   await win.setViewportSize({ width: 1440, height: 900 });
@@ -201,6 +208,10 @@ test('the template picker plays one preview, filters the grid and keeps favourit
 
   await trigger.click();
   await expect(search).toBeFocused();
+  const bigPreview = studio.getByTestId('lower-third-preview');
+  await expect(bigPreview).not.toHaveAttribute('data-playing', 'true');
+  await expect(bigPreview.getByTestId('lower-third-layer')).toHaveAttribute('data-lt-phase', 'still');
+  await expect(tile).toHaveAccessibleDescription(/From the left/u);
   await expectInView(picker, 'the template picker at the CI window size');
   await expect(picker.getByRole('button', { name: 'Best 20' })).toHaveAttribute('aria-pressed', 'true');
   expect(await tiles.count()).toBeGreaterThan(1);
@@ -208,35 +219,84 @@ test('the template picker plays one preview, filters the grid and keeps favourit
 
   const picture = tile.getByTestId('lower-third-layer');
   await expect(picture).toHaveAttribute('data-lt-phase', 'still');
-  await tile.evaluate((el) => {
-    const observer = new MutationObserver(() => {
-      if (!el.querySelector('[data-lt-phase="in"]')) return;
-      (el as HTMLElement).dataset['sawTemplateEntrance'] = 'true';
-      observer.disconnect();
+  const watchEntrance = () =>
+    tile.evaluate((el) => {
+      const button = el as HTMLElement;
+      delete button.dataset['sawTemplateEntrance'];
+      const observer = new MutationObserver(() => {
+        if (!button.querySelector('[data-lt-phase="in"]')) return;
+        button.dataset['sawTemplateEntrance'] = 'true';
+        observer.disconnect();
+      });
+      observer.observe(button, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['data-lt-phase'],
+      });
     });
-    observer.observe(el, {
+  await picker.evaluate((el) => {
+    const gallery = el as HTMLElement;
+    const observer = new MutationObserver(() => {
+      const active = gallery.querySelectorAll('[data-preview-playing="true"]').length;
+      const previous = Number(gallery.dataset['maxActivePreviews'] ?? 0);
+      gallery.dataset['maxActivePreviews'] = String(Math.max(previous, active));
+    });
+    observer.observe(gallery, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-lt-phase'],
+      attributeFilter: ['data-preview-playing'],
     });
   });
+  await watchEntrance();
   await tile.hover();
   await expect(tile).toHaveAttribute('data-saw-template-entrance', 'true');
-  await expect(tile.locator('[data-template-preview]')).toHaveAttribute('data-preview-playing', 'true');
-  await expect(picker.locator('[data-preview-playing="true"]')).toHaveCount(1);
+  await expect(picker).toHaveAttribute('data-max-active-previews', '1');
+  await tile.evaluate((el) => {
+    const button = el as HTMLElement;
+    const preview = button.querySelector('[data-template-preview]');
+    const observer = new MutationObserver(() => {
+      if (button.querySelector('[data-template-preview]') !== preview)
+        button.dataset['previewRestarted'] = 'true';
+    });
+    observer.observe(button, { childList: true, subtree: true });
+  });
+  await favourite.hover();
+  await tile.hover();
+  await expect(tile).not.toHaveAttribute('data-preview-restarted', 'true');
   await search.hover();
   await expect(picker.locator('[data-preview-playing="true"]')).toHaveCount(0);
 
   await picker.getByRole('button', { name: 'All templates' }).click();
   await search.fill('NEWS BAND');
   await expect(tiles).toHaveCount(1);
-  await picker.getByLabel('Direction', { exact: true }).selectOption('left');
+  const direction = picker.getByLabel('Direction', { exact: true });
+  const tags = await tile.evaluate((el) => {
+    const data = (el as HTMLElement).dataset;
+    return { direction: data['direction'], kind: data['kind'], feel: data['feel'], speed: data['speed'] };
+  });
+  const wrongDirection = await direction
+    .locator('option')
+    .evaluateAll(
+      (options, chosen) =>
+        options
+          .map((option) => (option as HTMLOptionElement).value)
+          .find((value) => value && value !== chosen),
+      tags.direction,
+    );
+  expect(wrongDirection).toBeDefined();
+  await direction.selectOption(wrongDirection ?? '');
   await expect(tiles).toHaveCount(0);
-  await picker.getByLabel('Direction', { exact: true }).selectOption('right');
-  await picker.getByLabel('Kind', { exact: true }).selectOption('wipe');
-  await picker.getByLabel('Feel', { exact: true }).selectOption('bold');
-  await picker.getByLabel('Speed', { exact: true }).selectOption('steady');
+  for (const [label, value] of [
+    ['Direction', tags.direction],
+    ['Kind', tags.kind],
+    ['Feel', tags.feel],
+    ['Speed', tags.speed],
+  ] as const) {
+    expect(value).toBeTruthy();
+    await picker.getByLabel(label, { exact: true }).selectOption(value ?? '');
+  }
   await expect(tile).toBeVisible();
   await favourite.click();
   await expect(favourite).toHaveAttribute('aria-pressed', 'true');
@@ -246,15 +306,22 @@ test('the template picker plays one preview, filters the grid and keeps favourit
   await expect(trigger).toBeFocused();
   await studio.reload();
   await trigger.click();
-  await picker.getByRole('button', { name: 'Favourites', exact: true }).click();
+  const favouritesButton = picker.getByRole('button', { name: 'Favourites', exact: true });
+  await favouritesButton.click();
   await expect(tiles).toHaveCount(1);
   await expect(favourite).toHaveAttribute('aria-pressed', 'true');
+  await favourite.click();
+  await expect(tiles).toHaveCount(0);
+  await expect(favouritesButton).toBeFocused();
+  await picker.getByRole('button', { name: 'All templates' }).click();
+  await search.fill('News band');
 
+  await watchEntrance();
   await tile.focus();
   await studio.keyboard.press('Shift+Tab');
   await studio.keyboard.press('Tab');
   await expect(tile).toBeFocused();
-  await expect(tile.locator('[data-template-preview]')).toHaveAttribute('data-preview-playing', 'true');
+  await expect(tile).toHaveAttribute('data-saw-template-entrance', 'true');
   await tile.press('Enter');
   await expect(picker).toHaveCount(0);
   await expect(studio.getByTestId('lower-third-line').first()).toHaveValue('Placeholder name');
@@ -262,6 +329,265 @@ test('the template picker plays one preview, filters the grid and keeps favourit
   await picker.getByRole('button', { name: 'Recently used', exact: true }).click();
   await expect(tiles).toHaveCount(1);
   await expect(tile).toBeVisible();
+  await app.close();
+});
+
+test('a name and role design saves, draws its parts in order and hides at the exact end of its exit', async () => {
+  const { app, win, out } = await start({ DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const studio = await openStudio(app, win);
+  await studio.getByTestId('studio-templates').click();
+  await studio.getByRole('button', { name: 'Gold underline', exact: true }).click();
+  await expect(studio.getByTestId('lower-third-line').nth(1)).toHaveValue('Placeholder role');
+  await studio.getByTestId('lower-third-save').click();
+  await expect(studio.getByTestId('studio-row').filter({ hasText: 'Placeholder name' })).toHaveAttribute(
+    'data-saved',
+    'true',
+  );
+  await studio.getByTestId('studio-show').click();
+  const animation = animationById('design-draw-rise');
+  const length = animationLength(animation, 'in', 2);
+  await expect.poll(async () => (await snapshot(win)).state.layers.lowerThird?.animation).toBe(animation.id);
+  const shown = (await snapshot(win)).state.layers.lowerThird;
+  const shownAt = shown?.shownAt ?? 0;
+  const onScreen = out.getByTestId('lower-third-layer');
+  const accent = onScreen.locator('[data-lt-accent]');
+  const lines = onScreen.locator('[data-lt-unit]');
+  const first = Math.round(length * 0.15);
+  await holdClock(app, shownAt + first);
+  await expect(onScreen).toHaveAttribute('data-lt-phase', 'in');
+  await expect(onScreen).toHaveAttribute('data-lt-at', String(first));
+  await expect(accent).toHaveCSS('opacity', '1');
+  await expect(accent).not.toHaveCSS('transform', 'none');
+  await expect(lines.nth(0)).toHaveCSS('opacity', '0');
+  await expect(lines.nth(1)).toHaveCSS('opacity', '0');
+  const middle = Math.round(length * 0.5);
+  await holdClock(app, shownAt + middle);
+  await expect(onScreen).toHaveAttribute('data-lt-at', String(middle));
+  await expect(lines.nth(0)).not.toHaveCSS('opacity', '0');
+  await expect(lines.nth(1)).toHaveCSS('opacity', '0');
+  await holdClock(app, shownAt + length);
+  await expect(onScreen).toHaveAttribute('data-lt-phase', 'still');
+  await expect(lines.nth(1)).toHaveCSS('opacity', '1');
+  await holdClock(app, null);
+
+  await studio.getByTestId('studio-show').click();
+  await expect.poll(async () => (await snapshot(win)).state.lowerThirdOff?.at ?? 0).toBeGreaterThan(0);
+  const hiddenAt = (await snapshot(win)).state.lowerThirdOff?.at ?? 0;
+  const outLength = animationLength(animation, 'out', 2);
+  await holdClock(app, hiddenAt + Math.round(outLength * 0.5));
+  await expect(onScreen).toHaveAttribute('data-lt-phase', 'out');
+  await expect(lines.nth(1)).toHaveCSS('opacity', '0');
+  await holdClock(app, hiddenAt + outLength - 1);
+  await expect(onScreen).toHaveAttribute('data-lt-phase', 'out');
+  await expect(onScreen).toHaveAttribute('data-lt-at', String(outLength - 1));
+  await holdClock(app, hiddenAt + outLength);
+  await expect(onScreen).toHaveCount(0);
+  await holdClock(app, null);
+
+  // A plain fade out keeps the long name wrapped exactly as it was while shown.
+  await studio
+    .getByTestId('lower-third-line')
+    .first()
+    .fill('Placeholder ' + 'Sample'.repeat(17));
+  await tab(studio, 'Animation');
+  await studio.getByTestId('lower-third-out-search').fill('fade');
+  const fade = studio.locator('[data-testid="lower-third-out-animation"][data-id="fade-quick"]');
+  await fade.click();
+  await studio.getByTestId('studio-show').click();
+  await expect(onScreen).toHaveAttribute('data-lt-phase', 'still');
+  const firstLine = onScreen.locator('[data-lt-line]').first();
+  const height = async () => (await firstLine.boundingBox())?.height ?? 0;
+  const wrappedHeight = await height();
+  expect(wrappedHeight).toBeGreaterThan(0);
+  await studio.getByTestId('studio-show').click();
+  await expect.poll(async () => (await snapshot(win)).state.lowerThirdOff?.at ?? 0).toBeGreaterThan(hiddenAt);
+  const fadeAt = (await snapshot(win)).state.lowerThirdOff?.at ?? 0;
+  await holdClock(app, fadeAt + 1);
+  await expect(onScreen).toHaveAttribute('data-lt-at', '1');
+  await expect(onScreen).toHaveAttribute('data-lt-animation', 'fade-quick');
+  expect(await height()).toBeCloseTo(wrappedHeight, 1);
+  await holdClock(app, null);
+  await app.close();
+});
+
+/** The first design offered (one the Performance run leaves out is not) that `fits` picks. */
+function offeredDesign(
+  what: string,
+  fits: (
+    template: LowerThirdTemplate,
+    motion: (typeof DESIGN_MOTIONS)[keyof typeof DESIGN_MOTIONS],
+  ) => boolean,
+): LowerThirdTemplate {
+  const found = LOWER_THIRD_TEMPLATES.find(
+    (t) => isDesignMotion(t.input.animation) && fits(t, DESIGN_MOTIONS[t.input.animation]),
+  );
+  if (!found) throw new Error(`No design is offered ${what}`);
+  return found;
+}
+
+/** A design's line on the screen, as drawn now: its words and the box that lets them rise from behind the line. */
+interface WordsInTheirBox {
+  text: string;
+  /** The box cuts off what reaches past it. */
+  overflow: string;
+  /** The box's room past the words' line box on each side, in ems of the line's own size. */
+  room: { top: number; bottom: number; left: number; right: number };
+  /** How far the words are past the box's bottom edge (on their way up) and past its top edge (on their way down). */
+  below: number;
+  above: number;
+}
+
+const wordsInTheirBoxes = (out: Page): Promise<WordsInTheirBox[]> =>
+  out.getByTestId('lower-third-layer').evaluate((root) => {
+    // The screen's canvas is scaled to its window (the layer is the canvas's width): an em in the window's pixels.
+    const scale = root.getBoundingClientRect().width / (root as HTMLElement).offsetWidth;
+    return [...root.querySelectorAll<HTMLElement>('[data-lt-unit]')].map((words) => {
+      const box = words.parentElement ?? words;
+      const b = box.getBoundingClientRect();
+      const w = words.getBoundingClientRect();
+      const em = parseFloat(getComputedStyle(box).fontSize) * scale;
+      const ems = (px: number) => Math.round((px / em) * 1000) / 1000;
+      return {
+        text: words.textContent,
+        overflow: getComputedStyle(box).overflow,
+        room: {
+          top: ems(w.top - b.top),
+          bottom: ems(b.bottom - w.bottom),
+          left: ems(w.left - b.left),
+          right: ems(b.right - w.right),
+        },
+        below: ems(w.top - b.bottom),
+        above: ems(b.top - w.bottom),
+      };
+    });
+  });
+
+/**
+ * Where the band, its accent, its panel, its lines' blocks and its words are drawn (window pixels): as drawn, and with
+ * the words' boxes given no room. The same both ways when the room moves nothing.
+ */
+const drawnWithAndWithoutRoom = (out: Page): Promise<{ drawn: number[]; withoutRoom: number[] }> =>
+  out.getByTestId('lower-third-layer').evaluate((root) => {
+    const parts = () =>
+      [
+        ...root.querySelectorAll(
+          '[data-lt-band], [data-lt-accent], [data-lt-design-panel], [data-lt-design-line], [data-lt-unit]',
+        ),
+      ].flatMap((part) => {
+        const r = part.getBoundingClientRect();
+        return [r.left, r.top, r.width, r.height];
+      });
+    const boxes = [...root.querySelectorAll<HTMLElement>('[data-lt-unit]')].map((w) => w.parentElement ?? w);
+    const kept = boxes.map((box) => box.getAttribute('style') ?? '');
+    const drawn = parts();
+    for (const box of boxes) {
+      box.style.padding = '0';
+      box.style.margin = '0';
+    }
+    const withoutRoom = parts();
+    boxes.forEach((box, i) => {
+      box.setAttribute('style', kept[i] ?? '');
+    });
+    return { drawn, withoutRoom };
+  });
+
+test('a design’s words keep the marks above and below their letters: their box has room past them on every side, nothing moves for it, and rising or dropping words still start hidden behind its edge (Gujarati and Hindi placeholders)', async () => {
+  test.setTimeout(150_000);
+  const { app, win, out } = await start({ DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const onScreen = out.getByTestId('lower-third-layer');
+  // A line box is 1.25 em of the design's Latin font, and Gujarati and Hindi vowel signs (ૈ ે િ ી above, ુ ૂ ु ू below)
+  // reach up to about 0.19 em past it: the box keeps 0.3 em at least past the words, and the words' first visible
+  // moment on their way up or down is 0.15 em at least past its edge. Placeholder words only.
+  const designs = [
+    {
+      design: offeredDesign(
+        'in Oswald whose name rises',
+        (t, m) => t.input.look.font === 'Oswald' && m.nameFrom === 'up',
+      ),
+      lines: ['નમૂના નામ', 'नमूना भूमिका'],
+    },
+    {
+      design: offeredDesign(
+        'in Hind whose name rises',
+        (t, m) => t.input.look.font === 'Hind' && m.nameFrom === 'up',
+      ),
+      lines: ['નમૂના નામ', 'નમૂના ભૂમિકા'],
+    },
+    {
+      design: offeredDesign(
+        'in Noto Serif whose name drops',
+        (t, m) => t.input.look.font === 'Noto Serif' && m.nameFrom === 'down',
+      ),
+      lines: ['नमूना नाम', 'નમૂના ભૂમિકા'],
+    },
+    {
+      design: offeredDesign('in the words style (its dark halo)', (t) => t.input.look.style === 'words'),
+      lines: ['નમૂના નામ', 'नमूना भूमिका'],
+    },
+  ];
+  for (const [n, { design, lines }] of designs.entries()) {
+    const animation = animationById(design.input.animation);
+    const motion = DESIGN_MOTIONS[design.input.animation as keyof typeof DESIGN_MOTIONS];
+    const lowerThird: LowerThird = {
+      id: `placeholder-design-${String(n)}`,
+      lines: [...lines, ''],
+      look: design.input.look,
+      where: 'hall',
+      animation: animation.id,
+    };
+    const shown = await win.evaluate(
+      (l) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'showLowerThird', lowerThird: l }),
+      lowerThird,
+    );
+    expect(shown, design.name).toMatchObject({ ok: true });
+    const shownAt = (await snapshot(win)).state.layers.lowerThird?.shownAt ?? 0;
+    await expect(onScreen).toHaveAttribute('data-lt-id', lowerThird.id);
+
+    // Each line on its way up or down, at its first visible moment: wholly past its box's edge, marks and all.
+    const timing = animation.timing;
+    const starts = timing.box * 0.5 + (timing.lead ?? 0);
+    for (const [i, from] of [motion.nameFrom, motion.roleFrom].entries()) {
+      if (from !== 'up' && from !== 'down') continue;
+      const at = Math.round(starts + i * (timing.stagger ?? 0)) + 1;
+      await holdClock(app, shownAt + at);
+      await expect(onScreen).toHaveAttribute('data-lt-at', String(at));
+      const line = (await wordsInTheirBoxes(out))[i];
+      const what = `${design.name}, line ${String(i + 1)} (${line?.text ?? ''}) coming ${from} at ${String(at)} ms`;
+      console.info(what, JSON.stringify(line));
+      expect
+        .soft(from === 'up' ? line?.below : line?.above, `${what}: past its box’s edge (ems)`)
+        .toBeGreaterThanOrEqual(0.15);
+    }
+
+    // At rest: room past the words on every side, and nothing drawn anywhere else for it.
+    const inLength = animationLength(animation, 'in', 2);
+    await holdClock(app, shownAt + inLength);
+    await expect(onScreen).toHaveAttribute('data-lt-phase', 'still');
+    const rows = await wordsInTheirBoxes(out);
+    console.info(`${design.name} (${design.input.look.font}) at rest`, JSON.stringify(rows));
+    expect(rows, design.name).toHaveLength(2);
+    for (const [i, line] of rows.entries()) {
+      const what = `${design.name}, line ${String(i + 1)} (${line.text})`;
+      expect.soft(line.overflow, what).toBe('hidden');
+      for (const side of ['top', 'bottom', 'left', 'right'] as const)
+        expect
+          .soft(line.room[side], `${what}: room past the words, ${side} (ems)`)
+          .toBeGreaterThanOrEqual(0.3);
+    }
+    const { drawn, withoutRoom } = await drawnWithAndWithoutRoom(out);
+    expect(withoutRoom, design.name).toHaveLength(drawn.length);
+    const moved = Math.max(
+      ...drawn.map((v, i) => Math.abs(v - (withoutRoom[i] ?? Number.POSITIVE_INFINITY))),
+    );
+    expect.soft(moved, `${design.name}: what moves for the room (window pixels)`).toBeLessThan(0.05);
+
+    await holdClock(app, null);
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'hideLowerThird' }));
+    const off = (await snapshot(win)).state.lowerThirdOff?.at ?? 0;
+    await holdClock(app, off + animationLength(animation, 'out', 2));
+    await expect(onScreen).toHaveCount(0);
+    await holdClock(app, null);
+  }
   await app.close();
 });
 
