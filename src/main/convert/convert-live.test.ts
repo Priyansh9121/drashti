@@ -22,6 +22,23 @@ vi.mock('./read-info', () => ({
     }),
 }));
 
+function fakeEncoders() {
+  const children: { child: EventEmitter; part: string; kill: ReturnType<typeof vi.fn> }[] = [];
+  vi.mocked(spawn).mockImplementation((_command, args) => {
+    const part: unknown = Array.isArray(args) ? args.at(-1) : undefined;
+    if (typeof part !== 'string') throw new Error('The encoder was not given a part-file.');
+    const kill = vi.fn(() => true);
+    const child = Object.assign(new EventEmitter(), {
+      stderr: new EventEmitter(),
+      kill,
+    });
+    writeFileSync(part, 'Placeholder encoded bytes');
+    children.push({ child, part, kill });
+    return child as unknown as ReturnType<typeof spawn>;
+  });
+  return children;
+}
+
 it('puts an automatic conversion back in the queue if a show starts as its encoder finishes', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-convert-live-'));
   const mediaDir = join(dir, 'Media');
@@ -33,18 +50,7 @@ it('puts an automatic conversion back in the queue if a show starts as its encod
   ).run();
 
   let busy: string | null = null;
-  const children: { child: EventEmitter; part: string }[] = [];
-  vi.mocked(spawn).mockImplementation((_command, args) => {
-    const part: unknown = Array.isArray(args) ? args.at(-1) : undefined;
-    if (typeof part !== 'string') throw new Error('The encoder was not given a part-file.');
-    const child = Object.assign(new EventEmitter(), {
-      stderr: new EventEmitter(),
-      kill: () => true,
-    });
-    writeFileSync(part, 'Placeholder encoded bytes');
-    children.push({ child, part });
-    return child as unknown as ReturnType<typeof spawn>;
-  });
+  const children = fakeEncoders();
   const service = new ConvertService({
     db,
     mediaDir,
@@ -90,3 +96,71 @@ it('puts an automatic conversion back in the queue if a show starts as its encod
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+it('lets a saved copy opt into the show gate while legacy saves still run', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-copy-live-'));
+  const db = openDatabase(join(dir, 'library.sqlite'));
+  const source = join(dir, 'Placeholder source.mp4');
+  const gatedPath = join(dir, 'Placeholder trimmed.mp4');
+  const legacyPath = join(dir, 'Placeholder legacy.mp4');
+  writeFileSync(source, 'Placeholder source bytes');
+
+  let showBusy = true;
+  const children = fakeEncoders();
+  const service = new ConvertService({
+    db,
+    mediaDir: dir,
+    ffmpegPath: () => 'placeholder-ffmpeg',
+    busy: () => null,
+    showBusy: () => showBusy,
+    freeBytes: () => 100 * 1024 ** 3,
+    changed: () => undefined,
+    libraryChanged: () => undefined,
+    log: () => undefined,
+  });
+
+  const info = { durationMs: 1000, video: null, audio: null };
+  const copy = { args: (tmp: string) => [tmp], lengthMs: 1000 };
+  const waiting = vi.fn();
+  const gated = { ...copy, waiting, waitForShow: true };
+  const current = async (count: number) => {
+    await vi.waitFor(() => expect(children).toHaveLength(count), { timeout: 2500 });
+    const child = children[count - 1];
+    if (!child) throw new Error('The encoder did not start.');
+    return child;
+  };
+
+  try {
+    const trim = service.saveCopy(source, gatedPath, info, gated);
+    expect(children).toHaveLength(0);
+    expect(waiting).toHaveBeenCalledWith('Waits while the show is on, then carries on by itself.');
+
+    const legacy = service.saveCopy(source, legacyPath, info, copy);
+    (await current(1)).child.emit('exit', 0);
+    await expect(legacy.done).resolves.toEqual({ ok: true, copy: legacyPath });
+
+    showBusy = false;
+    const interrupted = await current(2);
+    showBusy = true;
+    service.activityChanged();
+    expect(interrupted.kill).toHaveBeenCalledOnce();
+    interrupted.child.emit('exit', 0);
+    await vi.waitFor(() => expect(existsSync(interrupted.part)).toBe(false));
+    expect(existsSync(gatedPath)).toBe(false);
+
+    showBusy = false;
+    const finishing = await current(3);
+    showBusy = true;
+    finishing.child.emit('exit', 0);
+    await vi.waitFor(() => expect(existsSync(finishing.part)).toBe(false));
+    expect(existsSync(gatedPath)).toBe(false);
+
+    showBusy = false;
+    (await current(4)).child.emit('exit', 0);
+    await expect(trim.done).resolves.toEqual({ ok: true, copy: gatedPath });
+  } finally {
+    service.close();
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 10_000);
