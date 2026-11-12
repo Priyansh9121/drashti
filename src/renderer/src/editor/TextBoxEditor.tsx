@@ -369,6 +369,7 @@ export function TextBoxEditor({
       style={{
         ...textBoxStyle(el),
         cursor: 'text',
+        zIndex: 1,
         outline: '2px dashed var(--color-accent)',
         outlineOffset: 2,
       }}

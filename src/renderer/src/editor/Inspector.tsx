@@ -52,6 +52,7 @@ import { restyle, restyleAll, selectedLook } from './runs-doc';
 import { SlidePanel } from './SlidePanel';
 import { useTickerOver } from './SafeAreas';
 import { activeText } from './TextBoxEditor';
+import { ObjectsPane } from './ObjectsPane';
 
 /*
  * The inspector: what is selected, as numbers and choices. Text styles go
@@ -182,6 +183,7 @@ export function Inspector() {
       aria-label="Inspector"
       data-testid="inspector"
     >
+      <ObjectsPane slide={slide} />
       {selected.length === 0 ? (
         <>
           <p className="px-3 pt-3 text-xs text-faint">
