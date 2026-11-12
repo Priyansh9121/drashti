@@ -68,7 +68,6 @@ export async function retryImportNotice(notice: ImportNotice): Promise<void> {
 
 const missingParts = new Set([
   'bundle-entry',
-  'calendar-note',
   'deck-media-unmatched',
   'deck-motion-approximated',
   'deck-pictures',
@@ -82,9 +81,10 @@ const missingParts = new Set([
   'pictures-hidden',
   'pictures-notes-unmatched',
   'pictures-too-many',
-  'shastra-note',
   'unsupported-element',
 ]);
+
+const warningNotices = new Set(['calendar-note', 'shastra-note', 'deck-other-app', 'pictures-converter']);
 
 const nameOf = (item: ImportItemReport): string =>
   item.name ?? item.sourcePath.split(/[\\/]/u).at(-1) ?? 'File';
@@ -144,11 +144,18 @@ function noticeFor(
   const refused = failed || item.outcome === 'unsupported';
   const reasons = refused
     ? [item.message ?? 'Drashti couldn’t bring it in.']
-    : item.issues.flatMap((issue) =>
-        issue.severity === 'error' || missingParts.has(issue.code) || issue.code.endsWith('-left-out')
-          ? [issue.message]
-          : [],
-      );
+    : item.issues.flatMap((issue) => {
+        if (issue.code === 'markers-replaced')
+          return [issue.message + ' Check Start, end and markers… on the media item.'];
+        if (
+          issue.severity === 'error' ||
+          missingParts.has(issue.code) ||
+          (issue.severity === 'warning' && warningNotices.has(issue.code)) ||
+          issue.code.endsWith('-left-out')
+        )
+          return [issue.message];
+        return [];
+      });
   if (reasons.length === 0) return null;
 
   const filename = nameOf(item);
