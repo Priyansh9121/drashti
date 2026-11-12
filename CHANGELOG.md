@@ -2,6 +2,27 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## 1.0.0-alpha.17 (13 Nov 2026)
+
+Update after a sabha, and update Main and nodes together. Bringing things in asks nothing now: files and pasted links go straight into the open playlist and the library. Bring in files that need converting before a sabha, as converting now waits while anything is on the screens or playing.
+
+- No import asks a question or opens a report, in either mode. What you bring in goes straight into the library and the open playlist, or into the library alone when no playlist is open. A file changed since it was imported is kept beside the earlier one.
+- Anything that did not come in has a small notice of its own in the bottom-right corner saying why, with Try again where that helps and Find… for a slide's missing media.
+- From a Link… is a paste field: paste a YouTube or Dropbox share link and it comes into the open playlist at once, at up to 1080p, with nothing to choose. A Dropbox folder brings its PDFs and pictures too. A Dropbox video taller than 1080p plays at once, and its 1080p copy is made after the show. The Highest video quality setting is gone.
+- Converting waits while anything is on the screens or playing, music too, as well as while the stream is on air or recording, and carries on by itself afterwards. A file that needs converting cannot go live until it is converted.
+- Trim on a playlist's video, in either mode, makes a new video of just that part, exact to the frame, for that row only. The row says Preparing and plays the original until it is ready. The original file never changes: Trim again shows the whole original to widen the cut, and Reset to original puts it back. The cut starts on the frame shown and never replaces the video while it is on the screens. Reset to original works on older trims too. A cut stopped by closing Drashti is named at the next start.
+- Edit slides reaches every object: click the same spot again for the one underneath, or choose it in the Objects list, which also hides, shows and reorders. Double-click a text box to type, even under a shape. Right-click (or Shift+F10) for Cut, Copy, Paste, Group and more. Add a picture straight from the computer.
+- Edit slides keeps a PowerPoint slide's bullets, numbering, tables, fills, vertical words and hidden objects, and shrinks long words to fit their box. Charts and SmartArt stay pictures, as do a PDF's clipped graphics. A missing font is drawn in the nearest one, and the editor names it. On a Mac, a Keynote deck is edited through Keynote's PowerPoint copy.
+- Drashti plays a PowerPoint deck's own transitions and click animations itself, in their order and with their delays, on Mac and Windows, even without PowerPoint.
+- A PowerPoint slide keeps its clicks after an edit. An effect Drashti cannot match plays PowerPoint's video where one can be made; otherwise the closest effect plays, and a notice names the slide.
+- A deck's clicks start on the press and play their full length, even after the slide has stood still.
+- The opening waits, black, until Drashti's window has started underneath, then plays its two seconds smoothly, with its photo.
+- The Wallpaper and Black-out turn each other off, every way in. A slide or picture under them comes back when the cover comes off.
+- A phone paired while the computer is in Simple Mode does what Simple Mode's window does: it opens and changes any playlist, pauses, plays and moves the time bar, and sets what happens when a video ends. Trim and Edit slides stay on the computer.
+- Audio on the phone, in both modes, plays and changes the audio playlists: add, move and remove tracks, rename, delete with Undo, loop and shuffle.
+- The Lower Thirds studio's Templates is a gallery of small previews that play when you point at them, with search, filters for direction, kind, feel and speed, Best 20, Favourites and Recently used.
+- 34 new name-and-role lower thirds that move in several parts, a line, then the name, then the role.
+
 ## 1.0.0-alpha.16 (11 Nov 2026)
 
 Update after a sabha, and update Main and nodes together. Simple Mode now has Pro Mode's playlists, Audio, Trim, Edit slides, From a Link and Record. Live captions stay off and marked Trial, and the five AI helpers are gone.
