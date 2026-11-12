@@ -51,7 +51,7 @@ describe('the lower-thirds scenario', () => {
     for (const design of designs) {
       const row = measured.find((r) => r.row === 'template ' + design.id);
       expect(row?.lowerThird, design.name).toEqual({ ...design.input, id: 'perf-lt-template-' + design.id });
-      expect(row?.measure).toBe('moving');
+      expect(row?.measure).toBe('phases');
     }
   });
 
