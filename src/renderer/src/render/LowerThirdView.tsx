@@ -22,7 +22,7 @@ import {
 } from '../../../shared/lower-third-styles';
 import { type LowerThirdLook, shownLines, showsOn } from '../../../shared/lower-thirds';
 import type { Size } from '../../../shared/scaling';
-import { engineNow, onClockJump } from './clock';
+import { clockHeld, engineNow, onClockJump } from './clock';
 import { fontFamilyFor } from './fonts';
 import { paintLowerThirdPose } from './lower-third-paint';
 import { detectLang } from '../../../shared/text-runs';
@@ -243,6 +243,7 @@ export function LowerThirdView({
   // frame its in or out is over (below). Every drawing, whatever asked for it, draws what the engine's time says now.
   const [, redraw] = useReducer((n: number) => n + 1, 0);
   useEffect(() => (frozenAt === undefined ? onClockJump(redraw) : undefined), [frozenAt]);
+  const held = frozenAt !== undefined || clockHeld();
   const now = frozenAt ?? engineNow();
   const run = runFor(layer, off, place, now);
   // The words and look follow the layer (one changed while up keeps its time).
@@ -265,7 +266,8 @@ export function LowerThirdView({
   // frame its in or out is over, drawn again at once, still (or gone), before that frame is shown. Started and
   // stopped as each drawing is put on the page, so no frame paints a move it no longer draws.
   useLayoutEffect(() => {
-    if (frozenAt !== undefined) return;
+    // Warm-up and clock jumps paint their fixed frame in the layout effect below.
+    if (held) return;
     const moving = phase === 'in' || phase === 'out';
     if (!moving && (phase === 'gone' || motion === 'none')) return;
     const drawing = { phase, animation, units, length, motion, shownAt };
@@ -288,7 +290,7 @@ export function LowerThirdView({
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [phase, start, length, animation, units, motion, shownAt, frozenAt]);
+  }, [phase, start, length, animation, units, motion, shownAt, held]);
   // After every drawing, before it is shown: as at the moment it was worked out for.
   useLayoutEffect(() => {
     const root = rootRef.current;
