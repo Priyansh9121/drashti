@@ -208,10 +208,14 @@ export class TrimmedVideos {
           row.cutStartMs !== null && row.cutEndMs !== null
             ? pointsInSource(oldCopy, row.cutStartMs, row.cutEndMs)
             : NO_MARKERS;
+        // A black-and-silence point carries over only where the operator left its handle as Trim showed it; a
+        // handle moved in Trim stands as saved (review MEDIUM-1 of 2cb6fec1).
+        const left = (point: number | null, asked: number | null) =>
+          point !== null && asked !== null && Math.round(point) === asked ? point : null;
         const playableEnd = Math.min(endMs, startMs + file.durationMs);
         const points: MediaMarkers = {
-          startMs: pointInCopy(previous.startMs, startMs, playableEnd),
-          endMs: pointInCopy(previous.endMs, startMs, playableEnd),
+          startMs: pointInCopy(left(previous.startMs, markers.startMs), startMs, playableEnd),
+          endMs: pointInCopy(left(previous.endMs, markers.endMs), startMs, playableEnd),
           markers: markersInCut(markers, startMs, endMs),
         };
         this.db
