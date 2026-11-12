@@ -152,7 +152,9 @@ it.each(['deck-other-app', 'pictures-converter'])('shows only the %s warning, on
       deckOf('Placeholder converted deck', [info]),
     ]),
   );
-  expect(useImportNotices.getState().notices).toMatchObject([{ text: `“Placeholder deck” · ${message}` }]);
+  expect(useImportNotices.getState().notices).toMatchObject([
+    { text: `“Placeholder deck” · ${message}`, whole: true },
+  ]);
 });
 
 it('says when an import replaced the markers of media already in the library', () => {
@@ -160,7 +162,10 @@ it('says when an import replaced the markers of media already in the library', (
   const issue = { severity: 'info' as const, code: 'markers-replaced', message, fix: null };
   showImportFailures(reportOf([deckOf('Placeholder deck', [issue, issue])]));
   expect(useImportNotices.getState().notices).toMatchObject([
-    { text: `“Placeholder deck” · ${message} Check Start, end and markers… on the media item.` },
+    {
+      text: `“Placeholder deck” · ${message} Check the new points and markers before playing the media again.`,
+      whole: true,
+    },
   ]);
 });
 
