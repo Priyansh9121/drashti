@@ -134,6 +134,9 @@ for (const size of [CI_WINDOW, { width: 1280, height: 720 }] as const)
     await sizeSlideEditor(app, ed, size);
     const tabs = editor.getByRole('tablist', { name: 'The editor’s groups' });
     await expect(tabs.getByRole('tab')).toHaveText([...GROUPS]);
+    await expect(editor.getByRole('button', { name: 'Undo', exact: true })).toHaveText('Undo');
+    await expect(editor.getByRole('button', { name: 'Redo', exact: true })).toHaveText('Redo');
+    await expect(editor.getByTestId('editor-slide-thumb').first()).toHaveAttribute('title', /^Slide 1\b/u);
     // Words is chosen to begin with.
     await expect(tabs.getByRole('tab', { name: 'Words' })).toHaveAttribute('aria-selected', 'true');
 
@@ -144,7 +147,7 @@ for (const size of [CI_WINDOW, { width: 1280, height: 720 }] as const)
       Insert: ['add-text', 'add-shape', 'add-media', 'add-timer'],
       Arrange: ['arrange-left', 'arrange-front', 'arrange-back'],
       Design: ['design-color', 'design-darken'],
-      Motion: ['motion-transition', 'motion-auto'],
+      Motion: ['motion-transition', 'motion-auto', 'motion-element-in'],
       Slides: [
         'slide-new',
         'slide-new-timer',
@@ -196,6 +199,14 @@ for (const size of [CI_WINDOW, { width: 1280, height: 720 }] as const)
         if (!canvas || canvas.width < 440) out.push(`the slide is too small (${canvas?.width ?? 0} px)`);
         const inspector = document.querySelector('[data-testid="inspector"]')?.getBoundingClientRect();
         if (!inspector || inspector.right > vw + 0.5) out.push('the side panel is cut off');
+        const thumbnails = document.querySelector('[data-testid="editor-slides"]')?.getBoundingClientRect();
+        if (!thumbnails || !canvas || !inspector) out.push('an editing pane is missing');
+        else {
+          if (thumbnails.right > canvas.left + 0.5 || canvas.right > inspector.left + 0.5)
+            out.push('the slide is not between the thumbnails and settings');
+          if (Math.max(thumbnails.bottom, canvas.bottom, inspector.bottom) > vh + 0.5)
+            out.push('an editing pane extends below the window');
+        }
         if (document.documentElement.scrollWidth > vw) out.push('the page scrolls sideways');
         return out;
       });
@@ -225,6 +236,8 @@ test('Undo and Redo for every change, by keys and by buttons, typing too; zoom t
   await ed.keyboard.type(' placeholder typed');
   await expect(typing).toContainText('Placeholder line one placeholder typed');
   await expect(undoButton).toBeEnabled();
+  await undoButton.hover();
+  await expect(ed.getByRole('tooltip')).toContainText('Undo the last change');
   await undoButton.click();
   await expect(typing).toHaveText('Placeholder line one');
   await expect(redoButton).toBeEnabled();
