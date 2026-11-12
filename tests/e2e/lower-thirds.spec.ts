@@ -304,6 +304,7 @@ test('a lower third finishes its entrance when the held clock is let go', async 
     await expect(layer).toHaveAttribute('data-lt-at', '120');
     await expect(layer).toHaveAttribute('data-lt-phase', 'in');
     await holdClock(app, null);
+    expect(await layer.getAttribute('data-lt-phase')).toBe('in');
     await expect(layer).toHaveAttribute('data-lt-phase', 'still');
   } finally {
     await app.close();

@@ -40,7 +40,8 @@ import {
 } from '../shared/media';
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
-import { MediaRemoval } from './library/media-removal';
+import { MediaRemoval, sweepQuiet, TrimCleanup } from './library/media-removal';
+import { hashOffMain } from './library/hash-off-main';
 import { FileActions } from './library/file-actions';
 import {
   extOf,
@@ -344,7 +345,7 @@ import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
 import { youtubeSelfTest } from './links/youtube-selftest';
 import { findYoutubeTools, toolFolders, youtubeLaunch } from './links/youtube-tools';
 import { spawnStreamWorker } from './stream/stream-worker';
-import { ConvertService, readInfo } from './convert/convert-service';
+import { AFTER_START_MS, ConvertService, readInfo } from './convert/convert-service';
 import { HevcAnswer, playsHevcScript } from './convert/plays-hevc';
 import { askInOwnPage, type HevcPage } from './convert/hevc-page';
 import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
@@ -361,9 +362,10 @@ import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/mo
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
 import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
-import { type EngineState, nothingUp } from '../shared/engine/state';
+import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
+import { captureWithShowAbort } from './network/slide-picture';
 import { PhoneFiles } from './network/phone-files';
 import { AnnouncementService } from './network/announcement-service';
 import { AnnouncementRepo } from './db/announcements';
@@ -731,6 +733,7 @@ const updateBase = testUpdateBase ?? UPDATE_BASE;
 const testInstallLog = packaged() ? undefined : sw('DRASHTI_TEST_UPDATE_INSTALL');
 const testUpdateRate = packaged() ? null : Number(sw('DRASHTI_TEST_UPDATE_RATE') ?? 0) || null;
 let testOnAir = false;
+let testTrimActivityChanged: (() => void) | undefined;
 // Tests only (never a packaged Drashti): Import from a Link asks this local stand-in instead of Dropbox,
 // saves into this folder by default, and (the guard, which every e2e run sets) refuses any request to
 // anywhere but 127.0.0.1.
@@ -740,6 +743,7 @@ const testDownloadsDir = packaged() ? null : (sw('DRASHTI_TEST_DOWNLOADS_DIR') ?
 if (!packaged() && sw('DRASHTI_TEST_ON_AIR_HOOK') === '1')
   (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir = (on) => {
     testOnAir = on;
+    testTrimActivityChanged?.();
   };
 // Tests only: scheduled backups copy at this rate (bytes a second), so a test can watch one wait.
 const testBackupRate = packaged() ? null : Number(sw('DRASHTI_TEST_BACKUP_RATE') ?? 0) || null;
@@ -2071,12 +2075,13 @@ function start(): void {
     if (!s) return null;
     const displayId = manager.status().find((st) => st.screenId === screenId)?.displayId;
     const d = listDisplays().find((x) => x.id === displayId);
+    const role = screenRepo.groupRole(s.groupId) ?? 'audience';
     return {
       screenId: s.id,
       screenName: s.name,
       groupId: s.groupId,
       groupName: screenRepo.groupName(s.groupId) ?? '',
-      role: screenRepo.groupRole(s.groupId) ?? 'audience',
+      role,
       feed: s.feed,
       canvasWidth: s.canvasWidth,
       canvasHeight: s.canvasHeight,
@@ -2094,7 +2099,7 @@ function start(): void {
       // Audience off (Session 51; the switch's reconcile sends every output its context again).
       hall: hallHere(),
       // No warm-up where Chromium draws without a graphics chip (Session 57).
-      ...warmUpFact(warmUps, outputWindows.get(screenId), outputNames.get(screenId) ?? 'an output'),
+      ...warmUpFact(warmUps, outputWindows.get(screenId), outputNames.get(screenId) ?? 'an output', role),
     };
   };
   // An output open before Chromium said how it draws is sent its context again once it skips its warm-up (Session 57).
@@ -2782,6 +2787,11 @@ function start(): void {
   // ---- deleting media (Session 26a) -------------------------------------------------
   const mediaRemoval = new MediaRemoval(db, {
     onScreens: () => mediaUpNow(engine.current),
+    // What a crash now would put back (Session 57): the show saved last. The unused Trim cuts sweep keeps it.
+    putBack: () => {
+      const saved = liveWriter.savedState;
+      return saved ? mediaUpNow(saved) : new Set<string>();
+    },
   });
   // Deleted before this start, so it can no longer be undone: its files go now, but never one that
   // recovery has just put back on the screens (that one goes at the next start).
@@ -2916,6 +2926,9 @@ function start(): void {
   let eventsStreamWas: StreamStatus | null = null;
   let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
   let conversionActivityChanged: (() => void) | undefined;
+  // Trim's background work (Session 57: finished cuts checked, accepted cuts carried on, unused cuts swept), told
+  // when the stream changes.
+  let trimActivityChanged: (() => void) | undefined;
   // Edit slides' PDF reading waiting for the show (Session 57): each wait's check, told when the stream changes.
   const pdfReadWaits = new Set<() => void>();
   const countStreams = streamCounter((kind) => behind?.service.count(kind));
@@ -2959,6 +2972,7 @@ function start(): void {
     statusChanged: (status) => {
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
+      trimActivityChanged?.();
       for (const check of [...pdfReadWaits]) check();
       eventsOut.emit(streamEvents(eventsStreamWas, status));
       eventsStreamWas = status;
@@ -3363,6 +3377,7 @@ function start(): void {
   const pdfGeometry = new PdfPrintGeometry();
   const pdfCopies = new PdfCopySession({
     open: createPdfCopyWindow,
+    scaleFactor: (win) => electronScreen.getDisplayMatching(win.getBounds()).scaleFactor,
     assetDirs: (kind) => {
       const folder = kind === 'wasmUrl' ? 'wasm' : kind === 'cMapUrl' ? 'cmaps' : 'standard_fonts';
       return [
@@ -3812,10 +3827,12 @@ function start(): void {
       return { ok: false as const, message: 'Only the operator window can trim a video.' };
     const found = await soundPass.edgesNow(mediaId);
     if (!found.ok) return found;
-    const was = media.markersOf(mediaId) ?? NO_MARKERS;
-    const before = { startMs: was.startMs, endMs: was.endMs };
-    if (!found.points) return { ok: true as const, points: null, before };
-    if (!media.setMarkers(mediaId, { ...was, startMs: found.points.startMs, endMs: found.points.endMs }))
+    if (!found.points) {
+      const was = media.markersOf(mediaId) ?? NO_MARKERS;
+      return { ok: true as const, points: null, before: { startMs: was.startMs, endMs: was.endMs } };
+    }
+    const before = trimmedVideos.setSoundEdges(mediaId, found.points);
+    if (!before)
       return { ok: false as const, message: 'Only a video in the library has black and silence to trim.' };
     engine.refreshMarkers(mediaId);
     log.info('Sound: a video’s start and end points were set past its black and silence');
@@ -3902,6 +3919,9 @@ function start(): void {
     },
     readRate: !packaged() && sw('DRASHTI_TEST_SAVE_READRATE') === '1',
   });
+  // Trim's background work waits for a quiet moment (Q57-7): nothing up on LIVE, no stream on air or recording.
+  const trimWorkQuiet = () =>
+    !quitStarted && !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers);
   // A playlist video's Trim makes a cut in the background, then changes just that row (Session 57).
   const playlistTrims = new PlaylistTrims({
     repo: trimmedVideos,
@@ -3914,19 +3934,12 @@ function start(): void {
       const ffmpeg = saveFfmpeg();
       return ffmpeg ? frameAtOrBefore(ffmpeg, file, atMs) : Promise.resolve(null);
     },
-    isLive: (itemId, mediaId) => {
-      const { live, layers } = engine.current;
-      const bg = layers.background;
-      return (
-        live.playlist?.itemId === itemId &&
-        bg?.kind === 'media' &&
-        bg.media === 'video' &&
-        bg.mediaId === mediaId
-      );
-    },
+    isLive: (itemId, mediaId) => rowVideoLive(engine.current, itemId, mediaId),
+    quiet: trimWorkQuiet,
+    hash: (file, signal) => hashOffMain(file, signal),
     kept: {
       load: () => settings.get('playlistTrimsWaiting'),
-      save: (cuts) => laterSetting('playlistTrimsWaiting', cuts),
+      save: (cuts) => settings.set('playlistTrimsWaiting', cuts),
     },
     spaceProblem: (file, durationMs, lengthMs) =>
       conversions.trimSpaceProblem(file, dirname(file), durationMs, lengthMs),
@@ -3955,10 +3968,40 @@ function start(): void {
     markersChanged: (id) => engine.refreshMarkers(id),
     notice: (text) => sendToOperator(IPC.app.notice, { text }),
   });
-  void playlistTrims.cleanupCopies();
-  const offTrimActivity = engine.onChange(() => playlistTrims.activityChanged());
+  // The cuts accepted before Drashti last closed carry on from the moment kept conversions do (resumeWhenQuiet,
+  // below), and the copies nothing carries on go to the Trash then.
+  // The unused cuts sweep also waits until nothing Oops, Put it back or Back could bring back (sweepQuiet).
+  const trimCleanupQuiet = () => trimWorkQuiet() && sweepQuiet(engine);
+  const trimCleanup = new TrimCleanup(
+    trimCleanupQuiet,
+    async (signal) => {
+      const gone = await mediaRemoval.trashUnusedTrims(
+        mediaDir,
+        (file) => shell.trashItem(file),
+        trimCleanupQuiet,
+        signal,
+      );
+      if (gone === 0 || quitStarted) return;
+      libraryChanged(true);
+      log.info(`Media: moved ${String(gone)} unused Trim cut(s) to the Trash`);
+    },
+    (error) => log.warn('Media: could not check unused Trim cuts', error),
+    AFTER_START_MS,
+  );
+  trimActivityChanged = () => {
+    playlistTrims.activityChanged();
+    trimCleanup.activityChanged();
+  };
+  testTrimActivityChanged = trimActivityChanged;
+  const offTrimActivity = engine.onChange(() => {
+    playlistTrims.activityChanged();
+    trimCleanup.activityChanged();
+  });
   stops.add('playlist trims', () => {
     offTrimActivity();
+    trimActivityChanged = undefined;
+    testTrimActivityChanged = undefined;
+    trimCleanup.close();
     playlistTrims.close();
   });
   const noTrim = { ok: false as const, message: 'Open a video row’s Trim to change that playlist.' };
@@ -4050,6 +4093,7 @@ function start(): void {
   });
   handle(IPC.app.startNotice, (e) => {
     if (!fromOperator(e)) return null;
+    // Waits for no FFmpeg: only the cuts that cannot carry on are named (TR-5).
     const interruptedTrim = playlistTrims.reportInterrupted();
     const text = [startNotice, interruptedTrim].filter(Boolean).join(' ') || null;
     startNotice = null;
@@ -5056,18 +5100,13 @@ function start(): void {
     },
     // A phone's Save captures nothing while the stream is on air or recording (C6's review, MEDIUM 3).
     onAir: () => streaming.inUse() || testOnAir,
-    nativeSlidePicture: async (slide, looks, current, signal) => {
-      const stop = new AbortController();
-      const off = engine.onChange(() => {
-        if (!current()) stop.abort();
-      });
-      try {
-        // Stopped by an engine change it must not run through, or at the end of its time (network/slide-picture.ts).
-        return await pdfCopies.picture(slide, looks, current, AbortSignal.any([signal, stop.signal]));
-      } finally {
-        off();
-      }
-    },
+    nativeSlidePicture: (slide, looks, current, signal) =>
+      captureWithShowAbort(
+        (changed) => engine.onChange(changed),
+        current,
+        signal,
+        (stopped) => pdfCopies.picture(slide, looks, current, stopped),
+      ),
     reads: {
       playlists: () => playlists.tree(),
       items: (playlistId) => playlists.itemsOf(playlistId),
@@ -6838,6 +6877,13 @@ function start(): void {
   operatorWindow.webContents.on('before-input-event', (event, input) => {
     if (openingKeys.take(input)) event.preventDefault();
   });
+  const openTrimCleanup = () => {
+    if (operatorWindow?.isVisible() && !operatorWindow.webContents.isLoadingMainFrame()) trimCleanup.open();
+  };
+  if (sw('DRASHTI_SELFTEST') === undefined) {
+    operatorWindow.once('show', openTrimCleanup);
+    operatorWindow.webContents.once('did-finish-load', openTrimCleanup);
+  }
   operatorWindow.once('show', () => {
     log.info(phaseLine('operator window shown'));
   });
@@ -6908,6 +6954,11 @@ function start(): void {
   if (sw('DRASHTI_SELFTEST') === undefined)
     operatorWindow.webContents.once('did-finish-load', () => {
       conversions.resumeWaiting();
+      // Trim cuts accepted before Drashti last closed (TR-5): from the same moment and as long after it as kept
+      // conversions, then at the first quiet moment (nothing up, no stream on air or recording).
+      setTimeout(() => {
+        playlistTrims.resumeWhenQuiet();
+      }, AFTER_START_MS).unref();
     });
   operatorWindow.webContents.once('did-finish-load', () => {
     holdPriority('with the operator window open');
