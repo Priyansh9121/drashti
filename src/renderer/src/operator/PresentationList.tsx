@@ -152,6 +152,8 @@ const PresentationRow = memo(function PresentationRow({
  * Import… (Session 26a, in place of the kirtan filters): a labelled button with a menu. Files… takes
  * everything Drashti imports (presentations, PDF, PowerPoint and Keynote files, pictures, videos,
  * sounds, lyrics); A Folder… a folder with what is inside it; From a Link… YouTube or Dropbox.
+ * Files… and A Folder… bring them into the library only, never the open playlist (Q57-11, the owner):
+ * a folder or many presentations brought in here don't fill it. From a Link… adds to it too, as everywhere.
  */
 export function ImportMenu() {
   return (
@@ -161,8 +163,8 @@ export function ImportMenu() {
       variant="secondary"
       size="md"
       entries={[
-        { label: 'Files…', icon: FileText, onSelect: () => void importWithDialog('files') },
-        { label: 'A Folder…', icon: FolderOpen, onSelect: () => void importWithDialog('folder') },
+        { label: 'Files…', icon: FileText, onSelect: () => void importWithDialog('files', null) },
+        { label: 'A Folder…', icon: FolderOpen, onSelect: () => void importWithDialog('folder', null) },
         { label: 'From a Link…', icon: Link2, onSelect: openLinkDialog },
       ]}
     >
@@ -405,7 +407,9 @@ export function PresentationList({ platform }: { platform: string }) {
       .map((f) => window.drashti.files.pathFor(f))
       .filter((p) => p !== '');
     setDropProblem(paths.length === 0 ? 'Drop files or folders from the desktop or a USB drive.' : null);
-    void importPaths(paths);
+    // Into the library only, never the open playlist (Q57-11, the owner): the old program's library folder or many
+    // presentations dropped here don't fill it. Dropped anywhere else they go into the open playlist too.
+    void importPaths(paths, undefined, null);
   };
   const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
     if (isSelectAll(e, platform)) {
