@@ -1,5 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { LOWER_THIRD_FONT_CHOICES } from '../../src/shared/lower-third-fonts';
 import { MOVEMENTS } from '../../src/shared/looks';
 import { TRANSITION_KINDS } from '../../src/shared/model';
@@ -11,10 +13,26 @@ import { goLive, makeSlides } from './placeholder-slides';
  * every transition kind in both Movements part-way, with a lower third, messages and the ticker's band (the
  * idle rotation went in Session 55), under a brightness(0) filter, so the GPU has made what they need before the first
  * Bold transition of a show; the audience sees black throughout. A test switch keeps it drawn, to look at.
+ * Where Chromium draws without a graphics chip there is nothing to warm, and an output draws the show without
+ * one (Session 57): a test switch says how Chromium draws, so both kinds of computer are tried on every system.
  * Placeholder words and pictures only.
  */
 
 const HOLD = { DRASHTI_TEST_HOLD_WARM_UP: '1' };
+
+/** How Main reads Chromium's gpu_compositing once Chromium has said how it draws (a test switch, Session 57). */
+const WITH_A_CHIP = { DRASHTI_TEST_GPU_COMPOSITING: 'enabled' };
+const WITHOUT_A_CHIP = { DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software' };
+
+/** What Drashti's log has said of its outputs' warm-ups (Session 57), each line from its "Warm-up:". */
+function warmUpLines(userData: string): string[] {
+  const file = join(userData, 'logs', 'drashti.log');
+  if (!existsSync(file)) return [];
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .filter((line) => line.includes('Warm-up: '))
+    .map((line) => line.slice(line.indexOf('Warm-up: ')).trimEnd());
+}
 
 /** The Lower Thirds studio's font families (Session 55, Part 16), bundled with Drashti. */
 const STUDIO_FAMILIES = LOWER_THIRD_FONT_CHOICES.filter((c) => c.bundled === 'studio').flatMap(
@@ -134,7 +152,13 @@ async function streamPage(app: ElectronApplication): Promise<Page> {
 
 test('before a screen first draws the show it draws every kind in both Movements part-way, unseen: an output, the LIVE picture and the stream’s page', async () => {
   test.setTimeout(180_000);
-  const { app } = await launchApp({ ...HOLD, DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_FAKE_DEVICES: '1' });
+  // Kept drawn even where Main says Chromium draws without a graphics chip (Session 57): a test asked to look at it.
+  const { app } = await launchApp({
+    ...HOLD,
+    ...WITHOUT_A_CHIP,
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_TEST_FAKE_DEVICES: '1',
+  });
   const win = await operatorPage(app);
   await operatorReady(win);
   await expectWarmUp(win, '[data-testid="live-preview"]', 'the LIVE picture');
@@ -160,9 +184,9 @@ test('before a screen first draws the show it draws every kind in both Movements
   await app.close();
 });
 
-test('the warm-up passes by itself and the show is drawn after it; the screen is black until then', async () => {
+test('with a graphics chip the warm-up passes by itself and the show is drawn after it; the screen is black until then', async () => {
   test.setTimeout(180_000);
-  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const { app, userData } = await launchApp({ ...WITH_A_CHIP, DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
   const id = await makeSlides(
@@ -231,5 +255,61 @@ test('the warm-up passes by itself and the show is drawn after it; the screen is
   // And once it has drawn, every face of the Lower Thirds studio's fonts comes (Session 55), as in the LIVE picture.
   await expect.poll(async () => Object.keys(await studioFonts(out)), { timeout: 15_000 }).toEqual(['loaded']);
   await expect.poll(async () => Object.keys(await studioFonts(win)), { timeout: 15_000 }).toEqual(['loaded']);
+  // The log says which Main chose, once for the output (Session 57).
+  await expect
+    .poll(() => warmUpLines(userData))
+    .toEqual([
+      expect.stringMatching(
+        /^Warm-up: as before, a graphics chip \(gpu_compositing enabled\), for output ".+"$/u,
+      ),
+    ]);
+  await app.close();
+});
+
+test('where Chromium draws without a graphics chip an output draws the show without a warm-up, black until then, and the log says so once', async () => {
+  test.setTimeout(180_000);
+  const { app, userData } = await launchApp({ ...WITHOUT_A_CHIP, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const id = await makeSlides(
+    win,
+    'Placeholder slides without a chip',
+    [{ words: 'Placeholder words', background: '#3a6ea5' }],
+    { kind: 'dissolve', durationMs: 400 },
+  );
+  // The LIVE picture warms up as before (only the outputs are told): once it has drawn, Chromium has said how it
+  // draws, so the output below opens knowing it.
+  await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  await setUpScreen(win);
+  const out = await outputPage(app);
+  const root = out.getByTestId('output-root');
+  // Ready to draw the show, without warming up: it never began a warm-up (none of its marks).
+  await expect(root).toHaveAttribute('data-warm-up', 'skipped', { timeout: 60_000 });
+  await expect(root).toHaveAttribute('data-fonts', 'ready');
+  expect(
+    await out.evaluate(() =>
+      performance
+        .getEntriesByType('mark')
+        .map((m) => m.name)
+        .filter((name) => name.startsWith('drashti-warm-up')),
+    ),
+    'the output’s warm-up marks',
+  ).toEqual([]);
+  // Black until something goes up.
+  expect(await brightest(out), 'the whole output').toBe(0);
+  // Then the show draws as ever.
+  await goLive(win, id, 0);
+  await expect.poll(() => brightest(out), { timeout: 15_000 }).toBeGreaterThan(40);
+  await expect(root).toHaveAttribute('data-warm-up', 'skipped');
+  // The log says which Main chose, once for the output.
+  await expect
+    .poll(() => warmUpLines(userData))
+    .toEqual([
+      expect.stringMatching(
+        /^Warm-up: skipped, no graphics chip \(gpu_compositing disabled_software\), for output ".+"$/u,
+      ),
+    ]);
   await app.close();
 });
