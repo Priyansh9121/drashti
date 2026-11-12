@@ -36,7 +36,7 @@ afterEach(() => {
   dir = '';
 });
 
-/** A library with two files Drashti cannot play and one it plays, and the library's kept setting. */
+/** A library with files it can play and files that need conversion, plus the library's kept setting. */
 function seeded() {
   dir = mkdtempSync(join(tmpdir(), 'drashti-convert-resume-'));
   const mediaDir = join(dir, 'Media');
@@ -48,6 +48,7 @@ function seeded() {
     ['m-avi', 'video', 'Placeholder old clip.avi', 0],
     ['m-wma', 'audio', 'Placeholder bhajan.wma', 0],
     ['m-flac', 'audio', 'Placeholder dhun.flac', 1],
+    ['m-tall', 'video', 'Placeholder tall link.mp4', 1],
   ] as const) {
     writeFileSync(join(mediaDir, 'in', name), `placeholder ${name}`);
     insert.run(id, kind, name, `in/${name}`, playable);

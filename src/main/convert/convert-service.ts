@@ -507,7 +507,7 @@ export class ConvertService {
     const job = this.jobs.find(
       (job) =>
         job.id === rawId &&
-        (job.byItself || job.maxHeight !== undefined) &&
+        (job.byItself === true || job.maxHeight !== undefined) &&
         job.state === 'failed' &&
         job.retryable,
     );

@@ -7,7 +7,7 @@ import { makeOldWordDoc, makeTestDocx } from '../../src/main/import/testing/make
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, closeLibrary, dropFiles, launchApp, openLibrary, operatorPage } from './helpers';
+import { chooseMenuItem, dropFiles, launchApp, openLibrary, operatorPage } from './helpers';
 import { sizeOperatorWindow } from './window-size';
 
 /*
