@@ -66,7 +66,11 @@ describe('one run of a case', () => {
   });
 
   it('is a cut when a single frame changed: no length, no intervals', () => {
-    const cut = measureRun({ frames: frames(1000, 60), changes: [3] }, { pressAt: 1020, until: 2000 }, PERIOD);
+    const cut = measureRun(
+      { frames: frames(1000, 60), changes: [3] },
+      { pressAt: 1020, until: 2000 },
+      PERIOD,
+    );
     expect(cut.delay).toBeCloseTo(1000 + 3 * PERIOD - 1020, 6);
     expect(cut.length).toBe(0);
     expect(cut.moved).toBe(1);
@@ -74,7 +78,11 @@ describe('one run of a case', () => {
   });
 
   it('says nothing moved when no frame changed in its time', () => {
-    const none = measureRun({ frames: frames(1000, 60), changes: [] }, { pressAt: 1020, until: 2000 }, PERIOD);
+    const none = measureRun(
+      { frames: frames(1000, 60), changes: [] },
+      { pressAt: 1020, until: 2000 },
+      PERIOD,
+    );
     expect(none).toEqual({ delay: null, length: null, moved: 0, intervals: [], firstAt: null, lastAt: null });
   });
 
@@ -120,9 +128,21 @@ describe('a case’s row, from its runs', () => {
   });
 
   it('is late when its median delay is over a frame period and 16 ms', () => {
-    const row = caseRow('push 800', 800, [60, 55, 70].map((d) => run(d, 48)), PERIOD);
+    const row = caseRow(
+      'push 800',
+      800,
+      [60, 55, 70].map((d) => run(d, 48)),
+      PERIOD,
+    );
     expect(row.late).toBe(true);
-    expect(caseRow('push 800', 800, [30, 31, 32].map((d) => run(d, 48)), PERIOD).late).toBe(false);
+    expect(
+      caseRow(
+        'push 800',
+        800,
+        [30, 31, 32].map((d) => run(d, 48)),
+        PERIOD,
+      ).late,
+    ).toBe(false);
   });
 
   it('is uneven when one interval is over twice the period, or the p95 is over one and a half', () => {
@@ -137,7 +157,12 @@ describe('a case’s row, from its runs', () => {
   });
 
   it('says so when a case never moved', () => {
-    const row = caseRow('words 800', 800, [measureRun({ frames: frames(0, 10), changes: [] }, { pressAt: 0, until: 500 }, PERIOD)], PERIOD);
+    const row = caseRow(
+      'words 800',
+      800,
+      [measureRun({ frames: frames(0, 10), changes: [] }, { pressAt: 0, until: 500 }, PERIOD)],
+      PERIOD,
+    );
     expect(row.seen).toBe(0);
     expect(row.delay).toBeNull();
     expect(row.length).toBeNull();
@@ -146,7 +171,14 @@ describe('a case’s row, from its runs', () => {
   });
 
   it('reads as one line: the delay, the length against its set length, the frames and those over 1.5×', () => {
-    const line = caseLine(caseRow('dissolve 800', 800, [20, 25, 30].map((d) => run(d, 48)), PERIOD));
+    const line = caseLine(
+      caseRow(
+        'dissolve 800',
+        800,
+        [20, 25, 30].map((d) => run(d, 48)),
+        PERIOD,
+      ),
+    );
     expect(line).toBe(
       'dissolve 800 (800 ms, 3 runs): delay median 25 ms, p95 25 ms; length 800 ms (+0); frames median 16.7, p95 16.7, longest 16.7 ms, 0 of 141 over 1.5×',
     );
