@@ -1,13 +1,71 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { openDatabase } from '../db/database';
 import { MediaRepo } from '../db/media';
 import { PlaylistRepo } from '../db/playlists';
 import { WallpaperRepo } from '../db/wallpapers';
 import { AudioPlaylistRepo } from '../db/audio-playlists';
 import { MediaRemoval } from './media-removal';
+
+it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'drashti-unused-trims-'));
+  const db = openDatabase(':memory:');
+  try {
+    const mediaDir = join(root, 'Media');
+    const trashDir = join(root, 'Trash');
+    mkdirSync(mediaDir);
+    mkdirSync(trashDir);
+    const ids = ['unused', 'playlist', 'undo', 'slide', 'live', 'replaced', 'path-alias'];
+    db.exec("INSERT INTO media (id, kind, name, path) VALUES ('original', 'video', 'Original', 'original.mp4')");
+    writeFileSync(join(mediaDir, 'original.mp4'), 'Placeholder original.');
+    for (const id of ids) {
+      const path = `${id}.mp4`;
+      const bytes = `Placeholder ${id}.`;
+      const sha = createHash('sha256').update(bytes).digest('hex');
+      db.prepare(
+        "INSERT INTO media (id, kind, name, path, sha256, source_kind) VALUES (?, 'video', ?, ?, ?, 'drashti')",
+      ).run(id, path, path, sha);
+      db.prepare(
+        "INSERT INTO trimmed_videos (media_id, original_id, start_ms, end_ms, source_markers) VALUES (?, 'original', 0, 1000, '{}')",
+      ).run(id);
+      writeFileSync(join(mediaDir, path), id === 'replaced' ? 'Placeholder replacement.' : bytes);
+    }
+    db.exec(`
+      INSERT INTO playlists (id, name) VALUES ('p', 'Placeholder playlist'), ('other', 'Placeholder duplicate');
+      INSERT INTO playlist_items (id, playlist_id, position, kind, media_id) VALUES
+        ('current', 'other', 0, 'media', 'playlist'), ('old', 'p', 0, 'media', 'undo');
+      UPDATE playlist_items SET deleted_at = '2026-11-12T00:00:00Z' WHERE id = 'old';
+      INSERT INTO libraries (id, name) VALUES ('library', 'Placeholder library');
+      INSERT INTO presentations (id, library_id, name) VALUES ('d', 'library', 'Placeholder deck');
+      INSERT INTO slide_groups (id, presentation_id, name, position) VALUES ('g', 'd', 'Placeholder group', 0);
+      INSERT INTO slides (id, group_id, position) VALUES ('s', 'g', 0);
+      INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, props) VALUES
+        ('e', 's', 0, 'video', 0, 0, 10, 10, '{"mediaId":"slide","fit":"fit"}');
+    `);
+    db.prepare("INSERT INTO media (id, kind, name, path) VALUES ('alias', 'video', 'Alias', ?)").run(
+      join(mediaDir, 'path-alias.mp4'),
+    );
+    const removal = new MediaRemoval(db, { onScreens: () => new Set(['live']) });
+    const trash = vi.fn((file: string) => {
+      renameSync(file, join(trashDir, 'unused.mp4'));
+      return Promise.resolve();
+    });
+
+    expect(await removal.trashUnusedTrims(mediaDir, trash)).toBe(1);
+    expect(trash).toHaveBeenCalledOnce();
+    expect(existsSync(join(trashDir, 'unused.mp4'))).toBe(true);
+    expect(existsSync(join(mediaDir, 'unused.mp4'))).toBe(false);
+    expect(db.prepare("SELECT path, missing FROM media WHERE id = 'unused'").get()).toEqual({ path: '', missing: 1 });
+    for (const id of [...ids.filter((id) => id !== 'unused'), 'original'])
+      expect(existsSync(join(mediaDir, `${id}.mp4`)), id).toBe(true);
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 /* Deleting media with Undo (Session 26a): a made-up library that uses one picture everywhere. */
 
