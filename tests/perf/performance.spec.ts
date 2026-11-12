@@ -133,6 +133,8 @@ async function runPerformanceTest(
     child.on('exit', (code) => {
       clearTimeout(timer);
       load.stop();
+      // The animations scenario's lines as it went (Session 57), a check stopped at its time limit's included.
+      for (const l of log.split('\n')) if (l.startsWith('DRASHTI_PERF_ANIMATIONS ')) console.log(l);
       const line = log.split('\n').find((l) => l.startsWith('DRASHTI_PERFTEST_RESULT '));
       resolve({
         code,

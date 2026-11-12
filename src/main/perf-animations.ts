@@ -113,6 +113,31 @@ const WORDS: TextStyle = {
 };
 
 const LINES = ['Placeholder name', 'Placeholder title'];
+/** A page that does not answer a call within this long is passed over (a press, the probe's read, the Wallpaper). */
+const PAGE_LIMIT_MS = 5000;
+/** The cases stop pressing after this long, measuring those done: the check's own time limit is 14 min in all. */
+const BUDGET_MS = 6 * 60_000;
+/** The lines it writes as it goes (tests/perf/performance.spec.ts prints them). */
+export const PROGRESS = 'DRASHTI_PERF_ANIMATIONS';
+
+/** A page's answer, or `late` once `ms` have gone by (or it failed): a page that never answers holds nothing up. */
+function within<T, L>(answer: Promise<T>, ms: number, late: L): Promise<T | L> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolve(late);
+    }, ms);
+    answer.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(late);
+      },
+    );
+  });
+}
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -167,6 +192,7 @@ const CHOOSE_WALLPAPER = (mediaId: string) => `(async () => {
 })()`;
 
 export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
+  const made = Date.now();
   const [backgroundPicture = '', slidePicture = '', wallpaperPicture = ''] = [0, 120, 240].map((hue, i) =>
     makePicture(deps, `animations-picture-${String(i + 1)}`, hue, null),
   );
@@ -265,6 +291,15 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
     const w = deps.operator?.() ?? null;
     return w && !w.isDestroyed() ? w : null;
   };
+  // What it did, as it went: the Performance spec prints these lines (a check stopped at its time limit included).
+  const began = Date.now();
+  const progress = (what: string) => {
+    process.stdout.write(`${PROGRESS} +${((Date.now() - began) / 1000).toFixed(1)} s ${what}\n`);
+  };
+  progress(`made its slides, deck and pictures (${String(Date.now() - made)} ms)`);
+  /** How long each press from the operator window took to come back, and how many in a row never did. */
+  const roundTrips: number[] = [];
+  let unanswered = 0;
   /** Press a case once, and wait `waitMs` after it. */
   const press = async (
     name: string,
@@ -273,21 +308,32 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
     command: EngineCommand,
     waitMs: number,
   ): Promise<void> => {
-    const op = operator();
+    // After three presses in a row the operator window never answered, from the main process.
+    const op = unanswered >= 3 ? null : operator();
     let at = Date.now();
     let rev = -1;
     let from: Pressed['from'] = 'main';
     if (op) {
-      const r = (await op.webContents.executeJavaScript(PRESS(command), true).catch(() => null)) as {
-        at: number;
-        rev: number;
-      } | null;
-      // Refused there (or the window gone): from the main process instead, and said so.
-      if (r && r.rev >= 0) {
+      const asked = Date.now();
+      const r = await within(
+        op.webContents.executeJavaScript(PRESS(command), true) as Promise<{ at: number; rev: number }>,
+        PAGE_LIMIT_MS,
+        null,
+      );
+      roundTrips.push(Date.now() - asked);
+      if (r === null) {
+        // Never answered: counted from when it was asked, never pressed again from here (it may land late).
+        unanswered += 1;
+        progress(`the operator window did not answer a press within ${String(PAGE_LIMIT_MS)} ms (${name})`);
+        at = asked;
+        from = 'operator';
+      } else if (r.rev >= 0) {
+        unanswered = 0;
         ({ at, rev } = r);
         from = 'operator';
       }
     }
+    // Refused there (or no operator window): from the main process instead, and said so.
     if (from === 'main') {
       at = Date.now();
       const r = deps.engine.dispatch(command);
@@ -305,57 +351,79 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
   });
   return {
     slides: { presentationId: null, everyMs: 2000 },
-    begin: () => Promise.resolve(),
+    begin: () => {
+      progress('the check begins (the import and its slide changes come first)');
+      return Promise.resolve();
+    },
     end: async () => {
+      progress('the cases begin');
+      // The cases stop pressing at this budget, measuring those done, so the check always ends in its time.
+      const deadline = Date.now() + BUDGET_MS;
+      const skipped = new Set<string>();
+      const inTime = (name: string) => {
+        if (Date.now() < deadline) return true;
+        skipped.add(name);
+        return false;
+      };
       const output = deps.outputs()[0];
       const probeOn =
         output !== undefined &&
-        ((await output.webContents
-          .executeJavaScript('typeof window.drashtiMotionProbe?.read === "function"', true)
-          .catch(() => false)) as boolean);
-      const wallpaper = operator()
-        ? ((await operator()
-            ?.webContents.executeJavaScript(CHOOSE_WALLPAPER(wallpaperPicture), true)
-            .catch(() => false)) as boolean)
+        (await within(
+          output.webContents.executeJavaScript(
+            'typeof window.drashtiMotionProbe?.read === "function"',
+            true,
+          ) as Promise<boolean>,
+          PAGE_LIMIT_MS,
+          false,
+        ));
+      const op = operator();
+      const wallpaper = op
+        ? await within(
+            op.webContents.executeJavaScript(CHOOSE_WALLPAPER(wallpaperPicture), true) as Promise<boolean>,
+            PAGE_LIMIT_MS,
+            false,
+          )
         : false;
+      progress(
+        `motion probe ${probeOn ? 'on' : 'NOT on'}; the Wallpaper’s picture ${wallpaper ? 'chosen' : 'NOT chosen'}`,
+      );
       // Up first, unmeasured: the slides' picture loads once, as before a show.
       await press('(warm-up)', 'slide', 0, goLive(slidesId, 1), 1500);
       // Each transition back and forth between its two slides, on screens moving Calm.
+      progress('slide transitions (Calm)');
       for (const [k, t] of transitions.entries()) {
         const name = `${t.kind} ${t.ms > 0 ? String(t.ms) : ''}`.trim();
-        for (let i = 0; i < RUNS; i++)
+        for (let i = 0; i < RUNS && inTime(name); i++)
           await press(name, 'slide', t.ms, goLive(slidesId, k * 2 + (i % 2)), t.ms + SETTLE_MS);
       }
       // The Bold moves, and Bold's fade, on screens moving Bold.
+      progress('slide transitions (Bold)');
       deps.setMovement?.('bold');
       await sleep(SETTLE_MS);
       for (const kind of BOLD) {
         const k = KINDS.indexOf(kind);
-        for (let i = 0; i < RUNS; i++)
-          await press(
-            `${kind} ${String(DEFAULT_MS)} (Bold)`,
-            'slide',
-            DEFAULT_MS,
-            goLive(slidesId, k * 2 + (i % 2)),
-            DEFAULT_MS + SETTLE_MS,
-          );
+        const name = `${kind} ${String(DEFAULT_MS)} (Bold)`;
+        for (let i = 0; i < RUNS && inTime(name); i++)
+          await press(name, 'slide', DEFAULT_MS, goLive(slidesId, k * 2 + (i % 2)), DEFAULT_MS + SETTLE_MS);
       }
       deps.setMovement?.('calm');
       await sleep(SETTLE_MS);
       // The covers: a cut each, on and off.
-      for (let i = 0; i < RUNS; i++) {
+      progress('Black-out and the Wallpaper');
+      for (let i = 0; i < RUNS && inTime('Black-out'); i++) {
         await press('Black-out on', 'blackout', 0, { type: 'setBlackout', on: true }, SETTLE_MS);
         await press('Black-out off', 'blackout', 0, { type: 'setBlackout', on: false }, SETTLE_MS);
       }
-      for (let i = 0; i < RUNS; i++) {
+      for (let i = 0; i < RUNS && inTime('Wallpaper'); i++) {
         await press('Wallpaper on', 'wallpaper', 0, { type: 'setWallpaper', on: true }, SETTLE_MS);
         await press('Wallpaper off', 'wallpaper', 0, { type: 'setWallpaper', on: false }, SETTLE_MS);
       }
       // Lower thirds in, a moment held, and out.
+      progress('lower thirds');
       for (const { key, lowerThird } of lowerThirds()) {
         const inMs = lowerThirdMs(lowerThird, 'in');
         const outMs = lowerThirdMs(lowerThird, 'out');
-        for (let i = 0; i < SHORT_RUNS; i++) {
+        for (let i = 0; i < SHORT_RUNS && inTime(`lower third ${key}`); i++) {
           await press(
             `lower third ${key} in`,
             'lowerThird',
@@ -373,28 +441,34 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         }
       }
       // The deck: in (its first step's clip, the deck's push inside it), then two clicks.
-      for (let i = 0; i < SHORT_RUNS; i++) {
+      progress('the deck');
+      for (let i = 0; i < SHORT_RUNS && inTime('the deck'); i++) {
         await press('deck slide in (step 0)', 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 800);
         await press('deck click', 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
         await press('deck click', 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
       }
+      const trips = [...roundTrips].sort((a, b) => a - b);
+      progress(
+        `pressed ${String(pressed.length)} times; the operator window answered in median ${String(trips[Math.floor((trips.length - 1) / 2)] ?? '-')} ms, slowest ${String(trips.at(-1) ?? '-')} ms${skipped.size > 0 ? `; out of time, not all pressed: ${[...skipped].join(', ')}` : ''}`,
+      );
       const measured = await measure(output, pressed.slice(1));
+      progress(`measured ${String(measured.runs.length)} runs from ${String(measured.frames)} frames`);
       const rows = rowsOf(measured.runs, pressed.slice(1), measured.period);
       const late = rows.filter((r) => r.late).map((r) => r.name);
       const uneven = rows.filter((r) => r.uneven).map((r) => r.name);
       const streaming = (sw('DRASHTI_PERF_STREAM') ?? '') !== '';
-      keep(streaming, { measured, rows, wallpaper, pressed });
+      keep(streaming, { measured, rows, wallpaper, pressed, roundTrips, skipped: [...skipped] });
       const unseen = rows.filter((r) => r.seen === 0).map((r) => r.name);
       const fromMain = pressed.filter((p) => p.from === 'main').length;
       return {
         checks: [
           {
             name: 'every animation case was seen on the audience screen (the motion probe’s record)',
-            ok: probeOn && measured.frames > 0 && unseen.length === 0,
+            ok: probeOn && measured.frames > 0 && unseen.length === 0 && skipped.size === 0,
             detail: !probeOn
               ? 'the motion probe is not on (DRASHTI_TEST_MOTION_PROBE=1, never in an installed Drashti)'
-              : unseen.length > 0
-                ? `never seen moving: ${unseen.join(', ')}`
+              : unseen.length > 0 || skipped.size > 0
+                ? `never seen moving: ${unseen.join(', ') || 'none'}; out of time: ${[...skipped].join(', ') || 'none'}`
                 : `${plural(rows.length, 'case')}, ${plural(measured.runs.length, 'run')}`,
           },
         ],
@@ -421,15 +495,21 @@ async function measure(
   const last = pressed.at(-1);
   const none = { runs: [], period: 1000 / 60, frames: 0, still: null, probe: null };
   if (!output || output.isDestroyed() || !first || !last) return none;
-  const read = (await output.webContents
-    .executeJavaScript(
+  const read = await within(
+    output.webContents.executeJavaScript(
       `window.drashtiMotionProbe ? window.drashtiMotionProbe.read(${String(first.at - 2000)}, ${String(last.until + 1000)}) : null`,
       true,
-    )
-    .catch(() => null)) as { frames: number[]; changes: Record<string, number[]> } | null;
-  const paints = (await output.webContents
-    .executeJavaScript('globalThis.drashtiPaintLog ?? []', true)
-    .catch(() => [])) as { rev: number; sentAt: number; paintedAt: number }[];
+    ) as Promise<{ frames: number[]; changes: Record<string, number[]> } | null>,
+    PAGE_LIMIT_MS * 4,
+    null,
+  );
+  const paints = await within(
+    output.webContents.executeJavaScript('globalThis.drashtiPaintLog ?? []', true) as Promise<
+      { rev: number; sentAt: number; paintedAt: number }[]
+    >,
+    PAGE_LIMIT_MS * 4,
+    [],
+  );
   if (!read) return none;
   const period = framePeriod(read.frames);
   const runs = pressed.map((p): Measured => {
