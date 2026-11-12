@@ -45,6 +45,8 @@ describe('PowerPoint’s own formulas of a shape’s place and size', () => {
       'min()',
       'abs(1,2)',
       'max(1,2,3,4,5,6,7,8,9)',
+      // A name every object has, never one of the functions Drashti reads.
+      'constructor(1)',
       '1,2',
       `${'1+'.repeat(FORMULA_LENGTH / 2)}1`,
       `${'('.repeat(40)}1${')'.repeat(40)}`,
