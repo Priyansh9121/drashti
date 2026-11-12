@@ -124,7 +124,8 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
   'playlist.rename': 'simple',
   'playlist.remove': 'simple',
   'playlist.restore': 'simple',
-  'playlist.add': 'simple',
+  // Simple Mode brings files into a playlist through imports and phone uploads.
+  'playlist.add': 'pro',
   'playlist.move': 'simple',
   'playlist.removeItems': 'simple',
   'playlist.restoreItems': 'simple',

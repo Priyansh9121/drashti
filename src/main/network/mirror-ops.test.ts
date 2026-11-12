@@ -186,7 +186,20 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
   const advance = (ms: number) => {
     clock += ms;
   };
-  return { service, commands, played, state, remote, stage, poster, ask, audioView, audioCalls, playIndexes, advance };
+  return {
+    service,
+    commands,
+    played,
+    state,
+    remote,
+    stage,
+    poster,
+    ask,
+    audioView,
+    audioCalls,
+    playIndexes,
+    advance,
+  };
 }
 
 /** The new reads and the actions that put something up. */

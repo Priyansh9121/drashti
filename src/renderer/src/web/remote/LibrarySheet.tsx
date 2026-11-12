@@ -11,14 +11,14 @@ import { loadMedia, useMirror } from './mirror-store';
 import { PhoneQuestion, PhoneSheet } from './PhoneSheet';
 import { playlistPaths } from './playlist-paths';
 import { loadLibrary, loadPlaylists, refreshPlaylist, showPlaylist, useRemote } from './remote-store';
-import { useSimple } from './simple';
 
 /*
  * The library's changes from a phone (Session 54, the phone as a full Drashti), as the operator window makes them
  * on the Drashti computer: a presentation made from words; a presentation or a playlist deleted, with its Undo, as
  * the window's; a playlist made or renamed; and in a playlist, a presentation or one of Media's files added (by its
  * id), items moved up or down and taken out, with Undo. Both modes can manage playlists and their folders.
- * Presentation creation and deletion stay in Pro Mode. The phone reads the lists again after each change.
+ * Creating or deleting presentations and adding existing library files to a playlist stay in Pro Mode.
+ * The phone reads the lists again after each change.
  */
 
 type Tab = 'playlists' | 'presentations';
@@ -50,16 +50,19 @@ async function send(
 }
 
 export function LibrarySheet({ playlistsOnly = false }: { playlistsOnly?: boolean }) {
-  const simple = useSimple() !== null;
-  const justPlaylists = playlistsOnly || simple;
+  const pro = useRemote((s) => s.hall?.simple === null);
+  const justPlaylists = playlistsOnly || !pro;
   const [tab, setTab] = useState<Tab>('playlists');
   const [undo, setUndo] = useState<Undo | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     void loadPlaylists();
+  }, []);
+  useEffect(() => {
+    if (!pro) return;
     void loadLibrary();
     void loadMedia();
-  }, []);
+  }, [pro]);
   const deleted = (words: string, path: string, ids: string[], then: () => Promise<void>) => {
     setUndo({ words, path, ids, then });
   };
@@ -75,7 +78,7 @@ export function LibrarySheet({ playlistsOnly = false }: { playlistsOnly?: boolea
           {problem}
         </Notice>
       )}
-      {undo && (
+      {undo && (pro || !undo.path.startsWith('/api/v1/presentations/')) && (
         <Notice tone="info" data-testid="remote-library-undo-notice" onDismiss={() => setUndo(null)}>
           <span className="flex flex-wrap items-center gap-2">
             <span>{undo.words}</span>
@@ -128,6 +131,17 @@ export function LibrarySheet({ playlistsOnly = false }: { playlistsOnly?: boolea
 type Say = (problem: string | null) => void;
 type Deleted = (words: string, path: string, ids: string[], then: () => Promise<void>) => void;
 
+/** What the phone says before deleting a playlist or folder that needs confirmation. */
+function deleteReason(node: PlaylistNode): string | null {
+  if (node.isFolder) return 'This also deletes the playlists and folders inside it.';
+  const state = useEngine.getState().state;
+  if (state?.repeat?.playlistId === node.id) return 'This Repeat Slides playlist is going round.';
+  if (state?.live.playlist?.playlistId === node.id) return 'This playlist is on the screens.';
+  if (useRemote.getState().hall?.simple?.playlistId === node.id)
+    return 'This playlist is open on the Drashti computer.';
+  return null;
+}
+
 /** Create, rename or delete playlists and folders, and change the open playlist's rows. */
 function Playlists({ say, deleted }: { say: Say; deleted: Deleted }) {
   const playlists = useRemote((s) => s.playlists);
@@ -140,7 +154,7 @@ function Playlists({ say, deleted }: { say: Say; deleted: Deleted }) {
   const parentId = folders.some((folder) => folder.id === parent) ? parent : '';
   const [renaming, setRenaming] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
-  const [removing, setRemoving] = useState<PlaylistNode | null>(null);
+  const [removing, setRemoving] = useState<{ node: PlaylistNode; reason: string } | null>(null);
   const isFolder = kind === 'folder';
 
   async function remove(node: PlaylistNode): Promise<void> {
@@ -273,8 +287,8 @@ function Playlists({ say, deleted }: { say: Say; deleted: Deleted }) {
                   aria-label={`Delete “${p.name}”`}
                   data-testid="remote-library-playlist-delete"
                   onClick={() => {
-                    const live = useEngine.getState().state?.live.playlist?.playlistId;
-                    if (p.isFolder || p.id === live) setRemoving(p);
+                    const reason = deleteReason(p);
+                    if (reason !== null) setRemoving({ node: p, reason });
                     else void remove(p);
                   }}
                 />
@@ -320,36 +334,30 @@ function Playlists({ say, deleted }: { say: Say; deleted: Deleted }) {
       )}
       {removing && (
         <PhoneQuestion
-          title={`Delete “${removing.name}”?`}
+          title={`Delete “${removing.node.name}”?`}
           safe="Cancel"
           act="Delete"
           testId="remote-library-playlist-delete-confirm"
           onSafe={() => setRemoving(null)}
           onAct={() => {
             setRemoving(null);
-            void remove(removing);
+            void remove(removing.node);
           }}
         >
-          <p>
-            {removing.isFolder
-              ? 'This also deletes the playlists and folders inside it. You can undo this.'
-              : 'This playlist is on the screens. You can undo the deletion.'}
-          </p>
+          <p>{removing.reason} You can undo this.</p>
         </PhoneQuestion>
       )}
     </div>
   );
 }
 
-/** The open playlist's items: moved up or down, taken out (with Undo), and a presentation or a file added. */
+/** The open playlist's items can be moved or taken out with Undo. */
 function Items({ playlistId, say, deleted }: { playlistId: string; say: Say; deleted: Deleted }) {
   const items = useRemote((s) => (s.playlistId === playlistId ? s.items : null));
-  const { list: library, total: libraryTotal } = useRemote((s) => s.library);
-  const { list: media, total: mediaTotal, query: mediaQuery } = useMirror((s) => s.media);
-  const [adding, setAdding] = useState('');
+  const pro = useRemote((s) => s.hall?.simple === null);
   const [removing, setRemoving] = useState<PlaylistItemInfo | null>(null);
   const again = () => refreshPlaylist(playlistId);
-  const path = (what: string) => `/api/v1/playlists/${encodeURIComponent(playlistId)}/${what}`;
+  const movePath = `/api/v1/playlists/${encodeURIComponent(playlistId)}/move`;
   if (items === null) return <p className="text-base text-muted">Reading its items…</p>;
 
   async function remove(item: PlaylistItemInfo): Promise<void> {
@@ -358,10 +366,6 @@ function Items({ playlistId, say, deleted }: { playlistId: string; say: Say; del
     deleted(`“${item.label}” was taken out.`, '/api/v1/playlist-items/restore', ids, again);
     await again();
   }
-  const choices = [
-    ...(library ?? []).map((p) => ({ value: `presentation:${p.id}`, label: p.name })),
-    ...(media ?? []).filter((m) => !m.missing).map((m) => ({ value: `media:${m.id}`, label: m.name })),
-  ];
   return (
     <div className="space-y-2">
       {items.length === 0 ? (
@@ -384,7 +388,7 @@ function Items({ playlistId, say, deleted }: { playlistId: string; say: Say; del
                 disabled={index === 0}
                 data-testid="remote-library-item-up"
                 onClick={() =>
-                  void send(path('move'), { ids: [item.id], to: index - 1 }, say).then((ids) =>
+                  void send(movePath, { ids: [item.id], to: index - 1 }, say).then((ids) =>
                     ids === null ? undefined : again(),
                   )
                 }
@@ -397,7 +401,7 @@ function Items({ playlistId, say, deleted }: { playlistId: string; say: Say; del
                 disabled={index === items.length - 1}
                 data-testid="remote-library-item-down"
                 onClick={() =>
-                  void send(path('move'), { ids: [item.id], to: index + 1 }, say).then((ids) =>
+                  void send(movePath, { ids: [item.id], to: index + 1 }, say).then((ids) =>
                     ids === null ? undefined : again(),
                   )
                 }
@@ -419,6 +423,37 @@ function Items({ playlistId, say, deleted }: { playlistId: string; say: Say; del
           ))}
         </ol>
       )}
+      {pro && <AddFromLibrary playlistId={playlistId} say={say} />}
+      {removing && (
+        <PhoneQuestion
+          title={`Take “${removing.label}” out of the playlist?`}
+          safe="Cancel"
+          act="Take it out"
+          testId="remote-library-item-delete-confirm"
+          onSafe={() => setRemoving(null)}
+          onAct={() => {
+            setRemoving(null);
+            void remove(removing);
+          }}
+        >
+          <p>This item is on the screens. You can undo taking it out.</p>
+        </PhoneQuestion>
+      )}
+    </div>
+  );
+}
+
+function AddFromLibrary({ playlistId, say }: { playlistId: string; say: Say }) {
+  const { list: library, total: libraryTotal } = useRemote((s) => s.library);
+  const { list: media, total: mediaTotal, query: mediaQuery } = useMirror((s) => s.media);
+  const [adding, setAdding] = useState('');
+  const path = `/api/v1/playlists/${encodeURIComponent(playlistId)}/add`;
+  const choices = [
+    ...(library ?? []).map((p) => ({ value: `presentation:${p.id}`, label: p.name })),
+    ...(media ?? []).filter((m) => !m.missing).map((m) => ({ value: `media:${m.id}`, label: m.name })),
+  ];
+  return (
+    <>
       <form
         className="flex flex-wrap gap-2"
         data-testid="remote-library-add-form"
@@ -428,10 +463,10 @@ function Items({ playlistId, say, deleted }: { playlistId: string; say: Say; del
           if (!id) return;
           const item =
             kind === 'media' ? { kind: 'media', mediaId: id } : { kind: 'presentation', presentationId: id };
-          void send(path('add'), { items: [item] }, say).then(async (ids) => {
+          void send(path, { items: [item] }, say).then(async (ids) => {
             if (ids === null) return;
             setAdding('');
-            await again();
+            await refreshPlaylist(playlistId);
           });
         }}
       >
@@ -484,22 +519,7 @@ function Items({ playlistId, say, deleted }: { playlistId: string; say: Say; del
           </Button>
         )}
       </div>
-      {removing && (
-        <PhoneQuestion
-          title={`Take “${removing.label}” out of the playlist?`}
-          safe="Cancel"
-          act="Take it out"
-          testId="remote-library-item-delete-confirm"
-          onSafe={() => setRemoving(null)}
-          onAct={() => {
-            setRemoving(null);
-            void remove(removing);
-          }}
-        >
-          <p>This item is on the screens. You can undo taking it out.</p>
-        </PhoneQuestion>
-      )}
-    </div>
+    </>
   );
 }
 

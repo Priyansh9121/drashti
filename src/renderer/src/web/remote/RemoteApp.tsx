@@ -874,7 +874,7 @@ function Library() {
         </p>
       ) : library.list.length === 0 ? (
         <p className="text-base text-muted">
-          The library is empty: presentations are imported in Drashti on the computer, in Pro Mode.
+          The library is empty. Import a presentation in Drashti on the computer.
         </p>
       ) : (
         <>
