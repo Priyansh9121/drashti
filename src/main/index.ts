@@ -41,6 +41,7 @@ import {
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
 import { MediaRemoval, sweepQuiet, TrimCleanup } from './library/media-removal';
+import { hashOffMain } from './library/hash-off-main';
 import { FileActions } from './library/file-actions';
 import {
   extOf,
@@ -2923,7 +2924,9 @@ function start(): void {
   let eventsStreamWas: StreamStatus | null = null;
   let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
   let conversionActivityChanged: (() => void) | undefined;
-  let trimCleanupActivityChanged: (() => void) | undefined;
+  // Trim's background work (Session 57: finished cuts checked, accepted cuts carried on, unused cuts swept), told
+  // when the stream changes.
+  let trimActivityChanged: (() => void) | undefined;
   // Edit slides' PDF reading waiting for the show (Session 57): each wait's check, told when the stream changes.
   const pdfReadWaits = new Set<() => void>();
   const countStreams = streamCounter((kind) => behind?.service.count(kind));
@@ -2967,7 +2970,7 @@ function start(): void {
     statusChanged: (status) => {
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
-      trimCleanupActivityChanged?.();
+      trimActivityChanged?.();
       for (const check of [...pdfReadWaits]) check();
       eventsOut.emit(streamEvents(eventsStreamWas, status));
       eventsStreamWas = status;
@@ -3913,6 +3916,9 @@ function start(): void {
     },
     readRate: !packaged() && sw('DRASHTI_TEST_SAVE_READRATE') === '1',
   });
+  // Trim's background work waits for a quiet moment (Q57-7): nothing up on LIVE, no stream on air or recording.
+  const trimWorkQuiet = () =>
+    !quitStarted && !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers);
   // A playlist video's Trim makes a cut in the background, then changes just that row (Session 57).
   const playlistTrims = new PlaylistTrims({
     repo: trimmedVideos,
@@ -3935,6 +3941,8 @@ function start(): void {
         backgroundItemId(bg, live.playlist?.itemId) === itemId
       );
     },
+    quiet: trimWorkQuiet,
+    hash: (file, signal) => hashOffMain(file, signal),
     kept: {
       load: () => settings.get('playlistTrimsWaiting'),
       save: (cuts) => settings.set('playlistTrimsWaiting', cuts),
@@ -3966,14 +3974,10 @@ function start(): void {
     markersChanged: (id) => engine.refreshMarkers(id),
     notice: (text) => sendToOperator(IPC.app.notice, { text }),
   });
-  const trimStartup = playlistTrims.resumeInterrupted();
-  void trimStartup
-    .then(() => playlistTrims.cleanupCopies())
-    .catch((error: unknown) => {
-      log.warn('Trim: could not resume an interrupted cut', error);
-    });
-  // Nothing up and nothing Oops, Put it back or Back could bring back (sweepQuiet), with no stream or recording.
-  const trimCleanupQuiet = () => !quitStarted && !streaming.inUse() && !testOnAir && sweepQuiet(engine);
+  // The cuts accepted before Drashti last closed carry on from the moment kept conversions do (resumeWhenQuiet,
+  // below), and the copies nothing carries on go to the Trash then.
+  // The unused cuts sweep also waits until nothing Oops, Put it back or Back could bring back (sweepQuiet).
+  const trimCleanupQuiet = () => trimWorkQuiet() && sweepQuiet(engine);
   const trimCleanup = new TrimCleanup(
     trimCleanupQuiet,
     async (signal) => {
@@ -3990,15 +3994,18 @@ function start(): void {
     (error) => log.warn('Media: could not check unused Trim cuts', error),
     AFTER_START_MS,
   );
-  trimCleanupActivityChanged = () => trimCleanup.activityChanged();
-  testTrimActivityChanged = trimCleanupActivityChanged;
+  trimActivityChanged = () => {
+    playlistTrims.activityChanged();
+    trimCleanup.activityChanged();
+  };
+  testTrimActivityChanged = trimActivityChanged;
   const offTrimActivity = engine.onChange(() => {
     playlistTrims.activityChanged();
     trimCleanup.activityChanged();
   });
   stops.add('playlist trims', () => {
     offTrimActivity();
-    trimCleanupActivityChanged = undefined;
+    trimActivityChanged = undefined;
     testTrimActivityChanged = undefined;
     trimCleanup.close();
     playlistTrims.close();
@@ -4090,9 +4097,9 @@ function start(): void {
     if (boxGone !== null && recovery) recovery = { ...recovery, pip: false, pipInputGone: boxGone };
     return recovery;
   });
-  handle(IPC.app.startNotice, async (e) => {
+  handle(IPC.app.startNotice, (e) => {
     if (!fromOperator(e)) return null;
-    await trimStartup.catch(() => undefined);
+    // Waits for no FFmpeg: only the cuts that cannot carry on are named (TR-5).
     const interruptedTrim = playlistTrims.reportInterrupted();
     const text = [startNotice, interruptedTrim].filter(Boolean).join(' ') || null;
     startNotice = null;
@@ -6950,6 +6957,11 @@ function start(): void {
   if (sw('DRASHTI_SELFTEST') === undefined)
     operatorWindow.webContents.once('did-finish-load', () => {
       conversions.resumeWaiting();
+      // Trim cuts accepted before Drashti last closed (TR-5): from the same moment and as long after it as kept
+      // conversions, then at the first quiet moment (nothing up, no stream on air or recording).
+      setTimeout(() => {
+        playlistTrims.resumeWhenQuiet();
+      }, AFTER_START_MS).unref();
     });
   operatorWindow.webContents.once('did-finish-load', () => {
     holdPriority('with the operator window open');

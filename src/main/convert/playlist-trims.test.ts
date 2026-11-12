@@ -307,10 +307,11 @@ describe('trimming a playlist video', () => {
     const x = await setup();
     expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
     x.show('original');
+    const asked = x.quiet.mock.calls.length;
     x.finish({ ok: true, copy: x.output });
     await vi.waitFor(() => {
-      // The file finished. Either the live guard has been asked or the row was already changed.
-      expect(x.isLive.mock.calls.length + x.rowChanged.mock.calls.length).toBeGreaterThan(0);
+      // The file finished. It waits for a quiet moment (its row's video is up) or the row was already changed.
+      expect(x.quiet.mock.calls.length - asked + x.rowChanged.mock.calls.length).toBeGreaterThan(0);
     });
     expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
     expect(x.service.list()).toEqual([x.itemId]);
@@ -481,8 +482,8 @@ describe('trimming a playlist video', () => {
     x.finish({ ok: false, stopped: true, message: 'Stopped.' });
 
     const restarted = x.restart();
-    await restarted.resumeInterrupted();
-    expect(x.queue).toHaveBeenCalledTimes(2);
+    restarted.resumeWhenQuiet();
+    await vi.waitFor(() => expect(x.queue).toHaveBeenCalledTimes(2));
     expect(x.queue.mock.calls[1]?.[0]).toMatchObject({ startMs: 500, endMs: 2500 });
     expect(restarted.list()).toEqual([x.itemId]);
     expect(restarted.reportInterrupted()).toBeNull();
@@ -497,15 +498,18 @@ describe('trimming a playlist video', () => {
     const x = await setup();
     expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
     x.show('original');
+    const asked = x.quiet.mock.calls.length;
     x.finish({ ok: true, copy: x.output });
-    await vi.waitFor(() => expect(x.isLive).toHaveBeenCalledWith(x.itemId, 'original'));
+    await vi.waitFor(() => expect(x.quiet.mock.calls.length).toBeGreaterThan(asked));
     x.service.close();
 
+    // Recovery put the row's video back on LIVE: the finished cut waits, kept, for nothing to be up.
     const restarted = x.restart();
-    await restarted.resumeInterrupted();
-    await restarted.cleanupCopies();
+    expect(restarted.reportInterrupted()).toBeNull();
+    restarted.resumeWhenQuiet();
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(x.queue).toHaveBeenCalledOnce();
-    expect(restarted.list()).toEqual([x.itemId]);
+    expect(x.hash).not.toHaveBeenCalled();
     expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
     expect(await readFile(x.output, 'utf8')).toBe('placeholder trim');
     expect(x.trash).not.toHaveBeenCalled();
@@ -601,7 +605,7 @@ describe('trimming a playlist video', () => {
     const x = await setup();
     x.kept.save([{ itemId: x.itemId, mediaId: 'original', name: 'Placeholder.mp4' }]);
     const legacy = x.restart();
-    await legacy.resumeInterrupted();
+    legacy.resumeWhenQuiet();
     expect(legacy.reportInterrupted()).toBe(
       'The cut of “Placeholder.mp4” wasn’t made because Drashti closed. Open Trim and save it again.',
     );
@@ -612,7 +616,8 @@ describe('trimming a playlist video', () => {
     x.finish({ ok: false, stopped: true, message: 'Stopped.' });
     await writeFile(x.original, 'placeholder replacement of the original');
     const restarted = x.restart();
-    await restarted.resumeInterrupted();
+    restarted.resumeWhenQuiet();
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(x.queue).toHaveBeenCalledOnce();
     expect(restarted.reportInterrupted()).toContain('Open Trim and save it again.');
     expect(await readFile(x.original, 'utf8')).toBe('placeholder replacement of the original');
