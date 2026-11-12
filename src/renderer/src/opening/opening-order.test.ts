@@ -46,6 +46,13 @@ describe('the opening holds, black', () => {
     expect(openingHolds({ ...covered, windowOpened: true })).toBe(false);
   });
 
+  it('does not start its timeline while the window is still missing frames after it opens', () => {
+    const busy = { ...covered, windowOpened: true, windowFrameReady: false };
+    expect(openingHolds(busy)).toBe(true);
+    expect(openingHolds({ ...busy, windowFrameReady: true })).toBe(false);
+    expect(openingHolds({ ...busy, waitedOut: true })).toBe(false);
+  });
+
   it('and until the hall’s screens have drawn, as before', () => {
     expect(openingHolds({ ...covered, windowOpened: true, screensWarming: true })).toBe(true);
   });
