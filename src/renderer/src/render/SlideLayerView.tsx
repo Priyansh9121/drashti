@@ -96,7 +96,10 @@ export function nextShowing(
         };
       if (native && prev.off && keyOf(prev.off) === keyOf(layer)) return { on: layer, off: null, fade: null };
     }
-    return { ...prev, on: layer };
+    // The engine's newest is shown: a click that waited for the incoming transition is over with, so its older slide
+    // never replaces this one when the transition ends (an edit meanwhile that leaves the slide no longer one Drashti
+    // plays itself, C3's review LOW).
+    return { on: layer, off: prev.off, fade: prev.fade };
   }
   const t = layer.transition;
   if (takesTime(t) && now < layer.shownAt + t.durationMs)
