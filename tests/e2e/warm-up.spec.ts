@@ -20,6 +20,17 @@ import { goLive, makeSlides } from './placeholder-slides';
 
 const HOLD = { DRASHTI_TEST_HOLD_WARM_UP: '1' };
 
+/**
+ * Chromium's word on how it draws held back until the test gives it (Main's drashtiTestGpuSaid), and every page's
+ * warm-up kept drawn till then, as a slow computer's still runs when Chromium says (a test switch, Session 57).
+ */
+const SAID_LATE = { DRASHTI_TEST_GPU_SAID: 'late' };
+
+/** Main's own test hook for that (never in a packaged Drashti). */
+interface MainGlobals {
+  drashtiTestGpuSaid?: () => void;
+}
+
 /** How Main reads Chromium's gpu_compositing once Chromium has said how it draws (a test switch, Session 57). */
 const WITH_A_CHIP = { DRASHTI_TEST_GPU_COMPOSITING: 'enabled' };
 const WITHOUT_A_CHIP = { DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software' };
@@ -317,6 +328,55 @@ test('where Chromium draws without a graphics chip an output draws the show with
   await expect.poll(() => brightest(out), { timeout: 15_000 }).toBeGreaterThan(40);
   await expect(root).toHaveAttribute('data-warm-up', 'skipped');
   // The log says which Main chose for the output.
+  await expectSaid(userData, SKIPPED);
+  await app.close();
+});
+
+test('an output told it draws without a graphics chip after its warm-up began ends the warm-up there and draws the show, black until something goes up', async () => {
+  test.setTimeout(180_000);
+  const { app, userData } = await launchApp({
+    ...WITHOUT_A_CHIP,
+    ...SAID_LATE,
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const id = await makeSlides(
+    win,
+    'Placeholder slides told late',
+    [{ words: 'Placeholder words', background: '#3a6ea5' }],
+    { kind: 'dissolve', durationMs: 400 },
+  );
+  await setUpScreen(win);
+  const out = await outputPage(app);
+  const root = out.getByTestId('output-root');
+  // Opened before Chromium said how it draws: warming up, black, and nothing said in the log yet.
+  await expect(out.locator('[data-testid="output-root"] [data-warm-up="during"]')).toHaveCount(1, {
+    timeout: 30_000,
+  });
+  await expect(root).toHaveAttribute('data-warm-up', 'warming');
+  await expect(root).toHaveAttribute('data-fonts', 'loading');
+  expect(await warmUpMarks(out), 'the output’s warm-up marks as it warms up').toEqual([
+    'drashti-warm-up:output',
+  ]);
+  expect(await brightest(out), 'the whole output, warming up').toBe(0);
+  expect(warmUpLines(userData), 'the log before Chromium has said').toEqual([]);
+  // Chromium says it draws without a graphics chip: the warm-up ends there, cut, never drawn to its end.
+  await app.evaluate(() => {
+    (globalThis as MainGlobals).drashtiTestGpuSaid?.();
+  });
+  await expect(root).toHaveAttribute('data-warm-up', 'skipped');
+  await expect(root).toHaveAttribute('data-fonts', 'ready');
+  expect(await warmUpMarks(out), 'the output’s warm-up marks once told').toEqual([
+    'drashti-warm-up:output',
+    'drashti-warm-up:output-cut',
+  ]);
+  // The show drawn from there, black until something goes up.
+  await expect(out.getByTestId('scene')).toHaveAttribute('data-nothing-up', 'black');
+  expect(await brightest(out), 'the whole output, told').toBe(0);
+  await goLive(win, id, 0);
+  await expect.poll(() => brightest(out), { timeout: 15_000 }).toBeGreaterThan(40);
+  await expect(root).toHaveAttribute('data-warm-up', 'skipped');
   await expectSaid(userData, SKIPPED);
   await app.close();
 });
