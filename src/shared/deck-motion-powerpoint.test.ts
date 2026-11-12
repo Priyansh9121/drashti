@@ -16,7 +16,11 @@ const box = { x: 94, y: 51, width: 64, height: 38 };
 const screen = { width: 320, height: 180 };
 
 /** One effect on the box, the only one of its click. */
-function effect(kind: DeckEffect['kind'], phase: DeckEffect['phase'], more: Partial<DeckEffect> = {}): DeckEffect {
+function effect(
+  kind: DeckEffect['kind'],
+  phase: DeckEffect['phase'],
+  more: Partial<DeckEffect> = {},
+): DeckEffect {
   return { shapeId: '2', step: 1, phase, kind, delayMs: 0, durationMs: 700, ...more };
 }
 

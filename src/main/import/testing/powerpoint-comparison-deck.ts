@@ -68,13 +68,18 @@ export interface ComparisonMotion {
   relativeScale?: number;
 }
 
-const track = (name: string, from: number | string, to: number | string): ComparisonTrack => ({ name, from, to });
+const track = (name: string, from: number | string, to: number | string): ComparisonTrack => ({
+  name,
+  from,
+  to,
+});
 /** A width or height `times` the shape's own, as PowerPoint writes it: the number 0, its own (#ppt_w), or a multiple. */
 const size = (name: string, times: number): number | string =>
   times === 0 ? 0 : times === 1 ? `#${name}` : `#${name}*${String(times)}`;
 const scale = (from: number, to: number) =>
   ['ppt_w', 'ppt_h'].map((name) => track(name, size(name, from), size(name, to)));
-const position = (axis: 'x' | 'y', from: number | string, to: number | string) => track(`ppt_${axis}`, from, to);
+const position = (axis: 'x' | 'y', from: number | string, to: number | string) =>
+  track(`ppt_${axis}`, from, to);
 const effect = (
   name: string,
   phase: ComparisonMotion['phase'],
@@ -87,7 +92,10 @@ const MOTIONS: ComparisonMotion[] = [
   effect('Float In Up', 'in', 42, [position('y', '#ppt_y+0.08', '#ppt_y')], { filter: 'fade', subtype: 4 }),
   effect('Float In Down', 'in', 42, [position('y', '#ppt_y-0.08', '#ppt_y')], { filter: 'fade', subtype: 1 }),
   effect('Float Out Up', 'out', 47, [position('y', '#ppt_y', '#ppt_y-0.08')], { filter: 'fade', subtype: 4 }),
-  effect('Float Out Down', 'out', 47, [position('y', '#ppt_y', '#ppt_y+0.08')], { filter: 'fade', subtype: 1 }),
+  effect('Float Out Down', 'out', 47, [position('y', '#ppt_y', '#ppt_y+0.08')], {
+    filter: 'fade',
+    subtype: 1,
+  }),
   ...(['in', 'out'] as const).flatMap((phase) =>
     ['in', 'out'].flatMap((edge) =>
       ['Vertical', 'Horizontal'].map((axis) =>
