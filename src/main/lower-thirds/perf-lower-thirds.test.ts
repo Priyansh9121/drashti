@@ -67,7 +67,9 @@ describe('the lower-thirds scenario', () => {
     const designs = LOWER_THIRD_TEMPLATES.filter((template) =>
       template.input.animation.startsWith('design-'),
     );
-    const measured = (await playedRows()).filter((r) => r.row.startsWith('template '));
+    const measured = (await playedRows()).filter(
+      (r) => r.row.startsWith('template ') && !CANDIDATE_IDS.includes(r.row.slice('template '.length)),
+    );
     expect(designs.length).toBeGreaterThanOrEqual(34);
     expect(measured).toHaveLength(designs.length);
     expect(new Set(measured.map((r) => r.lowerThird.id)).size).toBe(designs.length);
