@@ -596,7 +596,7 @@ describe('a ProPresenter 6 video’s start and end points (Session 14)', () => {
     expect(automaticItem?.issues.find((i) => i.code === 'markers-replaced')?.message).toContain(
       'The new points and markers take effect the next time the media plays.',
     );
-    engine.dispatch({ type: 'setBackground', background: null });
+    engine.dispatch({ type: 'clearAll' });
     engine.dispatch(play);
     expect(engine.current.layers.background).toMatchObject({ clip: { startMs: 4000, endMs: 7000 } });
   });
