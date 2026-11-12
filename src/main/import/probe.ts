@@ -400,7 +400,7 @@ export function unplayableIssue(name: string, probe: MediaProbe, mediaId: string
   return {
     severity: 'warning',
     code: 'unplayable-media',
-    message: `Drashti cannot ${probe.kind === 'image' ? 'show' : 'play'} ${name} as it is: ${probe.format}. Convert it here (in the report, or in the media list).`,
+    message: `Drashti cannot ${probe.kind === 'image' ? 'show' : 'play'} ${name} as it is: ${probe.format}. Convert it in Media.`,
     fix: { kind: 'convert-media', mediaId, advice: unplayableAdvice(probe) },
   };
 }

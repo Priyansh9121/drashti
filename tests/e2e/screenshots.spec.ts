@@ -76,6 +76,8 @@ import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { makeZip } from '../../src/main/import/testing/zip-writer';
 import { dropboxStandIn, folderLink } from './dropbox-stand-in';
 import { longPress } from './phone-gestures';
+import { linkFinished, linkView, pasteLink } from './paste-link';
+import { importItem } from './import-details';
 
 /*
  * The screenshots in docs/screenshots/, with placeholder content only. Taken
@@ -637,7 +639,7 @@ async function mkdirAndShot(page: Page, name: string) {
   await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css', animations: 'disabled' });
 }
 
-test('converting media: the import report, then the media list while converting and after', async () => {
+test('converting media: the Media tab during conversion and after it finishes', async () => {
   test.setTimeout(180_000);
   const ffmpeg = testFfmpeg();
   test.skip(!ffmpeg, 'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs');
@@ -677,29 +679,7 @@ test('converting media: the import report, then the media list while converting 
   await operatorReady(win);
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), files);
-  const report = win.getByTestId('import-report');
-  // Each is converted by itself, one at a time (Session 50; the picture too since Session 55, Part 5): the report
-  // says so, and offers nothing to press (no Convert all). The long AVI is still converting for the picture.
-  await expect(report.getByTestId('report-converted')).toContainText(
-    /^Converting [1-4] files? Drashti cannot play as (it is|they are), one at a time/u,
-    { timeout: 60_000 },
-  );
-  for (const [name, kind] of [
-    ['Placeholder welcome loop.avi', 'play'],
-    ['Placeholder intro.mov', 'play'],
-    ['Placeholder bell.aiff', 'play'],
-    ['Placeholder photo.heic', 'show'],
-  ] as const)
-    await expect(report.getByTestId('report-item').filter({ hasText: name }).first()).toContainText(
-      `Drashti cannot ${kind} ${name} as it is: `,
-    );
-  await expect(
-    report.getByTestId('report-item').filter({ hasText: 'Placeholder welcome loop.avi' }).first(),
-  ).toContainText('It converts it by itself');
-  await expect(report.getByTestId('report-convert-all')).toHaveCount(0);
-  await shot(win, 'convert-report');
-
-  await report.getByRole('button', { name: 'Close' }).click();
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
   await win.getByRole('tab', { name: 'Media' }).click();
   await expect(win.getByTestId('convert-progress')).toBeVisible({ timeout: 60_000 });
   await shot(win, 'convert-media-list');
@@ -1519,7 +1499,7 @@ test('updates: the Updates dialog, the status bar, and a node offering to match 
   }
 });
 
-test('PDF and PowerPoint as pictures: the import report and the slides (Session 15)', async () => {
+test('imported PDF slides and a notice explaining a damaged deck', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ DRASHTI_TEST_NO_CONVERTER: '1' });
   const win = await operatorPage(app);
@@ -1544,23 +1524,19 @@ test('PDF and PowerPoint as pictures: the import report and the slides (Session 
     ]),
   );
   const deck = join(dir, 'Placeholder deck.pptx');
-  writeFileSync(
-    deck,
-    makeTestPptx([{ color: '1E3A8A', text: 'Placeholder slide', notes: 'Placeholder note' }]),
-  );
+  writeFileSync(deck, Buffer.from('PK\u0003\u0004 placeholder, cut short'));
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [pdf, deck]);
-  const report = win.getByTestId('import-report');
-  await expect(report).toBeVisible({ timeout: 60_000 });
-  await expect(report).toContainText('became a slide holding its picture');
+  await expect(win.getByTestId('import-notice').filter({ hasText: 'Placeholder deck.pptx' })).toContainText(
+    'This file looks damaged',
+    { timeout: 60_000 },
+  );
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
   await shot(win, 'pictures-report');
-  await report
-    .getByTestId('report-item')
-    .filter({ hasText: 'Placeholder announcements' })
-    .first()
-    .getByRole('button', { name: 'Open' })
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /^Placeholder announcements/u })
     .click();
-  await expect(report).toHaveCount(0);
   // An import with a problem says so in the status bar, in the warning colour (Session 16).
   await expect(win.getByTestId('import-result').getByLabel('Problems')).toBeVisible();
   await letTimePass(win, 500, 'the docs’ picture: the status bar settles');
@@ -1572,7 +1548,7 @@ test('PDF and PowerPoint as pictures: the import report and the slides (Session 
   await app.close();
 });
 
-test('Import from a Link: each state of the dialog, the status bar and the report (Session 25b)', async () => {
+test('Import from a Link: the Dropbox paste field, status and failure notices', async () => {
   test.setTimeout(300_000);
   const ffmpeg = testFfmpeg();
   test.skip(!ffmpeg, 'FFmpeg is not fetched here');
@@ -1611,7 +1587,6 @@ test('Import from a Link: each state of the dialog, the status bar and the repor
     { shotAAAAAAAAAAA: { name: 'Placeholder sabha folder.zip', body: zip, type: 'application/zip' } },
   );
   try {
-    const chosen = join(work, 'Sabha downloads');
     const { app } = await launchApp({
       DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
       DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
@@ -1621,64 +1596,49 @@ test('Import from a Link: each state of the dialog, the status bar and the repor
     const win = await operatorPage(app);
     await win.setViewportSize({ width: 1280, height: 720 });
     await operatorReady(win);
-    await app.evaluate(({ dialog, shell }, folder) => {
-      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
-      shell.showItemInFolder = () => undefined;
-    }, chosen);
     await chooseMenuItem(app, 'import-from-link');
-    const dialog = win.getByTestId('link-dialog');
-    await expect(dialog).toBeVisible();
+    const field = win.getByTestId('link-paste');
+    await expect(field).toBeVisible();
     await shot(win, 'import-link-kind');
-    await win.getByTestId('link-kind-dropbox').click();
-    await win.getByTestId('link-text').fill('https://example.net/placeholder/clip.mp4');
-    await expect(dialog).toContainText('not a Dropbox link');
+    await pasteLink(win, 'https://example.net/placeholder/clip.mp4', false);
+    const notices = win.getByTestId('import-notice');
+    await expect(notices).toContainText('Paste a share link from YouTube or Dropbox.');
     await shot(win, 'import-link-refused');
-    await win.getByTestId('link-text').fill(folderLink('shotAAAAAAAAAAA'));
-    await expect(win.getByTestId('link-name')).toHaveText('Placeholder sabha folder');
-    await win.getByTestId('link-choose-folder').click();
-    await expect(win.getByTestId('link-folder')).toHaveText(chosen);
-    await shot(win, 'import-link-dropbox', [win.getByTestId('link-folder')]);
-    // On air: it waits, and the status bar shows it.
-    await app.evaluate(() => {
-      (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true);
-    });
-    await win.getByTestId('link-download').click();
-    await expect(win.getByTestId('link-going')).toHaveAttribute('data-phase', 'waiting');
-    await shot(win, 'import-link-waiting', [win.getByTestId('link-folder')]);
-    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
-    await expect(win.getByTestId('link-status')).toBeVisible();
-    await letTimePass(win, 500, 'the docs’ picture: the status bar settles');
+    await notices.getByRole('button', { name: 'Dismiss import notice' }).click();
+    await win.getByTestId('link-text').fill('https://www.dropbox.com/…');
+    await shot(win, 'import-link-dropbox');
+    const onAir = (on: boolean) =>
+      app.evaluate((_electron, value) => {
+        (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(value);
+      }, on);
+    await onAir(true);
+    await pasteLink(win, folderLink('shotAAAAAAAAAAA'));
+    await expect(win.getByTestId('link-status')).toHaveAttribute('data-phase', 'waiting');
+    await shot(win, 'import-link-waiting');
     await barAndStatus(win, 'import-link-status');
-    await win.getByTestId('link-status').click();
-    await app.evaluate(() => {
-      (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false);
-    });
-    // Saved, a video made 1080p, the .txt not taken; then the report says where they were saved (with the
-    // dialog open, the report waits for See the import report).
-    const report = win.getByTestId('import-report');
-    await win.getByTestId('link-open-report').click({ timeout: 180_000 });
-    await expect(report).toBeVisible();
-    await expect(report.getByTestId('report-saved-in')).toBeVisible();
-    await shot(win, 'import-link-report', [report.getByTestId('report-saved-in').locator('span[title]')]);
-    await report.getByRole('button', { name: 'Close', exact: true }).first().click();
-    await chooseMenuItem(app, 'import-from-link');
-    await expect(win.getByTestId('link-fitted-item')).toBeVisible();
-    await expect(win.getByTestId('link-not-taken-item')).toBeVisible();
-    await shot(win, 'import-link-saved', [
-      win.getByTestId('link-folder'),
-      win.getByTestId('link-saved-folder'),
-    ]);
+    await onAir(false);
+    await linkFinished(win, 180_000);
+    expect((await linkView(win)).fitted).toEqual(['Videos/Placeholder 2160p.mp4']);
+    await expect(notices.filter({ hasText: 'Read me.txt' })).toBeVisible();
+    await expect(notices.filter({ hasText: 'Placeholder deck' })).toBeVisible();
+    await shot(win, 'import-link-report');
+    for (const button of await notices
+      .getByRole('button', { name: 'Dismiss import notice' })
+      .all()
+      .then((buttons) => buttons.reverse()))
+      await button.click();
+    await expect(win.getByTestId('link-show-saved')).toBeVisible();
+    await shot(win, 'import-link-saved');
     await app.close();
   } finally {
     await standIn.close();
   }
 });
 
-test('Import from a Link, YouTube: the choices, the tick, downloading and a refusal (Session 25c)', async () => {
+test('Import from a Link, YouTube: the paste field, video and Audio progress, and a refusal', async () => {
   test.setTimeout(300_000);
   test.skip(!testFfmpeg(), 'FFmpeg is not fetched here');
   const work = mkdtempSync(join(tmpdir(), 'drashti-shots-youtube-'));
-  const chosen = join(work, 'Sabha downloads');
   const fake = join(__dirname, 'fake-yt-dlp.cjs');
   const link = 'https://youtu.be/AAAAAAAAAAA?si=placeholderShare';
   const launch = async (config: Record<string, unknown>) => {
@@ -1692,50 +1652,42 @@ test('Import from a Link, YouTube: the choices, the tick, downloading and a refu
       DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
     });
     const win = await operatorPage(app);
-    // Show the whole choices form without a clipped instruction at its scroll edge.
-    await win.setViewportSize({ width: 1280, height: 900 });
+    await win.setViewportSize({ width: 1280, height: 720 });
     await operatorReady(win);
-    await app.evaluate(({ dialog }, folder) => {
-      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
-    }, chosen);
-    await chooseMenuItem(app, 'import-from-link');
-    await win.getByTestId('link-kind-youtube').click();
     return { app, win };
   };
-  // The choices: MP4 at the qualities the video offers, those above the admin's 1080p not to be picked.
   const first = await launch({ steps: 400, stepMs: 200 });
-  await first.win.getByTestId('link-text').fill(link);
-  await expect(first.win.getByTestId('link-name')).toHaveText('Placeholder sabha video', { timeout: 60_000 });
-  await first.win.getByTestId('link-choose-folder').click();
-  await expect(first.win.getByTestId('link-folder')).toHaveText(chosen);
-  await shot(first.win, 'import-link-youtube', [first.win.getByTestId('link-folder')]);
-  // Download is ready (no tick since alpha.16); then downloading.
-  await expect(first.win.getByTestId('link-download')).toBeEnabled();
-  await first.win.getByTestId('link-download').click();
-  await expect(first.win.getByTestId('link-going-words')).toContainText('Downloading the MP4, 1080p', {
+  await chooseMenuItem(first.app, 'import-from-link');
+  await first.win.getByTestId('link-text').fill('https://youtu.be/AAAAAAAAAAA');
+  await shot(first.win, 'import-link-youtube');
+  await pasteLink(first.win, link);
+  await expect(first.win.getByTestId('link-status')).toContainText('Downloading from YouTube', {
     timeout: 60_000,
   });
+  expect((await linkView(first.win)).choice).toEqual({ type: 'mp4', height: 1080 });
   await letTimePass(first.win, 1500, 'the docs’ picture: the download has made some progress');
-  await shot(first.win, 'import-link-youtube-going', [first.win.getByTestId('link-folder')]);
+  await shot(first.win, 'import-link-youtube-going');
   await first.win.getByTestId('link-stop').click();
-  // MP3: the best sound, no quality to choose.
-  await expect(first.win.getByTestId('link-message')).toContainText('Stopped. Nothing was kept.');
-  await first.win.getByTestId('link-type-mp3').click();
-  await expect(first.win.getByTestId('link-mp3-words')).toBeVisible();
-  await shot(first.win, 'import-link-youtube-mp3', [first.win.getByTestId('link-folder')]);
-  // The admin's setting at 2160p (4K): 2160p can be picked, 4320p (8K) still cannot.
-  await first.win.getByTestId('link-type-mp4').click();
-  await first.win.getByTestId('link-max-height').selectOption('2160');
-  await expect(first.win.getByTestId('link-quality-2160')).toBeEnabled();
-  await first.win.getByTestId('link-quality-2160').click();
-  await shot(first.win, 'import-link-youtube-2160', [first.win.getByTestId('link-folder')]);
+  await expect.poll(async () => (await linkView(first.win)).phase).toBe('stopped');
+  await first.win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
+  await first.win.getByTestId('link-text').fill('https://youtu.be/AAAAAAAAAAA');
+  await shot(first.win, 'import-link-youtube-mp3');
   await first.app.close();
-  // A video that needs signing in: plain words, and the YouTube Studio way.
+
+  const saved = await launch({});
+  await chooseMenuItem(saved.app, 'import-from-link');
+  await pasteLink(saved.win, link);
+  await linkFinished(saved.win);
+  await expect(saved.win.getByTestId('playlist-title')).toHaveText('Placeholder sabha video');
+  await shot(saved.win, 'import-link-youtube-saved');
+  await saved.app.close();
+
   const refused = await launch({
     failWith: 'ERROR: [youtube] AAAAAAAAAAA: Private video. Sign in if you have been granted access',
   });
-  await refused.win.getByTestId('link-text').fill(link);
-  await expect(refused.win.getByTestId('link-dialog')).toContainText('Drashti never signs in to YouTube', {
+  await chooseMenuItem(refused.app, 'import-from-link');
+  await pasteLink(refused.win, link);
+  await expect(refused.win.getByTestId('import-notice')).toContainText('Drashti never signs in to YouTube', {
     timeout: 60_000,
   });
   await shot(refused.win, 'import-link-youtube-refused');
@@ -1798,18 +1750,8 @@ test('this session’s playlists: a Dropbox folder as one playlist a folder at a
         { path: 'Week 1/Videos/Clip A.mp4', data: video('b.mp4', '352x198') },
       ]),
     };
-    await app.evaluate(
-      ({ dialog }, folder) => {
-        dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
-      },
-      join(work, 'Chosen'),
-    );
     await chooseMenuItem(app, 'import-from-link');
-    await win.getByTestId('link-kind-dropbox').click();
-    await win.getByTestId('link-text').fill(folderLink('foldSHOTSSHOTSSS'));
-    await expect(win.getByTestId('link-holds')).toContainText('A folder');
-    await win.getByTestId('link-choose-folder').click();
-    await win.getByTestId('link-download').click();
+    await pasteLink(win, folderLink('foldSHOTSSHOTSSS'));
     await expect(win.getByTestId('open-playlist').getByTestId('playlist-title')).toHaveText(
       'Placeholder Sabha folder',
       { timeout: 180_000 },
@@ -2397,7 +2339,7 @@ test('the time bar: under LIVE in Pro Mode and in Simple Mode, Music’s own, an
   await app.close();
 });
 
-test('a deck with its animations: the import report, a click of it up in LIVE, and its transitions in the slide editor (Session 54)', async () => {
+test('an imported animated deck, a click up in LIVE and its transitions in the slide editor', async () => {
   test.setTimeout(300_000);
   const ffmpeg = testFfmpeg();
   test.skip(!ffmpeg, 'FFmpeg is not fetched here');
@@ -2412,12 +2354,16 @@ test('a deck with its animations: the import report, a click of it up in LIVE, a
   await operatorReady(win);
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [deck]);
-  const report = win.getByTestId('import-report');
-  const line = report.getByTestId('report-item').filter({ hasText: 'Placeholder trial deck' }).first();
-  await expect(line).toContainText('made this deck’s movie with its animations', { timeout: 180_000 });
+  await expect
+    .poll(async () => (await importItem(win, deck))?.issues.map((issue) => issue.message).join(' '), {
+      timeout: 180_000,
+    })
+    .toContain('made this deck’s movie with its animations');
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
+  const row = win.getByTestId('presentation-list').getByRole('button', { name: /^Placeholder trial deck/u });
+  await row.click();
+  await expect(win.getByTestId('slide-thumb')).toHaveCount(5);
   await shot(win, 'deck-report');
-  await line.getByRole('button', { name: 'Open' }).click();
-  await expect(report).toHaveCount(0);
 
   // Its first slide up, then its first click with Next: LIVE says which click is up.
   await win.getByTestId('slide-thumb').first().click();

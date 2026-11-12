@@ -6,9 +6,12 @@ import { formatBytes } from '../../shared/format';
 import {
   aboveTheSetting,
   checkLink,
+  chosenHeight,
+  DEFAULT_LINK_MAX_HEIGHT,
   heightLabel,
   isLinkHeight,
   LINK_KEEP_FREE_BYTES,
+  linkKind,
   type LinkHeight,
   type LinkKind,
   type LinkResult,
@@ -126,8 +129,25 @@ const OURS = /^\.drashti-(download-[0-9a-f-]+\.part|unpacking-.+|youtube-[0-9a-f
 
 const KIND_WORD: Record<LinkKind, string> = { dropbox: 'Dropbox', youtube: 'YouTube' };
 
+const RETRYABLE = new Set([
+  'busy',
+  'crashed',
+  'http',
+  'live',
+  'name',
+  'network',
+  'not-a-robot',
+  'processing',
+  'redirects',
+  'short',
+  'space',
+  'start',
+  'upcoming',
+]);
+
 export class LinkService {
   private state: LinkView;
+  private automatic: { audio: boolean; intoOpenPlaylist: boolean } | null = null;
   private checked: { url: string; shape: LinkShape } | null = null;
   private worker: LinkWorker | null = null;
   private job: 'look' | 'download' | 'unpack' | null = null;
@@ -169,12 +189,21 @@ export class LinkService {
   }
 
   view(): LinkView {
-    return { ...this.state, notTaken: [...this.state.notTaken], fitted: [...this.state.fitted] };
+    return {
+      ...this.state,
+      maxHeight: this.maxHeight,
+      notTaken: [...this.state.notTaken],
+      fitted: [...this.state.fitted],
+    };
   }
 
-  /** A download, an unpack, a conversion or an import is going on (or waiting). */
+  /** A link import is looking, downloading, unpacking, converting, importing or waiting. */
   get busy(): boolean {
-    return ACTIVE.has(this.state.phase);
+    return ACTIVE.has(this.state.phase) || (this.automatic !== null && this.state.phase === 'looking');
+  }
+
+  private get maxHeight(): LinkHeight {
+    return this.automatic ? DEFAULT_LINK_MAX_HEIGHT : this.state.maxHeight;
   }
 
   private set(change: Partial<LinkView>): void {
@@ -221,10 +250,19 @@ export class LinkService {
 
   /** Remove the part-file and work folders (what was saved under a real name stays). */
   private async clearTemps(): Promise<void> {
-    for (const path of [...this.temps, ...this.unpacking()])
-      await rm(path, { recursive: true, force: true }).catch(() => undefined);
-    this.temps.clear();
-    this.part = null;
+    const part = this.part;
+    const paths = new Set([...this.temps, ...this.unpacking()]);
+    for (const path of paths) this.temps.add(path);
+    this.saveRecord();
+    for (const path of paths) {
+      try {
+        await rm(path, { recursive: true, force: true });
+        this.temps.delete(path);
+      } catch {
+        // Keep it in the record for the next start (Windows may still hold the file).
+      }
+    }
+    if (this.part === part) this.part = null;
     this.saveRecord();
   }
 
@@ -348,7 +386,7 @@ export class LinkService {
         void this.ytDownloaded(m);
         return;
       case 'failed':
-        if (this.job === 'look') {
+        if (this.job === 'look' && !this.automatic) {
           this.endWorker();
           this.deps.log('info', `Links: a ${this.kindWord()} link could not be looked at (${m.code})`);
           this.set({ phase: 'idle', look: null, waitingFor: null, message: m.message });
@@ -374,8 +412,23 @@ export class LinkService {
    * look waits while the stream is on air or recording, as a download does.
    */
   look(kind: LinkKind, text: string): LinkResult {
+    return this.beginLook(kind, text, null);
+  }
+
+  /** The operator pasted a link. Look it up and start with the download defaults. */
+  start(text: string, audio: boolean, intoOpenPlaylist: boolean): LinkResult {
+    if (this.busy || (this.automatic !== null && this.state.phase === 'looked'))
+      return this.refuse('A download is going on. Wait for it to finish, or stop it first.');
+    const kind = linkKind(text);
+    if (kind === null) return this.refuse('Paste a share link from YouTube or Dropbox.');
+    return this.beginLook(kind, text, { audio, intoOpenPlaylist });
+  }
+
+  private beginLook(kind: LinkKind, text: string, automatic: LinkService['automatic']): LinkResult {
     if (this.busy) return this.refuse('A download is going on. Wait for it to finish, or stop it first.');
     const check = checkLink(kind, text);
+    if (!check.ok && automatic) return this.refuse(check.message);
+    this.automatic = automatic;
     if (!check.ok) {
       this.endWorker();
       this.checked = null;
@@ -417,6 +470,8 @@ export class LinkService {
     this.held = run !== null && this.deps.onAir();
     this.set({
       phase: 'looking',
+      retryable: false,
+      folderFiles: [],
       kind,
       link: check.url,
       look: null,
@@ -457,13 +512,19 @@ export class LinkService {
       waitingFor: null,
       message: null,
     });
+    this.downloadAutomatically();
   }
 
   private looked(m: Extract<FromWorker, { type: 'looked' }>): void {
     this.endWorker();
     const checked = this.checked;
     if (!checked || this.state.phase !== 'looking') return;
-    const fromUrl = decodeURIComponent(new URL(checked.url).pathname.split('/').pop() ?? '');
+    let fromUrl = new URL(checked.url).pathname.split('/').pop() ?? '';
+    try {
+      fromUrl = decodeURIComponent(fromUrl);
+    } catch {
+      // Keep the encoded file name if Dropbox's link has an invalid escape.
+    }
     let name = m.name ?? fromUrl;
     if (checked.shape === 'folder') name = name.replace(/\.zip$/iu, '');
     const look = { shape: checked.shape, name, size: checked.shape === 'folder' ? null : m.size };
@@ -472,6 +533,28 @@ export class LinkService {
       `Links: looked at a ${this.kindWord()} ${checked.shape} link${look.size !== null ? ` (${formatBytes(look.size)})` : ''}`,
     );
     this.set({ phase: 'looked', look, message: null });
+    this.downloadAutomatically();
+  }
+
+  private downloadAutomatically(): void {
+    const automatic = this.automatic;
+    if (!automatic) return;
+    const video = this.state.look?.video;
+    const height = video ? chosenHeight(video, this.maxHeight, null) : null;
+    if (video && !automatic.audio && height === null) {
+      this.set({
+        phase: 'failed',
+        message: 'This video has no quality at or below 1080p. Paste another YouTube link.',
+      });
+      return;
+    }
+    const choice = video ? { type: automatic.audio ? 'mp3' : 'mp4', height } : null;
+    try {
+      const result = this.download(choice);
+      if (!result.ok) this.set({ phase: 'failed', message: result.message, retryable: true });
+    } catch {
+      void this.failed('Drashti couldn’t start the download. Try again.', 'start');
+    }
   }
 
   /** Start again with a new link (what was saved stays where it is). */
@@ -479,6 +562,7 @@ export class LinkService {
     if (this.busy) return this.refuse('A download is going on. Wait for it to finish, or stop it first.');
     this.endWorker();
     this.checked = null;
+    this.automatic = null;
     this.set({
       phase: 'idle',
       link: null,
@@ -558,6 +642,10 @@ export class LinkService {
       return this.refuse(`Drashti could not save there. ${fileProblem(error, 'write')}`);
     }
     const free = this.deps.freeBytes(folder);
+    if (this.automatic && free - (look.size ?? 0) < LINK_KEEP_FREE_BYTES)
+      return this.refuse(
+        'This download would leave less than 2 GB free for the show. Free up space, then try again.',
+      );
     if (look.size !== null && free - look.size < LINK_KEEP_FREE_BYTES)
       return this.refuse(
         `Saving it (${formatBytes(look.size)}) would leave less than 2 GB free on that disk, which Drashti keeps free for the show. Free up some space, or choose another folder.`,
@@ -609,8 +697,7 @@ export class LinkService {
     if (c.type !== 'mp4') return { ok: false, message: 'Choose MP4 (the video) or MP3 (its sound only).' };
     const offered = video.heights.find((h) => h.height === c.height);
     if (!offered) return { ok: false, message: 'Choose one of the qualities this video offers.' };
-    if (offered.height > this.state.maxHeight)
-      return { ok: false, message: aboveTheSetting(this.state.maxHeight) };
+    if (offered.height > this.maxHeight) return { ok: false, message: aboveTheSetting(this.maxHeight) };
     return {
       ok: true,
       choice: { type: 'mp4', height: offered.height },
@@ -637,6 +724,10 @@ export class LinkService {
       return this.refuse(`Drashti could not save there. ${fileProblem(error, 'write')}`);
     }
     const free = this.deps.freeBytes(folder);
+    if (this.automatic && free - (picked.bytes ?? 0) < LINK_KEEP_FREE_BYTES)
+      return this.refuse(
+        'This download would leave less than 2 GB free for the show. Free up space, then try again.',
+      );
     if (picked.bytes !== null && free - picked.bytes < LINK_KEEP_FREE_BYTES)
       return this.refuse(
         `Saving it (about ${formatBytes(picked.bytes)}) would leave less than 2 GB free on that disk, which Drashti keeps free for the show. Free up some space, choose another folder, or a lower quality.`,
@@ -695,7 +786,7 @@ export class LinkService {
     const work = this.part;
     const look = this.state.look;
     if (!work || !look) return;
-    this.endWorker();
+    this.beginSaving();
     const folder = this.state.folder;
     const ext = m.file.toLowerCase().endsWith('.mp3') ? 'mp3' : 'mp4';
     try {
@@ -768,7 +859,7 @@ export class LinkService {
       });
       return;
     }
-    this.endWorker();
+    this.beginSaving();
     try {
       const target = await claimFile(folder, safeName(m.name ?? look.name, 'Dropbox download'));
       await rename(part, target);
@@ -786,10 +877,16 @@ export class LinkService {
   }
 
   private async unpacked(m: Extract<FromWorker, { type: 'unpacked' }>): Promise<void> {
-    this.endWorker();
+    this.beginSaving();
     this.temps.delete(m.folder);
     await this.clearTemps();
     await this.saved(m.folder, m.files, this.downloadedBytes);
+  }
+
+  /** The worker finished the download. Take Stop away before naming or cleaning up its files. */
+  private beginSaving(): void {
+    this.set({ phase: 'importing', waitingFor: null, progress: null });
+    this.endWorker();
   }
 
   /** Saved under real names: list them, then import what is taken. */
@@ -798,23 +895,27 @@ export class LinkService {
     const files = paths.map(inFolder);
     // From YouTube: the one file Drashti named (its MP4 or MP3). From Dropbox: its PowerPoints, MP4s and sounds.
     const youtube = this.state.kind === 'youtube';
-    // A Dropbox folder (Session 26c): it becomes a playlist of its own, and its PDFs and pictures wait for
-    // the one button.
+    const automatic = this.automatic;
     const isFolder = !youtube && this.checked?.shape === 'folder';
-    const taken = youtube ? paths : paths.filter((p) => takenKind(p) !== null);
-    // Listed in the folder's order, as they will go in.
-    const waiting = isFolder
-      ? partsInFolderOrder(
-          files.filter((f) => takenKind(f) === null && waitingKind(f)),
-          (f) => f,
-          kindRank,
-        ).flatMap((part) => part.entries)
-      : [];
+    const takes = (p: string) => takenKind(p) !== null || (automatic !== null && waitingKind(p));
+    const taken = youtube ? paths : paths.filter(takes);
+    // The manual workflow still lets the caller add PDFs and pictures later.
+    const waiting =
+      isFolder && !automatic
+        ? partsInFolderOrder(
+            files.filter((f) => takenKind(f) === null && waitingKind(f)),
+            (f) => f,
+            kindRank,
+          ).flatMap((part) => part.entries)
+        : [];
     const notTaken = youtube
       ? []
       : files
-          .filter((f) => takenKind(f) === null && !waiting.includes(f))
-          .map((name) => ({ name, reason: NOT_TAKEN_REASON }));
+          .filter((f) => !takes(f) && !waiting.includes(f))
+          .map((name) => ({
+            name,
+            reason: automatic ? 'This file type cannot be imported from a link.' : NOT_TAKEN_REASON,
+          }));
     this.deps.log(
       'info',
       `Links: a ${this.kindWord()} download was saved (${String(files.length)} ${files.length === 1 ? 'file' : 'files'}, ${formatBytes(bytes)}); ${String(taken.length)} to import, ${String(notTaken.length)} not taken`,
@@ -829,7 +930,7 @@ export class LinkService {
       waitingAdded: null,
     });
     // Videos above the highest quality: a copy that tall is imported instead (the original stays in the folder).
-    const maxHeight = this.state.maxHeight;
+    const maxHeight = this.maxHeight;
     const most = heightLabel(maxHeight);
     const work = join(this.deps.workDir, randomUUID());
     const prepared: string[] = [];
@@ -874,8 +975,9 @@ export class LinkService {
       await rm(work, { recursive: true, force: true }).catch(() => undefined);
       this.set({
         phase: 'done',
-        message:
-          taken.length === 0
+        message: automatic
+          ? null
+          : taken.length === 0
             ? waiting.length > 0
               ? 'Saved. It has no PowerPoint file (.pptx) or MP4 video; its PDFs and pictures wait for Add the PDFs and pictures.'
               : 'Saved. Nothing in it is a PowerPoint file (.pptx), an MP4 video or a sound, so nothing was imported.'
@@ -892,22 +994,36 @@ export class LinkService {
       this.byRun.set(result.runId, shown);
       for (const old of [...this.byRun.keys()].slice(0, Math.max(0, this.byRun.size - 20)))
         this.byRun.delete(old);
-      // A folder: its own playlist, in its folders' order (made where the import's report says what each became).
+      // Without an open playlist, keep a Dropbox folder's structure in a new playlist.
       const playlist =
-        isFolder && this.deps.folderPlaylist
-          ? this.deps.folderPlaylist({
-              name: this.state.look?.name ?? 'Dropbox folder',
-              runId: result.runId,
-              files: given,
-            })
+        isFolder && !automatic?.intoOpenPlaylist && !automatic?.audio
+          ? this.makeFolderPlaylist(result.runId, given, automatic !== null)
           : null;
       if (playlist)
         this.deps.log('info', `Links: a Dropbox folder became a playlist of ${String(given.length)} file(s)`);
-      this.set({ phase: 'done', runId: result.runId, playlist });
+      this.set({
+        phase: 'done',
+        runId: result.runId,
+        playlist,
+        folderFiles: isFolder && automatic?.intoOpenPlaylist ? given : [],
+      });
     } else {
       this.deps.log('warn', 'Links: the saved files could not be imported');
       this.set({ phase: 'failed', message: `Saved, but not imported: ${result.message}` });
     }
+  }
+
+  private makeFolderPlaylist(runId: string, files: FolderFile[], automatic: boolean) {
+    const name = this.state.look?.name ?? 'Dropbox folder';
+    if (!automatic || !this.deps.addToFolderPlaylist)
+      return this.deps.folderPlaylist?.({ name, runId, files }) ?? null;
+    // Keep the order of decks and videos in each folder's part, with its PDFs and pictures at the end.
+    const primary = files.filter((f) => !waitingKind(f.relative));
+    const playlist = this.deps.folderPlaylist?.({ name, runId, files: primary });
+    if (!playlist) return this.deps.folderPlaylist?.({ name, runId, files }) ?? null;
+    const extras = files.filter((f) => waitingKind(f.relative));
+    if (extras.length > 0) this.deps.addToFolderPlaylist({ playlistId: playlist.id, runId, files: extras });
+    return playlist;
   }
 
   /**
@@ -956,18 +1072,24 @@ export class LinkService {
     this.endWorker();
     await this.clearTemps();
     this.deps.log(stopped ? 'info' : 'warn', `Links: a ${this.kindWord()} download stopped (${code})`);
-    this.set({ phase: stopped ? 'stopped' : 'failed', waitingFor: null, progress: null, message });
+    this.set({
+      phase: stopped ? 'stopped' : 'failed',
+      waitingFor: null,
+      progress: null,
+      message,
+      retryable: RETRYABLE.has(code),
+    });
   }
 
   /** Stop the download (or unpacking): nothing of it is kept. */
   stop(): LinkResult {
     if (this.job === 'look') {
       this.endWorker();
-      this.set({ phase: 'idle', waitingFor: null, message: null });
+      this.set({ phase: this.automatic ? 'stopped' : 'idle', waitingFor: null, message: null });
       return this.answer();
     }
     if (this.state.phase === 'importing' || this.state.phase === 'converting')
-      return this.refuse('The download is saved; its import carries on. Its report shows what came in.');
+      return this.refuse('The download is finishing and its import will carry on.');
     if (!this.busy) return this.answer();
     this.endWorker();
     this.deps.log('info', `Links: a ${this.kindWord()} download was stopped`);

@@ -128,7 +128,7 @@ describe('runImport', () => {
     expect(summary.totals).toMatchObject({
       files: 9,
       imported: 4,
-      unsupported: 3,
+      unsupported: 4,
       failed: 1,
       presentations: 3,
       groups: 4,
@@ -136,27 +136,33 @@ describe('runImport', () => {
       media: 1,
     });
     expect(names(t.db)).toEqual(['Order of service', 'Song A', 'Song B']);
-    expect(report?.items.map((i) => [i.format, i.outcome, i.name])).toEqual([
-      // Presentations first (playlists will name them), then media, then files it does not read.
+    expect(report?.items.slice(0, 6).map((i) => [i.format, i.outcome, i.name])).toEqual([
+      // Presentations first (playlists will name them), then media.
       ['text', 'failed', 'Damaged.docx'],
       ['pp6', 'unsupported', 'Old Song.pro6'],
       ['text', 'imported', 'Order of service'],
       ['text', 'imported', 'Song A'],
       ['text', 'imported', 'Song B'],
       ['media', 'imported', 'Loop.mp4'],
-      ['unknown', 'unsupported', 'Old order.doc'],
-      ['unknown', 'unsupported', '.odt files'],
     ]);
+    expect(report?.items.slice(6).map((item) => [item.format, item.outcome, item.name])).toEqual(
+      expect.arrayContaining([
+        ['unknown', 'unsupported', 'Old order.doc'],
+        ['unknown', 'unsupported', 'Notes.odt'],
+        ['unknown', 'unsupported', 'Other notes.odt'],
+      ]),
+    );
     expect(report?.items[0]?.message).toBe(
       'This Word file could not be read: it may be damaged. If it opens in Word, save it again there and import that.',
     );
     expect(report?.items[1]?.message).toBe('Not a presentation or playlist (it holds xml).');
-    expect(report?.items.at(-2)?.message).toBe(
+    expect(report?.items.find((item) => item.name === 'Old order.doc')?.message).toBe(
       'An old Word document (.doc) is not read: open it in Word and save it as a Word Document (.docx), then import that.',
     );
-    expect(report?.items.at(-1)?.message).toBe(
-      '2 files (.odt) not imported: Drashti does not read this type. For example: Notes.odt, Other notes.odt.',
-    );
+    expect(report?.items.filter((item) => item.name?.endsWith('.odt')).map((item) => item.message)).toEqual([
+      'Drashti doesn’t read .odt files.',
+      'Drashti doesn’t read .odt files.',
+    ]);
     // A Word file's presentation says where it came from, as a text file's does.
     const service = t.presentations.get(report?.items[2]?.target?.id ?? '');
     expect(service?.source).toMatchObject({ kind: 'docx', path: join(t.source, 'Order of service.docx') });
@@ -251,15 +257,14 @@ describe('runImport', () => {
     expect(avi).toMatchObject({
       severity: 'warning',
       code: 'unplayable-media',
-      message:
-        'Drashti cannot play Old clip.avi as it is: AVI video. Convert it here (in the report, or in the media list).',
+      message: 'Drashti cannot play Old clip.avi as it is: AVI video. Convert it in Media.',
       fix: { kind: 'convert-media' },
     });
     expect(avi?.fix?.kind === 'convert-media' && avi.fix.advice).toMatch(/H\.264 MP4/);
     expect(item('Old clip.avi')?.issues).toHaveLength(1);
     expect(item('Logo.png')?.issues).toEqual([]);
     expect(item('Placeholder Hymn')?.issues.find((i) => i.code === 'unplayable-media')?.message).toBe(
-      'Drashti cannot play Blue Loop.mov as it is: ProRes 422 HQ video (QuickTime). Convert it here (in the report, or in the media list).',
+      'Drashti cannot play Blue Loop.mov as it is: ProRes 422 HQ video (QuickTime). Convert it in Media.',
     );
     // Marked in the library.
     expect(t.db.prepare('SELECT name, playable, format FROM media ORDER BY name').all()).toEqual([
@@ -345,7 +350,28 @@ describe('runImport', () => {
     expect(names(t.db)).toEqual(['Song A']);
   });
 
-  it('asks about a changed file, then replaces it in place or keeps both, as chosen', async () => {
+  it('keeps the changed file beside the earlier import by default, keeping the operator’s edits', async () => {
+    const t = setup();
+    const a = t.write('Placeholder Song.txt', SONG_A);
+    const first = await t.run([a]);
+    const id = first.report?.items[0]?.target?.id ?? '';
+    t.db.prepare("UPDATE presentations SET name = 'Placeholder edited' WHERE id = ?").run(id);
+
+    t.write('Placeholder Song.txt', SONG_B);
+    const changed = await t.run([a]);
+
+    expect(changed.summary.totals).toMatchObject({ conflicts: 0, keptBoth: 1, presentations: 1 });
+    expect(changed.report?.items[0]).toMatchObject({
+      outcome: 'kept-both',
+      name: 'Placeholder Song',
+    });
+    expect(changed.report?.items[0]?.target?.id).not.toBe(id);
+    expect(t.presentations.get(id)?.groups.map((g) => g.name)).toEqual(['Verse 1', 'Chorus']);
+    expect(names(t.db)).toEqual(['Placeholder Song', 'Placeholder edited']);
+    expect((await t.run([a])).report?.items[0]?.outcome).toBe('skipped');
+  });
+
+  it('honours explicit conflict decisions for callers that supply them', async () => {
     const t = setup();
     const a = t.write('Song A.txt', SONG_A);
     const first = await t.run([a]);
@@ -353,7 +379,7 @@ describe('runImport', () => {
     t.db.prepare("UPDATE presentations SET name = 'Renamed by the operator' WHERE id = ?").run(id);
 
     t.write('Song A.txt', `${SONG_A}\n[Verse 2]\nA new verse\n`);
-    const asked = await t.run([a]);
+    const asked = await t.run([a], { onConflict: 'ask' });
     expect(asked.summary.totals).toMatchObject({ conflicts: 1, imported: 0 });
     expect(asked.report?.items[0]).toMatchObject({
       outcome: 'conflict',

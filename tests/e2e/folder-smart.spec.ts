@@ -55,18 +55,13 @@ async function placeholderFolder(win: Page, name: string, color: string, hz: num
   return folder;
 }
 
-/**
- * It was made at once, named after its folder, a smart playlist, and opened in the middle, with nothing asked (unless
- * files came with it: their import says what it did, as files dropped always have in Pro Mode).
- */
-async function madeAndOpened(win: Page, name: string, { withFiles = false } = {}): Promise<string> {
+/** It opens at once as a smart playlist, with nothing asked. */
+async function madeAndOpened(win: Page, name: string): Promise<string> {
   await expect(node(win, name)).toHaveAttribute('data-playlist-kind', 'smart');
   await expect(win.getByTestId('column-middle').getByTestId('playlist-title')).toHaveText(name);
   await expect(win.getByTestId('smart-bar')).toBeVisible();
-  if (!withFiles) {
-    await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
-    await expect(win.getByTestId('report-add')).toHaveCount(0);
-  }
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
   const made = await playlistNamed(win, name);
   expect(made?.kind).toBe('smart');
   // It fills itself as its files hold still: the picture, then the talk under its folder's header.
@@ -113,7 +108,7 @@ test('Pro Mode: a folder dropped on the open playlist, a playlist’s row or any
     join(mkdtempSync(join(tmpdir(), 'drashti-loose-')), 'Placeholder loose.png'),
   );
   await dropPaths(win, win.getByTestId('open-playlist'), [later, loose]);
-  await madeAndOpened(win, 'Placeholder Later', { withFiles: true });
+  await madeAndOpened(win, 'Placeholder Later');
   await expect.poll(() => itemsOf(win, show.playlistId)).toEqual([...before, 'Placeholder loose.png']);
   await app.close();
 });

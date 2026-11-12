@@ -15,6 +15,7 @@ import {
   outputPages,
   setUpScreen,
 } from './helpers';
+import { importItem } from './import-details';
 
 /*
  * Samvat and tithi (Session 12), from a made-up calendar written for the
@@ -121,14 +122,19 @@ test('a calendar loads; today shows in the operator window, on the stage and in 
   await expect(win.getByTestId('today-calendar')).toHaveCount(0);
   await expect(stage.locator('[data-stage-box="samvat"]')).toHaveText('');
 
-  // Dragged onto the library, like any file: the report says what came in.
+  // Dragged onto the library. The calendar opens from today's date in the status bar.
   const dir = mkdtempSync(join(tmpdir(), 'drashti-calendar-'));
   const file = calendarFile(dir, [dateIn(0), dateIn(1)]);
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [file]);
-  const report = win.getByTestId('import-report');
-  await expect(report).toContainText(`Loaded: 2 days, ${dateIn(0)} to ${dateIn(1)}, with 1 festival.`);
-  await report.getByRole('button', { name: 'Open Calendar' }).first().click();
+  await expect
+    .poll(() => importItem(win, file))
+    .toMatchObject({
+      outcome: 'imported',
+      message: expect.stringContaining(`Loaded: 2 days, ${dateIn(0)} to ${dateIn(1)}, with 1 festival.`),
+    });
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
+  await win.getByTestId('today-calendar').click();
   const dialog = win.getByTestId('calendar-dialog');
   await expect(dialog.getByTestId('calendar-today')).toContainText(
     'Samvat 1001, Placeholder month First half Placeholder tithi 1 · Placeholder festival',

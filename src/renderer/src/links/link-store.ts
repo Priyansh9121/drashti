@@ -1,262 +1,212 @@
 import { create } from 'zustand';
-import {
-  chosenHeight,
-  type LinkKind,
-  type LinkResult,
-  type LinkView,
-  type YouTubeType,
-} from '../../../shared/links';
-
-/** Where an import run's files were saved from a link, and the videos imported as smaller copies. */
-export interface SavedFrom {
-  folder: string;
-  /** Saved videos taller than the highest quality: the library has a copy `maxHeight` tall of each. */
-  fitted: string[];
-  maxHeight: number;
-}
-import { useEngine } from '../engine/engine-store';
+import { kindRank, partsInFolderOrder } from '../../../shared/folder-order';
+import type { ImportReport } from '../../../shared/import';
 import { itemsMadeBy } from '../../../shared/import-items';
-import { openReport, useImports } from '../library/import-store';
-import { useNotice } from '../operator/actions';
-import { useMode } from '../operator/mode-store';
-import type { AddTarget } from '../playlists/add-made';
+import { checkLink, linkKind, type LinkView, waitingKind } from '../../../shared/links';
+import type { NewItem } from '../../../shared/playlists';
+import { showImportFailures, showImportNotice } from '../library/import-notices';
+import { importPaths } from '../library/import-store';
+import { addSoundsMade, importSoundsInto } from '../music/audio-actions';
 import { nameAfter } from '../playlists/add-made';
-import { loadTree, openPlaylist } from '../playlists/playlist-store';
-import { addSoundsMade } from '../music/audio-actions';
-import { chosenTarget, landInPlaylist } from './link-playlist';
+import { importIntoPlaylist, loadTree, openPlaylist, usePlaylists } from '../playlists/playlist-store';
+import { landInPlaylist, linkPlaylistId } from './link-playlist';
 
-/*
- * Import from a Link in the operator window (Session 25b): the dialog's
- * state as the main process tells it, whether the dialog is open, and the
- * import reports that came from a link (to say where the files were saved).
- */
+interface AudioTarget {
+  playlistId: string | null;
+}
+
+interface LinkRequest {
+  url: string;
+  playlistId: string | null;
+  audio: AudioTarget | null;
+}
 
 interface LinkStore {
   view: LinkView | null;
   open: boolean;
-  /** The kind chosen in the dialog before a link is looked at. */
-  kind: LinkKind | null;
-  /** What the main process last refused, in words. */
-  error: string | null;
-  /** Import runs from a link: where their files were saved, and which videos were made smaller first. */
-  savedFor: Record<string, SavedFrom>;
-  /** A YouTube video's choices before Download (Session 25c). */
-  choice: { type: YouTubeType; height: number | null };
-  /**
-   * When it's imported, add it to (Session 26a): chosen before Download; null until the operator picks one,
-   * which means the playlist a download went into last, else the open one, else a new one (Session 54).
-   */
-  addTo: AddTarget | null;
-  /**
-   * From a Link… in Audio (Session 55, Part 13): YouTube's sound only (MP3) to begin with, and what the download
-   * brings in goes into this audio playlist (a new one when null), never into a playlist of the slides. Null: an
-   * ordinary From a Link….
-   */
-  forAudio: { playlistId: string | null } | null;
+  audio: AudioTarget | null;
+  request: LinkRequest | null;
 }
-
-const NO_CHOICE = { type: 'mp4' as const, height: null };
-/** A YouTube video's choices to begin with: its sound only from Audio. */
-const freshChoice = (forAudio: LinkStore['forAudio']): LinkStore['choice'] =>
-  forAudio ? { ...NO_CHOICE, type: 'mp3' } : NO_CHOICE;
 
 export const useLinks = create<LinkStore>(() => ({
   view: null,
   open: false,
-  kind: null,
-  error: null,
-  savedFor: {},
-  choice: NO_CHOICE,
-  addTo: null,
-  forAudio: null,
+  audio: null,
+  request: null,
 }));
 
-/** The playlist a download's import goes into, chosen as Download was pressed; done once its import ends. */
-let pendingAdd: AddTarget | null = null;
-/** The audio playlist a download from Audio's From a Link… goes into (Session 55), as Download was pressed. */
-let pendingAudio: { playlistId: string | null } | null = null;
-
-/**
- * What a new playlist for a download is called to begin with: a video's title as it is ("Vol. 2" and "1/3" are
- * part of a title, never a file's extension or folder), else the file's name without its extension.
- */
+/** The download's title, or the file's name without its extension. */
 export function newPlaylistName(view: LinkView | null): string {
   const look = view?.look;
-  if (look?.shape === 'video') return look.name.trim();
+  if (look?.shape === 'video' || look?.shape === 'folder') return look.name.trim();
   return nameAfter(look?.name ?? 'Download');
 }
 
-/** Where the dialog says it will add what is imported (Session 54: the playlist chosen last, offered first). */
-export const addToNow = (s: { addTo: AddTarget | null; view: LinkView | null }): AddTarget =>
-  chosenTarget(s.addTo, s.view?.lastPlaylist ?? null, newPlaylistName(s.view));
+function playlistItems(view: LinkView, report: ImportReport): NewItem[] {
+  if (!view.folderFiles?.length) return itemsMadeBy(report.items, report.paths);
+  // Keep a folder's grouping even when it is appended to a playlist the operator has open.
+  return partsInFolderOrder(
+    view.folderFiles,
+    (file) => file.relative,
+    (path) => (waitingKind(path) ? 5 : kindRank(path)),
+  ).flatMap((part): NewItem[] => {
+    const items = itemsMadeBy(
+      report.items,
+      part.entries.map((entry) => entry.path),
+    );
+    if (items.length === 0 || part.title === '') return items;
+    return [{ kind: 'header', label: part.title }, ...items];
+  });
+}
 
-/** A new playlist with no name yet: the download waits until it has one (Session 54). */
-export const unnamed = (target: AddTarget | null): boolean =>
-  target?.kind === 'new' && target.name.trim() === '';
-
-/**
- * The import of a download ended: what it made goes into the playlist chosen for it, which then opens with the
- * new item shown and is offered first next time (Session 54).
- */
-async function addImported(runId: string): Promise<void> {
-  const target = pendingAdd;
-  pendingAdd = null;
-  // From Audio (Session 55): the sounds it brought in go into the audio playlist, a new one when there was none.
-  const audio = pendingAudio;
-  pendingAudio = null;
-  if (audio) {
-    const report = await window.drashti.library.getImportReport(runId);
-    await addSoundsMade(audio.playlistId, report ? itemsMadeBy(report.items, report.paths) : []);
-    return;
-  }
-  if (!target || target.kind === 'none') return;
+async function takeImported(view: LinkView, request: LinkRequest): Promise<void> {
+  const runId = view.runId;
+  if (!runId) return;
   const report = await window.drashti.library.getImportReport(runId);
   if (!report) return;
-  const name = await landInPlaylist(target, itemsMadeBy(report.items, report.paths));
-  if (name) useNotice.setState({ text: `What the link brought in was added to “${name}”.` });
+
+  const playlistId = view.playlist?.id ?? request.playlistId;
+  const retry = (paths: string[]) =>
+    request.audio
+      ? importSoundsInto(request.audio.playlistId, paths)
+      : playlistId
+        ? importIntoPlaylist(playlistId, null, paths)
+        : importPaths(paths, undefined, null);
+  // A smaller video prepared for import is temporary. Only the original downloaded files can be retried here.
+  const folder = view.saved?.folder;
+  if (folder && view.fitted.length > 0) {
+    const saved = report.items.filter((item) => {
+      const rest = item.sourcePath.startsWith(folder) ? item.sourcePath.slice(folder.length) : '';
+      return rest.startsWith('/') || rest.startsWith('\\');
+    });
+    const temporary = report.items.filter((item) => !saved.includes(item));
+    showImportFailures({ ...report, items: saved }, retry);
+    showImportFailures({ ...report, items: temporary, message: null });
+  } else showImportFailures(report, retry);
+
+  if (view.playlist) {
+    await loadTree();
+    await openPlaylist(view.playlist.id);
+    return;
+  }
+  const items = playlistItems(view, report);
+  if (request.audio) {
+    await addSoundsMade(request.audio.playlistId, items);
+    return;
+  }
+  if (items.length === 0) return;
+  const add = async () => {
+    if (usePlaylists.getState().unread.playlists) await loadTree();
+    if (usePlaylists.getState().unread.playlists) {
+      showImportNotice('Drashti couldn’t read the playlists. The download is in the library.', add);
+      return;
+    }
+    const name = await landInPlaylist(
+      request.playlistId
+        ? { kind: 'playlist', id: request.playlistId }
+        : { kind: 'new', name: newPlaylistName(view) },
+      items,
+    );
+    if (!name) showImportNotice('Drashti couldn’t add the download to the playlist. Find it in the library.');
+  };
+  await add();
+}
+
+function heard(view: LinkView): void {
+  useLinks.setState({ view });
+  const { request } = useLinks.getState();
+  if (view.link !== request?.url) return;
+  if (view.phase !== 'done' && view.phase !== 'failed' && view.phase !== 'stopped') return;
+  useLinks.setState({ request: null });
+  if (view.phase === 'stopped') return;
+  for (const file of view.notTaken) showImportNotice(`“${file.name}”: ${file.reason}`);
+  if (view.phase === 'failed') {
+    showImportNotice(
+      view.message ?? 'The download stopped. Try again.',
+      view.saved === null && view.retryable ? () => start(request) : undefined,
+    );
+    return;
+  }
+  void takeImported(view, request).catch(() => {
+    showImportNotice('Drashti could not read what the link brought in. Open the library to check.');
+  });
 }
 
 let connected = false;
-/** The run whose report was already opened (each opens once). */
-let reported: string | null = null;
-
-const somethingLive = () => useEngine.getState().state?.live.presentationId != null;
-
-/** The main process's view: another video looked at starts its choices afresh, the tick unticked. */
-function takeView(view: LinkView): void {
-  useLinks.setState((s) => ({
-    view,
-    choice: view.link !== s.view?.link ? freshChoice(s.forAudio) : s.choice,
-  }));
-}
-
-/** The folder playlists already opened (each opens once, as it is made). */
-const openedPlaylists = new Set<string>();
-
-function heard(view: LinkView): void {
-  takeView(view);
-  // A Dropbox folder's own playlist (Session 26c): opened as it is made.
-  const made = view.playlist;
-  if (made && !openedPlaylists.has(made.id)) {
-    openedPlaylists.add(made.id);
-    void loadTree().then(() => openPlaylist(made.id));
-  }
-  useLinks.setState((s) => ({
-    savedFor:
-      view.runId && view.saved
-        ? {
-            ...s.savedFor,
-            [view.runId]: { folder: view.saved.folder, fitted: view.fitted, maxHeight: view.maxHeight },
-          }
-        : s.savedFor,
-  }));
-  // The import of what was saved ended: its report comes up, as an import's does (unless the show is on).
-  // Never over the link dialog: while that is open, it offers the report itself (See the import report). In Simple
-  // Mode (Session 56) only when asked, as for its other imports (See the import report, the status bar's Report); the
-  // playlist it went into opens all the same.
-  if (view.phase === 'done' && view.runId && view.runId !== reported) {
-    reported = view.runId;
-    const runId = view.runId;
-    void addImported(runId);
-    void window.drashti.library.getImportReport(runId).then((report) => {
-      if (report) useImports.setState({ finished: report });
-      if (!somethingLive() && !useLinks.getState().open && useMode.getState().mode !== 'simple')
-        void openReport(runId);
-    });
-  }
-}
-
-/** The import report of what a link saved: the link dialog closes first, so the report is never under it. */
-export function seeLinkReport(runId: string): void {
-  closeLinkDialog();
-  void openReport(runId);
-}
 
 export function connectLinks(): void {
   if (connected) return;
   connected = true;
   window.drashti.links.onChanged(heard);
   window.drashti.links.onOpen(openLinkDialog);
-  void window.drashti.links.view().then(takeView);
+  void window.drashti.links.view().then((view) => {
+    if (useLinks.getState().view === null) useLinks.setState({ view });
+  });
 }
 
 export function openLinkDialog(): void {
   connectLinks();
-  useLinks.setState({ open: true });
+  useLinks.setState({ open: true, audio: null });
 }
 
-/**
- * From a Link… in Audio (Session 55, Part 13): YouTube as MP3, or a Dropbox link, its sounds into this audio
- * playlist (a new one when null).
- */
+/** Pasting from Audio takes a YouTube video's sound and adds the imported sounds to Audio. */
 export function openLinkForAudio(playlistId: string | null): void {
-  const forAudio = { playlistId };
-  useLinks.setState({ forAudio, choice: freshChoice(forAudio), error: null });
-  openLinkDialog();
+  connectLinks();
+  useLinks.setState({ open: true, audio: { playlistId } });
 }
 
 export function closeLinkDialog(): void {
-  useLinks.setState({ open: false, error: null, forAudio: null });
+  useLinks.setState({ open: false, audio: null });
 }
 
-export function chooseKind(kind: LinkKind): void {
-  useLinks.setState({ kind, error: null });
-}
-
-/** Run a request; its view (when it has one) and refusal land in the store. */
-async function act(run: () => Promise<LinkResult>): Promise<boolean> {
-  const result = await run();
-  if (result.view) takeView(result.view);
-  useLinks.setState({ error: result.ok ? null : result.message });
-  return result.ok;
-}
-
-export const lookAtLink = (kind: LinkKind, link: string) => act(() => window.drashti.links.look(kind, link));
-export const pickSaveFolder = () => act(() => window.drashti.links.pickFolder());
-/** Download: a YouTube video with its choices. */
-export async function startDownload(): Promise<boolean> {
-  const { view, choice } = useLinks.getState();
-  const video = view?.look?.video;
-  // The height the dialog shows as chosen (the tallest allowed, until one is picked).
-  const asked = video ? { ...choice, height: chosenHeight(video, view.maxHeight, choice.height) } : null;
-  // A folder makes a playlist of its own (Session 26c): nothing else to add it to. From Audio (Session 55), the
-  // audio playlist takes what it brings, never a playlist of the slides.
-  const forAudio = useLinks.getState().forAudio;
-  const target = view?.look?.shape === 'folder' || forAudio ? null : addToNow(useLinks.getState());
-  // A new playlist is named before the download starts (Session 54): Download stays off until it is.
-  if (unnamed(target)) return false;
-  const ok = await act(() => window.drashti.links.download(asked));
-  if (ok) {
-    pendingAdd = target;
-    pendingAudio = forAudio;
+async function start(request: LinkRequest): Promise<boolean> {
+  const { view, request: pending } = useLinks.getState();
+  if (pending || linkBusy(view)) {
+    showImportNotice('A link import is going on. Wait for it to finish, or stop it first.');
+    return false;
   }
-  return ok;
+  useLinks.setState({ request });
+  try {
+    const result = await window.drashti.links.start(
+      request.url,
+      request.audio !== null,
+      request.playlistId !== null,
+    );
+    if (result.ok) return true;
+    showImportNotice(result.message);
+  } catch {
+    showImportNotice('Drashti could not start the download. Paste the link again.');
+  }
+  if (useLinks.getState().request === request) useLinks.setState({ request: null });
+  return false;
 }
 
-/** Change a YouTube video's choices before Download. */
-export function choose(change: Partial<LinkStore['choice']>): void {
-  useLinks.setState((s) => ({ choice: { ...s.choice, ...change }, error: null }));
+/** Start at the paste, with the playlist open then as its destination. */
+export async function importLink(text: string): Promise<boolean> {
+  connectLinks();
+  const kind = linkKind(text);
+  if (kind === null) {
+    showImportNotice('Paste a share link from YouTube or Dropbox.');
+    return false;
+  }
+  const check = checkLink(kind, text);
+  if (!check.ok) {
+    showImportNotice(check.message);
+    return false;
+  }
+  const { audio } = useLinks.getState();
+  return start({ url: check.url, playlistId: audio ? null : linkPlaylistId(), audio });
 }
-export const stopDownload = () => act(() => window.drashti.links.stop());
-/** Add the PDFs and pictures (Session 26c): a folder's waiting files, into its playlist. */
-export const addWaitingFiles = () => act(() => window.drashti.links.addWaiting());
-export const anotherLink = () => {
-  // A playlist chosen stays chosen (a playlist's own From a Link… chooses it, then this is pressed on the last
-  // download's result); no playlist, or a new one (the last download made it), starts afresh (Session 54).
-  useLinks.setState((s) => ({ addTo: s.addTo?.kind === 'playlist' ? s.addTo : null }));
-  return act(() => window.drashti.links.reset());
-};
 
-/** Where what the link brings in goes, once imported (before Download). */
-export function chooseAddTo(target: AddTarget): void {
-  useLinks.setState({ addTo: target });
+export async function stopDownload(): Promise<void> {
+  try {
+    const result = await window.drashti.links.stop();
+    if (!result.ok) showImportNotice(result.message);
+  } catch {
+    showImportNotice('Drashti could not stop the download. Try Stop again.');
+  }
 }
-/** The highest video quality, for YouTube and Dropbox (Session 25c). */
-export const setMaxHeight = (height: number) => act(() => window.drashti.links.setMaxHeight(height));
 
-/** A download, unpacking, conversion or import is going on (or waiting). */
 export const linkBusy = (view: LinkView | null): boolean =>
-  view !== null && ['waiting', 'downloading', 'unpacking', 'converting', 'importing'].includes(view.phase);
-
-/** A folder's own name, the last part of its path (either system's). */
-export const lastPart = (path: string): string => path.split(/[\\/]/u).filter(Boolean).pop() ?? path;
+  view !== null &&
+  ['looking', 'waiting', 'downloading', 'unpacking', 'converting', 'importing'].includes(view.phase);
