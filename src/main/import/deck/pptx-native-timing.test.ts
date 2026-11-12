@@ -186,7 +186,7 @@ describe('PowerPoint slide animation timing', () => {
     }
   });
 
-  it('reads the gallery Zoom, Float, Split and symmetric Grow/Shrink with their durations', () => {
+  it('reads the gallery Zoom, Float, Split and symmetric Grow/Shrink with their durations, keeping PowerPoint’s video for all but the Zoom', () => {
     const click = (id: number, preset: string, cls: 'entr' | 'exit' | 'emph', children: string) =>
       parallel(
         id,
@@ -235,8 +235,18 @@ describe('PowerPoint slide animation timing', () => {
         click(40, '16', 'entr', split) +
         click(50, '6', 'emph', grow),
     );
+    // Only the gallery Zoom has been compared with PowerPoint's own movie (12 Nov): the others are drawn by Drashti
+    // where no video can be made, and keep PowerPoint's video wherever one can be.
+    expect(read(click(10, '53', 'entr', zoom)).motion?.approximate).toBe(false);
+    for (const [preset, cls, children] of [
+      ['42', 'entr', float(3, 'in')],
+      ['47', 'exit', float(4, 'out')],
+      ['16', 'entr', split],
+      ['6', 'emph', grow],
+    ] as const)
+      expect(read(click(20, preset, cls, children)).motion?.approximate).toBe(true);
     expect(slide.motion).toMatchObject({
-      approximate: false,
+      approximate: true,
       effects: [
         { shapeId: '2', step: 1, phase: 'in', kind: 'zoom', fade: true, durationMs: 300 },
         {
@@ -310,7 +320,7 @@ describe('PowerPoint slide animation timing', () => {
     });
   });
 
-  it('turns Grow & Turn and Shrink & Turn while they scale and fade', () => {
+  it('turns Grow & Turn and Shrink & Turn while they scale and fade, keeping PowerPoint’s video where one can be made', () => {
     const turn = (direction: 'in' | 'out') => {
       const [small, full] =
         direction === 'in' ? [number(0), formula('#ppt_w')] : [formula('#ppt_w'), number(0)];
@@ -329,23 +339,23 @@ describe('PowerPoint slide animation timing', () => {
       ['out', 'exit'],
     ] as const)
       expect(alone('31', cls, turn(direction))).toMatchObject({
-        approximate: false,
+        approximate: true,
         effects: [{ phase: direction, kind: 'zoom', fade: true, scale: 0, degrees: 90, durationMs: 500 }],
       });
   });
 
-  it('plays Split in from both edges as well as out from the middle', () => {
+  it('plays Split in from both edges as well as out from the middle, keeping PowerPoint’s video where one can be made', () => {
     expect(alone('16', 'entr', filtered(2, 'barn(inVertical)'))).toMatchObject({
-      approximate: false,
+      approximate: true,
       effects: [{ kind: 'split', splitAxis: 'x', inward: true, durationMs: 500 }],
     });
     expect(alone('16', 'exit', filtered(2, 'barn(inHorizontal)', 'out'))).toMatchObject({
-      approximate: false,
+      approximate: true,
       effects: [{ phase: 'out', kind: 'split', splitAxis: 'y', inward: true }],
     });
   });
 
-  it('plays a smooth start and smooth end, the effect’s own or the one its behaviours share', () => {
+  it('plays a smooth start and smooth end, the effect’s own or the one its behaviours share, keeping PowerPoint’s video where one can be made', () => {
     const fly = (timing: string, own = '') =>
       alone(
         '2',
@@ -354,12 +364,16 @@ describe('PowerPoint slide animation timing', () => {
           track(2, 22, 'ppt_y', formula('1+#ppt_h/2'), formula('#ppt_y'), 500, timing),
         `presetSubtype="4"${own}`,
       );
+    // The same Fly without a smooth start or end is played exactly; with one, not yet compared with PowerPoint's own
+    // movie, Drashti plays it where no video can be made.
+    expect(fly('')).toMatchObject({ approximate: false, effects: [{ kind: 'fly', direction: 'up' }] });
+    expect(fly('')?.effects[0]).not.toHaveProperty('decel');
     expect(fly(' decel="100000"')).toMatchObject({
-      approximate: false,
+      approximate: true,
       effects: [{ kind: 'fly', direction: 'up', decel: 1 }],
     });
     expect(fly('', ' accel="25000" decel="50000"')).toMatchObject({
-      approximate: false,
+      approximate: true,
       effects: [{ kind: 'fly', accel: 0.25, decel: 0.5 }],
     });
     expect(fly(' decel="100000"', ' accel="50000"')?.approximate).toBe(true);
