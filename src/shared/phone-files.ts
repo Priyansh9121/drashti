@@ -175,9 +175,9 @@ export function addFilesWords(
     return {
       files:
         view.simpleRepeats === true
-          ? `A file up to ${size} goes whole: a picture, PDF, PowerPoint or Keynote file to the end of Simple Mode’s playlist “${simple}”, and a video or sound into “${ADDED_FROM_PHONES}”, since a Repeat Slides playlist holds no videos or sounds. Nothing goes on the screens by itself.`
-          : `A picture, video, sound, PDF, PowerPoint or Keynote file, up to ${size}, goes whole to the end of Simple Mode’s playlist “${simple}”. It never goes on the screens by itself.`,
-      photos: `Add photos puts pictures at the end of Simple Mode’s playlist, “${simple}”. They never go on the screens by themselves.`,
+          ? `A file up to ${size} goes whole: a picture, PDF, PowerPoint or Keynote file to the end of the playlist open on Drashti, “${simple}”, and a video or sound into “${ADDED_FROM_PHONES}”, since a Repeat Slides playlist holds no videos or sounds. Nothing goes on the screens by itself.`
+          : `A picture, video, sound, PDF, PowerPoint or Keynote file, up to ${size}, goes whole to the end of the playlist open on Drashti, “${simple}”. It never goes on the screens by itself.`,
+      photos: `Add photos puts pictures at the end of the playlist open on Drashti, “${simple}”. They never go on the screens by themselves.`,
     };
   return {
     files: `A picture, video, sound, PDF, PowerPoint or Keynote file, up to ${size}, goes whole into Drashti’s playlist “${ADDED_FROM_PHONES}”. It never goes on the screens by itself.`,

@@ -12,7 +12,7 @@ import { groupName, type MiddleRow, playlistRows } from '../../playlists/rows';
  * same requests a phone has always sent: a slide from its row, so Next goes on from it; an item; Repeat Slides going
  * round from there). A long press opens the row's menu: what the window's one right-click menu (Part 14), Save
  * picture… and the Picture editor (Part 5), When it ends (Part 6) and Pin to the quick bar (Part 8) give it that a phone
- * can do, in the window's order; in Simple Mode what its window's menu has (Rename and Delete), and what is the phone's
+ * can do, in the window's order; in Simple Mode what its window's menu has, and what is the phone's
  * own (looking at it here, saving its picture here). Pure, so it is tested apart (phone-rows.test.ts).
  */
 
@@ -98,7 +98,7 @@ export type RowAction =
 
 export interface RowMenuContext {
   playlistId: string;
-  /** Simple Mode on Drashti's computer: its window's menu (Rename and Delete), and the phone's own. */
+  /** Simple Mode on Drashti's computer leaves out the picture editor and the quick bar. */
   simple: boolean;
   /** Whether this is on the quick bar now. */
   pinned: (pin: QuickPin) => boolean;
@@ -160,12 +160,12 @@ export function rowMenu(row: MiddleRow, ctx: RowMenuContext): RowAction[] {
   const out: RowAction[] = [];
   const picture = pictureOf(row);
   if (lookable(row)) out.push({ id: 'look' });
-  // Pro Mode's: the Picture editor (a picture that can be read), When it ends, the quick bar.
+  // The Picture editor and quick bar are Pro Mode's.
   const editable =
     picture && !(row.kind === 'item' && row.item.kind === 'media' && row.item.unplayable !== null);
   if (!ctx.simple && editable) out.push({ id: 'edit', ...picture });
   if (picture) out.push({ id: 'save', ...picture });
-  if (!ctx.simple && row.kind === 'item' && row.item.kind === 'media' && row.item.media === 'video') {
+  if (row.kind === 'item' && row.item.kind === 'media' && row.item.media === 'video') {
     const own = row.item.whenEnds ?? 'wallpaper';
     for (const value of WHEN_ENDS) out.push({ id: 'whenEnds', value, checked: value === own });
   }

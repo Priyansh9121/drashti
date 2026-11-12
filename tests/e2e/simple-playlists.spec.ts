@@ -18,8 +18,7 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * folders, as in Pro Mode, and smart playlists", Pro Mode's own playlists panel let through Simple Mode's bounds in the
  * main process. A volunteer makes, renames, deletes and puts back a playlist and a folder, makes a playlist in a
  * folder and a smart playlist, and opens each in the middle; each kind says in a line what it is (item 4). What is Pro
- * Mode's stays out (templates, sharing, Practise, Duplicate, Repeat Slides made), and a paired phone still changes no
- * playlist. Generated pictures and tones and placeholder names only.
+ * Mode's stays out (templates, sharing, Practise, Duplicate, Repeat Slides made). Generated pictures and tones and placeholder names only.
  */
 
 const QUICK = { DRASHTI_TEST_SMART_SCAN_MS: '1000', DRASHTI_TEST_SMART_SETTLE_MS: '500' };
@@ -207,9 +206,9 @@ test('Simple Mode has Pro Mode’s playlists on the left: a playlist and a folde
   await app.close();
 });
 
-test('a phone in Simple Mode still changes no playlist, and follows the one Simple Mode’s window opens', async () => {
+test('a paired Simple Mode phone can manage other playlists and open a smart playlist', async () => {
   test.setTimeout(150_000);
-  const { app } = await launchApp(NETWORK_ENV);
+  const { app } = await launchApp({ ...NETWORK_ENV, ...QUICK });
   const win = await operatorPage(app);
   await operatorReady(win);
   const show = await setUpPlaceholderShow(win);
@@ -227,25 +226,61 @@ test('a phone in Simple Mode still changes no playlist, and follows the one Simp
       ?.playlistId ?? null;
   await expect.poll(hall).toBe(show.playlistId);
 
-  // Making, renaming, deleting a playlist and changing its rows, as a phone or a script asks: refused, nothing changed.
-  const before = await win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.tree());
-  const refused = { ok: false, message: SIMPLE_MODE_REFUSAL };
-  for (const [path, body] of [
-    ['/api/v1/playlists/new', { name: 'Placeholder from a phone' }],
-    [`/api/v1/playlists/${other}/rename`, { name: 'Placeholder renamed' }],
-    ['/api/v1/playlists/delete', { ids: [other] }],
-    ['/api/v1/playlists/restore', { ids: [other] }],
-    [`/api/v1/playlists/${other}/add`, { items: [{ kind: 'media', mediaId: show.pictureMediaId }] }],
-  ] as const) {
-    const r = await apiCall(port, path, { method: 'POST', token, body });
-    expect(r.status, path).toBe(403);
-    expect(r.json, path).toMatchObject(refused);
-  }
-  expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.tree())).toEqual(before);
+  const post = (path: string, body: unknown) => apiCall(port, path, { method: 'POST', token, body });
+  const created = await post('/api/v1/playlists/new', { name: 'Placeholder phone folder', isFolder: true });
+  expect(created.status).toBe(200);
+  const folder = await playlistNamed(win, 'Placeholder phone folder');
+  expect(folder?.isFolder).toBe(true);
+  expect(
+    (await post('/api/v1/playlists/new', { name: 'Placeholder nested phone list', parentId: folder?.id }))
+      .status,
+  ).toBe(200);
+  const nested = await playlistNamed(win, 'Placeholder nested phone list');
+  expect(nested?.parentId).toBe(folder?.id);
 
-  // The window opens another: the phone's playlist follows it.
-  await node(win, 'Placeholder other').click();
-  await expect(simple.getByTestId('playlist-title')).toHaveText('Placeholder other');
+  const addPicture = { items: [{ kind: 'media', mediaId: show.pictureMediaId }] };
+  expect(await post(`/api/v1/playlists/${folder?.id}/add`, addPicture)).toMatchObject({
+    status: 403,
+    json: { ok: false, message: SIMPLE_MODE_REFUSAL },
+  });
+  expect(await post(`/api/v1/playlists/${other}/add`, addPicture)).toMatchObject({
+    status: 403,
+    json: { ok: false, message: expect.stringContaining('Simple Mode') },
+  });
+  const empty = await apiCall(port, `/api/v1/playlists/${other}/items`, { token });
+  expect(empty.json['items']).toEqual([]);
+  // The imported media can still be added by the operator window and used from the phone.
+  const added = await win.evaluate(
+    ({ playlistId, mediaId }) =>
+      (globalThis as PageGlobals).drashti.playlists.addItems(playlistId, null, [{ kind: 'media', mediaId }]),
+    { playlistId: other, mediaId: show.pictureMediaId },
+  );
+  expect(added.ok).toBe(true);
+  const listed = await apiCall(port, `/api/v1/playlists/${other}/items`, { token });
+  expect(listed.status).toBe(200);
+  expect(listed.json['items']).toMatchObject([{ kind: 'media', mediaId: show.pictureMediaId }]);
+  expect((await post(`/api/v1/playlists/${other}/rename`, { name: 'Placeholder renamed' })).status).toBe(200);
+  expect((await playlistNamed(win, 'Placeholder renamed'))?.id).toBe(other);
+  expect((await post('/api/v1/playlists/delete', { ids: [other] })).status).toBe(200);
+  expect(await playlistNamed(win, 'Placeholder renamed')).toBeNull();
+  expect((await post('/api/v1/playlists/restore', { ids: [other] })).status).toBe(200);
+  expect((await playlistNamed(win, 'Placeholder renamed'))?.id).toBe(other);
+
+  const watched = join(mkdtempSync(join(tmpdir(), 'drashti-phone-smart-')), 'Placeholder watched');
+  mkdirSync(watched);
+  await makeTestImage(win, join(watched, 'Placeholder phone smart picture.png'), { color: '#365314' });
+  await dialogPicks(app, [watched]);
+  const madeSmart = await win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.createSmart());
+  expect(madeSmart.ok).toBe(true);
+  const smart = await playlistNamed(win, 'Placeholder watched');
+  expect(smart?.kind).toBe('smart');
+  await expect
+    .poll(async () => (await apiCall(port, `/api/v1/playlists/${smart?.id}/items`, { token })).json['items'])
+    .toMatchObject([{ kind: 'media', media: 'image' }]);
+
+  // The hall still says which playlist is open in the computer window.
+  await node(win, 'Placeholder renamed').click();
+  await expect(simple.getByTestId('playlist-title')).toHaveText('Placeholder renamed');
   await expect.poll(hall).toBe(other);
   await app.close();
 });
