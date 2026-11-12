@@ -76,12 +76,12 @@ export function engineEvents(before: EngineState | null, after: EngineState): Em
   const was = before.layers.slide;
   const is = after.layers.slide;
   const click = is ? clickOf(is) : null;
-  // A slide went up (the same one again counts: it was shown again), or the slide was taken off; and a click on a
-  // deck's slide Drashti plays itself, Back's too, with the words it brings (W6's review L11).
-  if (
-    (is?.shownAt ?? null) !== (was?.shownAt ?? null) ||
-    (is !== null && was !== null && click !== clickOf(was))
-  ) {
+  // A slide went up (the same one again counts: it was shown again), or the slide was taken off.
+  const shown = (is?.shownAt ?? null) !== (was?.shownAt ?? null);
+  // A click on a deck's slide Drashti plays itself, Back's too: sent again for the words it brings, so only where
+  // they were asked for (W6's review L11).
+  const clicked = !shown && is !== null && was !== null && click !== clickOf(was);
+  if (shown || clicked) {
     const item = after.live.playlist;
     out.push({
       kind: 'slide.changed',
@@ -97,6 +97,7 @@ export function engineEvents(before: EngineState | null, after: EngineState): Em
         ...(click !== null ? { step: click } : {}),
       },
       ...(is ? { words: { text: slideWords(is) } } : {}),
+      ...(clicked ? { onlyWithWords: true as const } : {}),
     });
   }
   const itemWas = before.live.playlist?.itemId ?? null;
