@@ -784,10 +784,8 @@ export function Canvas({
     }
     if (mod && e.key.toLowerCase() === 'a') {
       e.preventDefault();
-      select(
-        visible.map((x) => x.id),
-        { expandGroups: false },
-      );
+      // A visible member selects its whole group, including hidden members.
+      select(visible.map((x) => x.id));
       return;
     }
     // ⌘B, ⌘I and ⌘U (Ctrl on Windows): the text boxes selected, bold, italic or underlined, and back (Session 55,
