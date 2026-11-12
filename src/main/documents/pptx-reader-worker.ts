@@ -50,11 +50,11 @@ port.on('message', ({ data }: { data: unknown }) => {
   void (async () => {
     try {
       // W6's review N4: the asked pages' clicks and transition too, read as alpha.17's import reads them.
-      const { editable: native, decks } = await readEditableWithTiming(
-        job.file,
-        job.outDir,
-        job.timingPages ?? [],
-      );
+      const {
+        editable: native,
+        decks,
+        sourceVideoShapeIds,
+      } = await readEditableWithTiming(job.file, job.outDir, job.timingPages ?? []);
       const pages: PptxPage[] = [];
       const failed: number[] = [];
       for (const sourceIndex of job.sourcePages) {
@@ -83,6 +83,7 @@ port.on('message', ({ data }: { data: unknown }) => {
           continue;
         }
         const deck = decks.get(sourceIndex);
+        const videoIds = sourceVideoShapeIds.get(sourceIndex);
         const checked = pptxPageSchema.safeParse({
           sourceIndex,
           width: native.width,
@@ -92,6 +93,7 @@ port.on('message', ({ data }: { data: unknown }) => {
           assets,
           issues: page.issues,
           ...(deck ? { deck } : {}),
+          ...(deck && videoIds ? { sourceVideoShapeIds: videoIds } : {}),
         });
         if (checked.success) pages.push(checked.data);
         else failed.push(sourceIndex);
@@ -110,7 +112,10 @@ port.on('message', ({ data }: { data: unknown }) => {
       };
       // Clicks too many to send leave the pages as they were read before: those slides keep today's behaviour.
       const message =
-        within(pages) ?? (decks.size > 0 ? within(pages.map(({ deck: _deck, ...page }) => page)) : null);
+        within(pages) ??
+        (decks.size > 0
+          ? within(pages.map(({ deck: _deck, sourceVideoShapeIds: _videoIds, ...page }) => page))
+          : null);
       if (!message) throw new Error('Metadata limit.');
       if (cancelled) throw new Error('Cancelled.');
       reply(message);

@@ -103,6 +103,8 @@ export interface PreparedSourcePage {
    * reads them (W6's review N4), for a slide imported before alpha.17 to keep through an edit.
    */
   deck?: DeckSlide;
+  /** Video drawing IDs read from the same requested PowerPoint page as its timing. */
+  sourceVideoShapeIds?: string[];
 }
 export type PreparedSource =
   | {

@@ -1,6 +1,6 @@
 import { documentCanvas, slideCanvas } from '../../shared/document-page';
 import { deckAfterEdit } from '../../shared/deck-edit-motion';
-import { sourceTimingPages, withSourceTiming } from '../../shared/deck-source-timing';
+import { sourceTimingPages, withSourceTiming, withSourceVideoShapes } from '../../shared/deck-source-timing';
 import { freshGroups } from '../../shared/element-groups';
 import { masterContribution, renderEditedSlide } from '../../shared/slide-design';
 import { fitElements } from '../../shared/slide-size';
@@ -333,8 +333,13 @@ export class ImportedSlides {
               }
               const candidates = occurrences.map((each) => {
                 // Its clicks read from the kept file (W6's review N4), beside its clips until it is edited.
-                const deck = withSourceTiming(each, native.deck);
-                const slide = deck === each.deck ? each : { ...each, deck };
+                const identified = withSourceVideoShapes(
+                  each,
+                  documentCanvas(each.documentPage, doc),
+                  native,
+                );
+                const deck = withSourceTiming(identified, native.deck);
+                const slide = deck === each.deck ? each : { ...identified, deck };
                 const elements = native.elements.flatMap((element): SlideElement[] => {
                   if (element.kind !== 'image' && element.kind !== 'video') return [element];
                   const mediaId = media.get(element.mediaId);
