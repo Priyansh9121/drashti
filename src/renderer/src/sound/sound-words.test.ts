@@ -39,11 +39,7 @@ describe('Drashti’s own sound in words', () => {
   });
 
   it('directs Simple Mode to Trim after moving playback points', () => {
-    const words = Reflect.apply(trimmedWords, undefined, [
-      'Placeholder clip.mp4',
-      { startMs: 1500, endMs: 4500 },
-      'simple',
-    ]);
+    const words = trimmedWords('Placeholder clip.mp4', { startMs: 1500, endMs: 4500 }, true);
     expect(words).toBe(
       '“Placeholder clip.mp4” now plays from 0:01.5 to 0:04.5, past the black and silence. Open Trim to change them back.',
     );
