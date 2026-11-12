@@ -234,6 +234,28 @@ describe('connections at once (Sessions 31–36, SEC-11)', () => {
 });
 
 describe('the network server', () => {
+  it('forwards the phone’s lowercase slide query and sends the captured PNG', async () => {
+    const { host, port } = await start();
+    const png = new Uint8Array([137, 80, 78, 71]);
+    host.request = (request) => {
+      host.requests.push(request);
+      return Promise.resolve({ status: 200, body: { png } });
+    };
+    const response = await fetch(
+      `http://127.0.0.1:${String(port)}/api/v1/presentations/placeholder-deck?format=png&slide=placeholder-slide&click=1`,
+      { headers: bearer(REMOTE_TOKEN) },
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('image/png');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(png);
+    expect(host.requests).toMatchObject([
+      {
+        op: 'presentation',
+        args: { presentationId: 'placeholder-deck', format: 'png', slideId: 'placeholder-slide', click: '1' },
+      },
+    ]);
+  });
+
   it('serves the pages, and nothing by a path that escapes', async () => {
     const { port } = await start();
     const page = await call(port, '/remote');
