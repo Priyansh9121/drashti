@@ -366,11 +366,17 @@ export class EventsOut {
     return { id, type, at, body: JSON.stringify({ type, timestamp: new Date(at).toISOString(), data }) };
   }
 
-  /** The show made these: each goes to every address that is on and ticked its kind. */
+  /**
+   * The show made these: each goes to every address that is on and ticked its kind; one sent for its words alone (a
+   * deck slide's click, W6's review L11) only where they were asked for.
+   */
   emit(events: readonly Emitted[]): void {
     if (this.closed || events.length === 0 || this.addresses.size === 0) return;
     for (const e of events) {
-      const wanting = [...this.addresses].filter(([, a]) => !a.off && a.kinds.includes(e.kind));
+      const wanting = [...this.addresses].filter(
+        ([, a]) =>
+          !a.off && a.kinds.includes(e.kind) && (e.onlyWithWords !== true || a.words.includes(e.kind)),
+      );
       if (wanting.length === 0) continue;
       const worker = this.ensureWorker();
       if (!worker) return;
