@@ -373,7 +373,8 @@ import { localName } from './network/local-name';
 import { localInterfaceAddresses } from './network/addresses';
 import { previewSource } from './network/preview-source';
 import { sharedSoundFile } from './network/shared-sound';
-import { rendererDir } from './windows/renderer';
+import { isAppUrl } from './windows/navigation';
+import { devServerUrl, rendererDir } from './windows/renderer';
 import { pageAlive, sendToPage } from './windows/send';
 import { quietTests, startQuietTests } from './windows/quiet';
 import { readRole, startingRole, writeRole } from './role';
@@ -6849,8 +6850,13 @@ function start(): void {
   operatorWindow.webContents.on('did-start-loading', () => {
     switchQuestion.asking(null);
   });
-  operatorWindow.webContents.on('did-start-navigation', ({ isMainFrame, isSameDocument }) => {
-    if (isMainFrame && !isSameDocument) importNotices.pause();
+  operatorWindow.webContents.on('did-start-navigation', ({ url, isMainFrame, isSameDocument }) => {
+    if (
+      isMainFrame &&
+      !isSameDocument &&
+      isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() })
+    )
+      importNotices.pause();
   });
   operatorWindow.webContents.on('render-process-gone', () => {
     importNotices.pause();
