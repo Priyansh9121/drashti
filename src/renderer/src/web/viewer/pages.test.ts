@@ -116,9 +116,21 @@ describe('a deck looked through on a phone (Session 54, D1/D2 review)', () => {
 
   it('offers Save for the native click being viewed and for the click on the screens', () => {
     const native = played(NATIVE);
-    expect({ browse: slidePages('deck', native)[2]?.save, live: screensPage().save }).toMatchObject({
-      browse: { presentationId: 'deck', slideId: native.slide.id, slide: 1, click: 2 },
-      live: expect.any(Function),
+    expect(slidePages('deck', native)[2]?.save).toMatchObject({
+      presentationId: 'deck',
+      slideId: native.slide.id,
+      slide: 1,
+      click: 2,
+    });
+    const state = up(2);
+    if (!state.layers.slide) throw new Error('Missing placeholder live slide.');
+    state.layers.slide.slide = native.slide.slide;
+    const save = screensPage().save;
+    expect(typeof save === 'function' ? save(state) : null).toMatchObject({
+      presentationId: 'deck',
+      slideId: native.slide.slide.id,
+      slide: 1,
+      click: 2,
     });
   });
 

@@ -1,4 +1,5 @@
 import type { RenderSlide } from './model';
+import type { PictureLook } from './picture-look';
 
 export type PdfCopyPage =
   { kind: 'original'; sourceId: string; page: number } | { kind: 'native'; slide: RenderSlide };
@@ -8,6 +9,8 @@ export interface PdfCopyJob {
   id: string;
   pages: PdfCopyPage[];
   sources: { id: string; data: Uint8Array }[];
+  /** Main requests one PNG of a settled slide for a paired phone. */
+  picture?: { scale: number; looks: Record<string, PictureLook> };
 }
 
 /** Public PDF.js metadata for the fresh buffer returned by Main's preceding print call. */

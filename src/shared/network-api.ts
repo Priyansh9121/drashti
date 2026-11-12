@@ -304,7 +304,7 @@ export interface DeviceRequest {
   address: string;
 }
 
-/** The main process's answer: an HTTP status and a JSON body. */
+/** The main process's answer: an HTTP status and response body (including a presentation’s requested PNG). */
 export interface DeviceAnswer {
   status: number;
   body: unknown;

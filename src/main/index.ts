@@ -4964,6 +4964,17 @@ function start(): void {
       snapshot: () => withoutCaptions(engine.snapshot()),
       state: () => stateWithoutCaptions(engine.current),
     },
+    nativeSlidePicture: async (slide, looks, current) => {
+      const stop = new AbortController();
+      const off = engine.onChange(() => {
+        if (!current()) stop.abort();
+      });
+      try {
+        return await pdfCopies.picture(slide, looks, current, stop.signal);
+      } finally {
+        off();
+      }
+    },
     reads: {
       playlists: () => playlists.tree(),
       items: (playlistId) => playlists.itemsOf(playlistId),

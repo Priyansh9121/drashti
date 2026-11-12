@@ -172,7 +172,10 @@ const ROUTES: Route[] = [
     'GET',
     '/api/v1/presentations/:id',
     'presentation',
-    (_b, p) => ({ presentationId: p['id'] }),
+    (q, p) => ({
+      presentationId: p['id'],
+      ...(q['format'] === 'png' ? { format: 'png', slideId: q['slideId'], click: q['click'] } : {}),
+    }),
     PRESENTATION_ID,
   ),
   route('GET', '/api/v1/messages', 'messages'),
@@ -736,7 +739,29 @@ export class NetworkServer {
       const body = req.method === 'POST' ? await readJson(req) : apiQuery(req.url ?? '');
       const args = r.args ? r.args(body, params) : {};
       const answer = await this.host.request({ deviceId: device.id, op: r.op, args, address });
-      this.json(res, answer.status, answer.body);
+      const reply = answer.body;
+      if (
+        r.op === 'presentation' &&
+        args &&
+        typeof args === 'object' &&
+        'format' in args &&
+        args.format === 'png' &&
+        answer.status === 200 &&
+        reply &&
+        typeof reply === 'object' &&
+        'png' in reply &&
+        reply.png instanceof Uint8Array
+      ) {
+        res.writeHead(200, {
+          ...SECURITY_HEADERS,
+          'Content-Type': 'image/png',
+          'Content-Length': reply.png.byteLength,
+          'Cache-Control': 'no-store',
+        });
+        res.end(reply.png);
+        return;
+      }
+      this.json(res, answer.status, reply);
     } catch (error) {
       if (error instanceof HttpError) this.json(res, error.status, { ok: false, message: error.message });
       else {
