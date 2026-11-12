@@ -85,6 +85,8 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           onAir?: boolean | { from: number };
           /** The operator's answer to an earlier run's question, for the deck. */
           decision?: ConflictChoice;
+          /** The policy for files updated by a smart playlist. */
+          onConflict?: ConflictChoice;
           /** An FFmpeg that is not there: the stand-in cannot make the movie. */
           noFfmpeg?: boolean;
           /** The disk's free space, as the deck's bake sees it (the media folder's own is plenty). */
@@ -101,7 +103,10 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           media,
           runId: randomUUID(),
           paths,
-          options: options.decision ? { decisions: { [paths[0] ?? '']: options.decision } } : {},
+          options: {
+            onConflict: options.onConflict,
+            ...(options.decision ? { decisions: { [paths[0] ?? '']: options.decision } } : {}),
+          },
           progressEveryMs: 0,
           tempDir: root,
           ffmpeg: options.noFfmpeg ? join(root, 'no-ffmpeg-here') : ffmpeg,
@@ -665,7 +670,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(t.slidesOf(originalId).every((s) => !s.slide.deck)).toBe(true);
       expect(t.slidesOf(newId).map((s) => stepCount(s.slide.deck))).toEqual([5, 3, 2, 1, 2]);
 
-      // An explicit replace still updates the earlier deck in place.
+      // The smart playlist’s replace policy updates the earlier deck in place.
       const explicit = setup();
       const first = await explicit.run({ baker: 'stand-in', converters: 'stand-in', onAir: true });
       expect(explicit.report(first.id)?.items[0]?.outcome).toBe('imported');
@@ -674,7 +679,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       const replacement = await explicit.run({
         baker: 'stand-in',
         converters: 'stand-in',
-        decision: 'replace',
+        onConflict: 'replace',
       });
       expect(explicit.report(replacement.id)?.items[0]).toMatchObject({
         outcome: 'replaced',
