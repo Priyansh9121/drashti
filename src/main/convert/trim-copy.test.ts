@@ -78,6 +78,17 @@ describe('queuing a trimmed video', () => {
     expect(args.slice(-3)).toEqual(['-f', 'mp4', output]);
   });
 
+  it('keeps dots that are part of the video’s display name', () => {
+    const { dest } = plan({
+      path: join(tmpdir(), 'source.mp4'),
+      name: 'Placeholder v1.2',
+      info: INFO,
+      startMs: 250,
+      endMs: 650,
+    });
+    expect(basename(dest)).toBe('Placeholder v1.2 trimmed.mp4');
+  });
+
   it('keeps a transparent WebM transparent and handles a silent video', () => {
     const path = join(tmpdir(), 'source.webm');
     const output = join(tmpdir(), '.part.mp4');
