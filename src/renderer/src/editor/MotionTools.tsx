@@ -114,8 +114,9 @@ export function ImportedMotion({ deck }: { deck: DeckSlide }) {
             <ol
               aria-label="PowerPoint animation order"
               className="max-h-16 overflow-y-auto"
-              // Four lines show; a longer list scrolls, and then the keys can reach it too.
-              tabIndex={effects.length > 4 ? 0 : undefined}
+              // Four lines show and a longer list scrolls; a line can wrap at the panel's width, so even a short
+              // list can scroll. The keys reach it whenever it is there.
+              tabIndex={0}
             >
               {effects.map((effect, index) => (
                 <li key={index}>
