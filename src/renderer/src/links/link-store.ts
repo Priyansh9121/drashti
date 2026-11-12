@@ -111,16 +111,16 @@ async function takeImported(view: LinkView, request: LinkRequest): Promise<void>
 }
 
 function heard(view: LinkView): void {
-  const { request, view: previous } = useLinks.getState();
+  const { request } = useLinks.getState();
   useLinks.setState({ view });
   if (view.link !== request?.url) return;
-  if (view.folderFallback && !previous?.folderFallback)
-    showImportNotice(
-      'The previous downloads folder couldn’t be used. Look in Drashti downloads when the download finishes.',
-    );
   if (view.phase !== 'done' && view.phase !== 'failed' && view.phase !== 'stopped') return;
   useLinks.setState({ request: null });
   if (view.phase === 'stopped') return;
+  if (view.folderFallback && view.saved !== null)
+    showImportNotice(
+      'The previous downloads folder couldn’t be used. This download was saved in Drashti downloads.',
+    );
   for (const file of view.notTaken) showImportNotice(`“${file.name}”: ${file.reason}`);
   if (view.phase === 'failed') {
     showImportNotice(

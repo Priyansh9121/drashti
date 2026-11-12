@@ -51,7 +51,7 @@ interface RemoteView {
   /** The live slide's notes and the next one's, under the live picture (remembered on this device). */
   notesOpen: boolean;
   playlists: PlaylistNode[] | null;
-  /** The playlist the Playlist tab shows (the live one, until another is picked). */
+  /** The playlist the phone has open, which can differ from the one open on the computer. */
   playlistId: string | null;
   items: PlaylistItemInfo[] | null;
   viewing: Viewing | null;
@@ -71,8 +71,8 @@ interface RemoteView {
     /** The stage screens' group, whose layout's timers the remote runs (Session 54); null for none. */
     stageGroupId: string | null;
     /**
-     * Simple Mode on Drashti's computer (Session 55, Part 9): its one playlist and the words this phone shows once;
-     * null in Pro Mode (or from a Drashti before Part 9).
+     * Simple Mode on Drashti's computer: its open playlist and the words this phone shows once;
+     * null in Pro Mode (or from a Drashti before Session 55, Part 9).
      */
     simple: RemoteSimple | null;
   } | null;
@@ -123,28 +123,44 @@ export const loadPlaylists = oneAtATime(readPlaylists);
 async function readPlaylists(): Promise<void> {
   const r = await api<{ playlists: PlaylistNode[] }>('/api/v1/playlists');
   if (!r.ok) return;
-  const lists = r.playlists.filter((p) => !p.isFolder && !p.template);
-  useRemote.setState({ playlists: lists });
+  const lists = r.playlists.filter((p) => !p.template);
   const { playlistId, hall } = useRemote.getState();
   const live = useEngine.getState().state?.live.playlist?.playlistId ?? null;
-  // In Simple Mode (Part 9): its one playlist, the only one it shows.
-  const simple = hall?.simple?.playlistId ?? null;
+  const desktop = hall?.simple?.playlistId ?? null;
+  const playableIds = new Set(lists.filter((p) => !p.isFolder).map((p) => p.id));
+  // On entering Simple Mode, start where the computer is. Later reads keep the phone's own choice.
+  const choices = preferDesktopPlaylist ? [desktop, playlistId, live] : [playlistId, desktop, live];
   const chosen =
-    simple !== null && lists.some((p) => p.id === simple)
-      ? simple
-      : playlistId && lists.some((p) => p.id === playlistId)
-        ? playlistId
-        : (live ?? lists[0]?.id ?? null);
+    choices.find((id) => id !== null && playableIds.has(id)) ?? playableIds.values().next().value ?? null;
+  useRemote.setState({ playlists: lists });
   await showPlaylist(chosen);
 }
 
+let preferDesktopPlaylist = false;
+let itemsRead = 0;
+
 export async function showPlaylist(playlistId: string | null): Promise<void> {
-  useRemote.setState({ playlistId, items: playlistId ? useRemote.getState().items : [] });
-  if (!playlistId) return;
+  preferDesktopPlaylist = false;
+  if (playlistId === null) {
+    useRemote.setState({ playlistId, items: [] });
+    return;
+  }
+  if (useRemote.getState().playlistId !== playlistId) {
+    useRemote.setState({ playlistId, items: null });
+  }
+  await refreshPlaylist(playlistId);
+}
+
+/** A row changed: read its playlist again if it is still open on the phone. */
+export async function refreshPlaylist(playlistId: string): Promise<void> {
+  if (useRemote.getState().playlistId !== playlistId) return;
+  const read = ++itemsRead;
   const r = await api<{ items: PlaylistItemInfo[] }>(
     `/api/v1/playlists/${encodeURIComponent(playlistId)}/items`,
   );
-  if (r.ok && useRemote.getState().playlistId === playlistId) useRemote.setState({ items: r.items });
+  if (r.ok && read === itemsRead && useRemote.getState().playlistId === playlistId) {
+    useRemote.setState({ items: r.items });
+  }
 }
 
 async function loadDoc(presentationId: string): Promise<void> {
@@ -223,8 +239,9 @@ async function readHall(): Promise<void> {
     simple?: RemoteSimple | null;
   }>('/api/v1/hall');
   if (!r.ok) return;
-  const before = useRemote.getState().hall?.simple ?? null;
+  const { hall, playlistId } = useRemote.getState();
   const simple = r.simple ?? null;
+  const enteringSimple = simple !== null && (hall?.simple ?? null) === null;
   useRemote.setState({
     hall: {
       groupId: r.groupId,
@@ -233,11 +250,13 @@ async function readHall(): Promise<void> {
       stageGroupId: r.stageGroupId ?? null,
       simple,
     },
-    // Simple Mode come on: said once again (Part 9).
-    ...(simple !== null && before === null ? { simpleSaid: false } : {}),
+    ...(enteringSimple ? { simpleSaid: false } : {}),
   });
-  // Simple Mode's one playlist opened (Part 9), as its window shows it.
-  if (simple?.playlistId && simple.playlistId !== useRemote.getState().playlistId) void loadPlaylists();
+  if (simple === null) preferDesktopPlaylist = false;
+  if (simple?.playlistId && (playlistId === null || (enteringSimple && simple.playlistId !== playlistId))) {
+    preferDesktopPlaylist = enteringSimple;
+    void loadPlaylists();
+  }
 }
 
 /** What is live, as the slides to show: the live presentation, with its playlist item when it has one. */

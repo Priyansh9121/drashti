@@ -223,10 +223,10 @@ test('in Simple Mode a paired phone’s photos and other files go to the end of 
 
     // The phone says where pictures go, before they are sent: Simple Mode's playlist, by its name.
     await expect(p.getByTestId('remote-photos-words')).toHaveText(
-      'Add photos puts pictures at the end of Simple Mode’s playlist, “Placeholder sabha”. They never go on the screens by themselves.',
+      'Add photos puts pictures at the end of the playlist open on Drashti, “Placeholder sabha”. They never go on the screens by themselves.',
     );
     await expect(p.getByTestId('remote-add-words')).toHaveText(
-      'A picture, video, sound, PDF, PowerPoint or Keynote file, up to 2 GB, goes whole to the end of Simple Mode’s playlist “Placeholder sabha”. It never goes on the screens by itself.',
+      'A picture, video, sound, PDF, PowerPoint or Keynote file, up to 2 GB, goes whole to the end of the playlist open on Drashti, “Placeholder sabha”. It never goes on the screens by itself.',
     );
     await expectNoSeriousA11yIssues(p, 'adding files on a phone in Simple Mode at 375 × 812');
 
