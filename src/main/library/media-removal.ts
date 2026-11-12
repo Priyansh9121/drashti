@@ -1,6 +1,8 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
+import { setImmediate } from 'node:timers/promises';
+import { Worker } from 'node:worker_threads';
 import type { MediaUsage, UsedIn } from '../../shared/media-removal';
 import { USED_IN_NAMES } from '../../shared/media-removal';
 import { stillPath } from '../media/media-protocol';
@@ -8,7 +10,6 @@ import { removeCopiesOf } from '../media/sharpened';
 import { removeBlurredOf } from '../media/blurred';
 import { isInside } from '../media/contained';
 import type { Db } from '../db/database';
-import { sha256File } from '../import/media-store';
 
 /*
  * Deleting media from the library (Session 26a; migration 36). Media could
@@ -147,13 +148,22 @@ export class MediaRemoval {
     })();
   }
 
-  /** Reclaim earlier managed Trim cuts once the library and recovered show are available. */
-  async trashUnusedTrims(mediaDir: string, trash: (file: string) => Promise<void>): Promise<number> {
+  /** Reclaim earlier managed Trim cuts only in a quiet turn after the window opens. */
+  async trashUnusedTrims(
+    mediaDir: string,
+    trash: (file: string) => Promise<void>,
+    quiet: () => boolean,
+    signal: AbortSignal,
+  ): Promise<number> {
+    const paused = () => signal.aborted || !quiet();
+    if (paused()) return 0;
     const rows = this.db
       .prepare(
         `SELECT m.id, m.path, m.sha256 FROM trimmed_videos t JOIN media m ON m.id = t.media_id
          WHERE m.source_kind = 'drashti' AND m.deleted_at IS NULL AND m.missing = 0
-           AND m.path <> '' AND m.sha256 IS NOT NULL`,
+           AND m.path <> '' AND m.sha256 IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM playlist_items i WHERE i.media_id = m.id)
+         ORDER BY m.id`,
       )
       .all() as { id: string; path: string; sha256: string }[];
     if (rows.length === 0) return 0;
@@ -177,44 +187,76 @@ export class MediaRemoval {
              OR replace(path, char(92), '/') COLLATE NOCASE IN (@path, @absolute, @real)
              OR replace(source_path, char(92), '/') COLLATE NOCASE IN (@path, @absolute, @real)
            )
-         )
-         OR EXISTS (
-           SELECT 1 FROM (
-             SELECT props AS data FROM elements
-             UNION ALL SELECT deck FROM slides
-             UNION ALL SELECT editor_design FROM slides
-             UNION ALL SELECT editor_master FROM presentations
-             UNION ALL SELECT definition FROM props
-             UNION ALL SELECT definition FROM themes
-             UNION ALL SELECT actions FROM macros
-             UNION ALL SELECT value FROM app_meta WHERE key LIKE 'setting.%'
-           ) refs, json_tree(CASE WHEN json_valid(refs.data) THEN refs.data ELSE NULL END) j
-           WHERE j.type = 'text' AND j.atom = @id
          )`,
+    );
+    const scanJson = this.db.prepare<[string], { id: string }>(
+      `WITH candidates(id) AS MATERIALIZED (SELECT value FROM json_each(?)),
+            documents(data) AS (
+              SELECT props FROM elements
+              UNION ALL SELECT deck FROM slides
+              UNION ALL SELECT editor_design FROM slides
+              UNION ALL SELECT editor_master FROM presentations
+              UNION ALL SELECT definition FROM props
+              UNION ALL SELECT definition FROM themes
+              UNION ALL SELECT actions FROM macros
+              UNION ALL SELECT value FROM app_meta WHERE key LIKE 'setting.%'
+            ),
+            possible(data) AS MATERIALIZED (
+              SELECT data FROM documents
+               WHERE EXISTS (SELECT 1 FROM candidates WHERE instr(data, id) > 0)
+                  OR instr(data, char(92) || 'u') > 0
+            )
+       SELECT DISTINCT j.atom AS id
+         FROM possible, json_tree(CASE WHEN json_valid(data) THEN data ELSE NULL END) j
+        WHERE j.type = 'text' AND j.atom IN (SELECT id FROM candidates)`,
+    );
+    // An editor can save while the file is hashed. Rebuild the shared set only if the DB changed.
+    // Subtract the rows this pass has marked missing, since those writes cannot add a reference.
+    const revision = this.db.prepare<[number], { stamp: string }>(
+      'SELECT (total_changes() - ?) || char(58) || data_version AS stamp FROM pragma_data_version',
+    );
+    const ids = JSON.stringify(rows.map(({ id }) => id));
+    let jsonReferences = new Set<string>();
+    let scannedAt: string | undefined;
+    let gone = 0;
+    const inJson = (id: string) => {
+      const current = revision.get(gone)?.stamp;
+      if (scannedAt === undefined || scannedAt !== current) {
+        jsonReferences = new Set(scanJson.all(ids).map((found) => found.id));
+        scannedAt = current;
+      }
+      return jsonReferences.has(id);
+    };
+    const stillManaged = this.db.prepare(
+      `SELECT 1 FROM trimmed_videos t JOIN media m ON m.id = t.media_id
+        WHERE m.id = @id AND m.path = @path AND m.sha256 = @sha256
+          AND m.source_kind = 'drashti' AND m.deleted_at IS NULL AND m.missing = 0`,
     );
     const forget = this.db.prepare(
       `UPDATE media SET path = '', missing = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
        WHERE id = @id AND path = @path AND sha256 = @sha256 AND deleted_at IS NULL`,
     );
-    const recovered = this.deps.onScreens();
     const root = realpathSync.native(mediaDir);
     const slash = (path: string) => path.replaceAll('\\', '/');
-    let gone = 0;
     for (const row of rows) {
+      await setImmediate();
+      if (paused()) break;
       const file = resolve(root, row.path);
-      if (isAbsolute(row.path) || !isInside(root, file) || recovered.has(row.id)) continue;
+      if (isAbsolute(row.path) || !isInside(root, file)) continue;
       const lookup = {
         id: row.id,
         path: slash(row.path),
         absolute: slash(resolve(mediaDir, row.path)),
         real: slash(file),
       };
-      const referenced = () => this.deps.onScreens().has(row.id) || used.get(lookup) !== undefined;
+      const referenced = () =>
+        this.deps.onScreens().has(row.id) || used.get(lookup) !== undefined || inJson(row.id);
       if (referenced()) continue;
       try {
         const before = lstatSync(file, { bigint: true });
         if (!before.isFile() || realpathSync.native(file) !== file) continue;
-        const { sha256 } = await sha256File(file);
+        const sha256 = await hashTrimFile(file, signal);
+        if (paused()) break;
         const after = lstatSync(file, { bigint: true });
         if (
           sha256 !== row.sha256 ||
@@ -224,6 +266,7 @@ export class MediaRemoval {
           before.mtimeNs !== after.mtimeNs ||
           !after.isFile() ||
           realpathSync.native(file) !== file ||
+          stillManaged.get(row) === undefined ||
           referenced()
         )
           continue;
@@ -267,4 +310,87 @@ export class MediaRemoval {
     }
     return gone;
   }
+}
+
+/** Start once the operator window has opened. Yield to a show, a stream, or a recording. */
+export class TrimCleanup {
+  private opened = false;
+  private closed = false;
+  private timer: NodeJS.Timeout | null = null;
+  private running: AbortController | null = null;
+
+  constructor(
+    private readonly quiet: () => boolean,
+    private readonly sweep: (signal: AbortSignal) => Promise<void>,
+    private readonly failed: (error: unknown) => void,
+  ) {}
+
+  open(): void {
+    this.opened = true;
+    this.activityChanged();
+  }
+
+  activityChanged(): void {
+    if (!this.opened || this.closed) return;
+    if (!this.quiet()) {
+      this.pause();
+      return;
+    }
+    if (!this.timer && !this.running) this.timer = setTimeout(() => this.start(), 2_000).unref();
+  }
+
+  close(): void {
+    this.closed = true;
+    this.pause();
+  }
+
+  private pause(): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.running?.abort();
+  }
+
+  private start(): void {
+    this.timer = null;
+    if (this.closed || !this.quiet()) return;
+    const attempt = new AbortController();
+    this.running = attempt;
+    void this.sweep(attempt.signal)
+      .catch(this.failed)
+      .finally(() => {
+        this.running = null;
+        if (attempt.signal.aborted) this.activityChanged();
+        else this.closed = true;
+      });
+  }
+}
+
+/** Stream the bytes in a worker so even a long video does not hash on Electron's main thread. */
+function hashTrimFile(file: string, signal: AbortSignal): Promise<string> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      `
+        const { parentPort, workerData } = require('node:worker_threads');
+        const { createReadStream } = require('node:fs');
+        const { createHash } = require('node:crypto');
+        const hash = createHash('sha256');
+        (async () => {
+          for await (const chunk of createReadStream(workerData)) hash.update(chunk);
+          parentPort.postMessage(hash.digest('hex'));
+        })().catch((error) => { throw error; });
+      `,
+      { eval: true, workerData: file },
+    );
+    const abort = () => {
+      void worker.terminate();
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    worker.once('message', resolve);
+    worker.once('error', reject);
+    worker.once('exit', () => {
+      signal.removeEventListener('abort', abort);
+      reject(new Error('The Trim file hash stopped before it finished.'));
+    });
+  });
 }
