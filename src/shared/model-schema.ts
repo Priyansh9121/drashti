@@ -202,6 +202,7 @@ export const textStyleSchema: z.ZodType<TextStyle> = z.object({
   // Session 55 (Part 17a): a glow round the letters.
   glow: glowSchema.nullable().optional(),
   shrinkToFit: z.boolean().optional(),
+  spaceAtTextEdges: z.boolean().optional(),
   clipToBox: z.boolean().optional(),
   noWrap: z.boolean().optional(),
   writingMode: z.enum(['vertical-rl', 'vertical-lr', 'sideways-lr']).optional(),
@@ -231,6 +232,8 @@ export const textRunSchema: z.ZodType<TextRun> = z.object({
       marginRight: num.min(0).max(16_384).optional(),
       indent: num.min(-16_384).max(16_384).optional(),
       lineHeight: num.positive().max(5).optional(),
+      spaceBefore: num.min(0).max(16_384).optional(),
+      spaceAfter: num.min(0).max(16_384).optional(),
       bullet: z.string().max(8).optional(),
       bulletFont: z.string().max(200).optional(),
       bulletColor: hexColorSchema.optional(),

@@ -190,6 +190,8 @@ interface Run {
   font?: string;
   align?: 'l' | 'ctr';
   bullet?: boolean;
+  /** Space before the paragraph in hundredths of a point. */
+  spaceBefore?: number;
 }
 interface Box {
   id: number;
@@ -262,7 +264,7 @@ function run(r: Run): string {
   return `<a:r><a:rPr lang="${lang}" sz="${String((r.size ?? 32) * 100)}" b="${r.bold ? '1' : '0'}" dirty="0"><a:solidFill><a:srgbClr val="${r.color ?? 'FFFFFF'}"/></a:solidFill>${fonts}</a:rPr><a:t>${esc(r.text)}</a:t></a:r>`;
 }
 const para = (p: Run) =>
-  `<a:p><a:pPr algn="${p.align ?? 'l'}"${p.bullet ? ' marL="457200" indent="-457200"' : ''}>${p.bullet ? '<a:buFont typeface="Arial"/><a:buChar char="•"/>' : '<a:buNone/>'}</a:pPr>${run(p)}</a:p>`;
+  `<a:p><a:pPr algn="${p.align ?? 'l'}"${p.bullet ? ' marL="457200" indent="-457200"' : ''}>${p.spaceBefore === undefined ? '' : `<a:spcBef><a:spcPts val="${String(p.spaceBefore)}"/></a:spcBef>`}${p.bullet ? '<a:buFont typeface="Arial"/><a:buChar char="•"/>' : '<a:buNone/>'}</a:pPr>${run(p)}</a:p>`;
 const xfrm = (s: Box) =>
   `<a:xfrm><a:off x="${String(Math.round(s.x))}" y="${String(Math.round(s.y))}"/><a:ext cx="${String(Math.round(s.w))}" cy="${String(Math.round(s.h))}"/></a:xfrm>`;
 
