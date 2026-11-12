@@ -82,6 +82,47 @@ it('returns a phone picture only from Main’s capture of its owned hidden windo
   expect(s.win.isDestroyed()).toBe(true);
 });
 
+describe('a phone’s picture, the lowest of the hidden window’s jobs (C6’s review, LOW 1 and LOW 4)', () => {
+  it('gives way to the operator’s Save a PDF copy…, which goes ahead at once', async () => {
+    const phoneWindow = new Window();
+    const copyWindow = new Window();
+    copyWindow.webContents.id = 102;
+    const windows = [phoneWindow, copyWindow];
+    const session = new PdfCopySession({
+      open: () => windows.shift() as unknown as BrowserWindow,
+      assetDirs: () => [],
+      normalize: (data) => Promise.resolve(new Uint8Array(data)),
+    });
+    sessions.add(session);
+    const slide = { id: 'placeholder-page', width: 1280, height: 720, background: '#ffffff', elements: [] };
+    const picture = session.picture(slide, {}, () => true, new AbortController().signal);
+    const copy = session.run(
+      { pages: [{ kind: 'native', slide }], sources: [] },
+      () => true,
+      new AbortController().signal,
+    );
+    const job = session.job(copyWindow.webContents as unknown as WebContents);
+    expect(job).not.toBeNull();
+    expect(job?.picture).toBeUndefined();
+    expect(phoneWindow.isDestroyed()).toBe(true);
+    expect(await picture).toBeNull();
+    // A phone's picture waits for nothing: while the operator's copy runs, it is refused at once.
+    expect(await session.picture(slide, {}, () => true, new AbortController().signal)).toBeNull();
+    session.stop();
+    expect(await copy).toBeNull();
+  });
+
+  it('ends at once when its capture cannot be made, so the phone gets the slide as it starts without waiting', async () => {
+    const s = setup({ width: 1280, height: 720 }, true);
+    s.win.webContents.capturePage.mockImplementationOnce(() =>
+      Promise.resolve({ isEmpty: () => true, toPNG: () => Buffer.alloc(0) }),
+    );
+    expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
+    expect(s.win.isDestroyed()).toBe(true);
+    expect(await s.result).toBeNull();
+  });
+});
+
 describe('the exact hidden PDF copy window protocol', () => {
   it('captures only the current owned sheet, keeps capture hidden and refuses it after printing', async () => {
     const s = setup();
