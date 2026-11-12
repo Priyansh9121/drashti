@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
-import { mediaUrl, PICTURE_LIMITS, playbackOffset, playbackPosition, SOUND_LIMITS } from '../../../shared/media';
+import {
+  mediaUrl,
+  PICTURE_LIMITS,
+  playbackOffset,
+  playbackPosition,
+  SOUND_LIMITS,
+} from '../../../shared/media';
 import { startPlayback } from './playback';
 
 /*
