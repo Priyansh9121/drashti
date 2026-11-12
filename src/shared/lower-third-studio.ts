@@ -358,6 +358,7 @@ const motionOr = (motion: LowerThirdMotion): LowerThirdMotion =>
 export interface LowerThirdTemplate {
   id: string;
   name: string;
+  /** Left and right name the side it enters from. Up rises from below and down drops from above. */
   direction: 'left' | 'right' | 'up' | 'down' | 'centre';
   kind: 'slide' | 'wipe' | 'reveal' | 'pop' | 'letters';
   feel: 'quick' | 'elegant' | 'bold' | 'calm';
@@ -386,7 +387,7 @@ const MAKINGS: readonly TemplateMaking[] = [
   {
     id: 'news-band',
     name: 'News band',
-    direction: 'right',
+    direction: 'left',
     kind: 'wipe',
     feel: 'bold',
     lines: ['Placeholder name', 'Placeholder title', ''],

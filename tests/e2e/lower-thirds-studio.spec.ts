@@ -205,6 +205,10 @@ test('the template picker plays one preview, filters the grid and keeps favourit
 
   await trigger.click();
   await expect(search).toBeFocused();
+  const bigPreview = studio.getByTestId('lower-third-preview');
+  await expect(bigPreview).not.toHaveAttribute('data-playing', 'true');
+  await expect(bigPreview.getByTestId('lower-third-layer')).toHaveAttribute('data-lt-phase', 'still');
+  await expect(tile).toHaveAccessibleDescription(/From the left/u);
   await expectInView(picker, 'the template picker at the CI window size');
   await expect(picker.getByRole('button', { name: 'Best 20' })).toHaveAttribute('aria-pressed', 'true');
   expect(await tiles.count()).toBeGreaterThan(1);
@@ -212,35 +216,84 @@ test('the template picker plays one preview, filters the grid and keeps favourit
 
   const picture = tile.getByTestId('lower-third-layer');
   await expect(picture).toHaveAttribute('data-lt-phase', 'still');
-  await tile.evaluate((el) => {
-    const observer = new MutationObserver(() => {
-      if (!el.querySelector('[data-lt-phase="in"]')) return;
-      (el as HTMLElement).dataset['sawTemplateEntrance'] = 'true';
-      observer.disconnect();
+  const watchEntrance = () =>
+    tile.evaluate((el) => {
+      const button = el as HTMLElement;
+      delete button.dataset['sawTemplateEntrance'];
+      const observer = new MutationObserver(() => {
+        if (!button.querySelector('[data-lt-phase="in"]')) return;
+        button.dataset['sawTemplateEntrance'] = 'true';
+        observer.disconnect();
+      });
+      observer.observe(button, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['data-lt-phase'],
+      });
     });
-    observer.observe(el, {
+  await picker.evaluate((el) => {
+    const gallery = el as HTMLElement;
+    const observer = new MutationObserver(() => {
+      const active = gallery.querySelectorAll('[data-preview-playing="true"]').length;
+      const previous = Number(gallery.dataset['maxActivePreviews'] ?? 0);
+      gallery.dataset['maxActivePreviews'] = String(Math.max(previous, active));
+    });
+    observer.observe(gallery, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-lt-phase'],
+      attributeFilter: ['data-preview-playing'],
     });
   });
+  await watchEntrance();
   await tile.hover();
   await expect(tile).toHaveAttribute('data-saw-template-entrance', 'true');
-  await expect(tile.locator('[data-template-preview]')).toHaveAttribute('data-preview-playing', 'true');
-  await expect(picker.locator('[data-preview-playing="true"]')).toHaveCount(1);
+  await expect(picker).toHaveAttribute('data-max-active-previews', '1');
+  await tile.evaluate((el) => {
+    const button = el as HTMLElement;
+    const preview = button.querySelector('[data-template-preview]');
+    const observer = new MutationObserver(() => {
+      if (button.querySelector('[data-template-preview]') !== preview)
+        button.dataset['previewRestarted'] = 'true';
+    });
+    observer.observe(button, { childList: true, subtree: true });
+  });
+  await favourite.hover();
+  await tile.hover();
+  await expect(tile).not.toHaveAttribute('data-preview-restarted', 'true');
   await search.hover();
   await expect(picker.locator('[data-preview-playing="true"]')).toHaveCount(0);
 
   await picker.getByRole('button', { name: 'All templates' }).click();
   await search.fill('NEWS BAND');
   await expect(tiles).toHaveCount(1);
-  await picker.getByLabel('Direction', { exact: true }).selectOption('left');
+  const direction = picker.getByLabel('Direction', { exact: true });
+  const tags = await tile.evaluate((el) => {
+    const data = (el as HTMLElement).dataset;
+    return { direction: data['direction'], kind: data['kind'], feel: data['feel'], speed: data['speed'] };
+  });
+  const wrongDirection = await direction
+    .locator('option')
+    .evaluateAll(
+      (options, chosen) =>
+        options
+          .map((option) => (option as HTMLOptionElement).value)
+          .find((value) => value && value !== chosen),
+      tags.direction,
+    );
+  expect(wrongDirection).toBeDefined();
+  await direction.selectOption(wrongDirection ?? '');
   await expect(tiles).toHaveCount(0);
-  await picker.getByLabel('Direction', { exact: true }).selectOption('right');
-  await picker.getByLabel('Kind', { exact: true }).selectOption('wipe');
-  await picker.getByLabel('Feel', { exact: true }).selectOption('bold');
-  await picker.getByLabel('Speed', { exact: true }).selectOption('steady');
+  for (const [label, value] of [
+    ['Direction', tags.direction],
+    ['Kind', tags.kind],
+    ['Feel', tags.feel],
+    ['Speed', tags.speed],
+  ] as const) {
+    expect(value).toBeTruthy();
+    await picker.getByLabel(label, { exact: true }).selectOption(value ?? '');
+  }
   await expect(tile).toBeVisible();
   await favourite.click();
   await expect(favourite).toHaveAttribute('aria-pressed', 'true');
@@ -250,15 +303,22 @@ test('the template picker plays one preview, filters the grid and keeps favourit
   await expect(trigger).toBeFocused();
   await studio.reload();
   await trigger.click();
-  await picker.getByRole('button', { name: 'Favourites', exact: true }).click();
+  const favouritesButton = picker.getByRole('button', { name: 'Favourites', exact: true });
+  await favouritesButton.click();
   await expect(tiles).toHaveCount(1);
   await expect(favourite).toHaveAttribute('aria-pressed', 'true');
+  await favourite.click();
+  await expect(tiles).toHaveCount(0);
+  await expect(favouritesButton).toBeFocused();
+  await picker.getByRole('button', { name: 'All templates' }).click();
+  await search.fill('News band');
 
+  await watchEntrance();
   await tile.focus();
   await studio.keyboard.press('Shift+Tab');
   await studio.keyboard.press('Tab');
   await expect(tile).toBeFocused();
-  await expect(tile.locator('[data-template-preview]')).toHaveAttribute('data-preview-playing', 'true');
+  await expect(tile).toHaveAttribute('data-saw-template-entrance', 'true');
   await tile.press('Enter');
   await expect(picker).toHaveCount(0);
   await expect(studio.getByTestId('lower-third-line').first()).toHaveValue('Placeholder name');
@@ -289,12 +349,17 @@ test('a name and role design saves, draws its parts in order and hides at the ex
   const onScreen = out.getByTestId('lower-third-layer');
   const accent = onScreen.locator('[data-lt-accent]');
   const lines = onScreen.locator('[data-lt-unit]');
-  await holdClock(app, shownAt + Math.round(length * 0.15));
+  const first = Math.round(length * 0.15);
+  await holdClock(app, shownAt + first);
   await expect(onScreen).toHaveAttribute('data-lt-phase', 'in');
+  await expect(onScreen).toHaveAttribute('data-lt-at', String(first));
+  await expect(accent).toHaveCSS('opacity', '1');
   await expect(accent).not.toHaveCSS('transform', 'none');
   await expect(lines.nth(0)).toHaveCSS('opacity', '0');
   await expect(lines.nth(1)).toHaveCSS('opacity', '0');
-  await holdClock(app, shownAt + Math.round(length * 0.5));
+  const middle = Math.round(length * 0.5);
+  await holdClock(app, shownAt + middle);
+  await expect(onScreen).toHaveAttribute('data-lt-at', String(middle));
   await expect(lines.nth(0)).not.toHaveCSS('opacity', '0');
   await expect(lines.nth(1)).toHaveCSS('opacity', '0');
   await holdClock(app, shownAt + length);
@@ -309,8 +374,35 @@ test('a name and role design saves, draws its parts in order and hides at the ex
   await holdClock(app, hiddenAt + Math.round(outLength * 0.5));
   await expect(onScreen).toHaveAttribute('data-lt-phase', 'out');
   await expect(lines.nth(1)).toHaveCSS('opacity', '0');
+  await holdClock(app, hiddenAt + outLength - 1);
+  await expect(onScreen).toHaveAttribute('data-lt-phase', 'out');
+  await expect(onScreen).toHaveAttribute('data-lt-at', String(outLength - 1));
   await holdClock(app, hiddenAt + outLength);
   await expect(onScreen).toHaveCount(0);
+  await holdClock(app, null);
+
+  // A plain fade out keeps the long name wrapped exactly as it was while shown.
+  await studio
+    .getByTestId('lower-third-line')
+    .first()
+    .fill('Placeholder ' + 'Sample'.repeat(17));
+  await tab(studio, 'Animation');
+  await studio.getByTestId('lower-third-out-search').fill('fade');
+  const fade = studio.locator('[data-testid="lower-third-out-animation"][data-id="fade-quick"]');
+  await fade.click();
+  await studio.getByTestId('studio-show').click();
+  await expect(onScreen).toHaveAttribute('data-lt-phase', 'still');
+  const firstLine = onScreen.locator('[data-lt-line]').first();
+  const height = async () => (await firstLine.boundingBox())?.height ?? 0;
+  const wrappedHeight = await height();
+  expect(wrappedHeight).toBeGreaterThan(0);
+  await studio.getByTestId('studio-show').click();
+  await expect.poll(async () => (await snapshot(win)).state.lowerThirdOff?.at ?? 0).toBeGreaterThan(hiddenAt);
+  const fadeAt = (await snapshot(win)).state.lowerThirdOff?.at ?? 0;
+  await holdClock(app, fadeAt + 1);
+  await expect(onScreen).toHaveAttribute('data-lt-at', '1');
+  await expect(onScreen).toHaveAttribute('data-lt-animation', 'fade-quick');
+  expect(await height()).toBeCloseTo(wrappedHeight, 1);
   await holdClock(app, null);
   await app.close();
 });

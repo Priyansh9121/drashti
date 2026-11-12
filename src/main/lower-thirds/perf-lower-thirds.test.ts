@@ -5,7 +5,7 @@ import { isAnimation } from '../../shared/lower-third-animations';
 import { LOWER_THIRD_TEMPLATES, OFFERED } from '../../shared/lower-third-studio';
 import { lowerThirdSchema } from '../../shared/lower-thirds';
 import { isPerfScenario } from '../perf-scenarios';
-import { keptOf, playedRows } from './perf-lower-thirds';
+import { keptOf, keptOfPhase, playedRows } from './perf-lower-thirds';
 
 /*
  * The Performance check's lower-thirds scenario (Session 55, Part 16): it plays every row of the studio's offered set,
@@ -62,6 +62,12 @@ describe('the lower-thirds scenario', () => {
     expect(keptOf({ frames: 70, ms: 1000, worst: 16 })).toBe(1);
     expect(keptOf({ frames: 0, ms: 0, worst: 0 })).toBeNull();
     expect(keptOf(undefined)).toBeNull();
+  });
+
+  it('catches a design phase that disappears or paints only a smooth middle section', () => {
+    expect(keptOfPhase(undefined, 60, 336)).toBeNull();
+    expect(keptOfPhase({ frames: 12, ms: 200, worst: 17 }, 60, 1000)).toBeCloseTo(13 / 60);
+    expect(keptOfPhase({ frames: 8, ms: (8 * 1000) / 30, worst: 34 }, 30, 336)).toBeCloseTo(0.9);
   });
 
   it('is a scenario of the check, and the Performance workflow offers it', () => {

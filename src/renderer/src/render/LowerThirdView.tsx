@@ -220,6 +220,8 @@ export function LowerThirdView({
   // Going out: its own out (the studio's), or its in played backwards.
   const animation = shown && phase === 'out' ? outAnimationOf(shown) : animationById(shown?.animation ?? '');
   const { pieces, units } = cut(shownLines(shown?.lines ?? []), animation);
+  const composing = animation.composition !== undefined;
+  const designed = composing || (shown !== null && animationById(shown.animation).composition !== undefined);
   const bandRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const length = phase === 'in' || phase === 'out' ? animationLength(animation, phase, units) : 0;
@@ -253,6 +255,8 @@ export function LowerThirdView({
   }, [phase, start, length, animation, units, motion, shownAt, frozenAt]);
   // After every drawing, before it is shown: as at the moment it was worked out for.
   useLayoutEffect(() => {
+    // A design keeps its layout when it leaves with a different animation.
+    if (designed && !composing && bandRef.current) paintDesign(bandRef.current);
     paintBand(
       rootRef.current,
       bandRef.current,
@@ -266,8 +270,6 @@ export function LowerThirdView({
   const size = (canvas.height * look.size) / 100;
   const justify = look.align === 'left' ? 'flex-start' : look.align === 'right' ? 'flex-end' : 'center';
   const style = styleDrawing(look, size);
-  const composing = animation.composition !== undefined;
-  const designed = composing || animationById(shown.animation).composition !== undefined;
   const accent = style.accent ?? (designed ? designRule(look, style, size) : null);
   const motionPiecesCss = motionPieces(motion, look);
   // The sweep is the colour itself: under it, its panel has none of its own.
@@ -310,21 +312,14 @@ export function LowerThirdView({
         }}
       >
         {style.fill !== 'lines' &&
-          (composing ? (
+          (designed ? (
             <div data-lt-design-panel="" style={{ position: 'absolute', inset: 0 }}>
               <Shape css={panelCss(style.shape)} pieces={motionPiecesCss} index={0} />
             </div>
           ) : (
             <Shape css={panelCss(style.shape)} pieces={motionPiecesCss} index={0} />
           ))}
-        {accent && (
-          <div
-            key={composing ? 'design-accent' : 'accent'}
-            aria-hidden="true"
-            data-lt-accent=""
-            style={accent}
-          />
-        )}
+        {accent && <div aria-hidden="true" data-lt-accent="" style={accent} />}
         {pieces.map((line, i) => {
           const text = line.map((p) => p.text).join('');
           const lang = detectLang(text);
@@ -338,8 +333,8 @@ export function LowerThirdView({
                 data-lt-unit={p.unit}
                 style={{
                   display: animation.unit === 'line' ? 'block' : 'inline-block',
-                  whiteSpace: composing ? 'pre-wrap' : 'pre',
-                  ...(composing ? { overflowWrap: 'anywhere' } : {}),
+                  whiteSpace: designed ? 'pre-wrap' : 'pre',
+                  ...(designed ? { overflowWrap: 'anywhere' } : {}),
                 }}
               >
                 {p.text}
@@ -357,13 +352,13 @@ export function LowerThirdView({
                 fontSize: i === 0 ? size : size * 0.7,
                 ...(style.textShadow ? { textShadow: style.textShadow } : {}),
                 ...(own as CSSProperties),
-                ...(style.fill === 'lines' && (composing || motionIsFill(motion))
+                ...(style.fill === 'lines' && (designed || motionIsFill(motion))
                   ? { background: 'transparent' }
                   : {}),
                 ...(designed && style.style === 'underline' ? { borderBottomColor: 'transparent' } : {}),
               }}
             >
-              {composing ? (
+              {designed ? (
                 <>
                   {style.fill === 'lines' && (
                     <div data-lt-design-line={i} style={{ position: 'absolute', inset: 0 }}>
@@ -377,7 +372,15 @@ export function LowerThirdView({
                       />
                     </div>
                   )}
-                  <div style={{ position: 'relative', overflow: 'hidden' }}>{words}</div>
+                  <div
+                    style={{
+                      position: 'relative',
+                      overflow: 'hidden',
+                      ...(!composing ? { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } : {}),
+                    }}
+                  >
+                    {words}
+                  </div>
                 </>
               ) : style.fill === 'lines' ? (
                 <>
