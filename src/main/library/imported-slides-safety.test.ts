@@ -268,6 +268,29 @@ describe('imported editor provenance and legacy safety', () => {
     }
   });
 
+  it('keeps an over-limit PowerPoint page as its picture and names the limit in Edit slides', async () => {
+    const w = originalWorld();
+    try {
+      const source = await bakedSource(w);
+      const note =
+        'PowerPoint source page 1 exceeds the 500-object editing limit and stays as its saved picture.';
+      register(w, source.presentations, ({ sourcePages }) =>
+        Promise.resolve({
+          ok: true,
+          total: 1,
+          pages: [],
+          failed: [...sourcePages],
+          failedNotes: { 0: [note] },
+        }),
+      );
+      const opened = await open(source.id);
+      expect(opened.doc.groups[0]?.slides[0]?.elements.map(({ kind }) => kind)).toEqual(['image']);
+      expect(opened.sourceIssues).toEqual([note]);
+    } finally {
+      w.clean();
+    }
+  });
+
   it('opens on the requested PDF page and its neighbours while later pages are still reading', async () => {
     const w = originalWorld();
     let later: () => void = () => undefined;

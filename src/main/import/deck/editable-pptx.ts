@@ -41,6 +41,8 @@ export interface EditablePptx {
   width: number;
   height: number;
   slides: EditablePptxSlide[];
+  /** Notes for omitted pages, keyed by their index in the source deck. */
+  failedNotes?: Record<number, string[]>;
   media: ParsedMediaRef[];
 }
 
@@ -652,8 +654,11 @@ function paragraphOf(
   if (marginLeft !== undefined) paragraph.marginLeft = pixels(marginLeft, 0);
   if (marginRight !== undefined) paragraph.marginRight = pixels(marginRight, 0);
   if (indent !== undefined) paragraph.indent = pixels(indent, -16_384);
-  const spacing = attr(child(lastChild(nodes, 'lnSpc'), 'spcPct'), 'val');
-  if (spacing !== undefined)
+  const lineSpacing = lastChild(nodes, 'lnSpc');
+  const points = number(attr(child(lineSpacing, 'spcPts'), 'val'), NaN);
+  const spacing = attr(child(lineSpacing, 'spcPct'), 'val');
+  if (points >= 0) paragraph.lineHeightPx = round(Math.min(16_384, pointsInSlidePixels(points, yScale)));
+  else if (spacing !== undefined)
     paragraph.lineHeight = Math.max(
       0.1,
       Math.min(5, round(DEFAULT_LINE_HEIGHT * (number(spacing, 100_000) / 100_000))),
@@ -699,13 +704,18 @@ function paragraphOf(
   };
 }
 
+/** DrawingML spacing uses hundredths of a point. */
+function pointsInSlidePixels(points: number, scale: number): number {
+  return ((points / 100) * 4 * scale) / 3;
+}
+
 function paragraphSpace(node: Node, edgeSize: number, scale: number): number | undefined {
   const points = attr(child(node, 'spcPts'), 'val');
   const percent = attr(child(node, 'spcPct'), 'val');
   if (points === undefined && percent === undefined) return undefined;
   const pixels =
     points !== undefined
-      ? ((number(points, 0) / 100) * 4 * scale) / 3
+      ? pointsInSlidePixels(number(points, 0), scale)
       : (percent?.endsWith('%')
           ? number(percent.replace(/%$/u, ''), 0) / 100
           : number(percent, 0) / 100_000) * edgeSize;
@@ -877,10 +887,29 @@ const SHAPES: Record<string, ShapeKind> = {
   star5: 'star',
   heart: 'heart',
 };
+function lineWidth(width: string | undefined, fallback = 1): number {
+  return Math.max(0.01, Math.min(100, number(width, fallback * EMU) / EMU));
+}
+
 function lineOutline(line: Node, ctx: Context, placeholder?: string): Outline | null {
   if (!line || child(line, 'noFill')) return null;
   const color = fillOf([line], ctx, placeholder ?? '#000000', placeholder);
-  return color ? { color, width: Math.max(0.01, Math.min(100, number(attr(line, 'w'), EMU) / EMU)) } : null;
+  return color ? { color, width: lineWidth(attr(line, 'w')) } : null;
+}
+
+function referenceLine(
+  ref: XmlNode,
+  ctx: Context,
+  fallback: string | null,
+  missingNote?: string,
+): Outline | null {
+  const index = number(attr(ref, 'idx'), 0);
+  if (index === 0) return null;
+  const line = kids(child(ctx.theme.format, 'lnStyleLst'), 'ln')[index - 1];
+  const color = colorOf(ref, ctx) ?? fallback;
+  if (line) return lineOutline(line, ctx, color ?? undefined);
+  if (missingNote) ctx.issues.add(missingNote);
+  return color ? { color, width: 1 } : null;
 }
 function linePlacement(rect: Rect, matrix: Matrix) {
   const a = at(matrix, rect.x, rect.y),
@@ -897,18 +926,27 @@ function linePlacement(rect: Rect, matrix: Matrix) {
   };
 }
 
-/**
- * A shape's line given a width but no colour anywhere, with no style line to take one from, draws nothing in
- * PowerPoint and Keynote (Keynote writes one on every text box and shape). A line with a colour, or a style's
- * line (PowerPoint's own shapes), reads as before.
- */
-function colourlessLine(chain: XmlNode[], props: Node[]): boolean {
-  const lines = props.flatMap((item) => kids(item, 'ln'));
-  return (
-    lines.length > 0 &&
-    !lines.some(paintedLine) &&
-    !chain.some((shape) => child(child(shape, 'style'), 'lnRef'))
+/** An explicit width and an explicit paint inherit independently through the placeholder and style. */
+function shapeOutline(
+  chain: XmlNode[],
+  props: Node[],
+  ctx: Context,
+  connectorColor: string | null,
+): Outline | null {
+  const lines = props.map((prop) => child(prop, 'ln'));
+  const paint = lines.findLast(paintedLine);
+  const style = lastChild(
+    chain.map((shape) => child(shape, 'style')),
+    'lnRef',
   );
+  const outline = paint
+    ? lineOutline(paint, ctx)
+    : style
+      ? referenceLine(style, ctx, '#000000')
+      : connectorColor
+        ? { color: connectorColor, width: 1 }
+        : null;
+  return outline ? { ...outline, width: lineWidth(lowToHighValue(lines, 'w'), outline.width) } : null;
 }
 /** A line that says how it is painted, or that it isn't, rather than giving only its width. */
 function paintedLine(line: Node): boolean {
@@ -1160,13 +1198,12 @@ function styledTableBorder(border: Node, ctx: Context): Outline | null | undefin
   if (line) return lineOutline(line, ctx);
   const ref = child(border, 'lnRef');
   if (!ref) return undefined;
-  const index = number(attr(ref, 'idx'), 0);
-  if (index === 0) return null;
-  const themed = kids(child(ctx.theme.format, 'lnStyleLst'), 'ln')[index - 1];
-  const color = colorOf(ref, ctx);
-  if (themed) return lineOutline(themed, ctx, color ?? undefined);
-  ctx.issues.add('A table border style is missing from its theme; its reference colour is used.');
-  return color ? { color, width: 1 } : null;
+  return referenceLine(
+    ref,
+    ctx,
+    null,
+    'A table border style is missing from its theme; its reference colour is used.',
+  );
 }
 
 interface TableEdge {
@@ -1179,10 +1216,21 @@ interface TableEdge {
 
 type TableEdgeCandidate = Omit<TableEdge, 'outline'> & { outline: Outline | null; priority: number };
 
+const tableEdgeKey = (vertical: boolean, boundary: number, start: number) =>
+  `${vertical ? 'v' : 'h'}:${boundary}:${start}`;
+
+/** The widest perpendicular stroke that touches this end of an edge. */
+function joiningStroke(edges: ReadonlyMap<string, TableEdgeCandidate>, edge: TableEdge, end: number): number {
+  return Math.max(
+    edges.get(tableEdgeKey(!edge.vertical, end, edge.boundary - 1))?.outline?.width ?? 0,
+    edges.get(tableEdgeKey(!edge.vertical, end, edge.boundary))?.outline?.width ?? 0,
+  );
+}
+
 function addTableEdge(edges: Map<string, TableEdgeCandidate>, edge: TableEdgeCandidate): void {
   // A spanning cell can share just part of its edge. Match the cells on the underlying grid.
   for (let start = edge.start; start < edge.end; start++) {
-    const key = `${edge.vertical ? 'v' : 'h'}:${edge.boundary}:${start}`;
+    const key = tableEdgeKey(edge.vertical, edge.boundary, start);
     const previous = edges.get(key);
     if (
       !previous ||
@@ -1333,12 +1381,18 @@ async function tableObjects(
   );
   if (elements.length + borders.length > available) return null;
   // Draw the edges over both cells' fills at a shared boundary.
-  for (const { vertical, boundary, start, end, outline } of borders) {
+  for (const border of borders) {
+    const { vertical, boundary, start, end, outline } = border;
     const at = (vertical ? columns : heights)[boundary];
     const stops = vertical ? heights : columns;
-    const from = stops[start];
-    const to = stops[end];
-    if (at === undefined || from === undefined || to === undefined) return null;
+    const first = stops[start];
+    const last = stops[end];
+    if (at === undefined || first === undefined || last === undefined) return null;
+    // Square off a join without extending a free end or adding another editable object.
+    const scale = vertical ? Math.hypot(matrix[2], matrix[3]) : Math.hypot(matrix[0], matrix[1]);
+    const halfStroke = EMU / (2 * scale);
+    const from = first - joiningStroke(edges, border, start) * halfStroke;
+    const to = last + joiningStroke(edges, border, end) * halfStroke;
     const edge = vertical
       ? { x: rect.x + at, y: rect.y + from, width: 0, height: to - from }
       : { x: rect.x + from, y: rect.y + at, width: to - from, height: 0 };
@@ -1378,8 +1432,6 @@ function unsupported(node: XmlNode, ctx: Context): void {
     )
   )
     ctx.issues.add('Source character offsets, spacing or capitalization effects are not reproduced.');
-  if (descendants(node, 'lnSpc').some((spacing) => child(spacing, 'spcPts')))
-    ctx.issues.add('Absolute source line spacing may differ in the editable copy.');
   if (
     [...descendants(node, 'headEnd'), ...descendants(node, 'tailEnd')].some(
       (n) => attr(n, 'type') !== undefined && attr(n, 'type') !== 'none',
@@ -1462,8 +1514,7 @@ async function objectOf(
   }
   const output: SlideElement[] = [];
   const paint = await shapePaintOf(paints, ctx, referenceColor(chain, 'fillRef', ctx));
-  const outline =
-    shape !== 'line' && colourlessLine(chain, props) ? null : lineOutline(lastChild(props, 'ln'), ctx);
+  const outline = shapeOutline(chain, props, ctx, shape === 'line' ? (paint.color ?? '#000000') : null);
   if (paint.picture) {
     output.push({
       id: ctx.id(),
@@ -1475,7 +1526,7 @@ async function objectOf(
     });
   }
   const fill = paint.color;
-  if (fill || outline || shape === 'line') {
+  if (shape === 'line' ? outline : fill || outline) {
     const place = shape === 'line' ? linePlacement(rect, matrix) : placement;
     output.push({
       id: ctx.id(),
@@ -1486,7 +1537,7 @@ async function objectOf(
       ...(paint.gradient ? { gradient: paint.gradient } : {}),
       opacity: 1,
       cornerRadius: radius,
-      outline: outline ?? (shape === 'line' ? { color: fill ?? '#000000', width: 1 } : null),
+      outline,
     });
   }
   const text = textElement(node, chain, rect, matrix, flipX, ctx);
@@ -1758,6 +1809,7 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
     return ref;
   };
   const slides: EditablePptxSlide[] = [];
+  const failedNotes: Record<number, string[]> = {};
   for (const [sourceIndex, id] of ids.entries()) {
     const rel = presentation.rels.get(attr(id, 'r:id') ?? '');
     const slide =
@@ -1841,7 +1893,12 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       await append(slide);
     } catch (error) {
       // An absent source page stays as its retained picture. The rest of the deck is still editable.
-      if (error instanceof EditableObjectLimit) continue;
+      if (error instanceof EditableObjectLimit) {
+        failedNotes[sourceIndex] = [
+          `PowerPoint source page ${String(sourceIndex + 1)} exceeds the ${String(MAX_ELEMENTS)}-object editing limit and stays as its saved picture.`,
+        ];
+        continue;
+      }
       throw error;
     }
     slides.push({
@@ -1852,6 +1909,14 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       issues: [...issues],
     });
   }
-  if (slides.length === 0) throw new Error('No source slide could be read safely.');
-  return { sourceCount: ids.length, width, height, slides, media };
+  const hasFailedNotes = Object.keys(failedNotes).length > 0;
+  if (slides.length === 0 && !hasFailedNotes) throw new Error('No source slide could be read safely.');
+  return {
+    sourceCount: ids.length,
+    width,
+    height,
+    slides,
+    media,
+    ...(hasFailedNotes ? { failedNotes } : {}),
+  };
 }
