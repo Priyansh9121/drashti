@@ -142,7 +142,8 @@ export interface PdfEditorProgress {
   slideId: string | null;
   open(doc: EditDoc, pending: string[], issues: string[]): void;
   update(pages: EditSlide[], settled: string[]): void;
-  waitForIdle(signal: AbortSignal): Promise<boolean>;
+  /** The show idle; `resuming` (after the show ended a job, or a wait at all): idle for a couple of seconds too. */
+  waitForIdle(signal: AbortSignal, resuming?: boolean): Promise<boolean>;
   /** The show needs the computer now (anything up, or the stream on air or recording). */
   busy(): boolean;
 }
@@ -268,8 +269,10 @@ export class ImportedSlides {
         const settled = occurrences.map((slide) => slide.id).filter((id) => pending.delete(id));
         if (view.shown && settled.length && allowed()) progressive?.update(ready, settled);
       };
-      const waitForIdle = (signal: AbortSignal) =>
-        view.shown && progressive ? progressive.waitForIdle(signal) : Promise.resolve(!signal.aborted);
+      const waitForIdle = (signal: AbortSignal, resuming = false) =>
+        view.shown && progressive
+          ? progressive.waitForIdle(signal, resuming)
+          : Promise.resolve(!signal.aborted);
       if (progressive && focused && !primary?.includes(focused)) openEditor();
 
       for (const list of order) {
@@ -451,7 +454,7 @@ export class ImportedSlides {
             failed ||= parsed.failed.length > 0;
             if (!parsed.unread?.length) break;
             sourcePages = parsed.unread;
-            if (!(await waitForIdle(guard.signal)) || !allowed())
+            if (!(await waitForIdle(guard.signal, true)) || !allowed())
               throw new Error('Source preparation cancelled.');
           }
           if (failed)

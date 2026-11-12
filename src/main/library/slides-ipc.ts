@@ -77,6 +77,12 @@ export interface SlidesIpcController {
 const onlyOperator = { ok: false as const, message: 'Only the operator window can change slides.' };
 /** Why Insert pages stopped the reading behind the open editor (Session 57, the review's MEDIUM-2). */
 const FOR_INSERT = { stoppedToInsert: true } as const;
+/*
+ * Edit slides' PDF reading goes on after the show only once the show has stayed idle this long, looked at this often
+ * (Session 57, the delta review's LOW-1): Clear all, then the next slide a moment later, is no time to start a job.
+ */
+const SETTLED_MS = 2_000;
+const SETTLE_LOOK_MS = 250;
 const STOPPED_TO_INSERT =
   'Reading the rest of this PDF stopped to insert pages: its other pages stay as their saved pictures for now. Save, then open Edit slides again to edit their words and shapes.';
 const DEFAULT_TRANSITION = 'defaultTransition';
@@ -119,6 +125,34 @@ export function registerSlidesIpc({
   };
   const cancelSourcePreparation = (presentationId?: string) => {
     stopPreparations(presentationId);
+  };
+  const pause = (ms: number, signal: AbortSignal) =>
+    new Promise<boolean>((resolve) => {
+      const stop = () => {
+        clearTimeout(timer);
+        resolve(false);
+      };
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', stop);
+        resolve(true);
+      }, ms);
+      signal.addEventListener('abort', stop, { once: true });
+      if (signal.aborted) stop();
+    });
+  /** The show idle; after a wait for it (or when `resuming`), idle for SETTLED_MS too. False once cancelled. */
+  const waitForSettledIdle = async (signal: AbortSignal, resuming = false): Promise<boolean> => {
+    let settle = resuming || showBusy();
+    for (;;) {
+      if (!(await waitForPdfIdle(signal))) return false;
+      if (!settle) return true;
+      let stayed = true;
+      for (let idle = 0; stayed && idle < SETTLED_MS; idle += SETTLE_LOOK_MS) {
+        if (!(await pause(SETTLE_LOOK_MS, signal))) return false;
+        stayed = !showBusy();
+      }
+      if (stayed) return true;
+      settle = true;
+    }
   };
   const drainSourcePreparation = () => Promise.allSettled([...preparations]).then(() => undefined);
   /**
@@ -185,7 +219,7 @@ export function registerSlidesIpc({
                 initial?.(view(doc, issues, pending));
               },
               update: (pages, settled) => sendUpdate({ requestId: request.data.requestId, pages, settled }),
-              waitForIdle: waitForPdfIdle,
+              waitForIdle: waitForSettledIdle,
               busy: showBusy,
             }
           : undefined;
