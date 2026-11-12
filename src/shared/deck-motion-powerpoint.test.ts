@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckEffect } from './deck';
-import { deckMotionFrame } from './deck-motion';
+import { deckMotionFrame, deckSplitShows } from './deck-motion';
 
 /*
  * PowerPoint's own movie of the comparison deck, measured frame by frame (Session 57, 13 Nov 2026: the lead's run 1,
@@ -117,5 +117,72 @@ describe('effects Drashti draws as PowerPoint’s own movie shows them', () => {
       [623.3, 70.99 - 19],
     ] as const)
       expect(Math.abs(top(ms) - measured), `${String(ms)} ms after the click`).toBeLessThanOrEqual(0.5);
+  });
+});
+
+describe('Split as PowerPoint’s own movie shows it', () => {
+  /** How much of the box shows, and where its moving edges are (each half-way between shown and not, in px). */
+  function split(one: DeckEffect, ms: number): { shows: number; edges: number[] } {
+    const frame = deckMotionFrame([one], 1, ms, box, screen);
+    const across = one.splitAxis !== 'y';
+    const from = across ? box.x : box.y;
+    const size = across ? box.width : box.height;
+    const steps = 3200;
+    const profile = Array.from(
+      { length: steps },
+      (_, i) => frame.opacity * deckSplitShows(frame.wipe, -1 + (2 * (i + 0.5)) / steps),
+    );
+    const edges: number[] = [];
+    for (let i = 1; i < steps; i++) {
+      const a = (profile[i - 1] ?? 0) - 0.5;
+      const b = (profile[i] ?? 0) - 0.5;
+      if ((a < 0 && b >= 0) || (a >= 0 && b < 0)) edges.push(from + ((i + a / (a - b)) * size) / steps);
+    }
+    return { shows: profile.reduce((sum, v) => sum + v, 0) / steps, edges };
+  }
+
+  /** Measured frames: ms after the click, how much of the box shows, and its moving edges along the split's axis. */
+  function expectLikePowerPoint(one: DeckEffect, samples: readonly [number, number, number[]][]): void {
+    for (const [ms, shows, edges] of samples) {
+      const drawn = split(one, ms);
+      const at = `${String(ms)} ms after the click`;
+      expect(Math.abs(drawn.shows - shows), `${at}: how much shows`).toBeLessThanOrEqual(0.012);
+      expect(drawn.edges, `${at}: its moving edges`).toHaveLength(edges.length);
+      drawn.edges.forEach((edge, i) => {
+        expect(Math.abs(edge - (edges[i] ?? Infinity)), `${at}: edge ${String(i + 1)}`).toBeLessThanOrEqual(
+          0.6,
+        );
+      });
+    }
+  }
+
+  it('comes in with a soft edge, its middle line from before the start to past the end', () => {
+    // Vertical In: from the box's left and right edges to its middle.
+    expectLikePowerPoint(effect('split', 'in', { splitAxis: 'x', inward: true }), [
+      [160, 0.191, [100.17, 151.99]],
+      [358.3, 0.5146, [110.58, 141.69]],
+      [590, 0.8884, [122.48, 129.61]],
+    ]);
+    // Horizontal Out: from the middle to the box's top and bottom.
+    expectLikePowerPoint(effect('split', 'in', { splitAxis: 'y' }), [
+      [95, 0.0834, [68.52, 71.62]],
+      [358.3, 0.5126, [60.34, 79.85]],
+      [590, 0.8874, [53.2, 86.95]],
+    ]);
+  });
+
+  it('leaves Split In closing from both edges to the middle, and Split Out opening from the middle', () => {
+    // Horizontal In: hidden from the top and bottom in, the middle last.
+    expectLikePowerPoint(effect('split', 'out', { splitAxis: 'y', inward: true }), [
+      [95, 0.9126, [52.78, 87.43]],
+      [358.3, 0.4844, [60.93, 79.29]],
+      [590, 0.1085, [68.03, 72.18]],
+    ]);
+    // Vertical Out: hidden from the middle out, the left and right edges last.
+    expectLikePowerPoint(effect('split', 'out', { splitAxis: 'x' }), [
+      [95, 0.9126, [123.26, 128.86]],
+      [358.3, 0.4834, [109.56, 142.59]],
+      [590, 0.1095, [97.55, 154.59]],
+    ]);
   });
 });
