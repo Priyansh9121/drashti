@@ -17,6 +17,7 @@ import { clockHeld, engineNow, onClockJump } from './clock';
 import { SlideMovementContext, SlideTimersContext } from './slide-timers';
 import { linesReveal, type UnitFrame, wordsReveal } from './reveal';
 import { deckSlideAt, nativeStepTiming, stepTiming } from '../../../shared/deck-show';
+import { DECK_FIRST_FRAME } from './DeckStep';
 import { NativeDeckMotion } from './NativeDeckElement';
 import {
   deckTransitionFrame,
@@ -233,20 +234,22 @@ export function slideMediaReady(
   const waits: Promise<unknown>[] = [];
   for (const img of root.querySelectorAll('img'))
     if (!img.complete) waits.push(img.decode().catch(() => undefined));
-  for (const video of root.querySelectorAll('video'))
+  const videos = Array.from(root.querySelectorAll('video'));
+  const first = videos.find((video) => video.dataset['deckFirstFrame'] !== undefined);
+  for (const video of videos)
     if (
-      video.readyState < 2 &&
-      // A deck's next click, loading out of sight while its step is up (Session 57, item 6; DeckStep.tsx): never
-      // drawn as the slide comes in, so never waited for.
-      video.dataset['deckVideo'] !== 'preparing' &&
-      (!native || (video.dataset['deckCover'] !== 'poster' && video.dataset['deckCover'] !== 'hidden'))
+      video === first
+        ? video.dataset['deckFirstFrame'] === 'loading'
+        : video.readyState < 2 &&
+          video.dataset['deckVideo'] !== 'preparing' &&
+          (!first || video.dataset['deckVideo'] !== 'hold') &&
+          (!native || (video.dataset['deckCover'] !== 'poster' && video.dataset['deckCover'] !== 'hidden'))
     )
       waits.push(
         new Promise<void>((resolve) => {
-          // Its first frame; or, for a deck's clip loaded ahead (DeckStep.tsx took it decoded, its first frame long
-          // in), the frame its jump into the clip lands on (a seek takes it below 2 until then, and loadeddata never
-          // comes again).
-          for (const event of ['loadeddata', 'canplay', 'error'])
+          // The clip's own notification waits for the frame at the seek position. A hold or the next click does
+          // not draw while this first clip plays.
+          for (const event of video === first ? [DECK_FIRST_FRAME] : ['loadeddata', 'canplay', 'error'])
             video.addEventListener(event, () => resolve(), { once: true });
         }),
       );
