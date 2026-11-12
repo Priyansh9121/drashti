@@ -190,6 +190,9 @@ describe('a slide imported before alpha.17, and its kept PowerPoint file', () =>
     expect(wantsSourceTiming(identified)).toBe(true);
     expect(wantsSourceTiming(slide(deck, {}, [video('4'), second]))).toBe(false);
 
+    const duplicateId = { ...source, elements: [poster('4', 700), ...source.elements] };
+    expect(withSourceVideoShapes(legacy, saved, duplicateId)).toBe(legacy);
+
     const ambiguous = {
       ...source,
       sourceVideoShapeIds: ['4', '6', '7'],

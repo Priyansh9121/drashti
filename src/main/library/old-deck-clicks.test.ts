@@ -242,7 +242,7 @@ const VIDEO_DECK: TestDeckSlide[] = [
  * The video deck with two slides on its one page: one as alpha.16 stored it (its video an element of no shape of the
  * deck's), one as alpha.17 stores a slide it keeps as video (its video element names its shape, `sourceShapeId`).
  */
-async function videoDeck(w: World) {
+async function videoDeck(w: World, legacyX = 672) {
   const { file, staged, made, clips } = await kept(w, VIDEO_DECK, 'Placeholder old video');
   const video = made('video', 'video');
   const media: DeckSlide['media'] = [
@@ -258,7 +258,7 @@ async function videoDeck(w: World) {
   const element = (own: boolean) => ({
     id: randomUUID(),
     kind: 'video' as const,
-    frame: { x: 672, y: 96, width: 384, height: 216 },
+    frame: { x: own ? 672 : legacyX, y: 96, width: 384, height: 216 },
     mediaId: video,
     fit: 'stretch' as const,
     ...(own ? { sourceShapeId: '4' } : {}),
@@ -496,6 +496,30 @@ describe('a deck slide imported before alpha.17 keeps its clicks through an edit
         sourceShapeId: '4',
         mediaId: old.video,
       });
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('keeps the stored clips when an older video no longer matches and a sibling is edited', async () => {
+    const w = originalWorld();
+    try {
+      const old = await videoDeck(w, 682);
+      const opened = await open(old.id);
+      const [older] = opened.doc.groups[0]?.slides ?? [];
+      expect(older?.deck).toEqual(old.older);
+      expect(older?.elements).not.toContainEqual(
+        expect.objectContaining({ kind: 'video', sourceShapeId: '4' }),
+      );
+
+      editWords(opened, 1);
+      expect(await save(old.id, opened)).toMatchObject({ ok: true });
+      const after = old.presentations.content(old.id);
+      const olderRow = old.before.slides[0];
+      expect(after?.slides[0]).toEqual(olderRow);
+      expect(after?.elements.filter((row) => row.slide_id === olderRow?.id)).toEqual(
+        old.before.elements.filter((row) => row.slide_id === olderRow?.id),
+      );
     } finally {
       w.clean();
     }

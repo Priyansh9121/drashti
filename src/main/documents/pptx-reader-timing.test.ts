@@ -1,8 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { EventEmitter } from 'node:events';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import * as os from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DeckSlide } from '../../shared/deck';
+import { editablePicture } from '../import/testing/editable-pptx-fixture';
+import { makeTestDeck, placeholderDeckMedia, type TestDeckSlide } from '../import/testing/make-deck';
 import type { PptxReaderChild, ToPptxReader } from './pptx-reader-protocol';
 import { pptxReader } from './pptx-reader-service';
 import type { SourceRead } from './source-reader';
@@ -12,6 +15,11 @@ import type { SourceRead } from './source-reader';
  * read as such, for those pages only. Fake transport (as pptx-reader-service.test.ts); the reading itself is tested in
  * pptx-source-timing.test.ts.
  */
+
+vi.mock('node:os', async (original) => ({
+  ...(await original<typeof os>()),
+  setPriority: vi.fn(),
+}));
 
 class Child implements PptxReaderChild {
   sent: ToPptxReader[] = [];
@@ -51,8 +59,12 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-async function read(timingPages: number[] | undefined, decks: Record<number, unknown>) {
-  const root = mkdtempSync(join(tmpdir(), 'drashti-source-timing-worker-'));
+async function read(
+  timingPages: number[] | undefined,
+  decks: Record<number, unknown>,
+  videoIds: Record<number, string[]> = {},
+) {
+  const root = mkdtempSync(join(os.tmpdir(), 'drashti-source-timing-worker-'));
   roots.push(root);
   const outDir = join(root, 'generated');
   mkdirSync(outDir);
@@ -82,6 +94,7 @@ async function read(timingPages: number[] | undefined, decks: Record<number, unk
       assets: [],
       issues: [],
       ...(decks[sourceIndex] === undefined ? {} : { deck: decks[sourceIndex] }),
+      ...(videoIds[sourceIndex] === undefined ? {} : { sourceVideoShapeIds: videoIds[sourceIndex] }),
     })),
     total: 2,
     failed: [],
@@ -102,6 +115,97 @@ describe('the clicks of a slide imported before alpha.17, through the document r
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.pages.map((page) => page.deck)).toEqual([undefined, clicks]);
+  });
+
+  it('keeps video shape ids only for asked pages whose clicks read', async () => {
+    const ids = { 0: ['4'], 1: ['5'] };
+    const unasked = (await read([1], { 0: clicks, 1: clicks }, ids)).result;
+    const unread = (await read([0, 1], { 0: { motion: 'Placeholder' }, 1: clicks }, ids)).result;
+    for (const result of [unasked, unread]) {
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.pages.map((page) => page.sourceVideoShapeIds)).toEqual([undefined, ['5']]);
+    }
+  });
+
+  it('sends valid source video ids through the worker and Main without dropping a page with an odd id', async () => {
+    const root = mkdtempSync(join(os.tmpdir(), 'drashti-video-shape-worker-'));
+    roots.push(root);
+    const outDir = join(root, 'generated');
+    mkdirSync(outDir);
+    const file = join(root, 'Placeholder video.pptx');
+    const inch = 914_400;
+    const video = (id: number, x: number): TestDeckSlide['shapes'][number] => ({
+      id,
+      type: 'video',
+      name: 'Placeholder video',
+      x: x * inch,
+      y: inch,
+      w: 4 * inch,
+      h: 2.25 * inch,
+      media: 'clip1',
+      poster: 'poster1',
+    });
+    const page: TestDeckSlide = {
+      key: 'placeholder-video',
+      bg: '204060',
+      transition: { kind: 'fade', dur: 400 },
+      notes: 'Placeholder notes',
+      shapes: [
+        {
+          id: 3,
+          type: 'text',
+          name: 'Placeholder text box',
+          x: inch,
+          y: 4 * inch,
+          w: 6 * inch,
+          h: inch,
+          paras: [{ text: 'Placeholder words' }],
+        },
+        video(4, 1),
+        video(-7, 7),
+      ],
+      effects: [{ kind: 'fade', target: 3, dur: 500, start: 'click' }],
+    };
+    writeFileSync(file, makeTestDeck([page], { ...placeholderDeckMedia(), poster1: editablePicture() }));
+
+    const child = new Child();
+    const port = new EventEmitter();
+    Object.assign(port, {
+      postMessage: (message: unknown) => {
+        child.message(message);
+        child.exit(0);
+      },
+    });
+    const parent = Object.getOwnPropertyDescriptor(process, 'parentPort');
+    Object.defineProperty(process, 'parentPort', { configurable: true, value: port });
+    try {
+      await import('./pptx-reader-worker');
+      const pending = pptxReader(() => child, { timeoutMs: 5_000, cancelGraceMs: 10, exitGraceMs: 10 })({
+        ext: 'pptx',
+        file,
+        outDir,
+        sourcePages: [0],
+        timingPages: [0],
+        signal: new AbortController().signal,
+        checkpoint: () => Promise.resolve(true),
+      });
+      await vi.waitFor(() => expect(child.sent).toHaveLength(1), { interval: 1 });
+      port.emit('message', { data: child.sent[0] });
+      expect(await pending).toMatchObject({
+        ok: true,
+        failed: [],
+        pages: [
+          {
+            sourceIndex: 0,
+            sourceVideoShapeIds: ['4'],
+            deck: { motion: { effects: [expect.objectContaining({ shapeId: '3', kind: 'fade' })] } },
+          },
+        ],
+      });
+    } finally {
+      if (parent) Object.defineProperty(process, 'parentPort', parent);
+      else Reflect.deleteProperty(process, 'parentPort');
+    }
   });
 
   it('keeps a page whose clicks don’t read, without them', async () => {
