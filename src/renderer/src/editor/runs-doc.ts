@@ -1,10 +1,10 @@
 import type { Mark, Node as PMNode, NodeType } from 'prosemirror-model';
 import { Schema } from 'prosemirror-model';
 import type { Command, EditorState, Transaction } from 'prosemirror-state';
-import type { Lang, ListMark, TextElement, TextRun } from '../../../shared/model';
+import type { Lang, ListMark, TextElement, TextParagraph, TextRun } from '../../../shared/model';
 import { clampLevel } from '../../../shared/text-lists';
 import { detectLang, mainLang, mergeRuns, withDetectedLangs } from '../../../shared/text-runs';
-import type { TextPatch } from './ops';
+import type { BoxPatch, TextPatch } from './ops';
 import { patchRun } from './ops';
 
 /*
@@ -26,6 +26,8 @@ export type LookStyle = (look: Look) => Record<string, string>;
 export interface LineAttrs {
   list: ListMark | null;
   level: number;
+  /** Source paragraph formatting survives replacing the words and their run marks. */
+  paragraph: TextParagraph | null;
   /** The look of the line break at its end (null: none of its own, or the last line). */
   brk: Look | null;
 }
@@ -37,7 +39,12 @@ export function textSchema(style: LookStyle): Schema {
       doc: { content: 'line+' },
       line: {
         content: 'inline*',
-        attrs: { list: { default: null }, level: { default: 0 }, brk: { default: null } },
+        attrs: {
+          list: { default: null },
+          level: { default: 0 },
+          paragraph: { default: null },
+          brk: { default: null },
+        },
         toDOM: (node) => {
           const attrs = node.attrs as LineAttrs;
           return ['div', { 'data-words': '', ...(attrs.list ? { 'data-list': attrs.list } : {}) }, 0];
@@ -82,9 +89,9 @@ const sameLook = (a: Look, b: Look) => {
   );
 };
 
-/** A look without its line's list (the line keeps that). */
-const withoutList = (look: Look): Look => {
-  const { list: _list, level: _level, ...rest } = look;
+/** Text and break marks keep their own look while the line holds the paragraph formatting. */
+const withoutLineFormat = (look: Look): Look => {
+  const { list: _list, level: _level, paragraph: _paragraph, ...rest } = look;
   return rest;
 };
 
@@ -126,10 +133,11 @@ export function docOf(schema: Schema, el: TextElement): PMNode {
       const attrs: LineAttrs = {
         list,
         level: list ? clampLevel(source.level) : 0,
-        brk: l.brk ? withoutList(l.brk) : null,
+        paragraph: source.paragraph ?? null,
+        brk: l.brk ? withoutLineFormat(l.brk) : null,
       };
       const content = l.pieces.map((p) => {
-        const look = withoutList(p.look);
+        const look = withoutLineFormat(p.look);
         return schema.text(p.text, Object.keys(look).length > 0 ? [runMark.create({ look })] : []);
       });
       return line.create(attrs, content);
@@ -155,12 +163,43 @@ export function runsOf(doc: PMNode): TextRun[] {
   doc.forEach((line, _offset, index) => {
     const attrs = line.attrs as LineAttrs;
     const list = listLook(attrs);
+    const paragraph = attrs.paragraph ? { paragraph: attrs.paragraph } : {};
     line.forEach((node) => {
-      if (node.isText) push(node.text ?? '', { ...lookOf(node.marks), ...list });
+      if (node.isText) push(node.text ?? '', { ...lookOf(node.marks), ...paragraph, ...list });
     });
-    if (index < doc.childCount - 1) push('\n', { ...(attrs.brk ?? {}), ...list });
+    if (index < doc.childCount - 1) push('\n', { ...(attrs.brk ?? {}), ...paragraph, ...list });
   });
   return runs;
+}
+
+function formatParagraph(paragraph: TextParagraph, { align, lineHeight }: BoxPatch): TextParagraph {
+  return {
+    ...paragraph,
+    ...(align === undefined ? {} : { align }),
+    ...(lineHeight === undefined ? {} : { lineHeight }),
+  };
+}
+
+/** A whole-box alignment or spacing change also updates the source paragraph overrides. */
+export function formatTextBox(element: TextElement, patch: BoxPatch): TextElement {
+  const next = { ...element, style: { ...element.style, ...patch } };
+  if (element.runs && (patch.align !== undefined || patch.lineHeight !== undefined))
+    next.runs = element.runs.map((run) =>
+      run.paragraph ? { ...run, paragraph: formatParagraph(run.paragraph, patch) } : run,
+    );
+  return next;
+}
+
+/** Keep the draft in step with the same whole-box change recorded by the editor's Undo. */
+export function formatEditedParagraphs(state: EditorState, patch: BoxPatch): Transaction {
+  const tr = state.tr.setMeta('addToHistory', false);
+  if (patch.align === undefined && patch.lineHeight === undefined) return tr;
+  state.doc.forEach((line, at) => {
+    const attrs = line.attrs as LineAttrs;
+    if (attrs.paragraph)
+      tr.setNodeMarkup(at, undefined, { ...attrs, paragraph: formatParagraph(attrs.paragraph, patch) });
+  });
+  return tr;
 }
 
 /**
@@ -348,7 +387,12 @@ function cutLine(tr: Transaction, pos: number, brk: Look | null): void {
   const $pos = tr.doc.resolve(pos);
   const attrs = $pos.parent.attrs as LineAttrs;
   const start = $pos.before();
-  tr.split(pos, 1, [{ type: $pos.parent.type, attrs: { ...attrs } }]);
+  let next = attrs;
+  if (attrs.paragraph?.startAt !== undefined) {
+    const { startAt: _startAt, ...paragraph } = attrs.paragraph;
+    next = { ...attrs, paragraph };
+  }
+  tr.split(pos, 1, [{ type: $pos.parent.type, attrs: next }]);
   tr.setNodeMarkup(start, undefined, { ...attrs, brk });
 }
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { EditDoc } from '../../../shared/slide-edit';
-import { commit, noteOutside, redo, undo, useEditor } from './editor-store';
-import { changeSlide } from './ops';
+import { commit, noteOutside, redo, select, undo, useEditor } from './editor-store';
+import { changeSlide, mapSlide } from './ops';
 
 /*
  * Undo and Redo for every change made in the slide editor (Session 55, Part 17a): the presentation's own changes, and
@@ -53,6 +53,25 @@ describe('the editor’s Undo and Redo', () => {
       selection: [],
       coalesce: null,
     });
+  });
+
+  it('can select one object inside a group without ungrouping it', () => {
+    const frame = { x: 0, y: 0, width: 200, height: 100 };
+    const shape = { kind: 'shape' as const, frame, fill: '#336699', opacity: 1, cornerRadius: 0 };
+    const grouped = mapSlide(doc, 's', (slide) => ({
+      ...slide,
+      elements: [
+        { ...shape, id: 'one', groupId: 'group' },
+        { ...shape, id: 'two', groupId: 'group' },
+      ],
+    }));
+    useEditor.setState({ doc: grouped });
+
+    select(['two']);
+    expect(useEditor.getState().selection).toEqual(['one', 'two']);
+    select(['two'], { expandGroups: false });
+    expect(useEditor.getState().selection).toEqual(['two']);
+    expect(useEditor.getState().doc).toBe(grouped);
   });
 
   it('takes back a change made outside the presentation in its turn, and gives it again', () => {

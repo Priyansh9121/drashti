@@ -1,7 +1,7 @@
 import { slideCanvas } from '../../../shared/document-page';
 import type { Outline, Rect, SlideElement, TextShadow } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
-import { findSlide, mapSlide, newId } from './ops';
+import { copyElement, findSlide, mapSlide } from './ops';
 import { freshGroups } from '../../../shared/element-groups';
 
 /*
@@ -138,10 +138,10 @@ export function pasteElements(
   const sx = size.width / copied.width;
   const sy = size.height / copied.height;
   let elements = freshGroups(
-    copied.elements.map((el): SlideElement => ({
-      ...(sx === 1 && sy === 1 ? structuredClone(el) : rescaled(structuredClone(el), sx, sy)),
-      id: newId(),
-    })),
+    copied.elements.map((el) => {
+      const copy = copyElement(el);
+      return sx === 1 && sy === 1 ? copy : rescaled(copy, sx, sy);
+    }),
   );
   if (!inPlace) {
     // Taken places (pasting where they came from): a step down and to the right until free.
