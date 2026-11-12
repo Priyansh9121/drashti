@@ -154,10 +154,10 @@ describe('LIVE’s Wallpaper and Black-out replace each other', () => {
     engine.dispatch({ type: 'toggleWallpaper' });
     expect(covers(engine.current)).toEqual(WALLPAPER);
 
-    const rev = engine.current.rev;
+    const rev = engine.rev;
     engine.dispatch({ type: 'toggleBlackout' });
     expect(covers(engine.current)).toEqual(BLACKOUT);
-    expect(engine.current.rev).toBe(rev + 1);
+    expect(engine.rev).toBe(rev + 1);
     engine.dispatch({ type: 'toggleWallpaper' });
     expect(covers(engine.current)).toEqual(WALLPAPER);
     engine.dispatch({ type: 'toggleWallpaper' });
