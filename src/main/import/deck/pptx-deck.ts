@@ -1,5 +1,6 @@
 import type { DeckEffect } from '../../../shared/deck';
 import { deckBackgroundTarget } from '../../../shared/deck-motion';
+import { pptxFormula, type ShapePlace } from '../../../shared/pptx-formula';
 import type { XmlNode } from '../xml';
 import { type NativePptxTransition, nativePptxTransition } from './pptx-native-transition';
 
@@ -342,6 +343,7 @@ type NativeLook = Pick<
   | 'inward'
   | 'spokes'
   | 'bars'
+  | 'zoomAway'
 > & { partial?: true };
 type Direction = NonNullable<DeckEffect['direction']>;
 
@@ -490,6 +492,72 @@ function turnOf(track: XmlNode | undefined, entering: boolean): number | null {
   return from !== null && to !== null && Math.abs(from - to) <= 3600 ? from - to : null;
 }
 
+/** Shapes of every kind of size and place, to tell whether a Basic Zoom's width and height grow alike. */
+const SOME_PLACES: readonly ShapePlace[] = [
+  { x: 0.39, y: 0.39, w: 0.2, h: 0.21 },
+  { x: 0.3, y: 0.7, w: 0.6, h: 0.9 },
+  { x: 0.8, y: 0.2, w: 1, h: 0.4 },
+  { x: 0.1, y: 0.9, w: 0.05, h: 0.5 },
+  { x: 0.5, y: 0.5, w: 1, h: 1 },
+];
+
+/**
+ * A Basic Zoom's tracks as PowerPoint writes them: its width and height (and for some its centre), each from where it
+ * is away from rest to where the shape rests (#ppt_w, #ppt_h, #ppt_x, #ppt_y), the far value one of PowerPoint's own
+ * formulas Drashti reads; the width and height growing alike. Null for anything else.
+ */
+function zoomTracks(behaviours: readonly XmlNode[], entering: boolean): DeckEffect['zoomAway'] | null {
+  const away = new Map<string, string>();
+  for (const node of behaviours) {
+    if (node.name === 'p:animScale') return null;
+    if (node.name !== 'p:anim') continue;
+    const property = animationProperty(node);
+    const points = animationValues(node);
+    const key = /^ppt_([xywh])$/u.exec(property ?? '')?.[1];
+    if (!points || !key || away.has(key)) return null;
+    const [far, rest] = entering ? points : [points[1], points[0]];
+    const formula = pptxFormula(far);
+    if (
+      rest !== `#${String(property)}` ||
+      !formula ||
+      !SOME_PLACES.every((place) => Number.isFinite(formula(place)))
+    )
+      return null;
+    away.set(key, far);
+  }
+  const w = away.get('w');
+  const h = away.get('h');
+  const width = w === undefined ? null : pptxFormula(w);
+  const height = h === undefined ? null : pptxFormula(h);
+  if (w === undefined || h === undefined || !width || !height) return null;
+  const alike = SOME_PLACES.every((place) => {
+    const across = width(place) / place.w;
+    return across >= 0 && Math.abs(across - height(place) / place.h) <= 1e-9 * Math.max(1, across);
+  });
+  if (!alike) return null;
+  const x = away.get('x');
+  const y = away.get('y');
+  return { w, h, ...(x === undefined ? {} : { x }), ...(y === undefined ? {} : { y }) };
+}
+
+/**
+ * Basic Zoom, as PowerPoint's own movie shows it (13 Nov 2026): each of its tracks played evenly as written, from where
+ * the shape is away from rest to where it rests. In grows from nothing where the shape stands (and leaves back to
+ * nothing); Out, In Slightly, In From Screen Center and Out From Screen Bottom start from the size and place their
+ * tracks say, PowerPoint's own formulas of the shape's place and size, worked out for the shape as it is drawn; leaving,
+ * Out, In Slightly and In To Screen Center end there (run 2, each within a pixel). One that moves away still showing
+ * (Out To Screen Bottom) is drawn so but keeps PowerPoint's video: its last frame, a sliver across the slide's foot,
+ * measured 0.26 px thinner in PowerPoint's movie than its own formulas say, more than the comparison lets through.
+ */
+function basicZoom(behaviours: readonly XmlNode[], entering: boolean): NativeLook {
+  if (zoomLimit(behaviours, entering) === 0) return { kind: 'zoom' };
+  const zoomAway = zoomTracks(behaviours, entering);
+  if (!zoomAway) return { kind: 'zoom', partial: true };
+  const moves = zoomAway.x !== undefined || zoomAway.y !== undefined;
+  const vanishes = zoomAway.w === '0' && zoomAway.h === '0';
+  return { kind: 'zoom', zoomAway, ...(!entering && moves && !vanishes ? { partial: true } : {}) };
+}
+
 /**
  * Grow & Turn (Shrink & Turn as it leaves): the gallery Zoom's scale and fade, turning as it grows. As PowerPoint writes
  * it, it plays as PowerPoint's own movie shows it (13 Nov 2026: within half a pixel and a degree); a size or turn Drashti
@@ -514,18 +582,24 @@ const RANDOM_BARS = new Map<string, NonNullable<DeckEffect['bars']>>([
   ['randombar(horizontal)', 'horizontal'],
   ['randombar(vertical)', 'vertical'],
 ]);
-/** Split out from the middle and in from both edges. Not yet compared with PowerPoint's own movie. */
+/**
+ * Split out from the middle and in from both edges ("In": coming in or leaving, its edges travel from the box's own
+ * edges to its middle). As PowerPoint's own movie shows all eight (13 Nov 2026): its soft edges and its exits within a
+ * pixel (shared/deck-motion.ts, deckSplitShows).
+ */
 const SPLITS = new Map<string, NativeLook>([
-  ['barn(outvertical)', { kind: 'split', splitAxis: 'x', partial: true }],
-  ['barn(outhorizontal)', { kind: 'split', splitAxis: 'y', partial: true }],
-  ['barn(invertical)', { kind: 'split', splitAxis: 'x', inward: true, partial: true }],
-  ['barn(inhorizontal)', { kind: 'split', splitAxis: 'y', inward: true, partial: true }],
+  ['barn(outvertical)', { kind: 'split', splitAxis: 'x' }],
+  ['barn(outhorizontal)', { kind: 'split', splitAxis: 'y' }],
+  ['barn(invertical)', { kind: 'split', splitAxis: 'x', inward: true }],
+  ['barn(inhorizontal)', { kind: 'split', splitAxis: 'y', inward: true }],
 ]);
 
 /**
  * Office's own reveal filters (ECMA-376 §19.5.3) that Drashti draws as clips: Shape's circle, box, diamond and plus,
- * Wheel's spokes and Random Bars. Not yet compared with PowerPoint's own movie, so a slide using one keeps PowerPoint's
- * video wherever one can be made, and plays these where none can.
+ * Wheel's spokes and Random Bars. A slide using one keeps PowerPoint's video wherever one can be made, and plays these
+ * where none can. Shape is drawn as PowerPoint's own movie shows it (13 Nov 2026, run 2: its outlines, its pace and
+ * its exits' way round), but with a hard edge where PowerPoint's is soft, so it comes close, not the same; Wheel and
+ * Random Bars are not yet compared.
  */
 function filterLook(filter: string | undefined): NativeLook | null {
   if (!filter) return null;
@@ -587,10 +661,7 @@ function nativeLook(
     return direction ? { kind: 'wipe', direction } : null;
   }
   if (preset === '23' && behaviours.some((n) => n.name === 'p:anim' || n.name === 'p:animScale'))
-    // Basic Zoom: drawn as a zoom from nothing where the shape stands (back to nothing as it leaves), exact only
-    // when that is all its behaviours say. Out, In Slightly, From Screen Center and Out From Screen Bottom start
-    // from another size or move: not yet compared with PowerPoint's own movie.
-    return zoomLimit(behaviours, phase === 'in') === 0 ? { kind: 'zoom' } : { kind: 'zoom', partial: true };
+    return basicZoom(behaviours, phase === 'in');
   if (preset === '53' && filter === 'fade') {
     const scale = zoomLimit(behaviours, phase === 'in');
     return scale === null ? { kind: 'zoom', fade: true, partial: true } : { kind: 'zoom', fade: true, scale };
@@ -687,6 +758,9 @@ function matchesVisibilitySet(
   return phase === 'out' && value === 'hidden' && (clock.start === end || clock.end === end);
 }
 
+/** The effects whose smooth start and end were compared with PowerPoint's own movie (runs 1 and 2, 13 Nov 2026). */
+const EASED_AS_POWERPOINT: ReadonlySet<DeckEffect['kind']> = new Set(['fly', 'float', 'grow-shrink']);
+
 function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedule: NativeSchedule): void {
   const behaviours = [
     ...(VISUAL_BEHAVIOURS.has(node.name) ? [node] : []),
@@ -749,8 +823,9 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
     paragraphs ||
     !ease ||
     // A smooth start or end is played with PowerPoint's own ramps (shared/deck-motion.ts, smoothedProgress), compared
-    // with its movie for a Fly (13 Nov 2026); any other effect so eased keeps PowerPoint's video until its own is.
-    ((ease[0] > 0 || ease[1] > 0) && look.kind !== 'fly') ||
+    // with its movie for a Fly, a Float and a Grow/Shrink (13 Nov 2026, runs 1 and 2); any other effect so eased keeps
+    // PowerPoint's video until its own is.
+    ((ease[0] > 0 || ease[1] > 0) && !EASED_AS_POWERPOINT.has(look.kind)) ||
     durationMs < 0 ||
     (durationMs === 0 && look.kind !== 'appear') ||
     behaviours.some(

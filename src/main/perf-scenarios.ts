@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CommandResult, EngineCommand } from '../shared/engine/commands';
+import type { EngineSnapshotMessage } from '../shared/engine/protocol';
 import type { Movement } from '../shared/looks';
 import type { TextStyle, TransitionKind } from '../shared/model';
 import type { PictureLook } from '../shared/picture-look';
@@ -87,7 +88,11 @@ export interface ScenarioDeps {
   db: Db;
   mediaDir: string;
   ffmpeg: string | null;
-  engine: { dispatch(command: EngineCommand): CommandResult };
+  /** The engine; its own record of the show too (animations, Session 57: a step's clock, by the engine's time). */
+  engine: {
+    dispatch(command: EngineCommand): CommandResult;
+    snapshot?(): Pick<EngineSnapshotMessage, 'rev' | 'state'>;
+  };
   outputs: () => BrowserWindow[];
   /** Every picture's sharpened copy made (Session 26f). */
   sharpened?: () => Promise<void>;
@@ -103,6 +108,12 @@ export interface ScenarioDeps {
   streamSlides?: () => void;
   /** animations (Session 57): the operator window, where each case is pressed. */
   operator?: () => BrowserWindow | null;
+  /**
+   * animations (Session 57, DK-6 and DK-2): this many pretend displays beside the computer's own, a copy of its first
+   * shifted a little, so a second hall screen and a stage screen can open while the cases run (CI has one display).
+   * Tests only: left out in an installed Drashti, and without the motion probe's switch.
+   */
+  pretendDisplays?: (count: number) => void;
 }
 
 /** What the slide changes go through (null: the usual three text slides), and how often. */
