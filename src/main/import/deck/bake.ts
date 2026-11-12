@@ -134,9 +134,10 @@ export interface BakeOptions extends ConvertOptions {
   standInHold?: string | null;
   /**
    * The PDF of every shown slide is saved, before the movie is made, and the deck as read (Session 56): the slides can
-   * show as their pictures while their animations are made. Once, by every app and the stand-in.
+   * show as their pictures while their animations are made. Once, by every app and the stand-in. On Windows (Session
+   * 57) PowerPoint's movie starts only once what this returns has settled: the pictures drawn and written first.
    */
-  pdfReady?: (pdf: string, deck: PptxDeck) => void;
+  pdfReady?: (pdf: string, deck: PptxDeck) => void | Promise<void>;
 }
 
 /** Always kept free on the disk, as converting keeps it (Session 50). */
@@ -333,7 +334,7 @@ async function powerPointOnMac(
             message:
               'PowerPoint could not save the deck’s pictures: save the deck again in PowerPoint and import that.',
           };
-        options.pdfReady?.(pdf, deck);
+        void options.pdfReady?.(pdf, deck);
       }
       // The timed copy, opened as any copy is (in PowerPoint's own folder): the slides that come in as their pictures
       // hidden in it, so the movie leaves them out.
@@ -348,7 +349,7 @@ async function powerPointOnMac(
       // The pictures first (a moment): should the movie not do, the deck comes in as them.
       if (!leaving) {
         pdf = await savePdf(opened.document);
-        if (pdf) options.pdfReady?.(pdf, deck);
+        if (pdf) void options.pdfReady?.(pdf, deck);
       }
       // The movie: asked for, then written in the background.
       const movieInApp = join(inside, 'movie.mov');
@@ -545,7 +546,7 @@ async function keynoteOnMac(
       if (savedPdf.code === 0 && (await written(pdfInApp, s.signal))) {
         pdf = join(work, 'pictures.pdf');
         await copyFile(pdfInApp, pdf);
-        options.pdfReady?.(pdf, deck);
+        void options.pdfReady?.(pdf, deck);
       }
       options.steps?.add('app-pdf', performance.now() - pdfFrom);
       // Only the slides that move go through the movie (Session 56): the rest, which come in as their pictures, are
@@ -710,7 +711,17 @@ async function powerPointOnWindows(
         deck,
         deckFile,
       };
-    options.pdfReady?.(pdf, deck);
+    // Let the library show the pictures before starting the Windows movie process.
+    await options.pdfReady?.(pdf, deck);
+    // Cancelled, or on air, while they were drawn (Session 57, the part 3 review's LOW-2): no timed copy, no movie.
+    if (options.signal?.aborted)
+      return {
+        ok: false,
+        failed: { ok: false, reason: 'cancelled', message: 'Cancelled.', cancelled: true },
+        pdf,
+        deck,
+        deckFile,
+      };
   }
   const copyFrom = performance.now();
   await writeTimedCopy(deckFile, timed, plan, leaving ? choice.pictures : []);
@@ -777,7 +788,7 @@ async function standIn(
   const pdfFrom = performance.now();
   const pdf = await standInPdf(input, read.slides, work);
   options.steps?.add('app-pdf', performance.now() - pdfFrom);
-  options.pdfReady?.(pdf, read);
+  void options.pdfReady?.(pdf, read);
   // Held by a test until it has seen the slides preparing (Session 56).
   const hold = options.standInHold;
   if (hold) while (!exists(hold) && !options.signal?.aborted) await sleep(100, options.signal);
