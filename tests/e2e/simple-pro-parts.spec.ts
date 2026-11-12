@@ -481,12 +481,29 @@ test('Edit slides in Simple Mode opens Pro’s slide editor from a row: its save
   await win.getByRole('menuitem', { name: 'Edit slides…' }).click();
   const { ed, editor } = await slideEditorWindow(app);
   await expect(ed).toHaveTitle(/Placeholder Simple Kirtan/u);
-  // A change: the first slide's words taken away; saved, the window closes, and Simple Mode's Undo puts them back.
+  // Duplicate the words in place on the slide. The slight offset keeps both boxes under the same point.
   const elements = editor.getByTestId('editor-slide').locator('[data-element]');
+  const picked = editor.getByTestId('selection');
   await expect(elements).toHaveCount(1);
+  const originalBox = await elements.first().getAttribute('data-element');
+  if (!originalBox) throw new Error('The original placeholder box did not render');
   const p = await onCanvas(ed, 960, 540);
   await ed.mouse.click(p.x, p.y);
   await expect(editor.getByTestId('editor-status')).toContainText('Text box');
+  await ed.keyboard.press(process.platform === 'darwin' ? 'Meta+D' : 'Control+D');
+  await expect(elements).toHaveCount(2);
+  const duplicate = await elements.last().getAttribute('data-element');
+  if (!duplicate) throw new Error('The duplicate placeholder box did not render');
+  expect(duplicate).not.toBe(originalBox);
+  await ed.mouse.click(p.x, p.y);
+  await expect(picked).toHaveAttribute('data-selected', duplicate);
+  await ed.mouse.click(p.x, p.y);
+  await expect(picked).toHaveAttribute('data-selected', originalBox);
+
+  // Undo the duplicate. Save the deletion and use Simple Mode's Undo to put the original words back.
+  await ed.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(elements).toHaveCount(1);
+  await ed.mouse.click(p.x, p.y);
   await ed.keyboard.press('Delete');
   await expect(elements).toHaveCount(0);
   await editor.getByTestId('save-slides').click();
