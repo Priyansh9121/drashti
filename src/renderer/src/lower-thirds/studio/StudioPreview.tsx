@@ -38,11 +38,14 @@ export function StudioPreview({
   play,
   backdrop,
   className,
+  thumbnail,
 }: {
   input: LowerThirdInput;
   play: number;
   backdrop: Backdrop;
   className?: string;
+  /** A template tile is still until hovered or focused, then plays once. */
+  thumbnail?: 'play' | 'still';
 }) {
   const box = useRef<HTMLDivElement>(null);
   const { width } = useElementSize(box);
@@ -51,10 +54,11 @@ export function StudioPreview({
   const [off, setOff] = useState<{ layer: LowerThirdLayer; at: number } | null>(null);
   const [round, setRound] = useState(0);
   const [played, setPlayed] = useState<string | null>(null);
+  const [finished, setFinished] = useState(false);
   const lines = input.lines.some((l) => l.trim() !== '') ? input.lines : SAMPLE;
   // Asked to play (`play` changed), or round again: up from now. Typing a line or changing a colour changes it in place.
   const key = `${String(play)}/${String(round)}`;
-  if (played !== key) {
+  if (thumbnail !== 'still' && played !== key) {
     setPlayed(key);
     setOff(null);
     setLayer({ id: 'preview', ...input, lines, shownAt: engineNow() });
@@ -63,7 +67,9 @@ export function StudioPreview({
   useEffect(() => {
     if (!layer) return;
     const a = animationById(layer.animation);
-    const hold = (layer.look.motion ?? 'none') === 'none' ? HOLD_MS : HOLD_MOVING_MS;
+    let hold = HOLD_MS;
+    if (thumbnail === 'play') hold = 700;
+    else if ((layer.look.motion ?? 'none') !== 'none') hold = HOLD_MOVING_MS;
     const out = window.setTimeout(
       () => {
         setLayer(null);
@@ -74,37 +80,48 @@ export function StudioPreview({
     return () => {
       window.clearTimeout(out);
     };
-  }, [layer]);
+  }, [layer, thumbnail]);
   useEffect(() => {
     if (!off) return;
     const a = outAnimationOf(off.layer);
     const again = window.setTimeout(
       () => {
-        setRound((n) => n + 1);
+        if (thumbnail === 'play') setFinished(true);
+        else setRound((n) => n + 1);
       },
-      animationLength(a, 'out', unitCount(off.layer.lines, a)) + GAP_MS,
+      animationLength(a, 'out', unitCount(off.layer.lines, a)) + (thumbnail === 'play' ? 0 : GAP_MS),
     );
     return () => {
       window.clearTimeout(again);
     };
-  }, [off]);
+  }, [off, thumbnail]);
   // The words and look as they are now, while it is up.
-  const now = layer ? { ...layer, ...input, lines } : null;
-  const going = off ? { ...off, layer: { ...off.layer, ...input, lines } } : null;
+  const still = thumbnail === 'still' || finished;
+  const animation = animationById(input.animation);
+  const frozenAt = still ? animationLength(animation, 'in', unitCount(lines, animation)) + 700 : undefined;
+  const now = still ? { id: 'preview', ...input, lines, shownAt: 0 } : layer && { ...layer, ...input, lines };
+  const going = !still && off ? { ...off, layer: { ...off.layer, ...input, lines } } : null;
   return (
     <div
       ref={box}
       aria-hidden="true"
       data-a11y-picture
-      data-testid="lower-third-preview"
-      data-playing={layer || off ? 'true' : undefined}
-      className={cx('relative w-full overflow-hidden rounded-md border border-line', className)}
+      data-testid={thumbnail ? undefined : 'lower-third-preview'}
+      data-playing={!thumbnail && (layer || off) ? 'true' : undefined}
+      data-template-preview={thumbnail ? '' : undefined}
+      data-preview-playing={thumbnail === 'play' && !finished ? 'true' : undefined}
+      className={cx(
+        'relative w-full overflow-hidden',
+        !thumbnail && 'rounded-md border border-line',
+        className,
+      )}
       style={{ aspectRatio: '16 / 9', background: BACKDROP_CSS[backdrop] }}
     >
       {width > 0 && (
         <LowerThirdView
           layer={now}
           off={going}
+          frozenAt={frozenAt}
           canvas={canvas}
           place={input.where === 'stream' ? 'stream' : 'hall'}
         />
