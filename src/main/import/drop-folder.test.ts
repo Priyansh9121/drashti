@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cloudOf, droppedName, type DropFolderView } from '../../shared/drop-folder';
 import { NO_COUNTS, type ImportItemReport } from '../../shared/import';
 import { SOUND_EXTENSIONS } from '../../shared/media';
@@ -40,6 +40,7 @@ function setup(options: { db?: Db; maxBytes?: number; air?: { on: boolean }; sim
   const reports = new Map<string, ImportItemReport[]>();
   const imports: { names: string[]; bytes: number[] }[] = [];
   const notices: string[] = [];
+  const importNotice = vi.fn();
   const views: DropFolderView[] = [];
   const clock = { now: 1_000_000 };
   const busy = new Set<string>();
@@ -95,6 +96,7 @@ function setup(options: { db?: Db; maxBytes?: number; air?: { on: boolean }; sim
     dataDir: join(root, 'Drashti data'),
     importFiles,
     report: (runId) => ({ items: reports.get(runId) ?? [] }),
+    importNotice,
     onAir: () => air.on,
     simpleMode: () => options.simple ?? false,
     notice: (t) => notices.push(t),
@@ -140,6 +142,8 @@ function setup(options: { db?: Db; maxBytes?: number; air?: { on: boolean }; sim
     settings,
     imports,
     notices,
+    reports,
+    importNotice,
     views,
     clock,
     busy,
@@ -225,6 +229,28 @@ describe('the drop folder', () => {
     expect(notTaken()).toEqual(said);
   });
 
+  it.each([false, true])('shows each drop-folder refusal once (Simple Mode %s)', async (simple) => {
+    await put('Placeholder drawing.svg', '<svg/>');
+    await put('Placeholder broken.png', 'broken');
+    const h = setup({ simple });
+    await h.service.setFolder(folder);
+    await h.settle();
+    await h.settle();
+    expect(h.importNotice).toHaveBeenCalledTimes(2);
+    expect(h.importNotice).toHaveBeenNthCalledWith(1, {
+      refused: [
+        {
+          name: 'Placeholder drawing.svg',
+          reason: 'Drashti does not read SVG drawings: save it as a PNG, then add that.',
+        },
+      ],
+    });
+    const [runId] = h.reports.keys();
+    expect(runId).toBeDefined();
+    expect(h.importNotice).toHaveBeenNthCalledWith(2, { runId });
+    expect(h.notices).toEqual([]);
+  });
+
   it('takes every sound Drashti takes (Session 51), into Media with the drop folder’s mark; the notice says sounds', async () => {
     const names = SOUND_EXTENSIONS.map((ext) => `Placeholder ${ext}.${ext}`);
     for (const name of names) await put(name, `placeholder ${name}`);
@@ -277,12 +303,15 @@ describe('the drop folder', () => {
     ]);
   });
 
-  it('says only what was not taken when nothing came in; names a batch by what was stored (Session 51 review)', async () => {
+  it('shows the failed run once and names a successful batch by what was stored', async () => {
     await put('broken.png', 'broken');
     const h = setup();
     await h.service.setFolder(folder);
     await h.settle();
-    expect(h.notices).toEqual(['1 file from the drop folder was not taken: see File › Drop Folder….']);
+    expect(h.notices).toEqual([]);
+    const [runId] = h.reports.keys();
+    expect(runId).toBeDefined();
+    expect(h.importNotice).toHaveBeenCalledWith({ runId });
     // A video's file holding only sound, stored as a sound: one sound.
     await put('Recording.mp4', 'only sound');
     await h.settle();

@@ -1,6 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { dropPaths } from './folder-drop';
@@ -71,6 +71,16 @@ async function madeAndOpened(win: Page, name: string): Promise<string> {
   return made?.id ?? '';
 }
 
+async function expectDamagedDeckNotice(win: Page, folder: string): Promise<void> {
+  const name = 'Placeholder damaged.pptx';
+  writeFileSync(join(folder, name), 'Placeholder incomplete deck');
+  const notice = win.getByTestId('import-notice').filter({ hasText: name });
+  await expect(notice).toHaveCount(1);
+  await expect(notice).toContainText('This file looks damaged');
+  await expect(notice.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+}
+
 test('Pro Mode: a folder dropped on the open playlist, a playlist’s row or anywhere becomes a smart playlist following it at once, opened in the middle, nothing asked; a file dropped with it goes into the open playlist as before', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp(QUICK);
@@ -86,6 +96,7 @@ test('Pro Mode: a folder dropped on the open playlist, a playlist’s row or any
   const week = await placeholderFolder(win, 'Placeholder Week', '#365314', 330);
   await dropPaths(win, win.getByTestId('open-playlist'), [week]);
   await madeAndOpened(win, 'Placeholder Week');
+  await expectDamagedDeckNotice(win, week);
 
   // Anywhere else on the window (the live column).
   const festival = await placeholderFolder(win, 'Placeholder Festival', '#1e3a8a', 392);
@@ -129,6 +140,7 @@ test('Simple Mode: a folder dropped becomes a smart playlist following it at onc
   const week = await placeholderFolder(win, 'Placeholder Simple Week', '#365314', 330);
   await dropPaths(win, simple.getByTestId('open-playlist'), [week]);
   const made = await madeAndOpened(win, 'Placeholder Simple Week');
+  await expectDamagedDeckNotice(win, week);
   // Simple Mode's playlist is the one open now (a phone works on it); the day's is left as it was.
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.simplePlaylist())).toBe(made);
   expect(await itemsOf(win, day ?? '')).toEqual([]);

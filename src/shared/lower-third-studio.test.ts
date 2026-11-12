@@ -435,6 +435,10 @@ describe('the model: a lower third that hides itself, its out, its style', () =>
 
   it('offers twenty curated templates and covers the picker’s directions, feels and speeds', () => {
     expect(BEST_LOWER_THIRD_TEMPLATES).toHaveLength(20);
+    expect(BEST_LOWER_THIRD_TEMPLATES.slice(-2).map((template) => template.id)).toEqual([
+      'lavender-labels',
+      'midnight-bulletin',
+    ]);
     expect(new Set(BEST_LOWER_THIRD_TEMPLATES.map((template) => template.id)).size).toBe(20);
     expect(new Set(LOWER_THIRD_TEMPLATES.map((template) => template.direction))).toEqual(
       new Set(['left', 'right', 'up', 'down', 'centre']),
@@ -484,7 +488,7 @@ describe('the designs’ moves: kept with every lower third made from a design',
     }
   });
 
-  it('one saved from a design left out (not smooth in the Performance check: Silver outline, Midnight bulletin, Emerald labels, Sea green nameplate) still parses, goes up as a show command and draws as a design', () => {
+  it('one saved from a previously held-back design still parses, goes up as a show command and draws as a design', () => {
     const leftOut: Record<string, Pick<LowerThirdInput, 'look' | 'animation'>> = {
       'silver-outline': {
         animation: 'design-centre-wipe',
@@ -535,11 +539,17 @@ describe('the designs’ moves: kept with every lower third made from a design',
         },
       },
     };
+    const returned = new Set([
+      'silver-outline',
+      'emerald-labels',
+      'midnight-bulletin',
+      'sea-green-nameplate',
+    ]);
     for (const [design, { look, animation }] of Object.entries(leftOut)) {
       expect(
-        LOWER_THIRD_TEMPLATES.map((t) => t.id),
+        LOWER_THIRD_TEMPLATES.some((t) => t.id === design),
         design,
-      ).not.toContain(design);
+      ).toBe(returned.has(design));
       const saved: LowerThirdInput = {
         lines: ['Placeholder name', 'Placeholder role', ''],
         look,

@@ -96,6 +96,52 @@ const deckOf = (
   issues,
 });
 
+it('shows which imported slide uses an approximation for its animation', () => {
+  const message = 'Placeholder slide 2 uses the closest playable effect.';
+  showImportFailures(
+    reportOf([
+      {
+        ...deckOf('Placeholder slides', [
+          { severity: 'warning', code: 'deck-motion-approximated', message, fix: null },
+        ]),
+        sourcePath: '/placeholder/deck.pptx',
+        format: 'pictures',
+      },
+    ]),
+  );
+  expect(useImportNotices.getState().notices).toMatchObject([{ text: `“Placeholder slides” · ${message}` }]);
+});
+
+it.each([
+  {
+    format: 'calendar' as const,
+    code: 'calendar-note',
+    name: 'Placeholder calendar',
+    message: 'Day 2 was left out: the date is missing.',
+  },
+  {
+    format: 'shastra' as const,
+    code: 'shastra-note',
+    name: 'Placeholder book (PB)',
+    message: 'Item 2 has no words: it was left out.',
+  },
+])('shows one notice for warnings in a $format file', ({ format, code, name, message }) => {
+  const item: ImportItemReport = {
+    ...deckOf(name, [
+      { severity: 'warning', code, message, fix: null },
+      { severity: 'warning', code, message, fix: null },
+      { severity: 'info', code: 'placeholder-info', message: 'Placeholder information.', fix: null },
+    ]),
+    format,
+    sourcePath: `/placeholder/${format}.json`,
+    target: { kind: format, id: 'placeholder-id' },
+  };
+  showImportFailures(reportOf([item]), vi.fn());
+  expect(useImportNotices.getState().notices).toMatchObject([
+    { text: `“${name}” · ${message}`, retry: undefined },
+  ]);
+});
+
 /** Words typed in an old Gujarati or Hindi font, as the import names them (main/import/legacy-fonts.ts). */
 const oldFont = (font: string): ImportIssue => ({
   severity: 'warning',

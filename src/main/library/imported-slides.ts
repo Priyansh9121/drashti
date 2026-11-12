@@ -1,5 +1,6 @@
 import { documentCanvas, slideCanvas } from '../../shared/document-page';
 import { deckAfterEdit } from '../../shared/deck-edit-motion';
+import { sourceTimingPages, withSourceTiming } from '../../shared/deck-source-timing';
 import { freshGroups } from '../../shared/element-groups';
 import { masterContribution, renderEditedSlide } from '../../shared/slide-design';
 import { fitElements } from '../../shared/slide-size';
@@ -327,7 +328,10 @@ export class ImportedSlides {
                 if (media.has(asset.token)) throw new Error('A source asset token is duplicated.');
                 media.set(asset.token, mediaId);
               }
-              const candidates = occurrences.map((slide) => {
+              const candidates = occurrences.map((each) => {
+                // Its clicks read from the kept file (W6's review N4), beside its clips until it is edited.
+                const deck = withSourceTiming(each, native.deck);
+                const slide = deck === each.deck ? each : { ...each, deck };
                 const elements = native.elements.flatMap((element): SlideElement[] => {
                   if (element.kind !== 'image' && element.kind !== 'video') return [element];
                   const mediaId = media.get(element.mediaId);
@@ -413,6 +417,17 @@ export class ImportedSlides {
                   pdfBudget: { assetBytes: 0, metadataBytes: 0 },
                 }
               : {};
+          // W6's review N4: a PowerPoint slide imported before alpha.17 has its clicks read from the kept file too.
+          const timingPages =
+            ref.ext === 'pptx'
+              ? sourceTimingPages(
+                  list,
+                  this.db
+                    .prepare('SELECT source_hash FROM presentations WHERE id = ?')
+                    .pluck()
+                    .get(doc.presentationId),
+                )
+              : [];
           let sourcePages = progressive && list === primary ? primaryPages : sourceIndices(list);
           let failed = false;
           for (;;) {
@@ -421,6 +436,7 @@ export class ImportedSlides {
               file: source.file,
               outDir,
               sourcePages,
+              ...(timingPages.length > 0 ? { timingPages } : {}),
               signal: guard.signal,
               checkpoint: () => Promise.resolve(allowed()),
               ...behind,
