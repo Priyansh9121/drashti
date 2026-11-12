@@ -210,6 +210,16 @@ const VIDEO_DECK: TestDeckSlide[] = [
       WORDS_BOX,
       CLICK_BOX,
       {
+        id: 5,
+        type: 'pic',
+        name: 'Placeholder picture beside the video',
+        x: 7 * INCH,
+        y: INCH,
+        w: 4 * INCH,
+        h: 2.25 * INCH,
+        media: 'poster1',
+      },
+      {
         id: 4,
         type: 'video',
         name: 'Placeholder video',
@@ -444,45 +454,44 @@ describe('a deck slide imported before alpha.17 keeps its clicks through an edit
     }
   });
 
-  it('keeps today’s behaviour for a slide whose video alpha.16 stored, and keeps the clicks of one whose video is its own shape', async () => {
+  it('keeps the clicks and original video when editing an alpha.16 row, even with a picture at the same frame', async () => {
     const w = originalWorld();
     try {
       const old = await videoDeck(w);
       const opened = await open(old.id);
       const [older, newer] = opened.doc.groups[0]?.slides ?? [];
-      // Its video names no shape of the deck's, so it couldn't take its poster's place after an edit: the slide keeps
-      // its clips and no clicks of its own, and the editor asks first, as before (HIGH-1).
-      expect(older?.deck).toEqual(old.older);
-      // The same page's other slide, whose video is its own shape, has its clicks read, its video in place.
-      expect(newer?.deck?.motion?.approximate).toBe(false);
-      expect(
-        newer?.deck?.motion?.effects.map(({ shapeId, step, phase, kind }) => ({
-          shapeId,
-          step,
-          phase,
-          kind,
-        })),
-      ).toEqual([{ shapeId: '3', step: 1, phase: 'in', kind: 'fade' }]);
-      expect(newer?.elements.find((element) => element.kind === 'video')).toMatchObject({
-        sourceShapeId: '4',
-        mediaId: old.video,
-      });
+      for (const prepared of [older, newer]) {
+        expect(prepared?.deck?.motion?.approximate).toBe(false);
+        expect(
+          prepared?.deck?.motion?.effects.map(({ shapeId, step, phase, kind }) => ({
+            shapeId,
+            step,
+            phase,
+            kind,
+          })),
+        ).toEqual([{ shapeId: '3', step: 1, phase: 'in', kind: 'fade' }]);
+        expect(prepared?.elements.find((element) => element.sourceShapeId === '4')).toMatchObject({
+          kind: 'video',
+          mediaId: old.video,
+        });
+        expect(prepared?.elements.find((element) => element.sourceShapeId === '5')).toMatchObject({
+          kind: 'image',
+        });
+      }
 
-      editWords(opened, 1);
+      editWords(opened);
       expect(await save(old.id, opened)).toMatchObject({ ok: true });
       const after = old.presentations.content(old.id);
       const [olderRow, newerRow] = after?.slides ?? [];
-      // The alpha.16 slide stays exactly as it was, its video too.
-      expect(olderRow).toEqual(old.before.slides[0]);
-      expect(after?.elements.filter((row) => row.slide_id === olderRow?.id)).toEqual(
-        old.before.elements.filter((row) => row.slide_id === olderRow?.id),
+      expect(newerRow).toEqual(old.before.slides[1]);
+      expect(after?.elements.filter((row) => row.slide_id === newerRow?.id)).toEqual(
+        old.before.elements.filter((row) => row.slide_id === newerRow?.id),
       );
-      // The edited one plays from its shapes with its clicks, and its video, which starts at the first click.
-      const saved = deckFromJson(newerRow?.deck);
+      const saved = deckFromJson(olderRow?.deck);
       expect(saved?.steps).toEqual([]);
       expect(saved?.motion?.effects).toHaveLength(1);
-      expect(saved?.media).toEqual(old.newer.media);
-      const elements = old.presentations.get(old.id)?.groups[0]?.slides[1]?.slide.elements ?? [];
+      expect(saved?.media).toEqual(old.older.media);
+      const elements = old.presentations.get(old.id)?.groups[0]?.slides[0]?.slide.elements ?? [];
       expect(elements.find((element) => element.kind === 'video')).toMatchObject({
         sourceShapeId: '4',
         mediaId: old.video,
