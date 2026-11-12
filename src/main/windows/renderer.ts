@@ -26,6 +26,12 @@ export const devServerUrl = (): string | undefined =>
 const holdWarmUp = (): boolean => !packaged() && sw('DRASHTI_TEST_HOLD_WARM_UP') === '1';
 /** Tests only: pages draw the show at once, as translated (Session 55: the opening's test of screens drawn). */
 const skipWarmUp = (): boolean => !packaged() && sw('DRASHTI_TEST_SKIP_WARM_UP') === '1';
+/**
+ * Tests only: Chromium's word on how it draws is held back until a test gives it (Session 57, index.ts), and pages
+ * keep their warm-up drawn till then, as a slow computer's still runs: an output told then it draws without a
+ * graphics chip ends its warm-up there (warm-up.spec.ts).
+ */
+const gpuSaidLate = (): boolean => !packaged() && sw('DRASHTI_TEST_GPU_SAID') === 'late';
 /** Tests only: the audience screens and the operator window keep the motion probe's record (Session 57, item 6). */
 const motionProbe = (): boolean => !packaged() && sw('DRASHTI_TEST_MOTION_PROBE') === '1';
 
@@ -44,9 +50,11 @@ export function loadPage(
 ): Promise<void> {
   const warm = holdWarmUp()
     ? { ...given, warmUp: 'hold' }
-    : translated() || skipWarmUp()
-      ? { ...given, warmUp: 'skip' }
-      : given;
+    : gpuSaidLate()
+      ? { ...given, warmUp: 'hold-till-told' }
+      : translated() || skipWarmUp()
+        ? { ...given, warmUp: 'skip' }
+        : given;
   const query = motionProbe() ? { ...warm, motionProbe: '1' } : warm;
   const dev = devServerUrl();
   if (dev) {

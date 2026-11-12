@@ -19,7 +19,7 @@ import { connectOutput, useOutput } from './output-store';
 import { Preloader } from './Preloader';
 import { DisplayNumber } from './SetupCards';
 import { reportRenderError } from '../ui/render-errors';
-import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
+import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { ClockStyleContext } from '../render/clock-style';
 import { LiveHere } from '../render/live-here';
 import { useStopFade } from '../render/StopFade';
@@ -186,6 +186,11 @@ function Output() {
   const warmedUp = useCallback(() => {
     setWarmed(true);
   }, []);
+  // None where Chromium draws without a graphics chip (Session 57): Main says so in this screen's context once
+  // Chromium has said how it draws, a warm-up begun before then ending there, and it holds from then. A test that
+  // keeps the warm-up drawn still sees it, unless it held it only until then (DRASHTI_TEST_GPU_SAID=late).
+  const [noGpu, setNoGpu] = useState(false);
+  if (!noGpu && (!HOLD_WARM_UP || NO_GPU_ENDS_HOLD) && context?.noGpu === true) setNoGpu(true);
   const [testThrow, setTestThrow] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(
@@ -198,7 +203,7 @@ function Output() {
   // Tests only: the clock held at one moment, so two screens can be compared (Session 26d).
   useEffect(() => window.drashti.output.onTestClock(holdClock), []);
   const stage = context?.role === 'stage';
-  const ready = fontsReady && (warmed || stage);
+  const ready = fontsReady && (warmed || stage || noGpu);
   usePaintTiming(rootRef, ready);
   useFrameReports(context?.display?.refreshHz ?? 60, ready);
   // The Lower Thirds studio's fonts once the show is drawn here (Session 55): never with this screen's own start, which
@@ -240,9 +245,9 @@ function Output() {
       data-languages={look.languages?.join(',') ?? 'all'}
       data-slides={look.slides}
       data-movement={look.movement}
-      // Ready to draw the show: its fonts loaded, and the GPU warmed up (WarmUp).
+      // Ready to draw the show: its fonts loaded, and the GPU warmed up (WarmUp), or none to warm (Session 57).
       data-fonts={ready ? 'ready' : 'loading'}
-      data-warm-up={stage ? 'none' : warmed ? 'done' : 'warming'}
+      data-warm-up={stage ? 'none' : warmed ? 'done' : noGpu ? 'skipped' : 'warming'}
     >
       {context && fontsReady && !ready && (
         <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">

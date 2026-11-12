@@ -5,6 +5,7 @@ import * as pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs';
 import type { PictureAssetKind } from '../../../shared/pictures';
 import type { PdfCopyJob, PdfPrintPage } from '../../../shared/pdf-copy';
 import { SlideView } from '../render/SlideView';
+import { ScreenPictures } from '../render/picture-looks';
 import { preloadFonts } from '../render/fonts';
 import '../render/fonts.css';
 import '../styles/app.css';
@@ -108,13 +109,32 @@ async function draw(): Promise<void> {
     for (const [index, page] of job.pages.entries()) {
       if (page.kind !== 'native') continue;
       const { width, height } = page.slide;
+      const picture = job.picture;
+      if (picture) {
+        sheet.textContent = 'html,body,#root{margin:0;padding:0;overflow:hidden;background:#000}';
+      }
       // Element geometry is in design pixels; one design unit is one PDF point.
       // Chromium uses 96 CSS pixels per inch and PDF uses 72 points per inch.
-      sheet.textContent = `@page{size:${width}pt ${height}pt;margin:0}html,body,#root{margin:0;padding:0;width:${width}pt;height:${height}pt;overflow:hidden;background:white}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}`;
+      if (!picture)
+        sheet.textContent = `@page{size:${width}pt ${height}pt;margin:0}html,body,#root{margin:0;padding:0;width:${width}pt;height:${height}pt;overflow:hidden;background:white}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}`;
       flushSync(() =>
         root.render(
-          <div style={{ transform: 'scale(1.3333333333333333)', transformOrigin: 'top left', width, height }}>
-            <SlideView slide={page.slide} media="still" />
+          <div
+            style={{
+              position: picture ? 'relative' : undefined,
+              transform: `scale(${String(picture?.scale ?? 4 / 3)})`,
+              transformOrigin: 'top left',
+              width,
+              height,
+            }}
+          >
+            {picture ? (
+              <ScreenPictures.Provider value={{ pictures: picture.looks, liveZoom: null }}>
+                <SlideView slide={page.slide} media="still" />
+              </ScreenPictures.Provider>
+            ) : (
+              <SlideView slide={page.slide} media="still" />
+            )}
           </div>,
         ),
       );
@@ -125,6 +145,10 @@ async function draw(): Promise<void> {
           if (!image.naturalWidth) throw new Error('A page picture is unavailable.');
         }),
       );
+      if (picture) {
+        await window.drashti.pdfExport.capture(job.id, index);
+        return;
+      }
       const cleanupEffects = await rasterizeTextEffects(mount, { width, height }, () =>
         window.drashti.pdfExport.capture(job.id, index),
       );

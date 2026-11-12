@@ -42,6 +42,7 @@ import type { Uploads } from './uploads';
 import type { ArrivedFile, ArrivedOutcome, UploadPolicy } from '../../shared/phone-files';
 import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
 import { COULD_NOT } from './messages';
+import { isCapturedPicture, pngOf } from './png';
 import { audioRoutes } from './audio-routes';
 import { mirrorRoutes } from './mirror-routes';
 import { desktopRoutes } from './desktop-routes';
@@ -174,7 +175,10 @@ const ROUTES: Route[] = [
     'GET',
     '/api/v1/presentations/:id',
     'presentation',
-    (_b, p) => ({ presentationId: p['id'] }),
+    (q, p) => ({
+      presentationId: p['id'],
+      ...(q['format'] === 'png' ? { format: 'png', slideId: q['slide'], click: q['click'] } : {}),
+    }),
     PRESENTATION_ID,
   ),
   route('GET', '/api/v1/messages', 'messages'),
@@ -741,7 +745,31 @@ export class NetworkServer {
           : apiQuery(req.url ?? '');
       const args = r.args ? r.args(body, params) : {};
       const answer = await this.host.request({ deviceId: device.id, op: r.op, args, address });
-      this.json(res, answer.status, answer.body);
+      const reply = answer.body;
+      if (
+        r.op === 'presentation' &&
+        args &&
+        typeof args === 'object' &&
+        'format' in args &&
+        args.format === 'png' &&
+        answer.status === 200 &&
+        reply &&
+        typeof reply === 'object' &&
+        'picture' in reply
+      ) {
+        // A phone's picture of a deck's click: made a PNG here, never on Main's thread (C6's review, MEDIUM 1).
+        if (!isCapturedPicture(reply.picture)) throw new Error('A captured picture was not whole.');
+        const png = await pngOf(reply.picture);
+        res.writeHead(200, {
+          ...SECURITY_HEADERS,
+          'Content-Type': 'image/png',
+          'Content-Length': png.byteLength,
+          'Cache-Control': 'no-store',
+        });
+        res.end(png);
+        return;
+      }
+      this.json(res, answer.status, reply);
     } catch (error) {
       if (error instanceof HttpError) this.json(res, error.status, { ok: false, message: error.message });
       else {
