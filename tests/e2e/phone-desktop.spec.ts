@@ -1,6 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { chromium, expect, test, webkit } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
@@ -27,7 +27,7 @@ import {
   type PageGlobals,
   setUpScreen,
 } from './helpers';
-import { makeTestVideo } from './test-media';
+import { makeTestTone, makeTestVideo } from './test-media';
 
 /*
  * The phone as a full Drashti (Session 54, the owner's item 3: "the drashti phone should be just like a mirror …
@@ -930,6 +930,53 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await app.close();
     }
   });
+
+test('a Pro Mode phone renames an Audio track through the existing file Rename', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-pro-phone-audio-'));
+  const { app } = await launchApp(NETWORK_ENV);
+  const phone = await device('chromium');
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const [mediaId = ''] = await importAndGetIds(win, [
+      makeTestTone(join(dir, 'Placeholder rename tone.wav'), { seconds: 2, hz: 300 }),
+    ]);
+    expect(mediaId).not.toBe('');
+    const { base } = await networkOn(win);
+    const p = phone.page;
+    await p.setViewportSize({ width: 375, height: 812 });
+    await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-more').click();
+    const audio = p.getByTestId('remote-music');
+    await audio.getByTestId('remote-audio-new').click();
+    await p.getByTestId('remote-audio-name').fill('Placeholder phone tunes');
+    await p.getByRole('button', { name: 'Create audio playlist', exact: true }).click();
+    const editor = p.getByTestId('remote-audio-editor');
+    await editor.getByTestId('remote-audio-add').click();
+    await p
+      .getByTestId('remote-audio-library')
+      .getByRole('button', { name: /Placeholder rename tone/u })
+      .click();
+    const track = editor.getByTestId('remote-audio-track');
+    await track.getByRole('button', { name: 'Rename track: Placeholder rename tone' }).click();
+    const rename = p.getByTestId('remote-rename');
+    await rename.getByLabel('Its new name').fill('Placeholder renamed tone');
+    await rename.getByTestId('remote-rename-save').click();
+    await expect(track).toContainText('Placeholder renamed tone');
+    await expect
+      .poll(async () =>
+        win.evaluate(
+          async () => (await (globalThis as PageGlobals).drashti.music.view()).playlists[0]?.tracks[0]?.name,
+        ),
+      )
+      .toBe('Placeholder renamed tone');
+  } finally {
+    await phone.close();
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('a Pro Mode phone deletes a folder with its playlist, restores both, and asks before deleting a running Repeat Slides playlist', async () => {
   const { app } = await launchApp(NETWORK_ENV);
