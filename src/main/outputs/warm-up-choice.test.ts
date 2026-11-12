@@ -74,16 +74,23 @@ function main(compositing: () => unknown) {
   });
   const windows = new Map<string, WarmUpWindow>();
   const names = new Map<string, string>();
-  const open = (screenId: string, id: number, name: string, closed = false) => {
-    windows.set(screenId, { isDestroyed: () => closed, webContents: { id } });
+  /** Screens whose sending fails (a page going as Drashti quits). */
+  const failing = new Set<string>();
+  /** An output window, open, or gone (the window, or only its page: as Drashti quits, the page goes first). */
+  const open = (screenId: string, id: number, name: string, gone: 'window' | 'page' | null = null) => {
+    windows.set(screenId, {
+      isDestroyed: () => gone === 'window',
+      webContents: { id, isDestroyed: () => gone !== null },
+    });
     names.set(screenId, `output "${name}"`);
   };
   /** What its context says (Main's contextFor). */
   const fact = (screenId: string) => warmUpFact(choices, windows.get(screenId), names.get(screenId) ?? '');
   followOutputs(choices, windows, names, (screenId) => {
+    if (failing.has(screenId)) throw new Error('Object has been destroyed');
     sent.push(screenId);
   });
-  return { choices, lines, sent, open, fact };
+  return { choices, lines, sent, open, fact, failing };
 }
 
 const skipped = (compositing: string, name: string) =>
@@ -178,13 +185,15 @@ describe('Main’s choice for each output window', () => {
     ]);
   });
 
-  it('a closed output is neither asked nor sent anything, and its window forgotten is decided afresh', () => {
+  it('a closed output, or one whose page has gone, is neither asked nor sent anything; a window forgotten is decided afresh', () => {
     let now = 'disabled_software';
     const m = main(() => now);
-    m.open('hall', 7, 'Hall', true);
+    m.open('hall', 7, 'Hall', 'window');
+    m.open('foyer', 9, 'Foyer', 'page');
     m.choices.gpuSaid();
     expect(m.sent).toEqual([]);
     expect(m.fact('hall')).toEqual({});
+    expect(m.fact('foyer')).toEqual({});
     expect(m.lines).toEqual([]);
     m.open('stage', 8, 'Stage');
     expect(m.fact('stage')).toEqual({ noGpu: true });
@@ -192,5 +201,19 @@ describe('Main’s choice for each output window', () => {
     now = 'enabled';
     expect(m.fact('stage')).toEqual({});
     expect(m.lines).toEqual([skipped('disabled_software', 'Stage'), asBefore('enabled', 'Stage')]);
+  });
+
+  it('an output whose context cannot be sent again does not keep the others from theirs, and the log says so', () => {
+    const m = main(() => 'disabled_software');
+    m.open('hall', 7, 'Hall');
+    m.open('stage', 8, 'Stage');
+    m.failing.add('hall');
+    m.choices.gpuSaid();
+    expect(m.sent).toEqual(['stage']);
+    expect(m.lines).toEqual([
+      skipped('disabled_software', 'Hall'),
+      'Warm-up: its context not sent again (Object has been destroyed), for output "Hall"',
+      skipped('disabled_software', 'Stage'),
+    ]);
   });
 });
