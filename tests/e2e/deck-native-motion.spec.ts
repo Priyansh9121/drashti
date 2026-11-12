@@ -113,6 +113,8 @@ test('PowerPoint clicks play on the screen without Office and survive a text edi
       expect(saved[0]?.slide.elements).toContainEqual(
         expect.objectContaining({ kind: 'text', text: 'Placeholder edited appearance', sourceShapeId: '2' }),
       );
+      await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
       await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
       await inStep(app, win, 0, 260);
       await expect(motionTarget(out, 2)).toHaveCSS('opacity', '0');

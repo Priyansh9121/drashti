@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DeckSlide } from '../../../shared/deck';
+import { type DeckSlide, stepCount } from '../../../shared/deck';
 import type { ConflictChoice } from '../../../shared/import';
 import type { PicturesResult } from '../../../shared/pictures';
 import { readInfo } from '../../convert/read-info';
@@ -18,6 +18,8 @@ import { MediaStore, UPLOADS_DIR } from '../media-store';
 import { runImport } from '../pipeline';
 import { makeDeckMedia, makeTestDeck, type TestDeckSlide, TRIAL_SLIDES } from '../testing/make-deck';
 import { placeholderSlides } from '../testing/timing-placeholders';
+import { readZipEntries } from '../zip';
+import { copyZipReplacing } from './zip-copy';
 
 /*
  * A deck imported "with its animations" (Session 54, C2), end to end in the import: C1's trial deck, its media made
@@ -129,7 +131,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       return { db, mediaDir, run, repo, slidesOf, report: (id: string) => new ImportRepo(db).report(id) };
     }
 
-    it('comes in with each slide’s steps, its one picture, its real videos and sounds, and the report’s words', async () => {
+    it('keeps the baked steps, plays a supported slide natively, and keeps the deck’s real videos and sounds', async () => {
       const t = setup();
       const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' });
       expect(summary.totals).toMatchObject({ imported: 1, failed: 0, presentations: 1, slides: 5 });
@@ -137,19 +139,28 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       const id = item?.target?.id ?? '';
       const slides = t.slidesOf(id);
       const decks: DeckSlide[] = slides.flatMap((s) => (s.slide.deck ? [s.slide.deck] : []));
-      // Step 0 coming in, then one per click; the hidden slide left out.
-      expect(decks.map((d) => d.steps.length)).toEqual([5, 3, 2, 1, 2]);
+      // Step 0 coming in, then one per click. Slide 4 can play its cover and video without a clip.
+      expect(decks.map(stepCount)).toEqual([5, 3, 2, 1, 2]);
+      expect(decks.map((d) => d.steps.length)).toEqual([5, 3, 2, 0, 2]);
+      expect(decks[3]?.motion).toMatchObject({ approximate: false, stepsMs: [0] });
       expect(slides.map((s) => s.notes)).toEqual(TRIAL_SLIDES.filter((s) => !s.hidden).map((s) => s.notes));
-      // ONE picture each: the last step's last frame, over the whole slide (the stand-in's movie is 320 × 180).
-      for (const s of slides) {
-        const [picture] = s.slide.elements;
+      // Baked slides draw the movie's last frame. The native slide keeps its editable title.
+      for (const i of [0, 1, 2, 4]) {
+        const [picture] = slides[i]?.slide.elements ?? [];
         expect(picture).toMatchObject({ kind: 'image', frame: { x: 0, y: 0, width: 320, height: 180 } });
-        expect(picture?.kind === 'image' ? picture.mediaId : '').toBe(s.slide.deck?.steps.at(-1)?.lastId);
+        expect(picture?.kind === 'image' ? picture.mediaId : '').toBe(decks[i]?.steps.at(-1)?.lastId);
       }
-      // Each slide but the first was made after the one before it: its step-0 clip starts on that one's last still.
+      expect(slides[3]?.slide.elements).toContainEqual(
+        expect.objectContaining({ kind: 'text', text: 'Moving tessel plays by itself' }),
+      );
+      // The final baked transition can still use the native slide's last still as its lead-in.
+      expect(decks[3]?.sourceStillId).toBeTruthy();
       expect(decks.map((d) => d.after)).toEqual([
         undefined,
-        ...decks.slice(0, -1).map((d) => d.steps.at(-1)?.lastId),
+        decks[0]?.steps.at(-1)?.lastId,
+        decks[1]?.steps.at(-1)?.lastId,
+        undefined,
+        decks[3]?.sourceStillId,
       ]);
       // The deck's own transitions, with their lengths; the chime as real sound.
       expect(decks.map((d) => [d.transition?.name, d.transition?.durationMs])).toEqual([
@@ -170,21 +181,23 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
         [undefined, undefined],
         [undefined, undefined],
       ]);
-      // The trimmed, looping video at 80 %, starting by itself after its slide's transition (1 s, and PowerPoint's 60 ms).
+      // The native clock starts the trimmed, looping video as soon as its slide's transition ends.
       const [auto] = decks[3]?.media ?? [];
       expect(auto).toMatchObject({
         kind: 'video',
         clip: { startMs: 1000, endMs: 4000 },
         loop: true,
         volume: 0.8,
-        start: { step: 0, offsetMs: 1060 },
+        start: { step: 0, offsetMs: 0 },
       });
       expect(auto?.posterId).toBeTruthy();
-      // ...and as a video on the slide at its box, so the time bar and the play bar apply.
-      const video = slides[3]?.slide.elements[1];
+      // It stays a video on the slide at its own box, with the time bar and play bar.
+      const nativeVideos = slides[3]?.slide.elements.filter((element) => element.kind === 'video') ?? [];
+      expect(nativeVideos).toHaveLength(1);
+      const [video] = nativeVideos;
       expect(video).toMatchObject({ kind: 'video', fit: 'stretch', loop: true, volume: 0.8 });
       expect(video?.kind === 'video' ? video.mediaId : '').toBe(auto?.mediaId);
-      expect(video?.frame.x).toBe(Math.round((2.4 / 13.3333) * 320));
+      expect(video?.frame.x).toBeCloseTo((2.4 / 13.3333) * 320, 1);
       // The click's video at 50 % with its fade in, at the click; the sound by itself as the slide comes in.
       const [clickVideo, sound] = decks[4]?.media ?? [];
       expect(clickVideo).toMatchObject({ kind: 'video', volume: 0.5, fadeInMs: 500, start: { step: 1 } });
@@ -407,8 +420,11 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           effects: [{ kind: 'play', target: 3, dur: 6000, start: 'click' }],
         },
       ];
+      const made = makeDeckMedia(ffmpeg, join(dir, 'made'));
       const file = join(dir, 'Placeholder across.pptx');
-      writeFileSync(file, makeTestDeck(across, makeDeckMedia(ffmpeg, join(dir, 'made'))));
+      // An unsupported transition keeps the original baked audio path.
+      const withVortex = across.map((slide) => ({ ...slide, transition: { kind: 'vortex', dur: 500 } }));
+      writeFileSync(file, makeTestDeck(withVortex, made));
       const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' }, [file]);
       const item = t.report(summary.id)?.items[0];
       const [auto, click] = t.slidesOf(item?.target?.id ?? '');
@@ -428,9 +444,25 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(words).toContain(
         '2 sounds set to play across slides play on as the slides and their clicks change, as in its slide show, each until its last slide; Next and Back never start one again.',
       );
-      // As pictures: the one with its slide is its slide's sound, saying so; the one on a click needs the animations.
+      // With only supported transitions, the same audio starts on the same steps without a movie.
+      const nativeFile = join(dir, 'Placeholder native across.pptx');
+      writeFileSync(nativeFile, makeTestDeck(across, made));
+      const native = setup();
+      const played = await native.run({ baker: 'stand-in', converters: 'stand-in', pages: 2 }, [nativeFile]);
+      const nativeItem = native.report(played.id)?.items[0];
+      const nativeSlides = native.slidesOf(nativeItem?.target?.id ?? '');
+      expect(nativeSlides.map((s) => s.slide.deck?.steps.length)).toEqual([0, 0]);
+      expect(nativeSlides.map((s) => stepCount(s.slide.deck))).toEqual([1, 2]);
+      expect(nativeSlides.map(mediaOf)).toEqual([
+        [['audio', 'Long tone', 3, 0]],
+        [['audio', 'Long tone', 3, 1]],
+      ]);
+      expect(nativeItem?.issues.map((i) => i.code)).not.toContain('deck-animations');
+      // If the stream is on air, the unsupported deck comes in as pictures with its automatic sound.
       const pictures = setup();
-      const again = await pictures.run({ baker: false, converters: 'stand-in', pages: 2 }, [file]);
+      const again = await pictures.run({ baker: 'stand-in', converters: 'stand-in', onAir: true, pages: 2 }, [
+        file,
+      ]);
       const asPictures = pictures.report(again.id)?.items[0];
       const [first, second] = pictures.slidesOf(asPictures?.target?.id ?? '');
       expect(first?.cues).toMatchObject([{ kind: 'audio', label: 'Long tone', acrossSlides: 3 }]);
@@ -461,7 +493,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       const slide = (key: string, shapes: TestDeckSlide['shapes'], play: number[]): TestDeckSlide => ({
         key,
         bg: '1B2A4A',
-        transition: { kind: 'fade', dur: 500 },
+        transition: { kind: 'vortex', dur: 500 },
         notes: `Placeholder notes: ${key}.`,
         shapes,
         effects: play.map((target) => ({ kind: 'play' as const, target, dur: 600, start: 'after' as const })),
@@ -473,7 +505,9 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       ];
       const file = join(dir, 'Placeholder music and chime.pptx');
       writeFileSync(file, makeTestDeck(deckSlides, makeDeckMedia(ffmpeg, join(dir, 'made'))));
-      const summary = await t.run({ baker: false, converters: 'stand-in', pages: 3 }, [file]);
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in', onAir: true, pages: 3 }, [
+        file,
+      ]);
       const item = t.report(summary.id)?.items[0];
       const slides = t.slidesOf(item?.target?.id ?? '');
       expect(
@@ -586,9 +620,9 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(t.db.prepare('SELECT COUNT(*) AS n FROM media WHERE sha256 = ?').get(sha)).toEqual({ n: 0 });
     }, 240_000);
 
-    it('as pictures where nothing makes its movie: its videos real videos on their slides, its sound the slide’s', async () => {
+    it('as pictures while the movie is deferred: its videos real videos on their slides, its sound the slide’s', async () => {
       const t = setup();
-      const summary = await t.run({ baker: false, converters: 'stand-in' });
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in', onAir: true });
       const item = t.report(summary.id)?.items[0];
       expect(item?.outcome).toBe('imported');
       const slides = t.slidesOf(item?.target?.id ?? '');
@@ -639,14 +673,12 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       const replaced = t.report(again.id)?.items[0];
       expect(replaced?.outcome).toBe('replaced');
       expect(replaced?.target?.id).toBe(item?.target?.id);
-      expect(t.slidesOf(item?.target?.id ?? '').map((s) => s.slide.deck?.steps.length)).toEqual([
-        5, 3, 2, 1, 2,
-      ]);
+      expect(t.slidesOf(item?.target?.id ?? '').map((s) => stepCount(s.slide.deck))).toEqual([5, 3, 2, 1, 2]);
     }, 240_000);
 
     it('a deck that came in as pictures, answered Replace but whose animations cannot be made, is kept untouched', async () => {
       const t = setup();
-      const first = await t.run({ baker: false, converters: 'stand-in' });
+      const first = await t.run({ baker: 'stand-in', converters: 'stand-in', onAir: true });
       const id = t.report(first.id)?.items[0]?.target?.id ?? '';
       const before = t.repo.content(id);
       const again = await t.run({
@@ -705,11 +737,50 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       );
     }, 120_000);
 
-    it('on a computer with neither PowerPoint nor Keynote: its videos and sound as media, and what needs one said plainly', async () => {
+    it('without Office, keeps native clicks, real media starts, and warnings for the closest effects', async () => {
       const t = setup();
       const summary = await t.run({ baker: false, converters: false });
+      const item = t.report(summary.id)?.items.find((i) => i.sourcePath === deck);
+      expect(item?.outcome).toBe('imported');
+      const slides = t.slidesOf(item?.target?.id ?? '');
+      const decks = slides.map((s) => s.slide.deck);
+      expect(slides.map((s) => s.notes)).toEqual(TRIAL_SLIDES.filter((s) => !s.hidden).map((s) => s.notes));
+      expect(decks.map(stepCount)).toEqual([5, 3, 2, 1, 2]);
+      expect(decks.map((d) => d?.steps.length)).toEqual([0, 0, 0, 0, 0]);
+      expect(decks.map((d) => d?.motion?.approximate)).toEqual([true, true, true, false, true]);
+      expect(decks[3]?.media[0]).toMatchObject({
+        kind: 'video',
+        clip: { startMs: 1000, endMs: 4000 },
+        start: { step: 0, offsetMs: 0 },
+      });
+      expect(decks[4]?.media.map((m) => [m.kind, 'step' in m.start ? m.start.step : 'clicked'])).toEqual([
+        ['video', 1],
+        ['audio', 0],
+      ]);
+      expect(item?.issues.filter((i) => i.code === 'deck-motion-approximated').map((i) => i.message)).toEqual(
+        [1, 2, 3, 5].map(
+          (index) =>
+            `Slide ${index} uses the closest effects Drashti can play. Check its clicks and transition before going live.`,
+        ),
+      );
+      expect(new MediaRepo(t.db).list()).toEqual([]);
+    }, 120_000);
+
+    it('keeps the deck’s embedded media when the slide size cannot be drawn and no converter is available', async () => {
+      const t = setup();
+      const part = 'ppt/presentation.xml';
+      const xml = (await readZipEntries(deck, (name) => name === part)).get(part)?.toString('utf8') ?? '';
+      const size = /<p:sldSz cx="\d+"/u;
+      expect(xml).toMatch(size);
+      const tooWide = join(dir, 'Placeholder outside editable width.pptx');
+      await copyZipReplacing(
+        deck,
+        tooWide,
+        new Map([[part, Buffer.from(xml.replace(size, '<p:sldSz cx="200000000"'))]]),
+      );
+      const summary = await t.run({ baker: false, converters: false }, [tooWide]);
       const items = t.report(summary.id)?.items ?? [];
-      const deckItem = items.find((i) => i.sourcePath === deck);
+      const deckItem = items.find((i) => i.sourcePath === tooWide);
       expect(deckItem?.outcome).toBe('failed');
       expect(deckItem?.message).toContain('no Keynote or PowerPoint');
       expect(deckItem?.issues.find((i) => i.code === 'deck-needs-app')?.message).toBe(
