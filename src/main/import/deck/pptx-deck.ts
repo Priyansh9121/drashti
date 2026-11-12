@@ -323,6 +323,10 @@ function nativeStart(tn: XmlNode, at: number, schedule: NativeSchedule): number 
   return at;
 }
 
+/**
+ * An effect as Drashti draws it. `partial`: drawn by Drashti but not yet compared with PowerPoint's own movie, so a
+ * slide using it keeps PowerPoint's video wherever one can be made, and Drashti plays it where none can.
+ */
 type NativeLook = Pick<
   DeckEffect,
   | 'kind'
@@ -469,7 +473,8 @@ function floatLook(behaviours: readonly XmlNode[], entering: boolean): NativeLoo
     if (distance > 1 || look) return null;
     const direction =
       property === 'ppt_x' ? (displacement < 0 ? 'left' : 'right') : displacement < 0 ? 'up' : 'down';
-    look = { kind: 'float', direction, distance };
+    // Not yet compared with PowerPoint's own movie.
+    look = { kind: 'float', direction, distance, partial: true };
   }
   return look;
 }
@@ -484,7 +489,10 @@ function turnOf(track: XmlNode | undefined, entering: boolean): number | null {
   return from !== null && to !== null && Math.abs(from - to) <= 3600 ? from - to : null;
 }
 
-/** Grow & Turn (Shrink & Turn as it leaves): the gallery Zoom's scale and fade, turning as it grows. */
+/**
+ * Grow & Turn (Shrink & Turn as it leaves): the gallery Zoom's scale and fade, turning as it grows. Not yet compared
+ * with PowerPoint's own movie.
+ */
 function growAndTurn(behaviours: readonly XmlNode[], entering: boolean): NativeLook {
   const turns = behaviours.filter(
     (node) => node.name === 'p:anim' && animationProperty(node) === 'style.rotation',
@@ -496,7 +504,7 @@ function growAndTurn(behaviours: readonly XmlNode[], entering: boolean): NativeL
   const degrees = turns.length === 1 ? turnOf(turns[0], entering) : null;
   return scale === null || degrees === null
     ? { kind: 'zoom', fade: true, partial: true }
-    : { kind: 'zoom', fade: true, scale, ...(degrees === 0 ? {} : { degrees }) };
+    : { kind: 'zoom', fade: true, scale, ...(degrees === 0 ? {} : { degrees }), partial: true };
 }
 
 const OUTLINES = ['circle', 'box', 'diamond', 'plus'] as const;
@@ -504,11 +512,12 @@ const RANDOM_BARS = new Map<string, NonNullable<DeckEffect['bars']>>([
   ['randombar(horizontal)', 'horizontal'],
   ['randombar(vertical)', 'vertical'],
 ]);
+/** Split out from the middle and in from both edges. Not yet compared with PowerPoint's own movie. */
 const SPLITS = new Map<string, NativeLook>([
-  ['barn(outvertical)', { kind: 'split', splitAxis: 'x' }],
-  ['barn(outhorizontal)', { kind: 'split', splitAxis: 'y' }],
-  ['barn(invertical)', { kind: 'split', splitAxis: 'x', inward: true }],
-  ['barn(inhorizontal)', { kind: 'split', splitAxis: 'y', inward: true }],
+  ['barn(outvertical)', { kind: 'split', splitAxis: 'x', partial: true }],
+  ['barn(outhorizontal)', { kind: 'split', splitAxis: 'y', partial: true }],
+  ['barn(invertical)', { kind: 'split', splitAxis: 'x', inward: true, partial: true }],
+  ['barn(inhorizontal)', { kind: 'split', splitAxis: 'y', inward: true, partial: true }],
 ]);
 
 /**
@@ -553,7 +562,8 @@ function nativeLook(
         kid(scale, 'p:to') === undefined &&
         cTnOf(scale ?? NONE)?.attrs['fill'] !== 'remove'
       )
-        return { kind: 'grow-shrink', scale: amount };
+        // Not yet compared with PowerPoint's own movie.
+        return { kind: 'grow-shrink', scale: amount, partial: true };
     }
     return null;
   }
@@ -731,6 +741,9 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
     partial ||
     paragraphs ||
     !ease ||
+    // A smooth start or end: played as SMIL defines it, but not yet compared with PowerPoint's own movie.
+    ease[0] > 0 ||
+    ease[1] > 0 ||
     durationMs < 0 ||
     (durationMs === 0 && look.kind !== 'appear') ||
     behaviours.some(

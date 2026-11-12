@@ -68,6 +68,21 @@ export function paragraphEffects(effects: readonly DeckEffect[], paragraph: numb
   );
 }
 
+/**
+ * The effects that build one paragraph (from 0) of a box built paragraph by paragraph: its own; or, for one with none
+ * (typed past the last built paragraph after an edit, or made by Enter inside a point), those of the nearest built
+ * paragraph before it, so it comes in with that click and never before. One before the first built paragraph has none
+ * and shows from the start, as in PowerPoint.
+ */
+export function builtParagraphEffects(effects: readonly DeckEffect[], paragraph: number): DeckEffect[] {
+  const own = paragraphEffects(effects, paragraph);
+  if (own.length > 0) return own;
+  let nearest = -1;
+  for (const { paragraphs } of effects)
+    if (paragraphs && paragraphs[1] < paragraph) nearest = Math.max(nearest, paragraphs[1]);
+  return nearest < 0 ? [] : paragraphEffects(effects, nearest);
+}
+
 /** A line break inside a paragraph (W5's reader marks one); every other line break ends a paragraph. */
 const softBreak = (run: TextRun): boolean => (run as TextRun & { softBreak?: boolean }).softBreak === true;
 
@@ -484,7 +499,7 @@ function builtParagraphs(
   const showing = (paragraph: number): boolean => {
     let seen = shown.get(paragraph);
     if (seen === undefined) {
-      const effects = paragraphEffects(own, paragraph);
+      const effects = builtParagraphEffects(own, paragraph);
       seen =
         effects.length === 0 || deckMotionFrame(effects, step, Infinity, element.frame, slide).opacity > 0;
       shown.set(paragraph, seen);
