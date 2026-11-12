@@ -617,7 +617,7 @@ function paragraphOf(
   xScale: number,
   yScale: number,
   ctx: Context,
-): Pick<TextRun, 'paragraph' | 'list' | 'level'> {
+): { paragraph: TextParagraph } & Pick<TextRun, 'list' | 'level'> {
   const alignment = lowToHighValue(nodes, 'algn') ?? 'l';
   const align =
     alignment === 'ctr'
@@ -683,6 +683,47 @@ function paragraphOf(
   };
 }
 
+function paragraphSpace(node: Node, edgeSize: number, scale: number): number | undefined {
+  const points = attr(child(node, 'spcPts'), 'val');
+  const percent = attr(child(node, 'spcPct'), 'val');
+  if (points === undefined && percent === undefined) return undefined;
+  const pixels =
+    points !== undefined
+      ? ((number(points, 0) / 100) * 4 * scale) / 3
+      : (percent?.endsWith('%')
+          ? number(percent.replace(/%$/u, ''), 0) / 100
+          : number(percent, 0) / 100_000) * edgeSize;
+  return round(Math.max(0, Math.min(16_384, pixels)));
+}
+
+/** A percent uses the largest text on the corresponding edge line, including explicit line breaks. */
+function keepParagraphSpacing(
+  paragraph: TextParagraph,
+  nodes: Node[],
+  runs: readonly TextRun[],
+  start: number,
+  scale: number,
+): void {
+  const before = lastChild(nodes, 'spcBef');
+  const after = lastChild(nodes, 'spcAft');
+  if (!before && !after) return;
+  let firstSize: number | undefined;
+  let largest = 0;
+  for (const run of runs.slice(start)) {
+    if (run.softBreak) {
+      firstSize ??= largest || run.size;
+      largest = 0;
+    } else if (run.text !== '\n' || largest === 0) {
+      largest = Math.max(largest, run.size ?? 0);
+    }
+  }
+  const lastSize = largest || 32 * scale;
+  const spaceBefore = paragraphSpace(before, firstSize ?? lastSize, scale);
+  const spaceAfter = paragraphSpace(after, lastSize, scale);
+  if (spaceBefore !== undefined) paragraph.spaceBefore = spaceBefore;
+  if (spaceAfter !== undefined) paragraph.spaceAfter = spaceAfter;
+}
+
 function textDirection(bodies: Node[]): Pick<TextStyle, 'writingMode' | 'textOrientation'> {
   switch (lowToHighValue(bodies, 'vert')) {
     case 'vert':
@@ -728,6 +769,7 @@ function textElement(
     const nodes = paragraphNodes(chain, paragraph, ctx);
     const defaults = nodes.map((n) => child(n, 'defRPr'));
     const formatting = paragraphOf(nodes, xScale, scale, ctx);
+    const start = runs.length;
     const push = (words: string, style: Node[], softBreak = false) =>
       runs.push({
         ...runOf(words, style, ctx, scale, fallback),
@@ -744,6 +786,7 @@ function textElement(
       }
     }
     if (index < paragraphs.length - 1) push('\n', [...defaults, child(paragraph, 'endParaRPr')]);
+    keepParagraphSpacing(formatting.paragraph, nodes, runs, start, scale);
   }
   const words = runs.map((run) => run.text).join('');
   if (words === '' && !keepEmpty) return null;
@@ -800,6 +843,7 @@ function textElement(
       shadow: false,
       ...(!clipToBox || lastChild(bodies, 'normAutofit') ? { shrinkToFit: true } : {}),
       ...(clipToBox ? { clipToBox: true } : {}),
+      ...(flag(lowToHighValue(bodies, 'spcFirstLastPara')) ? { spaceAtTextEdges: true } : {}),
       ...(lowToHighValue(bodies, 'wrap') === 'none' ? { noWrap: true } : {}),
       ...textDirection(bodies),
     },
@@ -1156,12 +1200,8 @@ function unsupported(node: XmlNode, ctx: Context): void {
     )
   )
     ctx.issues.add('Source character offsets, spacing or capitalization effects are not reproduced.');
-  if (
-    descendants(node, 'spcBef').length > 0 ||
-    descendants(node, 'spcAft').length > 0 ||
-    descendants(node, 'spcPts').length > 0
-  )
-    ctx.issues.add('Absolute source paragraph spacing may differ in the editable copy.');
+  if (descendants(node, 'lnSpc').some((spacing) => child(spacing, 'spcPts')))
+    ctx.issues.add('Absolute source line spacing may differ in the editable copy.');
   if (
     [...descendants(node, 'headEnd'), ...descendants(node, 'tailEnd')].some(
       (n) => attr(n, 'type') !== undefined && attr(n, 'type') !== 'none',
