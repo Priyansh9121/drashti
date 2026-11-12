@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 /* The profiled hot path: passive overset metadata must not force synchronous layout for every show revision.
- * Shrink-to-fit and a real editor/thumbnail measurement still have to finish during the layout commit.
+ * Shrink-to-fit and a real editor/thumbnail measurement still have to finish before the box is first drawn: every box
+ * of a commit is measured together right after it (Session 57, MS-1), so a slide of many boxes takes a few layouts.
  */
 test('passive text measurement leaves the commit free, while fit and editor reports stay immediate', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-text-measure-'));
@@ -38,13 +39,31 @@ globalThis.runTextMeasure=async(on,reporting)=>{
  reads=0;let calls=0,snapshot,fail;const host=document.createElement('div');document.body.append(host);const root=createRoot(host,{onUncaughtError:e=>fail(e)});
  const done=new Promise((resolve,reject)=>{fail=reject;
   function Probe(){const box=useRef(null),words=useRef(null);useShrinkToFit(box,words,{id:'placeholder-text',style:{shrinkToFit:on}});
-   useLayoutEffect(()=>{snapshot={readsAtCommit:reads,reportsAtCommit:calls};resolve()});
+   useLayoutEffect(()=>{snapshot={readsAtCommit:reads,reportsAtCommit:calls};requestAnimationFrame(()=>{snapshot.readsBeforeFrame=reads;snapshot.reportsBeforeFrame=calls;snapshot.fitBeforeFrame=box.current.getAttribute('data-fit');resolve()})});
    return <div ref={box} data-measure-box="yes" style={{width:160,height:16,overflow:'hidden'}}><div ref={words} data-measure-words="yes" style={{fontSize:'calc(24px * var(--fit, 1))',lineHeight:1.1}}>Placeholder words for a narrow box. Placeholder words for a narrow box.</div></div>
   }
   root.render(reporting?<MeasureContext.Provider value={()=>{calls++}}><Probe/></MeasureContext.Provider>:<Probe/>);
  });
  await done;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
  const box=host.querySelector('[data-measure-box]');const result={...snapshot,readsAfterPaint:reads,over:box.hasAttribute('data-overset'),fit:box.getAttribute('data-fit')};root.unmount();host.remove();return result;
+};
+globalThis.runTextBatch=async(count,together)=>{
+ const reports=new Map(),hosts=[],roots=[],results=[];
+ const report=(id,measured)=>{reports.set(id,measured)};
+ function Box({i}){const box=useRef(null),words=useRef(null);useShrinkToFit(box,words,{id:'placeholder-batch-'+i,style:{shrinkToFit:true}});
+  return <div ref={box} data-batch-box={i} style={{width:150+(i%4)*20,height:40,overflow:'hidden'}}><div ref={words} style={{fontSize:'calc(24px * var(--fit, 1))',lineHeight:1.1}}>{'Placeholder words for a narrow box. '.repeat(2+(i%7))}</div></div>
+ }
+ const mount=(children)=>{const host=document.createElement('div');document.body.append(host);hosts.push(host);const root=createRoot(host);roots.push(root);flushSync(()=>root.render(<MeasureContext.Provider value={report}>{children}</MeasureContext.Provider>))};
+ const read=(i)=>{const b=document.querySelector('[data-batch-box="'+i+'"]');const r=reports.get('placeholder-batch-'+i);return {fit:b.style.getPropertyValue('--fit'),dataFit:b.getAttribute('data-fit'),over:b.hasAttribute('data-overset'),reported:r?r.fit+' '+r.over:null}};
+ if(together){
+  mount(Array.from({length:count},(_,i)=><Box key={i} i={i}/>));
+  await new Promise(r=>requestAnimationFrame(r));
+  for(let i=0;i<count;i++)results.push(read(i));
+ }else{
+  for(let i=0;i<count;i++){mount(<Box i={i}/>);await Promise.resolve();results.push(read(i))}
+ }
+ for(const root of roots)root.unmount();for(const host of hosts)host.remove();
+ return results;
 };
 globalThis.runStageMeasure=async(long)=>{
  reads=0;let snapshot,fail;const host=document.createElement('div');document.body.append(host);const root=createRoot(host,{onUncaughtError:e=>fail(e)});
@@ -143,10 +162,13 @@ globalThis.runStageMeasure=async(long)=>{
                 reporting: boolean,
               ): Promise<{
                 readsAtCommit: number;
+                readsBeforeFrame: number;
                 readsAfterPaint: number;
                 reportsAtCommit: number;
+                reportsBeforeFrame: number;
                 over: boolean;
                 fit: string | null;
+                fitBeforeFrame: string | null;
               }>;
             }
           ).runTextMeasure(on, reporting),
@@ -158,15 +180,50 @@ globalThis.runStageMeasure=async(long)=>{
     expect(plain.over).toBe(true);
     expect(plain.fit).toBeNull();
     const fit = await run(true, false);
-    expect(fit.readsAtCommit).toBeGreaterThan(0);
+    expect(fit.readsBeforeFrame, 'shrink-to-fit finishes before the box is first drawn').toBeGreaterThan(0);
+    expect(fit.fitBeforeFrame).toBe(fit.fit);
     expect(fit.fit).not.toBeNull();
     expect(Number(fit.fit)).toBeGreaterThan(0);
     expect(Number(fit.fit)).toBeLessThan(1);
     expect(fit.over).toBe(false);
     const editor = await run(false, true);
-    expect(editor.readsAtCommit).toBeGreaterThan(0);
-    expect(editor.reportsAtCommit).toBeGreaterThan(0);
+    expect(editor.readsBeforeFrame).toBeGreaterThan(0);
+    expect(editor.reportsBeforeFrame, 'the editor is told before the box is first drawn').toBeGreaterThan(0);
     expect(editor.over).toBe(true);
+    // A slide of many shrinking boxes (Session 57, MS-1): drawn in one commit, they are measured together in a few
+    // of the browser's layouts, and each ends exactly where it ends measured alone (one box to a commit).
+    const BOXES = 60;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Performance.enable');
+    const layouts = async () =>
+      (await cdp.send('Performance.getMetrics')).metrics.find((metric) => metric.name === 'LayoutCount')
+        ?.value ?? Number.NaN;
+    const batch = (together: boolean) =>
+      page.evaluate(
+        async ({ count, together }) =>
+          (
+            globalThis as unknown as {
+              runTextBatch(
+                count: number,
+                together: boolean,
+              ): Promise<{ fit: string; dataFit: string | null; over: boolean; reported: string | null }[]>;
+            }
+          ).runTextBatch(count, together),
+        { count: BOXES, together },
+      );
+    const atStart = await layouts();
+    const together = await batch(true);
+    const afterTogether = await layouts();
+    const alone = await batch(false);
+    const afterAlone = await layouts();
+    await cdp.detach();
+    const layoutsTogether = afterTogether - atStart;
+    const layoutsAlone = afterAlone - afterTogether;
+    console.log('Shrink-to-fit layouts:', { boxes: BOXES, together: layoutsTogether, alone: layoutsAlone });
+    expect(together).toEqual(alone);
+    expect(together.filter((box) => box.dataFit !== null && box.reported !== null)).toHaveLength(BOXES);
+    expect(layoutsAlone).toBeGreaterThan(BOXES * 10);
+    expect(layoutsTogether * 5, 'the boxes of one commit are laid out together').toBeLessThan(layoutsAlone);
     const stage = (long: boolean) =>
       page.evaluate(
         async (long) =>
