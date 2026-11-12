@@ -169,6 +169,35 @@ describe('events out', () => {
     expect(h.posts[1]?.body).toContain(MARKER);
   });
 
+  it('a deck slide’s click goes only where the words were asked for; ids only get the slide going up, as before', async () => {
+    // W6's review L11: a click on a deck's slide Drashti plays itself is sent again for the words it brings. A
+    // receiver of ids only (lights dimmed as a slide goes up) never sees the clicks.
+    const h = harness();
+    const first = await h.service.add('http://n8n.local:5678/webhook/ids', false);
+    if (!first.ok) throw new Error('not added');
+    const idsOnly = first.view.addresses[0]?.id ?? '';
+    const second = await h.service.add('http://n8n.local:5678/webhook/words', false);
+    if (!second.ok) throw new Error('not added');
+    const withWords = second.view.addresses.find((a) => a.id !== idsOnly)?.id ?? '';
+    await h.service.update(idsOnly, { kinds: ['slide.changed'] });
+    await h.service.update(withWords, { kinds: ['slide.changed'], words: ['slide.changed'] });
+    const going = { ...slideEvent, data: { ...slideEvent.data, step: 0 } };
+    h.service.emit([going]);
+    await settle();
+    await h.advance(1000);
+    h.service.emit([{ ...slideEvent, data: { ...slideEvent.data, step: 1 }, onlyWithWords: true }]);
+    await settle();
+    const got = (path: string) =>
+      h.posts
+        .filter((p) => p.url.pathname === path)
+        .map((p) => (JSON.parse(p.body) as { data: Record<string, unknown> }).data);
+    expect(got('/webhook/ids')).toEqual([{ presentationId: 'p1', slideIndex: 0, step: 0 }]);
+    expect(got('/webhook/words')).toEqual([
+      { presentationId: 'p1', slideIndex: 0, step: 0, text: MARKER },
+      { presentationId: 'p1', slideIndex: 0, step: 1, text: MARKER },
+    ]);
+  });
+
   it('a window sees the host only, never the path or the secret; nothing but the address is kept', async () => {
     const h = harness();
     const added = await h.service.add('http://n8n.local:5678/webhook/pathtoken123', false);
