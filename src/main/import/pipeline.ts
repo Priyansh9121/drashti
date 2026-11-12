@@ -1101,7 +1101,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             onAir,
             signal: ctx.signal,
             slideCount: slides?.length,
-            log: ctx.log && ((line) => ctx.log?.(`Deck: ${line}`)),
+            log: ctx.log && ((line) => ctx.log?.(line.startsWith('Deck: ') ? line : `Deck: ${line}`)),
             refocus: ctx.refocus,
             appStarted: ctx.appStarted,
             ended: (pid) => ctx.appEnded?.(pid),
@@ -1152,8 +1152,14 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             source === 'key' && 'editablePptx' in flow && typeof flow.editablePptx === 'string'
               ? flow.editablePptx
               : undefined;
+          const copySlideCount = flow.editablePptxSlideCount ?? 0;
+          const sourcePages = new Set(indices);
+          const matchesCopy =
+            indices.length === pages.length &&
+            sourcePages.size === indices.length &&
+            [...sourcePages].every((page) => Number.isInteger(page) && page >= 0 && page < copySlideCount);
           let exported: OriginalDescriptor | null = null;
-          if (editablePptx && indices.length === pages.length) {
+          if (editablePptx && matchesCopy) {
             exported = await keepEditableKeynote(editablePptx);
             if (ctx.signal?.aborted) {
               fail('pictures-cancelled', 'Cancelled while the PowerPoint copy was being kept.');
@@ -1164,10 +1170,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             slide.documentPage = {
               sha256: exported?.sha256 ?? hash,
               ext: exported?.ext ?? source,
-              page: indices[index] ?? index,
+              page: editablePptx && !matchesCopy ? index : (indices[index] ?? index),
             };
           }
-          await addDeckFonts(flow.parsed, editablePptx);
+          await addDeckFonts(flow.parsed, matchesCopy ? editablePptx : undefined);
           told.how = 'baked';
           told.slides = slideCount(flow.parsed);
           // Its pictures changed or deleted meanwhile: the operator's edit wins (Session 56).
