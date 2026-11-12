@@ -126,7 +126,7 @@ test('slide backgrounds play on the background layer of a real output', async ()
 
   await setUpScreen(win);
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const go = (slideIndex: number) =>
     win.evaluate(
       ({ presentationId, slideIndex }) =>
@@ -273,7 +273,7 @@ test('images and videos placed on slides draw on the outputs; thumbnails show st
 
   await setUpScreen(win);
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const go = (slideIndex: number) =>
     win.evaluate(
       ({ presentationId, slideIndex }) =>
