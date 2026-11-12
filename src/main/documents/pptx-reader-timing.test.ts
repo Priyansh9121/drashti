@@ -117,4 +117,26 @@ describe('the clicks of a slide imported before alpha.17, through the document r
       [1, undefined],
     ]);
   });
+
+  it('takes only the known parts of a page’s clicks: no keys of the reader’s own, no sound it made up', async () => {
+    const junk = { placeholderExtra: 'Placeholder key of the reader’s own' };
+    const { motion, transition } = clicks;
+    if (!motion || !transition?.nativeTransition) throw new Error('The placeholder clicks are incomplete.');
+    const dirty = {
+      ...clicks,
+      ...junk,
+      deckAdvanceMs: 5000,
+      motion: { ...motion, ...junk, effects: motion.effects.map((effect) => ({ ...effect, ...junk })) },
+      transition: {
+        ...transition,
+        ...junk,
+        soundId: 'placeholder-made-up-sound',
+        nativeTransition: { ...transition.nativeTransition, ...junk },
+      },
+    };
+    const { result } = await read([1], { 1: dirty });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.pages[1]?.deck).toEqual(clicks);
+  });
 });

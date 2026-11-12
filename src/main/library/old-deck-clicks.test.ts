@@ -12,6 +12,7 @@ import { editDocSchema, type EditSlidesResult, type SaveSlidesResult } from '../
 import { DEFAULT_THEME } from '../../shared/themes';
 import { PresentationRepo } from '../db/presentations';
 import { SettingsRepo } from '../db/settings';
+import type { SourceReader } from '../documents/source-reader';
 import { sourceWrite } from '../documents/source-write';
 import { MediaStore } from '../import/media-store';
 import { OriginalsStore } from '../import/originals-store';
@@ -46,6 +47,28 @@ const WORDS = 'Placeholder words before the clicks';
 const CLICK_WORDS = 'Placeholder words of the clicks';
 const REVISED = 'Placeholder words revised';
 
+type Shape = TestDeckSlide['shapes'][number];
+const WORDS_BOX: Shape = {
+  id: 2,
+  type: 'text',
+  name: 'Placeholder words',
+  x: INCH,
+  y: INCH,
+  w: 10 * INCH,
+  h: 1.5 * INCH,
+  paras: [{ text: WORDS, size: 36, color: 'FFFFFF' }],
+};
+const CLICK_BOX: Shape = {
+  id: 3,
+  type: 'text',
+  name: 'Placeholder click words',
+  x: INCH,
+  y: 4 * INCH,
+  w: 10 * INCH,
+  h: INCH,
+  paras: [{ text: CLICK_WORDS, size: 28, color: 'FFFFFF' }],
+};
+
 /** One slide: a fade transition, its words, and a box that fades in on the first click and out on the second. */
 const DECK: TestDeckSlide[] = [
   {
@@ -53,28 +76,7 @@ const DECK: TestDeckSlide[] = [
     bg: '204060',
     transition: { kind: 'fade', dur: 400 },
     notes: 'Placeholder notes',
-    shapes: [
-      {
-        id: 2,
-        type: 'text',
-        name: 'Placeholder words',
-        x: INCH,
-        y: INCH,
-        w: 10 * INCH,
-        h: 1.5 * INCH,
-        paras: [{ text: WORDS, size: 36, color: 'FFFFFF' }],
-      },
-      {
-        id: 3,
-        type: 'text',
-        name: 'Placeholder click words',
-        x: INCH,
-        y: 4 * INCH,
-        w: 10 * INCH,
-        h: INCH,
-        paras: [{ text: CLICK_WORDS, size: 28, color: 'FFFFFF' }],
-      },
-    ],
+    shapes: [WORDS_BOX, CLICK_BOX],
     effects: [
       { kind: 'fade', target: 3, dur: 500, start: 'click' },
       { kind: 'exit-fade', target: 3, dur: 300, start: 'click' },
@@ -82,7 +84,7 @@ const DECK: TestDeckSlide[] = [
   },
 ];
 
-function register(w: World, presentations: PresentationRepo) {
+function register(w: World, presentations: PresentationRepo, reader: SourceReader = nativeSourceReader) {
   registerSlidesIpc({
     db: w.db,
     presentations,
@@ -90,7 +92,7 @@ function register(w: World, presentations: PresentationRepo) {
     settings: new SettingsRepo(w.db),
     fromOperator: () => true,
     mayPrepareSource: () => true,
-    sourceReader: nativeSourceReader,
+    sourceReader: reader,
     sourceWrite: sourceWrite(w.db),
     lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
     changed: () => undefined,
@@ -113,36 +115,51 @@ async function save(id: string, opened: Opened): Promise<SaveSlidesResult> {
     SaveSlidesResult | Promise<SaveSlidesResult>);
 }
 
-/**
- * The deck as alpha.16 stored it: its kept .pptx, and its one slide's clips (one per step: coming in, then each
- * click), its last frame as the slide's picture, and no motion of its own.
- */
-async function oldDeck(w: World, options: { steps?: number; keynote?: boolean; withoutFile?: boolean } = {}) {
-  const bytes = makeTestDeck(DECK, placeholderDeckMedia());
-  const file = join(w.root, 'Placeholder old clicks.pptx');
+/** The generated deck kept as an original, as an import keeps it, and placeholder media for its clips. */
+async function kept(w: World, slides: readonly TestDeckSlide[], name: string) {
+  const bytes = makeTestDeck(slides, placeholderDeckMedia());
+  const file = join(w.root, `${name}.pptx`);
   writeFileSync(file, bytes);
   const originals = new OriginalsStore(w.db, w.mediaDir, { freeBytes: () => 1024 ** 4 });
   const media = new MediaStore(w.db, { dir: w.mediaDir, freeBytes: () => 1024 ** 4 });
   const staged = await originals.stage(file, 'pptx');
   if (!staged.ok) throw new Error(staged.message);
   originals.register(staged.original);
+  const made = (label: string, kind: 'video' | 'image') =>
+    media.addMissing(join(w.root, `${name} ${label}.${kind === 'video' ? 'mp4' : 'png'}`), kind, {
+      kind: 'drashti',
+      path: file,
+    });
+  // The clips of PowerPoint's movie, one per step (coming in, then each click), each with its last frame.
+  const clips = (count: number): DeckSlide['steps'] =>
+    Array.from({ length: count }, (_, n) => ({
+      clipId: made(`step ${String(n)}`, 'video'),
+      clipMs: 600,
+      ...(n === 0 ? { transitionMs: 400 } : {}),
+      lastId: made(`last ${String(n)}`, 'image'),
+    }));
+  return { bytes, file, staged, made, clips };
+}
+
+const picture = (mediaId: string) => ({
+  id: randomUUID(),
+  kind: 'image' as const,
+  mediaId,
+  fit: 'fit' as const,
+  frame: { x: 0, y: 0, width: 1280, height: 720 },
+});
+
+/**
+ * The deck as alpha.16 stored it: its kept .pptx, and its one slide's clips (one per step: coming in, then each
+ * click), its last frame as the slide's picture, and no motion of its own.
+ */
+async function oldDeck(
+  w: World,
+  options: { steps?: number; keynote?: boolean; withoutFile?: boolean; reader?: SourceReader } = {},
+) {
+  const { bytes, file, staged, clips } = await kept(w, DECK, 'Placeholder old clicks');
   if (options.withoutFile) rmSync(staged.file);
-  const count = options.steps ?? 3;
-  const made = (label: string, kind: 'video' | 'image', n: number) =>
-    media.addMissing(
-      join(w.root, `Placeholder ${label} ${String(n)}.${kind === 'video' ? 'mp4' : 'png'}`),
-      kind,
-      {
-        kind: 'drashti',
-        path: file,
-      },
-    );
-  const steps: DeckSlide['steps'] = Array.from({ length: count }, (_, n) => ({
-    clipId: made('step', 'video', n),
-    clipMs: 600,
-    ...(n === 0 ? { transitionMs: 400 } : {}),
-    lastId: made('last', 'image', n),
-  }));
+  const steps = clips(options.steps ?? 3);
   const deck: DeckSlide = { transition: { name: 'p:fade', durationMs: 400 }, steps, media: [] };
   const last = steps.at(-1)?.lastId;
   if (!last) throw new Error('The generated clips are missing.');
@@ -169,23 +186,131 @@ async function oldDeck(w: World, options: { steps?: number; keynote?: boolean; w
           {
             documentPage: { sha256: staged.original.sha256, ext: 'pptx', page: 0 },
             deck,
-            elements: [
-              {
-                id: randomUUID(),
-                kind: 'image',
-                mediaId: last,
-                fit: 'fit',
-                frame: { x: 0, y: 0, width: 1280, height: 720 },
-              },
-            ],
+            elements: [picture(last)],
           },
         ],
       },
     ],
   });
-  register(w, presentations);
+  register(w, presentations, options.reader);
   return { id, deck, presentations, file, bytes };
 }
+
+/** One slide with a video that starts at the first click, with words fading in beside it (W6's review N4, HIGH-1). */
+const VIDEO_DECK: TestDeckSlide[] = [
+  {
+    key: 'old-video',
+    bg: '204060',
+    transition: { kind: 'fade', dur: 400 },
+    notes: 'Placeholder notes',
+    shapes: [
+      WORDS_BOX,
+      CLICK_BOX,
+      {
+        id: 4,
+        type: 'video',
+        name: 'Placeholder video',
+        x: 7 * INCH,
+        y: INCH,
+        w: 4 * INCH,
+        h: 2.25 * INCH,
+        media: 'clip1',
+        poster: 'poster1',
+      },
+    ],
+    effects: [
+      { kind: 'play', target: 4, dur: 5000, start: 'click' },
+      { kind: 'fade', target: 3, dur: 500, start: 'with' },
+    ],
+  },
+];
+
+/**
+ * The video deck with two slides on its one page: one as alpha.16 stored it (its video an element of no shape of the
+ * deck's), one as alpha.17 stores a slide it keeps as video (its video element names its shape, `sourceShapeId`).
+ */
+async function videoDeck(w: World) {
+  const { file, staged, made, clips } = await kept(w, VIDEO_DECK, 'Placeholder old video');
+  const video = made('video', 'video');
+  const media: DeckSlide['media'] = [
+    {
+      kind: 'video',
+      mediaId: video,
+      box: { x: 0.525, y: 0.1333, w: 0.3, h: 0.3 },
+      loop: false,
+      volume: 1,
+      start: { step: 1, offsetMs: 0 },
+    },
+  ];
+  const element = (own: boolean) => ({
+    id: randomUUID(),
+    kind: 'video' as const,
+    frame: { x: 672, y: 96, width: 384, height: 216 },
+    mediaId: video,
+    fit: 'stretch' as const,
+    ...(own ? { sourceShapeId: '4' } : {}),
+  });
+  const older: DeckSlide = { transition: { name: 'p:fade', durationMs: 400 }, steps: clips(2), media };
+  const newer: DeckSlide = { ...structuredClone(older) };
+  const page = { sha256: staged.original.sha256, ext: 'pptx' as const, page: 0 };
+  const presentations = new PresentationRepo(w.db);
+  const id = presentations.insert({
+    libraryId: presentations.ensureLibrary('Placeholder old deck tests'),
+    name: 'Placeholder old video',
+    width: 1280,
+    height: 720,
+    source: { kind: 'pictures', path: file, ref: null, importedAt: null },
+    sourceHash: staged.original.sha256,
+    groups: [
+      {
+        name: '',
+        slides: [older, newer].map((deck, n) => ({
+          documentPage: page,
+          label: n === 0 ? 'Placeholder alpha.16 row' : 'Placeholder alpha.17 row',
+          deck,
+          elements: [picture(deck.steps.at(-1)?.lastId ?? video), element(n === 1)],
+        })),
+      },
+    ],
+  });
+  register(w, presentations);
+  const before = presentations.content(id);
+  if (!before) throw new Error('The generated video deck was not stored.');
+  return { id, older, newer, video, presentations, before };
+}
+
+/** A reader that adds keys of its own at every level of a page's clicks, and a sound it made up (MEDIUM-1). */
+const JUNK = { placeholderExtra: 'Placeholder key of the reader’s own' };
+const dirtyReader: SourceReader = async (request) => {
+  const read = await nativeSourceReader(request);
+  if (!read.ok) return read;
+  return {
+    ...read,
+    pages: read.pages.map((page) => {
+      const deck = page.deck;
+      if (!deck?.motion) return page;
+      const transition = deck.transition ?? { name: 'p:fade', durationMs: 400 };
+      const dirty: DeckSlide = {
+        ...deck,
+        ...JUNK,
+        motion: {
+          ...deck.motion,
+          ...JUNK,
+          effects: deck.motion.effects.map((effect) => ({ ...effect, ...JUNK })),
+        },
+        transition: {
+          ...transition,
+          ...JUNK,
+          soundId: 'placeholder-made-up-sound',
+          ...(transition.nativeTransition
+            ? { nativeTransition: { ...transition.nativeTransition, ...JUNK } }
+            : {}),
+        },
+      };
+      return { ...page, deck: dirty };
+    }),
+  };
+};
 
 const only = (opened: Opened) => {
   const slide = opened.doc.groups[0]?.slides[0];
@@ -194,8 +319,9 @@ const only = (opened: Opened) => {
 };
 
 /** What the editor window does with the slide's first change of content (renderer/src/editor/source-conversion.ts). */
-function editWords(opened: Opened) {
-  const slide = only(opened);
+function editWords(opened: Opened, index = 0) {
+  const slide = opened.doc.groups[0]?.slides[index];
+  if (!slide) throw new Error('The prepared slide is missing.');
   const box = slide.elements.find(
     (element): element is TextElement => element.kind === 'text' && element.text.includes(WORDS),
   );
@@ -285,6 +411,73 @@ describe('a deck slide imported before alpha.17 keeps its clicks through an edit
         'its words and shapes are still editable',
       ).toBe(true);
       expect(prepared.deck).toEqual(old.deck);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('keeps today’s behaviour for a slide whose video alpha.16 stored, and keeps the clicks of one whose video is its own shape', async () => {
+    const w = originalWorld();
+    try {
+      const old = await videoDeck(w);
+      const opened = await open(old.id);
+      const [older, newer] = opened.doc.groups[0]?.slides ?? [];
+      // Its video names no shape of the deck's, so it couldn't take its poster's place after an edit: the slide keeps
+      // its clips and no clicks of its own, and the editor asks first, as before (HIGH-1).
+      expect(older?.deck).toEqual(old.older);
+      // The same page's other slide, whose video is its own shape, has its clicks read, its video in place.
+      expect(newer?.deck?.motion?.approximate).toBe(false);
+      expect(
+        newer?.deck?.motion?.effects.map(({ shapeId, step, phase, kind }) => ({
+          shapeId,
+          step,
+          phase,
+          kind,
+        })),
+      ).toEqual([{ shapeId: '3', step: 1, phase: 'in', kind: 'fade' }]);
+      expect(newer?.elements.find((element) => element.kind === 'video')).toMatchObject({
+        sourceShapeId: '4',
+        mediaId: old.video,
+      });
+
+      editWords(opened, 1);
+      expect(await save(old.id, opened)).toMatchObject({ ok: true });
+      const after = old.presentations.content(old.id);
+      const [olderRow, newerRow] = after?.slides ?? [];
+      // The alpha.16 slide stays exactly as it was, its video too.
+      expect(olderRow).toEqual(old.before.slides[0]);
+      expect(after?.elements.filter((row) => row.slide_id === olderRow?.id)).toEqual(
+        old.before.elements.filter((row) => row.slide_id === olderRow?.id),
+      );
+      // The edited one plays from its shapes with its clicks, and its video, which starts at the first click.
+      const saved = deckFromJson(newerRow?.deck);
+      expect(saved?.steps).toEqual([]);
+      expect(saved?.motion?.effects).toHaveLength(1);
+      expect(saved?.media).toEqual(old.newer.media);
+      const elements = old.presentations.get(old.id)?.groups[0]?.slides[1]?.slide.elements ?? [];
+      expect(elements.find((element) => element.kind === 'video')).toMatchObject({
+        sourceShapeId: '4',
+        mediaId: old.video,
+      });
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('takes only a slide’s clicks from the reader: no keys of its own and no sound it made up', async () => {
+    const w = originalWorld();
+    try {
+      const old = await oldDeck(w, { reader: dirtyReader });
+      const opened = await open(old.id);
+      const prepared = only(opened);
+      expect(prepared.deck?.motion?.effects).toHaveLength(2);
+      expect(JSON.stringify(prepared.deck)).not.toMatch(/placeholderExtra|placeholder-made-up-sound/u);
+      expect(prepared.deck?.transition?.soundId).toBeUndefined();
+      editWords(opened);
+      expect(await save(old.id, opened)).toMatchObject({ ok: true });
+      const row = old.presentations.content(old.id)?.slides[0];
+      expect(deckFromJson(row?.deck)?.motion?.effects).toHaveLength(2);
+      expect(row?.deck ?? '').not.toMatch(/placeholderExtra|placeholder-made-up-sound/u);
     } finally {
       w.clean();
     }
