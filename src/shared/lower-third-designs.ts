@@ -424,10 +424,6 @@ export const LOWER_THIRD_DESIGNS: readonly Design[] = [
       bottom: 10,
     },
   },
-];
-
-/** Trial recipes for the same Performance run as the offered designs. */
-export const CANDIDATE_LOWER_THIRD_DESIGNS: readonly Design[] = [
   {
     id: 'silver-outline',
     name: 'Silver outline',
