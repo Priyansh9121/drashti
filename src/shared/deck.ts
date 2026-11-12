@@ -60,6 +60,13 @@ export interface DeckEffect {
   splitAxis?: 'x' | 'y';
   /** Gallery Zoom's outer scale or Grow/Shrink's final scale. */
   scale?: number;
+  /**
+   * Basic Zoom away from rest, as PowerPoint writes it (Out, In Slightly, From Screen Center, Out From Screen Bottom):
+   * the shape's width and height where it starts as it comes in (or ends as it leaves), and where its centre is then,
+   * each one of PowerPoint's own formulas of the shape's place and size (#ppt_x, #ppt_y: its centre; #ppt_w, #ppt_h:
+   * its size; all shares of the slide). Played evenly to (or from) where the shape rests.
+   */
+  zoomAway?: { w: string; h: string; x?: string; y?: string };
   /** Shape's outline, opening from the centre (or closing towards it when inward). */
   shape?: 'circle' | 'box' | 'diamond' | 'plus';
   /**

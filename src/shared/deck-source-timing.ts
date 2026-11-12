@@ -134,6 +134,7 @@ const EFFECT_KEYS: Record<keyof DeckEffect, true> = {
   distance: true,
   splitAxis: true,
   scale: true,
+  zoomAway: true,
   shape: true,
   inward: true,
   spokes: true,

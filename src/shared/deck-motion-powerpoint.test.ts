@@ -100,6 +100,48 @@ describe('effects Drashti draws as PowerPoint’s own movie shows them', () => {
     ]);
   });
 
+  it('plays Basic Zoom’s other variants as their tracks say, each evenly from where it starts', () => {
+    // As the comparison deck writes them (run 1): Out from 4 times the size, In Slightly from 2/3, In From Screen Center
+    // from nothing at the slide's centre, Out From Screen Bottom from 4 times at the bottom edge (its centre half its
+    // own height below the slide: the grown shape shows across the bottom from the start).
+    expectLikePowerPoint(effect('zoom', 'in', { zoomAway: { w: '#ppt_w*4', h: '#ppt_h*4' } }), [
+      [425, 126.02, 70.02, 139.32, 82.67, 4.7367],
+      [491.7, 126, 70.01, 121.34, 71.98, 3.592],
+      [556.7, 126, 70, 103.33, 61.35, 2.606],
+    ]);
+    const twoThirds = { w: '#ppt_w*0.6666666666666666', h: '#ppt_h*0.6666666666666666' };
+    expectLikePowerPoint(effect('zoom', 'in', { zoomAway: twoThirds }), [
+      [193.3, 126, 70.16, 48.69, 29.04, 0.5809],
+      [391.7, 126, 70.15, 54.69, 32.36, 0.7276],
+      [590, 126.03, 70.03, 60.67, 35.92, 0.8965],
+    ]);
+    expectLikePowerPoint(effect('zoom', 'in', { zoomAway: { w: '0', h: '0', x: '0.5', y: '0.5' } }), [
+      [226.7, 149, 83.5, 20.72, 12.4, 0.1045],
+      [425, 139.5, 77.84, 38.98, 23.03, 0.3688],
+      [623.3, 129.83, 72.33, 57, 34.03, 0.797],
+    ]);
+    const bottom = { w: '#ppt_w*4', h: '#ppt_h*4', x: '0.5', y: '1+#ppt_h/2' };
+    expectLikePowerPoint(effect('zoom', 'in', { zoomAway: bottom }), [
+      [458.3, 137.84, 114.67, 130.33, 77.33, 4.1447],
+      [590, 131.5, 90.33, 94.31, 55.98, 2.1709],
+      [656.7, 128.32, 78.17, 75.98, 45.04, 1.407],
+    ]);
+  });
+
+  it('starts Basic Zoom Out as PowerPoint’s own formula says, by how much of the slide the shape covers', () => {
+    const out = '(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*';
+    const zoom = effect('zoom', 'in', { zoomAway: { w: `${out}#ppt_w`, h: `${out}#ppt_h` } });
+    // A shape under 0.3 of the slide from 8 times its size; one as big as the slide from twice its size.
+    expect(deckMotionFrame([zoom], 1, 0, box, screen).scale).toBeCloseTo(8, 9);
+    expect(deckMotionFrame([zoom], 1, 0, { x: 0, y: 0, ...screen }, screen).scale).toBeCloseTo(2, 9);
+    expect(deckMotionFrame([zoom], 1, 350, box, screen).scale).toBeCloseTo(4.5, 9);
+    // Out From Screen Bottom: from the slide's middle, just below its bottom edge (half its grown height below it).
+    const bottom = { w: `${out}#ppt_w`, h: `${out}#ppt_h`, x: '0.5', y: `1+${out}#ppt_h/2` };
+    const start = deckMotionFrame([effect('zoom', 'in', { zoomAway: bottom })], 1, 0, box, screen);
+    expect(box.x + box.width / 2 + start.x).toBeCloseTo(160, 9);
+    expect(box.y + box.height / 2 + start.y).toBeCloseTo(180 + (8 * box.height) / 2, 9);
+  });
+
   it('speeds up and slows down along half-cosines for a smooth start and end', () => {
     // Fly In from the bottom with a smooth start of 25 % and a smooth end of 50 %: where the box's top edge is, from the
     // height that shows while it comes in across the slide's bottom edge (180 less it), then from its centre (less 19).
