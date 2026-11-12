@@ -120,7 +120,8 @@ test('what the operator deleted stays gone after a restart: presentations made h
   // Put in the smart playlist's folder while Drashti is closed.
   const newPicture = await makeTestImage(win, join(work, 'Smart New.png'), { color: '#9a3412' });
 
-  // Made here (New… from words), imported (Import… › Files…), and a folder (Import… › A Folder…) into its own playlist.
+  // Made here (New… from words), imported (Import… › Files…), and a folder (Import… › A Folder…), its files then put in a
+  // playlist of their own (the library's Import… brings them into the library only since Q57-11).
   await win.evaluate(async () => {
     const made = await (globalThis as PageGlobals).drashti.library.newFromWords(
       'Placeholder Made Here',
@@ -145,6 +146,24 @@ test('what the operator deleted stays gone after a restart: presentations made h
   await dialogPicks(app, [folder]);
   await (await openLibrary(win)).getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'A Folder…' }).click();
+  await expect
+    .poll(async () => {
+      const { media, presentations } = await library(win);
+      return media.includes('Folder Cover.png') && presentations.includes('Folder Words');
+    })
+    .toBe(true);
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const playlist = (await d.playlists.tree()).find((n) => n.name === 'Placeholder Folder')?.id ?? '';
+    const cover = (await d.library.listMedia()).find((m) => m.name === 'Folder Cover.png')?.id ?? '';
+    const words = (await d.library.listPresentations()).find((p) => p.name === 'Folder Words')?.id ?? '';
+    const added = await d.playlists.addItems(playlist, null, [
+      { kind: 'media', mediaId: cover },
+      { kind: 'header', label: 'Week 1' },
+      { kind: 'presentation', presentationId: words },
+    ]);
+    if (!added.ok) throw new Error(added.message);
+  });
   await expect
     .poll(async () => (await library(win)).playlists['Placeholder Folder'])
     .toEqual(['Folder Cover.png', '# Week 1', 'Folder Words']);

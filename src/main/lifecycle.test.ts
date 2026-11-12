@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { StopList } from './lifecycle';
+import { StopList, stopTimes } from './lifecycle';
 
 describe('the stop list (Session 23)', () => {
   it('stops services in reverse order of creation, then the last steps in their own order', () => {
@@ -67,5 +67,51 @@ describe('the stop list (Session 23)', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(errors).toEqual(['network']);
+  });
+
+  it('times each stop on its own, in the order they ran: one that fails too, without the logging of its failure (12 Nov 2026)', () => {
+    let clock = 1000;
+    const errors: string[] = [];
+    const list = new StopList(
+      (name) => {
+        // Logging a failure takes time of its own (a slow disk): never counted as the stop’s.
+        clock += 300;
+        errors.push(name);
+      },
+      () => clock,
+    );
+    list.addLast('library', () => {
+      clock += 2104;
+    });
+    list.add('network', () => {
+      clock += 5;
+      return Promise.resolve();
+    });
+    list.add('events out', () => {
+      clock += 1;
+      throw new Error('gone');
+    });
+    expect(list.times).toEqual([]);
+    expect(list.run()).toEqual(['events out']);
+    expect(list.times).toEqual([
+      { name: 'events out', ms: 1 },
+      { name: 'network', ms: 5 },
+      { name: 'library', ms: 2104 },
+    ]);
+    expect(errors).toEqual(['events out']);
+    // Run once: a second run times nothing more.
+    list.run();
+    expect(list.times).toHaveLength(3);
+  });
+
+  it('says each stop’s time as the log does: in the order they ran, in whole ms', () => {
+    expect(
+      stopTimes([
+        { name: 'events out', ms: 0.4 },
+        { name: 'updates (an install at quit)', ms: 0 },
+        { name: 'library', ms: 2104.5 },
+      ]),
+    ).toBe('events out 0, updates (an install at quit) 0, library 2105');
+    expect(stopTimes([])).toBe('');
   });
 });
