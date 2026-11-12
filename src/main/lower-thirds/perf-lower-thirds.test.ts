@@ -16,6 +16,15 @@ import { keptOf, keptOfPhase, playedRows } from './perf-lower-thirds';
 
 const APP = join(__dirname, '..', '..', '..');
 
+const CANDIDATE_IDS = [
+  'silver-outline',
+  'purple-outline',
+  'lavender-labels',
+  'emerald-labels',
+  'midnight-bulletin',
+  'sea-green-nameplate',
+];
+
 describe('the lower-thirds scenario', () => {
   it('plays each row of OFFERED once, as a lower third the library takes, with placeholder words', async () => {
     const rows = (await playedRows()).filter((r) => !r.row.startsWith('template '));
@@ -39,6 +48,19 @@ describe('the lower-thirds scenario', () => {
     }
     for (const r of rows.filter((x) => x.row.startsWith('style ')))
       expect(r.lowerThird.look.style).toBe(r.row.slice('style '.length));
+  });
+
+  it('measures every held-back design in and out without offering it in the picker', async () => {
+    const rows = await playedRows();
+    for (const id of CANDIDATE_IDS) {
+      const row = rows.find((entry) => entry.row === 'template ' + id);
+      expect.soft(row?.measure, id).toBe('phases');
+      expect.soft(lowerThirdSchema.safeParse(row?.lowerThird).success, id).toBe(true);
+      expect(
+        LOWER_THIRD_TEMPLATES.some((template) => template.id === id),
+        id,
+      ).toBe(false);
+    }
   });
 
   it('measures each new name-and-role design with its own complete look and animation', async () => {
