@@ -1,5 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHash, pbkdf2 } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -43,6 +44,20 @@ async function serve(body: Buffer, cut?: number): Promise<string> {
 
 function source(url: string, body: Buffer): ModelSource {
   return { url, bytes: body.length, sha256: createHash('sha256').update(body).digest('hex'), licence: 'MIT' };
+}
+
+/**
+ * Keep every thread of Node's file pool (libuv's: 4 unless UV_THREADPOOL_SIZE says otherwise) busy for a moment, as a
+ * busy computer does now and then: a file opened meanwhile opens only once the pool is free again.
+ */
+function keepFilePoolBusy(): Promise<unknown> {
+  const threads = Number(process.env['UV_THREADPOOL_SIZE']) || 4;
+  return Promise.all(
+    Array.from(
+      { length: threads },
+      () => new Promise((done) => pbkdf2('busy', 'pool', 500_000, 32, 'sha256', done)),
+    ),
+  );
 }
 
 describe('the captions model (Part 10)', () => {
@@ -148,6 +163,37 @@ describe('the captions model (Part 10)', () => {
       }),
     ).rejects.toThrow(/larger than expected/);
     expect(seen.every((done) => done <= body.length)).toBe(true);
+    expect(existsSync(`${dest}.part`)).toBe(false);
+    expect(existsSync(dest)).toBe(false);
+  });
+
+  it('throws a too-large download away even when its file opens late, on a busy computer', async () => {
+    const data = mkdtempSync(join(tmpdir(), 'drashti-captions-model-'));
+    const dest = modelFile(data, 'small');
+    const body = Buffer.alloc(16, 1);
+    const wrong = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(12));
+        controller.enqueue(new Uint8Array(12));
+        controller.close();
+      },
+    });
+    // The part file opens on Node's file pool. With the pool busy (CI's runners, now and then) it opens only after
+    // the bytes were found too many: a part file removed before that would appear afterwards, left behind.
+    const busy = keepFilePoolBusy();
+    await expect(
+      downloadModel({
+        dest,
+        source: source('https://example.invalid/model.bin', body),
+        progress: () => undefined,
+        // Not the real free-space check: it would wait for the busy pool too.
+        freeBytes: () => Promise.resolve(Number.MAX_SAFE_INTEGER),
+        fetch: () => Promise.resolve(new Response(wrong)),
+      }),
+    ).rejects.toThrow(/larger than expected/);
+    // Once the pool is free again (and has made one more trip), the open that waited for it has run.
+    await busy;
+    await stat(data);
     expect(existsSync(`${dest}.part`)).toBe(false);
     expect(existsSync(dest)).toBe(false);
   });
