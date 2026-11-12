@@ -70,6 +70,29 @@ describe('keeping a generated PPTX editable', () => {
     expect(resized.runs?.[0]?.paragraph).toMatchObject({ spaceBefore: 10, spaceAfter: 3 });
   });
 
+  it('keeps fixed line spacing in slide pixels and permits a proportional override', async () => {
+    const words = wordsShape(
+      '<a:p><a:r><a:rPr sz="1200"/><a:t>Placeholder fixed line</a:t></a:r></a:p>' +
+        '<a:p><a:pPr><a:lnSpc><a:spcPct val="90000"/></a:lnSpc></a:pPr>' +
+        '<a:r><a:rPr sz="3000"/><a:t>Placeholder proportional line</a:t></a:r></a:p>',
+    ).replace(
+      '<a:lstStyle/>',
+      '<a:lstStyle><a:lvl1pPr><a:lnSpc><a:spcPts val="1800"/></a:lnSpc></a:lvl1pPr></a:lstStyle>',
+    );
+    const { elements } = await read(slideXml(words));
+    const box = elements.find((el) => el.kind === 'text');
+    if (box?.kind !== 'text') throw new Error('The editable words are missing.');
+    expect(box.runs?.find((run) => run.text === 'Placeholder fixed line')?.paragraph).toMatchObject({
+      lineHeightPx: 24,
+    });
+    const proportional = box.runs?.find((run) => run.text === 'Placeholder proportional line')?.paragraph;
+    expect(proportional).toMatchObject({ lineHeight: 1.08 });
+    expect(proportional).not.toHaveProperty('lineHeightPx');
+    const [resized] = fitElements([box], { width: 1280, height: 720 }, { width: 640, height: 360 });
+    if (resized?.kind !== 'text') throw new Error('The resized words are missing.');
+    expect(resized.runs?.[0]?.paragraph).toMatchObject({ lineHeightPx: 12 });
+  });
+
   it('keeps paragraph alignment, bullets, hanging indents and vertical words inside their box', async () => {
     const words = wordsShape(
       '<a:p><a:pPr algn="l" lvl="2" marL="228600" marR="114300" indent="-114300"><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:buChar char="•"/></a:pPr><a:r><a:t>Placeholder bullet</a:t></a:r><a:br/><a:r><a:t>Placeholder continuation</a:t></a:r></a:p>' +
