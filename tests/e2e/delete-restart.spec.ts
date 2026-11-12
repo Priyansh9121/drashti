@@ -128,20 +128,27 @@ test('what the operator deleted stays gone after a restart: presentations made h
     );
     if (!made.ok) throw new Error(made.message);
   });
-  const report = win.getByTestId('import-report');
   await dialogPicks(app, [words, picture]);
   await (await openLibrary(win)).getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'Files…' }).click();
-  await expect(report).toBeVisible({ timeout: 60_000 });
-  await report.getByRole('button', { name: 'Close', exact: true }).first().click();
+  await expect.poll(async () => (await library(win)).media).toContain('Placeholder Picture.png');
+  await closeLibrary(win);
+  await win.evaluate(async () => {
+    const made = await (globalThis as PageGlobals).drashti.playlists.create(
+      'Placeholder Folder',
+      null,
+      false,
+    );
+    if (!made.ok) throw new Error(made.message);
+  });
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Folder' }).click();
   await dialogPicks(app, [folder]);
   await (await openLibrary(win)).getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'A Folder…' }).click();
-  await expect(report).toBeVisible({ timeout: 60_000 });
-  await expect(report.getByTestId('report-add-target')).toHaveValue('new');
-  await report.getByTestId('report-add-button').click();
-  await expect(report.getByTestId('report-added')).toContainText('Added to “Placeholder Folder”');
-  await report.getByRole('button', { name: 'Close', exact: true }).first().click();
+  await expect
+    .poll(async () => (await library(win)).playlists['Placeholder Folder'])
+    .toEqual(['Folder Cover.png', '# Week 1', 'Folder Words']);
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
   // The smart playlist, filled by itself.
   await closeLibrary(win);
   await dialogPicks(app, [smart]);

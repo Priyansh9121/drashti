@@ -19,6 +19,7 @@ import {
   operatorReady,
   relaunchApp,
 } from './helpers';
+import { linkFinished, pasteLink } from './paste-link';
 import { testFfmpeg } from './stream-helpers';
 import { makeTestImage } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
@@ -427,11 +428,8 @@ test('Trim black and silence: from a video’s menu with Undo, and by itself for
 
   // From a Link… (a made-up Dropbox): its points are set by themselves once it is in.
   await chooseMenuItem(app, 'import-from-link');
-  await win.getByTestId('link-kind-dropbox').click();
-  await win.getByTestId('link-text').fill(fileLink('edgeAAAAAAAAAAA', 'Placeholder link clip.mp4'));
-  await expect(win.getByTestId('link-name')).toHaveText('Placeholder link clip.mp4');
-  await win.getByTestId('link-download').click();
-  await expect(win.getByTestId('link-saved')).toBeVisible({ timeout: 60_000 });
+  await pasteLink(win, fileLink('edgeAAAAAAAAAAA', 'Placeholder link clip.mp4'));
+  await linkFinished(win, 60_000);
   const linkedId = async () =>
     (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia())).find((m) =>
       m.name.startsWith('Placeholder link clip'),

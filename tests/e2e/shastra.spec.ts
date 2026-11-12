@@ -18,6 +18,7 @@ import {
   showExtras,
   testDisplays,
 } from './helpers';
+import { importItem } from './import-details';
 
 /*
  * Books (Session 12; the Shastra module until alpha.15), with the made-up books in docs/examples
@@ -71,18 +72,26 @@ test('a book loads from its file, again unchanged, and updated; references, nons
   await win.setViewportSize({ width: 1280, height: 720 });
   const files = exampleFiles();
 
-  // Dragged onto the library, like any file: the report says what came in, and opens it in Books.
+  // A book dropped on the library appears in Books.
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [files.granth]);
-  const report = win.getByTestId('import-report');
-  await expect(report).toContainText('Placeholder Granth (PG)');
-  await expect(report).toContainText(
-    'Loaded: 21 items. Find a passage in Books by typing its reference, for example “PG 1”.',
+  await expect
+    .poll(() => importItem(win, files.granth))
+    .toMatchObject({
+      outcome: 'imported',
+      name: 'Placeholder Granth (PG)',
+      message: 'Loaded: 21 items. Find a passage in Books by typing its reference, for example “PG 1”.',
+    });
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
+  await win.getByRole('tab', { name: 'Books', exact: true }).click();
+  await win.getByTestId('open-shastra-texts').click();
+  const texts = win.getByTestId('shastra-texts-dialog');
+  await expect(texts.getByTestId('shastra-text-row')).toHaveCount(1);
+  await expectNoSeriousA11yIssues(
+    win,
+    'the Books dialog with a book',
+    '[data-testid="shastra-texts-dialog"]',
   );
-  await expectNoSeriousA11yIssues(win, 'the import report with a book');
-  // (A text with notes is listed under those too.)
-  await report.getByRole('button', { name: 'Open in Books' }).first().click();
-  await expect(win.getByTestId('shastra-texts-dialog').getByTestId('shastra-text-row')).toHaveCount(1);
   await win.getByRole('button', { name: 'Close Books' }).click();
   expect((await bridge(win).texts()).map((t) => t.abbreviation)).toEqual(['PG']);
   const [vachan] = await load(win, [files.vachan]);
@@ -110,8 +119,7 @@ test('a book loads from its file, again unchanged, and updated; references, nons
     ['PV', 8],
   ]);
 
-  // The Books tab (already open, from the report): a reference, a range, a section's abbreviation however it is typed.
-  await win.getByRole('tab', { name: 'Books' }).click();
+  // The Books tab: a reference, a range and a section's abbreviation however it is typed.
   const panel = win.getByTestId('shastra-panel');
   await expect(panel.getByTestId('shastra-text')).toHaveCount(2);
   await expectNoSeriousA11yIssues(win, 'the Books tab', '[data-testid="shastra-panel"]');
