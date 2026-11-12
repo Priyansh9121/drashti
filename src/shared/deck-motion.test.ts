@@ -114,6 +114,38 @@ describe('PowerPoint effects from the engine step clock', () => {
     expect(at(1, 300, [zoom]).scale).toBe(1);
   });
 
+  it('fades while scaling the gallery Zoom', () => {
+    const zoom = { ...effect, kind: 'zoom' as const, fade: true };
+    expect(at(1, 187.5, [zoom])).toMatchObject({ opacity: 0.5, scale: 0.5, moving: true });
+    expect(at(1, 300, [zoom])).toMatchObject({ opacity: 1, scale: 1, moving: false });
+  });
+
+  it('round-trips Float, Split and Grow/Shrink, then draws their midpoint and final pose', () => {
+    const saved = {
+      ...deck,
+      motion: {
+        ...motion,
+        effects: [
+          { ...effect, kind: 'float', direction: 'up', distance: 0.08 },
+          { ...effect, kind: 'split', splitAxis: 'x' },
+          { ...effect, kind: 'grow-shrink', phase: 'emphasis', scale: 1.5 },
+        ],
+      },
+    };
+    const loaded = deckFromJson(JSON.stringify(saved));
+    expect(loaded).toEqual(saved);
+    const [float, split, grow] = loaded?.motion?.effects ?? [];
+    if (!float || !split || !grow || !loaded?.motion) throw new Error('The stored effects were not read.');
+    const floating = at(1, 187.5, [float]);
+    expect(floating).toMatchObject({ opacity: 0.5, x: 0, moving: true });
+    expect(floating.y).toBeCloseTo(43.2, 4);
+    expect(deckWipeClip(at(1, 187.5, [split]).wipe, bounds, bounds)).toBe('inset(0% 25% 0% 25%)');
+    expect(at(1, 187.5, [grow]).scale).toBe(1.25);
+    expect(at(2, 0, [grow])).toMatchObject({ scale: 1.5, moving: false });
+    const resized = { ...slide, deck: { ...loaded, motion: { ...loaded.motion, effects: [grow] } } };
+    expect(deckSlideAt(resized, 1).elements[0]?.frame).toEqual({ x: -50, y: 0, width: 900, height: 600 });
+  });
+
   it('wipes a group with one edge across its separately drawn shapes', () => {
     const wipe: DeckEffect = { ...effect, kind: 'wipe', direction: 'left' };
     const frame = at(1, 187.5, [wipe]);
