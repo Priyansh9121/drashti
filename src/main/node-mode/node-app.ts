@@ -383,7 +383,12 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       // none, Main's hall as Main sent it with this stage screen (Session 51), never every layer.
       hall: hallPictureOfScreens(paired?.screens ?? [], s.hall ?? null),
       // No warm-up where Chromium draws without a graphics chip (Session 57), as on Main.
-      ...warmUpFact(deps.warmUps, outputWindows.get(screenId), outputNames.get(screenId) ?? 'an output'),
+      ...warmUpFact(
+        deps.warmUps,
+        outputWindows.get(screenId),
+        outputNames.get(screenId) ?? 'an output',
+        s.role,
+      ),
     };
   };
   const sendContexts = () => {
