@@ -9,7 +9,7 @@ import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network
 import type { RemoteMedia } from '../../shared/network-mirror';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
-import { SIMPLE_MODE_LOCKED } from '../simple-mode';
+import { SIMPLE_MODE_LOCKED, simpleModeBounds } from '../simple-mode';
 import type { SimplePhoneScope } from '../simple-mode-phones';
 import { NetworkService, OP_CHANNEL } from './network-service';
 
@@ -62,6 +62,7 @@ const MEDIA: RemoteMedia[] = [
 ];
 
 function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
+  const bounds = simpleModeBounds(() => ONE);
   const db = openDatabase(':memory:');
   const devices = new DeviceRepo(db);
   const commands: EngineCommand[] = [];
@@ -170,8 +171,10 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       submit: () => ({ status: 202, body: { ok: true } }),
       statusFor: () => ({ status: 404, body: { ok: false } }),
     },
-    refused: (channel: InvokeChannel) =>
-      options.lockEverything === true || (options.locked === true && SIMPLE_MODE_LOCKED.includes(channel)),
+    refused: (channel: InvokeChannel, args?: readonly unknown[]) =>
+      options.lockEverything === true ||
+      (options.locked === true &&
+        (SIMPLE_MODE_LOCKED.includes(channel) || bounds.get(channel)?.(args ?? []) === false)),
     // Simple Mode as a phone's request is weighed (Session 55, the owner's answer of 30 Oct 2026).
     simple: () => (options.locked === true ? ONE : null),
     changed: () => undefined,
