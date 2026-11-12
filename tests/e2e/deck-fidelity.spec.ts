@@ -88,8 +88,8 @@ test('a PowerPoint slide keeps its editable cells, aligned words and hidden obje
     const elements = saved?.slide.elements ?? [];
     expect(elements.some((element) => element.sourceShapeId === '2')).toBe(false);
     const stored = rawContent(userData, presentationId).elements.flatMap((row) =>
-      typeof row.props === 'string'
-        ? [JSON.parse(row.props) as { sourceShapeId?: string; hidden?: boolean }]
+      typeof row['props'] === 'string'
+        ? [JSON.parse(row['props']) as { sourceShapeId?: string; hidden?: boolean }]
         : [],
     );
     expect(stored.find((element) => element.sourceShapeId === '2')).toMatchObject({ hidden: true });
