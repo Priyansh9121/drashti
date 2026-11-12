@@ -124,8 +124,8 @@ export function importPaths(
     try {
       result = await window.drashti.library.importPaths(files, options);
     } catch {
-      const message = 'Drashti couldn’t import the selected files. Try again.';
-      showImportNotice(message, () => importAgain(files));
+      const message = 'Drashti couldn’t import the selected files. Select them again to retry the import.';
+      showImportNotice(message);
       return { ok: false, message };
     }
     if (!result.ok) {
