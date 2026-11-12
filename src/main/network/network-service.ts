@@ -40,7 +40,8 @@ import {
   type RemotePresentation,
 } from '../../shared/network-api';
 import { musicPlaySchema } from '../../shared/music';
-import type { PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
+import { PHONE_LIBRARY_IDS_MAX } from '../../shared/network-desktop';
+import { PLAYLIST_IDS_MAX, type PlaylistItemInfo, type PlaylistNode } from '../../shared/playlists';
 import type {
   AddFilesView,
   ArrivedFile,
@@ -55,6 +56,7 @@ import { referenceInputSchema } from '../../shared/shastra';
 import { type HallGroup, hallPicture } from '../../shared/stage-layouts';
 import type { DeviceRepo, DeviceRow } from '../db/devices';
 import { localInterfaceAddresses } from './addresses';
+import { RateLimiter } from './limits';
 import type { NetworkWorker } from './network-worker';
 import type { PreviewSource } from './previews';
 import type { ServerOptions } from './server';
@@ -329,6 +331,9 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'playlist.whenEnds': IPC.playlists.setWhenEnds,
 };
 
+const idsWithin = (ids: unknown, max: number): unknown =>
+  Array.isArray(ids) && ids.length > max ? undefined : ids;
+
 /**
  * A phone's request as the window's own would carry its arguments (Session 55, Part 9), for the channels Simple Mode
  * bounds (simple-mode.ts SIMPLE_MODE_BOUNDED): playlist and row changes, file renames and wallpapers. A bounded
@@ -347,13 +352,12 @@ export const WINDOW_ARGS: Partial<Record<DeviceOp, (args: Record<string, unknown
   'music.stepsAside': (a) => [a['on']],
   'playlist.new': (a) => [a['name'], a['parentId'] ?? null, a['isFolder'] ?? false],
   'playlist.rename': (a) => [a['playlistId'], a['name']],
-  'playlist.remove': (a) => [a['ids']],
-  'playlist.restore': (a) => [a['ids']],
-  'playlist.add': (a) => [a['playlistId'], a['at'] ?? null, a['items']],
+  'playlist.remove': (a) => [idsWithin(a['ids'], PHONE_LIBRARY_IDS_MAX)],
+  'playlist.restore': (a) => [idsWithin(a['ids'], PLAYLIST_IDS_MAX)],
   'playlist.move': (a) => [a['playlistId'], a['ids'], a['to']],
   'playlist.whenEnds': (a) => [a['itemId'], a['whenEnds']],
-  'playlist.removeItems': (a) => [a['ids']],
-  'playlist.restoreItems': (a) => [a['ids']],
+  'playlist.removeItems': (a) => [idsWithin(a['ids'], PHONE_LIBRARY_IDS_MAX)],
+  'playlist.restoreItems': (a) => [idsWithin(a['ids'], PHONE_LIBRARY_IDS_MAX)],
   'media.rename': (a) => [a['mediaId'], a['name']],
   'presentation.rename': (a) => [a['presentationId'], a['name']],
   'wallpaper.choose': (a) => [a['wallpaperId']],
@@ -416,8 +420,10 @@ export class NetworkService implements EngineTransport {
   private readonly desktop: DesktopAnswers | null;
   /** The phone's own (Session 55, Part 9), or null where it cannot. */
   private readonly phone: PhoneAnswers | null;
+  private readonly audioChanges: RateLimiter;
 
   constructor(private readonly deps: NetworkDeps) {
+    this.audioChanges = new RateLimiter(5, 30, () => deps.now());
     this.desktop = deps.desktop
       ? new DesktopAnswers(deps.desktop, {
           // At the computer's yes, long after the ask: still let in, the phone still paired, Simple Mode not refusing.
@@ -1011,9 +1017,10 @@ export class NetworkService implements EngineTransport {
       case 'music.removeTrack':
       case 'music.restoreTrack':
       case 'music.stepsAside':
-        return this.deps.audio
-          ? audioAnswer(request.op, args, this.deps.audio)
-          : deny(404, 'Drashti cannot change Audio from a phone here.');
+        if (!this.deps.audio) return deny(404, 'Drashti cannot change Audio from a phone here.');
+        if (request.op !== 'music.audio' && !this.audioChanges.take(device.id))
+          return deny(429, 'Too many changes at once: wait a moment, then try again.');
+        return audioAnswer(request.op, args, this.deps.audio);
       case 'playlists':
         return ok({ playlists: this.deps.reads.playlists() });
       case 'items': {

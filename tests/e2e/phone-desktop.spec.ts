@@ -964,8 +964,7 @@ test('a Pro Mode phone deletes a folder with its playlist, restores both, and as
   const { base } = await networkOn(win);
   const phone = await device('chromium');
   const p = phone.page;
-  const node = (id: string) =>
-    p.locator(`[data-testid="remote-library-playlist"][data-playlist-id="${id}"]`);
+  const node = (id: string) => p.locator(`[data-testid="remote-library-playlist"][data-playlist-id="${id}"]`);
   try {
     await p.setViewportSize({ width: 375, height: 812 });
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');

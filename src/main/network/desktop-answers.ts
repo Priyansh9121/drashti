@@ -10,6 +10,7 @@ import {
   MIDI_NOT_LISTED,
   NOT_A_LISTED_CAMERA,
   NOT_A_LISTED_MIDI_DEVICE,
+  PHONE_LIBRARY_IDS_MAX,
   type RemoteInputs,
   type RemoteMidi,
   type RemoteScreens,
@@ -298,7 +299,7 @@ const windowRef = z.object({ id: z.string().min(1).max(200) }).strict();
 // 50 at once from a phone; what is added to a playlist is a presentation or a file of Media's, never a path.
 const libraryName = z.string().trim().min(1).max(200);
 const fromWords = z.object({ name: libraryName, words: z.string().min(1).max(200_000) }).strict();
-const someIds = z.object({ ids: z.array(idSchema).min(1).max(50) }).strict();
+const someIds = z.object({ ids: z.array(idSchema).min(1).max(PHONE_LIBRARY_IDS_MAX) }).strict();
 const playlistName = z
   .object({
     name: libraryName,

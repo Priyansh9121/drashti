@@ -239,6 +239,7 @@ export function MusicList() {
                   <Button
                     size="lg"
                     className="min-h-12"
+                    aria-label={`Play ${track.name}`}
                     disabled={busy || !track.playable}
                     onClick={() => void tap(post(MUSIC + '/play', { playlistId: open.id, index }))}
                   >
@@ -247,6 +248,7 @@ export function MusicList() {
                   <Button
                     size="lg"
                     className="min-h-12"
+                    aria-label={`Move ${track.name} up`}
                     disabled={busy || index === 0}
                     onClick={() => void change(trackPath(track.id) + '/move', { to: index - 1 })}
                   >
@@ -255,6 +257,7 @@ export function MusicList() {
                   <Button
                     size="lg"
                     className="min-h-12"
+                    aria-label={`Move ${track.name} down`}
                     disabled={busy || index === open.tracks.length - 1}
                     onClick={() => void change(trackPath(track.id) + '/move', { to: index + 1 })}
                   >
@@ -263,6 +266,7 @@ export function MusicList() {
                   <Button
                     size="lg"
                     className="min-h-12"
+                    aria-label={`Remove ${track.name}`}
                     disabled={busy}
                     onClick={() =>
                       void change(trackPath(track.id) + '/delete', {}).then((answer) => {
@@ -345,7 +349,7 @@ export function MusicList() {
             })
           }
         >
-          <p>The audio playlist will be removed. You can undo this.</p>
+          <p>If it’s playing, the music stops. You can undo this.</p>
           {problem && <Notice tone="warning">{problem}</Notice>}
         </PhoneQuestion>
       )}
