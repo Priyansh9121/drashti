@@ -3816,10 +3816,12 @@ function start(): void {
       return { ok: false as const, message: 'Only the operator window can trim a video.' };
     const found = await soundPass.edgesNow(mediaId);
     if (!found.ok) return found;
-    const was = media.markersOf(mediaId) ?? NO_MARKERS;
-    const before = { startMs: was.startMs, endMs: was.endMs };
-    if (!found.points) return { ok: true as const, points: null, before };
-    if (!media.setMarkers(mediaId, { ...was, startMs: found.points.startMs, endMs: found.points.endMs }))
+    if (!found.points) {
+      const was = media.markersOf(mediaId) ?? NO_MARKERS;
+      return { ok: true as const, points: null, before: { startMs: was.startMs, endMs: was.endMs } };
+    }
+    const before = trimmedVideos.setSoundEdges(mediaId, found.points);
+    if (!before)
       return { ok: false as const, message: 'Only a video in the library has black and silence to trim.' };
     engine.refreshMarkers(mediaId);
     log.info('Sound: a video’s start and end points were set past its black and silence');
