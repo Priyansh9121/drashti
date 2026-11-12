@@ -3,8 +3,8 @@ import { PHONE_ARGS } from './network-phone';
 
 describe('phone rename names', () => {
   it('cleans control and direction characters before passing on a media name', () => {
-    const name = ' \u0001 Placeholder\t track\u009F\u200E\u202E\u2066 ';
-    expect(PHONE_ARGS.mediaRename.parse({ mediaId: 'm-1', name }).name).toBe('Placeholder track');
+    const name = ' \u0001 Placeholder\r\ntrack\u2029name\u009F\u061C\u200E\u202E\u2066 ';
+    expect(PHONE_ARGS.mediaRename.parse({ mediaId: 'm-1', name }).name).toBe('Placeholder track name');
   });
 
   it('validates the length of the cleaned name', () => {

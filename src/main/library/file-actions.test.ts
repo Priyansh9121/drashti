@@ -103,10 +103,10 @@ describe('Rename', () => {
     const { actions, db } = library();
     const oldName = 'Placeholder\u202E old name';
     db.prepare("UPDATE presentations SET name = ? WHERE id = 'p3'").run(oldName);
-    const name = ' \u0000 Placeholder\t name\u007F\u0085\u200E\u200F\u202E\u2069 ';
+    const name = ' \u0000 Placeholder\tname\u2028line\u007F\u0085\u061C\u200E\u200F\u202E\u2069 ';
     expect(actions.renamePresentation('p2', name)).toBe(true);
     expect(db.prepare("SELECT name FROM presentations WHERE id = 'p2'").get()).toEqual({
-      name: 'Placeholder name',
+      name: 'Placeholder name line',
     });
     expect(actions.renamePresentation('p2', '\t\u202E\u2069')).toBe(false);
     expect(db.prepare("SELECT name FROM presentations WHERE id = 'p3'").get()).toEqual({ name: oldName });
