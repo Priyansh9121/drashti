@@ -23,16 +23,12 @@ describe('the editor’s installed font families', () => {
     expect(await Promise.all([read(), read()])).toEqual([expected, expected]);
     expect(await read()).toEqual(expected);
     expect(execFile).toHaveBeenCalledTimes(1);
-    expect(execFile).toHaveBeenCalledWith(
-      '/usr/bin/osascript',
-      ['-l', 'JavaScript', '-e', expect.stringContaining('availableFontFamilies')],
-      expect.objectContaining({
-        windowsHide: true,
-        timeout: expect.any(Number),
-        maxBuffer: expect.any(Number),
-      }),
-      expect.any(Function),
-    );
+    const [file, args, options, onExit] = execFile.mock.calls[0] ?? [];
+    expect(file).toBe('/usr/bin/osascript');
+    expect(args?.slice(0, 3)).toEqual(['-l', 'JavaScript', '-e']);
+    expect(args?.[3]).toContain('availableFontFamilies');
+    expect(options).toMatchObject({ windowsHide: true, timeout: 10_000, maxBuffer: 1024 * 1024 });
+    expect(typeof onExit).toBe('function');
   });
 
   it('keeps Unicode Windows font names and discards paths and malformed entries', async () => {
@@ -52,20 +48,13 @@ describe('the editor’s installed font families', () => {
 
     expect(names).toHaveLength(2);
     expect(names).toEqual(expect.arrayContaining(['Placeholder Sans', 'નમૂના ફૉન્ટ']));
-    expect(execFile).toHaveBeenCalledWith(
-      expect.stringMatching(/powershell\.exe$/iu),
-      expect.arrayContaining([
-        '-NoProfile',
-        '-NonInteractive',
-        expect.stringContaining('InstalledFontCollection'),
-      ]),
-      expect.objectContaining({
-        windowsHide: true,
-        timeout: expect.any(Number),
-        maxBuffer: expect.any(Number),
-      }),
-      expect.any(Function),
-    );
+    const [file, args, options, onExit] = execFile.mock.calls[0] ?? [];
+    expect(file).toMatch(/powershell\.exe$/iu);
+    expect(args).toContain('-NoProfile');
+    expect(args).toContain('-NonInteractive');
+    expect(args?.at(-1)).toContain('InstalledFontCollection');
+    expect(options).toMatchObject({ windowsHide: true, timeout: 10_000, maxBuffer: 1024 * 1024 });
+    expect(typeof onExit).toBe('function');
   });
 
   it('keeps command errors and unparseable output inside Main', async () => {

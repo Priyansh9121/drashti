@@ -1,4 +1,5 @@
 import { SHAPE_NAMES, type ShapeElement, type SlideElement, type TextElement } from '../../../shared/model';
+import { cutText } from '../../../shared/text';
 import { Button } from '../ui/Button';
 import { Field, NumberInput, Select } from '../ui/Field';
 
@@ -68,7 +69,7 @@ function GradientFields({
           {'Gradient colour ' + String(index + 1)}
           <input
             type="color"
-            value={stop.color.slice(0, 7)}
+            value={cutText(stop.color, 7)}
             onChange={(event) => {
               const color = event.currentTarget.value + stop.color.slice(7);
               const stops = gradient.stops.map((other, at) => (at === index ? { ...other, color } : other));

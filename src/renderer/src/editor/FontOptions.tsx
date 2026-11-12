@@ -37,19 +37,26 @@ export function SystemFontOptions({ current }: { current?: string | null }) {
 export function MissingFontNote({ elements }: { elements: readonly SlideElement[] }) {
   const [notice, setNotice] = useState('');
   useEffect(() => {
-    const missing = new Map<string, string>();
-    for (const el of elements) {
-      if (el.kind !== 'text') continue;
-      for (const name of missingFontsOf(el)) {
-        if (!missing.has(name)) missing.set(name, substituteFor(name, el.lang));
+    let active = true;
+    void document.fonts.ready.then(() => {
+      if (!active) return;
+      const missing = new Map<string, string>();
+      for (const el of elements) {
+        if (el.kind !== 'text') continue;
+        for (const name of missingFontsOf(el)) {
+          if (!missing.has(name)) missing.set(name, substituteFor(name, el.lang));
+        }
       }
-    }
-    const substitutions = [...missing].map(([name, font]) => font + ' for ' + name).join(', ');
-    setNotice(
-      substitutions
-        ? 'Using ' + substitutions + '. Install ' + [...missing.keys()].join(', ') + ' to match the deck.'
-        : '',
-    );
+      const substitutions = [...missing].map(([name, font]) => font + ' for ' + name).join(', ');
+      setNotice(
+        substitutions
+          ? 'Using ' + substitutions + '. Install ' + [...missing.keys()].join(', ') + ' to match the deck.'
+          : '',
+      );
+    });
+    return () => {
+      active = false;
+    };
   }, [elements]);
   return notice ? (
     <p role="status" className="truncate text-xs text-muted" title={notice}>
