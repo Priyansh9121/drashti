@@ -77,7 +77,7 @@ export class ImportRepo {
   startRun(id: string, paths: readonly string[], options: ImportOptions): void {
     this.db
       .prepare("INSERT INTO import_runs (id, status, paths, options) VALUES (?, 'running', ?, ?)")
-      .run(id, JSON.stringify(paths), JSON.stringify({ onConflict: options.onConflict ?? 'ask' }));
+      .run(id, JSON.stringify(paths), JSON.stringify({ onConflict: options.onConflict ?? 'keep-both' }));
   }
 
   /** Record one item of a run (call inside the transaction that wrote its content). */

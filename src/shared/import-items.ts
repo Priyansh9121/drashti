@@ -77,16 +77,3 @@ export function itemsMadeBy(items: readonly ImportItemReport[], paths: readonly 
   }
   return out;
 }
-
-/**
- * What Simple Mode's import left out (Session 55, Part 18), in one line for its notice: the first file and why, and how
- * many more were not brought in; null when everything came in. Simple Mode has no import report to open.
- */
-export function leftOutLine(items: readonly ImportItemReport[]): string | null {
-  const out = items.filter((i) => i.outcome === 'unsupported' || i.outcome === 'failed');
-  const [first] = out;
-  if (!first) return null;
-  const name = `“${first.name ?? first.sourcePath}”`;
-  const why = `${name}: ${first.message ?? 'Drashti could not bring it in.'}`;
-  return out.length === 1 ? why : `${name} and ${String(out.length - 1)} more were not brought in. ${why}`;
-}

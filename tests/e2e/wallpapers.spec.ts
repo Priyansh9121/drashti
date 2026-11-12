@@ -190,10 +190,11 @@ test('wallpapers in the Playlists panel: pictures dropped or imported, anything 
   const notes = join(dir, 'Placeholder notes.txt');
   writeFileSync(notes, 'Placeholder words\n');
   await dropFiles(win, section, [sound, notes], { overlay: false });
-  const notice = win.getByTestId('operator-notice');
-  await expect(notice).toContainText('“Placeholder bhajan.wav” is a sound');
-  await expect(notice).toContainText('“Placeholder notes.txt” is not a picture');
-  await expect(notice).toContainText('Wallpapers are pictures only.');
+  const notices = win.getByTestId('import-notice');
+  await expect(notices).toHaveCount(2);
+  await expect(notices.filter({ hasText: 'Placeholder bhajan.wav' })).toContainText('is a sound');
+  await expect(notices.filter({ hasText: 'Placeholder notes.txt' })).toContainText('is not a picture');
+  await expect(notices.first()).toContainText('Wallpapers are pictures only.');
   expect(await wallpapers(win)).toHaveLength(2);
 
   // Import…: the system's dialog for pictures (answered here by the test).

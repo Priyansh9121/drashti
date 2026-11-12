@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +7,7 @@ import type { MediaElement } from '../../src/shared/model';
 import { makeDeckMedia, makeTestDeck, TRIAL_SLIDES } from '../../src/main/import/testing/make-deck';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { dropFiles, launchApp, openLibrary, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { importItem } from './import-details';
 import { testFfmpeg } from './stream-helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -16,7 +17,7 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * The deck is C1's placeholder trial deck (assister/session-54-deck-trial.md), made here with FFmpeg's media:
  * six slides, the last hidden, a different transition on each, clicks, a chain, a spin, two videos and a sound.
  * Then the same deck where nothing makes its movie (pictures, as before, with its videos as real videos), and on
- * a computer with neither PowerPoint nor Keynote. In CI's window, 1024 × 645; each report passes axe.
+ * a computer with neither PowerPoint nor Keynote. In CI's window, 1024 × 645; the notices pass axe.
  */
 
 const ffmpeg = testFfmpeg();
@@ -46,27 +47,13 @@ async function deckSlides(win: Page) {
 
 const listMedia = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
 
-/**
- * The deck's line under one heading of the import report. An import with notes is listed under "Imported with
- * notes", and again under "Imported", as the report lists every one: the deck imported once has one line under each.
- */
-function lineUnder(report: Locator, heading: RegExp): Locator {
-  return report
-    .getByTestId('report-section')
-    .filter({ has: report.page().locator('summary', { hasText: heading }) })
-    .getByTestId('report-item')
-    .filter({ hasText: DECK });
-}
-const WITH_NOTES = /Imported with notes \(\d+\)/u;
-const IMPORTED = /Imported \(\d+\)/u;
-
-/** Drop the deck on the library and wait for the import's report. */
+/** Drop the deck on the library and read its completed import details. */
 async function importDeck(win: Page, deck: string) {
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [deck]);
-  const report = win.getByTestId('import-report');
-  await expect(report).toBeVisible({ timeout: 150_000 });
-  return report;
+  await expect.poll(() => importItem(win, deck), { timeout: 150_000 }).not.toBeNull();
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
+  return importItem(win, deck);
 }
 
 test('a deck comes in with its animations: each slide its steps, its one picture, its videos and sounds real media, and the report says which app and how long', async () => {
@@ -76,26 +63,21 @@ test('a deck comes in with its animations: each slide its steps, its one picture
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
   const mediaBefore = (await listMedia(win)).length;
-  const report = await importDeck(win, trialDeck());
-  // Imported once: one line under "Imported with notes", and that one again under "Imported".
-  const item = lineUnder(report, WITH_NOTES);
-  await expect(item).toHaveAttribute('data-outcome', 'imported');
-  await expect(lineUnder(report, IMPORTED)).toHaveCount(1);
-  // The stand-in makes it as PowerPoint does, and the report says PowerPoint, as a real computer's (Session 55).
-  await expect(item).toContainText(
+  const item = await importDeck(win, trialDeck());
+  expect(item?.outcome).toBe('imported');
+  const notes = item?.issues.map((issue) => issue.message).join(' ') ?? '';
+  // The stand-in records the same details that PowerPoint does.
+  expect(notes).toMatch(
     /PowerPoint made this deck’s movie with its animations in \d+ s: 5 slides with 8 clicks\./u,
   );
-  await expect(item).not.toContainText('stand-in');
-  await expect(item).toContainText('Next and Back step through the clicks as in its slide show');
-  await expect(item).toContainText('Every step was found where it should be in the movie');
-  await expect(item).toContainText('Its 2 videos and sound came in as real media');
-  await expect(item).toContainText('1 transition sound plays as its slide comes in.');
-  await expect(item).toContainText('1 slide is hidden in the file and left out, as in its slide show.');
-  await expectNoSeriousA11yIssues(
-    win,
-    'the report of a deck with its animations',
-    '[data-testid="import-report"]',
-  );
+  expect(notes).not.toContain('stand-in');
+  expect(notes).toContain('Next and Back step through the clicks as in its slide show');
+  expect(notes).toContain('Every step was found where it should be in the movie');
+  expect(notes).toContain('Its 2 videos and sound came in as real media');
+  expect(notes).toContain('1 transition sound plays as its slide comes in.');
+  const notice = win.getByTestId('import-notice').filter({ hasText: DECK });
+  await expect(notice).toContainText('1 slide is hidden in the file and left out, as in its slide show.');
+  await expectNoSeriousA11yIssues(win, 'the animated deck import notice', '[data-testid="import-notice"]');
 
   const slides = await deckSlides(win);
   // Its five shown slides, with their notes; the hidden one left out.
@@ -142,17 +124,15 @@ test('where nothing makes its movie, a deck comes in as pictures with its videos
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
-  const report = await importDeck(win, trialDeck());
-  // Imported once: one line under "Imported with notes", and that one again under "Imported".
-  const item = lineUnder(report, WITH_NOTES);
-  await expect(item).toHaveAttribute('data-outcome', 'imported');
-  await expect(lineUnder(report, IMPORTED)).toHaveCount(1);
-  await expect(item).toContainText('Each of the 5 pages became a slide holding its picture');
-  await expect(item).toContainText(
+  const item = await importDeck(win, trialDeck());
+  expect(item?.outcome).toBe('imported');
+  const notes = item?.issues.map((issue) => issue.message).join(' ') ?? '';
+  expect(notes).toContain('Each of the 5 pages became a slide holding its picture');
+  expect(notes).toContain(
     'Its 2 videos came in as real videos where the slides have them, with the time bar under LIVE; they start as their slide goes up.',
   );
-  await expect(item).toContainText('1 sound plays as its slide goes up.');
-  await expectNoSeriousA11yIssues(win, 'the report of a deck as pictures', '[data-testid="import-report"]');
+  expect(notes).toContain('1 sound plays as its slide goes up.');
+  await expectNoSeriousA11yIssues(win, 'the deck imported as pictures');
   const slides = await deckSlides(win);
   expect(slides).toHaveLength(5);
   expect(slides.every((s) => !s.slide.deck)).toBe(true);
@@ -173,17 +153,18 @@ test('on a computer with neither PowerPoint nor Keynote, a deck’s videos and s
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
-  const report = await importDeck(win, trialDeck());
-  const item = report.getByTestId('report-item').filter({ hasText: DECK });
-  await expect(item).toHaveAttribute('data-outcome', 'failed');
-  await expect(item).toContainText('no Keynote or PowerPoint');
-  await expect(item).toContainText(
+  const item = await importDeck(win, trialDeck());
+  expect(item?.outcome).toBe('failed');
+  await expect(win.getByTestId('import-notice').filter({ hasText: DECK })).toContainText(
+    'no Keynote or PowerPoint',
+  );
+  expect(item?.issues.map((issue) => issue.message).join(' ')).toContain(
     'Its 3 videos and sounds came in as media (in the Media list), with the time bar. Its slides as pictures, and its animations, clicks and transitions, need PowerPoint (or Keynote on a Mac)',
   );
   await expectNoSeriousA11yIssues(
     win,
-    'the report of a deck with no app here',
-    '[data-testid="import-report"]',
+    'the notice when a deck needs its app',
+    '[data-testid="import-notice"]',
   );
   await expect
     .poll(async () => (await listMedia(win)).map((m) => m.name).sort())

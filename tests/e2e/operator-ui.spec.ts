@@ -111,14 +111,25 @@ test('the operator window and every panel pass the accessibility checks', async 
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await setUpPlaceholderShow(win);
-  // An import from the window: its report opens by itself while nothing is live.
+  // A successful file appears in the library; an empty one shows an accessible notice.
   const dir = mkdtempSync(join(tmpdir(), 'drashti-ui-'));
-  writeFileSync(join(dir, 'Placeholder Dropped Song.txt'), 'Placeholder dropped line\n');
+  const song = join(dir, 'Placeholder Dropped Song.txt');
+  const empty = join(dir, 'Placeholder Empty Song.txt');
+  writeFileSync(song, 'Placeholder dropped line\n');
+  writeFileSync(empty, '\n');
   await openLibrary(win);
-  await dropFiles(win, win.getByTestId('library-drop'), [join(dir, 'Placeholder Dropped Song.txt')]);
-  await expect(win.getByTestId('import-report')).toBeVisible();
-  await expectNoSeriousA11yIssues(win, 'the import report');
-  await win.getByTestId('import-report').getByRole('button', { name: 'Close' }).first().click();
+  await dropFiles(win, win.getByTestId('library-drop'), [song, empty]);
+  const notice = win.getByTestId('import-notice').filter({ hasText: 'Placeholder Empty Song' });
+  await expect(notice).toBeVisible();
+  await expectNoSeriousA11yIssues(win, 'the import notice', '[data-testid="import-notice"]');
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
+  await expect(
+    win.getByTestId('import-result').getByRole('button', { name: 'Report', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    win.getByTestId('presentation-list').getByRole('button', { name: /^Placeholder Dropped Song/u }),
+  ).toBeVisible();
+  await notice.getByRole('button', { name: 'Dismiss import notice' }).click();
   await showRunning(win);
   await expectNoSeriousA11yIssues(win, 'the operator window');
   // With the open playlist in the centre (Session 26a), and More tools unfolded.
@@ -157,11 +168,6 @@ test('the operator window and every panel pass the accessibility checks', async 
         await win.getByTestId('library-sheet').getByRole('button', { name: 'New…' }).click();
       },
       () => win.getByTestId('words-editor').getByRole('button', { name: 'Cancel' }).click(),
-    ],
-    [
-      'the import report',
-      () => win.getByTestId('import-result').getByRole('button', { name: 'Report' }).click(),
-      () => win.getByTestId('import-report').getByRole('button', { name: 'Close' }).first().click(),
     ],
     [
       'Remove presentations',

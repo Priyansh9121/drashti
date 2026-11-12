@@ -386,6 +386,10 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   // Bringing things in: Add files… and files dropped. The main process gives Simple Mode's import its own limits.
   [IPC.library.importPaths, anything],
   [IPC.library.pickImportPaths, anything],
+  // Main checks that this is a failed automatic conversion that can be tried again.
+  [IPC.media.retryConversion, ([id]) => isId(id)],
+  // Main only stops the background conversion of a linked video.
+  [IPC.media.cancelLinkConversion, ([id]) => isId(id)],
   // The playlists and folders (Session 56), as Pro Mode's left column offers them: New playlist and New folder, at the
   // top or in a folder (New playlist here, New folder here); Rename…; Delete… (several chosen together too) and its
   // Undo. Never a template.
@@ -426,6 +430,7 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   // whole"): Pro Mode's dialog, into the playlist chosen (or a new one), a Dropbox folder a playlist of its own. The
   // link service keeps its own limits (a quality it offers, nothing changed while a download goes, only what it saved
   // shown); the playlist a download went into is a playlist, never a template or a folder.
+  [IPC.links.start, anything],
   [IPC.links.look, anything],
   [IPC.links.download, anything],
   [IPC.links.stop, anything],

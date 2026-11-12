@@ -174,6 +174,16 @@ test('every picture type comes in and shows, a TIFF converted by itself; a broke
     message: 'Drashti does not read JPEG XL pictures (.jxl): save it as a JPEG or a PNG, then add that.',
   });
 
+  // The TIFF converts while the show is idle. A JPEG stands for it wherever it is.
+  await expect
+    .poll(
+      async () =>
+        (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia())).find(
+          (m) => m.name === 'Placeholder scan.tif',
+        )?.convertedTo ?? null,
+      { timeout: 120_000 },
+    )
+    .toBe('Placeholder scan.jpg');
   // Each shows on the screen as it is.
   for (const name of ['Placeholder download.jfif', 'Placeholder moving.apng', 'Placeholder icon.ico']) {
     const id = line(name)?.id ?? '';
@@ -188,16 +198,6 @@ test('every picture type comes in and shows, a TIFF converted by itself; a broke
       )
       .toBe(true);
   }
-  // The TIFF: converted by itself, a JPEG standing for it wherever it is.
-  await expect
-    .poll(
-      async () =>
-        (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia())).find(
-          (m) => m.name === 'Placeholder scan.tif',
-        )?.convertedTo ?? null,
-      { timeout: 120_000 },
-    )
-    .toBe('Placeholder scan.jpg');
   await app.close();
 });
 
