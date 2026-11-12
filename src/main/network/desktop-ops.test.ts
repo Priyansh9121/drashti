@@ -950,6 +950,18 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
     expect(calls).toEqual([]);
   });
 
+  it('takes the library limit before a refused restore can look up playlist IDs', () => {
+    const { ask, remote, hold, lookups, calls } = setup({ locked: true });
+    hold();
+    const restore = () => ask(remote, 'playlist.restore', { ids: ['template'] }).status;
+    for (let i = 0; i < 30; i++) expect(restore()).toBe(403);
+    const before = lookups.playlists;
+    expect(before).toBeGreaterThan(0);
+    expect(restore()).toBe(429);
+    expect(lookups.playlists).toBe(before);
+    expect(calls).toEqual([]);
+  });
+
   it('limits a phone’s library changes on their own, thirty at once, as a person tapping through a playlist makes them', () => {
     const { ask, remote, hold, calls } = setup();
     hold();
