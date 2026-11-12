@@ -9,6 +9,8 @@ import { ImportRepo } from '../db/imports';
 import { MediaRepo } from '../db/media';
 import { PlaylistRepo } from '../db/playlists';
 import { DbSlideSource, PresentationRepo } from '../db/presentations';
+import { ShowEngine } from '../engine/show-engine';
+import { makeSource, RecordingTransport } from '../engine/testing';
 import { MediaStore } from './media-store';
 import { BUNDLE_SEP, runImport } from './pipeline';
 import { cocoaRtf, pp6Playlist, pp6Presentation, pp6Template } from './testing/pp6-fixtures';
@@ -566,6 +568,37 @@ describe('a ProPresenter 6 video’s start and end points (Session 14)', () => {
       (i) => i.format === 'pp6' && i.target?.kind === 'presentation',
     );
     expect(thirdItem?.issues.some((i) => i.code === 'markers-replaced')).toBe(false);
+    // An automatic re-import changes the library, while the screens keep their playing video as it was.
+    const repo = new MediaRepo(t.db);
+    const transport = new RecordingTransport();
+    let now = 1_000_000;
+    const engine = new ShowEngine(makeSource(), transport, () => ++now, undefined, {
+      mediaKind: (id) => (id === row.id ? 'video' : null),
+      mediaMarkers: (id) => repo.markersOf(id),
+    });
+    const play = {
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: row.id, media: 'video', fit: 'fit', loop: true },
+    } as const;
+    engine.dispatch(play);
+    const playing = engine.current.layers.background;
+    expect(playing).toMatchObject({ mediaId: row.id, clip: { startMs: 1000, endMs: 3000 } });
+    const messages = transport.messages.length;
+    t.write('Placeholder Marked Third.pro6', marked('P6-MARKED-3', { in: 2400, out: 4200 }));
+    const automatic = { onConflict: 'replace', automatic: true } as const;
+    const followed = await t.run([join(t.source, 'Placeholder Marked Third.pro6')], automatic, (ids) => {
+      for (const id of ids) engine.refreshMarkers(id);
+    });
+    expect(repo.markersOf(row.id)).toMatchObject({ startMs: 4000, endMs: 7000 });
+    expect(engine.current.layers.background).toEqual(playing);
+    expect(transport.messages).toHaveLength(messages);
+    const automaticItem = followed.report?.items.find((i) => i.format === 'pp6');
+    expect(automaticItem?.issues.find((i) => i.code === 'markers-replaced')?.message).toContain(
+      'The new points and markers take effect the next time the media plays.',
+    );
+    engine.dispatch({ type: 'setBackground', background: null });
+    engine.dispatch(play);
+    expect(engine.current.layers.background).toMatchObject({ clip: { startMs: 4000, endMs: 7000 } });
   });
 
   it('within one import the first points a file is given are kept, as before (Session 55, Q20)', async () => {
