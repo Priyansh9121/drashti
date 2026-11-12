@@ -38,12 +38,20 @@ function box(
   return `<p:sp><p:nvSpPr><p:cNvPr id="${String(id)}" name="${options.name ?? words}"${options.hidden ? ' hidden="1"' : ''}/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${String(x)}" y="${String(y)}"/><a:ext cx="3657600" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${options.filled ? '<a:solidFill><a:srgbClr val="EEEEEE"/></a:solidFill>' : ''}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p>${options.bullet ? '<a:pPr marL="380000" indent="-380000"><a:buChar char="•"/></a:pPr>' : ''}<a:r><a:rPr sz="2800"/><a:t>${words}</a:t></a:r></a:p></p:txBody></p:sp>`;
 }
 
-function fixture({ hidden, filled }: { hidden?: boolean; filled?: boolean }): string {
+function fixture({
+  hidden,
+  filled,
+  hiddenSibling,
+}: {
+  hidden?: boolean;
+  filled?: boolean;
+  hiddenSibling?: boolean;
+}): string {
   const group = [
     '<p:grpSp><p:nvGrpSpPr><p:cNvPr id="10" name="Placeholder group"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>',
     '<p:grpSpPr><a:xfrm><a:off x="6400800" y="914400"/><a:ext cx="3657600" cy="2743200"/><a:chOff x="0" y="0"/><a:chExt cx="3657600" cy="2743200"/></a:xfrm></p:grpSpPr>',
     box(11, member, 0, 0, { bullet: true }),
-    box(12, sibling, 0, 1371600),
+    box(12, sibling, 0, 1371600, { hidden: hiddenSibling }),
     '</p:grpSp>',
   ].join('');
   const shapes = [
@@ -236,8 +244,8 @@ test('a click then double-click edits the PDF words over the page picture', asyn
   }
 });
 
-test('hidden objects stay out of Select All and Tab on the canvas', async () => {
-  const { app, ed, editor } = await openFixture({ hidden: true });
+test('Select All includes hidden group members and skips hidden standalone objects', async () => {
+  const { app, ed, editor } = await openFixture({ hidden: true, hiddenSibling: true });
   try {
     const canvas = editor.getByTestId('editor-canvas');
     const hidden = selectObject(editor, hiddenName);
@@ -245,11 +253,13 @@ test('hidden objects stay out of Select All and Tab on the canvas', async () => 
     await ed.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
     await expect.soft(selectObject(editor, front)).toHaveAttribute('aria-pressed', 'true');
     await expect.soft(hidden).toHaveAttribute('aria-pressed', 'false');
+    await expect.soft(selectObject(editor, sibling)).toHaveAttribute('aria-pressed', 'true');
 
-    await selectObject(editor, sibling).click();
+    await selectObject(editor, member).click();
     await canvas.focus();
     await ed.keyboard.press('Tab');
     await expect(hidden).toHaveAttribute('aria-pressed', 'false');
+    await expect(selectObject(editor, sibling)).toHaveAttribute('aria-pressed', 'false');
   } finally {
     await app.close();
   }
