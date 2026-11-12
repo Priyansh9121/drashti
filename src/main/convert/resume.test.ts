@@ -36,7 +36,7 @@ afterEach(() => {
   dir = '';
 });
 
-/** A library with two files Drashti cannot play and one it plays, and the library's kept setting. */
+/** A library with files it can play and files that need conversion, plus the library's kept setting. */
 function seeded() {
   dir = mkdtempSync(join(tmpdir(), 'drashti-convert-resume-'));
   const mediaDir = join(dir, 'Media');
@@ -48,6 +48,7 @@ function seeded() {
     ['m-avi', 'video', 'Placeholder old clip.avi', 0],
     ['m-wma', 'audio', 'Placeholder bhajan.wma', 0],
     ['m-flac', 'audio', 'Placeholder dhun.flac', 1],
+    ['m-tall', 'video', 'Placeholder tall link.mp4', 1],
   ] as const) {
     writeFileSync(join(mediaDir, 'in', name), `placeholder ${name}`);
     insert.run(id, kind, name, `in/${name}`, playable);
@@ -99,6 +100,42 @@ const converting = (mediaId: string): { issues: ImportIssue[] } => ({
 });
 
 describe('a conversion waiting when Drashti quits (Session 51)', () => {
+  it('keeps the height cap of a playable linked video when the queue resumes after restart', () => {
+    const { kept, air, start } = seeded();
+    air.busy = ON_AIR;
+    const { service } = start();
+    const fit = {
+      kind: 'convert-media' as const,
+      mediaId: 'm-tall',
+      advice: 'Make a smaller copy of the placeholder video.',
+      maxHeight: 1080,
+    };
+    expect(
+      service.convertImported({
+        items: [
+          {
+            issues: [{ severity: 'info', code: 'converting-media', message: 'Placeholder copy.', fix: fit }],
+          },
+        ],
+      }),
+    ).toBe(1);
+    expect(service.list()).toMatchObject([
+      { mediaId: 'm-tall', state: 'waiting', note: ON_AIR, maxHeight: 1080 },
+    ]);
+    expect(kept.value).toEqual([{ mediaId: 'm-tall', maxHeight: 1080 }]);
+    service.close();
+
+    const resumed = start();
+    expect(resumed.seen.jobs).toMatchObject([
+      { mediaId: 'm-tall', state: 'waiting', note: ON_AIR, maxHeight: 1080, byItself: true },
+    ]);
+    expect(resumed.service.cancelLinkConversion(null)).toMatchObject({ ok: false });
+    expect(resumed.service.cancelLinkConversion(resumed.seen.jobs[0]?.id)).toMatchObject({ ok: true });
+    expect(kept.value).toEqual([]);
+    expect(resumed.seen.jobs[0]?.state).toBe('cancelled');
+    expect(resumed.seen.jobs[0]?.convertedId).toBeNull();
+  });
+
   it('keeps the conversions not finished as they change; quitting keeps what was waiting', () => {
     const { kept, air, start } = seeded();
     air.busy = ON_AIR;

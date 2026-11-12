@@ -15,10 +15,14 @@ export interface ConversionJob {
   state: ConversionState;
   /** 0 to 1 while converting, when it can be told. */
   progress: number | null;
-  /** Why it waits (the stream, the disk), in words. */
+  /** Why it waits for the show or stream, in words. */
   note: string | null;
   /** What went wrong, in words. */
   message: string | null;
+  /** Whether retrying a failed conversion may help. */
+  retryable?: boolean;
+  /** A linked video waiting for a copy no taller than this. */
+  maxHeight?: number;
   /** When done: the converted copy, its name, and the conversion (for Undo). */
   convertedId: string | null;
   convertedName: string | null;

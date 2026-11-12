@@ -81,6 +81,24 @@ describe('a converted original, added again anywhere (Session 51)', () => {
     expect(copy('aiff')).toBe('aiff');
   });
 
+  it('uses the smaller copy when a linked video was already converted for playback', () => {
+    const db = library();
+    try {
+      db.exec(`
+        INSERT INTO media (id, kind, name, path, playable) VALUES
+          ('fitted', 'video', 'Placeholder fitted.mp4', 'ff/fitted.mp4', 1);
+        INSERT INTO media_conversions (id, original_id, converted_id) VALUES ('cv-fitted', 'mp4', 'fitted');
+      `);
+      const copy = copyFinder(db);
+      expect(copy('avi')).toBe('fitted');
+      expect(copy('mp4')).toBe('fitted');
+      undo(db, 'cv-fitted');
+      expect(copy('avi')).toBe('mp4');
+    } finally {
+      db.close();
+    }
+  });
+
   it('a playlist: added by hand from Media, or copied with a template, uses the copy', () => {
     const db = library();
     const playlists = new PlaylistRepo(db);

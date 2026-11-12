@@ -146,7 +146,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.media.convert,
   IPC.media.cancelConversion,
   IPC.media.undoConversion,
-  // Save as MP4… (Session 26e) is Pro Mode's (a copy of the part: Simple Mode's Trim never makes one), as are a
+  // Exporting a copy with Save as MP4… (Session 26e) is Pro Mode's, as are a
   // picture's look and keeping a live zoom; and Save picture… (Session 55, Part 5). (Session 55, Part 7's Music steps
   // aside, Even loudness and Trim black and silence are bounded since Session 56, below.)
   IPC.media.saveTrim,
@@ -330,8 +330,8 @@ const itsAdds = (items: unknown): boolean =>
  *   renamed, deleted and put back, their sounds added, moved, taken out and put back, going round or shuffled, and
  *   Music steps aside. Audio playlists belong to no playlist: nothing bounds them but what they are.
  * - A row's Trim (start, end and markers), Trim black and silence and Even loudness, of a file a playlist holds (or a
- *   track of an audio playlist, from Audio's own right-click menu): its points and how loud it plays, never a copy
- *   (Save as MP4 and conversions stay Pro Mode's). A video row's When it ends, of a playlist's rows.
+ *   track of an audio playlist, from Audio's own right-click menu). Since Session 57, trimming a video row
+ *   makes a copy for that row. Exporting with Save as MP4 and converting stay Pro Mode's.
  * - Edit slides (Pro's slide editor, its window): opened on a presentation a playlist holds, its save, what it copies
  *   for its next window, and its save's Undo when every presentation that edit kept is one a playlist holds.
  */
@@ -356,6 +356,9 @@ const SESSION_56_BOUNDED: readonly [InvokeChannel, SimpleBound][] = [
   [IPC.sound.setStepsAside, ([on]) => typeof on === 'boolean'],
   // A row's Trim, Trim black and silence and Even loudness (Rename… of a file is bounded above, a track's too).
   [IPC.media.setMarkers, ([id], scope) => itsFile(scope, id)],
+  [IPC.media.rowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
+  [IPC.media.applyRowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
+  [IPC.media.resetRowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.sound.trimEdges, ([id], scope) => itsFile(scope, id)],
   [IPC.sound.setEven, ([id], scope) => itsFile(scope, id)],
   // When it ends (Session 55, Part 6), in a video row's menu.
@@ -387,6 +390,10 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   // Bringing things in: Add files… and files dropped. The main process gives Simple Mode's import its own limits.
   [IPC.library.importPaths, anything],
   [IPC.library.pickImportPaths, anything],
+  // Main checks that this is a failed automatic conversion that can be tried again.
+  [IPC.media.retryConversion, ([id]) => isId(id)],
+  // Main only stops the background conversion of a linked video.
+  [IPC.media.cancelLinkConversion, ([id]) => isId(id)],
   // The playlists and folders (Session 56), as Pro Mode's left column offers them: New playlist and New folder, at the
   // top or in a folder (New playlist here, New folder here); Rename…; Delete… (several chosen together too) and its
   // Undo. Never a template.
@@ -427,6 +434,7 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   // whole"): Pro Mode's dialog, into the playlist chosen (or a new one), a Dropbox folder a playlist of its own. The
   // link service keeps its own limits (a quality it offers, nothing changed while a download goes, only what it saved
   // shown); the playlist a download went into is a playlist, never a template or a folder.
+  [IPC.links.start, anything],
   [IPC.links.look, anything],
   [IPC.links.download, anything],
   [IPC.links.stop, anything],
@@ -488,6 +496,7 @@ export function simpleModeRefusals(
     [...SIMPLE_MODE_LOCKED, ...SIMPLE_MODE_BOUNDED.keys()].map((c) => [c, refused]),
   );
   // These answer in shapes of their own: no files picked, and the sound output as it is.
+  answers.set(IPC.media.rowTrim, () => null);
   answers.set(IPC.library.pickImportPaths, () => []);
   answers.set(IPC.wallpapers.pickFiles, () => []);
   // Nothing made from what was dropped, saying why.
