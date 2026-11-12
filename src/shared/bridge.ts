@@ -603,6 +603,7 @@ export interface DrashtiBridge {
     rowTrim(itemId: string): Promise<RowTrimView | null>;
     applyRowTrim(itemId: string, request: RowTrimRequest): Promise<RowTrimResult>;
     resetRowTrim(itemId: string, mediaId: string): Promise<RowTrimResult>;
+    stopRowTrim(itemId: string, mediaId: string): Promise<RowTrimResult>;
     preparingTrims(): Promise<string[]>;
     onPreparingTrims(listener: (itemIds: string[]) => void): () => void;
     saves(): Promise<SaveJob[]>;
