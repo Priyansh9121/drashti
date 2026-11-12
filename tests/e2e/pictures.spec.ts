@@ -16,6 +16,7 @@ import {
   outputPage,
   setUpScreen,
 } from './helpers';
+import { importItem } from './import-details';
 import { makeTestImage } from './test-media';
 import { canvasPixels, near } from './pixels';
 
@@ -105,19 +106,20 @@ test('a PDF dropped on the library becomes slides of its pages as pictures, with
   );
   expect(shownPictureWindows).toBe(0);
 
-  // Something is live, so the report waits in the status bar: open it.
-  const report = win.getByTestId('import-report');
   const result = win.getByTestId('import-result');
-  await expect(result.getByRole('button', { name: 'Report' })).toBeVisible({ timeout: 60_000 });
-  await result.getByRole('button', { name: 'Report' }).click();
-  await expect(report).toBeVisible();
-  await expect(report.getByTestId('report-summary')).toContainText('1 presentation');
-  await expect(report).toContainText('Each of the 3 pages became a slide holding its picture');
-  await expect(report).toContainText('2 slides have speaker notes');
-  await expectNoSeriousA11yIssues(win, 'the report for a PDF made into pictures');
-  // With notes, the item is listed under "Imported with notes" and again under "Imported".
-  await report.getByTestId('report-item').first().getByRole('button', { name: 'Open' }).click();
-  await expect(report).toHaveCount(0);
+  await expect(result).toContainText('Imported 1 presentation', { timeout: 60_000 });
+  await expect(result.getByRole('button', { name: 'Report' })).toHaveCount(0);
+  const item = await importItem(win, pdf);
+  expect(item?.outcome).toBe('imported');
+  const notes = item?.issues.map((issue) => issue.message).join(' ') ?? '';
+  expect(notes).toContain('Each of the 3 pages became a slide holding its picture');
+  expect(notes).toContain('2 slides have speaker notes');
+  await expectNoSeriousA11yIssues(win, 'the library after importing a PDF');
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /^Placeholder announcements/u })
+    .click();
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
   await expect
     .poll(() =>
       app.evaluate(({ BrowserWindow }) =>
@@ -232,12 +234,11 @@ test('a PowerPoint file with nothing on the computer to save it as PDF is report
   );
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [deck]);
-  const report = win.getByTestId('import-report');
-  await expect(report).toBeVisible({ timeout: 60_000 });
-  const item = report.getByTestId('report-item');
-  await expect(item).toHaveAttribute('data-outcome', 'failed');
-  await expect(item).toContainText('no Keynote or PowerPoint');
-  await expect(item).toContainText('File > Save As, PDF');
+  const notice = win.getByTestId('import-notice').filter({ hasText: 'Placeholder deck.pptx' });
+  await expect(notice).toContainText('no Keynote or PowerPoint', { timeout: 60_000 });
+  await expect(notice).toContainText('File > Save As, PDF');
+  expect((await importItem(win, deck))?.outcome).toBe('failed');
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
   await app.close();
 });
 

@@ -243,7 +243,7 @@ export interface EngineOptions {
   /** A media file's length in ms, when the library knows it (learned from playing it). */
   mediaLength?: (mediaId: string) => number | null;
   /** A video's or sound's start and end points and markers (Session 14), when it has any. */
-  mediaMarkers?: (mediaId: string) => MediaMarkers | null;
+  mediaMarkers?: (mediaId: string, itemId?: string) => MediaMarkers | null;
   /** A Repeat Slides playlist's name (Session 26d), or null when it is not one. */
   repeatName?: (playlistId: string) => string | null;
   /** A picture's look (Session 26e), or null: shown as it is. */
@@ -610,7 +610,10 @@ export class ShowEngine {
     // and end points (Session 51: since Session 14 it came back as if never jumped, over the whole file).
     if (background?.kind === 'media') {
       const { clip: _clip, marks: _marks, ...played } = background;
-      background = { ...played, ...this.libraryOf(played.mediaId, played.durationMs) };
+      background = {
+        ...played,
+        ...this.libraryOf(played.mediaId, played.durationMs, playlist?.cursor.itemId),
+      };
     }
     if (background) actions.push({ type: 'background/set', background });
     if (request.blackout) actions.push({ type: 'blackout/set', on: true });
@@ -1575,6 +1578,7 @@ export class ShowEngine {
       },
       undefined,
       again,
+      cursor.itemId,
     );
     return {
       ok: true,
@@ -1727,8 +1731,8 @@ export class ShowEngine {
   }
 
   /** A file's start and end points as the library has them (left out when it has none). */
-  private clipOf(mediaId: string | null): { clip?: PlaybackClip; marks?: PlaybackMarker[] } {
-    const m = mediaId ? (this.options.mediaMarkers?.(mediaId) ?? null) : null;
+  private clipOf(mediaId: string | null, itemId?: string): { clip?: PlaybackClip; marks?: PlaybackMarker[] } {
+    const m = mediaId ? (this.options.mediaMarkers?.(mediaId, itemId) ?? null) : null;
     if (!m) return {};
     return {
       ...(m.startMs !== null || m.endMs !== null
@@ -1800,7 +1804,10 @@ export class ShowEngine {
     };
     const bg = this.state.layers.background;
     if (bg?.kind === 'media' && bg.mediaId === mediaId)
-      actions.push({ type: 'background/set', background: { ...strip(bg), ...this.clipOf(mediaId) } });
+      actions.push({
+        type: 'background/set',
+        background: { ...strip(bg), ...this.clipOf(mediaId, this.state.live.playlist?.itemId) },
+      });
     const audio = this.state.layers.audio;
     if (audio?.mediaId === mediaId)
       actions.push({ type: 'audio/set', audio: { ...strip(audio), ...this.clipOf(mediaId) } });
@@ -1849,8 +1856,9 @@ export class ShowEngine {
   private libraryOf(
     mediaId: string | null,
     durationMs: number | undefined,
+    itemId?: string,
   ): { durationMs?: number; clip?: PlaybackClip; marks?: PlaybackMarker[] } {
-    return { ...(durationMs === undefined ? this.lengthOf(mediaId) : {}), ...this.clipOf(mediaId) };
+    return { ...(durationMs === undefined ? this.lengthOf(mediaId) : {}), ...this.clipOf(mediaId, itemId) };
   }
 
   /** A file's length when the library knows it (left out otherwise). */
@@ -1976,11 +1984,12 @@ export class ShowEngine {
     fade?: { at: number; durationMs: number },
     /** The same file starts again from its start point (Session 55: a finished video's row clicked). */
     again = false,
+    itemId?: string,
   ): BackgroundLayer {
     if (choice.kind === 'color') return choice;
     const current = this.state.layers.background;
     const length = this.lengthOf(choice.mediaId);
-    const clip = this.clipOf(choice.mediaId);
+    const clip = this.clipOf(choice.mediaId, itemId);
     if (!again && current?.kind === 'media' && current.mediaId === choice.mediaId)
       return {
         ...choice,

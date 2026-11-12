@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { dropFiles, importAndGetIds, launchApp, openLibrary, operatorPage } from './helpers';
+import { importItem } from './import-details';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 const NOBODY = '00000000-0000-0000-0000-000000000000';
@@ -102,7 +103,7 @@ test('library media reaches the windows by id only, with byte ranges, and nothin
   await app.close();
 });
 
-test('media Drashti cannot play is found at import and listed in the report, with Convert', async () => {
+test('media Drashti cannot play is found at import, and Media offers Convert for a file it could not read', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-unplayable-'));
@@ -115,15 +116,28 @@ test('media Drashti cannot play is found at import and listed in the report, wit
   );
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [image, avi]);
-  const report = win.getByTestId('import-report');
-  await expect(report).toBeVisible();
-  // Items with notes are listed on their own first.
-  const clip = report.getByTestId('report-item').filter({ hasText: 'Placeholder clip.avi' }).first();
-  await expect(clip).toContainText('Drashti cannot play Placeholder clip.avi as it is: AVI video.');
-  // It offers to convert it, saying what that makes, and the report offers to convert them all.
-  await expect(clip.getByRole('button', { name: 'Convert' })).toHaveAttribute('title', /H\.264 MP4/u);
-  await expect(report.getByTestId('report-convert-all')).toBeVisible();
-  const picture = report.getByTestId('report-item').filter({ hasText: 'Placeholder picture.png' }).first();
-  await expect(picture).not.toContainText('cannot play');
+  await expect
+    .poll(() => importItem(win, avi))
+    .toMatchObject({
+      outcome: 'imported',
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'unplayable-media',
+          message: expect.stringContaining('Drashti cannot play Placeholder clip.avi as it is: AVI video.'),
+          fix: expect.objectContaining({
+            kind: 'convert-media',
+            advice: expect.stringContaining('H.264 MP4'),
+          }),
+        }),
+      ]),
+    });
+  expect(await importItem(win, image)).toMatchObject({ outcome: 'imported', issues: [] });
+  await expect(win.getByTestId('import-report')).toHaveCount(0);
+
+  await win.getByRole('tab', { name: 'Media' }).click();
+  const clip = win.getByTestId('media-row').filter({ hasText: 'Placeholder clip.avi' });
+  await expect(clip.getByTestId('media-note')).toContainText('can’t play as it is');
+  await expect(clip.getByRole('button', { name: 'Convert', exact: true })).toBeVisible();
+  await expect(win.getByTestId('media-row').filter({ hasText: 'Placeholder picture.png' })).toBeVisible();
   await app.close();
 });

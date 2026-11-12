@@ -284,7 +284,6 @@ test('everything an admin did is anyone’s in Pro Mode: no prompt, no refusal; 
   // Every menu item that asked for the admin PIN opens its own at once, the only dialog up.
   for (const [item, opens] of [
     ['set-up-screens', 'setup-wizard'],
-    ['import-from-link', 'link-dialog'],
     ['events-out', 'events-dialog'],
     ['drop-folder', 'drop-dialog'],
     ['scheduled-backups', 'backups-dialog'],
@@ -297,6 +296,12 @@ test('everything an admin did is anyone’s in Pro Mode: no prompt, no refusal; 
     await win.keyboard.press('Escape');
     await expect(win.getByTestId(opens), item).toHaveCount(0);
   }
+  await chooseMenuItem(app, 'import-from-link');
+  await expect(win.getByTestId('link-text')).toBeFocused();
+  await expect(win.getByRole('dialog')).toHaveCount(0);
+  await noRoles(win);
+  await win.keyboard.press('Escape');
+  await expect(win.getByTestId('link-text')).toHaveCount(0);
   // View › Show Books, Templates and Kirtan Details turns at once, both ways.
   const extras = () => win.evaluate(() => (globalThis as PageGlobals).drashti.library.extras());
   const before = await extras();
