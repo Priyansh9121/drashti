@@ -80,8 +80,7 @@ export class PdfCopySession {
     current: () => boolean,
     signal: AbortSignal,
   ): Promise<Uint8Array | null> {
-    if (this.active || signal.aborted || !current() || !plan.pages.length || plan.pages.length > MAX_PAGES)
-      return null;
+    if (!plan.pages.length || plan.pages.length > MAX_PAGES) return null;
     if (plan.sources.reduce((total, source) => total + source.data.length, 0) > 256 * 1024 * 1024)
       return null;
     const ids = new Set(plan.sources.map((source) => source.id));
@@ -101,6 +100,11 @@ export class PdfCopySession {
       )
         return null;
     }
+    if (signal.aborted || !current()) return null;
+    // A phone's picture is the lowest of this window's jobs (C6's review, LOW 1): the operator's copy ends it (the
+    // phone gets the slide as it starts) and goes ahead, while a picture never waits for another job.
+    if (this.active?.job.picture && !plan.picture) this.active.finish(null);
+    if (this.active) return null;
     let win: BrowserWindow;
     try {
       win = this.deps.open();
@@ -180,13 +184,19 @@ export class PdfCopySession {
       active.captures >= 128
     )
       return null;
+    // A phone's picture that cannot be made ends at once: the phone gets the slide as it starts without waiting out
+    // the job's time (C6's review, LOW 4).
+    const refuse = () => {
+      if (active.job.picture) active.finish(null);
+      return null;
+    };
     const page = active.job.pages[index];
-    if (page?.kind !== 'native') return null;
+    if (page?.kind !== 'native') return refuse();
     const scale = active.job.picture?.scale ?? 4 / 3;
     const width = Math.ceil(page.slide.width * scale);
     const height = Math.ceil(page.slide.height * scale);
     // Bound viewport and screenshot memory as well as compressed output bytes.
-    if (width * height > 4_000_000) return null;
+    if (width * height > 4_000_000) return refuse();
     active.printing = true;
     active.captures++;
     try {
@@ -199,10 +209,11 @@ export class PdfCopySession {
         { x: 0, y: 0, width, height },
         { stayHidden: true },
       );
-      if (this.own(sender) !== active || image.isEmpty()) return null;
+      if (this.own(sender) !== active) return null;
+      if (image.isEmpty()) return refuse();
       const data = image.toPNG();
       active.captureBytes += data.length;
-      if (data.length > 32 * 1024 * 1024 || active.captureBytes > LIMIT) return null;
+      if (data.length > 32 * 1024 * 1024 || active.captureBytes > LIMIT) return refuse();
       const bytes = new Uint8Array(data);
       if (active.job.picture) active.finish(bytes);
       return bytes;
