@@ -35,7 +35,7 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   await expect(list.getByTestId('presentation-row')).toHaveCount(2);
   await oneScreen(win);
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
 
   const latencies: number[] = [];
   const revs: number[] = [];

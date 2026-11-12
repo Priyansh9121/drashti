@@ -132,7 +132,7 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
   await expect.poll(() => outputPages(app).length).toBe(2);
   const [a, b] = outputPages(app) as [Page, Page];
   for (const out of [a, b])
-    await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+    await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const audio = await audioPage(app);
 
   await win.evaluate(

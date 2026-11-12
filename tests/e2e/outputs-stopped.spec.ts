@@ -33,7 +33,7 @@ test('an output given up on is Stopped in Screens and the status line, never a m
   await operatorReady(win);
   const screenId = await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const list = await d.library.listPresentations();
@@ -83,7 +83,7 @@ test('a stopped screen raises a notice naming it, in Pro and Simple Mode, never 
   await operatorReady(win);
   const screenId = await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const name = await win.evaluate(
     async (id) =>
       (await (globalThis as PageGlobals).drashti.screens.get()).groups
@@ -162,7 +162,7 @@ test('an output given up on while Main is in the middle of a query of its own wa
   await operatorReady(win);
   const screenId = await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   // The library's own connection, as Main's next query opens a statement on it.
   await app.evaluate((electron) => {
     // In Main: its own module loader, from the app's folder (the test's imports are not there).

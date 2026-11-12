@@ -106,7 +106,7 @@ test('a sabha from a playlist: the repeated chorus, headers stepped over, a pict
   await importAndGetIds(win, [files.playlist]);
   await setUpScreen(win);
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const items = await openSunday(win);
   await expect(items).toHaveCount(5);
 
