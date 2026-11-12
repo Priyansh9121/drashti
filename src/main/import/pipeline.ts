@@ -1059,6 +1059,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       let firstTried: { converter: Converter; reason: string } | null = null;
       let slides: PptxSlide[] | null = null;
       let keynoteExport: { file: string; slides: readonly PptxSlide[] } | null = null;
+      let keynotePdfNotes: readonly string[] | undefined;
       /** The deck as read, for its videos and sounds beside its pictures (Session 54, C2), and why no animations. */
       let deckRead: { deck: PptxDeck; file: string } | null = null;
       const deckIssues: ImportIssue[] = [];
@@ -1271,8 +1272,11 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           if (converted.ok) {
             converter = app;
             pdf = converted.pdf;
-            if (source === 'key' && converted.editablePptx && converted.slides && !converted.shownOnly)
-              keynoteExport = { file: converted.editablePptx, slides: converted.slides };
+            if (source === 'key') {
+              keynotePdfNotes = converted.pdfNotes;
+              if (converted.editablePptx && converted.slides && !converted.shownOnly)
+                keynoteExport = { file: converted.editablePptx, slides: converted.slides };
+            }
             // The file's own notes when it could be read; otherwise what the app told.
             if (!slides?.some((sl) => sl.notes !== '') && converted.slides) slides = converted.slides;
             break;
@@ -1320,7 +1324,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         return;
       }
       const shifted = keynoteExport !== null && keynotePagesShifted(keynoteExport.slides, drawn);
-      const notes = !shifted && slides ? notesForPages(slides, drawn.total) : null;
+      const pdfNotes = keynotePdfNotes?.length === drawn.total ? keynotePdfNotes : null;
+      const notes = shifted ? pdfNotes : slides ? notesForPages(slides, drawn.total) : null;
       const parsed = picturesPresentation(
         fileName,
         drawn,
@@ -1328,11 +1333,14 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       );
       let editableSlides: readonly PptxSlide[] | null = shifted ? null : slides;
       if (shifted) {
+        const notesLeftOut = !notes && keynoteExport?.slides.some((slide) => slide.notes !== '');
         deckIssues.push({
           severity: 'warning',
-          code: 'keynote-pages-out-of-order',
+          code: 'keynote-copy-left-out',
           message:
-            'The Keynote PDF and PowerPoint copy have a different page order. Edit slides uses the PDF and its notes.',
+            'Keynote’s PDF and PowerPoint copy have different page orders, so Edit slides uses the PDF.' +
+            (notesLeftOut ? ' The deck’s speaker notes were left out.' : '') +
+            ' To edit from PowerPoint, export the deck from Keynote as PowerPoint and import that file.',
           fix: null,
         });
       }
