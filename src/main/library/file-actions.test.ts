@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/database';
-import { FileActions } from './file-actions';
+import { cleanName, FileActions } from './file-actions';
 
 /*
  * Session 55, Part 14: the one right-click menu's Delete, Rename and Show in Finder (Show in Explorer on Windows), as
@@ -97,6 +97,24 @@ describe('Rename', () => {
     });
     expect(actions.renamePresentation('p2', '   ')).toBe(false);
     expect(actions.renamePresentation('missing', 'Placeholder')).toBe(false);
+  });
+
+  it('cleans control and direction characters from a newly saved name', () => {
+    const { actions, db } = library();
+    const oldName = 'Placeholder\u202E old name';
+    db.prepare("UPDATE presentations SET name = ? WHERE id = 'p3'").run(oldName);
+    const name = ' \u0000 Placeholder\tname\u2028line\u007F\u0085\u061C\u200E\u200F\u202E\u2069 ';
+    expect(actions.renamePresentation('p2', name)).toBe(true);
+    expect(db.prepare("SELECT name FROM presentations WHERE id = 'p2'").get()).toEqual({
+      name: 'Placeholder name line',
+    });
+    expect(actions.renamePresentation('p2', '\t\u202E\u2069')).toBe(false);
+    expect(db.prepare("SELECT name FROM presentations WHERE id = 'p3'").get()).toEqual({ name: oldName });
+  });
+
+  it('preserves letters, marks and joiners in a name', () => {
+    const name = 'ક્\u200Dષ क्\u200Cष';
+    expect(cleanName(name)).toBe(name);
   });
 
   it('renames a media file, and its playlist rows that had its name follow (one given its own label keeps it)', () => {

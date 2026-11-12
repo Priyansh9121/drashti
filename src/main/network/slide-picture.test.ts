@@ -12,7 +12,12 @@ import { NEW_LOWER_THIRD } from '../../shared/lower-thirds';
 import { DEFAULT_MESSAGE_LOOK, messageAnimation } from '../../shared/message-look';
 import type { RenderSlide } from '../../shared/model';
 import { ZOOM_GLIDE_MS } from '../../shared/picture-look';
-import { nextScheduledChange, slidePictureReadyAt, waitForSlidePicture } from './slide-picture';
+import {
+  captureWithShowAbort,
+  nextScheduledChange,
+  slidePictureReadyAt,
+  waitForSlidePicture,
+} from './slide-picture';
 
 /*
  * When the hall screens are still enough for a phone's Save at a click (C6's review, HIGH): besides the slide's own
@@ -22,6 +27,54 @@ import { nextScheduledChange, slidePictureReadyAt, waitForSlidePicture } from '.
  */
 
 const NOW = 1_000_000;
+
+it('aborts a phone capture when an engine change makes the hall screens busy', async () => {
+  const listeners = new Set<() => void>();
+  const subscribe = (changed: () => void) => {
+    listeners.add(changed);
+    return () => {
+      listeners.delete(changed);
+    };
+  };
+  let still = true;
+  const deadline = new AbortController();
+  let capturing: AbortSignal | undefined;
+  const result = captureWithShowAbort(
+    subscribe,
+    () => still,
+    deadline.signal,
+    (signal) => {
+      capturing = signal;
+      return new Promise<null>((resolve) =>
+        signal.addEventListener('abort', () => resolve(null), { once: true }),
+      );
+    },
+  );
+  expect(listeners.size).toBe(1);
+  for (const changed of listeners) changed();
+  expect(capturing?.aborted).toBe(false);
+  still = false;
+  for (const changed of listeners) changed();
+  expect(capturing?.aborted).toBe(true);
+  expect(deadline.signal.aborted).toBe(false);
+  expect(await result).toBeNull();
+  expect(listeners.size).toBe(0);
+});
+
+it('also unsubscribes after the capture deadline aborts', async () => {
+  const off = vi.fn();
+  const deadline = new AbortController();
+  const result = captureWithShowAbort(
+    () => off,
+    () => true,
+    deadline.signal,
+    (signal) =>
+      new Promise<null>((resolve) => signal.addEventListener('abort', () => resolve(null), { once: true })),
+  );
+  deadline.abort();
+  expect(await result).toBeNull();
+  expect(off).toHaveBeenCalledOnce();
+});
 
 function stateWith(change: (state: EngineState) => void): EngineState {
   const state = initialEngineState();
