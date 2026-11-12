@@ -209,14 +209,15 @@ export interface CopyOptions {
   args(tmp: string): string[];
   /** How long the part saved lasts, for its progress. */
   lengthMs: number;
+  /** Wait while show layers are up, including when a show starts during the copy. */
+  waitForShow?: boolean;
   progress?(fraction: number | null): void;
   waiting?(note: string | null): void;
 }
 
 interface FileJob {
   id: string;
-  /** A copy no taller than a height (a link's video), or a video's part saved as it is. */
-  kind: 'fit' | 'copy';
+  waitForShow: boolean;
   source: string;
   dest: string;
   info: MediaInfo;
@@ -555,10 +556,10 @@ export class ConvertService {
     return { ok: true };
   }
 
-  private waitFor(kind: 'library' | FileJob['kind']): string | null {
+  private waitFor(waitForShow: boolean): string | null {
     return (
       this.deps.busy() ??
-      (kind !== 'copy' && this.deps.showBusy?.()
+      (waitForShow && this.deps.showBusy?.()
         ? 'Waits while the show is on, then carries on by itself.'
         : null)
     );
@@ -566,12 +567,12 @@ export class ConvertService {
 
   /** Stop an attempt as soon as the show, stream or recording starts. */
   activityChanged(): void {
-    if (this.running) this.pauseForActivity(this.running, 'library');
-    if (this.runningFile) this.pauseForActivity(this.runningFile, this.runningFile.job.kind);
+    if (this.running) this.pauseForActivity(this.running, true);
+    if (this.runningFile) this.pauseForActivity(this.runningFile, this.runningFile.job.waitForShow);
   }
 
-  private pauseForActivity(running: Running | RunningFile, kind: 'library' | FileJob['kind']): Stop | null {
-    if (!running.stop && this.waitFor(kind) !== null) {
+  private pauseForActivity(running: Running | RunningFile, waitForShow: boolean): Stop | null {
+    if (!running.stop && this.waitFor(waitForShow) !== null) {
       running.stop = 'wait';
       running.child?.kill();
     }
@@ -580,7 +581,7 @@ export class ConvertService {
 
   private watch(): void {
     if (this.closed) return;
-    const busy = this.waitFor('library');
+    const busy = this.waitFor(true);
     if (this.followAtStart && !busy) {
       this.followAtStart = false;
       this.followStanding();
@@ -672,7 +673,7 @@ export class ConvertService {
     });
     this.deps.children?.ended(probePid);
     running.child = null;
-    this.pauseForActivity(running, 'library');
+    this.pauseForActivity(running, true);
     if (running.stop) return this.stopped(running, running.stop);
     if (info.timedOut) return fail(probeTooLong(this.probeMs()));
     const target = chooseTarget(row.kind, info);
@@ -722,7 +723,7 @@ export class ConvertService {
     clearTimeout(limit);
     this.deps.children?.ended(child.pid);
     running.child = null;
-    const stopped = this.pauseForActivity(running, 'library');
+    const stopped = this.pauseForActivity(running, true);
     if (code !== 0 || stopped) {
       removeQuietly(tmp);
       if (stopped) return this.stopped(running, stopped);
@@ -730,7 +731,7 @@ export class ConvertService {
     }
     try {
       const digest = await sha256File(tmp);
-      const stopped = this.pauseForActivity(running, 'library');
+      const stopped = this.pauseForActivity(running, true);
       if (stopped) {
         removeQuietly(tmp);
         return this.stopped(running, stopped);
@@ -739,7 +740,7 @@ export class ConvertService {
       return true;
     } catch (error) {
       removeQuietly(tmp);
-      const stopped = this.pauseForActivity(running, 'library');
+      const stopped = this.pauseForActivity(running, true);
       if (stopped) return this.stopped(running, stopped);
       return fail(`The converted file could not be kept. ${fileProblem(error, 'own')}`);
     }
@@ -753,7 +754,7 @@ export class ConvertService {
     if (stop === 'cancel' || stop === 'quit') job.state = 'cancelled';
     else if (stop === 'wait') {
       job.state = 'waiting';
-      job.note = this.waitFor('library');
+      job.note = this.waitFor(true);
       this.deps.log('info', 'A conversion paused for the show or stream: it starts again afterwards');
     } else if (stop === 'time') {
       job.state = 'failed';
@@ -876,7 +877,7 @@ export class ConvertService {
     return new Promise((resolve) => {
       this.files.push({
         id: randomUUID(),
-        kind: 'fit',
+        waitForShow: true,
         source,
         dest,
         info,
@@ -911,7 +912,17 @@ export class ConvertService {
       },
     };
     const done = new Promise<FitResult>((resolve) => {
-      this.files.push({ id, kind: 'copy', source, dest, info, options, copy, note: null, resolve });
+      this.files.push({
+        id,
+        waitForShow: copy.waitForShow === true,
+        source,
+        dest,
+        info,
+        options,
+        copy,
+        note: null,
+        resolve,
+      });
       this.watch();
     });
     return { id, done };
@@ -932,11 +943,11 @@ export class ConvertService {
     return true;
   }
 
-  /** Start the first eligible file. An explicit save copies streams and can run while the show is on. */
+  /** Start the first file eligible under its show and stream gates. */
   private nextFile(): void {
     let ready = -1;
     for (const [at, job] of this.files.entries()) {
-      const note = this.waitFor(job.kind);
+      const note = this.waitFor(job.waitForShow);
       if (note === null) {
         if (ready < 0) ready = at;
       } else if (note !== job.note) {
@@ -1029,10 +1040,9 @@ export class ConvertService {
     clearTimeout(limit);
     this.deps.children?.ended(child.pid);
     running.child = null;
-    this.pauseForActivity(running, job.kind);
-    if (code !== 0 || running.stop) {
+    const stop = this.pauseForActivity(running, job.waitForShow);
+    if (code !== 0 || stop) {
       removeQuietly(tmp);
-      const stop = running.stop;
       if (stop === 'wait') {
         // It starts again from the beginning once it is safe.
         this.runningFile = null;
@@ -1085,7 +1095,9 @@ export class ConvertService {
       ? join(dirname(job.dest), freeFileName(dirname(job.dest), basename(job.dest)))
       : job.dest;
     try {
-      await rename(tmp, dest);
+      // Publish a show-gated copy in the same turn as the last activity check.
+      if (job.waitForShow) renameSync(tmp, dest);
+      else await rename(tmp, dest);
     } catch {
       removeQuietly(tmp);
       done({
