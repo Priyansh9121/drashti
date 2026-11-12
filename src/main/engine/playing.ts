@@ -32,7 +32,7 @@ export interface PlayingHooks {
 /** What the library says of a file (show-engine.ts EngineOptions mediaLength and mediaMarkers). */
 export interface FileLookups {
   lengthOf: (mediaId: string) => number | null;
-  marksOf: (mediaId: string) => PlaybackMarker[] | undefined;
+  marksOf: (mediaId: string, layer: 'slide' | 'pip') => PlaybackMarker[] | undefined;
 }
 
 const NO_CHANGE: PlayingResolved = { ok: true, actions: [] };
@@ -152,11 +152,20 @@ export function resolvePlaying(
  */
 export function videoFilesFor(state: EngineState, library: FileLookups): Record<string, VideoFile> | null {
   const files: Record<string, VideoFile> = {};
+  const box = state.layers.pip?.source;
+  const boxId = box?.kind === 'media' && box.media === 'video' ? box.mediaId : null;
   for (const id of elementVideos(state)) {
     const durationMs = state.videoFiles?.[id]?.durationMs ?? library.lengthOf(id) ?? 0;
-    const marks = library.marksOf(id) ?? [];
-    if (durationMs > 0 || marks.length > 0)
-      files[id] = { ...(durationMs > 0 ? { durationMs } : {}), ...(marks.length > 0 ? { marks } : {}) };
+    const inBox = id === boxId;
+    const onSlide = !inBox || playingOf(state, { layer: 'slide', mediaId: id }) !== null;
+    const marks = library.marksOf(id, onSlide ? 'slide' : 'pip') ?? [];
+    const boxMarks = inBox && onSlide ? (library.marksOf(id, 'pip') ?? []) : marks;
+    if (durationMs > 0 || marks.length > 0 || boxMarks.length > 0)
+      files[id] = {
+        ...(durationMs > 0 ? { durationMs } : {}),
+        ...(marks.length > 0 ? { marks } : {}),
+        ...(!sameData(marks, boxMarks) ? { boxMarks } : {}),
+      };
   }
   return Object.keys(files).length > 0 ? files : null;
 }
