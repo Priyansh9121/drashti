@@ -9,9 +9,9 @@ A made-up example is in [`examples/placeholder-calendar.json`](examples/placehol
 ## Loading a calendar
 
 - Drag the file onto the library (the left column), or choose **Timers › Calendar › Load a calendar…**. **Import…** works too.
-- The import report says what came in: how many days, from and to which date, how many festivals, and anything it left out and why.
+- **Calendar** (in the Timers panel) then lists it with its dates. A file that cannot come in has a notice in the bottom-right corner saying why (since alpha.17; until then the import report said what came in).
 - **Loading a calendar again updates it.** Drashti knows a calendar by its **name** (ignoring case): loading a file with the same name replaces that calendar's days. The same file loaded twice changes nothing.
-- Several calendars can be loaded, one for each year, say. Where two give the same date, the one loaded last is used (the report says when that happens).
+- Several calendars can be loaded, one for each year, say. Where two give the same date, the one loaded last is used.
 - **Calendar** (in the Timers panel) shows today's entry, lists the calendars with their dates, and removes one. Loading and removing are Pro Mode only.
 
 ## The file
@@ -75,6 +75,6 @@ Today's entry is read from the computer's clock (the one the show runs on) and c
 
 ## What Drashti checks
 
-- A file that does not say `"format": "drashti-calendar"`, has a field Drashti does not know, or a value of the wrong kind, is refused, and the report says where: "(at days › 3 › tithi)".
-- A day that does not read (a date that does not exist, a name missing in both languages) is left out, and the report says which. A date given twice keeps the first.
+- A file that does not say `"format": "drashti-calendar"`, has a field Drashti does not know, or a value of the wrong kind, is refused, and its notice says where: "(at days › 3 › tithi)".
+- A day that does not read (a date that does not exist, a name missing in both languages) is left out. A date given twice keeps the first.
 - A file with no day that reads is refused.
