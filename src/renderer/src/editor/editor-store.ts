@@ -7,7 +7,6 @@ import type { Measured } from '../render/measure';
 import type { Zoom } from './zoom';
 import type { PdfCanvasTool } from './pdf-marks';
 import type { Point } from './geometry';
-import type { SlideObject } from './objects';
 import { groupedSelection } from '../../../shared/element-groups';
 import { sizeLook } from '../../../shared/slide-size';
 import { slideCanvas } from '../../../shared/document-page';
@@ -457,9 +456,7 @@ export function showSlide(slideId: string): void {
 
 export function startEditing(elementId: string, at: Point | null = null): void {
   const s = useEditor.getState();
-  const element: SlideObject | undefined = s.doc
-    ? findSlide(s.doc, s.slideId)?.elements.find((el) => el.id === elementId)
-    : undefined;
+  const element = s.doc ? findSlide(s.doc, s.slideId)?.elements.find((el) => el.id === elementId) : undefined;
   if (element?.kind !== 'text') {
     // Insert Text calls commit then starts typing. Its proposed element is not
     // published until the pending content change is accepted.

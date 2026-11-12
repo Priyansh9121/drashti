@@ -66,7 +66,7 @@ import type { Zoom } from './zoom';
 import { scaleFor, zoomBy, zoomIn, zoomLabel, zoomOut, zoomScroll } from './zoom';
 import { pdfMark } from './pdf-marks';
 import type { PdfCanvasTool } from './pdf-marks';
-import { elementName, type SlideObject } from './objects';
+import { elementName } from './objects';
 import { ObjectMenu } from './ObjectMenu';
 import {
   copySelectedObjects,
@@ -285,15 +285,15 @@ export function Canvas({
   // Where the slide sits: in the middle while it fits, else PAD in from the scrolled area's edges.
   const left = Math.max(PAD, (size.width - width) / 2);
   const top = Math.max(PAD, (size.height - height) / 2);
-  const elements: readonly SlideObject[] = slide.elements;
+  const elements = slide.elements;
   const visible = elements.filter((el) => !el.hidden);
   const rendered = renderEditedSlide(doc, slide);
   const fixedIds = new Set(rendered.masterElementIds);
-  const fixed = rendered.elements.filter((el: SlideObject) => fixedIds.has(el.id) && !el.hidden);
+  const fixed = rendered.elements.filter((el) => fixedIds.has(el.id) && !el.hidden);
   // The words the whole-picture darkening goes under: the first box with any, or a Timer (Session 50).
   const wholeUnder =
     slide.darken?.kind === 'whole'
-      ? rendered.elements.find((el: SlideObject) => !el.hidden && darkensBehind(el))?.id
+      ? rendered.elements.find((el) => !el.hidden && darkensBehind(el))?.id
       : undefined;
   const wholeDarkening =
     wholeUnder && slide.darken ? (

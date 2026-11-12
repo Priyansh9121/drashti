@@ -1,14 +1,15 @@
 import type { EditSlide } from '../../../shared/slide-edit';
 import { Button } from '../ui/Button';
 import { commit, select, startEditing, useEditor } from './editor-store';
-import { elementName, type SlideObject } from './objects';
+import { elementName } from './objects';
 import { arrange, canMoveInOrder, mapElements } from './ops';
 import { finishTextEditing } from './TextBoxEditor';
 
 export function ObjectsPane({ slide }: { slide: EditSlide }) {
   const selection = useEditor((s) => s.selection);
-  const elements: readonly SlideObject[] = slide.elements;
+  const elements = slide.elements;
   const selected = new Set(selection);
+  const nameCounts = new Map<string, number>();
   const reorder = (how: 'forward' | 'backward') => {
     finishTextEditing();
     const now = useEditor.getState();
@@ -20,7 +21,7 @@ export function ObjectsPane({ slide }: { slide: EditSlide }) {
     const now = useEditor.getState();
     if (!now.doc || now.slideId !== slide.id) return;
     commit(
-      mapElements(now.doc, slide.id, [id], (el: SlideObject) => {
+      mapElements(now.doc, slide.id, [id], (el) => {
         if (!el.hidden) return { ...el, hidden: true };
         const { hidden: _hidden, ...shown } = el;
         return shown;
@@ -40,7 +41,10 @@ export function ObjectsPane({ slide }: { slide: EditSlide }) {
         <>
           <ol className="max-h-36 space-y-1 overflow-y-auto">
             {[...elements].reverse().map((el) => {
-              const name = elementName(el);
+              const baseName = elementName(el);
+              const number = (nameCounts.get(baseName) ?? 0) + 1;
+              nameCounts.set(baseName, number);
+              const name = number === 1 ? baseName : `${baseName} (${String(number)})`;
               const visibility = el.hidden ? 'Show' : 'Hide';
               return (
                 <li

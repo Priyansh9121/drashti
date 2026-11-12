@@ -142,7 +142,7 @@ function deckRow(deck: DeckSlide | undefined, old: SlideRow | undefined): { deck
 }
 
 /** The keys of an element's stored data that Drashti knows, per kind (the rest are kept as they are). */
-const PLACEMENT_KEYS = ['groupId', 'flipX', 'flipY', 'motion'] as const;
+const PLACEMENT_KEYS = ['groupId', 'flipX', 'flipY', 'motion', 'name', 'hidden'] as const;
 const KNOWN: Record<SlideElement['kind'], ReadonlySet<string>> = {
   text: new Set([...PLACEMENT_KEYS, 'text', 'lang', 'style', 'runs', 'opacity', 'everyScreen']),
   shape: new Set([...PLACEMENT_KEYS, 'shape', 'path', 'fill', 'cornerRadius', 'opacity', 'outline']),
