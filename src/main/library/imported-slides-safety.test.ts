@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { documentPageFromJson } from '../../shared/document-page';
 import type { DeckSlide } from '../../shared/deck';
+import type { PreparedSourcePage } from '../../shared/editable-source';
 import { IPC } from '../../shared/ipc';
 import type { TextElement } from '../../shared/model';
 import {
@@ -25,7 +26,7 @@ import { nativeSourceReader } from '../import/testing/native-source-reader';
 import { makeTestPptx } from '../import/testing/make-pptx';
 import { Revisions } from './revisions';
 import { editDocOf, rowOf } from './slides';
-import { registerSlidesIpc } from './slides-ipc';
+import { registerSlidesIpc, type SlidesIpcController } from './slides-ipc';
 import { themeLook } from './themes';
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
@@ -43,9 +44,10 @@ function register(
   w: World,
   presentations: PresentationRepo,
   sourceReader: SourceReader = nativeSourceReader,
+  capture?: (controller: SlidesIpcController) => void,
 ) {
   const published: string[][] = [];
-  registerSlidesIpc({
+  const controller = registerSlidesIpc({
     db: w.db,
     presentations,
     revisions: new Revisions(),
@@ -59,6 +61,7 @@ function register(
       published.push(ids);
     },
   });
+  capture?.(controller);
   return published;
 }
 
@@ -261,6 +264,103 @@ describe('imported editor provenance and legacy safety', () => {
         'Some source pages could not be prepared and stay as their saved pictures.',
       ]);
     } finally {
+      w.clean();
+    }
+  });
+
+  it('opens on the requested PDF page and its neighbours while later pages are still reading', async () => {
+    const w = originalWorld();
+    let later = () => {};
+    let initialPages = (_indices: number[]) => {};
+    const hold = new Promise<void>((resolve) => {
+      later = resolve;
+    });
+    const first = new Promise<number[]>((resolve) => {
+      initialPages = resolve;
+    });
+    let opening: Promise<Opened> | undefined;
+    let controller: SlidesIpcController | undefined;
+    try {
+      const { id } = await w.importPdf({
+        drawPdf: async (file, dir) => {
+          const drawn = await w.drawPdf(file, dir);
+          const picture = drawn.pages[0];
+          if (!picture) throw new Error('Missing generated PDF picture.');
+          return {
+            ...drawn,
+            total: 5,
+            pages: Array.from({ length: 5 }, (_, index) => ({ ...picture, index })),
+          };
+        },
+      });
+      const presentations = new PresentationRepo(w.db);
+      const before = presentations.content(id)?.slides ?? [];
+      const slideId = before[3]?.id;
+      if (!slideId) throw new Error('Missing requested PDF page.');
+      const send = vi.fn();
+      register(
+        w,
+        presentations,
+        async (
+          request: Parameters<SourceReader>[0] & {
+            onPdfPage?: (index: number, page?: PreparedSourcePage) => Promise<void>;
+          },
+        ) => {
+          const result = await nativeSourceReader({ ...request, sourcePages: [0] });
+          if (!result.ok || !result.pages[0]) throw new Error('Missing prepared PDF fixture page.');
+          const sample = result.pages[0];
+          const pages = request.sourcePages.map((sourceIndex) => ({ ...sample, sourceIndex }));
+          for (const page of pages.slice(0, 3)) await request.onPdfPage?.(page.sourceIndex, page);
+          initialPages(request.sourcePages);
+          await hold;
+          for (const page of pages.slice(3)) {
+            if (!(await request.checkpoint())) break;
+            await request.onPdfPage?.(page.sourceIndex, page);
+          }
+          return { ok: true, total: 5, pages, failed: [] };
+        },
+        (registered) => {
+          controller = registered;
+        },
+      );
+      const requestId = randomUUID();
+      const opened = handlers.get(IPC.library.slidesForEdit)?.(
+        { sender: { send, isDestroyed: () => false } },
+        id,
+        { requestId, slideId },
+      );
+      opening = Promise.resolve(opened as Opened | Promise<Opened>);
+      const ordered = await first;
+      const result = await Promise.race([
+        opening,
+        new Promise<null>((resolve) => setImmediate(() => resolve(null))),
+      ]);
+      expect({ ordered, opened: result?.ok }).toEqual({ ordered: [3, 4, 2, 1, 0], opened: true });
+      if (!result) throw new Error('The editor waited for the unread pages.');
+      const slides = result.doc.groups.flatMap((group) => group.slides);
+      expect(slides.map((slide) => slide.elements.some((element) => element.kind === 'text'))).toEqual([
+        false,
+        false,
+        true,
+        true,
+        true,
+      ]);
+      expect(result).toMatchObject({ preparingSource: before.slice(0, 2).map((slide) => slide.id) });
+      const selected = slides[3];
+      if (!selected) throw new Error('The requested page is missing from the editor.');
+      selected.notes = 'Placeholder saved while the PDF is preparing.';
+      expect(await save(id, result)).toMatchObject({ ok: true });
+      const after = presentations.content(id)?.slides ?? [];
+      expect(after.map((slide) => slide.id)).toEqual(before.map((slide) => slide.id));
+      expect(after[3]?.notes).toBe(selected.notes);
+      expect(after.slice(0, 2).map((slide) => slide.document_page)).toEqual(
+        before.slice(0, 2).map((slide) => slide.document_page),
+      );
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      later();
+      await opening;
+      await controller?.drainSourcePreparation();
       w.clean();
     }
   });
