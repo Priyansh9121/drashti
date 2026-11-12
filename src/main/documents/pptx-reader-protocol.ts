@@ -51,7 +51,14 @@ export type PptxPage = Omit<PreparedSourcePage, 'assets'> & {
   assets: { token: string; relative: string; kind: 'image' | 'video' | 'audio' }[];
 };
 export type FromPptxReader =
-  | { type: 'prepared'; jobId: string; pages: PptxPage[]; total: number; failed: number[] }
+  | {
+      type: 'prepared';
+      jobId: string;
+      pages: PptxPage[];
+      total: number;
+      failed: number[];
+      failedNotes?: Record<number, string[]>;
+    }
   | { type: 'failed'; jobId: string };
 
 export interface PptxReaderChild {
