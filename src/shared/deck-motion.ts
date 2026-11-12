@@ -3,9 +3,18 @@ import type { Rect, RenderSlide, SlideElement, TextElement, TextRun } from './mo
 import { fitElements } from './slide-size';
 
 type Size = Pick<RenderSlide, 'width' | 'height'>;
+
+/** PowerPoint can animate the drawn shape behind a text box separately from its paragraphs. */
+export function deckBackgroundTarget(shapeId: string): string {
+  return `background:${shapeId}`;
+}
+
 export function deckElementTargets(element: SlideElement): readonly string[] {
   const groups = element.sourceGroupIds ?? [];
-  return element.sourceShapeId ? [...groups, element.sourceShapeId] : groups;
+  if (!element.sourceShapeId) return groups;
+  const targets = [...groups, element.sourceShapeId];
+  if (element.kind === 'shape') targets.push(deckBackgroundTarget(element.sourceShapeId));
+  return targets;
 }
 
 /** One source shape may have several rendered parts. A group's effects apply to their combined bounds. */

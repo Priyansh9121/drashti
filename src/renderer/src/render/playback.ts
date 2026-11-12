@@ -10,6 +10,37 @@ import {
 } from '../../../shared/media';
 import { engineNow } from './clock';
 
+/**
+ * A late start caught up (Session 57, C3's review M1; render/DeckStep.tsx alone asks): a deck's first clip whose first
+ * frame came in after the engine's time had it there (a cold jump: each screen's own decoding), played from that frame
+ * at `at`, `lateMs` behind the engine's time. It plays a little faster, `maxRate` at most, until it is where the engine's
+ * time has it, never jumping there: its start is seen whole, and every screen, the slide's sounds and the engine's next
+ * step are on the same time again within the clip (or its hold, going round after it). A step's hold that starts late
+ * because its clip ended late makes up the rest the same way.
+ */
+export interface PlaybackCatchUp {
+  /** When it plays from that frame (the engine's time). */
+  at: number;
+  /** How far behind the engine's time it is then (ms). */
+  lateMs: number;
+  /** The fastest it may play to catch up (1.1: a tenth faster). */
+  maxRate: number;
+}
+
+/** How much of its lateness a late start has made up by `now` (ms): at its fastest from `at`, until none is left. */
+function caughtUpMs(c: PlaybackCatchUp, now: number): number {
+  return Math.min(Math.max(0, c.lateMs), Math.max(0, now - c.at) * Math.max(0, c.maxRate - 1));
+}
+
+/**
+ * How much later than the engine's time a late start still ends (ms), with `spanMs` of it to play from its first frame
+ * (by the engine's time): its lateness, less what it makes up meanwhile at its fastest; none when it makes it all up.
+ */
+export function catchUpLeftMs(lateMs: number, spanMs: number, maxRate: number): number {
+  const rate = Math.max(1, maxRate);
+  return Math.max(0, lateMs - (Math.max(0, spanMs) * (rate - 1)) / rate);
+}
+
 export interface PlaybackOptions {
   mediaId: string;
   /** A later try at loading it (a node's copy that landed after the first try failed). */
@@ -35,9 +66,10 @@ export interface PlaybackOptions {
    * How it plays now (Session 14), read at every check so a change lands
    * without loading the file again: whether it loops, its start and end
    * points, and a jump to a marker (or the time bar's move, paused or not:
-   * Session 54). Left out: the element's own loop, the whole file.
+   * Session 54). Left out: the element's own loop, the whole file. A deck's first clip that came in late (Session
+   * 57) says so (`catchUp`).
    */
-  timing?: () => { loop: boolean; clip?: PlaybackClip; seek?: PlaybackSeek };
+  timing?: () => { loop: boolean; clip?: PlaybackClip; seek?: PlaybackSeek; catchUp?: PlaybackCatchUp };
 }
 
 /** A playback: call it to stop; resync() checks it against the clock at once (after a jump). */
@@ -86,7 +118,33 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   const clock = () => {
     const t = options.timing?.();
     if (t?.clip && v.loop) v.loop = false;
-    return { startedAt, loop: t ? t.loop : v.loop, clip: t?.clip, seek: later(t?.seek, t?.clip) };
+    const seek = later(t?.seek, t?.clip);
+    // A late start (Session 57): as far on as it has caught up by now (it plays a little faster to get there, below).
+    const gained = t?.catchUp && !seek?.paused ? caughtUpMs(t.catchUp, engineNow()) : 0;
+    return {
+      startedAt: startedAt - gained,
+      loop: t ? t.loop : v.loop,
+      clip: t?.clip,
+      seek: seek && gained > 0 ? { ...seek, at: seek.at - gained } : seek,
+      catchUp: t?.catchUp,
+    };
+  };
+  /**
+   * A late start still catching up (Session 57): how much faster than 1x it plays, spread over the next check so it
+   * lands on the engine's time as that comes, not past it; and its fastest. Null when none is, or while it waits.
+   */
+  const catchingUp = (c: ReturnType<typeof clock>): { extra: number; maxRate: number } | null => {
+    const up = c.catchUp;
+    if (!up || c.seek?.paused) return null;
+    const now = engineNow();
+    const extra = (caughtUpMs(up, now + CHECK_MS) - caughtUpMs(up, now)) / CHECK_MS;
+    return extra > 0 ? { extra, maxRate: up.maxRate } : null;
+  };
+  /** From its first moving frame, not the next check (up to a quarter of a second at 1x). */
+  const paceAtStart = () => {
+    const up = catchingUp(clock());
+    const rate = up ? Math.min(up.maxRate, 1 + up.extra) : null;
+    if (rate !== null && v.playbackRate !== rate) v.playbackRate = rate;
   };
   // A start still to come (Session 54, C2): a deck's video or sound a moment after its click, a step's hold once its
   // clip is over. It waits at its point, paused, every screen alike, until the engine's time gets there, and is
@@ -294,7 +352,12 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     // Aiming ahead past the end of a loop wraps round to its start.
     if (correction.seek || reaim)
       jump(c.loop && span > 0 ? start + ((at - start + lead()) % span) - lead() : at);
-    else if (v.playbackRate !== correction.rate) v.playbackRate = correction.rate;
+    else {
+      // A late start catching up (Session 57) plays that much faster on top, never more than its fastest.
+      const up = catchingUp(c);
+      const rate = up ? Math.min(up.maxRate, correction.rate + up.extra) : correction.rate;
+      if (v.playbackRate !== rate) v.playbackRate = rate;
+    }
     // Paused where the clock says it plays: it plays on, once any jump is made (Session 51). Held at its own end
     // (`ended`), play() would start it again from the top, so one taken back from there (Back 15 s, a marker) used
     // to wait for the next check, up to a quarter of a second late and at a different moment on each screen; now
@@ -331,6 +394,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   };
   v.muted = !audible;
   v.addEventListener('playing', onPlaying, { once: true });
+  v.addEventListener('playing', paceAtStart);
   v.addEventListener('loadedmetadata', onMetadata, { once: true });
   v.addEventListener('error', failed);
   v.addEventListener('seeked', landed);
@@ -354,6 +418,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (hold) clearTimeout(hold);
     v.removeEventListener('loadedmetadata', onMetadata);
     v.removeEventListener('playing', onPlaying);
+    v.removeEventListener('playing', paceAtStart);
     v.removeEventListener('error', failed);
     v.removeEventListener('loadeddata', frame);
     v.removeEventListener('seeked', whenFrame);
