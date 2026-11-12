@@ -502,6 +502,12 @@ export interface LiveStateWriterOptions {
   /** The clock (tests). */
   now?: () => Date;
   log?: (message: string) => void;
+  /**
+   * How a save writes its partial file and moves it over the saved one (tests: a disk that fails now and then, as
+   * Windows' does while a scanner or a reader holds a file). The file system's own unless given.
+   */
+  writeFile?: (file: string, text: string) => Promise<void>;
+  rename?: (from: string, to: string) => Promise<void>;
 }
 
 /**
@@ -585,8 +591,8 @@ export class LiveStateWriter {
   private async write(saved: SavedLive): Promise<void> {
     const partial = `${this.files.state}.${randomUUID()}.tmp`;
     try {
-      await writeFile(partial, JSON.stringify(saved));
-      await rename(partial, this.files.state);
+      await (this.options.writeFile ?? writeFile)(partial, JSON.stringify(saved));
+      await (this.options.rename ?? rename)(partial, this.files.state);
     } catch (error) {
       await rm(partial, { force: true }).catch(() => undefined);
       // The next change writes again.

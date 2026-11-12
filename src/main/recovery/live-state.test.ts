@@ -1,12 +1,21 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
+import { rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EngineState, LowerThirdLayer, PipLayer, VideoClips } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION, initialEngineState, videoClip } from '../../shared/engine/state';
 import { ShowEngine } from '../engine/show-engine';
 import { makeSource, RecordingTransport, textSlide } from '../engine/testing';
-import type { RecoveryFiles } from './live-state';
+import type { RecoveryFiles, SavedLive } from './live-state';
 import { startingMode } from '../../shared/mode';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
 import type { MediaMarkers } from '../../shared/markers';
@@ -1026,4 +1035,59 @@ describe('how the last run ended', () => {
       expect(startFinds()).toEqual(clean);
     });
   });
+});
+
+/*
+ * Session 57: a save that fails is saved again by itself, with the newest show. On Windows a rename over the saved
+ * file can fail (EPERM, EBUSY) while a scanner or a reader holds a file; the save was dropped until the next change,
+ * which may never come, so a crash then brought back an older show (Windows CI, recovery.spec.ts: slide 1 and
+ * black-out up, the file still on slide 0).
+ */
+describe('a save that fails', () => {
+  const busy = (call: string) =>
+    Object.assign(new Error(`EBUSY: resource busy or locked, ${call}`), { code: 'EBUSY' });
+  /** The slide and black-out in the saved file, or null with no file. */
+  const onFile = () => {
+    if (!existsSync(files.state)) return null;
+    const show = JSON.parse(readFileSync(files.state, 'utf8')) as SavedLive;
+    return [show.slide?.slideIndex ?? null, show.blackout];
+  };
+
+  it.each(['write', 'rename'] as const)(
+    'is saved again with the newest show, with no change after it (the %s failed once)',
+    async (step) => {
+      let failNext = false;
+      const once = (at: typeof step) => {
+        if (at !== step || !failNext) return;
+        failNext = false;
+        throw busy(at === 'write' ? 'open' : 'rename');
+      };
+      const writer = new LiveStateWriter(files, {
+        throttleMs: 10,
+        writeFile: async (file, text) => {
+          once('write');
+          await writeFile(file, text);
+        },
+        rename: async (from, to) => {
+          once('rename');
+          await rename(from, to);
+        },
+      });
+      await saved(writer, live({ slideIndex: 0 }));
+      expect(onFile()).toEqual([0, false]);
+      // Slide 1 and black-out go up, and that save fails once. Nothing changes after it.
+      failNext = true;
+      writer.update(live({ slideIndex: 1, blackout: true }));
+      // It is to be saved again 250 ms on; the 10 s are for CI's runners, whose disks stall now and then.
+      await vi.waitFor(
+        () => {
+          expect(onFile()).toEqual([1, true]);
+        },
+        { timeout: 10_000, interval: 25 },
+      );
+      writer.stop();
+      await writer.settle();
+      expect(readdirSync(dir)).toEqual(['live-state.json']);
+    },
+  );
 });
