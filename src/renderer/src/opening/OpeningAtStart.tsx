@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { OPENING_HOLD_MS, type OpeningEnd, type OpeningPlan } from '../../../shared/opening';
 import { motionOff } from '../ui/motion';
@@ -17,13 +18,16 @@ import { OpeningPlayer } from './OpeningPlayer';
 /** Asked once a page (StrictMode's second effect, or a window loaded again, is told no by the main process anyway). */
 let asked: Promise<OpeningPlan | null> | null = null;
 
-export function OpeningAtStart() {
+export function OpeningAtStart({ children }: { children: ReactNode }) {
+  const [appStarted, setAppStarted] = useState(false);
+  const startApp = useCallback(() => startTransition(() => setAppStarted(true)), []);
   const [plan, setPlan] = useState<OpeningPlan | null>(null);
   const [state, setState] = useState<'playing' | 'shield' | 'over'>('playing');
   /** Waiting for the hall's screens to draw (the plan's hold). */
   const [held, setHeld] = useState(false);
   const screensUp = useRef(false);
   const playing = useRef(false);
+  const dismissed = useRef(false);
   const end = useRef<(how: OpeningEnd) => void>(() => undefined);
   useEffect(() => {
     let live = true;
@@ -34,8 +38,17 @@ export function OpeningAtStart() {
     });
     asked ??= window.drashti.opening.atStart().catch(() => null);
     void asked.then((p) => {
-      if (!live || !p) return;
+      if (!live) return;
+      asked = Promise.resolve(null);
+      if (!p) {
+        setState('over');
+        return;
+      }
       playing.current = true;
+      if (dismissed.current) {
+        end.current('key');
+        return;
+      }
       setHeld(p.hold === true && !screensUp.current);
       setPlan(p);
     });
@@ -56,7 +69,8 @@ export function OpeningAtStart() {
   useEffect(
     () =>
       window.drashti.opening.onEnd(() => {
-        end.current('key');
+        if (playing.current) end.current('key');
+        else dismissed.current = true;
       }),
     [],
   );
@@ -129,8 +143,16 @@ export function OpeningAtStart() {
       chosen.disconnect();
     };
   }, [plan]);
-  if (!plan || state === 'over') return null;
-  return createPortal(
+  // During the intentional black hold, App can start as soon as the hold has covered the window.
+  useEffect(() => {
+    if (!held) return;
+    const frame = requestAnimationFrame(startApp);
+    return () => cancelAnimationFrame(frame);
+  }, [held, startApp]);
+
+  const mountApp = appStarted || state !== 'playing';
+  if (!plan || state === 'over') return <>{mountApp && children}</>;
+  const cover = createPortal(
     <div
       data-testid="opening-start"
       data-state={state}
@@ -161,6 +183,8 @@ export function OpeningAtStart() {
           still={still}
           held={held}
           className="absolute inset-0"
+          onFirstFrame={startApp}
+          coverWhilePreparing={appStarted}
           onDone={() => {
             end.current('itself');
           }}
@@ -168,5 +192,11 @@ export function OpeningAtStart() {
       )}
     </div>,
     document.body,
+  );
+  return (
+    <>
+      {mountApp && children}
+      {cover}
+    </>
   );
 }
