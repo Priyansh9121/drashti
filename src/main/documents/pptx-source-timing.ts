@@ -42,7 +42,11 @@ export async function readEditableWithTiming(
           decks.set(index, page.deck);
           const videos = source.slides[index]?.deck?.media ?? [];
           const ids = [
-            ...new Set(videos.filter((media) => media.kind === 'video').map((media) => media.shapeId)),
+            ...new Set(
+              videos
+                .filter((media) => media.kind === 'video' && /^\d{1,10}$/u.test(media.shapeId))
+                .map((media) => media.shapeId),
+            ),
           ];
           if (ids.length > 0 && ids.length <= EDITABLE_SOURCE_LIMITS.pageElements)
             sourceVideoShapeIds.set(index, ids);
