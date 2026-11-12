@@ -59,6 +59,31 @@ describe('keeping a generated PPTX editable', () => {
     });
   });
 
+  it('fits source text and table cells unless PowerPoint explicitly clips the box', async () => {
+    const words = '<a:p><a:r><a:t>Placeholder words to fit</a:t></a:r></a:p>';
+    const auto = wordsShape(words).replace('bIns="0"/>', 'bIns="0" wrap="none"><a:spAutoFit/></a:bodyPr>');
+    const clipped = wordsShape(words)
+      .replace('id="2"', 'id="3"')
+      .replace('<a:bodyPr ', '<a:bodyPr vertOverflow="clip" ');
+    const table = graphic(
+      '<a:tbl><a:tblGrid><a:gridCol w="952500"/></a:tblGrid><a:tr h="285750">' +
+        '<a:tc><a:txBody><a:bodyPr/>' +
+        words +
+        '</a:txBody><a:tcPr/></a:tc>' +
+        '</a:tr></a:tbl>',
+    );
+    const { elements } = await read(slideXml(auto + clipped + table));
+    const box = elements.find((el) => el.kind === 'text' && el.sourceShapeId === '2');
+    const explicit = elements.find((el) => el.kind === 'text' && el.sourceShapeId === '3');
+    const cell = elements.find((el) => el.kind === 'text' && el.tableCell);
+    expect(box).toMatchObject({ style: { shrinkToFit: true, noWrap: true } });
+    expect(box).not.toMatchObject({ style: { clipToBox: true } });
+    expect(cell).toMatchObject({ style: { shrinkToFit: true } });
+    expect(cell).not.toMatchObject({ style: { clipToBox: true } });
+    expect(explicit).toMatchObject({ style: { clipToBox: true } });
+    expect(explicit).not.toMatchObject({ style: { shrinkToFit: true } });
+  });
+
   it('keeps a background picture, clipped picture fill and all gradient stops as slide objects', async () => {
     const fill = '<a:blipFill><a:blip r:embed="rFill"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>';
     const picture = wordsShape('')
