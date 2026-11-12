@@ -125,7 +125,10 @@ export function slideDesignFromJson(text: string | null | undefined): SlideDesig
     return undefined;
   }
 }
+const sourceShapeIdSchema = z.string().regex(/^\d{1,10}$/u);
 const elementPlacement = {
+  sourceShapeId: sourceShapeIdSchema.optional(),
+  sourceGroupIds: z.array(sourceShapeIdSchema).max(128).optional(),
   groupId: idSchema.optional(),
   flipX: z.boolean().optional(),
   flipY: z.boolean().optional(),
