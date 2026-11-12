@@ -61,6 +61,7 @@ import { up as captions } from './migrations/066-captions';
 import { up as aiSabhas } from './migrations/068-ai-sabhas';
 import { up as sanskritCaptions } from './migrations/069-sanskrit-captions';
 import { up as trimmedVideos } from './migrations/072-trimmed-videos';
+import { up as soundTrimUndo } from './migrations/082-sound-trim-undo';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -143,6 +144,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 68, name: 'approved AI sabha suggestions', up: aiSabhas },
   { version: 69, name: 'Sanskrit captions', up: sanskritCaptions },
   { version: 72, name: 'trimmed videos and their originals', up: trimmedVideos },
+  { version: 82, name: 'keep playlist resets through sound trim Undo', up: soundTrimUndo },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));
