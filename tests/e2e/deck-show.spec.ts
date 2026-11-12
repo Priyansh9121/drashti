@@ -852,7 +852,7 @@ test('a deck’s sound set to play across slides plays on through the clicks and
   }
 });
 
-test('a cold direct jump keeps the outgoing slide and plays the full first animation', async () => {
+test('a cold direct jump keeps the outgoing slide, plays the full first animation, and catches up on the engine’s time', async () => {
   expect(ffmpeg, 'bundled FFmpeg for placeholder clips').not.toBeNull();
   const { app } = await launchApp({ DRASHTI_TEST_CLOCK_HOLD: '1' });
   try {
@@ -903,9 +903,15 @@ test('a cold direct jump keeps the outgoing slide and plays the full first anima
     await expect(clip).toHaveAttribute('data-test-first-seek', String(TRANSITION_MS / 1000));
     const showing = live.locator('[data-slide-in] [data-deck-step="0"]').last();
     await expect(showing).toHaveAttribute('data-deck-phase', 'clip');
+    // From that frame it catches up on the engine's time (C3's review M1): a little faster, never more than a tenth.
+    const rate = () => clip.evaluate((video: HTMLVideoElement) => video.playbackRate);
+    await expect.poll(rate).toBeGreaterThan(1);
+    expect(await rate()).toBeLessThanOrEqual(1.1);
     expect(await holdLive(app, at + CLIP_MS - TRANSITION_MS + 150)).toBe(true);
     await expect(showing).toHaveAttribute('data-deck-phase', 'clip');
-    expect(await holdLive(app, at + CLIP_MS - TRANSITION_MS + 550)).toBe(true);
+    // 0.45 s late with 1.1 s of the clip to come, a tenth faster makes up 0.1 s: it ends 0.35 s after the engine's
+    // time, not 0.45 s.
+    expect(await holdLive(app, at + CLIP_MS - TRANSITION_MS + 400)).toBe(true);
     await expect(showing).toHaveAttribute('data-deck-phase', 'held');
     await holdLive(app, null);
   } finally {
