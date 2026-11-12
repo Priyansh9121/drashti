@@ -10,7 +10,12 @@ import {
   droppedName,
 } from '../../shared/drop-folder';
 import { formatBytes } from '../../shared/format';
-import type { ImportItemReport, ImportOptions } from '../../shared/import';
+import type {
+  AutomaticImportNotice,
+  ImportItemReport,
+  ImportOptions,
+  RefusedImport,
+} from '../../shared/import';
 import type { Db } from '../db/database';
 import { madeFrom } from '../playlists/folder-playlist';
 import { type Found, heldStill, type Seen } from '../playlists/smart-folders';
@@ -60,9 +65,10 @@ export interface DropFolderDeps {
   report(runId: string): { items: ImportItemReport[] } | null;
   /** The stream is on air or recording: what held still waits. */
   onAir(): boolean;
-  /** Simple Mode: carries on, with no notice. */
+  /** Simple Mode omits the batch success notice. */
   simpleMode(): boolean;
-  /** One quiet notice per batch taken, in Pro Mode. */
+  importNotice(notice: AutomaticImportNotice): void;
+  /** One quiet success notice per batch taken, in Pro Mode. */
   notice(text: string): void;
   /** Media came in: the Media list hears of it. */
   mediaChanged(): void;
@@ -405,12 +411,14 @@ export class DropFolder {
     const rows = this.rows(folder);
     const now = this.deps.now();
     const ready: string[] = [];
+    const refused: RefusedImport[] = [];
     for (const [name, found] of files) {
       const row = rows.get(name);
       const kind = mediaKindOf(name);
       // Why one is not taken for its type: a picture Drashti does not read (Session 55, Part 5: JPEG XL, SVG, a
       // camera's raw picture) says so; anything else, only pictures, videos and sounds are taken.
-      const why = unreadPictureWords(extOf(name)) ?? NOT_MEDIA;
+      const unreadPicture = unreadPictureWords(extOf(name));
+      const why = unreadPicture ?? NOT_MEDIA;
       // As it was when it was taken, or listed as not taken: nothing to do. But one listed for its type alone (not
       // over the size limit) is judged again (Session 51 review: alpha.10 listed sounds, and the videos Session 50
       // added, as not taken), and one still not taken says why in today's words.
@@ -433,6 +441,7 @@ export class DropFolder {
       if (kind === null) {
         this.pending.delete(name);
         this.record(folder, name, found, 'not-taken', null, why);
+        refused.push({ name, reason: unreadPicture ?? `${why} Use Import… for other supported files.` });
         continue;
       }
       if (!heldStill(this.pending, name, found, now, this.deps.settleMs)) continue;
@@ -443,18 +452,21 @@ export class DropFolder {
       }
       if (found.size > this.maxBytes) {
         this.pending.delete(name);
+        const limit = sizeText(this.maxBytes);
         this.record(
           folder,
           name,
           found,
           'not-taken',
           null,
-          `Larger than ${sizeText(this.maxBytes)}: it can be imported anyway.`,
+          `Larger than ${limit}: it can be imported anyway.`,
         );
+        refused.push({ name, reason: `Larger than ${limit}. Use Import… to bring it in.` });
         continue;
       }
       ready.push(name);
     }
+    if (refused.length > 0) this.deps.importNotice({ refused });
     for (const name of this.pending.keys()) if (!files.has(name)) this.pending.delete(name);
     // Files not taken that have gone from the folder leave the list (the library never loses anything).
     const forget = this.deps.db.prepare(
@@ -524,12 +536,10 @@ export class DropFolder {
       `Drop folder: ${String(taken)} file(s) taken${anyway ? ' (imported anyway)' : ''}, ${String(failed)} not`,
     );
     if (taken > 0) this.deps.mediaChanged();
-    // One quiet notice for the batch, in Pro Mode only; when nothing came in, only what was not taken.
-    if (!this.deps.simpleMode() && (taken > 0 || failed > 0))
+    this.deps.importNotice({ runId: result.runId });
+    if (!this.deps.simpleMode() && taken > 0)
       this.deps.notice(
-        taken === 0
-          ? `${plural(failed, 'file', 'files')} from the drop folder ${failed === 1 ? 'was' : 'were'} not taken: see File › Drop Folder….`
-          : `${plural(taken, ...batchWords(took))} from the drop folder ${taken === 1 ? 'is' : 'are'} in Media.${failed > 0 ? ` ${plural(failed, 'file was', 'files were')} not taken: see File › Drop Folder….` : ''}`,
+        `${plural(taken, ...batchWords(took))} from the drop folder ${taken === 1 ? 'is' : 'are'} in Media.`,
       );
     this.changed();
   }

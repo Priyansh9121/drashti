@@ -1,11 +1,17 @@
 import { create } from 'zustand';
-import type { ImportOptions, ImportProgress, ImportResult, ImportRunSummary } from '../../../shared/import';
+import type {
+  AutomaticImportNotice,
+  ImportOptions,
+  ImportProgress,
+  ImportResult,
+  ImportRunSummary,
+} from '../../../shared/import';
 import { itemsMadeBy } from '../../../shared/import-items';
 import type { NewItem } from '../../../shared/playlists';
 import type { UsedIn } from '../../../shared/media-removal';
 import { useEngine } from '../engine/engine-store';
 import { openImportDestination, usePlaylists } from '../playlists/playlist-store';
-import { showImportFailures, showImportNotice } from './import-notices';
+import { showImportFailures, showImportNotice, showRefusedImports } from './import-notices';
 import type { ShownItem } from './library-store';
 import {
   chooseNothing,
@@ -74,6 +80,24 @@ export function watchImports(): void {
           : { ...s.runs, [progress.runId]: progress },
     }));
   });
+  window.drashti.library.onAutomaticImportNotice(showAutomaticImportNotice);
+  void window.drashti.library
+    .takeAutomaticImportNotices()
+    .then((notices) => notices.forEach(showAutomaticImportNotice))
+    .catch(() => undefined);
+}
+
+function showAutomaticImportNotice(notice: AutomaticImportNotice): void {
+  if ('refused' in notice) {
+    showRefusedImports(notice.refused);
+    return;
+  }
+  void window.drashti.library
+    .getImportReport(notice.runId)
+    .then((report) => {
+      if (report) showImportFailures(report, undefined, relinkMedia);
+    })
+    .catch(() => undefined);
 }
 
 export type ImportDestination = (items: NewItem[]) => Promise<void>;

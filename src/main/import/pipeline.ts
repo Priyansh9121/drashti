@@ -69,6 +69,7 @@ import {
   readPptxDeck,
 } from './pictures';
 import { runDeck } from './deck/deck-flow';
+import { readDeckFontIssues } from './deck/deck-fonts';
 import {
   addDeckMedia,
   deckMediaCount,
@@ -1060,6 +1061,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       /** The deck as read, for its videos and sounds beside its pictures (Session 54, C2), and why no animations. */
       let deckRead: { deck: PptxDeck; file: string } | null = null;
       const deckIssues: ImportIssue[] = [];
+      const addDeckFonts = async (parsed: ParsedPresentation, keynoteCopy?: string) => {
+        const pptx = source === 'pptx' ? kept.file : keynoteCopy;
+        if (pptx) parsed.issues.push(...(await readDeckFontIssues(pptx)));
+      };
       /** The PDF's pages, drawn already as the deck's movie was tried (Session 56). */
       let reuse: PicturesResult | null = null;
       if (source !== 'pdf') {
@@ -1096,7 +1101,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             onAir,
             signal: ctx.signal,
             slideCount: slides?.length,
-            log: ctx.log && ((line) => ctx.log?.(`Deck: ${line}`)),
+            log: ctx.log && ((line) => ctx.log?.(line.startsWith('Deck: ') ? line : `Deck: ${line}`)),
             refocus: ctx.refocus,
             appStarted: ctx.appStarted,
             ended: (pid) => ctx.appEnded?.(pid),
@@ -1147,8 +1152,14 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             source === 'key' && 'editablePptx' in flow && typeof flow.editablePptx === 'string'
               ? flow.editablePptx
               : undefined;
+          const copySlideCount = flow.editablePptxSlideCount ?? 0;
+          const sourcePages = new Set(indices);
+          const matchesCopy =
+            indices.length === pages.length &&
+            sourcePages.size === indices.length &&
+            [...sourcePages].every((page) => Number.isInteger(page) && page >= 0 && page < copySlideCount);
           let exported: OriginalDescriptor | null = null;
-          if (editablePptx && indices.length === pages.length) {
+          if (editablePptx && matchesCopy) {
             exported = await keepEditableKeynote(editablePptx);
             if (ctx.signal?.aborted) {
               fail('pictures-cancelled', 'Cancelled while the PowerPoint copy was being kept.');
@@ -1159,9 +1170,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             slide.documentPage = {
               sha256: exported?.sha256 ?? hash,
               ext: exported?.ext ?? source,
-              page: indices[index] ?? index,
+              page: editablePptx && !matchesCopy ? index : (indices[index] ?? index),
             };
           }
+          await addDeckFonts(flow.parsed, matchesCopy ? editablePptx : undefined);
           told.how = 'baked';
           told.slides = slideCount(flow.parsed);
           // Its pictures changed or deleted meanwhile: the operator's edit wins (Session 56).
@@ -1382,6 +1394,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         notesUnmatched: slides !== null && notes === null && slides.some((sl) => sl.notes !== ''),
       });
       parsed.issues.splice(1, 0, ...deckIssues, ...picturesMediaIssues(added));
+      await addDeckFonts(parsed, keynoteExport?.file);
       told.how = 'pictures';
       told.slides = slideCount(parsed);
       // In place of its slides shown as these pictures while its animations were tried (Session 56), unless changed.

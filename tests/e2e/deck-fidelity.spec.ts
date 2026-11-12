@@ -26,6 +26,11 @@ const boxes = wordsShape(
     text('Placeholder justified words') +
     '</a:p><a:p><a:pPr algn="r"/>' +
     text('Placeholder aligned right') +
+    '</a:p><a:p><a:pPr><a:buClr><a:srgbClr val="336699"/></a:buClr><a:buSzPts val="1350"/>' +
+    '<a:buChar char="◆"/></a:pPr>' +
+    text('Placeholder styled bullet') +
+    '</a:p><a:p><a:pPr><a:buAutoNum type="romanUcPeriod" startAt="4"/></a:pPr>' +
+    text('Placeholder Roman item') +
     '</a:p>',
 ).replace('id="2"', 'id="3"');
 const graphic = (id: string, x: string, data: string) =>
@@ -36,16 +41,24 @@ const graphic = (id: string, x: string, data: string) =>
   '" y="914400"/><a:ext cx="3048000" cy="609600"/></p:xfrm><a:graphic><a:graphicData>' +
   data +
   '</a:graphicData></a:graphic></p:graphicFrame>';
-const cell = (words: string) =>
+const cell = (words: string, borders = '') =>
   '<a:tc><a:txBody><a:bodyPr/><a:p>' +
   text(words) +
-  '</a:p></a:txBody><a:tcPr><a:solidFill><a:srgbClr val="eeeeee"/></a:solidFill></a:tcPr></a:tc>';
+  '</a:p></a:txBody><a:tcPr>' +
+  borders +
+  '<a:solidFill><a:srgbClr val="eeeeee"/></a:solidFill></a:tcPr></a:tc>';
 const table = graphic(
   '6',
   '914400',
   '<a:tbl><a:tblGrid><a:gridCol w="1524000"/><a:gridCol w="1524000"/></a:tblGrid><a:tr h="609600">' +
-    cell('Placeholder first cell') +
-    cell('Placeholder second cell') +
+    cell(
+      'Placeholder first cell',
+      '<a:lnL w="19050"><a:solidFill><a:srgbClr val="AA2244"/></a:solidFill></a:lnL>',
+    ) +
+    cell(
+      'Placeholder second cell',
+      '<a:lnT><a:noFill/></a:lnT><a:lnB w="38100"><a:solidFill><a:srgbClr val="22AA44"/></a:solidFill></a:lnB>',
+    ) +
     '</a:tr></a:tbl>',
 );
 const chart = graphic('7', '5486400', '<c:chart xmlns:c="c" r:id="rUnavailable"/>');
@@ -73,7 +86,22 @@ test('a PowerPoint slide keeps its editable cells, aligned words and hidden obje
       'text-align',
       'right',
     );
+    const bullet = canvas.locator('[data-list-marker="disc"]');
+    const bulletWords = canvas.getByText('Placeholder styled bullet', { exact: true });
+    await expect(bullet).toHaveText('◆');
+    await expect(canvas.locator('[data-list-marker="I"]')).toHaveText('IV.');
+    await expect(bullet).toHaveCSS('color', 'rgb(51, 102, 153)');
+    const markerPx = await bullet.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).fontSize),
+    );
+    const wordsPx = await bulletWords.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).fontSize),
+    );
+    expect(markerPx / wordsPx).toBeCloseTo(0.75, 2);
     await expect(canvas.locator('[data-slide-crop]')).toHaveCount(1);
+    await expect(canvas.locator('[data-shape="line"] line')).toHaveCount(2);
+    await expect(canvas.locator('line[stroke="#aa2244"]')).toHaveAttribute('stroke-width', '2');
+    await expect(canvas.locator('line[stroke="#22aa44"]')).toHaveAttribute('stroke-width', '4');
 
     await canvas.getByText('Placeholder second cell', { exact: true }).dblclick();
     const typing = editor.getByTestId('text-editing');
@@ -109,7 +137,7 @@ test('tight imported PowerPoint boxes and table cells fit their words on both wr
   const column = 'Placeholder vertical first column';
   const cellWords = 'Placeholder words that wrap inside a narrow table cell';
   const horizontal = wordsShape(
-    '<a:p>' + text(line) + '</a:p>',
+    '<a:p><a:pPr><a:lnSpc><a:spcPct val="90000"/></a:lnSpc></a:pPr>' + text(line) + '</a:p>',
     '<a:xfrm><a:off x="914400" y="1828800"/><a:ext cx="1524000" cy="381000"/></a:xfrm>',
   ).replace('bIns="0"/>', 'bIns="0" wrap="none"><a:spAutoFit/></a:bodyPr>');
   const vertical = wordsShape(
@@ -156,6 +184,10 @@ test('tight imported PowerPoint boxes and table cells fit their words on both wr
       ).toBe(true);
     }
     await expect(canvas.locator('[data-element]').filter({ hasText: line })).toHaveCSS('white-space', 'pre');
+    await expect(canvas.locator('[data-line]').filter({ hasText: line })).toHaveAttribute(
+      'style',
+      /line-height: 1\.08/u,
+    );
   } finally {
     await app.close();
   }

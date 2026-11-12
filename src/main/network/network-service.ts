@@ -934,6 +934,8 @@ export class NetworkService implements EngineTransport {
     if (!device) return deny(401, 'This device was removed in Drashti. Pair it again.');
     if (!isDeviceOp(request.op) || !deviceMay(device.kind, request.op))
       return deny(403, `A ${DEVICE_KIND_LABEL[device.kind]} device cannot do this.`);
+    if (this.desktop && !this.desktop.admitLibraryChange(request.op, device.id))
+      return deny(429, 'Too many changes at once: wait a moment, then try again.');
     const channel = OP_CHANNEL[request.op];
     const args = (request.args ?? {}) as Record<string, unknown>;
     // A bounded window request with the phone's arguments as the window's would carry them (Part 9), else none.

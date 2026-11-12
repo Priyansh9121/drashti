@@ -514,6 +514,10 @@ test('a design’s words keep the marks above and below their letters: their box
       lines: ['નમૂના નામ', 'નમૂના ભૂમિકા'],
     },
     {
+      design: offeredDesign('with stacked labels', (t) => t.input.look.style === 'stacked'),
+      lines: ['નમૂના નામ', 'नमूना भूमिका'],
+    },
+    {
       design: offeredDesign(
         'in Noto Serif whose name drops',
         (t, m) => t.input.look.font === 'Noto Serif' && m.nameFrom === 'down',

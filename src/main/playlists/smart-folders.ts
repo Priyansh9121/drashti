@@ -2,7 +2,7 @@ import type { FSWatcher } from 'node:fs';
 import { watch } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import type { ImportItemReport, ImportOptions } from '../../shared/import';
+import type { AutomaticImportNotice, ImportItemReport, ImportOptions } from '../../shared/import';
 import type { NewItem, SmartFromDrop, SmartPlaylistView } from '../../shared/playlists';
 import { SMART_MAX_FILES } from '../../shared/playlists';
 import type { Db } from '../db/database';
@@ -47,6 +47,7 @@ export interface SmartFolderDeps {
   ): Promise<{ ok: true; runId: string } | { ok: false; message: string }>;
   /** What an import run did, file by file. */
   report(runId: string): { items: ImportItemReport[] } | null;
+  importNotice(notice: AutomaticImportNotice): void;
   /** A smart playlist's items changed: the window, the engine and the remote hear of it. */
   changed(playlistId: string): void;
   /** How the following goes changed (for the window). */
@@ -628,6 +629,7 @@ export class SmartFolders {
     );
     this.setView(f, { adding: f.pending.size, missing: this.missingCount(playlistId) });
     this.deps.changed(playlistId);
+    this.deps.importNotice({ runId: result.runId });
   }
 }
 

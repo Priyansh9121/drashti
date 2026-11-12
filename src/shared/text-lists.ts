@@ -84,6 +84,8 @@ export function listLabel(n: number, mark: NumberMark): string {
       return `${letters(Number(digits)).toUpperCase()}.`;
     case 'i':
       return `${roman(Number(digits))}.`;
+    case 'I':
+      return `${roman(Number(digits)).toUpperCase()}.`;
   }
 }
 
