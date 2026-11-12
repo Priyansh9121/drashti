@@ -203,19 +203,23 @@ describe('the text style and line of a plain text box', () => {
   });
 
   it('draws no outline for a line with a width but no colour, and keeps a coloured line and a style’s line', async () => {
-    const styled = (line: string) =>
-      `<p:sp><p:nvSpPr><p:cNvPr id="5" name="Placeholder styled shape"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${BOX}${line}</p:spPr><p:style><a:lnRef idx="2"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="1"><a:schemeClr val="accent2"/></a:fillRef><a:effectRef idx="0"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></p:style></p:sp>`;
+    const styled = (line: string, index = 2) =>
+      `<p:sp><p:nvSpPr><p:cNvPr id="5" name="Placeholder styled shape"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${BOX}${line}</p:spPr><p:style><a:lnRef idx="${String(index)}"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="1"><a:schemeClr val="accent2"/></a:fillRef><a:effectRef idx="0"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></p:style></p:sp>`;
     const elements = await readSlide(
       slideXml(
         plainWords(`${BOX}<a:ln w="12700"><a:miter lim="400000"/></a:ln>`) +
           plainWords(`${BOX}<a:ln w="25400"><a:solidFill><a:srgbClr val="AA2244"/></a:solidFill></a:ln>`) +
-          styled('<a:ln w="38100"/>'),
+          styled('<a:ln w="38100"/>') +
+          styled('<a:ln w="38100"/>', 0) +
+          styled('<a:ln><a:noFill/></a:ln>'),
       ),
     );
-    expect(elements.map((el) => el.kind)).toEqual(['text', 'shape', 'text', 'shape']);
+    expect(elements.map((el) => el.kind)).toEqual(['text', 'shape', 'text', 'shape', 'shape', 'shape']);
     expect(elements[1]).toMatchObject({ fill: null, outline: { color: '#aa2244', width: (2 * 4) / 3 } });
     expect(elements[3]).toMatchObject({ name: 'Placeholder styled shape', fill: '#22bb44' });
-    expect(elements[3]?.kind === 'shape' && elements[3].outline?.width).toBe(4);
+    expect.soft(elements[3]).toMatchObject({ outline: { width: 4, color: '#aa2244' } });
+    expect.soft(elements[4]).toMatchObject({ fill: '#22bb44', outline: null });
+    expect(elements[5]).toMatchObject({ fill: '#22bb44', outline: null });
   });
 });
 
