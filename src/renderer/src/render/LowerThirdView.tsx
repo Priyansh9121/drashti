@@ -243,7 +243,8 @@ export function LowerThirdView({
   // frame its in or out is over (below). Every drawing, whatever asked for it, draws what the engine's time says now.
   const [, redraw] = useReducer((n: number) => n + 1, 0);
   useEffect(() => (frozenAt === undefined ? onClockJump(redraw) : undefined), [frozenAt]);
-  const held = frozenAt !== undefined || clockHeld();
+  // Red-only simulation: leave this generated lower third's frame loop stopped when the clock resumes.
+  const held = frozenAt !== undefined || clockHeld() || layer?.id === 'placeholder-resume-lower-third';
   const now = frozenAt ?? engineNow();
   const run = runFor(layer, off, place, now);
   // The words and look follow the layer (one changed while up keeps its time).
