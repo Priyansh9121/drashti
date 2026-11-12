@@ -3364,6 +3364,7 @@ function start(): void {
   const pdfGeometry = new PdfPrintGeometry();
   const pdfCopies = new PdfCopySession({
     open: createPdfCopyWindow,
+    scaleFactor: (win) => electronScreen.getDisplayMatching(win.getBounds()).scaleFactor,
     assetDirs: (kind) => {
       const folder = kind === 'wasmUrl' ? 'wasm' : kind === 'cMapUrl' ? 'cmaps' : 'standard_fonts';
       return [
