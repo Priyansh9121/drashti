@@ -7,7 +7,7 @@ import {
   playbackPosition,
   SOUND_LIMITS,
 } from '../../../shared/media';
-import { type PlaybackCatchUp, startPlayback } from './playback';
+import { catchUpLeftMs, type PlaybackCatchUp, startPlayback } from './playback';
 
 /*
  * A file played once with an end point stops there (Session 15): within two
@@ -999,10 +999,32 @@ describe('a deck’s first clip whose first frame came in late, caught up on the
     expect(first.at - shownAt, 'its first frame came late').toBeGreaterThanOrEqual(420);
     expect(v.seeks, 'nothing skipped after its first frame: no jump').toBe(first.seeks);
     expect(fastest, 'never faster than a tenth').toBeLessThanOrEqual(MAX_RATE);
-    expect(furthestAtEnd, `${furthestAtEnd.toFixed(3)} s off the engine’s time in its last 0.8 s`).toBeLessThan(
-      IN_STEP,
-    );
+    expect(
+      furthestAtEnd,
+      `${furthestAtEnd.toFixed(3)} s off the engine’s time in its last 0.8 s`,
+    ).toBeLessThan(IN_STEP);
     expect(v.playbackRate, 'at 1x once on the engine’s time').toBe(1);
+    playback();
+  });
+
+  it('one too short to make it all up ends only as late as it has not made up: its step’s last frame and hold wait that long', () => {
+    // deck-show.spec.ts's stand-in: a 1.5 s clip, 1.1 s of it to come past PowerPoint's transition, 0.45 s late. A
+    // tenth faster it makes up 0.1 s, and ends 0.35 s after the engine's time, not 0.45 s.
+    expect(catchUpLeftMs(450, 1100, MAX_RATE)).toBeCloseTo(350, 6);
+    expect(catchUpLeftMs(440, 5600, MAX_RATE), 'time enough to make it all up').toBe(0);
+    expect(catchUpLeftMs(0, 1100, MAX_RATE), 'on time').toBe(0);
+    const { v, playback, shownAt, first } = coldFirstClip(1.5, 435);
+    let endedAt = 0;
+    while (endedAt === 0 && Date.now() < shownAt + 3000) {
+      vi.advanceTimersByTime(1);
+      if (first.at > 0 && v.currentTime >= 1.5 - 1e-9) endedAt = Date.now();
+    }
+    const lateEnd = catchUpLeftMs(first.at - shownAt, 1100, MAX_RATE);
+    expect(first.at - shownAt, 'its first frame came late').toBe(450);
+    expect(
+      Math.abs(endedAt - (shownAt + 1100 + lateEnd)),
+      `ended ${String(endedAt - shownAt - 1100)} ms after the engine’s time, ${lateEnd.toFixed(0)} ms said`,
+    ).toBeLessThanOrEqual(2 * 1000 * FRAME);
     playback();
   });
 
@@ -1051,7 +1073,9 @@ describe('a deck’s first clip whose first frame came in late, caught up on the
       if (Date.now() >= startsAt + 4000) furthestLater = Math.max(furthestLater, Math.abs(off()));
     }
     expect(fastest, 'never faster than a tenth').toBeLessThanOrEqual(MAX_RATE);
-    expect(furthestLater, `${furthestLater.toFixed(3)} s off the engine’s time going round`).toBeLessThan(IN_STEP);
+    expect(furthestLater, `${furthestLater.toFixed(3)} s off the engine’s time going round`).toBeLessThan(
+      IN_STEP,
+    );
     playback();
   });
 });
