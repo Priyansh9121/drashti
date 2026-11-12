@@ -3,7 +3,7 @@ import type { EngineCommand } from '../../shared/engine/commands';
 import { parseEngineCommand } from '../../shared/engine/commands';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EnginePatchMessage } from '../../shared/engine/protocol';
-import type { PlayingRef } from '../../shared/engine/playing';
+import { type PlayingRef, playingOf } from '../../shared/engine/playing';
 import type { MusicRun, PipLayer } from '../../shared/engine/state';
 import type { MediaMarkers } from '../../shared/markers';
 import { playbackAtMs } from '../../shared/media';
@@ -636,6 +636,32 @@ describe('automatic imports keep the points of a file already playing', () => {
           seek: { at: now(), toMs: newClip.startMs },
         });
       }
+    },
+  );
+
+  it.each(['slide', 'box'] as const)(
+    'uses separate marker ticks when the %s plays the same file fresh and the other carries on',
+    (fresh) => {
+      const { engine, source, automaticImport, elapse } = setupImport();
+      source.set('videos', [
+        slideWith('s1', videoEl('first', 'clipped')),
+        slideWith('s2', videoEl('second', 'clipped')),
+      ]);
+      engine.dispatch(goLive(0));
+      engine.dispatch(putBox);
+      automaticImport();
+      elapse(1000);
+      if (fresh === 'slide') engine.dispatch({ type: 'next' });
+      else {
+        engine.dispatch({ type: 'hidePip' });
+        engine.dispatch(putBox);
+      }
+      const slide = playingOf(engine.current, onSlide('clipped'));
+      const box = playingOf(engine.current, BOX);
+      expect(slide?.clock.clip).toEqual(fresh === 'slide' ? newClip : oldClip);
+      expect(box?.clock.clip).toEqual(fresh === 'box' ? newClip : oldClip);
+      expect(slide?.marks).toEqual(fresh === 'slide' ? newMarks : oldMarks);
+      expect(box?.marks).toEqual(fresh === 'box' ? newMarks : oldMarks);
     },
   );
 
