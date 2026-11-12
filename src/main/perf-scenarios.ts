@@ -11,6 +11,7 @@ import type { Db } from './db/database';
 import { PresentationRepo } from './db/presentations';
 import { FIRST_BOLD_MARK } from '../shared/perf-marks';
 import { lowerThirdsScenario } from './lower-thirds/perf-lower-thirds';
+import { animationsScenario } from './perf-animations';
 import type { PerfCheck } from './perftest';
 import { cutText, plural } from '../shared/text';
 
@@ -46,6 +47,10 @@ import { cutText, plural } from '../shared/text';
  *   packaged). Each screen must draw it live; how many of its frames each drew
  *   is said. With DRASHTI_PERF_NO_WINDOW=1 the same, with no window put up: what it
  *   costs is the difference.
+ * - animations (Session 57, item 6; main/perf-animations.ts): after the import, each slide transition, a deck's click,
+ *   lower thirds in and out, Black-out and the Wallpaper on and off, pressed from the operator window again and again:
+ *   from the press to the first frame that moved on the screen, the length against the set length, and how even the
+ *   frames were (the motion probe, render/motion-probe.ts, under DRASHTI_TEST_MOTION_PROBE: never packaged).
  * - lower-thirds (Session 55, Part 16; main/lower-thirds/perf-lower-thirds.ts): after
  *   the import, every row of the Lower Thirds studio's offered set in turn (each
  *   family of animation, each way a band comes in, each style, each moving
@@ -71,6 +76,7 @@ export const PERF_SCENARIOS = [
   'bold-transitions',
   'live-window',
   'lower-thirds',
+  'animations',
 ] as const;
 export type PerfScenario = (typeof PERF_SCENARIOS)[number];
 
@@ -95,6 +101,8 @@ export interface ScenarioDeps {
   withoutWindow?: boolean;
   /** live-window: the stream shows what the hall does (its Slides layout), the window included. */
   streamSlides?: () => void;
+  /** animations (Session 57): the operator window, where each case is pressed. */
+  operator?: () => BrowserWindow | null;
 }
 
 /** What the slide changes go through (null: the usual three text slides), and how often. */
@@ -123,7 +131,7 @@ interface Video {
 }
 
 /** A video FFmpeg makes (its test pattern, a tone), as a media item in the check's library. */
-function makeVideo(
+export function makeVideo(
   deps: ScenarioDeps,
   name: string,
   v: { width: number; height: number; fps: number; seconds: number; hue: number },
@@ -188,7 +196,7 @@ function makeEnhancedPicture(deps: ScenarioDeps, name: string, hue: number): str
 }
 
 /** A 1080p JPEG of FFmpeg's test pattern, as a media item in the check's library, with a look or none. */
-function makePicture(deps: ScenarioDeps, name: string, hue: number, look: PictureLook | null): string {
+export function makePicture(deps: ScenarioDeps, name: string, hue: number, look: PictureLook | null): string {
   if (!deps.ffmpeg) throw new Error('The scenarios need the bundled FFmpeg (node scripts/fetch-ffmpeg.mjs).');
   mkdirSync(join(deps.mediaDir, 'perf'), { recursive: true });
   const path = `perf/${name}.jpg`;
@@ -315,6 +323,18 @@ const READ = `(() => {
     seconds: all.reduce((n, f) => n + (f.last - f.first) / 1000, 0),
   };
 })()`;
+
+/**
+ * The scenario, set up (Session 57): a fault while it sets up (its media made with FFmpeg, its slides put in the
+ * library) is the check's failure at once, with its own message (the check says it: index.ts). Thrown inside the
+ * operator window's load listener, it left the check never started, waiting for nothing until its time limit (CI,
+ * 12 Nov 2026: 14 minutes, no word).
+ */
+export async function scenarioFor(name: PerfScenario, deps: ScenarioDeps): Promise<ScenarioRun> {
+  // A turn first, so a fault thrown while it sets up comes as this promise's rejection, never inside the caller.
+  await Promise.resolve();
+  return startScenario(name, deps);
+}
 
 export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioRun {
   const background = (v: Video) => {
@@ -464,6 +484,8 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
       return liveWindow(deps);
     case 'lower-thirds':
       return lowerThirdsScenario(deps);
+    case 'animations':
+      return animationsScenario(deps);
   }
   return {
     slides,

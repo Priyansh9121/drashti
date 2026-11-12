@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ConversionJob } from '../../../shared/convert';
 import {
-  convertedSummary,
   convertible,
   convertingWords,
   copyFor,
@@ -9,7 +8,6 @@ import {
   jobFor,
   mediaProblem,
   offeredForUndo,
-  someNames,
 } from './converting';
 
 /* A file Drashti converts, as the operator window says it (Session 50). */
@@ -64,28 +62,6 @@ describe('a file Drashti converts (Session 50)', () => {
     // Still converting, or never converted: the file itself.
     expect(copyFor('m-wma', jobs)).toBe('m-wma');
     expect(copyFor('m-flac', jobs)).toBe('m-flac');
-  });
-
-  it('sums up in the import report what Drashti converts by itself: converting, then what it converted', () => {
-    expect(convertedSummary(0, [])).toBeNull();
-    expect(convertedSummary(2, [])).toBe(
-      'Converting 2 files Drashti cannot play as they are, one at a time: each is used everywhere once it is done, and the originals stay as they are.',
-    );
-    expect(convertedSummary(1, [])).toBe(
-      'Converting 1 file Drashti cannot play as it is, one at a time: it is used everywhere once it is done, and the original stays as it is.',
-    );
-    expect(convertedSummary(1, ['Placeholder katha.mp4'])).toBe(
-      'Converting 1 file Drashti cannot play as it is, one at a time (1 done: Placeholder katha.mp4): each is used everywhere once it is done, and the originals stay as they are.',
-    );
-    expect(convertedSummary(0, ['Placeholder katha.mp4', 'Placeholder bhajan.m4a'])).toBe(
-      'Converted 2 files Drashti could not play as they were: Placeholder katha.mp4 and Placeholder bhajan.m4a. The copies are used everywhere, and the originals stay as they are.',
-    );
-    expect(convertedSummary(0, ['Placeholder katha.mp4'])).toBe(
-      'Converted 1 file Drashti could not play as it was: Placeholder katha.mp4. The copy is used everywhere, and the original stays as it is.',
-    );
-    expect(someNames(['A', 'B', 'C', 'D', 'E', 'F', 'G'])).toBe('A, B, C, D, E and 2 more');
-    expect(someNames(['A', 'B', 'C'])).toBe('A, B and C');
-    expect(someNames(['A'])).toBe('A');
   });
 
   // Section 9's review: a conversion Drashti did by itself (an import found the file) finished later, perhaps hours

@@ -46,7 +46,21 @@ export function copyFinder(db: Db): (mediaId: string) => string {
       WHERE mc.original_id = ? AND mc.undone_at IS NULL AND c.deleted_at IS NULL
       ORDER BY mc.created_at DESC, mc.rowid DESC LIMIT 1`,
   );
-  return (mediaId) => (copy.get(mediaId) as { id: string } | undefined)?.id ?? mediaId;
+  const next = (id: string) => (copy.get(id) as { id: string } | undefined)?.id;
+  return (mediaId) => {
+    const first = next(mediaId);
+    if (!first) return mediaId;
+    // A linked video can get a smaller copy after an earlier codec conversion.
+    const seen = new Set([mediaId, first]);
+    let current = first;
+    let id = next(current);
+    while (id && !seen.has(id)) {
+      seen.add(id);
+      current = id;
+      id = next(current);
+    }
+    return current;
+  };
 }
 
 /** A copy of a JSON value with every `mediaId` equal to `from` set to `to`. */

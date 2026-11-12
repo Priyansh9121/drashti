@@ -142,6 +142,7 @@ test('Import… offers Files… (everything Drashti imports), A Folder… and Fr
   expect((await asked())[1]?.properties).toEqual(['openDirectory']);
   await importButton.click();
   await menu.getByRole('menuitem', { name: 'From a Link…' }).click();
-  await expect(win.getByTestId('link-dialog')).toBeVisible();
+  await expect(win.getByTestId('link-text')).toBeFocused();
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
   await app.close();
 });
