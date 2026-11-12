@@ -7,7 +7,7 @@ import { readPptxDeck } from '../pictures';
 import { makeTestDeck, placeholderDeckMedia } from '../testing/make-deck';
 import { nativePresentation, prepareNativePptx } from './native-deck-import';
 
-it('keeps a paragraph build off screen before its first entrance and after its last exit', async () => {
+it('shows each paragraph of a paragraph build from its own click, never before, until its exit', async () => {
   const root = await mkdtemp(join(tmpdir(), 'drashti-paragraph-build-'));
   try {
     const file = join(root, 'Placeholder paragraph build.pptx');
@@ -57,10 +57,26 @@ it('keeps a paragraph build off screen before its first entrance and after its l
       steps: [],
       motion: { approximate: true, stepsMs: [0, 240, 260, 180, 200] },
     });
-    expect(deckSlideAt(slide, 0).elements).toEqual([]);
-    expect(deckSlideAt(slide, 1).elements).toEqual(first.elements);
-    expect(deckSlideAt(slide, 3).elements).toEqual(first.elements);
-    expect(deckSlideAt(slide, 4).elements).toEqual([]);
+    expect(first.deck?.motion?.effects).toMatchObject([
+      { shapeId: '2', step: 1, phase: 'in', paragraphs: [0, 0] },
+      { shapeId: '2', step: 2, phase: 'in', paragraphs: [1, 1] },
+      { shapeId: '2', step: 3, phase: 'out', paragraphs: [0, 0] },
+      { shapeId: '2', step: 4, phase: 'out', paragraphs: [1, 1] },
+    ]);
+    /** What each paragraph's words show as at the end of a click ('' when the box isn't drawn at all). */
+    const drawn = (step: number) => {
+      const box = deckSlideAt(slide, step).elements.find((el) => el.kind === 'text');
+      return box?.kind === 'text'
+        ? (box.runs ?? [])
+            .filter((run) => run.text.trim() !== '')
+            .map((run) => `${run.text.trim()}: ${run.color === 'transparent' ? 'hidden' : 'shown'}`)
+        : '';
+    };
+    expect(drawn(0)).toBe('');
+    expect(drawn(1)).toEqual(['Placeholder first point: shown', 'Placeholder second point: hidden']);
+    expect(drawn(2)).toEqual(['Placeholder first point: shown', 'Placeholder second point: shown']);
+    expect(drawn(3)).toEqual(['Placeholder first point: hidden', 'Placeholder second point: shown']);
+    expect(drawn(4)).toBe('');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

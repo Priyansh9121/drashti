@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { type DeckEffect, stepCount } from './deck';
-import { deckMotionFrame, deckWipeClip } from './deck-motion';
+import { deckMotionFrame, deckParagraphRuns, deckWipeClip, smoothedProgress } from './deck-motion';
 import { deckFromJson, deckMediaIds, deckToJson, mapDeckMedia } from './deck-schema';
 import { deckPictureId, deckPictures, deckSlideAt, nativeStepTiming, stepOf } from './deck-show';
-import type { RenderSlide } from './model';
+import type { RenderSlide, TextElement } from './model';
 
 const effect = {
   shapeId: '7',
@@ -182,5 +182,183 @@ describe('PowerPoint effects from the engine step clock', () => {
     expect(deckMediaIds(native)).toEqual(['placeholder-last']);
     expect(deckPictures(native)).toEqual(['placeholder-last']);
     expect(mapDeckMedia(native, (id) => id + '-copy').sourceStillId).toBe('placeholder-last-copy');
+  });
+});
+
+describe('the common PowerPoint effects Drashti draws itself', () => {
+  const bounds = { x: 100, y: 100, width: 600, height: 400 };
+  const at = (elapsedMs: number, effects: readonly DeckEffect[]) =>
+    deckMotionFrame(effects, 1, elapsedMs, bounds, slide);
+  const clipAt = (elapsedMs: number, one: DeckEffect) =>
+    deckWipeClip(at(elapsedMs, [one]).wipe, bounds, bounds);
+
+  it('turns Grow & Turn as it grows and fades in', () => {
+    const turn: DeckEffect = { ...effect, kind: 'zoom', fade: true, scale: 0, degrees: 90 };
+    expect(at(187.5, [turn])).toMatchObject({ opacity: 0.5, scale: 0.5, rotation: 45, moving: true });
+    expect(at(300, [turn])).toMatchObject({ opacity: 1, scale: 1, rotation: 0, moving: false });
+  });
+
+  it('opens Shape from the centre, or closes it in from the edges, and leaves nothing clipped at the end', () => {
+    const box: DeckEffect = { ...effect, kind: 'shape', shape: 'box' };
+    expect(clipAt(187.5, box)).toBe('polygon(25% 25%, 75% 25%, 75% 75%, 25% 75%)');
+    const inward: DeckEffect = { ...box, shape: 'diamond', inward: true };
+    expect(clipAt(187.5, inward)).toBe(
+      'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 50% 0%, 100% 50%, 50% 100%, 0% 50%, 50% 0%)',
+    );
+    const circle = clipAt(75, { ...box, shape: 'circle' });
+    expect(circle.startsWith('polygon(50% 50%, 50% 50%')).toBe(true);
+    expect(at(300, [box]).wipe).toBeNull();
+  });
+
+  it('sweeps Wheel’s spokes clockwise from twelve o’clock', () => {
+    const wheel: DeckEffect = { ...effect, kind: 'wheel', spokes: 2 };
+    const points = clipAt(75, wheel).slice('polygon('.length, -1).split(', ');
+    // Each spoke starts at the centre, then at its own twelve or six o'clock, straight above or below it.
+    expect(points.filter((point) => point === '50% 50%')).toHaveLength(2);
+    expect(points[0]).toBe('50% 50%');
+    expect(points[1]?.startsWith('50% -')).toBe(true);
+    expect(points.at(-1)?.startsWith('50% 1')).toBe(true);
+    expect(at(300, [wheel]).wipe).toBeNull();
+  });
+
+  it('shows Random Bars one bar at a time, none at the start and all by the end', () => {
+    const bars: DeckEffect = { ...effect, kind: 'bars', bars: 'horizontal' };
+    expect(clipAt(75, bars)).toBe('inset(50% 50% 50% 50%)');
+    const half = clipAt(187.5, bars);
+    expect(half.split(', ').length).toBe(4 * 24);
+    expect(at(300, [bars]).wipe).toBeNull();
+  });
+
+  it('brings Split in from both edges, the gap closing in the middle', () => {
+    const split: DeckEffect = { ...effect, kind: 'split', splitAxis: 'x', inward: true };
+    expect(clipAt(187.5, split)).toBe(
+      'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 25% 0%, 75% 0%, 75% 100%, 25% 100%, 25% 0%)',
+    );
+  });
+
+  it('drops Bounce in from above the slide and lands it in place', () => {
+    const bounce: DeckEffect = { ...effect, kind: 'bounce' };
+    expect(at(75, [bounce]).y).toBe(-500);
+    expect(at(300, [bounce])).toMatchObject({ y: 0, moving: false });
+  });
+
+  it('eases a smooth start and end as SMIL does, ending on time', () => {
+    expect(smoothedProgress(0.5, 0, 1)).toBe(0.75);
+    expect(smoothedProgress(0.5, 1, 0)).toBe(0.25);
+    expect(smoothedProgress(0.25, 0.5, 0.5)).toBe(0.125);
+    expect(smoothedProgress(1, 0.5, 0.5)).toBe(1);
+    const fly: DeckEffect = { ...effect, kind: 'fly', direction: 'up', decel: 1 };
+    expect(at(187.5, [fly]).y).toBe(245);
+  });
+});
+
+describe('a deck that builds a text box paragraph by paragraph', () => {
+  const words: TextElement = {
+    id: 'placeholder-points',
+    kind: 'text',
+    sourceShapeId: '9',
+    frame: { x: 100, y: 100, width: 800, height: 400 },
+    text: 'Placeholder first\nPlaceholder second\nPlaceholder third',
+    lang: null,
+    style: {
+      fontFamily: null,
+      fontSize: 40,
+      fontWeight: 400,
+      color: '#ffffff',
+      align: 'left',
+      verticalAlign: 'top',
+      lineHeight: 1.2,
+      shadow: false,
+    },
+    runs: [
+      { text: 'Placeholder first', color: '#ffeeaa' },
+      { text: '\n' },
+      { text: 'Placeholder second\nPlaceholder third', shadow: true },
+    ],
+  };
+  const build = (paragraph: number, step: number, phase: 'in' | 'out' = 'in'): DeckEffect => ({
+    shapeId: '9',
+    step,
+    phase,
+    kind: 'fade',
+    delayMs: 0,
+    durationMs: 200,
+    paragraphs: [paragraph, paragraph],
+  });
+  const built: RenderSlide = {
+    ...slide,
+    elements: [words],
+    deck: {
+      steps: [],
+      media: [],
+      motion: {
+        effects: [build(0, 1), build(1, 2), build(2, 3), build(0, 4, 'out')],
+        stepsMs: [0, 200, 200, 200, 200],
+        approximate: true,
+      },
+    },
+  };
+  const hidden = {
+    color: 'transparent',
+    shadow: false,
+    outline: null,
+    glow: null,
+    underline: false,
+    strike: false,
+  };
+
+  it('cuts the runs where each paragraph ends, keeping every run’s look', () => {
+    expect(deckParagraphRuns(words)).toEqual({
+      runs: [
+        { text: 'Placeholder first', color: '#ffeeaa' },
+        { text: '\n' },
+        { text: 'Placeholder second\n', shadow: true },
+        { text: 'Placeholder third', shadow: true },
+      ],
+      paragraphs: [0, 0, 1, 2],
+    });
+    const soft = {
+      ...words,
+      runs: [{ text: 'Placeholder one' }, { text: '\n', softBreak: true }, { text: 'line' }],
+    };
+    expect(deckParagraphRuns(soft).paragraphs).toEqual([0, 0, 0]);
+  });
+
+  it('never shows a later paragraph before its click, and keeps the shown ones where they were', () => {
+    expect(deckSlideAt(built, 0).elements).toEqual([]);
+    expect(deckSlideAt(built, 1).elements[0]).toMatchObject({
+      runs: [
+        { text: 'Placeholder first', color: '#ffeeaa' },
+        { text: '\n' },
+        { text: 'Placeholder second\n', ...hidden },
+        { text: 'Placeholder third', ...hidden },
+      ],
+    });
+    expect(deckSlideAt(built, 3).elements[0]).toBe(words);
+    expect(deckSlideAt(built, 4).elements[0]).toMatchObject({
+      runs: [
+        { text: 'Placeholder first', ...hidden },
+        { text: '\n', ...hidden },
+        { text: 'Placeholder second\n', shadow: true },
+        { text: 'Placeholder third', shadow: true },
+      ],
+    });
+  });
+
+  it('fades each paragraph by itself while the box stays', () => {
+    const effects = built.deck?.motion?.effects ?? [];
+    expect(deckMotionFrame([build(1, 2)], 1, Infinity, words.frame, slide).opacity).toBe(0);
+    expect(deckMotionFrame([build(1, 2)], 2, 100, words.frame, slide).opacity).toBe(0.5);
+    // The box's own frame ignores its paragraphs' effects.
+    expect(
+      deckMotionFrame(
+        effects.filter((e) => !e.paragraphs),
+        0,
+        0,
+        words.frame,
+        slide,
+      ).opacity,
+    ).toBe(1);
+    expect(deckFromJson(deckToJson(built.deck))).toEqual(built.deck);
   });
 });
