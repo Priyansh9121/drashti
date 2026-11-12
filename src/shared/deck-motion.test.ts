@@ -114,6 +114,14 @@ describe('PowerPoint effects from the engine step clock', () => {
     expect(at(1, 300, [zoom]).scale).toBe(1);
   });
 
+  it('travels along both axes for diagonal Fly In and Fly Out', () => {
+    const into = { ...effect, kind: 'fly' as const, direction: 'right' as const, verticalDirection: 'up' };
+    const out = { ...into, phase: 'out' as const, direction: 'left' as const, verticalDirection: 'down' };
+    expect(at(1, 75, [into])).toMatchObject({ x: -700, y: 980, moving: true });
+    expect(at(1, 187.5, [out])).toMatchObject({ x: -350, y: 490, moving: true });
+    expect(at(1, 300, [out])).toMatchObject({ opacity: 0, x: 0, y: 0, moving: false });
+  });
+
   it('fades while scaling the gallery Zoom', () => {
     const zoom = { ...effect, kind: 'zoom' as const, fade: true };
     expect(at(1, 187.5, [zoom])).toMatchObject({ opacity: 0.5, scale: 0.5, moving: true });

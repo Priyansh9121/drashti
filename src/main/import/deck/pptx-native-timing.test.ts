@@ -73,6 +73,119 @@ describe('PowerPoint slide animation timing', () => {
     ]);
   });
 
+  it('reads all four diagonal Fly paths from their edge coordinates for entrance and exit', () => {
+    const directions = [
+      { subtype: '3', x: 'right', y: 'up' },
+      { subtype: '6', x: 'right', y: 'down' },
+      { subtype: '9', x: 'left', y: 'up' },
+      { subtype: '12', x: 'left', y: 'down' },
+    ] as const;
+    const coordinates = {
+      left: '0-#ppt_w/2',
+      right: '1+#ppt_w/2',
+      up: '0-#ppt_h/2',
+      down: '1+#ppt_h/2',
+    } as const;
+    const opposite = { left: 'right', right: 'left', up: 'down', down: 'up' } as const;
+    const examples = directions.flatMap((edge) =>
+      (['in', 'out'] as const).map((phase) => ({ ...edge, phase })),
+    );
+    const groups = examples
+      .map(({ subtype, x, y, phase }, index) => {
+        const id = index * 10 + 10;
+        const shape = index + 2;
+        const position = (property: 'ppt_x' | 'ppt_y', outside: string, clockId: number) => {
+          const inside = `#${property}`;
+          const [from, to] = phase === 'in' ? [outside, inside] : [inside, outside];
+          return behaviour('anim', shape, 400, 'calcmode="lin"')
+            .replace(`id="${shape + 100}"`, `id="${clockId}"`)
+            .replace(
+              '</p:cBhvr>',
+              `<p:attrNameLst><p:attrName>${property}</p:attrName></p:attrNameLst></p:cBhvr>`,
+            )
+            .replace(
+              '</p:anim>',
+              `<p:tavLst><p:tav tm="0"><p:val><p:strVal val="${from}"/></p:val></p:tav><p:tav tm="100000"><p:val><p:strVal val="${to}"/></p:val></p:tav></p:tavLst></p:anim>`,
+            );
+        };
+        return parallel(
+          id,
+          delay('indefinite'),
+          parallel(
+            id + 1,
+            delay(0),
+            parallel(
+              id + 2,
+              delay(0),
+              position('ppt_x', coordinates[x], id + 3) + position('ppt_y', coordinates[y], id + 4),
+              `nodeType="clickEffect" presetClass="${phase === 'in' ? 'entr' : 'exit'}" presetID="2" presetSubtype="${subtype}"`,
+            ),
+          ),
+        );
+      })
+      .join('');
+    expect(read(groups).motion).toMatchObject({
+      approximate: false,
+      effects: examples.map(({ phase, x, y }, index) => ({
+        shapeId: String(index + 2),
+        step: index + 1,
+        phase,
+        kind: 'fly',
+        direction: phase === 'in' ? opposite[x] : x,
+        verticalDirection: phase === 'in' ? opposite[y] : y,
+        delayMs: 0,
+        durationMs: 400,
+      })),
+    });
+    expect(read(groups.replace('1+#ppt_w/2', '#ppt_x+0.08')).motion?.approximate).toBe(true);
+  });
+
+  it('uses the fade clock and accepts only the matching visibility bookkeeping', () => {
+    const clip = (phase: 'in' | 'out', setAt: number, property = 'style.visibility') => {
+      const set = behaviour('set', 2, 1)
+        .replace('id="102" dur="1"/>', `id="103" dur="1"><p:stCondLst>${delay(setAt)}</p:stCondLst></p:cTn>`)
+        .replace(
+          '</p:cBhvr>',
+          `<p:attrNameLst><p:attrName>${property}</p:attrName></p:attrNameLst></p:cBhvr>`,
+        )
+        .replace(
+          '</p:set>',
+          `<p:to><p:strVal val="${phase === 'in' ? 'visible' : 'hidden'}"/></p:to></p:set>`,
+        );
+      const fade = behaviour('animEffect', 2, 300, `filter="fade" transition="${phase}"`).replace(
+        'dur="300"/>',
+        `dur="300"><p:stCondLst>${delay(50)}</p:stCondLst></p:cTn>`,
+      );
+      return read(
+        parallel(
+          10,
+          delay('indefinite'),
+          parallel(
+            11,
+            delay(0),
+            parallel(
+              12,
+              delay(0),
+              set + fade,
+              `nodeType="clickEffect" presetClass="${phase === 'in' ? 'entr' : 'exit'}" presetID="10"`,
+            ),
+          ),
+        ),
+      ).motion;
+    };
+    for (const [phase, setAt] of [
+      ['in', 50],
+      ['out', 349],
+    ] as const) {
+      expect(clip(phase, setAt)).toMatchObject({
+        approximate: false,
+        effects: [{ kind: 'fade', phase, delayMs: 50, durationMs: 300 }],
+      });
+      expect(clip(phase, 0)?.approximate).toBe(true);
+      expect(clip(phase, setAt, 'style.opacity')?.approximate).toBe(true);
+    }
+  });
+
   it('reads the gallery Zoom, Float, Split and symmetric Grow/Shrink with their durations', () => {
     const click = (id: number, preset: string, cls: 'entr' | 'exit' | 'emph', children: string) =>
       parallel(
@@ -105,7 +218,11 @@ describe('PowerPoint slide animation timing', () => {
           ) + withFade(shape, 450, direction)
       );
     };
-    const zoom = behaviour('animScale', 2, 300) + withFade(2, 300, 'in');
+    const zoom =
+      behaviour('animScale', 2, 300).replace(
+        '</p:animScale>',
+        '<p:from x="0" y="0"/><p:to x="100000" y="100000"/></p:animScale>',
+      ) + withFade(2, 300, 'in');
     const split = behaviour('animEffect', 5, 500, 'filter="barn(outVertical)" transition="in"');
     const grow = behaviour('animScale', 6, 600).replace(
       '</p:animScale>',
