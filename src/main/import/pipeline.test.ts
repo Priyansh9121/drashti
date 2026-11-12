@@ -145,18 +145,20 @@ describe('runImport', () => {
       ['text', 'imported', 'Song B'],
       ['media', 'imported', 'Loop.mp4'],
       ['unknown', 'unsupported', 'Old order.doc'],
-      ['unknown', 'unsupported', '.odt files'],
+      ['unknown', 'unsupported', 'Notes.odt'],
+      ['unknown', 'unsupported', 'Other notes.odt'],
     ]);
     expect(report?.items[0]?.message).toBe(
       'This Word file could not be read: it may be damaged. If it opens in Word, save it again there and import that.',
     );
     expect(report?.items[1]?.message).toBe('Not a presentation or playlist (it holds xml).');
-    expect(report?.items.at(-2)?.message).toBe(
+    expect(report?.items.find((item) => item.name === 'Old order.doc')?.message).toBe(
       'An old Word document (.doc) is not read: open it in Word and save it as a Word Document (.docx), then import that.',
     );
-    expect(report?.items.at(-1)?.message).toBe(
-      '2 files (.odt) not imported: Drashti does not read this type. For example: Notes.odt, Other notes.odt.',
-    );
+    expect(report?.items.slice(-2).map((item) => item.message)).toEqual([
+      'Drashti doesn’t read .odt files.',
+      'Drashti doesn’t read .odt files.',
+    ]);
     // A Word file's presentation says where it came from, as a text file's does.
     const service = t.presentations.get(report?.items[2]?.target?.id ?? '');
     expect(service?.source).toMatchObject({ kind: 'docx', path: join(t.source, 'Order of service.docx') });
