@@ -48,7 +48,7 @@ import { LOWER_THIRD_FONTS } from '../../../shared/lower-third-fonts';
 import { commit, noteOutside, startEditing, useEditor } from './editor-store';
 import { MissingFontNote } from './FontOptions';
 import type { BoxPatch, TextPatch } from './ops';
-import { deleteElements, duplicateElements, findSlide, mapElements, styleBox } from './ops';
+import { deleteElements, duplicateElements, findSlide, mapElements, setShapeFill, styleBox } from './ops';
 import { restyle, restyleAll, selectedLook } from './runs-doc';
 import { SlidePanel } from './SlidePanel';
 import { useTickerOver } from './SafeAreas';
@@ -607,6 +607,8 @@ function ShapeSection({ el, change }: { el: ShapeElement; change: Change }) {
   const kind = el.shape ?? 'rectangle';
   const outline = el.outline ?? null;
   const fill = el.fill ?? el.gradient?.stops[0]?.color ?? null;
+  const setFill = (next: ShapeElement['fill'], coalesce?: string) =>
+    change([el.id], (element) => setShapeFill(element, next), coalesce);
   const set = (patch: Partial<ShapeElement>, coalesce?: string) => {
     change([el.id], (e) => (e.kind === 'shape' ? { ...e, ...patch } : e), coalesce);
   };
@@ -651,7 +653,7 @@ function ShapeSection({ el, change }: { el: ShapeElement; change: Change }) {
             checked={fill !== null}
             data-testid="field-filled"
             onChange={(on) => {
-              set({ fill: on ? '#000000' : null, gradient: undefined });
+              setFill(on ? '#000000' : null);
             }}
           />
           {fill !== null && (
@@ -660,7 +662,7 @@ function ShapeSection({ el, change }: { el: ShapeElement; change: Change }) {
                 data-testid="field-fill"
                 value={fill.slice(0, 7)}
                 onChange={(e) => {
-                  set({ fill: withSameAlpha(e.target.value, fill), gradient: undefined }, `fill:${el.id}`);
+                  setFill(withSameAlpha(e.target.value, fill), `fill:${el.id}`);
                 }}
               />
             </Field>
