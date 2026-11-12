@@ -4,7 +4,7 @@ import {
   BEST_LOWER_THIRD_TEMPLATES,
   LOWER_THIRD_TEMPLATES,
   type LowerThirdTemplate,
-} from '../../../../shared/lower-third-studio';
+} from '../../../../shared/lower-third-templates';
 import { Button, IconButton } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import { Dialog } from '../../ui/Dialog';

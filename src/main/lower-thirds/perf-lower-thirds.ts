@@ -1,12 +1,5 @@
 import type { BrowserWindow } from 'electron';
 import { animationById, animationLength, cutIntoUnits } from '../../shared/lower-third-animations';
-import {
-  BAND_INTROS,
-  FAMILIES,
-  idFor,
-  LOWER_THIRD_TEMPLATES,
-  OFFERED,
-} from '../../shared/lower-third-studio';
 import type { LowerThirdLook } from '../../shared/lower-thirds';
 import { DEFAULT_LOWER_THIRD_LOOK, type LowerThird, shownLines } from '../../shared/lower-thirds';
 import type { ScenarioDeps, ScenarioRun } from '../perf-scenarios';
@@ -46,7 +39,11 @@ const BACKGROUND_HOLD_MS = 4000;
 const AFTER_MS = 300;
 
 /** Every row of the offered set, as a lower third to play (in the table's order). */
-export function playedRows(): Played[] {
+export async function playedRows(): Promise<Played[]> {
+  const [{ BAND_INTROS, FAMILIES, idFor, OFFERED }, { LOWER_THIRD_TEMPLATES }] = await Promise.all([
+    import('../../shared/lower-third-studio'),
+    import('../../shared/lower-third-templates'),
+  ]);
   const made = (row: string, animation: string, look: Partial<LowerThirdLook>, hold = HOLD_MS): Played => ({
     row,
     lowerThird: {
@@ -172,7 +169,6 @@ export function lowerThirdsScenario(deps: ScenarioDeps): ScenarioRun {
       ...(program ? [{ page: program, fps: PROGRAM_FPS }] : []),
     ];
   };
-  const rows = playedRows();
   return {
     slides: { presentationId: null, everyMs: 2000 },
     begin: async () => {
@@ -181,6 +177,7 @@ export function lowerThirdsScenario(deps: ScenarioDeps): ScenarioRun {
       );
     },
     end: async () => {
+      const rows = await playedRows();
       // Each row in turn: in, held, out, the next once it has gone.
       for (const p of rows) {
         const lt = p.lowerThird;

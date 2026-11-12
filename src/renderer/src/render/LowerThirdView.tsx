@@ -221,7 +221,9 @@ export function LowerThirdView({
   const animation = shown && phase === 'out' ? outAnimationOf(shown) : animationById(shown?.animation ?? '');
   const { pieces, units } = cut(shownLines(shown?.lines ?? []), animation);
   const composing = animation.composition !== undefined;
-  const designed = composing || (shown !== null && animationById(shown.animation).composition !== undefined);
+  const designed =
+    composing ||
+    (phase === 'out' && shown !== null && animationById(shown.animation).composition !== undefined);
   const bandRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const length = phase === 'in' || phase === 'out' ? animationLength(animation, phase, units) : 0;

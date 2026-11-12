@@ -1,4 +1,4 @@
-import { DESIGN_MOTIONS } from './lower-third-designs';
+import { DESIGN_MOTIONS, type DesignMotionId, isDesignMotion } from './lower-third-design-motions';
 import { STUDIO_BOX_MOVES, studioUnitMoves } from './lower-third-moves';
 
 /*
@@ -513,10 +513,7 @@ const designClip = {
   centre: (cut: number) => [0, cut / 2, 0, cut / 2],
 } satisfies Record<Direction | 'centre', (cut: number) => [number, number, number, number]>;
 
-function designAnimation(
-  id: string,
-  design: (typeof DESIGN_MOTIONS)[keyof typeof DESIGN_MOTIONS],
-): LowerThirdAnimation {
+function designAnimation(id: string, design: (typeof DESIGN_MOTIONS)[DesignMotionId]): LowerThirdAnimation {
   const ms = (steady: number) => Math.round(steady * SPEED[design.speed].factor);
   const band = (p: number): Pose => {
     // The accent draws first, then the panel opens behind it.
@@ -557,9 +554,7 @@ function designAnimation(
 export const LOWER_THIRD_ANIMATIONS: readonly LowerThirdAnimation[] = build();
 const BY_ID = new Map(LOWER_THIRD_ANIMATIONS.map((a) => [a.id, a]));
 // Template choreography is kept by id with a saved lower third and offered through Templates.
-const DESIGNS_BY_ID = new Map(
-  Object.entries(DESIGN_MOTIONS).map(([id, design]) => [id, designAnimation(id, design)]),
-);
+const DESIGNS_BY_ID = new Map<DesignMotionId, LowerThirdAnimation>();
 
 /** The animation a new lower third starts with. */
 export const DEFAULT_ANIMATION = 'slide-left-steady';
@@ -574,11 +569,18 @@ const FALLBACK = ((): LowerThirdAnimation => {
 
 /** An animation by its id (the default for one this Drashti does not know). */
 export function animationById(id: string): LowerThirdAnimation {
-  return BY_ID.get(id) ?? DESIGNS_BY_ID.get(id) ?? FALLBACK;
+  const standard = BY_ID.get(id);
+  if (standard) return standard;
+  if (!isDesignMotion(id)) return FALLBACK;
+  const ready = DESIGNS_BY_ID.get(id);
+  if (ready) return ready;
+  const motion = designAnimation(id, DESIGN_MOTIONS[id]);
+  DESIGNS_BY_ID.set(id, motion);
+  return motion;
 }
 
 export const isAnimation = (id: string): boolean => BY_ID.has(id);
-export const isLowerThirdAnimation = (id: string): boolean => isAnimation(id) || DESIGNS_BY_ID.has(id);
+export const isLowerThirdAnimation = (id: string): boolean => isAnimation(id) || isDesignMotion(id);
 
 /** How long a phase takes (ms), for a lower third with so many units of its kind (lines, words or letters). */
 export function animationLength(a: LowerThirdAnimation, phase: 'in' | 'out', units: number): number {

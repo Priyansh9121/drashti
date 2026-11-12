@@ -9,19 +9,17 @@ import {
   REST,
   searchAnimations,
 } from './lower-third-animations';
-import { DESIGN_MOTIONS } from './lower-third-designs';
+import { DESIGN_MOTIONS } from './lower-third-design-motions';
 import { fontChoice, LOWER_THIRD_FONT_CHOICES, LOWER_THIRD_FONTS } from './lower-third-fonts';
 import { STUDIO_BOX_MOVES, studioUnitMoves } from './lower-third-moves';
 import {
   animationName,
-  BEST_LOWER_THIRD_TEMPLATES,
   CATALOGUE,
   FAMILIES,
   familyOf,
   HIDE_AFTER,
   idFor,
   isOffered,
-  LOWER_THIRD_TEMPLATES,
   OFFERED,
   OFFERED_ANIMATIONS,
   OFFERED_MOTIONS,
@@ -29,6 +27,7 @@ import {
   outName,
   searchOffered,
 } from './lower-third-studio';
+import { BEST_LOWER_THIRD_TEMPLATES, LOWER_THIRD_TEMPLATES } from './lower-third-templates';
 import {
   LOWER_THIRD_MOTIONS,
   LOWER_THIRD_STYLES,
