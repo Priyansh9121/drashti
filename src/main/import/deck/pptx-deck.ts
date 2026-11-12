@@ -585,7 +585,10 @@ function nativeLook(
     return direction ? { kind: 'wipe', direction } : null;
   }
   if (preset === '23' && behaviours.some((n) => n.name === 'p:anim' || n.name === 'p:animScale'))
-    return { kind: 'zoom' };
+    // Basic Zoom: drawn as a zoom from nothing where the shape stands (back to nothing as it leaves), exact only
+    // when that is all its behaviours say. Out, In Slightly, From Screen Center and Out From Screen Bottom start
+    // from another size or move: not yet compared with PowerPoint's own movie.
+    return zoomLimit(behaviours, phase === 'in') === 0 ? { kind: 'zoom' } : { kind: 'zoom', partial: true };
   if (preset === '53' && filter === 'fade') {
     const scale = zoomLimit(behaviours, phase === 'in');
     return scale === null ? { kind: 'zoom', fade: true, partial: true } : { kind: 'zoom', fade: true, scale };
