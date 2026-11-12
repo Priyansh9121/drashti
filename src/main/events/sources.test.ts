@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { AnnouncementsView, Announcement } from '../../shared/announcements';
+import type { DeckEffect, DeckSlide } from '../../shared/deck';
 import { initialEngineState, type EngineState, type SlideLayer } from '../../shared/engine/state';
+import type { RenderSlide, TextElement, TextRun } from '../../shared/model';
 import type { StreamStatus } from '../../shared/stream';
 import { announcementEvents, engineEvents, screenEvents, streamEvents } from './sources';
 
@@ -123,5 +125,162 @@ describe('events from the show', () => {
       { kind: 'announcement.waiting', data: { announcementId: 'a1' }, words: { text: 'Placeholder notice' } },
     ]);
     expect(announcementEvents({ ...none, waiting: [a] }, { ...none, waiting: [a] })).toEqual([]);
+  });
+});
+
+/*
+ * A PowerPoint deck's slide Drashti plays itself (W6's review L11): events out says what the screens show at the click
+ * showing, as the stills and a phone draw it (shared/deck-show.ts's deckSlideAt), never a later click's words, nor the
+ * words of a shape that has gone; and says it again at each click, Back's too. A deck's slide shown as clips, and every
+ * other slide, as before.
+ */
+describe('events from a deck’s slide Drashti plays itself', () => {
+  const box = (shape: string, text: string, runs?: TextRun[]): TextElement => ({
+    id: `placeholder-${shape}`,
+    kind: 'text',
+    sourceShapeId: shape,
+    frame: { x: 100, y: 100 * Number(shape), width: 800, height: 90 },
+    text,
+    lang: null,
+    style: {
+      fontFamily: null,
+      fontSize: 40,
+      fontWeight: 400,
+      color: '#ffffff',
+      align: 'left',
+      verticalAlign: 'top',
+      lineHeight: 1.2,
+      shadow: false,
+    },
+    ...(runs ? { runs } : {}),
+  });
+  const effect = (
+    shapeId: string,
+    step: number,
+    phase: 'in' | 'out',
+    paragraphs?: [number, number],
+  ): DeckEffect => ({
+    shapeId,
+    step,
+    phase,
+    kind: 'fade',
+    delayMs: 0,
+    durationMs: 200,
+    ...(paragraphs ? { paragraphs } : {}),
+  });
+  const motion = {
+    effects: [
+      // Click 1: a box comes in, and the first point of a list built point by point.
+      effect('4', 1, 'in'),
+      effect('5', 1, 'in', [0, 0]),
+      // Click 2: a box goes, and the second point comes in.
+      effect('3', 2, 'out'),
+      effect('5', 2, 'in', [1, 1]),
+    ],
+    stepsMs: [0, 200, 200],
+    approximate: false,
+  };
+  const deckSlide = (deck: DeckSlide): RenderSlide => ({
+    id: 'placeholder-deck-slide',
+    width: 1920,
+    height: 1080,
+    background: null,
+    elements: [
+      box('2', 'Placeholder title'),
+      box('3', 'Placeholder leaving at click two'),
+      box('4', 'Placeholder in at click one'),
+      box('5', 'Placeholder first point\nPlaceholder second point', [
+        { text: 'Placeholder first point\n' },
+        { text: 'Placeholder second point', color: '#ffeeaa' },
+      ]),
+    ],
+    deck,
+  });
+  const native = deckSlide({ steps: [], media: [], motion });
+  const layer = (slide: RenderSlide, step: number, extra: Partial<SlideLayer> = {}): SlideLayer => ({
+    presentationId: 'placeholder-deck',
+    slideIndex: 0,
+    shownAt: 1000,
+    notes: '',
+    slide,
+    step,
+    stepAt: 1000 + step * 500,
+    ...extra,
+  });
+  const empty = initialEngineState();
+  const at = (step: number, extra: Partial<SlideLayer> = {}) => withSlide(empty, layer(native, step, extra));
+  const sent = (step: number, text: string) => [
+    {
+      kind: 'slide.changed',
+      data: {
+        presentationId: 'placeholder-deck',
+        slideIndex: 0,
+        slideCount: 5,
+        playlistId: null,
+        itemId: null,
+        repeat: false,
+        step,
+      },
+      words: { text },
+    },
+  ];
+
+  it('sends only the words on the screens at the click showing, again at each click, Back’s too', () => {
+    // Coming in: the title and the box that goes at click 2; nothing of click 1's, no point of the list yet.
+    expect(engineEvents(empty, at(0))).toEqual(sent(0, 'Placeholder title\nPlaceholder leaving at click two'));
+    // Click 1: its box and the list's first point come in; the second point is still to come.
+    expect(engineEvents(at(0), at(1))).toEqual(
+      sent(
+        1,
+        'Placeholder title\nPlaceholder leaving at click two\nPlaceholder in at click one\nPlaceholder first point',
+      ),
+    );
+    // Click 2: the box that went is gone from the words too.
+    expect(engineEvents(at(1), at(2))).toEqual(
+      sent(2, 'Placeholder title\nPlaceholder in at click one\nPlaceholder first point\nPlaceholder second point'),
+    );
+    // Back to click 1: as the screens show it again.
+    expect(engineEvents(at(2), at(1, { stepAt: 4000, stepFromMs: 200 }))).toEqual(
+      sent(
+        1,
+        'Placeholder title\nPlaceholder leaving at click two\nPlaceholder in at click one\nPlaceholder first point',
+      ),
+    );
+    // Come back to from the slide after: shown again, at its last click.
+    expect(engineEvents(empty, at(2, { shownAt: 9000, stepAt: 9000 }))).toEqual(
+      sent(2, 'Placeholder title\nPlaceholder in at click one\nPlaceholder first point\nPlaceholder second point'),
+    );
+    // The same click shown settled (Back undoing a Next while it moved) changes no words: nothing is sent.
+    expect(engineEvents(at(1), at(1, { stepAt: 3000, stepFromMs: 200 }))).toEqual([]);
+  });
+
+  it('a deck’s slide shown as clips, and its clicks, as before: every line, once, as it comes in', () => {
+    const clips = deckSlide({
+      steps: [0, 1, 2].map((n) => ({
+        clipId: `placeholder-clip-${String(n)}`,
+        clipMs: 500,
+        lastId: `placeholder-still-${String(n)}`,
+      })),
+      media: [],
+      motion,
+    });
+    const shown = (step: number) => withSlide(empty, layer(clips, step));
+    expect(engineEvents(empty, shown(0))).toEqual([
+      {
+        kind: 'slide.changed',
+        data: {
+          presentationId: 'placeholder-deck',
+          slideIndex: 0,
+          slideCount: 5,
+          playlistId: null,
+          itemId: null,
+          repeat: false,
+        },
+        words: {
+          text: 'Placeholder title\nPlaceholder leaving at click two\nPlaceholder in at click one\nPlaceholder first point\nPlaceholder second point',
+        },
+      },
+    ]);
+    expect(engineEvents(shown(0), shown(1))).toEqual([]);
   });
 });
