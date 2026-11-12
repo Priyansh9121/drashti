@@ -107,6 +107,8 @@ export interface TextParagraph {
   marginRight?: number;
   indent?: number;
   lineHeight?: number;
+  /** Fixed source line spacing, in slide pixels. */
+  lineHeightPx?: number;
   /** Space before and after this paragraph, in slide pixels. */
   spaceBefore?: number;
   spaceAfter?: number;

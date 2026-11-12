@@ -17,6 +17,9 @@ const resultSchema = z
     jobId: z.string().min(1).max(512),
     total: z.number().int().min(0).max(2_000),
     failed: z.array(z.number().int().min(0)).max(EDITABLE_SOURCE_LIMITS.pages),
+    failedNotes: z
+      .record(z.string().regex(/^(?:0|[1-9]\d{0,3})$/u), z.array(z.string().min(1).max(300)).min(1).max(100))
+      .optional(),
     pages: z.array(pptxPageSchema).max(EDITABLE_SOURCE_LIMITS.pages),
   })
   .strict();
@@ -147,10 +150,14 @@ export function pptxReader(spawn: () => PptxReaderChild, options: ReaderOptions 
             }
             const requested = new Set(request.sourcePages);
             const failedPages = new Set(parsed.data.failed);
+            const failedNotes = parsed.data.failedNotes;
             const completed = new Set<number>();
             if (
               failedPages.size !== parsed.data.failed.length ||
-              [...failedPages].some((index) => !requested.has(index))
+              [...failedPages].some((index) => !requested.has(index)) ||
+              Object.keys(failedNotes ?? {}).some(
+                (index) => Number(index) >= parsed.data.total || !failedPages.has(Number(index)),
+              )
             ) {
               publish(failed());
               return;
@@ -243,7 +250,13 @@ export function pptxReader(spawn: () => PptxReaderChild, options: ReaderOptions 
               publish(failed());
               return;
             }
-            publish({ ok: true, pages, total: parsed.data.total, failed: [...failedPages] });
+            publish({
+              ok: true,
+              pages,
+              total: parsed.data.total,
+              failed: [...failedPages],
+              ...(failedNotes ? { failedNotes } : {}),
+            });
           } catch {
             publish(failed());
           }

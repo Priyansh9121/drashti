@@ -232,6 +232,7 @@ export const textRunSchema: z.ZodType<TextRun> = z.object({
       marginRight: num.min(0).max(16_384).optional(),
       indent: num.min(-16_384).max(16_384).optional(),
       lineHeight: num.positive().max(5).optional(),
+      lineHeightPx: num.min(0).max(16_384).optional(),
       spaceBefore: num.min(0).max(16_384).optional(),
       spaceAfter: num.min(0).max(16_384).optional(),
       bullet: z.string().max(8).optional(),
