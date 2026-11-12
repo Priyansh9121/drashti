@@ -5,6 +5,11 @@ export interface SourceRead {
   file: string;
   outDir: string;
   sourcePages: number[];
+  /**
+   * PowerPoint only: the pages among `sourcePages` whose clicks and transition to read too, as alpha.17's import reads
+   * them (W6's review N4: slides imported before alpha.17 that play PowerPoint's clips).
+   */
+  timingPages?: number[];
   signal: AbortSignal;
   /** Main's monotonic deadline, including time waiting for a turn. */
   deadlineAt?: number;

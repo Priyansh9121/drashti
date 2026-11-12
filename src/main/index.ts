@@ -23,7 +23,7 @@ import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import { formatBytes, formatClock } from '../shared/format';
-import type { ImportOptions, ImportResult } from '../shared/import';
+import type { AutomaticImportNotice, ImportOptions, ImportResult } from '../shared/import';
 import { loadedBooks } from '../shared/import';
 import { type LibraryChange, listedKirtan, type NewFromWordsResult } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
@@ -2862,6 +2862,13 @@ function start(): void {
   // The window's page, not just the window: at quit the page goes first (Session 20).
   const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
     sendToPage(operatorWindow, channel, payload);
+  };
+  // A watched folder can finish its first look before the operator window subscribes.
+  const initialImportNotices: AutomaticImportNotice[] = [];
+  let automaticImportNoticesReady = false;
+  const importNotice = (notice: AutomaticImportNotice) => {
+    if (automaticImportNoticesReady) sendToOperator(IPC.library.automaticImportNotice, notice);
+    else initialImportNotices.push(notice);
   };
 
   // ---- streaming -------------------------------------------------------------
@@ -5712,6 +5719,7 @@ function start(): void {
       return result.ok ? { ok: true, runId: result.run.id } : { ok: false, message: result.message };
     },
     report: (runId) => importRepo.report(runId),
+    importNotice,
     changed: playlistsChanged,
     views: (views) => {
       sendToOperator(IPC.playlists.smartChanged, views);
@@ -5746,6 +5754,7 @@ function start(): void {
     notice: (text) => {
       sendToOperator(IPC.app.notice, { text });
     },
+    importNotice,
     mediaChanged: () => {
       libraryChanged(true);
     },
@@ -5988,6 +5997,11 @@ function start(): void {
   handle(IPC.library.getImportReport, (_e, runId) => {
     const parsed = runIdSchema.safeParse(runId);
     return parsed.success ? importRepo.report(parsed.data) : null;
+  });
+  handle(IPC.library.takeAutomaticImportNotices, (e) => {
+    if (!fromOperator(e)) return [];
+    automaticImportNoticesReady = true;
+    return initialImportNotices.splice(0);
   });
   handle(IPC.media.saveStill, async (e, mediaId, jpeg) => {
     if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) {
