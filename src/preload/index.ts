@@ -573,6 +573,7 @@ const bridge: DrashtiBridge = {
     copy: (copied) => invoke(IPC.slideEditor.copy, copied),
     copied: () => invoke(IPC.slideEditor.copied),
     addPicture: (presentationId, path) => invoke(IPC.slideEditor.addPicture, presentationId, path),
+    fontFamilies: () => invoke(IPC.slideEditor.fontFamilies),
     showKey: (key) => invoke(IPC.slideEditor.showKey, key),
   },
   midi: {

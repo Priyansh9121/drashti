@@ -855,6 +855,7 @@ export interface DrashtiBridge {
     copied(): Promise<CopiedElements | null>;
     /** A picture chosen in the editor's file dialog (null) or dropped from the desktop. */
     addPicture(presentationId: string, path: string | null): Promise<SlidePictureResult>;
+    fontFamilies(): Promise<readonly string[]>;
     /** One of the show's F-keys (Clear all F1, Oops F9, Wallpaper F12...): the operator window acts on it. */
     showKey(key: string): Promise<null>;
   };
