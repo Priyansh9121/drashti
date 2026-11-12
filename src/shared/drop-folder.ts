@@ -48,9 +48,16 @@ export const DROP_REFUSED_VIEW: DropFolderView = {
   last: null,
 };
 
+const SYSTEM_FILE_NAMES = new Set(['thumbs.db', 'desktop.ini', 'icon\r']);
+
+/** Operating-system files the Drop Folder and folder imports pass over. */
+export function isSystemFileName(name: string): boolean {
+  return SYSTEM_FILE_NAMES.has(name.toLowerCase());
+}
+
 /** Names a browser, an editor or a copy leaves while a file is still being written: never taken. */
 export function droppedName(name: string): boolean {
-  if (name.startsWith('.') || name.startsWith('~$')) return false;
+  if (name.startsWith('.') || name.startsWith('~$') || isSystemFileName(name)) return false;
   return !/\.(part|crdownload|download|tmp|partial)$/iu.test(name);
 }
 
