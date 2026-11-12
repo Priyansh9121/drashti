@@ -367,10 +367,10 @@ test('an output told it draws without a graphics chip after its warm-up began en
   });
   await expect(root).toHaveAttribute('data-warm-up', 'skipped');
   await expect(root).toHaveAttribute('data-fonts', 'ready');
-  expect(await warmUpMarks(out), 'the output’s warm-up marks once told').toEqual([
-    'drashti-warm-up:output',
-    'drashti-warm-up:output-cut',
-  ]);
+  // Marked as the warm-up goes (its effect's cleanup, which React may run a moment after the page changed).
+  await expect
+    .poll(() => warmUpMarks(out), { message: 'the output’s warm-up marks once told' })
+    .toEqual(['drashti-warm-up:output', 'drashti-warm-up:output-cut']);
   // The show drawn from there, black until something goes up.
   await expect(out.getByTestId('scene')).toHaveAttribute('data-nothing-up', 'black');
   expect(await brightest(out), 'the whole output, told').toBe(0);
