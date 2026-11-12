@@ -121,7 +121,10 @@ describe('a page still being read from its PDF (Session 57, C2 part 1)', () => {
     documentPage: { sha256: 'a'.repeat(64), ext: 'pdf', page: 3 },
     sourceOccurrenceId: 'imported-page',
   };
-  const importedDoc: EditDoc = { ...doc, groups: [{ id: 'group', name: '', color: null, slides: [imported] }] };
+  const importedDoc: EditDoc = {
+    ...doc,
+    groups: [{ id: 'group', name: '', color: null, slides: [imported] }],
+  };
 
   async function openPreparing(opening: EditDoc) {
     let request: EditSourceRequest | undefined;
@@ -193,7 +196,12 @@ describe('a page still being read from its PDF (Session 57, C2 part 1)', () => {
     commit(changeSlide(opened, stored.id, { deck: { ...stored.deck, drashti: own } }));
     const motion = { effects: [], stepsMs: [400, 600], approximate: false };
     deliver({
-      pages: [{ ...stored, deck: { steps: [], media: [], motion, transition: { name: 'Placeholder', durationMs: 300 } } }],
+      pages: [
+        {
+          ...stored,
+          deck: { steps: [], media: [], motion, transition: { name: 'Placeholder', durationMs: 300 } },
+        },
+      ],
       settled: [stored.id],
     });
     expect(shown()[0]?.deck).toEqual({

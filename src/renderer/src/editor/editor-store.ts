@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useMemo } from 'react';
-import type { EditDoc, EditSourceUpdate, SlideLook } from '../../../shared/slide-edit';
+import type { EditDoc, EditSlide, EditSourceUpdate, SlideLook } from '../../../shared/slide-edit';
 import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
 import { findSlide } from './ops';
 import type { Measured } from '../render/measure';
@@ -225,6 +225,45 @@ export const isDirty = (s: EditorView): boolean => s.doc !== null && s.doc !== s
 
 let unsubscribePdfPages: (() => void) | undefined;
 
+/*
+ * A page still being read from its PDF (Session 57, C2 part 1; the review's MEDIUM-1) shows its saved picture marked
+ * Preparing…, and stays as it is until it is ready: a change to it, or a copy of it, would keep the picture for good
+ * (Save makes a changed page an edited one, never read again). Its notes, name, hiding and timing still change.
+ */
+const PREPARING_NOTE =
+  'Pages marked Preparing… are still being read from their PDF. Try again once they’re ready.';
+
+function touchesPreparing(
+  s: EditorView,
+  before: EditDoc,
+  next: EditDoc,
+  changed: readonly string[],
+): boolean {
+  const preparing = s.preparingSource;
+  if (preparing.size === 0) return false;
+  if (changed.some((id) => preparing.has(id))) return true;
+  const had = new Set(slidesOf(before).map((slide) => slide.id));
+  return slidesOf(next).some(
+    (slide) =>
+      !had.has(slide.id) && slide.sourceOccurrenceId !== undefined && preparing.has(slide.sourceOccurrenceId),
+  );
+}
+
+/** A prepared page's deck (its clicks read from the source), with the editor's own transitions on it kept. */
+function preparedDeck(page: EditSlide, slide: EditSlide): Pick<EditSlide, 'deck'> {
+  if (!page.deck) return {};
+  const { drashti: _drashti, stepTransitions: _steps, ...source } = page.deck;
+  const drashti = slide.deck?.drashti;
+  const stepTransitions = slide.deck?.stepTransitions;
+  return {
+    deck: {
+      ...source,
+      ...(drashti ? { drashti } : {}),
+      ...(stepTransitions ? { stepTransitions } : {}),
+    },
+  };
+}
+
 function stopPdfUpdates(): void {
   unsubscribePdfPages?.();
   unsubscribePdfPages = undefined;
@@ -276,6 +315,7 @@ function applySourceUpdate(update: EditSourceUpdate): void {
           background: page.background,
           documentPage: page.documentPage,
           pageSize: page.pageSize,
+          ...preparedDeck(page, slide),
         };
       });
       return slides.some((slide, index) => slide !== group.slides[index]) ? { ...group, slides } : group;
@@ -413,6 +453,10 @@ export function commit(next: EditDoc, options: { coalesce?: string; select?: str
   const s = useEditor.getState();
   if (!s.doc || next === s.doc) return;
   const changedSources = sourceContentChanges(s.doc, next);
+  if (touchesPreparing(s, s.doc, next, changedSources)) {
+    tell(PREPARING_NOTE);
+    return;
+  }
   if (!requestSourceConversion(changedSources, () => commit(next, options), next)) return;
   next = convertSourceContent(next, changedSources);
   sourceGate.consume(changedSources);
@@ -443,6 +487,11 @@ export function updateGesture(next: EditDoc): void {
   const s = useEditor.getState();
   if (!s.gesture || !s.doc) return;
   const changedSources = sourceContentChanges(s.gesture, next);
+  if (touchesPreparing(s, s.gesture, next, changedSources)) {
+    useEditor.setState({ gesture: null });
+    tell(PREPARING_NOTE);
+    return;
+  }
   if (!requestSourceConversion(changedSources)) {
     useEditor.setState({ gesture: null });
     return;
