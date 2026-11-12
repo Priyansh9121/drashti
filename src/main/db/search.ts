@@ -16,6 +16,7 @@ export const SEARCH_VERSION = 5;
 const VERSION_KEY = 'search.version';
 
 interface TextProps {
+  hidden?: boolean;
   text?: string;
   runs?: TextRun[];
 }
@@ -28,12 +29,13 @@ function textOf(elements: { slide_id: string; props: string }[]): {
   const lines: [string, string][] = [];
   let legacyRuns = 0;
   for (const { slide_id: slideId, props } of elements) {
-    let parsed: TextProps;
+    let parsed: TextProps | null;
     try {
-      parsed = JSON.parse(props) as TextProps;
+      parsed = JSON.parse(props) as TextProps | null;
     } catch {
       continue;
     }
+    if (!parsed || parsed.hidden === true) continue;
     let text = parsed.text ?? '';
     if (parsed.runs) {
       // Legacy-font runs are Latin codes that only look like Gujarati or Hindi: leave them out, and count them.

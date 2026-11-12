@@ -14,6 +14,9 @@ import type { MidiLearnable, MidiSeen, MidiSettings } from './midi';
  * agree to, at the computer: a phone asks, and only the computer's own box says yes (main/network/desktop-consent.ts).
  */
 
+/** Most ids a phone can send in one library change, except playlist subtree Undo. */
+export const PHONE_LIBRARY_IDS_MAX = 50;
+
 /**
  * How a phone's ask to cover the controls stands, for a minute after: the computer's box is up ('waiting'), it
  * agreed (the change was made), it did not ('refused'), or it agreed but the change could not be made then

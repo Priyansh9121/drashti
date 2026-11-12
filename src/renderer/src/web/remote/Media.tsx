@@ -153,7 +153,7 @@ export function Media() {
       ) : list.length === 0 ? (
         <p className="text-base text-muted" data-testid="remote-media-none">
           {media.query === ''
-            ? 'There are no pictures, videos or sounds yet: they are imported in Drashti on the computer, in Pro Mode.'
+            ? 'There are no pictures, videos or sounds yet. Import files in Drashti on the computer.'
             : `Nothing found for “${media.query}”.`}
         </p>
       ) : (

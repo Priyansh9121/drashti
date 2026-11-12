@@ -24,6 +24,7 @@ export function mirrorRoutes<R>(route: MakeRoute<R>): R[] {
       offset: q['offset'],
       limit: q['limit'],
       query: q['q'],
+      ...(q['kind'] === undefined ? {} : { kind: q['kind'] }),
     })),
     route('POST', '/api/v1/media/:id/show', 'media.show', (_b, p) => ({ mediaId: p['id'] })),
     route('GET', '/api/v1/lower-thirds', 'lowerThirds'),
