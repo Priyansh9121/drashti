@@ -231,7 +231,9 @@ export function newTextBox(look: SlideLook): TextElement {
 }
 
 export function setShapeFill(element: SlideElement, fill: ShapeElement['fill']): SlideElement {
-  return element.kind === 'shape' ? { ...element, fill, gradient: undefined } : element;
+  if (element.kind !== 'shape') return element;
+  const { gradient: _gradient, ...shape } = element;
+  return { ...shape, fill };
 }
 
 export type ShapeChoice = ShapeKind | 'rounded';
