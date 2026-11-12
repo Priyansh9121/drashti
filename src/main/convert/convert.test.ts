@@ -428,11 +428,18 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
     // Enough for half the original plus a margin, even though the whole original would not fit.
     free = KEEP_FREE_BYTES + Math.ceil(before.bytes * 0.8);
     // Saved again under a name taken meanwhile: beside it, never over it.
-    const again = service.saveCopy(source, join(out, 'Part.mp4'), info, {
-      args: (tmp) => trimArgs(source, tmp, 1000, 3000),
+    const publication: { dest: string; complete: boolean; alreadyThere: boolean }[] = [];
+    const copy = {
+      args: (tmp: string) => trimArgs(source, tmp, 1000, 3000),
       lengthMs: 2000,
-    });
+      waitForShow: true,
+      beforePublish: (temporary: string, dest: string) => {
+        publication.push({ dest, complete: existsSync(temporary), alreadyThere: existsSync(dest) });
+      },
+    };
+    const again = service.saveCopy(source, join(out, 'Part.mp4'), info, copy);
     expect(await again.done).toEqual({ ok: true, copy: join(out, 'Part (2).mp4') });
+    expect(publication).toEqual([{ dest: join(out, 'Part (2).mp4'), complete: true, alreadyThere: false }]);
 
     // The job-start check still catches disk space lost while a cut is waiting.
     busy = 'Waits while the stream is on air or recording.';

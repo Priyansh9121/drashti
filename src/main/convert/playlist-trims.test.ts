@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_MARKERS } from '../../shared/markers';
 import type { Db } from '../db/database';
@@ -52,9 +52,9 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
   const [itemId = ''] = playlists.addItems(playlist, null, [{ kind: 'media', mediaId: 'original' }]);
   const another = playlists.createAtTop('Other placeholder playlist');
   playlists.addItems(another, null, [{ kind: 'media', mediaId: 'original' }]);
-  let finish: (value: FitResult) => void = () => undefined;
+  let resolveCopy: (value: FitResult) => void = () => undefined;
   const done = new Promise<FitResult>((resolve) => {
-    finish = resolve;
+    resolveCopy = resolve;
   });
   const pendingChanged = vi.fn();
   const cancel = vi.fn(() => true);
@@ -69,7 +69,29 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
       stored = cuts;
     },
   };
-  const queue = vi.fn((_input: TrimCopyInput) => ({ id: 'copy', done }));
+  let beforePublish: ((tmp: string, dest: string) => void) | undefined;
+  const queue = vi.fn((_input: TrimCopyInput, publish?: (tmp: string, dest: string) => void) => {
+    beforePublish = publish;
+    return { id: 'copy', done };
+  });
+  const publish = (tmp = output, dest = output) => {
+    beforePublish?.(tmp, dest);
+    beforePublish = undefined;
+  };
+  const finish = (value: FitResult) => {
+    if (value.ok && value.copy) publish(value.copy, value.copy);
+    resolveCopy(value);
+  };
+  let storedCopies: { path: string; identity: string }[] = [];
+  const copies = {
+    load: () => storedCopies,
+    save: (next: typeof storedCopies) => {
+      storedCopies = next;
+    },
+  };
+  const trashDir = join(dir, 'Trash');
+  await mkdir(trashDir);
+  const trash = vi.fn((file: string) => rename(file, join(trashDir, basename(file))));
   const spaceProblem = vi.fn<() => string | null>(() => null);
   const deps = {
     repo,
@@ -86,6 +108,8 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     notice,
     isLive,
     kept,
+    copies,
+    trash,
   };
   const restart = () => new PlaylistTrims(deps);
   const service = restart();
@@ -103,6 +127,9 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     queue,
     spaceProblem,
     finish,
+    publish,
+    copies,
+    trash,
     cancel,
     pendingChanged,
     rowChanged,
@@ -293,6 +320,7 @@ describe('trimming a playlist video', () => {
     const x = await setup();
     expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
     x.show('original');
+    x.publish();
     expect(x.service.stop(x.itemId, 'different-media')).toMatchObject({ ok: false });
     expect(x.service.list()).toEqual([x.itemId]);
     expect(x.service.stop(x.itemId, 'original')).toEqual({ ok: true });
@@ -323,6 +351,45 @@ describe('trimming a playlist video', () => {
     x.show(null);
     expect(x.service.reset(x.itemId, cut)).toEqual({ ok: true });
     expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
+  });
+
+  it('records a cut before publishing it and trashes the unadopted file after a restart', async () => {
+    const x = await setup();
+    const tmp = join(dir, 'Placeholder temporary cut.mp4');
+    await rename(x.output, tmp);
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    x.publish(tmp, x.output);
+    expect(x.copies.load().map((copy) => copy.path)).toEqual([basename(x.output)]);
+    await expect(stat(x.output)).rejects.toMatchObject({ code: 'ENOENT' });
+    await rename(tmp, x.output);
+
+    x.trash.mockRejectedValueOnce(new Error('Trash temporarily unavailable'));
+    await x.restart().cleanupCopies();
+    expect(x.copies.load()).toHaveLength(1);
+    await x.restart().cleanupCopies();
+    expect(x.trash).toHaveBeenLastCalledWith(x.output);
+    expect(x.copies.load()).toEqual([]);
+    expect(await readFile(join(dir, 'Trash', basename(x.output)), 'utf8')).toBe('placeholder trim');
+    expect(await readFile(x.original, 'utf8')).toBe('placeholder original');
+  });
+
+  it.each(['referenced', 'replaced'] as const)('keeps a %s file at the saved path', async (kind) => {
+    const x = await setup();
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    x.publish();
+    expect(x.copies.load()).toHaveLength(1);
+    if (kind === 'referenced') {
+      db.prepare("INSERT INTO media (id, kind, name, path) VALUES ('cut', 'video', 'Cut', ?)").run(x.output);
+    } else {
+      await rename(x.output, join(dir, 'Placeholder original cut.mp4'));
+      await writeFile(x.output, 'placeholder replacement');
+    }
+    await x.restart().cleanupCopies();
+    expect(x.trash).not.toHaveBeenCalled();
+    expect(x.copies.load()).toEqual([]);
+    expect(await readFile(x.output, 'utf8')).toBe(
+      kind === 'referenced' ? 'placeholder trim' : 'placeholder replacement',
+    );
   });
 
   it('keeps an accepted cut’s interruption marker across quit and tells the operator once at restart', async () => {
