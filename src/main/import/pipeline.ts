@@ -1083,6 +1083,13 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           deckPath = join(work, basename(file.path));
           if ((await withoutOutsideLinks(kept.file, deckPath)) > 0) read = await readPptxDeck(deckPath);
         }
+        // Still PowerPoint decks use the selected picture converter when there is one, even with movies off.
+        let selectedPictureApps: Promise<Converter[]> | undefined;
+        const pictureApps = () =>
+          (selectedPictureApps ??=
+            ctx.converters === false || ctx.converters === 'stand-in'
+              ? Promise.resolve([])
+              : findConverters().then((found) => onlyAsked(convertersFor(source, process.platform, found))));
         // With its animations where PowerPoint or Keynote can make its movie (Session 54, C2).
         t = performance.now();
         const flow = await runDeck(
@@ -1099,6 +1106,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           {
             ffmpeg: ctx.ffmpeg ?? '',
             onAir,
+            noPictureConverter: async () =>
+              ctx.converters !== 'stand-in' && (await pictureApps()).length === 0,
             signal: ctx.signal,
             slideCount: slides?.length,
             log: ctx.log && ((line) => ctx.log?.(line.startsWith('Deck: ') ? line : `Deck: ${line}`)),
@@ -1229,10 +1238,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           pdf = flow.pdf;
           converter = flow.converter;
         }
-        const apps =
-          flow.pdf || ctx.converters === false || ctx.converters === 'stand-in'
-            ? []
-            : onlyAsked(convertersFor(source, process.platform, await findConverters()));
+        const apps = flow.pdf ? [] : await pictureApps();
         if (flow.pdf) {
           // Saved already.
         } else if (ctx.converters === 'stand-in' && source === 'pptx') {
