@@ -173,6 +173,14 @@ export async function downloadModel(o: {
         if (!(error instanceof ModelDownloadError) && failure === 'read')
           throw new ModelDownloadError(OFFLINE);
         throw error;
+      } finally {
+        // On a failure pipeline settles without waiting for the part file to close, and the file may not even be
+        // open yet: Node opens it on its file pool, late on a busy computer. Wait for it, so that a part file thrown
+        // away stays away, and one carried on from holds all it will hold.
+        if (!out.closed)
+          await new Promise<void>((resolve) => {
+            out.once('close', resolve);
+          });
       }
       if (done !== total) throw new ModelDownloadError(OFFLINE);
     } finally {
