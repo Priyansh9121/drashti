@@ -182,7 +182,12 @@ function MarkersForm({
     });
     return () => video.cancelVideoFrameCallback(callback);
   }, [trim]);
-  const shownStart = () => frameMs.current ?? shown();
+  const shownStart = () => {
+    const video = preview.current;
+    // A paused seek updates the play head before the new frame is presented.
+    if (video?.paused || video?.seeking) return shown();
+    return frameMs.current ?? shown();
+  };
   // The part chosen, as the timeline draws it (what cannot be read yet: the whole).
   const typedStart = startText.trim() === '' ? 0 : parseMarkerTime(startText);
   const typedEnd = endText.trim() === '' ? durationMs : parseMarkerTime(endText);
@@ -321,6 +326,9 @@ function MarkersForm({
           onLoadedMetadata={(e) => {
             const d = e.currentTarget.duration;
             if (Number.isFinite(d) && d > 0) setDurationMs(Math.round(d * 1000));
+          }}
+          onSeeking={() => {
+            frameMs.current = null;
           }}
           onTimeUpdate={(e) => {
             const now = Math.round(e.currentTarget.currentTime * 1000);

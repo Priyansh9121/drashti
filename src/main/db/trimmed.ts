@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { MediaMarkers } from '../../shared/markers';
+import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
 import { mediaMarkersSchema, NO_MARKERS } from '../../shared/markers';
 import type { RowTrimView } from '../../shared/trim';
 import type { Db } from './database';
@@ -16,6 +16,11 @@ interface TrimSource {
   cutStartMs: number | null;
   cutEndMs: number | null;
   sourceMarkers: string | null;
+}
+
+export interface TrimMarkerEdits {
+  removed: string[];
+  changed: PlaybackMarker[];
 }
 
 interface TrimmedFile {
@@ -169,17 +174,21 @@ export class TrimmedVideos {
       .immediate();
   }
 
-  reset(row: TrimSource): boolean {
+  reset(row: TrimSource, edits?: TrimMarkerEdits): 'reset' | 'changed' | 'too-many-markers' {
     return this.db
       .transaction(() => {
-        if (!this.current(row)) return false;
+        if (!this.current(row)) return 'changed' as const;
         const original = this.media.markersOf(row.sourceId) ?? NO_MARKERS;
         const { startMs, endMs } = original;
+        const markers = edits ? editMarkers(original.markers, edits) : null;
+        if (markers && markers.length > 50) return 'too-many-markers' as const;
         if (row.mediaId === row.sourceId) {
           if ((startMs === null && endMs === null) || this.playsFull(row.itemId, row.mediaId, original))
-            return false;
+            return 'changed' as const;
         } else if (!this.playlists.retarget(row.itemId, { kind: 'media', mediaId: row.sourceId }))
-          return false;
+          return 'changed' as const;
+        if (markers && !this.media.setMarkers(row.sourceId, { ...original, markers }))
+          throw new Error('The original video is missing.');
         this.db.prepare('DELETE FROM playlist_trim_resets WHERE item_id = ?').run(row.itemId);
         if (startMs !== null || endMs !== null)
           this.db
@@ -187,10 +196,17 @@ export class TrimmedVideos {
               'INSERT INTO playlist_trim_resets (item_id, original_id, start_ms, end_ms) VALUES (?, ?, ?, ?)',
             )
             .run(row.itemId, row.sourceId, startMs, endMs);
-        return true;
+        return 'reset' as const;
       })
       .immediate();
   }
+}
+
+function editMarkers(markers: PlaybackMarker[], { removed, changed }: TrimMarkerEdits): PlaybackMarker[] {
+  const edited = new Map(markers.map((marker) => [marker.id, marker]));
+  for (const id of removed) edited.delete(id);
+  for (const marker of changed) edited.set(marker.id, marker);
+  return [...edited.values()].sort((a, b) => a.atMs - b.atMs);
 }
 
 function markersInCut(points: MediaMarkers, startMs: number, endMs: number) {
