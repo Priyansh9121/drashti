@@ -206,7 +206,23 @@ test('the template picker plays one preview, filters the grid and keeps favourit
   expect(await tiles.count()).toBeGreaterThan(1);
   await expectNoSeriousA11yIssues(studio, 'the template picker');
 
+  const picture = tile.getByTestId('lower-third-layer');
+  await expect(picture).toHaveAttribute('data-lt-phase', 'still');
+  await tile.evaluate((el) => {
+    const observer = new MutationObserver(() => {
+      if (!el.querySelector('[data-lt-phase="in"]')) return;
+      (el as HTMLElement).dataset['sawTemplateEntrance'] = 'true';
+      observer.disconnect();
+    });
+    observer.observe(el, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-lt-phase'],
+    });
+  });
   await tile.hover();
+  await expect(tile).toHaveAttribute('data-saw-template-entrance', 'true');
   await expect(tile.locator('[data-template-preview]')).toHaveAttribute('data-preview-playing', 'true');
   await expect(picker.locator('[data-preview-playing="true"]')).toHaveCount(1);
   await search.hover();
@@ -235,6 +251,9 @@ test('the template picker plays one preview, filters the grid and keeps favourit
   await expect(favourite).toHaveAttribute('aria-pressed', 'true');
 
   await tile.focus();
+  await studio.keyboard.press('Shift+Tab');
+  await studio.keyboard.press('Tab');
+  await expect(tile).toBeFocused();
   await expect(tile.locator('[data-template-preview]')).toHaveAttribute('data-preview-playing', 'true');
   await tile.press('Enter');
   await expect(picker).toHaveCount(0);
