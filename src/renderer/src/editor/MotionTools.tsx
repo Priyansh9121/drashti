@@ -126,6 +126,12 @@ export function ImportedMotion({ deck }: { deck: DeckSlide }) {
               ))}
             </ol>
           )}
+          {effects.some((effect) => effect.paragraphs) && (
+            <p>Added paragraphs appear with the built paragraph before them.</p>
+          )}
+          {clicks > 0 && (
+            <p>Deleting an animated shape or paragraph can leave a click with no visible change.</p>
+          )}
           {deck.motion?.approximate && (
             <p>
               {deck.steps.length

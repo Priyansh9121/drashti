@@ -25,5 +25,7 @@ it('explains how edits affect the saved clicks in the Motion panel', () => {
   expect(render({ ...fade, paragraphs: [0, 0] })).toContain(words);
   const shapes = render(fade);
   expect(shapes).not.toContain(words);
-  expect(shapes).toContain('Deleting an animated shape or paragraph can leave a click with no visible change.');
+  expect(shapes).toContain(
+    'Deleting an animated shape or paragraph can leave a click with no visible change.',
+  );
 });
