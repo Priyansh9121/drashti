@@ -100,7 +100,8 @@ function importedEffect(effect: DeckEffect): string {
     : `${name} · paragraphs ${String(first + 1)}–${String(last + 1)}`;
 }
 
-function ImportedMotion({ deck }: { deck: DeckSlide }) {
+/** An imported slide's PowerPoint animations: how many clicks, each effect in order, and what plays them. */
+export function ImportedMotion({ deck }: { deck: DeckSlide }) {
   const clicks = stepCount(deck) - 1;
   const effects = deck.motion?.effects ?? [];
   return (
