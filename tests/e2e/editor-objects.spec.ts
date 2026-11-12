@@ -3,7 +3,6 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { editablePptxFixture, slideXml } from '../../src/main/import/testing/editable-pptx-fixture';
-import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import {
   importAndGetIds,
   launchApp,
@@ -17,6 +16,7 @@ import {
   slideEditorWindow,
   type PageGlobals,
 } from './helpers';
+import { generatedPdf } from './pdf-tools-fixtures';
 
 const name = 'Placeholder overlapping objects';
 const back = 'Placeholder back box';
@@ -205,15 +205,24 @@ test('a double-click at a text box corner still edits after its resize handle ap
 
 test('a click then double-click edits the PDF words over the page picture', async () => {
   const title = 'Placeholder PDF overlap';
-  const words = 'Placeholder PDF words MMMMMM';
+  const words = 'Sample';
   const file = join(mkdtempSync(join(tmpdir(), 'drashti-objects-pdf-')), `${title}.pdf`);
-  writeFileSync(file, makeTestPdf([{ width: 960, height: 540, color: [0, 0, 0], text: words }]));
+  writeFileSync(file, generatedPdf([{ width: 140, height: 150, marker: 'Placeholder', oldWords: words }]));
   const { app, ed, editor } = await openSource(file, title, { DRASHTI_TEST_NO_CONVERTER: '1' });
   try {
-    await expect(canvasOf(editor).locator('[data-element][data-media-id]')).toHaveCount(1);
+    const picture = canvasOf(editor).locator('[data-element][data-media-id]');
+    await expect(picture).toHaveCount(1);
+    const frame = await picture.boundingBox();
+    if (!frame) throw new Error('The generated PDF picture did not render');
     const bounds = await objectBounds(editor, words);
-    const x = bounds.x + bounds.width / 2;
-    const y = bounds.y + bounds.height / 2;
+    const left = Math.max(bounds.x, frame.x);
+    const right = Math.min(bounds.x + bounds.width, frame.x + frame.width);
+    const top = Math.max(bounds.y, frame.y);
+    const bottom = Math.min(bounds.y + bounds.height, frame.y + frame.height);
+    expect(right).toBeGreaterThan(left);
+    expect(bottom).toBeGreaterThan(top);
+    const x = (left + right) / 2;
+    const y = (top + bottom) / 2;
     await ed.mouse.click(x, y);
     await expect(editor.getByTestId('selection')).toHaveAttribute(
       'data-selected',
