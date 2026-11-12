@@ -1,3 +1,4 @@
+import type { DeckSlide } from './deck';
 import type { Rect, SlideElement } from './model';
 import type { PictureJob, PicturePage, PicturesDone } from './pictures';
 
@@ -95,6 +96,11 @@ export interface PreparedSourcePage {
   elements: SlideElement[];
   assets: { token: string; file: string; kind: 'image' | 'video' | 'audio' }[];
   issues: string[];
+  /**
+   * A PowerPoint page asked for its clicks (SourceRead's `timingPages`): its clicks and transition as alpha.17's import
+   * reads them (W6's review N4), for a slide imported before alpha.17 to keep through an edit.
+   */
+  deck?: DeckSlide;
 }
 export type PreparedSource =
   | { ok: true; pages: PreparedSourcePage[]; total: number; failed: number[] }
