@@ -60,7 +60,11 @@ test('a paragraph build shows each paragraph from its own click on the screens, 
                 y: 914_400,
                 w: 7_315_200,
                 h: 3_657_600,
-                paras: POINTS.map((text) => ({ text, bullet: true })),
+                paras: POINTS.map((text, i) => ({
+                  text,
+                  bullet: true,
+                  ...(i === 1 ? { spaceBefore: 1200 } : {}),
+                })),
               },
             ],
             effects: POINTS.map((_, para) => ({
@@ -103,6 +107,7 @@ test('a paragraph build shows each paragraph from its own click on the screens, 
       await inStep(app, win, 0, 0);
       for (const index of [0, 1, 2]) await expect(words(index)).toHaveCSS('opacity', '0');
       await expect.poll(marksFollowWords).toBe(true);
+      await expect(words(1).locator('..')).toHaveCSS('padding-block-start', '16px');
 
       await dispatch(win, { type: 'next' });
       await inStep(app, win, 1, 150);
@@ -118,6 +123,7 @@ test('a paragraph build shows each paragraph from its own click on the screens, 
       await inStep(app, win, 2, 300);
       await expect(words(0)).toHaveCSS('opacity', '1');
       await expect(words(1)).toHaveCSS('opacity', '1');
+      await expect(words(1).locator('..')).toHaveCSS('padding-block-start', '16px');
       await expect(words(2)).toHaveCSS('opacity', '0');
 
       // Back settles the click before at once: the second paragraph is hidden again.
