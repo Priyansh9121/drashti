@@ -392,7 +392,7 @@ test('the welcome and the practice show at 1024 × 645, every button clickable; 
   await app.close();
 });
 
-test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audio too, with Black-out and the Wallpaper on and Put it back offered; its Next and Back in sight', async () => {
+test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audio too, with Black-out on, then the Wallpaper in its place, and Put it back offered with each; its Next and Back in sight', async () => {
   test.setTimeout(90_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -426,23 +426,41 @@ test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audi
     simpleBar('Clear all F1', true, 'Wallpaper F12', 'Black-out B'),
     'as it opens',
   );
+  // One cover at a time (Session 57: the Wallpaper and Black-out take each other off), so the bar is checked with
+  // each of them on: Black-out, then the Wallpaper in its place; then Put it back offered with each.
   await win.keyboard.press('b');
-  await win.keyboard.press('F12');
   await expect(win.getByTestId('simple-blackout')).toHaveText(/Black-out is on/u);
-  await expect(win.getByTestId('simple-wallpaper')).toHaveText(/Wallpaper is on/u);
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    simpleBar('Clear all F1', true, 'Wallpaper is on F12', 'Black-out is on B'),
-    'Black-out and the Wallpaper on',
+    simpleBar('Clear all F1', true, 'Wallpaper F12', 'Black-out is on B'),
+    'Black-out on',
+  );
+  await win.keyboard.press('F12');
+  await expect(win.getByTestId('simple-wallpaper')).toHaveText(/Wallpaper is on/u);
+  await expect(win.getByTestId('simple-blackout')).not.toHaveText(/Black-out is on/u);
+  await expectBarAtEveryWidth(
+    win,
+    'simple-buttons',
+    simpleBar('Clear all F1', true, 'Wallpaper is on F12', 'Black-out B'),
+    'the Wallpaper on in Black-out’s place',
   );
   await win.keyboard.press('F1');
   await expect(win.getByTestId('simple-put-back')).toBeVisible();
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    simpleBar('Put it back', false, 'Wallpaper is on F12', 'Black-out is on B'),
-    'Put it back offered, Black-out and the Wallpaper on',
+    simpleBar('Put it back', false, 'Wallpaper is on F12', 'Black-out B'),
+    'Put it back offered, the Wallpaper on',
+  );
+  await win.keyboard.press('b');
+  await expect(win.getByTestId('simple-blackout')).toHaveText(/Black-out is on/u);
+  await expect(win.getByTestId('simple-wallpaper')).not.toHaveText(/Wallpaper is on/u);
+  await expectBarAtEveryWidth(
+    win,
+    'simple-buttons',
+    simpleBar('Put it back', false, 'Wallpaper F12', 'Black-out is on B'),
+    'Put it back offered, Black-out on in the Wallpaper’s place',
   );
   // Next and Back whole and in sight, at the narrowest as at CI's.
   for (const width of [1008, CI_WINDOW.width]) {
