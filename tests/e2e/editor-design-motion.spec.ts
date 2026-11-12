@@ -2,7 +2,9 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { makeTestDeck, placeholderDeckMedia } from '../../src/main/import/testing/make-deck';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { openEditor } from './deck-edit-fixtures';
 import { drawPicture, goLive, halves, makeSlides } from './placeholder-slides';
 import { near, pixels } from './pixels';
 import {
@@ -184,6 +186,83 @@ test('Motion keeps per-element in, emphasis and out times as well as the slide t
     );
     if (!cleared.ok) throw new Error(cleared.message);
     expect(cleared.doc.groups[0]?.slides[0]?.elements[0]?.motion).toBeUndefined();
+  } finally {
+    await app.close();
+  }
+});
+
+test('PowerPoint motion notes keep the ribbon short at 1024 × 645', async () => {
+  const { app, userData } = await launchApp({ DRASHTI_TEST_DECK_CONVERTER: '1' });
+  try {
+    const name = 'Placeholder motion notes';
+    const file = join(userData, name + '.pptx');
+    const points = ['First', 'Second', 'Third', 'Fourth', 'Fifth'];
+    const click = { kind: 'fade' as const, dur: 300, start: 'click' as const };
+    writeFileSync(
+      file,
+      makeTestDeck(
+        [
+          {
+            key: 'placeholder-motion',
+            bg: '244060',
+            transition: { kind: 'fade', dur: 200 },
+            notes: '',
+            shapes: [
+              {
+                id: 2,
+                type: 'text',
+                name: 'Placeholder paragraph box',
+                x: 914_400,
+                y: 914_400,
+                w: 7_315_200,
+                h: 3_657_600,
+                paras: points.map((point) => ({ text: 'Placeholder ' + point + ' motion point' })),
+              },
+              {
+                id: 3,
+                type: 'text',
+                name: 'Placeholder removable box',
+                x: 914_400,
+                y: 4_572_000,
+                w: 7_315_200,
+                h: 914_400,
+                paras: [{ text: 'Placeholder removable motion' }],
+              },
+            ],
+            effects: [
+              { ...click, target: 2, para: 0 },
+              { ...click, target: 2, para: 1 },
+              { ...click, target: 3 },
+              ...[2, 3, 4].map((para) => ({ ...click, target: 2, para })),
+            ],
+          },
+        ],
+        placeholderDeckMedia(),
+      ),
+    );
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const [id] = await importAndGetIds(win, [file]);
+    expect(id).toBeTruthy();
+    const { ed, editor } = await openEditor(app, win, name);
+    await sizeSlideEditor(app, ed, { width: 1024, height: 645 });
+    await editorGroup(ed, 'Motion');
+    const motion = editor.getByTestId('imported-motion');
+    await expect(motion.getByText('6 clicks', { exact: true })).toBeVisible();
+    const ribbon = editor.getByTestId('editor-ribbon');
+    const height = () => ribbon.evaluate((element) => element.getBoundingClientRect().height);
+    expect(await height()).toBeLessThanOrEqual(105);
+    await expect(motion.getByText(/nothing left to move/u)).toHaveCount(0);
+
+    const removable = editor
+      .getByTestId('editor-slide')
+      .getByText('Placeholder removable motion', { exact: true });
+    await removable.click();
+    await ed.keyboard.press('Delete');
+    await expect(removable).toHaveCount(0);
+    await expect(motion.getByText(/Click 3 has nothing left to move/u)).toBeVisible();
+    await expect(motion.getByText(/Click [12456] has nothing left to move/u)).toHaveCount(0);
+    expect(await height()).toBeLessThanOrEqual(105);
   } finally {
     await app.close();
   }

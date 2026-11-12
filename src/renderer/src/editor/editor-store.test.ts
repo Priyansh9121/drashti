@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { ShapeElement } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
 import { commit, noteOutside, redo, select, undo, useEditor } from './editor-store';
-import { changeSlide, mapSlide } from './ops';
+import { changeSlide, mapSlide, setShapeFill } from './ops';
 
 /*
  * Undo and Redo for every change made in the slide editor (Session 55, Part 17a): the presentation's own changes, and
@@ -116,4 +117,27 @@ describe('the editor’s Undo and Redo', () => {
     noteOutside({ undo: () => undefined, redo: () => undefined });
     expect(useEditor.getState().doc).toBe(useEditor.getState().opened);
   });
+});
+
+it.each([null, '#336699'])('removes the gradient property when Fill becomes %s', (fill) => {
+  const shape: ShapeElement = {
+    id: 'placeholder-gradient',
+    kind: 'shape',
+    frame: { x: 0, y: 0, width: 100, height: 60 },
+    fill: '#000000',
+    cornerRadius: 0,
+    opacity: 1,
+    gradient: {
+      kind: 'linear',
+      angle: 0,
+      stops: [
+        { offset: 0, color: '#000000' },
+        { offset: 1, color: '#ffffff' },
+      ],
+    },
+  };
+  const changed = setShapeFill(shape, fill);
+  expect(changed).toHaveProperty('fill', fill);
+  expect(changed).not.toHaveProperty('gradient');
+  expect(shape.gradient).toBeDefined();
 });

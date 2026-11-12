@@ -42,10 +42,12 @@ function fixture({
   hidden,
   filled,
   hiddenSibling,
+  hiddenBeforeFront,
 }: {
   hidden?: boolean;
   filled?: boolean;
   hiddenSibling?: boolean;
+  hiddenBeforeFront?: boolean;
 }): string {
   const group = [
     '<p:grpSp><p:nvGrpSpPr><p:cNvPr id="10" name="Placeholder group"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>',
@@ -54,12 +56,14 @@ function fixture({
     box(12, sibling, 0, 1371600, { hidden: hiddenSibling }),
     '</p:grpSp>',
   ].join('');
+  const hiddenBox = hidden ? box(13, hiddenWords, 914400, 914400, { name: hiddenName, hidden: true }) : '';
   const shapes = [
     box(2, back, 914400, 2743200),
     box(3, middle, 914400, 2743200),
+    hiddenBeforeFront ? hiddenBox : '',
     box(4, front, 914400, 2743200),
     group,
-    ...(hidden ? [box(13, hiddenWords, 914400, 914400, { name: hiddenName, hidden: true })] : []),
+    hiddenBeforeFront ? '' : hiddenBox,
     ...(filled ? [box(14, filledWords, 6400800, 4114800, { filled: true })] : []),
   ].join('');
   const file = join(mkdtempSync(join(tmpdir(), 'drashti-objects-')), `${name}.pptx`);
@@ -245,7 +249,11 @@ test('a click then double-click edits the PDF words over the page picture', asyn
 });
 
 test('Select All includes hidden group members and skips hidden standalone objects', async () => {
-  const { app, ed, editor } = await openFixture({ hidden: true, hiddenSibling: true });
+  const { app, ed, editor } = await openFixture({
+    hidden: true,
+    hiddenSibling: true,
+    hiddenBeforeFront: true,
+  });
   try {
     const canvas = editor.getByTestId('editor-canvas');
     const hidden = selectObject(editor, hiddenName);
@@ -255,9 +263,10 @@ test('Select All includes hidden group members and skips hidden standalone objec
     await expect.soft(hidden).toHaveAttribute('aria-pressed', 'false');
     await expect.soft(selectObject(editor, sibling)).toHaveAttribute('aria-pressed', 'true');
 
-    await selectObject(editor, member).click();
+    await selectObject(editor, middle).click();
     await canvas.focus();
     await ed.keyboard.press('Tab');
+    await expect(selectObject(editor, front)).toHaveAttribute('aria-pressed', 'true');
     await expect(hidden).toHaveAttribute('aria-pressed', 'false');
     await expect(selectObject(editor, sibling)).toHaveAttribute('aria-pressed', 'false');
   } finally {
