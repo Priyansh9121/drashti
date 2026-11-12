@@ -84,7 +84,15 @@ export class WarmUpChoices {
     this.said = true;
     for (const output of this.outputs()) {
       const before = this.given.get(output.id);
-      if (this.skips(output.id, output.name) && before !== true) output.tell();
+      if (!this.skips(output.id, output.name) || before === true) continue;
+      try {
+        output.tell();
+      } catch (error) {
+        // Its page going as Drashti quits, say: the others are still told, and nothing goes uncaught.
+        this.deps.log(
+          `Warm-up: its context not sent again (${error instanceof Error ? error.message : String(error)}), for ${output.name}`,
+        );
+      }
     }
   }
 
@@ -121,15 +129,16 @@ export interface WarmUpWindow {
   readonly webContents: { readonly id: number; isDestroyed(): boolean };
 }
 
+/** The window and its page are both still there (as Drashti quits, the page goes before its window). */
+const alive = (win: WarmUpWindow): boolean => !win.isDestroyed() && !win.webContents.isDestroyed();
+
 /** An output's context fact: { noGpu: true } once it skips its warm-up; nothing while it warms up as before. */
 export function warmUpFact(
   choices: WarmUpChoices,
   win: WarmUpWindow | undefined,
   name: string,
 ): { noGpu?: true } {
-  return win !== undefined && !win.isDestroyed() && choices.skips(win.webContents.id, name)
-    ? { noGpu: true }
-    : {};
+  return win !== undefined && alive(win) && choices.skips(win.webContents.id, name) ? { noGpu: true } : {};
 }
 
 /** Follow Main's or a node's output windows (by screen, with their names): each is sent its context with `send`. */
@@ -141,7 +150,7 @@ export function followOutputs<W extends WarmUpWindow>(
 ): void {
   choices.follow(() =>
     [...windows]
-      .filter(([, win]) => !win.isDestroyed())
+      .filter(([, win]) => alive(win))
       .map(([screenId, win]) => ({
         id: win.webContents.id,
         name: names.get(screenId) ?? 'an output',
