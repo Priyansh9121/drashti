@@ -251,13 +251,28 @@ test('a receiver that never answers changes neither slide changes nor quitting',
     const t = Date.now();
     await app.close();
     const quitMs = Date.now() - t;
-    // Judged by Drashti's own quit, as its log says (the events process stopped with them): none waits on the
-    // receiver, so they take under 2 s. The whole quit (Electron's closing and the processes' exits, which a
-    // busy CI computer can slow) gets 30 s (Priyansh's answer, Sessions 31–36).
-    const own = /Quit: Drashti's own stops took (\d+) ms/u.exec(
-      readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8'),
+    // Judged by Drashti's own quit, as its log says, on its own clock (Priyansh's answer, Sessions 31–36: under 2 s).
+    // The stop that stops the events process, the only one with anything to do with the receiver, by its own time
+    // (waiting for a receiver that never answers takes 15 s, the events process's limit for an answer); and all of
+    // Drashti's own stops by their work. What they wait on besides (the disk as the library closes, a busy
+    // computer) is nothing of the receiver's, and CI's Windows has held them there: 2,219 ms in all once (12 Nov
+    // 2026), and 11,793 ms in a test with no receiver at all (alpha.14's gate). The log has each stop's own time.
+    // The whole quit (Electron's closing and the processes' exits, which a busy CI computer can slow) gets 30 s
+    // (Priyansh's answer, Sessions 31–36).
+    const quitLog = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    const own = /Quit: Drashti's own stops took (\d+) ms \((\d+) ms of it working\)/u.exec(quitLog);
+    const each = /Quit: how long each stop took, in ms: (.*)/u.exec(quitLog)?.[1] ?? '';
+    const stopMs = new Map(
+      each.split(', ').flatMap((stop) => {
+        const m = /^(.+) (\d+)$/u.exec(stop);
+        return m?.[1] && m[2] ? [[m[1], Number(m[2])] as const] : [];
+      }),
     );
-    expect(Number(own?.[1] ?? Infinity), "Drashti's own stops (ms)").toBeLessThan(2000);
+    const said = `${own?.[0] ?? 'no line on the stops'}; each: ${each}`;
+    if (Number(own?.[1] ?? 0) >= 2000) console.log(`A slow quit, its stops judged by their work: ${said}`);
+    const eventsStop = stopMs.get('events out') ?? Infinity;
+    expect(eventsStop, `the events process's stop (ms): ${said}`).toBeLessThan(2000);
+    expect(Number(own?.[2] ?? Infinity), `Drashti's own stops, working (ms): ${said}`).toBeLessThan(2000);
     expect(quitMs, 'the whole quit (ms)').toBeLessThan(30_000);
   } finally {
     await app.close().catch(() => undefined);
