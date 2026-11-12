@@ -193,6 +193,8 @@ interface Theme {
   colors: Record<string, string>;
   map: Record<string, string>;
   fonts: Record<string, string>;
+  part: Part | undefined;
+  format: Node;
 }
 interface Context {
   width: number;
@@ -201,6 +203,7 @@ interface Context {
   master: Part | undefined;
   layout: Part | undefined;
   defaults: Node;
+  tableStyles: ReadonlyMap<string, { style: XmlNode; part: Part }>;
   issues: Set<string>;
   id: () => string;
   asset: (part: Part, relId: string, issues: Set<string>) => Promise<string | null>;
@@ -243,14 +246,13 @@ function themeOf(
       if (face) fonts[`+${token}-${suffix}`] = face;
     }
   }
-  return { colors, map, fonts };
+  return { colors, map, fonts, part, format: descendants(part?.root, 'fmtScheme')[0] };
 }
+const isColor = (node: XmlNode): boolean =>
+  ['srgbClr', 'schemeClr', 'sysClr', 'prstClr'].includes(nameOf(node));
+
 function colorOf(node: Node, ctx: Context, placeholder?: string): string | null {
-  if (!node) return null;
-  const ownName = nameOf(node);
-  const color = ['srgbClr', 'schemeClr', 'sysClr', 'prstClr'].includes(ownName)
-    ? node
-    : kids(node).find((n) => ['srgbClr', 'schemeClr', 'sysClr', 'prstClr'].includes(nameOf(n)));
+  const color = node && isColor(node) ? node : kids(node).find(isColor);
   if (!color) return null;
   const kind = nameOf(color);
   const value = attr(color, 'val') ?? '';
@@ -305,16 +307,21 @@ function colorOf(node: Node, ctx: Context, placeholder?: string): string | null 
       : '')
   );
 }
-function fillOf(nodes: Node[], ctx: Context, fallback: string | null = null): string | null {
+function fillOf(
+  nodes: Node[],
+  ctx: Context,
+  fallback: string | null = null,
+  placeholder?: string,
+): string | null {
   for (let i = nodes.length - 1; i >= 0; i--) {
     const fill = kids(nodes[i]).find((n) =>
       ['solidFill', 'noFill', 'gradFill', 'blipFill', 'pattFill'].includes(nameOf(n)),
     );
     if (!fill) continue;
     if (nameOf(fill) === 'noFill') return null;
-    if (nameOf(fill) === 'solidFill') return colorOf(fill, ctx) ?? fallback;
+    if (nameOf(fill) === 'solidFill') return colorOf(fill, ctx, placeholder) ?? fallback;
     ctx.issues.add('A gradient, patterned or picture fill is not reproduced as an editable fill.');
-    return colorOf(descendants(fill, 'gs')[0], ctx) ?? fallback;
+    return colorOf(descendants(fill, 'gs')[0], ctx, placeholder) ?? fallback;
   }
   return fallback;
 }
@@ -861,9 +868,9 @@ const SHAPES: Record<string, ShapeKind> = {
   star5: 'star',
   heart: 'heart',
 };
-function lineOutline(line: Node, ctx: Context): Outline | null {
+function lineOutline(line: Node, ctx: Context, placeholder?: string): Outline | null {
   if (!line || child(line, 'noFill')) return null;
-  const color = fillOf([line], ctx, '#000000');
+  const color = fillOf([line], ctx, placeholder ?? '#000000', placeholder);
   return color ? { color, width: Math.max(0.01, Math.min(100, number(attr(line, 'w'), EMU) / EMU)) } : null;
 }
 function linePlacement(rect: Rect, matrix: Matrix) {
@@ -902,10 +909,10 @@ interface SourcePaint {
   picture?: Pick<MediaElement, 'mediaId' | 'crop'>;
 }
 
-function gradientOf(fill: XmlNode, ctx: Context): GradientFill | undefined {
+function gradientOf(fill: XmlNode, ctx: Context, placeholder?: string): GradientFill | undefined {
   const fraction = (value: string | undefined) => Math.max(0, Math.min(1, number(value, 0) / 100_000));
   const stops = kids(child(fill, 'gsLst'), 'gs').flatMap((stop) => {
-    const color = colorOf(stop, ctx);
+    const color = colorOf(stop, ctx, placeholder);
     return color ? [{ offset: fraction(attr(stop, 'pos')), color }] : [];
   });
   if (stops.length < 2 || stops.length > 64) return undefined;
@@ -946,12 +953,19 @@ async function pictureOf(fill: Node, part: Part, ctx: Context): Promise<SourcePa
   };
 }
 
+interface PaintSource {
+  props: Node;
+  part: Part;
+  placeholder?: string;
+}
+
 async function shapePaintOf(
-  sources: { props: Node; part: Part }[],
+  sources: PaintSource[],
   ctx: Context,
   fallback: string | null,
 ): Promise<SourcePaint> {
-  for (const { props, part } of [...sources].reverse()) {
+  for (const { props, part, placeholder } of [...sources].reverse()) {
+    const reference = placeholder ?? fallback;
     const fill = kids(props).find((item) =>
       ['solidFill', 'noFill', 'gradFill', 'blipFill', 'pattFill'].includes(nameOf(item)),
     );
@@ -960,20 +974,20 @@ async function shapePaintOf(
       case 'noFill':
         return { color: null };
       case 'solidFill':
-        return { color: colorOf(fill, ctx) ?? fallback };
+        return { color: colorOf(fill, ctx, placeholder) ?? reference };
       case 'gradFill': {
-        const gradient = gradientOf(fill, ctx);
-        if (gradient) return { color: gradient.stops[0]?.color ?? fallback, gradient };
+        const gradient = gradientOf(fill, ctx, placeholder);
+        if (gradient) return { color: gradient.stops[0]?.color ?? reference, gradient };
         ctx.issues.add('A gradient could not be read. The editable copy uses its reference colour.');
-        return { color: fallback };
+        return { color: reference };
       }
       case 'blipFill': {
         const picture = await pictureOf(fill, part, ctx);
-        return picture ? { color: null, picture } : { color: fallback };
+        return picture ? { color: null, picture } : { color: reference };
       }
       default:
         ctx.issues.add('A patterned fill uses its foreground colour in the editable copy.');
-        return { color: colorOf(child(fill, 'fgClr'), ctx) ?? fallback };
+        return { color: colorOf(child(fill, 'fgClr'), ctx, placeholder) ?? reference };
     }
   }
   return { color: fallback };
@@ -1043,6 +1057,107 @@ function cellSpan(cell: XmlNode, key: string, remaining: number): number {
   return Math.max(1, Math.min(remaining, Math.trunc(number(attr(cell, key), 1))));
 }
 
+function drawingElement(name: string, children: XmlNode[] = [], attrs = {}): XmlNode {
+  return { name: 'a:' + name, attrs, children, text: '' };
+}
+
+function tableStylePaint(node: Node, part: Part, ctx: Context): PaintSource[] {
+  const fill = child(node, 'fill');
+  if (fill) return [{ props: fill, part }];
+  const ref = child(node, 'fillRef');
+  if (!ref) return [];
+  const index = number(attr(ref, 'idx'), 0);
+  if (index === 0 || index === 1000)
+    return [{ props: drawingElement('fill', [drawingElement('noFill')]), part }];
+  const placeholder = colorOf(ref, ctx) ?? undefined;
+  const list = child(ctx.theme.format, index >= 1001 ? 'bgFillStyleLst' : 'fillStyleLst');
+  const themed = kids(list)[index - (index >= 1001 ? 1001 : 1)];
+  if (themed && ctx.theme.part)
+    return [{ props: drawingElement('fill', [themed]), part: ctx.theme.part, placeholder }];
+  ctx.issues.add('A table fill style is missing from its theme; its reference colour is used.');
+  const copy = placeholder
+    ? drawingElement('solidFill', kids(ref).filter(isColor))
+    : drawingElement('noFill');
+  return [{ props: drawingElement('fill', [copy]), part }];
+}
+
+function tableTextStyle(part: XmlNode): XmlNode[] {
+  const node = child(part, 'tcTxStyle');
+  if (!node) return [];
+  const attrs: Record<string, string> = {};
+  for (const key of ['b', 'i']) {
+    const value = attr(node, key);
+    if (value === 'on' || value === 'off') attrs[key] = value === 'on' ? '1' : '0';
+  }
+  const font = child(node, 'font');
+  const ref = child(node, 'fontRef');
+  const index = attr(ref, 'idx');
+  const children = kids(font).filter((item) => ['latin', 'ea', 'cs'].includes(nameOf(item)));
+  if (!font && (index === 'major' || index === 'minor'))
+    children.push(drawingElement('latin', [], { typeface: index === 'major' ? '+mj-lt' : '+mn-lt' }));
+  const color = kids(node).find(isColor) ?? kids(ref).find(isColor);
+  if (color) children.push(drawingElement('solidFill', [color]));
+  const defaults = drawingElement('defPPr', [drawingElement('defRPr', children, attrs)]);
+  return [drawingElement('tc', [drawingElement('txBody', [drawingElement('lstStyle', [defaults])])])];
+}
+
+interface TableRegion {
+  node: XmlNode;
+  priority: number;
+  row?: number;
+  column?: number;
+}
+
+/** The part styles in PowerPoint precedence, each restricted to its own row or column when applicable. */
+function tableRegions(
+  style: XmlNode,
+  properties: Node,
+  row: number,
+  column: number,
+  rows: number,
+  columns: number,
+): TableRegion[] {
+  const firstRow = flag(attr(properties, 'firstRow'));
+  const firstCol = flag(attr(properties, 'firstCol'));
+  const top = row === 0 && firstRow;
+  const bottom = row === rows - 1 && flag(attr(properties, 'lastRow'));
+  const left = column === 0 && firstCol;
+  const right = column === columns - 1 && flag(attr(properties, 'lastCol'));
+  const rowBand = flag(attr(properties, 'bandRow')) && !top && !bottom;
+  const colBand = flag(attr(properties, 'bandCol')) && !left && !right;
+  const regions: [string, boolean, number?, number?][] = [
+    ['wholeTbl', true],
+    [(row - Number(firstRow)) % 2 === 0 ? 'band1H' : 'band2H', rowBand, row],
+    [(column - Number(firstCol)) % 2 === 0 ? 'band1V' : 'band2V', colBand, undefined, column],
+    ['lastCol', right, undefined, column],
+    ['firstCol', left, undefined, column],
+    ['lastRow', bottom, row],
+    ['seCell', bottom && right, row, column],
+    ['swCell', bottom && left, row, column],
+    ['firstRow', top, row],
+    ['neCell', top && right, row, column],
+    ['nwCell', top && left, row, column],
+  ];
+  return regions.flatMap(([name, enabled, regionRow, regionColumn], priority) => {
+    const node = enabled ? child(style, name) : undefined;
+    return node ? [{ node, priority, row: regionRow, column: regionColumn }] : [];
+  });
+}
+
+function styledTableBorder(border: Node, ctx: Context): Outline | null | undefined {
+  const line = child(border, 'ln');
+  if (line) return lineOutline(line, ctx);
+  const ref = child(border, 'lnRef');
+  if (!ref) return undefined;
+  const index = number(attr(ref, 'idx'), 0);
+  if (index === 0) return null;
+  const themed = kids(child(ctx.theme.format, 'lnStyleLst'), 'ln')[index - 1];
+  const color = colorOf(ref, ctx);
+  if (themed) return lineOutline(themed, ctx, color ?? undefined);
+  ctx.issues.add('A table border style is missing from its theme; its reference colour is used.');
+  return color ? { color, width: 1 } : null;
+}
+
 interface TableEdge {
   vertical: boolean;
   boundary: number;
@@ -1051,12 +1166,18 @@ interface TableEdge {
   outline: Outline;
 }
 
-function addTableEdge(edges: Map<string, TableEdge>, edge: TableEdge): void {
+type TableEdgeCandidate = Omit<TableEdge, 'outline'> & { outline: Outline | null; priority: number };
+
+function addTableEdge(edges: Map<string, TableEdgeCandidate>, edge: TableEdgeCandidate): void {
   // A spanning cell can share just part of its edge. Match the cells on the underlying grid.
   for (let start = edge.start; start < edge.end; start++) {
     const key = `${edge.vertical ? 'v' : 'h'}:${edge.boundary}:${start}`;
     const previous = edges.get(key);
-    if (!previous || edge.outline.width >= previous.outline.width)
+    if (
+      !previous ||
+      edge.priority > previous.priority ||
+      (edge.priority === previous.priority && (edge.outline?.width ?? 0) >= (previous.outline?.width ?? 0))
+    )
       edges.set(key, { ...edge, start, end: start + 1 });
   }
 }
@@ -1098,7 +1219,39 @@ async function tableObjects(
   if (!columns || !heights) return null;
   const groupId = ctx.id();
   const elements: SlideElement[] = [];
-  const edges = new Map<string, TableEdge>();
+  const edges = new Map<string, TableEdgeCandidate>();
+  const properties = child(table, 'tblPr');
+  const inline = child(properties, 'tableStyle');
+  const styleId = child(properties, 'tableStyleId')?.text.trim().toLowerCase();
+  const style = inline ? { style: inline, part } : ctx.tableStyles.get(styleId ?? '');
+  if (styleId && !style)
+    ctx.issues.add('A table style was not included in the source; its own cell formatting is used.');
+  const addPaint = (paint: SourcePaint, place: NonNullable<ReturnType<typeof placed>>) => {
+    if (paint.picture)
+      elements.push({ id: ctx.id(), kind: 'image', groupId, ...place, ...paint.picture, fit: 'stretch' });
+    if (paint.color || paint.gradient) {
+      elements.push({
+        id: ctx.id(),
+        kind: 'shape',
+        groupId,
+        ...place,
+        fill: paint.color,
+        cornerRadius: 0,
+        opacity: 1,
+        ...(paint.gradient ? { gradient: paint.gradient } : {}),
+      });
+    }
+  };
+  const background = await shapePaintOf(
+    [
+      ...(style ? tableStylePaint(child(style.style, 'tblBg'), style.part, ctx) : []),
+      { props: properties, part },
+    ],
+    ctx,
+    null,
+  );
+  const tablePlace = placed(rect, matrix, flipX, ctx);
+  if (tablePlace) addPaint(background, tablePlace);
   for (const [row, rowNode] of rows.entries()) {
     const cells = kids(rowNode, 'tc');
     const complete = cells.length === grid.length;
@@ -1119,40 +1272,51 @@ async function tableObjects(
       const place = placed(box, matrix, flipX, ctx);
       if (!place) return null;
       const props = child(cell, 'tcPr');
-      const paint = await shapePaintOf([{ props, part }], ctx, null);
-      if (paint.picture)
-        elements.push({ id: ctx.id(), kind: 'image', groupId, ...place, ...paint.picture, fit: 'stretch' });
-      if (paint.color || paint.gradient) {
-        elements.push({
-          id: ctx.id(),
-          kind: 'shape',
-          groupId,
-          ...place,
-          fill: paint.color,
-          cornerRadius: 0,
-          opacity: 1,
-          ...(paint.gradient ? { gradient: paint.gradient } : {}),
-        });
-      }
+      const regions = style
+        ? tableRegions(style.style, properties, row, column, rows.length, grid.length)
+        : [];
+      const paints = style
+        ? regions.flatMap(({ node }) => tableStylePaint(child(node, 'tcStyle'), style.part, ctx))
+        : [];
+      const paint = await shapePaintOf([...paints, { props, part }], ctx, null);
+      addPaint(paint, place);
       const node = tableTextNode(cell, props);
-      const text = textElement(node, [node], box, matrix, flipX, ctx, true);
+      const textStyles = regions.flatMap(({ node }) => tableTextStyle(node));
+      const text = textElement(node, [...textStyles, node], box, matrix, flipX, ctx, true);
       if (!text) return null;
       elements.push({ ...text, groupId, tableCell: { row, column, rowSpan, columnSpan } });
       if (elements.length > available) return null;
       const sides = [
-        ['lnL', true, column, row, row + rowSpan],
-        ['lnR', true, column + columnSpan, row, row + rowSpan],
-        ['lnT', false, row, column, column + columnSpan],
-        ['lnB', false, row + rowSpan, column, column + columnSpan],
+        ['lnL', 'left', true, true, column, row, row + rowSpan],
+        ['lnR', 'right', true, false, column + columnSpan, row, row + rowSpan],
+        ['lnT', 'top', false, true, row, column, column + columnSpan],
+        ['lnB', 'bottom', false, false, row + rowSpan, column, column + columnSpan],
       ] as const;
-      for (const [name, vertical, boundary, start, end] of sides) {
-        const outline = lineOutline(child(props, name), ctx);
-        if (outline) addTableEdge(edges, { vertical, boundary, start, end, outline });
+      for (const [name, outside, vertical, leading, boundary, start, end] of sides) {
+        const edge = { vertical, boundary, start, end };
+        const direct = child(props, name);
+        if (direct) {
+          addTableEdge(edges, { ...edge, outline: lineOutline(direct, ctx), priority: Infinity });
+          continue;
+        }
+        for (const region of regions) {
+          const fixed = vertical ? region.column : region.row;
+          const limit = vertical ? grid.length : rows.length;
+          const outer = leading
+            ? boundary <= (fixed ?? 0)
+            : boundary >= (fixed === undefined ? limit : fixed + 1);
+          const side = outer ? outside : vertical ? 'insideV' : 'insideH';
+          const border = child(child(child(region.node, 'tcStyle'), 'tcBdr'), side);
+          const outline = styledTableBorder(border, ctx);
+          if (outline !== undefined) addTableEdge(edges, { ...edge, outline, priority: region.priority });
+        }
       }
       column += complete ? 1 : columnSpan;
     }
   }
-  const borders = joinedTableEdges(edges.values());
+  const borders = joinedTableEdges(
+    [...edges.values()].flatMap((edge) => (edge.outline ? [{ ...edge, outline: edge.outline }] : [])),
+  );
   if (elements.length + borders.length > available) return null;
   // Draw the edges over both cells' fills at a shared boundary.
   for (const { vertical, boundary, start, end, outline } of borders) {
@@ -1515,6 +1679,14 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
   const presentation = makePart('ppt/presentation.xml', roots);
   if (!presentation || nameOf(presentation.root) !== 'presentation')
     throw new Error('This is not a readable PPTX presentation.');
+  const stylePart = related(presentation, 'tableStyles', roots) ?? makePart('ppt/tableStyles.xml', roots);
+  const tableStyles = new Map<string, { style: XmlNode; part: Part }>();
+  if (stylePart) {
+    for (const style of kids(stylePart.root, 'tblStyle')) {
+      const id = attr(style, 'styleId')?.trim().toLowerCase();
+      if (id) tableStyles.set(id, { style, part: stylePart });
+    }
+  }
   const size = child(presentation.root, 'sldSz');
   const width = number(attr(size, 'cx'), NaN) / EMU,
     height = number(attr(size, 'cy'), NaN) / EMU;
@@ -1594,6 +1766,7 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       master,
       layout,
       defaults: child(presentation.root, 'defaultTextStyle'),
+      tableStyles,
       issues,
       id: () => `pptx-${String(sourceIndex)}-${String(++nextId)}`,
       asset,
