@@ -1,6 +1,9 @@
 /**
- * Clean a name given to Rename. The joiners used by scripts such as Gujarati and Hindi are kept.
+ * Clean a name given to Rename, preserving word boundaries and script joiners.
  */
 export function normalizeRenameName(name: string): string {
-  return name.replace(/[\p{Cc}\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, '').trim();
+  return name
+    .replace(/[\t\n\v\f\r\u0085\u2028\u2029]+/gu, ' ')
+    .replace(/[\p{Cc}\p{Bidi_Control}]/gu, '')
+    .trim();
 }
