@@ -40,8 +40,9 @@ const resultSchema = z
                   .strict(),
               )
               .max(EDITABLE_SOURCE_LIMITS.pageElements),
-            // A timed page's clicks and transition (W6's review N4): checked on its own, below.
-            deck: z.unknown().optional(),
+            // A timed page's clicks and transition (W6's review N4), only their known parts; anything else is
+            // dropped here, never failing the reply, and only an asked page's are taken (below).
+            deck: z.unknown().transform((value) => sourceTimingDeck(value)),
           })
           .strict(),
       )
@@ -259,7 +260,7 @@ export function pptxReader(spawn: () => PptxReaderChild, options: ReaderOptions 
               }
               // Clicks that don't read leave the page as it was read before: its slide keeps today's behaviour.
               const { deck: sent, ...read } = page;
-              const deck = timing.has(page.sourceIndex) ? sourceTimingDeck(sent) : undefined;
+              const deck = timing.has(page.sourceIndex) ? sent : undefined;
               pages.push({ ...read, assets, ...(deck ? { deck } : {}) });
             }
             if ([...requested].some((index) => !completed.has(index) && !failedPages.has(index))) {

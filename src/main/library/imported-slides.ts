@@ -305,7 +305,7 @@ export class ImportedSlides {
               }
               const candidates = occurrences.map((each) => {
                 // Its clicks read from the kept file (W6's review N4), beside its clips until it is edited.
-                const deck = withSourceTiming(each.deck, native.deck);
+                const deck = withSourceTiming(each, native.deck);
                 const slide = deck === each.deck ? each : { ...each, deck };
                 const elements = native.elements.flatMap((element): SlideElement[] => {
                   if (element.kind !== 'image' && element.kind !== 'video') return [element];
