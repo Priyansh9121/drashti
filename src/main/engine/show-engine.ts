@@ -700,8 +700,8 @@ export class ShowEngine {
     return {
       slide,
       background: background !== null && background.kind !== 'input' && kept,
-      blackout: request.blackout,
-      wallpaper: request.wallpaper === true,
+      blackout: request.blackout && this.state.blackout,
+      wallpaper: request.wallpaper === true && this.state.wallpaper,
       // Not an audio playlist that would have ended meanwhile (caughtUp took it off): the notice says no sound.
       audio: Boolean(request.audio) && this.state.layers.audio !== null,
       messages: request.messages?.length ?? 0,
