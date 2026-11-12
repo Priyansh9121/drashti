@@ -23,7 +23,7 @@ import {
   jobFor,
   useConvert,
 } from './convert-store';
-import { convertingWords, jobBusy } from './converting';
+import { conversionLabel, convertingWords, jobBusy } from './converting';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { layoutRows, visibleRows } from '../ui/virtual';
@@ -51,23 +51,24 @@ export const mediaKindIcon: Record<keyof typeof mediaKindLabel, Icon> = {
 /** What is wrong with a media file, if anything (Session 50: “Converting…” while Drashti converts it). */
 export { mediaProblem } from './converting';
 
-/**
- * “Can’t play”, or “Converting…” while Drashti converts it (Session 50), on a playlist's item and the slides'
- * view of it: either way it cannot go live yet.
- */
+/** A playlist or slide's conversion status, or a notice that the file cannot play. */
 export function CannotPlayBadge({ mediaId }: { mediaId: string }) {
-  const busy = useConvert((s) => jobBusy(jobFor(s.jobs, mediaId)));
+  const job = useConvert((s) => jobFor(s.jobs, mediaId));
   useEffect(() => {
     connectConversions();
   }, []);
-  return busy ? (
+  return jobBusy(job) ? (
     <Badge
       tone="info"
       icon={Wand2}
       data-testid="badge-converting"
-      title="Drashti is converting it to a file it plays: it can go live once that is done."
+      title={
+        job.maxHeight === undefined
+          ? 'Drashti is converting it to a file it plays: it can go live once that is done.'
+          : 'Drashti will use the smaller copy when it is ready.'
+      }
     >
-      Converting…
+      {conversionLabel(job)}
     </Badge>
   ) : (
     <UnplayableBadge />

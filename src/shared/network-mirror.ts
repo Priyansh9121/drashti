@@ -1,3 +1,4 @@
+import type { MusicView } from './music';
 import type { MediaSummary } from './playlists';
 
 /*
@@ -35,6 +36,13 @@ export interface RemoteMusic {
   id: string;
   name: string;
   trackCount: number;
+}
+
+export interface RemoteAudio {
+  view: MusicView;
+  stepsAside: boolean;
+  /** The playlist made or changed, when the audio service returns one. */
+  id?: string;
 }
 
 /** The keys the operator window answers now: its system (how a key is written) and the single-letter keys. */
