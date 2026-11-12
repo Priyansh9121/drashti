@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
-import { PICTURE_LIMITS, playbackOffset, playbackPosition, SOUND_LIMITS } from '../../../shared/media';
+import { mediaUrl, PICTURE_LIMITS, playbackOffset, playbackPosition, SOUND_LIMITS } from '../../../shared/media';
 import { startPlayback } from './playback';
 
 /*
@@ -26,6 +26,8 @@ class FakeMedia extends EventTarget {
   muted = false;
   /** How many seeks it has been sent (Session 52: how many times it was aimed). */
   seeks = 0;
+  sourceAssignments = 0;
+  private source: string | null = null;
   private rate = 1;
   /** Where it was at `since` (Date.now()). */
   private base = 0;
@@ -105,7 +107,9 @@ class FakeMedia extends EventTarget {
     this.dispatchEvent(new Event('ratechange'));
   }
 
-  set src(_url: string) {
+  set src(url: string) {
+    this.sourceAssignments++;
+    this.source = url;
     setTimeout(() => {
       this.duration = this.length;
       this.readyState = 4;
@@ -136,7 +140,12 @@ class FakeMedia extends EventTarget {
     this.readyState = 0;
   }
 
+  getAttribute(name: string): string | null {
+    return name === 'src' ? this.source : null;
+  }
+
   removeAttribute(): void {
+    this.source = null;
     this.duration = NaN;
   }
 }
@@ -170,6 +179,26 @@ describe('a file played once to an end point', () => {
       startedAt: Date.now(),
       timing: () => ({ loop: false, ...timing }),
     });
+
+  it('uses an already decoded frame immediately only when the caller opts in', () => {
+    vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
+    for (const reuseLoadedSource of [true, false]) {
+      const v = new FakeMedia(6);
+      v.src = mediaUrl('clip');
+      vi.advanceTimersByTime(10);
+      expect(v.paused).toBe(true);
+      const onFrame = vi.fn();
+      const options = { mediaId: 'clip', startedAt: Date.now(), reuseLoadedSource, onFrame };
+      const stop = startPlayback(v as unknown as HTMLMediaElement, options);
+      try {
+        expect(v.sourceAssignments).toBe(reuseLoadedSource ? 1 : 2);
+        expect(onFrame).toHaveBeenCalledTimes(reuseLoadedSource ? 1 : 0);
+        expect(v.paused).toBe(!reuseLoadedSource);
+      } finally {
+        stop();
+      }
+    }
+  });
 
   it('stops within a frame of its end point, between the checks', () => {
     // 2.137 s falls between two quarter-second checks: the next one would come 0.11 s past it.
