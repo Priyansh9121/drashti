@@ -61,7 +61,7 @@ import { useDocs, readDocAgain, useWantDocs } from './docs-store';
 import { useFolded } from './fold-store';
 import { groupDocId, groupName, type MiddleRow, playlistRows, repeatRows } from './rows';
 import { SlideRow } from './SlideRow';
-import { PresentationPreparing } from './PreparingMark';
+import { PresentationPreparing, TrimPreparing } from './PreparingMark';
 import { slideRowAt, type SlideRowAt } from './slide-order';
 import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
@@ -333,6 +333,7 @@ function ItemBody({
             : ''}
         </span>
         {item.kind === 'presentation' && <PresentationPreparing presentationId={item.presentationId} />}
+        {item.kind === 'media' && item.media === 'video' && <TrimPreparing itemId={item.id} />}
         {item.kind === 'presentation' &&
           (item.presentationName === null ? (
             <span className="text-xs text-warning-fg">Removed from the library</span>

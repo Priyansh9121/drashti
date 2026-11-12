@@ -19,7 +19,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 function ffmpeg(args: string[], input?: Buffer) {
   const path = testFfmpeg();
   if (!path) throw new Error('This test needs Drashti’s bundled FFmpeg.');
-  const result = spawnSync(path, ['-hide_banner', '-loglevel', 'error', '-nostdin', ...args], { input });
+  const result = spawnSync(path, ['-hide_banner', '-loglevel', 'error', '-nostdin', ...args], {
+    input,
+    windowsHide: true,
+  });
   expect(result.status, result.error?.message ?? result.stderr.toString()).toBe(0);
   return result;
 }
