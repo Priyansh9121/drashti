@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
 import { mediaMarkersSchema, NO_MARKERS } from '../../shared/markers';
 import type { RowTrimView } from '../../shared/trim';
+import type { EdgePoints } from '../sound/sound-pass';
 import type { Db } from './database';
 import type { MediaRepo } from './media';
 import type { PlaylistRepo } from './playlists';
@@ -16,6 +17,18 @@ interface TrimSource {
   cutStartMs: number | null;
   cutEndMs: number | null;
   sourceMarkers: string | null;
+}
+
+function pointInCopy(point: number | null, start: number, end: number): number | null {
+  return point !== null && point > start && point < end ? point - start : null;
+}
+
+function pointsInSource(copy: MediaMarkers, start: number, end: number) {
+  return {
+    startMs:
+      copy.startMs !== null && copy.startMs > 0 && start + copy.startMs < end ? start + copy.startMs : null,
+    endMs: copy.endMs !== null && copy.endMs > 0 && start + copy.endMs < end ? start + copy.endMs : null,
+  };
 }
 
 export interface TrimMarkerEdits {
@@ -104,9 +117,10 @@ export class TrimmedVideos {
     const outside = rememberedMarkers(row.sourceMarkers, original).markers.filter(
       (m) => (m.atMs < start || m.atMs >= end) && !kept.some((k) => k.id === m.id),
     );
+    const points = pointsInSource(copy, start, end);
     return {
-      startMs: start === 0 ? null : start,
-      endMs: end,
+      startMs: points.startMs ?? (start === 0 ? null : start),
+      endMs: points.endMs ?? end,
       markers: [...kept, ...outside].slice(0, 50).sort((a, b) => a.atMs - b.atMs),
     };
   }
@@ -126,6 +140,30 @@ export class TrimmedVideos {
         )
         .get(itemId, mediaId, marks.startMs, marks.endMs) !== undefined
     );
+  }
+
+  /** A sound trim suspends a matching reset until its bounds are undone. */
+  setSoundEdges(mediaId: string, points: EdgePoints): Pick<MediaMarkers, 'startMs' | 'endMs'> | null {
+    return this.db
+      .transaction(() => {
+        if (
+          !this.db
+            .prepare("SELECT 1 FROM media WHERE id = ? AND kind = 'video' AND deleted_at IS NULL")
+            .get(mediaId)
+        )
+          return null;
+        const was = this.media.markersOf(mediaId) ?? NO_MARKERS;
+        const before = { startMs: was.startMs, endMs: was.endMs };
+        if (before.startMs === points.startMs && before.endMs === points.endMs) return before;
+        this.db
+          .prepare(
+            `UPDATE playlist_trim_resets SET sound_start_ms = ?, sound_end_ms = ?
+          WHERE original_id = ? AND start_ms IS ? AND end_ms IS ?`,
+          )
+          .run(points.startMs, points.endMs, mediaId, before.startMs, before.endMs);
+        return this.media.setMarkers(mediaId, { ...was, ...points }) ? before : null;
+      })
+      .immediate();
   }
 
   keepMarkers(row: TrimSource, markers: MediaMarkers): boolean {
@@ -165,7 +203,21 @@ export class TrimmedVideos {
       .transaction(() => {
         if (!this.current(row)) return null;
         const id = randomUUID();
-        const points: MediaMarkers = { ...NO_MARKERS, markers: markersInCut(markers, startMs, endMs) };
+        const oldCopy = this.media.markersOf(row.mediaId) ?? NO_MARKERS;
+        const previous =
+          row.cutStartMs !== null && row.cutEndMs !== null
+            ? pointsInSource(oldCopy, row.cutStartMs, row.cutEndMs)
+            : NO_MARKERS;
+        // A black-and-silence point carries over only where the operator left its handle as Trim showed it; a
+        // handle moved in Trim stands as saved (review MEDIUM-1 of 2cb6fec1).
+        const left = (point: number | null, asked: number | null) =>
+          point !== null && asked !== null && Math.round(point) === asked ? point : null;
+        const playableEnd = Math.min(endMs, startMs + file.durationMs);
+        const points: MediaMarkers = {
+          startMs: pointInCopy(left(previous.startMs, markers.startMs), startMs, playableEnd),
+          endMs: pointInCopy(left(previous.endMs, markers.endMs), startMs, playableEnd),
+          markers: markersInCut(markers, startMs, endMs),
+        };
         this.db
           .prepare(
             `INSERT INTO media (id, kind, name, path, sha256, bytes, duration_ms, width, height, playable,

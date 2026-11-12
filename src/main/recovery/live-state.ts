@@ -135,6 +135,7 @@ const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind'
     fit: z.enum(['fit', 'fill', 'stretch']),
     loop: z.boolean(),
     startedAt: z.number(),
+    sourceItemId: idSchema.nullable().optional(),
     durationMs: z.number().positive().optional(),
     seek: seekSchema.optional(),
   }),
@@ -533,6 +534,7 @@ export class LiveStateWriter {
   private heartbeat: NodeJS.Timeout | null = null;
   private alive: NodeJS.Timeout | null = null;
   private latest: EngineState | null = null;
+  private saved: EngineState | null = null;
   /** The next try after a failed save (Session 57). */
   private retry: NodeJS.Timeout | null = null;
   /** Saves that failed in a row: the first is logged, and the one that works after them. */
@@ -553,12 +555,22 @@ export class LiveStateWriter {
    */
   start(state: EngineState): void {
     this.stopped = false;
+    // Until this run's first save lands, the file holds the show the start found (put back after a crash).
+    this.saved ??= state;
     this.update(state);
     if (this.alive) return;
     this.alive = setInterval(() => {
       if (this.latest) this.update(this.latest);
     }, this.options.aliveMs ?? 60_000);
     this.alive.unref();
+  }
+
+  /**
+   * What a crash now would put back at the next start (Session 57): the show saved last, or this run's first until a
+   * save lands. A save that fails leaves it as it was. The unused Trim cuts sweep keeps what it shows.
+   */
+  get savedState(): EngineState | null {
+    return this.saved;
   }
 
   /** The live state changed. */
@@ -587,7 +599,7 @@ export class LiveStateWriter {
   /** Saves this state after the saves before it: in order, so never an older show over a newer one. */
   private save(state: EngineState): void {
     const saved = savedFrom(state, this.session, this.now());
-    this.writing = this.writing.then(() => this.write(saved));
+    this.writing = this.writing.then(() => this.write(saved, state));
   }
 
   /** Wait for writes already started (tests). */
@@ -612,11 +624,12 @@ export class LiveStateWriter {
     this.pending = null;
   }
 
-  private async write(saved: SavedLive): Promise<void> {
+  private async write(saved: SavedLive, state: EngineState): Promise<void> {
     const partial = `${this.files.state}.${randomUUID()}.tmp`;
     try {
       await (this.options.writeFile ?? writeFile)(partial, JSON.stringify(saved));
       await (this.options.rename ?? rename)(partial, this.files.state);
+      this.saved = state;
     } catch (error) {
       // Said once for failures in a row, and tried again by itself: the next change may never come (Session 57).
       this.failures += 1;
