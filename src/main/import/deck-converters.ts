@@ -247,7 +247,7 @@ export interface ConvertLimits {
   openMaxMs: number;
   /** An app that has not answered for this long is asking a question nobody sees (or is stuck). */
   silentMs: number;
-  /** For saving as PDF: this, and `perSlideMs` for each slide. */
+  /** Base time for saving a PDF or an editable Keynote export. PDFs get `perSlideMs` for each slide too. */
   saveMs: number;
   perSlideMs: number;
   /**
@@ -463,6 +463,8 @@ export interface MacSession {
   pids(): Promise<number[]>;
   /** What to tell the operator when the app stopped answering, or making progress, while `when`. */
   stuck(when: string): ConvertFailed;
+  /** Record a stopped or closed app after the optional editable export fails. */
+  editableExportFailed(result: Ran): void;
   /** What to tell the operator when asking the app failed while `when`, trying to `what` ("save it as PDF"). */
   fromError(r: Ran, when: string, what: string): ConvertFailed;
   /** Close a document Drashti opened, never saving it. */
@@ -523,8 +525,9 @@ export async function withMacSession<T>(
   /**
    * `answering` is false once the app has stopped answering (it is asking a question nobody sees). `othersSeen`:
    * something not Drashti's copy was seen open in it (Session 54, C review), so it is never quit or stopped.
+   * `gone` keeps cleanup from addressing the app after this session has exited.
    */
-  const state = { answering: true, tookFront: false, othersSeen: false };
+  const state = { answering: true, gone: false, tookFront: false, othersSeen: false };
   /**
    * Whether the app has the front, taken from whatever had it (Drashti, as a rule). For Keynote
    * that is a question about the file in front of the operator: given a file as a double-click
@@ -583,6 +586,19 @@ export async function withMacSession<T>(
       `${name} could not ${what}`,
       `${name} could not ${what}${detail ? ` (${detail})` : ''}. ${byHand(app.converter)}`,
     );
+  };
+  const editableExportFailed = (result: Ran) => {
+    const error = errorNumber(result.stderr);
+    const wasCancelled = result.aborted || signal?.aborted;
+    if (error !== null && GONE.has(error)) {
+      state.answering = false;
+      state.gone = true;
+      if (!wasCancelled) log(`${name} closed while saving an editable copy. Drashti kept the PDF.`);
+    } else if (!wasCancelled && (result.timedOut || error === TIMED_OUT)) {
+      state.answering = false;
+      const action = before.length > 0 || state.othersSeen ? ` Look at ${name} and answer it.` : '';
+      log(`${name} stopped answering while saving an editable copy. Drashti kept the PDF.${action}`);
+    }
   };
   const tell = (body: string[], args: string[], seconds: number, own?: AbortSignal) =>
     tellApp(app, body, args, seconds, own && signal ? AbortSignal.any([signal, own]) : (own ?? signal));
@@ -837,6 +853,7 @@ export async function withMacSession<T>(
       tell,
       pids: () => pidsOf(app),
       stuck: silentFail,
+      editableExportFailed,
       fromError,
       close,
       savedAs,
@@ -848,9 +865,11 @@ export async function withMacSession<T>(
     const closeFrom = performance.now();
     clearInterval(watching);
     for (const document of [...opened]) await close(document);
-    if (before.length > 0) log('left open, as the operator had it');
-    else if (state.othersSeen) log('left open: something else was opened in it meanwhile');
-    else await quitIfIdle(app, before, stem, state.answering, log);
+    if (!state.gone) {
+      if (before.length > 0) log('left open, as the operator had it');
+      else if (state.othersSeen) log('left open: something else was opened in it meanwhile');
+      else await quitIfIdle(app, before, stem, state.answering, log);
+    }
     // Quit, stopped, or left open for something the operator opened in it: no longer Drashti's own.
     for (const pid of ours) options.ended?.(pid);
     // The app took the front from Drashti: give the operator's window the keys back.
@@ -927,8 +946,7 @@ async function convertOnMac(
 
     let fileSlides: PptxSlide[] | null = null;
     let editablePptx: string | undefined;
-    const remainingMs = seconds * 1000 - (performance.now() - pdfFrom);
-    if (wantEditablePptx && remainingMs > 0) {
+    if (wantEditablePptx) {
       const pptx = join(inside, 'builds.pptx');
       const exported = await session.tell(
         [
@@ -936,12 +954,12 @@ async function convertOnMac(
           'export d to (POSIX file (item 2 of argv)) as Microsoft PowerPoint',
         ],
         [doc, pptx],
-        Math.ceil(remainingMs / 1000),
+        Math.max(1, Math.ceil(limits.saveMs / 1000)),
       );
+      const exportFailed = exported.code !== 0 || exported.timedOut;
+      if (exportFailed) session.editableExportFailed(exported);
       if (exported.aborted || session.signal?.aborted) return cancelled();
-      if (exported.timedOut || errorNumber(exported.stderr) === TIMED_OUT) {
-        session.stuck('saving an editable copy');
-      } else if (exported.code === 0) {
+      if (!exportFailed) {
         try {
           const exportedSlides = await readPptx(pptx);
           if (session.signal?.aborted) return cancelled();
