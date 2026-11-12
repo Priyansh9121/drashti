@@ -14,6 +14,7 @@ import type { EngineAction } from './actions';
  * - A video going up by the operator's own change (a command: a row's click, Next, Back, Media, a slide's background
  *   video or a video on the slide, a video input on the audience, Oops, Put it back, Play on its time bar) takes both
  *   covers off, so what was put up is seen.
+ * - Wallpaper and Black-out each take the other off in the same change. An older save with both recovers Black-out.
  * - A cover going on (or a video the engine would bring up by itself under one: a slide moving on by itself, restart
  *   recovery of a file that held both) stops what plays: the background's video or video input comes off, as clearing
  *   the background does; a video on the slide up or in the picture-in-picture box waits where it is, paused, as the time
@@ -130,13 +131,23 @@ export function oneAtATime(
   now: number,
 ): EngineAction[] {
   if (!next.blackout && !next.wallpaper) return [];
-  const coverWentOn = (next.blackout && !prev.blackout) || (next.wallpaper && !prev.wallpaper);
+  const blackoutWentOn = next.blackout && !prev.blackout;
+  const wallpaperWentOn = next.wallpaper && !prev.wallpaper;
+  const coverWentOn = blackoutWentOn || wallpaperWentOn;
   if (how.operator && how.putUp && !coverWentOn) return coversOff(next);
+
+  const actions: EngineAction[] = [];
+  if (next.blackout && next.wallpaper) {
+    // The new cover wins. For recovery with both covers, keep the one the audience saw.
+    const wallpaperWins = how.operator && wallpaperWentOn && !blackoutWentOn;
+    actions.push(wallpaperWins ? { type: 'blackout/set', on: false } : { type: 'wallpaper/set', on: false });
+  }
+
   const bg = backgroundVideo(next);
   const playing = videosPlaying(next, now);
-  if (bg === null && playing.length === 0) return [];
+  if (bg === null && playing.length === 0) return actions;
   const before = new Set(videosPlaying(prev, now).map(keyOf));
   const cameUp = (bg !== null && bg !== backgroundVideo(prev)) || playing.some((p) => !before.has(keyOf(p)));
   if (how.operator && cameUp && !coverWentOn) return coversOff(next);
-  return stopped(next, now);
+  return actions.concat(stopped(next, now));
 }
