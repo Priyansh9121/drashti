@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import type { LowerThirdLayer } from '../../../shared/engine/state';
-import type { LowerThirdAnimation, Pose } from '../../../shared/lower-third-animations';
+import type { AnimationFrame, LowerThirdAnimation } from '../../../shared/lower-third-animations';
 import {
   animationById,
   animationFrame,
@@ -12,16 +12,19 @@ import {
 } from '../../../shared/lower-third-animations';
 import {
   type Css,
+  DEFAULT_ACCENT,
   type LowerThirdMotion,
   motionAt,
   motionIsFill,
   motionPieces,
+  type StyleDrawing,
   styleDrawing,
 } from '../../../shared/lower-third-styles';
-import { shownLines, showsOn } from '../../../shared/lower-thirds';
+import { type LowerThirdLook, shownLines, showsOn } from '../../../shared/lower-thirds';
 import type { Size } from '../../../shared/scaling';
-import { engineNow, onClockJump } from './clock';
+import { clockHeld, engineNow, onClockJump } from './clock';
 import { fontFamilyFor } from './fonts';
+import { paintLowerThirdPose } from './lower-third-paint';
 import { detectLang } from '../../../shared/text-runs';
 import { textLang } from './lang';
 
@@ -79,15 +82,6 @@ function runFor(
   return { layer: null, phase: 'gone', start: 0 };
 }
 
-/** Set a pose on an element (an empty value leaves it as it is). */
-function put(el: HTMLElement, pose: Pose): void {
-  el.style.opacity = pose.opacity === 1 ? '' : String(pose.opacity);
-  el.style.transform = pose.transform;
-  el.style.clipPath = pose.clip;
-  el.style.transformOrigin = pose.origin;
-  el.style.filter = pose.filter ?? '';
-}
-
 /** How a lower third is drawn: what it is doing, its animation, how many units its words have, and its length. */
 interface Drawing {
   phase: Phase;
@@ -99,46 +93,96 @@ interface Drawing {
   shownAt: number;
 }
 
-/** A moving background's pieces `t` ms after the lower third went up (each only when it moved). */
-function paintMotion(root: HTMLElement, motion: LowerThirdMotion, t: number): void {
+interface PaintPart {
+  element: HTMLElement;
+  index: number;
+}
+
+interface PaintTargets {
+  root: HTMLDivElement;
+  band: HTMLDivElement;
+  units: PaintPart[];
+  accent: HTMLElement | null;
+  panel: HTMLElement | null;
+  lines: PaintPart[];
+  pieces: PaintPart[];
+  piecesPerPanel: number;
+}
+
+function indexedParts(root: HTMLElement, attribute: string): PaintPart[] {
+  return Array.from(root.querySelectorAll<HTMLElement>('[' + attribute + ']'), (element) => ({
+    element,
+    index: Number(element.getAttribute(attribute)),
+  }));
+}
+
+/** Read the elements once when React commits their layout. Each animation frame uses those same elements. */
+function readPaintTargets(
+  root: HTMLDivElement,
+  band: HTMLDivElement,
+  motion: LowerThirdMotion,
+  designed: boolean,
+): PaintTargets {
+  const pieces = motion === 'none' ? [] : indexedParts(root, 'data-lt-piece');
+  return {
+    root,
+    band,
+    units: indexedParts(band, 'data-lt-unit'),
+    accent: designed ? band.querySelector<HTMLElement>('[data-lt-accent]') : null,
+    panel: designed ? band.querySelector<HTMLElement>('[data-lt-design-panel]') : null,
+    lines: designed ? indexedParts(band, 'data-lt-design-line') : [],
+    pieces,
+    piecesPerPanel: pieces.filter(({ element }) => element.dataset['ltPanel'] === '0').length,
+  };
+}
+
+/** Move the background at t milliseconds since the lower third went up. */
+function paintMotion(
+  { root, pieces, piecesPerPanel }: PaintTargets,
+  motion: LowerThirdMotion,
+  t: number,
+): void {
   if (motion === 'none') return;
-  root.dataset['ltMotionAt'] = String(Math.round(t));
-  const pieces = [...root.querySelectorAll<HTMLElement>('[data-lt-piece]')];
-  // Each panel (the band's shape, or each line's) has the same pieces: the same pose for each one's own.
-  const per = pieces.filter((p) => p.dataset['ltPanel'] === '0').length;
-  const poses = motionAt(motion, t, per);
-  for (const el of pieces) {
-    const pose = poses[Number(el.dataset['ltPiece'])];
+  const at = String(Math.round(t));
+  if (root.dataset['ltMotionAt'] !== at) root.dataset['ltMotionAt'] = at;
+  const poses = motionAt(motion, t, piecesPerPanel);
+  for (const { element, index } of pieces) {
+    const pose = poses[index];
     if (!pose) continue;
-    if (el.style.transform !== pose.transform) el.style.transform = pose.transform;
+    if (element.style.transform !== pose.transform) element.style.transform = pose.transform;
     const opacity = pose.opacity >= 0.9995 ? '' : String(Math.round(pose.opacity * 1000) / 1000);
-    if (el.style.opacity !== opacity) el.style.opacity = opacity;
+    if (element.style.opacity !== opacity) element.style.opacity = opacity;
   }
 }
 
-/**
- * A lower third `t` ms into its in or out (still: at rest), set straight on its band and units: frame by frame,
- * and after every drawing; its moving background by the time since it went up.
- */
+function paintDesign({ accent, panel, lines }: PaintTargets, frame?: AnimationFrame): void {
+  if (accent) paintLowerThirdPose(accent.style, frame?.accent ?? REST);
+  if (panel) paintLowerThirdPose(panel.style, frame?.panel ?? REST);
+  for (const { element, index } of lines) paintLowerThirdPose(element.style, frame?.unit(index) ?? REST);
+}
+
+/** Paint the band, words and background for the current engine frame. */
 function paintBand(
-  root: HTMLDivElement | null,
-  band: HTMLDivElement | null,
+  targets: PaintTargets,
   { phase, animation, units, length, motion, shownAt }: Drawing,
   t: number,
   now: number,
 ): void {
-  if (!band || !root) return;
-  const unitEls = [...band.querySelectorAll<HTMLElement>('[data-lt-unit]')];
-  root.dataset['ltAt'] = phase === 'in' || phase === 'out' ? String(Math.round(Math.min(t, length))) : '';
-  if (phase !== 'gone') paintMotion(root, motion, now - shownAt);
-  if (phase !== 'in' && phase !== 'out') {
-    put(band, REST);
-    for (const el of unitEls) put(el, REST);
+  const { root, band, units: unitElements } = targets;
+  const moving = phase === 'in' || phase === 'out';
+  const at = moving ? String(Math.round(Math.min(t, length))) : '';
+  if (root.dataset['ltAt'] !== at) root.dataset['ltAt'] = at;
+  if (phase !== 'gone') paintMotion(targets, motion, now - shownAt);
+  if (!moving) {
+    paintLowerThirdPose(band.style, REST);
+    for (const { element } of unitElements) paintLowerThirdPose(element.style, REST);
+    if (animation.composition) paintDesign(targets);
     return;
   }
   const frame = animationFrame(animation, phase, t, units);
-  put(band, frame.box);
-  for (const el of unitEls) put(el, frame.unit(Number(el.dataset['ltUnit'])));
+  paintLowerThirdPose(band.style, frame.box);
+  if (animation.composition) paintDesign(targets, frame);
+  for (const { element, index } of unitElements) paintLowerThirdPose(element.style, frame.unit(index));
 }
 
 /** A shape of colour (the band's, or a line's), with the moving background's pieces inside it. */
@@ -159,6 +203,21 @@ function Shape({ css, pieces, index }: { css: Css; pieces: Css[]; index: number 
       ))}
     </div>
   );
+}
+
+function designRule(look: LowerThirdLook, style: StyleDrawing, size: number): Css {
+  const right = look.align === 'right';
+  const centre = look.align === 'centre';
+  return {
+    position: 'absolute',
+    bottom: style.style === 'underline' ? 0 : -size * 0.14,
+    left: centre ? (style.fullWidth ? '42%' : '23%') : right ? 'auto' : 0,
+    right: right ? 0 : 'auto',
+    width: style.fullWidth ? '16%' : centre ? '54%' : '72%',
+    height: Math.max(1, size * 0.055),
+    borderRadius: 999,
+    background: look.accent ?? DEFAULT_ACCENT,
+  };
 }
 
 export function LowerThirdView({
@@ -184,6 +243,7 @@ export function LowerThirdView({
   // frame its in or out is over (below). Every drawing, whatever asked for it, draws what the engine's time says now.
   const [, redraw] = useReducer((n: number) => n + 1, 0);
   useEffect(() => (frozenAt === undefined ? onClockJump(redraw) : undefined), [frozenAt]);
+  const held = frozenAt !== undefined || clockHeld();
   const now = frozenAt ?? engineNow();
   const run = runFor(layer, off, place, now);
   // The words and look follow the layer (one changed while up keeps its time).
@@ -192,8 +252,13 @@ export function LowerThirdView({
   // Going out: its own out (the studio's), or its in played backwards.
   const animation = shown && phase === 'out' ? outAnimationOf(shown) : animationById(shown?.animation ?? '');
   const { pieces, units } = cut(shownLines(shown?.lines ?? []), animation);
+  const composing = animation.composition !== undefined;
+  const designed =
+    composing ||
+    (phase === 'out' && shown !== null && animationById(shown.animation).composition !== undefined);
   const bandRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const targetsRef = useRef<PaintTargets | null>(null);
   const length = phase === 'in' || phase === 'out' ? animationLength(animation, phase, units) : 0;
   const motion: LowerThirdMotion = shown?.look.motion ?? 'none';
   const shownAt = shown?.shownAt ?? 0;
@@ -201,7 +266,8 @@ export function LowerThirdView({
   // frame its in or out is over, drawn again at once, still (or gone), before that frame is shown. Started and
   // stopped as each drawing is put on the page, so no frame paints a move it no longer draws.
   useLayoutEffect(() => {
-    if (frozenAt !== undefined) return;
+    // Warm-up and clock jumps paint their fixed frame in the layout effect below.
+    if (held) return;
     const moving = phase === 'in' || phase === 'out';
     if (!moving && (phase === 'gone' || motion === 'none')) return;
     const drawing = { phase, animation, units, length, motion, shownAt };
@@ -213,31 +279,35 @@ export function LowerThirdView({
         flushSync(redraw);
         return;
       }
+      const targets = targetsRef.current;
+      if (!targets) return;
       // Still, with a moving background: only its pieces move.
-      if (moving) paintBand(rootRef.current, bandRef.current, drawing, t, at);
-      else if (rootRef.current) paintMotion(rootRef.current, motion, at - shownAt);
+      if (moving) paintBand(targets, drawing, t, at);
+      else paintMotion(targets, motion, at - shownAt);
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [phase, start, length, animation, units, motion, shownAt, frozenAt]);
+  }, [phase, start, length, animation, units, motion, shownAt, held]);
   // After every drawing, before it is shown: as at the moment it was worked out for.
   useLayoutEffect(() => {
-    paintBand(
-      rootRef.current,
-      bandRef.current,
-      { phase, animation, units, length, motion, shownAt },
-      now - start,
-      now,
-    );
+    const root = rootRef.current;
+    const band = bandRef.current;
+    const targets = root && band ? readPaintTargets(root, band, motion, designed) : null;
+    targetsRef.current = targets;
+    if (!targets) return;
+    // A design keeps its layout when it leaves with a different animation.
+    if (designed && !composing) paintDesign(targets);
+    paintBand(targets, { phase, animation, units, length, motion, shownAt }, now - start, now);
   });
   if (!shown || phase === 'gone') return null;
   const look = shown.look;
   const size = (canvas.height * look.size) / 100;
   const justify = look.align === 'left' ? 'flex-start' : look.align === 'right' ? 'flex-end' : 'center';
   const style = styleDrawing(look, size);
+  const accent = style.accent ?? (designed ? designRule(look, style, size) : null);
   const motionPiecesCss = motionPieces(motion, look);
   // The sweep is the colour itself: under it, its panel has none of its own.
   const panelCss = (css: Css): Css => (motionIsFill(motion) ? { ...css, background: 'transparent' } : css);
@@ -278,8 +348,15 @@ export function LowerThirdView({
           lineHeight: 1.25,
         }}
       >
-        {style.fill !== 'lines' && <Shape css={panelCss(style.shape)} pieces={motionPiecesCss} index={0} />}
-        {style.accent && <div aria-hidden="true" data-lt-accent="" style={style.accent} />}
+        {style.fill !== 'lines' &&
+          (designed ? (
+            <div data-lt-design-panel="" style={{ position: 'absolute', inset: 0 }}>
+              <Shape css={panelCss(style.shape)} pieces={motionPiecesCss} index={0} />
+            </div>
+          ) : (
+            <Shape css={panelCss(style.shape)} pieces={motionPiecesCss} index={0} />
+          ))}
+        {accent && <div aria-hidden="true" data-lt-accent="" style={accent} />}
         {pieces.map((line, i) => {
           const text = line.map((p) => p.text).join('');
           const lang = detectLang(text);
@@ -293,7 +370,8 @@ export function LowerThirdView({
                 data-lt-unit={p.unit}
                 style={{
                   display: animation.unit === 'line' ? 'block' : 'inline-block',
-                  whiteSpace: 'pre',
+                  whiteSpace: designed ? 'pre-wrap' : 'pre',
+                  ...(designed ? { overflowWrap: 'anywhere' } : {}),
                 }}
               >
                 {p.text}
@@ -307,14 +385,49 @@ export function LowerThirdView({
               lang={textLang(text)}
               style={{
                 position: 'relative',
+                // A design's line keeps its words' box, room and all (below), to itself: the box's margins never
+                // join the next line's, so nothing moves for the room.
+                ...(designed ? { display: 'flow-root' } : {}),
                 fontFamily: fontFamilyFor(look.font, lang),
                 fontSize: i === 0 ? size : size * 0.7,
                 ...(style.textShadow ? { textShadow: style.textShadow } : {}),
                 ...(own as CSSProperties),
-                ...(style.fill === 'lines' && motionIsFill(motion) ? { background: 'transparent' } : {}),
+                ...(style.fill === 'lines' && (designed || motionIsFill(motion))
+                  ? { background: 'transparent' }
+                  : {}),
+                ...(designed && style.style === 'underline' ? { borderBottomColor: 'transparent' } : {}),
               }}
             >
-              {style.fill === 'lines' ? (
+              {designed ? (
+                <>
+                  {style.fill === 'lines' && (
+                    <div data-lt-design-line={i} style={{ position: 'absolute', inset: 0 }}>
+                      <Shape
+                        css={panelCss({
+                          background: own['background'] ?? 'transparent',
+                          borderRadius: own['borderRadius'] ?? 0,
+                        })}
+                        pieces={motionPiecesCss}
+                        index={i}
+                      />
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      position: 'relative',
+                      overflow: 'hidden',
+                      // Room past the words, taken back by the margin so nothing moves: their line box is the
+                      // Latin font's, and the tops and tails of Gujarati and Hindi vowel signs, and the words
+                      // style's dark halo, reach past it.
+                      padding: '0.35em',
+                      margin: '-0.35em',
+                      ...(!composing ? { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } : {}),
+                    }}
+                  >
+                    {words}
+                  </div>
+                </>
+              ) : style.fill === 'lines' ? (
                 <>
                   {/* Each line its own block of colour: the moving background in each, under its words. */}
                   <Shape
