@@ -376,7 +376,7 @@ test('a row’s Trim in Simple Mode saves and resets a cut; Trim black and silen
   expect((await layers(win)).background).toMatchObject({ kind: 'media', mediaId: trimmedId });
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 
-  await simple.getByTestId('simple-clear-all').click();
+  await simple.getByTestId('simple-clear-background').click();
   await expect.poll(async () => (await layers(win)).background).toBeNull();
   await reopenTrim();
   await reset.click();
