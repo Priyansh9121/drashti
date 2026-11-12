@@ -4,6 +4,7 @@ import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/st
 import type { InvokeChannel } from '../../shared/ipc';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
 import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
+import type { MusicView } from '../../shared/music';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
 import type { RemoteMedia } from '../../shared/network-mirror';
 import { openDatabase } from '../db/database';
@@ -61,6 +62,37 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
   const devices = new DeviceRepo(db);
   const commands: EngineCommand[] = [];
   const played: (string | null | undefined)[] = [];
+  const audioView: MusicView = {
+    playlists: [{ id: 'music-1', name: 'Placeholder tunes', loop: false, shuffle: false, tracks: [] }],
+    lastId: null,
+  };
+  const audioCalls: unknown[][] = [];
+  const playIndexes: number[] = [];
+  let stepsAside = true;
+  const recordAudio =
+    (action: string) =>
+    (...args: unknown[]) => {
+      audioCalls.push([action, ...args]);
+      return { ok: true as const, id: 'music-1', view: audioView };
+    };
+  const audio = {
+    music: {
+      view: () => audioView,
+      create: recordAudio('create'),
+      rename: recordAudio('rename'),
+      remove: recordAudio('remove'),
+      restore: recordAudio('restore'),
+      setOptions: recordAudio('options'),
+      addTracks: recordAudio('addTracks'),
+      moveTrack: recordAudio('moveTrack'),
+      removeTrack: recordAudio('removeTrack'),
+      restoreTrack: recordAudio('restoreTrack'),
+    },
+    stepsAside: () => stepsAside,
+    setStepsAside: (on: boolean) => {
+      stepsAside = on;
+    },
+  };
   const state = initialEngineState();
   const service = new NetworkService({
     devices,
@@ -123,8 +155,10 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
           ? (({ 'item-1': 0, 'item-2': 2 } as Record<string, number>)[itemId] ?? null)
           : null,
     },
-    playMusic: (_who, playlistId) => {
+    ...{ audio },
+    playMusic: (_who, playlistId, index = 0) => {
       played.push(playlistId);
+      playIndexes.push(index);
       return { ok: true as const };
     },
     announcements: {
@@ -144,7 +178,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
   const poster = service.pairForCheck('announcements', 'Placeholder poster').id;
   const ask = (deviceId: string, op: DeviceOp, args: Record<string, unknown> = {}) =>
     service.answer({ address: PHONE, deviceId, op, args });
-  return { service, commands, played, state, remote, stage, poster, ask };
+  return { service, commands, played, state, remote, stage, poster, ask, audioView, audioCalls, playIndexes };
 }
 
 /** The new reads and the actions that put something up. */
@@ -379,6 +413,61 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
       body: { ok: false, message: 'Which audio playlist?' },
     });
     expect(played).toEqual(['music-1', null, null]);
+  });
+
+  it('filters audio before paging, leaving the unfiltered list alone', () => {
+    const { ask, remote } = setup();
+    expect(ask(remote, 'media', { kind: 'audio', limit: '1' })).toMatchObject({
+      status: 200,
+      body: { media: [MEDIA[2]], offset: 0, total: 1 },
+    });
+    expect(ask(remote, 'media', { kind: 'audio', offset: '1' })).toMatchObject({
+      status: 200,
+      body: { media: [], offset: 1, total: 1 },
+    });
+    expect(ask(remote, 'media', { limit: '1' })).toMatchObject({
+      status: 200,
+      body: { media: [MEDIA[0]], total: MEDIA.length },
+    });
+  });
+
+  it('lets a Simple Mode Remote use Audio, with typed arguments and the current view in each answer', () => {
+    const { ask, remote, stage, poster, audioView, audioCalls, played, playIndexes } = setup({ locked: true });
+    const cases = [
+      ['music.new', { name: 'Placeholder tunes' }, ['create', 'Placeholder tunes']],
+      ['music.rename', { playlistId: 'music-1', name: 'Placeholder sounds' }, ['rename', 'music-1', 'Placeholder sounds']],
+      ['music.remove', { playlistId: 'music-1' }, ['remove', 'music-1']],
+      ['music.restore', { playlistId: 'music-1' }, ['restore', 'music-1']],
+      ['music.options', { playlistId: 'music-1', loop: true, shuffle: false }, ['options', 'music-1', { loop: true, shuffle: false }]],
+      ['music.addTracks', { playlistId: 'music-1', mediaIds: ['m-tune'] }, ['addTracks', 'music-1', ['m-tune'], null]],
+      ['music.moveTrack', { trackId: 'track-1', to: 1 }, ['moveTrack', 'track-1', 1]],
+      ['music.removeTrack', { trackId: 'track-1' }, ['removeTrack', 'track-1']],
+      ['music.restoreTrack', { trackId: 'track-1', at: 1 }, ['restoreTrack', 'track-1', 1]],
+    ] as const;
+    expect(ask(remote, 'music.audio' as DeviceOp)).toMatchObject({
+      status: 200,
+      body: { ok: true, view: audioView, stepsAside: true },
+    });
+    for (const [op, args] of cases) {
+      expect(ask(remote, op as DeviceOp, args), op).toMatchObject({
+        status: 200,
+        body: { ok: true, view: audioView, stepsAside: true, id: 'music-1' },
+      });
+      expect(ask(stage, op as DeviceOp, args).status, op).toBe(403);
+      expect(ask(poster, op as DeviceOp, args).status, op).toBe(403);
+    }
+    expect(audioCalls).toEqual(cases.map(([, , call]) => call));
+    expect(ask(remote, 'music.stepsAside' as DeviceOp, { on: false })).toMatchObject({
+      status: 200,
+      body: { ok: true, view: audioView, stepsAside: false },
+    });
+    expect(ask(remote, 'music.moveTrack' as DeviceOp, { trackId: 'track-1', to: -1 }).status).toBe(400);
+    expect(ask(remote, 'music.options' as DeviceOp, { playlistId: 'music-1', loop: 'yes' }).status).toBe(400);
+    expect(audioCalls).toHaveLength(cases.length);
+    expect(ask(remote, 'music.play', { playlistId: 'music-1', index: 2 }).status).toBe(200);
+    expect(ask(remote, 'music.play', { playlistId: 'music-1', index: -1 }).status).toBe(400);
+    expect(played).toEqual(['music-1']);
+    expect(playIndexes).toEqual([2]);
   });
 
   it('refuses each with Simple Mode’s words when its window request is locked, as the window would be', () => {
