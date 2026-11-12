@@ -46,7 +46,7 @@ describe('the lower-thirds scenario', () => {
       template.input.animation.startsWith('design-'),
     );
     const measured = (await playedRows()).filter((r) => r.row.startsWith('template '));
-    expect(designs.length).toBeGreaterThanOrEqual(35);
+    expect(designs.length).toBeGreaterThanOrEqual(34);
     expect(measured).toHaveLength(designs.length);
     expect(new Set(measured.map((r) => r.lowerThird.id)).size).toBe(designs.length);
     for (const design of designs) {

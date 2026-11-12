@@ -484,30 +484,78 @@ describe('the designs’ moves: kept with every lower third made from a design',
     }
   });
 
-  it('one saved from a design left out (Silver outline, not smooth in the Performance check) still parses, goes up as a show command and draws as a design', () => {
-    expect(LOWER_THIRD_TEMPLATES.map((t) => t.id)).not.toContain('silver-outline');
-    const saved: LowerThirdInput = {
-      lines: ['Placeholder name', 'Placeholder role', ''],
-      look: {
-        ...DEFAULT_LOWER_THIRD_LOOK,
-        style: 'outline',
-        band: '#20252d',
-        accent: '#cdd9e7',
-        align: 'centre',
-        font: 'Noto Serif',
-        weight: 400,
+  it('one saved from a design left out (not smooth in the Performance check: Silver outline, Midnight bulletin, Emerald labels, Sea green nameplate) still parses, goes up as a show command and draws as a design', () => {
+    const leftOut: Record<string, Pick<LowerThirdInput, 'look' | 'animation'>> = {
+      'silver-outline': {
+        animation: 'design-centre-wipe',
+        look: {
+          ...DEFAULT_LOWER_THIRD_LOOK,
+          style: 'outline',
+          band: '#20252d',
+          accent: '#cdd9e7',
+          align: 'centre',
+          font: 'Noto Serif',
+          weight: 400,
+        },
       },
-      where: 'both',
-      animation: 'design-centre-wipe',
+      'midnight-bulletin': {
+        animation: 'design-slide-left',
+        look: {
+          ...DEFAULT_LOWER_THIRD_LOOK,
+          style: 'band',
+          band: '#12243b',
+          accent: '#78d8ff',
+          font: 'Oswald',
+          size: 6,
+          bandOpacity: 1,
+        },
+      },
+      'emerald-labels': {
+        animation: 'design-slide-left',
+        look: {
+          ...DEFAULT_LOWER_THIRD_LOOK,
+          style: 'split',
+          band: '#114636',
+          accent: '#0e5746',
+          font: 'Hind',
+          size: 6,
+          bandOpacity: 1,
+        },
+      },
+      'sea-green-nameplate': {
+        animation: 'design-reveal-up',
+        look: {
+          ...DEFAULT_LOWER_THIRD_LOOK,
+          style: 'box',
+          band: '#123d3d',
+          accent: '#72dbbd',
+          align: 'centre',
+          font: 'Hind',
+          weight: 400,
+        },
+      },
     };
-    expect(lowerThirdInputSchema.safeParse(saved).success).toBe(true);
-    expect(
-      parseEngineCommand({ type: 'showLowerThird', lowerThird: { id: 'placeholder-saved', ...saved } }),
-    ).toMatchObject({ ok: true });
-    const drawn = animationById(saved.animation);
-    expect(drawn.id).toBe('design-centre-wipe');
-    expect(drawn.composition).toBeDefined();
-    expect(animationFrame(drawn, 'in', 0, 2).panel).toBeDefined();
+    for (const [design, { look, animation }] of Object.entries(leftOut)) {
+      expect(
+        LOWER_THIRD_TEMPLATES.map((t) => t.id),
+        design,
+      ).not.toContain(design);
+      const saved: LowerThirdInput = {
+        lines: ['Placeholder name', 'Placeholder role', ''],
+        look,
+        where: 'both',
+        animation,
+      };
+      expect(lowerThirdInputSchema.safeParse(saved).success, design).toBe(true);
+      expect(
+        parseEngineCommand({ type: 'showLowerThird', lowerThird: { id: `placeholder-${design}`, ...saved } }),
+        design,
+      ).toMatchObject({ ok: true });
+      const drawn = animationById(animation);
+      expect(drawn.id, design).toBe(animation);
+      expect(drawn.composition, design).toBeDefined();
+      expect(animationFrame(drawn, 'in', 0, 2).panel, design).toBeDefined();
+    }
   });
 
   it('every one at its first, middle and last frame, in and out: valid; its accent, panel, name and role unseen at the start, at rest at the end of the in and gone at the end of the out', () => {
