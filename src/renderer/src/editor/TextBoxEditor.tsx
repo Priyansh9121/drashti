@@ -8,13 +8,13 @@ import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 import type { CSSProperties } from 'react';
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { TextElement, TextRun } from '../../../shared/model';
-import { lineMarks } from '../../../shared/text-lists';
+import { drawnLines } from '../../../shared/text-lists';
 import { htmlLang, TranslitSourceContext } from '../render/lang';
 import type { TranslitSource } from '../../../shared/model';
 import {
-  listLineStyle,
   listMarkerBoxStyle,
   listMarkerStyle,
+  paragraphLineStyle,
   runStyle,
   textBoxStyle,
   useShrinkToFit,
@@ -148,34 +148,31 @@ function listDecorations(doc: PMNode, el: TextElement): DecorationSet {
   doc.forEach((node, at) => {
     lines.push({ node, at });
   });
-  const looks = lines.map(({ node }) => {
-    const attrs = node.attrs as LineAttrs;
-    const runs: TextRun[] = [];
-    node.forEach((text) => {
-      if (text.isText)
-        runs.push({
-          text: text.text ?? '',
-          ...lookOf(text.marks),
-          ...(attrs.list ? { list: attrs.list, ...(attrs.level > 0 ? { level: attrs.level } : {}) } : {}),
-        });
-    });
-    return runs;
-  });
-  const marks = lineMarks(looks);
+  const paragraphs = drawnLines(runsOf(doc));
   const decorations: Decoration[] = [];
+  let paragraphIndex = -1;
   lines.forEach(({ node, at }, i) => {
     const attrs = node.attrs as LineAttrs;
-    if (!attrs.list) return;
-    const first: Omit<TextRun, 'text'> = looks[i]?.[0] ?? attrs.brk ?? {};
+    const previous = lines[i - 1]?.node.attrs as LineAttrs | undefined;
+    const continued = previous?.brk?.softBreak === true;
+    if (!continued) paragraphIndex += 1;
+    const drawn = paragraphs[paragraphIndex];
+    const first: Omit<TextRun, 'text'> = {
+      ...(attrs.paragraph ? { paragraph: attrs.paragraph } : {}),
+      ...(node.firstChild?.isText ? lookOf(node.firstChild.marks) : (attrs.brk ?? {})),
+    };
+    if (!attrs.list && !first.paragraph) return;
     const size = first.size ?? el.style.fontSize;
-    const drawn = marks[i];
-    const mark = drawn?.mark ?? null;
-    // A blank line of the list: in as far as its words will be.
-    const line = mark === null ? { mark: attrs.list, level: attrs.level, label: null } : (drawn ?? null);
-    if (!line) return;
-    decorations.push(Decoration.node(at, at + node.nodeSize, { style: cssText(listLineStyle(line, size)) }));
-    if (mark === null) return;
-    const label = drawn?.label ?? null;
+    const line = drawn?.mark.mark ? drawn.mark : { mark: attrs.list, level: attrs.level, label: null };
+    const style = paragraphLineStyle(line, size, first.paragraph);
+    decorations.push(
+      Decoration.node(at, at + node.nodeSize, {
+        style: cssText(continued ? { ...style, textIndent: undefined } : style),
+      }),
+    );
+    const mark = drawn?.mark.mark;
+    if (!mark || continued) return;
+    const label = line.label ?? first.paragraph?.bullet ?? null;
     decorations.push(
       Decoration.widget(
         at + 1,
@@ -184,7 +181,7 @@ function listDecorations(doc: PMNode, el: TextElement): DecorationSet {
           dom.setAttribute('aria-hidden', 'true');
           dom.setAttribute('contenteditable', 'false');
           dom.dataset['listMarker'] = mark;
-          dom.setAttribute('style', cssText(listMarkerBoxStyle({ mark, label }, first, el)));
+          dom.setAttribute('style', cssText(listMarkerBoxStyle({ mark, label: line.label }, first, el)));
           if (label !== null) dom.textContent = label;
           else {
             const shape = document.createElement('span');
@@ -289,7 +286,7 @@ export function TextBoxEditor({
           'aria-multiline': 'true',
           'aria-label': 'Words of the text box',
           spellcheck: 'false',
-          style: 'width: 100%; flex-shrink: 0; outline: none; caret-color: currentColor',
+          style: 'inline-size: 100%; flex-shrink: 0; outline: none; caret-color: currentColor',
         },
         dispatchTransaction(tr) {
           if (tr.docChanged) {
