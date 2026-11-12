@@ -748,9 +748,9 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
     background ||
     paragraphs ||
     !ease ||
-    // A smooth start or end: played as SMIL defines it, but not yet compared with PowerPoint's own movie.
-    ease[0] > 0 ||
-    ease[1] > 0 ||
+    // A smooth start or end is played with PowerPoint's own ramps (shared/deck-motion.ts, smoothedProgress), compared
+    // with its movie for a Fly (13 Nov 2026); any other effect so eased keeps PowerPoint's video until its own is.
+    ((ease[0] > 0 || ease[1] > 0) && look.kind !== 'fly') ||
     durationMs < 0 ||
     (durationMs === 0 && look.kind !== 'appear') ||
     behaviours.some(
