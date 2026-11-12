@@ -18,10 +18,11 @@ import { type WarmScene, warmScenes } from './WarmUp';
  * The GPU's warm-up (render/WarmUp.tsx; tests/e2e/warm-up.spec.ts looks at it drawn): before a screen with a graphics
  * chip first draws the show, it draws what a show draws, part-way, so the GPU makes each new kind of drawing (a
  * "pipeline") then and not at the show's first (100-600 ms each on CI's Mac, every screen waiting). A deck Drashti
- * plays itself draws three kinds nothing else does (13 Nov 2026, the review of h-p3tr's part B): its own Wipe, a
- * gradient mask over the whole slide coming in; its own Cover (and Uncover), the slide it moves a shade darker, a
- * filter; and a Split, a gradient mask the size of its shape, of 4, 5 or 6 stops as it goes (a GPU draws a gradient of
- * up to 4 stops, of up to 8 and of more each its own way). Placeholder slides only.
+ * plays itself draws two kinds nothing else does (13 Nov 2026, the review of h-p3tr's part B): its own Cover (and
+ * Uncover), the slide it moves a shade darker, a filter; and a Split, a gradient mask the size of its shape, of 4, 5 or
+ * 6 stops as it goes (a GPU draws a gradient of up to 4 stops, of up to 8 and of more each its own way). Its own Wipe
+ * is drawn again with a hard-edged clip (Q57-28: PowerPoint's soft band, a mask over the whole slide coming in, dropped
+ * frames on Windows while streaming); the warm-up still draws it part-way. Placeholder slides only.
  */
 
 /** The engine's time as the warm-up's slides before go up (it draws everything part-way a few frames later). */
@@ -62,15 +63,14 @@ describe('the warm-up', () => {
       }
   });
 
-  it('draws a deck’s own Wipe part-way: a gradient mask of 21 stops over the whole slide coming in', () => {
+  it('draws a deck’s own Wipe part-way: a hard-edged clip over the whole slide coming in, no mask (Q57-28)', () => {
     for (const key of ['deck-wipe/calm', 'deck-wipe/calm/clipped']) {
       const { t, p, frame } = deckFrameOf(key, BEFORE + 33);
       expect(t.deckEffect, key).toBe('wipe');
       expect(p, key).toBeGreaterThan(0.3);
       expect(p, key).toBeLessThan(0.7);
-      expect(frame.in.mask, key).toMatch(/^linear-gradient\(/u);
-      expect(stops(frame.in.mask ?? ''), key).toBe(21);
-      expect(frame.in.clip ?? '', key).toBe('');
+      expect(frame.in.mask ?? '', key).toBe('');
+      expect(frame.in.clip ?? '', key).toMatch(/^inset\(0 0 0 [\d.]+%\)$/u);
       // The slide going stays as it is, under it.
       expect(frame.out, key).toEqual({ opacity: 1, transform: '' });
     }

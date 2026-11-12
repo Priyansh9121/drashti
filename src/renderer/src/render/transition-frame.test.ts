@@ -300,118 +300,6 @@ describe('a deck’s own Cover and Uncover, against PowerPoint’s own movie (13
   });
 });
 
-/*
- * PowerPoint's Wipe in the same movie: triples of ms into the transition, the incoming slide's edge (where it shows
- * half, px from its own side; 0 or the whole size while that point is off the screen) and how much of the slide it
- * shows (px of its length, summed).
- */
-const WIPE: Readonly<Record<Direction, { frames: readonly number[] }>> = {
-  left: {
-    frames: [
-      0, 0, 0, 33.3, 0, 0.13, 66.7, 0, 1.66, 100, 0, 5.6, 133.3, 0, 12.99, 165, 0, 24.67, 198.3, 22, 40.8,
-      231.7, 51, 60.96, 265, 81, 84.8, 298.3, 112.25, 112.26, 330, 142, 141.79, 363.3, 172.25, 172.03, 396.7,
-      201.75, 201.15, 430, 231.33, 229.12, 463.3, 262, 254.27, 495, 292.25, 275.58, 528.3, 320, 292.29, 561.7,
-      320, 304.83, 595, 320, 313.06, 628.3, 320, 317.73, 660, 320, 319.62, 693.3, 320, 319.97, 726.7, 320,
-      319.97,
-    ],
-  },
-  right: {
-    frames: [
-      0, 0, 0.13, 33.3, 0, 0.16, 65, 0, 1.57, 98.3, 0, 5.79, 131.7, 0, 13.06, 165, 0, 24.96, 198.3, 22, 40.7,
-      230, 52.25, 61.02, 263.3, 81, 85.06, 296.7, 111.03, 112.38, 330, 142, 141.89, 363.3, 171.33, 172.16,
-      395, 202, 201.63, 428.3, 232.25, 229.44, 461.7, 263.88, 254.5, 495, 294, 275.58, 528.3, 320, 292.32,
-      560, 320, 304.8, 593.3, 320, 313.06, 626.7, 320, 317.66, 660, 320, 319.65, 693.3, 320, 319.94, 725, 320,
-      319.94,
-    ],
-  },
-  up: {
-    frames: [
-      0, 0, 0, 33.3, 0, 0.09, 66.7, 0, 0.97, 100, 0, 3.06, 131.7, 0, 7.4, 165, 0, 13.7, 198.3, 11.88, 22.59,
-      231.7, 29, 34.18, 265, 46, 47.88, 296.7, 62.67, 63.29, 330, 79.33, 79.54, 363.3, 97, 96.64, 396.7,
-      113.75, 113.22, 430, 131, 128.88, 461.7, 147.88, 142.87, 495, 164, 154.84, 528.3, 180, 164.29, 561.7,
-      180, 171.36, 595, 180, 176.06, 626.7, 180, 178.7, 660, 180, 179.87, 693.3, 180, 180, 726.7, 180, 180,
-    ],
-  },
-  down: {
-    frames: [
-      0, 0, 0, 31.7, 0, 0.07, 65, 0, 0.92, 98.3, 0, 3.22, 131.7, 0, 7.4, 165, 0, 13.86, 196.7, 12.25, 23.08,
-      230, 29, 34.42, 263.3, 46.25, 48.04, 296.7, 63, 63.27, 330, 80.25, 80.14, 361.7, 96.67, 96.79, 395,
-      114.67, 113.51, 428.3, 131, 129.26, 461.7, 147.25, 143.17, 495, 165, 155.03, 526.7, 180, 164.47, 560,
-      180, 171.5, 593.3, 180, 176.11, 626.7, 180, 178.76, 660, 180, 179.86, 691.7, 180, 180, 725, 180, 180,
-    ],
-  },
-};
-
-/*
- * PowerPoint's Wipe band itself: how much of the incoming slide it hides across the band (one slide long), from the
- * incoming slide's side, in 20 even parts, averaged over the four directions' frames with the whole band on the screen
- * (280-420 ms; each frame's own 10%-90% width carries the movie's noise, up to 2 px a side).
- */
-const WIPE_BAND = [
-  0, 0.0136, 0.035, 0.0745, 0.1188, 0.1757, 0.2404, 0.3093, 0.3847, 0.4622, 0.5388, 0.6166, 0.6902, 0.7635,
-  0.8262, 0.8779, 0.9268, 0.9635, 0.988, 0.9999,
-];
-
-/** The `p%` stops of a mask `linear-gradient(to <side>, rgba(0, 0, 0, a) p%, …)` (as fractions), with its side. */
-function maskStops(mask: string): { side: string; stops: [number, number][] } {
-  const m = /^linear-gradient\(to (left|right|top|bottom), (.*)\)$/u.exec(mask);
-  if (!m) throw new Error(`Not a wipe’s mask: ${mask}`);
-  const stops = [...(m[2] ?? '').matchAll(/rgba\(0, 0, 0, ([\d.]+)\) (-?[\d.]+)%/gu)].map(
-    (s): [number, number] => [Number(s[2]) / 100, Number(s[1])],
-  );
-  return { side: m[1] ?? '', stops };
-}
-
-/**
- * How much of the incoming slide each pixel along the wipe shows (4 samples a pixel, at `size` pixels), as
- * PowerPoint's movie was measured: its mask's alpha, inside its clip.
- */
-function shownAlong(f: SlideFrame, direction: Direction, size: number): number[] {
-  const horizontal = direction === 'left' || direction === 'right';
-  const { side, stops } = f.mask ? maskStops(f.mask) : { side: '', stops: [] };
-  const alpha = (x: number): number => {
-    if (!side) return 1;
-    const g = side === 'left' || side === 'top' ? 1 - x : x;
-    let previous: [number, number] | null = null;
-    for (const stop of stops) {
-      if (g <= stop[0])
-        return previous
-          ? previous[1] + ((stop[1] - previous[1]) * (g - previous[0])) / (stop[0] - previous[0])
-          : stop[1];
-      previous = stop;
-    }
-    return previous ? previous[1] : 1;
-  };
-  // A clip: inset(top right bottom left), in %.
-  const inset = (f.clip ?? 'inset(0 0 0 0)')
-    .slice(6, -1)
-    .trim()
-    .split(/\s+/u)
-    .map((v) => Number.parseFloat(v) / 100);
-  const [top = 0, right = 0, bottom = 0, left = 0] =
-    inset.length === 1 ? [inset[0], inset[0], inset[0], inset[0]] : inset;
-  const [from, to] = horizontal ? [left, 1 - right] : [top, 1 - bottom];
-  return Array.from({ length: size }, (_, i) => {
-    let s = 0;
-    for (let j = 0; j < 4; j++) {
-      const x = (i + (j + 0.5) / 4) / size;
-      s += x >= from && x <= to ? alpha(x) : 0;
-    }
-    return s / 4;
-  });
-}
-
-/** Where a profile crosses `level`, in px from its start (sub-pixel, between pixel centres). */
-function crossings(profile: readonly number[], level: number): number[] {
-  const out: number[] = [];
-  for (let i = 1; i < profile.length; i++) {
-    const a = (profile[i - 1] ?? 0) - level;
-    const b = (profile[i] ?? 0) - level;
-    if ((a < 0 && b >= 0) || (a >= 0 && b < 0)) out.push(i - 0.5 + a / (a - b));
-  }
-  return out;
-}
-
 describe('the slide a deck’s own Cover or Uncover moves is a little darker, as in PowerPoint’s own movie (13 Nov 2026)', () => {
   // The movie's colours (0-255): each slide at rest, and the slide that moves during the transition. Uncover's
   // outgoing from the transition's first frame, before it moves; Cover's incoming once it stops, until the end.
@@ -458,46 +346,25 @@ describe('the slide a deck’s own Cover or Uncover moves is a little darker, as
   });
 });
 
-describe('a deck’s own Wipe, against PowerPoint’s own movie (13 Nov 2026)', () => {
-  it('the incoming slide shows through a soft band one slide long: its edge and how much shows within a pixel or two of PowerPoint’s every frame, every direction, the band’s form within 0.6%', () => {
-    for (const direction of ['left', 'right', 'up', 'down'] as const) {
-      const size = direction === 'left' || direction === 'right' ? 320 : 180;
-      // The incoming slide comes in from the right (left), the bottom (up), the left (right) or the top (down).
-      const far = direction === 'left' || direction === 'up';
-      const t = deckNative('wipe', direction);
-      const at = (ms: number) => shownAlong(deckTransitionFrame(t, ms / 700).in, direction, size);
-      const { frames } = WIPE[direction];
-      for (let k = 0; k + 2 < frames.length; k += 3) {
-        const [ms = 0, edge = 0, shown = 0] = frames.slice(k, k + 3);
-        const profile = at(ms);
-        const half = crossings(profile, 0.5);
-        const ours =
-          half.length === 0
-            ? profile.reduce((a, b) => a + b, 0) > size / 2
-              ? size
-              : 0
-            : far
-              ? size - (half.at(-1) ?? 0)
-              : (half[0] ?? 0);
-        expect(Math.abs(ours - edge), `${direction} edge at ${String(ms)} ms`).toBeLessThanOrEqual(2);
-        const sum = profile.reduce((a, b) => a + b, 0);
-        expect(Math.abs(sum - shown), `${direction} shown at ${String(ms)} ms`).toBeLessThanOrEqual(1.5);
+describe('a deck’s own Wipe (Q57-28, 13 Nov 2026)', () => {
+  it('the incoming slide shows up to a hard edge moving evenly from its own side, as before PowerPoint’s soft band: a clip, no mask', () => {
+    const clips: Record<Direction, (edge: string) => string> = {
+      left: (edge) => `inset(0 0 0 ${edge})`,
+      right: (edge) => `inset(0 ${edge} 0 0)`,
+      up: (edge) => `inset(${edge} 0 0 0)`,
+      down: (edge) => `inset(0 0 ${edge} 0)`,
+    };
+    for (const direction of ['left', 'right', 'up', 'down'] as const)
+      for (const p of [0, 0.25, 0.5, 0.75, 1]) {
+        const f = deckTransitionFrame(deckNative('wipe', direction), p);
+        expect(f.in, `${direction} at ${String(p)}`).toEqual({
+          opacity: 1,
+          transform: '',
+          clip: clips[direction](`${String((1 - p) * 100)}%`),
+        });
+        expect(f.in.mask, `${direction} at ${String(p)}`).toBeUndefined();
+        expect(f.out, `${direction} at ${String(p)}`).toEqual({ opacity: 1, transform: '' });
       }
-      // The band's form: half-way through, the whole band is on the screen, from the incoming side to the far side.
-      const whole = deckTransitionFrame(t, 0.5).in;
-      expect(whole.mask, `${direction} mask`).toBeDefined();
-      const { stops } = maskStops(whole.mask ?? '');
-      WIPE_BAND.forEach((hidden, j) => {
-        const u = (j + 0.5) / WIPE_BAND.length;
-        const after = stops.findIndex(([g]) => g >= u);
-        const [b, bShown] = stops[after] ?? [1, 0];
-        const [a, aShown] = stops[after - 1] ?? [0, 1];
-        const shown = b === a ? bShown : aShown + ((bShown - aShown) * (u - a)) / (b - a);
-        expect(Math.abs(1 - shown - hidden), `${direction} band at ${u.toFixed(3)}`).toBeLessThanOrEqual(
-          0.006,
-        );
-      });
-    }
   });
 });
 
