@@ -38,7 +38,8 @@ const ROWS: Record<string, { playlist: string; presentation?: string; media?: st
 };
 const activePlaylist = (id: string) => id === 'one-playlist' || id === 'other-playlist';
 const testLists = {
-  kindOf: (id: string) => (activePlaylist(id) ? 'playlist' as const : id === 'template' ? 'template' as const : null),
+  kindOf: (id: string) =>
+    activePlaylist(id) ? ('playlist' as const) : id === 'template' ? ('template' as const) : null,
   activePlaylist,
   activeItem: (id: string, itemId: string) => ROWS[itemId]?.playlist === id,
   listsMedia: (mediaId: string) => Object.values(ROWS).some((r) => r.media === mediaId),
@@ -663,6 +664,16 @@ describe('the network in the main process', () => {
       return channel !== null && simpleModeRefusesWhole(channel);
     });
     expect(locked).toEqual([
+      'music.new',
+      'music.rename',
+      'music.remove',
+      'music.restore',
+      'music.options',
+      'music.addTracks',
+      'music.moveTrack',
+      'music.removeTrack',
+      'music.restoreTrack',
+      'music.stepsAside',
       'screens.addGroup',
       'screens.renameGroup',
       'screens.groupRole',

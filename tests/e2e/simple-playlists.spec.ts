@@ -18,8 +18,7 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * folders, as in Pro Mode, and smart playlists", Pro Mode's own playlists panel let through Simple Mode's bounds in the
  * main process. A volunteer makes, renames, deletes and puts back a playlist and a folder, makes a playlist in a
  * folder and a smart playlist, and opens each in the middle; each kind says in a line what it is (item 4). What is Pro
- * Mode's stays out (templates, sharing, Practise, Duplicate, Repeat Slides made), and a paired phone still changes no
- * playlist. Generated pictures and tones and placeholder names only.
+ * Mode's stays out (templates, sharing, Practise, Duplicate, Repeat Slides made). Generated pictures and tones and placeholder names only.
  */
 
 const QUICK = { DRASHTI_TEST_SMART_SCAN_MS: '1000', DRASHTI_TEST_SMART_SETTLE_MS: '500' };
@@ -209,7 +208,7 @@ test('Simple Mode has Pro Mode’s playlists on the left: a playlist and a folde
 
 test('a paired Simple Mode phone can manage other playlists and open a smart playlist', async () => {
   test.setTimeout(150_000);
-  const { app } = await launchApp(NETWORK_ENV);
+  const { app } = await launchApp({ ...NETWORK_ENV, ...QUICK });
   const win = await operatorPage(app);
   await operatorReady(win);
   const show = await setUpPlaceholderShow(win);
@@ -233,7 +232,8 @@ test('a paired Simple Mode phone can manage other playlists and open a smart pla
   const folder = await playlistNamed(win, 'Placeholder phone folder');
   expect(folder?.isFolder).toBe(true);
   expect(
-    (await post('/api/v1/playlists/new', { name: 'Placeholder nested phone list', parentId: folder?.id })).status,
+    (await post('/api/v1/playlists/new', { name: 'Placeholder nested phone list', parentId: folder?.id }))
+      .status,
   ).toBe(200);
   const nested = await playlistNamed(win, 'Placeholder nested phone list');
   expect(nested?.parentId).toBe(folder?.id);

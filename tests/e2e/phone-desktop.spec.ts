@@ -913,7 +913,10 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         .click();
       await expect.poll(() => playlistNames(win)).toContain('Placeholder Simple list');
       const simpleList = await playlistId(win, 'Placeholder Simple list');
-      const simpleRow = p.locator('[data-testid="remote-library-playlist"][data-playlist-id="' + simpleList + '"]');
+      if (simpleList === null) throw new Error('The phone did not create its playlist.');
+      const simpleRow = p.locator(
+        '[data-testid="remote-library-playlist"][data-playlist-id="' + simpleList + '"]',
+      );
       await simpleRow.getByTestId('remote-library-playlist-rename').click();
       await p.getByTestId('remote-library-rename-name').fill('Placeholder Simple renamed');
       await p.getByTestId('remote-library-rename-form').getByRole('button', { name: 'Rename' }).click();

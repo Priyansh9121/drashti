@@ -40,7 +40,7 @@ import { ONLY_ON_IN_SIMPLE_MODE } from '../outputs/screen-switches';
 import type { AnnouncementResult, AnnouncementsView } from '../../shared/announcements';
 import type { NewFromWordsResult } from '../../shared/library';
 import { MIDI_LEARNABLE, type MidiLearnable, type MidiResult, type MidiSettings } from '../../shared/midi';
-import type { PlaylistResult } from '../../shared/playlists';
+import { idListSchema, type PlaylistResult } from '../../shared/playlists';
 import type { PlaylistChanges } from '../playlists/playlist-ipc';
 import type { StageChoiceResult } from '../../shared/stage-layouts';
 import { DesktopConsent, type ConsentQuestion } from './desktop-consent';
@@ -299,7 +299,14 @@ const windowRef = z.object({ id: z.string().min(1).max(200) }).strict();
 const libraryName = z.string().trim().min(1).max(200);
 const fromWords = z.object({ name: libraryName, words: z.string().min(1).max(200_000) }).strict();
 const someIds = z.object({ ids: z.array(idSchema).min(1).max(50) }).strict();
-const playlistName = z.object({ name: libraryName }).strict();
+const playlistName = z
+  .object({
+    name: libraryName,
+    parentId: idSchema.nullable().default(null),
+    isFolder: z.boolean().default(false),
+  })
+  .strict();
+const restoringPlaylists = z.object({ ids: idListSchema }).strict();
 const playlistRenamed = z.object({ playlistId: idSchema, name: libraryName }).strict();
 const playlistAdd = z
   .object({
@@ -665,7 +672,10 @@ export class DesktopAnswers {
       case 'playlist.new': {
         const a = playlistName.safeParse(args);
         if (!a.success) return bad('A name needs 1 to 200 characters.');
-        return done(playlists.create(a.data.name, null, false), 'made a playlist');
+        return done(
+          playlists.create(a.data.name, a.data.parentId, a.data.isFolder),
+          a.data.isFolder ? 'made a playlist folder' : 'made a playlist',
+        );
       }
       case 'playlist.rename': {
         const a = playlistRenamed.safeParse(args);
@@ -674,7 +684,7 @@ export class DesktopAnswers {
       }
       case 'playlist.remove':
       case 'playlist.restore': {
-        const a = someIds.safeParse(args);
+        const a = (op === 'playlist.restore' ? restoringPlaylists : someIds).safeParse(args);
         if (!a.success) return bad('Which playlists?');
         return op === 'playlist.remove'
           ? done(playlists.remove(a.data.ids), 'deleted playlists')

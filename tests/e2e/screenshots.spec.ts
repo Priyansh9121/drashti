@@ -3135,10 +3135,9 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
         .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       const simple = p.getByTestId('remote-simple');
-      await expect(simple).toContainText('its playlist “' + PLAYLIST + '”');
+      await expect(simple).toContainText('(playlists, playback and Audio)');
       await expect(simple).toBeInViewport();
-      await expect(bar.getByRole('progressbar', { name: 'Time of the background video' })).toBeVisible();
-      await expect(bar.getByRole('slider')).toHaveCount(0);
+      await expect(bar.getByRole('slider', { name: 'Time of the background video' })).toBeVisible();
       await expect(bar.getByTestId('remote-time-bar-play')).toBeEnabled();
       await expect(bar.getByTestId('remote-time-bar-play')).toBeInViewport();
       await expect(p.getByTestId('remote-quick-bar')).toHaveCount(0);
@@ -3147,7 +3146,7 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
 
       await p.getByTestId('remote-tab-playlist').click();
       await expect(p.getByTestId('remote-playlist')).toHaveValue(show.playlistId);
-      await expect(p.getByTestId('remote-playlist').locator('option')).toHaveCount(1);
+      await expect(p.getByTestId('remote-open-playlists')).toBeVisible();
       await longPress(pictureRow);
       await expect(menu.locator('[data-testid^="remote-menu-"]')).toHaveText([
         /Look at it on this phone/u,

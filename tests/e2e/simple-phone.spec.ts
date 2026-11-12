@@ -6,7 +6,15 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { NEW_LOWER_THIRD } from '../../src/shared/lower-thirds';
 import { apiCall, device, networkOn, NETWORK_ENV, pairByQr, pairingCode, pairToken } from './devices';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPage, type PageGlobals, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  type PageGlobals,
+  setUpScreen,
+} from './helpers';
 import { KIRTAN, PICTURE, PLAYLIST, setUpPlaceholderShow, VIDEO } from './placeholder-show';
 import { makeTestTone } from './test-media';
 
@@ -306,7 +314,9 @@ test('a Simple Mode phone chooses a playlist, pauses, seeks and plays, and edits
     await expect(note).toContainText('(playlists, playback and Audio)');
     await p.getByTestId('remote-tab-playlist').click();
     await expect(p.getByTestId('remote-playlist')).toHaveValue(show.playlistId);
-    await expect(p.getByTestId('remote-playlist').locator('option', { hasText: 'Placeholder other evening' })).toHaveCount(1);
+    await expect(
+      p.getByTestId('remote-playlist').locator('option', { hasText: 'Placeholder other evening' }),
+    ).toHaveCount(1);
     // Said once: put away, it stays away while Simple Mode is on.
     await note.getByRole('button', { name: 'Dismiss' }).click();
     await expect(note).toHaveCount(0);
@@ -326,8 +336,11 @@ test('a Simple Mode phone chooses a playlist, pauses, seeks and plays, and edits
       await expect(menu.locator('[data-testid^="remote-menu-when-"]')).toHaveCount(4);
       await menu.getByTestId('remote-menu-when-' + whenEnds).click();
       await expect
-        .poll(async () => (await items()).find((i) => i.kind === 'media' && i.mediaId === show.videoMediaId))
-        .toMatchObject({ whenEnds });
+        .poll(async () => {
+          const row = (await items()).find((i) => i.kind === 'media' && i.mediaId === show.videoMediaId);
+          return row?.kind === 'media' ? (row.whenEnds ?? 'wallpaper') : null;
+        })
+        .toBe(whenEnds);
     }
     // Loop keeps this short test video available for the time bar checks.
     await videoRow.click();
@@ -345,6 +358,8 @@ test('a Simple Mode phone chooses a playlist, pauses, seeks and plays, and edits
     await p.getByTestId('remote-time-bar-pause').click();
     await expect.poll(async () => (await seek())?.paused).toBe(true);
     const bar = p.getByRole('slider', { name: 'Time of the background video' });
+    await bar.press('Home');
+    await expect.poll(async () => (await seek())?.toMs).toBe(0);
     const box = await bar.boundingBox();
     if (!box) throw new Error('The phone’s time bar is missing.');
     await bar.click({ position: { x: box.width * 0.75, y: box.height / 2 } });
@@ -392,6 +407,28 @@ test('a Simple Mode phone chooses a playlist, pauses, seeks and plays, and edits
     await pictureRow.click();
     await expect.poll(async () => (await state(win)).live.playlist?.playlistId).toBe(other);
     await expect(p.getByTestId('remote-playlist')).toHaveValue(other ?? '');
+
+    // Create a folder and a playlist in it from the phone’s Playlist tab.
+    await p.getByTestId('remote-open-playlists').click();
+    const form = p.getByTestId('remote-library-new-playlist');
+    const kind = form.getByTestId('remote-library-new-playlist-kind');
+    const name = form.getByTestId('remote-library-new-playlist-name');
+    await kind.selectOption('folder');
+    await name.fill('Placeholder phone evenings');
+    await form.getByRole('button', { name: 'Make the folder' }).click();
+    const parent = form.getByTestId('remote-library-new-playlist-parent');
+    await expect(parent.locator('option', { hasText: 'Placeholder phone evenings' })).toHaveCount(1);
+    await kind.selectOption('playlist');
+    await parent.selectOption({ label: 'Placeholder phone evenings' });
+    await name.fill('Placeholder phone gathering');
+    await form.getByRole('button', { name: 'Make the playlist' }).click();
+    await expect(
+      p.getByTestId('remote-library-playlist').filter({ hasText: 'Placeholder phone gathering' }),
+    ).toBeVisible();
+    await p.getByTestId('remote-library-sheet-close').click();
+    await expect(p.getByTestId('remote-playlist').locator('option:checked')).toContainText(
+      'Placeholder phone gathering',
+    );
   } finally {
     await phone.close();
   }
@@ -426,18 +463,29 @@ test('a Simple Mode phone manages Audio and plays a chosen track', async () => {
     const track = editor.getByTestId('remote-audio-track');
     for (const name of ['Placeholder first tone', 'Placeholder second tone']) {
       await editor.getByTestId('remote-audio-add').click();
-      await p.getByTestId('remote-audio-library').getByRole('button', { name: new RegExp(name, 'u') }).click();
+      await p
+        .getByTestId('remote-audio-library')
+        .getByRole('button', { name: new RegExp(name, 'u') })
+        .click();
       await expect(track.filter({ hasText: name })).toBeVisible();
     }
     await track.nth(1).getByRole('button', { name: 'Move up', exact: true }).click();
-    await expect.poll(async () => (await music()).playlists[0]?.tracks[0]?.name).toContain('Placeholder second tone');
+    await expect
+      .poll(async () => (await music()).playlists[0]?.tracks[0]?.name)
+      .toContain('Placeholder second tone');
     await track.first().getByRole('button', { name: 'Remove', exact: true }).click();
     await expect(track).toHaveCount(1);
-    await editor.getByRole('button', { name: 'Undo', exact: true }).click();
+    await audio.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(track).toHaveCount(2);
-    await editor.getByRole('button', { name: 'Loop', exact: true }).click();
+    const stepsAside = audio.getByRole('button', { name: 'Music steps aside', exact: true });
+    await expect(stepsAside).toHaveAttribute('aria-pressed', 'true');
+    await stepsAside.click();
+    await expect(stepsAside).toHaveAttribute('aria-pressed', 'false');
+    const loop = editor.getByRole('button', { name: 'Loop', exact: true });
+    await expect(loop).toHaveAttribute('aria-pressed', 'true');
+    await loop.click();
     await editor.getByRole('button', { name: 'Shuffle', exact: true }).click();
-    await expect.poll(async () => (await music()).playlists[0]).toMatchObject({ loop: true, shuffle: true });
+    await expect.poll(async () => (await music()).playlists[0]).toMatchObject({ loop: false, shuffle: true });
     await editor.getByRole('button', { name: 'Shuffle', exact: true }).click();
     await track.nth(1).getByRole('button', { name: 'Play track', exact: true }).click();
     await expect.poll(async () => (await state(win)).layers.audio?.title).toContain('Placeholder first tone');
@@ -450,7 +498,7 @@ test('a Simple Mode phone manages Audio and plays a chosen track', async () => {
     await p.getByRole('button', { name: 'Save name', exact: true }).click();
     await expect.poll(async () => (await music()).playlists[0]?.name).toBe('Placeholder renamed audio');
     await editor.getByRole('button', { name: 'Delete playlist', exact: true }).click();
-    await p.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+    await p.getByTestId('remote-audio-delete-act').click();
     await expect.poll(async () => (await music()).playlists).toHaveLength(0);
     await audio.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect.poll(async () => (await music()).playlists[0]?.name).toBe('Placeholder renamed audio');

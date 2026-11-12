@@ -54,13 +54,13 @@ export const SIMPLE_PHONE_REFUSAL_START = 'Simple Mode on Drashti’s computer';
 
 /**
  * What a paired phone is told when it asks for what Simple Mode's window does not do (Session 55, the owner's answer
- * of 30 Oct 2026: a phone does only what that window does; main/simple-mode-phones.ts), naming Simple Mode's one
- * playlist when it has one, so the phone can choose it: with Pro access the window's own way out, word for word; with
+ * of 30 Oct 2026: a phone does only what that window does; main/simple-mode-phones.ts). With Pro access it
+ * includes the window's own way out, word for word. With
  * Simple access (Part 19) that the access is Simple Mode only, and no way to Pro Mode. What the window is refused too
  * keeps the window's own words (simpleRefusalText).
  */
-export function simplePhoneRefusalText(simpleOnly: boolean, playlist: string | null): string {
-  const does = `a phone does only what Simple Mode does there (its playlist${playlist === null ? '' : ` “${playlist}”`}, Next and Back, Clear all, Black-out and the Wallpaper)`;
+export function simplePhoneRefusalText(simpleOnly: boolean): string {
+  const does = 'a phone does only what Simple Mode does there (playlists, playback and Audio)';
   return simpleOnly
     ? `${SIMPLE_PHONE_REFUSAL_START}, whose access is Simple Mode only: ${does}.`
     : `${SIMPLE_PHONE_REFUSAL_START}: ${does}. ${SIMPLE_MODE_WAY_OUT}`;

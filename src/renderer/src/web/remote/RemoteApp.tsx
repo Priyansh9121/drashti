@@ -17,6 +17,7 @@ import { pipName } from '../../render/pip';
 import { Scene } from '../../render/Scene';
 import { textLang } from '../../render/lang';
 import { useNow } from '../../render/useNow';
+import { skipsOf } from '../../markers/skips';
 import { groupLookIn, type LiveGroupLook } from '../../../../shared/looks';
 import {
   SCREEN_SWITCHES,
@@ -619,6 +620,7 @@ function Slides() {
   const viewing = useRemote((s) => s.viewing);
   const doc = useRemote((s) => s.doc);
   const items = useRemote((s) => s.items);
+  const playlists = useRemote((s) => s.playlists);
   const focusSlideId = useRemote((s) => s.focusSlideId);
   const live = useEngine((s) => s.state?.live ?? null);
   const simple = useSimple();
@@ -657,11 +659,11 @@ function Slides() {
         ? itemPlayOrder(doc, itemNow, item.itemId)
         : playOrder(doc, doc.selectedArrangementId);
   const otherThanLive = live?.presentationId != null && live.presentationId !== viewing.presentationId;
-  // Simple Mode (Part 9): only what its playlist plays goes up from here, as its window puts up its own rows.
+  // Simple Mode puts up playlist rows. An unrelated presentation can still be read on the phone.
   const allowed =
     simple === null ||
     (item
-      ? item.playlistId === simple.playlistId
+      ? (playlists ?? []).some((p) => !p.isFolder && p.id === item.playlistId)
       : (items ?? []).some(
           (i) =>
             (i.kind === 'presentation' && i.presentationId === doc.id) ||
@@ -1002,10 +1004,11 @@ function Music() {
   const audio = useEngine((s) => s.state?.layers.audio ?? null);
   const music = audio?.music ? audio : null;
   const paused = music?.pausedAtMs !== undefined;
+  const skips = useEngine((s) => skipsOf(s.state, 'music'));
   return (
     <section className="space-y-2" aria-labelledby="music-title" data-testid="remote-music">
       <h2 id="music-title" className="text-base font-bold tracking-wider text-muted uppercase">
-        Music
+        Audio
       </h2>
       {music && (
         <p className="truncate text-base" role="status">
@@ -1034,6 +1037,27 @@ function Music() {
           </Button>
         )}
       </div>
+      {skips && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Move in the track playing">
+          {(
+            [
+              ['back', 'Back 15 s'],
+              ['forward', 'Forward 15 s'],
+              ['last', 'Last 10 s'],
+            ] as const
+          ).map(([jump, label]) => (
+            <Button
+              key={jump}
+              size="lg"
+              className="min-h-12"
+              disabled={skips !== 'ready'}
+              onClick={() => void tap(post('/api/v1/skip', { layer: 'audio', jump }))}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      )}
       <MusicList />
     </section>
   );
@@ -1083,12 +1107,11 @@ function TimersAndMessages() {
   const shown = useEngine((s) => s.state?.layers.messages) ?? NO_MESSAGES;
   const templates = useRemote((s) => s.templates);
   const simple = useSimple();
-  // Simple Mode (Part 9): none of what its window has not (the music, the stage screen, messages, timers, Books, the
-  // lower thirds, the computer's setup); Audience and Stage turned on stay, as its window turns them.
   if (simple)
     return (
       <div className="space-y-5" data-testid="remote-more-columns">
         <DesktopTools />
+        <Music />
       </div>
     );
   return (
@@ -1137,10 +1160,8 @@ function TimersAndMessages() {
 // ---- the page ----------------------------------------------------------------------------------
 
 /**
- * Simple Mode on Drashti's computer (Session 55, Part 9), said once: what this phone does there (its playlist, Next and
- * Back, Clear all, Black-out and the Wallpaper), and, unless the access is Simple Mode only, the way back to Pro Mode.
- * What Simple Mode's window does not have is hidden here, and what it may not do dimmed; put away, this stays away
- * until Simple Mode next comes on.
+ * What the phone offers in Simple Mode and how the computer returns to Pro Mode when it has Pro access.
+ * Dismissed, the note stays away until Simple Mode next comes on.
  */
 function SimpleNote() {
   const simple = useSimple();
