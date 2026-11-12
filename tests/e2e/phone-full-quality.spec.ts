@@ -560,7 +560,7 @@ test('Look closer saves the native deck click showing on the screens', async () 
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     await p.evaluate(() => {
-      const images: { type: string; width: number; height: number; ink: number }[] = [];
+      const images: { type: string; width: number; height: number; ink: number; rgb: number[] }[] = [];
       Object.assign(globalThis, { savedDeckImages: images });
       Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
       Object.defineProperty(navigator, 'share', {
@@ -590,7 +590,10 @@ test('Look closer saves the native deck click showing on the screens', async () 
               if ([0, 1, 2].some((c) => Math.abs((data[i + c] ?? 0) - (data[c] ?? 0)) > 30)) ink++;
             }
           }
-          images.push({ type: file.type, width, height, ink });
+          const rgb = Array.from(
+            ctx.getImageData(Math.floor(width * 0.75), Math.floor(height * 0.75), 1, 1).data.slice(0, 3),
+          );
+          images.push({ type: file.type, width, height, ink, rgb });
         },
       });
     });
@@ -614,7 +617,7 @@ test('Look closer saves the native deck click showing on the screens', async () 
         () =>
           (
             globalThis as unknown as {
-              savedDeckImages: { type: string; width: number; height: number; ink: number }[];
+              savedDeckImages: { type: string; width: number; height: number; ink: number; rgb: number[] }[];
             }
           ).savedDeckImages,
       );
@@ -642,6 +645,10 @@ test('Look closer saves the native deck click showing on the screens', async () 
     await saveClick(1, 2);
     const [before, after] = await saved();
     expect(after).toMatchObject({ type: 'image/png', width: 1920, height: 1080 });
+    // The generated picture is RGB (40, 90, 140). Its red and blue cannot be interchanged.
+    const rgb = [40, 90, 140];
+    for (const [channel, value] of rgb.entries())
+      expect(Math.abs((after?.rgb[channel] ?? 0) - value)).toBeLessThanOrEqual(8);
     expect(after?.ink ?? 0).toBeGreaterThan((before?.ink ?? 0) + 80);
     const saveStartingPicture = async (click: number, count: number, message: string) => {
       const ready = pictureResponse(click);
@@ -652,7 +659,7 @@ test('Look closer saves the native deck click showing on the screens', async () 
       expect(await response.json()).toMatchObject({ mediaId: expect.any(String), message });
       await expect(p.getByText(message, { exact: true })).toBeVisible();
       await expect.poll(async () => (await saved()).length).toBe(count);
-      expect((await saved()).at(-1)).toMatchObject({ width: 1, height: 1 });
+      expect((await saved()).at(-1)).toMatchObject({ width: 1, height: 1, rgb });
     };
     const onAir = (on: boolean) =>
       app.evaluate((_electron, value) => {
