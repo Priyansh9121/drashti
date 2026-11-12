@@ -411,7 +411,7 @@ describe('PowerPoint slide animation timing', () => {
     });
   });
 
-  it('plays a smooth start and smooth end, the effect’s own or the one its behaviours share, keeping PowerPoint’s video where one can be made', () => {
+  it('plays a Fly’s smooth start and smooth end exactly, the effect’s own or the one its behaviours share', () => {
     const fly = (timing: string, own = '') =>
       alone(
         '2',
@@ -420,19 +420,33 @@ describe('PowerPoint slide animation timing', () => {
           track(2, 22, 'ppt_y', formula('1+#ppt_h/2'), formula('#ppt_y'), 500, timing),
         `presetSubtype="4"${own}`,
       );
-    // The same Fly without a smooth start or end is played exactly; with one, not yet compared with PowerPoint's own
-    // movie, Drashti plays it where no video can be made.
+    // The same Fly is played exactly with or without a smooth start or end: PowerPoint's own ramps (its half-cosines),
+    // compared with its own movie (13 Nov: within half a pixel, shared/deck-motion-powerpoint.test.ts).
     expect(fly('')).toMatchObject({ approximate: false, effects: [{ kind: 'fly', direction: 'up' }] });
     expect(fly('')?.effects[0]).not.toHaveProperty('decel');
     expect(fly(' decel="100000"')).toMatchObject({
-      approximate: true,
+      approximate: false,
       effects: [{ kind: 'fly', direction: 'up', decel: 1 }],
     });
     expect(fly('', ' accel="25000" decel="50000"')).toMatchObject({
-      approximate: true,
+      approximate: false,
       effects: [{ kind: 'fly', accel: 0.25, decel: 0.5 }],
     });
+    // The effect's own and its behaviours' differ: Drashti cannot say which PowerPoint plays.
     expect(fly(' decel="100000"', ' accel="50000"')?.approximate).toBe(true);
+    // Any other effect with a smooth start or end has not been compared with PowerPoint's own movie (run 1 eased only a
+    // Fly): it is drawn with the same ramps, but keeps PowerPoint's video where one can be made.
+    const float = track(2, 21, 'ppt_y', formula('#ppt_y+0.08'), formula('#ppt_y')) + fadeOf(2, 22, 'in');
+    expect(alone('42', 'entr', float)?.approximate).toBe(false);
+    expect(alone('42', 'entr', float, 'accel="25000" decel="50000"')).toMatchObject({
+      approximate: true,
+      effects: [{ kind: 'float', accel: 0.25, decel: 0.5 }],
+    });
+    const grow = `<p:animScale><p:cBhvr><p:cTn id="21" dur="500" decel="100000"/><p:tgtEl><p:spTgt spid="2"/></p:tgtEl></p:cBhvr><p:by x="150000" y="150000"/></p:animScale>`;
+    expect(alone('6', 'emph', grow)).toMatchObject({
+      approximate: true,
+      effects: [{ kind: 'grow-shrink', scale: 1.5, decel: 1 }],
+    });
   });
 
   it('draws Shape, Wheel, Random Bars and Bounce, keeping PowerPoint’s video where one can be made', () => {
