@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type OpeningPlan, OPENING_TIMES, OPENING_ZOOM } from '../../../shared/opening';
 import { cx } from '../ui/cx';
 import { LitLamp } from '../ui/Mark';
+import { photoWait } from './opening-order';
 import { openingSound, type OpeningSoundPlayer } from './opening-sound';
 
 /*
@@ -12,13 +13,12 @@ import { openingSound, type OpeningSoundPlayer } from './opening-sound';
  * (reduced motion, or Interface motion Off): the photo comes and goes with a plain fade, nothing moving. With the
  * mandir's photo, the pack's sound plays gently beside it (opening-sound.ts), started with it.
  *
- * Every part moves by opacity and transform alone, each one Web Animation, all started at the same moment once the
- * photo is decoded and the sound can play (at most READY_WAIT), so the compositor plays them while the window
- * finishes starting underneath. The page's own motion rules (app.css: Off and reduced motion stop every CSS animation)
- * do not stop a Web Animation: the still opening's fades are its own, and nothing in it moves.
+ * The photo and sound prepare together, including while it holds (for the hall's screens, or at start for the window
+ * starting underneath: OpeningAtStart.tsx). Once visible, the compositor runs the opacity and transform tracks on one
+ * frame. Changing the motion setting cancels the zoom without moving the end of the fade.
  */
 
-/** The longest it waits for its photo and sound before it starts anyway (black until then). */
+/** The longest an unreadable photo can hold up the opening, once nothing else holds it (opening-order.ts). */
 const READY_WAIT = 600;
 /** The zoom is centred on the photo's upper middle, so its subject stays where it is. */
 const ORIGIN = '50% 35%';
@@ -28,11 +28,14 @@ const token = (name: string): string =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || 'ease';
 
 /** Every part's Web Animation (the caller gives them all one start time, in the same task); the last ends it. */
-function animate(root: HTMLElement, still: boolean): Animation[] {
+function animate(root: HTMLElement, still: boolean) {
   const out: Animation[] = [];
+  let zoom: Animation | undefined;
   // Each held at its first frame until it starts and at its last after.
   const run = (el: Element, frames: Keyframe[], delay: number, duration: number, easing = 'linear') => {
-    out.push(el.animate(frames, { delay, duration: Math.max(1, duration), easing, fill: 'both' }));
+    const animation = el.animate(frames, { delay, duration: Math.max(1, duration), easing, fill: 'both' });
+    out.push(animation);
+    return animation;
   };
   const t = OPENING_TIMES;
   const photo = root.querySelector<HTMLElement>('[data-opening-photo]');
@@ -43,23 +46,25 @@ function animate(root: HTMLElement, still: boolean): Animation[] {
     // Zooming gently the whole two seconds, from a little closer to the whole photo (the owner, 5 Nov 2026).
     if (!still) {
       photo.style.transformOrigin = ORIGIN;
-      run(photo, [{ transform: `scale(${String(OPENING_ZOOM)})` }, { transform: 'scale(1)' }], 0, t.end);
+      zoom = run(
+        photo,
+        [{ transform: `scale(${String(OPENING_ZOOM)})` }, { transform: 'scale(1)' }],
+        0,
+        t.end,
+      );
     }
   }
   // The lamp lights (app.css, [data-lighting]) as the opening starts: set on its part just before the animations go.
   if (lamp && !still) lamp.setAttribute('data-lighting', '');
   // The whole goes into the window at its end.
-  run(root, [{ opacity: 1 }, { opacity: 0 }], t.fadeOut.start, t.fadeOut.length, token('--ease-in-out'));
-  return out;
-}
-
-/** The photo decoded and the sound ready to play, or READY_WAIT, whichever is first. */
-function ready(root: HTMLElement, sound: OpeningSoundPlayer | null): Promise<unknown> {
-  const photo = root.querySelector<HTMLImageElement>('[data-opening-photo]');
-  return Promise.race([
-    Promise.all([photo ? photo.decode().catch(() => undefined) : undefined, sound?.ready]),
-    new Promise((resolve) => setTimeout(resolve, READY_WAIT)),
-  ]);
+  const fade = run(
+    root,
+    [{ opacity: 1 }, { opacity: 0 }],
+    t.fadeOut.start,
+    t.fadeOut.length,
+    token('--ease-in-out'),
+  );
+  return { out, fade, zoom };
 }
 
 export function OpeningPlayer({
@@ -67,6 +72,7 @@ export function OpeningPlayer({
   still,
   held = false,
   onDone,
+  coverWhilePreparing = false,
   className,
   testId = 'opening',
 }: {
@@ -77,63 +83,98 @@ export function OpeningPlayer({
   held?: boolean;
   /** It played to its end (its fade done). */
   onDone?: () => void;
+  /** Black while its photo prepares (at start, over the window starting underneath), else nothing shown till then. */
+  coverWhilePreparing?: boolean;
   className?: string;
   testId?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const done = useRef(onDone);
+  const motion = useRef(still);
+  const zoom = useRef<Animation | undefined>(undefined);
   useLayoutEffect(() => {
     done.current = onDone;
+    motion.current = still;
+    if (still) {
+      zoom.current?.cancel();
+      ref.current?.querySelector('[data-opening-lamp]')?.removeAttribute('data-lighting');
+    }
   });
   const { photo, sound: soundUrl } = plan;
   /** The pack's sound (main sends one with the mandir's photo only, never with Drashti's default photo). */
   const sound = useRef<OpeningSoundPlayer | null>(null);
-  // Its sound, made once it may start (never while held), so it loads while the photo decodes; let go when it ends.
-  // Before the pictures' effect, so they wait for it, and kept when only the motion changes (it never starts again).
+  const [prepared, setPrepared] = useState<{ photo: string | null; decoded: boolean } | null>(null);
+  const selected = prepared?.photo === photo ? prepared : null;
+  const ready = selected !== null;
+  const showPhoto = photo !== null && selected?.decoded !== false;
+
+  // The photo decoded (or found unreadable) and the sound made, from the start, its hold too; the first word kept.
   useLayoutEffect(() => {
-    if (!soundUrl || held) return;
-    const made = openingSound(soundUrl);
+    const image = ref.current?.querySelector<HTMLImageElement>('[data-opening-photo]');
+    const made = soundUrl ? openingSound(soundUrl) : null;
     sound.current = made;
+    let cancelled = false;
+    const decoding = image
+      ? image.decode().then(
+          () => true,
+          () => false,
+        )
+      : Promise.resolve(false);
+    void decoding.then((decoded) => {
+      if (!cancelled) setPrepared((was) => (was?.photo === photo ? was : { photo, decoded }));
+    });
     return () => {
+      cancelled = true;
       made?.stop();
       if (sound.current === made) sound.current = null;
     };
-  }, [soundUrl, held]);
+  }, [photo, soundUrl]);
+  // Not ready, it waits READY_WAIT at most, counted once nothing else holds it: then the lamp lights in its place.
+  useEffect(() => {
+    const wait = photoWait(held, READY_WAIT);
+    if (ready || wait === null) return;
+    const timer = setTimeout(() => {
+      setPrepared((was) => (was?.photo === photo ? was : { photo, decoded: false }));
+    }, wait);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [held, photo, ready]);
+
   useLayoutEffect(() => {
     const root = ref.current;
-    if (!root || held) return;
-    let stopped = false;
-    let animations: Animation[] = [];
-    void ready(root, sound.current).then(() => {
-      if (stopped) return;
-      animations = animate(root, still);
-      // Every part from the same moment, and the sound with them.
-      const now = document.timeline.currentTime;
-      for (const a of animations) a.startTime = now;
-      sound.current?.start();
-      void animations
-        .at(-1)
-        ?.finished.then(() => {
-          if (!stopped) done.current?.();
-        })
-        .catch(() => undefined);
-    });
+    if (!root || !ready || held) return;
+    const playing = animate(root, motion.current);
+    zoom.current = playing.zoom;
+    let cancelled = false;
+    void playing.fade.ready
+      .then(() => {
+        if (!cancelled && showPhoto) sound.current?.start();
+      })
+      .catch(() => undefined);
+    void playing.fade.finished
+      .then(() => {
+        if (!cancelled) done.current?.();
+      })
+      .catch(() => undefined);
     return () => {
-      stopped = true;
-      for (const a of animations) a.cancel();
+      cancelled = true;
+      for (const animation of playing.out) animation.cancel();
+      zoom.current = undefined;
     };
-  }, [photo, still, held]);
+  }, [held, photo, ready, showPhoto]);
   return (
     <div
       ref={ref}
       data-testid={testId}
       data-opening-motion={still ? 'still' : 'full'}
       data-opening-held={held ? 'true' : 'false'}
-      data-photos={photo === null ? 0 : 1}
+      data-photos={showPhoto ? 1 : 0}
       aria-hidden="true"
       className={cx('isolate overflow-hidden bg-black', className)}
+      style={{ visibility: !held && !ready && !coverWhilePreparing ? 'hidden' : undefined }}
     >
-      {photo !== null ? (
+      {showPhoto ? (
         <img
           data-opening-photo={0}
           src={photo}
@@ -148,7 +189,7 @@ export function OpeningPlayer({
         <div
           data-opening-lamp=""
           className="absolute inset-0 flex items-center justify-center"
-          style={{ visibility: held ? 'hidden' : undefined }}
+          style={{ visibility: held || !ready ? 'hidden' : undefined }}
         >
           <LitLamp size={110} />
         </div>

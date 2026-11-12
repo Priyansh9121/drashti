@@ -18,8 +18,6 @@ const STOP_MS = 120;
 const LATE_MS = 1000;
 
 export interface OpeningSoundPlayer {
-  /** Ready to play from its start (or it cannot be): resolved either way. */
-  ready: Promise<void>;
   /** Play it now, with the photo (once: asked again, nothing). */
   start(): void;
   /** Stop it (faded out quickly if it still sounds) and let it go. */
@@ -76,16 +74,7 @@ export function openingSound(url: string): OpeningSoundPlayer | null {
     el.pause();
     el.dataset['level'] = '-100';
   };
-  const ready = new Promise<void>((resolve) => {
-    if (el.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) resolve();
-    const done = () => {
-      resolve();
-    };
-    el.addEventListener('canplaythrough', done, { once: true });
-    el.addEventListener('error', done, { once: true });
-  });
   return {
-    ready,
     start() {
       if (started || gone) return;
       started = true;
