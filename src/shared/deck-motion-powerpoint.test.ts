@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckEffect } from './deck';
-import { deckMotionFrame, deckSplitShows } from './deck-motion';
+import { deckMotionFrame, deckSplitShows, deckWipeClip } from './deck-motion';
 
 /*
  * PowerPoint's own movie of the comparison deck, measured frame by frame (Session 57, 13 Nov 2026: the lead's run 1,
@@ -273,6 +273,167 @@ describe('Split as PowerPoint’s own movie shows it', () => {
       [95, 0.9126, [123.26, 128.86]],
       [358.3, 0.4834, [109.56, 142.59]],
       [590, 0.1095, [97.55, 154.59]],
+    ]);
+  });
+});
+
+describe('Shape as PowerPoint’s own movie shows it (run 2)', () => {
+  /** A clip `polygon([evenodd, ]x% y%, …)` of the box: where each sample row crosses its edges, and which way. */
+  function crossingsOf(clip: string): (y: number) => [number, number][] {
+    const body = /^polygon\((.*)\)$/u.exec(clip)?.[1] ?? '';
+    const points = body
+      .replace(/^evenodd,\s*/u, '')
+      .split(',')
+      .map((pair) => pair.trim().split(/\s+/u).map((v) => Number.parseFloat(v) / 100))
+      .map(([x = 0, y = 0]): [number, number] => [x * box.width, y * box.height]);
+    return (y) => {
+      const list: [number, number][] = [];
+      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const [xi = 0, yi = 0] = points[i] ?? [];
+        const [xj = 0, yj = 0] = points[j] ?? [];
+        if (yi > y !== yj > y) list.push([((xj - xi) * (y - yi)) / (yj - yi) + xi, yj > yi ? 1 : -1]);
+      }
+      return list;
+    };
+  }
+
+  /**
+   * What Drashti draws of the box at `ms`: how much of it shows, and its width and height from how far it spreads
+   * (√12 times its standard deviation along each axis, as the movie's frames were measured), 4 × 4 points a pixel.
+   */
+  function drawn(one: DeckEffect, ms: number): { shows: number; w: number; h: number } {
+    const clip = deckWipeClip(deckMotionFrame([one], 1, ms, box, screen).wipe, box, box);
+    const evenodd = clip.startsWith('polygon(evenodd');
+    const crossings = crossingsOf(clip);
+    let mass = 0;
+    let sx = 0;
+    let sy = 0;
+    let sxx = 0;
+    let syy = 0;
+    for (let row = 0; row < box.height * 4; row++) {
+      const y = (row + 0.5) / 4;
+      const list = crossings(y);
+      for (let column = 0; column < box.width * 4; column++) {
+        const x = (column + 0.5) / 4;
+        let odd = false;
+        let winding = 0;
+        for (const [at, way] of list)
+          if (x < at) {
+            odd = !odd;
+            winding += way;
+          }
+        if (evenodd ? !odd : winding === 0) continue;
+        mass++;
+        sx += x;
+        sy += y;
+        sxx += x * x;
+        syy += y * y;
+      }
+    }
+    const spread = (s: number, ss: number) => Math.sqrt(12 * Math.max(0, ss / mass - (s / mass) ** 2));
+    return { shows: mass / (16 * box.width * box.height), w: spread(sx, sxx), h: spread(sy, syy) };
+  }
+
+  /**
+   * Measured frames: ms after the click, how much of the box shows, and its width and height. PowerPoint's edge is
+   * soft (14 % of the way it travels) and Drashti's hard, half-way through it: so close, not the same.
+   */
+  function expectClose(one: DeckEffect, samples: readonly [number, number, number, number][]): void {
+    for (const [ms, shows, w, h] of samples) {
+      const ours = drawn(one, ms);
+      const at = `${String(ms)} ms after the click`;
+      expect(Math.abs(ours.shows - shows), `${at}: how much shows`).toBeLessThanOrEqual(0.015);
+      expect(Math.abs(ours.w - w), `${at}: width`).toBeLessThanOrEqual(2);
+      expect(Math.abs(ours.h - h), `${at}: height`).toBeLessThanOrEqual(2);
+    }
+  }
+
+  const shape = (phase: 'in' | 'out', outline: NonNullable<DeckEffect['shape']>, inward: boolean) =>
+    effect('shape', phase, { shape: outline, ...(inward ? { inward: true as const } : {}) });
+
+  it('comes in as an ellipse, a box, a diamond or two bars, from the middle (Out) or the edges (In)', () => {
+    expectClose(shape('in', 'circle', true), [
+      [161.7, 0.0874, 95.02, 56.39],
+      [360, 0.6281, 75.02, 44.53],
+      [558.3, 0.9558, 65.36, 38.81],
+    ]);
+    expectClose(shape('in', 'circle', false), [
+      [160, 0.0593, 16.51, 9.82],
+      [358.3, 0.4141, 40.76, 24.22],
+      [556.7, 0.9357, 61.07, 36.25],
+    ]);
+    expectClose(shape('in', 'box', true), [
+      [161.7, 0.3477, 81.95, 48.57],
+      [360, 0.7628, 71.1, 42.18],
+      [556.7, 0.9719, 64.88, 38.49],
+    ]);
+    expectClose(shape('in', 'box', false), [
+      [160, 0.0372, 13.43, 8.05],
+      [358.3, 0.2633, 33.28, 19.75],
+      [556.7, 0.6955, 53.66, 31.85],
+    ]);
+    expectClose(shape('in', 'diamond', true), [
+      [161.7, 0.0784, 95.94, 56.89],
+      [358.3, 0.5286, 77.31, 45.89],
+      [556.7, 0.9437, 65.71, 39.01],
+    ]);
+    expectClose(shape('in', 'diamond', false), [
+      [161.7, 0.0754, 18.95, 11.32],
+      [360, 0.5216, 46.55, 27.67],
+      [558.3, 0.9407, 61.27, 36.38],
+    ]);
+    expectClose(shape('in', 'plus', true), [
+      [160, 0.0392, 99.43, 58.95],
+      [358.3, 0.2663, 83.62, 49.63],
+      [556.7, 0.7025, 69.65, 41.33],
+    ]);
+    expectClose(shape('in', 'plus', false), [
+      [161.7, 0.3417, 48.44, 28.73],
+      [360, 0.7598, 55.77, 33.09],
+      [556.7, 0.9698, 62.52, 37.11],
+    ]);
+  });
+
+  it('leaves with its edges travelling the same way, hiding what they pass: In closes to the middle, Out opens from it', () => {
+    expectClose(shape('out', 'circle', true), [
+      [160, 0.9106, 60.1, 35.69],
+      [358.3, 0.3688, 38.52, 22.9],
+      [556.7, 0.0432, 14.51, 8.6],
+    ]);
+    expectClose(shape('out', 'circle', false), [
+      [161.7, 0.9397, 65.86, 39.09],
+      [358.3, 0.5829, 76.34, 45.28],
+      [556.7, 0.0623, 97.14, 57.6],
+    ]);
+    expectClose(shape('out', 'box', true), [
+      [161.7, 0.6482, 51.74, 30.8],
+      [360, 0.2342, 31.46, 18.7],
+      [558.3, 0.0271, 11.79, 7.02],
+    ]);
+    expectClose(shape('out', 'box', false), [
+      [160, 0.9618, 65.2, 38.69],
+      [358.3, 0.7347, 71.9, 42.65],
+      [556.7, 0.3005, 83, 49.24],
+    ]);
+    expectClose(shape('out', 'diamond', true), [
+      [161.7, 0.9206, 60.45, 35.89],
+      [360, 0.4683, 44.33, 26.32],
+      [556.7, 0.0553, 16.64, 9.93],
+    ]);
+    expectClose(shape('out', 'diamond', false), [
+      [160, 0.9236, 66.36, 39.38],
+      [358.3, 0.4754, 78.79, 46.75],
+      [556.7, 0.0573, 97.76, 57.95],
+    ]);
+    expectClose(shape('out', 'plus', true), [
+      [161.7, 0.9598, 62.09, 36.84],
+      [358.3, 0.7307, 55.06, 32.68],
+      [556.7, 0.2945, 47.87, 28.43],
+    ]);
+    expectClose(shape('out', 'plus', false), [
+      [161.7, 0.6553, 70.79, 42.02],
+      [360, 0.2382, 85, 50.45],
+      [558.3, 0.0281, 100.86, 59.76],
     ]);
   });
 });
