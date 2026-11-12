@@ -45,13 +45,15 @@ import { AlignCenter, AlignLeft, AlignRight, CopyPlus, Trash2 } from '../ui/icon
 import type { Icon } from '../ui/icons';
 import { Checkbox, Toggle } from '../ui/Toggle';
 import { LOWER_THIRD_FONTS } from '../../../shared/lower-third-fonts';
-import { commit, noteOutside, useEditor } from './editor-store';
+import { commit, noteOutside, startEditing, useEditor } from './editor-store';
+import { MissingFontNote } from './FontOptions';
 import type { BoxPatch, TextPatch } from './ops';
 import { deleteElements, duplicateElements, findSlide, mapElements, styleBox } from './ops';
 import { restyle, restyleAll, selectedLook } from './runs-doc';
 import { SlidePanel } from './SlidePanel';
 import { useTickerOver } from './SafeAreas';
-import { activeText } from './TextBoxEditor';
+import { SourceObjectFormat, TableEditor } from './SourceObjectTools';
+import { activeText, finishTextEditing } from './TextBoxEditor';
 import { ObjectsPane } from './ObjectsPane';
 
 /*
@@ -172,6 +174,16 @@ export function Inspector() {
     return <aside className="w-72 shrink-0 border-l border-line bg-panel" aria-label="Inspector" />;
   const selected = slide.elements.filter((e) => selection.includes(e.id));
   const single = selected.length === 1 ? selected[0] : undefined;
+  const groupId = selected[0]?.groupId;
+  const tableObjects =
+    groupId && selected.every((element) => element.groupId === groupId)
+      ? slide.elements.filter((element) => element.groupId === groupId)
+      : single
+        ? [single]
+        : [];
+  const cells = tableObjects.filter(
+    (element): element is TextElement => element.kind === 'text' && !!element.tableCell && !element.hidden,
+  );
 
   const change = (ids: readonly string[], fn: (el: SlideElement) => SlideElement, coalesce?: string) => {
     const now = useEditor.getState().doc;
@@ -183,6 +195,9 @@ export function Inspector() {
       aria-label="Inspector"
       data-testid="inspector"
     >
+      <div className="px-3 pt-2 empty:hidden">
+        <MissingFontNote elements={slide.elements} />
+      </div>
       <ObjectsPane slide={slide} />
       {selected.length === 0 ? (
         <>
@@ -227,7 +242,28 @@ export function Inspector() {
               />
             </div>
           </Section>
+          {cells.length > 0 && (
+            <Section title="Table">
+              <TableEditor
+                cells={cells}
+                activeId={editing ?? single?.id}
+                edit={(id) => {
+                  if (editing === id) {
+                    activeText()?.view.focus();
+                    return;
+                  }
+                  finishTextEditing();
+                  startEditing(id);
+                }}
+              />
+            </Section>
+          )}
           {single && <PlaceSection el={single} change={change} />}
+          {single && (
+            <div className="space-y-2 px-3 py-2 empty:hidden">
+              <SourceObjectFormat element={single} update={(next) => change([single.id], () => next)} />
+            </div>
+          )}
           {single?.kind === 'text' && (
             <TextSection el={single} slideId={slide.id} editing={editing === single.id} />
           )}
