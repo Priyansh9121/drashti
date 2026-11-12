@@ -20,7 +20,7 @@ import {
 import { detectLang, langOfLine } from '../../../shared/text-runs';
 import { cutText } from '../../../shared/text';
 import { mediaRef, type ParsedMediaRef } from '../model';
-import { parseXml, type XmlNode } from '../xml';
+import { parseXml, XmlError, type XmlNode } from '../xml';
 import { listZip, readZipEntries, type ZipEntry } from '../zip';
 
 /*
@@ -37,6 +37,7 @@ export interface EditablePptxSlide {
   issues: string[];
 }
 export interface EditablePptx {
+  sourceCount: number;
   width: number;
   height: number;
   slides: EditablePptxSlide[];
@@ -167,7 +168,11 @@ function makePart(path: string, roots: Map<string, XmlNode>): Part | undefined {
     const id = attr(item, 'Id');
     const target = attr(item, 'Target');
     if (!id || !target) continue;
-    if (rels.has(id)) throw new Error('This presentation contains duplicate relationship identifiers.');
+    if (rels.has(id)) {
+      // Keep ambiguous references unusable without invalidating other objects or slides.
+      rels.set(id, { type: attr(item, 'Type') ?? '', external: false, target: null });
+      continue;
+    }
     const external = attr(item, 'TargetMode')?.toLowerCase() === 'external';
     rels.set(id, {
       type: attr(item, 'Type') ?? '',
@@ -957,6 +962,11 @@ async function objectOf(
       const cells = await tableObjects(table, part, rect, matrix, flipX, ctx);
       if (cells?.length) return cells;
     }
+    const preview = descendants(data, 'pic')[0];
+    if (preview) {
+      const picture = await pictureOf(child(preview, 'blipFill'), part, ctx);
+      if (picture) return [{ id: ctx.id(), kind: 'image', ...placement, ...picture, fit: 'stretch' }];
+    }
     ctx.issues.add(
       'An unsupported table, chart or drawing stays as a picture when its slide picture is available.',
     );
@@ -1127,18 +1137,29 @@ async function walk(
         })),
       );
     } else if (kind === 'AlternateContent') {
-      ctx.issues.add('Alternate drawing content uses its available fallback.');
-      result.push(
-        ...(await walk(
-          child(node, 'Fallback') ?? child(node, 'Choice'),
-          part,
-          parent,
-          flip,
-          ctx,
-          inherited,
-          group,
-        )),
-      );
+      const choice = child(node, 'Choice');
+      const fallback = child(node, 'Fallback');
+      const original = kids(choice);
+      const primary = original.length === 1 ? original[0] : undefined;
+      const table = child(child(child(primary, 'graphic'), 'graphicData'), 'tbl');
+      if (table || !fallback) {
+        result.push(...(await walk(choice, part, parent, flip, ctx, inherited, group)));
+      } else {
+        ctx.issues.add('An alternate source drawing keeps its embedded preview.');
+        const objects = await walk(fallback, part, parent, flip, ctx, inherited, group);
+        const choiceProps = primary && kids(fallback).length === 1 ? nonVisualProperties(primary) : undefined;
+        const id = inherited ? undefined : drawingId(choiceProps);
+        const name = cutText(attr(choiceProps, 'name')?.trim() ?? '', 200);
+        const hidden = attr(choiceProps, 'hidden');
+        result.push(
+          ...objects.map((element) => ({
+            ...element,
+            ...(id ? { sourceShapeId: id } : {}),
+            ...(name ? { name } : {}),
+            ...(hidden !== undefined ? { hidden: group?.hidden === true || flag(hidden) } : {}),
+          })),
+        );
+      }
     } else if (!['nvGrpSpPr', 'grpSpPr', 'extLst'].includes(kind)) {
       ctx.issues.add('Tables, charts and embedded objects are not reproduced in this editable slide.');
     }
@@ -1187,7 +1208,19 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
   )
     throw new Error('This presentation has too much XML to prepare safely.');
   const buffers = await readParts(file, selected, MAX_XML, MAX_XML_TOTAL);
-  const roots = new Map([...buffers].map(([path, bytes]) => [path, xml(bytes)]));
+  const roots = new Map<string, XmlNode>();
+  for (const [path, bytes] of buffers) {
+    try {
+      roots.set(path, xml(bytes));
+    } catch (error) {
+      if (
+        !(error instanceof XmlError) ||
+        path === 'ppt/presentation.xml' ||
+        path === 'ppt/_rels/presentation.xml.rels'
+      )
+        throw error;
+    }
+  }
   const presentation = makePart('ppt/presentation.xml', roots);
   if (!presentation || nameOf(presentation.root) !== 'presentation')
     throw new Error('This is not a readable PPTX presentation.');
@@ -1252,8 +1285,7 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
     const rel = presentation.rels.get(attr(id, 'r:id') ?? '');
     const slide =
       rel?.target && rel.type.endsWith('/slide') && !rel.external ? makePart(rel.target, roots) : undefined;
-    if (!slide || nameOf(slide.root) !== 'sld')
-      throw new Error('A source slide is missing or has an unsafe relationship.');
+    if (!slide || nameOf(slide.root) !== 'sld') continue;
     const layout = related(slide, 'slideLayout', roots),
       master = related(layout, 'slideMaster', roots);
     const theme = related(master, 'theme', roots),
@@ -1343,5 +1375,6 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       issues: [...issues],
     });
   }
-  return { width, height, slides, media };
+  if (slides.length === 0) throw new Error('No source slide could be read safely.');
+  return { sourceCount: ids.length, width, height, slides, media };
 }

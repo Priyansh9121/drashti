@@ -79,7 +79,7 @@ port.on('message', ({ data }: { data: unknown }) => {
         type: 'prepared',
         jobId: job.jobId,
         pages,
-        total: native.slides.length,
+        total: native.sourceCount,
         failed,
       };
       if (Buffer.byteLength(JSON.stringify(message), 'utf8') > EDITABLE_SOURCE_LIMITS.jobMetadataBytes)
