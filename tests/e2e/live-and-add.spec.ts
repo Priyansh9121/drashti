@@ -243,15 +243,15 @@ test('a folder imported with the library’s Import › A Folder… comes into t
   // alone: the folder imported through the library never does.
   const lyrics = join(work, 'Placeholder Lyrics');
   for (const sub of ['', 'Week 2', 'Week 10/Deep']) mkdirSync(join(lyrics, sub), { recursive: true });
-  writeFileSync(join(lyrics, 'b verse.txt'), 'Placeholder verse b\n');
-  writeFileSync(join(lyrics, 'A verse.txt'), 'Placeholder verse a\n');
-  writeFileSync(join(lyrics, 'Week 2', 'Second week.txt'), 'Placeholder second week\n');
-  writeFileSync(join(lyrics, 'Week 10', 'Deep', 'Late words.txt'), 'Placeholder late words\n');
+  writeFileSync(join(lyrics, 'b words.txt'), 'Placeholder line b\n');
+  writeFileSync(join(lyrics, 'A words.txt'), 'Placeholder line a\n');
+  writeFileSync(join(lyrics, 'Week 2', 'Second week.txt'), 'Placeholder line two\n');
+  writeFileSync(join(lyrics, 'Week 10', 'Deep', 'Late words.txt'), 'Placeholder line ten\n');
   await dropPaths(win, win.getByTestId('open-playlist'), [lyrics]);
   // Folder by folder, depth first, A→Z with numbers in order (2 before 10), a header before each subfolder's part.
   await expect
     .poll(() => shown(win))
-    .toEqual(['A verse', 'b verse', '# Week 2', 'Second week', '# Week 10 › Deep', 'Late words']);
+    .toEqual(['A words', 'b words', '# Week 2', 'Second week', '# Week 10 › Deep', 'Late words']);
   await expect(win.getByTestId('import-report')).toHaveCount(0);
   await app.close();
 });
