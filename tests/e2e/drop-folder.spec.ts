@@ -9,6 +9,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -109,6 +110,7 @@ test('pictures, videos and sounds put in the drop folder come into Media within 
     await expect(win.getByText('2 pictures and videos from the drop folder are in Media.')).toBeVisible();
     // Never written to.
     expect(snapshot(drop)).toEqual(before);
+    await expectUnreadableDrawingNotice(win, drop);
 
     // A picture written over 6 s, a piece a second: taken once, whole.
     await makeTestImage(win, join(scratch, 'slow.png'), { width: 640, height: 360, color: '#a53a6e' });
@@ -171,7 +173,16 @@ test('pictures, videos and sounds put in the drop folder come into Media within 
   }
 });
 
-test('File › Drop Folder… opens in Pro Mode with no PIN asked; in Simple Mode it cannot be opened, and carries on with no notice', async () => {
+async function expectUnreadableDrawingNotice(win: Page, folder: string): Promise<void> {
+  const name = 'Placeholder drawing.svg';
+  writeFileSync(join(folder, name), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  const notice = win.getByTestId('import-notice').filter({ hasText: name });
+  await expect(notice).toHaveCount(1, { timeout: 15_000 });
+  await expect(notice).toContainText('save it as a PNG, then add that.');
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+}
+
+test('File › Drop Folder… opens in Pro Mode with no PIN asked; in Simple Mode it keeps watching and shows refusals', async () => {
   test.setTimeout(120_000);
   const drop = mkdtempSync(join(tmpdir(), 'drashti-drop-'));
   const scratch = mkdtempSync(join(tmpdir(), 'drashti-drop-made-'));
@@ -191,8 +202,7 @@ test('File › Drop Folder… opens in Pro Mode with no PIN asked; in Simple Mod
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(dialog).toHaveCount(0);
 
-    // Simple Mode: no File menu, the main process refuses to show or change it, and the folder carries on,
-    // saying nothing.
+    // Simple Mode: no File menu, the main process refuses to show or change it, and the folder carries on.
     await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
     await expect
       .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode()))
@@ -212,8 +222,9 @@ test('File › Drop Folder… opens in Pro Mode with no PIN asked; in Simple Mod
     await holdStill(
       async () => (await win.getByText(/from the drop folder/u).count()) === 0,
       500,
-      'in Simple Mode no notice shows',
+      'in Simple Mode a successful batch shows no notice',
     );
+    await expectUnreadableDrawingNotice(win, drop);
   } finally {
     await app.close().catch(() => undefined);
     rmSync(drop, { recursive: true, force: true });
