@@ -209,6 +209,102 @@ describe('keeping a generated PPTX editable', () => {
     ]);
   });
 
+  it('applies table style tints and shades in linear light', async () => {
+    const part = (name: string, effect: string, value: number) =>
+      `<a:${name}><a:tcStyle><a:fill><a:solidFill><a:srgbClr val="4472C4"><a:${effect} val="${String(value)}"/></a:srgbClr></a:solidFill></a:fill></a:tcStyle></a:${name}>`;
+    const style =
+      '<a:tableStyle styleId="{01234567-89AB-CDEF-0123-456789ABCDEF}" styleName="Placeholder">' +
+      part('wholeTbl', 'tint', 20_000) +
+      part('band1H', 'tint', 40_000) +
+      part('band2H', 'shade', 40_000) +
+      '</a:tableStyle>';
+    const row = '<a:tr h="285750"><a:tc><a:txBody><a:bodyPr/><a:p/></a:txBody><a:tcPr/></a:tc></a:tr>';
+    const { elements } = await read(
+      slideXml(
+        graphic(
+          '<a:tbl><a:tblPr firstRow="1" bandRow="1">' +
+            style +
+            '</a:tblPr><a:tblGrid><a:gridCol w="2857500"/></a:tblGrid>' +
+            row.repeat(3) +
+            '</a:tbl>',
+        ),
+      ),
+    );
+    expect(elements.flatMap((el) => (el.kind === 'shape' ? [el.fill] : []))).toEqual([
+      '#e9ebf5',
+      '#cfd5ea',
+      '#2a4981',
+    ]);
+  });
+
+  it('applies the referenced table style, conditional parts and explicit cell overrides', async () => {
+    const styleId = '{01234567-89AB-CDEF-0123-456789ABCDEF}';
+    const solid = (value: string, kind = 'srgbClr') =>
+      `<a:solidFill><a:${kind} val="${value}"/></a:solidFill>`;
+    const fill = (value: string, kind?: string) => '<a:fill>' + solid(value, kind) + '</a:fill>';
+    const stroke = (tag: string, width: number, value: string) =>
+      `<a:${tag}><a:ln w="${String(width * 9525)}">${solid(value)}</a:ln></a:${tag}>`;
+    const part = (name: string, paint: string, border = '', text = '') =>
+      `<a:${name}>${text}<a:tcStyle>${border ? `<a:tcBdr>${border}</a:tcBdr>` : ''}${paint}</a:tcStyle></a:${name}>`;
+    const style =
+      '<a:tblStyleLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" def="' +
+      styleId +
+      '"><a:tblStyle styleId="' +
+      styleId +
+      '" styleName="Placeholder">' +
+      part(
+        'wholeTbl',
+        fill('EEEEEE'),
+        '<a:left><a:lnRef idx="1"><a:srgbClr val="334455"/></a:lnRef></a:left>' +
+          stroke('insideV', 2, '556677'),
+      ) +
+      part('band1H', fill('accent1', 'schemeClr')) +
+      part('band2H', '<a:fillRef idx="1"><a:schemeClr val="accent2"/></a:fillRef>') +
+      part('firstCol', '', stroke('right', 3, '663311')) +
+      part('firstRow', fill('225577'), '', '<a:tcTxStyle b="on"><a:schemeClr val="lt1"/></a:tcTxStyle>') +
+      part('nwCell', fill('113355')) +
+      '</a:tblStyle></a:tblStyleLst>';
+    const cell = (words: string, props = '', runProps = '') =>
+      `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r>${runProps}<a:t>Placeholder ${words}</a:t></a:r></a:p></a:txBody><a:tcPr>${props}</a:tcPr></a:tc>`;
+    const row = (cells: string) => '<a:tr h="285750">' + cells + '</a:tr>';
+    const table =
+      '<a:tbl><a:tblPr firstRow="1" firstCol="1" bandRow="1"><a:tableStyleId>' +
+      styleId.toLowerCase() +
+      '</a:tableStyleId></a:tblPr><a:tblGrid><a:gridCol w="952500"/><a:gridCol w="1905000"/></a:tblGrid>' +
+      row(cell('corner') + cell('heading', solid('664488'), '<a:rPr b="0">' + solid('FEDCBA') + '</a:rPr>')) +
+      row(cell('band one') + cell('direct transparent', '<a:noFill/>')) +
+      row(cell('band two') + cell('band two right')) +
+      '</a:tbl>';
+    const { elements } = await read(slideXml(graphic(table)), {
+      'ppt/_rels/presentation.xml.rels': relationshipsXml(
+        `<Relationship Id="rId1" Type="${REL_NS}/slide" Target="slides/slide1.xml"/>` +
+          `<Relationship Id="rIdStyle" Type="${REL_NS}/tableStyles" Target="tableStyles.xml"/>`,
+      ),
+      'ppt/tableStyles.xml': style,
+      'ppt/theme/theme1.xml':
+        '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Placeholder"><a:themeElements>' +
+        '<a:clrScheme name="Placeholder"><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:accent1><a:srgbClr val="AA2244"/></a:accent1>' +
+        '<a:accent2><a:srgbClr val="22BB44"/></a:accent2></a:clrScheme><a:fmtScheme name="Placeholder">' +
+        '<a:fillStyleLst>' +
+        solid('phClr', 'schemeClr') +
+        '</a:fillStyleLst><a:lnStyleLst>' +
+        '<a:ln w="9525">' +
+        solid('phClr', 'schemeClr') +
+        '</a:ln></a:lnStyleLst></a:fmtScheme></a:themeElements></a:theme>',
+    });
+    const fills = elements.flatMap((el) => (el.kind === 'shape' && el.shape !== 'line' ? [el.fill] : []));
+    expect(fills).toEqual(['#113355', '#664488', '#aa2244', '#22bb44', '#22bb44']);
+    const text = (words: string) =>
+      elements.find((el) => el.kind === 'text' && el.text === 'Placeholder ' + words);
+    expect(text('corner')).toMatchObject({ runs: [{ color: '#ffffff', weight: 700 }] });
+    expect(text('heading')).toMatchObject({ runs: [{ color: '#fedcba', weight: 400 }] });
+    const borders = elements.filter((el) => el.kind === 'shape' && el.shape === 'line');
+    expect(borders).toMatchObject([
+      { outline: { color: '#334455', width: 1 } },
+      { outline: { color: '#663311', width: 3 } },
+    ]);
+  });
+
   it('keeps unequal table cells, spanning and empty cells editable as one group', async () => {
     const cell = (words: string, props = '') =>
       '<a:tc ' +

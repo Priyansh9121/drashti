@@ -253,3 +253,13 @@ it('a later old-fonts line naming every font of an earlier one, in any case, tak
     'Placeholder notice in between.',
   ]);
 });
+
+it('shows one notice when the Keynote PowerPoint copy is left out', () => {
+  const message =
+    'Edit slides uses the PDF. To edit from PowerPoint, export the deck from Keynote as PowerPoint and import that file.';
+  const issue = { severity: 'warning' as const, code: 'keynote-copy-left-out', message, fix: null };
+  showImportFailures(reportOf([deckOf('Placeholder Keynote deck', [issue, issue])]));
+  expect(useImportNotices.getState().notices).toMatchObject([
+    { text: `“Placeholder Keynote deck” · ${message}` },
+  ]);
+});
