@@ -65,7 +65,7 @@ export function queueTrimCopy(conversions: Pick<ConvertService, 'saveCopy'>, inp
   const name = safeName(input.name, 'Video');
   const dest = join(dirname(input.path), `${basename(name, extname(name))} trimmed.${TARGET_EXT[target]}`);
   const id = randomUUID();
-  const copy: CopyOptions & { waitForShow: boolean } = {
+  const copy: CopyOptions = {
     args: (tmp) => trimCopyArgs(input, target, tmp, id),
     lengthMs: input.endMs - input.startMs,
     waitForShow: true,
