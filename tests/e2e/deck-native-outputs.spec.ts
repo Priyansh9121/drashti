@@ -141,12 +141,18 @@ test('stage Current and Next and a phone follow native clicks through Back and a
         transition: { kind: 'wipe', durationMs: WIPE_MS },
       });
       expect(clicked).toMatchObject({ slideIndex: 1, step: 1 });
-      expect(clicked?.stepAt ?? Infinity).toBeLessThan((entered?.shownAt ?? 0) + WIPE_MS);
+      const entryAt = entered?.shownAt ?? 0;
+      expect(clicked?.stepAt).toBe(entryAt + WIPE_MS);
       const incoming = hall.locator('[data-layer="slide"] [data-slide-in]');
-      await holdClock(app, (entered?.shownAt ?? 0) + WIPE_MS / 2);
+      await holdClock(app, entryAt + WIPE_MS / 2);
       await expect(incoming).not.toHaveCSS('clip-path', 'none');
-      await holdClock(app, (entered?.shownAt ?? 0) + WIPE_MS + FADE_MS);
+      await expect(target(hall, 5)).toHaveCSS('opacity', '0');
+      await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0');
+      await holdClock(app, entryAt + WIPE_MS + FADE_MS / 2);
       await expect(incoming).toHaveCSS('clip-path', 'none');
+      await expect(target(hall, 5)).toHaveCSS('opacity', '0.5');
+      await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0.5');
+      await holdClock(app, entryAt + WIPE_MS + FADE_MS);
       await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '1');
 
       await page.getByTestId('remote-back').click();
