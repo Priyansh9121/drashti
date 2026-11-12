@@ -29,7 +29,7 @@ export interface MotionTrack {
 /**
  * An audience screen's moving parts (render/Scene.tsx): the slide layer's two slides, the black of a fade through
  * black and the words drawn apart while a move runs (never a slow zoom's zooming after its fade); a deck's step's
- * pictures and videos; a lower third's band and units (never its moving background's pieces, which move while it is
+ * pictures and videos; a lower third's band, units, accent and design panels (never its moving background's pieces, which move while it is
  * up); Black-out; and the Wallpaper with its picture. A slow zoom's slide zooms on for 20 s after its fade (the zoom is
  * a child of the slide's box): only the fade is the transition's.
  */
@@ -40,7 +40,11 @@ export const AUDIENCE_TRACKS: readonly MotionTrack[] = [
       '[data-layer="slide"] [data-slide-in], [data-layer="slide"] [data-slide-out], [data-slide-black], [data-words-in], [data-words-out], [data-words-apart] [data-reveal-line], [data-words-apart] [data-reveal-word]',
   },
   { name: 'deck', parts: '[data-deck-step] video, [data-deck-step] img' },
-  { name: 'lowerThird', parts: '[data-testid="lower-third-layer"], [data-lt-band], [data-lt-unit]' },
+  {
+    name: 'lowerThird',
+    parts:
+      '[data-testid="lower-third-layer"], [data-lt-band], [data-lt-unit], [data-lt-accent], [data-lt-design-panel], [data-lt-design-line]',
+  },
   { name: 'blackout', parts: '[data-layer="blackout"]' },
   {
     name: 'wallpaper',
