@@ -623,7 +623,9 @@ export const TRIAL_SLIDES: readonly TestDeckSlide[] = [
   {
     key: 'video-auto',
     bg: '111111',
-    transition: { kind: 'cover', dur: 1000 },
+    // A transition Drashti draws exactly as PowerPoint does (Push, not Cover: 13 Nov 2026), so this slide still plays
+    // natively among the baked ones.
+    transition: { kind: 'push', dur: 1000 },
     notes:
       'Placeholder notes, slide four: the video starts by itself, trimmed 1 s at each end, and loops at 80%.',
     shapes: [
