@@ -69,10 +69,11 @@ export interface ComparisonMotion {
 }
 
 const track = (name: string, from: number | string, to: number | string): ComparisonTrack => ({ name, from, to });
+/** A width or height `times` the shape's own, as PowerPoint writes it: the number 0, its own (#ppt_w), or a multiple. */
+const size = (name: string, times: number): number | string =>
+  times === 0 ? 0 : times === 1 ? `#${name}` : `#${name}*${String(times)}`;
 const scale = (from: number, to: number) =>
-  ['ppt_w', 'ppt_h'].map((name) =>
-    track(name, from === 0 ? 0 : `#${name}*${String(from)}`, to === 0 ? 0 : `#${name}*${String(to)}`),
-  );
+  ['ppt_w', 'ppt_h'].map((name) => track(name, size(name, from), size(name, to)));
 const position = (axis: 'x' | 'y', from: number | string, to: number | string) => track(`ppt_${axis}`, from, to);
 const effect = (
   name: string,
