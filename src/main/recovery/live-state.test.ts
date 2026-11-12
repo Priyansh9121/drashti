@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -1090,4 +1091,205 @@ describe('a save that fails', () => {
       expect(readdirSync(dir)).toEqual(['live-state.json']);
     },
   );
+
+  describe('by the clock', () => {
+    // The tests' own clock. The disk below answers at once (its files are real), so each save follows the clock alone.
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+    const clean = { cleanQuit: true, recentStop: false, putBack: null, tooOld: null };
+    const failed = 'Could not save the live state: EBUSY: resource busy or locked, rename';
+
+    /**
+     * A writer on a disk whose rename fails while `failing` is set, as Windows' does while a scanner or a reader holds
+     * a file: when each save was tried (ms from the start, by the clock), and what was logged. With `holdNext`, the
+     * next rename waits in `held` until the test lets it go (a save in flight), and then works as the disk does then.
+     */
+    function onFlakyDisk() {
+      const start = Date.now();
+      const disk = {
+        failing: true,
+        holdNext: false,
+        held: [] as (() => void)[],
+        tries: [] as number[],
+        logged: [] as string[],
+      };
+      const finish = (from: string, to: string): Promise<void> => {
+        if (disk.failing) return Promise.reject(busy('rename'));
+        renameSync(from, to);
+        return Promise.resolve();
+      };
+      const writer = new LiveStateWriter(files, {
+        writeFile: (file, text) => {
+          disk.tries.push(Date.now() - start);
+          writeFileSync(file, text);
+          return Promise.resolve();
+        },
+        rename: (from, to) => {
+          if (!disk.holdNext) return finish(from, to);
+          disk.holdNext = false;
+          return new Promise<void>((resolve, reject) => {
+            disk.held.push(() => {
+              finish(from, to).then(resolve, reject);
+            });
+          });
+        },
+        log: (line) => {
+          disk.logged.push(line);
+        },
+      });
+      return { disk, writer };
+    }
+
+    /** The clock moves on `ms`, and the save started in that time (one at most) finishes. */
+    async function after(writer: LiveStateWriter, ms: number) {
+      await vi.advanceTimersByTimeAsync(ms);
+      await writer.settle();
+    }
+
+    it('tries again 250 ms on, then twice as long after each failure up to 5 s, never sooner; one line logged for the failures, one as it works again', async () => {
+      const { disk, writer } = onFlakyDisk();
+      writer.update(live({ slideIndex: 1, blackout: true }));
+      await after(writer, 250);
+      expect(disk.tries).toEqual([250]);
+      for (const wait of [250, 500, 1000, 2000, 4000, 5000, 5000, 5000, 5000]) {
+        const last = disk.tries.at(-1) ?? 0;
+        // One try waits at a time.
+        expect(vi.getTimerCount()).toBe(1);
+        await after(writer, wait - 1);
+        expect(disk.tries.at(-1)).toBe(last);
+        await after(writer, 1);
+        expect(disk.tries.at(-1)).toBe(last + wait);
+      }
+      // A minute more of a disk that keeps failing: a try every 5 s, and no more. Nothing saved, one line logged.
+      for (let i = 0; i < 12; i++) await after(writer, 5000);
+      expect(disk.tries).toHaveLength(22);
+      expect(onFile()).toBeNull();
+      expect(disk.logged).toEqual([failed]);
+      // The disk works again: the next try saves the newest show and says so, and nothing more is tried.
+      disk.failing = false;
+      await after(writer, 5000);
+      expect(onFile()).toEqual([1, true]);
+      expect(disk.logged).toEqual([failed, 'Saved the live state again, after 22 failed saves']);
+      await after(writer, 60_000);
+      expect(disk.tries).toHaveLength(23);
+      expect(readdirSync(dir)).toEqual(['live-state.json']);
+      // A later run of failures: one line again, and one as it works.
+      disk.failing = true;
+      writer.update(live({ slideIndex: 2 }));
+      await after(writer, 250);
+      await after(writer, 250);
+      disk.failing = false;
+      await after(writer, 500);
+      expect(onFile()).toEqual([2, false]);
+      expect(disk.logged.slice(2)).toEqual([failed, 'Saved the live state again, after 2 failed saves']);
+      writer.stop();
+    });
+
+    it('saves in order, never an older show over a newer one: a save in flight fails with a newer one waiting behind it', async () => {
+      const { disk, writer } = onFlakyDisk();
+      disk.failing = false;
+      writer.update(live({ slideIndex: 0 }));
+      await after(writer, 250);
+      expect(onFile()).toEqual([0, false]);
+      // Slide 1's save is in flight as black-out comes up; black-out's waits behind it, not started.
+      disk.holdNext = true;
+      writer.update(live({ slideIndex: 1 }));
+      await vi.advanceTimersByTimeAsync(250);
+      writer.update(live({ slideIndex: 1, blackout: true }));
+      await vi.advanceTimersByTimeAsync(250);
+      expect(disk.tries).toEqual([250, 500]);
+      // Slide 1's fails, and black-out's works.
+      disk.failing = true;
+      disk.held.shift()?.();
+      disk.failing = false;
+      await writer.settle();
+      expect(disk.tries).toEqual([250, 500, 750]);
+      expect(onFile()).toEqual([1, true]);
+      // Nothing older comes after it, and nothing more is tried.
+      await after(writer, 60_000);
+      expect(onFile()).toEqual([1, true]);
+      expect(disk.tries).toHaveLength(3);
+      expect(disk.logged).toEqual([failed, 'Saved the live state again, after 1 failed save']);
+      writer.stop();
+    });
+
+    it('saves a change made while a failed save waits at the change’s own pace, not the wait’s', async () => {
+      const { disk, writer } = onFlakyDisk();
+      writer.update(live({ slideIndex: 1 }));
+      for (const wait of [250, 250, 500, 1000, 2000]) await after(writer, wait);
+      // Five failures: the next try would come 4 s on. Black-out comes up: tried 250 ms on, it fails too.
+      expect(disk.tries).toEqual([250, 500, 1000, 2000, 4000]);
+      writer.update(live({ slideIndex: 1, blackout: true }));
+      await after(writer, 250);
+      expect(disk.tries.at(-1)).toBe(4250);
+      // The disk works again and slide 2 goes up: saved 250 ms on, and the wait's own try is not made as well.
+      disk.failing = false;
+      writer.update(live({ slideIndex: 2, blackout: true }));
+      await after(writer, 249);
+      expect(disk.tries).toHaveLength(6);
+      await after(writer, 1);
+      expect(disk.tries.at(-1)).toBe(4500);
+      expect(onFile()).toEqual([2, true]);
+      await after(writer, 60_000);
+      expect(disk.tries).toHaveLength(7);
+      writer.stop();
+    });
+
+    it('tries nothing more after stop() (a crash): neither the try that was waiting, nor after a save in flight fails', async () => {
+      const waiting = onFlakyDisk();
+      waiting.writer.update(live({ slideIndex: 1 }));
+      await after(waiting.writer, 250);
+      expect(waiting.disk.tries).toEqual([250]);
+      waiting.writer.stop();
+      waiting.disk.failing = false;
+      await after(waiting.writer, 60_000);
+      expect(waiting.disk.tries).toEqual([250]);
+      expect(onFile()).toBeNull();
+      // A save in flight as it stops, that fails after.
+      const inFlight = onFlakyDisk();
+      inFlight.disk.holdNext = true;
+      inFlight.writer.update(live({ slideIndex: 1 }));
+      await vi.advanceTimersByTimeAsync(250);
+      inFlight.writer.stop();
+      inFlight.disk.held.shift()?.();
+      await inFlight.writer.settle();
+      inFlight.disk.failing = false;
+      await after(inFlight.writer, 60_000);
+      expect(inFlight.disk.tries).toHaveLength(1);
+      expect(onFile()).toBeNull();
+    });
+
+    it('tries nothing more after the clean quit: its save and its mark stay the last written, and the next start finds a clean quit', async () => {
+      const waiting = onFlakyDisk();
+      waiting.writer.update(live({ slideIndex: 1, blackout: true }));
+      await after(waiting.writer, 250);
+      expect(waiting.disk.tries).toEqual([250]);
+      // The quit saves the show itself, at once, straight to the disk (which takes it).
+      waiting.writer.markClean();
+      const quitSave = readFileSync(files.state, 'utf8');
+      waiting.disk.failing = false;
+      await after(waiting.writer, 60_000);
+      expect(waiting.disk.tries).toEqual([250]);
+      expect(readFileSync(files.state, 'utf8')).toBe(quitSave);
+      expect(startupRecovery(files)).toEqual(clean);
+      // A save in flight at the quit, that fails after it.
+      const inFlight = onFlakyDisk();
+      inFlight.disk.holdNext = true;
+      inFlight.writer.update(live({ slideIndex: 2 }));
+      await vi.advanceTimersByTimeAsync(250);
+      inFlight.writer.markClean();
+      const itsQuitSave = readFileSync(files.state, 'utf8');
+      inFlight.disk.held.shift()?.();
+      await inFlight.writer.settle();
+      inFlight.disk.failing = false;
+      await after(inFlight.writer, 60_000);
+      expect(inFlight.disk.tries).toHaveLength(1);
+      expect(readFileSync(files.state, 'utf8')).toBe(itsQuitSave);
+      expect(startupRecovery(files)).toEqual(clean);
+    });
+  });
 });
