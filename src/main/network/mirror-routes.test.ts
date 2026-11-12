@@ -145,13 +145,7 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
     'music.addTracks',
     { playlistId: 'music-1', mediaIds: ['m-1'], at: 0 },
   ],
-  [
-    'POST',
-    '/api/v1/music/tracks/track-1/move',
-    { to: 1 },
-    'music.moveTrack',
-    { trackId: 'track-1', to: 1 },
-  ],
+  ['POST', '/api/v1/music/tracks/track-1/move', { to: 1 }, 'music.moveTrack', { trackId: 'track-1', to: 1 }],
   ['POST', '/api/v1/music/tracks/track-1/delete', undefined, 'music.removeTrack', { trackId: 'track-1' }],
   [
     'POST',
@@ -160,13 +154,7 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
     'music.restoreTrack',
     { trackId: 'track-1', at: 1 },
   ],
-  [
-    'POST',
-    '/api/v1/music/steps-aside',
-    { on: false },
-    'music.stepsAside',
-    { on: false },
-  ],
+  ['POST', '/api/v1/music/steps-aside', { on: false }, 'music.stepsAside', { on: false }],
   ['POST', '/api/v1/music/play', { playlistId: 'music-1' }, 'music.play', { playlistId: 'music-1' }],
   ['POST', '/api/v1/music/play', undefined, 'music.play', {}],
   // A timer for the audience shown and hidden (Session 55, Part 15: before, show put a timer alone in the slide's place).
@@ -232,7 +220,10 @@ describe('the mirror’s requests (Session 54, D5)', () => {
 
   it('are each in the API’s list, which the documentation is checked against', () => {
     for (const [method, path] of ASKED) {
-      const route = `${method} ${path.split('?')[0] ?? ''}`.replace(/\/(m-1|lt-1|t-1|r-1|music-1|track-1)\//u, '/:id/');
+      const route = `${method} ${path.split('?')[0] ?? ''}`.replace(
+        /\/(m-1|lt-1|t-1|r-1|music-1|track-1)\//u,
+        '/:id/',
+      );
       expect(API_ROUTES, route).toContain(route);
     }
   });

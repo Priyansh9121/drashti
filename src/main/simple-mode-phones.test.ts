@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type EngineCommand, engineCommandSchema } from '../shared/engine/commands';
-import { initialEngineState, LAYER_NAMES } from '../shared/engine/state';
+import { LAYER_NAMES } from '../shared/engine/state';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../shared/network-api';
 import { SIMPLE_MODE_REFUSED_COMMANDS } from '../shared/mode';
 import { repeatPresentationId } from '../shared/repeat';
@@ -36,9 +36,10 @@ function scope(playlistId: string | null = 'one'): SimplePhoneScope {
   const activePlaylist = (id: string) => id === 'one' || id === 'other';
   return {
     playlistId,
-    kindOf: (id: string) => (activePlaylist(id) ? 'playlist' as const : id === 'template' ? 'template' as const : null),
+    kindOf: (id: string) =>
+      activePlaylist(id) ? ('playlist' as const) : id === 'template' ? ('template' as const) : null,
     activePlaylist,
-    activeItem: (id: string, itemId: string) => ROWS[itemId]?.playlist === id && !ROWS[itemId]?.removed,
+    activeItem: (id: string, itemId: string) => ROWS[itemId]?.playlist === id && !ROWS[itemId].removed,
     listsMedia: (mediaId: string) =>
       Object.values(ROWS).some((r) => activePlaylist(r.playlist) && !r.removed && r.media === mediaId),
     listsPresentation: (id: string) =>
@@ -59,15 +60,12 @@ function scope(playlistId: string | null = 'one'): SimplePhoneScope {
   };
 }
 
-const NOTHING_PLAYING = initialEngineState();
-
 /** Every engine command's type, as the engine's schema has them. */
 const COMMAND_TYPES = engineCommandSchema.options.map((o) => o.shape.type.value);
 
 const may = (command: Record<string, unknown>, within: SimplePhoneScope = scope()) =>
   phoneCommandInSimpleMode(command as EngineCommand, within);
-const mayOp = (op: string, args: Record<string, unknown> = {}, state = NOTHING_PLAYING) =>
-  phoneMayInSimpleMode(op, args, scope(), state);
+const mayOp = (op: string, args: Record<string, unknown> = {}) => phoneMayInSimpleMode(op, args, scope());
 
 describe('a paired phone in Simple Mode (Session 55, the owner’s answer of 30 Oct 2026)', () => {
   it('has every request a device can make and every engine command in its list, so none is left unsaid', () => {

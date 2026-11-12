@@ -1,22 +1,14 @@
 import type { EngineCommand, EngineCommandType } from '../shared/engine/commands';
 import type { EngineState } from '../shared/engine/state';
 import type { DeviceOp } from '../shared/network-api';
-import { repeatPresentationId } from '../shared/repeat';
-import type { SimpleOpenPlaylist } from './simple-mode';
+import { simpleModeRefuses } from '../shared/mode';
+import { repeatPlaylistOf } from '../shared/repeat';
+import { aPlaylistsMedia, aPlaylistsPresentation, type SimpleScope } from './simple-mode';
 
 /*
- * A paired phone in Simple Mode (Session 55, the owner's answer of 30 Oct 2026): it may do only what Simple Mode's
- * window does (simple/SimpleApp.tsx: its one playlist's rows, Next and Back, Clear all and the clears' keys, Put it
- * back, Black-out, the Wallpaper, the live zoom, the time bar's Play while something is paused, Repeat Slides started
- * and stopped on its playlist, Keep these screens? and the screens turned on), and the main process refuses the rest
- * (network/network-service.ts asks here before anything runs), in words the phone shows (shared/mode.ts
- * simplePhoneRefusalText). Until then a phone could show a lower third, a message, the stage message or a timer, put
- * up anything from Media or the library and start the music on a computer in Simple Mode.
- *
- * An allow-list: every request a device can make (DEVICE_OPS) and every engine command is in one of the two tables
- * below, which their types make whole (a new one cannot be added without saying what Simple Mode lets a phone do with
- * it), and one not in them is refused. Taking something off the screens is never refused, so nothing can stay stuck
- * there. With Simple access (Part 19) the same: the mode keeper holds the mode in Simple, so this list too.
+ * The phone's Simple Mode allow-list. The network also applies the operator window's IPC bounds before running
+ * a request, with the same arguments (network-service.ts WINDOW_ARGS). An operation or command missing here is
+ * refused. Taking anything off remains available.
  */
 
 /** What Simple Mode lets a phone do with a request or an engine command. */
@@ -27,10 +19,7 @@ export type InSimpleMode =
   | 'simple'
   /** Takes something off the screens: never refused, so nothing can stay stuck there. */
   | 'down'
-  /**
-   * What Simple Mode's window does within its bounds: its one playlist (and, for the music, Play while paused); since
-   * Part 9 also its rows' right-click Rename and Delete (with Undo), on that playlist's rows and the files it holds.
-   */
+  /** An operation that checks the playlist, its rows or what is playing. */
   | 'within'
   /**
    * Puts nothing on the screens and changes nothing Simple Mode shows: an announcement sent to wait for Pro Mode's
@@ -55,14 +44,23 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
   state: 'reads',
   stage: 'reads',
   hall: 'reads',
-  // Its window plays no audio playlist (Part 18 took the music strip out): only on from a pause, as the time bar's
-  // Play does (the owner's answer to question 14).
-  'music.play': 'within',
+  'music.play': 'simple',
+  'music.audio': 'reads',
+  'music.new': 'simple',
+  'music.rename': 'simple',
+  'music.remove': 'simple',
+  'music.restore': 'simple',
+  'music.options': 'simple',
+  'music.addTracks': 'simple',
+  'music.moveTrack': 'simple',
+  'music.removeTrack': 'simple',
+  'music.restoreTrack': 'simple',
+  'music.stepsAside': 'simple',
   'shastra.texts': 'reads',
   // Simple Mode's window has no Shastra.
   shastra: 'pro',
   playlists: 'reads',
-  items: 'reads',
+  items: 'within',
   presentation: 'reads',
   presentations: 'reads',
   search: 'reads',
@@ -85,7 +83,7 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
   // No lower thirds in Simple Mode (Part 18); taking one off is a command (hideLowerThird).
   'lowerThird.show': 'pro',
   music: 'reads',
-  // Its one playlist going round (a Repeat Slides playlist), as its window's Next and Start do.
+  // Any active Repeat Slides playlist can go round.
   'repeat.start': 'within',
   shared: 'reads',
   'shared.items': 'reads',
@@ -121,16 +119,15 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
   'library.new': 'pro',
   'library.remove': 'pro',
   'library.restore': 'pro',
-  'playlist.new': 'pro',
-  'playlist.rename': 'pro',
-  'playlist.remove': 'pro',
-  'playlist.restore': 'pro',
-  // Its one playlist's rows are added to and moved from its window only (Part 18). Part 9: taken out and put back
-  // (Undo) from a phone's long press as its window's right-click Delete does, its own rows only.
-  'playlist.add': 'pro',
-  'playlist.move': 'pro',
-  'playlist.removeItems': 'within',
-  'playlist.restoreItems': 'within',
+  // The window's playlist and row bounds apply to every change, including Undo.
+  'playlist.new': 'simple',
+  'playlist.rename': 'simple',
+  'playlist.remove': 'simple',
+  'playlist.restore': 'simple',
+  'playlist.add': 'simple',
+  'playlist.move': 'simple',
+  'playlist.removeItems': 'simple',
+  'playlist.restoreItems': 'simple',
   midi: 'reads',
   'midi.device': 'pro',
   'midi.forget': 'pro',
@@ -141,10 +138,7 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
   'queue.takeOff': 'pro',
   'stage.layouts': 'reads',
   'stage.layout': 'pro',
-  // The phone's own (Session 55, Part 9). The wallpapers: Simple Mode's window has them (Part 18), chosen, renamed,
-  // deleted and put back. The quick bar: its window has none, and never changes its pins. A picture's look is the
-  // Picture editor's, and When it ends a video row's menu's: Pro Mode's. Rename… of a file its playlist holds: its
-  // window's right-click Rename.
+  // The quick bar and the Picture editor stay Pro Mode's. Wallpaper and playlist row changes are available.
   wallpapers: 'reads',
   'wallpaper.choose': 'simple',
   'wallpaper.rename': 'simple',
@@ -156,7 +150,7 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
   'media.setLook': 'pro',
   'media.rename': 'within',
   'presentation.rename': 'within',
-  'playlist.whenEnds': 'pro',
+  'playlist.whenEnds': 'simple',
 };
 
 /**
@@ -165,7 +159,7 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
  * are Pro Mode's here, and keep the window's words.
  */
 export const COMMANDS_IN_SIMPLE_MODE: Readonly<Record<EngineCommandType, CommandInSimpleMode>> = {
-  // A row of its one playlist: a slide of a presentation (or a Shastra passage) it has, an item of it, it going round.
+  // A slide, a row or Repeat Slides from an active playlist.
   goLive: 'within',
   playItem: 'within',
   startRepeat: 'within',
@@ -205,19 +199,18 @@ export const COMMANDS_IN_SIMPLE_MODE: Readonly<Record<EngineCommandType, Command
   cueNext: 'pro',
   clearCue: 'pro',
   playCue: 'pro',
-  // Audio's (Part 18 took the music strip out of Simple Mode's window); on from a pause is the time bar's Play.
+  // Starting a playlist by id goes through music.play. Track controls use the engine's current audio.
   playMusic: 'pro',
-  pauseMusic: 'pro',
+  pauseMusic: 'simple',
   resumeMusic: 'simple',
-  musicNext: 'pro',
-  musicPrevious: 'pro',
+  musicNext: 'simple',
+  musicPrevious: 'simple',
   setMusicLoop: 'pro',
-  // No markers' jumps in Simple Mode's window (Part 18): its time bar shows them, and moves nothing.
   jumpToMarker: 'pro',
-  skip: 'pro',
-  moveTo: 'pro',
-  // The time bar's Pause: Simple Mode's shows Play only (question 14).
-  pausePlaying: 'pro',
+  // Simple Mode's shared engine guard limits this to an audio playlist's track.
+  skip: 'simple',
+  moveTo: 'simple',
+  pausePlaying: 'simple',
   resumePlaying: 'simple',
   showTimer: 'pro',
   showAudienceTimer: 'pro',
@@ -228,40 +221,27 @@ export const COMMANDS_IN_SIMPLE_MODE: Readonly<Record<EngineCommandType, Command
   placePip: 'pro',
 };
 
-/**
- * Simple Mode as a phone's request is weighed (index.ts): its one playlist (since Session 56 the one open in Simple
- * Mode's window) and what it holds, and the phone's words.
- */
-export interface SimplePhoneScope extends SimpleOpenPlaylist {
-  /** Whether the one playlist plays this presentation: a presentation's row (a PDF's or a deck's too), a passage's. */
-  plays(presentationId: string): boolean;
-  /** What a phone is told when it asks for what Simple Mode's window does not do (shared/mode.ts). */
+/** The current desktop selection and the playable playlists a paired phone can use in Simple Mode. */
+export interface SimplePhoneScope extends SimpleScope {
+  activePlaylist(playlistId: string): boolean;
+  activeItem(playlistId: string, itemId: string): boolean;
+  /** Whether a presentation or passage is listed, in exactly the named row when a cursor is given. */
+  plays(presentationId: string, from?: { playlistId: string; itemId: string }): boolean;
   refusal(): string;
 }
 
 const ruleOf = <K extends string, R>(table: Readonly<Record<K, R>>, key: string): R | null =>
   Object.hasOwn(table, key) ? table[key as K] : null;
 
-const theOne = (scope: SimpleOpenPlaylist, playlistId: unknown): boolean =>
-  scope.playlistId !== null && playlistId === scope.playlistId;
+function activePlaylist(scope: SimplePhoneScope, id: unknown): id is string {
+  return typeof id === 'string' && scope.activePlaylist(id);
+}
 
-/** An item of the one playlist. */
-const itsItem = (scope: SimpleOpenPlaylist, itemId: unknown): boolean =>
-  scope.playlistId !== null && typeof itemId === 'string' && scope.playlistOf(itemId) === scope.playlistId;
-
-/** Items, every one of them the one playlist's (one taken out too, for its Undo), at least one. */
-const itsItems = (scope: SimpleOpenPlaylist, ids: unknown): boolean =>
-  Array.isArray(ids) && ids.length > 0 && ids.every((id) => itsItem(scope, id));
-
-/**
- * Whether a request on its own (not an engine command's: phoneCommandInSimpleMode weighs those, as each is sent) is
- * one Simple Mode lets a phone make, with its arguments as sent and the show as it is. Anything not listed: no.
- */
+/** The phone's scope on top of the window's IPC bounds, which are checked before this. */
 export function phoneMayInSimpleMode(
   op: string,
   args: Record<string, unknown>,
   scope: SimplePhoneScope,
-  state: Pick<EngineState, 'layers'> | null,
 ): boolean {
   switch (ruleOf(PHONE_OPS_IN_SIMPLE_MODE, op)) {
     case 'reads':
@@ -271,41 +251,25 @@ export function phoneMayInSimpleMode(
     case 'command':
       return true;
     case 'within':
-      if (op === 'repeat.start') return theOne(scope, args['playlistId']);
-      // Its rows' Delete and Undo (Part 9): every one of them its one playlist's.
-      if (op === 'playlist.removeItems' || op === 'playlist.restoreItems')
-        return itsItems(scope, args['ids']);
-      // Its rows' Rename… (Part 9): a file, or a presentation, its one playlist holds.
-      if (op === 'media.rename')
-        return (
-          scope.playlistId !== null &&
-          typeof args['mediaId'] === 'string' &&
-          scope.holdsMedia(args['mediaId'])
-        );
-      if (op === 'presentation.rename')
-        return (
-          scope.playlistId !== null &&
-          typeof args['presentationId'] === 'string' &&
-          scope.holdsPresentation(args['presentationId'])
-        );
-      if (op === 'music.play') {
-        // On from where the audio playlist was paused, as the time bar's Play: never one chosen (that starts it).
-        const audio = state?.layers.audio;
-        return (
-          (args['playlistId'] === undefined || args['playlistId'] === null) &&
-          audio?.music !== undefined &&
-          audio.pausedAtMs !== undefined
-        );
+      if (op === 'items' || op === 'repeat.start') return activePlaylist(scope, args['playlistId']);
+      if (op === 'media.rename') {
+        const id = args['mediaId'];
+        return aPlaylistsMedia(scope, id) || (typeof id === 'string' && (scope.inMusic?.(id) ?? false));
       }
-      return false;
+      return op === 'presentation.rename' && aPlaylistsPresentation(scope, args['presentationId']);
     case 'pro':
     case null:
       return false;
   }
 }
 
-/** Whether Simple Mode lets a phone send this engine command (from any of its requests). Anything not listed: no. */
-export function phoneCommandInSimpleMode(command: EngineCommand, scope: SimplePhoneScope): boolean {
+/** The shared engine guard applies to phone commands before they are dispatched. */
+export function phoneCommandInSimpleMode(
+  command: EngineCommand,
+  scope: SimplePhoneScope,
+  state: Pick<EngineState, 'layers'> | null = null,
+): boolean {
+  if (simpleModeRefuses(command, state)) return false;
   switch (ruleOf(COMMANDS_IN_SIMPLE_MODE, command.type)) {
     case 'simple':
     case 'down':
@@ -318,22 +282,19 @@ export function phoneCommandInSimpleMode(command: EngineCommand, scope: SimplePh
   }
 }
 
-/** A row of the one playlist, as its window puts one up. */
 function commandWithin(command: EngineCommand, scope: SimplePhoneScope): boolean {
-  if (scope.playlistId === null) return false;
   switch (command.type) {
     case 'playItem':
-      return theOne(scope, command.playlistId) && itsItem(scope, command.itemId);
+      return scope.activePlaylist(command.playlistId) && scope.activeItem(command.playlistId, command.itemId);
     case 'startRepeat':
-      return theOne(scope, command.playlistId);
+      return scope.activePlaylist(command.playlistId);
     case 'goLive': {
-      // One of its steps, when it is a Repeat Slides playlist: it goes round from there (the engine's startRepeat).
-      if (command.presentationId === repeatPresentationId(scope.playlistId)) return true;
-      // A slide of a presentation it plays, from its row (that row of it) or with none.
-      const from = command.playlist ?? null;
+      const repeating = repeatPlaylistOf(command.presentationId);
+      const from = command.playlist ?? undefined;
+      if (repeating !== null) return from === undefined && scope.activePlaylist(repeating);
       return (
-        scope.plays(command.presentationId) &&
-        (from === null || (theOne(scope, from.playlistId) && itsItem(scope, from.itemId)))
+        (from === undefined || scope.activePlaylist(from.playlistId)) &&
+        scope.plays(command.presentationId, from)
       );
     }
     default:

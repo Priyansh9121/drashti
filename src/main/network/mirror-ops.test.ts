@@ -33,7 +33,11 @@ const PHONE_WORDS =
  */
 const repeatLists = {
   kindOf: (id: string) =>
-    id === 'repeat-1' || id === 'repeat-2' ? 'playlist' as const : id === 'template' ? 'template' as const : null,
+    id === 'repeat-1' || id === 'repeat-2'
+      ? ('playlist' as const)
+      : id === 'template'
+        ? ('template' as const)
+        : null,
   listsMedia: (id: string) => id === 'm-pic',
   listsPresentation: () => false,
   activePlaylist: (id: string) => id === 'repeat-1' || id === 'repeat-2',
@@ -155,8 +159,8 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
           ? (({ 'item-1': 0, 'item-2': 2 } as Record<string, number>)[itemId] ?? null)
           : null,
     },
-    ...{ audio },
-    playMusic: (_who, playlistId, index = 0) => {
+    audio,
+    playMusic: (_who, playlistId, index) => {
       played.push(playlistId);
       playIndexes.push(index);
       return { ok: true as const };
@@ -432,37 +436,51 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
   });
 
   it('lets a Simple Mode Remote use Audio, with typed arguments and the current view in each answer', () => {
-    const { ask, remote, stage, poster, audioView, audioCalls, played, playIndexes } = setup({ locked: true });
+    const { ask, remote, stage, poster, audioView, audioCalls, played, playIndexes } = setup({
+      locked: true,
+    });
     const cases = [
       ['music.new', { name: 'Placeholder tunes' }, ['create', 'Placeholder tunes']],
-      ['music.rename', { playlistId: 'music-1', name: 'Placeholder sounds' }, ['rename', 'music-1', 'Placeholder sounds']],
+      [
+        'music.rename',
+        { playlistId: 'music-1', name: 'Placeholder sounds' },
+        ['rename', 'music-1', 'Placeholder sounds'],
+      ],
       ['music.remove', { playlistId: 'music-1' }, ['remove', 'music-1']],
       ['music.restore', { playlistId: 'music-1' }, ['restore', 'music-1']],
-      ['music.options', { playlistId: 'music-1', loop: true, shuffle: false }, ['options', 'music-1', { loop: true, shuffle: false }]],
-      ['music.addTracks', { playlistId: 'music-1', mediaIds: ['m-tune'] }, ['addTracks', 'music-1', ['m-tune'], null]],
+      [
+        'music.options',
+        { playlistId: 'music-1', loop: true, shuffle: false },
+        ['options', 'music-1', { loop: true, shuffle: false }],
+      ],
+      [
+        'music.addTracks',
+        { playlistId: 'music-1', mediaIds: ['m-tune'] },
+        ['addTracks', 'music-1', ['m-tune'], null],
+      ],
       ['music.moveTrack', { trackId: 'track-1', to: 1 }, ['moveTrack', 'track-1', 1]],
       ['music.removeTrack', { trackId: 'track-1' }, ['removeTrack', 'track-1']],
       ['music.restoreTrack', { trackId: 'track-1', at: 1 }, ['restoreTrack', 'track-1', 1]],
     ] as const;
-    expect(ask(remote, 'music.audio' as DeviceOp)).toMatchObject({
+    expect(ask(remote, 'music.audio')).toMatchObject({
       status: 200,
       body: { ok: true, view: audioView, stepsAside: true },
     });
     for (const [op, args] of cases) {
-      expect(ask(remote, op as DeviceOp, args), op).toMatchObject({
+      expect(ask(remote, op, args), op).toMatchObject({
         status: 200,
         body: { ok: true, view: audioView, stepsAside: true, id: 'music-1' },
       });
-      expect(ask(stage, op as DeviceOp, args).status, op).toBe(403);
-      expect(ask(poster, op as DeviceOp, args).status, op).toBe(403);
+      expect(ask(stage, op, args).status, op).toBe(403);
+      expect(ask(poster, op, args).status, op).toBe(403);
     }
     expect(audioCalls).toEqual(cases.map(([, , call]) => call));
-    expect(ask(remote, 'music.stepsAside' as DeviceOp, { on: false })).toMatchObject({
+    expect(ask(remote, 'music.stepsAside', { on: false })).toMatchObject({
       status: 200,
       body: { ok: true, view: audioView, stepsAside: false },
     });
-    expect(ask(remote, 'music.moveTrack' as DeviceOp, { trackId: 'track-1', to: -1 }).status).toBe(400);
-    expect(ask(remote, 'music.options' as DeviceOp, { playlistId: 'music-1', loop: 'yes' }).status).toBe(400);
+    expect(ask(remote, 'music.moveTrack', { trackId: 'track-1', to: -1 }).status).toBe(400);
+    expect(ask(remote, 'music.options', { playlistId: 'music-1', loop: 'yes' }).status).toBe(400);
     expect(audioCalls).toHaveLength(cases.length);
     expect(ask(remote, 'music.play', { playlistId: 'music-1', index: 2 }).status).toBe(200);
     expect(ask(remote, 'music.play', { playlistId: 'music-1', index: -1 }).status).toBe(400);

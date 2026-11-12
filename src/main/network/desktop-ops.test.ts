@@ -30,7 +30,12 @@ import type {
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { ONLY_ON_IN_SIMPLE_MODE } from '../outputs/screen-switches';
-import { SIMPLE_MODE_LOCKED, simpleModeBounds, simpleModeRefusesWhole, type SimpleScope } from '../simple-mode';
+import {
+  SIMPLE_MODE_LOCKED,
+  simpleModeBounds,
+  simpleModeRefusesWhole,
+  type SimpleScope,
+} from '../simple-mode';
 import { opensOverControls } from './desktop-answers';
 import { NetworkService, OP_CHANNEL } from './network-service';
 
@@ -981,7 +986,9 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
         status: 403,
         body: { message: SIMPLE_MODE_REFUSAL },
       });
-    expect(ask(remote, 'playlist.new', { name: 'Placeholder smart list', path: '/placeholder' }).status).toBe(400);
+    expect(ask(remote, 'playlist.new', { name: 'Placeholder smart list', path: '/placeholder' }).status).toBe(
+      400,
+    );
     setLocked(false);
     setLetIn(false);
     expect(ask(remote, 'library.remove', { ids: ['p-1'] })).toMatchObject({
