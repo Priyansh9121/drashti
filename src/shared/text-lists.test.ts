@@ -39,6 +39,7 @@ describe('a number’s label', () => {
     expect([1, 2, 26, 27].map((n) => listLabel(n, 'a'))).toEqual(['a.', 'b.', 'z.', 'aa.']);
     expect([1, 3].map((n) => listLabel(n, 'A'))).toEqual(['A.', 'C.']);
     expect([1, 4, 9, 14, 40].map((n) => listLabel(n, 'i'))).toEqual(['i.', 'iv.', 'ix.', 'xiv.', 'xl.']);
+    expect([1, 4, 9, 14, 40].map((n) => listLabel(n, 'I'))).toEqual(['I.', 'IV.', 'IX.', 'XIV.', 'XL.']);
   });
 });
 
