@@ -106,8 +106,9 @@ function seenOpacity(el: Element, known: Map<Element, number>): number {
 
 /**
  * What of an element's own style moves it on the screen, beyond how much of it shows and its box: its transform, clip,
- * mask and filter. A deck Drashti plays itself moves by a mask alone (13 Nov 2026): its own Wipe over the whole slide
- * coming in, a Split over its shape's box; its Cover and Uncover shade the moving slide with a filter.
+ * mask and filter. A deck Drashti plays itself moves by a mask alone (13 Nov 2026): a Split over its shape's box (its
+ * own Wipe, a mask over the whole slide coming in until Q57-28, is a clip again); its Cover and Uncover shade the moving
+ * slide with a filter.
  */
 export const movedLook = (
   style: Pick<CSSStyleDeclaration, 'transform' | 'clipPath' | 'maskImage' | 'filter'>,

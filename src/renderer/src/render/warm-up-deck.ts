@@ -6,7 +6,8 @@ import type { RenderSlide } from '../../../shared/model';
  * The warm-up's deck (13 Nov 2026, the review of h-p3tr's part B; render/WarmUp.tsx draws it with the rest, through the
  * same Scene). A deck Drashti plays itself draws three things nothing else on a show screen does, each a new kind of
  * drawing for a GPU to make (100-600 ms on CI's Mac, every screen waiting) at a show's first one:
- * - its own Wipe: a gradient mask of 21 stops over the whole slide coming in (transition-frame.ts);
+ * - its own Wipe: a gradient mask of 21 stops over the whole slide coming in, until 13 Nov 2026 (Q57-28: it dropped
+ *   frames on Windows while streaming); a hard-edged clip since (transition-frame.ts), still drawn here, harmless;
  * - its own Cover and Uncover: the slide they move a shade darker, a brightness filter over the whole slide;
  * - a Split: a gradient mask the size of its shape (deck-target-paint.ts), of 4, 5 or 6 stops as it goes. A GPU draws
  *   a gradient of up to 4 stops, of up to 8 and of more each its own way, so it is drawn on three shapes, one at each.
