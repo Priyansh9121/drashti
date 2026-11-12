@@ -23,6 +23,7 @@ import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { ClockStyleContext } from '../render/clock-style';
 import { LiveHere } from '../render/live-here';
 import { useStopFade } from '../render/StopFade';
+import { AUDIENCE_TRACKS, startMotionProbeIfAsked } from '../render/motion-probe';
 
 function IdentifyOverlay() {
   const identify = useOutput((s) => s.identify);
@@ -287,6 +288,9 @@ function Output() {
     </div>
   );
 }
+
+// Tests only (a test switch's, never an installed Drashti's): the motion probe's record of this screen's frames.
+startMotionProbeIfAsked(AUDIENCE_TRACKS);
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
