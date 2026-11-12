@@ -6,6 +6,7 @@ type TimingGlobals = typeof globalThis & {
   openingDecode?: { previewVisible: boolean | null; readyAt: number | null };
   /** Each frame the operator window drew as Drashti started (the order test below). */
   openingOrder?: OrderFrame[];
+  openingCap?: { held: boolean; releasedAt: number | null; lampAt: number | null; decodeStalled: boolean };
 };
 
 /** A frame of the operator window as Drashti starts: the window underneath opened, and the opening there and moving. */
@@ -124,6 +125,82 @@ test('as Drashti starts, the opening holds its black until the window underneath
     ).toBe(true);
     // And the window underneath is the operator's, with its controls.
     await operatorReady(win);
+  } finally {
+    await app.close();
+  }
+});
+
+test('startup releases the cover at its cap and lights the lamp if the photo still cannot decode', async () => {
+  const first = await launchApp();
+  try {
+    await operatorReady(await operatorPage(first.app));
+  } finally {
+    await first.app.close();
+  }
+  const { app } = await relaunchApp(first.userData, { DRASHTI_TEST_OPENING: '1' });
+  try {
+    const win = await operatorPage(app);
+    await win.evaluate((photo) => {
+      const probe: NonNullable<TimingGlobals['openingCap']> = {
+        held: false,
+        releasedAt: null,
+        lampAt: null,
+        decodeStalled: false,
+      };
+      (globalThis as TimingGlobals).openingCap = probe;
+      const root = document.documentElement;
+      const keepClosed = () => root.removeAttribute('data-opened');
+      new MutationObserver(keepClosed).observe(root, {
+        attributes: true,
+        attributeFilter: ['data-opened'],
+      });
+      keepClosed();
+
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode');
+      if (typeof descriptor?.value !== 'function') throw new Error('The image decoder is unavailable.');
+      const decode = descriptor.value as HTMLImageElement['decode'];
+      HTMLImageElement.prototype.decode = function (this: HTMLImageElement) {
+        if (this.src !== photo) return decode.call(this);
+        probe.decodeStalled = true;
+        return new Promise<void>(() => undefined);
+      };
+
+      const sample = () => {
+        const player = root.querySelector('[data-testid="opening"]');
+        const held = player?.getAttribute('data-opening-held');
+        if (held === 'true') probe.held = true;
+        if (held === 'false') probe.releasedAt ??= performance.now();
+        if (player?.querySelector('[data-opening-lamp]')) {
+          probe.lampAt ??= performance.now();
+          observer.disconnect();
+        }
+      };
+      const observer = new MutationObserver(sample);
+      observer.observe(root, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['data-opening-held'],
+      });
+      sample();
+    }, OPENING_DEFAULT_PHOTO_URL);
+
+    const cover = win.getByTestId('opening-start');
+    const player = cover.getByTestId('opening');
+    await expect(player).toHaveAttribute('data-opening-held', 'false');
+    await expect(player.locator('[data-opening-lamp]')).toHaveCount(1);
+    const trace = await win.evaluate(() => ({
+      probe: (globalThis as TimingGlobals).openingCap,
+      opened: document.documentElement.hasAttribute('data-opened'),
+    }));
+    expect(trace.opened).toBe(false);
+    expect(trace.probe).toMatchObject({ held: true, decodeStalled: true });
+    const released = trace.probe?.releasedAt;
+    const lamp = trace.probe?.lampAt;
+    if (typeof released !== 'number' || typeof lamp !== 'number')
+      throw new Error('Opening frames were missed.');
+    expect(lamp - released, 'the decode timeout starts when the cover releases').toBeGreaterThanOrEqual(500);
+    await expect(cover).toHaveCount(0);
   } finally {
     await app.close();
   }

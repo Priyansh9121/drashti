@@ -62,7 +62,9 @@ describe('PowerPoint bullet fonts', () => {
       expect(run.list).toBe('disc');
       expect(run.paragraph).not.toHaveProperty('bullet');
     }
-    expect(issues.filter((issue) => /symbol bullet.*dot/iu.test(issue))).toHaveLength(1);
+    expect(issues.filter((issue) => /symbol bullet.*dot/iu.test(issue))).toEqual([
+      'Some symbol bullets use a dot. Change them with Bullets or Numbering in Words.',
+    ]);
   });
 
   it('keeps an ordinary marker font separate from the words and honors follow-text overrides', async () => {
