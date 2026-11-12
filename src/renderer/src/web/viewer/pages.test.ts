@@ -3,7 +3,7 @@ import type { DeckSlide } from '../../../../shared/deck';
 import { type EngineState, initialEngineState } from '../../../../shared/engine/state';
 import type { OrderedSlide } from '../../../../shared/order';
 import { PLAIN } from '../../../../shared/picture-look';
-import { picturePage, presentationPages, slidePages } from './pages';
+import { picturePage, presentationPages, screensPage, slidePages } from './pages';
 
 /*
  * A deck looked through on a phone (Session 54, D1/D2 review): one page for each of a deck slide's steps, in order,
@@ -113,6 +113,14 @@ describe('a deck looked through on a phone (Session 54, D1/D2 review)', () => {
     const s = ordered(0, false);
     return { ...s, slide: { ...s.slide, slide: { ...s.slide.slide, deck } } };
   };
+
+  it('offers Save for the native click being viewed and for the click on the screens', () => {
+    const native = played(NATIVE);
+    expect({ browse: slidePages('deck', native)[2]?.save, live: screensPage().save }).toMatchObject({
+      browse: { presentationId: 'deck', slideId: native.slide.id, slide: 1, click: 2 },
+      live: expect.any(Function),
+    });
+  });
 
   it('is a page for each click of a deck slide Drashti plays itself, as of one with PowerPoint’s video', () => {
     const pages = slidePages('deck', played(NATIVE));
