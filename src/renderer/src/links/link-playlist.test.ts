@@ -171,10 +171,10 @@ async function playlists(...nodes: PlaylistNode[]): Promise<void> {
 }
 
 describe('where a download from a link goes, to begin with', () => {
-  it('is the playlist chosen last, offered first even with another open', async () => {
+  it('uses the playlist open when the link is pasted, even after another playlist received a link', async () => {
     await playlists(node('sunday', 'Placeholder Sunday'), node('youth', 'Placeholder Youth'));
     usePlaylists.setState({ openId: 'sunday' });
-    expect(linkTarget('youth', 'Placeholder video')).toEqual({ kind: 'playlist', id: 'youth' });
+    expect(linkTarget('youth', 'Placeholder video')).toEqual({ kind: 'playlist', id: 'sunday' });
   });
 
   it('else the open playlist; else a new one named after what the link holds; never no playlist', async () => {

@@ -192,6 +192,41 @@ const files = (dir: string): string[] =>
     .sort();
 
 describe('Import from a Link: Dropbox', () => {
+  it('imports a pasted folder immediately, including its PDFs and pictures, into the open playlist’s import run', async () => {
+    folderZip = makeDropboxLikeZip([
+      { path: 'Opening.mp4', data: VIDEO },
+      { path: 'Week 1/Placeholder.pdf', data: 'placeholder pdf' },
+      { path: 'Placeholder.JPG', data: 'placeholder picture' },
+      { path: 'Read me.txt', data: 'placeholder words' },
+    ]);
+    const made: string[] = [];
+    const h = await harness({
+      folderPlaylist: ({ name }) => {
+        made.push(name);
+        return { id: 'folder-playlist', name };
+      },
+    });
+    const service = h.service as LinkService & {
+      start(link: string, audio: boolean, intoOpenPlaylist: boolean): ReturnType<LinkService['look']>;
+    };
+    expect(service.start(FOLDER_LINK, false, true).ok).toBe(true);
+    await until(() => service.view().phase === 'done');
+    expect(service.view()).toMatchObject({
+      kind: 'dropbox',
+      waiting: [],
+      playlist: null,
+      notTaken: [{ name: 'Read me.txt' }],
+      runId: 'run-placeholder',
+    });
+    expect(h.imported).toHaveLength(1);
+    expect(h.imported[0]?.map((path) => path.split(/[\\/]/u).at(-1)).sort()).toEqual([
+      'Opening.mp4',
+      'Placeholder.JPG',
+      'Placeholder.pdf',
+    ]);
+    expect(made).toEqual([]);
+  });
+
   it('saves a folder link’s files in a folder of their own, and imports only the PowerPoint and the MP4', async () => {
     const h = await harness();
     expect(h.service.look('dropbox', FOLDER_LINK).ok).toBe(true);
