@@ -622,8 +622,14 @@ test('Lively never moves a show control or the live picture, starts nothing as t
     '[data-testid="layer-bar"] button, [data-testid="show-next"], [data-testid="show-back"], [data-testid="slide-thumb"], [data-testid="live-preview"]';
   expect(await moving(win, SHOW)).toEqual([]);
   // Next, pressed: the slide changes at once and nothing in the window starts moving with it.
-  await letTimePass(win, 900, 'the show has not changed for a moment');
-  const started = watchAnimations(win, 700);
+  const started = watchClick(win, 700);
+  const beforeNext = await Promise.race([
+    started.then(() => 'ended'),
+    letTimePass(win, 900, 'Next can take longer to reach the page than the animation watch').then(
+      () => 'waiting',
+    ),
+  ]);
+  expect(beforeNext, 'the animation watch is still waiting for Next').toBe('waiting');
   await win.getByTestId('show-next').click();
   await expect(win.getByTestId('slide-thumb').nth(1)).toHaveAttribute('aria-current', 'true');
   expect(await started).toEqual([]);
