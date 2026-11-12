@@ -2,11 +2,12 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
+import { addTestPptxShadow } from '../../src/main/import/testing/pptx-shadow';
 import { makeDropboxLikeZip, makeZip } from '../../src/main/import/testing/zip-writer';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { dropboxStandIn, fileLink, folderLink, type StandIn, type StandInFile } from './dropbox-stand-in';
@@ -107,6 +108,19 @@ test.afterEach(async () => {
   standIn = null;
 });
 
+/**
+ * A one-slide deck with a shadow, which Drashti cannot draw itself, so it still needs PowerPoint or Keynote: since
+ * IM-6 (Session 57) a still deck Drashti can draw comes in with no converter, and no notice would come.
+ */
+async function deckNeedingAnApp(
+  file: string,
+  slide: Parameters<typeof makeTestPptx>[0][number],
+): Promise<Buffer> {
+  writeFileSync(file, makeTestPptx([slide]));
+  await addTestPptxShadow(file);
+  return readFileSync(file);
+}
+
 test('Dropbox: a file link and a folder link are pasted and imported from the default folder; on air holds it back', async () => {
   test.setTimeout(240_000);
   const work = mkdtempSync(join(tmpdir(), 'drashti-link-e2e-'));
@@ -117,7 +131,11 @@ test('Dropbox: a file link and a folder link are pasted and imported from the de
   const zip = makeZip([
     {
       name: 'Placeholder deck.pptx',
-      data: makeTestPptx([{ color: '1E3A8A', text: 'Placeholder slide', notes: 'Placeholder note' }]),
+      data: await deckNeedingAnApp(join(work, 'Placeholder deck.pptx'), {
+        color: '1E3A8A',
+        text: 'Placeholder slide',
+        notes: 'Placeholder note',
+      }),
     },
     { name: 'Videos/Placeholder 1080p.mp4', data: full },
     { name: 'Read me.txt', data: 'placeholder words' },
@@ -202,7 +220,11 @@ test('Dropbox: a folder zipped as Dropbox zips it (a "/" entry, loose parts, dat
     { path: 'Opening video.mp4', data: opening },
     {
       path: 'Week 1/Decks/Placeholder katha.pptx',
-      data: makeTestPptx([{ color: '7C2D12', text: 'Placeholder slide', notes: '' }]),
+      data: await deckNeedingAnApp(join(media, 'Placeholder katha.pptx'), {
+        color: '7C2D12',
+        text: 'Placeholder slide',
+        notes: '',
+      }),
     },
     { path: 'Week 1/Videos/Deep folder/પ્રવચન ભાગ 1.mp4', data: clip },
     { path: 'Week 2/सभा नोट्स.txt', data: 'placeholder words' },
