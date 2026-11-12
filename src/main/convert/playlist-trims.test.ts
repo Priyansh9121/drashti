@@ -70,12 +70,14 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     },
   };
   const queue = vi.fn((_input: TrimCopyInput) => ({ id: 'copy', done }));
+  const spaceProblem = vi.fn<() => string | null>(() => null);
   const deps = {
     repo,
     mediaDir: dir,
     readInfo: (path: string) =>
       Promise.resolve({ ...info, durationMs: path === output ? 2000 : info.durationMs }),
     queue,
+    spaceProblem,
     frameAt,
     cancel,
     pendingChanged,
@@ -99,6 +101,7 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     original,
     output,
     queue,
+    spaceProblem,
     finish,
     cancel,
     pendingChanged,
@@ -175,6 +178,17 @@ describe('trimming a playlist video', () => {
       markers: { ...NO_MARKERS, markers: [added, untouched] },
     });
     expect(x.media.markersOf('original')).toEqual({ ...original, markers: [added, untouched] });
+  });
+
+  it('refuses Save before queueing a cut when its estimated size will not fit', async () => {
+    const x = await setup();
+    const message = 'Drashti keeps 2 GB free. Free up some space, then save it again.';
+    x.spaceProblem.mockReturnValue(message);
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: false, message });
+    expect(x.spaceProblem).toHaveBeenCalledWith(x.original, info.durationMs, 2000);
+    expect(x.queue).not.toHaveBeenCalled();
+    expect(x.service.list()).toEqual([]);
+    expect(x.kept.load()).toEqual([]);
   });
 
   it('uses the requested start when the preceding frame could not be read', async () => {
