@@ -102,6 +102,8 @@ const sameStyle = (a: TextRun, b: TextRun) =>
   same(a.glow, b.glow) &&
   a.list === b.list &&
   a.level === b.level &&
+  same(a.paragraph, b.paragraph) &&
+  a.softBreak === b.softBreak &&
   a.lang === b.lang &&
   a.legacy === b.legacy;
 

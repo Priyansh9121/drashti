@@ -685,6 +685,7 @@ export const IPC = {
     copy: 'slideeditor:copy',
     copied: 'slideeditor:copied',
     addPicture: 'slideeditor:add-picture',
+    fontFamilies: 'slideeditor:font-families',
     /** One of the show's F-keys pressed in the editor's window: the operator window acts on it, as if pressed there. */
     showKey: 'slideeditor:show-key',
   },
@@ -1463,6 +1464,7 @@ export interface InvokeContract {
     args: [presentationId: string, path: string | null];
     result: SlidePictureResult;
   };
+  [IPC.slideEditor.fontFamilies]: { args: []; result: readonly string[] };
   [IPC.slideEditor.showKey]: { args: [key: string]; result: null };
   [IPC.slideEditor.close]: { args: []; result: null };
   [IPC.midi.get]: { args: []; result: MidiSettings };
