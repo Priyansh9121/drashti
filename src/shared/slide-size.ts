@@ -36,10 +36,16 @@ function runAt<T extends RunLook | TextRun>(run: T, scale: number): T {
     ...(run.shadow !== undefined ? { shadow: shadowAt(run.shadow, scale) } : {}),
     ...(run.outline !== undefined ? { outline: outlineAt(run.outline, scale) } : {}),
     ...(run.glow !== undefined ? { glow: glowAt(run.glow, scale) } : {}),
-    ...(paragraph && (paragraph.spaceBefore !== undefined || paragraph.spaceAfter !== undefined)
+    ...(paragraph &&
+    (paragraph.lineHeightPx !== undefined ||
+      paragraph.spaceBefore !== undefined ||
+      paragraph.spaceAfter !== undefined)
       ? {
           paragraph: {
             ...paragraph,
+            ...(paragraph.lineHeightPx !== undefined
+              ? { lineHeightPx: Math.min(16_384, paragraph.lineHeightPx * scale) }
+              : {}),
             ...(paragraph.spaceBefore !== undefined
               ? { spaceBefore: Math.min(16_384, paragraph.spaceBefore * scale) }
               : {}),
