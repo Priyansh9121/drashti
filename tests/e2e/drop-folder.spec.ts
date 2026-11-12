@@ -96,6 +96,8 @@ test('pictures, videos and sounds put in the drop folder come into Media within 
     const t0 = Date.now();
     renameSync(join(scratch, 'Placeholder darshan.png'), join(drop, 'Placeholder darshan.png'));
     renameSync(join(scratch, 'Placeholder clip.webm'), join(drop, 'Placeholder clip.webm'));
+    const systemFiles = ['desktop.ini', 'Thumbs.db', ...(process.platform === 'win32' ? [] : ['Icon\r'])];
+    for (const name of systemFiles) writeFileSync(join(drop, name), 'placeholder');
     const before = snapshot(drop);
     await expect
       .poll(() => fromDrop(win), { timeout: 15_000 })
@@ -108,6 +110,8 @@ test('pictures, videos and sounds put in the drop folder come into Media within 
     await expect(win.getByTestId('media-filter-drop')).toHaveAttribute('aria-pressed', 'true');
     await expect(win.getByTestId('media-list')).toHaveAttribute('data-count', '2');
     await expect(win.getByText('2 pictures and videos from the drop folder are in Media.')).toBeVisible();
+    const view = await win.evaluate(() => (globalThis as PageGlobals).drashti.drop.view());
+    expect(view.notTaken).toEqual([]);
     // Never written to.
     expect(snapshot(drop)).toEqual(before);
     await expectUnreadableDrawingNotice(win, drop);

@@ -15,6 +15,8 @@ import { goLive, makeSlides } from './placeholder-slides';
  * Bold transition of a show; the audience sees black throughout. A test switch keeps it drawn, to look at.
  * Where Chromium draws without a graphics chip there is nothing to warm, and an output draws the show without
  * one (Session 57): a test switch says how Chromium draws, so both kinds of computer are tried on every system.
+ * A scene that fails as it draws (another test switch) ends the warm-up there, and the page draws the show: never
+ * black for good, never reloaded for it (Session 57, the review of h-maskperf's MEDIUM-1).
  * Placeholder words and pictures only.
  */
 
@@ -37,6 +39,28 @@ const WITHOUT_A_CHIP = { DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software' };
 /** The log's line for an output without a graphics chip. */
 const SKIPPED =
   /^Warm-up: skipped, no graphics chip \(gpu_compositing disabled_software\), for output ".+"$/u;
+
+/**
+ * One warm-up scene made to fail as it draws part-way, on every page that warms up, as a bug in any scene would (a test
+ * switch, never in an installed Drashti, Session 57): a deck's own Cover, which runs a deck's code on every screen at
+ * every start.
+ */
+const SCENE_FAILS = { DRASHTI_TEST_WARM_UP_FAILS: 'deck-cover/calm' };
+
+/** What Drashti's log has said of render errors (Session 23), each line from its "Render error in". */
+function renderErrorLines(userData: string): string[] {
+  const file = join(userData, 'logs', 'drashti.log');
+  if (!existsSync(file)) return [];
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .filter((line) => line.includes('Render error in '))
+    .map((line) => line.slice(line.indexOf('Render error in ')).trimEnd());
+}
+
+/** Main's watchdog, as the end-to-end tests read it (render-errors.spec.ts). */
+interface WatchdogGlobals {
+  drashtiDiagnostics: { watchdog: { events: { window: string; kind: string }[] } };
+}
 
 /** What Drashti's log has said of its outputs' warm-ups (Session 57), each line from its "Warm-up:". */
 function warmUpLines(userData: string): string[] {
@@ -280,7 +304,7 @@ test('with a graphics chip the warm-up passes by itself and the show is drawn af
   });
   expect(frames.frames, `frames drawn while it warmed up (${frames.windows.join('; ')})`).toBeGreaterThan(3);
   expect(frames.max, `black throughout (${String(frames.frames)} frames)`).toBe(0);
-  await expect(root).toHaveAttribute('data-fonts', 'ready');
+  await expect(root).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await expect(out.locator('[data-warm-up]')).toHaveCount(1);
   await expect(out.locator('[data-warm-scene]')).toHaveCount(0);
   // Then the show draws as ever.
@@ -318,7 +342,7 @@ test('where Chromium draws without a graphics chip an output draws the show with
   const root = out.getByTestId('output-root');
   // Ready to draw the show, without warming up: it never began a warm-up (none of its marks).
   await expect(root).toHaveAttribute('data-warm-up', 'skipped', { timeout: 60_000 });
-  await expect(root).toHaveAttribute('data-fonts', 'ready');
+  await expect(root).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   expect(await warmUpMarks(out), 'the output’s warm-up marks').toEqual([]);
   // The show drawn at once, black until something goes up (nothing up, no wallpaper chosen).
   await expect(out.getByTestId('scene')).toHaveAttribute('data-nothing-up', 'black');
@@ -366,7 +390,7 @@ test('an output told it draws without a graphics chip after its warm-up began en
     (globalThis as MainGlobals).drashtiTestGpuSaid?.();
   });
   await expect(root).toHaveAttribute('data-warm-up', 'skipped');
-  await expect(root).toHaveAttribute('data-fonts', 'ready');
+  await expect(root).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   // Marked as the warm-up goes (its effect's cleanup, which React may run a moment after the page changed).
   await expect
     .poll(() => warmUpMarks(out), { message: 'the output’s warm-up marks once told' })
@@ -378,5 +402,86 @@ test('an output told it draws without a graphics chip after its warm-up began en
   await expect.poll(() => brightest(out), { timeout: 15_000 }).toBeGreaterThan(40);
   await expect(root).toHaveAttribute('data-warm-up', 'skipped');
   await expectSaid(userData, SKIPPED);
+  await app.close();
+});
+
+test('a warm-up scene that fails as it draws ends the warm-up there and the show draws, logged once and never reloaded: an output, the LIVE picture and the stream’s page', async () => {
+  test.setTimeout(180_000);
+  const { app, userData } = await launchApp({
+    ...WITH_A_CHIP,
+    ...SCENE_FAILS,
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_TEST_FAKE_DEVICES: '1',
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const id = await makeSlides(
+    win,
+    'Placeholder slides after a failed warm-up',
+    [{ words: 'Placeholder words', background: '#3a6ea5' }],
+    { kind: 'dissolve', durationMs: 400 },
+  );
+  await setUpScreen(win);
+  const out = await outputPage(app);
+  const root = out.getByTestId('output-root');
+  // The hall's screen: its warm-up ended where the scene failed, through the same hand-over as one drawn to its end
+  // (never cut, never at its cap), and only once.
+  await expect(root).toHaveAttribute('data-warm-up', 'done', { timeout: 60_000 });
+  await expect(root).toHaveAttribute('data-fonts', 'ready');
+  await expect
+    .poll(() => warmUpMarks(out), { message: 'the output’s warm-up marks' })
+    .toEqual(['drashti-warm-up:output', 'drashti-warm-up:output-error', 'drashti-warm-up:output-end']);
+  // The show drawn from there: black until something goes up, never the black of a scene that failed.
+  await expect(out.getByTestId('scene')).toHaveAttribute('data-nothing-up', 'black');
+  await expect(out.locator('[data-render-error]')).toHaveCount(0);
+  // The LIVE picture, warmed up as the operator window opened (nothing up since): the same.
+  const live = win.getByTestId('live-preview');
+  await expect
+    .poll(() => warmUpMarks(win), { message: 'the LIVE picture’s warm-up marks', timeout: 60_000 })
+    .toContain('drashti-warm-up:live-end');
+  const liveMarks = await warmUpMarks(win);
+  expect(liveMarks, 'the LIVE picture’s warm-up marks').toContain('drashti-warm-up:live-error');
+  expect(liveMarks, 'the LIVE picture’s warm-up marks').not.toContain('drashti-warm-up:live-cap');
+  expect(liveMarks.at(-1), 'the LIVE picture’s last warm-up mark').toBe('drashti-warm-up:live-end');
+  await expect(live.locator('[data-warm-up]')).toHaveCount(0);
+  await expect(live.locator('[data-render-error]')).toHaveCount(0);
+  await expect(live.getByTestId('scene')).toHaveCount(1);
+  // Then the show draws as ever.
+  await goLive(win, id, 0);
+  await expect.poll(() => brightest(out), { timeout: 15_000 }).toBeGreaterThan(40);
+  // The stream's page the same.
+  await win.getByTestId('open-stream').click();
+  const program = await streamPage(app);
+  const programRoot = program.getByTestId('program-root');
+  await expect(programRoot).toHaveAttribute('data-warm-up', 'done', { timeout: 60_000 });
+  await expect(programRoot).toHaveAttribute('data-fonts', 'ready');
+  const streamMarks = await warmUpMarks(program);
+  expect(streamMarks, 'the stream’s page’s warm-up marks').toContain('drashti-warm-up:stream-error');
+  expect(streamMarks, 'the stream’s page’s warm-up marks').not.toContain('drashti-warm-up:stream-cap');
+  expect(streamMarks.at(-1), 'the stream’s page’s last warm-up mark').toBe('drashti-warm-up:stream-end');
+  await expect(program.locator('[data-render-error]')).toHaveCount(0);
+  await expect(program.getByTestId('program-picture')).toHaveCount(1);
+  // Each page's error is in the log once, as its warm-up's, and the hall's screen was never reloaded for it: the
+  // watchdog was never told (a reload would only warm up, and fail, again).
+  await expect
+    .poll(() => renderErrorLines(userData).length, { message: 'the log’s render-error lines' })
+    .toBe(3);
+  const lines = renderErrorLines(userData);
+  for (const line of lines)
+    expect(line).toMatch(
+      /^Render error in .+ \(warm-up\): Error: A test asked this warm-up scene to fail as it drew/u,
+    );
+  expect(
+    lines
+      .map((line) => /^Render error in (operator|output|the stream’s page)\b/u.exec(line)?.[1] ?? line)
+      .sort(),
+  ).toEqual(['operator', 'output', 'the stream’s page']);
+  const watched = await app.evaluate(() =>
+    (globalThis as unknown as WatchdogGlobals).drashtiDiagnostics.watchdog.events
+      .filter((e) => e.window.startsWith('output '))
+      .map((e) => e.kind),
+  );
+  expect(watched, 'the watchdog’s events for the output').toEqual([]);
+  await expect(root).toHaveAttribute('data-warm-up', 'done');
   await app.close();
 });

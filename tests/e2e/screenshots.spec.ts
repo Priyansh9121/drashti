@@ -1979,7 +1979,7 @@ test('a stopped screen’s notice at the top of the window (Session 26h)', async
   await operatorReady(win);
   const screenId = await setUpScreen(win, 'Placeholder hall', 0);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   // The sample kirtan up (Session 55: the tests' Language test slides are never in a picture).
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;

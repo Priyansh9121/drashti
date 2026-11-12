@@ -188,7 +188,7 @@ describe('a smart playlist following a folder', () => {
     expect(view(id)).toMatchObject({ state: 'following', adding: 6, missing: 0 });
     await settle(id);
     expect(imports).toHaveLength(1);
-    expect(imports[0]?.options).toEqual({ onConflict: 'replace' });
+    expect(imports[0]?.options).toEqual({ onConflict: 'replace', automatic: true });
     expect(shown(id)).toEqual([
       'Opening.mp4',
       'Welcome',

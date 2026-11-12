@@ -1,7 +1,7 @@
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { elementVideos, type Playing, type PlayingRef, playingOf } from '../../shared/engine/playing';
 import type { AudioLayer, EngineState, Layers, VideoFile, VideoSeeks } from '../../shared/engine/state';
-import type { MediaMarkers } from '../../shared/markers';
+import type { PlaybackMarker } from '../../shared/markers';
 import { type PlaybackSeek, playbackAtMs, playbackSpanMs } from '../../shared/media';
 import type { EngineAction } from './actions';
 import { sameData } from './reducer';
@@ -25,12 +25,14 @@ export type PlayingCommand = Extract<EngineCommand, { type: 'moveTo' | 'pausePla
 export interface PlayingHooks {
   /** The audio playlist's track ending now: its next track from `at`, or the music's end. */
   nextTrack: (at: number) => EngineAction;
+  /** Re-stamp a file whose library points were held when it starts again from the end. */
+  refreshRestart: (playing: Playing) => EngineState | null;
 }
 
 /** What the library says of a file (show-engine.ts EngineOptions mediaLength and mediaMarkers). */
 export interface FileLookups {
   lengthOf: (mediaId: string) => number | null;
-  markersOf: (mediaId: string) => MediaMarkers | null;
+  marksOf: (mediaId: string, layer: 'slide' | 'pip') => PlaybackMarker[] | undefined;
 }
 
 const NO_CHANGE: PlayingResolved = { ok: true, actions: [] };
@@ -115,8 +117,8 @@ export function resolvePlaying(
   const { clock } = playing;
   const span = playbackSpanMs(clock.clip, length);
   const atMs = playbackAtMs(clock, length, now);
-  const put = (seek: PlaybackSeek): PlayingResolved => {
-    const action = withSeek(state, playing, seek);
+  const put = (seek: PlaybackSeek, target = state): PlayingResolved => {
+    const action = withSeek(target, playing, seek);
     return action ? { ok: true, actions: [action] } : NO_CHANGE;
   };
   const paused = clock.seek?.paused === true;
@@ -134,7 +136,11 @@ export function resolvePlaying(
       // Played once to its end point (held there, or paused there): Play plays it again from its start point.
       const ended = !clock.loop && atMs >= span.end;
       if (!paused && !ended) return NO_CHANGE;
-      return put({ at: now, toMs: ended ? span.start : atMs });
+      const refreshed = ended ? hooks.refreshRestart(playing) : null;
+      const start = refreshed
+        ? playbackSpanMs(playingOf(refreshed, command.playing)?.clock.clip, length).start
+        : span.start;
+      return put({ at: now, toMs: ended ? start : atMs }, refreshed ?? state);
     }
   }
 }
@@ -142,15 +148,24 @@ export function resolvePlaying(
 /**
  * What the time bar shows of each video on the slide up and in the box (Session 54): the length
  * the state has (one a screen has just told, which the library keeps a moment later), else the library's; and its
- * markers as the library has them now. Null when none has either.
+ * markers used by the current playback. Null when none has either.
  */
 export function videoFilesFor(state: EngineState, library: FileLookups): Record<string, VideoFile> | null {
   const files: Record<string, VideoFile> = {};
+  const box = state.layers.pip?.source;
+  const boxId = box?.kind === 'media' && box.media === 'video' ? box.mediaId : null;
   for (const id of elementVideos(state)) {
     const durationMs = state.videoFiles?.[id]?.durationMs ?? library.lengthOf(id) ?? 0;
-    const marks = library.markersOf(id)?.markers ?? [];
-    if (durationMs > 0 || marks.length > 0)
-      files[id] = { ...(durationMs > 0 ? { durationMs } : {}), ...(marks.length > 0 ? { marks } : {}) };
+    const inBox = id === boxId;
+    const onSlide = !inBox || playingOf(state, { layer: 'slide', mediaId: id }) !== null;
+    const marks = library.marksOf(id, onSlide ? 'slide' : 'pip') ?? [];
+    const boxMarks = inBox && onSlide ? (library.marksOf(id, 'pip') ?? []) : marks;
+    if (durationMs > 0 || marks.length > 0 || boxMarks.length > 0)
+      files[id] = {
+        ...(durationMs > 0 ? { durationMs } : {}),
+        ...(marks.length > 0 ? { marks } : {}),
+        ...(!sameData(marks, boxMarks) ? { boxMarks } : {}),
+      };
   }
   return Object.keys(files).length > 0 ? files : null;
 }

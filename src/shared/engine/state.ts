@@ -226,12 +226,14 @@ export function videoSeek(seeks: VideoSeeks | null | undefined, mediaId: string)
 
 /**
  * What the time bar (Session 54) shows of a video on the slide up or in the box, by media id: its
- * file's length once known (learned as a screen plays it) and its markers, as the library has them. The background's
+ * file's length once known (learned as a screen plays it) and the markers that playback uses. The background's
  * and the sound's are on their layers (`durationMs`, `marks`).
  */
 export interface VideoFile {
   durationMs?: number;
   marks?: PlaybackMarker[];
+  /** The box's own markers when the same file is playing on the slide with different markers. */
+  boxMarks?: PlaybackMarker[];
 }
 
 /** The timer a slide layer shows alone (Session 50). */

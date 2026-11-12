@@ -16,6 +16,9 @@ import { DEFAULT_LOWER_THIRD_LOOK } from '../../../shared/lower-thirds';
 import { engineNow, pauseClock } from './clock';
 import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
+import { SPLIT_MS, WARM_DECK_TRANSITIONS, warmDeckTransition, withSplits } from './warm-up-deck';
+import { WARM_UP_FAILS } from './warm-up-mode';
+import { WarmUpBoundary } from './WarmUpBoundary';
 
 /*
  * Warming the GPU, unseen (Session 27). A GPU makes each new kind of drawing (a "pipeline") the first time
@@ -23,7 +26,8 @@ import { Scene } from './Scene';
  * of a show would stutter in the hall. Before a page first shows the show, it draws every transition kind
  * in both Movements part-way, a Look's lower third coming, changing and going, messages and the ticker's band
  * coming in, a picture with a look and the background dissolving (the idle rotation's dissolve went with it in
- * Session 55; Part 6's wallpapers that go round may bring one back), with
+ * Session 55; Part 6's wallpapers that go round may bring one back), a deck's own Wipe and Cover from a slide whose
+ * shapes are part-way through Splits (Session 57: masks and a shade nothing else draws, warm-up-deck.ts), with
  * placeholder words and pictures made here, through the same Scene the show uses, until its frames come on
  * time (the GPU has made what they need); then it lets go. The pipelines are kept by the GPU for every
  * window after.
@@ -35,6 +39,9 @@ import { Scene } from './Scene';
  * (Session 27, a page drawing a Bold-like slide after each way of warming up, the pipelines it then made):
  * none 15; the same drawing at opacity 0, 16, or 0.001, 15 (skipped as unseen); in a window not yet shown,
  * 16 (nothing is composited until it shows); under brightness(0), 0.
+ *
+ * A scene that fails as it draws ends it there (Session 57, WarmUpBoundary.tsx), as one drawn to its end does: the
+ * page draws the show without the rest, never black for good, and Main logs the error and reloads nothing.
  */
 
 const W = 'drashti-warm-up';
@@ -195,7 +202,7 @@ const layerOf = (s: RenderSlide, shownAt: number, transition?: Transition): Slid
   ...(transition ? { transition } : {}),
 });
 
-interface WarmScene {
+export interface WarmScene {
   key: string;
   look: LiveGroupLook;
   /** What the engine would have up: before the change (`during` false), and once it is part-way. */
@@ -231,7 +238,8 @@ export const WARM_LOWER_THIRDS = [
   'letter-pop-band-wipe-steady',
 ];
 
-function scenes(): WarmScene[] {
+/** Every scene the warm-up draws (a unit test reads them: render/warm-up.test.ts). */
+export function warmScenes(): WarmScene[] {
   const base = initialEngineState();
   const look = (movement: Movement, more: Partial<LiveGroupLook> = {}): LiveGroupLook => ({
     ...DEFAULT_LIVE_GROUP_LOOK,
@@ -321,6 +329,27 @@ function scenes(): WarmScene[] {
         },
       });
   }
+  // A deck Drashti plays itself (Session 57, warm-up-deck.ts): its own Wipe (a hard-edged clip since Q57-28) and
+  // Cover (the slide coming in a shade darker), part-way, from its slide whose picture, shape and words are each
+  // part-way through a Split (a mask the size of each). Once: a deck's own transitions move alike on Calm and Bold.
+  for (const effect of WARM_DECK_TRANSITIONS)
+    transitions.push({
+      key: `deck-${effect}/calm`,
+      look: look('calm'),
+      state: (during, at) => ({
+        ...base,
+        layers: {
+          ...base.layers,
+          slide: during
+            ? layerOf(
+                slide(`deck-${effect}-b`, true),
+                at - PART * MAX_TRANSITION_MS,
+                warmDeckTransition(effect, MAX_TRANSITION_MS),
+              )
+            : layerOf(withSplits(slide(`deck-${effect}-a`, false)), at - SPLIT_MS),
+        },
+      }),
+    });
   // A lower third from the Lower Thirds panel (Session 44) part-way through each kind of move: fading, sliding,
   // wiping and opening (a clip), growing, flipping (a perspective) and turning, and lines, words and letters
   // each moving on a band that slides or wipes in.
@@ -361,8 +390,64 @@ function scenes(): WarmScene[] {
 const trees = new WeakMap<Element, ShadowRoot>();
 
 /**
- * Draws the warm-up for a few frames, then calls `onDone` (never, when `hold`: a test looks at it). The
- * parent shows the show once it is done; nothing of the show is drawn meanwhile.
+ * Tests only: an element that throws as it renders, drawn in the scene a test names as that scene comes part-way
+ * (WARM_UP_FAILS, DRASHTI_TEST_WARM_UP_FAILS: a packaged Drashti never asks for it), as a bug in any scene would.
+ */
+function FailForTests(): never {
+  throw new Error('A test asked this warm-up scene to fail as it drew');
+}
+
+/**
+ * The warm-up's scenes, each through the same Scene the show uses: what is up before (`during` false), then every
+ * change part-way at `at`. Made here, inside the warm-up's boundary, so a scene whose state cannot be made fails there
+ * as one that cannot be drawn does.
+ */
+function WarmScenes({
+  during,
+  at,
+  canvas,
+  scaling,
+  matte,
+  ticker,
+}: {
+  during: boolean;
+  at: number;
+  canvas: Size;
+  scaling: ScalingMode;
+  matte: 'fill' | 'key' | null;
+  ticker: boolean;
+}) {
+  const list = useMemo(() => warmScenes(), []);
+  return (
+    <>
+      {list.map((s) => (
+        // Each scene added light for light (none of it opaque to the GPU), so none hides another.
+        <div
+          key={s.key}
+          data-warm-scene={s.key}
+          style={{ position: 'absolute', inset: 0, mixBlendMode: 'plus-lighter' }}
+        >
+          <div style={{ position: 'absolute', inset: 0, clipPath: s.clip }}>
+            <Scene
+              state={s.state(during, at)}
+              canvas={canvas}
+              scaling={scaling}
+              look={s.look}
+              matte={matte}
+              ticker={ticker}
+            />
+            {during && s.key === WARM_UP_FAILS && <FailForTests />}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Draws the warm-up for a few frames, then calls `onDone` (never, when `hold`: a test looks at it); at once when one
+ * of its scenes fails as it draws (Session 57). The parent shows the show once it is done; nothing of the show is
+ * drawn meanwhile.
  */
 export function WarmUp({
   page,
@@ -390,12 +475,12 @@ export function WarmUp({
   useLayoutEffect(() => {
     done.current = onDone;
   });
-  // Done once, however it ends: drawn, at its cap, or not seen; marked for a trace (`-cut` when it is taken
-  // away before then: the LIVE picture, as something goes up).
+  // Done once, however it ends: drawn, at its cap, not seen, or a scene that failed as it drew (Session 57); marked
+  // for a trace (`-cut` when it is taken away before then: the LIVE picture, as something goes up).
   const mark = `${WARM_UP_MARK}:${page}`;
   const finished = useRef(false);
   const finish = useCallback(
-    (how: 'drawn' | 'cap' | 'unseen') => {
+    (how: 'drawn' | 'cap' | 'unseen' | 'error') => {
       if (finished.current || hold) return;
       finished.current = true;
       pauseClock(null);
@@ -463,7 +548,9 @@ export function WarmUp({
   // then done.
   const pulse = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (step.phase === 'pictures') return;
+    // Nothing more once it has ended: a scene that failed as its step was drawn (Session 57) ends it before this
+    // step's frames would begin, so the clock it let go stays free for the show.
+    if (step.phase === 'pictures' || finished.current) return;
     let frame = 0;
     // False once this step is left (read through a function: the checker cannot follow the cleanup).
     const run = { live: true };
@@ -531,7 +618,10 @@ export function WarmUp({
     (id: string, attempt?: number) => pictures[id] ?? mediaUrl(id, attempt),
     [pictures],
   );
-  const list = useMemo(() => scenes(), []);
+  // A scene that failed as it drew (WarmUpBoundary): the warm-up ends there, and the page draws the show.
+  const failed = useCallback(() => {
+    finish('error');
+  }, [finish]);
   return (
     <div
       ref={host}
@@ -555,7 +645,8 @@ export function WarmUp({
               style={{ position: 'absolute', left: 0, top: 0, width: 2, height: 2, background: '#000000' }}
             />
             {step.phase !== 'pictures' && (
-              <>
+              // Everything it draws, its scenes made inside: one that fails ends the warm-up (Session 57).
+              <WarmUpBoundary onError={failed}>
                 <div
                   style={{
                     position: 'absolute',
@@ -579,30 +670,17 @@ export function WarmUp({
                 >
                   <PictureStrip jpeg={pictures[PICTURE.a] ?? ''} png={pictures[PICTURE.png] ?? ''} />
                 </div>
-              </>
-            )}
-            {step.phase !== 'pictures' && (
-              <MediaUrls.Provider value={urlOf}>
-                {list.map((s) => (
-                  // Each scene added light for light (none of it opaque to the GPU), so none hides another.
-                  <div
-                    key={s.key}
-                    data-warm-scene={s.key}
-                    style={{ position: 'absolute', inset: 0, mixBlendMode: 'plus-lighter' }}
-                  >
-                    <div style={{ position: 'absolute', inset: 0, clipPath: s.clip }}>
-                      <Scene
-                        state={s.state(step.phase === 'during', step.at)}
-                        canvas={canvas}
-                        scaling={scaling}
-                        look={s.look}
-                        matte={matte}
-                        ticker={ticker}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </MediaUrls.Provider>
+                <MediaUrls.Provider value={urlOf}>
+                  <WarmScenes
+                    during={step.phase === 'during'}
+                    at={step.at}
+                    canvas={canvas}
+                    scaling={scaling}
+                    matte={matte}
+                    ticker={ticker}
+                  />
+                </MediaUrls.Provider>
+              </WarmUpBoundary>
             )}
           </>,
           tree,
