@@ -18,11 +18,11 @@ import {
   deckParagraphEffects,
   deckParagraphRuns,
   deckTargetBounds,
-  deckWipeClip,
 } from '../../../shared/deck-motion';
 import type { NativeStepTiming } from '../../../shared/deck-show';
 import type { Rect, RenderSlide, SlideElement, TextElement } from '../../../shared/model';
 import { clockHeld, engineFrameNow, engineNow, onClockJump } from './clock';
+import { paintDeckTarget } from './deck-target-paint';
 import { wakeAt } from './wake-at';
 
 interface Target {
@@ -60,16 +60,7 @@ export function useNativeDeckTiming(): NativeStepTiming | null {
 }
 
 function paint(element: HTMLDivElement, mounted: Mounted, frame: DeckMotionFrame): void {
-  const rotation = frame.rotation % 360;
-  const transform =
-    frame.x || frame.y || rotation || frame.scale !== 1
-      ? `translate(${String(frame.x)}px, ${String(frame.y)}px) rotate(${String(rotation)}deg) scale(${String(frame.scale)})`
-      : '';
-  const opacity = frame.opacity === 1 ? '' : String(frame.opacity);
-  const clip = deckWipeClip(frame.wipe, mounted.target.bounds, mounted.element);
-  if (element.style.transform !== transform) element.style.transform = transform;
-  if (element.style.opacity !== opacity) element.style.opacity = opacity;
-  if (element.style.clipPath !== clip) element.style.clipPath = clip;
+  paintDeckTarget(element.style, frame, mounted.target.bounds, mounted.element);
 }
 
 function paintPiece(node: HTMLElement, paragraph: Paragraph): void {

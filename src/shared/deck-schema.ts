@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { DeckSlide } from './deck';
 import { deckNativeTransitionSchema } from './deck-transition';
 import { idSchema, transitionSchema } from './model-schema';
+import { FORMULA_LENGTH } from './pptx-formula';
 
 /*
  * A deck's slide as stored (Session 54, C2): a slide's `deck` column (migration 49) holds shared/deck.ts's DeckSlide
@@ -19,6 +20,16 @@ const ms = z
 
 /** A fraction of the slide's width or height (a box may hang off the slide, as PowerPoint lets it). */
 const fraction = z.number().min(-10).max(10);
+
+/**
+ * One of PowerPoint's own formulas of a shape's place and size, as the deck wrote it (shared/pptx-formula.ts: one
+ * Drashti does not read is drawn as Basic Zoom In, never run).
+ */
+const formula = z
+  .string()
+  .min(1)
+  .max(FORMULA_LENGTH)
+  .regex(/^[-+*/^().,#_a-z0-9 ]+$/iu);
 
 const stepSchema = z.looseObject({
   clipId: idSchema,
@@ -60,6 +71,7 @@ const effectSchema = z.looseObject({
   distance: z.number().min(0).max(1).optional(),
   splitAxis: z.enum(['x', 'y']).optional(),
   scale: z.number().min(0).max(10).optional(),
+  zoomAway: z.object({ w: formula, h: formula, x: formula.optional(), y: formula.optional() }).optional(),
   shape: z.enum(['circle', 'box', 'diamond', 'plus']).optional(),
   inward: z.literal(true).optional(),
   spokes: z.number().int().min(1).max(8).optional(),

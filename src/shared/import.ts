@@ -19,6 +19,8 @@ export interface ImportOptions {
    * (import-schema.ts takes no such field).
    */
   simple?: true;
+  /** Set by a folder watcher in Main. Media points take effect on the next play. */
+  automatic?: true;
   /** Link imports and saved-link retries can request a smaller background copy of tall videos. */
   maxVideoHeight?: number;
 }

@@ -73,7 +73,7 @@ function videoPlaying(
     mediaId,
     clock: { startedAt: shownAt, loop, ...(clip ? { clip } : {}), ...(seek ? { seek } : {}) },
     durationMs: file?.durationMs,
-    marks: file?.marks ?? NO_MARKS,
+    marks: (ref.layer === 'pip' ? (file?.boxMarks ?? file?.marks) : file?.marks) ?? NO_MARKS,
     track: false,
     paused: seek?.paused === true,
   };

@@ -492,7 +492,7 @@ export class DropFolder {
     const given = names.map((name) => ({ path: join(folder, name), relative: name }));
     const result = await this.deps.importFiles(
       given.map((g) => g.path),
-      {},
+      anyway ? {} : { automatic: true },
     );
     for (const name of names) this.pending.delete(name);
     if (!result.ok) {

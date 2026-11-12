@@ -16,6 +16,7 @@ import { DEFAULT_LOWER_THIRD_LOOK } from '../../../shared/lower-thirds';
 import { engineNow, pauseClock } from './clock';
 import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
+import { SPLIT_MS, WARM_DECK_TRANSITIONS, warmDeckTransition, withSplits } from './warm-up-deck';
 
 /*
  * Warming the GPU, unseen (Session 27). A GPU makes each new kind of drawing (a "pipeline") the first time
@@ -23,7 +24,8 @@ import { Scene } from './Scene';
  * of a show would stutter in the hall. Before a page first shows the show, it draws every transition kind
  * in both Movements part-way, a Look's lower third coming, changing and going, messages and the ticker's band
  * coming in, a picture with a look and the background dissolving (the idle rotation's dissolve went with it in
- * Session 55; Part 6's wallpapers that go round may bring one back), with
+ * Session 55; Part 6's wallpapers that go round may bring one back), a deck's own Wipe and Cover from a slide whose
+ * shapes are part-way through Splits (Session 57: masks and a shade nothing else draws, warm-up-deck.ts), with
  * placeholder words and pictures made here, through the same Scene the show uses, until its frames come on
  * time (the GPU has made what they need); then it lets go. The pipelines are kept by the GPU for every
  * window after.
@@ -195,7 +197,7 @@ const layerOf = (s: RenderSlide, shownAt: number, transition?: Transition): Slid
   ...(transition ? { transition } : {}),
 });
 
-interface WarmScene {
+export interface WarmScene {
   key: string;
   look: LiveGroupLook;
   /** What the engine would have up: before the change (`during` false), and once it is part-way. */
@@ -231,7 +233,8 @@ export const WARM_LOWER_THIRDS = [
   'letter-pop-band-wipe-steady',
 ];
 
-function scenes(): WarmScene[] {
+/** Every scene the warm-up draws (a unit test reads them: render/warm-up.test.ts). */
+export function warmScenes(): WarmScene[] {
   const base = initialEngineState();
   const look = (movement: Movement, more: Partial<LiveGroupLook> = {}): LiveGroupLook => ({
     ...DEFAULT_LIVE_GROUP_LOOK,
@@ -321,6 +324,27 @@ function scenes(): WarmScene[] {
         },
       });
   }
+  // A deck Drashti plays itself (Session 57, warm-up-deck.ts): its own Wipe (a hard-edged clip since Q57-28) and
+  // Cover (the slide coming in a shade darker), part-way, from its slide whose picture, shape and words are each
+  // part-way through a Split (a mask the size of each). Once: a deck's own transitions move alike on Calm and Bold.
+  for (const effect of WARM_DECK_TRANSITIONS)
+    transitions.push({
+      key: `deck-${effect}/calm`,
+      look: look('calm'),
+      state: (during, at) => ({
+        ...base,
+        layers: {
+          ...base.layers,
+          slide: during
+            ? layerOf(
+                slide(`deck-${effect}-b`, true),
+                at - PART * MAX_TRANSITION_MS,
+                warmDeckTransition(effect, MAX_TRANSITION_MS),
+              )
+            : layerOf(withSplits(slide(`deck-${effect}-a`, false)), at - SPLIT_MS),
+        },
+      }),
+    });
   // A lower third from the Lower Thirds panel (Session 44) part-way through each kind of move: fading, sliding,
   // wiping and opening (a clip), growing, flipping (a perspective) and turning, and lines, words and letters
   // each moving on a band that slides or wipes in.
@@ -531,7 +555,7 @@ export function WarmUp({
     (id: string, attempt?: number) => pictures[id] ?? mediaUrl(id, attempt),
     [pictures],
   );
-  const list = useMemo(() => scenes(), []);
+  const list = useMemo(() => warmScenes(), []);
   return (
     <div
       ref={host}
