@@ -1,7 +1,7 @@
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { SlidePictureResult } from './slide-picture';
 import type { ReadyReport } from './ready';
-import type { PdfJob, PdfPage, PdfDone } from './editable-source';
+import type { PdfJob, PdfPage, PdfPageReceipt, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
@@ -1045,7 +1045,7 @@ export interface DrashtiBridge {
   pictures: {
     job(): Promise<PdfJob | null>;
     /** False: stop (the import was cancelled). */
-    page(page: PdfPage): Promise<boolean>;
+    page(page: PdfPage): Promise<PdfPageReceipt>;
     done(done: PdfDone): Promise<null>;
     asset(kind: PictureAssetKind, name: string): Promise<Uint8Array | null>;
   };
