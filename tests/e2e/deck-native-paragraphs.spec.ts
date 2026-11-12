@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeTestDeck, placeholderDeckMedia } from '../../src/main/import/testing/make-deck';
 import type { EngineCommand } from '../../src/shared/engine/commands';
+import { openEditor, sourceWord } from './deck-edit-fixtures';
 import {
   importAndGetIds,
   launchApp,
@@ -14,6 +15,7 @@ import {
   outputReady,
   type PageGlobals,
   setUpScreen,
+  slideEditorClosed,
 } from './helpers';
 import { holdClock } from './placeholder-slides';
 
@@ -123,6 +125,35 @@ test('a paragraph build shows each paragraph from its own click on the screens, 
       await inStep(app, win, 1, 0);
       await expect(words(1)).toHaveCSS('opacity', '0');
       await expect(words(0)).toHaveCSS('opacity', '1');
+      await holdClock(app, null);
+      await dispatch(win, { type: 'clearLayer', layer: 'slide' });
+
+      const addedPoint = 'Placeholder added point';
+      const { ed, editor } = await openEditor(app, win, 'Placeholder paragraph build');
+      await sourceWord(editor, POINTS[2] ?? '').dblclick();
+      const typing = editor.getByTestId('text-editing');
+      await expect(typing).toBeFocused();
+      await typing.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
+      await typing.press('Enter');
+      await ed.keyboard.insertText(addedPoint);
+      await expect(typing.getByText(addedPoint, { exact: true })).toBeVisible();
+      await editor.getByTestId('save-slides').click();
+      await slideEditorClosed(app);
+
+      const added = build.locator('[data-run]', { hasText: addedPoint });
+      await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+      await inStep(app, win, 0, 0);
+      await expect(added).toHaveCSS('opacity', '0');
+      for (const step of [1, 2, 3]) {
+        await dispatch(win, { type: 'next' });
+        await inStep(app, win, step, 150);
+        const opacity = step === 3 ? '0.5' : '0';
+        await expect(words(2)).toHaveCSS('opacity', opacity);
+        await expect(added).toHaveCSS('opacity', opacity);
+      }
+      await inStep(app, win, 3, 300);
+      await expect(added).toHaveCSS('opacity', '1');
+      await expect.poll(marksFollowWords).toBe(true);
       await holdClock(app, null);
     } finally {
       await app.close();

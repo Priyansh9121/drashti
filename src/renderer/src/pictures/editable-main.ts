@@ -97,22 +97,19 @@ export async function drawEditablePdf(
         });
         checkTime();
         const assets = native.assets.map(({ id, png }) => ({ token: id, png }));
-        if (
-          !(await window.drashti.pictures.page({
-            mode: 'editable-source',
-            jobId: job.jobId,
-            sourceIndex,
-            width: native.width,
-            height: native.height,
-            elements: native.elements,
-            assets,
-            issues: native.issues,
-          }))
-        )
-          break;
-        // Main checked again as it took the page.
+        const accepted = await window.drashti.pictures.page({
+          mode: 'editable-source',
+          jobId: job.jobId,
+          sourceIndex,
+          width: native.width,
+          height: native.height,
+          elements: native.elements,
+          assets,
+          issues: native.issues,
+        });
+        if (!accepted) break;
         answeredAt = performance.now();
-        jobBytes += assets.reduce((sum, asset) => sum + asset.png.byteLength, 0);
+        if (accepted === true) jobBytes += assets.reduce((sum, asset) => sum + asset.png.byteLength, 0);
       } catch {
         failed.push(sourceIndex);
       } finally {
