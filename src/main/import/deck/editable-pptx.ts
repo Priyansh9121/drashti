@@ -652,8 +652,11 @@ function paragraphOf(
   if (marginLeft !== undefined) paragraph.marginLeft = pixels(marginLeft, 0);
   if (marginRight !== undefined) paragraph.marginRight = pixels(marginRight, 0);
   if (indent !== undefined) paragraph.indent = pixels(indent, -16_384);
-  const spacing = attr(child(lastChild(nodes, 'lnSpc'), 'spcPct'), 'val');
-  if (spacing !== undefined)
+  const lineSpacing = lastChild(nodes, 'lnSpc');
+  const points = number(attr(child(lineSpacing, 'spcPts'), 'val'), NaN);
+  const spacing = attr(child(lineSpacing, 'spcPct'), 'val');
+  if (points >= 0) paragraph.lineHeightPx = round(Math.min(16_384, pointsInSlidePixels(points, yScale)));
+  else if (spacing !== undefined)
     paragraph.lineHeight = Math.max(
       0.1,
       Math.min(5, round(DEFAULT_LINE_HEIGHT * (number(spacing, 100_000) / 100_000))),
@@ -699,13 +702,18 @@ function paragraphOf(
   };
 }
 
+/** DrawingML spacing uses hundredths of a point. */
+function pointsInSlidePixels(points: number, scale: number): number {
+  return ((points / 100) * 4 * scale) / 3;
+}
+
 function paragraphSpace(node: Node, edgeSize: number, scale: number): number | undefined {
   const points = attr(child(node, 'spcPts'), 'val');
   const percent = attr(child(node, 'spcPct'), 'val');
   if (points === undefined && percent === undefined) return undefined;
   const pixels =
     points !== undefined
-      ? ((number(points, 0) / 100) * 4 * scale) / 3
+      ? pointsInSlidePixels(number(points, 0), scale)
       : (percent?.endsWith('%')
           ? number(percent.replace(/%$/u, ''), 0) / 100
           : number(percent, 0) / 100_000) * edgeSize;
@@ -1422,8 +1430,6 @@ function unsupported(node: XmlNode, ctx: Context): void {
     )
   )
     ctx.issues.add('Source character offsets, spacing or capitalization effects are not reproduced.');
-  if (descendants(node, 'lnSpc').some((spacing) => child(spacing, 'spcPts')))
-    ctx.issues.add('Absolute source line spacing may differ in the editable copy.');
   if (
     [...descendants(node, 'headEnd'), ...descendants(node, 'tailEnd')].some(
       (n) => attr(n, 'type') !== undefined && attr(n, 'type') !== 'none',
