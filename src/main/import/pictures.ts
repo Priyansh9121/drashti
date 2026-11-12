@@ -193,7 +193,8 @@ function pageWords(text: string | undefined): string[] {
       text
         ?.normalize('NFKC')
         .toLowerCase()
-        .match(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]*/gu) ?? [],
+        .match(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]*/gu)
+        ?.filter((word) => !/^\p{N}+$/u.test(word)) ?? [],
     ),
   ].sort();
 }

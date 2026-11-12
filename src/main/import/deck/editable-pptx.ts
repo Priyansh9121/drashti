@@ -288,11 +288,17 @@ function colorOf(node: Node, ctx: Context, placeholder?: string): string | null 
         alpha = amount;
         break;
       case 'tint':
-        rgb = rgb.map((c) => c + (255 - c) * amount);
+      case 'shade': {
+        // The amount keeps this share of the input. A tint adds white in linear light.
+        const white = nameOf(change) === 'tint' ? 1 - amount : 0;
+        rgb = rgb.map((c) => {
+          const srgb = c / 255;
+          const linear = srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+          const mixed = linear * amount + white;
+          return 255 * (mixed <= 0.0031308 ? 12.92 * mixed : 1.055 * mixed ** (1 / 2.4) - 0.055);
+        });
         break;
-      case 'shade':
-        rgb = rgb.map((c) => c * amount);
-        break;
+      }
       default:
         ctx.issues.add('Some source colour adjustments are not reproduced.');
     }

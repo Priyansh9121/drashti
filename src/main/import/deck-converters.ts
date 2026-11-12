@@ -283,6 +283,8 @@ export type Converted =
       slides: PptxSlide[] | null;
       /** The notes are for shown slides only, already in the PDF's order. */
       shownOnly: boolean;
+      /** Keynote's speaker notes in the PDF's page order, independent of the PowerPoint copy. */
+      pdfNotes?: string[];
     }
   | {
       ok: false;
@@ -976,14 +978,19 @@ async function convertOnMac(
     }
     if (session.signal?.aborted) return cancelled();
 
-    const shownOnly = converter === 'keynote' && !fileSlides;
-    if (shownOnly) {
-      fileSlides = saved.stdout
-        .replace(/\n$/u, '')
-        .split('\u001e')
-        .map((n) => ({ hidden: false, notes: tidyNotes(n), animated: false }));
-    }
-    return { ok: true, pdf, slides: fileSlides, shownOnly, ...(editablePptx ? { editablePptx } : {}) };
+    const pdfNotes =
+      converter === 'keynote' ? saved.stdout.replace(/\n$/u, '').split('\u001e').map(tidyNotes) : undefined;
+    const shownOnly = pdfNotes !== undefined && !fileSlides;
+    if (pdfNotes && shownOnly)
+      fileSlides = pdfNotes.map((notes) => ({ hidden: false, notes, animated: false }));
+    return {
+      ok: true,
+      pdf,
+      slides: fileSlides,
+      shownOnly,
+      ...(editablePptx ? { editablePptx } : {}),
+      ...(pdfNotes ? { pdfNotes } : {}),
+    };
   });
 }
 
