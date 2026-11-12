@@ -37,7 +37,7 @@ const render = (effects: DeckEffect[]) => {
 };
 
 it('explains added paragraphs only on a slide with paragraph builds', () => {
-  const words = 'Added paragraphs appear with the built paragraph before them.';
+  const words = 'Added paragraphs share the preceding build’s click.';
   expect(render([{ ...fade, paragraphs: [0, 0] }])).toContain(words);
   expect(render([fade])).not.toContain(words);
 });

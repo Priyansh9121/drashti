@@ -112,38 +112,51 @@ export function ImportedMotion({ deck, elements }: { deck: DeckSlide; elements?:
       : empty.length > 1
         ? `Clicks ${empty.join(', ')} have nothing left to move. Check them before going live.`
         : null;
+  const notes = [
+    emptyNote,
+    effects.some((effect) => effect.paragraphs)
+      ? 'Added paragraphs share the preceding build’s click.'
+      : null,
+    deck.motion?.approximate
+      ? deck.steps.length
+        ? 'PowerPoint’s video plays until you edit this slide.'
+        : 'This slide uses the closest playable effects.'
+      : null,
+  ].filter((note) => note !== null);
   return (
     <>
       <Divider />
       <Cluster name="PowerPoint animations">
-        <div className="max-w-52 space-y-1 text-xs text-muted" data-testid="imported-motion">
-          <p>{clicks === 1 ? '1 click' : `${String(clicks)} clicks`}</p>
-          {effects.length > 0 && (
-            <ol
-              aria-label="PowerPoint animation order"
-              className="max-h-16 overflow-y-auto"
-              // Four lines show and a longer list scrolls; a line can wrap at the panel's width, so even a short
-              // list can scroll. The keys reach it whenever it is there.
+        <div className="flex items-start gap-2 text-xs text-muted" data-testid="imported-motion">
+          <div className="w-52 shrink-0 space-y-1">
+            <p>{clicks === 1 ? '1 click' : `${String(clicks)} clicks`}</p>
+            {effects.length > 0 && (
+              <ol
+                aria-label="PowerPoint animation order"
+                className="max-h-16 overflow-y-auto"
+                // A line can wrap at this width (an effect's name and its paragraph range), so even a short
+                // list can scroll. The keys reach it whenever it is there.
+                tabIndex={0}
+              >
+                {effects.map((effect, index) => (
+                  <li key={index}>
+                    {effect.step === 0 ? 'With the slide' : `Click ${String(effect.step)}`} ·{' '}
+                    {importedEffect(effect)}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+          {notes.length > 0 && (
+            <ul
+              aria-label="PowerPoint animation notes"
+              className="max-h-16 w-52 shrink-0 space-y-1 overflow-y-auto"
               tabIndex={0}
             >
-              {effects.map((effect, index) => (
-                <li key={index}>
-                  {effect.step === 0 ? 'With the slide' : `Click ${String(effect.step)}`} ·{' '}
-                  {importedEffect(effect)}
-                </li>
+              {notes.map((note) => (
+                <li key={note}>{note}</li>
               ))}
-            </ol>
-          )}
-          {effects.some((effect) => effect.paragraphs) && (
-            <p>Added paragraphs appear with the built paragraph before them.</p>
-          )}
-          {emptyNote && <p>{emptyNote}</p>}
-          {deck.motion?.approximate && (
-            <p>
-              {deck.steps.length
-                ? 'This slide keeps PowerPoint’s video until you edit it.'
-                : 'This slide uses the closest effects Drashti can play.'}
-            </p>
+            </ul>
           )}
         </div>
       </Cluster>
