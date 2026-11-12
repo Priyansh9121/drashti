@@ -617,7 +617,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   };
   /** Files given points (storeMedia's `marked`), told once their group is committed (Session 54). */
   const told = (marked: readonly string[]) => {
-    if (marked.length > 0 && !ctx.options.automatic) ctx.onMarked?.([...marked]);
+    if (marked.length > 0) ctx.onMarked?.([...marked]);
   };
 
   // ---- presentations ----------------------------------------------------------------

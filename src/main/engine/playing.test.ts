@@ -7,7 +7,8 @@ import type { PlayingRef } from '../../shared/engine/playing';
 import type { MusicRun, PipLayer } from '../../shared/engine/state';
 import type { MediaMarkers } from '../../shared/markers';
 import { playbackAtMs } from '../../shared/media';
-import type { MediaElement, RenderSlide, SlideCue } from '../../shared/model';
+import type { SlideCue } from '../../shared/library';
+import type { MediaElement, RenderSlide } from '../../shared/model';
 import { simpleModeRefuses } from '../../shared/mode';
 import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import { ShowEngine } from './show-engine';
@@ -510,6 +511,7 @@ describe('automatic imports keep the points of a file already playing', () => {
     const live = setup();
     const automaticImport = () => {
       live.markers['clipped'] = { ...newClip, markers: newMarks };
+      live.engine.holdPoints(['clipped']);
     };
     return { ...live, automaticImport };
   }
@@ -572,7 +574,7 @@ describe('automatic imports keep the points of a file already playing', () => {
     expect(engine.dispatch({ type: 'back' })).toMatchObject({ changed: true });
     expect(engine.current.layers.slide?.slideIndex).toBe(1);
     expect(engine.current.layers.pip).toEqual(box);
-    expect(engine.current.videoFiles?.clipped?.marks).toEqual(oldMarks);
+    expect(engine.current.videoFiles?.['clipped']?.marks).toEqual(oldMarks);
   });
 
   it('keeps the box video between the same points when shown again in a new place', () => {
@@ -584,7 +586,7 @@ describe('automatic imports keep the points of a file already playing', () => {
     const place = { ...DEFAULT_PIP_PLACE, x: 0.2 };
     expect(engine.dispatch({ ...putBox, place })).toMatchObject({ changed: true });
     expect(engine.current.layers.pip).toMatchObject({ shownAt, place, clips: { clipped: oldClip } });
-    expect(engine.current.videoFiles?.clipped?.marks).toEqual(oldMarks);
+    expect(engine.current.videoFiles?.['clipped']?.marks).toEqual(oldMarks);
   });
 
   it('carries on from the same points and marker ticks when putting back a slide and box', () => {
@@ -596,7 +598,7 @@ describe('automatic imports keep the points of a file already playing', () => {
     expect(engine.dispatch({ type: 'putBack' })).toMatchObject({ changed: true });
     expect(engine.current.layers.slide?.clips).toEqual({ clipped: oldClip });
     expect(engine.current.layers.pip?.clips).toEqual({ clipped: oldClip });
-    expect(engine.current.videoFiles?.clipped?.marks).toEqual(oldMarks);
+    expect(engine.current.videoFiles?.['clipped']?.marks).toEqual(oldMarks);
   });
 
   it('leaves the slide and box marker ticks alone on an unrelated engine change', () => {
@@ -605,7 +607,7 @@ describe('automatic imports keep the points of a file already playing', () => {
     engine.dispatch(putBox);
     automaticImport();
     expect(engine.learnLength('video', 61_000)).toMatchObject({ changed: true });
-    expect(engine.current.videoFiles?.clipped?.marks).toEqual(oldMarks);
+    expect(engine.current.videoFiles?.['clipped']?.marks).toEqual(oldMarks);
   });
 
   it.each(['background', 'audio', 'slide'] as const)(
@@ -616,7 +618,7 @@ describe('automatic imports keep the points of a file already playing', () => {
       if (layer === 'slide') {
         source.set('videos', [slideWith('s1', videoEl('v1', 'clipped'))]);
         engine.dispatch(goLive(0));
-        expect(engine.current.layers.slide?.clips?.clipped).toEqual(oldClip);
+        expect(engine.current.layers.slide?.clips?.['clipped']).toEqual(oldClip);
       } else {
         engine.dispatch(layer === 'background' ? setVideo('clipped') : playSound('clipped'));
       }
@@ -624,9 +626,9 @@ describe('automatic imports keep the points of a file already playing', () => {
       elapse(31_000);
       expect(engine.dispatch(play(ref))).toMatchObject({ ok: true, changed: true });
       if (layer === 'slide') {
-        expect(engine.current.layers.slide?.clips?.clipped).toEqual(newClip);
-        expect(engine.current.layers.slide?.seeks?.clipped).toEqual({ at: now(), toMs: newClip.startMs });
-        expect(engine.current.videoFiles?.clipped?.marks).toEqual(newMarks);
+        expect(engine.current.layers.slide?.clips?.['clipped']).toEqual(newClip);
+        expect(engine.current.layers.slide?.seeks?.['clipped']).toEqual({ at: now(), toMs: newClip.startMs });
+        expect(engine.current.videoFiles?.['clipped']?.marks).toEqual(newMarks);
       } else {
         expect(engine.current.layers[layer]).toMatchObject({
           clip: newClip,
@@ -651,7 +653,7 @@ describe('automatic imports keep the points of a file already playing', () => {
     expect(background(engine)).toMatchObject({ clip: newClip, marks: newMarks });
     expect(engine.current.layers.slide?.clips).toEqual({ clipped: newClip });
     expect(engine.current.layers.pip?.clips).toEqual({ clipped: newClip });
-    expect(engine.current.videoFiles?.clipped?.marks).toEqual(newMarks);
+    expect(engine.current.videoFiles?.['clipped']?.marks).toEqual(newMarks);
   });
 
   it('uses the operator’s new points and markers at once, through the next carry-on', () => {
@@ -668,16 +670,16 @@ describe('automatic imports keep the points of a file already playing', () => {
     expect(background(engine)).toMatchObject({ clip, marks });
     expect(engine.current.layers.slide?.clips).toEqual({ clipped: clip });
     expect(engine.current.layers.pip?.clips).toEqual({ clipped: clip });
-    expect(engine.current.videoFiles?.clipped?.marks).toEqual(marks);
+    expect(engine.current.videoFiles?.['clipped']?.marks).toEqual(marks);
   });
 
   it('restores the current library points after a restart', () => {
-    const { engine, markers, automaticImport } = setupImport();
+    const { engine, automaticImport } = setupImport();
     engine.dispatch(setVideo('clipped'));
     engine.dispatch(putBox);
     automaticImport();
     const restored = setup();
-    restored.markers['clipped'] = markers['clipped']!;
+    restored.markers['clipped'] = { ...newClip, markers: newMarks };
     const { background: savedBackground, pip } = engine.current.layers;
     expect(
       restored.engine.restore({ slide: null, background: savedBackground, blackout: false, pip }),
@@ -687,6 +689,6 @@ describe('automatic imports keep the points of a file already playing', () => {
     });
     expect(background(restored.engine)).toMatchObject({ clip: newClip, marks: newMarks });
     expect(restored.engine.current.layers.pip?.clips).toEqual({ clipped: newClip });
-    expect(restored.engine.current.videoFiles?.clipped?.marks).toEqual(newMarks);
+    expect(restored.engine.current.videoFiles?.['clipped']?.marks).toEqual(newMarks);
   });
 });

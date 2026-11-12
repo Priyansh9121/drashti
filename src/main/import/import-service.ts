@@ -43,6 +43,8 @@ export interface ImportServiceDeps {
    * committed: what is up playing them moves to them at once.
    */
   onMarked?(mediaIds: string[]): void;
+  /** Files an automatic import gave points to. Live playback keeps its current points. */
+  onAutoMarked?(mediaIds: string[]): void;
   /** After every run, with its summary when it finished. */
   onFinished(run: ImportRunSummary | null): void;
   /** Record a run as failed (its worker died or could not start). */
@@ -260,7 +262,8 @@ export class ImportService {
           this.deps.onWrote({ presentationId: m.presentationId, replaced: m.replaced });
           break;
         case 'marked':
-          this.deps.onMarked?.(m.mediaIds);
+          if (job.options.automatic) this.deps.onAutoMarked?.(m.mediaIds);
+          else this.deps.onMarked?.(m.mediaIds);
           break;
         case 'draw-pdf': {
           const drawn = this.deps.drawPdf

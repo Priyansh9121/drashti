@@ -72,6 +72,7 @@ import {
 } from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { keepMoves, learnedFiles, resolvePlaying, videoFilesFor } from './playing';
+import { type Playing, type PlayingRef, playingNow, playingOf } from '../../shared/engine/playing';
 import { oneAtATime, putsUp } from './one-at-a-time';
 import {
   clipLeftMs,
@@ -397,8 +398,32 @@ function nearestSlide(slides: readonly PlayedSlide[], slideId: string, near: num
   return Math.max(0, best);
 }
 
+interface PlaybackPoints {
+  clip?: PlaybackClip;
+  marks?: PlaybackMarker[];
+}
+type PointsLayer = PlayingRef['layer'] | 'over';
+interface HeldPoints {
+  startedAt: number;
+  points: PlaybackPoints;
+}
+
+function withPoints<T extends PlaybackPoints>(layer: T, points: PlaybackPoints | undefined): T {
+  if (!points || (sameData(layer.clip, points.clip) && sameData(layer.marks, points.marks))) return layer;
+  const { clip: _clip, marks: _marks, ...rest } = layer;
+  return { ...rest, ...points } as T;
+}
+
 export class ShowEngine {
   private state: EngineState = initialEngineState();
+  /** Points on the current playback clocks when an automatic import changed their library entries. */
+  private readonly heldPoints: Record<PointsLayer, Map<string, HeldPoints>> = {
+    background: new Map(),
+    audio: new Map(),
+    over: new Map(),
+    slide: new Map(),
+    pip: new Map(),
+  };
   private revision = 0;
   /**
    * The revision of the last change that was more than live captions (Session 55, Part 10): a phone's Next sent with
@@ -544,6 +569,7 @@ export class ShowEngine {
    * that no longer exists is left out.
    */
   restore(request: RestoreRequest): Restored {
+    for (const layer of Object.values(this.heldPoints)) layer.clear();
     return this.atOnce(() => this.restoreAt(request));
   }
 
@@ -1288,11 +1314,25 @@ export class ShowEngine {
         : null;
       if (!sameData(listed, box)) layers = { ...layers, pip: listed };
     }
-    const bg = layers.background;
-    const audio = layers.audio;
+    const bg =
+      layers.background?.kind === 'media'
+        ? withPoints(
+            layers.background,
+            this.heldFor(layers.background.mediaId, 'background', layers.background.startedAt),
+          )
+        : layers.background;
+    const audio = layers.audio
+      ? withPoints(layers.audio, this.heldFor(layers.audio.mediaId, 'audio', layers.audio.startedAt))
+      : null;
     const bgLength = bg?.kind === 'media' && bg.durationMs === undefined ? this.lengthOf(bg.mediaId) : {};
     const audioLength = audio && audio.durationMs === undefined ? this.lengthOf(audio.mediaId) : {};
-    if (Object.keys(bgLength).length === 0 && Object.keys(audioLength).length === 0) return layers;
+    if (
+      bg === layers.background &&
+      audio === layers.audio &&
+      Object.keys(bgLength).length === 0 &&
+      Object.keys(audioLength).length === 0
+    )
+      return layers;
     return {
       ...layers,
       background: bg?.kind === 'media' ? { ...bg, ...bgLength } : bg,
@@ -1745,8 +1785,67 @@ export class ShowEngine {
     return { ok: false, error: 'not-playable', message };
   }
 
+  /** Keep the points already stamped on live playback when an automatic import saves new ones. */
+  holdPoints(mediaIds: readonly string[]): void {
+    const affected = new Set(mediaIds);
+    const hold = (
+      mediaId: string | null,
+      layer: PointsLayer,
+      startedAt: number,
+      clip: PlaybackClip | undefined,
+      marks: readonly PlaybackMarker[],
+    ) => {
+      if (!mediaId || !affected.has(mediaId)) return;
+      const points = { ...(clip ? { clip } : {}), ...(marks.length ? { marks: [...marks] } : {}) };
+      this.heldPoints[layer].set(mediaId, { startedAt, points });
+    };
+    for (const { mediaId, ref, clock, marks } of playingNow(this.state))
+      hold(mediaId, ref.layer, clock.startedAt, clock.clip, marks);
+    const over = this.state.layers.audio?.over;
+    if (over) hold(over.mediaId, 'over', over.startedAt, over.clip, over.marks ?? []);
+  }
+
+  private heldFor(
+    mediaId: string | null,
+    layer: PointsLayer,
+    startedAt: number | undefined,
+  ): PlaybackPoints | undefined {
+    const held = mediaId ? this.heldPoints[layer].get(mediaId) : undefined;
+    return held && held.startedAt === startedAt ? held.points : undefined;
+  }
+
+  /** A fresh play reads the library. A carried play can keep its stamped points. */
+  private pointsFor(
+    mediaId: string | null,
+    layer: PointsLayer,
+    carryAt?: number,
+    itemId?: string,
+  ): PlaybackPoints {
+    if (mediaId && carryAt === undefined) this.heldPoints[layer].delete(mediaId);
+    return this.heldFor(mediaId, layer, carryAt) ?? this.clipOf(mediaId, itemId);
+  }
+
+  /** Starting again after the time bar reaches the end is a fresh play of that file. */
+  private refreshRestart({ mediaId, ref, clock }: Playing): EngineState | null {
+    if (!this.heldFor(mediaId, ref.layer, clock.startedAt)) return null;
+    this.heldPoints[ref.layer].delete(mediaId);
+    const layers = this.state.layers;
+    if (ref.layer === 'background' && layers.background?.kind === 'media') {
+      const bg = layers.background;
+      const points = this.clipOf(mediaId, backgroundItemId(bg, this.state.live.playlist?.itemId));
+      return { ...this.state, layers: { ...layers, background: withPoints(bg, points) } };
+    }
+    if (ref.layer === 'audio' && layers.audio) {
+      const audio = withPoints(layers.audio, this.clipOf(mediaId));
+      return { ...this.state, layers: { ...layers, audio } };
+    }
+    if (ref.layer === 'slide' && layers.slide)
+      return { ...this.state, layers: { ...layers, slide: this.slideClips(layers.slide) } };
+    return null;
+  }
+
   /** A file's start and end points as the library has them (left out when it has none). */
-  private clipOf(mediaId: string | null, itemId?: string): { clip?: PlaybackClip; marks?: PlaybackMarker[] } {
+  private clipOf(mediaId: string | null, itemId?: string): PlaybackPoints {
     const m = mediaId ? (this.options.mediaMarkers?.(mediaId, itemId) ?? null) : null;
     if (!m) return {};
     return {
@@ -1762,11 +1861,11 @@ export class ShowEngine {
    * library has them: a slide's videos play between them, as a background video does.
    * Left out when none has any (a picture never plays, so it has none).
    */
-  private clipsOf(elements: readonly SlideElement[]): { clips?: VideoClips } {
+  private clipsOf(elements: readonly SlideElement[], shownAt?: number): { clips?: VideoClips } {
     const clips = new Map<string, PlaybackClip>();
     for (const el of elements) {
       if (el.kind !== 'video' || clips.has(el.mediaId)) continue;
-      const { clip } = this.clipOf(el.mediaId);
+      const { clip } = this.pointsFor(el.mediaId, 'slide', shownAt);
       if (clip) clips.set(el.mediaId, clip);
     }
     return clips.size > 0 ? { clips: Object.fromEntries(clips) } : {};
@@ -1776,10 +1875,12 @@ export class ShowEngine {
    * A slide's videos' points (Session 52), and a deck's own videos' and sounds' trims (Session 54, C2): the engine
    * stamps the deck's, not the library's, for them.
    */
-  private slideClipsOf(slide: RenderSlide): { clips?: VideoClips } {
+  private slideClipsOf(slide: RenderSlide, shownAt?: number): { clips?: VideoClips } {
     const own = deckClips(slide.deck);
-    if (Object.keys(own).length === 0) return this.clipsOf(slide.elements);
-    return { clips: { ...this.clipsOf(slide.elements).clips, ...own } };
+    if (shownAt === undefined && this.heldPoints.slide.size)
+      for (const media of slide.deck?.media ?? []) this.heldPoints.slide.delete(media.mediaId);
+    if (Object.keys(own).length === 0) return this.clipsOf(slide.elements, shownAt);
+    return { clips: { ...this.clipsOf(slide.elements, shownAt).clips, ...own } };
   }
 
   /**
@@ -1789,7 +1890,7 @@ export class ShowEngine {
    */
   private slideClips(layer: SlideLayer): SlideLayer {
     const { clips: was, ...rest } = layer;
-    const now = this.slideClipsOf(layer.slide);
+    const now = this.slideClipsOf(layer.slide, layer.shownAt);
     return sameData(was, now.clips) ? layer : { ...rest, ...now };
   }
 
@@ -1798,10 +1899,11 @@ export class ShowEngine {
    * video from Media in it plays between them, as a slide's does; a picture, a video input, a window and the slides
    * have none (the slides' own videos are the slide layer's). The same box while they are the same, as for a slide.
    */
-  private pipClips(box: PipLayer): PipLayer {
+  private pipClips(box: PipLayer, carry = true): PipLayer {
     const { clips: was, ...rest } = box;
     const video = box.source.kind === 'media' && box.source.media === 'video' ? box.source.mediaId : null;
-    const clip = video === null ? undefined : this.clipOf(video).clip;
+    const clip =
+      video === null ? undefined : this.pointsFor(video, 'pip', carry ? box.shownAt : undefined).clip;
     const now = video !== null && clip ? { [video]: clip } : undefined;
     return sameData(was, now) ? box : { ...rest, ...(now ? { clips: now } : {}) };
   }
@@ -1812,27 +1914,26 @@ export class ShowEngine {
    * the picture-in-picture box (Session 53).
    */
   refreshMarkers(mediaId: string): CommandResult {
+    for (const layer of Object.values(this.heldPoints)) layer.delete(mediaId);
     const actions: EngineAction[] = [];
-    const strip = <T extends { clip?: unknown; marks?: unknown }>(layer: T): T => {
-      const { clip: _c, marks: _m, ...rest } = layer;
-      return rest as T;
-    };
     const bg = this.state.layers.background;
     if (bg?.kind === 'media' && bg.mediaId === mediaId)
       actions.push({
         type: 'background/set',
-        background: {
-          ...strip(bg),
-          ...this.clipOf(mediaId, backgroundItemId(bg, this.state.live.playlist?.itemId)),
-        },
+        background: withPoints(
+          bg,
+          this.clipOf(mediaId, backgroundItemId(bg, this.state.live.playlist?.itemId)),
+        ),
       });
     const audio = this.state.layers.audio;
-    if (audio?.mediaId === mediaId)
-      actions.push({ type: 'audio/set', audio: { ...strip(audio), ...this.clipOf(mediaId) } });
-    const plays = (elements: readonly SlideElement[]) =>
-      elements.some((el) => el.kind === 'video' && el.mediaId === mediaId);
+    if (audio && (audio.mediaId === mediaId || audio.over?.mediaId === mediaId)) {
+      const points = this.clipOf(mediaId);
+      const next = audio.mediaId === mediaId ? withPoints(audio, points) : audio;
+      const over = audio.over?.mediaId === mediaId ? withPoints(audio.over, points) : audio.over;
+      actions.push({ type: 'audio/set', audio: over === audio.over ? next : { ...next, over } });
+    }
     const slide = this.state.layers.slide;
-    if (slide && plays(slide.slide.elements))
+    if (slide && playingOf(this.state, { layer: 'slide', mediaId }))
       actions.push({ type: 'slide/put', layer: this.slideClips(slide) });
     // The box keeps its time, its place and a swap running (Session 53), so its video carries on.
     const box = this.state.layers.pip;
@@ -1897,7 +1998,7 @@ export class ShowEngine {
       startedAt,
       music,
       ...this.lengthOf(track?.mediaId ?? null),
-      ...this.clipOf(track?.mediaId ?? null),
+      ...this.pointsFor(track?.mediaId ?? null, 'audio'),
     };
   }
 
@@ -1987,7 +2088,7 @@ export class ShowEngine {
       ...choice,
       startedAt: same ? current.startedAt : this.now(),
       ...this.lengthOf(choice.mediaId),
-      ...this.clipOf(choice.mediaId),
+      ...this.pointsFor(choice.mediaId, 'audio', same ? current.startedAt : undefined),
       // The same file carrying on keeps a jump it made.
       ...(same && current.seek ? { seek: current.seek } : {}),
     };
@@ -2007,9 +2108,10 @@ export class ShowEngine {
     if (choice.kind === 'color') return choice;
     const current = this.state.layers.background;
     const length = this.lengthOf(choice.mediaId);
-    const clip = this.clipOf(choice.mediaId, itemId);
+    const same = !again && current?.kind === 'media' && current.mediaId === choice.mediaId;
+    const clip = this.pointsFor(choice.mediaId, 'background', same ? current.startedAt : undefined, itemId);
     const media = { ...choice, ...(choice.media === 'video' ? { sourceItemId: itemId ?? null } : {}) };
-    if (!again && current?.kind === 'media' && current.mediaId === choice.mediaId)
+    if (same)
       return {
         ...media,
         startedAt: current.startedAt,
@@ -2195,7 +2297,7 @@ export class ShowEngine {
       ...choice,
       startedAt: same ? was.startedAt : this.now(),
       ...this.lengthOf(choice.mediaId),
-      ...this.clipOf(choice.mediaId),
+      ...this.pointsFor(choice.mediaId, 'over', same ? was.startedAt : undefined),
       ...(same && was.seek ? { seek: was.seek } : {}),
       cue: true,
     };
@@ -2579,12 +2681,10 @@ export class ShowEngine {
         return { ok: true, actions: [this.musicStep(a, command.type === 'musicNext' ? 1 : -1, this.now())] };
       }
       case 'jumpToMarker': {
-        const layer = command.layer === 'audio' ? this.state.layers.audio : this.state.layers.background;
-        const mediaId = layer && 'mediaId' in layer ? layer.mediaId : null;
-        const marker = mediaId
-          ? this.options.mediaMarkers?.(mediaId)?.markers.find((m) => m.id === command.markerId)
-          : undefined;
-        if (!layer || !mediaId || !marker)
+        const marker = playingOf(this.state, { layer: command.layer })?.marks.find(
+          (m) => m.id === command.markerId,
+        );
+        if (!marker)
           return { ok: false, error: 'unknown-marker', message: 'That marker is not on what is playing' };
         const seek = { at: this.now(), toMs: marker.atMs };
         if (command.layer === 'audio' && this.state.layers.audio) {
@@ -2608,6 +2708,7 @@ export class ShowEngine {
           return this.resolve({ type: command.type === 'pausePlaying' ? 'pauseMusic' : 'resumeMusic' });
         return resolvePlaying(this.state, command, this.now(), {
           nextTrack: (at) => (track ? this.musicStep(track, 1, at) : { type: 'layer/clear', layer: 'audio' }),
+          refreshRestart: (playing) => this.refreshRestart(playing),
         });
       }
       case 'setMusicLoop': {
@@ -2635,10 +2736,13 @@ export class ShowEngine {
       // Picture in picture (Session 50, pip.ts): what the box holds is looked up here, never taken from a page; a
       // video from Media in it plays between its file's points as the library has them (Session 53).
       case 'showPip': {
-        const shown = showPip(this.state.layers.pip, command.source, command.place, this.now(), this.options);
+        const current = this.state.layers.pip;
+        const shown = showPip(current, command.source, command.place, this.now(), this.options);
         if (!shown.ok) return shown;
         const actions = shown.actions.map((a) =>
-          a.type === 'pip/set' ? { ...a, layer: this.pipClips(a.layer) } : a,
+          a.type === 'pip/set'
+            ? { ...a, layer: this.pipClips(a.layer, sameData(a.layer.source, current?.source)) }
+            : a,
         );
         return { ok: true, actions };
       }
@@ -2796,7 +2900,17 @@ export class ShowEngine {
     // What the time bar shows of the slide's and the box's videos (Session 54).
     const files = videoFilesFor(next, {
       lengthOf: (id) => this.options.mediaLength?.(id) ?? null,
-      markersOf: (id) => this.options.mediaMarkers?.(id) ?? null,
+      marksOf: (id) => {
+        const { slide, pip } = next.layers;
+        const heldSlide = this.heldFor(id, 'slide', slide?.shownAt);
+        const heldBox =
+          pip?.source.kind === 'media' && pip.source.mediaId === id
+            ? this.heldFor(id, 'pip', pip.shownAt)
+            : undefined;
+        const held =
+          (heldSlide && playingOf(next, { layer: 'slide', mediaId: id }) ? heldSlide : undefined) ?? heldBox;
+        return held ? held.marks : this.options.mediaMarkers?.(id)?.markers;
+      },
     });
     if (!sameData(next.videoFiles ?? null, files)) next = reduce(next, { type: 'videoFiles/set', files });
     // How the files sounding now play (Session 55, Part 7): each one's even gain, and the music stepping aside.
