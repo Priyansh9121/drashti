@@ -72,6 +72,9 @@ export function describeRun(run: {
   totals: {
     presentations: number;
     media: number;
+    imported: number;
+    replaced: number;
+    keptBoth: number;
     skipped: number;
     conflicts: number;
     failed: number;
@@ -82,6 +85,8 @@ export function describeRun(run: {
   const parts: string[] = [];
   if (t.presentations > 0) parts.push(`Imported ${plural(t.presentations, 'presentation')}`);
   if (t.media > 0) parts.push(plural(t.media, 'media file'));
+  const imported = t.imported + t.replaced + t.keptBoth;
+  if (parts.length === 0 && imported > 0) parts.push(`Imported ${plural(imported, 'file')}`);
   if (t.skipped > 0) parts.push(`${t.skipped.toLocaleString('en')} already in the library`);
   if (t.conflicts > 0) parts.push(`${plural(t.conflicts, 'changed file')} left out`);
   if (t.failed > 0) parts.push(plural(t.failed, 'problem'));
