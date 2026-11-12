@@ -187,9 +187,19 @@ test('a node stops with its Main: its screens fade to black, and its window says
   }
 });
 
+/**
+ * Main, for the test of its node's own 2 minutes (20 s here): its own 15 days at 10 minutes, as for every Drashti
+ * whose stop a test is not about (tests/e2e/access.ts), more than the whole test below. Started again once its node
+ * has gone black, it is well within them however slow the machine, as in use (2 minutes against 15 days): it opens at
+ * once on the answer it kept and asks the list in the background. At 20 s like the node's, a start about 20 s after
+ * Main's last answer could open with a moment of them left and stop at their end before the list answered (as
+ * designed: alpha.16's gate, on the Mac).
+ */
+const MAIN_FOR_NODE = { ...FAST, DRASHTI_TEST_ACCESS_STOP_MS: String(10 * 60_000) };
+
 test('a node that hears no Main let in for 2 minutes (20 s here) goes black, and shows again when it does', async () => {
   test.setTimeout(240_000);
-  const main = await launchMain(FAST);
+  const main = await launchMain(MAIN_FOR_NODE);
   const node = await launchNode(FAST);
   try {
     const nodeId = await pairNode(main, node);
@@ -204,7 +214,7 @@ test('a node that hears no Main let in for 2 minutes (20 s here) goes black, and
     });
     await expect(node.page.getByTestId('node-stopped')).toHaveAttribute('data-why', 'not-heard');
     // Main again, let in: the node shows its show again.
-    const again = await launchMain(FAST, { port: main.port, userData: main.userData });
+    const again = await launchMain(MAIN_FOR_NODE, { port: main.port, userData: main.userData });
     try {
       await expect(node.page.getByTestId('node-link-state')).toHaveText('Online', { timeout: 30_000 });
       await expect(node.page.getByTestId('node-stopped')).toHaveCount(0, { timeout: 20_000 });
