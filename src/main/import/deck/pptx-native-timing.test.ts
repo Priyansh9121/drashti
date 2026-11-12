@@ -186,7 +186,7 @@ describe('PowerPoint slide animation timing', () => {
     }
   });
 
-  it('reads the gallery Zoom, Float, Split and symmetric Grow/Shrink with their durations, keeping PowerPoint’s video for all but the Zoom', () => {
+  it('reads the gallery Zoom, Float, Split and symmetric Grow/Shrink with their durations, keeping PowerPoint’s video only for Split', () => {
     const click = (id: number, preset: string, cls: 'entr' | 'exit' | 'emph', children: string) =>
       parallel(
         id,
@@ -235,16 +235,17 @@ describe('PowerPoint slide animation timing', () => {
         click(40, '16', 'entr', split) +
         click(50, '6', 'emph', grow),
     );
-    // Only the gallery Zoom has been compared with PowerPoint's own movie (12 Nov): the others are drawn by Drashti
-    // where no video can be made, and keep PowerPoint's video wherever one can be.
-    expect(read(click(10, '53', 'entr', zoom)).motion?.approximate).toBe(false);
+    // Compared with PowerPoint's own movie: the gallery Zoom (12 Nov), Float in and out and Grow/Shrink (13 Nov), all
+    // within a pixel (shared/deck-motion-powerpoint.test.ts), so Drashti plays them itself. Split is drawn by Drashti
+    // where no video can be made, and keeps PowerPoint's video wherever one can be.
     for (const [preset, cls, children] of [
+      ['53', 'entr', zoom],
       ['42', 'entr', float(3, 'in')],
       ['47', 'exit', float(4, 'out')],
-      ['16', 'entr', split],
       ['6', 'emph', grow],
     ] as const)
-      expect(read(click(20, preset, cls, children)).motion?.approximate).toBe(true);
+      expect(read(click(20, preset, cls, children)).motion?.approximate, `preset ${preset}`).toBe(false);
+    expect(read(click(20, '16', 'entr', split)).motion?.approximate).toBe(true);
     expect(slide.motion).toMatchObject({
       approximate: true,
       effects: [
@@ -372,7 +373,7 @@ describe('PowerPoint slide animation timing', () => {
       });
   });
 
-  it('turns Grow & Turn and Shrink & Turn while they scale and fade, keeping PowerPoint’s video where one can be made', () => {
+  it('turns Grow & Turn and Shrink & Turn while they scale and fade, as PowerPoint plays them', () => {
     const turn = (direction: 'in' | 'out') => {
       const [small, full] =
         direction === 'in' ? [number(0), formula('#ppt_w')] : [formula('#ppt_w'), number(0)];
@@ -386,14 +387,17 @@ describe('PowerPoint slide animation timing', () => {
         fadeOf(2, 24, direction)
       );
     };
+    // As PowerPoint writes them, compared with its own movie (13 Nov): within a pixel and a degree.
     for (const [direction, cls] of [
       ['in', 'entr'],
       ['out', 'exit'],
     ] as const)
       expect(alone('31', cls, turn(direction))).toMatchObject({
-        approximate: true,
+        approximate: false,
         effects: [{ phase: direction, kind: 'zoom', fade: true, scale: 0, degrees: 90, durationMs: 500 }],
       });
+    // A turn Drashti cannot read is drawn the closest way, keeping PowerPoint's video where one can be made.
+    expect(alone('31', 'entr', turn('in').replace(number(90), formula('#ppt_w')))?.approximate).toBe(true);
   });
 
   it('plays Split in from both edges as well as out from the middle, keeping PowerPoint’s video where one can be made', () => {
