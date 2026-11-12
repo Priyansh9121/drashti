@@ -5,12 +5,14 @@ import { join } from 'node:path';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { documentPageFromJson } from '../../shared/document-page';
 import { openDatabase } from '../db/database';
+import { ImportRepo } from '../db/imports';
 import { PresentationRepo } from '../db/presentations';
 import type * as Converters from './deck-converters';
 import * as deckFlow from './deck/deck-flow';
 import { readEditablePptx } from './deck/editable-pptx';
 import { MediaStore } from './media-store';
 import { OriginalsStore } from './originals-store';
+import { readPptx } from './pictures';
 import { runImport } from './pipeline';
 import { editablePicture } from './testing/editable-pptx-fixture';
 import { makeTestPdf } from './testing/make-pdf';
@@ -140,7 +142,7 @@ it.each(['matched', 'uncertain', 'shifted', 'mismatched', 'no export'] as const)
             'Placeholder PDF notes',
             'Placeholder PDF notes',
           ]);
-          expect(result.items[0]?.issues).toContainEqual(
+          expect(new ImportRepo(db).report(result.id)?.items[0]?.issues).toContainEqual(
             expect.objectContaining({ code: 'keynote-pages-out-of-order' }),
           );
         }
@@ -156,6 +158,11 @@ it.each(['matched', 'uncertain', 'shifted', 'mismatched', 'no export'] as const)
       const editable = await originals.resolve(derivative);
       if (!editable) throw new Error('The editable derivative was lost with the work folder.');
       expect(readFileSync(editable)).toEqual(pptx);
+      expect((await readPptx(editable, true)).map((slide) => slide.pageText)).toEqual([
+        first,
+        'Placeholder skipped slide',
+        last,
+      ]);
       const deck = await readEditablePptx(editable, join(root, 'prepared'));
       expect(deck.slides[2]?.elements.find((element) => element.kind === 'text')).toMatchObject({
         text: 'Placeholder last slide',

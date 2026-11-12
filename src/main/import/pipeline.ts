@@ -49,7 +49,7 @@ import { TRANSLIT_STYLES, type TranslitStyle } from '../../shared/translit';
 import { unreadPictureWords } from '../../shared/media';
 import { playIssues } from './probe';
 import { extOf, formatOf, type ScannedFile, scanPaths } from './scan';
-import type { PicturesResult } from '../../shared/pictures';
+import type { DrawPdf, PicturesResult } from '../../shared/pictures';
 import { pictureSourceOf } from '../../shared/pictures';
 import {
   checkDeck,
@@ -61,6 +61,7 @@ import {
 } from './deck-converters';
 import { standInPdf } from './stand-in-converter';
 import {
+  keynotePagesShifted,
   notesForPages,
   picturesIssues,
   picturesPresentation,
@@ -150,7 +151,7 @@ export interface PipelineContext {
   /** Where bundles are unpacked (default: the system's temporary folder). */
   tempDir?: string;
   /** Draws a PDF's pages as pictures (the main process does, in a window; Session 15). */
-  drawPdf?: (pdf: string, outDir: string) => Promise<PicturesResult>;
+  drawPdf?: DrawPdf;
   /**
    * Whether Keynote or PowerPoint may save PowerPoint and Keynote files as PDF (default yes), or
    * 'stand-in' (tests only: ./stand-in-converter.ts saves PowerPoint files as PDF in their place).
@@ -1310,20 +1311,32 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       t = performance.now();
       const drawPdf = ctx.drawPdf;
       // Drawn already as the deck's movie was made (Session 56): its slides shown as these pictures.
-      const drawn = reuse ?? (await steps.time('pictures', () => drawPdf(pdf, join(work, 'pages'))));
+      const drawn =
+        reuse ??
+        (await steps.time('pictures', () => drawPdf(pdf, join(work, 'pages'), keynoteExport !== null)));
       time('parse', t);
       if (!drawn.ok) {
         fail('pictures-not-drawn', drawn.message);
         return;
       }
-      const notes = slides ? notesForPages(slides, drawn.total) : null;
+      const shifted = keynoteExport !== null && keynotePagesShifted(keynoteExport.slides, drawn);
+      const notes = !shifted && slides ? notesForPages(slides, drawn.total) : null;
       const parsed = picturesPresentation(
         fileName,
         drawn,
         drawn.pages.map((p) => notes?.[p.index] ?? ''),
       );
-      let editableSlides: readonly PptxSlide[] | null = slides;
-      if (keynoteExport) {
+      let editableSlides: readonly PptxSlide[] | null = shifted ? null : slides;
+      if (shifted) {
+        deckIssues.push({
+          severity: 'warning',
+          code: 'keynote-pages-out-of-order',
+          message:
+            'The Keynote PDF and PowerPoint copy have a different page order. Edit slides uses the PDF and its notes.',
+          fix: null,
+        });
+      }
+      if (keynoteExport && !shifted) {
         const exportSlides = keynoteExport.slides;
         const shown = visibleIndices(exportSlides);
         if (drawn.total === exportSlides.length || drawn.total === shown.length) {
@@ -1361,7 +1374,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       }));
       // The deck's own videos on its pictures' slides, and a sound that starts with its slide (Session 54, C2).
       const added =
-        deckRead && drawn.pages.length === drawn.total
+        deckRead && !shifted && drawn.pages.length === drawn.total
           ? await steps.time('deck', () =>
               addDeckMedia(
                 parsed,
@@ -1374,7 +1387,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
               ),
             )
           : { videos: 0, cued: 0, left: 0, unmatched: deckRead ? deckMediaCount(deckRead.deck) : 0 };
-      const shown = slides?.filter((sl) => !sl.hidden) ?? [];
+      const shown = !shifted ? (slides?.filter((sl) => !sl.hidden) ?? []) : [];
       parsed.issues = picturesIssues({
         source,
         converter,
@@ -1383,7 +1396,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           ? { editableSource: editableOriginal.ext }
           : {}),
         hidden:
-          slides && shown.length < slides.length && drawn.total === shown.length
+          !shifted && slides && shown.length < slides.length && drawn.total === shown.length
             ? slides.length - shown.length
             : 0,
         pages: drawn.pages.length,
@@ -1391,10 +1404,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         failed: drawn.failed,
         withNotes: parsed.groups.flatMap((g) => g.slides).filter((sl) => sl.notes !== '').length,
         animated: shown.filter((sl) => sl.animated).length,
-        notesUnmatched: slides !== null && notes === null && slides.some((sl) => sl.notes !== ''),
+        notesUnmatched: !shifted && slides !== null && notes === null && slides.some((sl) => sl.notes !== ''),
       });
       parsed.issues.splice(1, 0, ...deckIssues, ...picturesMediaIssues(added));
-      await addDeckFonts(parsed, keynoteExport?.file);
+      if (!shifted) await addDeckFonts(parsed, keynoteExport?.file);
       told.how = 'pictures';
       told.slides = slideCount(parsed);
       // In place of its slides shown as these pictures while its animations were tried (Session 56), unless changed.
