@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { MediaMarkers } from '../../shared/markers';
 import { idSchema } from '../../shared/model-schema';
 import type { RowTrimRequest, RowTrimResult } from '../../shared/trim';
-import type { TrimmedVideos } from '../db/trimmed';
+import type { TrimMarkerEdits, TrimmedVideos } from '../db/trimmed';
 import { sha256File } from '../import/media-store';
 import { isInside } from '../media/contained';
 import type { FitResult } from './convert-service';
@@ -50,10 +50,25 @@ const FAILED = 'Drashti couldn’t keep the trimmed video. Check the video file 
 const RESET_LIVE = 'Take the video off before resetting this row.';
 
 function cutFailed(name: string, reason: string): string {
-  const help = reason.includes('2 GB free')
-    ? 'Free up some disk space, then open Trim and save it again.'
-    : 'Open Trim and save it again.';
-  return `Drashti couldn’t make the cut of “${name}”. ${help}`;
+  const failed = `Drashti couldn’t make the cut of “${name}”.`;
+  if (reason.includes('2 GB free')) return `${failed} Free up some disk space, then open Trim and save it again.`;
+  if (reason.endsWith('Install Drashti again.')) return `${failed} Install Drashti again.`;
+  if (reason.startsWith('Stopped: saving it took longer than '))
+    return `${failed} It took too long. Choose a shorter part and save it again.`;
+  if (reason.startsWith('Drashti could not write in its own folder:') || reason.startsWith('Drashti could not save it there:'))
+    return `${failed} Ask the admin to check Drashti’s media folder, then open Trim and save it again.`;
+  return `${failed} Open Trim and save it again.`;
+}
+
+function resetMarkerEdits(before: MediaMarkers, after: MediaMarkers): TrimMarkerEdits | undefined {
+  const previous = new Map(before.markers.map((marker) => [marker.id, marker]));
+  const changed = after.markers.filter((marker) => {
+    const old = previous.get(marker.id);
+    previous.delete(marker.id);
+    return !old || marker.atMs !== old.atMs || marker.name !== old.name;
+  });
+  const removed = [...previous.keys()];
+  return changed.length || removed.length ? { changed, removed } : undefined;
 }
 
 /** A row keeps playing its current video until the queued cut has been checked and saved. */
@@ -94,7 +109,7 @@ export class PlaylistTrims {
     const before = this.deps.repo.view(itemId);
     if (!before) return CHANGED;
     if (points.startMs === null && points.endMs === null && before.canReset)
-      return this.reset(itemId, mediaId);
+      return this.resetRow(row, resetMarkerEdits(before.markers, points));
     if (this.pending.has(itemId))
       return { ok: false, message: 'This video is already being trimmed. Wait for Preparing to clear.' };
     if ((points.startMs ?? 0) === (before.markers.startMs ?? 0) && points.endMs === before.markers.endMs)
@@ -133,18 +148,14 @@ export class PlaylistTrims {
           message: 'Choose a start and end within the original video, with the end later.',
         };
 
-      if (requestedStart === 0 && info.durationMs !== null && endMs >= info.durationMs)
-        return before.canReset
-          ? this.reset(itemId, mediaId)
-          : this.saveMarkers(row, { ...points, startMs: null, endMs: null });
-
-      const startMs = await this.deps.frameAt(path, requestedStart);
+      const frame =
+        requestedStart === 0 ? 0 : await this.deps.frameAt(path, requestedStart).catch(() => null);
       if (this.pending.get(itemId) !== pending || !this.deps.repo.current(row)) return CHANGED;
-      if (startMs === null || startMs >= endMs)
-        return {
-          ok: false,
-          message: 'Drashti couldn’t find the starting frame. Choose a different start and save again.',
-        };
+      const startMs = frame !== null && frame < endMs ? frame : requestedStart;
+      if (startMs === 0 && info.durationMs !== null && endMs >= info.durationMs)
+        return before.canReset
+          ? this.resetRow(row, resetMarkerEdits(before.markers, points))
+          : this.saveMarkers(row, { ...points, startMs: null, endMs: null });
 
       pending.kept = { itemId, mediaId, name: row.sourceName };
       this.keepWaiting();
@@ -176,14 +187,22 @@ export class PlaylistTrims {
   reset(itemId: string, mediaId: string): RowTrimResult {
     const row = this.deps.repo.row(itemId);
     if (row?.mediaId !== mediaId) return CHANGED;
-    if (this.deps.isLive(itemId, mediaId)) return { ok: false, message: RESET_LIVE };
-    if (!this.deps.repo.reset(row)) return CHANGED;
-    const pending = this.pending.get(itemId);
+    return this.resetRow(row);
+  }
+
+  private resetRow(row: TrimSource, edits?: TrimMarkerEdits): RowTrimResult {
+    if (this.deps.isLive(row.itemId, row.mediaId)) return { ok: false, message: RESET_LIVE };
+    const reset = this.deps.repo.reset(row, edits);
+    if (reset === 'too-many-markers')
+      return { ok: false, message: 'The original can hold up to 50 markers. Remove a marker and save again.' };
+    if (reset === 'changed') return CHANGED;
+    const pending = this.pending.get(row.itemId);
     if (pending) {
       if (pending.queueId !== null) this.deps.cancel(pending.queueId);
-      this.clear(itemId, pending);
+      this.clear(row.itemId, pending);
     }
     this.deps.rowChanged(null);
+    if (edits) this.deps.markersChanged(row.sourceId);
     return { ok: true };
   }
 
