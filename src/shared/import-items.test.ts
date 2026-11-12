@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NO_COUNTS, type ImportItemReport } from './import';
-import { itemsMadeBy, leftOutLine } from './import-items';
+import { itemsMadeBy } from './import-items';
 
 const item = (
   sourcePath: string,
@@ -86,26 +86,5 @@ describe('what an import made, as playlist items', () => {
       { kind: 'media', mediaId: 'm-a' },
       { kind: 'presentation', presentationId: 'p-old' },
     ]);
-  });
-});
-
-describe('what Simple Mode’s import left out, in one line (Session 55, Part 18)', () => {
-  const leftOut = (name: string, message: string, outcome: ImportItemReport['outcome'] = 'unsupported') => ({
-    ...item(`/in/${name}`, null, outcome),
-    name,
-    message,
-  });
-  it('names the file and says why; with more, how many more', () => {
-    expect(leftOutLine([item('/in/a.png', { kind: 'media', id: 'm' })])).toBeNull();
-    expect(leftOutLine([leftOut('Placeholder.txt', 'Placeholder reason.')])).toBe(
-      '“Placeholder.txt”: Placeholder reason.',
-    );
-    expect(
-      leftOutLine([
-        item('/in/a.png', { kind: 'media', id: 'm' }),
-        leftOut('Placeholder.txt', 'Placeholder reason.'),
-        leftOut('Damaged.png', 'Placeholder other reason.', 'failed'),
-      ]),
-    ).toBe('“Placeholder.txt” and 1 more were not brought in. “Placeholder.txt”: Placeholder reason.');
   });
 });

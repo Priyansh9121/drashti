@@ -22,15 +22,15 @@ import {
   TARGET_FORMAT,
 } from './plan';
 import { PROBE_MS, readInfo } from './read-info';
-import { moveBack, moveMedia, type Moved, presentationsMoved } from './relink';
+import { copyFinder, moveBack, moveMedia, type Moved, presentationsMoved } from './relink';
 import { freeFileName } from './trim';
 
 /*
  * Converting media Drashti cannot play (PLAN.md 4.4), one file at a time,
- * in the background, with FFmpeg at the lowest priority. While the stream
- * is on air or recording a conversion waits (one already going stops and
- * starts again afterwards), and none starts or carries on with less than
- * 2 GB free. The original is never changed or deleted: the converted file
+ * in the background, with FFmpeg at the lowest priority. A conversion waits
+ * while the show is on, the stream is on air or a recording is running.
+ * One already going stops and starts again afterwards, and none starts or
+ * carries on with less than 2 GB free. The original is never changed or deleted: the converted file
  * goes into the media folder as a media item of its own, and everything
  * that used the original is moved to it (src/main/convert/relink.ts), kept
  * so Undo can move it back. What is on the screens is left alone: it keeps
@@ -43,7 +43,7 @@ import { freeFileName } from './trim';
  * Session 51: the conversions not finished are kept with the library as they
  * change, so those waiting or going on when Drashti quits (or stops) wait
  * again at its next start, and start by themselves once the stream's own
- * start is known (resumeWaiting), never while it is on air or recording.
+ * start is known (resumeWaiting).
  */
 
 export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
@@ -88,8 +88,10 @@ export interface ConvertDeps {
   db: Db;
   mediaDir: string;
   ffmpegPath(): string | null;
-  /** Why conversions must wait now (on air, recording), or null. */
+  /** Why jobs must wait for the stream or a recording, or null. */
   busy(): string | null;
+  /** Background conversions also wait while there is something live. */
+  showBusy?(): boolean;
   freeBytes(dir: string): number;
   /** The jobs changed: the operator window is told. */
   changed(jobs: ConversionJob[]): void;
@@ -110,7 +112,7 @@ export interface ConvertDeps {
    * The conversions not finished, by media item in order, kept with the library (Session 51): what was kept when
    * Drashti last stopped, and keeping it as it changes.
    */
-  kept?: { load(): unknown; save(mediaIds: string[]): void };
+  kept?: { load(): unknown; save(pending: KeptConversion[]): void };
   /**
    * Each FFmpeg started, and its end (Session 31, ROB-3: ../system/leftovers.ts), so one left running by a
    * crash is stopped at the next start, with the part-file it was writing.
@@ -127,13 +129,20 @@ interface MediaRow {
   name: string;
   path: string;
   source_path: string | null;
+  playable: number | null;
+  format: string | null;
   /** 1: deleted from the library (Session 26a), perhaps while its conversion waited. */
   deleted: number;
 }
 
-const idsSchema = z.array(z.string().min(1).max(100)).min(1).max(10_000);
-/** The conversions kept from the last run (Session 51): none when it cannot be read. */
-const keptSchema = z.array(z.string().min(1).max(100)).max(10_000);
+const idSchema = z.string().min(1).max(100);
+const idsSchema = z.array(idSchema).min(1).max(10_000);
+const maxHeightSchema = z.number().int().min(2).max(1080);
+/** Earlier versions kept just the media id. A linked video's job also needs its height cap. */
+const keptSchema = z
+  .array(z.union([idSchema, z.object({ mediaId: idSchema, maxHeight: maxHeightSchema })]))
+  .max(10_000);
+type KeptConversion = z.infer<typeof keptSchema>[number];
 const movedSchema = z.object({
   cues: z.array(z.string()),
   items: z.array(z.string()),
@@ -171,8 +180,8 @@ function removeQuietly(path: string): void {
 }
 
 /**
- * Why a conversion going on was stopped: cancelled, Drashti quitting, waiting for the stream, out of disk
- * space, or taking longer than its time limit (Session 31).
+ * Why a conversion stopped: cancelled, Drashti quitting, the show or stream started, the disk ran out of
+ * space, or it took longer than its time limit (Session 31).
  */
 type Stop = 'cancel' | 'quit' | 'wait' | 'space' | 'time';
 
@@ -190,7 +199,7 @@ export interface FitOptions {
   maxHeight: number;
   /** How far it has got (0 to 1), when it can be told. */
   progress?(fraction: number | null): void;
-  /** Why it waits (the stream on air or recording), or null when it goes on. */
+  /** Why it waits, or null when it goes on. */
   waiting?(note: string | null): void;
 }
 
@@ -207,14 +216,15 @@ export interface CopyOptions {
   args(tmp: string): string[];
   /** How long the part saved lasts, for its progress. */
   lengthMs: number;
+  /** Wait while show layers are up, including when a show starts during the copy. */
+  waitForShow?: boolean;
   progress?(fraction: number | null): void;
   waiting?(note: string | null): void;
 }
 
 interface FileJob {
   id: string;
-  /** A copy no taller than a height (a link's video), or a video's part saved as it is. */
-  kind: 'fit' | 'copy';
+  waitForShow: boolean;
   source: string;
   dest: string;
   info: MediaInfo;
@@ -249,7 +259,7 @@ export class ConvertService {
   private keptNow = '';
   /** Quitting: what changes from now on is not kept (what was waiting or going on starts again next time). */
   private closed = false;
-  /** Once off air after the start (Session 51 review): what still uses a converted original moves to its copy. */
+  /** Once idle after the start (Session 51 review): what still uses a converted original moves to its copy. */
   private followAtStart = false;
 
   /** How long reading what a file holds may take (tests give less). */
@@ -265,7 +275,7 @@ export class ConvertService {
   constructor(private readonly deps: ConvertDeps) {
     // Part-files left by a conversion that was going when Drashti stopped.
     removeQuietly(join(deps.mediaDir, CONVERTING_DIR));
-    // Every second: start the next file, or make the one going wait (the stream, the disk).
+    // Every second: start the next file, or make the one going wait (the show, the stream, the disk).
     this.timer = setInterval(() => {
       this.watch();
     }, 1000);
@@ -273,15 +283,19 @@ export class ConvertService {
     // Those not finished when Drashti last stopped (Session 51): waiting again, held until resumeWaiting.
     const kept = keptSchema.safeParse(deps.kept?.load());
     if (kept.success && kept.data.length > 0) {
-      this.keptNow = kept.data.join('\n');
-      this.enqueue(kept.data, Number.POSITIVE_INFINITY);
+      this.keptNow = JSON.stringify(kept.data);
+      const ids = kept.data.map((job) => (typeof job === 'string' ? job : job.mediaId));
+      const heights = new Map(
+        kept.data.flatMap((job) => (typeof job === 'string' ? [] : [[job.mediaId, job.maxHeight] as const])),
+      );
+      this.enqueue(ids, Number.POSITIVE_INFINITY, heights);
     }
   }
 
   /**
    * The conversions waiting when Drashti last stopped start again by themselves, a moment from now (Session 51):
    * called once the stream's own start is known (index.ts: once the operator window has opened, after the stream
-   * may have gone on air again by itself). Never while it is on air or recording.
+   * may have gone on air again by itself).
    */
   resumeWaiting(): void {
     const at = Date.now() + (this.deps.limits?.afterStartMs ?? AFTER_START_MS);
@@ -342,20 +356,20 @@ export class ConvertService {
   /** Keep the conversions not finished, in order, for the next start (Session 51), when they have changed. */
   private keep(): void {
     if (this.closed) return;
-    const ids = this.jobs
+    const pending: KeptConversion[] = this.jobs
       .filter((j) => j.state === 'waiting' || j.state === 'converting')
-      .map((j) => j.mediaId);
-    const now = ids.join('\n');
+      .map((j) => (j.maxHeight === undefined ? j.mediaId : { mediaId: j.mediaId, maxHeight: j.maxHeight }));
+    const now = JSON.stringify(pending);
     if (now === this.keptNow) return;
     this.keptNow = now;
-    this.deps.kept?.save(ids);
+    this.deps.kept?.save(pending);
   }
 
   private row(id: string): MediaRow | null {
     return (
       (this.deps.db
         .prepare(
-          'SELECT id, kind, name, path, source_path, deleted_at IS NOT NULL AS deleted FROM media WHERE id = ?',
+          'SELECT id, kind, name, path, source_path, playable, format, deleted_at IS NOT NULL AS deleted FROM media WHERE id = ?',
         )
         .get(id) as MediaRow | undefined) ?? null
     );
@@ -367,24 +381,28 @@ export class ConvertService {
   }
 
   /**
-   * Convert by itself what an import found Drashti's player cannot play (Session 50): the report's lines that
-   * say so ('converting-media'), videos, sounds and (Session 55, Part 5) pictures a screen cannot show. Each starts
-   * a moment after the import (AFTER_IMPORT_MS), one at a time, never while the stream is on air or recording.
-   * How many were added.
+   * Queue conversions an import identified, including smaller copies for tall linked videos. Each starts
+   * a moment after the import (AFTER_IMPORT_MS), one at a time, once the show and stream are idle.
+   * Returns the number of new jobs.
    */
   convertImported(report: ImportedLines | null): number {
     const ids = new Set<string>();
+    const heights = new Map<string, number>();
     for (const item of report?.items ?? [])
-      for (const issue of item.issues)
-        if (issue.code === 'converting-media' && issue.fix?.kind === 'convert-media')
-          ids.add(issue.fix.mediaId);
-    const wanted = [...ids].filter((id) => this.row(id) !== null);
-    if (wanted.length === 0) return 0;
-    const { added } = this.enqueue(wanted, Date.now() + (this.deps.limits?.afterImportMs ?? AFTER_IMPORT_MS));
+      for (const { code, fix } of item.issues) {
+        if (code !== 'converting-media' || fix?.kind !== 'convert-media') continue;
+        ids.add(fix.mediaId);
+        const height = maxHeightSchema.safeParse(fix.maxHeight);
+        if (height.success)
+          heights.set(fix.mediaId, Math.min(heights.get(fix.mediaId) ?? height.data, height.data));
+      }
+    if (ids.size === 0) return 0;
+    const at = Date.now() + (this.deps.limits?.afterImportMs ?? AFTER_IMPORT_MS);
+    const { added } = this.enqueue([...ids], at, heights);
     if (added > 0)
       this.deps.log(
         'info',
-        `An import found ${String(added)} file${added === 1 ? '' : 's'} Drashti cannot play: converted by itself`,
+        `Queued ${String(added)} imported file${added === 1 ? '' : 's'} for background conversion`,
       );
     return added;
   }
@@ -393,11 +411,15 @@ export class ConvertService {
    * Add jobs for these media items; how many were added. `heldUntil`: Drashti found them by itself (an import, or
    * the last run's, Session 51), and each waits until then; null: the operator asked.
    */
-  private enqueue(rawIds: unknown, heldUntil: number | null): { result: ConvertResult; added: number } {
+  private enqueue(
+    rawIds: unknown,
+    heldUntil: number | null,
+    heights?: ReadonlyMap<string, number>,
+  ): { result: ConvertResult; added: number } {
     const byItself = heldUntil !== null;
     const ids = idsSchema.safeParse(rawIds);
     if (!ids.success) return { result: { ok: false, message: 'Choose the files to convert.' }, added: 0 };
-    if (!this.deps.ffmpegPath())
+    if (!byItself && !this.deps.ffmpegPath())
       return {
         result: {
           ok: false,
@@ -407,19 +429,28 @@ export class ConvertService {
       };
     let added = 0;
     let going = 0;
-    for (const id of new Set(ids.data)) {
+    let capChanged = false;
+    const findCopy = heights?.size ? copyFinder(this.deps.db) : null;
+    for (const requestedId of new Set(ids.data)) {
+      const maxHeight = heights?.get(requestedId);
+      const id = maxHeight === undefined ? requestedId : (findCopy?.(requestedId) ?? requestedId);
       const row = this.row(id);
-      if (!row) continue;
-      // Only what Drashti cannot play: files marked so at import, and HEVC (which the window offers only
-      // where this computer cannot play it). Never a file deleted from the library (Session 51 review).
-      const kind = this.deps.db
-        .prepare('SELECT playable, format FROM media WHERE id = ? AND deleted_at IS NULL')
-        .get(id) as { playable: number | null; format: string | null } | undefined;
-      if (kind?.playable !== 0 && !isHevc(kind?.format ?? null)) continue;
-      const pending = this.jobs.some(
+      if (!row || row.deleted) continue;
+      if (maxHeight === undefined && row.playable !== 0 && !isHevc(row.format)) continue;
+      if (maxHeight !== undefined && row.kind !== 'video') continue;
+      const pending = this.jobs.find(
         (j) => j.mediaId === id && (j.state === 'waiting' || j.state === 'converting'),
       );
       if (pending) {
+        if (maxHeight !== undefined && (pending.maxHeight ?? Infinity) > maxHeight) {
+          pending.maxHeight = maxHeight;
+          capChanged = true;
+          const running = this.running;
+          if (running?.job === pending && !running.stop) {
+            running.stop = 'wait';
+            running.child?.kill();
+          }
+        }
         going++;
         continue;
       }
@@ -449,6 +480,7 @@ export class ConvertService {
         convertedName: null,
         conversionId: null,
         ...(byItself ? { byItself: true } : {}),
+        ...(maxHeight === undefined ? {} : { maxHeight }),
       };
       this.jobs.push(job);
       if (heldUntil !== null) this.heldUntil.set(job.id, heldUntil);
@@ -463,11 +495,36 @@ export class ConvertService {
         },
         added,
       };
-    if (added > 0) {
+    if (added > 0 || capChanged) {
       this.changed();
       this.watch();
     }
     return { result: { ok: true, jobs: this.list() }, added };
+  }
+
+  /** Try an automatic conversion again without turning it into a manual conversion. */
+  retryImported(rawId: unknown): ConvertResult {
+    const job = this.jobs.find(
+      (job) =>
+        job.id === rawId &&
+        (job.byItself === true || job.maxHeight !== undefined) &&
+        job.state === 'failed' &&
+        job.retryable,
+    );
+    if (!job) return { ok: false, message: 'This conversion is no longer available to retry.' };
+    const heights = job.maxHeight === undefined ? undefined : new Map([[job.mediaId, job.maxHeight]]);
+    return this.enqueue([job.mediaId], Date.now(), heights).result;
+  }
+
+  /** Stop only the background sizing of a linked video. Its imported original stays. */
+  cancelLinkConversion(rawId: unknown): ConvertResult {
+    const job = this.jobs.find(
+      (job) =>
+        job.id === rawId &&
+        job.maxHeight !== undefined &&
+        (job.state === 'waiting' || job.state === 'converting'),
+    );
+    return job ? this.cancel(job.id) : { ok: false, message: 'This link conversion is no longer running.' };
   }
 
   /** Cancel one job (or, with null, every one not finished). */
@@ -544,18 +601,40 @@ export class ConvertService {
     return { ok: true };
   }
 
+  private waitFor(waitForShow: boolean): string | null {
+    return (
+      this.deps.busy() ??
+      (waitForShow && this.deps.showBusy?.()
+        ? 'Waits while the show is on, then carries on by itself.'
+        : null)
+    );
+  }
+
+  /** Stop an attempt as soon as the show, stream or recording starts. */
+  activityChanged(): void {
+    if (this.running) this.pauseForActivity(this.running, true);
+    if (this.runningFile) this.pauseForActivity(this.runningFile, this.runningFile.job.waitForShow);
+  }
+
+  private pauseForActivity(running: Running | RunningFile, waitForShow: boolean): Stop | null {
+    if (!running.stop && this.waitFor(waitForShow) !== null) {
+      running.stop = 'wait';
+      running.child?.kill();
+    }
+    return running.stop;
+  }
+
   private watch(): void {
-    const busy = this.deps.busy();
+    if (this.closed) return;
+    const busy = this.waitFor(true);
     if (this.followAtStart && !busy) {
       this.followAtStart = false;
       this.followStanding();
     }
+    this.activityChanged();
     const file = this.runningFile;
     if (file) {
-      if (busy && file.child && !file.stop) {
-        file.stop = 'wait';
-        file.child.kill();
-      } else if (file.child && !file.stop && this.deps.freeBytes(dirname(file.job.dest)) < KEEP_FREE_BYTES) {
+      if (file.child && !file.stop && this.deps.freeBytes(dirname(file.job.dest)) < KEEP_FREE_BYTES) {
         file.stop = 'space';
         file.child.kill();
       }
@@ -563,30 +642,19 @@ export class ConvertService {
     }
     const running = this.running;
     if (running) {
-      if (busy && running.child && !running.stop) {
-        // On air or recording: stop, and start this file again afterwards.
-        running.stop = 'wait';
-        running.child.kill();
-      } else if (
-        running.child &&
-        !running.stop &&
-        this.deps.freeBytes(this.deps.mediaDir) < KEEP_FREE_BYTES
-      ) {
+      if (running.child && !running.stop && this.deps.freeBytes(this.deps.mediaDir) < KEEP_FREE_BYTES) {
         running.stop = 'space';
         running.child.kill();
       }
       return;
     }
     const next = this.jobs.find((j) => j.state === 'waiting');
-    if (!next) {
-      this.nextFile(busy);
-      return;
-    }
-    if (busy) {
-      if (next.note !== busy) {
+    if (!next || busy) {
+      if (next && next.note !== busy) {
         for (const j of this.jobs) if (j.state === 'waiting') j.note = busy;
         this.changed();
       }
+      this.nextFile();
       return;
     }
     // One an import found waits its moment after the import (Session 50); the timer looks again.
@@ -601,9 +669,10 @@ export class ConvertService {
   private async run(job: ConversionJob): Promise<boolean> {
     const ffmpeg = this.deps.ffmpegPath();
     const row = this.row(job.mediaId);
-    const fail = (message: string): false => {
+    const fail = (message: string, retryable = false): false => {
       job.state = 'failed';
       job.message = message;
+      job.retryable = retryable;
       job.progress = null;
       this.running = null;
       this.deps.log('warn', `Conversion failed: ${message}`);
@@ -611,8 +680,8 @@ export class ConvertService {
       this.watch();
       return false;
     };
-    if (!ffmpeg) return fail('Drashti’s copy of FFmpeg is missing.');
-    if (!row) return fail('That file is no longer in the library.');
+    if (!ffmpeg) return fail('Drashti’s copy of FFmpeg is missing. Install Drashti again.', false);
+    if (!row) return fail('That file is no longer in the library.', false);
     // Deleted from the library while it waited (Session 51 review): let go, never converted.
     if (row.deleted === 1) {
       job.state = 'cancelled';
@@ -623,12 +692,13 @@ export class ConvertService {
       return false;
     }
     const source = join(this.deps.mediaDir, row.path);
-    if (!existsSync(source)) return fail('The file is missing from Drashti’s media folder.');
+    if (!existsSync(source)) return fail('The file is missing from Drashti’s media folder.', false);
     const size = statSync(source).size;
     const free = this.deps.freeBytes(this.deps.mediaDir);
     if (free - size < KEEP_FREE_BYTES)
       return fail(
         `Only ${gb(free)} is free on the disk, and Drashti keeps 2 GB free. Free up some space, then convert again.`,
+        true,
       );
     const running: Running = { job, child: null, tmp: null, stop: null, limitMs: 0 };
     this.running = running;
@@ -649,17 +719,31 @@ export class ConvertService {
     });
     this.deps.children?.ended(probePid);
     running.child = null;
-    // Cancelled, or the stream started, while FFmpeg was reading the file.
-    const early = running.stop ?? (this.deps.busy() ? 'wait' : null);
-    if (early) return this.stopped(running, early);
+    this.pauseForActivity(running, true);
+    if (running.stop) return this.stopped(running, running.stop);
     if (info.timedOut) return fail(probeTooLong(this.probeMs()));
+    const { maxHeight } = job;
+    if (maxHeight !== undefined) {
+      const video = info.video;
+      if (!video || video.still)
+        return fail('FFmpeg could not find a video to make smaller. Check the downloaded file.');
+      if (video.height <= maxHeight && row.playable === 1) {
+        // A copy made since the import can already fit. Keep using it.
+        job.state = 'done';
+        job.progress = 1;
+        this.running = null;
+        this.changed();
+        this.watch();
+        return true;
+      }
+    }
     const target = chooseTarget(row.kind, info);
-    if (!target) return fail('FFmpeg could not read anything in this file to convert.');
+    if (!target) return fail('FFmpeg could not read anything in this file to convert.', false);
     const work = join(this.deps.mediaDir, CONVERTING_DIR);
     mkdirSync(work, { recursive: true });
     const tmp = join(work, `${job.id}.${TARGET_EXT[target]}`);
     running.tmp = tmp;
-    const child = spawn(ffmpeg, convertArgs(target, source, tmp, info), {
+    const child = spawn(ffmpeg, convertArgs(target, source, tmp, info, { maxHeight }), {
       windowsHide: true,
       env: ffmpegEnv(),
     });
@@ -667,7 +751,7 @@ export class ConvertService {
     this.deps.children?.started(child.pid, tmp);
     running.limitMs = this.workMs(info.durationMs);
     const limit = setTimeout(() => {
-      running.stop = 'time';
+      running.stop ??= 'time';
       child.kill('SIGKILL');
     }, running.limitMs);
     try {
@@ -699,48 +783,72 @@ export class ConvertService {
     });
     clearTimeout(limit);
     this.deps.children?.ended(child.pid);
-    if (code !== 0 || running.stop) {
+    running.child = null;
+    const stopped = this.pauseForActivity(running, true);
+    if (code !== 0 || stopped) {
       removeQuietly(tmp);
-      if (running.stop) return this.stopped(running, running.stop);
-      return fail(`FFmpeg could not convert it${lines.length > 0 ? ` (${lines.at(-1) ?? ''})` : ''}.`);
+      if (stopped) return this.stopped(running, stopped);
+      return fail(
+        `FFmpeg could not convert it${lines.length > 0 ? ` (${lines.at(-1) ?? ''})` : ''}. Check the original in another player and import a fresh copy if needed.`,
+      );
     }
     try {
-      await this.store(job, row, target, tmp);
+      const digest = await sha256File(tmp);
+      const stopped = this.pauseForActivity(running, true);
+      if (stopped) {
+        removeQuietly(tmp);
+        return this.stopped(running, stopped);
+      }
+      this.store(job, row, target, tmp, digest);
       return true;
     } catch (error) {
       removeQuietly(tmp);
-      return fail(`The converted file could not be kept. ${fileProblem(error, 'own')}`);
+      const stopped = this.pauseForActivity(running, true);
+      if (stopped) return this.stopped(running, stopped);
+      const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : null;
+      return fail(
+        `The converted file could not be kept. ${fileProblem(error, 'own')}`,
+        code === 'ENOSPC' || code === 'EBUSY',
+      );
     }
   }
 
-  /** The file was stopped before it was finished: cancelled, made to wait for the stream, or out of space. */
+  /** The file was stopped before it finished. Put interrupted work back in the queue. */
   private stopped(running: Running, stop: Stop): false {
     const job = running.job;
     this.running = null;
     job.progress = null;
-    if (stop === 'cancel') job.state = 'cancelled';
+    if (stop === 'cancel' || stop === 'quit') job.state = 'cancelled';
     else if (stop === 'wait') {
       job.state = 'waiting';
-      job.note = this.deps.busy();
-      this.deps.log('info', 'A conversion stopped while the stream is on: it starts again afterwards');
+      job.note = this.waitFor(true);
+      if (job.note !== null)
+        this.deps.log('info', 'A conversion paused for the show or stream: it starts again afterwards');
     } else if (stop === 'time') {
       job.state = 'failed';
+      job.retryable = true;
       job.message = `Stopped: converting it took longer than ${spoken(running.limitMs)} (four times its length, and 5 minutes more), so FFmpeg may be stuck. Convert it again; if it stops again, the file may be damaged.`;
       this.deps.log('warn', 'A conversion took longer than its time limit and was stopped');
     } else {
       job.state = 'failed';
+      job.retryable = true;
       job.message = `Stopped: the disk has less than 2 GB free (${gb(this.deps.freeBytes(this.deps.mediaDir))}). Free up some space, then convert again.`;
       this.deps.log('warn', 'A conversion stopped: less than 2 GB free');
     }
     this.changed();
-    // Waiting for the stream: the timer starts it again once the stream is off.
+    // The timer starts it again once the show and stream are idle.
     if (stop !== 'wait') this.watch();
     return false;
   }
 
   /** Keep the converted file in the media folder, and move everything over to it. */
-  private async store(job: ConversionJob, row: MediaRow, target: ConvertTarget, tmp: string): Promise<void> {
-    const { sha256, bytes } = await sha256File(tmp);
+  private store(
+    job: ConversionJob,
+    row: MediaRow,
+    target: ConvertTarget,
+    tmp: string,
+    { sha256, bytes }: Awaited<ReturnType<typeof sha256File>>,
+  ): void {
     const ext = TARGET_EXT[target];
     const rel = MediaStore.storedPath(sha256, ext);
     const dest = join(this.deps.mediaDir, rel);
@@ -748,7 +856,9 @@ export class ConvertService {
     if (existsSync(dest)) removeQuietly(tmp);
     else renameSync(tmp, dest);
     const db = this.deps.db;
-    const name = `${basename(row.name, extname(row.name))}.${ext}`;
+    const base = basename(row.name, extname(row.name));
+    const size = job.maxHeight === undefined ? '' : ` (${String(job.maxHeight)}p)`;
+    const name = `${base}${size}.${ext}`;
     const existing = db.prepare('SELECT id, name FROM media WHERE sha256 = ?').get(sha256) as
       { id: string; name: string } | undefined;
     const convertedId = existing?.id ?? randomUUID();
@@ -813,8 +923,8 @@ export class ConvertService {
 
   /**
    * Make a video taller than `maxHeight` that tall, as a copy in `outDir` with the same name (H.264 and
-   * AAC in MP4), one file at a time with the library's own conversions, waiting while the stream is on
-   * air or recording. The original is never changed. A video no taller already needs no copy.
+   * AAC in MP4), one file at a time with the library's own conversions. The conversion waits while the
+   * show, stream or recording is on. The original is never changed. A video no taller already needs no copy.
    */
   async fitHeight(source: string, outDir: string, options: FitOptions): Promise<FitResult> {
     const ffmpeg = this.deps.ffmpegPath();
@@ -837,7 +947,7 @@ export class ConvertService {
     return new Promise((resolve) => {
       this.files.push({
         id: randomUUID(),
-        kind: 'fit',
+        waitForShow: true,
         source,
         dest,
         info,
@@ -872,7 +982,17 @@ export class ConvertService {
       },
     };
     const done = new Promise<FitResult>((resolve) => {
-      this.files.push({ id, kind: 'copy', source, dest, info, options, copy, note: null, resolve });
+      this.files.push({
+        id,
+        waitForShow: copy.waitForShow === true,
+        source,
+        dest,
+        info,
+        options,
+        copy,
+        note: null,
+        resolve,
+      });
       this.watch();
     });
     return { id, done };
@@ -893,20 +1013,21 @@ export class ConvertService {
     return true;
   }
 
-  /** Start the next file waiting (none while the stream is on: each says why it waits). */
-  private nextFile(busy: string | null): void {
-    const next = this.files[0];
-    if (!next) return;
-    if (busy) {
-      for (const f of this.files)
-        if (f.note !== busy) {
-          f.note = busy;
-          f.options.waiting?.(busy);
-        }
-      return;
+  /** Start the first file eligible under its show and stream gates. */
+  private nextFile(): void {
+    let ready = -1;
+    for (const [at, job] of this.files.entries()) {
+      const note = this.waitFor(job.waitForShow);
+      if (note === null) {
+        if (ready < 0) ready = at;
+      } else if (note !== job.note) {
+        job.note = note;
+        job.options.waiting?.(note);
+      }
     }
-    this.files.shift();
-    void this.runFile(next);
+    if (ready < 0) return;
+    const [job] = this.files.splice(ready, 1);
+    if (job) void this.runFile(job);
   }
 
   private async runFile(job: FileJob): Promise<void> {
@@ -958,7 +1079,7 @@ export class ConvertService {
     running.child = child;
     this.deps.children?.started(child.pid, tmp);
     const limit = setTimeout(() => {
-      running.stop = 'time';
+      running.stop ??= 'time';
       child.kill('SIGKILL');
     }, running.limitMs);
     try {
@@ -988,16 +1109,17 @@ export class ConvertService {
     });
     clearTimeout(limit);
     this.deps.children?.ended(child.pid);
-    if (code !== 0 || running.stop) {
+    running.child = null;
+    const stop = this.pauseForActivity(running, job.waitForShow);
+    if (code !== 0 || stop) {
       removeQuietly(tmp);
-      const stop = running.stop;
       if (stop === 'wait') {
-        // On air: it starts again from the beginning afterwards.
+        // It starts again from the beginning once it is safe.
         this.runningFile = null;
         this.files.unshift(job);
         this.deps.log(
           'info',
-          `A video waiting to be ${what} stopped while the stream is on: it starts again afterwards`,
+          `A video waiting to be ${what} paused for the show or stream: it starts again afterwards`,
         );
         this.watch();
         return;
@@ -1043,7 +1165,9 @@ export class ConvertService {
       ? join(dirname(job.dest), freeFileName(dirname(job.dest), basename(job.dest)))
       : job.dest;
     try {
-      await rename(tmp, dest);
+      // Publish a show-gated copy in the same turn as the last activity check.
+      if (job.waitForShow) renameSync(tmp, dest);
+      else await rename(tmp, dest);
     } catch {
       removeQuietly(tmp);
       done({
@@ -1071,16 +1195,16 @@ export class ConvertService {
     clearInterval(this.timer);
     for (const f of this.files.splice(0)) f.resolve({ ok: false, message: 'Stopped: Drashti is quitting.' });
     const file = this.runningFile;
-    if (file?.child) {
+    if (file) {
       file.stop = 'quit';
-      file.child.kill();
+      file.child?.kill();
+      removeQuietly(file.tmp);
     }
-    if (file) removeQuietly(file.tmp);
     const running = this.running;
-    if (running?.child) {
-      running.stop = 'cancel';
-      running.child.kill();
+    if (running) {
+      running.stop = 'quit';
+      running.child?.kill();
+      if (running.tmp) removeQuietly(running.tmp);
     }
-    if (running?.tmp) removeQuietly(running.tmp);
   }
 }

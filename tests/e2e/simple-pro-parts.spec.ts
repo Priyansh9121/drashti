@@ -24,8 +24,8 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * Session 56 (alpha.16), the owner: Simple Mode's right column and bottom bar from Pro Mode's own parts, let through
  * Simple Mode's guards on Main (main/simple-mode.ts) and tested here in Simple Mode. No keys line ("Remove the keys
  * line"); Audio under LIVE ("in the empty space there… build nothing new for it, just make it reachable"): an audio
- * playlist made and played there, playing on under a video and stepping aside, as Pro Mode's; a row's Trim (start, end
- * and markers, and Trim black and silence; "it never makes a copy") and When it ends; Edit slides (Pro's slide editor,
+ * playlist made and played there, playing on under a video and stepping aside, as Pro Mode's; a row's Trim (a new
+ * cut with its markers, Reset to original, and Trim black and silence) and When it ends; Edit slides (Pro's editor,
  * a PDF page's own words too), its save one Undo; Slide, Background and Audio beside Clear all, each taking its own
  * layer off; and the column laid out from CI's 1024 × 645 up, scrolling when short, nothing under the status bar.
  * Generated sound, video and pictures, a generated PDF, and placeholder words only.
@@ -285,7 +285,7 @@ test('Simple Mode’s right column: no keys line; Audio under LIVE, as Pro Mode�
   await app.close();
 });
 
-test('a row’s Trim in Simple Mode, as Pro Mode’s: start, end and markers saved, Trim black and silence with Undo, no copy made; When it ends and Even loudness', async () => {
+test('a row’s Trim in Simple Mode saves and resets a cut; Trim black and silence with Undo, When it ends and Even loudness', async () => {
   test.setTimeout(240_000);
   const { app, win, dir, userData } = await start();
   const clip = edgesVideo(join(dir, 'Placeholder edges.mp4'));
@@ -294,8 +294,18 @@ test('a row’s Trim in Simple Mode, as Pro Mode’s: start, end and markers sav
   await measured(win, [videoId]);
   const playlistId = await playlistWith(win, 'Placeholder trim sabha', [{ kind: 'media', mediaId: videoId }]);
   const simple = await toSimple(win);
-  const before = { media: (await listMedia(win)).length, files: mediaFiles(userData) };
   const row = simple.getByTestId('playlist-item').filter({ hasText: 'Placeholder edges' });
+  const itemId = await row.getAttribute('data-item-id');
+  const rowMedia = () =>
+    win.evaluate(
+      async ({ playlistId, itemId }) => {
+        const items = await (globalThis as PageGlobals).drashti.playlists.items(playlistId);
+        const item = items.find((i) => i.id === itemId);
+        return item?.kind === 'media' ? item.mediaId : null;
+      },
+      { playlistId, itemId },
+    );
+  const originalMarkers = await markersOf(win, videoId);
 
   // Its menu: Trim, Trim black and silence, Even loudness and When it ends, as Pro Mode's; Rename and Delete.
   await row.click({ button: 'right' });
@@ -312,7 +322,7 @@ test('a row’s Trim in Simple Mode, as Pro Mode’s: start, end and markers sav
   );
   await expectNoSeriousA11yIssues(win, 'a video row’s menu in Simple Mode', '[role="menu"]');
 
-  // Trim (start, end and markers)…: Pro Mode's dialog, with no Save as MP4… (a copy).
+  // Trim saves a cut for this row and keeps the named marker in it.
   await menu.getByRole('menuitem', { name: 'Trim (start, end and markers)…' }).click();
   const dialog = win.getByTestId('markers-dialog');
   await expect(dialog).toBeVisible();
@@ -320,16 +330,37 @@ test('a row’s Trim in Simple Mode, as Pro Mode’s: start, end and markers sav
   await expect(dialog).not.toContainText('Save as MP4');
   await dialog.getByTestId('markers-start').fill('0:00.5');
   await dialog.getByTestId('markers-end').fill('0:04.0');
+  const preview = dialog.locator('video');
+  await expect.poll(() => preview.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(1);
+  await preview.evaluate((v: HTMLVideoElement) => {
+    v.currentTime = 2;
+  });
+  await expect.poll(() => preview.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(2, 1);
   await dialog.getByTestId('marker-name').fill('Placeholder chorus');
   await dialog.getByTestId('marker-add').click();
   await expect(dialog.getByTestId('markers-list')).toContainText('Placeholder chorus');
   await dialog.getByTestId('markers-save').click();
   await expect(dialog).toHaveCount(0);
-  await expect
-    .poll(() => markersOf(win, videoId))
-    .toMatchObject({ startMs: 500, endMs: 4000, markers: [{ name: 'Placeholder chorus' }] });
+  await expect(row.locator('[data-label]')).toHaveText('Placeholder edges trimmed', { timeout: 30_000 });
+  const trimmedId = await rowMedia();
+  if (trimmedId === null) throw new Error('The trimmed video is missing from its playlist.');
+  expect(trimmedId).not.toBe(videoId);
+  expect(await markersOf(win, trimmedId)).toMatchObject({
+    startMs: null,
+    endMs: null,
+    markers: [{ name: 'Placeholder chorus', atMs: 1500 }],
+  });
+  expect(await markersOf(win, videoId)).toEqual(originalMarkers);
 
-  // Trim black and silence: its points past them, said, with Undo; the file is never cut.
+  await row.click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Trim (start, end and markers)…' }).click();
+  await dialog.getByRole('button', { name: 'Reset to original', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(rowMedia).toBe(videoId);
+  await expect(row.locator('[data-label]')).toHaveText('Placeholder edges.mp4');
+
+  // Trim black and silence moves the original’s playback points and offers Undo.
+  const before = { media: (await listMedia(win)).length, files: mediaFiles(userData) };
   await row.click({ button: 'right' });
   await win.getByRole('menuitem', { name: 'Trim black and silence' }).click();
   await expect(win.getByTestId('operator-notice')).toContainText('now plays from 0:01.5 to 0:04.5', {
@@ -344,8 +375,7 @@ test('a row’s Trim in Simple Mode, as Pro Mode’s: start, end and markers sav
   const undo = win.getByTestId('undo-removal');
   await expect(undo).toContainText('Trimmed “Placeholder edges.mp4” past its black and silence');
   await undo.getByRole('button', { name: /Undo/u }).click();
-  await expect.poll(async () => (await markersOf(win, videoId)).startMs).toBe(500);
-  expect((await markersOf(win, videoId)).endMs).toBe(4000);
+  await expect.poll(() => markersOf(win, videoId)).toEqual(originalMarkers);
 
   // When it ends (Session 55, Part 6), ticked as the row has it: Wallpaper to begin with; Next item, then Wallpaper.
   const whenEnds = () =>
@@ -377,11 +407,11 @@ test('a row’s Trim in Simple Mode, as Pro Mode’s: start, end and markers sav
   await win.getByRole('menuitemcheckbox', { name: 'Even loudness' }).click();
   await expect.poll(async () => (await fileSound(win, videoId))?.even).toBe(true);
 
-  // Nothing was copied: the library has the same files, Drashti's media folder the same, and no part was saved.
+  // Trim black and silence works by moving playback points only.
   expect((await listMedia(win)).length).toBe(before.media);
   expect(mediaFiles(userData)).toEqual(before.files);
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.media.saves())).toEqual([]);
-  // Save as MP4 and a conversion (copies) stay Pro Mode's, whatever a page sends.
+  // Standalone Save as MP4 and Convert remain Pro Mode’s actions.
   const copies = await win.evaluate(async (mediaId) => {
     const d = (globalThis as PageGlobals).drashti;
     const save = await d.media.saveTrim({ mediaId, startMs: 500, endMs: 4000, addToLibrary: true });

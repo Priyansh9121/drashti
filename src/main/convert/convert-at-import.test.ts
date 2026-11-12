@@ -9,7 +9,7 @@ import { type Db, openDatabase } from '../db/database';
 import { MediaStore } from '../import/media-store';
 import { playIssues } from '../import/probe';
 import { ffmpegHere } from '../testing/ffmpeg-here';
-import { ConvertService } from './convert-service';
+import { ConvertService, KEEP_FREE_BYTES } from './convert-service';
 import { atImport } from './plan';
 import { readInfo } from './read-info';
 
@@ -124,6 +124,38 @@ describe('converting by itself what an import found (Session 50), the queue', ()
     expect(jobs).toHaveLength(3);
     await sleep(1500);
     expect(jobs.map((j) => j.state)).toEqual(['waiting', 'waiting', 'waiting']);
+  });
+
+  it('retries an automatic conversion as an automatic job when disk space ran out', () => {
+    const { mediaDir, library } = seeded();
+    service = new ConvertService({
+      db: library,
+      mediaDir,
+      ffmpegPath: () => join(dir, 'no-ffmpeg-here'),
+      busy: () => null,
+      freeBytes: () => KEEP_FREE_BYTES,
+      changed: () => undefined,
+      libraryChanged: () => undefined,
+      log: () => undefined,
+      limits: { afterImportMs: 0 },
+    });
+    expect(service.convert(['m-wma'])).toMatchObject({ ok: true });
+    const manual = service.list().at(-1);
+    expect(manual).toMatchObject({ state: 'failed', retryable: true });
+    expect(service.retryImported(manual?.id)).toMatchObject({ ok: false });
+
+    expect(service.convertImported({ items: [line('converting-media', 'm-mkv')] })).toBe(1);
+    const automatic = service.list().at(-1);
+    expect(automatic).toMatchObject({ state: 'failed', retryable: true, byItself: true });
+    expect(service.retryImported(automatic?.id)).toMatchObject({ ok: true });
+    const retried = service.list().at(-1);
+    expect(retried).toMatchObject({
+      mediaId: 'm-mkv',
+      state: 'failed',
+      retryable: true,
+      byItself: true,
+    });
+    expect(retried?.id).not.toBe(automatic?.id);
   });
 
   it('starts each one a moment after the import, not at once, and never while the stream is on air', async () => {
