@@ -41,6 +41,26 @@ describe('the lower-thirds scenario', () => {
       expect(r.lowerThird.look.style).toBe(r.row.slice('style '.length));
   });
 
+  it('offers the rechecked lower-third designs that passed both Performance runs', () => {
+    const previouslyHeldBack = [
+      'silver-outline',
+      'purple-outline',
+      'lavender-labels',
+      'emerald-labels',
+      'midnight-bulletin',
+      'sea-green-nameplate',
+    ];
+    const returned = LOWER_THIRD_TEMPLATES.map((t) => t.id).filter((id) => previouslyHeldBack.includes(id));
+    expect(returned).toEqual([
+      'silver-outline',
+      'purple-outline',
+      'lavender-labels',
+      'emerald-labels',
+      'midnight-bulletin',
+      'sea-green-nameplate',
+    ]);
+  });
+
   it('measures each new name-and-role design with its own complete look and animation', async () => {
     const designs = LOWER_THIRD_TEMPLATES.filter((template) =>
       template.input.animation.startsWith('design-'),
