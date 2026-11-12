@@ -6,6 +6,8 @@ export interface PptxReadStart {
   file: string;
   outDir: string;
   sourcePages: number[];
+  /** The pages whose clicks and transition to read too (SourceRead's `timingPages`). */
+  timingPages?: number[];
 }
 export type ToPptxReader = PptxReadStart | { type: 'cancel'; jobId: string };
 export type PptxPage = Omit<PreparedSourcePage, 'assets'> & {
