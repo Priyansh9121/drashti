@@ -99,4 +99,23 @@ describe('effects Drashti draws as PowerPoint’s own movie shows them', () => {
       [523.3, 126, 70.16, 47.98, 28.33, 0.5588],
     ]);
   });
+
+  it('speeds up and slows down along half-cosines for a smooth start and end', () => {
+    // Fly In from the bottom with a smooth start of 25 % and a smooth end of 50 %: where the box's top edge is, from the
+    // height that shows while it comes in across the slide's bottom edge (180 less it), then from its centre (less 19).
+    // SMIL's straight ramps would put it up to 3.1 px lower in its last half and 1.9 px higher in its first quarter.
+    const fly = effect('fly', 'in', { direction: 'up', accel: 0.25, decel: 0.5 });
+    const top = (ms: number) => pose(fly, ms).cy - box.height / 2;
+    for (const [ms, measured] of [
+      [95, 180 - 5.7],
+      [128.3, 180 - 12.67],
+      [161.7, 180 - 21.67],
+      [260, 148.33 - 19],
+      [425, 100.33 - 19],
+      [491.7, 85.33 - 19],
+      [558.3, 75.33 - 19],
+      [623.3, 70.99 - 19],
+    ] as const)
+      expect(Math.abs(top(ms) - measured), `${String(ms)} ms after the click`).toBeLessThanOrEqual(0.5);
+  });
 });
