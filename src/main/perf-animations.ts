@@ -2,7 +2,8 @@ import type { BrowserWindow } from 'electron';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EngineCommand } from '../shared/engine/commands';
-import type { DeckSlide } from '../shared/deck';
+import type { DeckEffect, DeckSlide } from '../shared/deck';
+import { nativeStepTiming } from '../shared/deck-show';
 import type { LowerThird, LowerThirdLook } from '../shared/lower-thirds';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../shared/lower-thirds';
 import { animationById, animationLength, cutIntoUnits } from '../shared/lower-third-animations';
@@ -14,13 +15,19 @@ import {
   type CaseRow,
   framePeriod,
   intervalStats,
+  jumpFigures,
+  type JumpFigures,
+  jumpLine,
+  type JumpOnScreens,
   measureRun,
   type MotionRun,
   stillIntervals,
   stillLine,
 } from '../shared/motion-measure';
-import { plural } from '../shared/text';
+import { fitElements } from '../shared/slide-size';
+import { cutText, plural } from '../shared/text';
 import { PresentationRepo } from './db/presentations';
+import { addTone } from './music/perf-music';
 import { makePicture, makeVideo, type ScenarioDeps, type ScenarioRun } from './perf-scenarios';
 import { sw } from './switches';
 
@@ -38,6 +45,14 @@ import { sw } from './switches';
  * - a lower third in and out: three styles (box, band, glass) and one of the heaviest (letter by letter with a blur,
  *   glass, sparkles behind);
  * - Black-out on and off, and the Wallpaper (a placeholder picture chosen) on and off.
+ * Then, last, each only while there is time left for it (Session 57's leftovers, h-left2's MS-1, DK-6 and DK-2):
+ * - a slide of an imported, editable PowerPoint table of 250 cells (each cell a text box that measures itself on the
+ *   screen), its words fitting their cells and then too long for them, coming on with the editor's fade;
+ * - a jump to a deck slide Drashti plays itself (no clip: its effects drawn from its shapes, on the engine's time),
+ *   carrying a sound, on two hall screens: when each showed it, when its first effect moved against the engine's own
+ *   start, and how far apart the two screens were;
+ * - the deck's clicks again with the windows that load nothing ahead open (no Preloader: LIVE's picture, the projector
+ *   card, the stage screen's card and a stage screen, the stream's picture), on the two-core run above all.
  * (The opening plays only in the operator window as a person starts Drashti, never in a self-test: the Performance
  * spec measures it on its own, tests/perf/performance.spec.ts.)
  * For each: the delay from the press to the first frame that moved, the length from that frame to the last against
@@ -47,7 +62,7 @@ import { sw } from './switches';
  */
 
 /** What a case watches on the screen (render/motion-probe.ts's tracks). */
-type Track = 'slide' | 'deck' | 'lowerThird' | 'blackout' | 'wallpaper';
+type Track = 'slide' | 'deck' | 'nativeDeck' | 'lowerThird' | 'blackout' | 'wallpaper';
 
 /** One press of a case, as it went. */
 interface Pressed {
@@ -62,15 +77,26 @@ interface Pressed {
   from: 'operator' | 'main';
   /** When the next press came (its run's frames end there). */
   until: number;
+  /** The same press watched on another track besides (a slide's arrival beside its effects): no still frames of its own. */
+  also?: true;
+  /** A deck slide Drashti plays itself: when the engine put it up, and when its first effect starts, by the engine. */
+  engine?: { shownAt: number; effectAt: number };
 }
 
 /** A run as the scenario keeps it, with the main process's and the screen's own times. */
 interface Measured extends MotionRun {
   name: string;
+  setMs: number;
   pressAt: number;
   /** When the main process sent the change (the screen's paint log), and when the screen first drew it. */
   mainAt: number | null;
   paintedAt: number | null;
+}
+
+/** What the motion probe gives for a stretch of time (render/motion-probe.ts). */
+interface ProbeRecord {
+  frames: number[];
+  changes: Record<string, number[]>;
 }
 
 /** The default length a transition is given (the slide editor's, SlidePanel.tsx and Ribbon.tsx). */
@@ -85,6 +111,38 @@ const SETTLE_MS = 700;
 /** The deck's clips (as the e2e tests' stand-in's, tests/e2e/deck-stand-in.ts): 1.5 s, the first 0.4 s its transition. */
 const CLIP_MS = 1500;
 const DECK_TRANSITION_MS = 400;
+
+/** MS-1: a PowerPoint table of 250 cells, the most the editable reader keeps as a table (its 500 objects a slide). */
+const TABLE_ROWS = 25;
+const TABLE_COLUMNS = 10;
+/** A table slide may come late (each cell's box measures itself as it comes): its fade, and long enough after it. */
+const TABLE_SETTLE_MS = 1500;
+const TABLE_CASES = ['table slide, 250 cells', 'table slide, 250 cells shrinking'] as const;
+
+/**
+ * DK-6: a deck slide Drashti plays itself. Its first effect fades its title in with the slide (seen from its first
+ * frame), then a line flies in; 1.2 s in all. Each jump goes to a slide of its own, the last first, so none was ever
+ * next (the hall screens load what is next ahead): every jump draws a picture for the first time.
+ */
+const NATIVE_FADE_MS = 1000;
+const NATIVE_FLY_AT_MS = 300;
+const NATIVE_FLY_MS = 900;
+const NATIVE_STEP_MS = Math.max(NATIVE_FADE_MS, NATIVE_FLY_AT_MS + NATIVE_FLY_MS);
+/** Each slide's own picture, in hues none of the other pictures has (the library keeps a picture's bytes once). */
+const NATIVE_HUES = [20, 80, 160, 300];
+/** Long enough after its effects for a slide whose picture took its time. */
+const NATIVE_SETTLE_MS = 1500;
+const NATIVE_EFFECTS = 'jump to a deck slide Drashti plays: its effects';
+const NATIVE_ARRIVES = 'jump to a deck slide Drashti plays: it comes';
+/** Screen 2's rows are named so. */
+const SECOND = ' (screen 2)';
+
+/** DK-2: the deck in and its two clicks this many times, with the windows that load nothing ahead open. */
+const DK2_RUNS = 3;
+const DK2_WINDOWS = 'windows without a Preloader';
+
+/** How long a screen opened for a case may take to be ready: its page loaded, its fonts in, its warm-up done. */
+const SCREEN_LIMIT_MS = 20_000;
 
 const KINDS: readonly TransitionKind[] = [
   'cut',
@@ -144,6 +202,12 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
+/** A page's answer to `code`, or `late` (it never answered, or it was gone). */
+function ask<T, L>(win: Pick<BrowserWindow, 'webContents' | 'isDestroyed'> | null, code: string, late: L) {
+  if (!win || win.isDestroyed()) return Promise.resolve(late);
+  return within(win.webContents.executeJavaScript(code, true) as Promise<T>, PAGE_LIMIT_MS, late);
+}
+
 /** The lower thirds it plays: three styles, and one of the heaviest. */
 function lowerThirds(): { key: string; lowerThird: LowerThird }[] {
   const made = (key: string, animation: string, look: Partial<LowerThirdLook>) => ({
@@ -175,6 +239,96 @@ function lowerThirdMs(lt: LowerThird, phase: 'in' | 'out'): number {
   return animationLength(a, phase, cutIntoUnits(LINES, a).units);
 }
 
+/**
+ * MS-1: a PowerPoint table over the slide, 25 rows of 10 cells, as PowerPoint writes one (its first row filled, every
+ * cell's edges drawn), the words of each cell given; in EMU, on a 16:9 slide.
+ */
+function tableShape(words: (row: number, column: number) => string): string {
+  const [x, y, width, height] = [304_800, 304_800, 11_582_400, 6_248_400];
+  const column = Math.floor(width / TABLE_COLUMNS);
+  const row = Math.floor(height / TABLE_ROWS);
+  const edges = ['lnL', 'lnR', 'lnT', 'lnB']
+    .map((side) => `<a:${side} w="6350"><a:solidFill><a:srgbClr val="A0A8B0"/></a:solidFill></a:${side}>`)
+    .join('');
+  const cell = (r: number, c: number) =>
+    `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="900"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>${words(r, c)}</a:t></a:r></a:p></a:txBody><a:tcPr marL="45720" marR="45720" marT="0" marB="0">${edges}${r === 0 ? '<a:solidFill><a:srgbClr val="1F3A5F"/></a:solidFill>' : ''}</a:tcPr></a:tc>`;
+  const rows = Array.from(
+    { length: TABLE_ROWS },
+    (_, r) =>
+      `<a:tr h="${String(row)}">${Array.from({ length: TABLE_COLUMNS }, (__, c) => cell(r, c)).join('')}</a:tr>`,
+  ).join('');
+  return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="4" name="Placeholder table"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${String(x)}" y="${String(y)}"/><a:ext cx="${String(width)}" cy="${String(height)}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="1"/><a:tblGrid>${`<a:gridCol w="${String(column)}"/>`.repeat(TABLE_COLUMNS)}</a:tblGrid>${rows}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+}
+
+/** The four tables' words: two that fit their cells, then two too long for them (each box makes its words smaller). */
+const TABLE_WORDS: readonly ((row: number, column: number) => string)[] = [
+  (r, c) => `Placeholder ${String(r * TABLE_COLUMNS + c + 1)}`,
+  (r, c) => `Placeholder item ${String(r * TABLE_COLUMNS + c + 1)}`,
+  (r, c) =>
+    `Placeholder words in row ${String(r + 1)}, column ${String(c + 1)}, far longer than this cell holds`,
+  (r, c) =>
+    `More placeholder words for row ${String(r + 1)} and column ${String(c + 1)}, far longer than the cell`,
+];
+
+/**
+ * MS-1's slides, made as the import keeps a deck's editable copy (import/deck/editable-pptx.ts, then fitted to the
+ * library's slide, as native-deck-import.ts does), from a generated deck: placeholder words only, no PowerPoint.
+ */
+async function tableSlides(
+  deps: ScenarioDeps,
+  repo: PresentationRepo,
+  libraryId: string,
+): Promise<{ id: string; cells: number; objects: number }> {
+  // The reader and the generated deck's writer only now, never with Drashti's own start (the import's worker has them).
+  const [{ readEditablePptx }, { editablePptxFixture, slideXml }] = await Promise.all([
+    import('./import/deck/editable-pptx'),
+    import('./import/testing/editable-pptx-fixture'),
+  ]);
+  const folder = join(deps.mediaDir, 'perf');
+  mkdirSync(folder, { recursive: true });
+  const file = join(folder, 'animations-tables.pptx');
+  writeFileSync(
+    file,
+    editablePptxFixture({ slides: TABLE_WORDS.map((words) => slideXml(tableShape(words))) }),
+  );
+  const deck = await readEditablePptx(file, join(folder, 'animations-tables-prepared'));
+  const id = repo.insert({
+    libraryId,
+    name: 'Placeholder perf table slides',
+    groups: [
+      {
+        name: '',
+        slides: deck.slides.map((s, i) => ({
+          label: `Placeholder table ${String(i + 1)}`,
+          background: s.background,
+          transition: { kind: 'dissolve' as const, durationMs: DEFAULT_MS },
+          elements: fitElements(s.elements, deck, { width: 1920, height: 1080 }),
+        })),
+      },
+    ],
+  });
+  const first = deck.slides[0]?.elements ?? [];
+  return {
+    id,
+    cells: first.filter((e) => e.kind === 'text' && e.tableCell !== undefined).length,
+    objects: first.length,
+  };
+}
+
+/** DK-6: its effects, on its title (shape 3) and its line (shape 4), with the slide (step 0). */
+const NATIVE_MOTION: DeckEffect[] = [
+  { shapeId: '3', step: 0, phase: 'in', kind: 'fade', delayMs: 0, durationMs: NATIVE_FADE_MS },
+  {
+    shapeId: '4',
+    step: 0,
+    phase: 'in',
+    kind: 'fly',
+    direction: 'up',
+    delayMs: NATIVE_FLY_AT_MS,
+    durationMs: NATIVE_FLY_MS,
+  },
+];
+
 /** A press from the operator window, through its own bridge (as its keys and buttons send it), timed there. */
 const PRESS = (command: EngineCommand) => `(async () => {
   const d = globalThis.drashti;
@@ -190,6 +344,79 @@ const CHOOSE_WALLPAPER = (mediaId: string) => `(async () => {
   if (!made.ok || made.ids.length === 0) return false;
   return (await d.wallpapers.choose(made.ids[0])).ok;
 })()`;
+
+/** The displays no screen uses, as Screens has them (the operator window's own bridge). */
+const FREE_DISPLAYS = `(async () => {
+  const s = await globalThis.drashti.screens.get();
+  return s.uses.filter((u) => u.screenId === null).map((u) => u.displayId);
+})()`;
+
+/** A display's job, as Screens gives it in one click: the audience picture (a hall screen) or the stage. */
+const SET_JOB = (displayId: number, job: 'audience' | 'stage') => `(async () => {
+  const r = await globalThis.drashti.screens.setJob(${String(displayId)}, ${JSON.stringify(job)}, { coverOperator: true });
+  return r.ok === true;
+})()`;
+
+/** What an output's page is: its role, its fonts and warm-up, and whether the motion probe is on there. */
+const SCREEN_STATE = `(() => {
+  const root = document.querySelector('[data-testid="output-root"]');
+  return {
+    role: root?.getAttribute('data-role') ?? '',
+    fonts: root?.getAttribute('data-fonts') ?? '',
+    warmUp: root?.getAttribute('data-warm-up') ?? '',
+    probe: typeof window.drashtiMotionProbe?.read === 'function',
+  };
+})()`;
+
+/** Screens, the projector card on top (the operator window's own key for it, Mod+Shift+S), as the operator opens it. */
+const OPEN_SCREENS = (mac: boolean) => `(() => {
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'S', code: 'KeyS', shiftKey: true, ${mac ? 'metaKey' : 'ctrlKey'}: true, bubbles: true, cancelable: true }));
+  return true;
+})()`;
+/** Or its button in the top bar, should the key not open it. */
+const CLICK_SCREENS = `(() => {
+  const button = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Screens');
+  button?.click();
+  return button !== undefined;
+})()`;
+const SHOWS = (selector: string) => `document.querySelector(${JSON.stringify(selector)}) !== null`;
+/** The stream's picture without streaming anywhere: what the Stream panel's preview asks for. */
+const WATCH_STREAM = `(async () => {
+  await globalThis.drashti.stream.watchPreview(true);
+  return true;
+})()`;
+
+/** An output's page as SCREEN_STATE reads it. */
+interface ScreenState {
+  role: string;
+  fonts: string;
+  warmUp: string;
+  probe: boolean;
+}
+
+/** DK-2: the windows that load nothing ahead (no Preloader), and whether each was open for its deck clicks. */
+interface WindowsOpen {
+  live: boolean;
+  projectorCard: boolean;
+  stageCard: boolean;
+  stageScreen: boolean;
+  streamPicture: boolean;
+  /** Why one was not. */
+  why: string[];
+}
+
+const windowsLine = (w: WindowsOpen) => {
+  const names: [keyof Omit<WindowsOpen, 'why'>, string][] = [
+    ['live', 'LIVE’s picture'],
+    ['projectorCard', 'the projector card'],
+    ['stageCard', 'the stage screen’s card'],
+    ['stageScreen', 'a stage screen'],
+    ['streamPicture', 'the stream’s picture'],
+  ];
+  const open = names.filter(([k]) => w[k]).map(([, n]) => n);
+  const shut = names.filter(([k]) => !w[k]).map(([, n]) => n);
+  return `open: ${open.join(', ') || 'none'}; not open: ${shut.join(', ') || 'none'}${w.why.length > 0 ? ` (${w.why.join('; ')})` : ''}`;
+};
 
 export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
   const made = Date.now();
@@ -287,6 +514,67 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       },
     ],
   });
+  // DK-6: deck slides Drashti plays itself (no clip; as its import keeps a deck it can play from the deck's shapes),
+  // each its own picture, a title and a line its effects bring in, and a sound with the slide (a generated tone).
+  const sound = addTone(deps.db, deps.mediaDir, 'animations-deck-sound', 3, 440);
+  const nativeDeck: DeckSlide = {
+    steps: [],
+    motion: { effects: NATIVE_MOTION, stepsMs: [NATIVE_STEP_MS], approximate: false },
+    media: [
+      {
+        kind: 'audio',
+        mediaId: sound,
+        box: { x: 0.92, y: 0.86, w: 0.04, h: 0.07 },
+        loop: false,
+        volume: 1,
+        start: { step: 0, offsetMs: 0 },
+        hideWhenStopped: true,
+      },
+    ],
+  };
+  const nativeId = repo.insert({
+    libraryId,
+    name: 'Placeholder perf deck Drashti plays',
+    groups: [
+      {
+        name: '',
+        slides: NATIVE_HUES.map((hue, i) => ({
+          label: `Placeholder deck slide Drashti plays ${String(i + 1)}`,
+          // A cut: what comes is the slide itself, once its picture can be drawn.
+          transition: { kind: 'cut' as const, durationMs: 0 },
+          elements: [
+            {
+              id: 'picture',
+              kind: 'image' as const,
+              frame: { x: 0, y: 0, width: 1920, height: 1080 },
+              mediaId: makePicture(deps, `animations-native-${String(i + 1)}`, hue, null),
+              fit: 'fill' as const,
+              sourceShapeId: '2',
+            },
+            {
+              id: 'title',
+              kind: 'text' as const,
+              frame: { x: 160, y: 280, width: 1600, height: 240 },
+              text: `Placeholder title ${String(i + 1)}`,
+              lang: 'en' as const,
+              style: { ...WORDS, shrinkToFit: true },
+              sourceShapeId: '3',
+            },
+            {
+              id: 'line',
+              kind: 'text' as const,
+              frame: { x: 160, y: 600, width: 1600, height: 160 },
+              text: 'A placeholder line that flies in',
+              lang: 'en' as const,
+              style: { ...WORDS, fontSize: 56, shrinkToFit: true },
+              sourceShapeId: '4',
+            },
+          ],
+          deck: nativeDeck,
+        })),
+      },
+    ],
+  });
   const pressed: Pressed[] = [];
   const operator = (): BrowserWindow | null => {
     const w = deps.operator?.() ?? null;
@@ -297,10 +585,20 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
   const progress = (what: string) => {
     process.stdout.write(`${PROGRESS} +${((Date.now() - began) / 1000).toFixed(1)} s ${what}\n`);
   };
+  /** What it could not do, or left out for want of time: in the summary, the raw figures and as it goes. */
+  const notes: string[] = [];
+  const note = (what: string) => {
+    notes.push(what);
+    progress(what);
+  };
   progress(`made its slides, deck and pictures (${String(Date.now() - made)} ms)`);
+  // MS-1's table slides, made in begin(): before the measured part, by the reader of a deck's editable copy.
+  let table: Awaited<ReturnType<typeof tableSlides>> | null = null;
   /** How long each press from the operator window took to come back, and how many in a row never did. */
   const roundTrips: number[] = [];
   let unanswered = 0;
+  /** The last press's runs: the next press ends them (their frames end there), unless a case was closed first. */
+  let lastPress: Pressed[] = [];
   /** Press a case once, and wait `waitMs` after it. */
   const press = async (
     name: string,
@@ -308,6 +606,12 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
     setMs: number,
     command: EngineCommand,
     waitMs: number,
+    more: {
+      /** The same press watched on other tracks besides (a slide's arrival beside its effects). */
+      also?: readonly { name: string; track: Track; setMs: number }[];
+      /** A deck slide Drashti plays itself: its first effect's delay, its start put by the engine's own clock. */
+      firstEffectMs?: number;
+    } = {},
   ): Promise<void> => {
     // After three presses in a row the operator window never answered, from the main process.
     const op = unanswered >= 3 ? null : operator();
@@ -340,21 +644,116 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       const r = deps.engine.dispatch(command);
       rev = r.ok ? r.rev : -1;
     }
-    const before = pressed.at(-1);
-    if (before) before.until = at;
-    pressed.push({ name, track, setMs, at, rev, from, until: at + waitMs });
+    // The engine's own record of what went up: a step's clock, as every screen times its effects by it.
+    let engine: Pressed['engine'];
+    if (more.firstEffectMs !== undefined) {
+      const layer = deps.engine.snapshot?.().state.layers.slide ?? null;
+      const timing = layer ? nativeStepTiming(layer) : null;
+      if (layer && timing) engine = { shownAt: layer.shownAt, effectAt: timing.clipAt + more.firstEffectMs };
+    }
+    for (const before of lastPress) before.until = at;
+    const own: Pressed = {
+      name,
+      track,
+      setMs,
+      at,
+      rev,
+      from,
+      until: at + waitMs,
+      ...(engine ? { engine } : {}),
+    };
+    lastPress = [
+      own,
+      ...(more.also ?? []).map((a): Pressed => ({
+        ...own,
+        name: a.name,
+        track: a.track,
+        setMs: a.setMs,
+        also: true,
+      })),
+    ];
+    pressed.push(...lastPress);
     await sleep(waitMs);
+  };
+  /** The case so far is over: what comes next (a screen opening) is no part of its frames. */
+  const closeCase = () => {
+    const now = Date.now();
+    for (const p of lastPress) p.until = Math.min(p.until, now);
+    lastPress = [];
   };
   const goLive = (presentationId: string, slideIndex: number): EngineCommand => ({
     type: 'goLive',
     presentationId,
     slideIndex,
   });
+  /** Each output's page, as it is now. */
+  const screens = () =>
+    Promise.all(
+      deps.outputs().map(async (window) => ({
+        window,
+        state: await ask<ScreenState, ScreenState | null>(window, SCREEN_STATE, null),
+      })),
+    );
+  /**
+   * A screen opened for a case (DK-6's second hall screen, DK-2's stage screen), given its job as Screens gives it: on
+   * `on` (the display a screen of a case before had), else a display no screen uses, the computer's own or a pretend
+   * one beside it (CI has one display). Waits until its page is ready to draw the show (a hall screen's warm-up done)
+   * with the motion probe on; why not, else.
+   */
+  const openScreen = async (
+    job: 'audience' | 'stage',
+    on?: number,
+  ): Promise<{ window: BrowserWindow; displayId: number } | string> => {
+    const op = operator();
+    if (!op) return 'no operator window';
+    let free = on === undefined ? await ask<number[], number[]>(op, FREE_DISPLAYS, []) : [on];
+    if (free.length === 0 && deps.pretendDisplays) {
+      deps.pretendDisplays(1);
+      // As Drashti hears of a display plugged in (electron-outputs.ts watchDisplays: 300 ms).
+      await sleep(500);
+      free = await ask<number[], number[]>(op, FREE_DISPLAYS, []);
+    }
+    const displayId = free.at(-1);
+    if (displayId === undefined) return 'no display for it (no pretend display here)';
+    // A new hall screen is a new window; a stage screen may be the same window given another job.
+    const before = new Set(job === 'audience' ? deps.outputs() : []);
+    if (!(await ask<boolean, boolean>(op, SET_JOB(displayId, job), false))) return 'Screens did not give it';
+    const until = Date.now() + SCREEN_LIMIT_MS;
+    while (Date.now() < until) {
+      const ready = (await screens()).find(
+        ({ window, state }) =>
+          !before.has(window) &&
+          state !== null &&
+          state.role === job &&
+          state.fonts === 'ready' &&
+          state.warmUp !== 'warming' &&
+          state.probe,
+      );
+      if (ready) return { window: ready.window, displayId };
+      await sleep(100);
+    }
+    return `it was not ready within ${String(SCREEN_LIMIT_MS / 1000)} s`;
+  };
+  /** The motion probe's record of a screen from `from` until `until` (ms since the epoch), or null. */
+  const readProbe = (output: BrowserWindow | undefined, from: number, until: number) =>
+    ask<ProbeRecord | null, null>(
+      output ?? null,
+      `window.drashtiMotionProbe ? window.drashtiMotionProbe.read(${String(from)}, ${String(until)}) : null`,
+      null,
+    );
   return {
     slides: { presentationId: null, everyMs: 2000 },
-    begin: () => {
+    begin: async () => {
       progress('the check begins (the import and its slide changes come first)');
-      return Promise.resolve();
+      // A fault here leaves the table slides out, saying why: never the check.
+      try {
+        table = await tableSlides(deps, repo, libraryId);
+        progress(
+          `made its table slides from a generated deck’s editable copy (${plural(table.cells, 'cell')} as text boxes, ${plural(table.objects, 'object')} a slide)`,
+        );
+      } catch (error) {
+        note(`no table slides: ${cutText(String(error), 200)}`);
+      }
     },
     end: async () => {
       progress('the cases begin');
@@ -364,6 +763,12 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       const inTime = (name: string) => {
         if (Date.now() < deadline) return true;
         skipped.add(name);
+        return false;
+      };
+      /** A case of Session 57's leftovers starts only with time left for all its runs; out of time, it is said. */
+      const timeFor = (ms: number, what: string) => {
+        if (deadline - Date.now() >= ms) return true;
+        note(`out of time: no ${what}`);
         return false;
       };
       const output = deps.outputs()[0];
@@ -458,18 +863,114 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         await press('deck slide in, then 20 s still', 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 20_000);
         await press('deck click after 20 s still', 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
       } else progress('out of time: no click after 20 s still');
+      // Session 57's leftovers last (MS-1, DK-6, DK-2), as the click after 20 s still: each only when there is time
+      // for all its runs, never marking the check out of time.
+      // MS-1: a slide of 250 cells, each a text box that measures itself as it comes; back and forth, as a fade.
+      if (!table) note('no table slides to press');
+      else if (timeFor(2 * SHORT_RUNS * (DEFAULT_MS + TABLE_SETTLE_MS), 'table slides')) {
+        progress('table slides, 250 cells (MS-1)');
+        for (const [k, name] of TABLE_CASES.entries())
+          for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++)
+            await press(
+              name,
+              'slide',
+              DEFAULT_MS,
+              goLive(table.id, k * 2 + (i % 2)),
+              DEFAULT_MS + TABLE_SETTLE_MS,
+            );
+      }
+      // DK-6: a jump to a deck slide Drashti plays itself, with a sound, on two hall screens.
+      let second: { window: BrowserWindow; displayId: number } | null = null;
+      let secondRecord: ProbeRecord | null = null;
+      const jumpsFrom = pressed.length;
+      const jumpRunMs = SETTLE_MS + NATIVE_STEP_MS + NATIVE_SETTLE_MS;
+      if (timeFor(NATIVE_HUES.length * jumpRunMs, 'jump to a deck slide Drashti plays itself')) {
+        closeCase();
+        const opened = await openScreen('audience');
+        if (typeof opened === 'string')
+          note(`a jump to a deck slide Drashti plays itself on one screen: ${opened}`);
+        else second = opened;
+        progress(
+          `a jump to a deck slide Drashti plays itself (DK-6), with a sound, on ${plural(second ? 2 : 1, 'hall screen')}`,
+        );
+        // The last slide first: none was ever next, so each picture is drawn for the first time.
+        for (let i = NATIVE_HUES.length - 1; i >= 0 && Date.now() < deadline; i--) {
+          await away();
+          await press(
+            NATIVE_EFFECTS,
+            'nativeDeck',
+            NATIVE_STEP_MS,
+            goLive(nativeId, i),
+            NATIVE_STEP_MS + NATIVE_SETTLE_MS,
+            {
+              also: [{ name: NATIVE_ARRIVES, track: 'slide', setMs: 0 }],
+              firstEffectMs: NATIVE_MOTION[0]?.delayMs ?? 0,
+            },
+          );
+        }
+        closeCase();
+        const jumps = pressed.slice(jumpsFrom).filter((p) => p.name === NATIVE_EFFECTS);
+        const first = jumps[0];
+        const last = jumps.at(-1);
+        // Screen 2's record now: DK-2 gives its display the stage.
+        if (second && first && last) {
+          secondRecord = await readProbe(second.window, first.at - 2000, last.until + 1000);
+          if (!secondRecord) note('no record of screen 2: its motion probe did not answer');
+        }
+      }
+      // DK-2: the deck's clicks again, with every window that loads nothing ahead open (each one more paused clip).
+      let windows: WindowsOpen | null = null;
+      const dk2RunMs = SETTLE_MS + 3 * (CLIP_MS + 800);
+      if (timeFor(DK2_RUNS * dk2RunMs, `deck clicks with the ${DK2_WINDOWS} open`)) {
+        closeCase();
+        windows = await openWindowsWithoutPreloader(second?.displayId);
+        progress(`the deck with the ${DK2_WINDOWS} (DK-2): ${windowsLine(windows)}`);
+        for (let i = 0; i < DK2_RUNS && Date.now() < deadline; i++) {
+          await away();
+          await press(
+            `deck slide in (step 0), ${DK2_WINDOWS}`,
+            'deck',
+            CLIP_MS,
+            goLive(deckId, 0),
+            CLIP_MS + 800,
+          );
+          await press(`deck click, ${DK2_WINDOWS}`, 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
+          await press(`deck click, ${DK2_WINDOWS}`, 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
+        }
+      }
       const trips = [...roundTrips].sort((a, b) => a - b);
       progress(
         `pressed ${String(pressed.length)} times; the operator window answered in median ${String(trips[Math.floor((trips.length - 1) / 2)] ?? '-')} ms, slowest ${String(trips.at(-1) ?? '-')} ms${skipped.size > 0 ? `; out of time, not all pressed: ${[...skipped].join(', ')}` : ''}`,
       );
-      const measured = await measure(output, pressed.slice(1));
+      const measuredRuns = pressed.slice(1);
+      const measured = await measure(output, measuredRuns);
       progress(`measured ${String(measured.runs.length)} runs from ${String(measured.frames)} frames`);
-      const rows = rowsOf(measured.runs, pressed.slice(1), measured.period);
+      // Screen 2's runs of the jumps, beside screen 1's.
+      const jumpEntries = pressed.slice(jumpsFrom).filter((p) => p.engine !== undefined);
+      const secondRuns = secondRecord ? runsOf(secondRecord, jumpEntries, SECOND) : [];
+      const allRuns = [...measured.runs, ...secondRuns];
+      const rows = rowsOf(allRuns, measured.period);
       const late = rows.filter((r) => r.late).map((r) => r.name);
       const uneven = rows.filter((r) => r.uneven).map((r) => r.name);
+      const nativeJump = jumpsOf(jumpEntries, measuredRuns, measured.runs, secondRuns, second !== null);
+      // Screen 2's rows are measured beside the case, never what decides the check: its absence is said in the notes.
+      const unseen = rows.filter((r) => r.seen === 0 && !r.name.endsWith(SECOND)).map((r) => r.name);
+      const unseenSecond = rows.filter((r) => r.seen === 0 && r.name.endsWith(SECOND)).map((r) => r.name);
+      if (unseenSecond.length > 0) notes.push(`never seen on screen 2: ${unseenSecond.join(', ')}`);
       const streaming = (sw('DRASHTI_PERF_STREAM') ?? '') !== '';
-      keep(streaming, { measured, rows, wallpaper, pressed, roundTrips, skipped: [...skipped] });
-      const unseen = rows.filter((r) => r.seen === 0).map((r) => r.name);
+      keep(streaming, {
+        measured,
+        rows,
+        wallpaper,
+        pressed,
+        roundTrips,
+        skipped: [...skipped],
+        notes,
+        table,
+        nativeJump,
+        windows,
+        secondRuns,
+      });
       const fromMain = pressed.filter((p) => p.from === 'main').length;
       return {
         checks: [
@@ -480,13 +981,107 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
               ? 'the motion probe is not on (DRASHTI_TEST_MOTION_PROBE=1, never in an installed Drashti)'
               : unseen.length > 0 || skipped.size > 0
                 ? `never seen moving: ${unseen.join(', ') || 'none'}; out of time: ${[...skipped].join(', ') || 'none'}`
-                : `${plural(rows.length, 'case')}, ${plural(measured.runs.length, 'run')}`,
+                : `${plural(rows.length, 'case')}, ${plural(measured.runs.length + secondRuns.length, 'run')}`,
           },
         ],
-        summary: `scenario animations: frame period ${measured.period.toFixed(2)} ms (${String(measured.frames)} frames)${wallpaper ? '' : ', the Wallpaper black (no picture could be chosen)'}${fromMain > 0 ? `, ${String(fromMain)} pressed from the main process` : ''}; ${stillLine(measured.still)}; late: ${late.join(', ') || 'none'}; uneven: ${uneven.join(', ') || 'none'}; ${rows.map(caseLine).join(' | ')}`,
+        summary: `scenario animations: frame period ${measured.period.toFixed(2)} ms (${String(measured.frames)} frames)${wallpaper ? '' : ', the Wallpaper black (no picture could be chosen)'}${fromMain > 0 ? `, ${String(fromMain)} pressed from the main process` : ''}; ${stillLine(measured.still)}; late: ${late.join(', ') || 'none'}; uneven: ${uneven.join(', ') || 'none'}; ${rows.map(caseLine).join(' | ')}${nativeJump ? `; ${jumpLine(nativeJump.figures)}` : ''}${windows ? `; the deck with the ${DK2_WINDOWS}, ${windowsLine(windows)}` : ''}${notes.length > 0 ? `; notes: ${notes.join('; ')}` : ''}`,
       };
     },
   };
+
+  /**
+   * DK-2's windows that load nothing ahead (DeckStep.tsx: each holds the next click's clip itself), opened as an
+   * operator would: LIVE's picture (always in the operator window), Screens with the projector card and the stage
+   * screen's card, a stage screen, and the stream's picture (its page as the Stream panel's preview asks for it: never
+   * streaming anywhere; the streaming check's own stream to FFmpeg on this computer has it open already).
+   */
+  async function openWindowsWithoutPreloader(display: number | undefined): Promise<WindowsOpen> {
+    const why: string[] = [];
+    const op = operator();
+    const live = await ask<boolean, boolean>(op, SHOWS('[data-testid="live-preview"]'), false);
+    if (!live) why.push('LIVE’s picture was not drawn in the operator window');
+    // A stage screen first (on the second hall screen's display, if DK-6 had one): the stage screen's card in Screens
+    // draws only once a stage screen is set up.
+    const stage = await openScreen('stage', display);
+    if (typeof stage === 'string') why.push(`a stage screen: ${stage}`);
+    const seen = async (selector: string, ms: number) => {
+      const until = Date.now() + ms;
+      while (Date.now() < until) {
+        if (await ask<boolean, boolean>(operator(), SHOWS(selector), false)) return true;
+        await sleep(100);
+      }
+      return false;
+    };
+    await ask<boolean, boolean>(op, OPEN_SCREENS(process.platform === 'darwin'), false);
+    let projectorCard = await seen('[data-testid="projector-preview"]', 3000);
+    if (!projectorCard) {
+      await ask<boolean, boolean>(op, CLICK_SCREENS, false);
+      projectorCard = await seen('[data-testid="projector-preview"]', 3000);
+    }
+    if (!projectorCard) why.push('Screens did not open in the operator window');
+    const stageCard = await seen('[data-testid="screens-card-stage"] [data-testid="stage-preview"]', 3000);
+    if (!stageCard && typeof stage !== 'string') why.push('the stage screen’s card drew no picture');
+    const streamOpen = () => (deps.program?.() ?? null) !== null;
+    let streamPicture = streamOpen();
+    if (!streamPicture) {
+      await ask<boolean, boolean>(op, WATCH_STREAM, false);
+      const until = Date.now() + 10_000;
+      while (!streamPicture && Date.now() < until) {
+        await sleep(100);
+        streamPicture = streamOpen();
+      }
+      if (!streamPicture) why.push('the stream’s page did not open for its preview');
+    }
+    return { live, projectorCard, stageCard, stageScreen: typeof stage !== 'string', streamPicture, why };
+  }
+}
+
+/** Each press's run on a screen, from its motion probe's record (the paint log's times left out). */
+function runsOf(record: ProbeRecord, entries: readonly Pressed[], suffix = ''): Measured[] {
+  const period = framePeriod(record.frames);
+  return entries.map((p) => ({
+    ...measureRun(
+      { frames: record.frames, changes: record.changes[p.track] ?? [] },
+      { pressAt: p.at, until: p.until },
+      period,
+    ),
+    name: `${p.name}${suffix}`,
+    setMs: p.setMs,
+    pressAt: p.at,
+    mainAt: null,
+    paintedAt: null,
+  }));
+}
+
+/**
+ * DK-6's jumps on each screen: the engine's own times beside each screen's first frame showing the slide and its first
+ * moving effect, and their figures. Screen 1's runs are `measured` (one for each of `entries`, in order); screen 2's
+ * `second` (the jumps' runs, effects and arrivals alike, in their order). Null with no jump measured.
+ */
+function jumpsOf(
+  jumpEntries: readonly Pressed[],
+  entries: readonly Pressed[],
+  measured: readonly Measured[],
+  second: readonly Measured[],
+  twoScreens: boolean,
+): { jumps: JumpOnScreens[]; figures: JumpFigures } | null {
+  const onScreen1 = new Map(entries.map((p, i): [Pressed, Measured | undefined] => [p, measured[i]]));
+  const onScreen2 = new Map(jumpEntries.map((p, i): [Pressed, Measured | undefined] => [p, second[i]]));
+  const jumps: JumpOnScreens[] = [];
+  for (const effects of jumpEntries) {
+    const engine = effects.engine;
+    if (effects.also || !engine) continue;
+    const arrives = jumpEntries.find((p) => p.also && p.at === effects.at && p.track === 'slide');
+    const at = (runs: ReadonlyMap<Pressed, Measured | undefined>, p: Pressed | undefined) =>
+      (p ? runs.get(p)?.firstAt : null) ?? null;
+    jumps.push({
+      shownAt: engine.shownAt,
+      effectAt: engine.effectAt,
+      arrivedAt: twoScreens ? [at(onScreen1, arrives), at(onScreen2, arrives)] : [at(onScreen1, arrives)],
+      movedAt: twoScreens ? [at(onScreen1, effects), at(onScreen2, effects)] : [at(onScreen1, effects)],
+    });
+  }
+  return jumps.length > 0 ? { jumps, figures: jumpFigures(jumps) } : null;
 }
 
 /** Every press's run, from the screen's motion probe and its paint log. */
@@ -500,17 +1095,17 @@ async function measure(
   /** How evenly the screen drew between the cases, nothing moving: its own baseline. */
   still: CaseRow['intervals'];
   /** The probe's record of the whole stretch, kept with the figures. */
-  probe: { frames: number[]; changes: Record<string, number[]> } | null;
+  probe: ProbeRecord | null;
 }> {
   const first = pressed[0];
-  const last = pressed.at(-1);
+  const last = pressed.reduce<Pressed | undefined>((a, p) => (a && a.until >= p.until ? a : p), undefined);
   const none = { runs: [], period: 1000 / 60, frames: 0, still: null, probe: null };
   if (!output || output.isDestroyed() || !first || !last) return none;
   const read = await within(
     output.webContents.executeJavaScript(
       `window.drashtiMotionProbe ? window.drashtiMotionProbe.read(${String(first.at - 2000)}, ${String(last.until + 1000)}) : null`,
       true,
-    ) as Promise<{ frames: number[]; changes: Record<string, number[]> } | null>,
+    ) as Promise<ProbeRecord | null>,
     PAGE_LIMIT_MS * 4,
     null,
   );
@@ -533,15 +1128,17 @@ async function measure(
     return {
       ...run,
       name: p.name,
+      setMs: p.setMs,
       pressAt: p.at,
       mainAt: own?.sentAt ?? null,
       paintedAt: own?.paintedAt ?? null,
     };
   });
   // Between the cases: from a few frames after each run's last moving frame until a frame before the next press (never
-  // while a lower third is up: one's moving background moves on, unwatched).
+  // while a lower third is up: one's moving background moves on, unwatched; a press watched on a second track counts
+  // once, by its first).
   const still = runs.flatMap((r, i) =>
-    r.lastAt === null || pressed[i]?.track === 'lowerThird'
+    r.lastAt === null || pressed[i]?.track === 'lowerThird' || pressed[i]?.also
       ? []
       : stillIntervals(read.frames, r.lastAt + period * 3, (pressed[i]?.until ?? r.lastAt) - period),
   );
@@ -554,13 +1151,13 @@ async function measure(
   };
 }
 
-/** Each case's row, in the order first pressed. */
-function rowsOf(runs: readonly Measured[], pressed: readonly Pressed[], period: number): CaseRow[] {
-  const names = [...new Set(pressed.map((p) => p.name))];
+/** Each case's row, in the order first run (a screen 2's after screen 1's). */
+function rowsOf(runs: readonly Measured[], period: number): CaseRow[] {
+  const names = [...new Set(runs.map((r) => r.name))];
   return names.map((name) =>
     caseRow(
       name,
-      pressed.find((p) => p.name === name)?.setMs ?? 0,
+      runs.find((r) => r.name === name)?.setMs ?? 0,
       runs.filter((r) => r.name === name),
       period,
     ),
