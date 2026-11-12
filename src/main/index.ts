@@ -187,7 +187,10 @@ import {
 } from '../shared/picture-look';
 import { largestAudienceScreen, type LocalOutput } from './media/copy-screen';
 import { TrimSaves } from './convert/trim-saves';
-import { saveRequestSchema } from '../shared/trim';
+import { rowTrimRequestSchema, saveRequestSchema } from '../shared/trim';
+import { TrimmedVideos } from './db/trimmed';
+import { PlaylistTrims } from './convert/playlist-trims';
+import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
 import { isRepeatId, repeatPresentationId } from '../shared/repeat';
 import {
   applyPendingRestore,
@@ -1542,7 +1545,7 @@ function start(): void {
   /** A picture's look (Session 26e; the media repo, made further down). */
   let pictureLook: (mediaId: string) => PictureLook | null = () => null;
   /** A video's or sound's start and end points and markers (the media repo, made further down). */
-  let mediaMarkers: (mediaId: string) => MediaMarkers | null = () => null;
+  let mediaMarkers: (mediaId: string, itemId?: string) => MediaMarkers | null = () => null;
   /** A media item's kind while it is there to play (Session 50, the box's; the media repo, made further down). */
   let mediaKind: (mediaId: string) => 'image' | 'video' | 'audio' | null = () => null;
   // How each file sounds (Session 55, Part 7: even loudness, main/sound/): from the library, each kept here until it is
@@ -1593,7 +1596,7 @@ function start(): void {
             ? simpleRefusalText(simpleAccess())
             : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
-      mediaMarkers: (mediaId) => mediaMarkers(mediaId),
+      mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
       pictureLook: (mediaId) => pictureLook(mediaId),
       // The picture-in-picture box (Session 50): what it holds, from the main process's own lists.
@@ -1719,6 +1722,7 @@ function start(): void {
   const mediaDir = join(userDataDir, 'Media');
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
+  const trimmedVideos = new TrimmedVideos(libraryDb, media, playlists);
   mediaLength = (mediaId) => media.lengthOf(mediaId);
   mediaKind = (mediaId) => media.kindAndName(mediaId)?.kind ?? null;
   /** The largest audience screen's picture as drawn, in pixels (set once the outputs are). */
@@ -1823,7 +1827,12 @@ function start(): void {
       }),
     );
   pictureLook = (mediaId) => screenLook(mediaId);
-  mediaMarkers = (mediaId) => media.markersOf(mediaId);
+  mediaMarkers = (mediaId, itemId) => {
+    const marks = media.markersOf(mediaId);
+    return marks && itemId && trimmedVideos.playsFull(itemId, mediaId, marks)
+      ? { ...marks, startMs: null, endMs: null }
+      : marks;
+  };
   // Playback markers (Session 14): kept with the file; what plays it follows at once.
   handle(IPC.media.markers, (_e, mediaId) =>
     typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
@@ -3823,6 +3832,52 @@ function start(): void {
     },
     readRate: !packaged() && sw('DRASHTI_TEST_SAVE_READRATE') === '1',
   });
+  // A playlist video's Trim makes a cut in the background, then changes just that row (Session 57).
+  const playlistTrims = new PlaylistTrims({
+    repo: trimmedVideos,
+    mediaDir,
+    readInfo: async (file) => {
+      const ffmpeg = saveFfmpeg();
+      return ffmpeg ? readTrimInfo(ffmpeg, file) : { durationMs: null, video: null, audio: null };
+    },
+    queue: (input) => queueTrimCopy(conversions, input),
+    cancel: (id) => conversions.cancelFile(id),
+    pendingChanged: (ids) => sendToOperator(IPC.media.preparingTrimsChanged, ids),
+    rowChanged: (added) => {
+      if (added) {
+        libraryChanged(true);
+        soundPass.imported([added], false);
+      }
+      playlistsChanged();
+    },
+    markersChanged: (id) => engine.refreshMarkers(id),
+    notice: (text) => sendToOperator(IPC.app.notice, { text }),
+  });
+  stops.add('playlist trims', () => {
+    playlistTrims.close();
+  });
+  const noTrim = { ok: false as const, message: 'Open a video row’s Trim to change that playlist.' };
+  handle(IPC.media.rowTrim, (e, itemId) => {
+    const id = idSchema.safeParse(itemId);
+    return fromOperator(e) && id.success ? trimmedVideos.view(id.data) : null;
+  });
+  handle(IPC.media.applyRowTrim, (e, itemId, request) => {
+    const id = idSchema.safeParse(itemId);
+    const parsed = rowTrimRequestSchema.safeParse(request);
+    if (!fromOperator(e) || !id.success) return noTrim;
+    return parsed.success
+      ? playlistTrims.apply(id.data, parsed.data)
+      : { ok: false as const, message: 'Choose a valid start and end, with the end later.' };
+  });
+  handle(IPC.media.resetRowTrim, (e, itemId, mediaId) => {
+    const item = idSchema.safeParse(itemId);
+    const video = idSchema.safeParse(mediaId);
+    return fromOperator(e) && item.success && video.success
+      ? playlistTrims.reset(item.data, video.data)
+      : noTrim;
+  });
+  handle(IPC.media.preparingTrims, (e) => (fromOperator(e) ? playlistTrims.list() : []));
+
   const notSaving = { ok: false as const, message: 'Only the operator window can save a video’s part.' };
   handle(IPC.media.keyframe, async (e, mediaId, startMs) => {
     const id = idSchema.safeParse(mediaId);

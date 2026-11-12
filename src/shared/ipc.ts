@@ -100,7 +100,15 @@ import type {
 } from './playlists';
 import type { RepeatSettings } from './repeat';
 import type { GuideId, GuideRead } from './guides';
-import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from './trim';
+import type {
+  KeyframeResult,
+  RowTrimRequest,
+  RowTrimResult,
+  RowTrimView,
+  SaveJob,
+  SaveRequest,
+  SaveResult,
+} from './trim';
 import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
@@ -465,6 +473,11 @@ export const IPC = {
      */
     keyframe: 'media:keyframe',
     saveTrim: 'media:save-trim',
+    rowTrim: 'media:row-trim',
+    applyRowTrim: 'media:apply-row-trim',
+    resetRowTrim: 'media:reset-row-trim',
+    preparingTrims: 'media:preparing-trims',
+    preparingTrimsChanged: 'media:preparing-trims-changed',
     saves: 'media:saves',
     stopSave: 'media:stop-save',
     showSave: 'media:show-save',
@@ -1401,6 +1414,10 @@ export interface InvokeContract {
   [IPC.media.photo]: { args: [mediaId: string]; result: boolean };
   [IPC.media.savePicture]: { args: [mediaId: string, name: string]; result: SavePictureResult };
   [IPC.media.saveTrim]: { args: [request: SaveRequest]; result: SaveResult };
+  [IPC.media.rowTrim]: { args: [itemId: string]; result: RowTrimView | null };
+  [IPC.media.applyRowTrim]: { args: [itemId: string, request: RowTrimRequest]; result: RowTrimResult };
+  [IPC.media.resetRowTrim]: { args: [itemId: string, mediaId: string]; result: RowTrimResult };
+  [IPC.media.preparingTrims]: { args: []; result: string[] };
   [IPC.media.saves]: { args: []; result: SaveJob[] };
   [IPC.media.stopSave]: { args: [jobId: string]; result: boolean };
   [IPC.media.showSave]: { args: [jobId: string]; result: null };
@@ -1701,6 +1718,7 @@ export interface EventContract {
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];
+  [IPC.media.preparingTrimsChanged]: string[];
   [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: { role: 'preview' | 'encoder' | 'speech' };
   [IPC.stream.context]: ProgramContext;
