@@ -172,10 +172,10 @@ describe.skipIf(!ffmpegHere(ffmpeg))('trimming with the bundled FFmpeg', () => {
         'rawvideo',
         '-',
       ]);
-      // Four frames, at 300, 400, 500, and 600 ms. Each is a different generated shade.
+      // Start at 250 ms shows the frame from 200 ms. The cut keeps it and the next four frames.
       const frameSize = (64 * 48 * 3) / 2;
-      expect(frames.length).toBe(4 * frameSize);
-      [52, 64, 76, 88].forEach((shade, index) => {
+      expect(frames.length).toBe(5 * frameSize);
+      [40, 52, 64, 76, 88].forEach((shade, index) => {
         expect(Math.abs((frames[index * frameSize] ?? 0) - shade)).toBeLessThanOrEqual(2);
       });
       expect(readFileSync(path).equals(before)).toBe(true);
