@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { Db } from '../db/database';
 import { openDatabase } from '../db/database';
@@ -153,7 +153,7 @@ function earlierCuts(ids: readonly string[] = ['held', 'newer']) {
     INSERT INTO playlist_items (id, playlist_id, position, kind, media_id) VALUES ('cut-row', 'p', 0, 'media', 'newer');
   `);
   const trash = vi.fn((file: string) => {
-    renameSync(file, join(trashDir, file.slice(mediaDir.length + 1)));
+    renameSync(file, join(trashDir, basename(file)));
     return Promise.resolve();
   });
   return {

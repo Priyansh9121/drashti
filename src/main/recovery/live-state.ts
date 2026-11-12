@@ -518,6 +518,7 @@ export class LiveStateWriter {
   private heartbeat: NodeJS.Timeout | null = null;
   private alive: NodeJS.Timeout | null = null;
   private latest: EngineState | null = null;
+  private saved: EngineState | null = null;
 
   constructor(
     private readonly files: RecoveryFiles,
@@ -531,12 +532,22 @@ export class LiveStateWriter {
    * the start has read what the run before left, and again every `aliveMs` until Drashti quits.
    */
   start(state: EngineState): void {
+    // Until this run's first save lands, the file holds the show the start found (put back after a crash).
+    this.saved ??= state;
     this.update(state);
     if (this.alive) return;
     this.alive = setInterval(() => {
       if (this.latest) this.update(this.latest);
     }, this.options.aliveMs ?? 60_000);
     this.alive.unref();
+  }
+
+  /**
+   * What a crash now would put back at the next start (Session 57): the show saved last, or this run's first until a
+   * save lands. A save that fails leaves it as it was. The unused Trim cuts sweep keeps what it shows.
+   */
+  get savedState(): EngineState | null {
+    return this.saved;
   }
 
   /** The live state changed. */
@@ -558,7 +569,7 @@ export class LiveStateWriter {
       this.pending = null;
       if (next) {
         const saved = savedFrom(next, this.session, this.now());
-        this.writing = this.writing.then(() => this.write(saved));
+        this.writing = this.writing.then(() => this.write(saved, next));
       }
     }, this.throttleMs);
   }
@@ -583,11 +594,12 @@ export class LiveStateWriter {
     this.pending = null;
   }
 
-  private async write(saved: SavedLive): Promise<void> {
+  private async write(saved: SavedLive, state: EngineState): Promise<void> {
     const partial = `${this.files.state}.${randomUUID()}.tmp`;
     try {
       await writeFile(partial, JSON.stringify(saved));
       await rename(partial, this.files.state);
+      this.saved = state;
     } catch (error) {
       await rm(partial, { force: true }).catch(() => undefined);
       // The next change writes again.

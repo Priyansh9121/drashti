@@ -40,7 +40,7 @@ import {
 } from '../shared/media';
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
-import { MediaRemoval, TrimCleanup } from './library/media-removal';
+import { MediaRemoval, sweepQuiet, TrimCleanup } from './library/media-removal';
 import { FileActions } from './library/file-actions';
 import {
   extOf,
@@ -343,7 +343,7 @@ import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
 import { youtubeSelfTest } from './links/youtube-selftest';
 import { findYoutubeTools, toolFolders, youtubeLaunch } from './links/youtube-tools';
 import { spawnStreamWorker } from './stream/stream-worker';
-import { ConvertService, readInfo } from './convert/convert-service';
+import { AFTER_START_MS, ConvertService, readInfo } from './convert/convert-service';
 import { HevcAnswer, playsHevcScript } from './convert/plays-hevc';
 import { askInOwnPage, type HevcPage } from './convert/hevc-page';
 import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
@@ -2782,6 +2782,11 @@ function start(): void {
   // ---- deleting media (Session 26a) -------------------------------------------------
   const mediaRemoval = new MediaRemoval(db, {
     onScreens: () => mediaUpNow(engine.current),
+    // What a crash now would put back (Session 57): the show saved last. The unused Trim cuts sweep keeps it.
+    putBack: () => {
+      const saved = liveWriter.savedState;
+      return saved ? mediaUpNow(saved) : new Set<string>();
+    },
   });
   // Deleted before this start, so it can no longer be undone: its files go now, but never one that
   // recovery has just put back on the screens (that one goes at the next start).
@@ -3967,8 +3972,8 @@ function start(): void {
     .catch((error: unknown) => {
       log.warn('Trim: could not resume an interrupted cut', error);
     });
-  const trimCleanupQuiet = () =>
-    !quitStarted && !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers);
+  // Nothing up and nothing Oops, Put it back or Back could bring back (sweepQuiet), with no stream or recording.
+  const trimCleanupQuiet = () => !quitStarted && !streaming.inUse() && !testOnAir && sweepQuiet(engine);
   const trimCleanup = new TrimCleanup(
     trimCleanupQuiet,
     async (signal) => {
@@ -3983,6 +3988,7 @@ function start(): void {
       log.info(`Media: moved ${String(gone)} unused Trim cut(s) to the Trash`);
     },
     (error) => log.warn('Media: could not check unused Trim cuts', error),
+    AFTER_START_MS,
   );
   trimCleanupActivityChanged = () => trimCleanup.activityChanged();
   testTrimActivityChanged = trimCleanupActivityChanged;
