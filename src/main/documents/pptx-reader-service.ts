@@ -42,7 +42,10 @@ const resultSchema = z
               .max(EDITABLE_SOURCE_LIMITS.pageElements),
             // A timed page's clicks and transition (W6's review N4), only their known parts; anything else is
             // dropped here, never failing the reply, and only an asked page's are taken (below).
-            deck: z.unknown().transform((value) => sourceTimingDeck(value)),
+            deck: z
+              .unknown()
+              .transform((value) => sourceTimingDeck(value))
+              .optional(),
           })
           .strict(),
       )
