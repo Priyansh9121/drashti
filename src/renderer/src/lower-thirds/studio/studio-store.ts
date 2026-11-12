@@ -97,12 +97,13 @@ export function choose(id: string): void {
 }
 
 /** A new one, blank or from a template (asked first when the one open has changes). */
-export function makeNew(from: LowerThirdInput | null = null): void {
+export function makeNew(from: LowerThirdInput | null = null, accepted?: () => void): void {
   whenFree(() => {
     load(null);
     if (from) {
       useStudio.setState({ draft: inputOf(from), tab: 'words' });
     } else useStudio.setState({ tab: 'words' });
+    accepted?.();
   });
 }
 
