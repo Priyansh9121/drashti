@@ -248,6 +248,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
           plan={plan}
           still={still}
           held={openingHolds(facts)}
+          prepare={!screensWarming || waitedOut}
           className="absolute inset-0"
           // The window starts under its black: the black stays until the photo is ready.
           coverWhilePreparing
