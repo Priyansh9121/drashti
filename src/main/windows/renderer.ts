@@ -34,6 +34,11 @@ const skipWarmUp = (): boolean => !packaged() && sw('DRASHTI_TEST_SKIP_WARM_UP')
 const gpuSaidLate = (): boolean => !packaged() && sw('DRASHTI_TEST_GPU_SAID') === 'late';
 /** Tests only: the audience screens and the operator window keep the motion probe's record (Session 57, item 6). */
 const motionProbe = (): boolean => !packaged() && sw('DRASHTI_TEST_MOTION_PROBE') === '1';
+/**
+ * Tests only: the GPU warm-up's scene with this key fails as it draws part-way, on every page that warms up, as a bug
+ * in any scene would (Session 57, warm-up.spec.ts). Never when packaged.
+ */
+const warmUpFails = (): string | undefined => (packaged() ? undefined : sw('DRASHTI_TEST_WARM_UP_FAILS'));
 
 /**
  * Run translated (an Intel build under Rosetta on an Apple-silicon Mac, x64 under Windows' emulation): pages
@@ -55,7 +60,9 @@ export function loadPage(
       : translated() || skipWarmUp()
         ? { ...given, warmUp: 'skip' }
         : given;
-  const query = motionProbe() ? { ...warm, motionProbe: '1' } : warm;
+  const probed = motionProbe() ? { ...warm, motionProbe: '1' } : warm;
+  const fails = warmUpFails();
+  const query = fails ? { ...probed, warmUpFails: fails } : probed;
   const dev = devServerUrl();
   if (dev) {
     const url = new URL(`${page}.html`, dev.endsWith('/') ? dev : dev + '/');

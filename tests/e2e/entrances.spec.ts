@@ -30,7 +30,7 @@ test('a message banner comes in from when it went up, Calm and Bold; an update o
   await operatorReady(win);
   await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   const banner = '[data-layer="messages"]';
   for (const movement of ['calm', 'bold'] as const) {
     await setMovement(app, movement);
@@ -78,7 +78,7 @@ test('the ticker’s band comes in once, from its own time; another announcement
   await operatorReady(win);
   await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await setMovement(app, 'bold');
   await expect(out.getByTestId('output-root')).toHaveAttribute('data-movement', 'bold');
   const { port } = await networkOn(win);

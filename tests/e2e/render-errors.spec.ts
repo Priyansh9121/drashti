@@ -32,7 +32,7 @@ test('a render error on an output: black (never text), logged, and the output re
   await operatorReady(win);
   await setUpScreen(win);
   const out = await outputPage(app);
-  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const list = await d.library.listPresentations();

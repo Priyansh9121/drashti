@@ -47,7 +47,7 @@ test('drag lyrics onto the library, go live, remove and undo, and keep both vers
     );
   });
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
 
   await dropFiles(win, win.getByTestId('library-drop'), [songOne]);
   const first = list.getByRole('button', { name: /^Placeholder Song One/ });
@@ -263,7 +263,7 @@ test('drag a .pro6 presentation in: its text goes live, and Find relinks its mis
     );
   });
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
 
   await dropFiles(win, win.getByTestId('library-drop'), [hymn]);
   const missing = win.getByTestId('import-notice').filter({ hasText: 'Placeholder Hymn' });

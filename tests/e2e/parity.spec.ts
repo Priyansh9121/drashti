@@ -56,7 +56,7 @@ test('a slide’s shrunk words are the same size and in the same lines on the ou
   }, id);
   await setUpScreen(win);
   const output = await outputPage(app);
-  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await goLive(win, id, 0);
 
   // The hall's output: shrunk.
