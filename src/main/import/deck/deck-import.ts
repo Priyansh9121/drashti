@@ -885,9 +885,9 @@ export function noAppIssue(d: { media: number }): ImportIssue {
 // ---- pictures, with the deck's own videos and sounds ----------------------------------------------------
 
 /**
- * The deck's videos and sounds put on its pictures' slides (Session 54, C2): each video at its box, with its loop
- * and volume (its trims as the file's own start and end points), and a sound that starts with its slide as the
- * slide's sound. `pages` are the pictures' slides in order, one per shown slide. Returns the media refs to add.
+ * The deck's videos and sounds on the slides Drashti plays from their editable shapes (Session 57): each video in
+ * place of its poster (or at its box), with its loop, volume and trims and its own start, and a transition's sound
+ * as the slide's. `indices` are the source slides of the parsed ones, in order; slides with baked steps are left.
  */
 export async function addNativeDeckMedia(
   parsed: ParsedPresentation,
@@ -948,6 +948,11 @@ export async function addNativeDeckMedia(
   }
 }
 
+/**
+ * The deck's videos and sounds put on its pictures' slides (Session 54, C2): each video at its box, with its loop
+ * and volume (its trims as the file's own start and end points), and a sound that starts with its slide as the
+ * slide's sound. `pages` are the pictures' slides in order, one per shown slide. Returns the media refs to add.
+ */
 export async function addDeckMedia(
   parsed: ParsedPresentation,
   deck: PptxDeck,

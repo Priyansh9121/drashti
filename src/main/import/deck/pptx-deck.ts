@@ -287,7 +287,6 @@ interface NativeSchedule {
   windows: Map<string, TimeWindow>;
   byNode: Map<XmlNode, TimeWindow>;
   effects: DeckEffect[];
-  textRangeEffects: Set<DeckEffect>;
   approximate: boolean;
 }
 
@@ -326,7 +325,18 @@ function nativeStart(tn: XmlNode, at: number, schedule: NativeSchedule): number 
 
 type NativeLook = Pick<
   DeckEffect,
-  'kind' | 'direction' | 'verticalDirection' | 'degrees' | 'fade' | 'distance' | 'splitAxis' | 'scale'
+  | 'kind'
+  | 'direction'
+  | 'verticalDirection'
+  | 'degrees'
+  | 'fade'
+  | 'distance'
+  | 'splitAxis'
+  | 'scale'
+  | 'shape'
+  | 'inward'
+  | 'spokes'
+  | 'bars'
 > & { partial?: true };
 type Direction = NonNullable<DeckEffect['direction']>;
 
@@ -364,7 +374,11 @@ function animationValues(behaviour: XmlNode): [string, string] | null {
     last.attrs['fmla']
   )
     return null;
-  const value = (n: XmlNode) => kid(kid(n, 'p:val'), 'p:strVal')?.attrs['val']?.replace(/\s+/gu, '');
+  const value = (n: XmlNode) => {
+    const held = kid(n, 'p:val');
+    const written = kid(held, 'p:strVal') ?? kid(held, 'p:fltVal') ?? kid(held, 'p:intVal');
+    return written?.attrs['val']?.replace(/\s+/gu, '');
+  };
   const from = value(first);
   const to = value(last);
   return from !== undefined && to !== undefined ? [from, to] : null;
@@ -460,6 +474,64 @@ function floatLook(behaviours: readonly XmlNode[], entering: boolean): NativeLoo
   return look;
 }
 
+/** A turn's degrees from where it starts to where the shape rests (an entrance), or the other way (an exit). */
+function turnOf(track: XmlNode | undefined, entering: boolean): number | null {
+  const points = track ? animationValues(track) : null;
+  if (!points) return null;
+  const [away, rest] = entering ? points : [points[1], points[0]];
+  const from = num(away);
+  const to = num(rest);
+  return from !== null && to !== null && Math.abs(from - to) <= 3600 ? from - to : null;
+}
+
+/** Grow & Turn (Shrink & Turn as it leaves): the gallery Zoom's scale and fade, turning as it grows. */
+function growAndTurn(behaviours: readonly XmlNode[], entering: boolean): NativeLook {
+  const turns = behaviours.filter(
+    (node) => node.name === 'p:anim' && animationProperty(node) === 'style.rotation',
+  );
+  const scale = zoomLimit(
+    behaviours.filter((node) => !turns.includes(node)),
+    entering,
+  );
+  const degrees = turns.length === 1 ? turnOf(turns[0], entering) : null;
+  return scale === null || degrees === null
+    ? { kind: 'zoom', fade: true, partial: true }
+    : { kind: 'zoom', fade: true, scale, ...(degrees === 0 ? {} : { degrees }) };
+}
+
+const OUTLINES = ['circle', 'box', 'diamond', 'plus'] as const;
+const RANDOM_BARS = new Map<string, NonNullable<DeckEffect['bars']>>([
+  ['randombar(horizontal)', 'horizontal'],
+  ['randombar(vertical)', 'vertical'],
+]);
+const SPLITS = new Map<string, NativeLook>([
+  ['barn(outvertical)', { kind: 'split', splitAxis: 'x' }],
+  ['barn(outhorizontal)', { kind: 'split', splitAxis: 'y' }],
+  ['barn(invertical)', { kind: 'split', splitAxis: 'x', inward: true }],
+  ['barn(inhorizontal)', { kind: 'split', splitAxis: 'y', inward: true }],
+]);
+
+/**
+ * Office's own reveal filters (ECMA-376 §19.5.3) that Drashti draws as clips: Shape's circle, box, diamond and plus,
+ * Wheel's spokes and Random Bars. Not yet compared with PowerPoint's own movie, so a slide using one keeps PowerPoint's
+ * video wherever one can be made, and plays these where none can.
+ */
+function filterLook(filter: string | undefined): NativeLook | null {
+  if (!filter) return null;
+  const outline = OUTLINES.find((shape) => filter === `${shape}(in)` || filter === `${shape}(out)`);
+  if (outline)
+    return {
+      kind: 'shape',
+      shape: outline,
+      ...(filter.endsWith('(in)') ? { inward: true } : {}),
+      partial: true,
+    };
+  const wheel = /^wheel\(([12348])\)$/u.exec(filter);
+  if (wheel) return { kind: 'wheel', spokes: Number(wheel[1]), partial: true };
+  const bars = RANDOM_BARS.get(filter);
+  return bars ? { kind: 'bars', bars, partial: true } : null;
+}
+
 function nativeLook(
   tn: XmlNode,
   phase: DeckEffect['phase'],
@@ -509,11 +581,11 @@ function nativeLook(
     return scale === null ? { kind: 'zoom', fade: true, partial: true } : { kind: 'zoom', fade: true, scale };
   }
   if ((preset === '42' || preset === '47') && filter === 'fade') return floatLook(behaviours, phase === 'in');
-  if (preset === '16') {
-    if (filter === 'barn(outvertical)') return { kind: 'split', splitAxis: 'x' };
-    if (filter === 'barn(outhorizontal)') return { kind: 'split', splitAxis: 'y' };
-  }
-  return null;
+  if (preset === '16') return SPLITS.get(filter ?? '') ?? null;
+  if (preset === '31' && filter === 'fade') return growAndTurn(behaviours, phase === 'in');
+  // Bounce's own path (its falls and squashes) is not read: Drashti drops the shape in with a bounce of its own.
+  if (preset === '26') return { kind: 'bounce', partial: true };
+  return filterLook(filter);
 }
 
 const PLAYED_BEHAVIOURS: Record<DeckEffect['kind'], readonly string[]> = {
@@ -527,19 +599,58 @@ const PLAYED_BEHAVIOURS: Record<DeckEffect['kind'], readonly string[]> = {
   float: ['p:anim', 'p:animEffect'],
   split: ['p:animEffect'],
   'grow-shrink': ['p:animScale'],
+  shape: ['p:animEffect'],
+  wheel: ['p:animEffect'],
+  bars: ['p:animEffect'],
+  bounce: ['p:anim', 'p:animEffect', 'p:animScale', 'p:animMotion', 'p:animRot'],
 };
 
+/** Repeats, playing back, an early end, or text built word by word or letter by letter (p:iterate). */
 function unsupportedTiming(tn: XmlNode): boolean {
-  const { repeatCount, repeatDur, autoRev, accel, decel } = tn.attrs;
+  const { repeatCount, repeatDur, autoRev } = tn.attrs;
   return (
     (repeatCount !== undefined && repeatCount !== '1000') ||
     repeatDur !== undefined ||
     autoRev === '1' ||
     autoRev === 'true' ||
-    (num(accel) ?? 0) > 0 ||
-    (num(decel) ?? 0) > 0 ||
-    kid(tn, 'p:endCondLst') !== undefined
+    kid(tn, 'p:endCondLst') !== undefined ||
+    kid(tn, 'p:iterate') !== undefined
   );
+}
+
+/** A timing node's smooth start and smooth end (accel, decel), as shares of its duration. */
+function easeOf(tn: XmlNode): [number, number] {
+  const share = (value: string | undefined) => Math.min(1, Math.max(0, num(value) ?? 0) / 100_000);
+  return [share(tn.attrs['accel']), share(tn.attrs['decel'])];
+}
+
+/** An effect's smooth start and end: its own, or the one all its behaviours share; null when they differ. */
+function smoothing(tn: XmlNode, behaviours: readonly XmlNode[]): [number, number] | null {
+  const own = easeOf(tn);
+  const inner = behaviours.flatMap((behaviour) => {
+    const clock = cTnOf(behaviour);
+    return clock && clock !== tn ? [easeOf(clock)] : [];
+  });
+  const [first] = inner;
+  if (!first || inner.every(([a, d]) => a === 0 && d === 0)) return own[0] + own[1] <= 1 ? own : null;
+  if (own[0] > 0 || own[1] > 0) return null;
+  return first[0] + first[1] <= 1 && inner.every(([a, d]) => a === first[0] && d === first[1]) ? first : null;
+}
+
+/** Each paragraph range (first and last, from 0) a text effect's targets name, joined; null for anything else. */
+function paragraphRange(targets: readonly XmlNode[]): [number, number] | null {
+  let first = Infinity;
+  let last = -Infinity;
+  for (const target of targets) {
+    const range = kid(kid(target, 'p:txEl'), 'p:pRg');
+    const from = num(range?.attrs['st']);
+    const to = num(range?.attrs['end']);
+    if (from === null || to === null || !Number.isSafeInteger(from) || !Number.isSafeInteger(to)) return null;
+    if (from < 0 || to < from || to > 9999) return null;
+    first = Math.min(first, from);
+    last = Math.max(last, to);
+  }
+  return Number.isFinite(first) ? [first, last] : null;
 }
 
 /** Office writes a visibility set alongside a fade or move, at its first or last frame. */
@@ -588,8 +699,12 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
           : cls === undefined && (transition === 'in' || transition === 'out')
             ? transition
             : 'emphasis';
-  const native = subtarget ? null : nativeLook(tn, phase, behaviours);
-  const selected: NativeLook = native ?? { kind: phase === 'emphasis' ? 'pulse' : 'fade' };
+  const paragraphs = textRange && phase !== 'emphasis' ? paragraphRange(targets) : null;
+  const native = subtarget && !paragraphs ? null : nativeLook(tn, phase, behaviours);
+  // A paragraph build shows or hides each paragraph by itself: at once for Appear, anything else as a fade.
+  const selected: NativeLook = paragraphs
+    ? { kind: native?.kind === 'appear' ? 'appear' : 'fade' }
+    : (native ?? { kind: phase === 'emphasis' ? 'pulse' : 'fade' });
   const { partial, ...look } = selected;
   const played =
     look.kind === 'zoom' && look.fade
@@ -607,9 +722,15 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
     schedule.approximate = true;
     return;
   }
+  const ease = smoothing(
+    tn,
+    behaviours.filter((b) => b.name !== 'p:set' && played.includes(b.name)),
+  );
   if (
     !native ||
     partial ||
+    paragraphs ||
+    !ease ||
     durationMs < 0 ||
     (durationMs === 0 && look.kind !== 'appear') ||
     behaviours.some(
@@ -627,29 +748,11 @@ function addNativeEffect(node: XmlNode, tn: XmlNode, window: TimeWindow, schedul
     ...look,
     delayMs,
     durationMs: Math.max(0, durationMs),
+    ...(ease && ease[0] > 0 ? { accel: ease[0] } : {}),
+    ...(ease && ease[1] > 0 ? { decel: ease[1] } : {}),
+    ...(paragraphs ? { paragraphs } : {}),
   };
-  if (textRange) schedule.textRangeEffects.add(effect);
   schedule.effects.push(effect);
-}
-
-/** The whole box comes in with its first paragraph and leaves with its last. Keep the intervening clicks. */
-function wholeBoxEffects(schedule: NativeSchedule): DeckEffect[] {
-  const effects = schedule.effects.sort((a, b) => a.step - b.step || a.delayMs - b.delayMs);
-  if (schedule.textRangeEffects.size === 0) return effects;
-  const first = new Map<string, DeckEffect>();
-  const last = new Map<string, DeckEffect>();
-  for (const effect of effects) {
-    if (!schedule.textRangeEffects.has(effect)) continue;
-    if (effect.phase === 'in' && !first.has(effect.shapeId)) first.set(effect.shapeId, effect);
-    if (effect.phase === 'out') last.set(effect.shapeId, effect);
-  }
-  return effects.map((effect) =>
-    schedule.textRangeEffects.has(effect) &&
-    effect !== first.get(effect.shapeId) &&
-    effect !== last.get(effect.shapeId)
-      ? { ...effect, phase: 'emphasis', kind: 'pulse' }
-      : effect,
-  );
 }
 
 /** Resolve time-node references and parallel/serial delays relative to this click. */
@@ -690,6 +793,10 @@ function scheduleNative(
 
   const duration = num(tn.attrs['dur']);
   window.end = duration === null ? end : start + Math.max(0, duration);
+  const [accel, decel] = easeOf(tn);
+  // An effect's own smooth start and end, and its behaviours', are played; any other node's are not.
+  if ((accel > 0 || decel > 0) && !effect && !(insideEffect && VISUAL_BEHAVIOURS.has(node.name)))
+    schedule.approximate = true;
   if (unsupportedTiming(tn)) {
     schedule.approximate = true;
     window.end = start + runLength(node, true);
@@ -711,7 +818,6 @@ function readNativeMotion(timing: XmlNode | undefined): PptxDeckSlide['motion'] 
     windows: new Map(anchors),
     byNode: new Map(),
     effects: [],
-    textRangeEffects: new Set(),
     approximate: false,
   };
   for (const group of mainGroups(timing)) {
@@ -723,7 +829,7 @@ function readNativeMotion(timing: XmlNode | undefined): PptxDeckSlide['motion'] 
     scheduleNative(group, 0, schedule, false, click);
   }
   return {
-    effects: wholeBoxEffects(schedule),
+    effects: schedule.effects.sort((a, b) => a.step - b.step || a.delayMs - b.delayMs),
     approximate: schedule.approximate || visual.some((n) => !schedule.byNode.has(n)),
   };
 }

@@ -84,7 +84,21 @@ const IMPORTED_EFFECTS: Record<DeckEffect['kind'], string> = {
   float: 'Float',
   split: 'Split',
   'grow-shrink': 'Grow/Shrink',
+  shape: 'Shape',
+  wheel: 'Wheel',
+  bars: 'Random Bars',
+  bounce: 'Bounce',
 };
+
+/** An imported effect's name, and the paragraph it builds when the deck builds its box paragraph by paragraph. */
+function importedEffect(effect: DeckEffect): string {
+  const name = effect.kind === 'zoom' && effect.degrees ? 'Grow & Turn' : IMPORTED_EFFECTS[effect.kind];
+  const [first, last] = effect.paragraphs ?? [];
+  if (first === undefined || last === undefined) return name;
+  return first === last
+    ? `${name} · paragraph ${String(first + 1)}`
+    : `${name} · paragraphs ${String(first + 1)}–${String(last + 1)}`;
+}
 
 function ImportedMotion({ deck }: { deck: DeckSlide }) {
   const clicks = stepCount(deck) - 1;
@@ -96,11 +110,16 @@ function ImportedMotion({ deck }: { deck: DeckSlide }) {
         <div className="max-w-52 space-y-1 text-xs text-muted" data-testid="imported-motion">
           <p>{clicks === 1 ? '1 click' : `${String(clicks)} clicks`}</p>
           {effects.length > 0 && (
-            <ol aria-label="PowerPoint animation order" className="max-h-16 overflow-y-auto">
+            <ol
+              aria-label="PowerPoint animation order"
+              className="max-h-16 overflow-y-auto"
+              // Four lines show; a longer list scrolls, and then the keys can reach it too.
+              tabIndex={effects.length > 4 ? 0 : undefined}
+            >
               {effects.map((effect, index) => (
                 <li key={index}>
                   {effect.step === 0 ? 'With the slide' : `Click ${String(effect.step)}`} ·{' '}
-                  {IMPORTED_EFFECTS[effect.kind]}
+                  {importedEffect(effect)}
                 </li>
               ))}
             </ol>

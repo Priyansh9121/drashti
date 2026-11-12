@@ -1,5 +1,5 @@
 import type { DeckEffect, DeckEffectDirection, DeckMotion } from './deck';
-import type { Rect, RenderSlide, SlideElement } from './model';
+import type { Rect, RenderSlide, SlideElement, TextElement, TextRun } from './model';
 import { fitElements } from './slide-size';
 
 type Size = Pick<RenderSlide, 'width' | 'height'>;
@@ -33,18 +33,84 @@ export function deckTargetBounds(
   return bounds;
 }
 
+const byClock = (a: DeckEffect, b: DeckEffect) => a.step - b.step || a.delayMs - b.delayMs;
+
+/** The effects on whole shapes and groups, by target. A paragraph build's effects belong to its paragraphs. */
 export function deckEffectsByTarget(effects: readonly DeckEffect[]): Map<string, DeckEffect[]> {
   const byTarget = new Map<string, DeckEffect[]>();
   for (const effect of effects) {
+    if (effect.paragraphs) continue;
     const group = byTarget.get(effect.shapeId);
     if (group) group.push(effect);
     else byTarget.set(effect.shapeId, [effect]);
   }
-  for (const group of byTarget.values()) group.sort((a, b) => a.step - b.step || a.delayMs - b.delayMs);
+  for (const group of byTarget.values()) group.sort(byClock);
   return byTarget;
 }
 
-type DeckWipe = { edge: DeckEffectDirection; fraction: number } | { axis: 'x' | 'y'; fraction: number };
+/** A paragraph build's effects, by the text box's shape, in the order they play. */
+export function deckParagraphEffects(effects: readonly DeckEffect[]): Map<string, DeckEffect[]> {
+  const byShape = new Map<string, DeckEffect[]>();
+  for (const effect of effects) {
+    if (!effect.paragraphs) continue;
+    const own = byShape.get(effect.shapeId);
+    if (own) own.push(effect);
+    else byShape.set(effect.shapeId, [effect]);
+  }
+  for (const own of byShape.values()) own.sort(byClock);
+  return byShape;
+}
+
+/** The effects of one paragraph (from 0) among its box's, in the order they play. */
+export function paragraphEffects(effects: readonly DeckEffect[], paragraph: number): DeckEffect[] {
+  return effects.filter(
+    ({ paragraphs }) => paragraphs !== undefined && paragraphs[0] <= paragraph && paragraph <= paragraphs[1],
+  );
+}
+
+/** A line break inside a paragraph (W5's reader marks one); every other line break ends a paragraph. */
+const softBreak = (run: TextRun): boolean => (run as TextRun & { softBreak?: boolean }).softBreak === true;
+
+/**
+ * A text box's runs cut where its paragraphs end, each with its paragraph (from 0, as PowerPoint counts them):
+ * drawn as they were, so a paragraph can be shown or hidden on its own without anything moving.
+ */
+export function deckParagraphRuns(element: TextElement): { runs: TextRun[]; paragraphs: number[] } {
+  const source = element.runs && element.runs.length > 0 ? element.runs : [{ text: element.text }];
+  const runs: TextRun[] = [];
+  const paragraphs: number[] = [];
+  let paragraph = 0;
+  for (const run of source) {
+    const ends = !softBreak(run);
+    const parts = ends ? run.text.split(/(?<=\n)/u) : [run.text];
+    for (const part of parts) {
+      runs.push(parts.length === 1 ? run : { ...run, text: part });
+      paragraphs.push(paragraph);
+      if (ends && part.endsWith('\n')) paragraph++;
+    }
+  }
+  return { runs, paragraphs };
+}
+
+/** A run kept in its place but not drawn: no letters, no line, glow or shadow around them. */
+function undrawn(run: TextRun): TextRun {
+  return {
+    ...run,
+    color: 'transparent',
+    shadow: false,
+    outline: null,
+    glow: null,
+    underline: false,
+    strike: false,
+  };
+}
+
+type DeckWipe =
+  | { edge: DeckEffectDirection; fraction: number }
+  | { axis: 'x' | 'y'; fraction: number; inward?: true }
+  | { shape: NonNullable<DeckEffect['shape']>; inward: boolean; amount: number }
+  | { spokes: number; amount: number }
+  | { bars: NonNullable<DeckEffect['bars']>; amount: number };
 
 export interface DeckMotionFrame {
   opacity: number;
@@ -72,6 +138,34 @@ function outsideSlide(edge: DeckEffectDirection, bounds: Rect, slide: Size): [nu
     case 'down':
       return [0, Math.max(0, slide.height - bounds.y)];
   }
+}
+
+/**
+ * SMIL's accelerate and decelerate (PowerPoint's smooth start and smooth end): the effect speeds up evenly over its
+ * first share, runs at an even pace, and slows evenly over its last share, ending on time.
+ */
+export function smoothedProgress(progress: number, accel = 0, decel = 0): number {
+  if (progress <= 0) return 0;
+  if (progress >= 1) return 1;
+  const total = accel + decel;
+  const a = total > 1 ? accel / total : accel;
+  const d = total > 1 ? decel / total : decel;
+  if (a <= 0 && d <= 0) return progress;
+  const rate = 1 / (1 - a / 2 - d / 2);
+  if (progress < a) return (rate * progress * progress) / (2 * a);
+  if (progress <= 1 - d) return rate * (progress - a / 2);
+  const left = 1 - progress;
+  return 1 - (rate * left * left) / (2 * d);
+}
+
+/** A ball's fall and its three smaller bounces, landing at 1 (the common "bounce out" curve). */
+function bounced(progress: number): number {
+  const n = 7.5625;
+  const d = 2.75;
+  if (progress < 1 / d) return n * progress * progress;
+  if (progress < 2 / d) return n * (progress - 1.5 / d) ** 2 + 0.75;
+  if (progress < 2.5 / d) return n * (progress - 2.25 / d) ** 2 + 0.9375;
+  return n * (progress - 2.625 / d) ** 2 + 0.984375;
 }
 
 /** A frame of one shape or group. Earlier steps are settled even when Next interrupted their motion. */
@@ -102,8 +196,9 @@ export function deckMotionFrame(
       frame.nextAt = Math.min(frame.nextAt ?? Infinity, effect.delayMs);
       continue;
     }
-    const progress = effect.durationMs === 0 ? 1 : Math.min(1, local / effect.durationMs);
-    frame.moving ||= progress < 1;
+    const run = effect.durationMs === 0 ? 1 : Math.min(1, local / effect.durationMs);
+    const progress = smoothedProgress(run, effect.accel, effect.decel);
+    frame.moving ||= run < 1;
     if (effect.phase === 'emphasis') {
       if (effect.kind === 'spin') frame.rotation += (effect.degrees ?? 360) * progress;
       if (effect.kind === 'pulse' && progress < 1) frame.scale *= 1 + 0.12 * Math.sin(Math.PI * progress);
@@ -133,9 +228,22 @@ export function deckMotionFrame(
       frame.x += slide.width * x * shift;
       frame.y += slide.height * y * shift;
     }
+    if (effect.kind === 'bounce') frame.y += outsideSlide('up', bounds, slide)[1] * (1 - bounced(amount));
     if (effect.kind === 'wipe') frame.wipe = { edge: direction, fraction: 1 - amount };
-    if (effect.kind === 'split') frame.wipe = { axis: effect.splitAxis ?? 'x', fraction: 1 - amount };
-    if (effect.kind === 'zoom') frame.scale *= amount + (effect.scale ?? 0) * (1 - amount);
+    if (effect.kind === 'split')
+      frame.wipe = {
+        axis: effect.splitAxis ?? 'x',
+        fraction: 1 - amount,
+        ...(effect.inward ? { inward: true as const } : {}),
+      };
+    if (effect.kind === 'shape')
+      frame.wipe = { shape: effect.shape ?? 'circle', inward: effect.inward === true, amount };
+    if (effect.kind === 'wheel') frame.wipe = { spokes: effect.spokes ?? 1, amount };
+    if (effect.kind === 'bars') frame.wipe = { bars: effect.bars ?? 'horizontal', amount };
+    if (effect.kind === 'zoom') {
+      frame.scale *= amount + (effect.scale ?? 0) * (1 - amount);
+      if (effect.degrees) frame.rotation += effect.degrees * (1 - amount);
+    }
   }
   frame.opacity *= opacity;
   return frame;
@@ -144,12 +252,168 @@ export function deckMotionFrame(
 const percentage = (part: number, total: number): number =>
   total > 0 ? 100 * Math.min(1, Math.max(0, part / total)) : 0;
 
+type Point = [number, number];
+
+/** A polygon in slide pixels as a clip of a part drawn at `frame` (its points may lie outside it). */
+function polygon(points: readonly Point[], frame: Rect, evenodd = false): string {
+  const at = (value: number, origin: number, size: number) =>
+    size > 0 ? `${String(Math.round(((value - origin) / size) * 100_000) / 1000)}%` : '0%';
+  const list = points.map(([x, y]) => `${at(x, frame.x, frame.width)} ${at(y, frame.y, frame.height)}`);
+  return `polygon(${evenodd ? 'evenodd, ' : ''}${list.join(', ')})`;
+}
+
+/** The outline Shape opens from the centre of `target`, `amount` of the way to covering it. */
+function outline(shape: NonNullable<DeckEffect['shape']>, target: Rect, amount: number): Point[] {
+  const cx = target.x + target.width / 2;
+  const cy = target.y + target.height / 2;
+  const w = target.width * amount;
+  const h = target.height * amount;
+  switch (shape) {
+    case 'circle': {
+      const radius = (Math.hypot(target.width, target.height) / 2) * amount;
+      return Array.from({ length: 72 }, (_, i): Point => {
+        const angle = (i / 72) * 2 * Math.PI;
+        return [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)];
+      });
+    }
+    case 'box':
+      return [
+        [cx - w / 2, cy - h / 2],
+        [cx + w / 2, cy - h / 2],
+        [cx + w / 2, cy + h / 2],
+        [cx - w / 2, cy + h / 2],
+      ];
+    case 'diamond':
+      return [
+        [cx, cy - h],
+        [cx + w, cy],
+        [cx, cy + h],
+        [cx - w, cy],
+      ];
+    case 'plus':
+      return [
+        [cx - w / 2, cy - h],
+        [cx + w / 2, cy - h],
+        [cx + w / 2, cy - h / 2],
+        [cx + w, cy - h / 2],
+        [cx + w, cy + h / 2],
+        [cx + w / 2, cy + h / 2],
+        [cx + w / 2, cy + h],
+        [cx - w / 2, cy + h],
+        [cx - w / 2, cy + h / 2],
+        [cx - w, cy + h / 2],
+        [cx - w, cy - h / 2],
+        [cx - w / 2, cy - h / 2],
+      ];
+  }
+}
+
+const corners = (r: Rect): Point[] => [
+  [r.x, r.y],
+  [r.x + r.width, r.y],
+  [r.x + r.width, r.y + r.height],
+  [r.x, r.y + r.height],
+];
+
+/** Everything of `target` outside `inner`: its corners, then the hole, joined through its first corner. */
+function around(target: Rect, inner: readonly Point[]): Point[] {
+  const outer = corners(target);
+  const [start] = outer;
+  const [first] = inner;
+  return start && first ? [...outer, start, ...inner, first] : outer;
+}
+
+/** Wheel's spokes, each sweeping clockwise from twelve o'clock (a spoke's own share of the turn). */
+function spokes(count: number, target: Rect, amount: number): Point[] {
+  const cx = target.x + target.width / 2;
+  const cy = target.y + target.height / 2;
+  // A little past the corners, so the chords of the arc never cut into the shape.
+  const radius = Math.hypot(target.width, target.height) * 0.55 + 1;
+  const sweep = ((2 * Math.PI) / count) * amount;
+  const segments = Math.max(1, Math.ceil((72 * amount) / count));
+  const points: Point[] = [];
+  for (let s = 0; s < count; s++) {
+    const from = -Math.PI / 2 + (s * 2 * Math.PI) / count;
+    points.push([cx, cy]);
+    for (let i = 0; i <= segments; i++) {
+      const angle = from + (sweep * i) / segments;
+      points.push([cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)]);
+    }
+  }
+  return points;
+}
+
+/** Random Bars' fixed order: 48 bars, each one's turn a fixed shuffle (29 and 48 share no factor). */
+const BARS = 48;
+const BAR_TURN = Array.from({ length: BARS }, (_, i) => ((i * 29) % BARS) + 1);
+
+function bars(kind: NonNullable<DeckEffect['bars']>, target: Rect, amount: number): Point[] {
+  const points: Point[] = [];
+  const across = kind === 'horizontal';
+  const length = across ? target.height : target.width;
+  for (let i = 0; i < BARS; i++) {
+    if ((BAR_TURN[i] ?? BARS) > amount * BARS) continue;
+    const from = (length * i) / BARS;
+    const to = (length * (i + 1)) / BARS;
+    // Each bar is joined to the next along the box's left (or top) edge, which adds nothing to what shows.
+    if (across) {
+      const top = target.y + from;
+      const bottom = target.y + to;
+      points.push(
+        [target.x, top],
+        [target.x + target.width, top],
+        [target.x + target.width, bottom],
+        [target.x, bottom],
+      );
+    } else {
+      const left = target.x + from;
+      const right = target.x + to;
+      points.push(
+        [left, target.y],
+        [left, target.y + target.height],
+        [right, target.y + target.height],
+        [right, target.y],
+      );
+    }
+  }
+  return points;
+}
+
 /** Clip all of a group's rendered parts at the same slide position. */
 export function deckWipeClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
   if (!wipe) return '';
+  if ('shape' in wipe) {
+    if (wipe.inward)
+      return polygon(around(target, outline(wipe.shape, target, 1 - wipe.amount)), frame, true);
+    return polygon(outline(wipe.shape, target, wipe.amount), frame);
+  }
+  if ('spokes' in wipe) return polygon(spokes(wipe.spokes, target, wipe.amount), frame);
+  if ('bars' in wipe) {
+    const points = bars(wipe.bars, target, wipe.amount);
+    return points.length > 0 ? polygon(points, frame) : 'inset(50% 50% 50% 50%)';
+  }
   const { fraction } = wipe;
   if ('axis' in wipe) {
     const half = fraction / 2;
+    if (wipe.inward) {
+      // The two halves come in from the edges and meet in the middle: the gap between them still hidden.
+      const { x, y, width, height } = target;
+      const gap: Point[] =
+        wipe.axis === 'x'
+          ? [
+              [x + width * (0.5 - half), y],
+              [x + width * (0.5 + half), y],
+              [x + width * (0.5 + half), y + height],
+              [x + width * (0.5 - half), y + height],
+            ]
+          : [
+              [x, y + height * (0.5 - half)],
+              [x + width, y + height * (0.5 - half)],
+              [x + width, y + height * (0.5 + half)],
+              [x, y + height * (0.5 + half)],
+            ];
+      return polygon(around(target, gap), frame, true);
+    }
     if (wipe.axis === 'x') {
       const left = percentage(target.x + target.width * half - frame.x, frame.width);
       const right = percentage(frame.x + frame.width - target.x - target.width * (1 - half), frame.width);
@@ -205,9 +469,37 @@ function scaledAbout(element: SlideElement, target: Rect, scale: number): SlideE
   };
 }
 
+/**
+ * Whether each paragraph of a paragraph build shows at the end of `step`: the box's runs cut at its paragraphs, with
+ * the hidden ones kept in place but not drawn; null when no paragraph shows.
+ */
+function builtParagraphs(
+  element: TextElement,
+  own: readonly DeckEffect[],
+  step: number,
+  slide: Size,
+): TextElement | null {
+  const { runs, paragraphs } = deckParagraphRuns(element);
+  const shown = new Map<number, boolean>();
+  const showing = (paragraph: number): boolean => {
+    let seen = shown.get(paragraph);
+    if (seen === undefined) {
+      const effects = paragraphEffects(own, paragraph);
+      seen =
+        effects.length === 0 || deckMotionFrame(effects, step, Infinity, element.frame, slide).opacity > 0;
+      shown.set(paragraph, seen);
+    }
+    return seen;
+  };
+  if (!runs.some((run, i) => run.text.trim() !== '' && showing(paragraphs[i] ?? 0))) return null;
+  if (runs.every((_, i) => showing(paragraphs[i] ?? 0))) return element;
+  return { ...element, runs: runs.map((run, i) => (showing(paragraphs[i] ?? 0) ? run : undrawn(run))) };
+}
+
 /** A still at the end of a click, for Next on LIVE, a phone or a stage screen. */
 export function settledDeckElements(slide: RenderSlide, motion: DeckMotion, step: number): SlideElement[] {
   const effects = deckEffectsByTarget(motion.effects);
+  const paragraphs = deckParagraphEffects(motion.effects);
   const bounds = deckTargetBounds(slide.elements, effects);
   const poses = new Map<string, DeckMotionFrame>();
   for (const [id, target] of bounds) {
@@ -226,6 +518,12 @@ export function settledDeckElements(slide: RenderSlide, motion: DeckMotion, step
       const target = bounds.get(id);
       if (degrees !== 0 && target) drawn = turnedAbout(drawn, target, degrees);
       if (pose.scale !== 1 && target) drawn = scaledAbout(drawn, target, pose.scale);
+    }
+    const built =
+      drawn.kind === 'text' && drawn.sourceShapeId ? paragraphs.get(drawn.sourceShapeId) : undefined;
+    if (built && drawn.kind === 'text') {
+      const words = builtParagraphs(drawn, built, step, slide);
+      return words ? [words] : [];
     }
     return [drawn];
   });
