@@ -1047,7 +1047,10 @@ export interface DrashtiBridge {
   };
   pictures: {
     job(): Promise<PdfJob | null>;
-    /** False: stop (the import was cancelled). */
+    /**
+     * False: stop (the import was cancelled, or Edit slides' reading ended its job for the show). 'skipped': Main
+     * kept that page's saved picture; go on with the next page.
+     */
     page(page: PdfPage): Promise<PdfPageReceipt>;
     done(done: PdfDone): Promise<null>;
     asset(kind: PictureAssetKind, name: string): Promise<Uint8Array | null>;

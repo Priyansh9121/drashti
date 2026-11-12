@@ -108,6 +108,7 @@ export async function drawEditablePdf(
           issues: native.issues,
         });
         if (!accepted) break;
+        // Main checked again as it took the page (kept it, or kept its saved picture: 'skipped').
         answeredAt = performance.now();
         if (accepted === true) jobBytes += assets.reduce((sum, asset) => sum + asset.png.byteLength, 0);
       } catch {

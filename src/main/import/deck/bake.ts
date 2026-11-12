@@ -134,7 +134,8 @@ export interface BakeOptions extends ConvertOptions {
   standInHold?: string | null;
   /**
    * The PDF of every shown slide is saved, before the movie is made, and the deck as read (Session 56): the slides can
-   * show as their pictures while their animations are made. Once, by every app and the stand-in.
+   * show as their pictures while their animations are made. Once, by every app and the stand-in. On Windows (Session
+   * 57) PowerPoint's movie starts only once what this returns has settled: the pictures drawn and written first.
    */
   pdfReady?: (pdf: string, deck: PptxDeck) => void | Promise<void>;
 }
