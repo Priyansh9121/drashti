@@ -297,7 +297,8 @@ test('where Chromium draws without a graphics chip an output draws the show with
     ),
     'the output’s warm-up marks',
   ).toEqual([]);
-  // Black until something goes up.
+  // The show drawn at once, black until something goes up (nothing up, no wallpaper chosen).
+  await expect(out.getByTestId('scene')).toHaveAttribute('data-nothing-up', 'black');
   expect(await brightest(out), 'the whole output').toBe(0);
   // Then the show draws as ever.
   await goLive(win, id, 0);
