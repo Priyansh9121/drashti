@@ -1,5 +1,5 @@
 import { lstatSync, realpathSync } from 'node:fs';
-import { realpath } from 'node:fs/promises';
+import { readdir, realpath } from 'node:fs/promises';
 import { basename, extname, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { mediaMarkersSchema, type MediaMarkers } from '../../shared/markers';
@@ -17,6 +17,7 @@ type TrimSource = NonNullable<ReturnType<TrimmedVideos['row']>>;
 const trimCopySchema = z.object({ path: z.string().min(1), identity: z.string().min(1) });
 const trimCopiesSchema = z.array(trimCopySchema);
 type TrimCopy = z.infer<typeof trimCopySchema>;
+const TRIM_PART = /^\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.mp4$/u;
 const keptTrimSchema = z.object({
   itemId: idSchema,
   mediaId: idSchema,
@@ -40,6 +41,17 @@ type KeptRequest = NonNullable<KeptTrim['request']>;
 function fileIdentity(file: string): string | null {
   const stat = lstatSync(file, { bigint: true, throwIfNoEntry: false });
   return stat?.isFile() ? [stat.dev, stat.ino, stat.size, stat.mtimeNs].join(':') : null;
+}
+
+/** Match the recorded identity to the hidden filename used before a copy is published. */
+async function trimParts(mediaDir: string): Promise<Map<string, string | null>> {
+  const parts = new Map<string, string | null>();
+  for (const entry of await readdir(mediaDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !TRIM_PART.test(entry.name)) continue;
+    const identity = fileIdentity(join(mediaDir, entry.name));
+    if (identity !== null) parts.set(identity, parts.has(identity) ? null : entry.name);
+  }
+  return parts;
 }
 
 interface PlaylistTrimsDeps {
@@ -483,7 +495,14 @@ export class PlaylistTrims {
   /** Retry cleanup for copies left without a current accepted Trim. */
   async cleanupCopies(): Promise<void> {
     const active = new Set([...this.pending.values()].map((pending) => pending.copy));
-    for (const copy of [...this.copies]) if (!active.has(copy)) await this.discardCopy(copy);
+    let parts: Map<string, string | null> | undefined;
+    for (const copy of [...this.copies]) {
+      if (active.has(copy)) continue;
+      await this.discardCopy(copy, async (mediaDir) => {
+        parts ??= await trimParts(mediaDir);
+        return parts.get(copy.identity) ?? null;
+      });
+    }
   }
 
   private copyPath(mediaDir: string, copy: TrimCopy): string | null {
@@ -495,11 +514,22 @@ export class PlaylistTrims {
       : null;
   }
 
-  private async discardCopy(copy: TrimCopy): Promise<void> {
+  private async discardCopy(
+    copy: TrimCopy,
+    findPart?: (mediaDir: string) => Promise<string | null>,
+  ): Promise<void> {
     try {
       const mediaDir = realpathSync.native(this.deps.mediaDir);
-      const path = this.copyPath(mediaDir, copy);
-      if (path && !this.deps.repo.referencesFile(copy.path, path)) await this.deps.trash(path);
+      let relativePath = copy.path;
+      let path = this.copyPath(mediaDir, copy);
+      if (!path && findPart) {
+        const part = await findPart(mediaDir);
+        if (part !== null) {
+          relativePath = part;
+          path = this.copyPath(mediaDir, { path: part, identity: copy.identity });
+        }
+      }
+      if (path && !this.deps.repo.referencesFile(relativePath, path)) await this.deps.trash(path);
       this.copies.delete(copy);
       this.deps.copies.save([...this.copies]);
     } catch {
