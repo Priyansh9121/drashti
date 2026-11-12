@@ -1,6 +1,7 @@
 import type { Dirent } from 'node:fs';
 import { lstat, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
+import { isSystemFileName } from '../../shared/drop-folder';
 import type { ImportFormat } from '../../shared/import';
 import { IMAGE_EXTENSIONS, SOUND_EXTENSIONS, VIDEO_EXTENSIONS } from '../../shared/media';
 import { PICTURE_EXTENSIONS, pictureSourceOf } from '../../shared/pictures';
@@ -18,8 +19,6 @@ for (const ext of SOUND_EXTENSIONS) MEDIA[ext] = 'audio';
 
 const PP6 = new Set(['pro6', 'pro6x', 'pro6pl', 'pro6plx', 'pro6template']);
 const PP7 = new Set(['pro', 'probundle', 'proplaylist']);
-/** Clutter that operating systems leave in folders: never content. */
-const IGNORED = new Set(['thumbs.db', 'desktop.ini', 'icon\r']);
 const IGNORED_DIRS = new Set(['__macosx', '$recycle.bin', 'system volume information']);
 
 /**
@@ -125,7 +124,7 @@ export async function scanPaths(paths: readonly string[], options: ScanOptions =
     for (const entry of entries) {
       const name = entry.name;
       const lower = name.toLowerCase();
-      if (name.startsWith('.') || IGNORED.has(lower)) continue;
+      if (name.startsWith('.') || isSystemFileName(name)) continue;
       const full = join(dir, name);
       if (entry.isDirectory()) {
         // A Keynote file saved as a package is a folder: one item, never its pictures inside.
