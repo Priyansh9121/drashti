@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { type DeckEffect, stepCount } from './deck';
-import { deckMotionFrame, deckParagraphRuns, deckWipeClip, smoothedProgress } from './deck-motion';
+import {
+  builtParagraphEffects,
+  deckMotionFrame,
+  deckParagraphRuns,
+  deckWipeClip,
+  smoothedProgress,
+} from './deck-motion';
 import { deckFromJson, deckMediaIds, deckToJson, mapDeckMedia } from './deck-schema';
 import { deckPictureId, deckPictures, deckSlideAt, nativeStepTiming, stepOf } from './deck-show';
 import type { RenderSlide, TextElement } from './model';
@@ -412,6 +418,17 @@ describe('a deck that builds a text box paragraph by paragraph', () => {
         { text: 'Placeholder third', ...hidden },
       ],
     });
+  });
+
+  it('gives the screens each paragraph’s effects by the same rule as the stills', () => {
+    const effects = built.deck?.motion?.effects ?? [];
+    expect(builtParagraphEffects(effects, 0)).toEqual([build(0, 1), build(0, 4, 'out')]);
+    expect(builtParagraphEffects(effects, 2)).toEqual([build(2, 3)]);
+    // Added after an edit: the third point's, however far past it.
+    expect(builtParagraphEffects(effects, 3)).toEqual([build(2, 3)]);
+    expect(builtParagraphEffects(effects, 7)).toEqual([build(2, 3)]);
+    // Before the first built paragraph: none, so it shows from the start.
+    expect(builtParagraphEffects([build(1, 1), build(2, 2)], 0)).toEqual([]);
   });
 
   it('fades each paragraph by itself while the box stays', () => {
