@@ -40,14 +40,9 @@ const AFTER_MS = 300;
 
 /** Every row of the offered set, as a lower third to play (in the table's order). */
 export async function playedRows(): Promise<Played[]> {
-  const [
-    { BAND_INTROS, FAMILIES, idFor, OFFERED },
-    { LOWER_THIRD_TEMPLATES },
-    { CANDIDATE_LOWER_THIRD_DESIGNS },
-  ] = await Promise.all([
+  const [{ BAND_INTROS, FAMILIES, idFor, OFFERED }, { LOWER_THIRD_TEMPLATES }] = await Promise.all([
     import('../../shared/lower-third-studio'),
     import('../../shared/lower-third-templates'),
-    import('../../shared/lower-third-designs'),
   ]);
   const made = (row: string, animation: string, look: Partial<LowerThirdLook>, hold = HOLD_MS): Played => ({
     row,
@@ -88,18 +83,9 @@ export async function playedRows(): Promise<Played[]> {
   const designs = LOWER_THIRD_TEMPLATES.filter(
     (template) => animationById(template.input.animation).composition,
   );
-  const candidates = CANDIDATE_LOWER_THIRD_DESIGNS.map(({ id, animation, look }) => ({
-    id,
-    input: {
-      lines: ['Placeholder name', 'Placeholder role', ''],
-      look: { ...DEFAULT_LOWER_THIRD_LOOK, ...look },
-      where: 'both' as const,
-      animation,
-    },
-  }));
   return [
     ...offered,
-    ...[...designs, ...candidates].map((template): Played => ({
+    ...designs.map((template): Played => ({
       row: 'template ' + template.id,
       lowerThird: { ...template.input, id: 'perf-lt-template-' + template.id },
       holdMs: HOLD_MS,

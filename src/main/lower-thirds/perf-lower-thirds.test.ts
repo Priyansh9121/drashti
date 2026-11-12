@@ -16,15 +16,6 @@ import { keptOf, keptOfPhase, playedRows } from './perf-lower-thirds';
 
 const APP = join(__dirname, '..', '..', '..');
 
-const CANDIDATE_IDS = [
-  'silver-outline',
-  'purple-outline',
-  'lavender-labels',
-  'emerald-labels',
-  'midnight-bulletin',
-  'sea-green-nameplate',
-];
-
 describe('the lower-thirds scenario', () => {
   it('plays each row of OFFERED once, as a lower third the library takes, with placeholder words', async () => {
     const rows = (await playedRows()).filter((r) => !r.row.startsWith('template '));
@@ -50,26 +41,31 @@ describe('the lower-thirds scenario', () => {
       expect(r.lowerThird.look.style).toBe(r.row.slice('style '.length));
   });
 
-  it('measures every held-back design in and out without offering it in the picker', async () => {
-    const rows = await playedRows();
-    for (const id of CANDIDATE_IDS) {
-      const row = rows.find((entry) => entry.row === 'template ' + id);
-      expect.soft(row?.measure, id).toBe('phases');
-      expect.soft(lowerThirdSchema.safeParse(row?.lowerThird).success, id).toBe(true);
-      expect(
-        LOWER_THIRD_TEMPLATES.some((template) => template.id === id),
-        id,
-      ).toBe(false);
-    }
+  it('offers the rechecked lower-third designs that passed both Performance runs', () => {
+    const previouslyHeldBack = [
+      'silver-outline',
+      'purple-outline',
+      'lavender-labels',
+      'emerald-labels',
+      'midnight-bulletin',
+      'sea-green-nameplate',
+    ];
+    const returned = LOWER_THIRD_TEMPLATES.map((t) => t.id).filter((id) => previouslyHeldBack.includes(id));
+    expect(returned).toEqual([
+      'silver-outline',
+      'purple-outline',
+      'lavender-labels',
+      'emerald-labels',
+      'midnight-bulletin',
+      'sea-green-nameplate',
+    ]);
   });
 
   it('measures each new name-and-role design with its own complete look and animation', async () => {
     const designs = LOWER_THIRD_TEMPLATES.filter((template) =>
       template.input.animation.startsWith('design-'),
     );
-    const measured = (await playedRows()).filter(
-      (r) => r.row.startsWith('template ') && !CANDIDATE_IDS.includes(r.row.slice('template '.length)),
-    );
+    const measured = (await playedRows()).filter((r) => r.row.startsWith('template '));
     expect(designs.length).toBeGreaterThanOrEqual(34);
     expect(measured).toHaveLength(designs.length);
     expect(new Set(measured.map((r) => r.lowerThird.id)).size).toBe(designs.length);
