@@ -815,7 +815,7 @@ const presentationNames = (win: Page) =>
   );
 
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`the library changed from a phone as the window changes it: a presentation from words, a playlist made, added to, moved, taken out and put back with Undo, renamed, deleted and put back, laid out at 375 × 812 and 768 × 1024, and Simple Mode refusing it in words (${engine})`, async () => {
+  test(`the library changed from a phone as the window changes it: a presentation from words, a playlist made, added to, moved, taken out and put back with Undo, renamed, deleted and put back, laid out at 375 × 812 and 768 × 1024, and Simple Mode keeps the playlist tools (${engine})`, async () => {
     test.setTimeout(240_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -896,7 +896,7 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         await p.getByTestId('remote-library-sheet-close').click();
         await expect(p.getByTestId('remote-library-sheet')).toHaveCount(0);
       }
-      // Simple Mode: a new playlist refused in words on the phone, and none made.
+      // A sheet already open when Simple Mode starts keeps the playlist tools and hides presentation editing.
       await p.getByTestId('remote-open-library').click();
       await win
         .getByTestId('app-header')
@@ -905,13 +905,23 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
       await expect(p.getByTestId('remote-open-library')).toHaveCount(0);
-      await p.getByTestId('remote-library-new-playlist-name').fill('Placeholder refused list');
+      await expect(p.getByTestId('remote-library-tab-presentations')).toHaveCount(0);
+      await p.getByTestId('remote-library-new-playlist-name').fill('Placeholder Simple list');
       await p
         .getByTestId('remote-library-new-playlist')
         .getByRole('button', { name: 'Make the playlist' })
         .click();
-      await expect(p.getByTestId('remote-library-problem')).toContainText('Simple Mode');
-      expect(await playlistNames(win)).not.toContain('Placeholder refused list');
+      await expect.poll(() => playlistNames(win)).toContain('Placeholder Simple list');
+      const simpleList = await playlistId(win, 'Placeholder Simple list');
+      const simpleRow = p.locator('[data-testid="remote-library-playlist"][data-playlist-id="' + simpleList + '"]');
+      await simpleRow.getByTestId('remote-library-playlist-rename').click();
+      await p.getByTestId('remote-library-rename-name').fill('Placeholder Simple renamed');
+      await p.getByTestId('remote-library-rename-form').getByRole('button', { name: 'Rename' }).click();
+      await expect.poll(() => playlistNames(win)).toContain('Placeholder Simple renamed');
+      await simpleRow.getByTestId('remote-library-playlist-delete').click();
+      await expect.poll(() => playlistNames(win)).not.toContain('Placeholder Simple renamed');
+      await p.getByTestId('remote-library-undo').click();
+      await expect.poll(() => playlistNames(win)).toContain('Placeholder Simple renamed');
     } finally {
       await phone.close();
       await app.close();

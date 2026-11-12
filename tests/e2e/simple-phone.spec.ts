@@ -1,10 +1,14 @@
 import { longPress } from './phone-gestures';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { NEW_LOWER_THIRD } from '../../src/shared/lower-thirds';
 import { apiCall, device, networkOn, NETWORK_ENV, pairByQr, pairingCode, pairToken } from './devices';
-import { launchApp, operatorPage, operatorReady, outputPage, type PageGlobals, setUpScreen } from './helpers';
+import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPage, type PageGlobals, setUpScreen } from './helpers';
 import { KIRTAN, PICTURE, PLAYLIST, setUpPlaceholderShow, VIDEO } from './placeholder-show';
+import { makeTestTone } from './test-media';
 
 /*
  * A paired phone on a computer in Simple Mode (Session 55, the owner's answer of 30 Oct 2026): it does only what Simple
@@ -12,9 +16,8 @@ import { KIRTAN, PICTURE, PLAYLIST, setUpPlaceholderShow, VIDEO } from './placeh
  * asked for are refused in words (a script's requests here: since Part 9 the phone itself no longer offers them in
  * Simple Mode, saying why once), and nothing of them reaches the screens; Next, a row of Simple Mode's playlist and its
  * slides, and Clear all work as in the window. Back in Pro Mode the phone shows the lower third again. With Simple
- * access (Part 19) the same, in its own words, whatever mode the window asks for. And (Part 9) the phone opens Simple
- * Mode's playlist, hides what Simple Mode's window does not have, dims what it may not do there, and its rows' long
- * press offers what that window's right-click does (Rename and Delete, with Undo). Placeholder content and Gmails;
+ * access (Part 19) the same, in its own words, whatever mode the window asks for. A phone can choose a playlist, use
+ * the time bar, and use the video row's When it ends and the row's Rename and Delete with Undo. Placeholder content;
  * codes and tokens made at run time.
  */
 
@@ -61,11 +64,11 @@ async function moreHidesProParts(phone: Page): Promise<void> {
     'remote-messages',
     'remote-stage',
     'remote-timers',
-    'remote-music',
     'remote-open-screens',
     'remote-open-library',
   ])
     await expect(phone.getByTestId(part), part).toHaveCount(0);
+  await expect(phone.getByTestId('remote-music')).toBeVisible();
 }
 
 test('a phone on a computer in Simple Mode does only what Simple Mode’s window does: a lower third, a message, the stage message and a timer refused in words with nothing on the screens; Next, a row of its playlist and Clear all work; Pro Mode again, the lower third shows', async () => {
@@ -96,11 +99,9 @@ test('a phone on a computer in Simple Mode does only what Simple Mode’s window
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
 
-    // The phone says once why it shows less (Part 9), naming Simple Mode's playlist and the way back to Pro Mode.
+    // The phone says once what it can do in Simple Mode and how the computer returns to Pro Mode.
     const note = p.getByTestId('remote-simple');
-    await expect(note).toContainText(
-      `its playlist “${PLAYLIST}”, Next and Back, Clear all, Black-out and the Wallpaper`,
-    );
+    await expect(note).toContainText('(playlists, playback and Audio)');
     await expect(note).toContainText('On the Drashti computer, a double-click on Pro Mode leaves it.');
     await expect(note).not.toContainText('access is Simple Mode only');
     // No lower thirds, messages, stage message or timers on its More: Simple Mode's window has none.
@@ -111,9 +112,7 @@ test('a phone on a computer in Simple Mode does only what Simple Mode’s window
       id: string;
     }[];
     const words = await refusedToScript(port, script, `/api/v1/lower-thirds/${third[0]?.id ?? 'none'}/show`);
-    expect(words).toContain(
-      `its playlist “${PLAYLIST}”, Next and Back, Clear all, Black-out and the Wallpaper`,
-    );
+    expect(words).toContain('(playlists, playback and Audio)');
     expect(words).toContain('On the Drashti computer, a double-click on Pro Mode leaves it.');
     expect((await state(win)).layers.lowerThird).toBeNull();
     await expect(output.getByTestId('lower-third-layer')).toHaveCount(0);
@@ -221,7 +220,7 @@ test('with Simple access, a phone is refused the same in words naming no way to 
       // The phone's note names no way to Pro Mode; More shows none of what Simple Mode's window has not.
       const note = p.getByTestId('remote-simple');
       await expect(note).toContainText('whose access is Simple Mode only');
-      await expect(note).toContainText(`its playlist “${PLAYLIST}”`);
+      await expect(note).toContainText('(playlists, playback and Audio)');
       expect(await note.innerText()).not.toMatch(/double-click|Pro Mode/u);
       await moreHidesProParts(p);
       const third = (await apiCall(port, '/api/v1/lower-thirds', { token: script })).json['lowerThirds'] as {
@@ -233,7 +232,7 @@ test('with Simple access, a phone is refused the same in words naming no way to 
         `/api/v1/lower-thirds/${third[0]?.id ?? 'none'}/show`,
       );
       expect(words).toContain('whose access is Simple Mode only');
-      expect(words).toContain(`its playlist “${PLAYLIST}”`);
+      expect(words).toContain('(playlists, playback and Audio)');
       expect(words).not.toMatch(/double-click|Pro Mode/u);
       expect((await state(win)).layers.lowerThird).toBeNull();
       await expect(output.getByTestId('lower-third-layer')).toHaveCount(0);
@@ -260,17 +259,21 @@ test('with Simple access, a phone is refused the same in words naming no way to 
   }
 });
 
-test('in Simple Mode the phone opens Simple Mode’s playlist, says once why it shows less, dims what Simple Mode may not do, and a row’s long press offers what its window’s right-click does: Rename and Remove with Undo (Part 9); it follows the playlist the window opens (Session 56)', async () => {
+test('a Simple Mode phone chooses a playlist, pauses, seeks and plays, and edits video and picture rows', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
   const show = await setUpPlaceholderShow(win, { video: true });
-  // Another playlist, and a pin on the quick bar (Pro Mode's).
+  // Another playlist inside a folder, and a pin on the quick bar (Pro Mode’s).
   await win.evaluate(async (mediaId) => {
     const d = (globalThis as PageGlobals).drashti;
-    const made = await d.playlists.create('Placeholder other evening', null, false);
+    const folder = await d.playlists.create('Placeholder evenings', null, true);
+    if (!folder.ok) throw new Error(folder.message);
+    const made = await d.playlists.create('Placeholder other evening', folder.ids[0] ?? null, false);
     if (!made.ok) throw new Error(made.message);
+    const added = await d.playlists.addItems(made.ids[0] ?? '', null, [{ kind: 'media', mediaId }]);
+    if (!added.ok) throw new Error(added.message);
     await d.quickBar.set([{ kind: 'media', mediaId, media: 'image', label: 'Placeholder backdrop' }]);
   }, show.pictureMediaId);
   const { base } = await networkOn(win);
@@ -296,14 +299,14 @@ test('in Simple Mode the phone opens Simple Mode’s playlist, says once why it 
     await expect(p.getByTestId('remote-quick-bar')).toBeVisible();
     await expect(p.getByTestId('remote-simple')).toHaveCount(0);
 
-    // Simple Mode on the computer: the phone opens its playlist, the only one it offers.
+    // Simple Mode opens the computer’s current playlist to start. Other playlists stay available.
     await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
     const note = p.getByTestId('remote-simple');
-    await expect(note).toContainText(`its playlist “${PLAYLIST}”`);
+    await expect(note).toContainText('(playlists, playback and Audio)');
     await p.getByTestId('remote-tab-playlist').click();
     await expect(p.getByTestId('remote-playlist')).toHaveValue(show.playlistId);
-    await expect(p.getByTestId('remote-playlist').locator('option')).toHaveCount(1);
+    await expect(p.getByTestId('remote-playlist').locator('option', { hasText: 'Placeholder other evening' })).toHaveCount(1);
     // Said once: put away, it stays away while Simple Mode is on.
     await note.getByRole('button', { name: 'Dismiss' }).click();
     await expect(note).toHaveCount(0);
@@ -314,10 +317,20 @@ test('in Simple Mode the phone opens Simple Mode’s playlist, says once why it 
     await p.getByTestId('remote-tab-show').click();
     await expect(p.getByTestId('remote-quick-bar')).toHaveCount(0);
 
-    // The video's row puts it up; its time bar's Pause and the skips are dimmed (Simple Mode moves nothing in what
-    // plays: Play only, while paused).
+    // The four choices in When it ends are available on the video’s row, and each is saved in Drashti.
     await p.getByTestId('remote-tab-playlist').click();
-    await p.locator('[data-testid="remote-item"][data-kind="media"]').filter({ hasText: VIDEO }).click();
+    const videoRow = p.locator('[data-testid="remote-item"][data-kind="media"]').filter({ hasText: VIDEO });
+    const menu = p.getByTestId('remote-row-menu');
+    for (const whenEnds of ['next', 'freeze', 'wallpaper', 'loop'] as const) {
+      await longPress(videoRow);
+      await expect(menu.locator('[data-testid^="remote-menu-when-"]')).toHaveCount(4);
+      await menu.getByTestId('remote-menu-when-' + whenEnds).click();
+      await expect
+        .poll(async () => (await items()).find((i) => i.kind === 'media' && i.mediaId === show.videoMediaId))
+        .toMatchObject({ whenEnds });
+    }
+    // Loop keeps this short test video available for the time bar checks.
+    await videoRow.click();
     await expect
       .poll(async () => {
         const bg = (await state(win)).layers.background;
@@ -325,17 +338,28 @@ test('in Simple Mode the phone opens Simple Mode’s playlist, says once why it 
       })
       .toBe(show.videoMediaId);
     await p.getByTestId('remote-tab-show').click();
-    await expect(p.getByTestId('remote-time-bar-pause')).toBeDisabled();
+    const seek = async () => {
+      const background = (await state(win)).layers.background;
+      return background?.kind === 'media' ? background.seek : undefined;
+    };
+    await p.getByTestId('remote-time-bar-pause').click();
+    await expect.poll(async () => (await seek())?.paused).toBe(true);
+    const bar = p.getByRole('slider', { name: 'Time of the background video' });
+    const box = await bar.boundingBox();
+    if (!box) throw new Error('The phone’s time bar is missing.');
+    await bar.click({ position: { x: box.width * 0.75, y: box.height / 2 } });
+    await expect.poll(async () => (await seek())?.toMs ?? 0).toBeGreaterThan(1200);
+    expect((await seek())?.paused).toBe(true);
+    await p.getByTestId('remote-time-bar-play').click();
+    await expect.poll(async () => (await seek())?.paused).toBeUndefined();
     await expect(p.getByTestId('remote-skip-background-forward')).toHaveCount(0);
 
-    // A row's long press: what its window's right-click has (Rename and Delete), and this phone's own (looking,
-    // saving); never the Picture editor, When it ends or the quick bar.
+    // The picture’s long press offers looking, saving, Rename and Delete.
     await p.getByTestId('remote-tab-playlist').click();
     const pictureRow = p
       .locator('[data-testid="remote-item"][data-kind="media"]')
       .filter({ hasText: PICTURE });
     await longPress(pictureRow);
-    const menu = p.getByTestId('remote-row-menu');
     await expect(menu.locator('[data-testid^="remote-menu-"]')).toHaveText([
       /Look at it on this phone/u,
       /Save picture/u,
@@ -361,14 +385,77 @@ test('in Simple Mode the phone opens Simple Mode’s playlist, says once why it 
     ).toBeVisible();
     await expect(refusal(p)).toHaveCount(0);
 
-    // Session 56: Simple Mode's window opens another playlist (its left column has them all): the phone follows it,
-    // still the only one it offers.
-    await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder other evening' }).click();
-    await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder other evening');
+    // Choosing a nested playlist on the phone leaves the computer’s own selection alone.
+    await p.getByTestId('remote-playlist').selectOption(other ?? '');
+    await expect(pictureRow).toBeVisible();
+    await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
+    await pictureRow.click();
+    await expect.poll(async () => (await state(win)).live.playlist?.playlistId).toBe(other);
     await expect(p.getByTestId('remote-playlist')).toHaveValue(other ?? '');
-    await expect(p.getByTestId('remote-playlist').locator('option')).toHaveCount(1);
   } finally {
     await phone.close();
   }
   await app.close();
+});
+
+test('a Simple Mode phone manages Audio and plays a chosen track', async () => {
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-simple-phone-audio-'));
+  await importAndGetIds(win, [
+    makeTestTone(join(dir, 'Placeholder first tone.wav'), { seconds: 30, hz: 300 }),
+    makeTestTone(join(dir, 'Placeholder second tone.wav'), { seconds: 30, hz: 400 }),
+  ]);
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  const phone = await device('chromium');
+  const p = phone.page;
+  const music = () => win.evaluate(() => (globalThis as PageGlobals).drashti.music.view());
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-more').click();
+    const audio = p.getByTestId('remote-music');
+    await audio.getByTestId('remote-audio-new').click();
+    await p.getByTestId('remote-audio-name').fill('Placeholder phone audio');
+    await p.getByRole('button', { name: 'Create audio playlist', exact: true }).click();
+    const editor = p.getByTestId('remote-audio-editor');
+    const track = editor.getByTestId('remote-audio-track');
+    for (const name of ['Placeholder first tone', 'Placeholder second tone']) {
+      await editor.getByTestId('remote-audio-add').click();
+      await p.getByTestId('remote-audio-library').getByRole('button', { name: new RegExp(name, 'u') }).click();
+      await expect(track.filter({ hasText: name })).toBeVisible();
+    }
+    await track.nth(1).getByRole('button', { name: 'Move up', exact: true }).click();
+    await expect.poll(async () => (await music()).playlists[0]?.tracks[0]?.name).toContain('Placeholder second tone');
+    await track.first().getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(track).toHaveCount(1);
+    await editor.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(track).toHaveCount(2);
+    await editor.getByRole('button', { name: 'Loop', exact: true }).click();
+    await editor.getByRole('button', { name: 'Shuffle', exact: true }).click();
+    await expect.poll(async () => (await music()).playlists[0]).toMatchObject({ loop: true, shuffle: true });
+    await editor.getByRole('button', { name: 'Shuffle', exact: true }).click();
+    await track.nth(1).getByRole('button', { name: 'Play track', exact: true }).click();
+    await expect.poll(async () => (await state(win)).layers.audio?.title).toContain('Placeholder first tone');
+    await audio.getByRole('button', { name: 'Pause music', exact: true }).click();
+    await expect.poll(async () => (await state(win)).layers.audio?.pausedAtMs).toBeDefined();
+    await audio.getByRole('button', { name: 'Play music', exact: true }).click();
+    await expect.poll(async () => (await state(win)).layers.audio?.pausedAtMs).toBeUndefined();
+    await editor.getByRole('button', { name: 'Rename playlist', exact: true }).click();
+    await p.getByTestId('remote-audio-name').fill('Placeholder renamed audio');
+    await p.getByRole('button', { name: 'Save name', exact: true }).click();
+    await expect.poll(async () => (await music()).playlists[0]?.name).toBe('Placeholder renamed audio');
+    await editor.getByRole('button', { name: 'Delete playlist', exact: true }).click();
+    await p.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect.poll(async () => (await music()).playlists).toHaveLength(0);
+    await audio.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect.poll(async () => (await music()).playlists[0]?.name).toBe('Placeholder renamed audio');
+  } finally {
+    await phone.close();
+    await app.close();
+  }
 });
