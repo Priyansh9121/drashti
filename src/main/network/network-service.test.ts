@@ -25,7 +25,7 @@ const PHONE = '192.168.1.20';
 
 /** What a phone is told in Simple Mode for what its window does not do (shared/mode.ts simplePhoneRefusalText). */
 const PHONE_WORDS =
-  'Simple Mode on Drashti’s computer: a phone does only what Simple Mode does there (its playlist “Sabha, 30 Oct 2026”, Next and Back, Clear all, Black-out and the Wallpaper). On the Drashti computer, a double-click on Pro Mode leaves it.';
+  'Simple Mode on Drashti’s computer: a phone does only what Simple Mode does there (playlists, playback and Audio). On the Drashti computer, a double-click on Pro Mode leaves it.';
 
 /**
  * Simple Mode's one playlist as the main process reads it (index.ts): a talk (p001) and a picture; another playlist
@@ -36,14 +36,27 @@ const ROWS: Record<string, { playlist: string; presentation?: string; media?: st
   'one-picture': { playlist: 'one-playlist', media: 'm-picture' },
   'other-item': { playlist: 'other-playlist', presentation: 'p007' },
 };
+const activePlaylist = (id: string) => id === 'one-playlist' || id === 'other-playlist';
+const testLists = {
+  kindOf: (id: string) =>
+    activePlaylist(id) ? ('playlist' as const) : id === 'template' ? ('template' as const) : null,
+  activePlaylist,
+  activeItem: (id: string, itemId: string) => ROWS[itemId]?.playlist === id,
+  listsMedia: (mediaId: string) => Object.values(ROWS).some((r) => r.media === mediaId),
+  listsPresentation: (id: string) => Object.values(ROWS).some((r) => r.presentation === id),
+};
 const ONE: SimplePhoneScope = {
+  ...testLists,
   playlistId: 'one-playlist',
   playlistOf: (itemId) => ROWS[itemId]?.playlist ?? null,
   holdsMedia: (mediaId) =>
     Object.values(ROWS).some((r) => r.playlist === 'one-playlist' && r.media === mediaId),
   holdsPresentation: (id) =>
     Object.values(ROWS).some((r) => r.playlist === 'one-playlist' && r.presentation === id),
-  plays: (id) => Object.values(ROWS).some((r) => r.playlist === 'one-playlist' && r.presentation === id),
+  plays: (id, from?: { playlistId: string; itemId: string }) =>
+    from
+      ? ROWS[from.itemId]?.playlist === from.playlistId && ROWS[from.itemId]?.presentation === id
+      : Object.values(ROWS).some((r) => r.presentation === id),
   refusal: () => PHONE_WORDS,
 };
 
@@ -351,12 +364,11 @@ describe('the network in the main process', () => {
     expect(commands).toHaveLength(3);
   });
 
-  it('in Simple Mode, refuses a Remote’s move and Pause in words, and lets its Play through: nothing stays paused (Session 54’s review; Session 55: the music’s Pause too; Session 56: in the phone’s own words)', () => {
+  it('lets a Simple Mode phone move, pause and play what is live, and use Audio’s skips only on music', () => {
     const { service, commands, state } = setup({ locked: true });
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     const answer = (args: Record<string, unknown>) =>
       service.answer({ address: PHONE, deviceId: remote, op: 'command', args });
-    // A single sound playing (put up from the phone's Media, say).
     const sound = {
       id: 'placeholder-sound',
       title: 'Placeholder tone',
@@ -366,26 +378,19 @@ describe('the network in the main process', () => {
       startedAt: 1,
     };
     state.layers.audio = sound;
-    // The skips: Simple Mode refuses them its window too, so in the window's words.
-    expect(answer({ type: 'skip', layer: 'background', jump: 'back' })).toMatchObject({
-      status: 403,
-      body: { ok: false, message: SIMPLE_MODE_REFUSAL },
-    });
-    // The bar's move and Pause: Simple Mode's window has them since Session 56 (the owner's words: drag LIVE's time bar,
-    // Pause under LIVE), a phone does not (main/simple-mode-phones.ts, as it was): refused in the phone's own words, as
-    // anything else its window does and a phone may not. Until Session 56 in the window's, which refused them too.
-    for (const args of [
-      { type: 'moveTo', playing: { layer: 'background' }, toMs: 12_000 },
-      { type: 'pausePlaying', playing: { layer: 'pip' } },
-      { type: 'pausePlaying', playing: { layer: 'audio' } },
-    ])
-      expect(answer(args), JSON.stringify(args)).toEqual({
+    for (const layer of ['background', 'audio'])
+      expect(answer({ type: 'skip', layer, jump: 'back' })).toMatchObject({
         status: 403,
-        body: { ok: false, error: 'forbidden', message: PHONE_WORDS },
+        body: { ok: false, message: SIMPLE_MODE_REFUSAL },
       });
-    // Play, anything. An audio playlist's track's Pause was Simple Mode's own (its Pause music) until Part 18 took the
-    // music strip out of its window (Session 55): a phone is refused it now, in its own words (the owner's answer of
-    // 30 Oct 2026: a phone does only what Simple Mode's window does), as the window shows Play only (question 14).
+    const timeBar = [
+      { type: 'moveTo', playing: { layer: 'background' }, toMs: 12_000 },
+      { type: 'pausePlaying', playing: { layer: 'background' } },
+      { type: 'pausePlaying', playing: { layer: 'audio' } },
+      { type: 'resumePlaying', playing: { layer: 'background' } },
+      { type: 'resumePlaying', playing: { layer: 'audio' } },
+    ];
+    for (const args of timeBar) expect(answer(args).status, JSON.stringify(args)).toBe(200);
     state.layers.audio = {
       ...sound,
       music: {
@@ -397,17 +402,15 @@ describe('the network in the main process', () => {
         shuffle: false,
       },
     };
-    for (const args of [{ type: 'pausePlaying', playing: { layer: 'audio' } }, { type: 'pauseMusic' }])
-      expect(answer(args), JSON.stringify(args)).toEqual({
-        status: 403,
-        body: { ok: false, error: 'forbidden', message: PHONE_WORDS },
-      });
-    const through = [
-      { type: 'resumePlaying', playing: { layer: 'background' } },
-      { type: 'resumePlaying', playing: { layer: 'audio' } },
+    const audio = [
+      { type: 'pauseMusic' },
+      { type: 'musicNext' },
+      { type: 'musicPrevious' },
+      { type: 'skip', layer: 'audio', jump: 'forward' },
     ];
-    for (const args of through) expect(answer(args).status, JSON.stringify(args)).toBe(200);
-    expect(commands).toEqual(through);
+    for (const args of audio) expect(answer(args).status, JSON.stringify(args)).toBe(200);
+    expect(answer({ type: 'skip', layer: 'background', jump: 'back' }).status).toBe(403);
+    expect(commands).toEqual([...timeBar, ...audio]);
   });
 
   it('lets each kind of device do only its own things, and a Remote only run the show', () => {
@@ -613,9 +616,7 @@ describe('the network in the main process', () => {
         hits: [{ presentationId: 'p007' }],
       });
       expect(read('search', {}).body).toMatchObject({ ok: true, query: '', hits: [] });
-      // A slide of a presentation found there goes up, as from the window. In Simple Mode only one its playlist has
-      // (Session 55, the owner's answer of 30 Oct 2026: a phone does only what Simple Mode's window does, and its
-      // window puts up its one playlist's rows, never the library's), refused in words with nothing put up.
+      // Simple Mode still plays only a presentation with a row in a playlist.
       const slide = (presentationId: string) =>
         service.answer({
           address: PHONE,
@@ -624,13 +625,13 @@ describe('the network in the main process', () => {
           args: { type: 'goLive', presentationId, slideIndex: 1 },
         });
       if (locked) {
-        expect(slide('p007')).toEqual({
+        expect(slide('p008')).toEqual({
           status: 403,
           body: { ok: false, error: 'forbidden', message: PHONE_WORDS },
         });
         expect(commands).toEqual([]);
-        expect(slide('p001').status).toBe(200);
-        expect(commands.at(-1)).toMatchObject({ type: 'goLive', presentationId: 'p001', slideIndex: 1 });
+        expect(slide('p007').status).toBe(200);
+        expect(commands.at(-1)).toMatchObject({ type: 'goLive', presentationId: 'p007', slideIndex: 1 });
       } else {
         expect(slide('p007').status).toBe(200);
         expect(commands.at(-1)).toMatchObject({ type: 'goLive', presentationId: 'p007', slideIndex: 1 });
@@ -663,6 +664,16 @@ describe('the network in the main process', () => {
       return channel !== null && simpleModeRefusesWhole(channel);
     });
     expect(locked).toEqual([
+      'music.new',
+      'music.rename',
+      'music.remove',
+      'music.restore',
+      'music.options',
+      'music.addTracks',
+      'music.moveTrack',
+      'music.removeTrack',
+      'music.restoreTrack',
+      'music.stepsAside',
       'screens.addGroup',
       'screens.renameGroup',
       'screens.groupRole',
@@ -763,18 +774,14 @@ describe('the network in the main process', () => {
       { type: 'showTimer', timerId: 'timer-1' },
       { type: 'showAudienceTimer', timerId: 'timer-1' },
       { type: 'jumpToMarker', layer: 'background', markerId: 'marker-1' },
-      { type: 'pauseMusic' },
-      { type: 'musicNext' },
-      { type: 'musicPrevious' },
-      // Another playlist's row, and a slide of the library's: Simple Mode's window shows its one playlist only.
-      { type: 'playItem', playlistId: 'other-playlist', itemId: 'other-item' },
+      { type: 'playItem', playlistId: 'one-playlist', itemId: 'other-item' },
       {
         type: 'goLive',
-        presentationId: 'p007',
+        presentationId: 'p001',
         slideIndex: 0,
         playlist: { playlistId: 'other-playlist', itemId: 'other-item' },
       },
-      { type: 'startRepeat', playlistId: 'other-playlist' },
+      { type: 'startRepeat', playlistId: 'template' },
     ])
       expect(ask('command', args), JSON.stringify(args)).toEqual({
         status: 403,
@@ -783,7 +790,6 @@ describe('the network in the main process', () => {
     for (const [op, args] of [
       ['message.show', { templateId: 'm1', values: { plate: 'AB 123' } }],
       ['shastra', { reference: 'PG 14' }],
-      ['music.play', { playlistId: 'music-1' }],
     ] as const)
       expect(ask(op, args), op).toEqual({ status: 403, body: { ok: false, message: PHONE_WORDS } });
     expect(commands).toEqual([]);
@@ -800,6 +806,14 @@ describe('the network in the main process', () => {
       { type: 'nextItem' },
       { type: 'previousItem' },
       { type: 'playItem', playlistId: 'one-playlist', itemId: 'one-picture' },
+      { type: 'playItem', playlistId: 'other-playlist', itemId: 'other-item' },
+      { type: 'startRepeat', playlistId: 'other-playlist' },
+      {
+        type: 'goLive',
+        presentationId: 'p007',
+        slideIndex: 0,
+        playlist: { playlistId: 'other-playlist', itemId: 'other-item' },
+      },
       {
         type: 'goLive',
         presentationId: 'p001',

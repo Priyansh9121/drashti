@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import type {
+  RemoteAudio,
   RemoteKeys,
   RemoteLowerThird,
   RemoteMedia,
   RemoteMediaPage,
-  RemoteMusic,
 } from '../../../../shared/network-mirror';
 import { api } from '../device';
 import { oneAtATime } from '../one-at-a-time';
@@ -37,7 +37,7 @@ interface MirrorView {
   keys: RemoteKeys | null;
   media: MirrorMedia;
   lowerThirds: RemoteLowerThird[] | null;
-  music: RemoteMusic[] | null;
+  music: RemoteAudio | null;
 }
 
 export const useMirror = create<MirrorView>(() => ({
@@ -60,8 +60,8 @@ export async function loadLowerThirds(): Promise<void> {
 
 /** The audio playlists, one read at a time however often Drashti says they changed (one-at-a-time.ts). */
 export const loadMusic = oneAtATime(async () => {
-  const r = await api<{ playlists: RemoteMusic[] }>('/api/v1/music');
-  if (r.ok) useMirror.setState({ music: r.playlists });
+  const r = await api<RemoteAudio>('/api/v1/music/audio');
+  if (r.ok) useMirror.setState({ music: r });
 });
 
 /**

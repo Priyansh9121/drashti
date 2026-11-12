@@ -3,9 +3,8 @@ import { isHevc } from '../../../shared/convert';
 import type { MediaSummary } from '../../../shared/playlists';
 
 /*
- * A file Drashti converts, as the operator window says it (Session 50): "Converting…" from the moment it
- * waits until it is converted, on its row in Media, on a playlist's item and in Audio.
- * Until then it cannot go live: the library marks it as a file Drashti cannot play, and the show refuses it.
+ * The operator window shows when a file is waiting or converting, on its row in Media, on a playlist's
+ * item and in Audio. A playable linked video remains available while its smaller copy is made.
  */
 
 /**
@@ -40,11 +39,17 @@ export function jobFor(jobs: readonly ConversionJob[], mediaId: string): Convers
   return undefined;
 }
 
-/** The words while it converts: "Converting…", with how far once FFmpeg tells. */
+/** The conversion label, used while a job waits and runs. */
+export function conversionLabel(job: ConversionJob): string {
+  return job.maxHeight === undefined ? 'Converting…' : `Making a ${String(job.maxHeight)}p copy…`;
+}
+
+/** The words while it converts, with how far once FFmpeg tells. */
 export function convertingWords(job: ConversionJob): string {
+  const label = conversionLabel(job);
   return job.state === 'converting' && job.progress !== null
-    ? `Converting… ${String(Math.round(job.progress * 100))}%`
-    : 'Converting…';
+    ? `${label} ${String(Math.round(job.progress * 100))}%`
+    : label;
 }
 
 /** What is wrong with a media file, if anything: one Drashti cannot play says it is converting, while it is. */
@@ -53,7 +58,7 @@ export function mediaProblem(
   job?: ConversionJob,
 ): string | null {
   if (m.missing) return 'File missing';
-  if (jobBusy(job) && (m.unplayable !== null || job.maxHeight !== undefined)) return 'Converting…';
+  if (jobBusy(job) && (m.unplayable !== null || job.maxHeight !== undefined)) return conversionLabel(job);
   return m.unplayable === null ? null : 'Can’t play';
 }
 

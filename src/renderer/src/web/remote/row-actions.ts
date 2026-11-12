@@ -20,7 +20,7 @@ import {
   unpin,
   usePhoneTools,
 } from './phone-tools-store';
-import { showPlaylist } from './remote-store';
+import { refreshPlaylist } from './remote-store';
 
 /*
  * A row's menu on a phone (Session 55, Part 9): the entries phone-rows.ts says a row has, each in the window's words
@@ -31,11 +31,6 @@ import { showPlaylist } from './remote-store';
 
 const post = (path: string, body?: unknown) =>
   api<{ ids?: string[] }>(path, { method: 'POST', body: body ?? {} });
-
-/** What happens once a playlist's rows changed here: read again, as Drashti tells the other phones. */
-async function readAgain(playlistId: string): Promise<void> {
-  await showPlaylist(playlistId);
-}
 
 /** Take a row's item out of the playlist, with its Undo said under the rows. */
 export async function removeRow(playlistId: string, itemId: string, name: string): Promise<void> {
@@ -52,11 +47,11 @@ export async function removeRow(playlistId: string, itemId: string, name: string
       undo: async () => {
         const back = await post('/api/v1/playlist-items/restore', { ids });
         if (!back.ok) useTapNotice.setState({ text: back.message });
-        await readAgain(playlistId);
+        await refreshPlaylist(playlistId);
       },
     },
   });
-  await readAgain(playlistId);
+  await refreshPlaylist(playlistId);
 }
 
 /** Whether a row's item is what the screens show now (Remove asks first then, as the window does). */
@@ -92,11 +87,11 @@ function rename(action: Extract<RowAction, { id: 'rename' }>, playlistId: string
           undo: async () => {
             const back = await post(path, { name: action.name });
             if (!back.ok) useTapNotice.setState({ text: back.message });
-            await readAgain(playlistId);
+            await refreshPlaylist(playlistId);
           },
         },
       });
-      await readAgain(playlistId);
+      await refreshPlaylist(playlistId);
       return null;
     },
   });
@@ -171,7 +166,7 @@ function entryOf(
             const r = await post(`/api/v1/playlist-items/${encodeURIComponent(row.item.id)}/when-ends`, {
               whenEnds: action.value,
             });
-            if (r.ok) await readAgain(playlistId);
+            if (r.ok) await refreshPlaylist(playlistId);
             return r;
           });
         },

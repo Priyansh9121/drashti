@@ -209,6 +209,7 @@ export function DesktopLayer() {
       {sheet === 'inputs' && <InputsSheet />}
       {sheet === 'pip' && <PipSheet />}
       {sheet === 'library' && <LibrarySheet />}
+      {sheet === 'playlists' && <LibrarySheet playlistsOnly />}
       {sheet === 'midi' && <MidiSheet />}
       {sheet === 'queue' && <QueueSheet />}
       <KeepQuestion />
