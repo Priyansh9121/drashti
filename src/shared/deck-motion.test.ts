@@ -345,6 +345,75 @@ describe('a deck that builds a text box paragraph by paragraph', () => {
     });
   });
 
+  it('brings a paragraph added after an edit in with the built paragraph before it, never before', () => {
+    // A fourth point typed after the last one the deck builds: no effect of its own.
+    const added: TextElement = {
+      ...words,
+      text: `${words.text}\nPlaceholder fourth`,
+      runs: [...(words.runs ?? []), { text: '\nPlaceholder fourth', shadow: true }],
+    };
+    const edited = (element: TextElement): RenderSlide => ({ ...built, elements: [element] });
+    expect(deckSlideAt(edited(added), 0).elements).toEqual([]);
+    expect(deckSlideAt(edited(added), 2).elements[0]).toMatchObject({
+      runs: [
+        { text: 'Placeholder first', color: '#ffeeaa' },
+        { text: '\n' },
+        { text: 'Placeholder second\n', shadow: true },
+        { text: 'Placeholder third', ...hidden },
+        { text: '\n', ...hidden },
+        { text: 'Placeholder fourth', ...hidden },
+      ],
+    });
+    expect(deckSlideAt(edited(added), 3).elements[0]).toBe(added);
+    // The first point goes out at click 4; the fourth stays, as the third does.
+    expect(deckSlideAt(edited(added), 4).elements[0]).toMatchObject({
+      runs: [
+        { text: 'Placeholder first', ...hidden },
+        { text: '\n', ...hidden },
+        { text: 'Placeholder second\n', shadow: true },
+        { text: 'Placeholder third', shadow: true },
+        { text: '\n', shadow: true },
+        { text: 'Placeholder fourth', shadow: true },
+      ],
+    });
+    // Enter pressed inside the second point: the points after it move down one, the last onto no effect of its own.
+    const split: TextElement = {
+      ...words,
+      runs: [
+        { text: 'Placeholder first', color: '#ffeeaa' },
+        { text: '\n' },
+        { text: 'Placeholder sec\nond\nPlaceholder third', shadow: true },
+      ],
+    };
+    expect(deckSlideAt(edited(split), 0).elements).toEqual([]);
+    expect(deckSlideAt(edited(split), 2).elements[0]).toMatchObject({
+      runs: [
+        { text: 'Placeholder first' },
+        { text: '\n' },
+        { text: 'Placeholder sec\n', shadow: true },
+        { text: 'ond\n', ...hidden },
+        { text: 'Placeholder third', ...hidden },
+      ],
+    });
+    // A paragraph before the first one built has none before it: it shows from the start, as in PowerPoint.
+    const titled: RenderSlide = {
+      ...built,
+      deck: {
+        steps: [],
+        media: [],
+        motion: { effects: [build(1, 1), build(2, 2)], stepsMs: [0, 200, 200], approximate: true },
+      },
+    };
+    expect(deckSlideAt(titled, 0).elements[0]).toMatchObject({
+      runs: [
+        { text: 'Placeholder first', color: '#ffeeaa' },
+        { text: '\n' },
+        { text: 'Placeholder second\n', ...hidden },
+        { text: 'Placeholder third', ...hidden },
+      ],
+    });
+  });
+
   it('fades each paragraph by itself while the box stays', () => {
     const effects = built.deck?.motion?.effects ?? [];
     expect(deckMotionFrame([build(1, 2)], 1, Infinity, words.frame, slide).opacity).toBe(0);
