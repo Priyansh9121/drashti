@@ -83,18 +83,22 @@ it('returns a phone picture only from Main’s capture of its owned hidden windo
   expect(await s.session.print(s.own, s.job.id, 0)).toBeNull();
   expect(await s.session.capture(s.other, s.job.id, 0)).toBeNull();
   expect(await s.session.capture(s.own, 'different-job', 0)).toBeNull();
-  const image = capturedImage(1920, 1080);
+  // The captured pixels (made up: one blue, green, red and alpha repeated), and a copy to compare them with.
+  const bitmap = Buffer.alloc(1920 * 1080 * 4).fill(Buffer.from([10, 20, 30, 255]));
+  const image = { ...capturedImage(1920, 1080), toBitmap: () => bitmap };
+  const expected = Buffer.from(bitmap);
   s.win.webContents.capturePage.mockImplementationOnce(() => Promise.resolve(image));
   // The hidden page is told nothing back: the pixels go to the phone.
   expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
   // C6's review, MEDIUM 1: no PNG made on Main's thread; the network's process makes it.
   expect(image.toPNG).not.toHaveBeenCalled();
-  expect(await s.result).toEqual({
-    width: 1920,
-    height: 1080,
-    pixels: new Uint8Array(Buffer.alloc(1920 * 1080 * 4, 7)),
-    order: 'bgra',
-  });
+  const picture = await s.result;
+  if (!picture || picture instanceof Uint8Array) throw new Error('No phone picture came back.');
+  const { pixels, ...size } = picture;
+  expect(size).toEqual({ width: 1920, height: 1080, order: 'bgra' });
+  // Every byte as captured, compared as bytes: toEqual walks 8 MB of pixels one by one (over 20 s on CI's Ubuntu).
+  expect(pixels).toBeInstanceOf(Uint8Array);
+  expect(Buffer.from(pixels.buffer, pixels.byteOffset, pixels.byteLength).equals(expected)).toBe(true);
   expect(s.win.setContentSize).toHaveBeenCalledWith(1920, 1080);
   expect(s.win.isDestroyed()).toBe(true);
 });
