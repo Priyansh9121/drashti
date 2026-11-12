@@ -111,6 +111,21 @@ export function measureRun(record: MotionRecord, window: CaseWindow, periodMs: n
   };
 }
 
+/** Intervals summed up as a case's row has them. Not built yet. */
+export function intervalStats(_intervals: readonly number[], _periodMs: number): CaseRow['intervals'] {
+  return null;
+}
+
+/** The intervals between a screen's frames in a stretch. Not built yet. */
+export function stillIntervals(_frames: readonly number[], _from: number, _until: number): number[] {
+  return [];
+}
+
+/** The still frames in one line. Not built yet. */
+export function stillLine(_stats: CaseRow['intervals']): string {
+  return '';
+}
+
 /** A case's runs together, and whether it is late or uneven at this frame period. */
 export function caseRow(name: string, setMs: number, runs: readonly MotionRun[], periodMs: number): CaseRow {
   const seen = runs.filter((r) => r.delay !== null);
