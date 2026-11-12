@@ -47,7 +47,7 @@ const CHANGED = {
   message: 'That playlist row changed. Open Trim again to see the current video.',
 };
 const FAILED = 'Drashti couldn’t keep the trimmed video. Check the video file and try Trim again.';
-const RESET_LIVE = 'This video is live. Take the video off before resetting this row.';
+const RESET_LIVE = 'Take the video off before resetting this row.';
 
 function cutFailed(name: string, reason: string): string {
   const help = reason.includes('2 GB free')

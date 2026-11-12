@@ -306,6 +306,9 @@ test('Reset to original clears legacy playback points for just that playlist row
     await clear();
     await row.click({ button: 'right' });
     await win.getByRole('menuitem', { name: 'Reset to original', exact: true }).click();
+    await expect
+      .poll(() => win.evaluate((id) => (globalThis as PageGlobals).drashti.media.rowTrim(id), first.rowId))
+      .toMatchObject({ canReset: false, markers: { startMs: null, endMs: null } });
     await row.click();
     await expect.poll(() => background(win)).toMatchObject({ kind: 'media', mediaId });
     expect(await background(win)).not.toHaveProperty('clip');

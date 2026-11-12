@@ -75,7 +75,7 @@ async function setup() {
     readInfo: (path: string) =>
       Promise.resolve({ ...info, durationMs: path === output ? 2000 : info.durationMs }),
     queue,
-    frameAt: (_path, atMs) => Promise.resolve(atMs),
+    frameAt: (_path: string, atMs: number) => Promise.resolve(atMs),
     cancel: () => true,
     pendingChanged,
     rowChanged,
