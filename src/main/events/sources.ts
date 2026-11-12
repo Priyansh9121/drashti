@@ -1,7 +1,10 @@
 import type { AnnouncementsView } from '../../shared/announcements';
 import type { ScheduledBackupsView } from '../../shared/backups';
-import type { EngineState } from '../../shared/engine/state';
+import { nativeDeckMotion } from '../../shared/deck';
+import { deckSlideAt, stepOf } from '../../shared/deck-show';
+import type { EngineState, SlideLayer } from '../../shared/engine/state';
 import { EVENT_WORDS_MAX, type EventKind } from '../../shared/events-out';
+import type { TextElement } from '../../shared/model';
 import type { StreamStatus } from '../../shared/stream';
 import { cutText } from '../../shared/text';
 
@@ -18,15 +21,47 @@ export interface Emitted {
   words?: Record<string, string>;
 }
 
-/** A slide's lines, one to a line, cut to EVENT_WORDS_MAX characters. */
-function slideWords(state: EngineState): string {
-  const slide = state.layers.slide?.slide;
-  if (!slide) return '';
-  const text = slide.elements
-    .map((e) => (e.kind === 'text' ? e.text.trim() : ''))
-    .filter((t) => t !== '')
-    .join('\n');
-  return cutText(text, EVENT_WORDS_MAX);
+/**
+ * The click showing on a deck's slide Drashti plays itself (W6's review L11): what the screens show changes with each
+ * click. Null for any other slide (a deck's slide shown as clips keeps its words through its clicks).
+ */
+function clickOf(layer: SlideLayer): number | null {
+  return nativeDeckMotion(layer.slide.deck) ? stepOf(layer) : null;
+}
+
+/**
+ * A text box's words as drawn: a point of a list built point by point that is not in at this click (not yet, or gone)
+ * is kept in its place but see-through, and left out here.
+ */
+function drawnWords(e: TextElement): string {
+  const runs = e.runs ?? [];
+  const unseen = (color: string | undefined) => color === 'transparent';
+  return runs.some((r) => unseen(r.color))
+    ? runs
+        .filter((r) => !unseen(r.color))
+        .map((r) => r.text)
+        .join('')
+    : e.text;
+}
+
+/**
+ * A slide's lines, one to a line, cut to EVENT_WORDS_MAX characters. On a deck's slide Drashti plays itself, only
+ * those on the screens at the click showing, as its still and a phone draw it (deckSlideAt): never a later click's,
+ * nor a box's that has gone.
+ */
+function slideWords(layer: SlideLayer): string {
+  const click = clickOf(layer);
+  const lines =
+    click === null
+      ? layer.slide.elements.map((e) => (e.kind === 'text' ? e.text : ''))
+      : deckSlideAt(layer.slide, click).elements.map((e) => (e.kind === 'text' ? drawnWords(e) : ''));
+  return cutText(
+    lines
+      .map((t) => t.trim())
+      .filter((t) => t !== '')
+      .join('\n'),
+    EVENT_WORDS_MAX,
+  );
 }
 
 export function engineEvents(before: EngineState | null, after: EngineState): Emitted[] {
@@ -34,8 +69,13 @@ export function engineEvents(before: EngineState | null, after: EngineState): Em
   const out: Emitted[] = [];
   const was = before.layers.slide;
   const is = after.layers.slide;
-  // A slide went up (the same one again counts: it was shown again), or the slide was taken off.
-  if ((is?.shownAt ?? null) !== (was?.shownAt ?? null)) {
+  const click = is ? clickOf(is) : null;
+  // A slide went up (the same one again counts: it was shown again), or the slide was taken off; and a click on a
+  // deck's slide Drashti plays itself, Back's too, with the words it brings (W6's review L11).
+  if (
+    (is?.shownAt ?? null) !== (was?.shownAt ?? null) ||
+    (is !== null && was !== null && click !== clickOf(was))
+  ) {
     const item = after.live.playlist;
     out.push({
       kind: 'slide.changed',
@@ -47,8 +87,10 @@ export function engineEvents(before: EngineState | null, after: EngineState): Em
         itemId: item?.itemId ?? null,
         // A Repeat Slides playlist going round by itself, not the operator.
         repeat: after.repeat !== null,
+        // Which click shows, from 0 as it comes in: only on a deck's slide Drashti plays itself.
+        ...(click !== null ? { step: click } : {}),
       },
-      ...(is ? { words: { text: slideWords(after) } } : {}),
+      ...(is ? { words: { text: slideWords(is) } } : {}),
     });
   }
   const itemWas = before.live.playlist?.itemId ?? null;

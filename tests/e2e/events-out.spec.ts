@@ -3,18 +3,30 @@ import { createHmac } from 'node:crypto';
 import { createServer, type IncomingHttpHeaders, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { makeTestDeck, placeholderDeckMedia } from '../../src/main/import/testing/make-deck';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady, setTicked } from './helpers';
+import {
+  chooseMenuItem,
+  holdStill,
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  setTicked,
+} from './helpers';
 
 /*
  * Events out (Session 28, decision 20): an address on this computer is added, and what it gets ticked;
  * Next reaches it within a second, signed two ways (checked here with node:crypto, apart from Drashti's own
  * code), with ids and kinds only until "Include the words" is ticked; a retry keeps its id; a 410 turns the
  * address off; a receiver that never answers changes neither slide changes nor quitting; Simple Mode cannot
- * open it, and Pro Mode opens it with no PIN (Session 54, E5). The receiver is this test, on 127.0.0.1 (the
+ * open it, and Pro Mode opens it with no PIN (Session 54, E5); a deck's slide Drashti plays itself says only the
+ * words on the screens, again at each click (W6's review L11). The receiver is this test, on 127.0.0.1 (the
  * test guard refuses anywhere else). The secret is made by Drashti as the test runs, and searched for in its
  * files afterwards.
  */
@@ -295,5 +307,98 @@ test('Simple Mode cannot open events out, nor read them; Pro Mode opens it with 
     expect(simple.add).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   } finally {
     await app.close().catch(() => undefined);
+  }
+});
+
+test('a deck’s slide Drashti plays itself sends only the words on the screens, again at each click (W6’s review L11)', async () => {
+  test.setTimeout(120_000);
+  const r = await receiver();
+  const dir = await mkdtemp(join(tmpdir(), 'drashti-events-deck-e2e-'));
+  const inch = 914_400;
+  const box = { type: 'text' as const, x: inch, w: 10 * inch, h: inch };
+  const file = join(dir, 'Placeholder events deck.pptx');
+  await writeFile(
+    file,
+    makeTestDeck(
+      [
+        {
+          key: 'placeholder-clicks',
+          bg: '244060',
+          transition: { kind: 'fade', dur: 200 },
+          notes: '',
+          shapes: [
+            { ...box, id: 2, name: 'Placeholder title', y: inch / 2, paras: [{ text: 'Placeholder title' }] },
+            {
+              ...box,
+              id: 3,
+              name: 'Placeholder leaving',
+              y: 2 * inch,
+              paras: [{ text: 'Placeholder leaving at click two' }],
+            },
+            {
+              ...box,
+              id: 4,
+              name: 'Placeholder coming',
+              y: 3.5 * inch,
+              paras: [{ text: 'Placeholder in at click one' }],
+            },
+          ],
+          effects: [
+            { kind: 'fade', target: 4, dur: 300, start: 'click' },
+            { kind: 'exit-fade', target: 3, dur: 300, start: 'click' },
+          ],
+        },
+      ],
+      placeholderDeckMedia(),
+    ),
+  );
+  // As on a computer with no PowerPoint (CI's): the deck's slide is played by Drashti from its own shapes.
+  const { app } = await launchApp({ DRASHTI_TEST_DECK_CONVERTER: '1' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const [presentationId = ''] = await importAndGetIds(win, [file]);
+    expect(presentationId).not.toBe('');
+    await chooseMenuItem(app, 'events-out');
+    await addAddress(win, r.url);
+    const dialog = win.getByTestId('events-dialog');
+    await setTicked(dialog.getByTestId('events-kind-slide.changed-0'), true);
+    await setTicked(dialog.getByTestId('events-words-slide.changed-0'), true);
+    const slides = () => r.got.filter((g) => g.type === 'slide.changed');
+    /** The slide change the receiver gets for a command: which click shows, and its words. */
+    const sentFor = async (command: Record<string, unknown>) => {
+      const had = slides().length;
+      await dispatch(win, command);
+      await expect.poll(() => slides().length).toBe(had + 1);
+      const got = slides().at(-1);
+      expect(got?.data).toMatchObject({ presentationId, slideIndex: 0 });
+      return { step: got?.data['step'], words: String(got?.data['text']) };
+    };
+
+    // Coming in: the title and the box that goes at click 2; nothing of click 1's yet.
+    let sent = await sentFor({ type: 'goLive', presentationId, slideIndex: 0 });
+    expect(sent.step).toBe(0);
+    expect(sent.words).toContain('Placeholder title');
+    expect(sent.words).toContain('Placeholder leaving at click two');
+    expect(sent.words).not.toContain('Placeholder in at click one');
+    // Click 1 is said, with the words it brings.
+    sent = await sentFor({ type: 'next' });
+    expect(sent.step).toBe(1);
+    expect(sent.words).toContain('Placeholder in at click one');
+    expect(sent.words).toContain('Placeholder leaving at click two');
+    // Click 2: the box that went is gone from the words too.
+    sent = await sentFor({ type: 'next' });
+    expect(sent.step).toBe(2);
+    expect(sent.words).toContain('Placeholder title');
+    expect(sent.words).toContain('Placeholder in at click one');
+    expect(sent.words).not.toContain('Placeholder leaving at click two');
+    // Back: click 1 again, as the screens show it.
+    sent = await sentFor({ type: 'back' });
+    expect(sent.step).toBe(1);
+    expect(sent.words).toContain('Placeholder leaving at click two');
+  } finally {
+    await app.close().catch(() => undefined);
+    await r.close();
+    await rm(dir, { recursive: true, force: true });
   }
 });
