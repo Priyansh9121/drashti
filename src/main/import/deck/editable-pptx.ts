@@ -434,11 +434,15 @@ function paragraphNodes(chain: XmlNode[], paragraph: XmlNode, ctx: Context): Nod
       ? 'bodyStyle'
       : 'otherStyle';
   const masterStyle = child(child(ctx.master?.root, 'txStyles'), styleName);
+  const presentation = [child(ctx.defaults, 'defPPr'), child(ctx.defaults, levelName)];
+  const master = [child(masterStyle, 'defPPr'), child(masterStyle, levelName)];
+  const last = chain.at(-1);
+  // A plain text box takes the presentation's default text style, as PowerPoint and Keynote draw it; the master's
+  // "other" style (where Keynote keeps its slide number's right alignment) only fills in what that leaves out, as
+  // in a deck with no default text style. Placeholders and table cells keep the master's style on top.
+  const plainBox = !ph && last !== undefined && nameOf(last) === 'sp';
   return [
-    child(ctx.defaults, 'defPPr'),
-    child(ctx.defaults, levelName),
-    child(masterStyle, 'defPPr'),
-    child(masterStyle, levelName),
+    ...(plainBox ? [...master, ...presentation] : [...presentation, ...master]),
     ...chain.flatMap((shape) => {
       const body = child(shape, 'txBody'),
         list = child(body, 'lstStyle');
@@ -794,6 +798,21 @@ function lineOutline(line: Node, ctx: Context): Outline | null {
   const color = fillOf([line], ctx, '#000000');
   return color ? { color, width: Math.max(0.01, Math.min(100, number(attr(line, 'w'), EMU) / EMU)) } : null;
 }
+/**
+ * A shape's line given a width but no colour anywhere, with no style line to take one from, draws nothing in
+ * PowerPoint and Keynote (Keynote writes one on every text box and shape). A line with a colour, or a style's
+ * line (PowerPoint's own shapes), reads as before.
+ */
+function colourlessLine(chain: XmlNode[], props: Node[]): boolean {
+  const lines = props.flatMap((item) => kids(item, 'ln'));
+  return (
+    lines.length > 0 &&
+    !lines.some((line) =>
+      kids(line).some((n) => ['noFill', 'solidFill', 'gradFill', 'pattFill'].includes(nameOf(n))),
+    ) &&
+    !chain.some((shape) => child(child(shape, 'style'), 'lnRef'))
+  );
+}
 interface SourcePaint {
   color: string | null;
   gradient?: GradientFill;
@@ -1113,7 +1132,8 @@ async function objectOf(
   }
   const output: SlideElement[] = [];
   const paint = await shapePaintOf(paints, ctx, referenceColor(chain, 'fillRef', ctx));
-  const outline = lineOutline(lastChild(props, 'ln'), ctx);
+  const outline =
+    shape !== 'line' && colourlessLine(chain, props) ? null : lineOutline(lastChild(props, 'ln'), ctx);
   if (paint.picture) {
     output.push({
       id: ctx.id(),
