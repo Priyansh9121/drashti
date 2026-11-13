@@ -2,6 +2,12 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## 1.0.0-alpha.18 (14 Nov 2026)
+
+Update after a sabha, and update Main and nodes together.
+
+- The stream, the decks Drashti plays itself, the start and the Edit slides fixes since alpha.17 (this list is written in full before the release).
+
 ## 1.0.0-alpha.17 (13 Nov 2026)
 
 Update after a sabha, and update Main and nodes together. Bring in files that need converting before a sabha.
