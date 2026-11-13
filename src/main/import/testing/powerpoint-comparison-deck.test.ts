@@ -308,7 +308,9 @@ describe('the 4:3 deck PowerPoint’s own movie is compared against', () => {
       box: { x: 54, y: 51, width: 64, height: 38 },
     });
     expect(COMPARISON_STANDARD.slides.map((slide) => slide.name)).toEqual(STANDARD);
-    expect(COMPARISON_STANDARD.slides.map((slide) => slide.marker)).toEqual(STANDARD.map((_, i) => 20 + 4 * i));
+    expect(COMPARISON_STANDARD.slides.map((slide) => slide.marker)).toEqual(
+      STANDARD.map((_, i) => 20 + 4 * i),
+    );
     expect(Math.max(...COMPARISON_STANDARD.slides.map((slide) => slide.marker))).toBeLessThanOrEqual(255);
     // The red box: 64 × 38 of the grid's 240 × 180, at (54, 51): 38,100 EMU a grid pixel, as the wide deck's.
     const parts4 = await readZipEntries(standardFile, (name) => name === 'ppt/slides/slide1.xml');
@@ -336,7 +338,9 @@ describe('the 4:3 deck PowerPoint’s own movie is compared against', () => {
         });
     }
     const big = '(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*';
-    expect(standard.slides[at('Basic Zoom exit · Out To Screen Bottom')]?.deck?.motion?.effects[0]).toMatchObject({
+    expect(
+      standard.slides[at('Basic Zoom exit · Out To Screen Bottom')]?.deck?.motion?.effects[0],
+    ).toMatchObject({
       phase: 'out',
       kind: 'zoom',
       zoomAway: { w: `${big}#ppt_w`, h: `${big}#ppt_h`, x: '0.5', y: `1+${big}#ppt_h/2` },
