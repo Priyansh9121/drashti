@@ -25,15 +25,25 @@ import { DECK_HEIGHT, DECK_WIDTH, makeTestDeck, placeholderDeckMedia } from './m
  * - Run 2 (h-p3run2, 13 Nov), what run 1 left unmeasured: Float in and out and Grow/Shrink with a smooth start and
  *   end, Basic Zoom leaving to another size or place, and Shape (circle, box, diamond, plus; In and Out) coming in and
  *   leaving.
+ * - Run 3 (h-pptx3, Session 58, 14 Nov 2026): the lengths the others never tried, each after run 2's slides: the
+ *   Basic Zoom exit Out To Screen Bottom at 750 ms (its end between two of the movie's frames) and 1 s, Shape at 2 s,
+ *   and Push, Wipe, Cover and Uncover in each direction at 1 s and at 2 s (run 1's are 700 ms); and a 4:3 deck of
+ *   its own (COMPARISON_STANDARD): the effects whose drawing depends on the slide's shape (Shape, Basic Zoom to and
+ *   from the screen's centre and bottom, the four transitions), with Float and Grow/Shrink as controls.
  * Each slide carries a gray marker in its top left corner, 4 levels lighter than the slide before (run 1's from 20,
- * run 2's from 22, so every marker stays a gray), so a probe finds it in the movie. Each effect runs 700 ms from its
- * click on a red 64 × 38 box at (94, 51) of a 320 × 180 slide.
+ * run 2's from 22, run 3's from 24 and 26, so every marker stays a gray), so a probe finds it in the movie. Each effect
+ * runs 700 ms from its click (unless its name gives another length) on a red 64 × 38 box at (94, 51) of a 320 × 180
+ * slide (at (54, 51) of a 240 × 180 one in the 4:3 deck: 38,100 EMU a pixel in both).
  */
 
 export const COMPARISON_WIDTH = 320;
 export const COMPARISON_HEIGHT = 180;
 export const COMPARISON_BOX = { x: 94, y: 51, width: 64, height: 38 };
 const DURATION = 700;
+/** EMU a pixel of the probe's grid: the wide deck's 12,192,000 × 6,858,000 at 320 × 180, as the 4:3 deck's at 240 × 180. */
+const EMU = DECK_HEIGHT / COMPARISON_HEIGHT;
+/** PowerPoint's own 4:3 slide (On-screen Show), 10 × 7.5 in. */
+const STANDARD_EMU = { cx: 9_144_000, cy: 6_858_000 };
 const RED = 'D02B25';
 const BLUE = '2345CB';
 const gray = (value: number) => value.toString(16).padStart(2, '0').repeat(3);
@@ -46,10 +56,10 @@ function shape(id: number, fill: string, rect: Rect) {
     type: 'shape' as const,
     name: `Placeholder ${String(id)}`,
     fill,
-    x: Math.round((rect.x * DECK_WIDTH) / COMPARISON_WIDTH),
-    y: Math.round((rect.y * DECK_HEIGHT) / COMPARISON_HEIGHT),
-    w: Math.round((rect.width * DECK_WIDTH) / COMPARISON_WIDTH),
-    h: Math.round((rect.height * DECK_HEIGHT) / COMPARISON_HEIGHT),
+    x: Math.round(rect.x * EMU),
+    y: Math.round(rect.y * EMU),
+    w: Math.round(rect.width * EMU),
+    h: Math.round(rect.height * EMU),
   };
 }
 
@@ -216,39 +226,139 @@ const DIRECTIONS: [string, ComparisonDirection][] = [
   ['d', 'down'],
 ];
 
-type Scene = Omit<ComparisonSlide, 'marker' | 'duration'>;
+/** A slide before its marker and length: `length` (ms) for an effect or transition of another length than 700 ms. */
+type Scene = Omit<ComparisonSlide, 'marker' | 'duration'> & { length?: number };
 const timed = (scenes: readonly Scene[], firstMarker: number): ComparisonSlide[] =>
-  scenes.map((scene, index) => ({
+  scenes.map(({ length, ...scene }, index) => ({
     ...scene,
     marker: firstMarker + 4 * index,
-    duration: scene.motion || scene.transition ? DURATION : 0,
+    duration: scene.motion || scene.transition ? (length ?? DURATION) : 0,
   }));
+
+const KINDS = ['push', 'wipe', 'cover', 'uncover'] as const;
+/** Each transition in each direction, each after a red reference slide that comes in by a cut; `ms` long. */
+const transitionScenes = (named: (name: string) => string, length?: number): Scene[] =>
+  KINDS.flatMap((kind) =>
+    DIRECTIONS.flatMap(([dir, direction]): Scene[] => [
+      { name: named(`Reference for ${kind} ${direction}`), bg: RED, ...(length ? { length } : {}) },
+      {
+        name: named(`${kind} ${direction}`),
+        transition: { kind, dir, direction },
+        bg: BLUE,
+        ...(length ? { length } : {}),
+      },
+    ]),
+  );
+const motionScenes = (motions: readonly ComparisonMotion[]): Scene[] =>
+  motions.map((motion) => ({ name: motion.name, motion, bg: '292929' }));
 
 /** Run 1's slides: the first of the deck, as they were, so that run 1's results stay comparable. */
 const RUN1: readonly ComparisonSlide[] = timed(
-  [
-    ...MOTIONS.map((motion) => ({ name: motion.name, motion, bg: '292929' })),
-    ...(['push', 'wipe', 'cover', 'uncover'] as const).flatMap((kind) =>
-      DIRECTIONS.flatMap(([dir, direction]): Scene[] => [
-        { name: `Reference for ${kind} ${direction}`, bg: RED },
-        { name: `${kind} ${direction}`, transition: { kind, dir, direction }, bg: BLUE },
-      ]),
-    ),
-  ],
+  [...motionScenes(MOTIONS), ...transitionScenes((name) => name)],
   20,
 );
 
 /** How many of the deck's slides are run 1's (its first). */
 export const COMPARISON_RUN1_SLIDES = RUN1.length;
 
-/** Every slide of the deck, in order: run 1's, then run 2's (their markers from 22, between run 1's). */
+const byName = (motions: readonly ComparisonMotion[], name: string): ComparisonMotion => {
+  const found = motions.find((motion) => motion.name === name);
+  if (!found) throw new Error(`No comparison effect ${name}`);
+  return found;
+};
+/** Run 1's or run 2's effect `name` again, `length` ms long, its name saying so. */
+const lasting = (name: string, length: number): Scene => {
+  const motion = { ...byName([...MOTIONS, ...RUN2_MOTIONS], name), name: `${name} · ${String(length)} ms` };
+  return { name: motion.name, motion, bg: '292929', length };
+};
+const atLength = (length: number) => (name: string) => `${name} · ${String(length)} ms`;
+
+/**
+ * Run 3's slides in the wide deck (h-pptx3, Session 58), after run 2's: the Zoom exit Out To Screen Bottom at 750 ms
+ * (its end between two of the movie's frames, which fall every 33.3 ms from a click) and at 1 s; Shape at 2 s (is its
+ * soft edge a share of the way, as at 700 ms, or a time?); every transition at 1 s, PowerPoint's own length for most
+ * (markers from 24); then every transition at 2 s (markers from 26). Session 57's Cover and Uncover rest on 700 ms.
+ */
+const RUN3: readonly ComparisonSlide[] = [
+  ...timed(
+    [
+      lasting('Basic Zoom exit · Out To Screen Bottom', 750),
+      lasting('Basic Zoom exit · Out To Screen Bottom', 1000),
+      lasting('Shape in · Circle Out', 2000),
+      lasting('Shape out · Box In', 2000),
+      ...transitionScenes(atLength(1000), 1000),
+    ],
+    24,
+  ),
+  ...timed(transitionScenes(atLength(2000), 2000), 26),
+];
+
+/** Every slide of the deck, in order: run 1's, then run 2's (their markers from 22, between run 1's), then run 3's. */
 export const COMPARISON_SLIDES: readonly ComparisonSlide[] = [
   ...RUN1,
-  ...timed(
-    RUN2_MOTIONS.map((motion) => ({ name: motion.name, motion, bg: '292929' })),
-    22,
-  ),
+  ...timed(motionScenes(RUN2_MOTIONS), 22),
+  ...RUN3,
 ];
+
+/** One of the comparison's decks: its file in the run folder, its slide's size, the probe's grid, the box, its slides. */
+export interface ComparisonDeck {
+  /** Its name in the run folder. */
+  file: string;
+  /** The slide's size in EMU (presentation.xml's p:sldSz). */
+  emu: { cx: number; cy: number };
+  /** The probe's grid: 38,100 EMU a pixel (6 pixels of a 1080-line movie). */
+  width: number;
+  height: number;
+  /** The red box every effect moves, on that grid. */
+  box: Rect;
+  slides: readonly ComparisonSlide[];
+}
+
+/** The wide (16:9) deck: runs 1, 2 and 3. */
+export const COMPARISON_WIDE: ComparisonDeck = {
+  file: 'Placeholder PowerPoint motion.pptx',
+  emu: { cx: DECK_WIDTH, cy: DECK_HEIGHT },
+  width: COMPARISON_WIDTH,
+  height: COMPARISON_HEIGHT,
+  box: COMPARISON_BOX,
+  slides: COMPARISON_SLIDES,
+};
+
+const STANDARD_NAMES = [
+  'Float In Up',
+  'Grow/Shrink 150%',
+  'Basic Zoom · In From Screen Center',
+  'Basic Zoom · Out From Screen Bottom',
+  'Basic Zoom exit · Out',
+  'Basic Zoom exit · In To Screen Center',
+  'Basic Zoom exit · Out To Screen Bottom',
+];
+
+/**
+ * Run 3's 4:3 deck (h-pptx3, Session 58): what may draw differently on a 4:3 slide. Basic Zoom to and from the
+ * screen's centre and bottom (places on the slide), Shape's outlines (in the shape's own proportions, or the slide's?),
+ * Push, Wipe, Cover and Uncover (PowerPoint's curves across and up or down differ on a 16:9 slide); Float and
+ * Grow/Shrink as controls (exact on the wide deck). 700 ms each; markers from 20. The box as far left of the middle as
+ * the wide deck's, the same size.
+ */
+export const COMPARISON_STANDARD: ComparisonDeck = {
+  file: 'Placeholder PowerPoint motion 4x3.pptx',
+  emu: STANDARD_EMU,
+  width: Math.round(STANDARD_EMU.cx / EMU),
+  height: COMPARISON_HEIGHT,
+  box: {
+    ...COMPARISON_BOX,
+    x: COMPARISON_BOX.x - (COMPARISON_WIDTH - Math.round(STANDARD_EMU.cx / EMU)) / 2,
+  },
+  slides: timed(
+    [
+      ...motionScenes(STANDARD_NAMES.map((name) => byName([...MOTIONS, ...RUN2_MOTIONS], name))),
+      ...motionScenes(RUN2_MOTIONS.filter((motion) => motion.name.startsWith('Shape '))),
+      ...transitionScenes((name) => name),
+    ],
+    20,
+  ),
+};
 
 function partOf(xml: string): TreeElement {
   const [part] = elementsOf(parseTree(xml));
@@ -256,7 +366,7 @@ function partOf(xml: string): TreeElement {
   return part;
 }
 
-function setMotion(tree: TreeElement, motion: ComparisonMotion): void {
+function setMotion(tree: TreeElement, motion: ComparisonMotion, duration: number): void {
   const [tn] = findAll(tree, (node) => node.name === 'p:cTn' && attrOf(node, 'presetClass') !== undefined);
   const list = childOf(tn, 'p:childTnLst');
   const visibility = childOf(list, 'p:set');
@@ -271,7 +381,7 @@ function setMotion(tree: TreeElement, motion: ComparisonMotion): void {
 
   let id = 1000;
   const behavior = (attr: string) =>
-    `<p:cBhvr additive="base"><p:cTn id="${String(id++)}" dur="${String(DURATION)}" fill="hold"/><p:tgtEl><p:spTgt spid="2"/></p:tgtEl><p:attrNameLst><p:attrName>${attr}</p:attrName></p:attrNameLst></p:cBhvr>`;
+    `<p:cBhvr additive="base"><p:cTn id="${String(id++)}" dur="${String(duration)}" fill="hold"/><p:tgtEl><p:spTgt spid="2"/></p:tgtEl><p:attrNameLst><p:attrName>${attr}</p:attrName></p:attrNameLst></p:cBhvr>`;
   const value = (n: number | string) =>
     typeof n === 'number' ? `<p:fltVal val="${String(n)}"/>` : `<p:strVal val="${n}"/>`;
   const parts = motion.tracks.map(({ name, from, to }) =>
@@ -296,30 +406,37 @@ function setMotion(tree: TreeElement, motion: ComparisonMotion): void {
   list.kids = parts;
 }
 
-/** Write the deck into `work` (its base deck beside it); returns its path. */
-export async function writeComparisonDeck(work: string): Promise<string> {
-  const base = join(work, 'base.pptx');
-  const source = join(work, 'Placeholder PowerPoint motion.pptx');
+/**
+ * Write a deck (the wide one unless another is given) into `work` (its base deck beside it, `base.pptx`, or
+ * `base 4x3.pptx` for the 4:3 one); returns its path.
+ */
+export async function writeComparisonDeck(
+  work: string,
+  deck: ComparisonDeck = COMPARISON_WIDE,
+): Promise<string> {
+  const wide = deck.emu.cx === DECK_WIDTH && deck.emu.cy === DECK_HEIGHT;
+  const base = join(work, wide ? 'base.pptx' : 'base 4x3.pptx');
+  const source = join(work, deck.file);
   await writeFile(
     base,
     makeTestDeck(
-      COMPARISON_SLIDES.map((scene) => ({
+      deck.slides.map((scene) => ({
         key: scene.name,
         bg: scene.bg,
         notes: '',
-        transition: { kind: scene.transition ? 'wipe' : '', dur: scene.transition ? DURATION : 0 },
+        transition: { kind: scene.transition ? 'wipe' : '', dur: scene.transition ? scene.duration : 0 },
         shapes: [
           shape(90, gray(scene.marker), { x: 4, y: 4, width: 14, height: 14 }),
-          ...(scene.motion ? [shape(2, 'F82828', COMPARISON_BOX)] : []),
-          ...(scene.bg === RED ? [shape(3, 'FFFF38', COMPARISON_BOX)] : []),
-          ...(scene.bg === BLUE ? [shape(4, '38FF38', COMPARISON_BOX)] : []),
+          ...(scene.motion ? [shape(2, 'F82828', deck.box)] : []),
+          ...(scene.bg === RED ? [shape(3, 'FFFF38', deck.box)] : []),
+          ...(scene.bg === BLUE ? [shape(4, '38FF38', deck.box)] : []),
         ],
         effects: scene.motion
           ? [
               {
                 kind: scene.motion.phase === 'out' ? ('exit-fade' as const) : ('fade' as const),
                 target: 2,
-                dur: DURATION,
+                dur: scene.duration,
                 start: 'click' as const,
               },
             ]
@@ -328,14 +445,17 @@ export async function writeComparisonDeck(work: string): Promise<string> {
       placeholderDeckMedia(),
     ),
   );
-  const entries = await readZipEntries(base, (name) => /^ppt\/slides\/slide\d+\.xml$/u.test(name));
+  const entries = await readZipEntries(
+    base,
+    (name) => /^ppt\/slides\/slide\d+\.xml$/u.test(name) || name === 'ppt/presentation.xml',
+  );
   const replacements = new Map(
-    COMPARISON_SLIDES.map((scene, index): [string, Buffer] => {
+    deck.slides.map((scene, index): [string, Buffer] => {
       const name = `ppt/slides/slide${String(index + 1)}.xml`;
       const part = entries.get(name);
       if (!part) throw new Error(`Missing generated part ${name}`);
       const tree = parseTree(part.toString('utf8'));
-      if (scene.motion) setMotion(tree, scene.motion);
+      if (scene.motion) setMotion(tree, scene.motion, scene.duration);
       if (scene.transition) {
         const { kind, dir } = scene.transition;
         const tag = kind === 'uncover' ? 'pull' : kind;
@@ -345,6 +465,16 @@ export async function writeComparisonDeck(work: string): Promise<string> {
       return [name, Buffer.from(writeTree(tree))];
     }),
   );
+  if (!wide) {
+    // Another slide size, as PowerPoint writes its own 4:3 (On-screen Show) deck.
+    const presentation = entries.get('ppt/presentation.xml')?.toString('utf8') ?? '';
+    const size = `<p:sldSz cx="${String(DECK_WIDTH)}" cy="${String(DECK_HEIGHT)}"/>`;
+    if (!presentation.includes(size)) throw new Error('Missing generated slide size');
+    const own = `<p:sldSz cx="${String(deck.emu.cx)}" cy="${String(deck.emu.cy)}"${
+      deck.emu.cx === STANDARD_EMU.cx && deck.emu.cy === STANDARD_EMU.cy ? ' type="screen4x3"' : ''
+    }/>`;
+    replacements.set('ppt/presentation.xml', Buffer.from(presentation.replace(size, own)));
+  }
   await copyZipReplacing(base, source, replacements);
   return source;
 }
