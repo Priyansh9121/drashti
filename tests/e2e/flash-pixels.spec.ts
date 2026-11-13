@@ -76,6 +76,26 @@ async function drawnAt(out: Page, p: number): Promise<void> {
 }
 
 /**
+ * The light of `out`'s picture once it holds still (Session 57): read, then read again two frames on, until two reads
+ * agree. What this test checks is where each page is in the dissolve, on its still picture. Where Chromium draws
+ * without a graphics chip (CI's Windows) the stream's page first draws 1 to 5 black or part-drawn frames as a
+ * dissolve begins (an older fault, named in the README), and a read then came back black (the gate of 13 Nov 2026,
+ * in Black, both attempts: every moment, measured from that first one, read 0.085 off).
+ */
+async function stillLightOf(out: Page): Promise<FrameLight> {
+  let last = await lightOf(out);
+  for (let n = 0; n < 5; n++) {
+    await out.evaluate(
+      () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+    );
+    const next = await lightOf(out);
+    if (Math.abs(next.mean - last.mean) < 0.001) return next;
+    last = next;
+  }
+  return last;
+}
+
+/**
  * Each frame of the transition from slide `from` to slide `to`, as `outs` draw it, held 60 times a second
  * from just before it to 300 ms after it (as the lab samples, at twice its rate).
  */
@@ -87,6 +107,7 @@ async function framesOf(
   from: number,
   to: number,
   ms: number,
+  read: (out: Page) => Promise<FrameLight> = lightOf,
 ): Promise<FrameLight[][]> {
   await holdClock(app, null);
   await goLive(win, id, from);
@@ -104,7 +125,7 @@ async function framesOf(
     await holdClock(app, shownAt + t);
     for (const [n, out] of outs.entries()) {
       await drawnAt(out, Math.min(1, Math.max(0, t / ms)));
-      lights[n]?.push(await lightOf(out));
+      lights[n]?.push(await read(out));
     }
   }
   await holdClock(app, null);
@@ -348,7 +369,16 @@ test('the held clock reaches the stream’s picture: part-way through a dissolve
   const isStream = (p: Page) => p.url().includes('stream.html');
   const program = await windowShowing(app, isStream, 'stream');
   await expect(program.getByTestId('program-root')).toBeVisible();
-  const [lights = [], streamLights = []] = await framesOf(app, win, [hall, program], id, 0, 1, MS);
+  const [lights = [], streamLights = []] = await framesOf(
+    app,
+    win,
+    [hall, program],
+    id,
+    0,
+    1,
+    MS,
+    stillLightOf,
+  );
   // The stream's page is drawn off screen, without the display's colour profile: about 5% brighter
   // throughout. What must match is where each frame is in the dissolve, its light between start and end.
   const progress = (ls: FrameLight[]) => {
@@ -359,9 +389,18 @@ test('the held clock reaches the stream’s picture: part-way through a dissolve
   const [a, b] = [progress(lights), progress(streamLights)];
   expect(b).toHaveLength(a.length);
   const off = a.map((v, i) => Math.abs(v - (b[i] ?? 9)));
+  // A failure says where: each page's light from start to end, and the moments off (from 2 frames before the start).
+  const ends = (ls: FrameLight[]) =>
+    `${(ls[0]?.mean ?? NaN).toFixed(4)}..${(ls.at(-1)?.mean ?? NaN).toFixed(4)}`;
+  const over = off.flatMap((v, i) =>
+    v < 0.02
+      ? []
+      : [`${Math.round((i - 2) * STEP)} ms ${(a[i] ?? NaN).toFixed(3)}/${(b[i] ?? NaN).toFixed(3)}`],
+  );
   expect(
     Math.max(...off),
-    'where the stream is in the dissolve against the hall, frame by frame',
+    `where the stream is in the dissolve against the hall, frame by frame (light: hall ${ends(lights)}, stream ` +
+      `${ends(streamLights)}; hall/stream off at ${String(over.length)}: ${over.slice(0, 8).join(', ')})`,
   ).toBeLessThan(0.02);
   await app.close();
 });
