@@ -195,6 +195,11 @@ export interface ProgramContext {
   preview: boolean;
   /** How Main writes the time (Sessions 31–36, I18N-8), for its clocks. */
   clockStyle?: ClockStyle;
+  /**
+   * Chromium draws without a graphics chip (Session 58, WU-1, as an output's context says it since Session 57): the
+   * page draws the show without warming up, as there is nothing to warm. Left out: it warms up as before.
+   */
+  noGpu?: true;
 }
 
 /** How well the stream is reaching YouTube. */
