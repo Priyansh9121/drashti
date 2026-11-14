@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type * as PdfJs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { editablePdfPage } from '../../shared/pdf-edit-page';
 import { PresentationRepo } from '../db/presentations';
 import { originalWorld } from '../import/testing/original-fixture';
@@ -14,11 +14,19 @@ import type { PreparedSourcePage } from '../../shared/editable-source';
 import type { SourceReader } from './source-reader';
 import { sourceWrite } from './source-write';
 import {
+  clearedMaskWordsPdf,
   clippedDeckPdf,
   clippedGlyphsPdf,
   clippedWordsPdf,
   formWordsPdf,
+  longTextEffectPdf,
   maskedWordsPdf,
+  paintedClipEffectPdf,
+  rotatedCurveEffectPdf,
+  rotatedGroupedEffectPdf,
+  rotatedPictureEffectPdf,
+  strokedEffectPdf,
+  unusedBlendModePdf,
   PDF_EDITABLE_WORDS,
   PDF_GROUP_WORDS,
 } from './testing/pdf-native-effects';
@@ -64,20 +72,23 @@ async function withPage(
   await withPdf(bytes, async (doc) => use(doc, await doc.getPage(1)));
 }
 
-async function centerPixel(png: Uint8Array): Promise<number[]> {
-  // Use the same Node canvas package PDF.js uses, resolved from PDF.js itself.
-  const canvas = createRequire(pdfPackage)('@napi-rs/canvas') as {
-    loadImage(bytes: Buffer): Promise<{ width: number; height: number }>;
-    createCanvas(
-      width: number,
-      height: number,
-    ): {
-      getContext(type: '2d'): {
-        drawImage(image: object, x: number, y: number): void;
-        getImageData(x: number, y: number, width: number, height: number): { data: Uint8ClampedArray };
-      };
+// Use the same Node canvas package PDF.js uses, resolved from PDF.js itself.
+const canvas = createRequire(pdfPackage)('@napi-rs/canvas') as {
+  loadImage(bytes: Buffer): Promise<{ width: number; height: number }>;
+  createCanvas(
+    width: number,
+    height: number,
+  ): {
+    getContext(type: '2d'): {
+      drawImage(image: object, x: number, y: number): void;
+      fillStyle: string;
+      fillRect(x: number, y: number, width: number, height: number): void;
+      getImageData(x: number, y: number, width: number, height: number): { data: Uint8ClampedArray };
     };
   };
+};
+
+async function centerPixel(png: Uint8Array): Promise<number[]> {
   const image = await canvas.loadImage(Buffer.from(png));
   const ctx = canvas.createCanvas(image.width, image.height).getContext('2d');
   ctx.drawImage(image, 0, 0);
@@ -147,7 +158,251 @@ describe('editing generated PDF pages with clipping and masks', () => {
   });
 });
 
+function effectDeckPdf(paint: readonly string[][]): Buffer {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  const kids: string[] = [];
+  for (const commands of paint) {
+    const body = [...commands, `0 0 0 rg BT /F1 24 Tf 1 0 0 1 36 1030 Tm (${PDF_EDITABLE_WORDS}) Tj ET`].join(
+      '\n',
+    );
+    const contents = objects.push(`<< /Length ${body.length} >>\nstream\n${body}\nendstream`);
+    const page = objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1920 1080] /Contents ${contents} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`,
+    );
+    kids.push(`${page} 0 R`);
+  }
+  objects[1] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${kids.length} >>`;
+  let pdf = '%PDF-1.4\n';
+  const xref = ['0000000000 65535 f \n'];
+  for (const [index, object] of objects.entries()) {
+    xref.push(`${String(pdf.length).padStart(10, '0')} 00000 n \n`);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  return Buffer.from(
+    `${pdf}xref\n0 ${xref.length}\n${xref.join('')}trailer\n<< /Root 1 0 R /Size ${xref.length} >>\nstartxref\n${pdf.length}\n%%EOF\n`,
+  );
+}
+
+const smallPaint = (count: number) =>
+  Array.from({ length: count }, (_, i) => {
+    const x = 26 + (i % 10) * 176;
+    const y = 50 + Math.floor(i / 10) * 180;
+    return `q ${x} ${y} 24 18 re W n 1 0 0 rg ${x - 4} ${y - 4} 32 26 re f Q`;
+  });
+
+async function expectFullPaint(doc: PDFDocumentProxy, page: PDFPageProxy, count: number): Promise<void> {
+  const result = await editablePdfPage(doc, page, pdfjs.OPS);
+  expect(result.elements).toHaveLength(count);
+  expect(result.assets).toHaveLength(count);
+  const scale = Math.min(2, 2048 / Math.max(result.width, result.height));
+  const viewport = page.getViewport({ scale });
+  const width = Math.ceil(viewport.width),
+    height = Math.ceil(viewport.height);
+  const whole = canvas.createCanvas(width, height).getContext('2d');
+  await page.render({ canvas: null, canvasContext: whole as never, viewport, annotationMode: 0 }).promise;
+  const assembled = canvas.createCanvas(width, height).getContext('2d');
+  assembled.fillStyle = '#ffffff';
+  assembled.fillRect(0, 0, width, height);
+  for (const element of result.elements) {
+    const asset = result.assets.find(({ id }) => id === element.id);
+    if (!asset) throw new Error('Missing generated PDF paint.');
+    const image = await canvas.loadImage(Buffer.from(asset.png));
+    assembled.drawImage(image, Math.round(element.frame.x * scale), Math.round(element.frame.y * scale));
+  }
+  const expected = whole.getImageData(0, 0, width, height).data;
+  const actual = assembled.getImageData(0, 0, width, height).data;
+  let differingPixels = 0;
+  for (let offset = 0; offset < expected.length; offset += 4) {
+    // Allow the rounding introduced by encoding a transparent crop as PNG.
+    if (
+      expected
+        .subarray(offset, offset + 4)
+        .some((value, channel) => Math.abs(value - (actual[offset + channel] ?? 0)) > 2)
+    )
+      differingPixels++;
+  }
+  expect(differingPixels).toBe(0);
+}
+
+describe('whole paint on PDF effect pages', () => {
+  it.each([
+    ['a filled border', '48 40 145 90 re B'],
+    ['a closed filled border', '48 40 m 193 40 l 193 130 l 48 130 l b'],
+    ['a closed stroke', '48 40 m 193 40 l 193 130 l 48 130 l s'],
+    ['an acute miter', '0 j 10 M 35 60 m 130 72 l 35 84 l S'],
+    ['a diagonal square cap', '2 J 55 35 m 135 115 l S'],
+    ['a transformed hairline', 'q 3 0.5 1 0.75 40 25 cm 0 w 2 J 5 15 m 35 55 l S Q'],
+  ])('matches the full page for %s', async (_, paint) => {
+    await withPage(strokedEffectPdf(paint), (doc, page) => expectFullPaint(doc, page, 1));
+  });
+
+  it.each(['f', 'B'])('keeps a path that paints (%s) and establishes a clip', async (paint) => {
+    await withPage(paintedClipEffectPdf(paint), (doc, page) => expectFullPaint(doc, page, 2));
+  });
+
+  it.each([
+    ['a rotated curve', rotatedCurveEffectPdf],
+    ['a rotated picture', rotatedPictureEffectPdf],
+  ])('matches the full page for %s', async (_, fixture) => {
+    await withPage(fixture(), (doc, page) => expectFullPaint(doc, page, 2));
+  });
+
+  it('keeps words editable after a soft mask is cleared inside the same graphics scope', async () => {
+    await withPage(clearedMaskWordsPdf(), async (doc, page) => {
+      const result = await editablePdfPage(doc, page, pdfjs.OPS);
+      expect(result.elements).toMatchObject([
+        { kind: 'image' },
+        { kind: 'text', text: PDF_EDITABLE_WORDS },
+        { kind: 'text', text: 'More placeholders' },
+      ]);
+    });
+  });
+
+  it('keeps a clipping path added during a soft mask after the mask is cleared', async () => {
+    await withPage(clearedMaskWordsPdf(true), async (doc, page) => {
+      const result = await editablePdfPage(doc, page, pdfjs.OPS);
+      expect(result.elements).toMatchObject([
+        { kind: 'image' },
+        { kind: 'image' },
+        { kind: 'text', text: 'More placeholders' },
+      ]);
+      expect(result.elements[1]?.frame.width).toBeLessThanOrEqual(18);
+    });
+  });
+
+  it('keeps all paint in a rotated transparency group followed by an empty path', async () => {
+    await withPage(rotatedGroupedEffectPdf(), (doc, page) => expectFullPaint(doc, page, 1));
+  });
+
+  it('keeps the whole-page composite when a blend resource is unused', async () => {
+    await withPage(unusedBlendModePdf(), (doc, page) => expectFullPaint(doc, page, 1));
+  });
+
+  it('avoids dependency recording on thousands of text glyphs', async () => {
+    await withPage(longTextEffectPdf(1100), async (doc, page) => {
+      const render = vi.spyOn(page, 'render');
+      try {
+        await expect(editablePdfPage(doc, page, pdfjs.OPS)).rejects.toThrow('too many separately painted');
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(render.mock.calls[0]?.[0].recordOperations).not.toBe(true);
+      } finally {
+        render.mockRestore();
+      }
+    });
+  });
+
+  it('stops an active render at a chunk checkpoint and leaves the page reusable', async () => {
+    await withPage(effectDeckPdf([smallPaint(40)]), async (doc, page) => {
+      const total = (await page.getOperatorList({ annotationMode: 0 })).fnArray.length;
+      const realRender = page.render.bind(page);
+      let rendered = 0;
+      const render = vi.spyOn(page, 'render').mockImplementation((options) =>
+        realRender({
+          ...options,
+          operationsFilter(index, list) {
+            rendered = index + 1;
+            return options.operationsFilter?.(index, list) ?? true;
+          },
+        }),
+      );
+      // PDF.js's 15 ms slices must split even on a fast machine.
+      let time = Date.now();
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => (time += 20));
+      const stopped = new Error('Stop the generated page.');
+      try {
+        await expect(
+          editablePdfPage(doc, page, pdfjs.OPS, {
+            checkpoint: () =>
+              rendered > 0 && rendered < total ? Promise.reject(stopped) : Promise.resolve(),
+          }),
+        ).rejects.toBe(stopped);
+        expect(rendered).toBeGreaterThan(0);
+        expect(rendered).toBeLessThan(total);
+        expect(render).toHaveBeenCalledTimes(1);
+      } finally {
+        clock.mockRestore();
+        render.mockRestore();
+      }
+      expect((await editablePdfPage(doc, page, pdfjs.OPS)).assets).toHaveLength(40);
+    });
+  });
+
+  it('settles with the checkpoint error if PDF.js cancellation throws before settling', async () => {
+    await withPage(clippedWordsPdf(), async (doc, page) => {
+      const stopped = new Error('Stop the generated page.');
+      const pending = Symbol('render did not stop');
+      let finish: (() => void) | undefined;
+      let afterCancel: (() => void) | undefined;
+      const missedStop = new Promise<typeof pending>((resolve) => {
+        afterCancel = () => {
+          setImmediate(() => resolve(pending));
+        };
+      });
+      const realRender = page.render.bind(page);
+      const render = vi.spyOn(page, 'render').mockImplementation((options) => {
+        const task = realRender(options);
+        void task.promise.catch(() => undefined);
+        const promise = new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        Object.defineProperty(task, 'promise', { value: promise });
+        const cancel = task.cancel.bind(task);
+        vi.spyOn(task, 'cancel').mockImplementation(() => {
+          cancel(); // Release the real task while simulating the unresolved outward promise.
+          afterCancel?.();
+          throw new Error('PDF.js could not unwind the generated render.');
+        });
+        return task;
+      });
+      const preparation = editablePdfPage(doc, page, pdfjs.OPS, {
+        checkpoint: () => (render.mock.calls.length ? Promise.reject(stopped) : Promise.resolve()),
+      });
+      try {
+        await expect(Promise.race([preparation, missedStop])).rejects.toBe(stopped);
+      } finally {
+        finish?.();
+        await preparation.catch(() => undefined);
+        render.mockRestore();
+      }
+    });
+  });
+});
+
 describe('long and complex generated PDFs', () => {
+  it('keeps forty small effects editable on a generated 1920 by 1080 page', async () => {
+    await withPage(effectDeckPdf([smallPaint(40)]), async (doc, page) => {
+      const render = vi.spyOn(page, 'render');
+      const result = await editablePdfPage(doc, page, pdfjs.OPS);
+      // One reference and one replay for the disjoint rectangles.
+      expect(render).toHaveBeenCalledTimes(2);
+      render.mockRestore();
+      expect(result).toMatchObject({ width: 1920, height: 1080 });
+      const images = result.elements.filter((element) => element.kind === 'image');
+      expect(images).toHaveLength(40);
+      expect(result.assets).toHaveLength(40);
+      expect(result.elements).toContainEqual(
+        expect.objectContaining({ kind: 'text', text: PDF_EDITABLE_WORDS }),
+      );
+      for (const [index, { frame }] of images.entries()) {
+        const x = 26 + (index % 10) * 176;
+        const y = 1080 - 50 - Math.floor(index / 10) * 180 - 18;
+        expect(Math.abs(frame.x - x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(frame.y - y)).toBeLessThanOrEqual(1);
+        expect(frame.width).toBeGreaterThanOrEqual(24);
+        expect(frame.height).toBeGreaterThanOrEqual(18);
+        expect(frame.width).toBeLessThanOrEqual(26);
+        expect(frame.height).toBeLessThanOrEqual(20);
+      }
+      const last = result.assets.at(-1);
+      if (!last) throw new Error('The generated clipped paint is missing.');
+      expect(await centerPixel(last.png)).toEqual([255, 0, 0, 255]);
+    });
+  });
+
   it('measures preparation of a generated 100-page clipped document', async () => {
     const count = 100;
     const source = clippedDeckPdf(count);
@@ -193,7 +448,11 @@ describe('long and complex generated PDFs', () => {
 
   it('keeps the saved middle picture when that page exceeds its paint budget', async () => {
     const world = originalWorld();
-    const source = clippedDeckPdf(3, 1);
+    const fullPaint = Array.from(
+      { length: 40 },
+      () => 'q 0 0 1920 1080 re W n 0 0 1 rg 0 0 1920 1080 re f Q',
+    );
+    const source = effectDeckPdf([smallPaint(3), fullPaint, smallPaint(3)]);
     try {
       writeFileSync(world.source, source);
       const { id } = await world.importPdf({
