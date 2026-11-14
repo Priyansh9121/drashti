@@ -8,7 +8,7 @@ import { isDeckNativeTransition } from '../shared/deck-transition';
 import { type Db, openDatabase } from './db/database';
 import { PresentationRepo } from './db/presentations';
 import { deckShow } from './engine/deck-steps';
-import { casesUntil, DECK_FOUR_THREE_ROWS, leftoversIn } from './perf-animations';
+import { casesUntil, DECK_FOUR_THREE_ROWS, FOUR_THREE_BLOCK_MS, leftoversIn } from './perf-animations';
 import { isPerfScenario, scenarioFor, startScenario } from './perf-scenarios';
 import { ffmpegHere } from './testing/ffmpeg-here';
 
@@ -75,13 +75,22 @@ describe('the animations scenario', () => {
     expect(leftoversIn({ streaming: false, twoCores: false })).toBe(true);
   });
 
-  it('stops pressing at its six minutes, or once Drashti has been up 12 minutes if that comes first (the check stops at 14)', () => {
+  it('stops pressing at its seven minutes, or once Drashti has been up 12 minutes if that comes first (the check stops at 14)', () => {
     const now = 1_800_000_000_000;
-    expect(casesUntil(now, 60_000)).toEqual({ at: now + 360_000, by: 'budget' });
-    expect(casesUntil(now, 6 * 60_000)).toEqual({ at: now + 360_000, by: 'budget' });
+    expect(casesUntil(now, 60_000)).toEqual({ at: now + 420_000, by: 'budget' });
+    expect(casesUntil(now, 5 * 60_000)).toEqual({ at: now + 420_000, by: 'budget' });
+    expect(casesUntil(now, 6 * 60_000)).toEqual({ at: now + 360_000, by: 'uptime' });
     expect(casesUntil(now, 9 * 60_000)).toEqual({ at: now + 180_000, by: 'uptime' });
     // Up longer already: no case at all.
     expect(casesUntil(now, 13 * 60_000)).toEqual({ at: now - 60_000, by: 'uptime' });
+  });
+
+  it('keeps every row phase1 measures: the 4:3 deck (Q58-36) has its own time on top of the six minutes they had (review of f45c90d9)', () => {
+    // Its four rounds as set, twice over for pressing them; the table slides (MS-1) and the jump (DK-6) went out of
+    // time without it on CI's Mac and Windows.
+    const now = 1_800_000_000_000;
+    expect(casesUntil(now, 60_000).at - now - 6 * 60_000).toBeGreaterThanOrEqual(2 * FOUR_THREE_BLOCK_MS);
+    expect(FOUR_THREE_BLOCK_MS).toBe(4 * (700 + 4 * (700 + 700)));
   });
 
   describe.skipIf(!ffmpegHere(ffmpeg))('set up on a library, with FFmpeg', () => {
