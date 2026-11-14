@@ -1709,7 +1709,7 @@ async function walk(
       ctx.issues.add('Tables, charts and embedded objects are not reproduced in this editable slide.');
     }
     if (result.length > available)
-      throw new EditableObjectLimit('A source slide exceeds the 500 editable-object limit.');
+      throw new EditableObjectLimit(`A source page has more than ${String(MAX_ELEMENTS)} objects.`);
   }
   return result;
 }
@@ -1918,7 +1918,7 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       // An absent source page stays as its retained picture. The rest of the deck is still editable.
       if (error instanceof EditableObjectLimit) {
         failedNotes[sourceIndex] = [
-          `PowerPoint source page ${String(sourceIndex + 1)} exceeds the ${String(MAX_ELEMENTS)}-object editing limit and stays as its saved picture.`,
+          `Page ${String(sourceIndex + 1)} of the original has more than ${String(MAX_ELEMENTS)} objects, so it stays as its saved picture.`,
         ];
         continue;
       }
