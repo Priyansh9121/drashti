@@ -1,9 +1,10 @@
 import { AnnotationMode, getDocument } from 'pdfjs-dist';
 import { drawEditablePdf } from './editable-main';
-import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
+import { pageTextOf } from './page-text';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import * as pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs';
 import type { PictureAssetKind } from '../../../shared/pictures';
-import { fitPage, inShare, MAX_PAGE_TEXT, tidyNotes } from '../../../shared/pictures';
+import { fitPage, inShare, tidyNotes } from '../../../shared/pictures';
 
 /*
  * The hidden window that draws a PDF's pages as pictures (Session 15): each
@@ -46,32 +47,6 @@ async function commentsOf(doc: PDFDocumentProxy, n: number): Promise<string> {
       .filter((text) => text.trim() !== '')
       .join('\n\n'),
   );
-}
-
-/** A small complete sample, without making text extraction a condition for drawing a page. */
-async function pageTextOf(page: PDFPageProxy): Promise<string | undefined> {
-  type TextReader = ReadableStreamDefaultReader<{ items: { str?: string }[] }>;
-  let reader: TextReader | undefined;
-  try {
-    reader = page.streamTextContent().getReader() as TextReader;
-    let text = '';
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return text;
-      for (const { str } of value.items) {
-        if (!str) continue;
-        if (text.length + str.length + 1 > MAX_PAGE_TEXT) {
-          await reader.cancel();
-          return undefined;
-        }
-        text += str + ' ';
-      }
-    }
-  } catch {
-    return undefined;
-  } finally {
-    reader?.releaseLock();
-  }
 }
 
 async function draw(): Promise<void> {

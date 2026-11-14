@@ -4,11 +4,26 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { EngineCommand } from '../../src/shared/engine/commands';
+import {
+  makeTestDeck,
+  placeholderDeckMedia,
+  type TestDeckSlide,
+} from '../../src/main/import/testing/make-deck';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
+import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { launchApp, operatorPage, operatorReady, relaunchApp, type PageGlobals } from './helpers';
+import {
+  holdStill,
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  relaunchApp,
+  type PageGlobals,
+} from './helpers';
 import { testFfmpeg } from './stream-helpers';
-import { makeTestImage } from './test-media';
+import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
  * A smart playlist following a folder (Session 26c): a temporary folder of
@@ -16,6 +31,11 @@ import { makeTestImage } from './test-media';
  * changed while Drashti runs and while it is closed, and the playlist is
  * checked each time. The test switches make Drashti look every second and
  * wait half a second for a file to hold still.
+ *
+ * And (Session 57, Q57-25 and Q57-27; Session 58, NT-4) what its import does to a video playing: a deck in the folder,
+ * changed, brings its video's new start point while that video plays behind the operator's slides. Nothing moves on
+ * the screens; Next onto a slide with the same video carries on between the points it had; its next play takes the
+ * new ones. Generated media, a deck and a presentation written by code, placeholder names only.
  */
 
 const QUICK = { DRASHTI_TEST_SMART_SCAN_MS: '1000', DRASHTI_TEST_SMART_SETTLE_MS: '500' };
@@ -246,5 +266,155 @@ test('a smart playlist follows a folder: files added, taken away and changed, in
   await expect.poll(() => shown(win2)).toContain('Notice (not in the folder)');
   await expect(win2.getByTestId('smart-remove-missing')).toHaveText('Remove the missing (2)');
   await again.app.close();
+  rmSync(work, { recursive: true, force: true });
+});
+
+/** The show as the engine has it, for the window. */
+const engineState = (win: Page) =>
+  win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
+
+async function dispatch(win: Page, command: EngineCommand): Promise<void> {
+  const done = await win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c), command);
+  expect(done.ok, `${command.type} was refused`).toBe(true);
+}
+
+/** What says where the video behind the slides is: its file, when it started, any jump, and its points. */
+async function backdrop(win: Page) {
+  const bg = (await engineState(win)).layers.background;
+  if (bg?.kind !== 'media') return null;
+  return { mediaId: bg.mediaId, startedAt: bg.startedAt, seek: bg.seek ?? null, clip: bg.clip ?? null };
+}
+
+/**
+ * A PowerPoint deck of one slide whose video (`video`, embedded) plays by itself and loops, trimmed by `startMs` at its
+ * start as PowerPoint trims (nothing off its end): a deck brings its videos' trims in as the file's points (Session 54).
+ */
+function trimmedDeck(path: string, video: string, poster: string, startMs: number): void {
+  const slide: TestDeckSlide = {
+    key: 'trimmed',
+    bg: '111111',
+    transition: { kind: 'fade', dur: 500 },
+    notes: 'Placeholder notes: the backdrop video, trimmed at its start.',
+    shapes: [
+      {
+        id: 2,
+        type: 'video',
+        name: 'Placeholder backdrop',
+        media: 'clip1',
+        poster: 'poster1',
+        x: 1_524_000,
+        y: 857_250,
+        w: 9_144_000,
+        h: 5_143_500,
+        trim: { st: startMs, end: 0 },
+        loop: true,
+      },
+    ],
+    effects: [{ kind: 'play', target: 2, dur: 6000, start: 'after' }],
+  };
+  const media = { ...placeholderDeckMedia(), clip1: readFileSync(video), poster1: readFileSync(poster) };
+  writeFileSync(path, makeTestDeck([slide], media));
+}
+
+const words = (text: string) => ({ text: [{ rtf: cocoaRtf([[text, 80, [255, 255, 255]]]) }] });
+
+test('a deck a smart playlist imports again never moves the video playing: no jump, Next carries on between its points, its next play takes the new ones (Q57-25, Q57-27)', async () => {
+  test.skip(!ffmpeg && !process.env['CI'], 'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs');
+  test.setTimeout(240_000);
+  const work = mkdtempSync(join(tmpdir(), 'drashti-smart-points-'));
+  const folder = join(work, 'Placeholder Followed');
+  mkdirSync(folder);
+  // No picture converter: the deck comes in as Drashti plays it, its video and trim with it (as without Office).
+  const { app } = await launchApp({ ...QUICK, DRASHTI_TEST_NO_CONVERTER: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const video = await makeTestVideo(win, join(work, 'Placeholder backdrop.mp4'), { seconds: 6, h264: true });
+  const poster = await makeTestImage(win, join(work, 'Placeholder poster.png'), { color: '#1e3a8a' });
+
+  // The operator's own imports: the video, with no points of its own, and a presentation whose two slides have it
+  // behind them.
+  const [mediaId = ''] = await importAndGetIds(win, [video]);
+  const shared = join(work, 'Placeholder Shared Backdrop.pro6');
+  writeFileSync(
+    shared,
+    pp6Presentation({
+      uuid: 'E2E-SMART-POINTS',
+      groups: [
+        {
+          name: 'Verse',
+          slides: [
+            { background: { path: video, kind: 'video', loop: true }, ...words('Placeholder first words') },
+            { background: { path: video, kind: 'video', loop: true }, ...words('Placeholder second words') },
+          ],
+        },
+      ],
+    }),
+  );
+  const [presentationId = ''] = await importAndGetIds(win, [shared]);
+  const points = () => win.evaluate((id) => (globalThis as PageGlobals).drashti.media.markers(id), mediaId);
+  expect(await points()).toMatchObject({ startMs: null, endMs: null });
+
+  // A smart playlist follows a folder holding a deck that plays the same video trimmed by 1 s: the deck comes in by
+  // itself, and the file takes that start point.
+  const deck = join(folder, 'Placeholder Trimmed Deck.pptx');
+  trimmedDeck(deck, video, poster, 1000);
+  const made = await win.evaluate(
+    (f) => (globalThis as PageGlobals).drashti.playlists.createSmartFrom([f]),
+    folder,
+  );
+  expect(made).toMatchObject({ problems: [], files: [] });
+  const labels = () =>
+    win.evaluate(
+      async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id)).map((i) => i.label),
+      made.made[0] ?? '',
+    );
+  await expect.poll(labels, { timeout: 120_000 }).toEqual(['Placeholder Trimmed Deck']);
+  const OLD = { startMs: 1000, endMs: null };
+  const NEW = { startMs: 2500, endMs: null };
+  await expect.poll(points, { timeout: 30_000 }).toMatchObject(OLD);
+
+  // Up: the first slide, the video behind it playing between the points it has now.
+  await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+  const before = await engineState(win);
+  const playing = await backdrop(win);
+  expect(playing).toMatchObject({ mediaId, clip: OLD });
+
+  // The deck changes in the folder (its video now trimmed by 2.5 s): the smart playlist imports it again by itself,
+  // and the file takes the new point. Its notice, the one naming the file (in whatever words), comes once that import
+  // has finished and the show has heard of it.
+  const named = win.getByTestId('import-notice').filter({ hasText: 'Placeholder backdrop.mp4' });
+  await expect(named).toHaveCount(0);
+  trimmedDeck(deck, video, poster, 2500);
+  await expect(named).toBeVisible({ timeout: 120_000 });
+  expect(await points()).toMatchObject(NEW);
+
+  // No jump: the video keeps its time and the points it was playing between, on every screen, and nothing goes up
+  // again.
+  const after = await engineState(win);
+  expect(await backdrop(win)).toEqual(playing);
+  expect(after.layers.slide).toMatchObject({
+    presentationId,
+    slideIndex: 0,
+    shownAt: before.layers.slide?.shownAt,
+  });
+  await holdStill(
+    async () => JSON.stringify(await backdrop(win)) === JSON.stringify(playing),
+    1500,
+    'the video playing keeps its time and its points after the import',
+  );
+
+  // Next, onto the slide with the same video behind it: the video carries on, between the same points.
+  await dispatch(win, { type: 'next' });
+  expect((await engineState(win)).layers.slide).toMatchObject({ presentationId, slideIndex: 1 });
+  expect(await backdrop(win)).toEqual(playing);
+
+  // Its next play takes the new point.
+  await dispatch(win, { type: 'clearAll' });
+  expect(await backdrop(win)).toBeNull();
+  await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+  const again = await backdrop(win);
+  expect(again).toMatchObject({ mediaId, clip: NEW });
+  expect(again?.startedAt).toBeGreaterThan(playing?.startedAt ?? Infinity);
+  await app.close();
   rmSync(work, { recursive: true, force: true });
 });
