@@ -40,7 +40,7 @@ import { missingFontsOf } from './font-probe';
 import { queueFit } from './shrink-to-fit';
 import { standsUpright } from '../../../shared/text-runs';
 import { drawnLines, hasList } from '../../../shared/text-lists';
-import { cutLineHeight, sourceFitScale, sourceLineCut } from '../../../shared/source-fit';
+import { cutLineHeight, sourceFitScale, sourceLineCut, sourceRunScale } from '../../../shared/source-fit';
 import { TimerElementView } from './TimerElementView';
 import { PlayBar } from './PlayBar';
 import type { DeckMedia } from '../../../shared/deck';
@@ -141,6 +141,16 @@ function frameStyle(el: SlideElement): CSSProperties {
 const fitted = (px: number | undefined) => (px === undefined ? undefined : `calc(var(--fit, 1) * ${px}px)`);
 
 /**
+ * A run's size in a deck's box that PowerPoint shrank: each run at its own size rounded to a whole point once the box
+ * is at PowerPoint's fit (shared/source-fit.ts sourceRunScale; Q58-50). As written for every other box.
+ */
+const ownSize = (px: number | undefined, el: TextElement) => {
+  if (px === undefined) return undefined;
+  const share = sourceRunScale(el, px);
+  return share === 1 ? px : Math.round(px * share * 10_000) / 10_000;
+};
+
+/**
  * How a run is drawn inside its box (the slide editor draws text it edits the same way). Gujarati and
  * Devanagari stand upright with no letter-spacing (Sessions 31–36, I18N-2: shared/text-runs.ts
  * standsUpright), whatever was stored, which is kept.
@@ -150,7 +160,7 @@ export function runStyle(run: Omit<TextRun, 'text'> & { text?: string }, el: Tex
   const upright = standsUpright(run, el.lang);
   return {
     fontFamily: fontFamilyFor(run.font ?? el.style.fontFamily, lang),
-    fontSize: fitted(run.size),
+    fontSize: fitted(ownSize(run.size, el)),
     color: run.color,
     fontWeight: run.weight,
     fontStyle: run.italic && !upright ? 'italic' : undefined,
@@ -566,7 +576,7 @@ export function textBoxStyle(el: TextElement): CSSProperties {
     textOrientation: s.textOrientation,
     overflow: s.clipToBox ? 'hidden' : undefined,
     fontFamily: fontFamilyFor(s.fontFamily, el.lang),
-    fontSize: fitted(s.fontSize),
+    fontSize: fitted(ownSize(s.fontSize, el)),
     fontWeight: s.fontWeight,
     // A deck's box drawn with its line spacing as PowerPoint shrank it (Session 58, PF-4b; shared/source-fit.ts).
     lineHeight: cutLineHeight(s.lineHeight, sourceLineCut(s)),
