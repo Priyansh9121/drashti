@@ -19,8 +19,8 @@ export type FrameSource = (tick: (t: number) => void) => number;
 
 /**
  * Resolves once the frames come on time, or once `maxMs` has gone by since the first (by the frames' own times, never a
- * clock of its own). `each` runs at every frame, given how many came before; `live` false ends it, never resolved (its
- * caller has gone); `keep` is told each frame's request, to cancel it.
+ * clock of its own). `each` runs at every frame, given the waits measured before it (none at the first two); `live`
+ * false ends it, never resolved (its caller has gone); `keep` is told each frame's request, to cancel it.
  */
 export function framesOnTime({
   maxMs,
