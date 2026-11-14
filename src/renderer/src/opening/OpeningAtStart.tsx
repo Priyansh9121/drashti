@@ -56,9 +56,9 @@ const windowWarming = () => document.querySelector('[data-testid="live-preview"]
 // Allow regular frames on slow displays and reject the long gaps caused by loading the operator window.
 const OPENING_FRAME_BUDGET_MS = 50;
 /**
- * Frames in a row within that budget before it moves (Session 58): its start's last chores come a few frames after its
- * warm-up (the LIVE picture's first Scene, the Lower Thirds studio's fonts two frames on: CI's Mac drew one frame of
- * 115-560 ms for them, 40-125 ms after the warm-up ended).
+ * Frames in a row within that budget before it moves once the window's own warm-up was seen (Session 58): its start's
+ * last chores come a few frames after it (the LIVE picture's first Scene, the Lower Thirds studio's fonts two frames
+ * on: CI's Mac drew one frame of 115-560 ms for them, 40-125 ms after the warm-up ended). With none, one, as before.
  */
 const OPENING_STEADY_FRAMES = 4;
 
@@ -213,14 +213,19 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!plan || !covered || state !== 'playing' || startWaitedOut || windowFrameReady) return;
     if (screensWarming && !waitedOut) return;
-    let watched: FrameWatch = { previous: null, steady: 0 };
+    let watched: FrameWatch = { previous: null, steady: 0, warmedUp: false };
     let frame = 0;
     const sample = (at: number) => {
       // Its frames while it warms up are the warm-up's (on time between the pipelines the GPU makes for it), and while
       // fonts load (the studio's, after the warm-up) a frame that lays them out may come long.
       const next = watchFrame(
         watched,
-        { at, now: performance.now(), busy: windowWarming() || document.fonts.status !== 'loaded' },
+        {
+          at,
+          now: performance.now(),
+          warming: windowWarming(),
+          fontsLoading: document.fonts.status !== 'loaded',
+        },
         OPENING_FRAME_BUDGET_MS,
         OPENING_STEADY_FRAMES,
       );
