@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { deckElementTargets } from '../../../shared/deck-motion';
+import { settledDeckElements } from '../../../shared/deck-motion';
+import type { RenderSlide } from '../../../shared/model';
 import { parseXml } from '../xml';
 import { readDeckSlide, stepsOf } from './pptx-deck';
 
@@ -757,16 +758,30 @@ describe('PowerPoint slide animation timing', () => {
         { shapeId: '3', step: 1, phase: 'in', kind: 'fade', durationMs: 250, paragraphs: [0, 0] },
       ],
     });
-    expect(
-      deckElementTargets({
-        id: 'placeholder-text-box-fill',
-        kind: 'image',
-        frame: { x: 0, y: 0, width: 100, height: 60 },
-        mediaId: 'placeholder-fill',
-        fit: 'fit',
-        sourceShapeId: '3',
-      }),
-    ).toContain('background:3');
+    // The box's picture fill, drawn as a picture of its own: left out before the click, drawn by it (DK-5).
+    const motion = read(group).motion;
+    expect(motion).toBeDefined();
+    if (!motion) return;
+    const slide: RenderSlide = {
+      id: 'placeholder-slide',
+      width: 1920,
+      height: 1080,
+      background: null,
+      elements: [
+        {
+          id: 'placeholder-text-box-fill',
+          kind: 'image',
+          frame: { x: 0, y: 0, width: 100, height: 60 },
+          mediaId: 'placeholder-fill',
+          fit: 'fit',
+          sourceShapeId: '3',
+        },
+      ],
+    };
+    const drawn = (step: number) =>
+      settledDeckElements(slide, { ...motion, stepsMs: [0, 250] }, step).map((e) => e.id);
+    expect(drawn(0)).toEqual([]);
+    expect(drawn(1)).toEqual(['placeholder-text-box-fill']);
   });
 
   it('keeps a word-by-word or letter-by-letter build for PowerPoint’s video', () => {
