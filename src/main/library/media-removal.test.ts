@@ -97,9 +97,7 @@ it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => 
       return Promise.resolve();
     });
 
-    expect(await removal.trashUnusedTrims(mediaDir, trash, () => true, new AbortController().signal)).toEqual(
-      ['unused.mp4'],
-    );
+    const gone = await removal.trashUnusedTrims(mediaDir, trash, () => true, new AbortController().signal);
     expect(trash.mock.calls.map(([file]) => basename(file))).toEqual(['unused.mp4']);
     expect(existsSync(join(trashDir, 'unused.mp4'))).toBe(true);
     expect(existsSync(join(mediaDir, 'unused.mp4'))).toBe(false);
@@ -109,6 +107,7 @@ it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => 
     });
     for (const id of [...ids.filter((id) => id !== 'unused'), 'original'])
       expect(existsSync(join(mediaDir, `${id}.mp4`)), id).toBe(true);
+    expect(gone).toEqual(['unused.mp4']);
   } finally {
     db.close();
     rmSync(root, { recursive: true, force: true });
@@ -320,13 +319,12 @@ it('marks a cut gone in the same turn as its last check, before it moves, so not
       added = playlists.addItems('p', null, [{ kind: 'media', mediaId: 'held' }]);
       await x.trash(file);
     });
-    expect(
-      await removal.trashUnusedTrims(x.mediaDir, trash, () => true, new AbortController().signal),
-    ).toEqual(['held.mp4']);
+    const gone = await removal.trashUnusedTrims(x.mediaDir, trash, () => true, new AbortController().signal);
     expect(atMove).toMatchObject({ path: '', missing: 1, deleted_at: expect.any(String) });
     expect(added).toEqual([]);
     expect(x.trashed()).toEqual(['held.mp4']);
     expect(rowOf(x.db, 'held')).toMatchObject({ path: '', missing: 1 });
+    expect(gone).toEqual(['held.mp4']);
   } finally {
     x.close();
   }
@@ -361,11 +359,16 @@ it('takes a moved cut’s still frame, sharpened and blurred copies with it, and
     const held = derivedOf(x, 'held');
     const newer = derivedOf(x, 'newer');
     const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
-    expect(
-      await removal.trashUnusedTrims(x.mediaDir, x.trash, () => true, new AbortController().signal),
-    ).toEqual(['held.mp4']);
+    const gone = await removal.trashUnusedTrims(
+      x.mediaDir,
+      x.trash,
+      () => true,
+      new AbortController().signal,
+    );
+    expect(x.trashed()).toEqual(['held.mp4']);
     for (const file of held) expect(existsSync(join(x.mediaDir, file)), file).toBe(false);
     for (const file of newer) expect(existsSync(join(x.mediaDir, file)), file).toBe(true);
+    expect(gone).toEqual(['held.mp4']);
   } finally {
     x.close();
   }
