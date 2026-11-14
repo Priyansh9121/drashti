@@ -21,6 +21,7 @@ Update after a sabha, and update Main and nodes together.
 - Clicking a deck slide's row starts its first animation at once on every screen and the stream: the slide the mouse rests on is made ready ahead, and the stream starts a deck's slides on time by Next too.
 - A PDF page with many small clipped or masked drawings can now be edited: each drawing is a picture you can move or remove.
 - The stream never sends black or half-drawn frames as a slide comes up: it loads what Next will show ahead, as the hall's screens do, and a slide you jump to comes onto the stream once its pictures are ready.
+- A PowerPoint paragraph's spacing before and after it, given as a share of a line, now matches PowerPoint's.
 - The stream, the decks Drashti plays itself, the start and the Edit slides fixes since alpha.17 (this list is written in full before the release).
 
 ## 1.0.0-alpha.17 (13 Nov 2026)
