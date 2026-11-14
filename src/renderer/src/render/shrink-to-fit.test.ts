@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MIN_FIT } from '../../../shared/readable';
-import { FIT_STEPS, type FitBox, fitTogether, queueFit } from './shrink-to-fit';
+import { FIT_STEPS, type FitBox, fitTogether, queueFit, reportFitFailuresTo } from './shrink-to-fit';
 
 /*
  * Shrink-to-fit's search over many boxes at once (Session 57, MS-1: a slide of a 250-cell table froze the hall screen
@@ -244,17 +244,64 @@ describe('shrink-to-fit over a slide of many boxes (Session 57, MS-1)', () => {
     expect([first.settled.length, late.settled.length]).toEqual([1, 1]);
   });
 
-  it('tells the other boxes their measure when telling one of them fails, then lets the failure through', () => {
+  it('tells every box its measure when telling some fail, then reports each failure, as the window reports it', () => {
+    // Session 58, MS-2: until then the first failure came through uncaught (the console only) and the rest were lost.
     const layout = new Layout();
+    const told: string[] = [];
+    const reported: { error: unknown; told: number }[] = [];
+    reportFitFailuresTo((error) => {
+      reported.push({ error, told: told.length });
+    });
+    const first = new Error('Placeholder first report failure');
+    const second = new Error('Placeholder second report failure');
     const failing = probe(layout, needing(2), {
       told: () => {
-        throw new Error('Placeholder report failure');
+        told.push('failing');
+        throw first;
       },
     });
-    const after = probe(layout, needing(2));
+    const between = probe(layout, needing(2), {
+      told: () => {
+        told.push('between');
+      },
+    });
+    const alsoFailing = probe(layout, needing(0.5), {
+      told: () => {
+        told.push('also failing');
+        throw second;
+      },
+    });
     expect(() => {
-      fitTogether([failing, after]);
-    }).toThrow('Placeholder report failure');
-    expect([failing.settled.length, after.settled.length]).toEqual([1, 1]);
+      fitTogether([failing, between, alsoFailing]);
+    }).not.toThrow();
+    expect(told).toEqual(['failing', 'between', 'also failing']);
+    expect([failing, between, alsoFailing].map((box) => box.settled.length)).toEqual([1, 1, 1]);
+    // Each reported on its own, once every box of the batch was told.
+    expect(reported).toEqual([
+      { error: first, told: 3 },
+      { error: second, told: 3 },
+    ]);
+  });
+
+  it('reports a failure in a batch the window’s way, never uncaught, and the next batch is measured', async () => {
+    const reported: unknown[] = [];
+    reportFitFailuresTo((error) => {
+      reported.push(error);
+    });
+    const failure = new Error('Placeholder report failure');
+    const failing = probe(new Layout(), needing(2), {
+      told: () => {
+        throw failure;
+      },
+    });
+    queueFit(failing);
+    await measured();
+    expect(failing.settled).toHaveLength(1);
+    expect(reported).toEqual([failure]);
+    const next = probe(new Layout(), needing(2));
+    queueFit(next);
+    await measured();
+    expect(next.settled).toHaveLength(1);
+    expect(reported).toEqual([failure]);
   });
 });
