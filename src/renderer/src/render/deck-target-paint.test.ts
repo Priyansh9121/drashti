@@ -64,8 +64,8 @@ it('leaves a Wipe and the other reveals to their clip, with no mask', () => {
  * from twelve o'clock, clockwise), its stops straight between them, the layers laid on one another as `mask-composite:
  * add` does (the first on top). Only the forms Drashti writes are read; anything else fails the test.
  */
-function maskAt(mask: string, size: { width: number; height: number }, x: number, y: number): number {
-  if (mask === '') return 1;
+function maskOf(mask: string, size: { width: number; height: number }): (x: number, y: number) => number {
+  if (mask === '') return () => 1;
   const layers: string[] = [];
   let depth = 0;
   let start = 0;
@@ -78,8 +78,8 @@ function maskAt(mask: string, size: { width: number; height: number }, x: number
     }
   }
   layers.push(mask.slice(start).trim());
-  const values = layers.map((layer) => layerAt(layer, size, x, y));
-  return values.reduceRight((below, top) => top + below * (1 - top), 0);
+  const read = layers.map((layer) => layerOf(layer, size));
+  return (x, y) => read.reduceRight((below, top) => top(x, y) + below * (1 - top(x, y)), 0);
 }
 
 function stopsOf(list: string, unit: '%' | 'deg'): [number, number][] {
@@ -105,26 +105,32 @@ function along(stops: readonly [number, number][], at: number): number {
   return last[1];
 }
 
-function layerAt(layer: string, size: { width: number; height: number }, x: number, y: number): number {
+function layerOf(layer: string, size: { width: number; height: number }): (x: number, y: number) => number {
   let m = /^linear-gradient\((-?[\d.]+)deg, (.*)\)$/u.exec(layer);
   if (m) {
     const angle = (Number(m[1]) * Math.PI) / 180;
     const [ex, ey] = [Math.sin(angle), -Math.cos(angle)];
     const length = Math.abs(size.width * ex) + Math.abs(size.height * ey);
-    const t = ((x - size.width / 2) * ex + (y - size.height / 2) * ey) / length + 0.5;
-    return along(stopsOf(m[2] ?? '', '%'), t * 100);
+    const stops = stopsOf(m[2] ?? '', '%');
+    return (x, y) =>
+      along(stops, (((x - size.width / 2) * ex + (y - size.height / 2) * ey) / length + 0.5) * 100);
   }
   m = /^radial-gradient\(([\d.]+)px ([\d.]+)px at (-?[\d.]+)px (-?[\d.]+)px, (.*)\)$/u.exec(layer);
   if (m) {
-    const t = Math.hypot((x - Number(m[3])) / Number(m[1]), (y - Number(m[4])) / Number(m[2]));
-    return along(stopsOf(m[5] ?? '', '%'), t * 100);
+    const [rx, ry, cx, cy] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+    const stops = stopsOf(m[5] ?? '', '%');
+    return (x, y) => along(stops, Math.hypot((x - cx) / rx, (y - cy) / ry) * 100);
   }
   m = /^repeating-conic-gradient\(from (-?[\d.]+)deg at (-?[\d.]+)px (-?[\d.]+)px, (.*)\)$/u.exec(layer);
   if (m) {
+    const [from, cx, cy] = [Number(m[1]), Number(m[2]), Number(m[3])];
     const stops = stopsOf(m[4] ?? '', 'deg');
-    const period = (stops.at(-1)?.[0] ?? 360) - (stops[0]?.[0] ?? 0);
-    const turn = (Math.atan2(x - Number(m[2]), -(y - Number(m[3]))) * 180) / Math.PI - Number(m[1]);
-    return along(stops, (((turn % period) + period) % period) + (stops[0]?.[0] ?? 0));
+    const first = stops[0]?.[0] ?? 0;
+    const period = (stops.at(-1)?.[0] ?? 360) - first;
+    return (x, y) => {
+      const turn = (Math.atan2(x - cx, -(y - cy)) * 180) / Math.PI - from;
+      return along(stops, (((turn % period) + period) % period) + first);
+    };
   }
   throw new Error(`a mask layer this test cannot read: ${layer}`);
 }
@@ -150,19 +156,20 @@ it('draws Shape’s soft edge with masks that let through exactly what PowerPoin
             paintDeckTarget(outer.style, frame, bounds, part, inner.style);
             const name = `${phase} ${shape} ${inward ? 'In' : 'Out'} at ${String(ms)} ms, part ${JSON.stringify(part)}`;
             expect(outer.style.clipPath, name).toBe('');
-            // Every 9 px across the part.
+            // Every 9 px across the part, each mask read once.
+            const outerAt = maskOf(outer.style.maskImage, part);
+            const innerAt = maskOf(inner.style.maskImage, part);
+            const off: string[] = [];
             for (let y = 0.5; y < part.height; y += 9)
               for (let x = 0.5; x < part.width; x += 9) {
-                const drawn =
-                  maskAt(outer.style.maskImage, part, x, y) * maskAt(inner.style.maskImage, part, x, y);
                 const u = (part.x + x - (bounds.x + bounds.width / 2)) / (bounds.width / 2);
                 const v = (part.y + y - (bounds.y + bounds.height / 2)) / (bounds.height / 2);
+                const drawn = outerAt(x, y) * innerAt(x, y);
                 const wanted = deckShapeShows(frame.wipe, u, v);
-                expect(
-                  Math.abs(drawn - wanted),
-                  `${name} at (${String(x)}, ${String(y)})`,
-                ).toBeLessThanOrEqual(0.002);
+                if (Math.abs(drawn - wanted) > 0.002)
+                  off.push(`(${String(x)}, ${String(y)}): ${String(drawn)}, not ${String(wanted)}`);
               }
+            expect(off.slice(0, 5), name).toEqual([]);
           }
         }
 });
