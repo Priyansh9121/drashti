@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   importAndGetIds,
   launchApp,
+  letTimePass,
   operatorPage,
   operatorReady,
   outputPage,
@@ -120,11 +121,16 @@ async function drawnAt(out: Page, p: number): Promise<void> {
   else await expect(out.locator('[data-layer="slide"]')).toHaveAttribute('data-fade', p.toFixed(3));
 }
 
-/** The operator, the hall's screen and the stream's page, with these pictures imported (their media ids). */
+/**
+ * The operator, the hall's screen and the stream's page, with these pictures imported (their media ids); `env`, more
+ * test switches. With Chromium's word held back (DRASHTI_TEST_GPU_SAID=late) the hall's screen still warms up as the
+ * stream's page opens, so it is not waited for.
+ */
 async function setUp(
   greys: number[],
+  env: Record<string, string> = {},
 ): Promise<{ app: ElectronApplication; win: Page; hall: Page; program: Page; ids: string[] }> {
-  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1', ...env });
   const win = await operatorPage(app);
   await operatorReady(win);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-stream-pictures-'));
@@ -134,7 +140,8 @@ async function setUp(
   const ids = await importAndGetIds(win, files);
   await setUpScreen(win);
   const hall = await outputPage(app);
-  await expect(hall.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
+  if (env['DRASHTI_TEST_GPU_SAID'] !== 'late')
+    await expect(hall.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await win.getByTestId('open-stream').click();
   const program = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
   await expect(program.getByTestId('program-root')).toBeVisible();
@@ -233,5 +240,79 @@ test('the stream’s page never cuts to a slide before its pictures are drawn: N
   expect(off, `frames neither the slide before nor the new one, whole (light@ms): ${lines.join('; ')}`).toBe(
     0,
   );
+  await app.close();
+});
+
+test('the stream’s page told it draws without a graphics chip after its warm-up began draws the slide up whole: a dissolve from it at once never starts on black (fault 2)', async () => {
+  test.setTimeout(180_000);
+  // Chromium's word on how it draws held back, as on a slow computer's start, and then: no graphics chip. The stream's
+  // page opened before it warms up as with one (in software where there is none, as on CI's Windows); told, it stops.
+  // Session 58 (h-black2): its first frames were then drawn with their tiles missing, black then 256-px parts, for up to
+  // 3.3 s, the warm-up having used up the page's tile memory while the display compositor drew its frames (~0.8 s each).
+  const DARK = 54;
+  const BRIGHT = 160;
+  const { app, win, hall, program, ids } = await setUp([DARK, BRIGHT], {
+    DRASHTI_TEST_GPU_SAID: 'late',
+    DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software',
+  });
+  const [dark = '', bright = ''] = ids;
+  const MS = 1000;
+  const id = await makeSlides(
+    win,
+    'Placeholder stream pictures told late',
+    [{ picture: dark }, { picture: bright }],
+    {
+      kind: 'dissolve',
+      durationMs: MS,
+    },
+  );
+  // The stream's page warming up: drawing its scenes.
+  await expect(program.locator('[data-testid="program-root"] [data-warm-up="during"]')).toHaveCount(1, {
+    timeout: 60_000,
+  });
+  await captureOwnFrames(program);
+  await holdClock(app, null);
+  await goLive(win, id, 0);
+  await letTimePass(program, 400, 'the warm-up still drawing when Chromium’s word comes');
+  await app.evaluate(() => {
+    (globalThis as { drashtiTestGpuSaid?: () => void }).drashtiTestGpuSaid?.();
+  });
+  await expect(program.getByTestId('program-root')).toHaveAttribute('data-warm-up', 'skipped');
+  for (const out of [hall, program]) {
+    await expect(out.locator('[data-layer="slide"] [data-slide]')).toHaveCount(1, { timeout: 20_000 });
+    await drawnAt(out, 1);
+  }
+  const drawn = await pageNow(program);
+  // At once, as Session 57's check did: the dissolve held at its very start, then drawn moment by moment.
+  await holdClock(app, Date.now() - 60_000);
+  const from = await pageNow(program);
+  await goLive(win, id, 1);
+  const shownAt = (await engineState(win)).layers.slide?.shownAt ?? 0;
+  for (const i of [-2, -1, 0, 6, 15, 30, 45, 60, 78]) {
+    const t = Math.round(i * STEP);
+    await holdClock(app, shownAt + t);
+    await drawnAt(program, Math.min(1, Math.max(0, t / MS)));
+    await program.evaluate(
+      () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+    );
+  }
+  await holdClock(app, null);
+  await drawnAt(program, 1);
+  const frames = await framesSince(program, drawn);
+  // From the dark slide's own light up to the bright one's: a frame darker than the dark slide is black where its
+  // picture goes, or part of it drawn. Counted from going live with the dissolve, as Session 57's check counted.
+  const floor = 0.85 * (DARK / 255);
+  const off = frames.filter((f) => f.t >= from && f.mean < floor);
+  expect(
+    off.length,
+    `frames darker than the dark slide (${floor.toFixed(3)}) from going live with the dissolve (light@ms from the slide drawn): ${shown(frames, drawn)}`,
+  ).toBe(0);
+  // And once the stream showed the slide whole, it never showed it black or part-drawn again.
+  const whole = frames.findIndex((f) => f.mean >= floor);
+  const after = whole < 0 ? [] : frames.slice(whole).filter((f) => f.t < from && f.mean < floor);
+  expect(
+    after.length,
+    `frames black or part-drawn after the slide showed whole: ${shown(frames, drawn)}`,
+  ).toBe(0);
   await app.close();
 });
