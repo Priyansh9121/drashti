@@ -13,7 +13,7 @@ import { openDatabase } from '../../db/database';
 import { ImportRepo } from '../../db/imports';
 import { MediaRepo } from '../../db/media';
 import { PresentationRepo } from '../../db/presentations';
-import { ffmpegHere } from '../../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../../testing/ffmpeg-here';
 import { MediaStore, UPLOADS_DIR } from '../media-store';
 import { runImport } from '../pipeline';
 import * as bake from './bake';
@@ -29,8 +29,8 @@ import { copyZipReplacing } from './zip-copy';
  * of those pictures; as pictures while the stream is on air; and on a computer with neither PowerPoint nor Keynote.
  */
 
-const exe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-const ffmpeg = join(process.cwd(), 'vendor', 'ffmpeg', `${process.platform}-${process.arch}`, exe);
+// Drashti's own FFmpeg; on CI's Ubuntu, CI's own Linux one, so the whole unit suite there runs this too (Session 58).
+const ffmpeg = testFfmpeg({ linux: true });
 
 /** A tiny PNG of one colour (a page as the main process would draw it). */
 function png(rgb: [number, number, number]): Buffer {
