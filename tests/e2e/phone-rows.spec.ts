@@ -254,6 +254,24 @@ test('a long press on a row opens its menu on a phone: Rename, When it ends, Pin
           )?.name,
       )
       .toBe('Placeholder backdrop, renamed');
+    // Session 58, X3: a refused name's words go as the name is typed again, and the Undo line says the name as
+    // Drashti kept it (hidden characters left out).
+    await longPress(fileRow(p, 'Placeholder backdrop, renamed'));
+    await menu.getByTestId('remote-menu-rename').click();
+    await renaming.getByRole('textbox').fill('\u202E');
+    await renaming.getByTestId('remote-rename-save').click();
+    await expect(renaming.getByRole('alert')).toHaveText('A name needs 1 to 200 characters.');
+    await renaming.getByRole('textbox').fill('Placeholder backdrop, kept\u200F');
+    await expect.soft(renaming.getByRole('alert')).toHaveCount(0);
+    await renaming.getByTestId('remote-rename-save').click();
+    await expect(fileRow(p, 'Placeholder backdrop, kept')).toBeVisible();
+    await expect
+      .soft(
+        p.getByText('Renamed “Placeholder backdrop, renamed” to “Placeholder backdrop, kept”', {
+          exact: true,
+        }),
+      )
+      .toBeVisible();
 
     // Remove from playlist: the welcome's row goes (the library keeps it), and Undo puts it back where it was.
     const before = (await items()).map((i) => i.id);

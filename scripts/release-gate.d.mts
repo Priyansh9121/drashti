@@ -29,6 +29,7 @@ export function ciCheck(
   jobsOf: Record<number, CiJob[]>,
   sha: string,
   annotationsOf?: Record<number, CiAnnotation[]>,
+  appJobs?: string[],
 ): GateResult;
 export function filesCheck(dir: string): Promise<GateResult[]>;
 export function accessCheck(configText: string): GateResult;

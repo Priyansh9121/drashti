@@ -146,6 +146,11 @@ function PresentationRows({ doc, platform }: { doc: PresentationDoc; platform: s
           ? [
               {
                 number: r.number,
+                pointAt: {
+                  presentationId: doc.id,
+                  slideIndex: r.at.position,
+                  arrangementId: r.arrangementId,
+                },
                 go: () => {
                   leaveItem();
                   void goLive(doc.id, r.at.position, r.arrangementId, null);
@@ -261,6 +266,11 @@ function PresentationRows({ doc, platform }: { doc: PresentationDoc; platform: s
                     ? r.at.position === live.slideIndex
                     : r.at.slide.id === liveSlideId)
                 }
+                pointAt={{
+                  presentationId: doc.id,
+                  slideIndex: r.at.position,
+                  arrangementId: r.arrangementId,
+                }}
                 onClick={(e) => {
                   // One click puts it up (a double click's second does nothing more); Cmd, Ctrl, Alt and Shift never.
                   if (e.detail > 1 || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
