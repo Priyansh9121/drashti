@@ -2,11 +2,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isAnimation } from '../../shared/lower-third-animations';
+import { LOWER_THIRD_DESIGNS } from '../../shared/lower-third-designs';
 import { OFFERED } from '../../shared/lower-third-studio';
 import { LOWER_THIRD_TEMPLATES } from '../../shared/lower-third-templates';
 import { lowerThirdSchema } from '../../shared/lower-thirds';
 import { isPerfScenario } from '../perf-scenarios';
-import { keptOf, keptOfPhase, playedRows } from './perf-lower-thirds';
+import { keptOf, keptOfPhase, playedRows, scheduledMs } from './perf-lower-thirds';
 
 /*
  * The Performance check's lower-thirds scenario (Session 55, Part 16): it plays every row of the studio's offered set,
@@ -16,9 +17,12 @@ import { keptOf, keptOfPhase, playedRows } from './perf-lower-thirds';
 
 const APP = join(__dirname, '..', '..', '..');
 
+/** What both lower-thirds scenarios play (Session 58: alpha.17's rows, then every row added since). */
+const everyPlayedRow = async () => [...(await playedRows('lower-thirds')), ...(await playedRows('lower-thirds-more'))];
+
 describe('the lower-thirds scenario', () => {
   it('plays each row of OFFERED once, as a lower third the library takes, with placeholder words', async () => {
-    const rows = (await playedRows()).filter((r) => !r.row.startsWith('template '));
+    const rows = (await everyPlayedRow()).filter((r) => !r.row.startsWith('template '));
     expect(rows).toHaveLength(OFFERED.length);
     expect(new Set(rows.map((r) => r.lowerThird.id)).size).toBe(rows.length);
     for (const r of rows) {
@@ -62,18 +66,23 @@ describe('the lower-thirds scenario', () => {
     ]);
   });
 
-  it('measures each new name-and-role design with its own complete look and animation', async () => {
+  it('measures each name-and-role design, and each template made since, with its own complete look and animation', async () => {
     const designs = LOWER_THIRD_TEMPLATES.filter((template) =>
       template.input.animation.startsWith('design-'),
     );
-    const measured = (await playedRows()).filter((r) => r.row.startsWith('template '));
+    const measured = (await everyPlayedRow()).filter((r) => r.row.startsWith('template '));
     expect(designs.length).toBeGreaterThanOrEqual(34);
-    expect(measured).toHaveLength(designs.length);
-    expect(new Set(measured.map((r) => r.lowerThird.id)).size).toBe(designs.length);
-    for (const design of designs) {
-      const row = measured.find((r) => r.row === 'template ' + design.id);
-      expect(row?.lowerThird, design.name).toEqual({ ...design.input, id: 'perf-lt-template-' + design.id });
-      expect(row?.measure).toBe('phases');
+    expect(new Set(measured.map((r) => r.lowerThird.id)).size).toBe(measured.length);
+    for (const design of designs)
+      expect(
+        measured.some((r) => r.row === 'template ' + design.id),
+        design.name,
+      ).toBe(true);
+    for (const row of measured) {
+      const template = LOWER_THIRD_TEMPLATES.find((t) => row.row === 'template ' + t.id);
+      expect(template, row.row).toBeDefined();
+      expect(row.lowerThird, row.row).toEqual({ ...template?.input, id: 'perf-lt-template-' + (template?.id ?? '') });
+      expect(row.measure).toBe('phases');
     }
   });
 
@@ -96,5 +105,99 @@ describe('the lower-thirds scenario', () => {
     expect(isPerfScenario('lower-thirds')).toBe(true);
     const workflow = readFileSync(join(APP, '.github', 'workflows', 'performance.yml'), 'utf8');
     expect(workflow).toMatch(/options:\s*\[[^\]]*\blower-thirds,/u);
+  });
+});
+
+/*
+ * The new rows' own measuring (Session 58, C14; LT-6): on a slow two-core runner the streaming check of the
+ * lower-thirds scenario is near its 14 minutes already (its import alone can take 4 to 8), so the rows added since
+ * alpha.17 (moving backgrounds, templates) are played by a second scenario, lower-thirds-more, and lower-thirds plays
+ * alpha.17's rows as it did. Each run's rows are held under five minutes as the scenario plays them.
+ */
+describe('the two lower-thirds scenarios: alpha.17’s rows, and every row added since', () => {
+  /** alpha.17's moving backgrounds and its studio templates (made before the designs; never played as templates). */
+  const ALPHA17_BACKGROUNDS = ['sweep', 'shine', 'shapes', 'stripes', 'glow', 'line', 'sparkles'];
+  const STUDIO_TEMPLATES = [
+    'name-title',
+    'news-band',
+    'pill',
+    'ribbon',
+    'glass',
+    'two-colours',
+    'outline',
+    'accent-bar',
+    'gujarati',
+    'hindi',
+  ];
+  const designIds = new Set(LOWER_THIRD_DESIGNS.map((d) => d.id));
+  const after = (row: string, kind: string) => (row.startsWith(kind + ' ') ? row.slice(kind.length + 1) : null);
+
+  it('lower-thirds-more is a scenario of the check too, and the Performance workflow offers it', () => {
+    expect(isPerfScenario('lower-thirds-more')).toBe(true);
+    const workflow = readFileSync(join(APP, '.github', 'workflows', 'performance.yml'), 'utf8');
+    expect(workflow).toMatch(/options:\s*\[[^\]]*\blower-thirds-more,/u);
+  });
+
+  it('lower-thirds plays alpha.17’s rows only, in its order, so its run never grows', async () => {
+    const rows = await playedRows('lower-thirds');
+    const kinds = ['animation', 'band', 'style', 'background', 'template'] as const;
+    const count = (kind: string) => rows.filter((r) => after(r.row, kind) !== null).length;
+    // The offered set's 58 families of animation, 3 ways a band comes in, 12 styles, 7 moving backgrounds, and the
+    // 40 designs: fewer only where the Performance run has left one out (deleted).
+    expect(count('animation')).toBeLessThanOrEqual(58);
+    expect(count('band')).toBeLessThanOrEqual(3);
+    expect(count('style')).toBeLessThanOrEqual(12);
+    expect(count('background')).toBeLessThanOrEqual(7);
+    expect(count('template')).toBeLessThanOrEqual(40);
+    expect(rows.length).toBe(kinds.reduce((n, kind) => n + count(kind), 0));
+    for (const r of rows) {
+      const background = after(r.row, 'background');
+      if (background !== null) expect(ALPHA17_BACKGROUNDS, r.row).toContain(background);
+      const template = after(r.row, 'template');
+      if (template !== null) expect(designIds.has(template), r.row).toBe(true);
+    }
+    // As it played them: the offered set's rows (alpha.17's backgrounds only) in OFFERED's order, then the designs.
+    const names = rows.map((r) => r.row);
+    const firstOffered = OFFERED.map((r) => `${r.kind} ${r.kind === 'animation' ? r.family : r.key}`).filter(
+      (n) => after(n, 'background') === null || ALPHA17_BACKGROUNDS.includes(after(n, 'background') ?? ''),
+    );
+    const templatesAt = names.findIndex((n) => after(n, 'template') !== null);
+    expect(names.slice(0, templatesAt)).toEqual(firstOffered);
+    expect(names.slice(templatesAt).every((n) => after(n, 'template') !== null)).toBe(true);
+  });
+
+  it('every offered row and every template made since alpha.17 is played once, in one of the two', async () => {
+    const first = await playedRows('lower-thirds');
+    const more = await playedRows('lower-thirds-more');
+    const names = [...first, ...more].map((r) => r.row);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names.filter((n) => after(n, 'template') === null)).toHaveLength(OFFERED.length);
+    // Every background beyond alpha.17's seven, and every template but alpha.17's own, in lower-thirds-more.
+    for (const r of more) {
+      const background = after(r.row, 'background');
+      const template = after(r.row, 'template');
+      expect(background !== null || template !== null, r.row).toBe(true);
+      if (background !== null) expect(ALPHA17_BACKGROUNDS, r.row).not.toContain(background);
+      if (template !== null) {
+        expect(designIds.has(template) || STUDIO_TEMPLATES.includes(template), r.row).toBe(false);
+        expect(r.measure, r.row).toBe('phases');
+      }
+    }
+    const since = LOWER_THIRD_TEMPLATES.filter((t) => !designIds.has(t.id) && !STUDIO_TEMPLATES.includes(t.id));
+    expect(more.filter((r) => after(r.row, 'template') !== null).map((r) => r.row)).toEqual(
+      since.map((t) => 'template ' + t.id),
+    );
+  });
+
+  it('each scenario’s rows take under five minutes as it plays them (in, held, out and the gap after)', async () => {
+    for (const set of ['lower-thirds', 'lower-thirds-more'] as const) {
+      const rows = await playedRows(set);
+      const ms = scheduledMs(rows);
+      expect(ms, set).toBeLessThanOrEqual(5 * 60_000);
+      // Never shorter than its rows' own holds and gaps: an in and an out of at least a frame each.
+      expect(ms, set).toBeGreaterThanOrEqual(rows.reduce((n, r) => n + r.holdMs + 300, 0));
+    }
+    // alpha.17's: about four and three-quarter minutes.
+    expect(scheduledMs(await playedRows('lower-thirds'))).toBeGreaterThan(4 * 60_000);
   });
 });
