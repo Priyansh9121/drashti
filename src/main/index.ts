@@ -145,7 +145,7 @@ import { isPerfScenario, scenarioFor } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { SoundRepo } from './db/sound';
 import { SoundPass } from './sound/sound-pass';
-import { automaticImportNotices } from './import/automatic-notices';
+import { automaticImportNotices, loadsOperatorPageAgain } from './import/automatic-notices';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { clearDeckLeftovers, OfficeCopies, officeCopiesFile } from './import/deck/leftovers';
@@ -375,7 +375,6 @@ import { localName } from './network/local-name';
 import { localInterfaceAddresses } from './network/addresses';
 import { previewSource } from './network/preview-source';
 import { sharedSoundFile } from './network/shared-sound';
-import { isAppUrl } from './windows/navigation';
 import { devServerUrl, rendererDir } from './windows/renderer';
 import { pageAlive, sendToPage } from './windows/send';
 import { quietTests, startQuietTests } from './windows/quiet';
@@ -6899,12 +6898,8 @@ function start(): void {
   operatorWindow.webContents.on('did-start-loading', () => {
     switchQuestion.asking(null);
   });
-  operatorWindow.webContents.on('did-start-navigation', ({ url, isMainFrame, isSameDocument }) => {
-    if (
-      isMainFrame &&
-      !isSameDocument &&
-      isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() })
-    )
+  operatorWindow.webContents.on('did-start-navigation', (navigation) => {
+    if (loadsOperatorPageAgain(navigation, { devServerUrl: devServerUrl(), rendererDir: rendererDir() }))
       importNotices.pause();
   });
   operatorWindow.webContents.on('render-process-gone', () => {
