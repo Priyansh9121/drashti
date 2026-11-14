@@ -27,8 +27,9 @@ export interface MotionTrack {
 }
 
 /**
- * An audience screen's moving parts (render/Scene.tsx): the slide layer's two slides, the black of a fade through
- * black and the words drawn apart while a move runs (never a slow zoom's zooming after its fade); a deck's step's
+ * An audience screen's moving parts (render/Scene.tsx): the slide layer's two slides (with the box a deck's own Wipe
+ * draws its band on, Session 58), the black of a fade through black and the words drawn apart while a move runs (never
+ * a slow zoom's zooming after its fade); a deck's step's
  * pictures and videos; a lower third's band, units, accent and design panels (never its moving background's
  * pieces, which move while it is up); Black-out; and the Wallpaper with its picture. A slow zoom's slide zooms
  * on for 20 s after its fade (the zoom is a child of the slide's box): only the fade is the transition's.
@@ -37,7 +38,7 @@ export const AUDIENCE_TRACKS: readonly MotionTrack[] = [
   {
     name: 'slide',
     parts:
-      '[data-layer="slide"] [data-slide-in], [data-layer="slide"] [data-slide-out], [data-slide-black], [data-words-in], [data-words-out], [data-words-apart] [data-reveal-line], [data-words-apart] [data-reveal-word]',
+      '[data-layer="slide"] [data-slide-in], [data-layer="slide"] [data-slide-out], [data-layer="slide"] [data-band], [data-slide-black], [data-words-in], [data-words-out], [data-words-apart] [data-reveal-line], [data-words-apart] [data-reveal-word]',
   },
   { name: 'deck', parts: '[data-deck-step] video, [data-deck-step] img' },
   {
@@ -108,9 +109,9 @@ function seenOpacity(el: Element, known: Map<Element, number>): number {
 
 /**
  * What of an element's own style moves it on the screen, beyond how much of it shows and its box: its transform, clip,
- * mask and filter. A deck Drashti plays itself moves by a mask alone (13 Nov 2026): a Split over its shape's box (its
- * own Wipe, a mask over the whole slide coming in until Q57-28, is a clip again); its Cover and Uncover shade the moving
- * slide with a filter.
+ * mask and filter. A deck Drashti plays itself moves by a mask alone (13 Nov 2026): a Split over its shape's box; its
+ * Cover and Uncover shade the moving slide with a filter; its own Wipe (Session 58) moves the box its band's mask is on
+ * by a transform, the mask itself never changing.
  */
 export const movedLook = (
   style: Pick<CSSStyleDeclaration, 'transform' | 'clipPath' | 'maskImage' | 'filter'>,

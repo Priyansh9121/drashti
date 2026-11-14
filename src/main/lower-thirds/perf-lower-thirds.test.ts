@@ -5,9 +5,9 @@ import { isAnimation } from '../../shared/lower-third-animations';
 import { LOWER_THIRD_DESIGNS } from '../../shared/lower-third-designs';
 import { OFFERED } from '../../shared/lower-third-studio';
 import { LOWER_THIRD_TEMPLATES } from '../../shared/lower-third-templates';
-import { lowerThirdSchema } from '../../shared/lower-thirds';
+import { DEFAULT_LOWER_THIRD_LOOK, lowerThirdSchema } from '../../shared/lower-thirds';
 import { isPerfScenario } from '../perf-scenarios';
-import { keptOf, keptOfPhase, playedRows, scheduledMs } from './perf-lower-thirds';
+import { keptOf, keptOfPhase, playedRows, rowVerdict, scheduledMs } from './perf-lower-thirds';
 
 /*
  * The Performance check's lower-thirds scenario (Session 55, Part 16): it plays every row of the studio's offered set,
@@ -99,6 +99,57 @@ describe('the lower-thirds scenario', () => {
     expect(keptOf({ frames: 70, ms: 1000, worst: 16 })).toBe(1);
     expect(keptOf({ frames: 0, ms: 0, worst: 0 })).toBeNull();
     expect(keptOf(undefined)).toBeNull();
+  });
+
+  it('names the screen where a row was not smooth (a hall screen, or the stream’s page), and one that never saw it', () => {
+    const screens = [
+      { fps: 60, name: 'the hall screen' },
+      { fps: 30, name: 'the stream’s page' },
+    ];
+    const row = (measure: 'moving' | 'held' | 'phases', id = 'perf-lt-style-box') => ({
+      measure,
+      lowerThird: {
+        id,
+        lines: ['Placeholder name', 'Placeholder title'],
+        look: DEFAULT_LOWER_THIRD_LOOK,
+        where: 'both' as const,
+        animation: 'slide-left-steady',
+      },
+    });
+    // Every frame on the hall screen, 24 of the stream's page's 30 a second: 80% there.
+    const dipped = rowVerdict(
+      row('moving'),
+      [
+        { 'style-box|moving': { frames: 60, ms: 1000, worst: 17 } },
+        { 'style-box|moving': { frames: 24, ms: 1000, worst: 120 } },
+      ],
+      screens,
+    );
+    expect(dipped.worst).toBeCloseTo(0.8, 5);
+    expect(dipped).toMatchObject({ where: 'the stream’s page', smooth: false });
+    const smooth = rowVerdict(
+      row('moving'),
+      [
+        { 'style-box|moving': { frames: 58, ms: 1000, worst: 20 } },
+        { 'style-box|moving': { frames: 30, ms: 1000, worst: 34 } },
+      ],
+      screens,
+    );
+    expect(smooth).toMatchObject({ smooth: true });
+    expect(smooth.worst).toBeCloseTo(58 / 60, 5);
+    // A design's phases: its out never seen on the hall screen is unseen there.
+    const unseen = rowVerdict(
+      row('phases', 'perf-lt-template-gold-underline'),
+      [
+        { 'template-gold-underline|in': { frames: 50, ms: 840, worst: 17 } },
+        {
+          'template-gold-underline|in': { frames: 25, ms: 840, worst: 34 },
+          'template-gold-underline|out': { frames: 17, ms: 588, worst: 34 },
+        },
+      ],
+      screens,
+    );
+    expect(unseen).toEqual({ worst: null, where: 'the hall screen', smooth: false });
   });
 
   it('catches a design phase that disappears or paints only a smooth middle section', () => {
