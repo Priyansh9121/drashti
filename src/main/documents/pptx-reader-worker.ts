@@ -116,7 +116,7 @@ port.on('message', ({ data }: { data: unknown }) => {
           failed.push(sourceIndex);
           if (!pptxFramesWithinLimit(page.elements))
             failedNotes[sourceIndex] = [
-              `PowerPoint source page ${String(sourceIndex + 1)} has an object placed or sized beyond what Drashti can edit, and stays as its saved picture.`,
+              `Page ${String(sourceIndex + 1)} of the original has an object placed or sized beyond what Drashti can edit, so it stays as its saved picture.`,
             ];
           continue;
         }
@@ -126,7 +126,7 @@ port.on('message', ({ data }: { data: unknown }) => {
           if (bytes !== null) {
             const limit = String(EDITABLE_SOURCE_LIMITS.pageAssetBytes / 1024 ** 2);
             failedNotes[sourceIndex] = [
-              `PowerPoint source page ${String(sourceIndex + 1)} has more than ${limit} MB of pictures, more than Drashti can edit on one page, and stays as its saved picture.`,
+              `Page ${String(sourceIndex + 1)} of the original has more than ${limit} MB of pictures, more than Drashti can edit on one page, so it stays as its saved picture.`,
             ];
           }
           continue;

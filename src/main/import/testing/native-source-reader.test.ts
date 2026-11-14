@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { readEditablePptx } from '../deck/editable-pptx';
 import { editablePptxFixture, slideXml, wordsShape } from './editable-pptx-fixture';
 import { nativeSourceReader } from './native-source-reader';
 
@@ -35,7 +36,8 @@ it('passes on a PowerPoint page’s own note and the deck’s page count, as the
     failed: [1],
     pages: [{ sourceIndex: 0 }, { sourceIndex: 2 }],
   });
-  expect(read.ok ? read.failedNotes : undefined).toEqual({
-    1: ['PowerPoint source page 2 exceeds the 500-object editing limit and stays as its saved picture.'],
-  });
+  // The reader's own note for that page, whatever its words, and no other.
+  const direct = await readEditablePptx(file, join(root, 'direct'));
+  expect(direct.failedNotes?.[1]).toHaveLength(1);
+  expect(read.ok ? read.failedNotes : undefined).toEqual({ 1: direct.failedNotes?.[1] });
 });
