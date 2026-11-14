@@ -11,6 +11,7 @@ import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
   launchApp,
+  onEditorSlide,
   operatorPage,
   operatorReady,
   slideEditorClosed,
@@ -167,15 +168,6 @@ const wordsOf = (win: Page, presentationId: string) =>
       g.slides.flatMap((s) => s.elements.flatMap((e) => (e.kind === 'text' ? [e.text] : []))),
     );
   }, presentationId);
-
-/** A point on the slide (slide pixels) as a point in the editor's window. */
-async function onCanvas(ed: Page, x: number, y: number): Promise<{ x: number; y: number }> {
-  const canvas = ed.getByTestId('editor-canvas');
-  const box = await canvas.boundingBox();
-  const scale = Number(await canvas.getAttribute('data-scale'));
-  if (!box) throw new Error('no canvas');
-  return { x: box.x + x * scale, y: box.y + y * scale };
-}
 
 test('Simple Mode’s right column: no keys line; Audio under LIVE, as Pro Mode’s: an audio playlist made and played there, playing on under a video and stepping aside', async () => {
   test.setTimeout(240_000);
@@ -487,7 +479,7 @@ test('Edit slides in Simple Mode opens Pro’s slide editor from a row: its save
   await expect(elements).toHaveCount(1);
   const originalBox = await elements.first().getAttribute('data-element');
   if (!originalBox) throw new Error('The original placeholder box did not render');
-  const p = await onCanvas(ed, 960, 540);
+  const p = await onEditorSlide(ed, 960, 540);
   await ed.mouse.click(p.x, p.y);
   await expect(editor.getByTestId('editor-status')).toContainText('Text box');
   await ed.keyboard.press(process.platform === 'darwin' ? 'Meta+D' : 'Control+D');
