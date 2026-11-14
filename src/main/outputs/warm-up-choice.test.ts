@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { ScreenRole } from '../../shared/screens';
-import { followOutputs, type WarmUpWindow, WarmUpChoices, warmUpFact, warmsUp } from './warm-up-choice';
+import type { OutputWarmUpEnd, ScreenRole } from '../../shared/screens';
+import {
+  followOutputs,
+  warmUpEndLine,
+  warmUpEndOf,
+  type WarmUpWindow,
+  WarmUpChoices,
+  warmUpFact,
+  warmsUp,
+} from './warm-up-choice';
 
 /*
  * No warm-up where Chromium draws without a graphics chip (Session 57: the owner's Q57-17 A, Session 55's Q-P1). An
@@ -230,5 +238,62 @@ describe('Main’s choice for each output window', () => {
       'Warm-up: its context not sent again (Object has been destroyed), for output "Hall"',
       skipped('disabled_software', 'Stage'),
     ]);
+  });
+});
+
+describe('how an output’s warm-up ended, as its page says it and the log says it once (Session 58, WU-2)', () => {
+  const at = 1_794_600_000_000;
+
+  it('takes a page’s word only as one of its ends, a length of time and a moment', () => {
+    expect(warmUpEndOf({ how: 'drawn', ms: 2412.6, at })).toEqual({ how: 'drawn', ms: 2413, at });
+    expect(warmUpEndOf({ how: 'cut', ms: 1180, at, why: 'no-gpu' })).toEqual({
+      how: 'cut',
+      ms: 1180,
+      at,
+      why: 'no-gpu',
+    });
+    // A why it does not know is left out; a length of time out of reason is kept within one.
+    expect(warmUpEndOf({ how: 'cut', ms: 900, at, why: 'placeholder' })).toEqual({ how: 'cut', ms: 900, at });
+    expect(warmUpEndOf({ how: 'cap', ms: -5, at })?.ms).toBe(0);
+    expect(warmUpEndOf({ how: 'cap', ms: 1e12, at })?.ms).toBe(3_600_000);
+    for (const raw of [
+      null,
+      undefined,
+      'drawn',
+      { how: 'finished', ms: 10, at },
+      { how: 'drawn', ms: '10', at },
+      { how: 'drawn', ms: Number.NaN, at },
+      { how: 'drawn', ms: 10 },
+      { how: 'drawn', ms: 10, at: Number.POSITIVE_INFINITY },
+    ])
+      expect(warmUpEndOf(raw), JSON.stringify(raw)).toBeNull();
+  });
+
+  it('says each end in words, with how long it took, never as “Warm-up:” (each output’s choice, above)', () => {
+    const name = 'output "Placeholder Hall"';
+    const line = (end: Omit<OutputWarmUpEnd, 'at'>) => warmUpEndLine(name, { ...end, at });
+    expect(line({ how: 'drawn', ms: 2413 })).toBe(
+      'Warm-up of output "Placeholder Hall": drew everything in 2.4 s',
+    );
+    expect(line({ how: 'cap', ms: 8000 })).toBe(
+      'Warm-up of output "Placeholder Hall": stopped at its longest, 8.0 s',
+    );
+    expect(line({ how: 'unseen', ms: 320 })).toBe(
+      'Warm-up of output "Placeholder Hall": ended after 0.3 s, its window hidden',
+    );
+    expect(line({ how: 'error', ms: 640 })).toBe(
+      'Warm-up of output "Placeholder Hall": ended after 0.6 s by a scene that failed as it drew',
+    );
+    expect(line({ how: 'cut', ms: 1180, why: 'no-gpu' })).toBe(
+      'Warm-up of output "Placeholder Hall": cut short after 1.2 s, told it draws without a graphics chip',
+    );
+    expect(line({ how: 'cut', ms: 1180, why: 'stage' })).toBe(
+      'Warm-up of output "Placeholder Hall": cut short after 1.2 s, a stage screen now',
+    );
+    expect(line({ how: 'cut', ms: 1180, why: 'other' })).toBe(
+      'Warm-up of output "Placeholder Hall": cut short after 1.2 s',
+    );
+    for (const how of ['drawn', 'cap', 'unseen', 'error', 'cut'] as const)
+      expect(line({ how, ms: 1 })).not.toContain('Warm-up: ');
   });
 });
