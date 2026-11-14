@@ -5,11 +5,16 @@ function stream(content: string, entries = ''): string {
   return '<< /Length ' + String(content.length) + entries + ' >>\nstream\n' + content + '\nendstream';
 }
 
-function placeholderPdf(content: string, resources = '', extraObjects: string[] = []): Buffer {
+function placeholderPdf(
+  content: string,
+  resources = '',
+  extraObjects: string[] = [],
+  size: readonly [number, number] = [240, 160],
+): Buffer {
   return pdfFile([
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 160] /Contents 5 0 R /Resources << /Font << /F1 4 0 R >>' +
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${size.join(' ')}] /Contents 5 0 R /Resources << /Font << /F1 4 0 R >>` +
       resources +
       ' >> >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
@@ -51,9 +56,21 @@ export function clippedWordsPdf(): Buffer {
 }
 
 export function maskedWordsPdf(): Buffer {
+  return alphaMaskedPdf('q /Masked gs 0 0 1 rg 0 10 140 80 re f Q\n' + text);
+}
+
+export function clearedMaskWordsPdf(clipped = false): Buffer {
+  const clip = clipped ? '24 16 18 26 re W n ' : '';
+  return alphaMaskedPdf(
+    `q /Masked gs 0 0 1 rg 0 10 140 80 re f ${clip}/Unmasked gs 0 0 0 rg ${text} Q\n` +
+      'BT /F1 12 Tf 1 0 0 1 24 125 Tm (More placeholders) Tj ET',
+  );
+}
+
+function alphaMaskedPdf(paint: string): Buffer {
   return placeholderPdf(
-    'q /Masked gs 0 0 1 rg 0 10 140 80 re f Q\n' + text,
-    ' /ExtGState << /Masked 6 0 R >>',
+    paint,
+    ' /ExtGState << /Masked 6 0 R /Unmasked << /Type /ExtGState /SMask /None >> >>',
     [
       '<< /Type /ExtGState /SMask << /S /Alpha /G 7 0 R >> >>',
       stream(
@@ -126,4 +143,59 @@ export function clippedDeckPdf(pageCount: number, complexPage?: number): Buffer 
   }
   objects[1] = '<< /Type /Pages /Kids [' + pages.join(' ') + '] /Count ' + String(pages.length) + ' >>';
   return pdfFile(objects);
+}
+
+export function strokedEffectPdf(paint: string): Buffer {
+  return placeholderPdf(`q 0 0 240 160 re W n 12 w 0 0 1 RG 1 1 0 rg ${paint} Q`);
+}
+
+export function paintedClipEffectPdf(paint: string): Buffer {
+  return placeholderPdf(`q 10 w 0 1 0 RG 0 0 1 rg 48 40 145 90 re W ${paint} 1 0 0 rg 60 60 10 10 re f Q`);
+}
+
+export function rotatedGroupedEffectPdf(): Buffer {
+  return placeholderPdf(
+    'q 0 0 240 160 re W n /Half gs /Form Do Q',
+    ' /XObject << /Form 6 0 R >> /ExtGState << /Half << /Type /ExtGState /ca 0.5 /CA 0.5 >> >>',
+    [
+      stream(
+        '0 1 -1 0 175 32 cm 0 0 1 rg 0 0 95 54 re f 1 0 0 rg 55 15 53 42 re f h f',
+        ' /Type /XObject /Subtype /Form /BBox [0 0 240 160] /Group << /S /Transparency /I true >>',
+      ),
+    ],
+  );
+}
+
+export function unusedBlendModePdf(): Buffer {
+  return placeholderPdf(
+    '1 0 0 rg 20 28 100 64 re f 0 0 1 rg 90 60 110 72 re f',
+    ' /ExtGState << /Unused << /Type /ExtGState /BM /Multiply >> >>',
+  );
+}
+
+export function longTextEffectPdf(count: number): Buffer {
+  return placeholderPdf(`q 0 0 240 160 re W n BT /F1 2 Tf 3 24 Td ${'(x) Tj\n'.repeat(count)}ET Q`);
+}
+
+export function rotatedCurveEffectPdf(): Buffer {
+  return placeholderPdf(
+    'q 0 0 1920 1080 re W n q 0.9205 0.3907 -0.3907 0.9205 800.37 400.61 cm ' +
+      '0 0 1 rg 200 -100 m 400 -100 400 100 200 100 c 0 100 0 -100 200 -100 c f Q ' +
+      '0 0 1 rg 1700 900 50 50 re f Q',
+    '',
+    [],
+    [1920, 1080],
+  );
+}
+
+export function rotatedPictureEffectPdf(): Buffer {
+  const image = 'ff000000ff00'.repeat(8); // A generated 4 by 4 striped picture.
+  return placeholderPdf(
+    'q 0 0 1920 1080 re W n q 346 200 -100 173 700 300 cm ' +
+      `BI /W 4 /H 4 /CS /RGB /BPC 8 /F /AHx ID ${image}> EI Q ` +
+      '0 0 1 rg 1200 300 100 100 re f Q',
+    '',
+    [],
+    [1920, 1080],
+  );
 }
