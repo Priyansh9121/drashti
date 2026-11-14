@@ -225,7 +225,11 @@ export class TrimRecords {
         }
       }
     } catch (error) {
-      rmSync(partial, { force: true });
+      try {
+        rmSync(partial, { force: true });
+      } catch {
+        // A held partial is cleaned up at another start.
+      }
       this.failed(error);
       throw error;
     }
