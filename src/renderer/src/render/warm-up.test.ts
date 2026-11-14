@@ -75,7 +75,12 @@ describe('the warm-up', () => {
       expect(band, key).toEqual({ direction: 'left', at: 2 * p - 1 });
       if (!band) continue;
       // The band's mask on its box, the slide moved back inside it (as every screen draws it).
-      const styles = wipeBandStyles(band, 1920, 1080, 1);
+      const styles = wipeBandStyles(
+        band,
+        { x: 0, y: 0, width: 1920, height: 1080 },
+        { width: 1920, height: 1080 },
+        1,
+      );
       expect(styles.holder.maskImage, key).toMatch(/^linear-gradient\(/u);
       expect(styles.holder.transform, key).toMatch(/^translateX\(-?\d+px\)$/u);
       // Part of the slide coming in shows through the band, part not: the band is on the screen.
