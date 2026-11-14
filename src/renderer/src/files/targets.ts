@@ -6,7 +6,6 @@ import { openSlideEditor } from '../editor/open-editor';
 import { requestRemoval } from '../library/import-store';
 import { leaveItem, selectPresentation, setLibraryTab } from '../library/library-store';
 import { requestMediaRemoval } from '../library/media-removal';
-import { pushRemoval } from '../library/undo';
 import { markersMedia, openMarkers } from '../markers/MarkersDialog';
 import { openPictureEditor } from '../pictures/PictureEditor';
 import {
@@ -19,7 +18,8 @@ import type { MiddleRow } from '../playlists/rows';
 import type { MenuEntry } from '../ui/Menu';
 import { ListPlus, Presentation, SlidersHorizontal, SquareDashed, Timer } from '../ui/icons';
 import type { FileKind, FileTarget } from './file-menu';
-import { askRename, revealFile } from './FileMenu';
+import { revealFile } from './FileMenu';
+import { askRenameWithUndo } from './rename-in-window';
 
 /*
  * What the one right-click menu (Session 55, Part 14) holds for each thing, wherever it shows: the library's
@@ -31,17 +31,7 @@ import { askRename, revealFile } from './FileMenu';
 
 /** Rename a presentation in the library (asked, with Undo). */
 export function renamePresentation(id: string, name: string): void {
-  askRename('the presentation', name, async (to) => {
-    const result = await window.drashti.library.renamePresentation(id, to);
-    if (!result.ok) return result.message;
-    pushRemoval({
-      text: `Renamed “${name}” to “${to}”`,
-      restore: async () => {
-        await window.drashti.library.renamePresentation(id, name);
-      },
-    });
-    return null;
-  });
+  askRenameWithUndo('the presentation', name, (to) => window.drashti.library.renamePresentation(id, to));
 }
 
 /** A media file's kind, as its menu and questions say it. */
@@ -54,17 +44,7 @@ const MEDIA_KIND: Record<'image' | 'video' | 'audio', FileKind> = {
 
 /** Rename a picture, video or sound in the library (asked, with Undo): its playlist rows with its name follow. */
 export function renameMedia(id: string, name: string, kind: 'image' | 'video' | 'audio'): void {
-  askRename(`the ${MEDIA_WORD[kind]}`, name, async (to) => {
-    const result = await window.drashti.media.rename(id, to);
-    if (!result.ok) return result.message;
-    pushRemoval({
-      text: `Renamed “${name}” to “${to}”`,
-      restore: async () => {
-        await window.drashti.media.rename(id, name);
-      },
-    });
-    return null;
-  });
+  askRenameWithUndo(`the ${MEDIA_WORD[kind]}`, name, (to) => window.drashti.media.rename(id, to));
 }
 
 /** Edit for a media file: the Picture editor for a picture, nothing else (a video's and a sound's is Trim). */

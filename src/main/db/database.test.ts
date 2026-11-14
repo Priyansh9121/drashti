@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { type Db, openDatabase } from './database';
+import { type Db, leaveCopyingToImports, openDatabase } from './database';
 
 /*
  * The library file has two writers: the main process and the import
@@ -60,5 +60,50 @@ describe('transactions on the library', () => {
     })();
     const keys = db.prepare("SELECT key FROM app_meta WHERE key IN ('outer', 'inner')").pluck().all();
     expect(keys).toEqual(['outer']);
+  });
+});
+
+/*
+ * SQLite copies the WAL into the library file in whichever connection's commit finds it past CHECKPOINT_PAGES pages
+ * (Session 58): during an import that was the main process's next write, copying the import's pages and waiting for the
+ * disk on the main thread. While an import runs, its own connection copies them, in its process.
+ */
+describe('copying the WAL into the library file (Session 58)', () => {
+  /** The import's connection writes about 12 MB, leaving it in the WAL (its own copy not made yet). */
+  function importWrites(importer: Db): void {
+    importer.pragma('wal_autocheckpoint = 0');
+    const put = importer.prepare('INSERT INTO app_meta (key, value) VALUES (?, ?)');
+    importer.transaction(() => {
+      for (let i = 0; i < 3000; i++) put.run(`placeholder-${String(i)}`, 'x'.repeat(4000));
+    })();
+  }
+
+  it('while an import runs, a write of the main process copies none of the import’s pages into the library file; once it has ended, its commits copy as SQLite does by itself', () => {
+    const { db, other } = twoConnections();
+    const file = db.name;
+    const copyHere = leaveCopyingToImports(db);
+    copyHere(true);
+    const before = statSync(file).size;
+    importWrites(other);
+    db.prepare("INSERT OR REPLACE INTO app_meta (key, value) VALUES ('placeholder-mode', 'pro')").run();
+    expect(statSync(file).size, 'the library file after a write of the main process during the import').toBe(
+      before,
+    );
+    copyHere(false);
+    db.prepare("INSERT OR REPLACE INTO app_meta (key, value) VALUES ('placeholder-mode', 'simple')").run();
+    expect(statSync(file).size, 'the library file after one once it has ended').toBeGreaterThan(before);
+    // Nothing lost either way: every row is there.
+    expect(db.prepare("SELECT COUNT(*) FROM app_meta WHERE key LIKE 'placeholder-%'").pluck().get()).toBe(
+      3001,
+    );
+  });
+
+  it('a library already closed (quitting) is left as it is', () => {
+    const { db } = twoConnections();
+    db.close();
+    open.splice(open.indexOf(db), 1);
+    expect(() => {
+      leaveCopyingToImports(db)(false);
+    }).not.toThrow();
   });
 });

@@ -6,6 +6,7 @@ import {
   searchAnimations,
 } from './lower-third-animations';
 import type { LowerThirdMotion, LowerThirdStyle } from './lower-third-styles';
+import { MOTION_FEEL } from './lower-third-styles';
 import { LOWER_THIRD_SECONDS } from './lower-thirds';
 
 /*
@@ -127,7 +128,7 @@ export const OFFERED: readonly Row[] = [
   { kind: 'style', key: 'slant' },
   { kind: 'style', key: 'stacked' },
   { kind: 'style', key: 'words' },
-  // Moving backgrounds (and none, always).
+  // Moving backgrounds (and none, always). The studio lists the calm ones first (OFFERED_MOTIONS).
   { kind: 'background', key: 'sweep' },
   { kind: 'background', key: 'shine' },
   { kind: 'background', key: 'shapes' },
@@ -135,6 +136,31 @@ export const OFFERED: readonly Row[] = [
   { kind: 'background', key: 'glow' },
   { kind: 'background', key: 'line' },
   { kind: 'background', key: 'sparkles' },
+  // Twelve more (alpha.18, lower-third-styles.ts): the Performance check's lower-thirds-more scenario measures them.
+  { kind: 'background', key: 'dawn' },
+  { kind: 'background', key: 'lamps' },
+  { kind: 'background', key: 'mist' },
+  { kind: 'background', key: 'rays' },
+  { kind: 'background', key: 'petals' },
+  { kind: 'background', key: 'ripples' },
+  { kind: 'background', key: 'stars' },
+  { kind: 'background', key: 'tint' },
+  { kind: 'background', key: 'confetti' },
+  { kind: 'background', key: 'streaks' },
+  { kind: 'background', key: 'waves' },
+  { kind: 'background', key: 'chase' },
+  // C12's eleven (alpha.18, lower-third-motions-more.ts): the lower-thirds-more scenario measures them too.
+  { kind: 'background', key: 'bloom' },
+  { kind: 'background', key: 'spotlight' },
+  { kind: 'background', key: 'fireflies' },
+  { kind: 'background', key: 'rings' },
+  { kind: 'background', key: 'lanterns' },
+  { kind: 'background', key: 'kites' },
+  { kind: 'background', key: 'garland' },
+  { kind: 'background', key: 'bars' },
+  { kind: 'background', key: 'fireworks' },
+  { kind: 'background', key: 'hexagons' },
+  { kind: 'background', key: 'tiles' },
 ];
 
 // ---- every family the studio knows ----------------------------------------------------------------------------
@@ -309,9 +335,12 @@ export function searchOffered(query: string): typeof OFFERED_LIST {
 export const OFFERED_STYLES: readonly LowerThirdStyle[] = OFFERED.flatMap((r) =>
   r.kind === 'style' ? [r.key] : [],
 );
+const offeredBackgrounds = OFFERED.flatMap((r) => (r.kind === 'background' ? [r.key] : []));
+/** The backgrounds offered, as the studio lists them: None, then the calm ones, then the lively ones. */
 export const OFFERED_MOTIONS: readonly LowerThirdMotion[] = [
   'none',
-  ...OFFERED.flatMap((r) => (r.kind === 'background' ? [r.key] : [])),
+  ...offeredBackgrounds.filter((m) => MOTION_FEEL[m] === 'calm'),
+  ...offeredBackgrounds.filter((m) => MOTION_FEEL[m] === 'lively'),
 ];
 
 // ---- names ----------------------------------------------------------------------------------------------------

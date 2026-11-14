@@ -89,14 +89,25 @@ describe('Delete, from the library: what it asks first', () => {
 });
 
 describe('Rename', () => {
-  it('renames a presentation; an empty name or a deleted one is refused', () => {
+  const NAME_RULE = { ok: false, message: 'A name needs 1 to 200 characters.' };
+
+  it('renames a presentation; an empty name or a deleted one is refused, each in its own words', () => {
     const { actions, db } = library();
-    expect(actions.renamePresentation('p2', '  Placeholder New Name  ')).toBe(true);
+    expect(actions.renamePresentation('p2', '  Placeholder New Name  ')).toEqual({ ok: true });
     expect(db.prepare("SELECT name FROM presentations WHERE id = 'p2'").get()).toEqual({
       name: 'Placeholder New Name',
     });
-    expect(actions.renamePresentation('p2', '   ')).toBe(false);
-    expect(actions.renamePresentation('missing', 'Placeholder')).toBe(false);
+    expect(actions.renamePresentation('p2', '   ')).toEqual(NAME_RULE);
+    // One no longer in the library says so, not the name rule (the name was fine).
+    expect(actions.renamePresentation('missing', 'Placeholder')).toEqual({
+      ok: false,
+      message: 'That presentation is no longer in the library.',
+    });
+    db.prepare("UPDATE presentations SET deleted_at = '2026-10-01T00:00:00.000Z' WHERE id = 'p3'").run();
+    expect(actions.renamePresentation('p3', 'Placeholder')).toEqual({
+      ok: false,
+      message: 'That presentation is no longer in the library.',
+    });
   });
 
   it('cleans control and direction characters from a newly saved name', () => {
@@ -104,29 +115,80 @@ describe('Rename', () => {
     const oldName = 'Placeholder\u202E old name';
     db.prepare("UPDATE presentations SET name = ? WHERE id = 'p3'").run(oldName);
     const name = ' \u0000 Placeholder\tname\u2028line\u007F\u0085\u061C\u200E\u200F\u202E\u2069 ';
-    expect(actions.renamePresentation('p2', name)).toBe(true);
-    expect(db.prepare("SELECT name FROM presentations WHERE id = 'p2'").get()).toEqual({
-      name: 'Placeholder name line',
-    });
-    expect(actions.renamePresentation('p2', '\t\u202E\u2069')).toBe(false);
+    expect(actions.renamePresentation('p2', name)).toEqual({ ok: true });
+    const p2 = () => db.prepare("SELECT name FROM presentations WHERE id = 'p2'").get();
+    expect(p2()).toEqual({ name: 'Placeholder name line' });
+    expect(actions.renamePresentation('p2', '\t\u202E\u2069')).toEqual(NAME_RULE);
+    // Refused: p2 keeps the name it had, and a name kept before is never cleaned again.
+    expect(p2()).toEqual({ name: 'Placeholder name line' });
     expect(db.prepare("SELECT name FROM presentations WHERE id = 'p3'").get()).toEqual({ name: oldName });
   });
 
-  it('preserves letters, marks and joiners in a name', () => {
-    const name = 'ક્\u200Dષ क्\u200Cष';
-    expect(cleanName(name)).toBe(name);
+  it('refuses a name that only looks empty (joiners, a zero-width space, a word joiner, a soft hyphen)', () => {
+    const { actions, db } = library();
+    for (const name of ['\u200D', '\u200C', '\u200B', '\u2060', '\u00AD', ' \u200B\u2060 \u00AD\u200D ']) {
+      expect(cleanName(name), JSON.stringify(name)).toBeNull();
+      expect(actions.renamePresentation('p2', name)).toEqual(NAME_RULE);
+      expect(actions.renameMedia('pic', name)).toEqual(NAME_RULE);
+    }
+    expect(db.prepare("SELECT name FROM presentations WHERE id = 'p2'").get()).toEqual({
+      name: 'Placeholder Words',
+    });
+    expect(db.prepare("SELECT name FROM media WHERE id = 'pic'").get()).toEqual({
+      name: 'Placeholder darshan.png',
+    });
+  });
+
+  it('preserves letters, marks and joiners in a name, and a no-break space inside it', () => {
+    for (const name of [
+      'ક્\u200Dષ क्\u200Cष',
+      // Virama and vowel signs ("placeholder" in Gujarati and in Hindi), and a nukta, decomposed.
+      'પ્લેસહોલ્ડર प्लेसहोल्डर',
+      'જ\u0ABC ज\u093C',
+      // An emoji ZWJ sequence, and a no-break space inside a name.
+      '👨\u200D👩\u200D👧\u200D👦 Placeholder',
+      'Placeholder\u00A0name',
+    ])
+      expect(cleanName(name), JSON.stringify(name)).toBe(name);
   });
 
   it('renames a media file, and its playlist rows that had its name follow (one given its own label keeps it)', () => {
     const { actions, db } = library();
-    expect(actions.renameMedia('pic', 'Placeholder backdrop.png')).toBe(true);
+    expect(actions.renameMedia('pic', 'Placeholder backdrop.png')).toEqual({ ok: true });
     expect(db.prepare("SELECT name FROM media WHERE id = 'pic'").get()).toEqual({
       name: 'Placeholder backdrop.png',
     });
     expect(db.prepare("SELECT label FROM playlist_items WHERE id IN ('i5', 'i6') ORDER BY id").all()).toEqual(
       [{ label: 'Placeholder backdrop.png' }, { label: 'Placeholder own label' }],
     );
-    expect(actions.renameMedia('pic', '')).toBe(false);
+    expect(actions.renameMedia('pic', '')).toEqual(NAME_RULE);
+  });
+
+  it('says a media file is no longer in the library by its kind, not with the name rule', () => {
+    const { actions, db } = library();
+    db.prepare(
+      "UPDATE media SET deleted_at = '2026-10-01T00:00:00.000Z' WHERE id IN ('pic', 'snd', 'own')",
+    ).run();
+    expect(actions.renameMedia('pic', 'Placeholder')).toEqual({
+      ok: false,
+      message: 'That picture is no longer in the library.',
+    });
+    expect(actions.renameMedia('snd', 'Placeholder')).toEqual({
+      ok: false,
+      message: 'That sound is no longer in the library.',
+    });
+    expect(actions.renameMedia('own', 'Placeholder')).toEqual({
+      ok: false,
+      message: 'That video is no longer in the library.',
+    });
+    // One Drashti has no row for, or an id no media file could have: a file.
+    for (const id of ['missing', '../pic'])
+      expect(actions.renameMedia(id, 'Placeholder')).toEqual({
+        ok: false,
+        message: 'That file is no longer in the library.',
+      });
+    // Its name is refused first, as a phone's own check refuses it before asking.
+    expect(actions.renameMedia('pic', '\u200B')).toEqual(NAME_RULE);
   });
 });
 

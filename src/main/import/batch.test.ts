@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { describe, expect, it, vi } from 'vitest';
 import { openDatabase } from '../db/database';
-import { BatchWriter } from './batch';
+import { BatchWriter, STARVED_MS } from './batch';
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -139,5 +139,148 @@ describe('BatchWriter', () => {
     batch.maybeCommit();
     expect(db.inTransaction).toBe(false);
     expect(batch.isOpen).toBe(false);
+  });
+});
+
+/*
+ * While the import holds the library's write lock (each group, from BEGIN IMMEDIATE until its COMMIT has returned) it
+ * says so (Session 58, h-stall2): on Windows the worker then runs at normal priority, as it is at the lowest
+ * otherwise, and on two busy cores it held the lock 1-9 s while given no processor, while a write of the main process
+ * waited for it. Every group says it holds the lock and lets it go, once each, however it ends.
+ */
+describe('BatchWriter: while it holds the write lock (Session 58)', () => {
+  function holdingSetup(budgetMs = 250) {
+    const db = openDatabase(':memory:');
+    db.prepare("INSERT INTO libraries (id, name) VALUES ('lib', 'Default')").run();
+    const said: boolean[] = [];
+    const inTransaction: boolean[] = [];
+    const batch = new BatchWriter(db, {
+      budgetMs,
+      now: () => 0,
+      holding: (on) => {
+        said.push(on);
+        // Said before the lock is taken, and after it is let go.
+        inTransaction.push(db.inTransaction);
+      },
+    });
+    const insert =
+      (name: string, library = 'lib') =>
+      () =>
+        db
+          .prepare('INSERT INTO presentations (id, library_id, name) VALUES (?, ?, ?)')
+          .run(name, library, name);
+    return { db, batch, said, inTransaction, insert };
+  }
+
+  it('says it holds the lock as a group begins and lets it go once its COMMIT has returned, once each', () => {
+    const { db, batch, said, inTransaction, insert } = holdingSetup();
+    batch.write(insert('a'));
+    batch.write(insert('b'));
+    expect(said).toEqual([true]);
+    batch.commit();
+    expect(said).toEqual([true, false]);
+    expect(inTransaction).toEqual([false, false]);
+    batch.write(insert('c'));
+    batch.commit();
+    expect(said).toEqual([true, false, true, false]);
+    expect(db.inTransaction).toBe(false);
+  });
+
+  it('lets go once, after the retries, when the commit fails and each item is written again on its own', () => {
+    const { db, batch, said, insert } = holdingSetup();
+    db.pragma('defer_foreign_keys = ON');
+    batch.write(insert('a'));
+    batch.write(insert('orphan', 'no-such-library'), {
+      failed: () => batch.write(insert('failure noted')),
+    });
+    batch.commit();
+    // Held from the group's start to the last retry's end, never let go while a write is still to come.
+    expect(said.at(-1)).toBe(false);
+    expect(said.filter((on) => on).length).toBe(said.filter((on) => !on).length);
+    expect(db.inTransaction).toBe(false);
+    expect(db.prepare('SELECT name FROM presentations ORDER BY name').pluck().all()).toEqual([
+      'a',
+      'failure noted',
+    ]);
+  });
+
+  it('lets go when the lock cannot be taken (another connection keeps it past the busy timeout)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-batch-'));
+    const file = join(dir, 'library.sqlite');
+    const db = openDatabase(file);
+    db.prepare("INSERT INTO libraries (id, name) VALUES ('lib', 'Default')").run();
+    db.pragma('busy_timeout = 0');
+    const other = new Database(file);
+    other.exec('BEGIN IMMEDIATE');
+    const said: boolean[] = [];
+    const batch = new BatchWriter(db, { budgetMs: 250, holding: (on) => said.push(on) });
+    expect(() =>
+      batch.write(() =>
+        db.prepare("INSERT INTO presentations (id, library_id, name) VALUES ('p', 'lib', 'P')").run(),
+      ),
+    ).toThrow();
+    expect(said).toEqual([true, false]);
+    other.exec('ROLLBACK');
+    other.close();
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('BatchWriter: a worker given little of the processor keeps the lock for one file only (Session 58)', () => {
+  function clocks() {
+    const db = openDatabase(':memory:');
+    db.prepare("INSERT INTO libraries (id, name) VALUES ('lib', 'Default')").run();
+    const c = { now: 0, cpu: 0 };
+    const make = (holding?: (on: boolean) => void) =>
+      new BatchWriter(db, {
+        budgetMs: 250,
+        now: () => c.now,
+        cpu: () => c.cpu,
+        ...(holding ? { holding } : {}),
+      });
+    const insert = (name: string) => () =>
+      db.prepare("INSERT INTO presentations (id, library_id, name) VALUES (?, 'lib', ?)").run(name, name);
+    return { db, c, make, insert };
+  }
+
+  it('given a third of the processor or less since the last group, the next group is committed at the next file', () => {
+    const { db, c, make, insert } = clocks();
+    const batch = make(() => undefined);
+    // The next file read and parsed: 2 s by the clock, 40 ms of its own processor (a busy computer).
+    c.now += 2000;
+    c.cpu += 40;
+    batch.write(insert('a'));
+    c.now += 20;
+    batch.maybeCommit();
+    expect(db.inTransaction, 'committed at the next file, long before its budget').toBe(false);
+  });
+
+  it('given the processor (or a quiet spell too short to judge), files are grouped as before, until the budget', () => {
+    const { db, c, make, insert } = clocks();
+    const batch = make(() => undefined);
+    c.now += 30;
+    c.cpu += 25;
+    batch.write(insert('a'));
+    c.now += 100;
+    batch.maybeCommit();
+    expect(db.inTransaction, 'kept open within its budget').toBe(true);
+    c.now += STARVED_MS * 5;
+    c.cpu += STARVED_MS * 5;
+    batch.write(insert('b'));
+    batch.maybeCommit();
+    expect(db.inTransaction, 'committed once its budget is spent').toBe(false);
+  });
+
+  it('where nothing says it holds the lock (macOS), files are grouped as before however little processor it had', () => {
+    const { db, c, make, insert } = clocks();
+    const batch = make();
+    c.now += 2000;
+    c.cpu += 40;
+    batch.write(insert('a'));
+    c.now += 20;
+    batch.maybeCommit();
+    expect(db.inTransaction).toBe(true);
+    batch.commit();
   });
 });
