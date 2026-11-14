@@ -33,10 +33,25 @@ const preset = { ...STREAM_PRESETS.weak, width: 320, height: 180, videoKbps: 800
 
 let dir = '';
 const children: ChildProcess[] = [];
-afterEach(() => {
-  for (const c of children.splice(0)) c.kill('SIGKILL');
-  // Windows lets a file go only once the process that had it open has gone: try again for a moment.
-  if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+afterEach(async () => {
+  // Each FFmpeg killed and gone before its folder goes: Windows lets a file go only once the process that had it open
+  // has exited, and a killed one can take longer than the retries below (Session 58, CI's Windows: the folder still
+  // held after 2 s, EPERM). At most 10 s, then retries for a moment more.
+  const gone = children.splice(0).map(
+    (c) =>
+      new Promise<void>((resolve) => {
+        if (c.exitCode !== null || c.signalCode !== null) {
+          resolve();
+          return;
+        }
+        c.once('exit', () => {
+          resolve();
+        });
+        c.kill('SIGKILL');
+      }),
+  );
+  await Promise.race([Promise.all(gone), sleep(10_000)]);
+  if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 50, retryDelay: 200 });
 });
 
 function freePort(): Promise<number> {
