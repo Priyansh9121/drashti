@@ -12,7 +12,7 @@ import { AudioPlaylistRepo } from '../db/audio-playlists';
 import { MemoryPlaylistSource } from '../engine/playlist-source';
 import { ShowEngine } from '../engine/show-engine';
 import { makeSource, RecordingTransport, textSlide } from '../engine/testing';
-import { MediaRemoval, sweepQuiet, TrimCleanup } from './media-removal';
+import { MediaRemoval, sweepQuiet, trashedTrimsNotice, TrimCleanup } from './media-removal';
 
 it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => {
   const root = mkdtempSync(join(tmpdir(), 'drashti-unused-trims-'));
@@ -22,7 +22,26 @@ it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => 
     const trashDir = join(root, 'Trash');
     mkdirSync(mediaDir);
     mkdirSync(trashDir);
-    const ids = ['unused', 'playlist', 'undo', 'slide', 'live', 'replaced', 'path-alias', 'z-late'];
+    // Each kind of use keeps its cut (TM-6 pins the ones beyond the first review's seven: a sound in music or a
+    // kirtan, a wallpaper, a slide's cue, either side of a conversion, another cut's original, a setting).
+    const ids = [
+      'unused',
+      'playlist',
+      'undo',
+      'slide',
+      'live',
+      'replaced',
+      'path-alias',
+      'audio',
+      'kirtan-sound',
+      'wallpaper',
+      'cue',
+      'conversion',
+      'converted-from',
+      'cut-original',
+      'setting',
+      'z-late',
+    ];
     db.exec(
       "INSERT INTO media (id, kind, name, path) VALUES ('original', 'video', 'Original', 'original.mp4')",
     );
@@ -50,13 +69,26 @@ it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => 
       INSERT INTO slides (id, group_id, position) VALUES ('s', 'g', 0);
       INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, props) VALUES
         ('e', 's', 0, 'video', 0, 0, 10, 10, '{"mediaId":"slide","fit":"fit"}');
+      INSERT INTO audio_playlists (id, name) VALUES ('music', 'Placeholder music');
+      INSERT INTO audio_playlist_tracks (id, playlist_id, media_id, position) VALUES ('track', 'music', 'audio', 0);
+      INSERT INTO kirtans (presentation_id, audio_media_id) VALUES ('d', 'kirtan-sound');
+      INSERT INTO wallpapers (id, name, position) VALUES ('wall', 'Placeholder wallpaper', 0);
+      INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('wall', 0, 'wallpaper');
+      INSERT INTO slide_cues (id, slide_id, position, kind, media_id) VALUES ('c', 's', 0, 'background', 'cue');
+      INSERT INTO media_conversions (id, original_id, converted_id) VALUES ('conv', 'original', 'conversion');
+      INSERT INTO media (id, kind, name, path, converted_from) VALUES
+        ('converted', 'video', 'Placeholder converted', 'converted.mp4', 'converted-from');
+      INSERT INTO media (id, kind, name, path) VALUES ('cut-of-cut', 'video', 'Placeholder cut of a cut', 'cc.mp4');
+      INSERT INTO trimmed_videos (media_id, original_id, start_ms, end_ms, source_markers) VALUES
+        ('cut-of-cut', 'cut-original', 0, 500, '{}');
+      INSERT INTO app_meta (key, value) VALUES ('setting.placeholder', '{"pinned":["setting"]}');
     `);
     db.prepare("INSERT INTO media (id, kind, name, path) VALUES ('alias', 'video', 'Alias', ?)").run(
       join(mediaDir, 'path-alias.mp4'),
     );
     const removal = new MediaRemoval(db, { onScreens: () => new Set(['live']) });
     const trash = vi.fn((file: string) => {
-      renameSync(file, join(trashDir, 'unused.mp4'));
+      renameSync(file, join(trashDir, basename(file)));
       // The operator can add a slide reference while the first move is in progress.
       db.prepare('UPDATE elements SET props = ? WHERE id = ?').run(
         JSON.stringify({ mediaId: 'slide', other: 'z-late' }),
@@ -65,8 +97,10 @@ it('trashes only an unused Trim copy with the bytes Drashti wrote', async () => 
       return Promise.resolve();
     });
 
-    expect(await removal.trashUnusedTrims(mediaDir, trash, () => true, new AbortController().signal)).toBe(1);
-    expect(trash).toHaveBeenCalledOnce();
+    expect(await removal.trashUnusedTrims(mediaDir, trash, () => true, new AbortController().signal)).toEqual(
+      ['unused.mp4'],
+    );
+    expect(trash.mock.calls.map(([file]) => basename(file))).toEqual(['unused.mp4']);
     expect(existsSync(join(trashDir, 'unused.mp4'))).toBe(true);
     expect(existsSync(join(mediaDir, 'unused.mp4'))).toBe(false);
     expect(db.prepare("SELECT path, missing FROM media WHERE id = 'unused'").get()).toEqual({
@@ -201,7 +235,9 @@ it.each([
 
     const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
     const quiet = () => sweepQuiet(engine);
-    expect(await removal.trashUnusedTrims(x.mediaDir, x.trash, quiet, new AbortController().signal)).toBe(0);
+    expect(await removal.trashUnusedTrims(x.mediaDir, x.trash, quiet, new AbortController().signal)).toEqual(
+      [],
+    );
     expect(x.trash).not.toHaveBeenCalled();
     expect(engine.dispatch(back).ok).toBe(true);
     expect(engine.current.layers.background).toMatchObject({ mediaId: 'held' });
@@ -226,7 +262,9 @@ it('waits until nothing earlier in the run can come back, then moves the cut no 
 
     const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
     const quiet = () => sweepQuiet(engine);
-    expect(await removal.trashUnusedTrims(x.mediaDir, x.trash, quiet, new AbortController().signal)).toBe(1);
+    expect(await removal.trashUnusedTrims(x.mediaDir, x.trash, quiet, new AbortController().signal)).toEqual([
+      'held.mp4',
+    ]);
     expect(x.trashed()).toEqual(['held.mp4']);
     expect(x.exists('newer')).toBe(true);
   } finally {
@@ -240,13 +278,117 @@ it('keeps a cut that the show saved last would put back after a crash', async ()
     const removal = new MediaRemoval(x.db, { onScreens: () => new Set(), putBack: () => new Set(['held']) });
     expect(
       await removal.trashUnusedTrims(x.mediaDir, x.trash, () => true, new AbortController().signal),
-    ).toBe(0);
+    ).toEqual([]);
     expect(x.trash).not.toHaveBeenCalled();
     expect(x.exists('held')).toBe(true);
   } finally {
     x.close();
   }
 });
+
+/*
+ * The move itself (TM-7, TM-5; review LOW of 21d583a7 and LOW-4 of d487b875): the cut's row is marked gone in the same
+ * turn as its last check, then it moves; a move that fails puts the mark back; one that goes takes the cut's own still
+ * frame, sharpened and blurred copies with it, as the purge does for deleted media.
+ */
+
+const rowOf = (db: Db, id: string) =>
+  db.prepare('SELECT path, missing, deleted_at, sha256 FROM media WHERE id = ?').get(id) as
+    { path: string; missing: number; deleted_at: string | null; sha256: string } | undefined;
+
+/** Each cut's files made from it, kept by its sha256 (stills/, sharpened/, blurred/). */
+function derivedOf(x: ReturnType<typeof earlierCuts>, id: string): string[] {
+  const sha = rowOf(x.db, id)?.sha256 ?? '';
+  const files = [`stills/${sha}.jpg`, `sharpened/${sha}-50.jpg`, `blurred/${sha}.jpg`];
+  for (const file of files) {
+    mkdirSync(join(x.mediaDir, file, '..'), { recursive: true });
+    writeFileSync(join(x.mediaDir, file), 'Placeholder derived file.');
+  }
+  return files;
+}
+
+it('marks a cut gone in the same turn as its last check, before it moves, so nothing can take it up meanwhile', async () => {
+  const x = earlierCuts();
+  try {
+    const playlists = new PlaylistRepo(x.db);
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    let atMove: ReturnType<typeof rowOf>;
+    let added: string[] = [];
+    const trash = vi.fn(async (file: string) => {
+      atMove = rowOf(x.db, 'held');
+      // An operator adding the cut to a playlist while it moves: it reads as gone already.
+      added = playlists.addItems('p', null, [{ kind: 'media', mediaId: 'held' }]);
+      await x.trash(file);
+    });
+    expect(
+      await removal.trashUnusedTrims(x.mediaDir, trash, () => true, new AbortController().signal),
+    ).toEqual(['held.mp4']);
+    expect(atMove).toMatchObject({ path: '', missing: 1, deleted_at: expect.any(String) });
+    expect(added).toEqual([]);
+    expect(x.trashed()).toEqual(['held.mp4']);
+    expect(rowOf(x.db, 'held')).toMatchObject({ path: '', missing: 1 });
+  } finally {
+    x.close();
+  }
+});
+
+it('puts the mark back, and keeps the cut and its files, when the move to the Trash fails', async () => {
+  const x = earlierCuts();
+  try {
+    const derived = derivedOf(x, 'held');
+    const before = rowOf(x.db, 'held');
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    const trash = vi.fn(() => Promise.reject(new Error('Placeholder: the Trash cannot be reached.')));
+    expect(
+      await removal.trashUnusedTrims(x.mediaDir, trash, () => true, new AbortController().signal),
+    ).toEqual([]);
+    expect(trash).toHaveBeenCalledOnce();
+    expect(rowOf(x.db, 'held')).toEqual(before);
+    expect(x.exists('held')).toBe(true);
+    for (const file of derived) expect(existsSync(join(x.mediaDir, file)), file).toBe(true);
+    // The next start tries it again.
+    expect(
+      await removal.trashUnusedTrims(x.mediaDir, x.trash, () => true, new AbortController().signal),
+    ).toEqual(['held.mp4']);
+  } finally {
+    x.close();
+  }
+});
+
+it('takes a moved cut’s still frame, sharpened and blurred copies with it, and no other video’s', async () => {
+  const x = earlierCuts();
+  try {
+    const held = derivedOf(x, 'held');
+    const newer = derivedOf(x, 'newer');
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    expect(
+      await removal.trashUnusedTrims(x.mediaDir, x.trash, () => true, new AbortController().signal),
+    ).toEqual(['held.mp4']);
+    for (const file of held) expect(existsSync(join(x.mediaDir, file)), file).toBe(false);
+    for (const file of newer) expect(existsSync(join(x.mediaDir, file)), file).toBe(true);
+  } finally {
+    x.close();
+  }
+});
+
+it.each([
+  [
+    'darwin',
+    ['Placeholder trimmed.mp4'],
+    'An earlier Trim cut that nothing uses any more went to the Trash: “Placeholder trimmed.mp4”. Take it back from there if you need it.',
+  ],
+  [
+    'win32',
+    ['Placeholder trimmed.mp4', 'Placeholder trimmed (2).mp4'],
+    'Earlier Trim cuts that nothing uses any more went to the Recycle Bin: “Placeholder trimmed.mp4” and “Placeholder trimmed (2).mp4”. Take them back from there if you need them.',
+  ],
+] as const)(
+  'tells the operator which earlier cuts went to the Trash (TM-4), on %s',
+  (platform, names, text) => {
+    expect(trashedTrimsNotice(names, platform)).toBe(text);
+    expect(trashedTrimsNotice([], platform)).toBeNull();
+  },
+);
 
 /** Count the whole-library JSON passes (one `json_tree` statement run over every document). */
 function countJsonPasses(db: Db): () => number {
@@ -287,7 +429,7 @@ it('reads the library’s JSON at most twice in a sweep, though the library chan
     const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
     const gone = await removal.trashUnusedTrims(x.mediaDir, x.trash, quiet, new AbortController().signal);
     expect(passes()).toBeLessThanOrEqual(2);
-    expect(x.trashed()).toHaveLength(gone);
+    expect(x.trashed()).toHaveLength(gone.length);
     expect(x.trashed()).not.toContain('d-on-slide.mp4');
     expect(x.exists('d-on-slide')).toBe(true);
     expect(x.exists('newer')).toBe(true);
