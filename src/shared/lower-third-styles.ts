@@ -790,8 +790,9 @@ export const LOWER_THIRD_MOTIONS = ['none', ...(Object.keys(MOTIONS) as (keyof t
  */
 export const FIRST_MOTIONS = Object.keys(FIRST_SEVEN) as readonly LowerThirdMotion[];
 
+/** A background's definition: none for None, or for a key Drashti does not know (from a newer look), drawn as None. */
 const definition = (motion: LowerThirdMotion): MotionDef | null =>
-  motion === 'none' ? null : ((MOTIONS[motion] as MotionDef | undefined) ?? null);
+  motion !== 'none' && Object.hasOwn(MOTIONS, motion) ? MOTIONS[motion] : null;
 
 /** Each background's name in the studio's list. */
 export const MOTION_NAMES = Object.fromEntries(
