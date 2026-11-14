@@ -126,6 +126,18 @@ const onAir = (app: ElectronApplication, on: boolean) =>
     hook(air);
   }, on);
 
+/** The stream "on air" (the test hook) from the first moment: the hook is there before any window opens. */
+async function onAirFromStart(app: ElectronApplication): Promise<void> {
+  await expect
+    .poll(() =>
+      app.evaluate(
+        () => typeof (globalThis as { drashtiTestOnAir?: unknown }).drashtiTestOnAir === 'function',
+      ),
+    )
+    .toBe(true);
+  await onAir(app, true);
+}
+
 const items = (win: Page, playlistId: string) =>
   win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.items(id), playlistId);
 
@@ -409,9 +421,22 @@ test('a Trim accepted while the show is busy continues after a clean restart', a
     expect(await items(win, playlistId)).toMatchObject([{ id: rowId, mediaId }]);
     await app.close();
 
-    app = (await relaunchApp(first.userData)).app;
+    // The next start, the stream "on air" from its first moment, so the cut waits to carry on while the window is seen.
+    app = (await relaunchApp(first.userData, { DRASHTI_TEST_ON_AIR_HOOK: '1' })).app;
+    await onAirFromStart(app);
     const reopened = await operatorPage(app);
     await operatorReady(reopened);
+    // The row says Preparing from the start (TM-1), while the cut waits to carry on, until it is taken in.
+    const preparingRows = () =>
+      reopened.evaluate(() => (globalThis as PageGlobals).drashti.media.preparingTrims());
+    expect(await preparingRows()).toEqual([rowId]);
+    await sizeOperatorWindow(app, reopened, CI_WINDOW);
+    await reopened.getByTestId('playlist-node').filter({ hasText: 'Placeholder restart trim' }).click();
+    const preparing = videoRow(reopened, rowId).getByTestId('trim-preparing');
+    await expect(preparing).toHaveText('Preparing');
+    expect(await items(reopened, playlistId)).toMatchObject([{ id: rowId, mediaId }]);
+    // Off air: it carries on (AFTER_START_MS after the window loaded, once nothing is up) and is taken in.
+    await onAir(app, false);
     await expect
       .poll(
         async () => {
@@ -421,6 +446,8 @@ test('a Trim accepted while the show is busy continues after a clean restart', a
         { timeout: 30_000 },
       )
       .toBe(true);
+    await expect(preparing).toHaveCount(0);
+    expect(await preparingRows()).toEqual([]);
     expect(
       await reopened.evaluate((id) => (globalThis as PageGlobals).drashti.media.rowTrim(id), rowId),
     ).toMatchObject({ sourceId: mediaId, markers: points });

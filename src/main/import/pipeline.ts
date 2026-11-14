@@ -61,7 +61,7 @@ import {
 } from './deck-converters';
 import { standInPdf } from './stand-in-converter';
 import {
-  keynotePagesShifted,
+  keynoteShift,
   notesForPages,
   picturesIssues,
   picturesPresentation,
@@ -603,8 +603,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       const shown = replaced.slice(0, 3).join(', ');
       const more = replaced.length > 3 ? ` and ${plural(replaced.length - 3, 'other', 'others')}` : '';
       const one = replaced.length === 1;
+      // An automatic import never moves what is playing (Q57-25, Q57-27). The notice's own ending names the new points
+      // and markers (import-notices.ts): once.
       const when = ctx.options.automatic
-        ? '. The new points and markers take effect the next time the media plays.'
+        ? `, from the next time ${one ? 'it plays' : 'they play'}.`
         : `, and what is up playing ${one ? 'it' : 'them'} moved to them at once.`;
       issues.push({
         severity: 'info',
@@ -1333,7 +1335,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         fail('pictures-not-drawn', drawn.message);
         return;
       }
-      const shifted = keynoteExport !== null && keynotePagesShifted(keynoteExport.slides, drawn);
+      // Keynote's two copies' pages in different orders (C15): the PowerPoint copy is set aside, said in the log too.
+      const shift = keynoteExport !== null ? keynoteShift(keynoteExport.slides, drawn) : null;
+      const shifted = shift !== null;
       const pdfNotes = keynotePdfNotes?.length === drawn.total ? keynotePdfNotes : null;
       const notes = shifted ? pdfNotes : slides ? notesForPages(slides, drawn.total) : null;
       const parsed = picturesPresentation(
@@ -1342,7 +1346,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         drawn.pages.map((p) => notes?.[p.index] ?? ''),
       );
       let editableSlides: readonly PptxSlide[] | null = shifted ? null : slides;
-      if (shifted) {
+      if (shift) {
+        ctx.log?.(
+          `Keynote: PDF page ${String(shift.page + 1)} has the words of slide ${String(shift.slide + 1)} of its PowerPoint copy (by the page count, slide ${String(shift.expected + 1)}), so the copy was set aside and Edit slides uses the PDF`,
+        );
         const notesLeftOut = !notes && keynoteExport?.slides.some((slide) => slide.notes !== '');
         deckIssues.push({
           severity: 'warning',
@@ -1405,7 +1412,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
               ),
             )
           : { videos: 0, cued: 0, left: 0, unmatched: deckRead ? deckMediaCount(deckRead.deck) : 0 };
-      const shown = !shifted ? (slides?.filter((sl) => !sl.hidden) ?? []) : [];
+      // How many slides are skipped, and how many have builds, whatever the pages' order (C15's review, L2).
+      const shown = slides?.filter((sl) => !sl.hidden) ?? [];
       parsed.issues = picturesIssues({
         source,
         converter,
@@ -1414,7 +1422,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           ? { editableSource: editableOriginal.ext }
           : {}),
         hidden:
-          !shifted && slides && shown.length < slides.length && drawn.total === shown.length
+          slides && shown.length < slides.length && drawn.total === shown.length
             ? slides.length - shown.length
             : 0,
         pages: drawn.pages.length,
@@ -1424,7 +1432,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         animated: shown.filter((sl) => sl.animated).length,
         notesUnmatched: !shifted && slides !== null && notes === null && slides.some((sl) => sl.notes !== ''),
       });
-      parsed.issues.splice(1, 0, ...deckIssues, ...picturesMediaIssues(added));
+      parsed.issues.splice(
+        1,
+        0,
+        ...deckIssues,
+        ...picturesMediaIssues(shifted ? { ...added, outOfOrder: true } : added),
+      );
       await addDeckFonts(parsed, keynoteExport?.file);
       told.how = 'pictures';
       told.slides = slideCount(parsed);
