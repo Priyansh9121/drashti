@@ -339,6 +339,14 @@ const byHand = (converter: Converter) =>
     ? 'Open it in Keynote and choose File > Export To > PDF…, then import the PDF.'
     : 'Open it in PowerPoint and choose File > Save As, PDF, then import the PDF.';
 
+/**
+ * What the operator is told when asking the app failed, trying to `what` ("save it as PDF"), with the first line of
+ * what the app said (`detail`, AppleScript's own words) (C15, DEV-1).
+ */
+export function appErrorWords(converter: Converter, what: string, detail: string): string {
+  return `${appName(converter)} could not ${what}${detail ? ` (${detail})` : ''}. ${byHand(converter)}`;
+}
+
 const cancelled = (): ConvertFailed => ({
   ok: false,
   message: 'Cancelled.',
@@ -588,11 +596,7 @@ export async function withMacSession<T>(
         notAllowed: true,
       });
     if (r.timedOut || n === TIMED_OUT) return silentFail(when);
-    const detail = firstLine(r.stderr);
-    return fail(
-      `it gave an error while ${when}`,
-      `${name} could not ${what}${detail ? ` (${detail})` : ''}. ${byHand(app.converter)}`,
-    );
+    return fail(`it gave an error while ${when}`, appErrorWords(app.converter, what, firstLine(r.stderr)));
   };
   const editableExportFailed = (result: Ran) => {
     const error = errorNumber(result.stderr);
