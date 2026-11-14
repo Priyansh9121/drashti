@@ -54,7 +54,7 @@ const LOWER_THIRD_LINE_MAX = 120;
 const idSchema = z.string().min(1).max(512);
 const hex = z.string().regex(/^#[0-9a-f]{6}$/iu, 'a colour as #rrggbb');
 
-const lowerThirdLookSchema = z
+export const lowerThirdLookSchema = z
   .object({
     text: hex,
     band: hex,
@@ -71,7 +71,11 @@ const lowerThirdLookSchema = z
   .strict();
 
 /** How long one that hides itself stays up: 5 to 60 whole seconds. */
-const lowerThirdSecondsSchema = z.number().int().min(LOWER_THIRD_SECONDS.min).max(LOWER_THIRD_SECONDS.max);
+export const lowerThirdSecondsSchema = z
+  .number()
+  .int()
+  .min(LOWER_THIRD_SECONDS.min)
+  .max(LOWER_THIRD_SECONDS.max);
 
 const fields = {
   lines: z.array(z.string().max(LOWER_THIRD_LINE_MAX)).min(1).max(LOWER_THIRD_LINES),
