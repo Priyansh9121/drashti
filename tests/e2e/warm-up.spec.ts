@@ -80,6 +80,24 @@ function warmUpLines(userData: string): string[] {
     .map((line) => line.slice(line.indexOf('Warm-up: ')).trimEnd());
 }
 
+/** What Drashti's log has said of how its outputs' warm-ups ended (Session 58, WU-2), each line from its "Warm-up of". */
+function warmUpEndLines(userData: string): string[] {
+  const file = join(userData, 'logs', 'drashti.log');
+  if (!existsSync(file)) return [];
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .filter((line) => line.includes('Warm-up of '))
+    .map((line) => line.slice(line.indexOf('Warm-up of ')).trimEnd());
+}
+
+/** The log says how the output's warm-up ended and how long it took, once (Session 58, WU-2). */
+async function expectEnded(userData: string, ended: RegExp): Promise<void> {
+  await expect
+    .poll(() => warmUpEndLines(userData), { message: 'the log’s Warm-up of lines' })
+    .toHaveLength(1);
+  expect(warmUpEndLines(userData)[0]).toMatch(ended);
+}
+
 /**
  * The log says which Main chose for the output: once for each output window (one made again, after a display change
  * say, is decided afresh and said again), and never the other choice.
@@ -321,10 +339,15 @@ test('with a graphics chip the warm-up passes by itself and the show is drawn af
   // And once it has drawn, every face of the Lower Thirds studio's fonts comes (Session 55), as in the LIVE picture.
   await expect.poll(async () => Object.keys(await studioFonts(out)), { timeout: 15_000 }).toEqual(['loaded']);
   await expect.poll(async () => Object.keys(await studioFonts(win)), { timeout: 15_000 }).toEqual(['loaded']);
-  // The log says which Main chose for the output (Session 57).
+  // The log says which Main chose for the output (Session 57), and how its warm-up ended, how long it took (Session 58).
   await expectSaid(
     userData,
     /^Warm-up: as before, a graphics chip \(gpu_compositing enabled\), for output ".+"$/u,
+  );
+  // Drawn to its end, or (a slow computer) at its longest.
+  await expectEnded(
+    userData,
+    /^Warm-up of output ".+": (?:drew everything in|stopped at its longest,) \d+\.\d s$/u,
   );
   await app.close();
 });
@@ -410,6 +433,11 @@ test('an output told it draws without a graphics chip after its warm-up began en
   await expect.poll(() => brightest(out), { timeout: 15_000 }).toBeGreaterThan(40);
   await expect(root).toHaveAttribute('data-warm-up', 'skipped');
   await expectSaid(userData, SKIPPED);
+  // How it ended, said once (Session 58, WU-2).
+  await expectEnded(
+    userData,
+    /^Warm-up of output ".+": cut short after \d+\.\d s, told it draws without a graphics chip$/u,
+  );
   await app.close();
 });
 
