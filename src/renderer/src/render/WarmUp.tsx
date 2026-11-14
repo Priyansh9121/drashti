@@ -449,9 +449,10 @@ export const WARM_BACKGROUNDS: readonly { motion: LowerThirdMotion; part: number
     warmMomentsOf(motion).map((part) => ({ motion, part })),
   );
 
-/** How many lower thirds across, and how big each one's words (percent of its own picture's height). */
+/** How many lower thirds across, how big each one's words (percent of its own picture's height), and how it came in. */
 const BACKGROUNDS_ACROSS = 5;
 const BACKGROUND_WORDS = 10;
+const BACKGROUND_CAME_IN = 'fade-steady';
 
 /**
  * Each a small lower third in its own fifth of the canvas, one frame at its moment as a template's thumbnail is, drawn
@@ -491,7 +492,7 @@ function WarmBackgrounds({ at, canvas, matte }: { at: number; canvas: Size; matt
                 lines: ['Placeholder name'],
                 look: { ...DEFAULT_LOWER_THIRD_LOOK, size: BACKGROUND_WORDS, motion },
                 where: 'both',
-                animation: 'fade-steady',
+                animation: BACKGROUND_CAME_IN,
                 shownAt,
               }}
               off={null}
