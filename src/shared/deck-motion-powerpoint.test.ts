@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckEffect } from './deck';
-import { deckMotionFrame, deckSplitShows, deckWipeClip } from './deck-motion';
+import { deckMotionFrame, deckShapeShows, deckSplitShows } from './deck-motion';
 
 /*
  * PowerPoint's own movie of the comparison deck, measured frame by frame (Session 57, 13 Nov 2026: the lead's run 1,
@@ -278,38 +278,13 @@ describe('Split as PowerPoint’s own movie shows it', () => {
 });
 
 describe('Shape as PowerPoint’s own movie shows it (run 2)', () => {
-  /** A clip `polygon([evenodd, ]x% y%, …)` of the box: where each sample row crosses its edges, and which way. */
-  function crossingsOf(clip: string): (y: number) => [number, number][] {
-    const body = /^polygon\((.*)\)$/u.exec(clip)?.[1] ?? '';
-    const points = body
-      .replace(/^evenodd,\s*/u, '')
-      .split(',')
-      .map((pair) =>
-        pair
-          .trim()
-          .split(/\s+/u)
-          .map((v) => Number.parseFloat(v) / 100),
-      )
-      .map(([x = 0, y = 0]): [number, number] => [x * box.width, y * box.height]);
-    return (y) => {
-      const list: [number, number][] = [];
-      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-        const [xi = 0, yi = 0] = points[i] ?? [];
-        const [xj = 0, yj = 0] = points[j] ?? [];
-        if (yi > y !== yj > y) list.push([((xj - xi) * (y - yi)) / (yj - yi) + xi, yj > yi ? 1 : -1]);
-      }
-      return list;
-    };
-  }
-
   /**
    * What Drashti draws of the box at `ms`: how much of it shows, and its width and height from how far it spreads
-   * (√12 times its standard deviation along each axis, as the movie's frames were measured), 4 × 4 points a pixel.
+   * (√12 times its standard deviation along each axis, as the movie's frames were measured), 4 × 4 points a pixel,
+   * each weighed by how much of it shows there (deckShapeShows: Shape's soft edge, as its masks draw it).
    */
   function drawn(one: DeckEffect, ms: number): { shows: number; w: number; h: number } {
-    const clip = deckWipeClip(deckMotionFrame([one], 1, ms, box, screen).wipe, box, box);
-    const evenodd = clip.startsWith('polygon(evenodd');
-    const crossings = crossingsOf(clip);
+    const { wipe } = deckMotionFrame([one], 1, ms, box, screen);
     let mass = 0;
     let sx = 0;
     let sy = 0;
@@ -317,22 +292,14 @@ describe('Shape as PowerPoint’s own movie shows it (run 2)', () => {
     let syy = 0;
     for (let row = 0; row < box.height * 4; row++) {
       const y = (row + 0.5) / 4;
-      const list = crossings(y);
       for (let column = 0; column < box.width * 4; column++) {
         const x = (column + 0.5) / 4;
-        let odd = false;
-        let winding = 0;
-        for (const [at, way] of list)
-          if (x < at) {
-            odd = !odd;
-            winding += way;
-          }
-        if (evenodd ? !odd : winding === 0) continue;
-        mass++;
-        sx += x;
-        sy += y;
-        sxx += x * x;
-        syy += y * y;
+        const weight = deckShapeShows(wipe, (2 * x) / box.width - 1, (2 * y) / box.height - 1);
+        mass += weight;
+        sx += weight * x;
+        sy += weight * y;
+        sxx += weight * x * x;
+        syy += weight * y * y;
       }
     }
     const spread = (s: number, ss: number) => Math.sqrt(12 * Math.max(0, ss / mass - (s / mass) ** 2));
@@ -340,16 +307,16 @@ describe('Shape as PowerPoint’s own movie shows it (run 2)', () => {
   }
 
   /**
-   * Measured frames: ms after the click, how much of the box shows, and its width and height. PowerPoint's edge is
-   * soft (14 % of the way it travels) and Drashti's hard, half-way through it: so close, not the same.
+   * Measured frames: ms after the click, how much of the box shows, and its width and height. Drashti's edge is soft
+   * as PowerPoint's (0.142 of the way it travels): within a hundredth of the box and a pixel.
    */
   function expectClose(one: DeckEffect, samples: readonly [number, number, number, number][]): void {
     for (const [ms, shows, w, h] of samples) {
       const ours = drawn(one, ms);
       const at = `${String(ms)} ms after the click`;
-      expect(Math.abs(ours.shows - shows), `${at}: how much shows`).toBeLessThanOrEqual(0.015);
-      expect(Math.abs(ours.w - w), `${at}: width`).toBeLessThanOrEqual(2);
-      expect(Math.abs(ours.h - h), `${at}: height`).toBeLessThanOrEqual(2);
+      expect(Math.abs(ours.shows - shows), `${at}: how much shows`).toBeLessThanOrEqual(0.01);
+      expect(Math.abs(ours.w - w), `${at}: width`).toBeLessThanOrEqual(1);
+      expect(Math.abs(ours.h - h), `${at}: height`).toBeLessThanOrEqual(1);
     }
   }
 
@@ -440,5 +407,243 @@ describe('Shape as PowerPoint’s own movie shows it (run 2)', () => {
       [360, 0.2382, 85, 50.45],
       [558.3, 0.0281, 100.86, 59.76],
     ]);
+  });
+});
+
+describe('Shape’s soft edge as PowerPoint’s own movie shows it at 1920 × 1080 (run 2, measured again 14 Nov 2026)', () => {
+  /*
+   * Run 2's movie decoded at its full 1920 × 1080 (Session 58, C1: assister/s58-notes/logs/c1/fit/, fit5), the box
+   * 384 × 228 at (564, 306). Each outline has its own measure of how far a point is from the box's middle (0) towards
+   * its corners (1), in the box's own proportions (u and v from -1 to 1 across it): the circle, an ellipse through the
+   * corners, √(u² + v²) / √2; the box, max(|u|, |v|); the diamond, (|u| + |v|) / 2; the plus, two bars, min(|u|, |v|).
+   * PowerPoint's edge is a straight soft band in that measure. A sample is one frame: its time after the click; where
+   * half the box shows, in that measure (fitted over every pixel of the frame); how much shows 0.05 nearer the middle and
+   * 0.05 further out (every pixel there, averaged); and how much shows on the box's diagonal where half shows: as much
+   * as anywhere else, so a box's and a plus's corners are square (two gradients multiplied would show a quarter there,
+   * or three quarters). Drashti must be within 0.08 of each (about 1 % of the way, a pixel at 1920 × 1080 across the
+   * box's height, 7 ms: the movie's frame times step by 1/600 s and its frames' pace wavers by a few ms). A hard edge
+   * misses 0.05 either side by 0.15, a band 0.10 or 0.20 wide by 0.10 or more, corners of two gradients by 0.25.
+   */
+  type Edge = [ms: number, half: number, nearer: number, further: number, diagonal: number];
+  type Outline = NonNullable<DeckEffect['shape']>;
+  const MEASURED: readonly [
+    phase: 'in' | 'out',
+    outline: Outline,
+    inward: boolean,
+    edges: readonly Edge[],
+  ][] = [
+    [
+      'in',
+      'circle',
+      true,
+      [
+        [161.7, 0.8066, 0.149, 0.851, 0.493],
+        [360.0, 0.4847, 0.152, 0.851, 0.489],
+        [558.4, 0.1629, 0.158, 0.854, 0.498],
+      ],
+    ],
+    [
+      'in',
+      'circle',
+      false,
+      [
+        [160.0, 0.1893, 0.848, 0.145, 0.512],
+        [358.4, 0.5114, 0.849, 0.149, 0.498],
+        [556.7, 0.8332, 0.857, 0.151, 0.508],
+      ],
+    ],
+    [
+      'in',
+      'box',
+      true,
+      [
+        [161.6, 0.8066, 0.151, 0.854, 0.508],
+        [360.0, 0.4843, 0.153, 0.842, 0.502],
+        [556.6, 0.163, 0.137, 0.863, 0.498],
+      ],
+    ],
+    [
+      'in',
+      'box',
+      false,
+      [
+        [160.0, 0.1893, 0.851, 0.143, 0.5],
+        [358.3, 0.5113, 0.86, 0.131, 0.488],
+        [556.6, 0.833, 0.843, 0.151, 0.481],
+      ],
+    ],
+    [
+      'in',
+      'diamond',
+      true,
+      [
+        [161.7, 0.8068, 0.153, 0.846, 0.503],
+        [358.3, 0.4846, 0.152, 0.848, 0.508],
+        [556.7, 0.1628, 0.146, 0.85, 0.504],
+      ],
+    ],
+    [
+      'in',
+      'diamond',
+      false,
+      [
+        [161.7, 0.1889, 0.854, 0.148, 0.506],
+        [360.0, 0.5111, 0.853, 0.149, 0.503],
+        [558.4, 0.833, 0.858, 0.145, 0.501],
+      ],
+    ],
+    [
+      'in',
+      'plus',
+      true,
+      [
+        [160.0, 0.8074, 0.156, 0.848, 0.494],
+        [358.4, 0.4849, 0.143, 0.841, 0.494],
+        [556.7, 0.1627, 0.131, 0.868, 0.483],
+      ],
+    ],
+    [
+      'in',
+      'plus',
+      false,
+      [
+        [161.6, 0.1896, 0.86, 0.137, 0.495],
+        [360.0, 0.5117, 0.862, 0.136, 0.505],
+        [556.6, 0.8333, 0.848, 0.148, 0.505],
+      ],
+    ],
+    [
+      'out',
+      'circle',
+      true,
+      [
+        [160.0, 0.8042, 0.853, 0.15, 0.501],
+        [358.3, 0.4824, 0.848, 0.15, 0.493],
+        [556.6, 0.1601, 0.847, 0.146, 0.503],
+      ],
+    ],
+    [
+      'out',
+      'circle',
+      false,
+      [
+        [161.7, 0.1913, 0.153, 0.85, 0.479],
+        [358.3, 0.5138, 0.152, 0.85, 0.501],
+        [556.7, 0.8364, 0.146, 0.853, 0.494],
+      ],
+    ],
+    [
+      'out',
+      'box',
+      true,
+      [
+        [161.7, 0.8037, 0.869, 0.136, 0.5],
+        [360.0, 0.4823, 0.842, 0.154, 0.494],
+        [558.4, 0.1594, 0.84, 0.166, 0.497],
+      ],
+    ],
+    [
+      'out',
+      'box',
+      false,
+      [
+        [160.0, 0.1923, 0.161, 0.848, 0.514],
+        [358.4, 0.5134, 0.146, 0.856, 0.495],
+        [556.7, 0.8357, 0.144, 0.84, 0.501],
+      ],
+    ],
+    [
+      'out',
+      'diamond',
+      true,
+      [
+        [161.6, 0.8042, 0.851, 0.15, 0.495],
+        [360.0, 0.4822, 0.849, 0.153, 0.499],
+        [556.6, 0.16, 0.851, 0.146, 0.498],
+      ],
+    ],
+    [
+      'out',
+      'diamond',
+      false,
+      [
+        [160.0, 0.1917, 0.152, 0.85, 0.489],
+        [358.3, 0.5137, 0.15, 0.85, 0.496],
+        [556.6, 0.8357, 0.146, 0.854, 0.499],
+      ],
+    ],
+    [
+      'out',
+      'plus',
+      true,
+      [
+        [161.7, 0.804, 0.862, 0.139, 0.513],
+        [358.3, 0.4827, 0.855, 0.151, 0.494],
+        [556.7, 0.1601, 0.859, 0.159, 0.486],
+      ],
+    ],
+    [
+      'out',
+      'plus',
+      false,
+      [
+        [161.7, 0.192, 0.161, 0.852, 0.502],
+        [360.0, 0.5143, 0.128, 0.864, 0.49],
+        [558.4, 0.8359, 0.146, 0.846, 0.491],
+      ],
+    ],
+  ];
+
+  /** A point of the box (u, v from -1 to 1 across it) at `size` in the outline's own measure, off its diagonal. */
+  function offDiagonal(outline: Outline, size: number): [number, number] {
+    switch (outline) {
+      case 'circle': {
+        const u = Math.min(0.98, size * Math.SQRT2 * Math.cos(Math.PI / 6));
+        return [u, -Math.sqrt(Math.max(0, 2 * size * size - u * u))];
+      }
+      case 'box':
+        return [-size, 0.3 * size];
+      case 'diamond': {
+        const u = Math.min(0.98, 1.4 * size);
+        return [-u, -(2 * size - u)];
+      }
+      case 'plus':
+        return [size, -0.95];
+    }
+  }
+
+  it('draws all sixteen with PowerPoint’s own soft band, in each outline’s measure, its corners square', () => {
+    for (const [phase, outline, inward, edges] of MEASURED)
+      for (const [ms, half, nearer, further, diagonal] of edges) {
+        const one = effect('shape', phase, { shape: outline, ...(inward ? { inward: true as const } : {}) });
+        const { wipe } = deckMotionFrame([one], 1, ms, box, screen);
+        const name = `${phase} ${outline} ${inward ? 'In' : 'Out'} at ${String(ms)} ms`;
+        const shows = (size: number) => [
+          // On the diagonal every outline's measure is |u| (= |v|).
+          deckShapeShows(wipe, size, size),
+          deckShapeShows(wipe, ...offDiagonal(outline, size)),
+        ];
+        const [onDiagonal = 0, offIt = 0] = shows(half);
+        expect(
+          Math.abs(onDiagonal - diagonal),
+          `${name}: on the diagonal where half shows`,
+        ).toBeLessThanOrEqual(0.08);
+        expect(Math.abs(offIt - 0.5), `${name}: where half shows`).toBeLessThanOrEqual(0.08);
+        for (const value of shows(half - 0.05))
+          expect(Math.abs(value - nearer), `${name}: 0.05 nearer the middle`).toBeLessThanOrEqual(0.08);
+        for (const value of shows(half + 0.05))
+          expect(Math.abs(value - further), `${name}: 0.05 further out`).toBeLessThanOrEqual(0.08);
+      }
+  });
+
+  it('shows the whole box before an entrance and after an exit, and nothing of it in between where the edges have not come', () => {
+    const circle = effect('shape', 'in', { shape: 'circle' });
+    // An entrance's Out, a quarter of the way: the middle shows, the corners not yet.
+    const { wipe } = deckMotionFrame([circle], 1, 175, box, screen);
+    expect(deckShapeShows(wipe, 0, 0)).toBe(1);
+    expect(deckShapeShows(wipe, 1, 1)).toBe(0);
+    // No Shape: all of it.
+    expect(deckShapeShows(null, 0.5, 0.5)).toBe(1);
+    expect(deckShapeShows(deckMotionFrame([circle], 1, 700, box, screen).wipe, 1, 1)).toBe(1);
   });
 });
