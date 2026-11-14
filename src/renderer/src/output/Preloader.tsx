@@ -5,6 +5,7 @@ import { mediaToPreload } from '../../../shared/engine/preload';
 import type { UpNext } from '../../../shared/engine/state';
 import { mediaUrl } from '../../../shared/media';
 import type { PictureLook } from '../../../shared/picture-look';
+import type { PointedClip } from '../../../shared/point-ahead';
 import { DeckClipAhead } from '../render/DeckStep';
 import { useMediaAttempt } from '../render/media-attempts';
 import { useSharpCopy } from '../render/picture-looks';
@@ -94,7 +95,21 @@ function deckClip(next: UpNext | null): { mediaId: string; first: boolean } | nu
   return { mediaId: step.clipId, first: index === 0 };
 }
 
-/** Loads what Next will show (PLAN.md 4.3), so its images and videos are never a frame late. */
+/**
+ * The deck slide's first clip the operator points at in the operator window (C3, Session 58: Q57-26), as the main
+ * process says (on a node, as Main's says); null: none, or this computer is short of memory.
+ */
+function usePointedClip(): PointedClip | null {
+  const [clip, setClip] = useState<PointedClip | null>(null);
+  useEffect(() => window.drashti.output.onPointed(setClip), []);
+  return clip;
+}
+
+/**
+ * Loads what Next will show (PLAN.md 4.3), so its images and videos are never a frame late; and the first clip of the
+ * deck slide the operator points at (C3, Session 58), waiting decoded at the frame a click on its row starts it from,
+ * so the click plays it at once: at most two such clips, Next's and that one.
+ */
 export function Preloader({
   next,
   pictures = {},
@@ -105,6 +120,12 @@ export function Preloader({
 }) {
   const wanted: PreloadMedia[] = useMemo(() => mediaToPreload(next), [next]);
   const clip = useMemo(() => deckClip(next), [next]);
+  const pointedAt = usePointedClip();
+  // Next's own already, from the same frame: loaded once.
+  const pointed =
+    pointedAt && !(clip?.first && clip.mediaId === pointedAt.mediaId && pointedAt.fromMs === 0)
+      ? pointedAt
+      : null;
   return (
     <div
       data-testid="preload"
@@ -125,6 +146,14 @@ export function Preloader({
           return clip.first ? <DeckClipAhead key={`deck:${m.mediaId}`} mediaId={m.mediaId} /> : null;
         return <PreloadOne key={`${m.media}:${m.mediaId}`} media={m} look={pictures[m.mediaId] ?? null} />;
       })}
+      {pointed && (
+        <DeckClipAhead
+          key={`pointed:${pointed.mediaId}@${String(pointed.fromMs)}`}
+          mediaId={pointed.mediaId}
+          fromMs={pointed.fromMs}
+          role="pointed"
+        />
+      )}
     </div>
   );
 }

@@ -117,32 +117,65 @@ const FIRST_FRAME_WAIT_MS = 3000;
  * tenth faster, which nobody sees, so every screen, the slide's sounds and the engine's next step meet again.
  */
 const CATCH_UP_RATE = 1.1;
+/**
+ * How late a clip loaded ahead at its start frame may come and still play from where it waits (ms), as playback.ts
+ * plays a file already where its clock is within that (Next's clip came so before C3, Session 58).
+ */
+const FROM_WHERE_IT_IS_MS = 50;
+
+/** Why the Preloader holds a deck slide's first clip: the slide Next shows, or the one the operator points at. */
+export type AheadFor = 'next' | 'pointed';
+
+/** A deck slide's first clip the Preloader holds, loaded and decoded where its slide's step will start it. */
+interface Ahead {
+  url: string;
+  video: HTMLVideoElement;
+  /** Where in the clip it waits (ms): 0 for Next's, past the deck's own transition for a click's (a jump). */
+  fromMs: number;
+  taken: boolean;
+}
 
 /**
- * The next slide's first clip, loaded and decoded ahead by this page's Preloader (Session 57, item 6), until the
- * slide's step takes it (FirstClip); null when none is held. One a page: a page has one Preloader, and Next shows one
- * slide.
+ * The first clips this page's Preloader loaded and decoded ahead (Session 57, item 6; C3, Session 58), until a slide's
+ * step takes one (FirstClip): at most two, the slide Next shows and the slide the operator points at (a page has one
+ * Preloader).
  */
-let ahead: { url: string; video: HTMLVideoElement; taken: boolean } | null = null;
+const ahead = new Set<Ahead>();
 
-/** The element the Preloader holds for this file, decoded, now the caller's to play and let go of; else null. */
-function takeClipAhead(url: string): HTMLVideoElement | null {
-  const held = ahead;
-  if (held?.url !== url) return null;
-  ahead = null;
-  held.taken = true;
-  held.video.removeAttribute('data-preload');
-  held.video.removeAttribute('data-state');
-  return held.video;
+/**
+ * The element the Preloader holds for this file, decoded, now the caller's to play and let go of; else null. The one
+ * waiting where the step starts it (`fromMs`) first: Next's waits at its start, a click's past the deck's own
+ * transition.
+ */
+function takeClipAhead(url: string, fromMs: number): HTMLVideoElement | null {
+  const held = [...ahead].filter((a) => a.url === url);
+  const chosen = held.find((a) => Math.abs(a.fromMs - fromMs) < 1) ?? held[0];
+  if (!chosen) return null;
+  ahead.delete(chosen);
+  chosen.taken = true;
+  chosen.video.removeAttribute('data-preload');
+  chosen.video.removeAttribute('data-state');
+  chosen.video.removeAttribute('data-deck-ahead');
+  return chosen.video;
 }
 
 /**
  * The outputs' Preloader's way of loading a deck's slide's first clip ahead (output/Preloader.tsx; Session 57, item
  * 6): as its other videos, muted, out of sight and never played, but in an element of its own that the slide's step
  * takes as it is, decoded, when that slide comes in (FirstClip), so the clip plays from the press. A new element there
- * took 0.2 to 1.1 s to load and draw (the measurement before).
+ * took 0.2 to 1.1 s to load and draw (the measurement before). For the slide the operator points at (C3, Session 58:
+ * a click on its row is a jump, its clip started past the deck's own transition), it waits decoded at that frame.
  */
-export function DeckClipAhead({ mediaId }: { mediaId: string }) {
+export function DeckClipAhead({
+  mediaId,
+  fromMs = 0,
+  role = 'next',
+}: {
+  mediaId: string;
+  /** Where the step will start it (ms into the clip). */
+  fromMs?: number;
+  role?: AheadFor;
+}) {
   const attempt = useMediaAttempt(mediaId);
   const holder = useRef<HTMLSpanElement | null>(null);
   // An effect, not a layout effect: when this goes at the moment its slide comes in, the slide's step (its layout
@@ -152,15 +185,26 @@ export function DeckClipAhead({ mediaId }: { mediaId: string }) {
     if (!host) return;
     const url = mediaUrl(mediaId, attempt);
     const video = document.createElement('video');
-    const held = { url, video, taken: false };
+    const held: Ahead = { url, video, fromMs, taken: false };
     video.muted = true;
     video.playsInline = true;
     video.disablePictureInPicture = true;
     video.preload = 'auto';
     video.setAttribute('data-preload', mediaId);
     video.setAttribute('data-state', 'loading');
-    const loaded = () => {
+    video.setAttribute('data-deck-ahead', role);
+    const ready = () => {
       if (!held.taken) video.setAttribute('data-state', 'ready');
+    };
+    // Its first frame in; a click's then waits for the frame past the deck's own transition.
+    const loaded = () => {
+      if (held.taken) return;
+      if (fromMs <= 0) {
+        ready();
+        return;
+      }
+      video.addEventListener('seeked', ready, { once: true });
+      video.currentTime = fromMs / 1000;
     };
     const failed = () => {
       if (!held.taken) video.setAttribute('data-state', 'failed');
@@ -169,18 +213,19 @@ export function DeckClipAhead({ mediaId }: { mediaId: string }) {
     video.addEventListener('error', failed, { once: true });
     host.append(video);
     video.src = url;
-    ahead = held;
+    ahead.add(held);
     return () => {
       video.removeEventListener('loadeddata', loaded);
+      video.removeEventListener('seeked', ready);
       video.removeEventListener('error', failed);
-      if (ahead === held) ahead = null;
+      ahead.delete(held);
       // Taken: the step plays it now, and lets go of it.
       if (held.taken) return;
       video.removeAttribute('src');
       video.load();
       video.remove();
     };
-  }, [mediaId, attempt]);
+  }, [mediaId, attempt, fromMs, role]);
   return <span ref={holder} />;
 }
 
@@ -315,7 +360,8 @@ function FirstClip({
   useLayoutEffect(() => {
     const host = slot.current;
     if (!host) return;
-    const v = takeClipAhead(mediaUrl(mediaId, attempt)) ?? document.createElement('video');
+    const fromMs = Math.max(0, shownAt - startedAt);
+    const v = takeClipAhead(mediaUrl(mediaId, attempt), fromMs) ?? document.createElement('video');
     v.muted = true;
     v.playsInline = true;
     v.disablePictureInPicture = true;
@@ -325,16 +371,27 @@ function FirstClip({
     v.setAttribute('data-media-id', mediaId);
     Object.assign(v.style, filling('inherit'), { opacity: '0', transform: '', mixBlendMode: '' });
     host.append(v);
-    const fromMs = Math.max(0, shownAt - startedAt);
     const warmed =
       v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
       !v.seeking &&
       Math.abs(v.currentTime * 1000 - fromMs) < 1;
+    const mountedAt = engineNow();
+    const lateMs = Math.max(0, mountedAt - shownAt);
     // On a direct jump, keep the seek past PowerPoint's incoming transition. While the clip is cold, decode exactly
-    // that frame and start there once it can be drawn, even if the file arrived after the press.
+    // that frame and start there once it can be drawn, even if the file arrived after the press. Loaded ahead at that
+    // frame (Next's, or the slide the operator pointed at: C3, Session 58) but come more than a moment late, it plays
+    // from that frame at once and catches up as a cold one does: a seek to where the clock is would be a wait for a
+    // frame, the slide going away held meanwhile.
     let seek: PlaybackSeek | undefined =
-      deadline !== null && !warmed ? { at: shownAt, toMs: fromMs, paused: true } : undefined;
-    let catchUp: PlaybackCatchUp | undefined;
+      deadline === null
+        ? undefined
+        : !warmed
+          ? { at: shownAt, toMs: fromMs, paused: true }
+          : lateMs > FROM_WHERE_IT_IS_MS
+            ? { at: mountedAt, toMs: fromMs }
+            : undefined;
+    let catchUp: PlaybackCatchUp | undefined =
+      seek && !seek.paused ? { at: mountedAt, lateMs, maxRate: CATCH_UP_RATE } : undefined;
     let playFrame = 0;
     const tell = (ready: boolean) => {
       v.dataset['deckFirstFrame'] = ready ? 'ready' : 'failed';
@@ -362,7 +419,10 @@ function FirstClip({
           told.current.onFrame(catchUpLeftMs(lateMs, clipEndsAt - shownAt, CATCH_UP_RATE));
           // Paint the decoded frame before the video advances.
           playFrame = requestAnimationFrame(() => void v.play().catch(() => undefined));
-        } else told.current.onFrame(0);
+        } else
+          told.current.onFrame(
+            catchUp ? catchUpLeftMs(catchUp.lateMs, clipEndsAt - shownAt, CATCH_UP_RATE) : 0,
+          );
         tell(true);
       },
       onError: () => {
