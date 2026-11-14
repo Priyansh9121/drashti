@@ -36,15 +36,25 @@ function styleAt(style: TextStyle, scale: number): TextStyle {
   };
 }
 
-/** Scale the paragraph's fixed spacing with its text size. */
+/**
+ * Scale what a paragraph holds in slide pixels with its text size: its fixed line spacing, the space before and after
+ * it, its margins and indent, and its marker's size (Paste into another size, Presentation size). Each stays within
+ * what a slide holds.
+ */
 export function scaleParagraphSpacing(paragraph: TextParagraph, scale: number): TextParagraph {
-  const { lineHeightPx, spaceBefore, spaceAfter } = paragraph;
-  if (lineHeightPx === undefined && spaceBefore === undefined && spaceAfter === undefined) return paragraph;
+  const { lineHeightPx, spaceBefore, spaceAfter, marginLeft, marginRight, indent, bulletSize } = paragraph;
+  const sized = [lineHeightPx, spaceBefore, spaceAfter, marginLeft, marginRight, indent, bulletSize];
+  if (sized.every((n) => n === undefined)) return paragraph;
+  const pixels = (n: number, min = 0) => Math.max(min, Math.min(16_384, n * scale));
   return {
     ...paragraph,
-    ...(lineHeightPx !== undefined ? { lineHeightPx: Math.min(16_384, lineHeightPx * scale) } : {}),
-    ...(spaceBefore !== undefined ? { spaceBefore: Math.min(16_384, spaceBefore * scale) } : {}),
-    ...(spaceAfter !== undefined ? { spaceAfter: Math.min(16_384, spaceAfter * scale) } : {}),
+    ...(lineHeightPx !== undefined ? { lineHeightPx: pixels(lineHeightPx) } : {}),
+    ...(spaceBefore !== undefined ? { spaceBefore: pixels(spaceBefore) } : {}),
+    ...(spaceAfter !== undefined ? { spaceAfter: pixels(spaceAfter) } : {}),
+    ...(marginLeft !== undefined ? { marginLeft: pixels(marginLeft) } : {}),
+    ...(marginRight !== undefined ? { marginRight: pixels(marginRight) } : {}),
+    ...(indent !== undefined ? { indent: pixels(indent, -16_384) } : {}),
+    ...(bulletSize !== undefined ? { bulletSize: Math.max(0.01, Math.min(2000, bulletSize * scale)) } : {}),
   };
 }
 
