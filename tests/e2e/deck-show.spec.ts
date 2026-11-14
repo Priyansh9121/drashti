@@ -528,14 +528,19 @@ test('a deck’s video starts at its click with the time bar under LIVE, and its
     const clickAt = await stepAt(win);
     await expect(video).toHaveAttribute('data-deck-cover', 'none');
     await expect(bar).not.toHaveAttribute('data-paused', 'true');
+    // The engine starts it at its click, from its start (main/engine/deck-steps.ts forwardSeeks).
+    expect((await state(win)).layers.slide?.seeks?.[files.video]).toEqual({ at: clickAt, toMs: 0 });
+    // On the screen it plays in step with that: read by polling, as its sound below and time-bar-helpers' inStep are
+    // (a single reading could fall on the moment its start is still being put right, by design: Session 58, :504).
     await expect
-      .poll(() => video.evaluate((v: HTMLVideoElement) => !v.paused && v.currentTime > 0.2))
+      .poll(() =>
+        video.evaluate(
+          (v: HTMLVideoElement, at) =>
+            !v.paused && v.currentTime > 0.2 && Math.abs(v.currentTime - (Date.now() - at) / 1000) < 0.25,
+          clickAt,
+        ),
+      )
       .toBe(true);
-    const offset = await video.evaluate(
-      (v: HTMLVideoElement, at) => v.currentTime - (Date.now() - at) / 1000,
-      clickAt,
-    );
-    expect(Math.abs(offset)).toBeLessThan(0.25);
     // Its sound (with the slide) in the audio player, in step with the engine's time.
     await expect.poll(() => app.windows().some((w) => w.url().includes('audio.html'))).toBe(true);
     const audio = app.windows().find((w) => w.url().includes('audio.html'));
@@ -1133,6 +1138,15 @@ test('a deck slide the operator points at in the list (or whose number is typed)
     // These pages open after the pointer stopped moving, so they must read the pointing at startup.
     const lateHall = await outputFor(app, await setUpScreen(win, 'Late Hall', 2));
     await stream.reload();
+    // Opened again, the stream's page is ready to draw the show only once its fonts are in and its warm-up is over, as
+    // at the start (C19: 4.5-9.1 s on CI's Mac): a click before then finds its step held (Session 58, the lead: this
+    // test flaked on the stream after the reload came in, X13).
+    await expect(stream.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
+      timeout: 30_000,
+    });
+    await expect(stream.getByTestId('program-root')).not.toHaveAttribute('data-warm-up', 'warming', {
+      timeout: 30_000,
+    });
     screens.push({ page: lateHall, box: 'preload', name: 'the late hall' });
     await loadedAhead();
     // The pointer moves off the list: each lets the clip go.
