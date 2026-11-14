@@ -17,7 +17,14 @@ import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from '
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
-import type { OpeningChoice, OpeningEnd, OpeningPlan, OpeningResult, OpeningView } from './opening';
+import type {
+  OpeningChoice,
+  OpeningEnd,
+  OpeningFigures,
+  OpeningPlan,
+  OpeningResult,
+  OpeningView,
+} from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
@@ -1214,7 +1221,7 @@ export interface InvokeContract {
   [IPC.drop.setOn]: { args: [on: boolean]; result: DropFolderResult };
   [IPC.drop.importAnyway]: { args: [name: string]; result: DropFolderResult };
   [IPC.opening.atStart]: { args: []; result: OpeningPlan | null };
-  [IPC.opening.ended]: { args: [how: OpeningEnd]; result: null };
+  [IPC.opening.ended]: { args: [how: OpeningEnd, figures?: OpeningFigures]; result: null };
   [IPC.opening.view]: { args: []; result: OpeningView };
   [IPC.opening.setOn]: { args: [on: boolean]; result: OpeningResult };
   [IPC.opening.setChoice]: { args: [choice: OpeningChoice]; result: OpeningResult };

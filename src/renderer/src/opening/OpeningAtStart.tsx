@@ -1,13 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { OPENING_HOLD_MS, type OpeningEnd, type OpeningPlan } from '../../../shared/opening';
+import {
+  OPENING_HOLD_MS,
+  OPENING_START_HOLD_MS,
+  OPENING_TIMES,
+  type OpeningEnd,
+  type OpeningFigures,
+  type OpeningPlan,
+} from '../../../shared/opening';
 import { motionOff } from '../ui/motion';
+import { type OpeningFrame, openingFigures } from './opening-figures';
 import {
   afterCoverFrame,
+  type FrameWatch,
   openingHolds,
+  releasedBy,
   stillAfterHold,
   type StartFacts,
+  watchFrame,
   windowMayStart,
 } from './opening-order';
 import { OpeningPlayer } from './OpeningPlayer';
@@ -24,8 +35,10 @@ import { OpeningPlayer } from './OpeningPlayer';
  * The window starts underneath as soon as the opening's black covers it (Session 57, item 6; opening-order.ts), and
  * the opening holds, black, until the window has opened (its controls drawn with their first data, the page then
  * idle: ui/motion.ts), so its two seconds run with nothing starting under them: on CI's Mac the window's start had
- * taken the main thread for a second at a time while it moved. That hold is OPENING_HOLD_MS at most too, and then it
- * moves as it would.
+ * taken the main thread for a second at a time while it moved. And until the window's own GPU warm-up is over
+ * (Session 58: its LIVE picture's, render/WarmUp.tsx), so its two seconds never share the GPU with it: on CI's Mac
+ * the GPU was still making that warm-up's pipelines, every window waiting, as the opening moved. That hold is
+ * OPENING_START_HOLD_MS at most, and then it moves as it would.
  */
 
 /** Asked once a page (StrictMode's second effect, or a window loaded again, is told no by the main process anyway). */
@@ -34,8 +47,20 @@ let asked: Promise<OpeningPlan | null> | null = null;
 /** Whether the window underneath has opened: its controls drawn with their first data, the page then idle (ui/motion.ts). */
 const windowOpen = () => document.documentElement.hasAttribute('data-opened');
 
+/**
+ * Whether the window's own GPU warm-up still draws: its LIVE picture's (render/WarmUp.tsx, there from when the window
+ * starts until it is over; read as the Performance check's cold start reads it, main/perftest.ts).
+ */
+const windowWarming = () => document.querySelector('[data-testid="live-preview"] [data-warm-up]') !== null;
+
 // Allow regular frames on slow displays and reject the long gaps caused by loading the operator window.
 const OPENING_FRAME_BUDGET_MS = 50;
+/**
+ * Frames in a row within that budget before it moves once the window's own warm-up was seen (Session 58): its start's
+ * last chores come a few frames after it (the LIVE picture's first Scene, the Lower Thirds studio's fonts two frames
+ * on: CI's Mac drew one frame of 115-560 ms for them, 40-125 ms after the warm-up ended). With none, one, as before.
+ */
+const OPENING_STEADY_FRAMES = 4;
 
 export function OpeningAtStart({ children }: { children: ReactNode }) {
   const [plan, setPlan] = useState<OpeningPlan | null>(null);
@@ -45,13 +70,25 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
   /** Its black has drawn its first frame over the window. */
   const [covered, setCovered] = useState(false);
   const [windowFrameReady, setWindowFrameReady] = useState(false);
-  /** It has held for OPENING_HOLD_MS. */
+  /** It has held for OPENING_HOLD_MS (the screens' limit). */
   const [waitedOut, setWaitedOut] = useState(false);
+  /** It has held for OPENING_START_HOLD_MS (the window's limit). */
+  const [startWaitedOut, setStartWaitedOut] = useState(false);
   const screensUp = useRef(false);
   const warming = useRef(false);
   const playing = useRef(false);
   const dismissed = useRef(false);
   const end = useRef<(how: OpeningEnd) => void>(() => undefined);
+  /**
+   * Its figures for the log (Session 58, opening-figures.ts): when the main process said it plays, when it might move
+   * and what let it go (on the page's clock), and each frame it then drew until its end.
+   */
+  const figures = useRef<{
+    askedAt: number;
+    releasedAt: number | null;
+    releasedBy: OpeningFigures['releasedBy'];
+    frames: OpeningFrame[];
+  }>({ askedAt: 0, releasedAt: null, releasedBy: 'ready', frames: [] });
   useEffect(() => {
     let live = true;
     // Listened for before it is asked, so a word that comes with the answer is never missed.
@@ -68,6 +105,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
         return;
       }
       playing.current = true;
+      figures.current.askedAt = performance.now();
       if (dismissed.current) {
         end.current('key');
         return;
@@ -84,7 +122,19 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
     end.current = (how) => {
       if (!playing.current) return;
       playing.current = false;
-      void window.drashti.opening.ended(how);
+      // With its figures once it might have moved (ended while it held, none).
+      const f = figures.current;
+      void window.drashti.opening.ended(
+        how,
+        f.releasedAt === null
+          ? undefined
+          : openingFigures(f.frames, {
+              askedAt: f.askedAt,
+              releasedAt: f.releasedAt,
+              releasedBy: f.releasedBy,
+              end: OPENING_TIMES.end,
+            }),
+      );
       setState(how === 'click' ? 'shield' : 'over');
     };
   });
@@ -141,34 +191,49 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
   useEffect(() => {
     warming.current = screensWarming;
   });
-  // It holds OPENING_HOLD_MS at most; the screens not drawn by then, it plays still, so it never moves beside their
-  // warm-up (and stays still should they draw while it plays).
+  // It holds for the screens OPENING_HOLD_MS at most; not drawn by then, it plays still, so it never moves beside
+  // their warm-up (and stays still should they draw while it plays). For the window underneath, OPENING_START_HOLD_MS.
   useEffect(() => {
     if (!plan) return;
     const wait = setTimeout(() => {
       setWaitedOut(true);
       if (stillAfterHold({ waitedOut: true, screensWarming: warming.current })) setStill(true);
     }, OPENING_HOLD_MS);
+    const start = setTimeout(() => {
+      setStartWaitedOut(true);
+    }, OPENING_START_HOLD_MS);
     return () => {
       clearTimeout(wait);
+      clearTimeout(start);
     };
   }, [plan]);
-  // The opened attribute can arrive before the window has caught up with painting. Keep black across any
-  // long gaps that follow it. The same hold timer above also caps this wait.
+  // The opened attribute can arrive before the window has caught up with painting, and its own GPU warm-up goes on
+  // after it. Keep black until that is over and across any long gaps that follow. The window's limit above caps this
+  // wait; it begins once the screens have drawn (or their limit came), so the frames are read just before it moves.
   useEffect(() => {
-    if (!plan || !covered || state !== 'playing' || screensWarming || waitedOut || windowFrameReady) return;
-    let previous: number | null = null;
+    if (!plan || !covered || state !== 'playing' || startWaitedOut || windowFrameReady) return;
+    if (screensWarming && !waitedOut) return;
+    let watched: FrameWatch = { previous: null, steady: 0, warmedUp: false };
     let frame = 0;
     const sample = (at: number) => {
-      if (
-        previous !== null &&
-        at - previous <= OPENING_FRAME_BUDGET_MS &&
-        performance.now() - at <= OPENING_FRAME_BUDGET_MS
-      ) {
+      // Its frames while it warms up are the warm-up's (on time between the pipelines the GPU makes for it), and while
+      // fonts load (the studio's, after the warm-up) a frame that lays them out may come long.
+      const next = watchFrame(
+        watched,
+        {
+          at,
+          now: performance.now(),
+          warming: windowWarming(),
+          fontsLoading: document.fonts.status !== 'loaded',
+        },
+        OPENING_FRAME_BUDGET_MS,
+        OPENING_STEADY_FRAMES,
+      );
+      if (next.ready) {
         setWindowFrameReady(true);
         return;
       }
-      previous = at;
+      watched = next;
       frame = requestAnimationFrame(sample);
     };
     const watch = new MutationObserver(begin);
@@ -183,7 +248,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
       watch.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [covered, plan, screensWarming, state, waitedOut, windowFrameReady]);
+  }, [covered, plan, screensWarming, startWaitedOut, state, waitedOut, windowFrameReady]);
   useEffect(() => {
     if (!plan) return;
     const check = () => {
@@ -213,10 +278,19 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
     screensWarming,
     windowOpened: windowOpen(),
     windowFrameReady,
+    windowWarming: windowWarming(),
     waitedOut,
+    startWaitedOut,
     ended: state !== 'playing',
   };
   const mountApp = windowMayStart(facts);
+  const held = openingHolds(facts);
+  // When it might move, and what let it go, for its figures.
+  useLayoutEffect(() => {
+    if (!plan || held || state !== 'playing' || figures.current.releasedAt !== null) return;
+    figures.current.releasedAt = performance.now();
+    figures.current.releasedBy = releasedBy(facts);
+  });
   if (!plan || state === 'over') return <>{mountApp && children}</>;
   const cover = createPortal(
     <div
@@ -247,11 +321,14 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
         <OpeningPlayer
           plan={plan}
           still={still}
-          held={openingHolds(facts)}
+          held={held}
           prepare={!screensWarming || waitedOut}
           className="absolute inset-0"
           // The window starts under its black: the black stays until the photo is ready.
           coverWhilePreparing
+          onFrame={(frame) => {
+            figures.current.frames.push(frame);
+          }}
           onDone={() => {
             end.current('itself');
           }}
