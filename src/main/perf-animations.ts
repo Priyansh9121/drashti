@@ -1059,11 +1059,13 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         progress('the deck slide pointed at, then clicked; a click with a slide pointed at meanwhile');
         for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++) {
           await away();
-          const before = windowsMemory(deps.outputs(), operator());
+          const before = windowsMemory(deps.outputs(), operator(), deps.program?.() ?? null);
           await sleep(POINTED_SAY_MS);
           await ask(operator(), POINT_AT(deckRow), false);
           await sleep(POINTED_LOAD_MS);
-          pointedMemory.push(memoryAdded(before, windowsMemory(deps.outputs(), operator())));
+          pointedMemory.push(
+            memoryAdded(before, windowsMemory(deps.outputs(), operator(), deps.program?.() ?? null)),
+          );
           await press(POINTED_ROW, 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 800);
           await ask(operator(), POINT_AT(null), false);
           const churning = pointWhileOnAir(operator, deckRow, CLIP_MS);

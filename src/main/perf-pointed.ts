@@ -38,15 +38,19 @@ export const POINTED_LOAD_MS = POINTED_LEAD_MS - REST_MS;
 /** Each window's process and the graphics process, by name: its memory (MB, the working set; Windows's private too). */
 export type WindowsMemory = Record<string, { ws: number; priv?: number }>;
 
-/** Every process's memory now, named by the window it draws (a hall screen's by its title's place, the operator's). */
+/** Every process's memory now, named by the window it draws (a hall screen's by its place, the stream's page, the operator's). */
 export function windowsMemory(
   outputs: readonly BrowserWindow[],
   operator: BrowserWindow | null,
+  /** The stream's page while it is open (it loads the deck clips ahead too). */
+  stream: Pick<BrowserWindow, 'webContents'> | null = null,
 ): WindowsMemory {
   const labels = new Map<number, string>();
   outputs.forEach((w, i) => {
     if (!w.isDestroyed()) labels.set(w.webContents.getOSProcessId(), `screen ${String(i + 1)}`);
   });
+  if (stream && !stream.webContents.isDestroyed())
+    labels.set(stream.webContents.getOSProcessId(), "the stream's page");
   if (operator && !operator.isDestroyed())
     labels.set(operator.webContents.getOSProcessId(), 'operator window');
   const memory: WindowsMemory = {};
