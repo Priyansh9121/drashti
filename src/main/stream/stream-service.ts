@@ -65,6 +65,11 @@ type MediaKind = 'camera' | 'microphone';
 export interface StreamServiceDeps {
   /** How Main writes the time (Sessions 31–36, I18N-8), for the stream page's clocks. */
   clockStyle?(): ClockStyle;
+  /**
+   * Whether the stream's page skips its warm-up (Session 58, WU-1): `{ noGpu: true }` where Chromium draws without a
+   * graphics chip, as Main decides for the outputs (outputs/warm-up-choice.ts); nothing otherwise, or left out.
+   */
+  warmUpFact?(page: BrowserWindow): { noGpu?: true };
   profiles: StreamProfileRepo;
   keys: StreamKeyStore;
   settings: SettingsRepo;
@@ -454,6 +459,8 @@ export class StreamService {
       capturing: this.videoInUse(),
       preview: this.watchers.size > 0,
       ...(this.deps.clockStyle ? { clockStyle: this.deps.clockStyle() } : {}),
+      // No warm-up where Chromium draws without a graphics chip (Session 58, WU-1): its picture is black meanwhile.
+      ...(this.program && !this.program.isDestroyed() ? (this.deps.warmUpFact?.(this.program) ?? {}) : {}),
     };
   }
 
