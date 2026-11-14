@@ -367,3 +367,62 @@ describe('a shape’s and a table’s theme styles', () => {
     ]);
   });
 });
+
+describe('PowerPoint’s own shrink of a box’s words', () => {
+  const box = (id: number, body: string, nv = '') =>
+    `<p:sp><p:nvSpPr><p:cNvPr id="${String(id)}" name="Placeholder fit ${String(id)}"/><p:cNvSpPr/><p:nvPr>${nv}</p:nvPr></p:nvSpPr>` +
+    '<p:spPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="3657600" cy="914400"/></a:xfrm><a:prstGeom prst="rect"/></p:spPr>' +
+    `<p:txBody>${body}<a:lstStyle/><a:p><a:r><a:t>Placeholder words ${String(id)}</a:t></a:r></a:p></p:txBody></p:sp>`;
+
+  it('keeps normAutofit’s font scale and line spacing reduction for the fit to start from', async () => {
+    const { elements } = await readSlide(
+      slideXml(
+        box(30, '<a:bodyPr><a:normAutofit fontScale="62500" lnSpcReduction="20000"/></a:bodyPr>') +
+          box(31, '<a:bodyPr><a:normAutofit fontScale="85%"/></a:bodyPr>') +
+          box(32, '<a:bodyPr><a:normAutofit lnSpcReduction="10000"/></a:bodyPr>') +
+          box(33, '<a:bodyPr><a:normAutofit/></a:bodyPr>') +
+          box(34, '<a:bodyPr><a:spAutoFit/></a:bodyPr>'),
+      ),
+    );
+    expect(elements.map((el) => el.kind === 'text' && el.style.sourceFit)).toEqual([
+      { fontScale: 0.625, lineSpacingReduction: 0.2 },
+      { fontScale: 0.85, lineSpacingReduction: 0 },
+      { fontScale: 1, lineSpacingReduction: 0.1 },
+      undefined,
+      undefined,
+    ]);
+    // Drashti's own fit still decides: each box is still made smaller to fit.
+    expect(elements.every((el) => el.kind === 'text' && el.style.shrinkToFit)).toBe(true);
+  });
+
+  it('takes the shrink from the box’s own autofit over its layout’s', async () => {
+    const layout =
+      '<p:sldLayout xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>' +
+      box(
+        2,
+        '<a:bodyPr><a:normAutofit fontScale="70000" lnSpcReduction="20000"/></a:bodyPr>',
+        '<p:ph type="body" idx="1"/>',
+      ) +
+      '</p:spTree></p:cSld></p:sldLayout>';
+    const { elements } = await readSlide(
+      slideXml(
+        box(40, '<a:bodyPr/>', '<p:ph type="body" idx="1"/>') +
+          box(41, '<a:bodyPr><a:noAutofit/></a:bodyPr>', '<p:ph type="body" idx="1"/>') +
+          box(42, '<a:bodyPr><a:normAutofit fontScale="90000"/></a:bodyPr>', '<p:ph type="body" idx="1"/>'),
+      ),
+      { 'ppt/slideLayouts/slideLayout1.xml': layout },
+    );
+    expect(elements.map((el) => el.kind === 'text' && el.style.sourceFit)).toEqual([
+      { fontScale: 0.7, lineSpacingReduction: 0.2 },
+      undefined,
+      { fontScale: 0.9, lineSpacingReduction: 0 },
+    ]);
+  });
+
+  it('keeps the shrink through the slide schema, within its range', async () => {
+    const { elements } = await readSlide(
+      slideXml(box(50, '<a:bodyPr><a:normAutofit fontScale="500" lnSpcReduction="250000"/></a:bodyPr>')),
+    );
+    expect(elements[0]).toMatchObject({ style: { sourceFit: { fontScale: 0.01, lineSpacingReduction: 1 } } });
+  });
+});
