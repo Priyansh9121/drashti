@@ -447,12 +447,17 @@ function FirstClip({
           }
           // From that frame, as late as it came; then it catches up (C3's review M1), so it ends only as late as it
           // has not made up by its end (the step's last frame and hold wait for that, the hold making up the rest).
-          const lateMs = Math.max(0, readyAt - shownAt);
-          seek = { at: readyAt, toMs: fromMs };
-          catchUp = lateMs > 0 ? { at: readyAt, lateMs, maxRate: CATCH_UP_RATE } : undefined;
-          told.current.onFrame(catchUpLeftMs(lateMs, clipEndsAt - shownAt, CATCH_UP_RATE));
-          // Paint the decoded frame before the video advances.
-          playFrame = requestAnimationFrame(() => void v.play().catch(() => undefined));
+          ({ seek, catchUp } = playingFrom(shownAt, fromMs, readyAt));
+          told.current.onFrame(
+            catchUpLeftMs(Math.max(0, readyAt - shownAt), clipEndsAt - shownAt, CATCH_UP_RATE),
+          );
+          // Paint the decoded frame before the video advances; its clock from the moment it plays (C3T-2: from the
+          // frame's coming in, a frame or more before on a slow computer, the first check found it that far behind and
+          // could jump it 2-3 frames about 0.3 s in).
+          playFrame = requestAnimationFrame(() => {
+            ({ seek, catchUp } = playingFrom(shownAt, fromMs, engineNow()));
+            void v.play().catch(() => undefined);
+          });
         } else
           told.current.onFrame(
             catchUp ? catchUpLeftMs(catchUp.lateMs, clipEndsAt - shownAt, CATCH_UP_RATE) : 0,

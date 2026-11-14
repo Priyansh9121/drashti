@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { StepTiming } from '../../../shared/deck-show';
-import { chooseAhead, firstClipStart, stepPhase } from './DeckStep';
+import { chooseAhead, firstClipStart, playingFrom, stepPhase } from './DeckStep';
 
 const directJump: StepTiming = {
   index: 0,
@@ -47,4 +47,18 @@ it('starts a slide’s first clip where its frame is: cold, it waits for it; loa
   // A screen joining a slide already up: by the engine's time, as before.
   expect(firstClipStart({ ...at, deadline: null, warmed: true, mountedAt: 3000 })).toEqual({});
   expect(firstClipStart({ ...at, deadline: null, warmed: false, mountedAt: 3000 })).toEqual({});
+});
+
+it('plays a cold first clip from its frame by a clock started as it plays, never as its frame came (C3T-2)', () => {
+  // The frame came in 120 ms after the slide's showing; the next frame played it, 137 ms after.
+  expect(playingFrom(1000, 400, 1120)).toEqual({
+    seek: { at: 1120, toMs: 400 },
+    catchUp: { at: 1120, lateMs: 120, maxRate: 1.1 },
+  });
+  expect(playingFrom(1000, 400, 1137)).toEqual({
+    seek: { at: 1137, toMs: 400 },
+    catchUp: { at: 1137, lateMs: 137, maxRate: 1.1 },
+  });
+  // On time: nothing to make up.
+  expect(playingFrom(1000, 0, 1000)).toEqual({ seek: { at: 1000, toMs: 0 } });
 });
