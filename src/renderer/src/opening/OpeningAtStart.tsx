@@ -1,16 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   OPENING_HOLD_MS,
   OPENING_START_HOLD_MS,
+  OPENING_TIMES,
   type OpeningEnd,
+  type OpeningFigures,
   type OpeningPlan,
 } from '../../../shared/opening';
 import { motionOff } from '../ui/motion';
+import { type OpeningFrame, openingFigures } from './opening-figures';
 import {
   afterCoverFrame,
   openingHolds,
+  releasedBy,
   stillAfterHold,
   type StartFacts,
   windowMayStart,
@@ -73,6 +77,16 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
   const playing = useRef(false);
   const dismissed = useRef(false);
   const end = useRef<(how: OpeningEnd) => void>(() => undefined);
+  /**
+   * Its figures for the log (Session 58, opening-figures.ts): when the main process said it plays, when it might move
+   * and what let it go (on the page's clock), and each frame it then drew until its end.
+   */
+  const figures = useRef<{
+    askedAt: number;
+    releasedAt: number | null;
+    releasedBy: OpeningFigures['releasedBy'];
+    frames: OpeningFrame[];
+  }>({ askedAt: 0, releasedAt: null, releasedBy: 'ready', frames: [] });
   useEffect(() => {
     let live = true;
     // Listened for before it is asked, so a word that comes with the answer is never missed.
@@ -89,6 +103,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
         return;
       }
       playing.current = true;
+      figures.current.askedAt = performance.now();
       if (dismissed.current) {
         end.current('key');
         return;
@@ -105,7 +120,19 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
     end.current = (how) => {
       if (!playing.current) return;
       playing.current = false;
-      void window.drashti.opening.ended(how);
+      // With its figures once it might have moved (ended while it held, none).
+      const f = figures.current;
+      void window.drashti.opening.ended(
+        how,
+        f.releasedAt === null
+          ? undefined
+          : openingFigures(f.frames, {
+              askedAt: f.askedAt,
+              releasedAt: f.releasedAt,
+              releasedBy: f.releasedBy,
+              end: OPENING_TIMES.end,
+            }),
+      );
       setState(how === 'click' ? 'shield' : 'over');
     };
   });
@@ -257,6 +284,12 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
   };
   const mountApp = windowMayStart(facts);
   const held = openingHolds(facts);
+  // When it might move, and what let it go, for its figures.
+  useLayoutEffect(() => {
+    if (!plan || held || state !== 'playing' || figures.current.releasedAt !== null) return;
+    figures.current.releasedAt = performance.now();
+    figures.current.releasedBy = releasedBy(facts);
+  });
   if (!plan || state === 'over') return <>{mountApp && children}</>;
   const cover = createPortal(
     <div
@@ -292,6 +325,9 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
           className="absolute inset-0"
           // The window starts under its black: the black stays until the photo is ready.
           coverWhilePreparing
+          onFrame={(frame) => {
+            figures.current.frames.push(frame);
+          }}
           onDone={() => {
             end.current('itself');
           }}

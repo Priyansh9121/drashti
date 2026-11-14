@@ -66,7 +66,14 @@ import type { PictureAssetKind, SharpenJobView } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
-import type { OpeningChoice, OpeningEnd, OpeningPlan, OpeningResult, OpeningView } from './opening';
+import type {
+  OpeningChoice,
+  OpeningEnd,
+  OpeningFigures,
+  OpeningPlan,
+  OpeningResult,
+  OpeningView,
+} from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
@@ -256,7 +263,8 @@ export interface DrashtiBridge {
   opening: {
     /** What to play as the window opens, or null (main decides, once). */
     atStart(): Promise<OpeningPlan | null>;
-    ended(how: OpeningEnd): Promise<null>;
+    /** It ended; with the window's figures for it, for the log (Session 58). */
+    ended(how: OpeningEnd, figures?: OpeningFigures): Promise<null>;
     /** A key ended it (main kept that key from the show). */
     onEnd(listener: () => void): () => void;
     /** Every hall screen has drawn its first frame. */

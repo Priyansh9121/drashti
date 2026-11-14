@@ -6644,10 +6644,11 @@ function start(): void {
     openingWaits = screensWarming();
     return { ...plan, hold: openingWaits };
   });
-  handle(IPC.opening.ended, (e, how) => {
+  handle(IPC.opening.ended, (e, how, figures) => {
     if (!fromOperator(e) || openingSince === null) return null;
     openingOver();
-    opening.ended(how === 'key' || how === 'click' ? how : 'itself', Date.now() - openingSince);
+    // With the window's figures for it (Session 58), read whole by the service.
+    opening.ended(how === 'key' || how === 'click' ? how : 'itself', Date.now() - openingSince, figures);
     openingSince = null;
     return null;
   });
