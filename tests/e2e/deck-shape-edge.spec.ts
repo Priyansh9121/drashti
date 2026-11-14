@@ -31,6 +31,15 @@ import { holdClock } from './placeholder-slides';
  * Generated placeholder deck only.
  */
 
+/**
+ * Whether an output draws without a graphics chip (its warm-up skipped, as on CI's Windows): a Shape then draws its
+ * hard edge, a clip where PowerPoint's soft edge is half-way, in place of its masks (render/deck-target-paint.ts, C1's
+ * review HIGH-2: two masks of three gradients each on every moving Box, Plus and Diamond dropped frames there while
+ * streaming); with one (CI's Mac) the soft edge.
+ */
+const drawsWithoutChip = async (page: Page): Promise<boolean> =>
+  (await page.getByTestId('output-root').getAttribute('data-warm-up')) === 'skipped';
+
 const dispatch = (win: Page, command: EngineCommand) =>
   win.evaluate((command) => (globalThis as PageGlobals).drashti.engine.dispatch(command), command);
 const current = (win: Page) =>
@@ -170,9 +179,18 @@ test('Shape’s soft edge on a hall screen, half-way: a Box’s, a Plus’s and 
       await holdClock(app, stepAt + SHAPE_MS / 2);
 
       // The masks: a Circle's one radial gradient on the shape; the others' two, the shape's and the element's within.
+      // Without a graphics chip, the hard edge: a clip, no mask.
+      const chipless = await drawsWithoutChip(out);
       for (const s of SHAPES) {
         const inner = target(s.id).locator(':scope > [data-deck-motion-mask]');
         await expect(target(s.id), s.outline).toHaveCSS('opacity', '1');
+        await expect(inner, s.outline).toHaveCount(s.outline === 'circle' ? 0 : 1);
+        if (chipless) {
+          await expect(target(s.id), s.outline).toHaveCSS('clip-path', /^polygon\(/u);
+          await expect(target(s.id), s.outline).toHaveCSS('mask-image', 'none');
+          if (s.outline !== 'circle') await expect(inner, s.outline).toHaveCSS('mask-image', 'none');
+          continue;
+        }
         await expect(target(s.id), s.outline).toHaveCSS('clip-path', 'none');
         if (s.outline === 'circle') {
           await expect(target(s.id), s.outline).toHaveCSS('mask-image', /^radial-gradient\(/u);
@@ -192,16 +210,19 @@ test('Shape’s soft edge on a hall screen, half-way: a Box’s, a Plus’s and 
       await expect(target(FADING.id)).toHaveCSS('opacity', '0.5');
       await expect(target(FADING.id).locator(':scope > [data-deck-motion-mask]')).toHaveCount(0);
       await expect(target(FADING.id)).toHaveCSS('mask-image', 'none');
-      // What Chromium draws: each point's red within 26 of 255 times how much shows there.
+      // What Chromium draws: each point's red within 26 of 255 times how much shows there (a hard edge passes through
+      // the half-way points: those left out without a chip).
       const samples = SHAPES.flatMap((s) =>
-        POINTS[s.outline].map(([u, v, shows]) => ({
-          name: `${s.outline} at (${String(u)}, ${String(v)})`,
-          shows,
-          at: {
-            x: s.frame.x + ((1 + u) * s.frame.width) / 2,
-            y: s.frame.y + ((1 + v) * s.frame.height) / 2,
-          },
-        })),
+        POINTS[s.outline]
+          .filter(([, , shows]) => !chipless || shows !== 0.5)
+          .map(([u, v, shows]) => ({
+            name: `${s.outline} at (${String(u)}, ${String(v)})`,
+            shows,
+            at: {
+              x: s.frame.x + ((1 + u) * s.frame.width) / 2,
+              y: s.frame.y + ((1 + v) * s.frame.height) / 2,
+            },
+          })),
       );
       await expect
         .poll(async () => {
@@ -218,10 +239,11 @@ test('Shape’s soft edge on a hall screen, half-way: a Box’s, a Plus’s and 
         })
         .toEqual([]);
 
-      // At the end: whole, and nothing masked.
+      // At the end: whole, and nothing masked or clipped.
       await holdClock(app, stepAt + SHAPE_MS);
       for (const s of SHAPES) {
         await expect(target(s.id), s.outline).toHaveCSS('mask-image', 'none');
+        await expect(target(s.id), s.outline).toHaveCSS('clip-path', 'none');
         const inner = target(s.id).locator(':scope > [data-deck-motion-mask]');
         if (s.outline !== 'circle') await expect(inner, s.outline).toHaveCSS('mask-image', 'none');
       }
@@ -306,12 +328,17 @@ test('Shape’s seams through pixel centres: nothing shows across what is hidden
       await expect.poll(async () => (await current(win))?.step).toBe(1);
       const stepAt = (await current(win))?.stepAt ?? 0;
       await holdClock(app, stepAt + SHAPE_MS / 2);
+      // Without a graphics chip, the hard edge (a clip, no mask): its seams too, read the same way.
+      const chipless = await drawsWithoutChip(out);
       for (const s of SEAMS) {
-        await expect(target(s.id), s.outline).toHaveCSS('mask-composite', /^add, exclude/u);
-        await expect(target(s.id).locator(':scope > [data-deck-motion-mask]'), s.outline).toHaveCSS(
-          'mask-composite',
-          /^add, exclude/u,
-        );
+        const inner = target(s.id).locator(':scope > [data-deck-motion-mask]');
+        if (chipless) {
+          await expect(target(s.id), s.outline).toHaveCSS('clip-path', /^polygon\(/u);
+          for (const masked of [target(s.id), inner])
+            await expect(masked, s.outline).toHaveCSS('mask-image', 'none');
+        } else
+          for (const masked of [target(s.id), inner])
+            await expect(masked, s.outline).toHaveCSS('mask-composite', /^add, exclude/u);
       }
 
       // Every pixel along each seam (its centre on it), half-way: its red within 26 of 255 times how much shows there.
@@ -359,14 +386,21 @@ test('Shape’s seams through pixel centres: nothing shows across what is hidden
       });
       // Each seam pixel's place on the screen is whole: the premise of this test.
       expect(seams.filter((p) => !Number.isInteger(p.at.x) || !Number.isInteger(p.at.y))).toEqual([]);
+      // Without a chip the hard edge, where more than half would show whole and the rest nothing (the pixels within
+      // 0.3 of half-way, the edge's own, left out).
+      const read = chipless
+        ? seams
+            .filter((p) => Math.abs(p.shows - 0.5) >= 0.3)
+            .map((p) => ({ ...p, shows: p.shows > 0.5 ? 1 : 0 }))
+        : seams;
       await expect
         .poll(async () => {
           const got = await screenPixels(
             out,
-            seams.map((p) => p.at),
+            read.map((p) => p.at),
           );
           const off = new Map<string, string[]>();
-          seams.forEach((p, i) => {
+          read.forEach((p, i) => {
             const red = got[i]?.[0] ?? -1;
             if (Math.abs(red - 255 * p.shows) <= 26) return;
             const list = off.get(p.name) ?? [];
