@@ -167,7 +167,7 @@ describe('the warm-up', () => {
     }
   });
 
-  it('the Cover’s slide going is a deck’s Drashti plays itself, its picture, shape and words each part-way through a Shape: a Circle’s radial mask, a Box’s and a Diamond’s ramp over two half-planes, twice', () => {
+  it('the Cover’s slide going is a deck’s Drashti plays itself, its picture, shape and words and a placeholder each part-way through a Shape: a Circle’s radial mask, a Box’s, a Diamond’s and a Plus’s ramp over two half-planes, twice', () => {
     const going = slideOf(scene('deck-cover/calm'), false, BEFORE);
     const motion = nativeDeckMotion(going.slide.deck);
     const timing = nativeStepTiming(going);
@@ -180,6 +180,7 @@ describe('the warm-up', () => {
       ['shape', 'circle'],
       ['shape', 'box'],
       ['shape', 'diamond'],
+      ['shape', 'plus'],
     ]);
     const kinds = (mask: string) => mask.match(/[a-z-]+-gradient\(/gu) ?? [];
     for (const gap of [33, 5_000, 30_000]) {
@@ -192,6 +193,7 @@ describe('the warm-up', () => {
       const twice = ['linear-gradient(', 'linear-gradient(', 'linear-gradient('];
       expect(drawn, `after ${String(gap)} ms`).toEqual([
         [['radial-gradient('], []],
+        [twice, twice],
         [twice, twice],
         [twice, twice],
       ]);

@@ -1,6 +1,6 @@
 import type { DeckEffect, DeckSlide } from '../../../shared/deck';
 import type { DeckNativeTransition } from '../../../shared/deck-transition';
-import type { RenderSlide } from '../../../shared/model';
+import type { RenderSlide, SlideElement } from '../../../shared/model';
 
 /*
  * The warm-up's deck (13 Nov 2026, the review of h-p3tr's part B; render/WarmUp.tsx draws it with the rest, through the
@@ -93,6 +93,13 @@ export function withSplits(slide: RenderSlide): RenderSlide {
  */
 export const SHAPE_MS = SPLIT_MS;
 
+/** A Shape the warm-up draws: its outline, In or Out, and how far through it is at the warm-up's moment (0 to 1). */
+interface WarmShape {
+  shape: NonNullable<DeckEffect['shape']>;
+  inward: boolean;
+  at: number;
+}
+
 /**
  * Each shape's Shape, by the slide's elements in order, and how far through it is at the warm-up's moment (0 to 1). Its
  * soft edge (shared/deck-motion.ts, shapeMasks) draws kinds of mask nothing else draws: a Circle a radial gradient of
@@ -100,21 +107,38 @@ export const SHAPE_MS = SPLIT_MS;
  * mask-composite exclude), on the shape and again on an element within it; a Diamond the same with its ramps along its
  * diagonals.
  */
-const SHAPES: readonly { shape: NonNullable<DeckEffect['shape']>; inward: boolean; at: number }[] = [
+const SHAPES: readonly WarmShape[] = [
   { shape: 'circle', inward: true, at: 0.5 },
   { shape: 'box', inward: false, at: 0.5 },
   { shape: 'diamond', inward: true, at: 0.4 },
 ];
 
 /**
+ * One more Shape, on a placeholder of the warm-up's own (the slides it is given have three elements): a Plus Out near
+ * the end of its way. A Box's, a Plus's or a Diamond's ramp has 5 or 6 stops for most of its way but 4 near either end
+ * (an In's first ~12 %, an Out's last ~12 %), and a GPU draws a gradient of up to 4 stops and one of up to 8 each its
+ * own way (C1's review, MEDIUM-1). Still part-way half a minute later. On the left of the slide, where the Cover's slide
+ * coming in has not yet reached at the warm-up's moment.
+ */
+const LATE: WarmShape = { shape: 'plus', inward: false, at: 0.92 };
+const LATE_PLACEHOLDER: SlideElement = {
+  id: 'warm-up-shape-late',
+  kind: 'shape',
+  shape: 'rectangle',
+  fill: '#5a2a48cc',
+  cornerRadius: 0,
+  opacity: 1,
+  frame: { x: 80, y: 520, width: 600, height: 200 },
+};
+
+/**
  * `slide` as a deck's slide Drashti plays itself: its first three elements its shapes, each coming in by a Shape (a
- * Circle, a Box, a Diamond) that is part-way SHAPE_MS after the slide goes up.
+ * Circle, a Box, a Diamond), and a placeholder of its own by a fourth (a Plus), each part-way SHAPE_MS after the slide
+ * goes up.
  */
 export function withShapes(slide: RenderSlide): RenderSlide {
   const effects: DeckEffect[] = [];
-  const elements = slide.elements.map((element, i) => {
-    const one = SHAPES[i];
-    if (!one) return element;
+  const shaped = (element: SlideElement, one: WarmShape, i: number): SlideElement => {
     const shapeId = String(i + 2);
     effects.push({
       shapeId,
@@ -127,7 +151,12 @@ export function withShapes(slide: RenderSlide): RenderSlide {
       durationMs: SHAPE_MS,
     });
     return { ...element, sourceShapeId: shapeId };
+  };
+  const elements = slide.elements.map((element, i) => {
+    const one = SHAPES[i];
+    return one ? shaped(element, one, i) : element;
   });
+  elements.push(shaped(LATE_PLACEHOLDER, LATE, SHAPES.length));
   const deck: DeckSlide = {
     steps: [],
     media: [],
