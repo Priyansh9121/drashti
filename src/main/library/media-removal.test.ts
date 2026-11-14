@@ -435,7 +435,11 @@ it('looks only in the folder Trim wrote the cut into, and never at a hidden part
     renameSync(join(x.mediaDir, 'held.mp4'), join(x.mediaDir, 'ab', 'held.mp4'));
     x.db.prepare("UPDATE media SET path = 'ab/original.mp4' WHERE id = 'original'").run();
     x.db.prepare("UPDATE media SET path = 'ab/held.mp4' WHERE id = 'held'").run();
-    leftBehind(x);
+    // Marked gone as TM-7 marks it, its file left in the original's folder.
+    x.db
+      .prepare("UPDATE media SET path = '', missing = 1, deleted_at = ? WHERE id = 'held'")
+      .run(new Date().toISOString());
+    expect(existsSync(join(x.mediaDir, 'ab', 'held.mp4'))).toBe(true);
     writeFileSync(join(x.mediaDir, 'held elsewhere.mp4'), bytes);
     writeFileSync(join(x.mediaDir, 'ab', '.11111111-1111-4111-8111-111111111111.mp4'), bytes);
     writeFileSync(join(outside, 'linked.mp4'), bytes);
@@ -487,9 +491,9 @@ it.each([
 });
 
 it.each([
-  ['its path in Media', (_media: string) => 'held.mp4'],
-  ['its full path', (media: string) => join(realpathSync.native(media), 'held.mp4')],
-  ['its full path as Media is named', (media: string) => join(media, 'held.mp4')],
+  ['its path in Media', (_media: string): string => 'held.mp4'],
+  ['its full path', (media: string): string => join(realpathSync.native(media), 'held.mp4')],
+  ['its full path as Media is named', (media: string): string => join(media, 'held.mp4')],
 ] as const)(
   'leaves a cut’s file that Trim’s records come to hold, by %s, before it moves (review of c01f5fcf)',
   async (_form, path) => {
