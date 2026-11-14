@@ -25,6 +25,7 @@ import {
   stillIntervals,
   stillLine,
 } from '../shared/motion-measure';
+import { PERF_CASES_MS, PERF_CASES_UP_TO_MS } from '../shared/perf-limits';
 import { fitElements } from '../shared/slide-size';
 import { cutText, plural } from '../shared/text';
 import { PresentationRepo } from './db/presentations';
@@ -264,24 +265,42 @@ const LINES = ['Placeholder name', 'Placeholder title'];
 /** A page that does not answer a call within this long is passed over (a press, the probe's read, the Wallpaper). */
 const PAGE_LIMIT_MS = 5000;
 /**
- * The cases stop pressing after this long, measuring those done: the check's own time limit is 14 min in all. Six
- * minutes, and one more since the 4:3 deck's rows (Session 58, Q58-36: its four rounds, 25.2 s as set, longer as pressed)
- * so every row measured before them still is (the table slides, the jump to a deck slide); the uptime cap below still
- * ends the cases in time.
+ * The cases stop pressing this long after they begin, measuring those done (src/shared/perf-limits.ts). Six minutes;
+ * seven since the 4:3 deck's rows (Session 58, Q58-36: its four rounds, 25.2 s as set, longer as pressed) so every row
+ * measured before them still is (the table slides, the jump to a deck slide); eight since the set-up and the import
+ * have their own time (Session 58, h-perfcap): the last row, DK-2, began 384-391 s in on every runner, 6-13 s before
+ * its last chance at seven, so a slow screen's warm-up has a minute in hand.
  */
-const BUDGET_MS = 7 * 60_000;
+const BUDGET_MS = PERF_CASES_MS;
 /**
- * Or once Drashti has been up this long, if that comes first: the check stops it 14 minutes from its start
- * (tests/perf/performance.spec.ts), and the cases measured must be read and written before then (after3's two-core
- * streaming check lost its figures to that stop, 13 Nov 2026).
+ * Or once Drashti has been up this long, if that comes first: only after a set-up and an import longer than their own
+ * 14 minutes. The check stops Drashti 24 minutes from its start (tests/perf/performance.spec.ts), and the cases measured
+ * must be read and written before then (after3's two-core streaming check lost its figures to the stop, then at 14
+ * minutes, 13 Nov 2026). Until Session 58 the cases stopped at 12 minutes up, which a slow runner's import of 9-11
+ * minutes, on two cores while streaming, left 10-156 s of (h-perfcap, the sweep's #17).
  */
-const UP_TO_MS = 12 * 60_000;
+const UP_TO_MS = PERF_CASES_UP_TO_MS;
 
-/** When the cases stop pressing, from `now`, Drashti up `upMs`: at their budget's end, or at its 12 minutes up. */
+/** When the cases stop pressing, from `now`, Drashti up `upMs`: at their budget's end, or at its 22 minutes up. */
 export function casesUntil(now: number, upMs: number): { at: number; by: 'budget' | 'uptime' } {
   const budget = now + BUDGET_MS;
   const uptime = now + UP_TO_MS - upMs;
   return uptime < budget ? { at: uptime, by: 'uptime' } : { at: budget, by: 'budget' };
+}
+
+/**
+ * A block of the last cases (begun only with time for all its runs as set): `n` rounds, each begun only before the
+ * deadline. Cut short by it (a screen slow to open first, say), it says so and how many ran; null when every one did
+ * (Session 58, h-perfcap: DK-6's jumps ran 3 of 4 on four Mac runs of 14 Nov 2026, said nowhere).
+ */
+export async function pressRounds(
+  n: number,
+  until: { deadline: number; now: () => number; stopped: string; what: string },
+  round: (i: number) => Promise<void>,
+): Promise<string | null> {
+  let i = 0;
+  for (; i < n && until.now() < until.deadline; i++) await round(i);
+  return i < n ? `${until.stopped}: ${until.what} cut short, ${String(i)} of its ${String(n)} rounds` : null;
 }
 
 /**
@@ -1036,14 +1055,20 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       }
     },
     end: async () => {
-      progress('the cases begin');
       const streaming = (sw('DRASHTI_PERF_STREAM') ?? '') !== '';
       const twoCores = sw('DRASHTI_PERF_HANDICAP') === '1';
-      // The cases stop pressing at this budget, or once Drashti has been up 12 minutes, measuring those done, so the
-      // check always ends in its time.
-      const until = casesUntil(Date.now(), process.uptime() * 1000);
+      // The cases stop pressing at their own budget from now, however long Drashti's start, the set-up and the import
+      // took; only after those took longer than their own 14 minutes, once Drashti has been up 22, measuring those
+      // done, so the check always ends in its time. How long they took is said here (a slow runner's import too).
+      const upMs = process.uptime() * 1000;
+      const now = Date.now();
+      const until = casesUntil(now, upMs);
       const deadline = until.at;
-      /** Why a case was not pressed: out of the cases' time, or Drashti up 12 minutes (its check stops at 14). */
+      const min = (ms: number) => `${(ms / 60_000).toFixed(1)} min`;
+      progress(
+        `the cases begin, Drashti up ${min(upMs)} (its start, the set-up and the import): ${until.by === 'budget' ? `their own ${min(BUDGET_MS)}` : `${min(deadline - now)} of their ${min(BUDGET_MS)}, until Drashti has been up ${min(UP_TO_MS)}`}`,
+      );
+      /** Why a case was not pressed: out of the cases' time, or Drashti up 22 minutes (its check stops at 24). */
       const stopped =
         until.by === 'uptime' ? `Drashti up ${String(UP_TO_MS / 60_000)} minutes` : 'out of time';
       const skipped = new Set<string>();
@@ -1060,6 +1085,11 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         if (deadline - Date.now() >= ms) return true;
         note(`${stopped}: no ${what}`);
         return false;
+      };
+      /** Its rounds, each begun only before the deadline; cut short by it, that is said too. */
+      const rounds = async (n: number, what: string, round: (i: number) => Promise<void>) => {
+        const short = await pressRounds(n, { deadline, now: () => Date.now(), stopped, what }, round);
+        if (short) note(short);
       };
       const output = deps.outputs()[0];
       const probeOn =
@@ -1159,7 +1189,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         )
       ) {
         progress('the deck slide pointed at, then clicked; a click with a slide pointed at meanwhile');
-        for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++) {
+        await rounds(SHORT_RUNS, 'the deck slide pointed at first', async () => {
           await away();
           const before = windowsMemory(deps.outputs(), operator(), deps.program?.() ?? null);
           await sleep(POINTED_SAY_MS);
@@ -1173,7 +1203,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
           const churning = pointWhileOnAir(operator, deckRow, CLIP_MS);
           await press(POINTED_ON_AIR_ROW, 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
           await churning;
-        }
+        });
       }
       // One more click after the slide has stood still 20 s: Chromium may suspend a paused video after about 15 s, and
       // the next step's clip waits paused at its start. Measured only in time; it never marks the check out of time.
@@ -1181,7 +1211,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         await away();
         await press('deck slide in, then 20 s still', 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 20_000);
         await press('deck click after 20 s still', 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
-      } else progress(`${stopped}: no click after 20 s still`);
+      } else note(`${stopped}: no click after 20 s still`);
       // A deck Drashti plays itself (13 Nov 2026), as dissolve 800 was measured (one hall screen, no other window
       // open), before the leftovers, so it runs on two cores too: from its first slide (a cut) by Next, its own Wipe,
       // Cover, Uncover and Push, then its last slide's shapes in by Split and out by Split, then in by Shape and out
@@ -1195,7 +1225,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         progress(
           'a deck Drashti plays itself: its own Wipe, Cover, Uncover and Push, its shapes in and out by Split and by Shape',
         );
-        for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++) {
+        await rounds(SHORT_RUNS, 'the deck Drashti plays itself', async () => {
           await press(DECK_OWN_FIRST, 'slide', 0, goLive(deckOwnId, 0), SETTLE_MS);
           for (const own of DECK_OWN)
             await press(own.row, 'slide', DECK_OWN_MS, { type: 'next' }, DECK_OWN_MS + SETTLE_MS);
@@ -1203,20 +1233,21 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
             await press(row, 'nativeDeck', DECK_SPLIT_MS, { type: 'next' }, DECK_SPLIT_MS + SETTLE_MS);
           for (const row of [DECK_SHAPE_IN, DECK_SHAPE_OUT])
             await press(row, 'nativeDeck', DECK_SHAPE_MS, { type: 'next' }, DECK_SHAPE_MS + SETTLE_MS);
-        }
+        });
       }
       // The same four by a 4:3 deck between bars on the hall (Session 58, Q58-36), on two cores too.
       if (timeFor(FOUR_THREE_BLOCK_MS, 'a 4:3 deck Drashti plays itself, between bars')) {
         progress('a 4:3 deck Drashti plays itself between bars: its own Wipe, Cover, Uncover and Push');
-        for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++) {
+        await rounds(SHORT_RUNS, 'the 4:3 deck Drashti plays itself, between bars', async () => {
           await press(DECK_FOUR_THREE_FIRST, 'slide', 0, goLive(deckFourThreeId, 0), SETTLE_MS);
           for (const own of DECK_FOUR_THREE)
             await press(own.row, 'slide', DECK_OWN_MS, { type: 'next' }, DECK_OWN_MS + SETTLE_MS);
-        }
+        });
       }
       // Session 57's leftovers last (MS-1, DK-6, DK-2), as the click after 20 s still: each only when there is time
       // for all its runs, never marking the check out of time; and never in the two-core streaming check, which ran
-      // into its 14-minute stop with them (after3).
+      // into its 14-minute stop with them (after3; since Session 58 the cases have their own time, and the leftovers
+      // stay out to keep that check's runs as long as they are).
       const leftovers = leftoversIn({ streaming, twoCores });
       if (!leftovers)
         note(
@@ -1230,15 +1261,11 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         timeFor(2 * SHORT_RUNS * (DEFAULT_MS + TABLE_SETTLE_MS), 'table slides')
       ) {
         progress('table slides, 250 cells (MS-1)');
+        const tableId = table.id;
         for (const [k, name] of TABLE_CASES.entries())
-          for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++)
-            await press(
-              name,
-              'slide',
-              DEFAULT_MS,
-              goLive(table.id, k * 2 + (i % 2)),
-              DEFAULT_MS + TABLE_SETTLE_MS,
-            );
+          await rounds(SHORT_RUNS, name, (i) =>
+            press(name, 'slide', DEFAULT_MS, goLive(tableId, k * 2 + (i % 2)), DEFAULT_MS + TABLE_SETTLE_MS),
+          );
       }
       // DK-6: a jump to a deck slide Drashti plays itself, with a sound, on two hall screens.
       let second: { window: BrowserWindow; displayId: number } | null = null;
@@ -1255,20 +1282,20 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
           `a jump to a deck slide Drashti plays itself (DK-6), with a sound, on ${plural(second ? 2 : 1, 'hall screen')}`,
         );
         // The last slide first: none was ever next, so each picture is drawn for the first time.
-        for (let i = NATIVE_HUES.length - 1; i >= 0 && Date.now() < deadline; i--) {
+        await rounds(NATIVE_HUES.length, 'the jump to a deck slide Drashti plays itself', async (k) => {
           await away();
           await press(
             NATIVE_EFFECTS,
             'nativeDeck',
             NATIVE_STEP_MS,
-            goLive(nativeId, i),
+            goLive(nativeId, NATIVE_HUES.length - 1 - k),
             NATIVE_STEP_MS + NATIVE_SETTLE_MS,
             {
               also: [{ name: NATIVE_ARRIVES, track: 'slide', setMs: 0 }],
               firstEffectMs: NATIVE_MOTION[0]?.delayMs ?? 0,
             },
           );
-        }
+        });
         closeCase();
         const jumps = pressed.slice(jumpsFrom).filter((p) => p.name === NATIVE_EFFECTS);
         const first = jumps[0];
@@ -1286,7 +1313,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         closeCase();
         windows = await openWindowsWithoutPreloader(second?.displayId);
         progress(`the deck with the ${DK2_WINDOWS} (DK-2): ${windowsLine(windows)}`);
-        for (let i = 0; i < DK2_RUNS && Date.now() < deadline; i++) {
+        await rounds(DK2_RUNS, `the deck clicks with the ${DK2_WINDOWS} open`, async () => {
           await away();
           await press(
             `deck slide in (step 0), ${DK2_WINDOWS}`,
@@ -1297,7 +1324,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
           );
           await press(`deck click, ${DK2_WINDOWS}`, 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
           await press(`deck click, ${DK2_WINDOWS}`, 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
-        }
+        });
       }
       const trips = [...roundTrips].sort((a, b) => a - b);
       progress(
@@ -1330,8 +1357,10 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         nativeJump,
         windows,
         secondRuns,
-        // What could stop the cases (their budget, or Drashti up 12 minutes), and whether the leftovers were pressed.
+        // What could stop the cases (their budget, or Drashti up 22 minutes), and whether the leftovers were pressed.
         stops: until.by,
+        // How long Drashti had been up as they began (its start, the set-up and the import: a slow runner's said).
+        casesBeganUpMs: Math.round(upMs),
         leftovers,
         // C3 (Session 58): what the deck slide's clip pointed at added to each window's memory, run by run (MB).
         pointedMemory,
