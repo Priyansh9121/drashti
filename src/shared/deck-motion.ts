@@ -353,78 +353,6 @@ function polygon(points: readonly Point[], frame: Rect, evenodd = false): string
   return `polygon(${evenodd ? 'evenodd, ' : ''}${list.join(', ')})`;
 }
 
-/**
- * Shape's outline about the centre of `target`, `size` of the way from its middle (0) to its corners (1), as PowerPoint
- * draws it (its own movie, 13 Nov 2026): in the shape's own proportions, an ellipse, a box or a diamond; and for Plus,
- * two bars across the whole shape, each `size` of its half-width (or half-height) either side of its middle line.
- */
-function outline(shape: NonNullable<DeckEffect['shape']>, target: Rect, size: number): Point[] {
-  const cx = target.x + target.width / 2;
-  const cy = target.y + target.height / 2;
-  // Half the shape's width and height: the box at `size` 1.
-  const a = (target.width / 2) * size;
-  const b = (target.height / 2) * size;
-  switch (shape) {
-    case 'circle':
-      // Through the box's corners at `size` 1: √2 times its half-width and half-height.
-      return Array.from({ length: 72 }, (_, i): Point => {
-        const angle = (i / 72) * 2 * Math.PI;
-        return [cx + Math.SQRT2 * a * Math.cos(angle), cy + Math.SQRT2 * b * Math.sin(angle)];
-      });
-    case 'box':
-      return [
-        [cx - a, cy - b],
-        [cx + a, cy - b],
-        [cx + a, cy + b],
-        [cx - a, cy + b],
-      ];
-    case 'diamond':
-      // Through the box's corners at `size` 1.
-      return [
-        [cx, cy - 2 * b],
-        [cx + 2 * a, cy],
-        [cx, cy + 2 * b],
-        [cx - 2 * a, cy],
-      ];
-    case 'plus': {
-      // The bars reach the box's edges; past `size` 1 they cover it.
-      const w = target.width / 2;
-      const h = target.height / 2;
-      const x = Math.min(a, w);
-      const y = Math.min(b, h);
-      return [
-        [cx - x, cy - h],
-        [cx + x, cy - h],
-        [cx + x, cy - y],
-        [cx + w, cy - y],
-        [cx + w, cy + y],
-        [cx + x, cy + y],
-        [cx + x, cy + h],
-        [cx - x, cy + h],
-        [cx - x, cy + y],
-        [cx - w, cy + y],
-        [cx - w, cy - y],
-        [cx - x, cy - y],
-      ];
-    }
-  }
-}
-
-const corners = (r: Rect): Point[] => [
-  [r.x, r.y],
-  [r.x + r.width, r.y],
-  [r.x + r.width, r.y + r.height],
-  [r.x, r.y + r.height],
-];
-
-/** Everything of `target` outside `inner`: its corners, then the hole, joined through its first corner. */
-function around(target: Rect, inner: readonly Point[]): Point[] {
-  const outer = corners(target);
-  const [start] = outer;
-  const [first] = inner;
-  return start && first ? [...outer, start, ...inner, first] : outer;
-}
-
 /** Wheel's spokes, each sweeping clockwise from twelve o'clock (a spoke's own share of the turn). */
 function spokes(count: number, target: Rect, amount: number): Point[] {
   const cx = target.x + target.width / 2;
@@ -488,12 +416,12 @@ function bars(kind: NonNullable<DeckEffect['bars']>, target: Rect, amount: numbe
 const SPLIT_SOFTNESS = 0.135;
 
 /**
- * How wide PowerPoint draws Shape's soft edge, as a share of the way it travels (from the shape's middle to its corners):
- * its own movie of all sixteen (13 Nov 2026) fits 14.0-14.4 %, its edge's middle running evenly from half that width
- * before the middle to half past the corners, as a Split's. Drashti draws a hard edge where PowerPoint's is half-way
- * (deckWipeClip): close, not the same, so a slide using Shape keeps PowerPoint's video wherever one can be made.
+ * How wide PowerPoint draws Shape's soft edge, as a share of the way it travels (from the shape's middle to its
+ * corners, in its outline's own measure: shapeSize): its own movie of all sixteen at 1920 x 1080 (run 2, measured again
+ * 14 Nov 2026) fits one straight band 0.142 wide, its middle running evenly from half that width before the middle to
+ * half past the corners over the effect, as a Split's, with no shift in time.
  */
-const SHAPE_SOFTNESS = 0.14;
+const SHAPE_SOFTNESS = 0.142;
 
 /**
  * How much of a Split's shape shows at `at` along its axis, from −1 (one edge) through 0 (the middle) to 1 (the other
@@ -534,11 +462,155 @@ function splitStops(split: DeckSplit): [number, number][] {
 }
 
 /**
- * A Split's soft edges as a CSS mask over one of a group's rendered parts drawn at `frame`, at the same slide position
- * across the whole group (`target`): a linear gradient along its axis. '' for any other wipe, none, or while nothing is
- * hidden. (Its cost on the screens: the shape drawn through one more layer, the size of its own box, while it runs.)
+ * How far a point of a shape's box is from its middle (0) towards its corners (1) in the measure of Shape's outline, u
+ * and v each from −1 to 1 across the box, in its own proportions: as PowerPoint draws each (its own movie, 13 and
+ * 14 Nov 2026), the circle an ellipse through the box's corners, the box itself, the diamond through the corners, and
+ * the plus two bars across the whole box.
+ */
+function shapeSize(shape: NonNullable<DeckEffect['shape']>, u: number, v: number): number {
+  switch (shape) {
+    case 'circle':
+      return Math.hypot(u, v) / Math.SQRT2;
+    case 'box':
+      return Math.max(Math.abs(u), Math.abs(v));
+    case 'diamond':
+      return (Math.abs(u) + Math.abs(v)) / 2;
+    case 'plus':
+      return Math.min(Math.abs(u), Math.abs(v));
+  }
+}
+
+/** How much of a Shape shows where its outline's measure is `size` (shapeSize). */
+function shapeShowsAt(wipe: DeckShape, size: number): number {
+  // How far its edge travels before it reaches here.
+  const way = wipe.inward ? 1 - size : size;
+  const passed = Math.min(1, Math.max(0, ((1 + SHAPE_SOFTNESS) * wipe.progress - way) / SHAPE_SOFTNESS));
+  return wipe.leaving ? 1 - passed : passed;
+}
+
+/**
+ * How much of a Shape's box shows at (u, v), each from −1 to 1 across it (0 its middle): 0 to 1. Any other wipe, or
+ * none, shows it whole. As PowerPoint draws it (its own movie at 1920 × 1080, 14 Nov 2026): its outline's edge, soft,
+ * travels from the middle out (from the corners in, for its "In") as a Split's edges do, a box's and a plus's corners
+ * square; what it passes shows as the shape comes in, and is hidden as it leaves. The masks drawn (deckWipeMask, and
+ * deckWipeInnerMask on the part within) let through exactly this.
+ */
+export function deckShapeShows(wipe: DeckWipe | null, u: number, v: number): number {
+  if (!wipe || !('shape' in wipe)) return 1;
+  return shapeShowsAt(wipe, shapeSize(wipe.shape, u, v));
+}
+
+/** Stops without those in the middle of an even stretch, which add nothing. */
+function withoutEven(all: readonly [number, number][]): [number, number][] {
+  return all.filter(
+    ([, shows], i) =>
+      i === 0 || i === all.length - 1 || all[i - 1]?.[1] !== shows || all[i + 1]?.[1] !== shows,
+  );
+}
+
+/**
+ * Where a soft edge's look bends between 0 and 1 of the way from the middle (`shows` there, to 4 decimals): at the
+ * middle, at the edge's two sides, and at the end; straight between them.
+ */
+function edgeStops(
+  inward: boolean,
+  progress: number,
+  softness: number,
+  shows: (at: number) => number,
+): [number, number][] {
+  const reach = (1 + softness) * progress;
+  const bends = (inward ? [1 - reach, 1 - reach + softness] : [reach - softness, reach]).filter(
+    (d) => d > 0 && d < 1,
+  );
+  return [0, ...bends, 1].map((d): [number, number] => [d, Math.round(shows(d) * 10_000) / 10_000]);
+}
+
+const ink = (shows: number) => `rgb(0 0 0 / ${String(shows)})`;
+const fixed = (value: number, places = 3) => String(Math.round(value * 10 ** places) / 10 ** places || 0);
+
+/**
+ * A straight ramp across a shape's box as a CSS linear gradient on a part drawn at `frame`: `stops` along a measure
+ * from −1 to 1 across the box (`target`) that changes by `per` (x right, y down) each px from its middle.
+ */
+function rampGradient(per: Point, stops: readonly [number, number][], target: Rect, frame: Rect): string {
+  const rate = Math.hypot(per[0], per[1]);
+  const [ex, ey] = [per[0] / rate, per[1] / rate];
+  // The gradient's line runs through the part's centre, as long as the part's extent along it (CSS Images 3).
+  const length = Math.abs(frame.width * ex) + Math.abs(frame.height * ey);
+  const offset =
+    (target.x + target.width / 2 - frame.x - frame.width / 2) * ex +
+    (target.y + target.height / 2 - frame.y - frame.height / 2) * ey;
+  // CSS's angle: from twelve o'clock, clockwise.
+  const angle = (Math.atan2(ex, -ey) * 180) / Math.PI;
+  const at = (m: number) => `${fixed(((m / rate + offset) / length + 0.5) * 100)}%`;
+  return `linear-gradient(${fixed(angle, 4)}deg, ${stops.map(([m, shows]) => `${ink(shows)} ${at(m)}`).join(', ')})`;
+}
+
+/**
+ * A Shape's soft edge as CSS masks over one of a group's rendered parts drawn at `frame`, at the same slide position
+ * across the whole group (`target`): '' while nothing is hidden. A Circle's is one radial gradient on the part. A Box's,
+ * a Plus's and a Diamond's edge is two straight ramps meeting at square corners (PowerPoint's: its movie shows as much
+ * on the corners' diagonal as anywhere along the edge), which one element's mask cannot draw (its layers only add or
+ * multiply); so each ramp is drawn beside its own sides, on the part (`outer`) and on an element within it (`inner`),
+ * a wedge about the box's middle (a repeating conic gradient) letting everything through beside the other sides, and
+ * the two masks multiply to exactly what PowerPoint shows. (Their cost on the screens: the shape drawn through one more
+ * layer the size of its box, two for a Box, a Plus or a Diamond, while it runs.)
+ */
+function shapeMasks(wipe: DeckShape, target: Rect, frame: Rect): { outer: string; inner: string } {
+  const none = { outer: '', inner: '' };
+  const a = target.width / 2;
+  const b = target.height / 2;
+  if (!(a > 0) || !(b > 0) || !(frame.width > 0) || !(frame.height > 0)) return none;
+  const half = edgeStops(wipe.inward, wipe.progress, SHAPE_SOFTNESS, (size) => shapeShowsAt(wipe, size));
+  if (half.every(([, shows]) => shows >= 1)) return none;
+  const x = target.x + a - frame.x;
+  const y = target.y + b - frame.y;
+  if (wipe.shape === 'circle') {
+    const stops = withoutEven(half).map(([size, shows]) => `${ink(shows)} ${fixed(size * 100)}%`);
+    return {
+      outer: `radial-gradient(${fixed(Math.SQRT2 * a)}px ${fixed(Math.SQRT2 * b)}px at ${fixed(x)}px ${fixed(y)}px, ${stops.join(', ')})`,
+      inner: '',
+    };
+  }
+  const ramp = withoutEven([
+    ...half
+      .slice(1)
+      .map(([d, shows]): [number, number] => [-d, shows])
+      .reverse(),
+    ...half,
+  ]);
+  // Lets everything through over `width` degrees from `from` (clockwise from twelve o'clock), and again half a turn on.
+  const wedge = (from: number, width: number) =>
+    `repeating-conic-gradient(from ${fixed(from, 4)}deg at ${fixed(x)}px ${fixed(y)}px, ${ink(1)} 0deg, ${ink(1)} ${fixed(width, 4)}deg, ${ink(0)} ${fixed(width, 4)}deg, ${ink(0)} 180deg)`;
+  const beside = (opening: string, per: Point) => `${opening}, ${rampGradient(per, ramp, target, frame)}`;
+  // From twelve o'clock to the box's top right corner: the wedges above and below run from −corner to corner.
+  const corner = (Math.atan2(a, b) * 180) / Math.PI;
+  const aboveAndBelow = wedge(-corner, 2 * corner);
+  const leftAndRight = wedge(corner, 180 - 2 * corner);
+  switch (wipe.shape) {
+    case 'box':
+      // max(|u|, |v|): |u| beside the left and right sides, |v| above and below.
+      return { outer: beside(aboveAndBelow, [1 / a, 0]), inner: beside(leftAndRight, [0, 1 / b]) };
+    case 'plus':
+      // min(|u|, |v|): |u| above and below, |v| beside the left and right sides.
+      return { outer: beside(leftAndRight, [1 / a, 0]), inner: beside(aboveAndBelow, [0, 1 / b]) };
+    case 'diamond':
+      // (|u| + |v|) / 2: |u + v| / 2 where u and v have the same sign (bottom right, top left), else |u − v| / 2.
+      return {
+        outer: beside(wedge(0, 90), [1 / (2 * a), 1 / (2 * b)]),
+        inner: beside(wedge(90, 90), [1 / (2 * a), -1 / (2 * b)]),
+      };
+  }
+}
+
+/**
+ * A Split's or a Shape's soft edges as a CSS mask over one of a group's rendered parts drawn at `frame`, at the same
+ * slide position across the whole group (`target`): for a Split, a linear gradient along its axis; for a Shape, as
+ * shapeMasks says. '' for any other wipe, none, or while nothing is hidden. (Its cost on the screens: the shape drawn
+ * through one more layer, the size of its own box, while it runs.)
  */
 export function deckWipeMask(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
+  if (wipe && 'shape' in wipe) return shapeMasks(wipe, target, frame).outer;
   if (!wipe || !('axis' in wipe)) return '';
   const across = wipe.axis === 'x';
   const length = across ? frame.width : frame.height;
@@ -549,23 +621,24 @@ export function deckWipeMask(wipe: DeckWipe | null, target: Rect, frame: Rect): 
   const half = (across ? target.width : target.height) / 2;
   const start = across ? frame.x : frame.y;
   const at = (d: number) => `${String(Math.round(((middle + d * half - start) / length) * 100_000) / 1000)}%`;
-  const ink = (shows: number) => `rgb(0 0 0 / ${String(Math.round(shows * 10_000) / 10_000)})`;
-  return `linear-gradient(${across ? 'to right' : 'to bottom'}, ${stops.map(([d, shows]) => `${ink(shows)} ${at(d)}`).join(', ')})`;
+  const inkOf = (shows: number) => `rgb(0 0 0 / ${String(Math.round(shows * 10_000) / 10_000)})`;
+  return `linear-gradient(${across ? 'to right' : 'to bottom'}, ${stops.map(([d, shows]) => `${inkOf(shows)} ${at(d)}`).join(', ')})`;
 }
 
-/** Clip all of a group's rendered parts at the same slide position. A Split is drawn by its mask (deckWipeMask). */
+/**
+ * The mask of the element within a part (render/NativeDeckElement.tsx's DeckTarget), multiplying deckWipeMask's: a
+ * Box's, a Plus's or a Diamond's other ramp (shapeMasks). '' for anything else.
+ */
+export function deckWipeInnerMask(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
+  return wipe && 'shape' in wipe ? shapeMasks(wipe, target, frame).inner : '';
+}
+
+/**
+ * Clip all of a group's rendered parts at the same slide position. A Split and a Shape are drawn by their masks
+ * (deckWipeMask).
+ */
 export function deckWipeClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
-  if (!wipe) return '';
-  if ('shape' in wipe) {
-    // The edge where PowerPoint's soft one is half-way: SHAPE_SOFTNESS / 2 behind its leading side.
-    const reach = (1 + SHAPE_SOFTNESS) * wipe.progress - SHAPE_SOFTNESS / 2;
-    const size = Math.max(0, wipe.inward ? 1 - reach : reach);
-    // What the edges have passed shows coming in and is hidden leaving: inside the outline for an entrance's Out and
-    // an exit's In, outside it (a hole) for an entrance's In and an exit's Out.
-    return wipe.inward === wipe.leaving
-      ? polygon(outline(wipe.shape, target, size), frame)
-      : polygon(around(target, outline(wipe.shape, target, size)), frame, true);
-  }
+  if (!wipe || 'shape' in wipe) return '';
   if ('spokes' in wipe) return polygon(spokes(wipe.spokes, target, wipe.amount), frame);
   if ('bars' in wipe) {
     const points = bars(wipe.bars, target, wipe.amount);

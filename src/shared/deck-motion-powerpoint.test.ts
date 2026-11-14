@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckEffect } from './deck';
-import { deckMotionFrame, deckShapeShows, deckSplitShows, deckWipeClip } from './deck-motion';
+import { deckMotionFrame, deckShapeShows, deckSplitShows } from './deck-motion';
 
 /*
  * PowerPoint's own movie of the comparison deck, measured frame by frame (Session 57, 13 Nov 2026: the lead's run 1,
@@ -278,38 +278,13 @@ describe('Split as PowerPoint’s own movie shows it', () => {
 });
 
 describe('Shape as PowerPoint’s own movie shows it (run 2)', () => {
-  /** A clip `polygon([evenodd, ]x% y%, …)` of the box: where each sample row crosses its edges, and which way. */
-  function crossingsOf(clip: string): (y: number) => [number, number][] {
-    const body = /^polygon\((.*)\)$/u.exec(clip)?.[1] ?? '';
-    const points = body
-      .replace(/^evenodd,\s*/u, '')
-      .split(',')
-      .map((pair) =>
-        pair
-          .trim()
-          .split(/\s+/u)
-          .map((v) => Number.parseFloat(v) / 100),
-      )
-      .map(([x = 0, y = 0]): [number, number] => [x * box.width, y * box.height]);
-    return (y) => {
-      const list: [number, number][] = [];
-      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-        const [xi = 0, yi = 0] = points[i] ?? [];
-        const [xj = 0, yj = 0] = points[j] ?? [];
-        if (yi > y !== yj > y) list.push([((xj - xi) * (y - yi)) / (yj - yi) + xi, yj > yi ? 1 : -1]);
-      }
-      return list;
-    };
-  }
-
   /**
    * What Drashti draws of the box at `ms`: how much of it shows, and its width and height from how far it spreads
-   * (√12 times its standard deviation along each axis, as the movie's frames were measured), 4 × 4 points a pixel.
+   * (√12 times its standard deviation along each axis, as the movie's frames were measured), 4 × 4 points a pixel,
+   * each weighed by how much of it shows there (deckShapeShows: Shape's soft edge, as its masks draw it).
    */
   function drawn(one: DeckEffect, ms: number): { shows: number; w: number; h: number } {
-    const clip = deckWipeClip(deckMotionFrame([one], 1, ms, box, screen).wipe, box, box);
-    const evenodd = clip.startsWith('polygon(evenodd');
-    const crossings = crossingsOf(clip);
+    const { wipe } = deckMotionFrame([one], 1, ms, box, screen);
     let mass = 0;
     let sx = 0;
     let sy = 0;
@@ -317,22 +292,14 @@ describe('Shape as PowerPoint’s own movie shows it (run 2)', () => {
     let syy = 0;
     for (let row = 0; row < box.height * 4; row++) {
       const y = (row + 0.5) / 4;
-      const list = crossings(y);
       for (let column = 0; column < box.width * 4; column++) {
         const x = (column + 0.5) / 4;
-        let odd = false;
-        let winding = 0;
-        for (const [at, way] of list)
-          if (x < at) {
-            odd = !odd;
-            winding += way;
-          }
-        if (evenodd ? !odd : winding === 0) continue;
-        mass++;
-        sx += x;
-        sy += y;
-        sxx += x * x;
-        syy += y * y;
+        const weight = deckShapeShows(wipe, (2 * x) / box.width - 1, (2 * y) / box.height - 1);
+        mass += weight;
+        sx += weight * x;
+        sy += weight * y;
+        sxx += weight * x * x;
+        syy += weight * y * y;
       }
     }
     const spread = (s: number, ss: number) => Math.sqrt(12 * Math.max(0, ss / mass - (s / mass) ** 2));
@@ -340,16 +307,16 @@ describe('Shape as PowerPoint’s own movie shows it (run 2)', () => {
   }
 
   /**
-   * Measured frames: ms after the click, how much of the box shows, and its width and height. PowerPoint's edge is
-   * soft (14 % of the way it travels) and Drashti's hard, half-way through it: so close, not the same.
+   * Measured frames: ms after the click, how much of the box shows, and its width and height. Drashti's edge is soft
+   * as PowerPoint's (0.142 of the way it travels): within a hundredth of the box and a pixel.
    */
   function expectClose(one: DeckEffect, samples: readonly [number, number, number, number][]): void {
     for (const [ms, shows, w, h] of samples) {
       const ours = drawn(one, ms);
       const at = `${String(ms)} ms after the click`;
-      expect(Math.abs(ours.shows - shows), `${at}: how much shows`).toBeLessThanOrEqual(0.015);
-      expect(Math.abs(ours.w - w), `${at}: width`).toBeLessThanOrEqual(2);
-      expect(Math.abs(ours.h - h), `${at}: height`).toBeLessThanOrEqual(2);
+      expect(Math.abs(ours.shows - shows), `${at}: how much shows`).toBeLessThanOrEqual(0.01);
+      expect(Math.abs(ours.w - w), `${at}: width`).toBeLessThanOrEqual(1);
+      expect(Math.abs(ours.h - h), `${at}: height`).toBeLessThanOrEqual(1);
     }
   }
 
@@ -453,7 +420,9 @@ describe('Shape’s soft edge as PowerPoint’s own movie shows it at 1920 × 10
    * half the box shows, in that measure (fitted over every pixel of the frame); how much shows 0.05 nearer the middle and
    * 0.05 further out (every pixel there, averaged); and how much shows on the box's diagonal where half shows: as much
    * as anywhere else, so a box's and a plus's corners are square (two gradients multiplied would show a quarter there,
-   * or three quarters).
+   * or three quarters). Drashti must be within 0.08 of each (about 1 % of the way, a pixel at 1920 × 1080 across the
+   * box's height, 7 ms: the movie's frame times step by 1/600 s and its frames' pace wavers by a few ms). A hard edge
+   * misses 0.05 either side by 0.15, a band 0.10 or 0.20 wide by 0.10 or more, corners of two gradients by 0.25.
    */
   type Edge = [ms: number, half: number, nearer: number, further: number, diagonal: number];
   type Outline = NonNullable<DeckEffect['shape']>;
@@ -658,12 +627,12 @@ describe('Shape’s soft edge as PowerPoint’s own movie shows it at 1920 × 10
         expect(
           Math.abs(onDiagonal - diagonal),
           `${name}: on the diagonal where half shows`,
-        ).toBeLessThanOrEqual(0.05);
-        expect(Math.abs(offIt - 0.5), `${name}: where half shows`).toBeLessThanOrEqual(0.05);
+        ).toBeLessThanOrEqual(0.08);
+        expect(Math.abs(offIt - 0.5), `${name}: where half shows`).toBeLessThanOrEqual(0.08);
         for (const value of shows(half - 0.05))
-          expect(Math.abs(value - nearer), `${name}: 0.05 nearer the middle`).toBeLessThanOrEqual(0.05);
+          expect(Math.abs(value - nearer), `${name}: 0.05 nearer the middle`).toBeLessThanOrEqual(0.08);
         for (const value of shows(half + 0.05))
-          expect(Math.abs(value - further), `${name}: 0.05 further out`).toBeLessThanOrEqual(0.05);
+          expect(Math.abs(value - further), `${name}: 0.05 further out`).toBeLessThanOrEqual(0.08);
       }
   });
 
