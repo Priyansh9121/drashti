@@ -89,6 +89,39 @@ it.each(['legacy', 'current'] as const)('restores the reset background from a %s
   }
 });
 
+it('restores a save from before TR-6 with LIVE on the slide row exactly as before: the LIVE row’s points', () => {
+  // Review LOW-7 of d487b875 (TM-9): a save with no sourceItemId falls back to the LIVE row, here the slide's, so the
+  // reset row's video comes back between the file's points, as the code before TR-6 put it back.
+  const x = fixture();
+  const before = x.engine();
+  expect(x.play(before, 'reset').ok).toBe(true);
+  expect(x.play(before, 'words-row').ok).toBe(true);
+  const saved = savedFrom(before.current, 'placeholder-run');
+  const bg = saved.background;
+  if (bg?.kind !== 'media') throw new Error('The background was not put up.');
+  expect(bg).toMatchObject({ sourceItemId: 'reset' });
+  const { sourceItemId: _origin, ...legacy } = bg;
+
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-trim-background-'));
+  try {
+    const files = { state: join(dir, 'state.json'), cleanMark: join(dir, 'clean.json') };
+    writeFileSync(files.state, JSON.stringify({ ...saved, background: legacy }));
+    const request = toRestore(files);
+    if (!request) throw new Error('The saved show could not be read.');
+    expect(request.playlist).toMatchObject({ itemId: 'words-row' });
+    expect(request.background).not.toHaveProperty('sourceItemId');
+    const after = x.engine();
+    expect(after.restore(request).background).toBe(true);
+    expect(after.current.layers.background).toMatchObject({
+      mediaId: 'video',
+      sourceItemId: 'words-row',
+      clip: { startMs: x.markers.startMs, endMs: x.markers.endMs },
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 it('counts a row’s video as live from its row, or while that row is LIVE and the same video is chosen again', () => {
   const x = fixture();
   const engine = x.engine();
