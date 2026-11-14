@@ -193,6 +193,13 @@ export const IPC = {
     /** main -> operator: the switch changed. */
     safeAreasChanged: 'app:safe-areas-changed',
     /**
+     * Where Chromium draws without a graphics chip (Session 58, WU-1): whether the LIVE picture skips its warm-up, as
+     * the outputs and the stream's page do; false until Chromium has said how it draws.
+     */
+    noGpu: 'app:no-gpu',
+    /** main -> operator: Chromium has said it draws without a graphics chip: the LIVE picture's warm-up ends there. */
+    noGpuChanged: 'app:no-gpu-changed',
+    /**
      * Single-letter keys (Session 37, WCAG 2.1.4): whether B, . and ? act (kept with the library; on unless
      * turned off), and turning them on or off (never in Simple Mode).
      */
@@ -1189,6 +1196,7 @@ export interface InvokeContract {
   [IPC.app.simpleFirstRun]: { args: []; result: boolean };
   [IPC.app.simpleFirstRunSeen]: { args: []; result: null };
   [IPC.app.safeAreas]: { args: []; result: boolean };
+  [IPC.app.noGpu]: { args: []; result: boolean };
   [IPC.app.singleKeys]: { args: []; result: boolean };
   [IPC.app.setSingleKeys]: {
     args: [on: boolean];
@@ -1704,6 +1712,7 @@ export interface EventContract {
   [IPC.library.changed]: { at: number; what: LibraryChange };
   [IPC.library.extrasChanged]: { on: boolean };
   [IPC.app.safeAreasChanged]: { on: boolean };
+  [IPC.app.noGpuChanged]: { on: true };
   [IPC.app.singleKeysChanged]: { on: boolean };
   [IPC.playlists.changed]: { at: number };
   [IPC.playlists.smartChanged]: SmartPlaylistView[];
