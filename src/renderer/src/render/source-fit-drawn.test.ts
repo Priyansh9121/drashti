@@ -36,6 +36,11 @@ function box(runs: TextRun[] | undefined, sourceFit?: typeof SHRUNK): TextElemen
 }
 
 const drawn = (el: TextElement) => renderToStaticMarkup(createElement(ElementView, { el, media: 'still' }));
+/** Each line div's own font size as drawn (null: none of its own, the box's). */
+const lineSizes = (html: string) =>
+  [...html.matchAll(/<div data-line="\d+"([^>]*)>/gu)].map(
+    ([, attributes = '']) => /font-size:calc\(var\(--fit, 1\) \* ([\d.]+)px\)/u.exec(attributes)?.[1] ?? null,
+  );
 /** The box's own line spacing, and each line's, as drawn. */
 const boxLine = (html: string) =>
   /data-element="placeholder-shrunk"[^>]*?line-height:([^;"]+)/u.exec(html)?.[1];
@@ -98,14 +103,32 @@ describe('a deck’s box drawn as PowerPoint’s own shrink left its line spacin
       { text: 'Placeholder ', size: 24, paragraph },
       { text: 'mixed line C', size: 32, paragraph },
     ];
-    const el = { ...box(runs), style: { ...box(runs).style, fontSize: (40 * 4) / 3 } };
-    const lineSizes = (html: string) =>
-      [...html.matchAll(/<div data-line="\d+"([^>]*)>/gu)].map(
-        ([, attributes = '']) =>
-          /font-size:calc\(var\(--fit, 1\) \* ([\d.]+)px\)/u.exec(attributes)?.[1] ?? null,
-      );
+    // A deck's own box: its source shape's ID, as the deck reader sets it.
+    const el = { ...box(runs), sourceShapeId: '3', style: { ...box(runs).style, fontSize: (40 * 4) / 3 } };
     expect(lineSizes(drawn(el))).toEqual([String((40 * 4) / 3), '24', '32']);
     // Words whose runs carry no size of their own keep the box's size, as before.
-    expect(lineSizes(drawn(box([{ text: 'Placeholder plain words', paragraph }])))).toEqual([null]);
+    expect(
+      lineSizes(drawn({ ...box([{ text: 'Placeholder plain words', paragraph }]), sourceShapeId: '3' })),
+    ).toEqual([null]);
+  });
+
+  it('draws a Drashti-made box exactly as before, even where each of its lines was given one size (Q58-54)', () => {
+    // An operator who resized whole lines in Drashti's editor: every run has its own size, but the box is no deck's
+    // (no source shape), so its lines lay out as they did before alpha.18 and a prepared show's words never move.
+    const paragraph = { align: 'left' as const };
+    const runs: TextRun[] = [
+      { text: 'Placeholder heading made in Drashti\n', size: 64, paragraph },
+      { text: 'Placeholder smaller line made in Drashti', size: 32, paragraph },
+    ];
+    const made = { ...box(runs), style: { ...box(runs).style, fontSize: 64 } };
+    expect(made).not.toHaveProperty('sourceShapeId');
+    const html = drawn(made);
+    expect(lineSizes(html)).toEqual([null, null]);
+    // Each run as written, at the box's fit only.
+    expect(
+      [...html.matchAll(/<span data-run="\d+"[^>]*?font-size:calc\(var\(--fit, 1\) \* ([\d.]+)px\)/gu)].map(
+        ([, px]) => px,
+      ),
+    ).toEqual(['64', '32']);
   });
 });
