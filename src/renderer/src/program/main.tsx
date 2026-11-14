@@ -14,7 +14,14 @@ import { SceneBoundary } from '../render/SceneBoundary';
 import { WarmUp } from '../render/WarmUp';
 import { Preloader } from '../output/Preloader';
 import { applyCameraChoice, listDevices } from './camera';
-import { setCaptureSize, startCapture, stopEncoder, stopPreview } from './capture';
+import {
+  repaintUnseen,
+  setCaptureSize,
+  showOnScreen,
+  startCapture,
+  stopEncoder,
+  stopPreview,
+} from './capture';
 import { useProgram } from './program-store';
 import { ProgramView } from './ProgramView';
 import { StreamSound } from './sound';
@@ -24,6 +31,7 @@ import { setDrawsWithoutChip } from '../render/chipless';
 import { ClockStyleContext } from '../render/clock-style';
 import { setLiveWindowSize } from '../render/live-window';
 import { useStopFade } from '../render/StopFade';
+import { framesOnTime } from '../render/frames-on-time';
 
 /*
  * The stream's page: the Program, drawn off screen at the stream's size.
@@ -33,6 +41,15 @@ import { useStopFade } from '../render/StopFade';
  */
 
 const CANVAS = { width: 1920, height: 1080 };
+/** The longest this page waits for its frames to come on time once its show is drawn: then it is on screen anyway. */
+const ON_SCREEN_MS = 2000;
+/** How many times it waits for its frames on time while a slide still waits for its pictures (at least 0.2 s each). */
+const WAITING_ROUNDS = 20;
+/** A slide of the show still waiting for its pictures (render/SlideLayerView.tsx: fading, its fade not begun). */
+const slideWaiting = (): boolean =>
+  document.querySelector(
+    '[data-testid="program-root"] [data-layer="slide"][data-fading="true"]:not([data-fade-start])',
+  ) !== null;
 const sound = new StreamSound();
 
 /** Do what the context asks: the size and the sound's settings at once, then the camera and the sound input. */
@@ -133,6 +150,36 @@ function Program() {
       if (c) apply(c);
     });
   }, []);
+  // The stream starts from the first frame that shows the show (Session 58, h-black2): once the show is drawn here
+  // (Drashti stopped: its black), a slide that waits for its pictures (render/SlideLayerView.tsx, 3 s at most) among it,
+  // and this page's frames have come on time since (an unseen spot repainted at each, so each is a frame drawn:
+  // frames-on-time.ts), it is on screen, and the encoder takes the page's frames from then (capture.ts showOnScreen).
+  const showDrawn = Boolean(state && ready && context?.picture);
+  useEffect(() => {
+    if (!showDrawn) return;
+    const run = { live: true };
+    let request = 0;
+    const drawnFrames = () =>
+      framesOnTime({
+        maxMs: ON_SCREEN_MS,
+        each: () => {
+          repaintUnseen();
+        },
+        live: () => run.live,
+        keep: (r) => {
+          request = r;
+        },
+      });
+    void (async () => {
+      for (let round = 0; slideWaiting() && round < WAITING_ROUNDS; round++) await drawnFrames();
+      await drawnFrames();
+      if (run.live) showOnScreen();
+    })();
+    return () => {
+      run.live = false;
+      cancelAnimationFrame(request);
+    };
+  }, [showDrawn]);
   // Drashti's own sound follows the show, when it goes into the stream.
   useEffect(() => {
     sound.setOwnSound(context?.mixOwnSound ?? false, state);
