@@ -47,7 +47,15 @@ import { LOWER_THIRD_FONTS } from '../../../shared/lower-third-fonts';
 import { commit, noteOutside, startEditing, useEditor } from './editor-store';
 import { MissingFontNote } from './FontOptions';
 import type { BoxPatch, TextPatch } from './ops';
-import { deleteElements, duplicateElements, findSlide, mapElements, setShapeFill, styleBox } from './ops';
+import {
+  boxSettings,
+  deleteElements,
+  duplicateElements,
+  findSlide,
+  mapElements,
+  setShapeFill,
+  styleBox,
+} from './ops';
 import { restyle, restyleAll, selectedLook } from './runs-doc';
 import { crowdedIndicSpacing } from './line-spacing';
 import { SlidePanel } from './SlidePanel';
@@ -507,9 +515,7 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
     const now = useEditor.getState().doc;
     if (now)
       commit(
-        mapElements(now, slideId, [el.id], (e) =>
-          e.kind === 'text' ? { ...e, style: { ...e.style, ...box } } : e,
-        ),
+        mapElements(now, slideId, [el.id], (e) => (e.kind === 'text' ? boxSettings(e, box) : e)),
         coalesce ? { coalesce } : {},
       );
   };

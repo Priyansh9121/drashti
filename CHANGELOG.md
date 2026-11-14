@@ -19,6 +19,7 @@ Update after a sabha, and update Main and nodes together.
 - On a two-core Windows computer, an import while streaming no longer holds the library for seconds, which could hold up a slide change for up to 2 seconds.
 - On a Mac the opening plays its full two seconds smoothly: it waits, black, until Drashti's window has readied the computer's graphics.
 - Clicking a deck slide's row starts its first animation at once on every screen and the stream: the slide the mouse rests on is made ready ahead, and the stream starts a deck's slides on time by Next too.
+- A PDF page with many small clipped or masked drawings can now be edited: each drawing is a picture you can move or remove.
 - The stream, the decks Drashti plays itself, the start and the Edit slides fixes since alpha.17 (this list is written in full before the release).
 
 ## 1.0.0-alpha.17 (13 Nov 2026)

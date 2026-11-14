@@ -79,6 +79,32 @@ describe('lower thirds in the library', () => {
     expect(repo.get(id)).not.toHaveProperty('outAnimation');
   });
 
+  it('keeps a look whose moving background a later Drashti added, leaving out only that background (Q58-30)', () => {
+    const db = openDatabase(':memory:');
+    const repo = new LowerThirdRepo(db);
+    const id = repo.create(input('Placeholder'));
+    const look = {
+      ...DEFAULT_LOWER_THIRD_LOOK,
+      align: 'centre' as const,
+      style: 'ribbon' as const,
+      accent: '#ff9900',
+      font: 'Hind' as const,
+    };
+    const keep = (kept: Record<string, unknown>) => {
+      db.prepare('UPDATE lower_thirds SET look = ? WHERE id = ?').run(JSON.stringify(kept), id);
+    };
+    // As a later Drashti keeps it: a background this one has not got, beside the seconds it stays up.
+    keep({ ...look, motion: 'placeholder-later-background', seconds: 15 });
+    expect(repo.get(id)).toEqual({ id, ...input('Placeholder'), look, seconds: 15 });
+    // Anything else it cannot read still reads as the default look, as before: the look stays strict.
+    keep({ ...look, motion: 'placeholder-later-background', size: 99 });
+    expect(repo.get(id)?.look).toEqual(DEFAULT_LOWER_THIRD_LOOK);
+    keep({ ...look, motion: 7 });
+    expect(repo.get(id)?.look).toEqual(DEFAULT_LOWER_THIRD_LOOK);
+    keep({ ...look, motion: 'sweep', placeholderLaterField: true });
+    expect(repo.get(id)?.look).toEqual(DEFAULT_LOWER_THIRD_LOOK);
+  });
+
   it('reads a lower third kept before the studio as it was: no style, no seconds, its out its in played backwards', () => {
     const db = openDatabase(':memory:');
     const repo = new LowerThirdRepo(db);
