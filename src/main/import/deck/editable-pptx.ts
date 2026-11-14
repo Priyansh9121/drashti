@@ -762,16 +762,27 @@ function pointsInSlidePixels(points: number, scale: number): number {
   return ((points / 100) * 4 * scale) / 3;
 }
 
-function paragraphSpace(node: Node, edgeSize: number, scale: number): number | undefined {
+/**
+ * A paragraph's space before or after, in slide pixels: points as they are; a percentage a share of the LINE, as
+ * PowerPoint spaces it (PF-12, measured on PowerPoint's own stills 14 Nov 2026: 40 pt Arial lines 48 pt apart, and 100%
+ * before adds 48 pt, not 40): the edge line's size times the paragraph's line height (1.2 by default), or its exact line.
+ */
+function paragraphSpace(
+  node: Node,
+  edgeSize: number,
+  scale: number,
+  paragraph: TextParagraph,
+): number | undefined {
   const points = attr(child(node, 'spcPts'), 'val');
   const percent = attr(child(node, 'spcPct'), 'val');
   if (points === undefined && percent === undefined) return undefined;
+  const line = paragraph.lineHeightPx ?? (paragraph.lineHeight ?? DEFAULT_LINE_HEIGHT) * edgeSize;
   const pixels =
     points !== undefined
       ? pointsInSlidePixels(number(points, 0), scale)
       : (percent?.endsWith('%')
           ? number(percent.replace(/%$/u, ''), 0) / 100
-          : number(percent, 0) / 100_000) * edgeSize;
+          : number(percent, 0) / 100_000) * line;
   return round(Math.max(0, Math.min(16_384, pixels)));
 }
 
@@ -797,8 +808,8 @@ function keepParagraphSpacing(
     }
   }
   const lastSize = largest || 32 * scale;
-  const spaceBefore = paragraphSpace(before, firstSize ?? lastSize, scale);
-  const spaceAfter = paragraphSpace(after, lastSize, scale);
+  const spaceBefore = paragraphSpace(before, firstSize ?? lastSize, scale, paragraph);
+  const spaceAfter = paragraphSpace(after, lastSize, scale, paragraph);
   if (spaceBefore !== undefined) paragraph.spaceBefore = spaceBefore;
   if (spaceAfter !== undefined) paragraph.spaceAfter = spaceAfter;
 }

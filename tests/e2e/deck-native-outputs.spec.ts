@@ -32,6 +32,14 @@ const current = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide);
 const target = (root: Page | Locator, shape: number) => root.locator(`[data-deck-motion-target="${shape}"]`);
 
+/**
+ * Whether an output draws without a graphics chip (its warm-up skipped, as on CI's Windows): a deck's Wipe then draws
+ * PowerPoint's band on the incoming slide's band box, moved; with a chip (CI's Mac) as a mask on the slide's own box
+ * (render/chipless.ts, Session 58).
+ */
+const drawsWithoutChip = async (page: Page): Promise<boolean> =>
+  (await page.getByTestId('output-root').getAttribute('data-warm-up')) === 'skipped';
+
 /** Generated shapes with a transparent slide background, so the key can prove the click's changing opacity. */
 function outputDeck(): Buffer {
   const shape = (id: number, color: string, x: number, y: number, width: number, height: number) =>
@@ -144,14 +152,50 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       const entryAt = entered?.shownAt ?? 0;
       expect(clicked?.stepAt).toBe(entryAt + WIPE_MS);
       const incoming = hall.locator('[data-layer="slide"] [data-slide-in]');
+      const band = incoming.locator('[data-band]');
       await holdClock(app, entryAt + WIPE_MS / 2);
-      // A deck's Wipe: the incoming slide up to a hard edge (a clip), no mask (Q57-28).
-      await expect(incoming).not.toHaveCSS('clip-path', 'none');
-      await expect(incoming).toHaveCSS('mask-image', 'none');
+      // A deck's Wipe (Session 58): PowerPoint's soft band, no clip. Without a graphics chip a mask on the incoming
+      // slide's band box, which moves; with one a mask on the slide's own box.
+      await expect(incoming).toHaveCSS('clip-path', 'none');
+      if (await drawsWithoutChip(hall)) {
+        await expect(incoming).toHaveCSS('mask-image', 'none');
+        await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
+        await expect(band).not.toHaveCSS('transform', 'none');
+      } else {
+        await expect(incoming).toHaveCSS('mask-image', /^linear-gradient\(/u);
+        await expect(band).toHaveCSS('mask-image', 'none');
+      }
+      // Half-way up from the bottom, as the hall draws it: through the band, the incoming slide's full-slide shape over
+      // the outgoing slide's blue box, mixed as PowerPoint's half cosine has them (a hard edge half-way would show the
+      // box whole above the middle and not at all below it).
+      for (const [y, shows] of [
+        [400, 0.5 + 0.5 * Math.cos((Math.PI * 680) / 1080)],
+        [700, 0.5 + 0.5 * Math.cos((Math.PI * 380) / 1080)],
+      ] as const) {
+        const mixed: [number, number, number] = [
+          shows * 0x30,
+          shows * 0x40,
+          shows * 0x50 + (1 - shows) * 255,
+        ];
+        await expect
+          .poll(
+            async () => {
+              const [rgb] = await canvasPixels(hall, [{ x: MIDDLE.x, y }]);
+              return near(rgb, mixed, 18) ? 'mixed' : (rgb ?? []).join(',');
+            },
+            {
+              message: `the hall half-way through the Wipe at y ${String(y)}, ${mixed.map(Math.round).join(',')}`,
+            },
+          )
+          .toBe('mixed');
+      }
       await expect(target(hall, 5)).toHaveCSS('opacity', '0');
       await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0');
       await holdClock(app, entryAt + WIPE_MS + FADE_MS / 2);
       await expect(incoming).toHaveCSS('clip-path', 'none');
+      await expect(band).toHaveCSS('mask-image', 'none');
+      await expect(band).toHaveCSS('transform', 'none');
+      await expect(incoming).toHaveCSS('mask-image', 'none');
       await expect(target(hall, 5)).toHaveCSS('opacity', '0.5');
       await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0.5');
       await holdClock(app, entryAt + WIPE_MS + FADE_MS);
@@ -249,5 +293,82 @@ test('a node and the key and fill draw a native click at the same held frame', a
     }
   } finally {
     await main.app.close();
+  }
+});
+
+const PUSH_MS = 800;
+
+/** A generated 4:3 deck: a red slide, then a green one that comes in by PowerPoint's Push from the right. */
+function fourThreePushDeck(): Buffer {
+  const whole = (color: string) =>
+    `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Placeholder rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9144000" cy="6858000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>`;
+  const page = (shapes: string, after = '') =>
+    slideXml(shapes)
+      .replace('<p:spTree>', '<p:bg><p:bgPr><a:noFill/><a:effectLst/></p:bgPr></p:bg><p:spTree>')
+      .replace('</p:sld>', `${after}</p:sld>`);
+  const ns =
+    'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  return editablePptxFixture({
+    slides: [
+      page(whole('FF0000')),
+      page(whole('00FF00'), `<p:transition dur="${PUSH_MS}"><p:push dir="l"/></p:transition>`),
+    ],
+    // The deck's own size: 4:3 (9144000 x 6858000 EMU), where the fixture's is 16:9.
+    parts: {
+      'ppt/presentation.xml': `<p:presentation ${ns}><p:sldIdLst><p:sldId id="256" r:id="rId1"/><p:sldId id="257" r:id="rId2"/></p:sldIdLst><p:sldSz cx="9144000" cy="6858000"/></p:presentation>`,
+    },
+  });
+}
+
+test('a 4:3 deck’s Push on a 16:9 hall moves its slides by the slide’s width inside the slide, the bars staying black (Q58-16)', async () => {
+  const { app } = await launchApp({ ...CLOCK, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const dir = await mkdtemp(join(tmpdir(), 'drashti-four-three-'));
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const file = join(dir, 'Placeholder four three push.pptx');
+    await writeFile(file, fourThreePushDeck());
+    const [id = ''] = await importAndGetIds(win, [file]);
+    expect(id).not.toBe('');
+    const hallId = await setUpScreen(win, 'Placeholder Hall', 0);
+    const hall = await outputFor(app, hallId);
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    await expect.poll(async () => (await current(win))?.slideIndex).toBe(0);
+    await dispatch(win, { type: 'next' });
+    await expect.poll(async () => (await current(win))?.slideIndex).toBe(1);
+    const entered = await current(win);
+    expect(entered?.transition).toMatchObject({ deckEffect: 'push', durationMs: PUSH_MS, direction: 'left' });
+    // Half-way (eased in and out: half): the red slide half its width out to the left, the green one half in from the
+    // right, both inside the slide (1440 x 1080 between 240-px bars).
+    await holdClock(app, (entered?.shownAt ?? 0) + PUSH_MS / 2);
+    await expect(hall.locator('[data-layer="slide"]')).toHaveCSS(
+      'clip-path',
+      /^inset\(0px 240px( 0px 240px)?\)$/u,
+    );
+    for (const [x, rgb, what] of [
+      [100, [0, 0, 0], 'the left bar'],
+      [600, [255, 0, 0], 'the red slide going'],
+      [1300, [0, 255, 0], 'the green slide coming'],
+      [1820, [0, 0, 0], 'the right bar'],
+    ] as const) {
+      const want: [number, number, number] = [rgb[0], rgb[1], rgb[2]];
+      await expect
+        .poll(
+          async () => {
+            const [seen] = await canvasPixels(hall, [{ x, y: MIDDLE.y }]);
+            return near(seen, want, 40) ? 'as PowerPoint' : (seen ?? []).join(',');
+          },
+          { message: `${what} at x ${String(x)}, half-way through the Push` },
+        )
+        .toBe('as PowerPoint');
+    }
+    await holdClock(app, (entered?.shownAt ?? 0) + PUSH_MS);
+    await expect(hall.locator('[data-layer="slide"]')).not.toHaveAttribute('data-fading', 'true');
+    // Over: no clip left on the layer.
+    await expect(hall.locator('[data-layer="slide"]')).toHaveCSS('clip-path', 'none');
+    await holdClock(app, null);
+  } finally {
+    await app.close();
+    await rm(dir, { recursive: true, force: true });
   }
 });
