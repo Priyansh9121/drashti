@@ -111,6 +111,27 @@ describe('one run of a case', () => {
   });
 });
 
+describe('one run of a case, never its neighbour’s frame (Session 58, C24)', () => {
+  it('ends where the next case’s run begins, a frame before the next press: its first frame, begun just before that press, is the next case’s only', () => {
+    // This case moves in frames 9-12; the next case is pressed 4 ms into frame 79, whose frame (begun before the press)
+    // already shows it. Counted here too, this run would stretch over every still frame from 12 to 79, a late one
+    // among them (after frame 40).
+    const record: MotionRecord = {
+      frames: frames(1000, 120, { 40: 20 }),
+      changes: [9, 10, 11, 12, 79, 80, 81],
+    };
+    const nextPress = 1000 + 79 * PERIOD + 20 + 4;
+    const run = measureRun(record, { pressAt: 1000 + 9 * PERIOD + 4, until: nextPress }, PERIOD);
+    expect(run.lastAt).toBeCloseTo(1000 + 12 * PERIOD, 6);
+    expect(run.moved).toBe(4);
+    expect(run.intervals).toHaveLength(3);
+    // The next case's own run has that frame (from a frame before its press).
+    const after = measureRun(record, { pressAt: nextPress, until: 1000 + 200 * PERIOD }, PERIOD);
+    expect(after.firstAt).toBeCloseTo(1000 + 79 * PERIOD + 20, 6);
+    expect(after.moved).toBe(3);
+  });
+});
+
 describe('a case’s row, from its runs', () => {
   const run = (delay: number, frameCount: number, gap = 0) => {
     const at = frames(0, 200, gap > 0 ? { 10: gap } : {});
