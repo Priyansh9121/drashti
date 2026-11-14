@@ -1790,18 +1790,49 @@ export async function readEditablePptx(
   const ids = kids(child(presentation.root, 'sldIdLst'), 'sldId');
   if (ids.length === 0 || ids.length > 2000)
     throw new Error('A presentation must have between 1 and 2000 editable slides.');
-  const pictureParts = new Set<string>();
-  for (const path of roots.keys()) {
-    if (!path.endsWith('.xml')) continue;
-    for (const rel of makePart(path, roots)?.rels.values() ?? [])
-      if (!rel.external && rel.target && rel.type.endsWith('/image')) pictureParts.add(rel.target);
-  }
-  const selectedImages = entries.filter(
-    (entry) => pictureParts.has(entry.name) && entry.size <= MAX_IMAGE && entry.compressedSize <= MAX_IMAGE,
+  // Each page with its parts, in deck order.
+  const pages = ids.map((id, sourceIndex) => {
+    const rel = presentation.rels.get(attr(id, 'r:id') ?? '');
+    const slide =
+      rel?.target && rel.type.endsWith('/slide') && !rel.external ? makePart(rel.target, roots) : undefined;
+    if (!slide || nameOf(slide.root) !== 'sld') return null;
+    const layout = related(slide, 'slideLayout', roots),
+      master = related(layout, 'slideMaster', roots);
+    return { sourceIndex, slide, layout, master, theme: related(master, 'theme', roots) };
+  });
+  // The pictures are read within one budget, page by page in deck order (PF-13): a page whose new pictures don't fit
+  // in what is left stays as its saved picture, with a note, and the deck's other pages are read. A page counts the
+  // pictures it can draw: its own, its layout's, master's and theme's, and the table styles'.
+  const sizes = new Map(
+    entries.flatMap((entry) =>
+      entry.size <= MAX_IMAGE && entry.compressedSize <= MAX_IMAGE ? [[entry.name, entry.size] as const] : [],
+    ),
   );
-  if (selectedImages.reduce((sum, entry) => sum + entry.size, 0) > limits.pictureBytes)
-    throw new Error('The embedded pictures exceed the editable memory limit.');
-  const pictures = await readParts(file, selectedImages, MAX_IMAGE, limits.pictureBytes);
+  const kept = new Set<string>();
+  const overBudget = new Set<number>();
+  let left = limits.pictureBytes;
+  for (const page of pages) {
+    if (!page) continue;
+    const fresh = new Set<string>();
+    for (const part of [page.slide, page.layout, page.master, page.theme, stylePart])
+      for (const rel of part?.rels.values() ?? []) {
+        const target = !rel.external && rel.type.endsWith('/image') ? rel.target : null;
+        if (target && sizes.has(target) && !kept.has(target)) fresh.add(target);
+      }
+    const bytes = [...fresh].reduce((sum, name) => sum + (sizes.get(name) ?? 0), 0);
+    if (bytes > left) {
+      overBudget.add(page.sourceIndex);
+      continue;
+    }
+    left -= bytes;
+    for (const name of fresh) kept.add(name);
+  }
+  const pictures = await readParts(
+    file,
+    entries.filter((entry) => kept.has(entry.name)),
+    MAX_IMAGE,
+    limits.pictureBytes,
+  );
   const media: ParsedMediaRef[] = [],
     saved = new Map<string, string>();
   let assetDir: string | null = null;
@@ -1840,15 +1871,16 @@ export async function readEditablePptx(
   };
   const slides: EditablePptxSlide[] = [];
   const failedNotes: Record<number, string[]> = {};
-  for (const [sourceIndex, id] of ids.entries()) {
-    const rel = presentation.rels.get(attr(id, 'r:id') ?? '');
-    const slide =
-      rel?.target && rel.type.endsWith('/slide') && !rel.external ? makePart(rel.target, roots) : undefined;
-    if (!slide || nameOf(slide.root) !== 'sld') continue;
-    const layout = related(slide, 'slideLayout', roots),
-      master = related(layout, 'slideMaster', roots);
-    const theme = related(master, 'theme', roots),
-      issues = new Set<string>();
+  for (const page of pages) {
+    if (!page) continue;
+    const { sourceIndex, slide, layout, master, theme } = page;
+    if (overBudget.has(sourceIndex)) {
+      failedNotes[sourceIndex] = [
+        `Page ${String(sourceIndex + 1)} of the original stays as its saved picture: its pictures go past the ${String(MAX_IMAGE_TOTAL / 1024 ** 2)} MB of pictures Drashti can edit in one deck.`,
+      ];
+      continue;
+    }
+    const issues = new Set<string>();
     if (
       (!layout && [...slide.rels.values()].some((r) => r.type.endsWith('/slideLayout'))) ||
       (!master && [...(layout?.rels.values() ?? [])].some((r) => r.type.endsWith('/slideMaster')))
