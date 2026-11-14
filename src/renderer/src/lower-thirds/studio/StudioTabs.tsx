@@ -384,6 +384,10 @@ export function BackgroundTab() {
   const look = useStudio((s) => s.draft.look);
   return (
     <div className="space-y-3">
+      <p className="text-xs text-muted">
+        Calm ones first, then livelier ones. Each moves while the lower third is up, in the band’s colour, the
+        second colour (Style) and white.
+      </p>
       <Choices
         label="Moving behind the words"
         choices={OFFERED_MOTIONS}
@@ -396,9 +400,6 @@ export function BackgroundTab() {
           playAgain();
         }}
       />
-      <p className="text-xs text-muted">
-        It moves while the lower third is up, in the band’s colour and the second colour (Style).
-      </p>
     </div>
   );
 }
