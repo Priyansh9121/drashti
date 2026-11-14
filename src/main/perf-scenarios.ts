@@ -57,6 +57,8 @@ import { cutText, plural } from '../shared/text';
  *   family of animation, each way a band comes in, each style, each moving
  *   background) on every screen and the stream's page, and how many of its frames
  *   each drew: with the handicap on Windows, one not smooth is left out of OFFERED.
+ *   lower-thirds-more (Session 58, C14; LT-6): the same for every row added since
+ *   alpha.17 (moving backgrounds, templates), so neither run grows past its limit.
  *
  * The videos are FFmpeg's test pattern with a tone, made by the bundled
  * FFmpeg in the check's throwaway library. Besides the usual checks, each
@@ -77,6 +79,7 @@ export const PERF_SCENARIOS = [
   'bold-transitions',
   'live-window',
   'lower-thirds',
+  'lower-thirds-more',
   'animations',
 ] as const;
 export type PerfScenario = (typeof PERF_SCENARIOS)[number];
@@ -494,7 +497,8 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
     case 'live-window':
       return liveWindow(deps);
     case 'lower-thirds':
-      return lowerThirdsScenario(deps);
+    case 'lower-thirds-more':
+      return lowerThirdsScenario(deps, name);
     case 'animations':
       return animationsScenario(deps);
   }
