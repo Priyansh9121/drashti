@@ -382,7 +382,7 @@ function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly Text
   const last = lines.length - 1;
   const tail = lines.at(-1);
   const before = lines.at(-2);
-  if (lines.length > 1 && tail && tail.pieces.length === 0) {
+  if (lines.length > 1 && tail?.pieces.length === 0) {
     // A deck's empty last paragraph (Enter at the end of its words) is drawn as PowerPoint lays it out (Session 58,
     // FT-7): one line, in the look of the paragraph before it (what PowerPoint's Enter carries on, as the deck reader
     // keeps no look of its own for it), with its space before, so a box aligned to its middle or bottom sits where
