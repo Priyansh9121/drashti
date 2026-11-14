@@ -831,6 +831,11 @@ async function standIn(
 
 // ---- the bake -----------------------------------------------------------------------------------------
 
+/** Why a deck's movie could not be cut into its steps, from the error thrown as it was cut (C15, DEV-2). */
+export function cutFailure(error: unknown): BakeFailure {
+  return { kind: 'cut', detail: error instanceof Error ? error.message : String(error) };
+}
+
 /**
  * Make a deck into its steps with `baker`: its movie, then the cut. `read` is the deck as read already (a .pptx);
  * `work` a folder of its own, where everything made is left for the import to take.
@@ -1001,6 +1006,6 @@ export async function bakeDeck(
     if (error instanceof OnAir) return failed({ kind: 'on-air', during: true });
     if (error instanceof DiskFull) return failed(disk);
     if (options.signal?.aborted) return failed({ kind: 'cancelled' });
-    return failed({ kind: 'cut', detail: error instanceof Error ? error.message : String(error) });
+    return failed(cutFailure(error));
   }
 }
