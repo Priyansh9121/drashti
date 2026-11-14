@@ -9,6 +9,8 @@ Update after a sabha, and update Main and nodes together.
 - A Trim cut that carries on after a restart says Preparing on its row from the start, and Stop lets it go. If one can't carry on, the notice as Drashti starts says why.
 - Where a computer draws without a graphics chip, the stream's picture no longer stays black for up to 8 seconds as it starts. Drashti's log says how long each hall screen took to get ready.
 - Import notices say each thing once: another app's reason no longer repeats the app's name, a Keynote deck whose PDF pages are in another order says so for its videos too, and an automatic import names its new points once.
+- PowerPoint slides look more as they do in PowerPoint: theme colour shades, styled shapes' and backgrounds' gradients, Medium Style 2 tables, outline widths and table corners, and a list's indents through a change of size. A picture fill Drashti can't copy is no longer drawn as a flat colour.
+- Edit slides keeps a deck's other pages editable when one page can't be read or the deck has more than 128 MB of pictures, and a page left as a picture says plainly why.
 - The stream, the decks Drashti plays itself, the start and the Edit slides fixes since alpha.17 (this list is written in full before the release).
 
 ## 1.0.0-alpha.17 (13 Nov 2026)
