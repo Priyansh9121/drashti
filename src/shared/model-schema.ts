@@ -202,6 +202,9 @@ export const textStyleSchema: z.ZodType<TextStyle> = z.object({
   // Session 55 (Part 17a): a glow round the letters.
   glow: glowSchema.nullable().optional(),
   shrinkToFit: z.boolean().optional(),
+  sourceFit: z
+    .object({ fontScale: num.min(0.01).max(1), lineSpacingReduction: num.min(0).max(1) })
+    .optional(),
   spaceAtTextEdges: z.boolean().optional(),
   clipToBox: z.boolean().optional(),
   noWrap: z.boolean().optional(),
