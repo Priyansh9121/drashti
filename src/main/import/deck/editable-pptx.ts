@@ -1173,10 +1173,12 @@ function drawingElement(name: string, children: XmlNode[] = [], attrs = {}): Xml
   return { name: 'a:' + name, attrs, children, text: '' };
 }
 
-function tableStylePaint(node: Node, part: Part, ctx: Context): PaintSource[] {
-  const fill = child(node, 'fill');
-  if (fill) return [{ props: fill, part }];
-  const ref = child(node, 'fillRef');
+/**
+ * The fill a style reference names in the theme (a table part's or a shape's `fillRef`, a background's `bgRef`): from 1
+ * the theme's fill styles, from 1001 its background fills, each in the reference's colour; 0 and 1000 no fill. A theme
+ * without that style gives the reference colour (with the note, if one is given).
+ */
+function themeFill(ref: Node, part: Part, ctx: Context, missingNote?: string): PaintSource[] {
   if (!ref) return [];
   const index = number(attr(ref, 'idx'), 0);
   if (index === 0 || index === 1000)
@@ -1186,11 +1188,22 @@ function tableStylePaint(node: Node, part: Part, ctx: Context): PaintSource[] {
   const themed = kids(list)[index - (index >= 1001 ? 1001 : 1)];
   if (themed && ctx.theme.part)
     return [{ props: drawingElement('fill', [themed]), part: ctx.theme.part, placeholder }];
-  ctx.issues.add('A table fill style is missing from its theme; its reference colour is used.');
+  if (missingNote) ctx.issues.add(missingNote);
   const copy = placeholder
     ? drawingElement('solidFill', kids(ref).filter(isColor))
     : drawingElement('noFill');
   return [{ props: drawingElement('fill', [copy]), part }];
+}
+
+function tableStylePaint(node: Node, part: Part, ctx: Context): PaintSource[] {
+  const fill = child(node, 'fill');
+  if (fill) return [{ props: fill, part }];
+  return themeFill(
+    child(node, 'fillRef'),
+    part,
+    ctx,
+    'A table fill style is missing from its theme; its reference colour is used.',
+  );
 }
 
 function tableTextStyle(part: XmlNode): XmlNode[] {
@@ -1338,6 +1351,81 @@ function joinedTableEdges(edges: Iterable<TableEdge>): TableEdge[] {
   return joined;
 }
 
+/** A border line in a theme colour, as PowerPoint's built-in table styles draw them (1 pt is 12,700 EMU). */
+const styleLine = (width: number, color: string) =>
+  `<a:ln w="${String(width)}" cmpd="sng"><a:solidFill><a:schemeClr val="${color}"/></a:solidFill></a:ln>`;
+const TABLE_SIDES = ['left', 'right', 'top', 'bottom', 'insideH', 'insideV'];
+const tablePart = (name: string, style: string, words = '') =>
+  `<a:${name}>${words}<a:tcStyle>${style}</a:tcStyle></a:${name}>`;
+
+/** PowerPoint's Medium Style 2 in one colour: its body at 20% and its bands at 40%, its header and edges in full. */
+function mediumStyle2(color: string): string {
+  const words = (bold: boolean, inColor: string) =>
+    `<a:tcTxStyle${bold ? ' b="on"' : ''}><a:fontRef idx="minor"><a:prstClr val="black"/></a:fontRef><a:schemeClr val="${inColor}"/></a:tcTxStyle>`;
+  const fill = (tint = 0) =>
+    `<a:fill><a:solidFill><a:schemeClr val="${color}">${tint ? `<a:tint val="${String(tint)}"/>` : ''}</a:schemeClr></a:solidFill></a:fill>`;
+  const sides = TABLE_SIDES.map((side) => `<a:${side}>${styleLine(12_700, 'lt1')}</a:${side}>`).join('');
+  return (
+    tablePart('wholeTbl', `<a:tcBdr>${sides}</a:tcBdr>${fill(20_000)}`, words(false, 'dk1')) +
+    tablePart('band1H', `<a:tcBdr/>${fill(40_000)}`) +
+    tablePart('band2H', '<a:tcBdr/>') +
+    tablePart('band1V', `<a:tcBdr/>${fill(40_000)}`) +
+    tablePart('band2V', '<a:tcBdr/>') +
+    tablePart('lastCol', `<a:tcBdr/>${fill()}`, words(true, 'lt1')) +
+    tablePart('firstCol', `<a:tcBdr/>${fill()}`, words(true, 'lt1')) +
+    tablePart(
+      'lastRow',
+      `<a:tcBdr><a:top>${styleLine(38_100, 'lt1')}</a:top></a:tcBdr>${fill()}`,
+      words(true, 'lt1'),
+    ) +
+    tablePart(
+      'firstRow',
+      `<a:tcBdr><a:bottom>${styleLine(38_100, 'lt1')}</a:bottom></a:tcBdr>${fill()}`,
+      words(true, 'lt1'),
+    )
+  );
+}
+
+/** PowerPoint's two plain styles: no fill and words in the text colour, with or without a 1 pt grid in it. */
+function plainStyle(grid: boolean): string {
+  const line = grid ? styleLine(12_700, 'tx1') : '<a:ln><a:noFill/></a:ln>';
+  const sides = TABLE_SIDES.map((side) => `<a:${side}>${line}</a:${side}>`).join('');
+  return tablePart(
+    'wholeTbl',
+    `<a:tcBdr>${sides}</a:tcBdr><a:fill><a:noFill/></a:fill>`,
+    '<a:tcTxStyle><a:fontRef idx="minor"><a:scrgbClr r="0" g="0" b="0"/></a:fontRef><a:schemeClr val="tx1"/></a:tcTxStyle>',
+  );
+}
+
+/**
+ * PowerPoint's commonest built-in table styles, by ID, for a deck that names one without saving its definition
+ * (python-pptx and some exporters name Medium Style 2 - Accent 1 over an empty style list): the Medium Style 2 family
+ * and the two plain styles. A deck's own definition comes first; another unsaved style keeps its note.
+ */
+const BUILT_IN_TABLE_STYLES = new Map<string, () => string>([
+  ['{073a0daa-6af3-43ab-8588-cec1d06c72b9}', () => mediumStyle2('dk1')],
+  ['{5c22544a-7ee6-4342-b048-85bdc9fd1c3a}', () => mediumStyle2('accent1')],
+  ['{21e4aea4-8dfa-4a89-87eb-49c32662afe8}', () => mediumStyle2('accent2')],
+  ['{f5ab1c69-6edb-4ff4-983f-18bd219ef322}', () => mediumStyle2('accent3')],
+  ['{00a15c55-8517-42aa-b614-e9b94910e393}', () => mediumStyle2('accent4')],
+  ['{7df18680-e054-41ad-8bc1-d1aef772440d}', () => mediumStyle2('accent5')],
+  ['{93296810-a885-4be3-a3e7-6d5beea58f35}', () => mediumStyle2('accent6')],
+  ['{2d5abb26-0587-4c30-8999-92f81fd0307c}', () => plainStyle(false)],
+  ['{5940675a-b579-460e-94d1-54222c63f5da}', () => plainStyle(true)],
+]);
+const builtInTableStyles = new Map<string, XmlNode>();
+
+/** A built-in table style's definition (see `BUILT_IN_TABLE_STYLES`), read once. */
+function builtInTableStyle(id: string | undefined): XmlNode | undefined {
+  const make = id === undefined ? undefined : BUILT_IN_TABLE_STYLES.get(id);
+  if (id === undefined || !make) return undefined;
+  const known = builtInTableStyles.get(id);
+  if (known) return known;
+  const style = parseXml(`<a:tblStyle styleId="${id}">${make()}</a:tblStyle>`);
+  builtInTableStyles.set(id, style);
+  return style;
+}
+
 async function tableObjects(
   table: XmlNode,
   part: Part,
@@ -1359,7 +1447,9 @@ async function tableObjects(
   const properties = child(table, 'tblPr');
   const inline = child(properties, 'tableStyle');
   const styleId = child(properties, 'tableStyleId')?.text.trim().toLowerCase();
-  const style = inline ? { style: inline, part } : ctx.tableStyles.get(styleId ?? '');
+  const saved = inline ? { style: inline, part } : ctx.tableStyles.get(styleId ?? '');
+  const builtIn = saved ? undefined : builtInTableStyle(styleId);
+  const style = saved ?? (builtIn ? { style: builtIn, part } : undefined);
   if (styleId && !style)
     ctx.issues.add('A table style was not included in the source; its own cell formatting is used.');
   const addPaint = (paint: SourcePaint, place: NonNullable<ReturnType<typeof placed>>) => {
@@ -1590,7 +1680,12 @@ async function objectOf(
     return fallbackPicture(rect, matrix, ctx);
   }
   const output: SlideElement[] = [];
-  const paint = await shapePaintOf(paints, ctx, referenceColor(chain, 'fillRef', ctx));
+  // The shape's own fill, else its style's fill from the theme (a gradient too), as PowerPoint draws a styled shape.
+  const style = lastChild(
+    chain.map((shape) => child(shape, 'style')),
+    'fillRef',
+  );
+  const paint = await shapePaintOf([...themeFill(style, part, ctx), ...paints], ctx, null);
   const outline = shapeOutline(chain, props, ctx, shape === 'line' ? (paint.color ?? '#000000') : null);
   if (paint.picture) {
     output.push({
@@ -1958,20 +2053,27 @@ export async function readEditablePptx(
       const bg = child(child(part?.root, 'cSld'), 'bg');
       return part && bg ? [{ part, bg }] : [];
     });
+    // The nearest background wins: its own fill, or the theme's background style it names (a gradient or a picture
+    // too, in its colour).
+    const nearest = backgrounds.at(-1);
+    const ref = child(nearest?.bg, 'bgRef');
     const paint = await shapePaintOf(
-      backgrounds.map(({ part, bg }) => ({ part, props: child(bg, 'bgPr') })),
+      ref && nearest
+        ? themeFill(
+            ref,
+            nearest.part,
+            ctx,
+            'A theme background style uses its reference colour in the editable copy.',
+          )
+        : backgrounds.map(({ part, bg }) => ({ part, props: child(bg, 'bgPr') })),
       ctx,
       ctx.theme.colors[ctx.theme.map['bg1'] ?? 'lt1'] ?? '#ffffff',
     );
-    let background = paint.color;
-    const ref = child(backgrounds.at(-1)?.bg, 'bgRef');
-    if (ref) {
-      background = colorOf(ref, ctx) ?? background;
-      ctx.issues.add('A theme background style uses its reference colour in the editable copy.');
-    }
+    // A style index of no fill (0 or 1000) keeps the reference colour, as before.
+    const background = ref && paint.color === null && !paint.picture ? colorOf(ref, ctx) : paint.color;
     const frame = { x: 0, y: 0, width, height };
     const elements: SlideElement[] = [];
-    if (!ref && paint.picture) {
+    if (paint.picture) {
       elements.push({
         id: ctx.id(),
         kind: 'image',
@@ -1980,7 +2082,7 @@ export async function readEditablePptx(
         ...paint.picture,
         fit: 'stretch',
       });
-    } else if (!ref && paint.gradient) {
+    } else if (paint.gradient) {
       const backdrop: ShapeElement = {
         id: ctx.id(),
         kind: 'shape',
