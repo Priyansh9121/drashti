@@ -539,6 +539,7 @@ export class MediaRemoval {
 
     const found: { cut: GoneTrim; file: string; before: BigIntStats }[] = [];
     const uncertain = new Set<string>();
+    const uncheckedFolders = new Set<string>();
     for (const [folder, inFolder] of folders) {
       if (paused()) return [];
       const entries = folder === root && rootEntries ? rootEntries : await entriesIn(folder);
@@ -562,6 +563,7 @@ export class MediaRemoval {
             continue;
           if (paused()) return [];
           if (realpathSync.native(file) !== file) {
+            uncheckedFolders.add(folder);
             left('it is reached through a link');
             continue;
           }
@@ -587,6 +589,7 @@ export class MediaRemoval {
           if (paused()) return [];
           if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
           if (possibleUnknown) incomplete = true;
+          uncheckedFolders.add(folder);
           left('it could not be read');
         }
       }
@@ -645,12 +648,13 @@ export class MediaRemoval {
     const derivatives = await derivativesIn(mediaDir);
     for (const cut of cuts) {
       if (paused()) break;
+      const folder = originalFolders.get(cut.id);
       if (
         !derivatives.has(cut.sha256) ||
         inUse().has(cut.id) ||
         files.has(cut.id) ||
         uncertain.has(cut.id) ||
-        (originalFolders.get(cut.id) === null && (incomplete || cut.bytes === null))
+        (folder ? uncheckedFolders.has(folder) : incomplete || cut.bytes === null)
       )
         continue;
       if (stillGone.get({ id: cut.id, sha256: cut.sha256 }) !== undefined)
