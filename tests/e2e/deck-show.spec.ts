@@ -1057,7 +1057,7 @@ async function playedAtOnce(page: Page, clipId: string, what: string): Promise<v
   expect(phases, `${what}: never held while its clip loads`).not.toContain('loading');
 }
 
-test('a deck slide the operator points at in the list has its first clip ready at the jump’s frame on every hall screen and the stream, and the click plays that very element at once, never holding the slide going away; Next into it alike on the stream (Q57-26)', async () => {
+test('a deck slide the operator points at in the list (or whose number is typed) has its first clip ready at the jump’s frame on every hall screen and the stream, and the click plays that very element at once, never holding the slide going away; Next into it alike on the stream (Q57-26)', async () => {
   test.skip(ffmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
   test.setTimeout(240_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2' });
@@ -1164,6 +1164,21 @@ test('a deck slide the operator points at in the list has its first clip ready a
     await dispatch(win, { type: 'next' });
     await expect.poll(async () => (await state(win)).live.slideIndex).toBe(1);
     for (const s of screens) await playedAtOnce(s.page, files.nextClip, `${s.name}, Next`);
+
+    // Jump to a row: the first slide's number typed (1), the pointer nowhere near its row, points at it as it is typed;
+    // Enter puts it up from the element loaded ahead, at once.
+    const firstClip = files.clips[0] ?? '';
+    const typedAhead = (s: { page: Page; box: string }) =>
+      s.page.getByTestId(s.box).locator(`video[data-preload="${firstClip}"][data-deck-ahead="pointed"]`);
+    await win.keyboard.press('1');
+    for (const s of screens) {
+      await expect(typedAhead(s), s.name).toHaveAttribute('data-state', 'ready');
+      await markPrepared(typedAhead(s));
+      await recordPhases(s.page, firstClip);
+    }
+    await win.keyboard.press('Enter');
+    await expect.poll(async () => (await state(win)).live.slideIndex).toBe(0);
+    for (const s of screens) await playedAtOnce(s.page, firstClip, `${s.name}, its number typed`);
   } finally {
     await app.close();
   }
