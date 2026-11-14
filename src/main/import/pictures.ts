@@ -209,7 +209,7 @@ export interface KeynoteShift {
 /**
  * Reject a count-based match only when the PDF's words identify another slide uniquely and neither set of words
  * contains the other. A picture, repeated text or a partial extraction leaves the original count check in use.
- * Two distinct PDF pages must independently identify other slides (KN-1). One text extraction can be misleading.
+ * Two distinct PDF pages must independently identify two different slides (KN-1). One extraction can be misleading.
  * Returns the first confirmed mismatch for the import log.
  */
 export function keynoteShift(
