@@ -439,28 +439,6 @@ export function deckSplitShows(wipe: DeckWipe | null, at: number): number {
   return wipe.leaving ? 1 - passed : passed;
 }
 
-/** Where a Split's look bends along its axis (−1 to 1), with how much shows there: straight between them. */
-function splitStops(split: DeckSplit): [number, number][] {
-  const reach = (1 + SPLIT_SOFTNESS) * split.progress;
-  // Where the soft edge starts and ends, as distances from the middle.
-  const bends = (
-    split.inward ? [1 - reach, 1 - reach + SPLIT_SOFTNESS] : [reach - SPLIT_SOFTNESS, reach]
-  ).filter((d) => d > 0 && d < 1);
-  const half = [0, ...bends, 1].map((d): [number, number] => [d, deckSplitShows(split, d)]);
-  const all = [
-    ...half
-      .slice(1)
-      .map(([d, shows]): [number, number] => [-d, shows])
-      .reverse(),
-    ...half,
-  ];
-  // A stop in the middle of an even stretch adds nothing.
-  return all.filter(
-    ([, shows], i) =>
-      i === 0 || i === all.length - 1 || all[i - 1]?.[1] !== shows || all[i + 1]?.[1] !== shows,
-  );
-}
-
 /**
  * How far a point of a shape's box is from its middle (0) towards its corners (1) in the measure of Shape's outline, u
  * and v each from −1 to 1 across the box, in its own proportions: as PowerPoint draws each (its own movie, 13 and
@@ -525,6 +503,22 @@ function edgeStops(
   return [0, ...bends, 1].map((d): [number, number] => [d, Math.round(shows(d) * 10_000) / 10_000]);
 }
 
+/** A soft edge's stops from the middle out (edgeStops) both ways along a line, from −1 through 0 to 1. */
+function bothWays(half: readonly [number, number][]): [number, number][] {
+  return withoutEven([
+    ...half
+      .slice(1)
+      .map(([d, shows]): [number, number] => [-d, shows])
+      .reverse(),
+    ...half,
+  ]);
+}
+
+/** Where a Split's look bends along its axis (−1 to 1), with how much shows there: straight between them. */
+function splitStops(split: DeckSplit): [number, number][] {
+  return bothWays(edgeStops(split.inward, split.progress, SPLIT_SOFTNESS, (d) => deckSplitShows(split, d)));
+}
+
 const ink = (shows: number) => `rgb(0 0 0 / ${String(shows)})`;
 const fixed = (value: number, places = 3) => String(Math.round(value * 10 ** places) / 10 ** places || 0);
 
@@ -572,13 +566,7 @@ function shapeMasks(wipe: DeckShape, target: Rect, frame: Rect): { outer: string
       inner: '',
     };
   }
-  const ramp = withoutEven([
-    ...half
-      .slice(1)
-      .map(([d, shows]): [number, number] => [-d, shows])
-      .reverse(),
-    ...half,
-  ]);
+  const ramp = bothWays(half);
   // Lets everything through over `width` degrees from `from` (clockwise from twelve o'clock), and again half a turn on.
   const wedge = (from: number, width: number) =>
     `repeating-conic-gradient(from ${fixed(from, 4)}deg at ${fixed(x)}px ${fixed(y)}px, ${ink(1)} 0deg, ${ink(1)} ${fixed(width, 4)}deg, ${ink(0)} ${fixed(width, 4)}deg, ${ink(0)} 180deg)`;
