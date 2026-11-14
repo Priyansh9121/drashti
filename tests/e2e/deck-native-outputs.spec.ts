@@ -214,6 +214,42 @@ test('stage Current and Next and a phone follow native clicks through Back and a
   }
 });
 
+test('the LIVE picture and Screens card use the moving Wipe band in software', async () => {
+  const { app } = await launchApp({
+    ...CLOCK,
+    DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software',
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '1',
+  });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const id = await importOutputDeck(win);
+    const hallId = await setUpScreen(win, 'Placeholder Hall', 1);
+    const hall = await outputFor(app, hallId);
+    await expect(hall.getByTestId('output-root')).toHaveAttribute('data-warm-up', 'skipped');
+    await win.getByRole('button', { name: 'Screens', exact: true }).click();
+    const previews = [win.getByTestId('live-preview'), win.getByTestId('projector-preview')];
+
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    for (const preview of previews) await expect(target(preview, 3)).toHaveCount(1);
+    await dispatch(win, { type: 'next' });
+    const entered = await current(win);
+    expect(entered).toMatchObject({ slideIndex: 1, transition: { kind: 'wipe', durationMs: WIPE_MS } });
+    await holdClock(app, (entered?.shownAt ?? 0) + WIPE_MS / 2);
+
+    for (const preview of previews) {
+      const incoming = preview.locator('[data-layer="slide"] [data-slide-in]');
+      const band = incoming.locator('[data-band]');
+      await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
+      await expect(band).not.toHaveCSS('transform', 'none');
+      await expect(incoming).toHaveCSS('mask-image', 'none');
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test('a node and the key and fill draw a native click at the same held frame', async () => {
   const main = await launchMain({ ...CLOCK, DRASHTI_EXTRA_DISPLAYS: '2' });
   try {
