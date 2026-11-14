@@ -15,10 +15,11 @@ Update after a sabha, and update Main and nodes together.
 - A PowerPoint text box keeps PowerPoint's own shrink of its words and lines until you edit it, and draws an empty last paragraph as PowerPoint does. Edit slides shows a box's line spacing as drawn and warns of close Gujarati or Hindi lines.
 - Edit slides keeps a deck's other pages editable when one page can't be read or the deck has more than 128 MB of pictures, and says plainly why a page stays a picture. A PDF page with many small clipped or masked drawings can now be edited.
 - Lower Thirds has 29 more templates, 79 in all, and 23 more moving backgrounds, thirty in all, calm ones first, each made ready before the show. One box finds an animation or a template by any words, such as "slide up slow".
-- A Trim cut waiting after a restart says Preparing, and Stop lets it go; the start notice says why one can't carry on. An earlier cut nothing uses goes to the Trash with its still frame, and a notice names it.
+- A Trim cut waiting after a restart says Preparing, and Stop lets it go; the start notice says why one can't carry on. An earlier cut nothing uses goes to the Trash with its still frame, and a notice names it. Saving a Trim never waits for an import.
 - Every name you give leaves out hidden characters copied with it, as Rename… does, and a name with nothing visible is refused. Rename's Undo says the name as kept; on a playlist's row Rename… renames the file by its own name.
 - Import notices say each thing once, in plain words, and an automatic import names its new points once.
 - A phone's Save of a slide waits while the hall screens move, and says so when it saves a picture from the slide instead.
+- Opening the Stream panel no longer makes a Mac ask for the computer's password; only saving a key and going live use its keychain.
 - Record sound shows No sound as the stream does, says after 5 seconds when nothing comes from its input and stops after 30, and a quit waits at most 5 seconds for it to be saved.
 - The stream, the decks Drashti plays itself, the start and the Edit slides fixes since alpha.17 (this list is written in full before the release).
 

@@ -93,6 +93,11 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
       storedCopies = next;
     },
   };
+  // What the records' file holds (FT-4): written by saveNow alone here; the store writes in the background too.
+  let onDisk: { kept: KeptTrim[]; copies: typeof storedCopies } | null = null;
+  const saveNow = vi.fn(() => {
+    onDisk = { kept: stored, copies: storedCopies };
+  });
   const trashDir = join(dir, 'Trash');
   await mkdir(trashDir);
   const trash = vi.fn((file: string) => rename(file, join(trashDir, basename(file))));
@@ -115,6 +120,7 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     hash,
     kept,
     copies,
+    saveNow,
     trash,
   };
   const restart = () => new PlaylistTrims(deps);
@@ -144,6 +150,8 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     quiet,
     hash,
     kept,
+    saveNow,
+    onDisk: () => onDisk,
     show: (media: string | null) => {
       liveMedia = media;
       service.activityChanged();
@@ -495,6 +503,35 @@ describe('trimming a playlist video', () => {
     expect(x.copies.load()).toEqual([]);
     expect(await readFile(join(dir, 'Trash', basename(x.output)), 'utf8')).toBe('placeholder trim');
     expect(await readFile(x.original, 'utf8')).toBe('placeholder original');
+  });
+
+  it('writes the cut’s records to the disk before the cut can appear at its final path (FT-4)', async () => {
+    const x = await setup();
+    const tmp = join(dir, 'Placeholder temporary cut.mp4');
+    await rename(x.output, tmp);
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    expect(x.saveNow).not.toHaveBeenCalled();
+    x.publish(tmp, x.output);
+    expect(x.saveNow).toHaveBeenCalledOnce();
+    const recorded = { path: basename(x.output), identity: expect.any(String) as string };
+    expect(x.onDisk()).toEqual({
+      kept: [expect.objectContaining({ itemId: x.itemId, copy: recorded })],
+      copies: [recorded],
+    });
+  });
+
+  it('names the files in Media its records hold, for the unused-cuts sweep to leave alone (FT-8)', async () => {
+    const x = await setup();
+    expect(x.service.heldFiles()).toEqual(new Set());
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    // A cut being made holds its original.
+    expect(x.service.heldFiles()).toEqual(new Set(['original.mp4']));
+    x.publish();
+    expect(x.service.heldFiles()).toEqual(new Set(['original.mp4', basename(x.output)]));
+    // Drashti closed with the cut made but not taken in: the next start holds it while it waits, and its original.
+    x.service.close();
+    x.finish({ ok: false, stopped: true, message: 'Stopped: Drashti is quitting.' });
+    expect(x.restart().heldFiles()).toEqual(new Set(['original.mp4', basename(x.output)]));
   });
 
   it('cleans the recorded hidden Trim part after a crash before the rename', async () => {
