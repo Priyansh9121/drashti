@@ -188,6 +188,8 @@ function observedBounds(
   // PDF.js can rescale the pen for hairlines. The centerline uses the original transform.
   const [left, top, right, bottom] = transformedBounds(path, pathTransform);
   const { a, b, c, d } = ctx.getTransform();
+  // Rescaled non-axis-aligned strokes use a different Path2D. Keep the page's raster origin.
+  if (b !== 0 || c !== 0) return undefined;
   const join = ctx.lineJoin === 'miter' ? ctx.miterLimit : 1;
   const cap = ctx.lineCap === 'square' ? Math.SQRT2 : 1;
   const radius = (ctx.lineWidth / 2) * Math.max(1, join, cap);
