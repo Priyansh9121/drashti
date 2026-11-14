@@ -7071,10 +7071,20 @@ function start(): void {
       event.preventDefault();
       if (!quitSavingSound) {
         quitSavingSound = true;
+        // The WAV is waited for 5 s at most (Session 58, X2: sound-recording.ts's QUIT_FINISH_MS): a disk that does not
+        // answer never holds the quit, and the next before-quit is not held again.
         void soundSaved
-          .catch(() => {
-            log.warn('The sound recording could not be finished before quitting.');
-          })
+          .then(
+            (how) => {
+              if (how === 'late')
+                log.warn(
+                  'Quit: the sound recording’s disk did not answer in time, so its WAV was left as it was: it plays up to the last whole second its header says, and what had not reached the disk is lost',
+                );
+            },
+            () => {
+              log.warn('The sound recording could not be finished before quitting.');
+            },
+          )
           .then(() => {
             quitSavingSound = false;
             app.quit();
