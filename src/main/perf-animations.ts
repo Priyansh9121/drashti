@@ -1319,7 +1319,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
                 null,
               )
             : null;
-        if (state && state.fonts === 'ready' && state.warmUp !== 'warming') {
+        if (state?.fonts === 'ready' && state.warmUp !== 'warming') {
           streamMs = openBefore ? 0 : Date.now() - streamFrom;
           break;
         }
