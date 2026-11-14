@@ -138,6 +138,8 @@ describe('restoring the library at the next start', () => {
     );
     const current = dataFolder('Placeholder Current');
     current.db.close();
+    const trim = JSON.stringify({ version: 1, waiting: [{ itemId: 'placeholder-old-cut' }], copies: [] });
+    writeFileSync(join(current.dir, 'trim-cuts.json'), trim);
     requestRestore(current.dir, saved.folder);
     const outcome = applyPendingRestore(current.dir, {
       schema: LATEST_VERSION,
@@ -154,6 +156,8 @@ describe('restoring the library at the next start', () => {
     expect(readdirSync(join(current.dir, 'Media')).sort()).toEqual(['Placeholder From Backup.txt', 'stills']);
     const kept = join(current.dir, 'Backups', 'Before restore 2026-09-30 08-00');
     expect(names(join(kept, LIBRARY_FILE))).toEqual(['Placeholder Current']);
+    expect(existsSync(join(current.dir, 'trim-cuts.json'))).toBe(false);
+    expect(readFileSync(join(kept, 'trim-cuts.json'), 'utf8')).toBe(trim);
     expect(readdirSync(join(kept, 'Media')).sort()).toEqual(['Placeholder Current.txt', 'stills']);
     // The library from before is itself a finished backup, so a restore can be undone the same way.
     expect(checkBackup(kept, LATEST_VERSION)).toMatchObject({ ok: true, media: true });
@@ -241,6 +245,7 @@ describe('putting the library back when a restored one will not open', () => {
     );
     const current = dataFolder('Placeholder Current');
     current.db.close();
+    writeFileSync(join(current.dir, 'trim-cuts.json'), 'Placeholder trim records');
     writeFileSync(join(current.dir, `${LIBRARY_FILE}.v3.bak`), 'old upgrade copy');
     requestRestore(current.dir, saved.folder);
     const outcome = applyPendingRestore(current.dir, {
@@ -259,6 +264,7 @@ describe('putting the library back when a restored one will not open', () => {
     const { current, saved, keptIn } = await restoredOnce(true);
     const back = rollBackRestore(current.dir, keptIn, { now: new Date(2026, 8, 30, 8, 1) });
     expect(back).toEqual({ ok: true, failedIn: 'Failed restore 2026-09-30 08-01' });
+    expect(readFileSync(join(current.dir, 'trim-cuts.json'), 'utf8')).toBe('Placeholder trim records');
     expect(names(join(current.dir, LIBRARY_FILE))).toEqual(['Placeholder Current']);
     expect(readdirSync(join(current.dir, 'Media')).sort()).toEqual(['Placeholder Current.txt', 'stills']);
     expect(readFileSync(join(current.dir, `${LIBRARY_FILE}.v3.bak`), 'utf8')).toBe('old upgrade copy');

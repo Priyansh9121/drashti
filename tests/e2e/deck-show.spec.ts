@@ -789,6 +789,10 @@ test('a node and key and fill draw the same step as Main’s screen at held mome
     expect(await nodeAhead.evaluate((video: HTMLVideoElement) => video.currentTime)).toBe(
       TRANSITION_MS / 1000,
     );
+    // A node output can open or reload while the pointer stays on the same row.
+    await nodeOut.reload();
+    await outputReady(nodeOut);
+    await expect(nodeAhead).toHaveAttribute('data-state', 'ready');
     await pointAt(null);
     await expect(nodeAhead).toHaveCount(0);
   } finally {
@@ -1125,6 +1129,11 @@ test('a deck slide the operator points at in the list (or whose number is typed)
       }
     };
     await row(1).hover();
+    await loadedAhead();
+    // These pages open after the pointer stopped moving, so they must read the pointing at startup.
+    const lateHall = await outputFor(app, await setUpScreen(win, 'Late Hall', 2));
+    await stream.reload();
+    screens.push({ page: lateHall, box: 'preload', name: 'the late hall' });
     await loadedAhead();
     // The pointer moves off the list: each lets the clip go.
     await win.mouse.move(4, 4);

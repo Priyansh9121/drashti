@@ -677,6 +677,7 @@ const bridge: DrashtiBridge = {
       on(IPC.output.gpuRestarted, () => {
         listener();
       }),
+    getPointed: () => invoke(IPC.output.getPointed),
     onPointed: (listener) =>
       on(IPC.output.pointed, ({ clip }) => {
         listener(clip);
