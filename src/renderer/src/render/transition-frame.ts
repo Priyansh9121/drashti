@@ -345,6 +345,33 @@ export function wipeBandStyles(
   };
 }
 
+/**
+ * The band as a mask on the incoming slide's own box (the layer's), for a page that draws with a graphics chip
+ * (render/chipless.ts): a new mask each frame, its stops moved, which a chip draws again cheaply (measured on CI's Mac;
+ * without a chip it dropped frames while streaming, Q57-28, so such a page draws wipeBandStyles' boxes instead). The
+ * gradient runs across the whole layer from the edge on the incoming side, its stops in px: the band one slide long on
+ * the slide where it is placed, whole before it, nothing past it.
+ */
+export function wipeSlideMask(
+  band: WipeBand,
+  slide: SlidePlace,
+  canvas: { width: number; height: number },
+): string {
+  const { direction } = band;
+  const across = direction === 'left' || direction === 'right';
+  const fromEnd = direction === 'left' || direction === 'up';
+  const length = across ? slide.width : slide.height;
+  const slideStart = across ? slide.x : slide.y;
+  const screen = across ? canvas.width : canvas.height;
+  // How far the slide's own incoming side is from the layer's edge the gradient starts at.
+  const side = fromEnd ? screen - (slideStart + length) : slideStart;
+  const stops = WIPE_BAND.map(
+    (shown, j) =>
+      `rgba(0, 0, 0, ${String(shown)}) ${(side + (band.at + j / WIPE_STEPS) * length).toFixed(2)}px`,
+  );
+  return `linear-gradient(${WIPE_TOWARD[direction]}, ${stops.join(', ')})`;
+}
+
 /*
  * A deck's own Cover and Uncover as PowerPoint's own movie draws them (13 Nov 2026: the comparison's movie of a
  * generated deck, measured frame by frame at 320 x 180 against this drawing; Push already matched within a pixel).

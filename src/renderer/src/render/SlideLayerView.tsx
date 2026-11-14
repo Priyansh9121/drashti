@@ -19,6 +19,7 @@ import { linesReveal, type UnitFrame, wordsReveal } from './reveal';
 import { deckSlideAt, nativeStepTiming, stepTiming } from '../../../shared/deck-show';
 import { DECK_FIRST_FRAME } from './DeckStep';
 import { NativeDeckMotion } from './NativeDeckElement';
+import { drawsWithoutChip } from './chipless';
 import {
   deckTransitionFrame,
   takesTime,
@@ -27,6 +28,7 @@ import {
   type WipeBand,
   type WipeBandStyles,
   wipeBandStyles,
+  wipeSlideMask,
   wordsFrame,
   wordsMove,
   type WordsMove,
@@ -241,13 +243,21 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
     if (el.style.maskImage !== mask) el.style.maskImage = mask;
     if (el.style.filter !== filter) el.style.filter = filter;
   };
-  deckOnly(els.in, frame?.in.mask, frame?.in.filter);
-  deckOnly(els.out, frame?.out.mask, frame?.out.filter);
-  // PowerPoint's Wipe band (Session 58): on the slide's band boxes, at rest when none.
+  // PowerPoint's Wipe band (Session 58), as this page draws best (render/chipless.ts): with a graphics chip a mask on
+  // the slide's box, a new one each frame; without one on the slide's band boxes, only moved. At rest when none.
+  const chipless = drawsWithoutChip();
+  const slideMask = (band: WipeBand | undefined) =>
+    band && !chipless ? wipeSlideMask(band, how.placeIn, how) : undefined;
+  deckOnly(els.in, frame?.in.mask ?? slideMask(frame?.in.band), frame?.in.filter);
+  deckOnly(els.out, frame?.out.mask ?? slideMask(frame?.out.band), frame?.out.filter);
   const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1;
-  const bandOf = (band: WipeBand | undefined) => (band ? wipeBandStyles(band, how.placeIn, how, dpr) : null);
-  paintBand(els.bandIn, bandOf(frame?.in.band), frame?.in.band?.direction ?? '');
-  paintBand(els.bandOut, bandOf(frame?.out.band), frame?.out.band?.direction ?? '');
+  const bandOf = (band: WipeBand | undefined) =>
+    band && chipless ? wipeBandStyles(band, how.placeIn, how, dpr) : null;
+  // Each box's record says which way its band went only while it is drawn: '' at rest (a page that draws the mask).
+  const bandIn = bandOf(frame?.in.band);
+  const bandOut = bandOf(frame?.out.band);
+  paintBand(els.bandIn, bandIn, bandIn ? (frame?.in.band?.direction ?? '') : '');
+  paintBand(els.bandOut, bandOut, bandOut ? (frame?.out.band?.direction ?? '') : '');
   if (els.out) els.out.style.zIndex = native?.deckEffect === 'uncover' ? '1' : '';
   if (els.black) els.black.style.opacity = frame ? String(frame.black) : '0';
   const move = kind === null ? null : how.move;

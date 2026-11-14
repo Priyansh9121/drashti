@@ -3,6 +3,7 @@ import type { DeckNativeTransition } from '../../../shared/deck-transition';
 import { SLOW_ZOOM_MS, SLOW_ZOOM_SCALE } from '../../../shared/model';
 import { EASE } from './easing';
 import {
+  deckSlideClip,
   deckTransitionFrame,
   dissolveCurve,
   easeInOut,
@@ -12,6 +13,7 @@ import {
   transitionFrame,
   wordsFrame,
   wipeBandStyles,
+  wipeSlideMask,
   wordsMove,
   zoomAt,
 } from './transition-frame';
