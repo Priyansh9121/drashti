@@ -25,6 +25,8 @@ import { readStateTwice, setAside } from '../state-file';
  * over: saves fail (and are tried again) until it moves aside (LOW-3).
  */
 
+export const TRIM_RECORDS_FILE = 'trim-cuts.json';
+
 const fileSchema = z.object({
   version: z.literal(1),
   waiting: z.array(z.unknown()),

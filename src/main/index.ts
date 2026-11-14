@@ -194,7 +194,7 @@ import { TrimSaves } from './convert/trim-saves';
 import { rowTrimRequestSchema, saveRequestSchema } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
 import { PlaylistTrims } from './convert/playlist-trims';
-import { TrimRecords } from './convert/trim-records';
+import { TRIM_RECORDS_FILE, TrimRecords } from './convert/trim-records';
 import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
 import { frameAtOrBefore } from './convert/frame-at';
 import { isRepeatId, repeatPresentationId } from '../shared/repeat';
@@ -3967,7 +3967,7 @@ function start(): void {
   // in the background (no longer library settings written on Main, which waited there for an import's write lock).
   // alpha.17's settings are read once while the file is not there, then cleared; a restored library carries nothing
   // over from the library before it.
-  const trimRecords = new TrimRecords(join(userDataDir, 'trim-cuts.json'), {
+  const trimRecords = new TrimRecords(join(userDataDir, TRIM_RECORDS_FILE), {
     before: {
       waiting: () => settings.get('playlistTrimsWaiting'),
       copies: () => settings.get('playlistTrimCopies'),
