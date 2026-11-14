@@ -221,7 +221,7 @@ it('keeps a file it cannot read aside, never writes over it, and starts with not
   const records = new TrimRecords(file, { before, log });
   expect(records.kept.load()).toEqual([]);
   expect(records.copies.load()).toEqual([]);
-  expect(before.waiting).not.toHaveBeenCalled();
+  expect(before.clear).not.toHaveBeenCalled();
   const aside = readdirSync(dir).filter((name) => name.startsWith('trim-cuts.unreadable-'));
   expect(aside).toHaveLength(1);
   expect(readFileSync(join(dir, aside[0] ?? ''), 'utf8')).toBe('{"version": 1, "waiting": [');
@@ -229,6 +229,7 @@ it('keeps a file it cannot read aside, never writes over it, and starts with not
   records.kept.save([cut(2)]);
   await records.settle();
   expect(onDisk()).toEqual({ version: 1, waiting: [cut(2)], copies: [] });
+  expect(before.clear).toHaveBeenCalledOnce();
 });
 
 it('carries nothing over from the library before a restore: the restored library’s own settings, as before alpha.18', () => {
