@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { DeckNativeTransition } from '../../../shared/deck-transition';
 import type { SlideLayer } from '../../../shared/engine/state';
 import {
@@ -10,7 +10,8 @@ import {
   paintLayers,
   paintWaiting,
 } from './SlideLayerView';
-import { deckTransitionFrame, wipeBandStyles } from './transition-frame';
+import { setDrawsWithoutChip } from './chipless';
+import { deckTransitionFrame, wipeBandStyles, wipeSlideMask } from './transition-frame';
 
 const layer = (id: string, shownAt: number, transition?: SlideLayer['transition']): SlideLayer => ({
   presentationId: 'p',
@@ -180,6 +181,54 @@ const layersOf = (coming: HTMLDivElement, going: HTMLDivElement): Layers => ({
   wordsOut: null,
 });
 
+describe('a deck’s own Wipe drawn on a screen with a graphics chip: PowerPoint’s band as a mask on the slide’s box (Session 58)', () => {
+  afterEach(() => {
+    setDrawsWithoutChip(false);
+  });
+
+  it('the incoming slide’s box takes the band’s mask, a new one each frame; its band boxes stay at rest; none once over', () => {
+    const bars = { x: 240, y: 0, width: 1440, height: 1080 };
+    for (const placeIn of [FULL, bars])
+      for (const direction of ['left', 'right', 'up', 'down'] as const) {
+        const native: DeckNativeTransition = { kind: 'wipe', deckEffect: 'wipe', durationMs: 700, direction };
+        const coming = box();
+        const bandIn = bandBoxes();
+        const els = { ...layersOf(coming, box()), bandIn, bandOut: bandBoxes() };
+        for (const p of [0, 0.3, 0.5, 0.9]) {
+          paintLayers(els, deckPaint(native, placeIn), p);
+          const band = deckTransitionFrame(native, p).in.band;
+          if (!band) throw new Error('no band');
+          expect(coming.style.maskImage, `${direction} at ${String(p)}`).toBe(
+            wipeSlideMask(band, placeIn, { width: 1920, height: 1080 }),
+          );
+          expect([coming.style.clipPath, coming.style.transform]).toEqual(['', '']);
+          expect(bandIn.holder?.style).toEqual(AT_REST);
+          expect(bandIn.slide?.style).toEqual(AT_REST);
+        }
+        paintLayers(els, deckPaint(native, placeIn), 1);
+        expect(coming.style.maskImage, `${direction} over`).toBe('');
+      }
+  });
+
+  it('a page told part-way that it draws without a chip goes over to the band’s boxes, leaving nothing of the mask', () => {
+    const native: DeckNativeTransition = {
+      kind: 'wipe',
+      deckEffect: 'wipe',
+      durationMs: 700,
+      direction: 'left',
+    };
+    const coming = box();
+    const bandIn = bandBoxes();
+    const els = { ...layersOf(coming, box()), bandIn, bandOut: bandBoxes() };
+    paintLayers(els, deckPaint(native), 0.3);
+    expect(coming.style.maskImage).not.toBe('');
+    setDrawsWithoutChip(true);
+    paintLayers(els, deckPaint(native), 0.4);
+    expect(coming.style.maskImage).toBe('');
+    expect(bandIn.holder?.style.maskImage).not.toBe('');
+  });
+});
+
 describe('a deck’s own Push on a 4:3 slide fitted to a 16:9 screen (Session 58, Q58-16)', () => {
   it('both slides move by the slide’s own width in px', () => {
     const bars = { x: 240, y: 0, width: 1440, height: 1080 };
@@ -247,8 +296,13 @@ const AT_REST = {
   overflow: '',
 };
 
-describe('a deck’s own Wipe drawn on a screen: PowerPoint’s band (Session 58, C2)', () => {
+describe('a deck’s own Wipe drawn on a screen without a graphics chip: PowerPoint’s band on moved boxes (Session 58, C2)', () => {
+  afterEach(() => {
+    setDrawsWithoutChip(false);
+  });
+
   it('the incoming slide’s band boxes are the band, one slide long where the slide is placed, while it runs (no clip or mask on the slide), at rest once over; the outgoing slide’s never move', () => {
+    setDrawsWithoutChip(true);
     // A 16:9 slide filling the screen, and a 4:3 one fitted to it (bars either side).
     for (const placeIn of [FULL, { x: 240, y: 0, width: 1440, height: 1080 }])
       for (const direction of ['left', 'right', 'up', 'down'] as const) {
@@ -291,6 +345,7 @@ describe('a deck’s own Wipe drawn on a screen: PowerPoint’s band (Session 58
   });
 
   it('Back during it: the slide that was coming in is drawn whole, its band boxes at rest (TX-1)', () => {
+    setDrawsWithoutChip(true);
     const native: DeckNativeTransition = {
       kind: 'wipe',
       deckEffect: 'wipe',
