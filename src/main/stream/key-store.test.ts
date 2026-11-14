@@ -77,9 +77,9 @@ describe('what a window is told of secure storage (Q58-37)', () => {
     return {
       asked,
       storage: {
-        isEncryptionAvailable: count(storage.isEncryptionAvailable),
-        encryptString: count(storage.encryptString),
-        decryptString: count(storage.decryptString),
+        isEncryptionAvailable: count(() => storage.isEncryptionAvailable()),
+        encryptString: count((plain: string) => storage.encryptString(plain)),
+        decryptString: count((encrypted: Buffer) => storage.decryptString(encrypted)),
       } satisfies SecureStorage,
     };
   };
