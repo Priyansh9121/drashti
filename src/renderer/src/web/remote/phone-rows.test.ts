@@ -339,7 +339,7 @@ describe('the playlist’s rows on a phone (Session 55, Part 9)', () => {
     const labelled = media('labelled', 'video', {
       label: 'Placeholder row label',
       mediaName: 'Placeholder file name',
-    } as Partial<PlaylistItemInfo>);
+    });
     const plain = media('plain', 'image');
     const own = phoneRows([labelled, plain], new Map(), new Set(), false);
     const menu = (id: string) => {
