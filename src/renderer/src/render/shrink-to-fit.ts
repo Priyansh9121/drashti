@@ -30,8 +30,9 @@ export interface FitBox {
   /** Shrink-to-fit is on: its fit is searched for. Off: it is only measured, at no fit. */
   readonly on: boolean;
   /**
-   * Where its search starts, if anywhere but halfway: the source's own fit (PowerPoint's shrink, Session 58's PF-4b),
-   * drawn and measured first; the largest fit at which the words fit still decides.
+   * The source's own fit (PowerPoint's shrink, Session 58's PF-4b; source-fit.ts's sourceFitScale), drawn first and
+   * kept where the words fit at it, as PowerPoint draws them, even where they would fit larger (Q58-42); where they do
+   * not, the largest fit below it at which they do. None (or 1, or below the floor): the largest fit up to 1.
    */
   readonly guess?: number | undefined;
   /** Draws its words at this fit (null: none set). The next measure lays the window out again. */
@@ -94,15 +95,24 @@ function reportOnce(error: unknown): void {
  * (reportFitFailuresTo).
  */
 export function fitTogether(boxes: readonly FitBox[]): void {
-  // Each box at a fit of 1 (shrink-to-fit on) or at none; whose words run past at 1 searches.
-  for (const box of boxes) box.write(box.on ? 1 : null);
+  // Each box at its source's own fit (PowerPoint's, where it has one inside: Session 58, PF-4b), else at a fit of 1
+  // (shrink-to-fit on) or at none; whose words run past it there searches below it.
+  const startOf = (box: FitBox) => {
+    const own = box.guess;
+    return own !== undefined && own > MIN_FIT && own < 1 ? own : 1;
+  };
+  for (const box of boxes) box.write(box.on ? startOf(box) : null);
   const searches: Search[] = [];
-  for (const box of boxes) if (box.on && box.over()) searches.push({ box, lo: MIN_FIT, hi: 1, mid: 1 });
+  const kept = new Map<FitBox, number>();
+  for (const box of boxes) {
+    if (!box.on) continue;
+    const start = startOf(box);
+    if (box.over()) searches.push({ box, lo: MIN_FIT, hi: start, mid: start });
+    else if (start < 1) kept.set(box, start);
+  }
   for (let step = 0; step < FIT_STEPS && searches.length > 0; step++) {
     for (const s of searches) {
-      // The first step at the box's own start, where it has one inside (Session 58, PF-4b), else halfway.
-      const guess = step === 0 ? s.box.guess : undefined;
-      s.mid = guess !== undefined && guess > s.lo && guess < s.hi ? guess : (s.lo + s.hi) / 2;
+      s.mid = (s.lo + s.hi) / 2;
       s.box.write(s.mid);
     }
     for (const s of searches) {
@@ -111,8 +121,8 @@ export function fitTogether(boxes: readonly FitBox[]): void {
     }
   }
   for (const s of searches) s.box.write(s.lo);
-  // Each measured at the fit it ends at, then told.
-  const fitOf = new Map(searches.map((s) => [s.box, s.lo]));
+  // Each measured at the fit it ends at, then told (a box kept at its source's own fit, at that).
+  const fitOf = new Map([...kept, ...searches.map((s): [FitBox, number] => [s.box, s.lo])]);
   const measured = boxes.map((box) => ({ box, fit: fitOf.get(box) ?? 1, over: box.over() }));
   const failures: unknown[] = [];
   for (const { box, fit, over } of measured) {
