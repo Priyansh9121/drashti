@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -484,6 +485,32 @@ it.each([
     x.close();
   }
 });
+
+it.each([
+  ['its path in Media', (_media: string) => 'held.mp4'],
+  ['its full path', (media: string) => join(realpathSync.native(media), 'held.mp4')],
+  ['its full path as Media is named', (media: string) => join(media, 'held.mp4')],
+] as const)(
+  'leaves a cut’s file that Trim’s records come to hold, by %s, before it moves (review of c01f5fcf)',
+  async (_form, path) => {
+    const x = earlierCuts();
+    try {
+      leftBehind(x);
+      // Held by none as the folder is read (one look), then by Trim's records at the last check before the move.
+      const held = vi.fn(() => new Set([path(x.mediaDir)]));
+      held.mockReturnValueOnce(new Set());
+      const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+      expect(
+        await removal.trashLeftTrims(x.mediaDir, x.trash, () => true, new AbortController().signal, { held }),
+      ).toEqual([]);
+      expect(held.mock.calls.length).toBeGreaterThan(1);
+      expect(x.trash).not.toHaveBeenCalled();
+      expect(x.exists('held')).toBe(true);
+    } finally {
+      x.close();
+    }
+  },
+);
 
 it('leaves a file it cannot be sure of, and says why: other bytes, two files with the same bytes, no known folder', async () => {
   const x = earlierCuts(['held', 'twice', 'lost', 'newer']);
