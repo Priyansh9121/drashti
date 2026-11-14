@@ -284,7 +284,7 @@ function movie(effect: string): { direction: Direction; size: number; frames: [n
 }
 
 describe('a deck’s own Cover and Uncover, against PowerPoint’s own movie (13 Nov 2026)', () => {
-  it('the slide that moves (Cover’s incoming, Uncover’s outgoing) is where PowerPoint’s is, within a pixel at 320 x 180, every frame, every direction', () => {
+  it('the slide that moves (Cover’s incoming, Uncover’s outgoing) is where PowerPoint’s is, within a pixel and a quarter at 320 x 180, every frame, every direction', () => {
     for (const effect of ['cover', 'uncover'] as const)
       for (const { direction, size, frames } of movie(effect)) {
         // The incoming comes from the right (left), the bottom (up), the left (right) or the top (down); the outgoing
