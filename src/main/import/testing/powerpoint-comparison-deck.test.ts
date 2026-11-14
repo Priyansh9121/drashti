@@ -93,11 +93,19 @@ const transitionsOf = (ms: number) =>
  * between two of the movie's frames) and 1 s, Shape at 2 s, and every transition at 1 s (their markers from 24); then
  * every transition at 2 s (their markers from 26).
  */
+const ZOOM_OWN = [
+  'Basic Zoom · Out · as PowerPoint writes it',
+  'Basic Zoom · Out From Screen Bottom · as PowerPoint writes it',
+  'Basic Zoom · Out Slightly',
+  'Basic Zoom exit · In',
+  'Basic Zoom exit · Out Slightly',
+];
 const RUN3_A = [
   'Basic Zoom exit · Out To Screen Bottom · 750 ms',
   'Basic Zoom exit · Out To Screen Bottom · 1000 ms',
   'Shape in · Circle Out · 2000 ms',
   'Shape out · Box In · 2000 ms',
+  ...ZOOM_OWN,
   ...transitionsOf(1000),
 ];
 const RUN3_B = transitionsOf(2000);
@@ -224,6 +232,51 @@ describe('the deck PowerPoint’s own movie is compared against', () => {
     }
   });
 
+  it('pins Basic Zoom’s variants as Drashti reads them, and adds PowerPoint’s own Out formulas and the sixth variants (EF-4)', () => {
+    const zoomOf = (name: string) => motion(name)?.effects[0];
+    // Run 1's four entrance variants, as its deck wrote them (4 times and 2/3, not PowerPoint's own formula): exact.
+    const four = (name: string, zoomAway: object) =>
+      expect(motion(`Basic Zoom · ${name}`), name).toMatchObject({
+        approximate: false,
+        effects: [{ phase: 'in', kind: 'zoom', zoomAway, durationMs: 700 }],
+      });
+    four('Out', { w: '#ppt_w*4', h: '#ppt_h*4' });
+    four('In Slightly', { w: `#ppt_w*${String(2 / 3)}`, h: `#ppt_h*${String(2 / 3)}` });
+    four('In From Screen Center', { w: '0', h: '0', x: '0.5', y: '0.5' });
+    four('Out From Screen Bottom', { w: '#ppt_w*4', h: '#ppt_h*4', x: '0.5', y: '1+#ppt_h/2' });
+    // PowerPoint's own Out and Out From Screen Bottom (8 times a shape under 0.3 of the slide, twice one its size), and
+    // the sixth variants, Out Slightly (from 4/3) coming in and In (to nothing) and Out Slightly (to 4/3) leaving.
+    const big = '(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*';
+    expect(zoomOf('Basic Zoom · Out · as PowerPoint writes it')).toMatchObject({
+      phase: 'in',
+      kind: 'zoom',
+      zoomAway: { w: `${big}#ppt_w`, h: `${big}#ppt_h` },
+      durationMs: 700,
+    });
+    expect(zoomOf('Basic Zoom · Out From Screen Bottom · as PowerPoint writes it')).toMatchObject({
+      phase: 'in',
+      kind: 'zoom',
+      zoomAway: { w: `${big}#ppt_w`, h: `${big}#ppt_h`, x: '0.5', y: `1+${big}#ppt_h/2` },
+    });
+    expect(zoomOf('Basic Zoom · Out Slightly')).toMatchObject({
+      phase: 'in',
+      kind: 'zoom',
+      zoomAway: { w: '4/3*#ppt_w', h: '4/3*#ppt_h' },
+    });
+    expect(zoomOf('Basic Zoom exit · In')).toMatchObject({ phase: 'out', kind: 'zoom', durationMs: 700 });
+    expect(zoomOf('Basic Zoom exit · Out Slightly')).toMatchObject({
+      phase: 'out',
+      kind: 'zoom',
+      zoomAway: { w: '4/3*#ppt_w', h: '4/3*#ppt_h' },
+    });
+    const plan = powerPointPlan(deck.slides);
+    for (const name of ZOOM_OWN)
+      expect(
+        plan.slides[indexOf(name)]?.groups.map((group) => group.endMs - group.startMs),
+        name,
+      ).toEqual([700]);
+  });
+
   it('adds run 3’s lengths: the Zoom exit at 750 ms and 1 s, Shape at 2 s, every transition at 1 s and 2 s', () => {
     const plan = powerPointPlan(deck.slides);
     const big = '(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*';
@@ -271,6 +324,7 @@ const STANDARD = [
   'Grow/Shrink 150%',
   'Basic Zoom · In From Screen Center',
   'Basic Zoom · Out From Screen Bottom',
+  'Basic Zoom · Out From Screen Bottom · as PowerPoint writes it',
   'Basic Zoom exit · Out',
   'Basic Zoom exit · In To Screen Center',
   'Basic Zoom exit · Out To Screen Bottom',
