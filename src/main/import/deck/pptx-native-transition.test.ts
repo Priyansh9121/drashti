@@ -6,9 +6,9 @@ import { nativePptxTransition } from './pptx-native-transition';
  * Which of a deck's PowerPoint transitions Drashti draws as PowerPoint does (exact), and which only come close
  * (approximate: a slide using one keeps PowerPoint's own video wherever one can be made). Measured against PowerPoint's
  * own movie of a generated deck, frame by frame (13 Nov 2026): Push, Cover and Uncover within a pixel at 320 x 180 in
- * every direction (render/transition-frame.test.ts holds the movie's frames). Wipe is drawn with a hard edge, not
- * PowerPoint's soft band one slide long (Q57-28: the band's mask over the whole slide dropped frames on Windows while
- * streaming), so it only comes close.
+ * every direction (render/transition-frame.test.ts holds the movie's frames); Wipe, PowerPoint's soft band one slide
+ * long, within two pixels and a frame on 14 Nov 2026 (the comparison's probe, runs 2 and 3), drawn the way each screen
+ * holds its frames (Session 58).
  */
 
 const read = (xml: string, durationMs = 700) => nativePptxTransition(parseXml(xml), durationMs);
@@ -33,14 +33,14 @@ describe('a deck’s PowerPoint transition, drawn by Drashti', () => {
     }
   });
 
-  it('Wipe is drawn with a hard edge, not PowerPoint’s soft band, in every direction: approximate', () => {
+  it('Wipe is drawn as PowerPoint’s soft band, in every direction: exact', () => {
     for (const [dir, direction] of DIRECTIONS)
       expect(read(`<p:wipe dir="${dir}"/>`), `wipe ${dir}`).toEqual({
         transition: { kind: 'wipe', deckEffect: 'wipe', durationMs: 700, direction },
-        approximate: true,
+        approximate: false,
       });
     // No direction written: PowerPoint's own, from the left.
-    expect(read('<p:wipe/>')).toMatchObject({ transition: { direction: 'left' }, approximate: true });
+    expect(read('<p:wipe/>')).toMatchObject({ transition: { direction: 'left' }, approximate: false });
   });
 
   it('Push, Fade, Fade Through Black and Zoom are drawn as PowerPoint draws them: exact', () => {
