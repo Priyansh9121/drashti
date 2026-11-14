@@ -183,8 +183,10 @@ describe('the shrink stills (PF-4b)', () => {
         expect(words.style.sourceFit, slide.name).toBeUndefined();
       }
       // The words' size and line spacing as written (the reader's slide pixels: 4/3 a point; 1.2 lines a 100% spacing).
-      const sizes = new Set((words.runs ?? []).filter((r) => r.text.trim() !== '').map((r) => r.size));
-      expect([...sizes], slide.name).toEqual([((slide.size ?? 4000) / 100) * (4 / 3)]);
+      const sizes = new Set(
+        (words.runs ?? []).filter((r) => r.text.trim() !== '').map((r) => thousandths(r.size ?? 0)),
+      );
+      expect([...sizes], slide.name).toEqual([thousandths(((slide.size ?? 4000) / 100) * (4 / 3))]);
       const spacing = slide.lineSpacing ?? 100;
       const heights = new Set((words.runs ?? []).map((r) => r.paragraph?.lineHeight ?? 1.2));
       expect(
