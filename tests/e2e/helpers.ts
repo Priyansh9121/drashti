@@ -814,7 +814,89 @@ export async function editorGroup(ed: Page, name: string): Promise<void> {
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 }
 
-/** The slide editor's window at `size` (CSS pixels), its page laid out at exactly that size. */
+/** The slide editor's slide as one read of the page: its box in the window, its scale, and whether it is placed. */
+interface EditorSlidePlace {
+  x: number;
+  y: number;
+  scale: number;
+  placed: boolean;
+  /** Where it sits and for what area, said when it is not placed yet. */
+  why: string;
+}
+
+/**
+ * The slide editor's slide, read in one step (so no drawing of the page can come between its parts): where it is in
+ * the window, its scale, and whether the editor has placed it for its area as the area is now. The editor places the
+ * slide from a size its ResizeObserver measured (useElementSize), which comes a frame and a task after the layout:
+ * just after the window is resized the slide still sits where it sat, at its old scale. Fitted, a placed slide is in
+ * the middle of its area; zoomed, in the middle where it fits and its margin in from the area's edges where it does
+ * not (the margin read from the room the area scrolls over: the slide's place and size and one margin). Null when the
+ * editor shows no slide (or its area is not laid out).
+ */
+function readEditorSlide(): EditorSlidePlace | null {
+  const area = document.querySelector<HTMLElement>('[data-testid="editor-canvas-area"]');
+  const slide = area?.querySelector<HTMLElement>(':scope > [data-testid="editor-canvas"]');
+  if (!area || !slide || area.getClientRects().length === 0) return null;
+  const box = slide.getBoundingClientRect();
+  const [left = NaN, top = NaN, width = NaN, height = NaN] = [
+    slide.style.left,
+    slide.style.top,
+    slide.style.width,
+    slide.style.height,
+  ].map((v) => parseFloat(v));
+  const room = area.firstElementChild === slide ? null : (area.firstElementChild as HTMLElement | null);
+  const along = (at: number, length: number, areaLength: number, roomLength: string | undefined) => {
+    const middle = (areaLength - length) / 2;
+    const want = roomLength === undefined ? middle : Math.max(parseFloat(roomLength) - at - length, middle);
+    return Math.abs(at - want) < 0.01;
+  };
+  const placed =
+    along(left, width, area.clientWidth, room?.style.width) &&
+    along(top, height, area.clientHeight, room?.style.height);
+  return {
+    x: box.left,
+    y: box.top,
+    scale: Number(slide.dataset['scale']),
+    placed,
+    why: `the slide at ${String(left)}, ${String(top)} (${String(width)} × ${String(height)}) in an area of ${String(area.clientWidth)} × ${String(area.clientHeight)}${room ? ', zoomed' : ''}`,
+  };
+}
+
+/**
+ * The slide editor's slide once the editor has placed it for its area as the area is now (see readEditorSlide):
+ * where it is in the window and its scale, read together. Polled, as a person would see it settle: never by counting
+ * frames, which CI's Mac can draw none of for seconds. Null when the editor shows no slide.
+ */
+async function placedEditorSlide(ed: Page): Promise<EditorSlidePlace | null> {
+  const last: { read?: EditorSlidePlace | null } = {};
+  await expect
+    .poll(
+      async () => {
+        last.read = await ed.evaluate(readEditorSlide);
+        return last.read === null || last.read.placed ? 'placed' : last.read.why;
+      },
+      { message: 'the slide editor placed its slide for its area as it is now' },
+    )
+    .toBe('placed');
+  return last.read ?? null;
+}
+
+/**
+ * A point on the slide editor's slide (slide pixels) as a point in its window, from the slide's box and scale read
+ * together once the editor has placed it for its area as it is now (Session 58: the alpha.17 gate's Show Safe Areas
+ * click read the box before the editor caught up with a resize and the scale after, and met nothing).
+ */
+export async function onEditorSlide(ed: Page, x: number, y: number): Promise<{ x: number; y: number }> {
+  const slide = await placedEditorSlide(ed);
+  if (!slide) throw new Error('the slide editor shows no slide');
+  return { x: slide.x + x * slide.scale, y: slide.y + y * slide.scale };
+}
+
+/**
+ * The slide editor's window at `size` (CSS pixels), its page laid out at exactly that size and, when it shows a
+ * slide, the slide placed for it (Session 58: the window's size alone came a frame and a task before the editor's
+ * slide moved).
+ */
 export async function sizeSlideEditor(
   app: ElectronApplication,
   ed: Page,
@@ -827,6 +909,7 @@ export async function sizeSlideEditor(
   }, size);
   await ed.setViewportSize(size);
   await expect.poll(() => ed.evaluate(() => [innerWidth, innerHeight])).toEqual([size.width, size.height]);
+  await placedEditorSlide(ed);
 }
 
 /**
