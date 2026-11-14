@@ -139,6 +139,40 @@ export interface PerfContext {
   songs?: number;
   /** The priority Drashti started at, and its other processes' (Session 17: the mandir PC starts it at normal). */
   priority?: { started: string; others: () => string };
+  /**
+   * Each page's warm-up as its marks for a trace say it (Session 58, WU-1: the LIVE picture's and the stream's page's,
+   * where Chromium draws without a graphics chip too): [page, the marks' names and their times in that page (ms)].
+   */
+  warmUps?: () => Promise<[string, [string, number][] | null][]>;
+  /** The library's write lock as the main process sees it while measured (Session 58, perf-lock.ts). */
+  lock?: { begin(): void; end(): void; line(): string };
+}
+
+/**
+ * A page's warm-up in words, from its marks (render/WarmUp.tsx: `drashti-warm-up:<page>` as it began to draw, then
+ * `-end`, after `-cap`, `-unseen` or `-error` when it ended so, or `-cut` when it was taken away first): how it ended,
+ * how long it drew, and when it began in its page. For the record (Session 58, WU-1); never judged.
+ */
+export function warmUpMarksLine(page: string, marks: readonly [string, number][] | null): string {
+  if (marks === null) return `${page}: not read`;
+  const at = (suffix: string) => marks.find(([name]) => name.endsWith(suffix))?.[1] ?? null;
+  const began = marks.find(([name]) => /^drashti-warm-up:[a-z]+$/u.test(name))?.[1] ?? null;
+  if (began === null) return marks.length === 0 ? `${page}: none` : `${page}: never began to draw`;
+  const sec = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
+  const ended = at('-end') ?? at('-cut');
+  const how =
+    at('-cut') !== null
+      ? 'cut short'
+      : at('-cap') !== null
+        ? 'stopped at its longest'
+        : at('-unseen') !== null
+          ? 'ended unseen'
+          : at('-error') !== null
+            ? 'ended by a scene that failed'
+            : at('-end') !== null
+              ? 'drew everything'
+              : 'still going';
+  return `${page}: ${how}${ended === null ? '' : `, ${sec(ended - began)}`} (began ${sec(began)} into its page)`;
 }
 
 /** How big the test import is. */
@@ -687,6 +721,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     d.handlerTimes.clear();
     d.gc.max = 0;
     ctx.watch?.reset();
+    ctx.lock?.begin();
     // Each screen's late frames so far (Session 48): what the measured part adds is said.
     const lateBefore = await lateFrames(ctx.outputs());
     ctx.watch?.note(noImport ? 'slide changes begin (no import)' : 'slide changes begin');
@@ -727,6 +762,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     const lateAfter = await lateFrames(ctx.outputs());
     const late = lateAfter.map((n, i) => n - (lateBefore[i] ?? 0));
     ctx.watch?.note('slide changes end');
+    ctx.lock?.end();
     await ctx.profile?.stop(ctx.watch ?? null);
     // With a trace: the GPU's new pipelines while it ran, and during the first Bold transition (Session 27).
     const gpu = (await ctx.profile?.pipelines().catch(() => null)) ?? null;
@@ -769,9 +805,16 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
           run.edits.filter((e) => e.during),
         )} (${(['words', 'playlist'] as const).map((k) => `${k} worst ${Math.max(0, ...run.edits.filter((e) => e.during && e.kind === k).map((e) => Math.round(e.ms)))} ms`).join(', ')})`
       : '';
+    // Each page's warm-up (Session 58, WU-1): for the record.
+    const warmUps = ctx.warmUps
+      ? await ctx.warmUps().then(
+          (pages) => `; warm-ups: ${pages.map(([page, marks]) => warmUpMarksLine(page, marks)).join('; ')}`,
+          () => '',
+        )
+      : '';
     const others = ctx.priority?.others();
     const priority = `main process priority ${describePriority()}${ctx.priority ? ` (started at ${ctx.priority.started}${others ? `, its other processes ${others}` : ''})` : ''}`;
-    const summary = `${what}; ${settleLine(settled)}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; ${segmentsLine(raw)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}; late frames on the screens ${late.length > 0 ? late.join(', ') : 'none counted'}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; ${gpuLine(gpu)}` : ''}`;
+    const summary = `${what}; ${settleLine(settled)}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; ${segmentsLine(raw)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}; late frames on the screens ${late.length > 0 ? late.join(', ') : 'none counted'}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; ${gpuLine(gpu)}` : ''}${ctx.lock ? `; ${ctx.lock.line()}` : ''}${warmUps}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {

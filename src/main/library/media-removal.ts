@@ -35,6 +35,35 @@ interface TrimRow {
   id: string;
   path: string;
   sha256: string;
+  /** Its name in Media, for the operator's notice. */
+  name: string;
+}
+
+/** A cut's row as the statements bind it. */
+const rowKey = ({ id, path, sha256 }: TrimRow) => ({ id, path, sha256 });
+
+/** The files Drashti made from a media file, kept by its sha256: its still frame, sharpened and blurred copies. */
+async function removeDerived(mediaDir: string, sha256: string): Promise<void> {
+  await rm(join(mediaDir, stillPath(sha256)), { force: true }).catch(() => undefined);
+  // Its sharpened copies (Session 26f), and its blurred copy (Session 55).
+  await removeCopiesOf(mediaDir, sha256);
+  await removeBlurredOf(mediaDir, sha256);
+}
+
+/**
+ * The operator's notice once earlier Trim cuts went to the Trash (TM-4): which, and where to take them back from (the
+ * Recycle Bin on Windows). Null when none went.
+ */
+export function trashedTrimsNotice(
+  names: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  if (names.length === 0) return null;
+  const trash = platform === 'win32' ? 'the Recycle Bin' : 'the Trash';
+  const list = new Intl.ListFormat('en').format(names.map((name) => `“${name}”`));
+  return names.length === 1
+    ? `An earlier Trim cut that nothing uses any more went to ${trash}: ${list}. Take it back from there if you need it.`
+    : `Earlier Trim cuts that nothing uses any more went to ${trash}: ${list}. Take them back from there if you need them.`;
 }
 
 /** The same regular file as `before`, at its own real path (no link): nothing replaced or moved it since. */
@@ -194,25 +223,28 @@ export class MediaRemoval {
    * `quiet` holds (index.ts: nothing up, nothing Oops, Put it back or Back could bring back, no stream or
    * recording). The library's JSON is read twice at most: once before the hashes, and once for all the cuts left
    * just before they move. Any other library write while they move leaves the rest for a later start.
+   * Each cut's row is marked gone in the same turn as its last check, before it moves, so nothing can take it up
+   * meanwhile; a move that fails puts the mark back (TM-7). A cut that moved takes its still frame, sharpened and
+   * blurred copies with it (TM-5). The names of the cuts that moved, for the operator's notice (TM-4).
    */
   async trashUnusedTrims(
     mediaDir: string,
     trash: (file: string) => Promise<void>,
     quiet: () => boolean,
     signal: AbortSignal,
-  ): Promise<number> {
+  ): Promise<string[]> {
     const paused = () => signal.aborted || !quiet();
-    if (paused()) return 0;
+    if (paused()) return [];
     const rows = this.db
       .prepare(
-        `SELECT m.id, m.path, m.sha256 FROM trimmed_videos t JOIN media m ON m.id = t.media_id
+        `SELECT m.id, m.path, m.sha256, m.name FROM trimmed_videos t JOIN media m ON m.id = t.media_id
          WHERE m.source_kind = 'drashti' AND m.deleted_at IS NULL AND m.missing = 0
            AND m.path <> '' AND m.sha256 IS NOT NULL
            AND NOT EXISTS (SELECT 1 FROM playlist_items i WHERE i.media_id = m.id)
          ORDER BY m.id`,
       )
       .all() as TrimRow[];
-    if (rows.length === 0) return 0;
+    if (rows.length === 0) return [];
 
     // Include soft-deleted rows for Undo, plus durable media uses outside the removal dialog's summary.
     const used = this.db.prepare(
@@ -266,8 +298,17 @@ export class MediaRemoval {
           AND m.source_kind = 'drashti' AND m.deleted_at IS NULL AND m.missing = 0`,
     );
     const forget = this.db.prepare(
-      `UPDATE media SET path = '', missing = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      `UPDATE media SET path = '', missing = 1, deleted_at = @at
        WHERE id = @id AND path = @path AND sha256 = @sha256 AND deleted_at IS NULL`,
+    );
+    // The mark put back when the move fails: only the one this pass made (an import of the same bytes meanwhile
+    // brings the row back to life itself, at a path of its own).
+    const unmark = this.db.prepare(
+      `UPDATE media SET path = @path, missing = 0, deleted_at = NULL
+       WHERE id = @id AND path = '' AND missing = 1 AND deleted_at = @at AND sha256 = @sha256`,
+    );
+    const stillMarked = this.db.prepare(
+      "SELECT 1 FROM media WHERE id = @id AND path = '' AND deleted_at = @at AND sha256 = @sha256",
     );
     const root = realpathSync.native(mediaDir);
     const slash = (path: string) => path.replaceAll('\\', '/');
@@ -296,12 +337,12 @@ export class MediaRemoval {
     const checked: { row: TrimRow; file: string; before: BigIntStats }[] = [];
     for (const { row, file } of unused(inMedia)) {
       await setImmediate();
-      if (paused()) return 0;
+      if (paused()) return [];
       try {
         const before = lstatSync(file, { bigint: true });
         if (!before.isFile() || realpathSync.native(file) !== file) continue;
         const { sha256 } = await hashOffMain(file, signal);
-        if (paused()) return 0;
+        if (paused()) return [];
         // Only the bytes Drashti wrote, the same file before and after the hash.
         if (sha256 === row.sha256 && sameFile(file, before)) checked.push({ row, file, before });
       } catch {
@@ -309,28 +350,42 @@ export class MediaRemoval {
       }
     }
     await setImmediate();
-    if (paused() || checked.length === 0) return 0;
+    if (paused() || checked.length === 0) return [];
 
     // The last check, for all of them at once, in the same turn as the first move.
     const ready = unused(
       checked.filter(
-        ({ row, file, before }) => stillManaged.get(row) !== undefined && sameFile(file, before),
+        ({ row, file, before }) => stillManaged.get(rowKey(row)) !== undefined && sameFile(file, before),
       ),
     );
     const checkedAt = revision.get(0)?.stamp;
-    let gone = 0;
+    const gone: string[] = [];
+    // This pass's own writes to the library (each mark, and each mark put back), which the stamp leaves out.
+    let own = 0;
     for (const { row, file, before } of ready) {
       // Anything else written to the library since that check (an edit, an import, bookkeeping) could name the
       // rest: they wait for a later start.
-      if (paused() || revision.get(gone)?.stamp !== checkedAt) break;
-      if (usedNow(row, file, inUse()) || stillManaged.get(row) === undefined || !sameFile(file, before))
+      if (paused() || revision.get(own)?.stamp !== checkedAt) break;
+      const key = rowKey(row);
+      if (usedNow(row, file, inUse()) || stillManaged.get(key) === undefined || !sameFile(file, before))
         continue;
+      // Marked gone in the same turn as its last check (TM-7): from here it reads as a missing file that can't be
+      // added anywhere, so no use can name it while it moves.
+      const marked = { ...key, at: new Date().toISOString() };
+      if (forget.run(marked).changes !== 1) continue;
+      own++;
       try {
         await trash(file);
-        gone += forget.run(row).changes;
       } catch {
-        // A file the system could not move stays in the library for the next start.
+        // A file the system could not move stays in the library as it was, for the next start.
+        own += unmark.run(marked).changes;
+        continue;
       }
+      gone.push(row.name);
+      // Its still frame, sharpened and blurred copies go with it (TM-5), as the purge's do: unless an import of the
+      // same bytes brought its row back to life meanwhile, when they are that file's.
+      if (stillMarked.get({ id: marked.id, at: marked.at, sha256: marked.sha256 }) !== undefined)
+        await removeDerived(mediaDir, row.sha256);
     }
     return gone;
   }
@@ -356,12 +411,8 @@ export class MediaRemoval {
       forget.run(r.id);
       // Another row with the same bytes would share the file (never, one row per sha256), so it can go.
       await rm(own, { force: true }).catch(() => undefined);
-      if (r.sha256) {
-        await rm(join(mediaDir, stillPath(r.sha256)), { force: true }).catch(() => undefined);
-        // Its sharpened copies (Session 26f), and its blurred copy (Session 55), go with it.
-        await removeCopiesOf(mediaDir, r.sha256);
-        await removeBlurredOf(mediaDir, r.sha256);
-      }
+      // Its still frame, sharpened copies (Session 26f) and blurred copy (Session 55) go with it.
+      if (r.sha256) await removeDerived(mediaDir, r.sha256);
       gone++;
     }
     return gone;

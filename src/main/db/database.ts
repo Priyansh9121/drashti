@@ -7,6 +7,28 @@ export type Db = Database.Database;
 /** How long a write in this process waits for another's write lock (the import's) before failing. */
 export const LIBRARY_BUSY_TIMEOUT_MS = 5000;
 
+/** SQLite's own default (wal_autocheckpoint): a commit that finds the WAL this many pages long copies it in. */
+export const CHECKPOINT_PAGES = 1000;
+
+/**
+ * Who copies the WAL into the library file while an import runs (Session 58, h-stall2). SQLite does it in whichever
+ * connection's commit finds the WAL past CHECKPOINT_PAGES pages: during an import that was the main process's next
+ * write (a later write's bookkeeping, a setting), which then copied the import's pages into the library file and
+ * waited for the disk on the main thread, the one that carries every slide change (on two-core Windows streaming, a
+ * 0.5-1.9 s stall in the middle of an import, the main thread off the processor). So while an import's worker runs,
+ * Main's connection leaves the copying to the import's own (its commits do it in its process, and it copies what is
+ * left as it ends: import/worker.ts), and does it again by itself once the import has ended. Nothing is lost either
+ * way: a commit is in the WAL, read from there and kept there until it is copied, after a crash too.
+ * Returns what the import service calls as a worker starts (true) and ends (false).
+ */
+export function leaveCopyingToImports(db: Db): (importing: boolean) => void {
+  return (importing) => {
+    // Closed as Drashti quits: nothing to copy, it was copied as it closed.
+    if (!db.open) return;
+    db.pragma(`wal_autocheckpoint = ${importing ? '0' : String(CHECKPOINT_PAGES)}`);
+  };
+}
+
 /**
  * Make every transaction on this connection take the write lock at its
  * start (BEGIN IMMEDIATE). Two connections write the library: the main

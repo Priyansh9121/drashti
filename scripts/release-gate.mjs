@@ -1,8 +1,8 @@
 // The release gate (Session 30, Q6). Before a release is published: its tag must be new; its commit must be
-// origin/main; a CI run from a push of that very commit must have passed every app job (a manual quick run
-// never counts); every file must match SHA256SUMS.txt and the update manifest's sha512 and size; and (Session
-// 54) the access list's address and public key built in must be real, never placeholders. A dry run reports what
-// it finds and goes on; a publish stops at any failure. Since Session 58 a job GitHub never started (no runner: it
+// origin/main; a CI run from a push of that very commit must have passed every app job, since Session 58 each part of
+// each system's end-to-end suite (a manual quick run never counts); every file must match SHA256SUMS.txt and the
+// update manifest's sha512 and size; and (Session 54) the access list's address and public key built in must be
+// real, never placeholders. A dry run reports what it finds and goes on; a publish stops at any failure. Since Session 58 a job GitHub never started (no runner: it
 // ran no step, and its annotation says so) is named as such, never as a test failure; it has not passed either
 // (.github/workflows/rerun-unstarted.yml re-runs one by itself).
 //
@@ -17,17 +17,36 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * The jobs a release's commit must have passed, from a push: the Mac's, Windows', Windows' in Black (Session 41), and
- * the Mac's second half (Session 55: CI's Mac runs the suite in two halves side by side).
+ * The jobs a release's commit must have passed, from a push: since Session 58 (the owner: a faster gate, without
+ * running less) each system's end-to-end suite in three parts side by side, the Mac's (part 1 with the installers),
+ * Windows' (the same) and Windows' in Black (Session 41); every part must pass (ci.yml; scripts/e2e-parts.mjs
+ * checks that the parts hold the whole suite).
  */
 export const APP_JOBS = [
   'End-to-end and installers (macos-latest)',
+  'End-to-end, part 2 of 3 (macos-latest)',
+  'End-to-end, part 3 of 3 (macos-latest)',
   'End-to-end and installers (windows-latest)',
-  'End-to-end in Black (windows-latest)',
-  'End-to-end, second half (macos-latest)',
+  'End-to-end, part 2 of 3 (windows-latest)',
+  'End-to-end, part 3 of 3 (windows-latest)',
+  'End-to-end in Black, part 1 of 3 (windows-latest)',
+  'End-to-end in Black, part 2 of 3 (windows-latest)',
+  'End-to-end in Black, part 3 of 3 (windows-latest)',
 ];
-/** How the gate's lines name them. */
-const JOB_NAMES = ['macOS', 'Windows', 'Windows in Black', 'macOS second half'];
+/** How the gate's lines name each job: today's, and the jobs before Session 58 (so a run from before reads right). */
+const JOB_SAYS = {
+  'End-to-end and installers (macos-latest)': 'macOS part 1',
+  'End-to-end, part 2 of 3 (macos-latest)': 'macOS part 2',
+  'End-to-end, part 3 of 3 (macos-latest)': 'macOS part 3',
+  'End-to-end and installers (windows-latest)': 'Windows part 1',
+  'End-to-end, part 2 of 3 (windows-latest)': 'Windows part 2',
+  'End-to-end, part 3 of 3 (windows-latest)': 'Windows part 3',
+  'End-to-end in Black, part 1 of 3 (windows-latest)': 'Windows in Black part 1',
+  'End-to-end in Black, part 2 of 3 (windows-latest)': 'Windows in Black part 2',
+  'End-to-end in Black, part 3 of 3 (windows-latest)': 'Windows in Black part 3',
+  'End-to-end in Black (windows-latest)': 'Windows in Black',
+  'End-to-end, second half (macos-latest)': 'macOS second half',
+};
 
 const short = (sha) => String(sha).slice(0, 7);
 
@@ -141,7 +160,7 @@ const SAID = {
  * job. A run passed on a re-run still counts, and says so. A job GitHub never started (no runner) is named as such,
  * never as a test failure, but a run with one has not passed: nothing it should have tested was.
  */
-export function ciCheck(runs, jobsOf, sha, annotationsOf = {}) {
+export function ciCheck(runs, jobsOf, sha, annotationsOf = {}, appJobs = APP_JOBS) {
   const pushed = runs.filter((r) => r.event === 'push' && r.head_sha === sha);
   if (pushed.length === 0)
     return {
@@ -156,7 +175,7 @@ export function ciCheck(runs, jobsOf, sha, annotationsOf = {}) {
       const job = jobs.find((j) => j.name === name);
       return jobState(job, job ? (annotationsOf[job.id] ?? []) : []);
     };
-    const got = APP_JOBS.map(of);
+    const got = appJobs.map(of);
     if (got.every((c) => c === 'success')) {
       const again =
         Number(run.run_attempt ?? 1) > 1 ? ` (on attempt ${String(run.run_attempt)}: a re-run counts)` : '';
@@ -167,7 +186,7 @@ export function ciCheck(runs, jobsOf, sha, annotationsOf = {}) {
     }
     newest ??= { run, got };
     states.push(
-      `run ${String(run.id)}: ${got.map((c, i) => `${JOB_NAMES[i] ?? ''} ${SAID[c] ?? c}`).join(', ')}`,
+      `run ${String(run.id)}: ${got.map((c, i) => `${JOB_SAYS[appJobs[i] ?? ''] ?? appJobs[i] ?? ''} ${SAID[c] ?? c}`).join(', ')}`,
     );
   }
   // The newest run's jobs that did not pass were only ones GitHub never started (or still going): not a test failure.
