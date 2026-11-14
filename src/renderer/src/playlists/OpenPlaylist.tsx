@@ -1405,6 +1405,16 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                         firstOfRun={r.firstOfRun}
                         live={isSlideLive(r)}
                         itemId={item.id}
+                        // A click on it goes live but in a template (C3, Session 58): pointed at, its clip loads ahead.
+                        pointAt={
+                          r.item && !isTemplate
+                            ? {
+                                presentationId: r.presentationId,
+                                slideIndex: r.at.position,
+                                arrangementId: r.arrangementId,
+                              }
+                            : undefined
+                        }
                         onClick={(e) => {
                           clickSlideRow(r, e, platform);
                         }}

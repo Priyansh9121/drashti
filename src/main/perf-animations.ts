@@ -30,6 +30,17 @@ import { cutText, plural } from '../shared/text';
 import { PresentationRepo } from './db/presentations';
 import { addTone } from './music/perf-music';
 import { makePicture, makeVideo, type ScenarioDeps, type ScenarioRun } from './perf-scenarios';
+import {
+  memoryAdded,
+  memoryLine,
+  POINT_AT,
+  POINTED_LEAD_MS,
+  POINTED_LOAD_MS,
+  POINTED_ROW,
+  POINTED_SAY_MS,
+  windowsMemory,
+  type WindowsMemory,
+} from './perf-pointed';
 import { sw } from './switches';
 
 /*
@@ -42,7 +53,8 @@ import { sw } from './switches';
  * - every slide transition Drashti offers at its default length (0.8 s, the editor's), on screens that move Calm as
  *   every show's do, and a long one (a 3 s fade); the three Bold moves and Bold's fade on screens moving Bold;
  * - a deck's click (Session 54's clips, made here as the e2e tests' stand-in makes them: no PowerPoint), and its
- *   coming in;
+ *   coming in; and its coming in by a click with the pointer resting on its row a moment first (C3, Session 58: its
+ *   first clip loaded ahead at the frame the click starts it from), with what that costs each window in memory;
  * - a lower third in and out: three styles (box, band, glass) and one of the heaviest (letter by letter with a blur,
  *   glass, sparkles behind);
  * - Black-out on and off, and the Wallpaper (a placeholder picture chosen) on and off.
@@ -931,6 +943,8 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       const stopped =
         until.by === 'uptime' ? `Drashti up ${String(UP_TO_MS / 60_000)} minutes` : 'out of time';
       const skipped = new Set<string>();
+      /** C3 (Session 58): each pointed run's memory added, by window. */
+      const pointedMemory: WindowsMemory[] = [];
       const inTime = (name: string) => {
         if (Date.now() < deadline) return true;
         if (until.by === 'uptime' && skipped.size === 0) note(`${stopped}: no more cases pressed`);
@@ -1027,6 +1041,22 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         await press('deck slide in (step 0)', 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 800);
         await press('deck click', 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
         await press('deck click', 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
+      }
+      // C3 (Session 58, Q57-26): the cold jump as an operator makes it, the pointer resting on the deck slide's row a
+      // moment before the click (perf-pointed.ts), so every hall screen has its first clip waiting at the frame the
+      // click starts it from; and what that clip costs each window in memory. Only with time for all its runs.
+      if (timeFor(SHORT_RUNS * (SETTLE_MS + POINTED_LEAD_MS + CLIP_MS + 800), 'deck slide pointed at first')) {
+        progress('the deck slide pointed at, then clicked');
+        for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++) {
+          await away();
+          const before = windowsMemory(deps.outputs(), operator());
+          await sleep(POINTED_SAY_MS);
+          await ask(operator(), POINT_AT({ presentationId: deckId, slideIndex: 0, arrangementId: null }), false);
+          await sleep(POINTED_LOAD_MS);
+          pointedMemory.push(memoryAdded(before, windowsMemory(deps.outputs(), operator())));
+          await press(POINTED_ROW, 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 800);
+          await ask(operator(), POINT_AT(null), false);
+        }
       }
       // One more click after the slide has stood still 20 s: Chromium may suspend a paused video after about 15 s, and
       // the next step's clip waits paused at its start. Measured only in time; it never marks the check out of time.
@@ -1172,6 +1202,8 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         // What could stop the cases (their budget, or Drashti up 12 minutes), and whether the leftovers were pressed.
         stops: until.by,
         leftovers,
+        // C3 (Session 58): what the deck slide's clip pointed at added to each window's memory, run by run (MB).
+        pointedMemory,
       });
       const fromMain = pressed.filter((p) => p.from === 'main').length;
       return {
@@ -1186,7 +1218,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
                 : `${plural(rows.length, 'case')}, ${plural(measured.runs.length + secondRuns.length, 'run')}`,
           },
         ],
-        summary: `scenario animations: frame period ${measured.period.toFixed(2)} ms (${String(measured.frames)} frames)${wallpaper ? '' : ', the Wallpaper black (no picture could be chosen)'}${fromMain > 0 ? `, ${String(fromMain)} pressed from the main process` : ''}; ${stillLine(measured.still)}; late: ${late.join(', ') || 'none'}; uneven: ${uneven.join(', ') || 'none'}; ${rows.map(caseLine).join(' | ')}${nativeJump ? `; ${jumpLine(nativeJump.figures)}` : ''}${windows ? `; the deck with the ${DK2_WINDOWS}, ${windowsLine(windows)}` : ''}${notes.length > 0 ? `; notes: ${notes.join('; ')}` : ''}`,
+        summary: `scenario animations: frame period ${measured.period.toFixed(2)} ms (${String(measured.frames)} frames)${wallpaper ? '' : ', the Wallpaper black (no picture could be chosen)'}${fromMain > 0 ? `, ${String(fromMain)} pressed from the main process` : ''}; ${stillLine(measured.still)}; late: ${late.join(', ') || 'none'}; uneven: ${uneven.join(', ') || 'none'}; ${rows.map(caseLine).join(' | ')}${nativeJump ? `; ${jumpLine(nativeJump.figures)}` : ''}${windows ? `; the deck with the ${DK2_WINDOWS}, ${windowsLine(windows)}` : ''}${pointedMemory.length > 0 ? `; memory a deck slide's clip pointed at added (MB): ${memoryLine(pointedMemory)}` : ''}${notes.length > 0 ? `; notes: ${notes.join('; ')}` : ''}`,
       };
     },
   };

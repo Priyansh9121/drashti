@@ -229,7 +229,10 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   const onMetadata = () => {
     tellLength(mediaId, v.duration);
     const at = expected();
-    if (at > 0.05) {
+    // Within a moment of where it is, it plays from there at once: a file just loaded is at its start, and one loaded
+    // ahead may wait decoded at the frame its clock starts it from (C3, Session 58: a click on a deck slide's row, past
+    // the deck's own transition), where a seek to the same place would only be a wait for that frame again.
+    if (Math.abs(at - v.currentTime) > 0.05) {
       v.addEventListener('seeked', whenFrame, { once: true });
       v.currentTime = at;
     } else whenFrame();
