@@ -19,7 +19,7 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Eraser, Repeat2, Square, Timer } from '../ui/icons';
 import { dispatch } from './actions';
-import { useDrawingMode } from './drawing-mode';
+import { connectDrawingMode, useDrawingMode } from './drawing-mode';
 import { LiveZoomControls, ZoomablePreview } from './LiveZoom';
 import { useNow } from '../render/useNow';
 import { useWhatIsThis } from '../help/WhatIsThis';
@@ -92,6 +92,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
     : null;
   const first = useScreens((s) => s.snapshot?.groups.flatMap((g) => g.screens)[0]);
   useEffect(() => {
+    connectDrawingMode();
     void preloadFonts();
   }, []);
   const canvas = { width: first?.canvasWidth ?? 1920, height: first?.canvasHeight ?? 1080 };
