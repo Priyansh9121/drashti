@@ -390,6 +390,36 @@ export const COMPARISON_STANDARD: ComparisonDeck = {
   ),
 };
 
+/**
+ * Run 4 (h-pptx3, 14 Nov evening): Shape for its soft edge (Session 58, C1), every outline In and Out, coming in and
+ * leaving, at 1 s (markers from 20) and at 2 s (from 22), on a wide deck and on a 4:3 one of their own. Run 2 measured
+ * them at 700 ms on the wide deck, run 3 at 700 ms on 4:3 (and two at 2 s).
+ */
+const shapeScenes = (): Scene[] =>
+  [1000, 2000].flatMap((length) =>
+    RUN2_MOTIONS.filter((motion) => motion.name.startsWith('Shape ')).map((motion) =>
+      lasting(motion.name, length),
+    ),
+  );
+const shapeSlides = (): ComparisonSlide[] => {
+  const scenes = shapeScenes();
+  return [...timed(scenes.slice(0, 16), 20), ...timed(scenes.slice(16), 22)];
+};
+
+/** Run 4's wide Shape deck. */
+export const COMPARISON_SHAPES_WIDE: ComparisonDeck = {
+  ...COMPARISON_WIDE,
+  file: 'Placeholder PowerPoint shapes.pptx',
+  slides: shapeSlides(),
+};
+
+/** Run 4's 4:3 Shape deck. */
+export const COMPARISON_SHAPES_STANDARD: ComparisonDeck = {
+  ...COMPARISON_STANDARD,
+  file: 'Placeholder PowerPoint shapes 4x3.pptx',
+  slides: shapeSlides(),
+};
+
 function partOf(xml: string): TreeElement {
   const [part] = elementsOf(parseTree(xml));
   if (!part) throw new Error('Missing generated part');
