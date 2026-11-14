@@ -518,7 +518,7 @@ async function writePhoneSaveDeck(file: string): Promise<void> {
     Buffer.from(
       slide
         .replace('</p:spTree>', `${picture}</p:spTree>`)
-        .replace('id="131" dur="300"', 'id="131" dur="8000"'),
+        .replace('id="131" dur="300"', 'id="131" dur="20000"'),
     ),
   );
   parts.set(
@@ -669,7 +669,7 @@ test('Look closer saves the native deck click showing on the screens', async () 
     await saveStartingPicture(
       1,
       3,
-      'This is the slide as it starts. Try again after streaming or recording stops to save this click.',
+      'This is a picture from the slide. Try again after streaming or recording stops to save this click.',
     );
     await onAir(false);
 
@@ -680,7 +680,7 @@ test('Look closer saves the native deck click showing on the screens', async () 
     await saveStartingPicture(
       2,
       4,
-      'This is the slide as it starts. Try again when the screens are still to save this click.',
+      'This is a picture from the slide. Try again when the screens are still to save this click.',
     );
   } finally {
     await phone.close();
