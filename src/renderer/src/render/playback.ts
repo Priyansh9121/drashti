@@ -222,6 +222,22 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     framed = true;
     onFrame?.();
   };
+  // A check that found it not ready to play (its first frame or its data not in yet, or a seek still landing) runs
+  // again the moment it can (Session 58, deck-show.spec.ts:504: a deck's video whose click came while its data was
+  // not in waited for the next quarter-second check, up to 250 ms late). Nothing changes for one already ready.
+  const READY_EVENTS = ['loadeddata', 'canplay', 'seeked'] as const;
+  let waitingToPlay = false;
+  const canPlay = () => {
+    if (!waitingToPlay) return;
+    waitingToPlay = false;
+    for (const event of READY_EVENTS) v.removeEventListener(event, canPlay);
+    check();
+  };
+  const whenItCanPlay = () => {
+    if (waitingToPlay) return;
+    waitingToPlay = true;
+    for (const event of READY_EVENTS) v.addEventListener(event, canPlay);
+  };
   const failed = () => {
     onError?.();
   };
@@ -291,7 +307,10 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     armHold();
   };
   const check = () => {
-    if (!framed || v.seeking || v.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+    if (!framed || v.seeking || v.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      whenItCanPlay();
+      return;
+    }
     const moved = sent;
     sent = false;
     const c = clock();
@@ -431,6 +450,8 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     v.removeEventListener('playing', paceAtStart);
     v.removeEventListener('error', failed);
     v.removeEventListener('loadeddata', frame);
+    waitingToPlay = false;
+    for (const event of READY_EVENTS) v.removeEventListener(event, canPlay);
     v.removeEventListener('seeked', whenFrame);
     v.removeEventListener('seeked', landed);
     for (const event of ['seeked', 'playing', 'ratechange']) v.removeEventListener(event, rearm);
