@@ -1,3 +1,4 @@
+import type { DrashtiBridge } from '../../../shared/bridge';
 import { LINGER_MS, type PointAt, REST_MS } from '../../../shared/point-ahead';
 
 /*
@@ -6,7 +7,7 @@ import { LINGER_MS, type PointAt, REST_MS } from '../../../shared/point-ahead';
  * slide going away while the clip loaded (0.14-0.37 s on CI's computers); a hand takes longer than that to come to
  * rest on a row and press it. Said:
  * - when the pointer comes to rest on a row (REST_MS: one passing over rows on its way says nothing), or presses it;
- * - when the keyboard comes to a row (Tab: its focus seen);
+ * - when the keyboard comes to a row (Tab: its focus seen), or a row's number is typed (Jump to a row);
  * - and, once the pointer has left the list and the keyboard has moved off (LINGER_MS later, so a moment away and back
  *   loads nothing again), that it is on none: the screens let the clip go.
  * Only what changes is said; one row at a time.
@@ -33,13 +34,15 @@ const realTimers: Timers = {
 };
 
 export class RowPointer {
-  /** Where the pointer rests (once it has rested), and where the keyboard is. */
+  /** Where the pointer rests (once it has rested), where the keyboard is, and the row whose number is typed. */
   private pointer: PointAt | null = null;
   private keys: PointAt | null = null;
+  private typed: PointAt | null = null;
   private told: PointAt | null = null;
   private resting: unknown = null;
   private leaving: unknown = null;
   private blurring: unknown = null;
+  private untyping: unknown = null;
 
   constructor(
     private readonly tell: (target: PointAt | null) => void,
@@ -93,13 +96,33 @@ export class RowPointer {
     }, LINGER_MS);
   }
 
-  private cancel(which: 'resting' | 'leaving' | 'blurring'): void {
+  /**
+   * The row whose number is being typed (Jump to a row), said at once, before the pointer's and the keyboard's; null
+   * as the number goes (Enter, Esc, its wait over): let go of a moment later, so Enter's own row is still loaded as it
+   * goes up.
+   */
+  number(target: PointAt | null): void {
+    if (target) {
+      this.cancel('untyping');
+      this.typed = target;
+      this.update();
+      return;
+    }
+    if (this.typed === null || this.untyping !== null) return;
+    this.untyping = this.timers.set(() => {
+      this.untyping = null;
+      this.typed = null;
+      this.update();
+    }, LINGER_MS);
+  }
+
+  private cancel(which: 'resting' | 'leaving' | 'blurring' | 'untyping'): void {
     if (this[which] !== null) this.timers.clear(this[which]);
     this[which] = null;
   }
 
   private update(): void {
-    const now = this.pointer ?? this.keys;
+    const now = this.typed ?? this.pointer ?? this.keys;
     if (same(now, this.told)) return;
     this.told = now;
     this.tell(now);
@@ -108,5 +131,6 @@ export class RowPointer {
 
 /** The operator window's own (its rows', in the library and in the playlist). */
 export const rowPointer = new RowPointer((target) => {
-  void window.drashti.engine.pointAt(target).catch(() => undefined);
+  // A page without the bridge (a unit test's) says nothing.
+  void (globalThis as { drashti?: DrashtiBridge }).drashti?.engine.pointAt(target).catch(() => undefined);
 });

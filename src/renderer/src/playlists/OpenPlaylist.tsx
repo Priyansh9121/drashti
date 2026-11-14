@@ -773,7 +773,22 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
     setJumpRows(
       middle.flatMap((r) =>
         r.kind === 'slide'
-          ? [{ number: r.number, go: () => clickSlideRow(r, KEY_CLICK, platform) }]
+          ? [
+              {
+                number: r.number,
+                go: () => clickSlideRow(r, KEY_CLICK, platform),
+                // Said as its number is typed (C3, Session 58), as its row says it when pointed at.
+                ...(r.item && !isTemplate
+                  ? {
+                      pointAt: {
+                        presentationId: r.presentationId,
+                        slideIndex: r.at.position,
+                        arrangementId: r.arrangementId,
+                      },
+                    }
+                  : {}),
+              },
+            ]
           : r.kind === 'item' && r.number !== null
             ? [{ number: r.number, go: () => clickCard(r.item, KEY_CLICK, platform) }]
             : [],
@@ -782,7 +797,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
     return () => {
       setJumpRows([]);
     };
-  }, [middle, platform]);
+  }, [middle, platform, isTemplate]);
   // The slide on the screens, to mark its row LIVE: which presentation, which slide, from which item, in which order.
   const liveSlide = useEngine((s) => {
     const st = s.state;

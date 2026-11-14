@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LINGER_MS, type PointAt } from '../../../shared/point-ahead';
 import { jumpKeyDown, setJumpRows, useJump, type JumpKey } from './jump';
 
 /*
@@ -94,5 +95,54 @@ describe('jump by number', () => {
   it('takes four digits at most', () => {
     for (const d of ['1', '2', '3', '4', '5']) press(d);
     expect(useJump.getState().typed).toBe('1234');
+  });
+});
+
+describe('jump by number, the row it would put up said as it is typed (C3, Session 58)', () => {
+  const said: (PointAt | null)[] = [];
+  const at = (slideIndex: number): PointAt => ({
+    presentationId: 'placeholder-deck',
+    slideIndex,
+    arrangementId: null,
+  });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    said.length = 0;
+    vi.stubGlobal('drashti', {
+      engine: {
+        pointAt: (target: PointAt | null) => {
+          said.push(target);
+          return Promise.resolve(null);
+        },
+      },
+    });
+    setJumpRows(
+      [1, 2, 12].map((number) => ({
+        number,
+        go: () => {
+          went.push(number);
+        },
+        pointAt: at(number - 1),
+      })),
+    );
+  });
+  afterEach(() => {
+    // Nothing left typed or said for the next test.
+    press('Escape');
+    vi.advanceTimersByTime(LINGER_MS);
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('says each number’s row as it is typed, keeps it as Enter puts it up, and lets it go a moment later', () => {
+    press('1');
+    expect(said).toEqual([at(0)]);
+    press('2');
+    expect(said).toEqual([at(0), at(11)]);
+    press('Enter');
+    expect(went).toEqual([12]);
+    expect(said).toHaveLength(2);
+    vi.advanceTimersByTime(LINGER_MS);
+    expect(said).toEqual([at(0), at(11), null]);
   });
 });
