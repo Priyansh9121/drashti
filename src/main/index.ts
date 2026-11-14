@@ -7217,6 +7217,26 @@ function start(): void {
   // ---- View > Show Safe Areas (Sessions 31–36): the slide editor's guides, anyone's to turn on ---------
   const safeAreasShown = () => settings.get('showSafeAreas') === true;
   handle(IPC.app.safeAreas, () => safeAreasShown());
+  // The LIVE picture's warm-up where Chromium draws without a graphics chip (Session 58, WU-1): none, as for the outputs
+  // and the stream's page. Asked as the window opens, and told once Chromium has said, should it open before then.
+  handle(IPC.app.noGpu, (e) =>
+    fromOperator(e) && operatorWindow !== null
+      ? warmUpFact(warmUps, operatorWindow, 'the LIVE picture').noGpu === true
+      : false,
+  );
+  warmUps.follow(() =>
+    operatorWindow && !operatorWindow.isDestroyed() && !operatorWindow.webContents.isDestroyed()
+      ? [
+          {
+            id: operatorWindow.webContents.id,
+            name: 'the LIVE picture',
+            tell: () => {
+              sendToOperator(IPC.app.noGpuChanged, { on: true });
+            },
+          },
+        ]
+      : [],
+  );
   // ---- Single-letter keys (Session 37, WCAG 2.1.4): B, . and ? act unless they are turned off ----
   // Kept with the library's settings, as the switch in Help › Keyboard Shortcuts… sets them. Off, they do
   // nothing in the window in either mode (no menu item answers a single key); Black-out and the Logo work
