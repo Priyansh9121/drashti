@@ -295,12 +295,7 @@ export interface WipeBandStyles {
  * (WIPE_MASKS: the same the whole Wipe long), moved toward the far side by `band.at` slides in whole device pixels; the
  * slide inside it moved back by exactly as much, so it stays where it is.
  */
-export function wipeBandStyles(
-  band: WipeBand,
-  width: number,
-  height: number,
-  dpr: number,
-): WipeBandStyles {
+export function wipeBandStyles(band: WipeBand, width: number, height: number, dpr: number): WipeBandStyles {
   const { direction } = band;
   const across = direction === 'left' || direction === 'right';
   // Left and up come in from the slide's end (its right, its bottom), right and down from its start.

@@ -170,7 +170,9 @@ test('stage Current and Next and a phone follow native clicks through Back and a
               const [rgb] = await canvasPixels(hall, [{ x: MIDDLE.x, y }]);
               return near(rgb, mixed, 18) ? 'mixed' : (rgb ?? []).join(',');
             },
-            { message: `the hall half-way through the Wipe at y ${String(y)}, ${mixed.map(Math.round).join(',')}` },
+            {
+              message: `the hall half-way through the Wipe at y ${String(y)}, ${mixed.map(Math.round).join(',')}`,
+            },
           )
           .toBe('mixed');
       }
