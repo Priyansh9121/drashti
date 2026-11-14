@@ -838,7 +838,7 @@ function sourceFitOf(bodies: Node[]): TextStyle['sourceFit'] {
     value === undefined
       ? fallback
       : value.endsWith('%')
-        ? number(value.slice(0, -1), fallback * 100) / 100
+        ? number(value.replace(/%$/u, ''), fallback * 100) / 100
         : number(value, fallback * 100_000) / 100_000;
   return {
     fontScale: Math.max(0.01, Math.min(1, share(scale, 1))),

@@ -44,16 +44,19 @@ it('leaves a slide whose picture fill can’t be copied to its baked slide, neve
     );
     // Slide 1's background becomes a picture fill: the picture slide 2 shows.
     const parts = await readZipEntries(base, (name) =>
-      ['ppt/slides/slide1.xml', 'ppt/slides/_rels/slide1.xml.rels', 'ppt/slides/_rels/slide2.xml.rels'].includes(
-        name,
-      ),
+      [
+        'ppt/slides/slide1.xml',
+        'ppt/slides/_rels/slide1.xml.rels',
+        'ppt/slides/_rels/slide2.xml.rels',
+      ].includes(name),
     );
     const picture = /Target="(\.\.\/media\/[^"]+\.png)"/u.exec(
       parts.get('ppt/slides/_rels/slide2.xml.rels')?.toString('utf8') ?? '',
     )?.[1];
     const slide = parts.get('ppt/slides/slide1.xml')?.toString('utf8') ?? '';
     const rels = parts.get('ppt/slides/_rels/slide1.xml.rels')?.toString('utf8') ?? '';
-    if (!picture || !slide.includes('<p:bgPr><a:solidFill>')) throw new Error('The generated deck changed shape.');
+    if (!picture || !slide.includes('<p:bgPr><a:solidFill>'))
+      throw new Error('The generated deck changed shape.');
     const file = join(root, 'Placeholder picture fill.pptx');
     await copyZipReplacing(
       base,

@@ -302,8 +302,10 @@ describe('a shape’s and a table’s theme styles', () => {
     const fills = elements.flatMap((el) => (el.kind === 'shape' && el.shape !== 'line' ? [el.fill] : []));
     // The header row in accent 1, then its banded rows at 40% and 20% (PowerPoint's E9EBF5 and CFD5EA for 4472C4).
     expect(fills).toEqual(['#4472c4', '#4472c4', '#cfd5ea', '#cfd5ea', '#e9ebf5', '#e9ebf5']);
-    const words = elements.filter((el) => el.kind === 'text');
-    expect(words.map((el) => el.kind === 'text' && [el.runs?.[0]?.color, el.runs?.[0]?.weight])).toEqual([
+    const words = elements.flatMap((el) =>
+      el.kind === 'text' ? [[el.runs?.[0]?.color, el.runs?.[0]?.weight]] : [],
+    );
+    expect(words).toEqual([
       ['#ffffff', 700],
       ['#ffffff', 700],
       ['#000000', 400],
