@@ -102,7 +102,8 @@ export type BakeFailure =
   | { kind: 'cancelled' }
   | { kind: 'app'; reason: string; message: string; notAllowed?: boolean }
   | { kind: 'off-plan'; cuts: CutPlan }
-  | { kind: 'cut'; detail: string }
+  /** Its movie could not be cut into its steps: why in plain words, where there are some (never a tool's own). */
+  | { kind: 'cut'; detail?: string }
   | { kind: 'nothing'; detail: string };
 
 export type BakeResult =
@@ -832,6 +833,14 @@ async function standIn(
 // ---- the bake -----------------------------------------------------------------------------------------
 
 /**
+ * Why a deck's movie could not be cut into its steps, as its report says it (C15, DEV-2): no more than that; what was
+ * thrown (FFmpeg's last line, say) goes to the log only.
+ */
+export function cutFailure(_error: unknown): BakeFailure {
+  return { kind: 'cut' };
+}
+
+/**
  * Make a deck into its steps with `baker`: its movie, then the cut. `read` is the deck as read already (a .pptx);
  * `work` a folder of its own, where everything made is left for the import to take.
  */
@@ -1001,6 +1010,9 @@ export async function bakeDeck(
     if (error instanceof OnAir) return failed({ kind: 'on-air', during: true });
     if (error instanceof DiskFull) return failed(disk);
     if (options.signal?.aborted) return failed({ kind: 'cancelled' });
-    return failed({ kind: 'cut', detail: error instanceof Error ? error.message : String(error) });
+    options.log?.(
+      `${baker}: the deck’s movie could not be cut into its steps: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return failed(cutFailure(error));
   }
 }
