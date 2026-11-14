@@ -197,6 +197,35 @@ describe('the drop folder', () => {
     expect(h.mediaChanged()).toBe(1);
   });
 
+  it('passes over a system file whatever its case; a picture named like one is taken, and a plain icon listed (Session 57, IM-8)', async () => {
+    await put('DESKTOP.INI', 'placeholder');
+    await put('Icon.png', 'a picture named like the Mac’s folder icon');
+    await put('icon', 'placeholder with no extension');
+    const h = setup();
+    expect(await h.service.setFolder(folder)).toMatchObject({ ok: true });
+    await h.settle();
+    expect(h.imports.map((i) => i.names)).toEqual([['Icon.png']]);
+    expect(h.dropped()).toEqual(['Icon.png']);
+    expect(h.service.view().notTaken).toEqual([
+      {
+        name: 'icon',
+        reason: 'Only pictures, videos and sounds are taken from the drop folder.',
+        tooLarge: false,
+      },
+    ]);
+    expect(h.importNotice).toHaveBeenCalledWith({
+      refused: [
+        {
+          name: 'icon',
+          reason:
+            'Only pictures, videos and sounds are taken from the drop folder. Use Import… for other supported files.',
+        },
+      ],
+    });
+    // Never listed, never named in a notice.
+    expect(JSON.stringify(h.importNotice.mock.calls).toLowerCase()).not.toContain('desktop.ini');
+  });
+
   it('takes the videos and sounds Session 50 adds (MKV, MXF, TS, VOB, FLV…; MKA, AC-3…) as it takes any', async () => {
     for (const name of ['Arti.mkv', 'Katha.mxf', 'Sabha.ts', 'Old DVD.vob', 'Clip.flv', 'Phone.3gp'])
       await put(name, `placeholder ${name}`);
@@ -508,8 +537,12 @@ describe('the drop folder', () => {
   });
 
   it('passes over names left while writing', () => {
-    expect(['a.png', 'b.mp4'].every(droppedName)).toBe(true);
-    expect(['desktop.ini', 'Thumbs.db', 'Icon\r'].filter(droppedName)).toEqual([]);
+    // The folders' system files go by their whole name, in any case (Session 57, IM-8): a file merely named like one
+    // (a picture, or a plain "icon" with no extension, which the folder lists as any such file) is looked at as ever.
+    expect(['a.png', 'b.mp4', 'Icon.png', 'icon'].every(droppedName)).toBe(true);
+    expect(['desktop.ini', 'DESKTOP.INI', 'Thumbs.db', 'THUMBS.DB', 'Icon\r'].filter(droppedName)).toEqual(
+      [],
+    );
     expect(
       ['.a.png', '~$b.png', 'c.part', 'd.crdownload', 'e.download', 'f.tmp', 'g.mp4.partial'].some(
         droppedName,

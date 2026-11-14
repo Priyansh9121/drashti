@@ -98,6 +98,32 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 origin main
           node scripts/bar-guard.mjs origin/main
+      # CI's own Linux FFmpeg for the unit tests (Session 58, CI-1): Drashti ships none for Linux, so this job skipped
+      # the tests that need one, among them deck-import.test.ts. Pinned and checked by its SHA-256 as the bundled
+      # builds are (scripts/fetch-ci-ffmpeg.mjs), for this job only, never shipped. Its download is cached by that
+      # SHA-256, saved only by pushes to main and phase1 (a quick check's branch never runs again), and tried three
+      # times; if it still cannot be had, a warning says why and those tests are skipped, as before. A download that
+      # does not match its SHA-256 fails the job.
+      - name: CI's Linux FFmpeg, its pinned SHA-256
+        id: ci-ffmpeg-pin
+        run: echo "sha256=$(node scripts/fetch-ci-ffmpeg.mjs --sha256)" >> "$GITHUB_OUTPUT"
+      - name: Restore CI's Linux FFmpeg download
+        id: ci-ffmpeg-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/drashti/ffmpeg-ci
+          key: ffmpeg-ci-linux-x64-${{ steps.ci-ffmpeg-pin.outputs.sha256 }}
+      - name: Fetch CI's Linux FFmpeg (if it cannot be had, its tests skip, with a warning)
+        id: ci-ffmpeg
+        run: node scripts/fetch-ci-ffmpeg.mjs
+      - name: Save CI's Linux FFmpeg download (pushes to main and phase1)
+        if: >-
+          steps.ci-ffmpeg.outputs.ready == 'true' && steps.ci-ffmpeg-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/drashti/ffmpeg-ci
+          key: ffmpeg-ci-linux-x64-${{ steps.ci-ffmpeg-pin.outputs.sha256 }}
       - name: Unit tests (inside Electron's Node)
         run: pnpm test
 
