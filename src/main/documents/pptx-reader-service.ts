@@ -177,6 +177,8 @@ export function pptxReader(spawn: () => PptxReaderChild, options: ReaderOptions 
                 return;
               }
               completed.add(page.sourceIndex);
+              // Main's own frame check, kept on purpose: since PX-11 the page schema it shares with the worker refuses
+              // a far frame first, but Main never leaves a check to what it shares (pptx-reader-service-frames.test.ts).
               if (
                 page.elements.some(
                   (element) =>
