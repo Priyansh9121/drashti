@@ -1,6 +1,6 @@
 import { type BigIntStats, lstatSync, realpathSync } from 'node:fs';
 import { readdir, rm } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { type EngineState, nothingUp } from '../../shared/engine/state';
 import type { MediaUsage, UsedIn } from '../../shared/media-removal';
@@ -416,7 +416,8 @@ export class MediaRemoval {
    * No row can come to name such a file while it moves: an import keeps its copy at a path named by its own bytes
    * (media-store.ts), and Trim publishes a cut only at a free name (trim.ts's freeFileName). An import of the same bytes
    * meanwhile brings the cut's row back to life at that other path: the file left still goes, its still frame and
-   * copies stay (the row's again).
+   * copies stay (the row's again). That import's own copy, named by its bytes, always stays, even before its row is
+   * back at it and in the folder read (its bytes begin as the original's do): Trim never names a cut so (LOW-1).
    */
   async trashLeftTrims(
     mediaDir: string,
@@ -527,6 +528,10 @@ export class MediaRemoval {
           if (paused()) return [];
           const cut = bySha.get(sha256);
           if (!cut) left('no earlier Trim cut whose row is gone has its bytes');
+          // Named by its own bytes, as an import names its copy (media-store.ts) and Trim never names a cut: a gone
+          // cut dragged back from the Trash, its row not yet back at it (LOW-1).
+          else if (basename(file).toLowerCase().startsWith(sha256.toLowerCase()))
+            left(`it has the bytes of cut ${cut.id} and is named by them: an import's copy`);
           else if (folderOf(cut) !== folder)
             left(`it has the bytes of cut ${cut.id}, written into another folder`);
           else if (!sameFile(file, before)) left(`cut ${cut.id}'s file changed while it was read`);
