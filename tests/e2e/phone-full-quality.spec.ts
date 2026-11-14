@@ -518,7 +518,7 @@ async function writePhoneSaveDeck(file: string): Promise<void> {
     Buffer.from(
       slide
         .replace('</p:spTree>', `${picture}</p:spTree>`)
-        .replace('id="131" dur="300"', 'id="131" dur="8000"'),
+        .replace('id="131" dur="300"', 'id="131" dur="20000"'),
     ),
   );
   parts.set(
