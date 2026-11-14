@@ -6,10 +6,12 @@ import { DEFAULT_LOWER_THIRD_LOOK, type LowerThirdInput } from '../../shared/low
 import { applyPendingRestore, backupLibrary, LIBRARY_FILE, requestRestore } from '../library/backup';
 import { type Db, LATEST_VERSION, openDatabase } from './database';
 import { LowerThirdRepo } from './lower-thirds';
+import { MIGRATIONS } from './migrate';
 import { alpha17LookColumn, alpha17LookOf } from './testing/alpha17-lower-third-look';
 
 // v1.0.0-alpha.17: the last migration in src/main/db/migrate.ts.
 const ALPHA17_SCHEMA = 82;
+const alpha17Migrations = MIGRATIONS.filter((migration) => migration.version <= ALPHA17_SCHEMA);
 const modern = {
   lines: ['Placeholder name', 'Placeholder role'],
   look: {
@@ -110,7 +112,6 @@ describe('lower-third backgrounds across alpha.17 and alpha.18', () => {
     try {
       const id = new LowerThirdRepo(library).create(modern);
       const now = new Date(2026, 10, 14, 12);
-      expect(LATEST_VERSION).toBe(ALPHA17_SCHEMA);
       const { folder } = await backupLibrary(library, dir, {
         mediaDir: null,
         schema: LATEST_VERSION,
@@ -124,16 +125,25 @@ describe('lower-third backgrounds across alpha.17 and alpha.18', () => {
         applyPendingRestore(restored, { schema: ALPHA17_SCHEMA, app: '1.0.0-alpha.17', now }),
       ).toMatchObject({ restored: true });
 
-      const reopened = openDatabase(join(restored, LIBRARY_FILE));
+      const file = join(restored, LIBRARY_FILE);
+      const oldLibrary = openDatabase(file, alpha17Migrations);
       try {
-        expect(alpha17Read(reopened, id)).toEqual({
+        expect(alpha17Read(oldLibrary, id)).toEqual({
           look: fallback.look,
           outAnimation: fallback.outAnimation,
           seconds: fallback.seconds,
         });
-        expect(new LowerThirdRepo(reopened).get(id)).toEqual({ id, ...modern });
       } finally {
-        reopened.close();
+        oldLibrary.close();
+      }
+
+      const newLibrary = openDatabase(file);
+      try {
+        const restoredRepo = new LowerThirdRepo(newLibrary);
+        restoredRepo.purge();
+        expect(restoredRepo.get(id)).toEqual({ id, ...modern });
+      } finally {
+        newLibrary.close();
       }
     } finally {
       library.close();
