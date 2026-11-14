@@ -15,7 +15,7 @@ function effect(kind: DeckEffect['kind'], more: Partial<DeckEffect> = {}): DeckE
 function drawing() {
   const writes: string[] = [];
   const style = new Proxy(
-    { transform: '', opacity: '', clipPath: '', maskImage: '', maskComposite: '' },
+    { transform: '', opacity: '', clipPath: '', maskImage: '', maskComposite: '', willChange: '' },
     {
       set(target, key, value: string) {
         writes.push(String(key));
@@ -325,7 +325,9 @@ it('draws Shape’s hard edge where the page draws without a graphics chip: a cl
   expect(inner.style.maskImage).toMatch(/^linear-gradient\(/u);
 });
 
-it('leaves a Split’s soft edges to their mask where the page draws without a graphics chip, as with one', () => {
+it('leaves a Split’s soft edges to their mask where the page draws without a graphics chip, the shape a layer of its own while masked (Q58-55)', () => {
+  // Drawn in software, a mask on a box whose edge falls between pixels drew that edge's row at three quarters of what
+  // it should be, any mask (CI's Windows: C22's diagnostic, a box 150.996 px high); on a layer of its own, exactly.
   setDrawsWithoutChip(true);
   try {
     const { style } = drawing();
@@ -333,7 +335,15 @@ it('leaves a Split’s soft edges to their mask where the page draws without a g
     paintDeckTarget(style, deckMotionFrame([split], 1, 200, bounds, slide), bounds, bounds);
     expect(style.clipPath).toBe('');
     expect(style.maskImage).toMatch(/^linear-gradient\(to right, /u);
+    expect(style.willChange).toBe('transform');
+    paintDeckTarget(style, deckMotionFrame([split], 1, 400, bounds, slide), bounds, bounds);
+    expect(style).toMatchObject({ maskImage: '', willChange: '' });
   } finally {
     setDrawsWithoutChip(false);
   }
+  // With a chip: no layer of its own.
+  const { style } = drawing();
+  const split = effect('split', { splitAxis: 'x' });
+  paintDeckTarget(style, deckMotionFrame([split], 1, 200, bounds, slide), bounds, bounds);
+  expect(style.willChange).toBe('');
 });
