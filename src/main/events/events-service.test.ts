@@ -32,11 +32,18 @@ function harness(
   options: { available?: boolean; onlyThisComputer?: boolean; kept?: Map<string, string> } = {},
 ) {
   const kept = options.kept ?? new Map<string, string>();
+  const storage = () =>
+    options.available === false
+      ? { available: false, message: 'No secure storage here.' }
+      : { available: true, message: null };
+  /** How often the system's secure storage was asked (on a Mac, its keychain: Q58-37). */
+  const asked = { count: 0 };
   const store = {
-    status: () =>
-      options.available === false
-        ? { available: false, message: 'No secure storage here.' }
-        : { available: true, message: null },
+    status: () => {
+      asked.count++;
+      return storage();
+    },
+    known: storage,
     ids: () => [...kept.keys()],
     get: (id: string) => kept.get(id) ?? null,
     set: (id: string, value: string) => {
@@ -112,7 +119,7 @@ function harness(
       }
     await settle();
   };
-  return { service, posts, workers, notices, logs, views, kept, advance, now: () => now };
+  return { service, posts, workers, notices, logs, views, kept, asked, advance, now: () => now };
 }
 
 const slideEvent = {
@@ -122,6 +129,15 @@ const slideEvent = {
 };
 
 describe('events out', () => {
+  it('its view never asks the system’s secure storage (Q58-37: on a Mac that opens the keychain, which asks for the computer’s password)', () => {
+    const h = harness();
+    expect(h.service.view().addresses).toEqual([]);
+    expect(h.asked.count).toBe(0);
+    const refused = harness(undefined, { available: false });
+    expect(refused.service.view()).toMatchObject({ available: false, message: 'No secure storage here.' });
+    expect(refused.asked.count).toBe(0);
+  });
+
   it('nothing goes and no process starts until an address ticks a kind', async () => {
     const h = harness();
     h.service.emit([slideEvent]);
@@ -341,6 +357,7 @@ describe('events out', () => {
         asked += 1;
         return { available: true, message: null };
       },
+      known: () => ({ available: true, message: null }),
       ids: () => [] as string[],
       get: () => null,
       set: () => ({ ok: true as const }),

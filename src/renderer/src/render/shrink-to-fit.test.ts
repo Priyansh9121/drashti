@@ -306,24 +306,37 @@ describe('shrink-to-fit over a slide of many boxes (Session 57, MS-1)', () => {
     expect(reported).toEqual([failure]);
   });
 
-  it('starts a deck box’s search at its source’s own fit, and still ends at the largest fit its words fit at', () => {
-    // Session 58, PF-4b: PowerPoint's own shrink (fontScale) is drawn and measured first.
-    const guessed = probe(new Layout(), needing(1.25), { guess: 0.85 });
-    const plain = probe(new Layout(), needing(1.25));
-    fitTogether([guessed, plain]);
-    expect(guessed.writes.slice(0, 2)).toEqual([1, 0.85]);
-    expect(plain.writes.slice(0, 2)).toEqual([1, (MIN_FIT + 1) / 2]);
-    // Both end at the largest fit at which the words fit (0.8), to the search's own precision.
-    for (const box of [guessed, plain]) {
-      expect(fitOf(box)).toBeLessThanOrEqual(0.8);
-      expect(fitOf(box)).toBeGreaterThan(0.8 - 0.9 / 4096);
-    }
-    // Words that fit at once are drawn at 1 and never searched; a guess of 1 or below the floor is no start.
+  it('draws a deck box at PowerPoint’s own fit where its words fit at it, and searches only below it where they do not', () => {
+    // Session 58, PF-4b made exact (Q58-42; run 4's movie: PowerPoint draws its saved shrink, never larger): the
+    // source's own fit is drawn first and kept when the words fit at it, even where they would fit larger; where they
+    // do not, the largest fit below it at which they do.
+    const roomy = probe(new Layout(), needing(1.25), { guess: 0.7857 });
+    fitTogether([roomy]);
+    expect(roomy.writes).toEqual([0.7857]);
+    expect(roomy.settled).toEqual([{ fit: 0.7857, over: false }]);
+    // Words that fit unshrunk too: PowerPoint still draws them at its own fit.
     const fitting = probe(new Layout(), needing(0.5), { guess: 0.85 });
+    fitTogether([fitting]);
+    expect(fitting.writes).toEqual([0.85]);
+    expect(fitting.settled).toEqual([{ fit: 0.85, over: false }]);
+    // Words that need more room than PowerPoint's fit gives them here: the largest fit below it (0.625), searched
+    // from it down, never above it.
+    const tight = probe(new Layout(), needing(1.6), { guess: 0.7857 });
+    fitTogether([tight]);
+    expect(tight.writes[0]).toBe(0.7857);
+    expect(Math.max(...tight.writes.filter((w): w is number => w !== null))).toBe(0.7857);
+    expect(fitOf(tight)).toBeLessThanOrEqual(0.625);
+    expect(fitOf(tight)).toBeGreaterThan(0.625 - 0.9 / 4096);
+    // No source fit (or one of 1, or below the floor): as before, at 1, searched from halfway where the words run past.
+    const plain = probe(new Layout(), needing(1.25));
     const atOne = probe(new Layout(), needing(2), { guess: 1 });
-    fitTogether([fitting, atOne]);
-    expect(fitting.writes).toEqual([1]);
+    const below = probe(new Layout(), needing(0.5), { guess: MIN_FIT / 2 });
+    fitTogether([plain, atOne, below]);
+    expect(plain.writes.slice(0, 2)).toEqual([1, (MIN_FIT + 1) / 2]);
     expect(atOne.writes.slice(0, 2)).toEqual([1, (MIN_FIT + 1) / 2]);
+    expect(below.writes).toEqual([1]);
+    expect(fitOf(plain)).toBeLessThanOrEqual(0.8);
+    expect(fitOf(plain)).toBeGreaterThan(0.8 - 0.9 / 4096);
   });
 
   it('reports a failure that comes again on every fit once in the window, and a different one once too', async () => {
