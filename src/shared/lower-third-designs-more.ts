@@ -318,7 +318,8 @@ export const MORE_LOWER_THIRD_DESIGNS: readonly MoreDesign[] = [
       size: 5,
     },
   },
-  // ---- Part B (Session 58): with the moving backgrounds added since alpha.17 ----
+  // ---- Part B (Session 58): with the moving backgrounds added since alpha.17 (Festival fireworks, left out by the final
+  // Performance round with no replacement, Q58-35) ----
   {
     id: 'dawn-light',
     name: 'Dawn light',
@@ -505,23 +506,6 @@ export const MORE_LOWER_THIRD_DESIGNS: readonly MoreDesign[] = [
       font: 'Montserrat',
       size: 5,
       motion: 'rings',
-    },
-  },
-  {
-    id: 'festival-fireworks',
-    name: 'Festival fireworks',
-    feel: 'bold',
-    animation: 'design-slide-right',
-    look: {
-      style: 'slant',
-      band: '#1d0a36',
-      accent: '#fbbf24',
-      text: '#fffaf0',
-      bandOpacity: 0.95,
-      align: 'right',
-      font: 'Oswald',
-      size: 6,
-      motion: 'fireworks',
     },
   },
 ];
