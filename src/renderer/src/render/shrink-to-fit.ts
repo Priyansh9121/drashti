@@ -15,6 +15,13 @@ import { MIN_FIT } from '../../../shared/readable';
  * The boxes are queued from their layout effects and measured in a microtask the first one queues: right after
  * the commit, before the browser draws its next frame, so words are never drawn unfitted. Each window (renderer)
  * has its own queue.
+ *
+ * Each box is then told its measure, and tells whoever asked (MeasureContext: a thumbnail's mark, the slide
+ * editor's inspector), still in that microtask. A report must change nothing when told the same measure again, and
+ * must never draw the boxes again with new effect dependencies each time it is told (Session 58, MS-4): those boxes
+ * would be queued and measured again, report again, and so on for ever, in microtasks, where React's limit on nested
+ * updates never stops it, and the window would freeze with no error. A report that fails is the window's to report,
+ * as a render error, while every other box is still told and the window draws on (MS-2; reportFitFailuresTo).
  */
 
 /** A box of words as shrink-to-fit measures it. */
@@ -41,8 +48,27 @@ interface Search {
 }
 
 /**
+ * Where a failure telling a box its measure goes: a report's (the box itself is already drawn at its fit). The
+ * console's, as an uncaught error's, until the window says how it reports a render error.
+ */
+let reportFailure = (error: unknown): void => {
+  reportError(error);
+};
+
+/**
+ * How this window reports a failure telling a box its measure (Session 58, MS-2): the windows with reports (the
+ * operator's thumbnails, the slide editor's inspector) give their own report of render errors (ui/render-errors.ts:
+ * their console and the main process's log), and the window draws on. Not React's error path: that would take the
+ * whole window down to "This window stopped working" for a thumbnail's mark.
+ */
+export function reportFitFailuresTo(report: (error: unknown) => void): void {
+  reportFailure = report;
+}
+
+/**
  * Measures boxes together, each step for all of them at once: every box drawn, then every box measured. A failure
- * telling one box its measure leaves the others told, and comes through after.
+ * telling one box its measure leaves the others told; each is reported after, as the window reports a render error
+ * (reportFitFailuresTo).
  */
 export function fitTogether(boxes: readonly FitBox[]): void {
   // Each box at a fit of 1 (shrink-to-fit on) or at none; whose words run past at 1 searches.
@@ -71,15 +97,8 @@ export function fitTogether(boxes: readonly FitBox[]): void {
       failures.push(error);
     }
   }
-  if (failures.length > 0) throw failures[0];
-}
-
-/**
- * How the window reports a failure telling a box its measure (Session 58, MS-2). Red: not used yet, so a failure
- * still comes through uncaught, the first only.
- */
-export function reportFitFailuresTo(_report: (error: unknown) => void): void {
-  // Red (Session 58, MS-2): the failing tests first.
+  // Each on its own (Session 58, MS-2): until then the first came through uncaught, to the console only.
+  for (const error of failures) reportFailure(error);
 }
 
 /** The boxes queued since the last batch, in the order their layout effects ran. */
