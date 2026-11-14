@@ -141,3 +141,88 @@ describe('BatchWriter', () => {
     expect(batch.isOpen).toBe(false);
   });
 });
+
+/*
+ * While the import holds the library's write lock (each group, from BEGIN IMMEDIATE until its COMMIT has returned) it
+ * says so (Session 58, h-stall2): on Windows the worker then runs at normal priority, as it is at the lowest
+ * otherwise, and on two busy cores it held the lock 1-9 s while given no processor, while a write of the main process
+ * waited for it. Every group says it holds the lock and lets it go, once each, however it ends.
+ */
+describe('BatchWriter: while it holds the write lock (Session 58)', () => {
+  function holdingSetup(budgetMs = 250) {
+    const db = openDatabase(':memory:');
+    db.prepare("INSERT INTO libraries (id, name) VALUES ('lib', 'Default')").run();
+    const said: boolean[] = [];
+    const inTransaction: boolean[] = [];
+    const batch = new BatchWriter(db, {
+      budgetMs,
+      now: () => 0,
+      holding: (on) => {
+        said.push(on);
+        // Said before the lock is taken, and after it is let go.
+        inTransaction.push(db.inTransaction);
+      },
+    });
+    const insert =
+      (name: string, library = 'lib') =>
+      () =>
+        db
+          .prepare('INSERT INTO presentations (id, library_id, name) VALUES (?, ?, ?)')
+          .run(name, library, name);
+    return { db, batch, said, inTransaction, insert };
+  }
+
+  it('says it holds the lock as a group begins and lets it go once its COMMIT has returned, once each', () => {
+    const { db, batch, said, inTransaction, insert } = holdingSetup();
+    batch.write(insert('a'));
+    batch.write(insert('b'));
+    expect(said).toEqual([true]);
+    batch.commit();
+    expect(said).toEqual([true, false]);
+    expect(inTransaction).toEqual([false, false]);
+    batch.write(insert('c'));
+    batch.commit();
+    expect(said).toEqual([true, false, true, false]);
+    expect(db.inTransaction).toBe(false);
+  });
+
+  it('lets go once, after the retries, when the commit fails and each item is written again on its own', () => {
+    const { db, batch, said, insert } = holdingSetup();
+    db.pragma('defer_foreign_keys = ON');
+    batch.write(insert('a'));
+    batch.write(insert('orphan', 'no-such-library'), {
+      failed: () => batch.write(insert('failure noted')),
+    });
+    batch.commit();
+    // Held from the group's start to the last retry's end, never let go while a write is still to come.
+    expect(said.at(-1)).toBe(false);
+    expect(said.filter((on) => on).length).toBe(said.filter((on) => !on).length);
+    expect(db.inTransaction).toBe(false);
+    expect(db.prepare('SELECT name FROM presentations ORDER BY name').pluck().all()).toEqual([
+      'a',
+      'failure noted',
+    ]);
+  });
+
+  it('lets go when the lock cannot be taken (another connection keeps it past the busy timeout)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-batch-'));
+    const file = join(dir, 'library.sqlite');
+    const db = openDatabase(file);
+    db.prepare("INSERT INTO libraries (id, name) VALUES ('lib', 'Default')").run();
+    db.pragma('busy_timeout = 0');
+    const other = new Database(file);
+    other.exec('BEGIN IMMEDIATE');
+    const said: boolean[] = [];
+    const batch = new BatchWriter(db, { budgetMs: 250, holding: (on) => said.push(on) });
+    expect(() =>
+      batch.write(() =>
+        db.prepare("INSERT INTO presentations (id, library_id, name) VALUES ('p', 'lib', 'P')").run(),
+      ),
+    ).toThrow();
+    expect(said).toEqual([true, false]);
+    other.exec('ROLLBACK');
+    other.close();
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
