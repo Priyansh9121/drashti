@@ -1,4 +1,3 @@
-import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { nativeDeckMotion } from '../../../shared/deck';
 import {
@@ -121,9 +120,6 @@ describe('the warm-up', () => {
     const offGrid = scene('deck-cover/calm/off-grid');
     expect(offGrid.offset).toBe('translate(0.5px, 0.5px)');
     expect(offGrid.clip).toBeUndefined();
-    // The shader trace on 41d40ee1 showed the rounded clip with a pixel-aligned shade quad.
-    // A fractional translation can still snap. The wide warm-up needs a non-axis-aligned quad under the clip.
-    expect(offGrid).toMatchObject({ rounded: true, contentTransform: 'rotate(0.25deg)' });
     const at = BEFORE + 33;
     expect(offGrid.state(true, at)).toEqual(scene('deck-cover/calm').state(true, at));
     expect(offGrid.state(false, at)).toEqual(scene('deck-cover/calm').state(false, at));
@@ -145,19 +141,31 @@ describe('the warm-up', () => {
       expect(warmScenes().some((s) => s.key === key)).toBe(false);
   });
 
-  it('warms the shaded Cover quad with the rotation on the filtered picture inside a stationary rounded clip', () => {
-    const shade = scene('deck-cover-shade');
-    const canvas = { width: 1920, height: 1080 };
-    expect(renderToStaticMarkup(shade.draw?.(false, BEFORE, canvas, null))).toBe('');
-    const markup = renderToStaticMarkup(shade.draw?.(true, BEFORE + 33, canvas, null));
-    const opening = markup.split('<img')[0];
-    const picture = /<img[^>]*>/u.exec(markup)?.[0];
-    expect(opening).toContain('overflow:hidden');
-    expect(opening).toContain('border-radius:12px');
-    expect(opening).not.toContain('transform:');
-    expect(picture).toMatch(/filter:brightness\(0\.986\)/u);
-    expect(picture).toMatch(/transform:[^;"]*rotate\(1deg\)/u);
-    expect(picture).toContain('will-change:transform');
+  it('draws the native 16:9 Cover in its own first pass, with the same full-slide picture on both slides', () => {
+    const at = BEFORE + 33;
+    const wide = scene('deck-cover-full-picture');
+    const during = slideOf(wide, true, at);
+    const before = slideOf(wide, false, at);
+    const { t, p, frame } = deckFrameOf(wide.key, at);
+    expect(wide).toMatchObject({ pass: 'cover' });
+    expect(wide.offset).toBeUndefined();
+    expect(wide.clip).toBeUndefined();
+    expect(t).toMatchObject({ deckEffect: 'cover', direction: 'left', durationMs: 700 });
+    expect(p).toBeGreaterThan(0);
+    expect(p).toBeLessThan(1);
+    expect(frame.in.filter).toMatch(/^brightness\(0\.\d+\)$/u);
+    expect(before.slide.id).not.toBe(during.slide.id);
+    for (const layer of [before, during]) {
+      expect(layer.slide).toMatchObject({ width: 1920, height: 1080 });
+      expect(nativeDeckMotion(layer.slide.deck)).toBeDefined();
+      expect(layer.slide.elements[0]).toMatchObject({
+        kind: 'image',
+        fit: 'fill',
+        frame: { x: 0, y: 0, width: 1920, height: 1080 },
+      });
+    }
+    expect(before.slide.elements[0]).toEqual(during.slide.elements[0]);
+    expect(warmScenes().filter((s) => s.pass === 'cover').map((s) => s.key)).toEqual([wide.key]);
   });
 
   it('draws a deck’s own Cover part-way: the slide coming in moved and a shade darker, a filter over the whole slide', () => {
