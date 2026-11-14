@@ -613,7 +613,7 @@ test('a cut’s file that a quit left in Media while it moved to the Trash goes 
   const dir = mkdtempSync(join(tmpdir(), 'drashti-trim-left-'));
   const trash = join(dir, 'Trash');
   mkdirSync(trash);
-  const env = { DRASHTI_TEST_TRASH_DIR: trash };
+  const env = { DRASHTI_TEST_TRASH_DIR: trash, DRASHTI_TEST_ON_AIR_HOOK: '1' };
   const first = await launchApp(env);
   let app = first.app;
   try {
