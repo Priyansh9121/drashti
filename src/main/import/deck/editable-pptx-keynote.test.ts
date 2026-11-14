@@ -160,6 +160,16 @@ describe("Keynote's PowerPoint copy", () => {
   });
 });
 
+/** An Office theme's three style lines (0.5, 1 and 1.5 pt, in the style's own colour) and accent 1. */
+const OFFICE_LINES_THEME =
+  '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Placeholder Office">' +
+  '<a:themeElements><a:clrScheme name="Placeholder"><a:accent1><a:srgbClr val="4472C4"/></a:accent1></a:clrScheme>' +
+  '<a:fmtScheme name="Placeholder"><a:lnStyleLst>' +
+  [6350, 12700, 19050]
+    .map((width) => `<a:ln w="${String(width)}"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln>`)
+    .join('') +
+  '</a:lnStyleLst></a:fmtScheme></a:themeElements></a:theme>';
+
 describe('the text style and line of a plain text box', () => {
   it('takes the presentation default text style before the master’s other style, as PowerPoint does', async () => {
     const [box] = text(
@@ -223,17 +233,7 @@ describe('the text style and line of a plain text box', () => {
   });
 
   it('uses Office-theme style lines for a shape and a connector without direct lines', async () => {
-    const lines = [6350, 12700, 19050]
-      .map(
-        (width) => `<a:ln w="${String(width)}"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln>`,
-      )
-      .join('');
-    const theme =
-      '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Placeholder Office">' +
-      '<a:themeElements><a:clrScheme name="Placeholder"><a:accent1><a:srgbClr val="4472C4"/></a:accent1></a:clrScheme>' +
-      '<a:fmtScheme name="Placeholder"><a:lnStyleLst>' +
-      lines +
-      '</a:lnStyleLst></a:fmtScheme></a:themeElements></a:theme>';
+    const theme = OFFICE_LINES_THEME;
     const style = (index: number, shade = '') =>
       `<p:style><a:lnRef idx="${String(index)}"><a:schemeClr val="accent1">${shade}</a:schemeClr></a:lnRef></p:style>`;
     const rectangle =
@@ -273,6 +273,33 @@ describe('the text style and line of a plain text box', () => {
       fill: null,
       outline: { color: '#4472c4', width: 2 / 3 },
     });
+  });
+
+  it('gives a painted line with no width of its own its style line’s width, as PowerPoint draws a changed outline colour', async () => {
+    const red = '<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>';
+    const shape = (id: number, line: string, style = '') =>
+      `<p:sp><p:nvSpPr><p:cNvPr id="${String(id)}" name="Placeholder outline ${String(id)}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${BOX}${line}</p:spPr>${style}</p:sp>`;
+    const lineStyle = (index: number) =>
+      `<p:style><a:lnRef idx="${String(index)}"><a:schemeClr val="accent1"/></a:lnRef></p:style>`;
+    const elements = await readSlide(
+      slideXml(
+        shape(20, `<a:ln>${red}</a:ln>`, lineStyle(2)) +
+          shape(21, `<a:ln>${red}</a:ln>`, lineStyle(3)) +
+          shape(22, `<a:ln w="38100">${red}</a:ln>`, lineStyle(2)) +
+          shape(23, `<a:ln>${red}</a:ln>`, lineStyle(0)) +
+          shape(24, `<a:ln>${red}</a:ln>`),
+      ),
+      { 'ppt/theme/theme1.xml': OFFICE_LINES_THEME },
+    );
+    expect(elements.map((el) => (el.kind === 'shape' ? el.outline : el.kind))).toEqual([
+      // The style's 1 pt and 1.5 pt lines, in the shape's own colour.
+      { color: '#ff0000', width: 4 / 3 },
+      { color: '#ff0000', width: 2 },
+      // A width of its own wins; with no style line (idx 0, or no style), the 1 px default stays.
+      { color: '#ff0000', width: 4 },
+      { color: '#ff0000', width: 1 },
+      { color: '#ff0000', width: 1 },
+    ]);
   });
 });
 

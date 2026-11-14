@@ -272,8 +272,7 @@ describe('imported editor provenance and legacy safety', () => {
     const w = originalWorld();
     try {
       const source = await bakedSource(w);
-      const note =
-        'PowerPoint source page 1 exceeds the 500-object editing limit and stays as its saved picture.';
+      const note = 'Page 1 of the original has more than 500 objects, so it stays as its saved picture.';
       register(w, source.presentations, ({ sourcePages }) =>
         Promise.resolve({
           ok: true,
