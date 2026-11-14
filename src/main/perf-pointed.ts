@@ -19,6 +19,12 @@ export const POINTED_ROW = 'deck slide in (step 0), pointed at first';
  */
 export const POINTED_LEAD_MS = 500;
 
+/** The click whose clip plays on air while a slide is pointed at and let go of again and again (the show's safety). */
+export const POINTED_ON_AIR_ROW = 'deck click, a slide pointed at and let go meanwhile';
+
+/** How often the pointing changes while that click's clip plays (ms): each pointing loads a clip on the screens. */
+export const POINTING_EVERY_MS = 300;
+
 /** The operator window's own bridge saying the row its pointer rests on (null: none), as its rows say it. */
 export const POINT_AT = (target: PointAt | null) => `(async () => {
   await globalThis.drashti.engine.pointAt(${JSON.stringify(target)});
@@ -33,12 +39,16 @@ export const POINTED_LOAD_MS = POINTED_LEAD_MS - REST_MS;
 export type WindowsMemory = Record<string, { ws: number; priv?: number }>;
 
 /** Every process's memory now, named by the window it draws (a hall screen's by its title's place, the operator's). */
-export function windowsMemory(outputs: readonly BrowserWindow[], operator: BrowserWindow | null): WindowsMemory {
+export function windowsMemory(
+  outputs: readonly BrowserWindow[],
+  operator: BrowserWindow | null,
+): WindowsMemory {
   const labels = new Map<number, string>();
   outputs.forEach((w, i) => {
     if (!w.isDestroyed()) labels.set(w.webContents.getOSProcessId(), `screen ${String(i + 1)}`);
   });
-  if (operator && !operator.isDestroyed()) labels.set(operator.webContents.getOSProcessId(), 'operator window');
+  if (operator && !operator.isDestroyed())
+    labels.set(operator.webContents.getOSProcessId(), 'operator window');
   const memory: WindowsMemory = {};
   for (const m of app.getAppMetrics()) {
     const name = labels.get(m.pid) ?? (m.type === 'GPU' ? 'graphics' : null);
@@ -87,4 +97,29 @@ export function memoryLine(runs: readonly WindowsMemory[]): string {
       return `${name} ${mb(median(ws))} MB (largest ${mb(Math.max(...ws))})${privPart}`;
     })
     .join(', ');
+}
+
+/**
+ * While a click's clip plays on air for `forMs`: the slide pointed at, then none, then it again, every
+ * POINTING_EVERY_MS from the press, ending on none (each time it is pointed at, every screen loads its clip anew).
+ */
+export async function pointWhileOnAir(
+  operator: () => BrowserWindow | null,
+  target: PointAt,
+  forMs: number,
+): Promise<void> {
+  const say = (t: PointAt | null) => {
+    const op = operator();
+    return op && !op.isDestroyed()
+      ? (op.webContents.executeJavaScript(POINT_AT(t), true) as Promise<unknown>).catch(() => undefined)
+      : Promise.resolve();
+  };
+  const until = Date.now() + forMs;
+  for (let on = true; Date.now() < until; on = !on) {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, POINTING_EVERY_MS);
+    });
+    await say(on ? target : null);
+  }
+  await say(null);
 }
