@@ -16,7 +16,8 @@ import { engineNow } from './clock';
  * at `at`, `lateMs` behind the engine's time. It plays a little faster, `maxRate` at most, until it is where the engine's
  * time has it, never jumping there: its start is seen whole, and every screen, the slide's sounds and the engine's next
  * step are on the same time again within the clip (or its hold, going round after it). A step's hold that starts late
- * because its clip ended late makes up the rest the same way.
+ * because its clip ended late makes up the rest the same way. For muted pictures only, with no time bar (a deck's clips
+ * and holds): a sound or a video the time bar moves is never sped up this way (C3T-4).
  */
 export interface PlaybackCatchUp {
   /** When it plays from that frame (the engine's time). */
