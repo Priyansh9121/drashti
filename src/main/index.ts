@@ -3965,18 +3965,22 @@ function start(): void {
     !quitStarted && !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers);
   // Trim's records (FT-4): the cuts accepted and waiting, and the copies not yet taken in, kept in a small file written
   // in the background (no longer library settings written on Main, which waited there for an import's write lock).
-  // alpha.17's settings are read once while the file is not there, then cleared; a restored library carries nothing
-  // over from the library before it.
+  // New Trim records left by alpha.17 carry on after an upgrade or downgrade. A restored library begins with its
+  // own settings.
+  const clearTrimSettings = opened.db.transaction(() => {
+    settings.set('playlistTrimsWaiting', []);
+    settings.set('playlistTrimCopies', []);
+  });
   const trimRecords = new TrimRecords(join(userDataDir, TRIM_RECORDS_FILE), {
     before: {
       waiting: () => settings.get('playlistTrimsWaiting'),
       copies: () => settings.get('playlistTrimCopies'),
-      // Once the file holds them (LOW-2): a backup, a restore or alpha.17 after a downgrade never reads them again.
+      // Clear both settings together once the record file has them (LOW-2).
       clear: () => {
-        laterSetting('playlistTrimsWaiting', []);
-        laterSetting('playlistTrimCopies', []);
+        later.write('trim record settings', clearTrimSettings);
       },
     },
+    afterDowngrade: settings.get('lastStartVersion') === '1.0.0-alpha.17',
     otherLibrary: restoredInUse,
     log: (message) => {
       log.warn(message);
