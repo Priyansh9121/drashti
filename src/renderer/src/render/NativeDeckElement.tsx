@@ -22,7 +22,7 @@ import {
 import type { NativeStepTiming } from '../../../shared/deck-show';
 import type { Rect, RenderSlide, SlideElement, TextElement } from '../../../shared/model';
 import { clockHeld, engineFrameNow, engineNow, onClockJump } from './clock';
-import { paintDeckTarget } from './deck-target-paint';
+import { deckTargetMaskedTwice, paintDeckTarget } from './deck-target-paint';
 import { wakeAt } from './wake-at';
 
 interface Target {
@@ -33,6 +33,8 @@ interface Target {
 interface Mounted {
   target: Target;
   element: Rect;
+  /** The element within it for a second mask (a Shape's Box, Plus or Diamond: deckTargetMaskedTwice), if any. */
+  inner: HTMLDivElement | null;
 }
 
 /** One paragraph of a paragraph build: its own entrances and exits, and how much of it shows now. */
@@ -60,7 +62,7 @@ export function useNativeDeckTiming(): NativeStepTiming | null {
 }
 
 function paint(element: HTMLDivElement, mounted: Mounted, frame: DeckMotionFrame): void {
-  paintDeckTarget(element.style, frame, mounted.target.bounds, mounted.element);
+  paintDeckTarget(element.style, frame, mounted.target.bounds, mounted.element, mounted.inner?.style);
 }
 
 function paintPiece(node: HTMLElement, paragraph: Paragraph): void {
@@ -185,10 +187,17 @@ function DeckTarget({
   children: ReactNode;
 }) {
   const previous = useRef<HTMLDivElement | null>(null);
+  // Known when the slide is drawn: the element within is there from the start, never added as the effect begins.
+  const twice = deckTargetMaskedTwice(target.effects);
   const ref = useCallback(
     (node: HTMLDivElement | null) => {
       if (previous.current) mounted.current.delete(previous.current);
-      if (node) mounted.current.set(node, { target, element });
+      if (node)
+        mounted.current.set(node, {
+          target,
+          element,
+          inner: node.querySelector<HTMLDivElement>(':scope > [data-deck-motion-mask]'),
+        });
       previous.current = node;
     },
     [element, mounted, target],
@@ -209,7 +218,13 @@ function DeckTarget({
         transformOrigin: `${String(x)}px ${String(y)}px`,
       }}
     >
-      {children}
+      {twice ? (
+        <div data-deck-motion-mask="" style={{ position: 'absolute', inset: 0 }}>
+          {children}
+        </div>
+      ) : (
+        children
+      )}
     </div>
   );
 }
