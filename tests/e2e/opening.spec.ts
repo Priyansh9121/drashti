@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ProbeRead } from '../../src/renderer/src/render/motion-probe';
 import { swings } from '../../src/shared/flash';
 import { OPENING_DEFAULT_PHOTO_URL, OPENING_MS, OPENING_SOUND_VOLUME } from '../../src/shared/opening';
 import { RECOVERY_MAX_AGE_MS } from '../../src/shared/recovery';
@@ -315,22 +316,38 @@ test('while the hall’s screens are still getting ready it never moves: it wait
     await choose(win, photo);
     await setUpScreen(win);
   });
-  // The screens' warm-up kept drawn (a test switch): they never draw their first frame here.
-  const { app } = await relaunchApp(userData, { ...ASK, DRASHTI_TEST_HOLD_WARM_UP: '1' });
+  // The screens' warm-up kept drawn (a test switch): they never draw their first frame here. The motion probe keeps
+  // every frame of the operator window from its start (render/motion-probe.ts), so what this test reads is the frame
+  // each thing happened at, however late it looks: on CI's Mac the page can be too busy starting to answer a look
+  // before the screens' 2 s limit (Session 58: one look came 4.7 s after the opening, its photo there by then).
+  const { app } = await relaunchApp(userData, {
+    ...ASK,
+    DRASHTI_TEST_HOLD_WARM_UP: '1',
+    DRASHTI_TEST_MOTION_PROBE: '1',
+  });
   const win = await operatorPage(app);
   await expect(opening(win)).toBeVisible({ timeout: 15_000 });
   const player = win.getByTestId('opening');
-  expect(
-    await player.evaluate((el) => ({
-      held: el.getAttribute('data-opening-held'),
-      photos: el.querySelectorAll('[data-opening-photo]').length,
-    })),
-    'the hall screens are still warming and the opening has not loaded its photo',
-  ).toEqual({ held: 'true', photos: 0 });
   await expect(player).toHaveAttribute('data-opening-motion', 'still', { timeout: 10_000 });
   await expect(player).toHaveAttribute('data-opening-held', 'false');
   await expect(player.locator('[data-opening-photo]')).toHaveCount(1);
   expect(await countIn(player, WORDS_AND_SPARKLES)).toBe(0);
+  // Frame by frame from its start: its photo was not there to load while the screens warmed (OP-2), only from the
+  // frame its limit made it still; and it held, black, until then.
+  const record: ProbeRead | undefined = await win.evaluate(() =>
+    window.drashtiMotionProbe?.read(0, Number.MAX_SAFE_INTEGER),
+  );
+  if (!record) throw new Error('The motion probe kept no record.');
+  const photoStates = record.states['opening-photo'] ?? [];
+  const cameIn = photoStates.findIndex((s) => s.startsWith('1,'));
+  expect(photoStates[0], 'it came with no photo, moving').toBe('0,full');
+  expect(photoStates[cameIn], 'its photo came in only as it went still, at the screens’ limit').toBe(
+    '1,still',
+  );
+  const photoFrame = record.changes['opening-photo']?.[cameIn] ?? -1;
+  const shown = record.changes['opening-shown'] ?? [];
+  const releasedFrame = shown[(record.states['opening-shown'] ?? []).indexOf('false')] ?? -1;
+  expect(releasedFrame, 'it held, black, until then').toBeGreaterThanOrEqual(photoFrame);
   // Never on a hall screen.
   const output = await outputPage(app);
   await expect(output.locator('#root')).toBeAttached();
