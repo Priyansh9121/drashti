@@ -35,6 +35,11 @@ export interface EditablePptxSlide {
   background: string | null;
   elements: SlideElement[];
   issues: string[];
+  /**
+   * A picture fill here (the background's, a shape's or a table cell's) could not be copied, so this copy draws its
+   * reference colour instead: Drashti never plays such a slide itself (Q58-13).
+   */
+  lostPictureFill?: true;
 }
 export interface EditablePptx {
   sourceCount: number;
@@ -207,6 +212,8 @@ interface Context {
   defaults: Node;
   tableStyles: ReadonlyMap<string, { style: XmlNode; part: Part }>;
   issues: Set<string>;
+  /** Set when a picture fill could not be copied (see `EditablePptxSlide.lostPictureFill`). */
+  lostPictureFill: boolean;
   id: () => string;
   asset: (part: Part, relId: string, issues: Set<string>) => Promise<string | null>;
 }
@@ -1041,6 +1048,7 @@ async function shapePaintOf(
       }
       case 'blipFill': {
         const picture = await pictureOf(fill, part, ctx);
+        if (!picture) ctx.lostPictureFill = true;
         return picture ? { color: null, picture } : { color: reference };
       }
       default:
@@ -1896,6 +1904,7 @@ export async function readEditablePptx(
       defaults: child(presentation.root, 'defaultTextStyle'),
       tableStyles,
       issues,
+      lostPictureFill: false,
       id: () => `pptx-${String(sourceIndex)}-${String(++nextId)}`,
       asset,
     };
@@ -1969,6 +1978,7 @@ export async function readEditablePptx(
       background,
       elements,
       issues: [...issues],
+      ...(ctx.lostPictureFill ? { lostPictureFill: true as const } : {}),
     });
   }
   const hasFailedNotes = Object.keys(failedNotes).length > 0;
