@@ -23,6 +23,8 @@ import {
   deckTransitionFrame,
   takesTime,
   transitionFrame,
+  type WipeBand,
+  wipeBandStyles,
   wordsFrame,
   wordsMove,
   type WordsMove,
@@ -134,13 +136,28 @@ const MEDIA_WAIT_MS = 3000;
 export const fadeAt = (fade: { ms: number; start: number }, now: number): number =>
   Math.min(1, Math.max(0, (now - fade.start) / fade.ms));
 
-/** The layers a transition draws: the two slides, the black, and the two slides' words while drawn apart. */
+/**
+ * A slide's two band boxes (Session 58, C2), inside its box and around what it draws: at rest they fill it and do
+ * nothing; while a deck's own Wipe brings the slide in, the holder is PowerPoint's band (a mask on a box two slides long,
+ * moved) and the slide box moves the slide back inside it (transition-frame.ts wipeBandStyles).
+ */
+export interface BandBoxes {
+  holder: HTMLDivElement | null;
+  slide: HTMLDivElement | null;
+}
+
+/**
+ * The layers a transition draws: the two slides, the black, and the two slides' words while drawn apart; each slide's
+ * band boxes too.
+ */
 export interface Layers {
   in: HTMLDivElement | null;
   out: HTMLDivElement | null;
   black: HTMLDivElement | null;
   wordsIn: HTMLDivElement | null;
   wordsOut: HTMLDivElement | null;
+  bandIn?: BandBoxes;
+  bandOut?: BandBoxes;
 }
 
 /**
@@ -222,6 +239,9 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
   };
   deckOnly(els.in, frame?.in.mask, frame?.in.filter);
   deckOnly(els.out, frame?.out.mask, frame?.out.filter);
+  // PowerPoint's Wipe band (Session 58): on the slide's band boxes, at rest when none.
+  paintBand(els.bandIn, frame?.in.band, how);
+  paintBand(els.bandOut, frame?.out.band, how);
   if (els.out) els.out.style.zIndex = native?.deckEffect === 'uncover' ? '1' : '';
   if (els.black) els.black.style.opacity = frame ? String(frame.black) : '0';
   const move = kind === null ? null : how.move;
@@ -233,13 +253,82 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
   }
 }
 
+/** A slide's band boxes at rest, as its JSX draws them: filling the slide's box. */
+const BAND_BOX = { position: 'absolute', inset: 0 } as const;
+
+type BandStyle = 'inset' | 'width' | 'height' | 'maskImage' | 'willChange' | 'overflow';
+
+/**
+ * What paintBand last wrote on each band box: which way its band went ('' at rest) and its transform. A box is written
+ * only when they change: its mask and size once as a Wipe starts and once as it ends, its transform each frame. (Read
+ * back, the page writes them its own way, 0 as 0px, a gradient's colours as rgb: never compared with what is there.)
+ */
+const bandWritten = new WeakMap<HTMLElement, { way: string; transform: string }>();
+
+function writeBand(
+  el: HTMLElement,
+  way: string,
+  styles: Readonly<Record<BandStyle, string>>,
+  transform: string,
+): void {
+  const last = bandWritten.get(el);
+  if (last?.way === way && last.transform === transform) return;
+  const style = el.style as unknown as Record<BandStyle | 'transform', string>;
+  if (last?.way !== way) for (const [key, value] of Object.entries(styles)) style[key as BandStyle] = value;
+  if (last?.transform !== transform) style.transform = transform;
+  bandWritten.set(el, { way, transform });
+}
+
+/**
+ * A slide's band boxes as `band` has them while a deck's own Wipe brings the slide in (each a layer of its own, only
+ * their transforms changing as it runs), or at rest (none).
+ */
+function paintBand(
+  boxes: BandBoxes | undefined,
+  band: WipeBand | undefined,
+  canvas: { width: number; height: number },
+): void {
+  const holder = boxes?.holder;
+  const slide = boxes?.slide;
+  if (!holder || !slide) return;
+  const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1;
+  const s = band ? wipeBandStyles(band, canvas.width, canvas.height, dpr) : null;
+  const way = band?.direction ?? '';
+  writeBand(
+    holder,
+    way,
+    {
+      inset: s?.holder.inset ?? '0',
+      width: s?.holder.width ?? '',
+      height: s?.holder.height ?? '',
+      maskImage: s?.holder.maskImage ?? '',
+      willChange: s ? 'transform' : '',
+      overflow: s ? 'hidden' : '',
+    },
+    s?.holder.transform ?? '',
+  );
+  writeBand(
+    slide,
+    way,
+    {
+      inset: s?.slide.inset ?? '0',
+      width: s?.slide.width ?? '',
+      height: s?.slide.height ?? '',
+      maskImage: '',
+      willChange: s ? 'transform' : '',
+      overflow: '',
+    },
+    s?.slide.transform ?? '',
+  );
+}
+
 /**
  * A deck's slide coming in by a cut, its clip not yet drawn (Session 54, C2): the slide before stays up, the new one
  * unseen, until it can be drawn. The slide before is drawn whole, as at rest: after Back during a deck's own
- * transition it is the slide that was coming in, and keeps nothing of it (its move, clip, mask, shade or place above;
- * TX-1, Session 58).
+ * transition it is the slide that was coming in, and keeps nothing of it (its move, clip, mask, shade, place above or
+ * Wipe band; TX-1, Session 58).
  */
-export function paintWaiting(els: Pick<Layers, 'in' | 'out'>): void {
+export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'bandOut'>): void {
   if (els.in) els.in.style.opacity = '0';
   const before = els.out;
   if (!before) return;
@@ -249,6 +338,7 @@ export function paintWaiting(els: Pick<Layers, 'in' | 'out'>): void {
   if (before.style.maskImage !== '') before.style.maskImage = '';
   if (before.style.filter !== '') before.style.filter = '';
   before.style.zIndex = '';
+  paintBand(els.bandOut, undefined, { width: 0, height: 0 });
 }
 
 /**
@@ -443,6 +533,11 @@ export function SlideLayerView({
   const inRef = useRef<HTMLDivElement>(null);
   const outRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Each slide's band boxes (Session 58, C2): a deck's own Wipe draws PowerPoint's band on the incoming slide's.
+  const inHolderRef = useRef<HTMLDivElement>(null);
+  const inBandSlideRef = useRef<HTMLDivElement>(null);
+  const outHolderRef = useRef<HTMLDivElement>(null);
+  const outBandSlideRef = useRef<HTMLDivElement>(null);
 
   // Start the fade once the new slide's pictures and videos can be drawn: at shownAt if they
   // already could (every screen at the same point), else when they can.
@@ -501,6 +596,8 @@ export function SlideLayerView({
           black: blackRef.current,
           wordsIn: wordsInRef.current,
           wordsOut: wordsOutRef.current,
+          bandIn: { holder: inHolderRef.current, slide: inBandSlideRef.current },
+          bandOut: { holder: outHolderRef.current, slide: outBandSlideRef.current },
         },
         { kind, native, movement, move: moveNow, width, height, scaleIn, scaleOut },
         p,
@@ -527,7 +624,11 @@ export function SlideLayerView({
   const fading = fade !== null;
   useLayoutEffect(() => {
     if (kind === 'cut' && start === null && fading) {
-      paintWaiting({ in: inRef.current, out: outRef.current });
+      paintWaiting({
+        in: inRef.current,
+        out: outRef.current,
+        bandOut: { holder: outHolderRef.current, slide: outBandSlideRef.current },
+      });
       return;
     }
     paintLayers(
@@ -537,6 +638,8 @@ export function SlideLayerView({
         black: blackRef.current,
         wordsIn: wordsInRef.current,
         wordsOut: wordsOutRef.current,
+        bandIn: { holder: inHolderRef.current, slide: inBandSlideRef.current },
+        bandOut: { holder: outHolderRef.current, slide: outBandSlideRef.current },
       },
       { kind: fading ? kind : null, native, movement, move: moveNow, width, height, scaleIn, scaleOut },
       start !== null ? fadeAt({ ms, start }, engineNow()) : 0,
@@ -609,19 +712,25 @@ export function SlideLayerView({
               mixBlendMode: adds && incoming ? 'plus-lighter' : undefined,
             }}
           >
-            <Zoomed layer={l}>
-              <DrawnSlide
-                layer={l}
-                canvas={canvas}
-                scaling={scaling}
-                languages={languages}
-                slides={slides}
-                text={move ? 'hidden' : 'shown'}
-                settled={settled}
-                movement={movement}
-                timers={timers}
-              />
-            </Zoomed>
+            {/* Its band boxes (Session 58, C2): at rest they only fill its box; a deck's own Wipe draws its band on
+                them. Always there, so a Wipe starting or ending never draws the slide anew. */}
+            <div ref={incoming ? inHolderRef : outHolderRef} data-band="" style={BAND_BOX}>
+              <div ref={incoming ? inBandSlideRef : outBandSlideRef} data-band-slide="" style={BAND_BOX}>
+                <Zoomed layer={l}>
+                  <DrawnSlide
+                    layer={l}
+                    canvas={canvas}
+                    scaling={scaling}
+                    languages={languages}
+                    slides={slides}
+                    text={move ? 'hidden' : 'shown'}
+                    settled={settled}
+                    movement={movement}
+                    timers={timers}
+                  />
+                </Zoomed>
+              </div>
+            </div>
           </div>
         );
       })}
