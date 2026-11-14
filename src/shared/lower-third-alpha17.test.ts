@@ -7,12 +7,12 @@ const ALPHA17_MOTIONS: readonly string[] = ['none', 'sweep', 'shine', 'shapes', 
 describe('lower third backgrounds for alpha.17', () => {
   it('maps every new background and only new backgrounds', () => {
     const added = LOWER_THIRD_MOTIONS.filter((motion) => !ALPHA17_MOTIONS.includes(motion));
-    expect(Object.keys(NEAREST_ALPHA17_MOTION ?? {}).sort()).toEqual(added.sort());
+    expect(Object.keys(NEAREST_ALPHA17_MOTION).sort()).toEqual(added.sort());
   });
 
   it('maps to moving backgrounds that alpha.17 knows', () => {
     const moving = ALPHA17_MOTIONS.filter((motion) => motion !== 'none');
-    for (const [motion, fallback] of Object.entries(NEAREST_ALPHA17_MOTION ?? {})) {
+    for (const [motion, fallback] of Object.entries(NEAREST_ALPHA17_MOTION)) {
       expect(moving, motion).toContain(fallback);
     }
   });
