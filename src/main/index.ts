@@ -2951,6 +2951,8 @@ function start(): void {
   );
   stream = new StreamService({
     clockStyle: mainClockStyle,
+    // No warm-up for the stream's page where Chromium draws without a graphics chip, as for the outputs (Session 58).
+    warmUpFact: (page) => warmUpFact(warmUps, page, 'the stream’s page'),
     profiles: new StreamProfileRepo(db, (id) => streamKeys.has(id)),
     keys: streamKeys,
     settings,
@@ -3028,6 +3030,22 @@ function start(): void {
   const streaming = stream;
   stops.add('stream', () => {
     streaming.close();
+  });
+  // The stream's page, open before Chromium said how it draws, is sent its context again once it skips its warm-up
+  // (Session 58, WU-1), as an output is.
+  warmUps.follow(() => {
+    const page = streaming.programContents();
+    return page && !page.isDestroyed()
+      ? [
+          {
+            id: page.id,
+            name: 'the stream’s page',
+            tell: () => {
+              streaming.contextChanged();
+            },
+          },
+        ]
+      : [];
   });
   // No blurred copy is made while on air or recording (Session 55, D; Session 50's rule).
   blurOnAir = () => streaming.inUse() || testOnAir;
