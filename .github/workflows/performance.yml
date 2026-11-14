@@ -55,6 +55,7 @@ on:
             enhanced-pictures,
             bold-transitions,
             lower-thirds,
+            lower-thirds-more,
             animations,
           ]
         default: none

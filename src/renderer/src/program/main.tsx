@@ -11,6 +11,7 @@ import { preloadFonts } from '../render/fonts';
 import { preloadStudioFontsOnceDrawn } from '../render/studio-fonts';
 import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
+import { DeckClipsAhead } from '../render/clips-ahead';
 import { WarmUp } from '../render/WarmUp';
 import { Preloader } from '../output/Preloader';
 import { applyCameraChoice, listDevices } from './camera';
@@ -166,6 +167,9 @@ function Program() {
           </ClockStyleContext.Provider>
         </SceneBoundary>
       )}
+      {/* The deck clips loaded ahead (C3, Session 58): Next's slide's first clip and the slide the operator points at,
+          out of sight, so a deck slide comes in on the stream on time as on the hall's screens. */}
+      {state && ready && context?.picture && <DeckClipsAhead next={state.next} />}
       {stop.cover}
       {/* What Next shows, loaded ahead as the hall's screens load it (Session 58, Q57-35): a slide cut in on the stream
           is drawn with its pictures at once (it is drawn only once they can be: render/SlideLayerView.tsx). */}
