@@ -77,7 +77,7 @@ const MOST_FAILURES_REPORTED = 50;
 /** Reports a failure telling a box its measure, unless this window has reported the same one. */
 function reportOnce(error: unknown): void {
   const key =
-    error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error);
+    error instanceof Error ? [error.name, error.message, error.stack ?? ''].join('\n') : String(error);
   if (reportedFailures.has(key) || reportedFailures.size >= MOST_FAILURES_REPORTED) return;
   reportedFailures.add(key);
   reportFailure(error);
