@@ -144,14 +144,42 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       const entryAt = entered?.shownAt ?? 0;
       expect(clicked?.stepAt).toBe(entryAt + WIPE_MS);
       const incoming = hall.locator('[data-layer="slide"] [data-slide-in]');
+      const band = incoming.locator('[data-band]');
       await holdClock(app, entryAt + WIPE_MS / 2);
-      // A deck's Wipe: the incoming slide up to a hard edge (a clip), no mask (Q57-28).
-      await expect(incoming).not.toHaveCSS('clip-path', 'none');
+      // A deck's Wipe (Session 58): PowerPoint's soft band, a mask on the incoming slide's band box, which moves; the
+      // slide itself has no clip and no mask.
+      await expect(incoming).toHaveCSS('clip-path', 'none');
       await expect(incoming).toHaveCSS('mask-image', 'none');
+      await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
+      await expect(band).not.toHaveCSS('transform', 'none');
+      // Half-way up from the bottom, as the hall draws it: through the band, the incoming slide's full-slide shape over
+      // the outgoing slide's blue box, mixed as PowerPoint's half cosine has them (a hard edge half-way would show the
+      // box whole above the middle and not at all below it).
+      for (const [y, shows] of [
+        [400, 0.5 + 0.5 * Math.cos((Math.PI * 680) / 1080)],
+        [700, 0.5 + 0.5 * Math.cos((Math.PI * 380) / 1080)],
+      ] as const) {
+        const mixed: [number, number, number] = [
+          shows * 0x30,
+          shows * 0x40,
+          shows * 0x50 + (1 - shows) * 255,
+        ];
+        await expect
+          .poll(
+            async () => {
+              const [rgb] = await canvasPixels(hall, [{ x: MIDDLE.x, y }]);
+              return near(rgb, mixed, 18) ? 'mixed' : (rgb ?? []).join(',');
+            },
+            { message: `the hall half-way through the Wipe at y ${String(y)}, ${mixed.map(Math.round).join(',')}` },
+          )
+          .toBe('mixed');
+      }
       await expect(target(hall, 5)).toHaveCSS('opacity', '0');
       await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0');
       await holdClock(app, entryAt + WIPE_MS + FADE_MS / 2);
       await expect(incoming).toHaveCSS('clip-path', 'none');
+      await expect(band).toHaveCSS('mask-image', 'none');
+      await expect(band).toHaveCSS('transform', 'none');
       await expect(target(hall, 5)).toHaveCSS('opacity', '0.5');
       await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0.5');
       await holdClock(app, entryAt + WIPE_MS + FADE_MS);

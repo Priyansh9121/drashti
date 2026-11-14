@@ -329,7 +329,7 @@ export function warmScenes(): WarmScene[] {
         },
       });
   }
-  // A deck Drashti plays itself (Session 57, warm-up-deck.ts): its own Wipe (a hard-edged clip since Q57-28) and
+  // A deck Drashti plays itself (Session 57, warm-up-deck.ts): its own Wipe (PowerPoint's band since Session 58) and
   // Cover (the slide coming in a shade darker), part-way, from its slide whose picture, shape and words are each
   // part-way through a Split (a mask the size of each). Once: a deck's own transitions move alike on Calm and Bold.
   for (const effect of WARM_DECK_TRANSITIONS)

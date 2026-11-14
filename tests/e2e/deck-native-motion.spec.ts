@@ -90,11 +90,19 @@ test('PowerPoint clicks play on the screen without Office and survive a text edi
       const incoming = out.locator('[data-layer="slide"] [data-slide-in]').last();
       await holdClock(app, (next?.shownAt ?? 0) + 325);
       await expect(out.locator('[data-layer="slide"]')).toHaveAttribute('data-transition', 'wipe');
-      // A deck's Wipe: the incoming slide up to a hard edge (a clip), no mask (Q57-28).
-      await expect(incoming).not.toHaveCSS('clip-path', 'none');
+      // A deck's Wipe (Session 58): PowerPoint's soft band, a mask on the incoming slide's band box, which moves; the
+      // slide itself has no clip and no mask.
+      const band = incoming.locator('[data-band]');
+      await expect(incoming).toHaveCSS('clip-path', 'none');
       await expect(incoming).toHaveCSS('mask-image', 'none');
+      await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
+      await expect(band).not.toHaveCSS('transform', 'none');
       await holdClock(app, (next?.shownAt ?? 0) + 650);
       await expect(out.locator('[data-layer="slide"]')).not.toHaveAttribute('data-fading', 'true');
+      // Over: the band gone, nothing of it left on the slide (TX-2).
+      await expect(band).toHaveCSS('mask-image', 'none');
+      await expect(band).toHaveCSS('transform', 'none');
+      await expect(incoming).toHaveCSS('mask-image', 'none');
       await holdClock(app, null);
 
       const { ed, editor } = await openEditor(app, win, name);
