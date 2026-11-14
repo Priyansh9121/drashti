@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { setAside } from '../state-file';
 import { TrimRecords } from './trim-records';
 
 /*
@@ -175,6 +176,85 @@ it('carries nothing over from the library before a restore: the restored library
   expect(records.copies.load()).toEqual([]);
   // Written over at once: a crash now never brings the library before's records back.
   expect(onDisk()).toEqual({ version: 1, waiting: [cut(2)], copies: [] });
+});
+
+// LOW-2 (review of 50566755): alpha.17's settings stay in the library until cleared, so a backup restored later, a
+// start after a set-aside, or alpha.17 itself after a downgrade would read records alpha.18 has since finished or
+// stopped, and make a cut the operator let go.
+it('clears alpha.17’s settings once the file holds what they held, and never again (LOW-2)', async () => {
+  const disk = busyDisk();
+  const clear = vi.fn();
+  const records = new TrimRecords(file, {
+    before: { waiting: () => [cut(1)], copies: () => [copy], clear },
+    writeFile: disk.writeFile,
+  });
+  await vi.waitFor(() => {
+    expect(disk.writeFile).toHaveBeenCalledOnce();
+  });
+  // Not while the file does not hold them yet: a crash now reads them again at the next start.
+  expect(clear).not.toHaveBeenCalled();
+  disk.letGo();
+  await records.settle();
+  expect(onDisk()).toEqual({ version: 1, waiting: [cut(1)], copies: [copy] });
+  expect(clear).toHaveBeenCalledOnce();
+  records.kept.save([]);
+  await records.settle();
+  expect(clear).toHaveBeenCalledOnce();
+});
+
+it('clears a restored backup’s alpha.17 settings once they are in the file, and clears nothing when they hold nothing (LOW-2)', () => {
+  const clear = vi.fn();
+  new TrimRecords(file, { before: { waiting: () => [cut(2)], copies: () => [], clear }, otherLibrary: true });
+  expect(onDisk()).toEqual({ version: 1, waiting: [cut(2)], copies: [] });
+  expect(clear).toHaveBeenCalledOnce();
+  rmSync(file);
+  const none = vi.fn();
+  new TrimRecords(file, { before: { waiting: () => [], copies: () => undefined, clear: none }, otherLibrary: true });
+  expect(none).not.toHaveBeenCalled();
+});
+
+it('writes empty records after setting a file aside, so the next start never reads the settings (LOW-2)', async () => {
+  writeFileSync(file, '{"version": 1, "waiting": [');
+  const before = { waiting: vi.fn(() => [cut(1)]), copies: vi.fn(() => [copy]), clear: vi.fn() };
+  const first = new TrimRecords(file, { before });
+  await first.settle();
+  expect(onDisk()).toEqual({ version: 1, waiting: [], copies: [] });
+  const next = new TrimRecords(file, { before });
+  expect(next.kept.load()).toEqual([]);
+  expect(before.waiting).not.toHaveBeenCalled();
+  expect(before.copies).not.toHaveBeenCalled();
+});
+
+// LOW-3 (review of 50566755): a file that could be neither read nor moved aside at the start (Windows: another program
+// held it) may hold records still readable once the hold ends; it is never written over until it moves aside.
+it('never writes over a file it could neither read nor move aside: saves fail until it moves aside (LOW-3)', async () => {
+  const damaged = '{"version": 1, "waiting": [';
+  writeFileSync(file, damaged);
+  let holding = true;
+  const aside = vi.fn((path: string) => (holding ? null : setAside(path)));
+  const log = vi.fn<(message: string) => void>();
+  const records = new TrimRecords(file, { before: nothingBefore, setAside: aside, log, retryMs: 10 });
+  expect(log).toHaveBeenCalledWith(expect.stringContaining('left where it is'));
+  records.kept.save([cut(2)]);
+  await vi.waitFor(() => {
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('Could not save'));
+  });
+  expect(readFileSync(file, 'utf8')).toBe(damaged);
+  // Before a cut can appear in Media: it throws, so the cut is not published unrecorded.
+  expect(() => {
+    records.saveNow();
+  }).toThrow();
+  expect(readFileSync(file, 'utf8')).toBe(damaged);
+  holding = false;
+  await vi.waitFor(
+    () => {
+      expect(onDisk()).toEqual({ version: 1, waiting: [cut(2)], copies: [] });
+    },
+    { timeout: 10_000 },
+  );
+  const kept = readdirSync(dir).filter((name) => name.startsWith('trim-cuts.unreadable-'));
+  expect(kept).toHaveLength(1);
+  expect(readFileSync(join(dir, kept[0] ?? ''), 'utf8')).toBe(damaged);
 });
 
 it('tries a write that failed again by itself, saying so once', async () => {
