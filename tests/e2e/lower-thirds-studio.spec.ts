@@ -679,7 +679,11 @@ test('the studio at CI’s 1024 × 645 and at 1280 × 720: the preview, every ta
     };
     for (const [name, testId] of Object.entries(last)) {
       await tab(studio, name);
-      const control = studio.getByTestId(testId);
+      // The Background tab's list is long (thirty backgrounds): its last choice is reached by scrolling the panel.
+      const control =
+        name === 'Background'
+          ? studio.getByTestId(testId).locator('[data-choice]').last()
+          : studio.getByTestId(testId);
       await control.scrollIntoViewIfNeeded();
       await expectInView(control, `${what}: ${name}`);
       expect(
