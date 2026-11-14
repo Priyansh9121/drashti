@@ -14,6 +14,7 @@ import type { PreparedSourcePage } from '../../shared/editable-source';
 import type { SourceReader } from './source-reader';
 import { sourceWrite } from './source-write';
 import {
+  clearedMaskWordsPdf,
   clippedDeckPdf,
   clippedGlyphsPdf,
   clippedWordsPdf,
@@ -21,7 +22,9 @@ import {
   longTextEffectPdf,
   maskedWordsPdf,
   paintedClipEffectPdf,
+  rotatedCurveEffectPdf,
   rotatedGroupedEffectPdf,
+  rotatedPictureEffectPdf,
   strokedEffectPdf,
   unusedBlendModePdf,
   PDF_EDITABLE_WORDS,
@@ -195,9 +198,10 @@ async function expectFullPaint(doc: PDFDocumentProxy, page: PDFPageProxy, count:
   const result = await editablePdfPage(doc, page, pdfjs.OPS);
   expect(result.elements).toHaveLength(count);
   expect(result.assets).toHaveLength(count);
-  const scale = 2;
+  const scale = Math.min(2, 2048 / Math.max(result.width, result.height));
   const viewport = page.getViewport({ scale });
-  const { width, height } = viewport;
+  const width = Math.ceil(viewport.width),
+    height = Math.ceil(viewport.height);
   const whole = canvas.createCanvas(width, height).getContext('2d');
   await page.render({ canvas: null, canvasContext: whole as never, viewport, annotationMode: 0 }).promise;
   const assembled = canvas.createCanvas(width, height).getContext('2d');
@@ -207,7 +211,7 @@ async function expectFullPaint(doc: PDFDocumentProxy, page: PDFPageProxy, count:
     const asset = result.assets.find(({ id }) => id === element.id);
     if (!asset) throw new Error('Missing generated PDF paint.');
     const image = await canvas.loadImage(Buffer.from(asset.png));
-    assembled.drawImage(image, element.frame.x * scale, element.frame.y * scale);
+    assembled.drawImage(image, Math.round(element.frame.x * scale), Math.round(element.frame.y * scale));
   }
   const expected = whole.getImageData(0, 0, width, height).data;
   const actual = assembled.getImageData(0, 0, width, height).data;
@@ -238,6 +242,36 @@ describe('whole paint on PDF effect pages', () => {
 
   it.each(['f', 'B'])('keeps a path that paints (%s) and establishes a clip', async (paint) => {
     await withPage(paintedClipEffectPdf(paint), (doc, page) => expectFullPaint(doc, page, 2));
+  });
+
+  it.each([
+    ['a rotated curve', rotatedCurveEffectPdf],
+    ['a rotated picture', rotatedPictureEffectPdf],
+  ])('matches the full page for %s', async (_, fixture) => {
+    await withPage(fixture(), (doc, page) => expectFullPaint(doc, page, 2));
+  });
+
+  it('keeps words editable after a soft mask is cleared inside the same graphics scope', async () => {
+    await withPage(clearedMaskWordsPdf(), async (doc, page) => {
+      const result = await editablePdfPage(doc, page, pdfjs.OPS);
+      expect(result.elements).toMatchObject([
+        { kind: 'image' },
+        { kind: 'text', text: PDF_EDITABLE_WORDS },
+        { kind: 'text', text: 'More placeholders' },
+      ]);
+    });
+  });
+
+  it('keeps a clipping path added during a soft mask after the mask is cleared', async () => {
+    await withPage(clearedMaskWordsPdf(true), async (doc, page) => {
+      const result = await editablePdfPage(doc, page, pdfjs.OPS);
+      expect(result.elements).toMatchObject([
+        { kind: 'image' },
+        { kind: 'image' },
+        { kind: 'text', text: 'More placeholders' },
+      ]);
+      expect(result.elements[1]?.frame.width).toBeLessThanOrEqual(18);
+    });
   });
 
   it('keeps all paint in a rotated transparency group followed by an empty path', async () => {
@@ -294,6 +328,46 @@ describe('whole paint on PDF effect pages', () => {
         render.mockRestore();
       }
       expect((await editablePdfPage(doc, page, pdfjs.OPS)).assets).toHaveLength(40);
+    });
+  });
+
+  it('settles with the checkpoint error if PDF.js cancellation throws before settling', async () => {
+    await withPage(clippedWordsPdf(), async (doc, page) => {
+      const stopped = new Error('Stop the generated page.');
+      const pending = Symbol('render did not stop');
+      let finish: (() => void) | undefined;
+      let afterCancel: (() => void) | undefined;
+      const missedStop = new Promise<typeof pending>((resolve) => {
+        afterCancel = () => {
+          setImmediate(() => resolve(pending));
+        };
+      });
+      const realRender = page.render.bind(page);
+      const render = vi.spyOn(page, 'render').mockImplementation((options) => {
+        const task = realRender(options);
+        void task.promise.catch(() => undefined);
+        const promise = new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        Object.defineProperty(task, 'promise', { value: promise });
+        const cancel = task.cancel.bind(task);
+        vi.spyOn(task, 'cancel').mockImplementation(() => {
+          cancel(); // Release the real task while simulating the unresolved outward promise.
+          afterCancel?.();
+          throw new Error('PDF.js could not unwind the generated render.');
+        });
+        return task;
+      });
+      const preparation = editablePdfPage(doc, page, pdfjs.OPS, {
+        checkpoint: () => (render.mock.calls.length ? Promise.reject(stopped) : Promise.resolve()),
+      });
+      try {
+        await expect(Promise.race([preparation, missedStop])).rejects.toBe(stopped);
+      } finally {
+        finish?.();
+        await preparation.catch(() => undefined);
+        render.mockRestore();
+      }
     });
   });
 });
