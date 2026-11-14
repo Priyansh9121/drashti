@@ -4154,9 +4154,10 @@ function start(): void {
     pointAhead.stop();
   });
   handle(IPC.engine.pointAt, (event, raw) => {
-    if (!fromOperator(event)) return;
+    if (!fromOperator(event)) return null;
     const target = pointAtSchema.safeParse(raw);
     pointAhead.point(target.success ? target.data : null);
+    return null;
   });
   handle(IPC.library.listPresentations, () => presentations.list());
   handle(IPC.library.listMedia, () => media.list());

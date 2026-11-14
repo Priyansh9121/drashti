@@ -12,7 +12,6 @@ import { LINGER_MS, type PointAt, REST_MS } from '../../../shared/point-ahead';
  * Only what changes is said; one row at a time.
  */
 
-
 const same = (a: PointAt | null, b: PointAt | null): boolean =>
   a === b ||
   (a !== null &&
