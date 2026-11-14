@@ -120,6 +120,8 @@ describe('the warm-up', () => {
     const offGrid = scene('deck-cover/calm/off-grid');
     expect(offGrid.offset).toBe('translate(0.5px, 0.5px)');
     expect(offGrid.clip).toBeUndefined();
+    // The wide Cover's shaded quad needs an analytic clip. The notched polygon draws a mask instead.
+    expect(offGrid).toMatchObject({ rounded: true });
     const at = BEFORE + 33;
     expect(offGrid.state(true, at)).toEqual(scene('deck-cover/calm').state(true, at));
     expect(offGrid.state(false, at)).toEqual(scene('deck-cover/calm').state(false, at));
