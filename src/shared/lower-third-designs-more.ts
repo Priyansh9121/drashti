@@ -205,14 +205,16 @@ export const MORE_LOWER_THIRD_DESIGNS: readonly MoreDesign[] = [
     },
   },
   {
-    id: 'single-title-band',
-    name: 'Single title band',
+    // In Single title band's place (a band across the whole picture, wiped in: it dipped twice while streaming): the
+    // same title in a compact box, wiped in at the same steady pace.
+    id: 'single-title-plate',
+    name: 'Single title plate',
     feel: 'quick',
     lines: ['Placeholder title', '', ''],
     animation: 'wipe-right-steady',
     direction: 'left',
     kind: 'wipe',
-    look: { style: 'band', band: '#101828', accent: '#f59e0b', font: 'Montserrat', size: 4.5, bottom: 5 },
+    look: { style: 'box', band: '#101828', accent: '#f59e0b', font: 'Montserrat', size: 4.5, bottom: 5 },
   },
   {
     id: 'announcement',
@@ -417,12 +419,16 @@ export const MORE_LOWER_THIRD_DESIGNS: readonly MoreDesign[] = [
     },
   },
   {
-    id: 'lotus-bloom',
-    name: 'Lotus bloom',
+    // In Lotus bloom's place (its lines on their own, lifted quickly: it dipped twice while streaming): a box, its lines
+    // fading in slowly, the flower opening behind them.
+    id: 'lotus-nameplate',
+    name: 'Lotus nameplate',
     feel: 'elegant',
-    animation: 'design-lift',
+    animation: 'line-fade-band-fade-slow',
+    direction: 'centre',
+    kind: 'reveal',
     look: {
-      style: 'stacked',
+      style: 'box',
       band: '#46173b',
       accent: '#f4a6c6',
       text: '#fff0f8',
