@@ -668,6 +668,96 @@ export function deckWipeMaskComposite(wipe: DeckWipe | null): string {
 }
 
 /**
+ * Shape's outline about the centre of `target`, `size` of the way from its middle (0) to its corners (1) in its own
+ * measure (shapeSize): in the shape's own proportions, an ellipse through the box's corners, a box, a diamond through
+ * them; and for Plus, two bars across the whole shape, each `size` of its half-width (or half-height) either side of
+ * its middle line.
+ */
+function outline(shape: NonNullable<DeckEffect['shape']>, target: Rect, size: number): Point[] {
+  const cx = target.x + target.width / 2;
+  const cy = target.y + target.height / 2;
+  // Half the shape's width and height: the box at `size` 1.
+  const a = (target.width / 2) * size;
+  const b = (target.height / 2) * size;
+  switch (shape) {
+    case 'circle':
+      // Through the box's corners at `size` 1: √2 times its half-width and half-height.
+      return Array.from({ length: 72 }, (_, i): Point => {
+        const angle = (i / 72) * 2 * Math.PI;
+        return [cx + Math.SQRT2 * a * Math.cos(angle), cy + Math.SQRT2 * b * Math.sin(angle)];
+      });
+    case 'box':
+      return [
+        [cx - a, cy - b],
+        [cx + a, cy - b],
+        [cx + a, cy + b],
+        [cx - a, cy + b],
+      ];
+    case 'diamond':
+      // Through the box's corners at `size` 1.
+      return [
+        [cx, cy - 2 * b],
+        [cx + 2 * a, cy],
+        [cx, cy + 2 * b],
+        [cx - 2 * a, cy],
+      ];
+    case 'plus': {
+      // The bars reach the box's edges; past `size` 1 they cover it.
+      const w = target.width / 2;
+      const h = target.height / 2;
+      const x = Math.min(a, w);
+      const y = Math.min(b, h);
+      return [
+        [cx - x, cy - h],
+        [cx + x, cy - h],
+        [cx + x, cy - y],
+        [cx + w, cy - y],
+        [cx + w, cy + y],
+        [cx + x, cy + y],
+        [cx + x, cy + h],
+        [cx - x, cy + h],
+        [cx - x, cy + y],
+        [cx - w, cy + y],
+        [cx - w, cy - y],
+        [cx - x, cy - y],
+      ];
+    }
+  }
+}
+
+/** Everything of `target` outside `inner`: its corners, then the hole, joined through its first corner. */
+function around(target: Rect, inner: readonly Point[]): Point[] {
+  const outer: Point[] = [
+    [target.x, target.y],
+    [target.x + target.width, target.y],
+    [target.x + target.width, target.y + target.height],
+    [target.x, target.y + target.height],
+  ];
+  const [start] = outer;
+  const [first] = inner;
+  return start && first ? [...outer, start, ...inner, first] : outer;
+}
+
+/**
+ * A Shape's hard edge as a clip of one of a group's rendered parts drawn at `frame`, at the same slide position across
+ * the whole group (`target`): its outline where PowerPoint's soft edge is half-way (deckShapeShows 0.5), as Session 57
+ * drew every Shape. Drawn in place of the soft edge's masks where a page draws without a graphics chip
+ * (render/deck-target-paint.ts): there two masks of three gradients each on every moving Box, Plus and Diamond dropped
+ * frames on a two-core PC while streaming (C1's review, HIGH-2). '' for any other wipe, or none.
+ */
+export function deckShapeHardClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
+  if (!wipe || !('shape' in wipe)) return '';
+  // Where the soft edge is half-way: SHAPE_SOFTNESS / 2 behind its leading side.
+  const reach = (1 + SHAPE_SOFTNESS) * wipe.progress - SHAPE_SOFTNESS / 2;
+  const size = Math.max(0, wipe.inward ? 1 - reach : reach);
+  // What the edge has passed shows coming in and is hidden leaving: inside the outline for an entrance's Out and an
+  // exit's In, outside it (a hole) for an entrance's In and an exit's Out.
+  return wipe.inward === wipe.leaving
+    ? polygon(outline(wipe.shape, target, size), frame)
+    : polygon(around(target, outline(wipe.shape, target, size)), frame, true);
+}
+
+/**
  * Clip all of a group's rendered parts at the same slide position. A Split and a Shape are drawn by their masks
  * (deckWipeMask).
  */
