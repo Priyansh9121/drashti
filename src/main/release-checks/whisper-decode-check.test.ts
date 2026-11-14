@@ -1,7 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { decodeReply, modelPin, runtimeLoaded } from '../../../scripts/whisper-decode-check.mjs';
+import { decodeReply, fetchModel, modelPin, runtimeLoaded } from '../../../scripts/whisper-decode-check.mjs';
 import windowsRuntime from '../../shared/whisper-windows-runtime.json';
 import { MODEL_SOURCES } from '../speech/models';
 
@@ -67,5 +69,44 @@ describe('the captions engine decodes on a clean Windows (Session 58, X2b)', () 
     });
     expect(decodeReply(200, 'not json').ok).toBe(false);
     expect(decodeReply(200, '{"error":"no text"}').ok).toBe(false);
+  });
+
+  it('downloads the model in three tries with pauses, and keeps it only when it is the one pinned', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-model-test-'));
+    try {
+      const bytes = Buffer.from('a stand-in for the model, nothing real');
+      const pin = {
+        file: 'model.bin',
+        url: 'https://example.invalid/model.bin',
+        bytes: bytes.length,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      };
+      const file = join(dir, 'model.bin');
+      const paused: number[] = [];
+      const pause = (ms: number) => {
+        paused.push(ms);
+        return Promise.resolve();
+      };
+      let tries = 0;
+      const slow = () => {
+        tries += 1;
+        return tries < 3 ? Promise.reject(new Error('fetch failed')) : Promise.resolve(new Response(bytes));
+      };
+      expect(await fetchModel(pin, dir, slow, pause)).toBe(file);
+      expect(paused).toEqual([5000, 15000]);
+      // Already there and right (as the cache restores it): kept, nothing downloaded.
+      const never = () => Promise.reject(new Error('nothing should be downloaded'));
+      expect(await fetchModel(pin, dir, never, pause)).toBe(file);
+      // Another file under its name is downloaded again; a download that is not the pinned one fails loudly and goes.
+      writeFileSync(file, 'not the model');
+      const wrong = () => Promise.resolve(new Response('not the model either'));
+      await expect(fetchModel(pin, dir, wrong, pause)).rejects.toThrow('not the one pinned');
+      expect(existsSync(file)).toBe(false);
+      // Three failed tries: said plainly.
+      const down = () => Promise.resolve(new Response('', { status: 503 }));
+      await expect(fetchModel(pin, dir, down, pause)).rejects.toThrow('could not be downloaded (503)');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
