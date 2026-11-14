@@ -44,6 +44,8 @@ export interface NodeServiceDeps {
   write?: (key: string, run: () => void) => void;
   screens: ScreenRepo;
   settings: { get(name: string): unknown };
+  /** What a node joining after the last pointed message should load. */
+  pointed(): PointedClip | null;
   spawn(): LinkWorker;
   /**
    * Main's certificate and id, made the first time a node is paired; or, when the kept one could
@@ -305,6 +307,11 @@ export class NodeService implements EngineTransport {
         this.deps.log('info', `Nodes: ${this.label(m.nodeId)} connected`);
         // Whether Main is let in, at once: a node shows only while it is (Session 54).
         worker.send({ type: 'to-node', nodeId: m.nodeId, message: { type: 'access', letIn: this.letIn } });
+        worker.send({
+          type: 'to-node',
+          nodeId: m.nodeId,
+          message: { type: 'pointed', clip: this.deps.pointed() },
+        });
         this.pushWanted(true);
         this.changed();
         this.deps.screensChanged();

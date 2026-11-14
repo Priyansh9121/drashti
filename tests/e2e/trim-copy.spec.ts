@@ -613,7 +613,7 @@ test('a cut’s file that a quit left in Media while it moved to the Trash goes 
   const dir = mkdtempSync(join(tmpdir(), 'drashti-trim-left-'));
   const trash = join(dir, 'Trash');
   mkdirSync(trash);
-  const env = { DRASHTI_TEST_TRASH_DIR: trash };
+  const env = { DRASHTI_TEST_TRASH_DIR: trash, DRASHTI_TEST_ON_AIR_HOOK: '1' };
   const first = await launchApp(env);
   let app = first.app;
   try {
@@ -639,6 +639,10 @@ test('a cut’s file that a quit left in Media while it moved to the Trash goes 
     const earlierFile = join(dirname(original), nameOf(earlier));
     const widerFile = join(dirname(original), nameOf(wider));
     expect(existsSync(earlierFile)).toBe(true);
+    const mediaDir = join(first.userData, 'Media');
+    const derivatives = join(mediaDir, 'stills', `${stamp(earlierFile).sha256}.jpg`);
+    mkdirSync(dirname(derivatives), { recursive: true });
+    writeFileSync(derivatives, 'Placeholder still');
     await app.close();
 
     // Drashti quit after the earlier cut's row was marked gone, before its file moved.
@@ -648,16 +652,26 @@ test('a cut’s file that a quit left in Media while it moved to the Trash goes 
         .prepare("UPDATE media SET path = '', missing = 1, deleted_at = ? WHERE id = ? AND path <> ''")
         .run(new Date().toISOString(), earlier);
       expect(marked.changes).toBe(1);
+      // The original remains on disk but its row no longer knows where it was.
+      db.prepare("UPDATE media SET path = '', sha256 = NULL, missing = 1 WHERE id = ?").run(mediaId);
     } finally {
       db.close();
     }
     expect(readdirSync(trash)).toEqual([]);
 
-    // The next start, nothing up and nothing to bring back: AFTER_START_MS later the file left goes to the Trash.
+    // A library with many other-sized files opens while recovery is deferred. Even on a quiet start the sweep
+    // is scheduled after the window opens, and only candidates of the recorded size need a hash.
+    for (let n = 0; n < 2000; n++)
+      writeFileSync(join(dirname(original), `Placeholder other video ${String(n)}.mp4`), 'Placeholder');
     app = (await relaunchApp(first.userData, env)).app;
+    await onAirFromStart(app);
     const reopened = await operatorPage(app);
     await operatorReady(reopened);
+    expect(readdirSync(trash)).toEqual([]);
+    expect(existsSync(derivatives)).toBe(true);
+    await onAir(app, false);
     await expect.poll(() => readdirSync(trash), { timeout: 40_000 }).toEqual([nameOf(earlier)]);
+    await expect.poll(() => existsSync(derivatives)).toBe(false);
     expect(existsSync(earlierFile)).toBe(false);
     expect(existsSync(widerFile)).toBe(true);
     expect(stamp(original).sha256).toBe(sha);

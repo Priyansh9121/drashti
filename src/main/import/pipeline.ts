@@ -1362,7 +1362,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       let editableSlides: readonly PptxSlide[] | null = shifted ? null : slides;
       if (shift) {
         ctx.log?.(
-          `Keynote: PDF page ${String(shift.page + 1)} has the words of slide ${String(shift.slide + 1)} of its PowerPoint copy (by the page count, slide ${String(shift.expected + 1)}), so the copy was set aside and Edit slides uses the PDF`,
+          `Keynote: PDF page ${String(shift.page + 1)} has the words of slide ${String(shift.slide + 1)} of its PowerPoint copy (by the page count, slide ${String(shift.expected + 1)}), and another page confirms the shift, so the copy was set aside and Edit slides uses the PDF`,
         );
         const notesLeftOut = !notes && keynoteExport?.slides.some((slide) => slide.notes !== '');
         deckIssues.push({
