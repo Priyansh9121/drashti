@@ -56,6 +56,12 @@ let sending: Promise<void> = Promise.resolve();
  * before a picture just drawn is on screen. The worker starts FFmpeg on its first frame, and once going repeats its last
  * frame until a new one comes (stream/worker/pipeline.ts). A page whose show is not on screen SHOW_WAIT_MS after its
  * encoder came gives it its frames as they are (as before): never a stream without a picture for long.
+ *
+ * Why 15 s (Session 59): the longest a page takes to put its show on screen when nothing is wrong: its warm-up's cap
+ * (render/WarmUp.tsx CAP_MS, 8 s), the warm-up's last step (SETTLE_MS, 6 s) and about a second for its frames to come
+ * on time. Meanwhile a stream or recording that is starting sends nothing (no FFmpeg until the first frame), and one
+ * whose page started again while on air repeats its last real frame, with the page's sound or silence: never black,
+ * never nothing. Main's picture watch giving the page a new port meanwhile (at 5 s, then 10 s) never restarts the wait.
  */
 let onScreen = false;
 /** When the show came on screen, by this page's clock: a frame captured before then never goes to the encoder. */

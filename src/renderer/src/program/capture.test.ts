@@ -342,6 +342,45 @@ describe('the stream starts from the first frame that shows the show (Session 58
       .toEqual([Array<number>(32).fill(90), Array<number>(32).fill(91)]);
   });
 
+  it('gives the encoder the page as it is 15 s after its port came when the show is still not on screen, a new port meanwhile not restarting the wait', async () => {
+    const track = new GeneratedTrack(4, 2);
+    const unexpected = new GeneratedTrack(4, 2);
+    const p = await platform([track, unexpected], { onScreen: false });
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const real = globalThis.setTimeout;
+    const waits: { run: () => void; ms: number }[] = [];
+    vi.stubGlobal(
+      'setTimeout',
+      vi.fn((run: () => void, ms?: number) => {
+        if (ms === 15_000) {
+          waits.push({ run, ms });
+          return waits.length;
+        }
+        return real(run, ms);
+      }),
+    );
+    const first = new EncoderPort();
+    p.deliver(first);
+    await expect.poll(() => track.processorStarted).toBe(true);
+    track.frame(3);
+    track.frame(4);
+    await expect.poll(() => p.body.dataset['frames']).toBe('2');
+    // Main's picture watch gives the page a new port at 5 s: the wait goes on from the first port.
+    const second = new EncoderPort();
+    p.deliver(second);
+    expect(waits.map((w) => w.ms)).toEqual([15_000]);
+    expect(videoBytes(first)).toEqual([]);
+    expect(videoBytes(second)).toEqual([]);
+    // 15 s after the first port: the newest frame at once, and every frame from then.
+    waits[0]?.run();
+    await expect.poll(() => videoBytes(second)).toEqual([Array<number>(32).fill(4)]);
+    track.frame(5);
+    await expect
+      .poll(() => videoBytes(second))
+      .toEqual([Array<number>(32).fill(4), Array<number>(32).fill(5)]);
+    expect(videoBytes(first)).toEqual([]);
+  });
+
   it('gives an encoder that comes once the show is on screen the newest frame at once, as before', async () => {
     const track = new GeneratedTrack(4, 2);
     const unexpected = new GeneratedTrack(4, 2);
