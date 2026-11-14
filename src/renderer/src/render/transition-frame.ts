@@ -410,13 +410,12 @@ export function deckSlideClip(
     transition.deckEffect === 'cover' ||
     transition.deckEffect === 'uncover';
   if (!moves || transition.over) return '';
-  const top = Math.max(0, Math.min(placeIn.y, placeOut.y));
-  const left = Math.max(0, Math.min(placeIn.x, placeOut.x));
-  const bottom = Math.max(
-    0,
-    canvas.height - Math.max(placeIn.y + placeIn.height, placeOut.y + placeOut.height),
-  );
-  const right = Math.max(0, canvas.width - Math.max(placeIn.x + placeIn.width, placeOut.x + placeOut.width));
+  // In whole pixels (review LOW-2): a bar a part of a pixel wide is none.
+  const whole = (v: number) => Math.max(0, Math.round(v));
+  const top = whole(Math.min(placeIn.y, placeOut.y));
+  const left = whole(Math.min(placeIn.x, placeOut.x));
+  const bottom = whole(canvas.height - Math.max(placeIn.y + placeIn.height, placeOut.y + placeOut.height));
+  const right = whole(canvas.width - Math.max(placeIn.x + placeIn.width, placeOut.x + placeOut.width));
   if (top === 0 && left === 0 && bottom === 0 && right === 0) return '';
   return `inset(${[top, right, bottom, left].map((v) => `${String(v)}px`).join(' ')})`;
 }
