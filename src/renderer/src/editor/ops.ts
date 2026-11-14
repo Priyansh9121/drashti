@@ -398,12 +398,23 @@ export function patchRun(run: TextRun, patch: TextPatch): TextRun {
 }
 
 /**
+ * The box's own settings changed (align, line spacing, shrink-to-fit). Shrink-to-fit turned off takes PowerPoint's own
+ * shrink of its words with it (style.sourceFit: closer lines, smaller words), as PowerPoint draws the words whole then
+ * (Session 58, FT-5).
+ */
+export function boxSettings(el: TextElement, box: BoxPatch): TextElement {
+  const style = { ...el.style, ...box };
+  if (box.shrinkToFit === false) delete style.sourceFit;
+  return { ...el, style };
+}
+
+/**
  * The whole box in a new style: the box takes it, and its words stop
  * overriding it (they follow the box). Words in a legacy font keep their
  * font and language: they only read right in that font.
  */
 export function styleBox(el: TextElement, patch: TextPatch, box: BoxPatch = {}): TextElement {
-  const style = { ...el.style, ...box };
+  const style = { ...boxSettings(el, box).style };
   if ('font' in patch) style.fontFamily = patch.font ?? null;
   if (patch.size !== undefined) style.fontSize = patch.size;
   if (patch.weight !== undefined) style.fontWeight = patch.weight;

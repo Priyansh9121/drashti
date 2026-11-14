@@ -212,7 +212,7 @@ describe('a phone’s picture, the lowest of the hidden window’s jobs (C6’s 
     expect(await copy).toBeNull();
   });
 
-  it('ends at once when its capture cannot be made, so the phone gets the slide as it starts without waiting', async () => {
+  it('ends at once when its capture cannot be made, so the phone gets a picture from the slide without waiting', async () => {
     const s = setup({ width: 1280, height: 720 }, true);
     s.win.webContents.capturePage.mockImplementationOnce(() =>
       Promise.resolve(capturedImage(1280, 720, true)),

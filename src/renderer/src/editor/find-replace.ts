@@ -4,6 +4,7 @@ import { editableSlidesOf } from '../../../shared/slide-edit';
 import { detectLang, mergeRuns, scriptOf } from '../../../shared/text-runs';
 import { readingOrder } from '../../../shared/tracks';
 import { mapElements } from './ops';
+import { withoutSourceFit } from '../../../shared/source-fit';
 
 /*
  * Find and replace across the presentation (Session 55, Part 17a, the Words group): every text box's words, slide by
@@ -175,7 +176,8 @@ export function replaceMatches(doc: EditDoc, matches: readonly Match[], replacem
       if (el.kind !== 'text') return el;
       let box = el;
       for (const m of ordered) if (m.end <= box.text.length) box = replaceIn(box, m.start, m.end, words);
-      return box;
+      // Its words changed: PowerPoint's own shrink of the old ones goes (Session 58, FT-5).
+      return box.text === el.text ? box : withoutSourceFit(box);
     });
   }
   return next;
