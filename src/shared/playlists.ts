@@ -1,4 +1,5 @@
 import { idSchema } from './model-schema';
+import { cleanNameSchema } from './rename-name';
 import type { RepeatSettings } from './repeat';
 import { passageIdSchema } from './shastra';
 import { VIDEO_INPUT_NAME_MAX } from './video-inputs';
@@ -236,7 +237,8 @@ const id = idSchema;
 export const playlistIdSchema = id;
 export const PLAYLIST_IDS_MAX = 1000;
 export const idListSchema = z.array(id).min(1).max(PLAYLIST_IDS_MAX);
-export const playlistNameSchema = z.string().trim().min(1).max(200);
+/** A playlist's, a folder's or a header's name, cleaned as Rename… cleans a file's (Session 58, X3). */
+export const playlistNameSchema = cleanNameSchema(200);
 export const newItemsSchema: z.ZodType<NewItem[]> = z
   .array(
     z.discriminatedUnion('kind', [
