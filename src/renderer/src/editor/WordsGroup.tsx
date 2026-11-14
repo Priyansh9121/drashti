@@ -51,6 +51,7 @@ import {
   selectedLook,
 } from './runs-doc';
 import { activeText } from './TextBoxEditor';
+import { shownLineSpacing } from './line-spacing';
 
 /*
  * The Words group along the slide editor's top (Session 55, Part 17a): how words look, for the text boxes selected, or
@@ -486,7 +487,8 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
         ))}
         <NumberTool
           label="Line spacing"
-          value={s?.lineHeight ?? 1.35}
+          // As drawn: a deck's line can set its own spacing (Session 58, PF-14).
+          value={first ? shownLineSpacing(first) : 1.35}
           min={0.6}
           max={3}
           step={0.05}
