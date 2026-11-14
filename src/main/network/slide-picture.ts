@@ -17,6 +17,7 @@ import { type ChosenWallpaper, wallpaperFrame } from '../../shared/wallpapers';
  * When a phone's Save may capture a deck's click (Session 57, C6, and its review): never while anything on the hall
  * screens moves, nor when the engine is to change them by itself within the capture's time. Each by the engine's
  * clock, as the screens draw it; where only the screens know the movement (render/), the longer of Calm's and Bold's.
+ * The same rule paces the PNG the network's process then makes of it (whileScreensMove, Session 58).
  */
 
 /** The longest a phone's Save waits for the hall screens to settle. */
@@ -250,10 +251,26 @@ export async function waitForSlidePicture(
   }
 }
 
-/** Not looked at yet (red). */
+/**
+ * The pace of a phone's PNG in the network's process (png.ts; C18's review, LOW-2): before each slice of its rows,
+ * wait while anything on the hall screens moves, by the copy of the engine state that process follows, PNG_WAIT_MS at
+ * most in all; then go on. The capture was made in a quiet moment, but the operator can press Next as the PNG is made:
+ * on a two-core laptop the show's frames come first, and the PNG a moment later. Straight on before the state has
+ * come, and once the time is spent.
+ */
 export function whileScreensMove(
-  _state: () => EngineState | null,
-  _now: () => number = Date.now,
+  state: () => EngineState | null,
+  now: () => number = Date.now,
 ): () => Promise<void> {
-  return () => Promise.resolve();
+  let waited = 0;
+  return async () => {
+    for (;;) {
+      const screens = state();
+      const at = now();
+      const moving = screens ? slidePictureReadyAt(screens, at) - at : 0;
+      if (!(moving > 0) || waited >= PNG_WAIT_MS) return;
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.min(moving, PNG_WAIT_MS - waited)));
+      waited += now() - at;
+    }
+  };
 }

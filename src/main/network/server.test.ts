@@ -345,7 +345,12 @@ describe('the network server', () => {
         status: 200,
         body: {
           ok: true,
-          picture: { width: 2, height: 1, pixels: new Uint8Array([10, 20, 30, 255, 40, 50, 60, 255]), order: 'bgra' },
+          picture: {
+            width: 2,
+            height: 1,
+            pixels: new Uint8Array([10, 20, 30, 255, 40, 50, 60, 255]),
+            order: 'bgra',
+          },
         },
       });
     const response = await fetch(
