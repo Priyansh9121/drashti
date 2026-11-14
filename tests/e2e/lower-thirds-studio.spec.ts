@@ -2,8 +2,10 @@ import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { animationById, animationLength } from '../../src/shared/lower-third-animations';
 import { DESIGN_MOTIONS, isDesignMotion } from '../../src/shared/lower-third-design-motions';
+import { OFFERED_LIST } from '../../src/shared/lower-third-studio';
+import { MOTION_NAMES, STYLE_NAMES } from '../../src/shared/lower-third-styles';
 import type { LowerThirdTemplate } from '../../src/shared/lower-third-templates';
-import { LOWER_THIRD_TEMPLATES } from '../../src/shared/lower-third-templates';
+import { BEST_LOWER_THIRD_TEMPLATES, LOWER_THIRD_TEMPLATES } from '../../src/shared/lower-third-templates';
 import type { LowerThird, LowerThirdInput } from '../../src/shared/lower-thirds';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../src/shared/lower-thirds';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -129,9 +131,10 @@ test('Lower Thirds opens the studio, a window of its own with a live preview: on
   await studio.getByTestId('lower-third-align').locator('[data-choice="centre"]').click();
   await expectNoSeriousA11yIssues(studio, 'the studio: Style');
 
-  // In and out, each found by its words.
+  // In and out, found by their words in the one box where they are chosen.
   await tab(studio, 'Animation');
-  await studio.getByTestId('lower-third-search').fill('from left');
+  const find = studio.getByTestId('lower-third-search');
+  await find.fill('from left');
   const inItem = studio.getByTestId('lower-third-animation').nth(1);
   const inId = (await inItem.getAttribute('data-id')) ?? '';
   const inName = (await inItem.textContent()) ?? '';
@@ -139,7 +142,9 @@ test('Lower Thirds opens the studio, a window of its own with a live preview: on
   await inItem.click();
   await expect(studio.getByTestId('lower-third-animation-chosen')).toHaveText(inName);
   await expect(preview).toHaveAttribute('data-playing', 'true');
-  await studio.getByTestId('lower-third-out-search').fill('right');
+  await find.fill('right');
+  // The way in stays chosen while the box finds the ways out.
+  await expect(studio.getByTestId('lower-third-animation-chosen')).toHaveText(inName);
   const outItem = studio.locator('[data-testid="lower-third-out-animation"]:not([data-id=""])').first();
   const outId = (await outItem.getAttribute('data-id')) ?? '';
   const outLabel = (await outItem.textContent()) ?? '';
@@ -195,13 +200,13 @@ test('Lower Thirds opens the studio, a window of its own with a live preview: on
   await app.close();
 });
 
-test('the template picker plays one preview, filters the grid and keeps favourites and recent choices', async () => {
+test('the template picker plays one preview, finds templates by their words and keeps favourites and recent choices', async () => {
   const { app, win } = await start();
   const studio = await openStudio(app, win);
   await sizeStudio(app, studio, CI_WINDOW);
   const trigger = studio.getByTestId('studio-templates');
   const picker = studio.getByRole('dialog', { name: 'Lower third templates' });
-  const search = picker.getByRole('searchbox', { name: 'Search templates' });
+  const search = picker.getByRole('searchbox', { name: 'Find a template' });
   const tile = picker.getByRole('button', { name: 'News band', exact: true });
   const favourite = picker.getByRole('button', { name: 'Favourite News band' });
   const tiles = picker.getByTestId('studio-template');
@@ -271,32 +276,23 @@ test('the template picker plays one preview, filters the grid and keeps favourit
   await picker.getByRole('button', { name: 'All templates' }).click();
   await search.fill('NEWS BAND');
   await expect(tiles).toHaveCount(1);
-  const direction = picker.getByLabel('Direction', { exact: true });
+  // No filter panel: the box understands its direction, kind, feel and speed as words.
+  await expect(picker.getByRole('combobox')).toHaveCount(0);
   const tags = await tile.evaluate((el) => {
     const data = (el as HTMLElement).dataset;
     return { direction: data['direction'], kind: data['kind'], feel: data['feel'], speed: data['speed'] };
   });
-  const wrongDirection = await direction
-    .locator('option')
-    .evaluateAll(
-      (options, chosen) =>
-        options
-          .map((option) => (option as HTMLOptionElement).value)
-          .find((value) => value && value !== chosen),
-      tags.direction,
-    );
+  const wrongDirection = (['left', 'right', 'up', 'down', 'centre'] as const).find(
+    (d) => d !== tags.direction,
+  );
   expect(wrongDirection).toBeDefined();
-  await direction.selectOption(wrongDirection ?? '');
+  await search.fill(`news band ${wrongDirection ?? ''}`);
   await expect(tiles).toHaveCount(0);
-  for (const [label, value] of [
-    ['Direction', tags.direction],
-    ['Kind', tags.kind],
-    ['Feel', tags.feel],
-    ['Speed', tags.speed],
-  ] as const) {
-    expect(value).toBeTruthy();
-    await picker.getByLabel(label, { exact: true }).selectOption(value ?? '');
-  }
+  for (const value of Object.values(tags)) expect(value).toBeTruthy();
+  await search.fill(
+    `news band ${tags.direction ?? ''} ${tags.kind ?? ''} ${tags.feel ?? ''} ${tags.speed ?? ''}`.toUpperCase(),
+  );
+  await expect(tiles).toHaveCount(1);
   await expect(tile).toBeVisible();
   await favourite.click();
   await expect(favourite).toHaveAttribute('aria-pressed', 'true');
@@ -329,6 +325,194 @@ test('the template picker plays one preview, filters the grid and keeps favourit
   await picker.getByRole('button', { name: 'Recently used', exact: true }).click();
   await expect(tiles).toHaveCount(1);
   await expect(tile).toBeVisible();
+  await app.close();
+});
+
+test('one search box where an animation is chosen: it finds the ways in and out together by plain words, its quick words put their word in the box, Esc empties it, nothing found has a way back, the keyboard goes from the box into the lists; Templates has the same one box, its filters folded into words; all at CI’s 1024 × 645', async () => {
+  test.setTimeout(150_000);
+  const { app, win } = await start();
+  const studio = await openStudio(app, win);
+  await sizeStudio(app, studio, CI_WINDOW);
+  await tab(studio, 'Animation');
+  const panel = studio.getByRole('tabpanel');
+  const at = 'at 1024 × 645';
+
+  // One box, at the top of the place the animation is chosen, for the ways in and the ways out together.
+  await expect(panel.getByRole('searchbox')).toHaveCount(1);
+  const box = panel.getByRole('searchbox', { name: 'Find an animation' });
+  const quick = panel.getByRole('toolbar', { name: 'Quick words' });
+  const status = studio.getByTestId('lower-third-search-status');
+  const ins = studio.getByTestId('lower-third-animation');
+  const outs = studio.locator('[data-testid="lower-third-out-animation"]:not([data-id=""])');
+  const ids = (rows: Locator) => rows.evaluateAll((els) => els.map((el) => el.getAttribute('data-id') ?? ''));
+  await expectInView(box, `the box ${at}`);
+  await expectInView(quick, `its quick words ${at}`);
+  await expectInView(ins.first(), `the first way in ${at}`);
+  await expectInView(outs.first(), `the first way out ${at}`);
+  const every = OFFERED_LIST.length;
+  await expect(ins).toHaveCount(every);
+  await expect(outs).toHaveCount(every);
+  await expect(status).toHaveText(`${String(every)} ways in, ${String(every)} ways out`);
+
+  // Plain words together, as typed: a kind, a direction and a speed; both lists at once.
+  await box.fill('slide up slow');
+  for (const rows of [ins, outs]) {
+    const found = await ids(rows);
+    expect(found).toContain('slide-up-slow');
+    expect(found).not.toContain('slide-left-slow');
+    expect(found.every((id) => id.endsWith('-slow'))).toBe(true);
+  }
+  // Their other words too: fast is quick, below is up, soft finds the calm ones.
+  await box.fill('fast from below');
+  expect(await ids(ins)).toContain('slide-up-quick');
+  expect((await ids(ins)).every((id) => id.endsWith('-quick'))).toBe(true);
+  await box.fill('soft');
+  expect(await ids(ins)).toEqual(expect.arrayContaining(['fade-steady', 'softwipe-left-steady']));
+
+  // A quick word puts its word in the box (another of its kind takes the place of the one there), again takes it out.
+  await box.fill('');
+  const letters = quick.getByRole('button', { name: 'Letters', exact: true });
+  await letters.click();
+  await expect(letters).toHaveAttribute('aria-pressed', 'true');
+  await expect(box).toHaveValue('letters');
+  for (const name of await ins.allTextContents()) expect(name).toMatch(/letter by letter/u);
+  await quick.getByRole('button', { name: 'Slow', exact: true }).click();
+  await expect(box).toHaveValue('letters slow');
+  await quick.getByRole('button', { name: 'Quick', exact: true }).click();
+  await expect(box).toHaveValue('letters quick');
+  await expect(quick.getByRole('button', { name: 'Slow', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  expect((await ids(ins)).every((id) => id.startsWith('letter-') && id.endsWith('-quick'))).toBe(true);
+  await letters.click();
+  await expect(box).toHaveValue('quick');
+  await expect(letters).toHaveAttribute('aria-pressed', 'false');
+  await expectNoSeriousA11yIssues(studio, `the one search ${at}`);
+
+  // Esc empties the box: every one is back.
+  await box.press('Escape');
+  await expect(box).toHaveValue('');
+  await expect(ins).toHaveCount(every);
+
+  // Nothing found says so, with the way back.
+  await box.fill('zzzqqq');
+  await expect(status).toHaveText('Nothing matches “zzzqqq”.');
+  await expect(ins).toHaveCount(0);
+  await expect(outs).toHaveCount(0);
+  await expectNoSeriousA11yIssues(studio, `the one search, nothing found ${at}`);
+  await panel.getByRole('button', { name: 'Clear the search' }).click();
+  await expect(box).toHaveValue('');
+  await expect(box).toBeFocused();
+  await expect(ins).toHaveCount(every);
+
+  // The keyboard: down from the box into what it found, along it with the arrows, Enter chooses, up from the first
+  // back to the box; one Tab stop for each list.
+  await box.fill('slide up');
+  const found = await ids(ins);
+  await box.press('ArrowDown');
+  await expect(ins.and(studio.locator(`[data-id="${found[0] ?? ''}"]`))).toBeFocused();
+  await studio.keyboard.press('ArrowDown');
+  const second = ins.and(studio.locator(`[data-id="${found[1] ?? ''}"]`));
+  await expect(second).toBeFocused();
+  await studio.keyboard.press('Enter');
+  await expect(second).toHaveAttribute('aria-pressed', 'true');
+  await expect(studio.getByTestId('lower-third-animation-chosen')).toHaveText(
+    (await second.textContent()) ?? '',
+  );
+  await studio.keyboard.press('Tab');
+  await expect(studio.getByTestId('lower-third-out-animations').locator(':focus')).toHaveCount(1);
+  await studio.keyboard.press('Shift+Tab');
+  await expect(second).toBeFocused();
+  await studio.keyboard.press('ArrowUp');
+  await studio.keyboard.press('ArrowUp');
+  await expect(box).toBeFocused();
+
+  // Templates: the same one box, its four filters folded into the words it understands, with quick words under it.
+  await studio.getByTestId('studio-templates').click();
+  const picker = studio.getByRole('dialog', { name: 'Lower third templates' });
+  const find = picker.getByRole('searchbox', { name: 'Find a template' });
+  await expect(find).toBeFocused();
+  await expect(picker.getByRole('searchbox')).toHaveCount(1);
+  await expect(picker.getByRole('combobox')).toHaveCount(0);
+  const words = picker.getByRole('toolbar', { name: 'Quick words' });
+  await expectInView(words, `the templates’ quick words ${at}`);
+  const tiles = picker.getByTestId('studio-template');
+  const tag = (name: string) => tiles.evaluateAll((els, n) => els.map((el) => el.getAttribute(n)), name);
+  await picker.getByRole('button', { name: 'All templates', exact: true }).click();
+  await expect(tiles).toHaveCount(LOWER_THIRD_TEMPLATES.length);
+  await find.fill('from below');
+  await expect(tiles).toHaveCount(LOWER_THIRD_TEMPLATES.filter((t) => t.direction === 'up').length);
+  expect((await tag('data-direction')).every((d) => d === 'up')).toBe(true);
+  await find.fill('fast');
+  expect(await tiles.count()).toBeGreaterThan(0);
+  expect(
+    await tiles.evaluateAll((els) =>
+      els.every(
+        (el) => el.getAttribute('data-speed') === 'quick' || el.getAttribute('data-feel') === 'quick',
+      ),
+    ),
+  ).toBe(true);
+  await find.fill('');
+  const elegant = words.getByRole('button', { name: 'Elegant', exact: true });
+  await elegant.click();
+  await expect(find).toHaveValue('elegant');
+  expect((await tag('data-feel')).every((f) => f === 'elegant')).toBe(true);
+  await words.getByRole('button', { name: 'Bold', exact: true }).click();
+  await expect(find).toHaveValue('bold');
+  await expect(elegant).toHaveAttribute('aria-pressed', 'false');
+  expect(await tiles.count()).toBeGreaterThan(0);
+  expect((await tag('data-feel')).every((f) => f === 'bold')).toBe(true);
+  await find.press('ArrowDown');
+  await expect(tiles.first()).toBeFocused();
+  await expectNoSeriousA11yIssues(studio, `the templates’ one search ${at}`);
+
+  // Nothing found in Best 20 that All has (the first word of a template only All has, a word no template in Best 20
+  // has): a way to look there, and the way back.
+  const best = new Set(BEST_LOWER_THIRD_TEMPLATES.map((t) => t.id));
+  const nameWords = (s: string) =>
+    s
+      .toLowerCase()
+      .split(/[^a-z]+/u)
+      .filter((w) => w !== '');
+  const taken = [
+    ...BEST_LOWER_THIRD_TEMPLATES.flatMap((t) => [
+      ...nameWords(t.name),
+      ...nameWords(animationById(t.input.animation).name),
+    ]),
+    ...Object.values(STYLE_NAMES).flatMap(nameWords),
+    ...Object.values(MOTION_NAMES).flatMap(nameWords),
+  ];
+  const elsewhere = LOWER_THIRD_TEMPLATES.find((t) => {
+    const first = nameWords(t.name)[0] ?? '';
+    return !best.has(t.id) && first.length > 2 && !taken.some((w) => w.startsWith(first));
+  });
+  expect(elsewhere, 'a template only All has').toBeDefined();
+  const word = nameWords(elsewhere?.name ?? '')[0] ?? '';
+  await picker.getByRole('button', { name: 'Best 20' }).click();
+  await find.fill(word);
+  await expect(tiles).toHaveCount(0);
+  await expect(picker.getByTestId('studio-template-status')).toContainText(`Nothing matches “${word}”`);
+  await picker.getByRole('button', { name: 'Look in All templates' }).click();
+  await expect(picker.getByRole('button', { name: 'All templates', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(picker.getByRole('button', { name: elsewhere?.name ?? '', exact: true })).toBeVisible();
+  await find.fill('zzzqqq');
+  await expect(picker.getByTestId('studio-template-status')).toContainText('Nothing matches “zzzqqq”');
+  await picker.getByRole('button', { name: 'Clear the search' }).click();
+  await expect(find).toHaveValue('');
+  await expect(find).toBeFocused();
+  await expect(tiles).toHaveCount(LOWER_THIRD_TEMPLATES.length);
+
+  // Esc empties the box and leaves the picker open; empty, Esc closes it.
+  await find.fill('bold');
+  await find.press('Escape');
+  await expect(find).toHaveValue('');
+  await expect(picker).toBeVisible();
+  await find.press('Escape');
+  await expect(picker).toHaveCount(0);
   await app.close();
 });
 
@@ -390,7 +574,7 @@ test('a name and role design saves, draws its parts in order and hides at the ex
     .first()
     .fill('Placeholder ' + 'Sample'.repeat(17));
   await tab(studio, 'Animation');
-  await studio.getByTestId('lower-third-out-search').fill('fade');
+  await studio.getByTestId('lower-third-search').fill('fade');
   const fade = studio.locator('[data-testid="lower-third-out-animation"][data-id="fade-quick"]');
   await fade.click();
   await studio.getByTestId('studio-show').click();
