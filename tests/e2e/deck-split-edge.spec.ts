@@ -19,12 +19,13 @@ import {
 import { holdClock } from './placeholder-slides';
 
 /*
- * A Split's soft edges on a box whose edge falls between pixels (Q58-55, Session 58): drawn in software (a PC without a
- * graphics chip: CI's Windows), any CSS mask on such a box drew that edge's row at three quarters of what it should be
- * (C22's diagnostic: a box 150.996 pixels high, its last row 192 for 255); the masked shape a layer of its own while
- * masked draws it exactly (render/deck-target-paint.ts). Read here as Chromium draws it on a hall screen at exactly
- * half the slide's size: white boxes on black, so a pixel's red is how much shows, every pixel of each box's outer rows
- * and columns. Generated placeholder deck only.
+ * A Split's soft edges on a box whose edge falls between pixels (Q58-55, Session 58): any CSS mask on such a box drew
+ * that edge's row at three quarters of what it should be, with a graphics chip and without (CI's Mac and Windows, C22's
+ * diagnostics: a box 150.996 pixels high, its last row 192 for 255). A Split's mask now reaches 8 px past the shape
+ * (its tile, mask-clip: no-clip) over a clear outline as wide (render/deck-target-paint.ts), and that row is drawn as
+ * the rows above. Read here as Chromium draws it on a hall screen at exactly half the slide's size: white boxes on
+ * black, so a pixel's red is how much shows, every pixel of each box's outer rows and columns. Generated placeholder
+ * deck only.
  */
 
 const SPLIT_MS = 2000;

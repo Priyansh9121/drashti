@@ -13,7 +13,15 @@ import { drawsWithoutChip } from './chipless';
 /** What a deck's moving shape writes of its style (an element's own, or a test's stand-in). */
 export type DeckTargetStyle = Pick<
   CSSStyleDeclaration,
-  'transform' | 'opacity' | 'clipPath' | 'maskImage' | 'maskComposite'
+  | 'transform'
+  | 'opacity'
+  | 'clipPath'
+  | 'maskImage'
+  | 'maskComposite'
+  | 'maskSize'
+  | 'maskPosition'
+  | 'maskClip'
+  | 'outline'
 >;
 
 /** What the element within a moving shape writes of its style: its own mask, multiplying the shape's. */
@@ -27,6 +35,15 @@ export type DeckTargetInnerStyle = Pick<CSSStyleDeclaration, 'maskImage' | 'mask
 export function deckTargetMaskedTwice(effects: readonly DeckEffect[]): boolean {
   return effects.some((effect) => effect.kind === 'shape' && (effect.shape ?? 'circle') !== 'circle');
 }
+
+/**
+ * How far a Split's mask reaches past the shape on every side, in its own px (Q58-55): its tile (mask-size and
+ * mask-position) with `mask-clip: no-clip`, over a clear outline as wide so the shape draws that far. A mask on a box
+ * whose edge falls between pixels drew that edge's row at three quarters, with a graphics chip and without (CI's Mac and
+ * Windows: C22's diagnostics, a box 150.996 px high); reaching past it, that row is drawn as the rows above. 8 px is a
+ * pixel and more of the screen's down to a sixth of the slide's size.
+ */
+const MASK_PAST = 8;
 
 /**
  * One frame of a deck's moving shape, or of one part of a group drawn at `element` (the group's bounds are `target`):
@@ -54,13 +71,32 @@ export function paintDeckTarget(
   const clip = hard
     ? deckShapeHardClip(frame.wipe, target, element)
     : deckWipeClip(frame.wipe, target, element);
-  const mask = hard ? '' : deckWipeMask(frame.wipe, target, element);
+  // A Split's mask on a tile reaching MASK_PAST px past the shape: its edges where they fall on that tile.
+  const past = frame.wipe !== null && 'axis' in frame.wipe ? MASK_PAST : 0;
+  const tile = past
+    ? {
+        x: element.x - past,
+        y: element.y - past,
+        width: element.width + 2 * past,
+        height: element.height + 2 * past,
+      }
+    : element;
+  const mask = hard ? '' : deckWipeMask(frame.wipe, target, tile);
   if (style.transform !== transform) style.transform = transform;
   if (style.opacity !== opacity) style.opacity = opacity;
   if (style.clipPath !== clip) style.clipPath = clip;
   const composite = mask ? deckWipeMaskComposite(frame.wipe) : '';
   if (style.maskImage !== mask) style.maskImage = mask;
   if (style.maskComposite !== composite) style.maskComposite = composite;
+  const reach = mask && past;
+  const size = reach ? `calc(100% + ${String(2 * past)}px) calc(100% + ${String(2 * past)}px)` : '';
+  const position = reach ? `-${String(past)}px -${String(past)}px` : '';
+  const maskClip = reach ? 'no-clip' : '';
+  const outline = reach ? `${String(past)}px solid transparent` : '';
+  if (style.maskSize !== size) style.maskSize = size;
+  if (style.maskPosition !== position) style.maskPosition = position;
+  if (style.maskClip !== maskClip) style.maskClip = maskClip;
+  if (style.outline !== outline) style.outline = outline;
   if (!inner) return;
   const second = hard ? '' : deckWipeInnerMask(frame.wipe, target, element);
   const secondComposite = second ? deckWipeMaskComposite(frame.wipe) : '';
