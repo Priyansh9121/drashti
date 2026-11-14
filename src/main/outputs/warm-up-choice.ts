@@ -17,7 +17,7 @@
  * takes one up again): an output told to skip its warm-up is never told to warm up.
  */
 
-import type { ScreenRole } from '../../shared/screens';
+import type { OutputWarmUpEnd, ScreenRole } from '../../shared/screens';
 
 /** Chromium's gpu_compositing status in a feature status (app.getGPUFeatureStatus()), or '' where there is none. */
 export function compositingOf(status: unknown): string {
@@ -49,6 +49,47 @@ export function warmUpLine(name: string, status: unknown, role?: ScreenRole): st
       ? `as before, a graphics chip (gpu_compositing ${compositing})`
       : `as before, the graphics status unclear (gpu_compositing ${compositing === '' ? 'unreadable' : compositing})`;
   return `Warm-up: ${what}, for ${name}`;
+}
+
+const ENDS: readonly OutputWarmUpEnd['how'][] = ['drawn', 'cap', 'unseen', 'error', 'cut'];
+const WHYS: readonly NonNullable<OutputWarmUpEnd['why']>[] = ['no-gpu', 'stage', 'other'];
+
+/** A page's word on how its warm-up ended, checked (a page is never trusted): null when it is not one. */
+export function warmUpEndOf(raw: unknown): OutputWarmUpEnd | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const how = ENDS.find((h) => h === r['how']);
+  const ms = r['ms'];
+  const at = r['at'];
+  if (
+    !how ||
+    typeof ms !== 'number' ||
+    !Number.isFinite(ms) ||
+    typeof at !== 'number' ||
+    !Number.isFinite(at)
+  )
+    return null;
+  const why = WHYS.find((w) => w === r['why']);
+  return { how, ms: Math.min(Math.max(0, Math.round(ms)), 3_600_000), at, ...(why ? { why } : {}) };
+}
+
+/**
+ * How an output's warm-up ended, as the log says it once (Session 58, WU-2: the setup weekend's real figure). Never
+ * "Warm-up:" itself, the start of each output's choice above.
+ */
+export function warmUpEndLine(name: string, end: OutputWarmUpEnd): string {
+  const s = `${(end.ms / 1000).toFixed(1)} s`;
+  const how =
+    end.how === 'drawn'
+      ? `drew everything in ${s}`
+      : end.how === 'cap'
+        ? `stopped at its longest, ${s}`
+        : end.how === 'unseen'
+          ? `ended after ${s}, its window hidden`
+          : end.how === 'error'
+            ? `ended after ${s} by a scene that failed as it drew`
+            : `cut short after ${s}${end.why === 'no-gpu' ? ', told it draws without a graphics chip' : end.why === 'stage' ? ', a stage screen now' : ''}`;
+  return `Warm-up of ${name}: ${how}`;
 }
 
 /** An open output as Main or a node keeps it: its page's id, its name for the log, how to send its context again. */
