@@ -20,7 +20,7 @@ const BEFORE = 1_800_000_000_000;
 const ALL = LOWER_THIRD_MOTIONS.filter((m) => m !== 'none');
 
 describe('the warm-up’s moving backgrounds', () => {
-  it('one scene draws every moving background in the registry, each at two moments, on the hall’s screens and the stream’s page only, nothing of the show under it', () => {
+  it('one scene draws every moving background in the registry, each at two moments or more, on the hall’s screens and the stream’s page only, nothing of the show under it', () => {
     const scenes = warmScenes().filter((s) => s.key === WARM_BACKGROUNDS_SCENE);
     expect(scenes).toHaveLength(1);
     const scene = scenes[0];
@@ -31,18 +31,21 @@ describe('the warm-up’s moving backgrounds', () => {
     expect(state?.layers.slide).toBeNull();
     expect(state?.layers.lowerThird).toBeNull();
     expect(ALL.length).toBeGreaterThanOrEqual(8);
-    for (const motion of ALL)
-      expect(
-        WARM_BACKGROUNDS.filter((b) => b.motion === motion),
-        motion,
-      ).toHaveLength(2);
-    expect(WARM_BACKGROUNDS).toHaveLength(2 * ALL.length);
+    for (const motion of ALL) {
+      const parts = WARM_BACKGROUNDS.filter((b) => b.motion === motion).map((b) => b.part);
+      expect(parts.length, motion).toBeGreaterThanOrEqual(2);
+      expect(new Set(parts).size, motion).toBe(parts.length);
+      for (const part of parts) expect(part > 0 && part < 1, `${motion} at ${String(part)}`).toBe(true);
+    }
+    expect(new Set(WARM_BACKGROUNDS.map((b) => b.motion))).toEqual(new Set(ALL));
+    // Two moments each, a third only where a piece showed at neither (one of the twelve's confetti, 14 Nov).
+    expect(WARM_BACKGROUNDS.length).toBeLessThanOrEqual(3 * ALL.length);
     // Every other scene is every page's, as before.
     for (const s of warmScenes())
       if (s.key !== WARM_BACKGROUNDS_SCENE) expect(s.pages, s.key).toBeUndefined();
   });
 
-  it('every piece of every background shows at one of its two moments, so the warm-up draws each', () => {
+  it('every piece of every background shows at one of its moments, so the warm-up draws each', () => {
     for (const motion of ALL) {
       const count = motionPieces(motion, { ...DEFAULT_LOWER_THIRD_LOOK, motion }).length;
       const parts = WARM_BACKGROUNDS.filter((b) => b.motion === motion).map((b) => b.part);
