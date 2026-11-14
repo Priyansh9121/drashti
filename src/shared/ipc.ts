@@ -1093,6 +1093,8 @@ export const IPC = {
      * for the operator's pointer, and from where (null: none). Only the outputs' Preloader loads it.
      */
     pointed: 'output:pointed',
+    /** An output or stream page starting after the last pointed event asks what to load. */
+    getPointed: 'output:get-pointed',
   },
   pdfExport: {
     capture: 'pdfcopy:capture',
@@ -1595,6 +1597,7 @@ export interface InvokeContract {
   [IPC.output.keepAnswer]: { args: [keep: boolean]; result: null };
   [IPC.output.switchAnswer]: { args: [yes: boolean]; result: null };
   [IPC.output.getContext]: { args: []; result: OutputContext | null };
+  [IPC.output.getPointed]: { args: []; result: PointedClip | null };
   [IPC.output.report]: { args: [report: OutputReport]; result: null };
   [IPC.setup.state]: { args: []; result: SetupState };
   [IPC.setup.setSeen]: { args: []; result: null };
