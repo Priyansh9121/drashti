@@ -50,7 +50,7 @@ export function windowsMemory(
     if (!w.isDestroyed()) labels.set(w.webContents.getOSProcessId(), `screen ${String(i + 1)}`);
   });
   if (stream && !stream.webContents.isDestroyed())
-    labels.set(stream.webContents.getOSProcessId(), "the stream's page");
+    labels.set(stream.webContents.getOSProcessId(), 'the stream’s page');
   if (operator && !operator.isDestroyed())
     labels.set(operator.webContents.getOSProcessId(), 'operator window');
   const memory: WindowsMemory = {};
