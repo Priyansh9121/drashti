@@ -43,6 +43,7 @@ import type { ArrivedFile, ArrivedOutcome, UploadPolicy } from '../../shared/pho
 import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
 import { COULD_NOT } from './messages';
 import { isCapturedPicture, pngOf } from './png';
+import { whileScreensMove } from './slide-picture';
 import { audioRoutes } from './audio-routes';
 import { mirrorRoutes } from './mirror-routes';
 import { desktopRoutes } from './desktop-routes';
@@ -757,9 +758,13 @@ export class NetworkServer {
         typeof reply === 'object' &&
         'picture' in reply
       ) {
-        // A phone's picture of a deck's click: made a PNG here, never on Main's thread (C6's review, MEDIUM 1).
+        // A phone's picture of a deck's click: made a PNG here, never on Main's thread (C6's review, MEDIUM 1), and
+        // never while the hall screens move (C18's review, LOW-2): an operator's Next as it is made comes first.
         if (!isCapturedPicture(reply.picture)) throw new Error('A captured picture was not whole.');
-        const png = await pngOf(reply.picture);
+        const png = await pngOf(
+          reply.picture,
+          whileScreensMove(() => this.mirror.state),
+        );
         res.writeHead(200, {
           ...SECURITY_HEADERS,
           'Content-Type': 'image/png',

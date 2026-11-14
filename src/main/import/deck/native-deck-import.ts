@@ -82,6 +82,9 @@ export async function prepareNativePptx(
       !deck ||
       slide.hidden ||
       page.hidden ||
+      // A picture fill the editable copy couldn't copy would play as a flat colour: the slide plays its baked slide
+      // (Q58-13). A picture object it couldn't copy takes the baked still in its place instead (needsStill).
+      page.lostPictureFill ||
       deck.groups.length >= 10_000 ||
       (deck.motion?.effects.length ?? 0) > 10_000
     )

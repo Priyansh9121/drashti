@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MIN_FIT } from '../../../shared/readable';
-import { FIT_STEPS, type FitBox, fitTogether, queueFit } from './shrink-to-fit';
+import { FIT_STEPS, type FitBox, fitTogether, queueFit, reportFitFailuresTo } from './shrink-to-fit';
 
 /*
  * Shrink-to-fit's search over many boxes at once (Session 57, MS-1: a slide of a 250-cell table froze the hall screen
@@ -37,11 +37,12 @@ interface Probe extends FitBox {
 function probe(
   layout: Layout,
   past: (fit: number) => boolean,
-  { on = true, told }: { on?: boolean; told?: () => void } = {},
+  { on = true, told, guess }: { on?: boolean; told?: () => void; guess?: number } = {},
 ): Probe {
   let drawn: number | null = null;
   const box: Probe = {
     on,
+    guess,
     writes: [],
     reads: 0,
     settled: [],
@@ -244,17 +245,109 @@ describe('shrink-to-fit over a slide of many boxes (Session 57, MS-1)', () => {
     expect([first.settled.length, late.settled.length]).toEqual([1, 1]);
   });
 
-  it('tells the other boxes their measure when telling one of them fails, then lets the failure through', () => {
+  it('tells every box its measure when telling some fail, then reports each failure, as the window reports it', () => {
+    // Session 58, MS-2: until then the first failure came through uncaught (the console only) and the rest were lost.
     const layout = new Layout();
+    const told: string[] = [];
+    const reported: { error: unknown; told: number }[] = [];
+    reportFitFailuresTo((error) => {
+      reported.push({ error, told: told.length });
+    });
+    const first = new Error('Placeholder first report failure');
+    const second = new Error('Placeholder second report failure');
     const failing = probe(layout, needing(2), {
       told: () => {
-        throw new Error('Placeholder report failure');
+        told.push('failing');
+        throw first;
       },
     });
-    const after = probe(layout, needing(2));
+    const between = probe(layout, needing(2), {
+      told: () => {
+        told.push('between');
+      },
+    });
+    const alsoFailing = probe(layout, needing(0.5), {
+      told: () => {
+        told.push('also failing');
+        throw second;
+      },
+    });
     expect(() => {
-      fitTogether([failing, after]);
-    }).toThrow('Placeholder report failure');
-    expect([failing.settled.length, after.settled.length]).toEqual([1, 1]);
+      fitTogether([failing, between, alsoFailing]);
+    }).not.toThrow();
+    expect(told).toEqual(['failing', 'between', 'also failing']);
+    expect([failing, between, alsoFailing].map((box) => box.settled.length)).toEqual([1, 1, 1]);
+    // Each reported on its own, once every box of the batch was told.
+    expect(reported).toEqual([
+      { error: first, told: 3 },
+      { error: second, told: 3 },
+    ]);
+  });
+
+  it('reports a failure in a batch the window’s way, never uncaught, and the next batch is measured', async () => {
+    const reported: unknown[] = [];
+    reportFitFailuresTo((error) => {
+      reported.push(error);
+    });
+    const failure = new Error('Placeholder report failure');
+    const failing = probe(new Layout(), needing(2), {
+      told: () => {
+        throw failure;
+      },
+    });
+    queueFit(failing);
+    await measured();
+    expect(failing.settled).toHaveLength(1);
+    expect(reported).toEqual([failure]);
+    const next = probe(new Layout(), needing(2));
+    queueFit(next);
+    await measured();
+    expect(next.settled).toHaveLength(1);
+    expect(reported).toEqual([failure]);
+  });
+
+  it('starts a deck box’s search at its source’s own fit, and still ends at the largest fit its words fit at', () => {
+    // Session 58, PF-4b: PowerPoint's own shrink (fontScale) is drawn and measured first.
+    const guessed = probe(new Layout(), needing(1.25), { guess: 0.85 });
+    const plain = probe(new Layout(), needing(1.25));
+    fitTogether([guessed, plain]);
+    expect(guessed.writes.slice(0, 2)).toEqual([1, 0.85]);
+    expect(plain.writes.slice(0, 2)).toEqual([1, (MIN_FIT + 1) / 2]);
+    // Both end at the largest fit at which the words fit (0.8), to the search's own precision.
+    for (const box of [guessed, plain]) {
+      expect(fitOf(box)).toBeLessThanOrEqual(0.8);
+      expect(fitOf(box)).toBeGreaterThan(0.8 - 0.9 / 4096);
+    }
+    // Words that fit at once are drawn at 1 and never searched; a guess of 1 or below the floor is no start.
+    const fitting = probe(new Layout(), needing(0.5), { guess: 0.85 });
+    const atOne = probe(new Layout(), needing(2), { guess: 1 });
+    fitTogether([fitting, atOne]);
+    expect(fitting.writes).toEqual([1]);
+    expect(atOne.writes.slice(0, 2)).toEqual([1, (MIN_FIT + 1) / 2]);
+  });
+
+  it('reports a failure that comes again on every fit once in the window, and a different one once too', async () => {
+    // The lead's review of Session 58's MS-2: a report that keeps failing would otherwise go to the window's report
+    // (its console, the main process) on every slide drawn and every key typed.
+    const reported: string[] = [];
+    reportFitFailuresTo((error) => {
+      reported.push(error instanceof Error ? error.message : String(error));
+    });
+    const failing = (message: string) =>
+      probe(new Layout(), needing(2), {
+        told: () => {
+          throw new Error(message);
+        },
+      });
+    for (let fit = 0; fit < 3; fit++) {
+      queueFit(failing('Placeholder failure on every fit'));
+      queueFit(failing('Placeholder failure on every fit'));
+      await measured();
+    }
+    queueFit(failing('Placeholder other failure'));
+    await measured();
+    queueFit(failing('Placeholder other failure'));
+    await measured();
+    expect(reported).toEqual(['Placeholder failure on every fit', 'Placeholder other failure']);
   });
 });

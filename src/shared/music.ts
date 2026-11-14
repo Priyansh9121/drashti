@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { idSchema } from './model-schema';
+import { cleanNameSchema } from './rename-name';
 
 /*
  * Audio playlists (Session 14): ordered lists of sounds from the media
@@ -49,7 +50,8 @@ export interface MusicView {
 
 export type MusicResult = { ok: true; view: MusicView; id?: string } | { ok: false; message: string };
 
-export const musicNameSchema = z.string().trim().min(1).max(120);
+/** An audio playlist's name, cleaned as Rename… cleans a file's (Session 58, X3). */
+export const musicNameSchema = cleanNameSchema(120);
 export const musicOptionsSchema = z.object({ loop: z.boolean(), shuffle: z.boolean() }).strict();
 export const musicPlaySchema = z
   .object({ playlistId: idSchema.nullable(), index: z.number().int().min(0).max(999).default(0) })

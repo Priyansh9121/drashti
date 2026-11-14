@@ -159,3 +159,24 @@ describe('audio playlists', () => {
     expect(refused.ok ? '' : refused.message).toContain('has no sound that can play');
   });
 });
+
+describe('an audio playlist’s name (Session 58, X3)', () => {
+  it('is cleaned as Rename… cleans a file’s, made or renamed; one only looking empty is refused; one kept before stays', () => {
+    const { service, db } = setup();
+    const names = () => service.view().playlists.map((p) => p.name);
+    const made = service.create(' Placeholder\u202E tunes\u200F ');
+    if (!made.ok || !made.id) throw new Error('not made');
+    expect(names()).toEqual(['Placeholder tunes']);
+    expect(service.rename(made.id, 'Placeholder\tevening\u2066').ok).toBe(true);
+    expect(names()).toEqual(['Placeholder evening']);
+    expect(service.rename(made.id, '\u200B\u2060')).toEqual({
+      ok: false,
+      message: 'Give it a name (up to 120 characters).',
+    });
+    expect(service.create('\u200D').ok).toBe(false);
+    expect(names()).toEqual(['Placeholder evening']);
+    // A name kept before (as an older Drashti kept it) is never cleaned again: only a name given now is.
+    new AudioPlaylistRepo(db).create('Placeholder\u202E older');
+    expect(names()).toContain('Placeholder\u202E older');
+  });
+});
