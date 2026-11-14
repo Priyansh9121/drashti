@@ -561,29 +561,17 @@ describe('PowerPoint slide animation timing', () => {
     ).toMatchObject({ approximate: true, effects: [{ kind: 'zoom', accel: 0.5 }] });
   });
 
-  it('plays Shape as PowerPoint does, exactly where its own movies say so (Session 58: run 2 and run 3, 16:9 and 4:3)', () => {
-    // Within a pixel or two and a frame in every movie: drawn by Drashti itself wherever it plays.
-    const exact = [
-      ['entr', 'circle(in)'],
-      ['entr', 'circle(out)'],
-      ['entr', 'box(in)'],
-      ['entr', 'box(out)'],
-      ['entr', 'diamond(in)'],
-      ['entr', 'diamond(out)'],
-      ['entr', 'plus(in)'],
-      ['exit', 'circle(in)'],
-      ['exit', 'box(in)'],
-      ['exit', 'diamond(in)'],
-      ['exit', 'diamond(out)'],
-      ['exit', 'plus(out)'],
-    ] as const;
-    // Off on a faint first or last frame in at least one movie: drawn so, keeping PowerPoint's video.
-    const close = [
-      ['entr', 'plus(out)'],
-      ['exit', 'circle(out)'],
-      ['exit', 'box(out)'],
-      ['exit', 'plus(in)'],
-    ] as const;
+  it('plays all sixteen of Shape’s ways exactly as PowerPoint does (Session 58: runs 2, 3 and 4, 16:9 and 4:3)', () => {
+    // Within a pixel or two and a frame in every movie, a frame's shape judged once 1 % of the box shows and its amount
+    // on every frame (C21: below that, a faint trace's centre, size and turn are the movie's encoding, not PowerPoint's
+    // drawing): drawn by Drashti itself wherever it plays.
+    const exact = (['entr', 'exit'] as const).flatMap((presetClass) =>
+      ['circle', 'box', 'diamond', 'plus'].flatMap((outline) =>
+        ['in', 'out'].map((way) => [presetClass, `${outline}(${way})`] as const),
+      ),
+    );
+    expect(exact).toHaveLength(16);
+    const close: typeof exact = [];
     for (const [list, approximate] of [
       [exact, false],
       [close, true],
