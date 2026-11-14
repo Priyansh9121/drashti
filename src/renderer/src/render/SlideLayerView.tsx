@@ -8,7 +8,7 @@ import type { Movement, SlideStyle } from '../../../shared/looks';
 import type { Lang, TransitionKind } from '../../../shared/model';
 import { SLOW_ZOOM_SCALE } from '../../../shared/model';
 import { hasPicture, lowerThird } from '../../../shared/program';
-import type { Size } from '../../../shared/scaling';
+import { placeContent, type Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { Placed } from './Placed';
 import { type Reveal, type SlideText, SlideView } from './SlideView';
@@ -23,7 +23,9 @@ import {
   deckTransitionFrame,
   takesTime,
   transitionFrame,
+  type SlidePlace,
   type WipeBand,
+  type WipeBandStyles,
   wipeBandStyles,
   wordsFrame,
   wordsMove,
@@ -173,6 +175,8 @@ export interface Paint {
   height: number;
   scaleIn: number;
   scaleOut: number;
+  /** Where the incoming slide is in the layer's box (a deck's Wipe measures its band on it). */
+  placeIn: SlidePlace;
 }
 
 /** Each line, or word, of the two slides' words as a reveal has it at `p` (Session 27, render/reveal.ts). */
@@ -240,8 +244,10 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
   deckOnly(els.in, frame?.in.mask, frame?.in.filter);
   deckOnly(els.out, frame?.out.mask, frame?.out.filter);
   // PowerPoint's Wipe band (Session 58): on the slide's band boxes, at rest when none.
-  paintBand(els.bandIn, frame?.in.band, how);
-  paintBand(els.bandOut, frame?.out.band, how);
+  const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1;
+  const bandOf = (band: WipeBand | undefined) => (band ? wipeBandStyles(band, how.placeIn, how, dpr) : null);
+  paintBand(els.bandIn, bandOf(frame?.in.band), frame?.in.band?.direction ?? '');
+  paintBand(els.bandOut, bandOf(frame?.out.band), frame?.out.band?.direction ?? '');
   if (els.out) els.out.style.zIndex = native?.deckEffect === 'uncover' ? '1' : '';
   if (els.black) els.black.style.opacity = frame ? String(frame.black) : '0';
   const move = kind === null ? null : how.move;
@@ -280,20 +286,13 @@ function writeBand(
 }
 
 /**
- * A slide's band boxes as `band` has them while a deck's own Wipe brings the slide in (each a layer of its own, only
- * their transforms changing as it runs), or at rest (none).
+ * A slide's band boxes as `s` has them while a deck's own Wipe brings the slide in, its band going `way` (each a layer
+ * of its own, only their transforms changing as it runs), or at rest (null, '').
  */
-function paintBand(
-  boxes: BandBoxes | undefined,
-  band: WipeBand | undefined,
-  canvas: { width: number; height: number },
-): void {
+function paintBand(boxes: BandBoxes | undefined, s: WipeBandStyles | null, way: string): void {
   const holder = boxes?.holder;
   const slide = boxes?.slide;
   if (!holder || !slide) return;
-  const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1;
-  const s = band ? wipeBandStyles(band, canvas.width, canvas.height, dpr) : null;
-  const way = band?.direction ?? '';
   writeBand(
     holder,
     way,
@@ -338,7 +337,7 @@ export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'bandOut'>): void 
   if (before.style.maskImage !== '') before.style.maskImage = '';
   if (before.style.filter !== '') before.style.filter = '';
   before.style.zIndex = '';
-  paintBand(els.bandOut, undefined, { width: 0, height: 0 });
+  paintBand(els.bandOut, null, '');
 }
 
 /**
@@ -577,6 +576,12 @@ export function SlideLayerView({
       ? wordsMove(kind, movement, on.slide.kirtan === true)
       : null;
   const { width, height } = canvas;
+  // Where the incoming slide is in the layer's box, as Placed puts it (a deck's Wipe measures its band on it).
+  const placed = on ? placeContent(on.slide, canvas, scaling) : null;
+  const inX = placed?.x ?? 0;
+  const inY = placed?.y ?? 0;
+  const inWidth = on && placed ? on.slide.width * placed.scaleX : width;
+  const inHeight = on && placed ? on.slide.height * placed.scaleY : height;
   const scaleIn = (on?.slide.height ?? 1080) / 1080;
   const scaleOut = (off?.slide.height ?? 1080) / 1080;
   const blackRef = useRef<HTMLDivElement>(null);
@@ -599,7 +604,17 @@ export function SlideLayerView({
           bandIn: { holder: inHolderRef.current, slide: inBandSlideRef.current },
           bandOut: { holder: outHolderRef.current, slide: outBandSlideRef.current },
         },
-        { kind, native, movement, move: moveNow, width, height, scaleIn, scaleOut },
+        {
+          kind,
+          native,
+          movement,
+          move: moveNow,
+          width,
+          height,
+          scaleIn,
+          scaleOut,
+          placeIn: { x: inX, y: inY, width: inWidth, height: inHeight },
+        },
         p,
       );
       rootRef.current?.setAttribute('data-fade', p.toFixed(3));
@@ -617,7 +632,22 @@ export function SlideLayerView({
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [start, ms, kind, native, movement, moveNow, width, height, scaleIn, scaleOut]);
+  }, [
+    start,
+    ms,
+    kind,
+    native,
+    movement,
+    moveNow,
+    width,
+    height,
+    scaleIn,
+    scaleOut,
+    inX,
+    inY,
+    inWidth,
+    inHeight,
+  ]);
 
   // After every render, before it is painted: where the transition is now (the frames between renders set
   // it too). A deck's slide coming in by a cut (Session 54, C2) shows nothing of itself until it starts.
@@ -641,7 +671,17 @@ export function SlideLayerView({
         bandIn: { holder: inHolderRef.current, slide: inBandSlideRef.current },
         bandOut: { holder: outHolderRef.current, slide: outBandSlideRef.current },
       },
-      { kind: fading ? kind : null, native, movement, move: moveNow, width, height, scaleIn, scaleOut },
+      {
+        kind: fading ? kind : null,
+        native,
+        movement,
+        move: moveNow,
+        width,
+        height,
+        scaleIn,
+        scaleOut,
+        placeIn: { x: inX, y: inY, width: inWidth, height: inHeight },
+      },
       start !== null ? fadeAt({ ms, start }, engineNow()) : 0,
     );
   });

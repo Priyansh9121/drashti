@@ -289,38 +289,57 @@ export interface WipeBandStyles {
   slide: { inset: string; width: string; height: string; transform: string };
 }
 
+/** Where a slide is in its layer's box, in CSS px (as Placed puts it: render/Placed.tsx, shared/scaling.ts). */
+export interface SlidePlace {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
- * The band's two boxes at `band`, on a screen whose slide layer is `width` x `height` CSS px of `dpr` device px each:
- * the holder two slides long, from a slide beyond the incoming slide's own side to its far side, its mask the band
- * (WIPE_MASKS: the same the whole Wipe long), moved toward the far side by `band.at` slides in whole device pixels; the
- * slide inside it moved back by exactly as much, so it stays where it is.
+ * The band's two boxes at `band`, for a slide placed at `slide` in a layer `canvas` large, of `dpr` device px a CSS
+ * px. PowerPoint's band is one slide long in the slide's own measure, so it is measured on the slide where it is (a
+ * 4:3 deck between bars on a 16:9 screen, cropped to fill it, or in a picture-in-picture box): the holder two slides
+ * long along the band and the whole layer across it, its mask the band (WIPE_MASKS: the same the whole Wipe long),
+ * moved toward the far side by `band.at` slides; the slide's box inside it the layer's own, moved back by exactly as
+ * much, so the slide stays where it is. All in whole device pixels.
  */
-export function wipeBandStyles(band: WipeBand, width: number, height: number, dpr: number): WipeBandStyles {
+export function wipeBandStyles(
+  band: WipeBand,
+  slide: SlidePlace,
+  canvas: { width: number; height: number },
+  dpr: number,
+): WipeBandStyles {
   const { direction } = band;
   const across = direction === 'left' || direction === 'right';
   // Left and up come in from the slide's end (its right, its bottom), right and down from its start.
   const fromEnd = direction === 'left' || direction === 'up';
-  const size = across ? width : height;
   const scale = dpr > 0 ? dpr : 1;
-  const px = Math.round(band.at * size * scale) / scale;
+  const snap = (v: number) => Math.round(v * scale) / scale;
+  const length = snap(across ? slide.width : slide.height);
+  const slideStart = snap(across ? slide.x : slide.y);
+  // The box reaches a slide past the incoming slide's own side: from the slide's start to a slide past its end, or
+  // from a slide before its start to its end.
+  const start = fromEnd ? slideStart : slideStart - length;
+  const px = snap(band.at * length);
   const toward = fromEnd ? -px : px;
   const move = (by: number) => `translate${across ? 'X' : 'Y'}(${String(by)}px)`;
-  // The box reaches a slide past the incoming slide's own side: from the slide's start to a slide past its end, or
-  // from a slide before its start to its end. The slide inside it at the box's start, or half-way.
-  const start = fromEnd ? '0' : '-100%';
-  const inside = fromEnd ? '0' : '50%';
+  const at = (v: number) => (v === 0 ? '0' : `${String(v)}px`);
+  const long = `${String(2 * length)}px`;
+  const screen = `${String(across ? canvas.width : canvas.height)}px`;
   return {
     holder: {
-      inset: across ? `0 auto 0 ${start}` : `${start} 0 auto 0`,
-      width: across ? '200%' : '',
-      height: across ? '' : '200%',
+      inset: across ? `0 auto 0 ${at(start)}` : `${at(start)} 0 auto 0`,
+      width: across ? long : '',
+      height: across ? '' : long,
       maskImage: WIPE_MASKS[direction],
       transform: move(toward),
     },
     slide: {
-      inset: across ? `0 auto 0 ${inside}` : `${inside} 0 auto 0`,
-      width: across ? '50%' : '',
-      height: across ? '' : '50%',
+      inset: across ? `0 auto 0 ${at(-start)}` : `${at(-start)} 0 auto 0`,
+      width: across ? screen : '',
+      height: across ? '' : screen,
       transform: move(-toward),
     },
   };
