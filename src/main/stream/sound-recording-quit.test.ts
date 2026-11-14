@@ -57,7 +57,6 @@ describe('Record sound as Drashti quits (Session 58, X2: the alpha.16 review’s
     const rec = new SoundRecording({
       now: () => clock,
       freeBytes: () => Promise.resolve(100 * 1024 ** 3),
-      onFat: () => Promise.resolve(false),
       keepFree: 2 * 1024 ** 3,
       changed: () => undefined,
       notice: () => undefined,
