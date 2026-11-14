@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { SlideElement } from '../../../shared/model';
 import { slideElementSchema } from '../../../shared/model-schema';
 import {
   editablePicture,
@@ -424,5 +425,151 @@ describe('PowerPoint’s own shrink of a box’s words', () => {
       slideXml(box(50, '<a:bodyPr><a:normAutofit fontScale="500" lnSpcReduction="250000"/></a:bodyPr>')),
     );
     expect(elements[0]).toMatchObject({ style: { sourceFit: { fontScale: 0.01, lineSpacingReduction: 1 } } });
+  });
+});
+
+describe('a table style’s parts (coverage)', () => {
+  const STYLE_ID = '{01234567-89AB-CDEF-0123-456789ABCDEF}';
+  const fill = (value: string) => `<a:fill><a:solidFill><a:srgbClr val="${value}"/></a:solidFill></a:fill>`;
+  const part = (name: string, paint: string, text = '') =>
+    `<a:${name}>${text}<a:tcStyle><a:tcBdr/>${paint}</a:tcStyle></a:${name}>`;
+  const styles = (body: string, extra = '') =>
+    `<a:tblStyleLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" def="${STYLE_ID}">` +
+    `<a:tblStyle styleId="${STYLE_ID}" styleName="Placeholder">${body}</a:tblStyle>${extra}</a:tblStyleLst>`;
+  const grid = (rows: number, columns: number, properties: string, styleId = STYLE_ID) => {
+    const cell = (r: number, c: number) =>
+      `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Placeholder ${String(r)}.${String(c)}</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>`;
+    return (
+      '<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="7" name="Placeholder table"/></p:nvGraphicFramePr>' +
+      '<p:xfrm><a:off x="95250" y="190500"/><a:ext cx="2857500" cy="857250"/></p:xfrm><a:graphic><a:graphicData>' +
+      `<a:tbl><a:tblPr ${properties}><a:tableStyleId>${styleId}</a:tableStyleId></a:tblPr><a:tblGrid>` +
+      '<a:gridCol w="571500"/>'.repeat(columns) +
+      '</a:tblGrid>' +
+      Array.from(
+        { length: rows },
+        (_, r) =>
+          '<a:tr h="214312">' + Array.from({ length: columns }, (_, c) => cell(r, c)).join('') + '</a:tr>',
+      ).join('') +
+      '</a:tbl></a:graphicData></a:graphic></p:graphicFrame>'
+    );
+  };
+  const fills = (elements: SlideElement[]) =>
+    elements.flatMap((el) => (el.kind === 'shape' && el.shape !== 'line' ? [el.fill] : []));
+
+  it('lays banded columns over banded rows, the first and last columns over both, then the rows and corners', async () => {
+    const style =
+      part('wholeTbl', fill('111111')) +
+      part('band1H', fill('222222')) +
+      part('band2H', fill('333333')) +
+      part('band1V', fill('444444')) +
+      part('band2V', '') +
+      part('lastCol', fill('666666'), '<a:tcTxStyle b="on"/>') +
+      part('firstCol', fill('777777')) +
+      part('lastRow', fill('888888'), '<a:tcTxStyle b="on"/>') +
+      part('firstRow', fill('999999')) +
+      part('seCell', fill('AAAAAA')) +
+      part('swCell', fill('BBBBBB')) +
+      part('neCell', fill('CCCCCC')) +
+      part('nwCell', fill('DDDDDD'));
+    const { elements } = await readSlide(
+      slideXml(grid(4, 5, 'firstRow="1" lastRow="1" firstCol="1" lastCol="1" bandRow="1" bandCol="1"')),
+      { 'ppt/tableStyles.xml': styles(style) },
+    );
+    expect(fills(elements)).toEqual([
+      ...['#dddddd', '#999999', '#999999', '#999999', '#cccccc'],
+      ...['#777777', '#444444', '#222222', '#444444', '#666666'],
+      ...['#777777', '#444444', '#333333', '#444444', '#666666'],
+      ...['#bbbbbb', '#888888', '#888888', '#888888', '#aaaaaa'],
+    ]);
+    const bold = elements.flatMap((el) =>
+      el.kind === 'text' && el.runs?.[0]?.weight === 700 ? [el.text] : [],
+    );
+    expect(bold).toEqual([
+      'Placeholder 0.4',
+      'Placeholder 1.4',
+      'Placeholder 2.4',
+      'Placeholder 3.0',
+      'Placeholder 3.1',
+      'Placeholder 3.2',
+      'Placeholder 3.3',
+      'Placeholder 3.4',
+    ]);
+  });
+
+  it('banded columns alone start after a first column, and turn off at the last', async () => {
+    const style =
+      part('wholeTbl', fill('111111')) + part('band1V', fill('444444')) + part('band2V', fill('555555'));
+    const { elements } = await readSlide(slideXml(grid(1, 5, 'firstCol="1" lastCol="1" bandCol="1"')), {
+      'ppt/tableStyles.xml': styles(style),
+    });
+    expect(fills(elements)).toEqual(['#111111', '#444444', '#555555', '#444444', '#111111']);
+  });
+
+  it('draws the style’s table background behind the cells, and reads fill references from 1001 as background fills', async () => {
+    const style =
+      '<a:tblBg><a:fill><a:solidFill><a:srgbClr val="ABCDEF"/></a:solidFill></a:fill></a:tblBg>' +
+      part('wholeTbl', '<a:fillRef idx="1002"><a:schemeClr val="accent2"/></a:fillRef>') +
+      part('band1H', '<a:fillRef idx="1001"><a:schemeClr val="accent2"/></a:fillRef>');
+    const { elements } = await readSlide(slideXml(grid(2, 1, 'bandRow="1"')), {
+      'ppt/tableStyles.xml': styles(style),
+    });
+    expect(elements[0]).toMatchObject({
+      kind: 'shape',
+      fill: '#abcdef',
+      frame: { x: 10, y: 20, width: 300, height: 90 },
+    });
+    // The theme's background fills: the first a fixed red, the second the reference colour.
+    expect(fills(elements)).toEqual(['#abcdef', '#aa0000', '#ed7d31']);
+  });
+
+  it('draws a table’s own cells, with one note, when its style is unknown or the style list is broken', async () => {
+    const unknown = await readSlide(
+      slideXml(grid(1, 1, 'firstRow="1"', '{FEDCBA98-7654-3210-FEDC-BA9876543210}')),
+      {
+        'ppt/tableStyles.xml': styles(part('wholeTbl', fill('111111'))),
+      },
+    );
+    const broken = await readSlide(slideXml(grid(1, 1, 'firstRow="1"')), {
+      'ppt/tableStyles.xml': '<a:tblStyleLst xmlns:a="a"><broken',
+    });
+    for (const { elements, issues } of [unknown, broken]) {
+      expect(fills(elements)).toEqual([]);
+      expect(elements.map((el) => el.kind)).toEqual(['text']);
+      expect(issues).toContain(
+        'A table style was not included in the source; its own cell formatting is used.',
+      );
+    }
+  });
+});
+
+describe('words through the master’s styles (coverage)', () => {
+  it('takes a body placeholder’s paragraph spacing from the master’s body style, level by level', async () => {
+    const at = '<a:xfrm><a:off x="914400" y="914400"/><a:ext cx="7315200" cy="3657600"/></a:xfrm>';
+    const body = (words: string) =>
+      `<p:sp><p:nvSpPr><p:cNvPr id="3" name="Placeholder body"/><p:cNvSpPr/><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr>${at}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>${words}</p:txBody></p:sp>`;
+    const master =
+      '<p:sldMaster xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      `<p:cSld><p:spTree>${body('<a:p><a:r><a:t>Placeholder master words</a:t></a:r></a:p>')}</p:spTree></p:cSld>` +
+      '<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:bodyStyle>' +
+      '<a:lvl1pPr><a:spcBef><a:spcPts val="1200"/></a:spcBef><a:spcAft><a:spcPct val="50000"/></a:spcAft></a:lvl1pPr>' +
+      '<a:lvl2pPr><a:lnSpc><a:spcPts val="3000"/></a:lnSpc></a:lvl2pPr>' +
+      '</p:bodyStyle></p:txStyles></p:sldMaster>';
+    const { elements } = await readSlide(
+      slideXml(
+        body(
+          '<a:p><a:r><a:rPr sz="2400"/><a:t>Placeholder level one</a:t></a:r></a:p>' +
+            '<a:p><a:pPr lvl="1"/><a:r><a:rPr sz="2400"/><a:t>Placeholder level two</a:t></a:r></a:p>',
+        ),
+      ),
+      { 'ppt/slideMasters/slideMaster1.xml': master },
+    );
+    const box = elements.find((el) => el.kind === 'text' && el.text.startsWith('Placeholder level'));
+    if (box?.kind !== 'text') throw new Error('The placeholder’s words are missing.');
+    const paragraph = (words: string) => box.runs?.find((run) => run.text === words)?.paragraph;
+    // 12 pt before; after, half the line's 24 pt words: 16 px each. Level two: its own 30 pt line, no spacing.
+    expect(paragraph('Placeholder level one')).toMatchObject({ spaceBefore: 16, spaceAfter: 16 });
+    expect(paragraph('Placeholder level two')).toMatchObject({ lineHeightPx: 40 });
+    expect(paragraph('Placeholder level two')).not.toHaveProperty('spaceBefore');
+    expect(paragraph('Placeholder level two')).not.toHaveProperty('spaceAfter');
   });
 });
