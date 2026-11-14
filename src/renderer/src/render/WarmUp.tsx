@@ -24,7 +24,7 @@ import { engineNow, pauseClock } from './clock';
 import { LowerThirdView } from './LowerThirdView';
 import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
-import { SPLIT_MS, WARM_DECK_TRANSITIONS, warmDeckTransition, withSplits } from './warm-up-deck';
+import { OFF_GRID, SPLIT_MS, WARM_DECK_TRANSITIONS, warmDeckTransition, withSplits } from './warm-up-deck';
 import { WARM_UP_FAILS } from './warm-up-mode';
 import { WarmUpBoundary } from './WarmUpBoundary';
 
@@ -220,6 +220,8 @@ export interface WarmScene {
   state: (during: boolean, at: number) => EngineState;
   /** Drawn under this clip-path (NOTCHED). */
   clip?: string;
+  /** Drawn moved by this transform (OFF_GRID: half a pixel off the grid, Session 58). */
+  offset?: string;
   /**
    * Drawn in place of a Scene of its state (Session 58: the moving backgrounds, each a small lower third), as a key
    * and fill pair's page draws (its matte).
@@ -409,9 +411,13 @@ export function warmScenes(): WarmScene[] {
       during ? <WarmBackgrounds at={at} canvas={canvas} matte={matte} /> : null,
     pages: ['output', 'stream'],
   });
+  // A deck's own Wipe again half a pixel off the grid (Session 58, review-c2 MEDIUM-2), once: its mask drawn as an
+  // anti-aliased rect, a kind of drawing of its own (warm-up-deck.ts OFF_GRID).
+  const deckWipe = transitions.find((t) => t.key === 'deck-wipe/calm');
   return [
     ...transitions,
     ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
+    ...(deckWipe ? [{ ...deckWipe, key: 'deck-wipe/calm/off-grid', offset: OFF_GRID }] : []),
     ...list,
   ];
 }
@@ -550,7 +556,7 @@ function WarmScenes({
           data-warm-scene={s.key}
           style={{ position: 'absolute', inset: 0, mixBlendMode: 'plus-lighter' }}
         >
-          <div style={{ position: 'absolute', inset: 0, clipPath: s.clip }}>
+          <div style={{ position: 'absolute', inset: 0, clipPath: s.clip, transform: s.offset }}>
             {s.draw ? (
               s.draw(during, at, canvas, matte)
             ) : (
