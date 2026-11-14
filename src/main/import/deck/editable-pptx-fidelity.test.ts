@@ -89,6 +89,10 @@ describe('keeping a generated PPTX editable', () => {
         paragraph(
           '<a:lnSpc><a:spcPts val="3600"/></a:lnSpc><a:spcBef><a:spcPct val="50000"/></a:spcBef>',
           'Placeholder exact lines',
+        ) +
+        paragraph(
+          '<a:lnSpc><a:spcPct val="150000"/></a:lnSpc><a:spcBef><a:spcPct val="100000"/></a:spcBef>',
+          'Placeholder wider lines',
         ),
     );
     const { elements } = await read(slideXml(words));
@@ -103,9 +107,12 @@ describe('keeping a generated PPTX editable', () => {
     });
     // Points stay points: 24 pt is 32 px.
     expect(spacing('Placeholder points before')?.spaceBefore).toBe(32);
-    // The paragraph's own line: 90% of a single line (57.6 px), or exactly 36 pt (48 px).
-    expect(spacing('Placeholder closer lines')?.spaceBefore).toBe(57.6);
-    expect(spacing('Placeholder exact lines')?.spaceBefore).toBe(24);
+    // Whatever the paragraph's own line spacing, a share of a SINGLE line (PowerPoint's own PDF and movie, h-pptx3's
+    // run 5, 14 Nov 2026: 40 pt words with lines 150% or 80% and 100% before, 48 pt; lines exactly 36 pt and 50%
+    // before, 24 pt): 64 px for 90% lines and for 150%, 32 px for exactly 36 pt.
+    expect(spacing('Placeholder closer lines')?.spaceBefore).toBe(64);
+    expect(spacing('Placeholder exact lines')?.spaceBefore).toBe(32);
+    expect(spacing('Placeholder wider lines')?.spaceBefore).toBe(64);
   });
 
   it('keeps fixed line spacing in slide pixels and permits a proportional override', async () => {
