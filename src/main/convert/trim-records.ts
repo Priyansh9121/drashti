@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { rm, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { z } from 'zod';
@@ -18,7 +18,11 @@ import { readStateTwice, setAside } from '../state-file';
  *
  * The first start of alpha.18 reads what alpha.17 kept in the library's settings, once (a cut waiting then carries
  * on), and writes it to the file. A restored library is the library before's no more: its records are not carried
- * over, and the restored library's own settings are read, as before alpha.18.
+ * over, and the restored library's own settings are read, as before alpha.18. Once the file holds what the settings
+ * held, they are cleared, so a backup restored later, or alpha.17 after a downgrade, never reads records since
+ * finished or stopped (LOW-2). A file that cannot be read is moved aside and empty records written in its place, so
+ * the next start reads neither it nor the settings; one that can be neither read nor moved aside is never written
+ * over: saves fail (and are tried again) until it moves aside (LOW-3).
  */
 
 const fileSchema = z.object({
@@ -43,8 +47,11 @@ const pause = (ms: number) => {
 };
 
 export interface TrimRecordsOptions {
-  /** What alpha.17 and before kept in the library's settings: read once, while the file is not there. */
-  before: { waiting: () => unknown; copies: () => unknown };
+  /**
+   * What alpha.17 and before kept in the library's settings: read once, while the file is not there, and cleared
+   * (`clear`) once the file holds what they held.
+   */
+  before: { waiting: () => unknown; copies: () => unknown; clear: () => void };
   /** A backup restored at this start is in use: the file holds the library before's records. */
   otherLibrary?: boolean;
   log?: (message: string) => void;
@@ -54,6 +61,8 @@ export interface TrimRecordsOptions {
   renameSync?: (from: string, to: string) => void;
   /** The first wait before a failed write is tried again (tests). */
   retryMs?: number;
+  /** How a file that cannot be read is moved aside (tests: Windows holding it); state-file.ts's unless given. */
+  setAside?: (file: string) => string | null;
 }
 
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? [...(value as unknown[])] : []);
@@ -72,6 +81,10 @@ export class TrimRecords {
   private failures = 0;
   /** Drashti is quitting: every change is written at once. */
   private quitting = false;
+  /** The change whose write holds what alpha.17's settings held: once it is on the disk, they are cleared. */
+  private clearAt: number | null = null;
+  /** The file could be neither read nor moved aside at the start: never written over until it moves aside. */
+  private held = false;
 
   /** The cuts accepted and waiting (playlist-trims.ts's `kept`). */
   readonly kept = {
@@ -109,20 +122,30 @@ export class TrimRecords {
     }
     if (found && found.status !== 'missing') {
       // Damaged, or held by another program: moved aside with the date (state-file.ts), and nothing waits to carry on.
-      const aside = setAside(file);
+      const aside = this.setAside();
       options.log?.(
-        `Trim’s waiting cuts could not be read (${found.reason}): ${aside ? `kept as ${basename(aside)}` : 'left where it is'}; nothing waits to carry on`,
+        `Trim’s waiting cuts could not be read (${found.reason}): ${aside ? `kept as ${basename(aside)}` : 'left where it is, and never written over until it can be moved aside'}; nothing waits to carry on`,
       );
+      if (aside) {
+        // Empty records in its place: the next start reads them, never the library's settings (LOW-2).
+        this.changes = 1;
+        this.later();
+      } else this.held = true;
       return;
     }
     // Not there yet (the first start of alpha.18), or the library before a restore's: the library's settings, once.
     this.waiting = list(options.before.waiting());
     this.copyRecords = list(options.before.copies());
+    const fromSettings = this.waiting.length > 0 || this.copyRecords.length > 0;
     if (options.otherLibrary) {
       // At once: a crash now must never bring the library before's records back.
       this.changes = 1;
+      if (fromSettings) this.clearAt = 1;
       this.writeNowSaying();
-    } else if (this.waiting.length > 0 || this.copyRecords.length > 0) this.changed();
+    } else if (fromSettings) {
+      this.changed();
+      this.clearAt = this.changes;
+    }
   }
 
   /**
@@ -135,6 +158,7 @@ export class TrimRecords {
     if (this.written >= change) return;
     const partial = this.partial();
     try {
+      this.release();
       writeFileSync(partial, this.text());
       for (let tries = 1; ; tries++) {
         try {
@@ -202,6 +226,7 @@ export class TrimRecords {
     if (this.written >= change) return;
     const partial = this.partial();
     try {
+      this.release();
       await (this.options.writeFile ?? writeFile)(partial, this.text());
       // Moved over the file in the same turn as this check: never older records over newer ones written at once.
       if (this.written >= change) {
@@ -215,6 +240,28 @@ export class TrimRecords {
       return;
     }
     this.wrote(change);
+  }
+
+  /**
+   * A file that could be neither read nor moved aside at the start (LOW-3: another program held it) is moved aside now,
+   * keeping the records it holds; while it cannot be, it is never written over, and the write fails.
+   */
+  private release(): void {
+    if (!this.held) return;
+    const aside = this.setAside();
+    if (!aside && existsSync(this.file))
+      throw new Error(
+        'the earlier records could be neither read nor moved aside, so they are not written over',
+      );
+    this.held = false;
+    if (aside)
+      this.options.log?.(
+        `Trim’s earlier waiting cuts, which could not be read, are kept as ${basename(aside)}`,
+      );
+  }
+
+  private setAside(): string | null {
+    return (this.options.setAside ?? setAside)(this.file);
   }
 
   private rename(from: string, to: string): void {
@@ -231,6 +278,11 @@ export class TrimRecords {
 
   private wrote(change: number): void {
     this.written = Math.max(this.written, change);
+    if (this.clearAt !== null && this.written >= this.clearAt) {
+      // The file holds what alpha.17's settings held: they go, so nothing reads them again (LOW-2).
+      this.clearAt = null;
+      this.options.before.clear();
+    }
     if (this.failures > 0) {
       const failed = this.failures === 1 ? '1 failed save' : `${String(this.failures)} failed saves`;
       this.options.log?.(`Saved Trim’s waiting cuts again, after ${failed}`);
