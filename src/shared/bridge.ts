@@ -1045,6 +1045,7 @@ export interface DrashtiBridge {
     /** The GPU process stopped and another starts (Sessions 31–36, ROB-5): play again a video that failed. */
     onGpuRestarted(listener: () => void): () => void;
     /** The deck slide's first clip to load ahead for the operator's pointer (C3, Session 58), null for none. */
+    getPointed(): Promise<PointedClip | null>;
     onPointed(listener: (clip: PointedClip | null) => void): () => void;
     /** Tests only (a packaged Drashti never sends it): draw an element that throws (Session 23). */
     onTestThrow(listener: () => void): () => void;

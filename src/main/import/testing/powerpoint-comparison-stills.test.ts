@@ -6,7 +6,14 @@ import { powerPointPlan } from '../deck/plan';
 import { readEditablePptx } from '../deck/editable-pptx';
 import { readPptxDeck } from '../pictures';
 import { readZipEntries } from '../zip';
-import { STILLS_DARK, STILLS_LIGHT, STILLS_SHRINK, writeStillsDeck } from './powerpoint-comparison-stills';
+import {
+  STILLS_DARK,
+  STILLS_LIGHT,
+  STILLS_RUN5_TABLES,
+  STILLS_RUN5_WORDS,
+  STILLS_SHRINK,
+  writeStillsDeck,
+} from './powerpoint-comparison-stills';
 
 /*
  * PF-12 (Session 58): PowerPoint's own stills of what Drashti's reader assumes about spacing and tables, never seen in
@@ -204,5 +211,117 @@ describe('the shrink stills (PF-4b)', () => {
     expect(
       STILLS_SHRINK.slides.some((slide) => slide.paragraphs?.some((p) => p.text.includes('નમૂના'))),
     ).toBe(true);
+  });
+});
+
+/*
+ * Run 5 (h-pptx3, 14 Nov night): what Drashti now assumes and nobody has seen PowerPoint draw. C17's percentage paragraph
+ * spacing under a paragraph's own line spacing; PF-4b's shrink of a box whose words have two sizes (does PowerPoint round
+ * each run's size?); and for X14, the HSL shades at an exact half, a cell banded by row and by column, and PowerPoint's
+ * table style families beyond Medium Style 2 (named by their IDs alone, as decks that don't save a style's definition).
+ */
+describe('run 5’s stills', () => {
+  const where = mkdtempSync(join(tmpdir(), 'drashti-comparison-run5-'));
+  let words = '';
+  let tables = '';
+  beforeAll(async () => {
+    words = await writeStillsDeck(where, STILLS_RUN5_WORDS);
+    tables = await writeStillsDeck(where, STILLS_RUN5_TABLES);
+  });
+  afterAll(() => {
+    rmSync(where, { recursive: true, force: true });
+  });
+  const xmlOf = async (file: string, index: number) =>
+    (await readZipEntries(file, (name) => name === `ppt/slides/slide${String(index + 1)}.xml`))
+      .get(`ppt/slides/slide${String(index + 1)}.xml`)
+      ?.toString('utf8') ?? '';
+  const at = (deck: typeof STILLS_RUN5_WORDS, name: string) => {
+    const index = deck.slides.findIndex((slide) => slide.name === name);
+    expect(index, name).toBeGreaterThanOrEqual(0);
+    return index;
+  };
+
+  it('spaces paragraphs by a percentage under their own line spacing, each against a control with that spacing', async () => {
+    expect(words.endsWith('Placeholder PowerPoint run5 words.pptx')).toBe(true);
+    expect(STILLS_RUN5_WORDS.slides.map((s) => s.marker)).toEqual(
+      STILLS_RUN5_WORDS.slides.map((_, i) => 20 + 4 * i),
+    );
+    const deck = await readEditablePptx(words, join(where, 'words'));
+    for (const [name, control, spacing] of [
+      [
+        'Spacing · lines 150%, before 100%',
+        'Spacing · lines 150%, none (control)',
+        '<a:spcPct val="150000"/>',
+      ],
+      ['Spacing · lines 80%, before 100%', 'Spacing · lines 80%, none (control)', '<a:spcPct val="80000"/>'],
+      [
+        'Spacing · lines exactly 36 pt, before 50%',
+        'Spacing · lines exactly 36 pt, none (control)',
+        '<a:spcPts val="3600"/>',
+      ],
+    ] as const) {
+      const index = at(STILLS_RUN5_WORDS, name);
+      expect(STILLS_RUN5_WORDS.slides[index]?.control, name).toBe(control);
+      at(STILLS_RUN5_WORDS, control);
+      expect(await xmlOf(words, index), name).toContain(`<a:lnSpc>${spacing}</a:lnSpc>`);
+      const box = deck.slides[index]?.elements.find((e) => e.kind === 'text');
+      expect(
+        box?.kind === 'text' ? box.runs?.some((r) => (r.paragraph?.spaceBefore ?? 0) > 0) : false,
+        name,
+      ).toBe(true);
+    }
+  });
+
+  it('shrinks boxes whose words have two sizes, each against the same words unshrunk', async () => {
+    const deck = await readEditablePptx(words, join(where, 'words-mixed'));
+    for (const [name, control, sizes, scale] of [
+      ['Mixed · 40 and 18 pt at 62.5%', 'Mixed · 40 and 18 pt unshrunk (control)', [40, 18], 0.625],
+      ['Mixed · 36 and 24 pt at 70%', 'Mixed · 36 and 24 pt unshrunk (control)', [36, 24], 0.7],
+      ['Mixed · 32 and 20 pt at 77.5%', 'Mixed · 32 and 20 pt unshrunk (control)', [32, 20], 0.775],
+    ] as const) {
+      const index = at(STILLS_RUN5_WORDS, name);
+      expect(STILLS_RUN5_WORDS.slides[index]?.control, name).toBe(control);
+      const box = deck.slides[index]?.elements.find((e) => e.kind === 'text');
+      if (box?.kind !== 'text') throw new Error(name);
+      expect(box.style.sourceFit?.fontScale, name).toBeCloseTo(scale, 10);
+      const got = new Set(
+        (box.runs ?? []).filter((r) => r.text.trim() !== '').map((r) => Math.round(((r.size ?? 0) * 3) / 4)),
+      );
+      expect(
+        [...got].sort((a, b) => b - a),
+        name,
+      ).toEqual([...sizes]);
+      const unshrunk = deck.slides[at(STILLS_RUN5_WORDS, control)]?.elements.find((e) => e.kind === 'text');
+      expect(unshrunk?.kind === 'text' ? unshrunk.style.sourceFit : 'missing', name).toBeUndefined();
+    }
+  });
+
+  it('draws HSL shades at an exact half, a table banded both ways, and table style families by their IDs', async () => {
+    expect(tables.endsWith('Placeholder PowerPoint run5 tables.pptx')).toBe(true);
+    const parts = await readZipEntries(tables, (name) => name === 'ppt/theme/theme1.xml');
+    // Office's own colours, so that PowerPoint's well-known shades can be checked.
+    const theme = parts.get('ppt/theme/theme1.xml')?.toString('utf8') ?? '';
+    for (const accent of [
+      '<a:accent1><a:srgbClr val="4472C4"/>',
+      '<a:accent2><a:srgbClr val="ED7D31"/>',
+      '<a:accent6><a:srgbClr val="70AD47"/>',
+    ])
+      expect(theme).toContain(accent);
+    const halves = await xmlOf(tables, at(STILLS_RUN5_TABLES, 'Colours · halves'));
+    expect(halves).toContain('<a:srgbClr val="FFFFFF"><a:lumMod val="50000"/></a:srgbClr>');
+    expect(halves).toContain('<a:srgbClr val="000000"><a:lumOff val="50000"/></a:srgbClr>');
+    const both = await xmlOf(
+      tables,
+      at(STILLS_RUN5_TABLES, 'Table · Medium Style 2 - Accent 1, rows and columns banded'),
+    );
+    expect(both).toContain('<a:tblPr firstRow="1" bandRow="1" bandCol="1">');
+    const families = STILLS_RUN5_TABLES.slides.filter((s) => s.table?.style && !s.table.bandCol);
+    expect(families.length).toBeGreaterThanOrEqual(18);
+    for (const slide of families) {
+      const xml = await xmlOf(tables, STILLS_RUN5_TABLES.slides.indexOf(slide));
+      expect(xml, slide.name).toContain(`<a:tableStyleId>${slide.table?.style ?? ''}</a:tableStyleId>`);
+    }
+    const deck = await readEditablePptx(tables, join(where, 'tables'));
+    expect(deck.slides).toHaveLength(STILLS_RUN5_TABLES.slides.length);
   });
 });
