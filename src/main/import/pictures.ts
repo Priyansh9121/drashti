@@ -209,9 +209,8 @@ export interface KeynoteShift {
 /**
  * Reject a count-based match only when the PDF's words identify another slide uniquely and neither set of words
  * contains the other. A picture, repeated text or a partial extraction leaves the original count check in use.
- * One such page is enough (C15's review, M3, the optional second page left out: a copy set aside only loses Edit slides
- * from PowerPoint's copy, where a shift missed would put another slide's words under Edit slides). The first such page,
- * or null.
+ * Two distinct PDF pages must independently identify other slides (KN-1). One text extraction can be misleading.
+ * Returns the first confirmed mismatch for the import log.
  */
 export function keynoteShift(
   slides: readonly PptxSlide[],
@@ -228,6 +227,7 @@ export function keynoteShift(
     const key = list.join(' ');
     if (key !== '') byWords.set(key, byWords.has(key) ? null : index);
   }
+  let first: KeynoteShift | null = null;
   for (const page of drawn.pages) {
     const expectedIndex = indices[page.index];
     const expected = expectedIndex === undefined ? undefined : words[expectedIndex];
@@ -237,8 +237,10 @@ export function keynoteShift(
     if (typeof match !== 'number' || match === expectedIndex) continue;
     const [shorter, longer] = actual.length < expected.length ? [actual, expected] : [expected, actual];
     const includes = new Set(longer);
-    if (actual.length === expected.length || shorter.some((word) => !includes.has(word)))
-      return { page: page.index, slide: match, expected: expectedIndex };
+    if (actual.length === expected.length || shorter.some((word) => !includes.has(word))) {
+      if (first && first.page !== page.index && first.slide !== match) return first;
+      first ??= { page: page.index, slide: match, expected: expectedIndex };
+    }
   }
   return null;
 }
