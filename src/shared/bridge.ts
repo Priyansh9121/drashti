@@ -187,6 +187,12 @@ export interface DrashtiBridge {
     /** View › Show Safe Areas: whether the slide editor draws them. */
     safeAreas(): Promise<boolean>;
     onSafeAreasChanged(listener: (on: boolean) => void): () => void;
+    /**
+     * Whether Chromium draws without a graphics chip, as Main decides it (Session 58, WU-1): the LIVE picture then skips
+     * its warm-up; and once it is said, after the window opened.
+     */
+    noGpu(): Promise<boolean>;
+    onNoGpu(listener: () => void): () => void;
     /** Single-letter keys (Session 37): whether B, . and ? act, and turning them on or off (Pro Mode). */
     singleKeys(): Promise<boolean>;
     setSingleKeys(on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; message: string }>;

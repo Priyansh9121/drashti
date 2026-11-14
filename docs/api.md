@@ -422,6 +422,10 @@ A phone or a script may clear a video input and take the box off, and since Sess
 - **Sound**, as optional fields an older page leaves alone: `sound` (`stepsAside`, whether music steps aside under a video with sound; `gains`, the gain each file sounding now plays with for even loudness, by media id; `silent`, the files up with no sound of their own), and on the audio layer `cue` (a slide's own sound) and `over` (a slide's or a deck's own sound playing over the operator's sound, which plays on, lowered, until it ends).
 - **A playlist item's own order of slides.** `live.arrangementId` can be `item:` and the item's id (above).
 
+**Session 57** (version 28) also added:
+
+- **Where a background video came from.** `sourceItemId` on a video background (`layers.background` of kind `media`): the playlist row that put it up, or null when it came straight from Media or from a slide's background cue; left out of a show an older Drashti saved. Only the engine sets it. While it names a row, that row's finished Trim cut waits for the video to come off, and its **Reset to original** is refused.
+
 ## Companion (Stream Deck)
 
 Bitfocus Companion's **Generic HTTP** connection drives Drashti with a Remote device's token:
