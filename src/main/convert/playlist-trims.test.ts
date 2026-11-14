@@ -356,10 +356,21 @@ describe('trimming a playlist video', () => {
     expect(x.service.list()).toEqual([]);
     expect(x.kept.load()).toEqual([]);
 
+    // As on a busy machine (the merge check of 14 Nov 2026, under load), the late copy's move to the Trash takes
+    // longer than the 1 s vi.waitFor gives it: held here until the test lets it go.
+    let release: () => void = () => undefined;
+    const slow = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    x.trash.mockImplementationOnce(async (file: string) => {
+      await slow;
+      await rename(file, join(dir, 'Trash', basename(file)));
+    });
     x.finish({ ok: true, copy: x.output });
     await vi.waitFor(async () => {
       await expect(stat(x.output)).rejects.toMatchObject({ code: 'ENOENT' });
     });
+    release();
     expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
     expect(x.rowChanged).not.toHaveBeenCalled();
     expect(await readFile(x.original, 'utf8')).toBe('placeholder original');
