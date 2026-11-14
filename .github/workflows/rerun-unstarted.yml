@@ -1,0 +1,47 @@
+name: Re-run jobs GitHub never started
+
+# Session 58. Short of Mac runners, GitHub cancels a job it could not give one ("The job was not acquired by Runner
+# of type hosted even after multiple attempts": three Mac jobs on 12-13 Nov 2026): no step ran, so nothing was
+# tested, yet the run reads as failed. When a CI run of a push to main or phase1 (the runs the release gate counts)
+# ends without passing, this re-runs the jobs GitHub never started, when they are the run's only jobs that did not
+# pass (scripts/rerun-unstarted.mjs): never a job that ran and failed (a flaky test fails CI too), nor one cancelled
+# by a newer push or by hand; never a run of a branch pushed again since; never past the run's third attempt.
+#
+# GitHub starts a workflow_run workflow from the default branch only: this works once it is on main. It runs on a
+# standard Ubuntu runner, free on a public repository, with main's own script; it never checks out the run's code.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+concurrency:
+  group: rerun-unstarted-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rerun:
+    name: Re-run the jobs GitHub never started
+    if: >-
+      github.event.workflow_run.conclusion != 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'phase1')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      checks: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Re-run them, if they are all that did not pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: node scripts/rerun-unstarted.mjs --run "$RUN_ID" --repo "$GITHUB_REPOSITORY"
