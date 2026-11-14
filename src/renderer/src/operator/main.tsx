@@ -10,6 +10,7 @@ import { reportRenderError } from '../ui/render-errors';
 import { reportFitFailuresTo } from '../render/shrink-to-fit';
 import { setLiveWindowSize } from '../render/live-window';
 import { holdClock } from '../render/clock';
+import { connectDrawingMode } from './drawing-mode';
 import { OPERATOR_TRACKS, startMotionProbeIfAsked } from '../render/motion-probe';
 
 // The operator window's pictures of the screens are small: another app's window up as the background
@@ -22,6 +23,8 @@ setLiveWindowSize({ width: 960, height: 540, frameRate: 15 });
 window.drashti.output.onTestClock(holdClock);
 // Tests only (a test switch's, never an installed Drashti's): the motion probe's record of the opening (Session 57).
 startMotionProbeIfAsked(OPERATOR_TRACKS);
+
+connectDrawingMode();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
