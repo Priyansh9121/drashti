@@ -320,7 +320,8 @@ it('marks a cut gone in the same turn as its last check, before it moves, so not
       await x.trash(file);
     });
     const gone = await removal.trashUnusedTrims(x.mediaDir, trash, () => true, new AbortController().signal);
-    expect(atMove).toMatchObject({ path: '', missing: 1, deleted_at: expect.any(String) });
+    expect(atMove).toMatchObject({ path: '', missing: 1 });
+    expect(atMove?.deleted_at).toBeTypeOf('string');
     expect(added).toEqual([]);
     expect(x.trashed()).toEqual(['held.mp4']);
     expect(rowOf(x.db, 'held')).toMatchObject({ path: '', missing: 1 });

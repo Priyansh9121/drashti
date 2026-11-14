@@ -640,26 +640,27 @@ test('Trim shows a cut’s black-and-silence points as its start and end, and a 
 
     // Trim on the row shows them in the original's time (past its black and silence), not the cut's own ends.
     const shown = (await rowTrimOf(win, rowId))?.markers;
-    if (!shown || shown.startMs === null || shown.endMs === null)
-      throw new Error('Trim shows no start or end.');
-    expect(shown.startMs).toBeGreaterThanOrEqual(1400);
-    expect(shown.startMs).toBeLessThanOrEqual(1600);
-    expect(shown.endMs).toBeGreaterThanOrEqual(4400);
-    expect(shown.endMs).toBeLessThanOrEqual(4600);
+    const startMs = shown?.startMs ?? null;
+    const endMs = shown?.endMs ?? null;
+    if (startMs === null || endMs === null) throw new Error('Trim shows no start or end.');
+    expect(startMs).toBeGreaterThanOrEqual(1400);
+    expect(startMs).toBeLessThanOrEqual(1600);
+    expect(endMs).toBeGreaterThanOrEqual(4400);
+    expect(endMs).toBeLessThanOrEqual(4600);
     await win.getByTestId('playlist-node').filter({ hasText: playlistName }).click();
     const row = videoRow(win, rowId);
     await row.click({ button: 'right' });
     await win.getByRole('menuitem', { name: 'Trim (start, end and markers)…' }).click();
     const dialog = win.getByTestId('markers-dialog');
-    await expect(dialog.getByTestId('markers-start')).toHaveValue(trimTime(shown.startMs));
-    await expect(dialog.getByTestId('markers-end')).toHaveValue(trimTime(shown.endMs));
+    await expect(dialog.getByTestId('markers-start')).toHaveValue(trimTime(startMs));
+    await expect(dialog.getByTestId('markers-end')).toHaveValue(trimTime(endMs));
 
     // A wider cut, End moved out and Start left as Trim shows it: the start keeps its point, the end stands as saved.
     await dialog.getByTestId('markers-end').fill('0:05.4');
     await dialog.getByTestId('markers-save').click();
     await expect(dialog).toHaveCount(0);
     await nextVideo(win, playlistId, rowId, cut);
-    expect((await rowTrimOf(win, rowId))?.markers).toMatchObject({ startMs: shown.startMs, endMs: 5400 });
+    expect((await rowTrimOf(win, rowId))?.markers).toMatchObject({ startMs, endMs: 5400 });
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });
