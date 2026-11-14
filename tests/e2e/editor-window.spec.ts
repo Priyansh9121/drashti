@@ -9,6 +9,7 @@ import {
   editorGroup,
   importAndGetIds,
   launchApp,
+  onEditorSlide,
   openLibrary,
   operatorPage,
   operatorReady,
@@ -59,15 +60,6 @@ async function editSlides(app: ElectronApplication, win: Page, name: RegExp) {
   return slideEditorWindow(app);
 }
 
-/** A point on the slide (slide pixels) as a point in the editor's window. */
-async function onCanvas(ed: Page, x: number, y: number): Promise<{ x: number; y: number }> {
-  const canvas = ed.getByTestId('editor-canvas');
-  const box = await canvas.boundingBox();
-  const scale = Number(await canvas.getAttribute('data-scale'));
-  if (!box) throw new Error('no canvas');
-  return { x: box.x + x * scale, y: box.y + y * scale };
-}
-
 test('Edit slides opens a window of its own: the show goes on in the operator window meanwhile, and the save comes back to it as one Undo', async () => {
   test.setTimeout(150_000);
   const { app, win } = await start();
@@ -93,7 +85,7 @@ test('Edit slides opens a window of its own: the show goes on in the operator wi
   // A change in the editor: the first slide's words taken away (not saved yet).
   const elements = editor.getByTestId('editor-slide').locator('[data-element]');
   await expect(elements).toHaveCount(1);
-  const p = await onCanvas(ed, 960, 540);
+  const p = await onEditorSlide(ed, 960, 540);
   await ed.mouse.click(p.x, p.y);
   await expect(editor.getByTestId('editor-status')).toContainText('Text box');
   await ed.keyboard.press('Delete');
@@ -159,7 +151,7 @@ for (const size of [CI_WINDOW, { width: 1280, height: 720 }] as const)
       ],
     };
     // A box selected: the Words group and Arrange act on it.
-    const p = await onCanvas(ed, 960, 540);
+    const p = await onEditorSlide(ed, 960, 540);
     await ed.mouse.click(p.x, p.y);
     await expect(editor.getByTestId('editor-status')).toContainText('Text box');
     for (const group of GROUPS) {
@@ -227,7 +219,7 @@ test('Undo and Redo for every change, by keys and by buttons, typing too; zoom t
   const words = editor.getByTestId('editor-slide').locator('[data-element]').first();
 
   // Typing: the buttons undo and redo the words as they are typed, without leaving the box.
-  const p = await onCanvas(ed, 960, 540);
+  const p = await onEditorSlide(ed, 960, 540);
   await ed.mouse.click(p.x, p.y);
   await ed.keyboard.press('Enter');
   const typing = editor.getByTestId('text-editing');
@@ -321,7 +313,7 @@ test('closing the window with changes asks first; another presentation asked for
   await importPlaceholder(win, 'Placeholder Other Kirtan');
   const { ed, editor } = await editSlides(app, win, /^Placeholder Close Kirtan/u);
   const elements = editor.getByTestId('editor-slide').locator('[data-element]');
-  const p = await onCanvas(ed, 960, 540);
+  const p = await onEditorSlide(ed, 960, 540);
   await ed.mouse.click(p.x, p.y);
   await ed.keyboard.press('Delete');
   await expect(elements).toHaveCount(0);
@@ -363,7 +355,7 @@ test('closing the window while words are still being typed asks first and saves 
   const { app, win } = await start();
   await importPlaceholder(win, 'Placeholder Typing Close');
   const { ed, editor } = await editSlides(app, win, /^Placeholder Typing Close/u);
-  const p = await onCanvas(ed, 960, 540);
+  const p = await onEditorSlide(ed, 960, 540);
   await ed.mouse.click(p.x, p.y);
   await ed.keyboard.press('Enter');
   const typing = editor.getByTestId('text-editing');
@@ -393,7 +385,7 @@ test('opening another presentation while words are still being typed asks before
   await importPlaceholder(win, 'Placeholder Typing Switch');
   await importPlaceholder(win, 'Placeholder Typing Destination');
   const { ed, editor } = await editSlides(app, win, /^Placeholder Typing Switch/u);
-  const p = await onCanvas(ed, 960, 540);
+  const p = await onEditorSlide(ed, 960, 540);
   await ed.mouse.click(p.x, p.y);
   await ed.keyboard.press('Enter');
   const typing = editor.getByTestId('text-editing');
