@@ -165,7 +165,11 @@ describe('the warm-up', () => {
       });
     }
     expect(before.slide.elements[0]).toEqual(during.slide.elements[0]);
-    expect(warmScenes().filter((s) => s.pass === 'cover').map((s) => s.key)).toEqual([wide.key]);
+    expect(
+      warmScenes()
+        .filter((s) => s.pass === 'cover')
+        .map((s) => s.key),
+    ).toEqual([wide.key]);
   });
 
   it('draws a deck’s own Cover part-way: the slide coming in moved and a shade darker, a filter over the whole slide', () => {

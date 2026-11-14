@@ -22,7 +22,7 @@ import {
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../../shared/lower-thirds';
 import { engineNow, pauseClock } from './clock';
 import { LowerThirdView } from './LowerThirdView';
-import { MediaUrls, useMediaUrl } from './media-urls';
+import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
 import {
   OFF_GRID,
@@ -32,7 +32,6 @@ import {
   withShapes,
   withSplits,
 } from './warm-up-deck';
-import { deckTransitionFrame } from './transition-frame';
 import { WARM_UP_FAILS } from './warm-up-mode';
 import { WarmUpBoundary } from './WarmUpBoundary';
 
@@ -112,6 +111,10 @@ const PICTURE = { a: `${W}-picture-a`, b: `${W}-picture-b`, png: `${W}-png` } as
 const PART = 0.4;
 /** Frames drawn of the slides before the transitions (so each starts from one). */
 const BEFORE_FRAMES = 2;
+/** The same Cover pace used on the hall screen by the performance check. */
+const COVER_MS = 700;
+/** Start the isolated Cover just before the first pixels of the incoming slide appear. */
+const COVER_START = 0.1;
 /**
  * Then until the GPU keeps up: this many frames in a row, each within ON_TIME_MS of the one before, or within
  * twice the middle of every wait so far (a slow GPU drawing all this evenly), as a GPU still making what the
@@ -230,10 +233,8 @@ export interface WarmScene {
   clip?: string;
   /** Drawn moved by this transform (OFF_GRID: half a pixel off the grid, Session 58). */
   offset?: string;
-  /** Drawn inside a rounded overflow clip to warm the GPU's analytic clip for a shaded slide. */
-  rounded?: boolean;
-  /** Transforms the contents inside the clip, so the clip itself stays on its own axes. */
-  contentTransform?: string;
+  /** Drawn alone before the other scenes, through the same compositing path as the show's wide Cover. */
+  pass?: 'cover';
   /**
    * Drawn in place of a Scene of its state (Session 58: the moving backgrounds, each a small lower third), as a key
    * and fill pair's page draws (its matte).
@@ -415,14 +416,6 @@ export function warmScenes(): WarmScene[] {
         };
       },
     });
-  // The wide Cover's shaded texture needs an analytic clip on the same draw as its antialiased edges (X12).
-  // Transform the filtered picture itself so it reaches the compositor as that quad, inside a stationary clip.
-  list.push({
-    key: 'deck-cover-shade',
-    look: look('calm'),
-    state: () => base,
-    draw: (during) => (during ? <WarmCoverShade /> : null),
-  });
   // Every moving background of the Lower Thirds studio (Session 58, Q58-18): one scene of small lower thirds, each
   // background at the moments of its loop where every piece shows, from the registry, so one added there is warmed
   // too. The hall's screens and the stream's page draw it; the LIVE picture does not (the operator's own, and the
@@ -444,42 +437,71 @@ export function warmScenes(): WarmScene[] {
   const offGrid = (t: WarmScene | undefined, key: string): WarmScene[] =>
     t ? [{ ...t, key, offset: OFF_GRID }] : [];
   return [
+    // The wide Cover as it goes on air, by itself before the other scenes can take the warm-up's frame budget.
+    {
+      key: 'deck-cover-full-picture',
+      pass: 'cover',
+      look: look('calm'),
+      state: (during, at) => ({
+        ...base,
+        layers: {
+          ...base.layers,
+          slide: layerOf(
+            fullPictureSlide(during),
+            during ? at - COVER_START * COVER_MS : at - LONG_AGO,
+            during ? warmDeckTransition('cover', COVER_MS) : undefined,
+          ),
+        },
+      }),
+    },
     ...transitions,
     ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
     ...offGrid(deckWipe, 'deck-wipe/calm/off-grid'),
-    // A rounded clip alone still let the wide Cover's shaded quad snap to the grid (Mac trace on 41d40ee1).
-    // Turn the scene slightly inside the clip so the compositor needs edge antialiasing and the analytic clip together.
-    ...offGrid(
-      deckCover && { ...deckCover, rounded: true, contentTransform: 'rotate(0.25deg)' },
-      'deck-cover/calm/off-grid',
-    ),
+    ...offGrid(deckCover, 'deck-cover/calm/off-grid'),
     ...offGrid(deckCover && fourThreeScene(deckCover), 'deck-cover-four-three/calm/off-grid'),
     ...list,
   ];
 }
 
-/** The texture for the wide Cover's clipped, shaded quad (X12). Only the picture inside the clip turns. */
-function WarmCoverShade() {
-  const url = useMediaUrl();
-  const frame = deckTransitionFrame(warmDeckTransition('cover', MAX_TRANSITION_MS), PART, 'calm');
-  return (
-    <div style={{ position: 'absolute', inset: '5%', overflow: 'hidden', borderRadius: 12 }}>
-      <img
-        src={url(PICTURE.b)}
-        alt=""
-        draggable={false}
-        style={{
-          position: 'absolute',
-          width: '100%',
-          height: '100%',
-          objectFit: 'fill',
-          filter: frame.in.filter,
-          transform: `${frame.in.transform} rotate(1deg)`,
-          willChange: 'transform',
-        }}
-      />
-    </div>
-  );
+/** The two native slides in the wide Cover. The same full-bleed JPEG sits under a title and a line on each. */
+function fullPictureSlide(during: boolean): RenderSlide {
+  const width = 1920;
+  const height = 1080;
+  return {
+    id: `${W}-cover-full-${during ? 'b' : 'a'}`,
+    width,
+    height,
+    background: null,
+    deck: { steps: [], media: [], motion: { effects: [], stepsMs: [0], approximate: false } },
+    elements: [
+      {
+        id: 'picture',
+        kind: 'image',
+        mediaId: PICTURE.b,
+        fit: 'fill',
+        sourceShapeId: '2',
+        frame: { x: 0, y: 0, width, height },
+      },
+      {
+        id: 'title',
+        kind: 'text',
+        text: during ? 'Placeholder title coming in' : 'Placeholder title going',
+        lang: 'en',
+        style: { ...WORDS, shrinkToFit: true },
+        sourceShapeId: '3',
+        frame: { x: 160, y: 120, width: 1600, height: 200 },
+      },
+      {
+        id: 'line',
+        kind: 'text',
+        text: 'A placeholder line on the slide',
+        lang: 'en',
+        style: { ...WORDS, fontSize: 56, shrinkToFit: true },
+        sourceShapeId: '4',
+        frame: { x: 160, y: 360, width: 1600, height: 140 },
+      },
+    ],
+  };
 }
 
 /** A 4:3 deck's slide (1440 x 1080, as a deck of that shape gives), its parts placed across it as across a 16:9 one. */
@@ -623,6 +645,7 @@ function FailForTests(): never {
  */
 function WarmScenes({
   page,
+  cover,
   during,
   at,
   canvas,
@@ -631,6 +654,7 @@ function WarmScenes({
   ticker,
 }: {
   page: WarmPage;
+  cover: boolean;
   during: boolean;
   at: number;
   canvas: Size;
@@ -638,48 +662,36 @@ function WarmScenes({
   matte: 'fill' | 'key' | null;
   ticker: boolean;
 }) {
-  const list = useMemo(() => warmScenes().filter((s) => s.pages?.includes(page) ?? true), [page]);
+  const list = useMemo(
+    () => warmScenes().filter((s) => (s.pass === 'cover') === cover && (s.pages?.includes(page) ?? true)),
+    [cover, page],
+  );
   return (
     <>
-      {list.map((s) => {
-        const content = s.draw ? (
-          s.draw(during, at, canvas, matte)
-        ) : (
-          <Scene
-            state={s.state(during, at)}
-            canvas={canvas}
-            scaling={scaling}
-            look={s.look}
-            matte={matte}
-            ticker={ticker}
-          />
-        );
-        // Each scene added light for light (none of it opaque to the GPU), so none hides another.
-        return (
-          <div
-            key={s.key}
-            data-warm-scene={s.key}
-            style={{ position: 'absolute', inset: 0, mixBlendMode: 'plus-lighter' }}
-          >
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                clipPath: s.clip,
-                transform: s.offset,
-                ...(s.rounded ? { overflow: 'hidden', borderRadius: 12 } : {}),
-              }}
-            >
-              {s.contentTransform ? (
-                <div style={{ position: 'absolute', inset: 0, transform: s.contentTransform }}>{content}</div>
-              ) : (
-                content
-              )}
-              {during && s.key === WARM_UP_FAILS && <FailForTests />}
-            </div>
+      {list.map((s) => (
+        // The regular scenes add together light for light so none hides another. The wide Cover is drawn alone.
+        <div
+          key={s.key}
+          data-warm-scene={s.key}
+          style={{ position: 'absolute', inset: 0, mixBlendMode: cover ? undefined : 'plus-lighter' }}
+        >
+          <div style={{ position: 'absolute', inset: 0, clipPath: s.clip, transform: s.offset }}>
+            {s.draw ? (
+              s.draw(during, at, canvas, matte)
+            ) : (
+              <Scene
+                state={s.state(during, at)}
+                canvas={canvas}
+                scaling={scaling}
+                look={s.look}
+                matte={matte}
+                ticker={ticker}
+              />
+            )}
+            {during && s.key === WARM_UP_FAILS && <FailForTests />}
           </div>
-        );
-      })}
+        </div>
+      ))}
     </>
   );
 }
@@ -719,7 +731,10 @@ export function WarmUp({
   onDone: () => void;
   onEnded?: (how: WarmUpEnd, ms: number) => void;
 }) {
-  const [step, setStep] = useState<{ phase: 'pictures' | 'before' | 'during'; at: number }>({
+  const [step, setStep] = useState<{
+    phase: 'pictures' | 'cover-before' | 'cover' | 'before' | 'during';
+    at: number;
+  }>({
     phase: 'pictures',
     at: 0,
   });
@@ -798,12 +813,12 @@ export function WarmUp({
       if (!live) return;
       // For a trace (the Performance check's): what the GPU made while it warmed up.
       performance.mark(mark);
-      setStep({ phase: 'before', at: engineNow() });
+      setStep({ phase: hold ? 'before' : 'cover-before', at: engineNow() });
     });
     return () => {
       live = false;
     };
-  }, [pictures, mark]);
+  }, [pictures, mark, hold]);
   // Then frame by frame: the slides before for two frames; then every change part-way, the page's clock
   // paused so the GPU draws it all once (not again at every frame), until the frames come on time; again once
   // every picture in it is decoded where the screen draws it; again a moment on (what is drawn again in part);
@@ -817,12 +832,20 @@ export function WarmUp({
     // False once this step is left (read through a function: the checker cannot follow the cleanup).
     const run = { live: true };
     const live = () => run.live;
-    if (step.phase === 'before') {
+    if (step.phase === 'cover' || step.phase === 'cover-before' || step.phase === 'before') {
+      const next = { 'cover-before': 'cover', cover: 'before', before: 'during' } as const;
+      const phase = step.phase;
+      if (phase === 'cover') performance.mark(`${mark}-deck-cover`);
       let left = BEFORE_FRAMES;
       const tick = () => {
         left -= 1;
-        if (left > 0) frame = requestAnimationFrame(tick);
-        else setStep({ phase: 'during', at: engineNow() });
+        // The wide Cover advances on the engine clock while the regular scenes use held frames.
+        if (phase === 'cover' ? engineNow() < step.at + COVER_MS * (1 - COVER_START) : left > 0) {
+          frame = requestAnimationFrame(tick);
+        } else {
+          if (phase === 'cover') performance.mark(`${mark}-deck-cover-end`);
+          setStep({ phase: next[phase], at: engineNow() });
+        }
       };
       frame = requestAnimationFrame(tick);
     } else {
@@ -875,7 +898,7 @@ export function WarmUp({
       cancelAnimationFrame(frame);
       pauseClock(null);
     };
-  }, [step, tree, finish]);
+  }, [step, tree, finish, mark]);
   const urlOf = useCallback(
     (id: string, attempt?: number) => pictures[id] ?? mediaUrl(id, attempt),
     [pictures],
@@ -884,6 +907,7 @@ export function WarmUp({
   const failed = useCallback(() => {
     finish('error');
   }, [finish]);
+  const cover = step.phase === 'cover-before' || step.phase === 'cover';
   return (
     <div
       ref={host}
@@ -909,33 +933,38 @@ export function WarmUp({
             {step.phase !== 'pictures' && (
               // Everything it draws, its scenes made inside: one that fails ends the warm-up (Session 57).
               <WarmUpBoundary onError={failed}>
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    width: canvas.width,
-                    height: canvas.height,
-                  }}
-                >
-                  <PictureStrip jpeg={pictures[PICTURE.b] ?? ''} png={pictures[PICTURE.png] ?? ''} />
-                </div>
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    width: canvas.width,
-                    height: canvas.height,
-                    clipPath: NOTCHED,
-                  }}
-                >
-                  <PictureStrip jpeg={pictures[PICTURE.a] ?? ''} png={pictures[PICTURE.png] ?? ''} />
-                </div>
+                {!cover && (
+                  <>
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        width: canvas.width,
+                        height: canvas.height,
+                      }}
+                    >
+                      <PictureStrip jpeg={pictures[PICTURE.b] ?? ''} png={pictures[PICTURE.png] ?? ''} />
+                    </div>
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        width: canvas.width,
+                        height: canvas.height,
+                        clipPath: NOTCHED,
+                      }}
+                    >
+                      <PictureStrip jpeg={pictures[PICTURE.a] ?? ''} png={pictures[PICTURE.png] ?? ''} />
+                    </div>
+                  </>
+                )}
                 <MediaUrls.Provider value={urlOf}>
                   <WarmScenes
                     page={page}
-                    during={step.phase === 'during'}
+                    cover={cover}
+                    during={step.phase === 'during' || step.phase === 'cover'}
                     at={step.at}
                     canvas={canvas}
                     scaling={scaling}
