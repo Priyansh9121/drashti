@@ -177,13 +177,17 @@ function observedBounds(
   path: ClipBounds | undefined,
   pathTransform: ReturnType<DrawingContext['getTransform']> | undefined,
 ): ClipBounds | undefined {
-  if (method === 'drawImage') {
+  if (method === 'drawImage' || method === 'fill') {
+    const matrix = ctx.getTransform();
+    // Moving a tilted fill or picture to another raster origin can change its antialiased edges.
+    const { a, b, c, d } = matrix;
+    if ((b !== 0 || c !== 0) && (a !== 0 || d !== 0)) return undefined;
+    if (method === 'fill')
+      return path && typeof ctx.fillStyle === 'string' ? transformedBounds(path, matrix) : undefined;
     const image = imageBounds(args);
-    return image && transformedBounds(image, ctx.getTransform());
+    return image && transformedBounds(image, matrix);
   }
   if (!path) return undefined;
-  if (method === 'fill' && typeof ctx.fillStyle === 'string')
-    return transformedBounds(path, ctx.getTransform());
   if (method !== 'stroke' || !pathTransform || typeof ctx.strokeStyle !== 'string') return undefined;
   // PDF.js can rescale the pen for hairlines. The centerline uses the original transform.
   const [left, top, right, bottom] = transformedBounds(path, pathTransform);
@@ -521,7 +525,7 @@ export async function editablePdfPage(
   const pathSnapshots = new Map<number, { commands: NativePathCommand[]; fillRule: 'nonzero' | 'evenodd' }>();
   const pathBounds = new Map<number, ClipBounds>();
   const strokedPaths = new Set<number>();
-  const unknownClipBounds = new Set<number>();
+  const softMaskChanges = new Map<number, boolean>();
   const clipBounds = new Map<number, ClipBounds>();
   const groupOwners = new Map<number, number>();
   const groupEnds = new Map<number, number>();
@@ -579,9 +583,10 @@ export async function editablePdfPage(
           throw new Error(
             'This page uses transfer effects that cannot be separated safely. Its saved playback is unchanged.',
           );
-        if (key === 'SMask' && value !== false) {
-          hasEffects = true;
-          unknownClipBounds.add(index);
+        if (key === 'SMask') {
+          const enabled = value !== false;
+          softMaskChanges.set(index, enabled);
+          if (enabled) hasEffects = true;
         }
       }
     }
@@ -624,8 +629,9 @@ export async function editablePdfPage(
     let paintOwner: number | null = null;
     let inGroup = false;
     let pathTransform: ReturnType<DrawingContext['getTransform']> | undefined;
-    let stopped: { reason: unknown } | undefined;
+    let stopped = false;
     let clip: ClipBounds | null | undefined;
+    let softMask = false;
     const observe = (method: ContextMethod, allow: (args: unknown[]) => boolean) => {
       const old = ctx[method];
       originals.set(method, old);
@@ -640,17 +646,21 @@ export async function editablePdfPage(
     };
     try {
       if (hasEffects && !allowed) {
-        // PDF.js mirrors clips and save/restore back to this canvas while it paints masks.
-        const stack: (ClipBounds | null | undefined)[] = [];
+        // PDF.js mirrors real clip operations from the mask canvas to the page canvas.
+        const stack: { clip: typeof clip; softMask: boolean }[] = [];
         observe('save', () => {
-          stack.push(clip);
+          stack.push({ clip, softMask });
           return true;
         });
         observe('restore', () => {
-          clip = stack.pop();
+          const state = stack.pop();
+          clip = state?.clip;
+          softMask = state?.softMask ?? false;
           return true;
         });
         observe('clip', () => {
+          // PDF.js may also mirror a temporary clip inside mask compositing. Its save/restore
+          // confines that clip to the composite, while a PDF clipping path remains active.
           clip = intersectClip(clip, current === null ? undefined : clipBounds.get(current), ctx, scale);
           return true;
         });
@@ -672,7 +682,7 @@ export async function editablePdfPage(
               // from this object's geometry and the clip active when it actually draws.
               const fn = list.fnArray[current];
               let bounds =
-                !inGroup && (method !== 'drawImage' || imagePaint.has(fn))
+                !inGroup && !softMask && (method !== 'drawImage' || imagePaint.has(fn))
                   ? observedBounds(method, args, ctx, pathBounds.get(current), pathTransform)
                   : undefined;
               if (bounds && clip) {
@@ -727,7 +737,7 @@ export async function editablePdfPage(
               width:
                 method === 'fillText' ? ctx.measureText(String(args[0])).width * Math.hypot(m.a, m.b) : 0,
               composite: ctx.globalCompositeOperation,
-              clip,
+              clip: softMask ? null : clip,
             });
             calls.set(current, values);
           }
@@ -746,8 +756,7 @@ export async function editablePdfPage(
           if (actual.fnArray[index] !== list.fnArray[index])
             throw new Error('This page cannot be separated reliably.');
           current = index;
-          // PDF.js can install additional clips while it sets up a soft mask.
-          if (!allowed && unknownClipBounds.has(index)) clip = null;
+          if (!allowed) softMask = softMaskChanges.get(index) ?? softMask;
           const group = groupOwners.get(index);
           inGroup = group !== undefined;
           paintOwner = group === undefined ? index : (groupEnds.get(group) ?? group);
@@ -757,25 +766,33 @@ export async function editablePdfPage(
         },
       });
       if (checkpoint) {
-        task.onContinue = (resume: () => void) => {
-          void Promise.resolve()
-            .then(checkpoint)
-            .then(resume, (reason: unknown) => {
-              stopped = { reason };
-              try {
-                task.cancel();
-              } catch (error) {
-                // PDF.js can throw while unwinding an incomplete graphics scope.
-                stopped = { reason: error };
-              }
-            });
-        };
-      }
-      try {
+        const stop = new Promise<never>((_resolve, reject) => {
+          task.onContinue = (resume: () => void) => {
+            void Promise.resolve()
+              .then(checkpoint)
+              .then(resume, (reason: unknown) => {
+                stopped = true;
+                try {
+                  task.cancel();
+                } catch {
+                  // PDF.js can throw before it settles its render promise.
+                } finally {
+                  reject(reason);
+                }
+              });
+          };
+        });
+        // Racing also handles a late rejection from the PDF.js task after the stop wins.
+        await Promise.race([
+          stop,
+          task.promise.catch((error: unknown) => {
+            if (!stopped) throw error;
+            // The checkpoint rejection supplies the reason for a cancelled task.
+            return stop;
+          }),
+        ]);
+      } else {
         await task.promise;
-      } catch (error) {
-        if (stopped) throw stopped.reason;
-        throw error;
       }
       return target;
     } catch (error) {
