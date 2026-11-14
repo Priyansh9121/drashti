@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TextElement } from './model';
-import { cutLineHeight, sourceFitScale, sourceLineCut, withoutSourceFit } from './source-fit';
+import { cutLineHeight, sourceFitScale, sourceLineCut, sourceRunScale, withoutSourceFit } from './source-fit';
 
 /*
  * A deck's own shrink of a box's words (Session 58, PF-4b): PowerPoint's line spacing reduction taken off each line
@@ -87,5 +87,41 @@ describe('a deck’s own shrink of a box’s words (Session 58, PF-4b)', () => {
     };
     // 24 pt carries most of the words: 24 x 85% = 20.4, drawn 20.
     expect(sourceFitScale(mixed)).toBeCloseTo(20 / 24, 10);
+  });
+
+  it('rounds each run’s own size to a whole point, as PowerPoint does where a box’s words have two sizes (run 5)', () => {
+    // PowerPoint's own PDF of shrunk boxes with two sizes (h-pptx3's run 5, 14 Nov 2026), each run's size as drawn:
+    // 40 and 18 pt at 62.5% are 25 and 11 pt (not 11.25), 36 and 24 at 70% 25 and 17 (not 16.67), 32 and 20 at 77.5%
+    // 25 and 16 (not 15.63). The box's fit is its main size's (sourceFitScale); each run is drawn this much off it.
+    const two = (large: number, small: number, fontScale: number): TextElement => ({
+      ...box({ fontScale, lineSpacingReduction: 0.2 }),
+      text: 'Placeholder title words in line A\nPlaceholder smaller words B',
+      style: {
+        ...box().style,
+        fontSize: (large * 4) / 3,
+        sourceFit: { fontScale, lineSpacingReduction: 0.2 },
+      },
+      runs: [
+        { text: 'Placeholder title words in line A\n', size: (large * 4) / 3 },
+        { text: 'Placeholder smaller words B', size: (small * 4) / 3 },
+      ],
+    });
+    const drawnPt = (el: TextElement, points: number) =>
+      points * (sourceFitScale(el) ?? 1) * sourceRunScale(el, (points * 4) / 3);
+    for (const [large, small, fontScale, bigPt, smallPt] of [
+      [40, 18, 0.625, 25, 11],
+      [36, 24, 0.7, 25, 17],
+      [32, 20, 0.775, 25, 16],
+    ] as const) {
+      const el = two(large, small, fontScale);
+      expect(drawnPt(el, large), `${String(large)} pt`).toBeCloseTo(bigPt, 10);
+      expect(drawnPt(el, small), `${String(small)} pt`).toBeCloseTo(smallPt, 10);
+      // The main size is the box's fit itself.
+      expect(sourceRunScale(el, (large * 4) / 3)).toBe(1);
+    }
+    // A box without PowerPoint's shrink, or one Drashti fits itself, draws every run at the box's fit.
+    expect(sourceRunScale(box(), 24)).toBe(1);
+    const own = two(40, 18, 0.625);
+    expect(sourceRunScale({ ...own, style: { ...own.style, shrinkToFit: false } }, 24)).toBe(1);
   });
 });
