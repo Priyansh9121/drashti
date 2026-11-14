@@ -1,13 +1,13 @@
 import { type BigIntStats, lstatSync, realpathSync } from 'node:fs';
-import { readdir, rm } from 'node:fs/promises';
+import { lstat, readdir, rm } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { type EngineState, nothingUp } from '../../shared/engine/state';
 import type { MediaUsage, UsedIn } from '../../shared/media-removal';
 import { USED_IN_NAMES } from '../../shared/media-removal';
 import { stillPath } from '../media/media-protocol';
-import { removeCopiesOf } from '../media/sharpened';
-import { removeBlurredOf } from '../media/blurred';
+import { removeCopiesOf, SHARPENED_DIR } from '../media/sharpened';
+import { BLURRED_DIR, removeBlurredOf } from '../media/blurred';
 import { isInside } from '../media/contained';
 import type { Db } from '../db/database';
 import { MediaStore } from '../import/media-store';
@@ -62,6 +62,13 @@ async function removeDerived(mediaDir: string, sha256: string): Promise<void> {
   // Its sharpened copies (Session 26f), and its blurred copy (Session 55).
   await removeCopiesOf(mediaDir, sha256);
   await removeBlurredOf(mediaDir, sha256);
+}
+
+/** Hashes with a still or a picture copy left in Media, read once across all gone cuts in this sweep. */
+async function derivativesIn(mediaDir: string): Promise<Set<string>> {
+  const folders = [dirname(stillPath('')), SHARPENED_DIR, BLURRED_DIR];
+  const names = await Promise.all(folders.map((folder) => readdir(join(mediaDir, folder)).catch(() => [])));
+  return new Set(names.flatMap((files) => files.flatMap((name) => /^[a-f0-9]{64}(?=[.-])/u.exec(name)?.[0] ?? [])));
 }
 
 /**
@@ -410,8 +417,9 @@ export class MediaRemoval {
    * goes to the Trash with its still frame, sharpened and blurred copies (TM-5). Only a regular file (no link, no hidden
    * part) in the folder Trim wrote the cut into (its original's: trim-copy.ts), named by no row, held by none of Trim's
    * records (`held`: a cut being made or waiting, its copy, its original), with the very bytes of one cut whose row is
-   * gone, and the only file with them. Anything less certain stays where it is, and the log says why. The names of the
-   * cuts whose files moved, for the operator's notice (TM-4).
+   * gone, and the only file with them. If the original's folder is lost, look for the known size in Media's root and
+   * regular import folders (Q58-53). Anything less certain stays where it is, and the log says why. Returns the names
+   * of cuts moved, for the operator's notice (TM-4).
    *
    * No row can come to name such a file while it moves: an import keeps its copy at a path named by its own bytes
    * (media-store.ts), and Trim publishes a cut only at a free name (trim.ts's freeFileName). An import of the same bytes
@@ -460,13 +468,40 @@ export class MediaRemoval {
     };
     const bySha = new Map(cuts.map((cut) => [cut.sha256, cut]));
     const folders = new Map<string, GoneTrim[]>();
+    const originalFolders = new Map<string, string | null>();
+    const unknownFolders: GoneTrim[] = [];
     for (const cut of cuts) {
       const folder = folderOf(cut);
-      if (folder === null)
+      originalFolders.set(cut.id, folder);
+      if (folder !== null) folders.set(folder, [...(folders.get(folder) ?? []), cut]);
+      else if (cut.bytes !== null) unknownFolders.push(cut);
+      else
         say(
-          `earlier Trim cut ${cut.id} may have left its file in Media: the folder it was written into is not known, so none was looked for`,
+          `earlier Trim cut ${cut.id} may have left its file in Media: the folder it was written into is not known and its size was not kept`,
         );
-      else folders.set(folder, [...(folders.get(folder) ?? []), cut]);
+    }
+    const unknownSizes = new Set(unknownFolders.map((cut) => cut.bytes));
+    const managed = new Set<string>();
+    let incomplete = false;
+    const entriesIn = async (folder: string) => {
+      try {
+        return await readdir(folder, { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          if (managed.has(folder)) incomplete = true;
+          left('its folder could not be read');
+        }
+        return [];
+      }
+    };
+    const hasUnknown = unknownFolders.length > 0;
+    if (hasUnknown) managed.add(root);
+    const rootEntries = hasUnknown ? await entriesIn(root) : null;
+    if (rootEntries) {
+      for (const entry of rootEntries) {
+        if (entry.isDirectory() && /^[0-9a-f]{2}$/u.test(entry.name)) managed.add(join(root, entry.name));
+      }
+      for (const folder of managed) if (!folders.has(folder)) folders.set(folder, []);
     }
 
     // Every path a row names (its file, or where it came from), as compared: slashes one way, any case.
@@ -501,25 +536,32 @@ export class MediaRemoval {
     };
 
     const found: { cut: GoneTrim; file: string; before: BigIntStats }[] = [];
+    const uncertain = new Set<string>();
     for (const [folder, inFolder] of folders) {
-      // No such folder any more: nothing was left in it.
-      const entries = await readdir(folder, { withFileTypes: true }).catch(() => null);
-      if (!entries) continue;
+      if (paused()) return [];
+      const entries = folder === root && rootEntries ? rootEntries : await entriesIn(folder);
       const held = heldNow();
+      const knownSizes = new Set(inFolder.map((cut) => cut.bytes));
+      const managedFolder = managed.has(folder);
       for (const entry of entries) {
+        if (paused()) return [];
         const file = join(folder, entry.name);
         // A link, a folder or a hidden part (a cut being made, an import's copy) is never one.
         if (!entry.isFile() || entry.name.startsWith('.') || known(file, held)) continue;
-        await setImmediate();
-        if (paused()) return [];
+        const unknownVideo = managedFolder && /\.(mp4|webm)$/iu.test(entry.name);
+        if (inFolder.length === 0 && !unknownVideo) continue;
+        let possibleUnknown = unknownVideo;
         try {
-          const before = lstatSync(file, { bigint: true });
-          // Only a file as long as a cut of this folder whose row is gone (or one whose length was never kept).
+          const before = await lstat(file, { bigint: true });
+          const size = Number(before.size);
+          possibleUnknown = unknownVideo && unknownSizes.has(size);
+          // The unknown-folder scan hashes only videos whose size is in the library.
           if (
             !before.isFile() ||
-            !inFolder.some((cut) => cut.bytes === null || BigInt(cut.bytes) === before.size)
+            (!possibleUnknown && !knownSizes.has(size) && !knownSizes.has(null))
           )
             continue;
+          if (paused()) return [];
           if (realpathSync.native(file) !== file) {
             left('it is reached through a link');
             continue;
@@ -528,33 +570,49 @@ export class MediaRemoval {
           if (paused()) return [];
           const cut = bySha.get(sha256);
           if (!cut) left('no earlier Trim cut whose row is gone has its bytes');
-          // Named by its own bytes, as an import names its copy (media-store.ts) and Trim never names a cut: a gone
-          // cut dragged back from the Trash, its row not yet back at it (LOW-1).
-          else if (basename(file).toLowerCase().startsWith(sha256.toLowerCase()))
+          // Named by its own bytes, as an import names its copy (media-store.ts) and Trim never names a cut.
+          else if (basename(file).toLowerCase().startsWith(sha256.toLowerCase())) {
+            uncertain.add(cut.id);
             left(`it has the bytes of cut ${cut.id} and is named by them: an import’s copy`);
-          else if (folderOf(cut) !== folder)
-            left(`it has the bytes of cut ${cut.id}, written into another folder`);
-          else if (!sameFile(file, before)) left(`cut ${cut.id}'s file changed while it was read`);
-          else found.push({ cut, file, before });
-        } catch {
+          } else if (
+            originalFolders.get(cut.id) !== folder &&
+            !(possibleUnknown && originalFolders.get(cut.id) === null && cut.bytes === size)
+          ) {
+            uncertain.add(cut.id);
+            left(`it has the bytes of cut ${cut.id}, written into another or an unknown folder`);
+          } else if (!sameFile(file, before)) {
+            uncertain.add(cut.id);
+            left(`cut ${cut.id}'s file changed while it was read`);
+          } else found.push({ cut, file, before });
+        } catch (error) {
           if (paused()) return [];
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+          if (possibleUnknown) incomplete = true;
           left('it could not be read');
         }
       }
     }
     await setImmediate();
-    if (paused() || found.length === 0) return [];
+    if (paused()) return [];
 
     const files = new Map<string, number>();
     for (const { cut } of found) files.set(cut.id, (files.get(cut.id) ?? 0) + 1);
+    for (const cut of unknownFolders)
+      if (!files.has(cut.id))
+        say(`earlier Trim cut ${cut.id}: the folder it was written into is not known and no file could be proved to be the cut`);
     const stillGone = this.db.prepare(
       "SELECT 1 FROM media WHERE id = @id AND sha256 = @sha256 AND path = '' AND deleted_at IS NOT NULL",
     );
     const inUse = () => new Set([...this.deps.onScreens(), ...(this.deps.putBack?.() ?? [])]);
     const gone: string[] = [];
     for (const { cut, file, before } of found) {
-      if ((files.get(cut.id) ?? 0) > 1) {
+      const fromUnknownFolder = originalFolders.get(cut.id) === null;
+      if ((files.get(cut.id) ?? 0) > 1 || (fromUnknownFolder && uncertain.has(cut.id))) {
         left(`the bytes of cut ${cut.id} are in more than one file, so which is the cut cannot be known`);
+        continue;
+      }
+      if (fromUnknownFolder && incomplete) {
+        left(`could not check all possible places for cut ${cut.id}`);
         continue;
       }
       if (paused()) break;
@@ -578,9 +636,24 @@ export class MediaRemoval {
         continue;
       }
       gone.push(cut.name);
-      // Its still frame, sharpened and blurred copies go with it (TM-5): unless an import of the same bytes brought
-      // its row back to life meanwhile, when they are that file's.
-      if (stillGone.get(key) !== undefined) await removeDerived(mediaDir, cut.sha256);
+      files.delete(cut.id);
+    }
+
+    // A previous run might have moved the video and stopped before removing its derivatives. These paths are
+    // keyed by the gone row's unique hash. A matching file, incomplete check or live reference defers cleanup.
+    const derivatives = await derivativesIn(mediaDir);
+    for (const cut of cuts) {
+      if (paused()) break;
+      if (
+        !derivatives.has(cut.sha256) ||
+        inUse().has(cut.id) ||
+        files.has(cut.id) ||
+        uncertain.has(cut.id) ||
+        (originalFolders.get(cut.id) === null && (incomplete || cut.bytes === null))
+      )
+        continue;
+      if (stillGone.get({ id: cut.id, sha256: cut.sha256 }) !== undefined)
+        await removeDerived(mediaDir, cut.sha256);
     }
     return gone;
   }
