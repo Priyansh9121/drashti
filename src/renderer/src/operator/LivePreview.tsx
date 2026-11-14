@@ -131,7 +131,15 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
       off();
     };
   }, []);
-  const warming = !warmed && !drawsSomething && !practising && !noGpu;
+  // A warm-up begun before then is stopped, and the show waits for its last step (Session 58, h-black2, fault 2: drawn
+  // at once, the show's first frames came with their tiles missing, black then 256-px parts, for up to 3.3 s).
+  const [began, setBegan] = useState(false);
+  const [stopped, setStopped] = useState(false);
+  const warmUpStopped = useCallback(() => {
+    setStopped(true);
+  }, []);
+  const warming = !warmed && !drawsSomething && !practising && !(noGpu && (!began || stopped));
+  if (warming && !began) setBegan(true);
   // The Lower Thirds studio's fonts once the LIVE picture draws the show (Session 55): never with the window's start.
   useEffect(() => {
     if (warming) return;
@@ -152,7 +160,15 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
           className="relative aspect-video w-full"
         >
           {warming && (
-            <WarmUp page="live" canvas={canvas} scaling={scaling} hold={HOLD_WARM_UP} onDone={warmedUp} />
+            <WarmUp
+              page="live"
+              canvas={canvas}
+              scaling={scaling}
+              hold={HOLD_WARM_UP}
+              stop={noGpu}
+              onDone={warmedUp}
+              onStopped={warmUpStopped}
+            />
           )}
           {state && !warming && (
             <Scene
