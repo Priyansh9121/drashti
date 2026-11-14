@@ -329,13 +329,18 @@ test('the motion probe sees a design’s accent move before its words and panel'
     await expect(layer).toHaveAttribute('data-lt-at', '40');
     const firstPose = await accent.evaluate((element: HTMLElement) => element.style.transform);
     await expect.poll(frames).toBeGreaterThan(await frames());
-    const since = await out.evaluate(() => Date.now());
+    // Every frame from here on is one the probe has not yet seen: counted by the probe's own frames, never by a time
+    // (it stamps a frame with when it began, and on a slow Mac a frame's callbacks run long after that, so the frame
+    // that draws the move below can carry a time from before a Date.now() read here: Session 58, the gate split's run).
+    const seen = await frames();
 
     // The first 126 ms draw only the accent. The layer, band and words look the same at both frames.
     await holdClock(app, shownAt + 100);
     await expect(layer).toHaveAttribute('data-lt-at', '100');
     expect(await accent.evaluate((element: HTMLElement) => element.style.transform)).not.toBe(firstPose);
-    await expect.poll(async () => (await read(since))?.changes['lowerThird']?.length ?? 0).toBeGreaterThan(0);
+    await expect
+      .poll(async () => ((await read(0))?.changes['lowerThird'] ?? []).filter((i) => i >= seen).length)
+      .toBeGreaterThan(0);
   } finally {
     await app.close();
   }
