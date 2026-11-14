@@ -273,7 +273,7 @@ describe('a deck’s own Wipe drawn on a screen: PowerPoint’s band (Session 58
     const bandIn = bandBoxes();
     paintLayers({ ...layersOf(coming, box()), bandIn, bandOut: bandBoxes() }, deckPaint(native), 0.6);
     expect(bandIn.holder?.style.maskImage).not.toBe('');
-    paintWaiting({ in: box(), out: coming, bandIn: bandBoxes(), bandOut: bandIn });
+    paintWaiting({ in: box(), out: coming, bandOut: bandIn });
     expect(bandIn.holder?.style).toEqual(AT_REST);
     expect(bandIn.slide?.style).toEqual(AT_REST);
   });
