@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MORE_MOTIONS } from './lower-third-motions-more';
 import type { MotionDef } from './lower-third-motion-kit';
 import { LOWER_THIRD_MOTIONS, MOTION_NAMES } from './lower-third-styles';
+import { OFFERED, OFFERED_MOTIONS } from './lower-third-studio';
 import { DEFAULT_LOWER_THIRD_LOOK, type LowerThirdLook } from './lower-thirds';
 
 /*
@@ -100,6 +101,15 @@ describe('the studio’s moving backgrounds, part 2', () => {
       expect(name, key).toMatch(/^[A-Z][a-z]+( [a-z]+)*$/u);
       expect(name.length, name).toBeLessThanOrEqual(22);
     }
+  });
+
+  it('the studio offers each (one row of OFFERED each, measured by the Performance check), the calm ones among the calm', () => {
+    for (const m of KEYS) expect(OFFERED, m).toContainEqual({ kind: 'background', key: m });
+    const offered = OFFERED_MOTIONS.slice(1);
+    const lively = offered.findIndex((m) => m === KEYS.find((k) => MORE_MOTIONS[k].feel === 'lively'));
+    for (const m of KEYS)
+      if (MORE_MOTIONS[m].feel === 'calm') expect(offered.indexOf(m), m).toBeLessThan(lively);
+      else expect(offered.indexOf(m), m).toBeGreaterThanOrEqual(lively);
   });
 
   it('calm ones first, slow (six seconds or more round); the livelier after (four seconds or less)', () => {
