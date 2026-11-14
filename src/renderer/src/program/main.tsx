@@ -20,6 +20,7 @@ import { ProgramView } from './ProgramView';
 import { StreamSound } from './sound';
 import { reportRenderError } from '../ui/render-errors';
 import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-mode';
+import { setDrawsWithoutChip } from '../render/chipless';
 import { ClockStyleContext } from '../render/clock-style';
 import { setLiveWindowSize } from '../render/live-window';
 import { useStopFade } from '../render/StopFade';
@@ -88,6 +89,12 @@ function Program() {
   // this page's context once Chromium has said how it draws, a warm-up begun before then ending there.
   const [noGpu, setNoGpu] = useState(false);
   if (!noGpu && (!HOLD_WARM_UP || NO_GPU_ENDS_HOLD) && context?.noGpu === true) setNoGpu(true);
+  // A deck's own Wipe draws PowerPoint's band the way this page holds its frames (render/chipless.ts, Session 58):
+  // told by the context itself, whatever a test does with the warm-up.
+  const chipless = context?.noGpu === true;
+  useEffect(() => {
+    setDrawsWithoutChip(chipless);
+  }, [chipless]);
   const ready = fontsReady && (warmed || noGpu);
   // The Lower Thirds studio's fonts once the stream's picture is drawn (Session 55): never with this page's own start.
   useEffect(() => {

@@ -16,9 +16,9 @@ export interface NativePptxTransition {
 /**
  * Map the incoming PowerPoint slide's own motion, with a dissolve available after an unsupported effect is edited.
  * Exact: Drashti draws it as PowerPoint's own movie does (Push, Cover and Uncover measured against it frame by frame,
- * 13 Nov 2026: render/transition-frame.ts). Approximate: only the closest Drashti can, so a slide using it keeps
- * PowerPoint's video wherever one can be made. Wipe is approximate: drawn with a hard edge, not PowerPoint's soft band
- * one slide long, whose mask over the whole slide dropped frames on Windows while streaming (Q57-28).
+ * 13 Nov 2026; Wipe, PowerPoint's soft band, again on 14 Nov 2026, drawn the way each screen holds its frames:
+ * render/transition-frame.ts). Approximate: only the closest Drashti can, so a slide using it keeps PowerPoint's video
+ * wherever one can be made.
  */
 export function nativePptxTransition(
   effect: XmlNode | undefined,
@@ -44,7 +44,7 @@ export function nativePptxTransition(
       if (direction)
         return {
           transition: { kind: 'wipe', deckEffect: 'wipe', durationMs, direction },
-          approximate: true,
+          approximate: false,
         };
       break;
     case 'p:zoom':
