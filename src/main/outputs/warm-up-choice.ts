@@ -105,7 +105,8 @@ export class WarmUpChoices {
   private said = false;
   /** What each output window (by its page's id) was last given: true, it skips its warm-up, for good. */
   private readonly given = new Map<number, boolean>();
-  private outputs: () => Iterable<WarmUpOutput> = () => [];
+  /** The pages followed: Main's outputs, and the stream's page (Session 58, WU-1). */
+  private readonly sources: (() => Iterable<WarmUpOutput>)[] = [];
 
   constructor(
     private readonly deps: {
@@ -115,9 +116,12 @@ export class WarmUpChoices {
     },
   ) {}
 
-  /** The outputs to tell when Chromium says how it draws (Main's, or a node's). */
+  /**
+   * Pages to tell when Chromium says how it draws: Main's or a node's outputs, and the stream's page (Session 58,
+   * WU-1), each set followed beside the others.
+   */
   follow(outputs: () => Iterable<WarmUpOutput>): void {
-    this.outputs = outputs;
+    this.sources.push(outputs);
   }
 
   /**
@@ -126,7 +130,7 @@ export class WarmUpChoices {
    */
   gpuSaid(): void {
     this.said = true;
-    for (const output of this.outputs()) {
+    for (const output of this.sources.flatMap((source) => [...source()])) {
       const before = this.given.get(output.id);
       if (!this.skips(output.id, output.name) || before === true) continue;
       try {
