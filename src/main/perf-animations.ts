@@ -215,6 +215,8 @@ const DECK_OWN_ROUND_MS =
   SETTLE_MS + DECK_OWN.length * (DECK_OWN_MS + SETTLE_MS) + 2 * (DECK_SPLIT_MS + SETTLE_MS);
 /** One round of the 4:3 deck: its first slide, then its four transitions. */
 const DECK_FOUR_THREE_ROUND_MS = SETTLE_MS + DECK_FOUR_THREE.length * (DECK_OWN_MS + SETTLE_MS);
+/** All its rounds, as set. */
+export const FOUR_THREE_BLOCK_MS = SHORT_RUNS * DECK_FOUR_THREE_ROUND_MS;
 
 /** How long a screen opened for a case may take to be ready: its page loaded, its fonts in, its warm-up done. */
 const SCREEN_LIMIT_MS = 20_000;
@@ -248,8 +250,13 @@ const WORDS: TextStyle = {
 const LINES = ['Placeholder name', 'Placeholder title'];
 /** A page that does not answer a call within this long is passed over (a press, the probe's read, the Wallpaper). */
 const PAGE_LIMIT_MS = 5000;
-/** The cases stop pressing after this long, measuring those done: the check's own time limit is 14 min in all. */
-const BUDGET_MS = 6 * 60_000;
+/**
+ * The cases stop pressing after this long, measuring those done: the check's own time limit is 14 min in all. Six
+ * minutes, and one more since the 4:3 deck's rows (Session 58, Q58-36: its four rounds, 25.2 s as set, longer as pressed)
+ * so every row measured before them still is (the table slides, the jump to a deck slide); the uptime cap below still
+ * ends the cases in time.
+ */
+const BUDGET_MS = 7 * 60_000;
 /**
  * Or once Drashti has been up this long, if that comes first: the check stops it 14 minutes from its start
  * (tests/perf/performance.spec.ts), and the cases measured must be read and written before then (after3's two-core
@@ -1144,7 +1151,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         }
       }
       // The same four by a 4:3 deck between bars on the hall (Session 58, Q58-36), on two cores too.
-      if (timeFor(SHORT_RUNS * DECK_FOUR_THREE_ROUND_MS, 'a 4:3 deck Drashti plays itself, between bars')) {
+      if (timeFor(FOUR_THREE_BLOCK_MS, 'a 4:3 deck Drashti plays itself, between bars')) {
         progress('a 4:3 deck Drashti plays itself between bars: its own Wipe, Cover, Uncover and Push');
         for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++) {
           await press(DECK_FOUR_THREE_FIRST, 'slide', 0, goLive(deckFourThreeId, 0), SETTLE_MS);
