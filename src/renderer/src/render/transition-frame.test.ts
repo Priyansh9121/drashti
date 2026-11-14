@@ -397,7 +397,9 @@ describe('a deck’s own Wipe, PowerPoint’s soft band (Session 58, C2)', () =>
       for (const p of [0, 0.25, 0.5, 0.75, 1]) {
         const f = deckTransitionFrame(deckNative('wipe', direction), p);
         expect(f.in, `${direction} at ${String(p)}`).toEqual(
-          p >= 1 ? { opacity: 1, transform: '' } : { opacity: 1, transform: '', band: { direction, at: 2 * p - 1 } },
+          p >= 1
+            ? { opacity: 1, transform: '' }
+            : { opacity: 1, transform: '', band: { direction, at: 2 * p - 1 } },
         );
         expect(f.out, `${direction} at ${String(p)}`).toEqual({ opacity: 1, transform: '' });
       }
