@@ -20,6 +20,14 @@ import {
 } from './helpers';
 import { holdClock } from './placeholder-slides';
 
+/**
+ * Whether an output draws without a graphics chip (its warm-up skipped, as on CI's Windows): a deck's Wipe then draws
+ * PowerPoint's band on the incoming slide's band box, moved; with a chip (CI's Mac) as a mask on the slide's own box
+ * (render/chipless.ts, Session 58).
+ */
+const drawsWithoutChip = async (page: Page): Promise<boolean> =>
+  (await page.getByTestId('output-root').getAttribute('data-warm-up')) === 'skipped';
+
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 const dispatch = (win: Page, command: EngineCommand) =>
   win.evaluate((command) => (globalThis as PageGlobals).drashti.engine.dispatch(command), command);
@@ -90,11 +98,24 @@ test('PowerPoint clicks play on the screen without Office and survive a text edi
       const incoming = out.locator('[data-layer="slide"] [data-slide-in]').last();
       await holdClock(app, (next?.shownAt ?? 0) + 325);
       await expect(out.locator('[data-layer="slide"]')).toHaveAttribute('data-transition', 'wipe');
-      // A deck's Wipe: the incoming slide up to a hard edge (a clip), no mask (Q57-28).
-      await expect(incoming).not.toHaveCSS('clip-path', 'none');
-      await expect(incoming).toHaveCSS('mask-image', 'none');
+      // A deck's Wipe (Session 58): PowerPoint's soft band, no clip. Without a graphics chip a mask on the incoming
+      // slide's band box, which moves; with one a mask on the slide's own box.
+      const band = incoming.locator('[data-band]');
+      await expect(incoming).toHaveCSS('clip-path', 'none');
+      if (await drawsWithoutChip(out)) {
+        await expect(incoming).toHaveCSS('mask-image', 'none');
+        await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
+        await expect(band).not.toHaveCSS('transform', 'none');
+      } else {
+        await expect(incoming).toHaveCSS('mask-image', /^linear-gradient\(/u);
+        await expect(band).toHaveCSS('mask-image', 'none');
+      }
       await holdClock(app, (next?.shownAt ?? 0) + 650);
       await expect(out.locator('[data-layer="slide"]')).not.toHaveAttribute('data-fading', 'true');
+      // Over: the band gone, nothing of it left on the slide (TX-2).
+      await expect(band).toHaveCSS('mask-image', 'none');
+      await expect(band).toHaveCSS('transform', 'none');
+      await expect(incoming).toHaveCSS('mask-image', 'none');
       await holdClock(app, null);
 
       const { ed, editor } = await openEditor(app, win, name);
