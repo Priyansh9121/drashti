@@ -56,7 +56,9 @@ describe('finding an animation: the ways in and out, by their plain words', () =
 
   it('everyday words: fast is quick, medium is steady, below is up, above is down, center is centre', () => {
     expect(ins('fast').length).toBeGreaterThan(0);
-    expect(ins('fast').every((id) => id.endsWith('-quick'))).toBe(true);
+    // Every quick one, and Swoosh (fast is its own word, at every speed).
+    expect(ins('fast').every((id) => id.endsWith('-quick') || id.startsWith('swoosh-'))).toBe(true);
+    expect(ins('fast')).toEqual(expect.arrayContaining(ins('quick').filter((id) => id.endsWith('-quick'))));
     expect(ins('fast')).toContain('fade-quick');
     expect(ins('medium')).toContain('fade-steady');
     expect(ins('medium').every((id) => id.endsWith('-steady'))).toBe(true);
@@ -172,8 +174,8 @@ describe('quick words: one press puts a word in the box', () => {
     expect(hasQuickWord('slo', slow)).toBe(false);
     const elegant = quickWord(TEMPLATE_QUICK_WORDS, 'elegant');
     const bold = quickWord(TEMPLATE_QUICK_WORDS, 'bold');
-    expect(toggleQuickWord(toggleQuickWord('', elegant, TEMPLATE_QUICK_WORDS), bold, TEMPLATE_QUICK_WORDS)).toBe(
-      'bold',
-    );
+    expect(
+      toggleQuickWord(toggleQuickWord('', elegant, TEMPLATE_QUICK_WORDS), bold, TEMPLATE_QUICK_WORDS),
+    ).toBe('bold');
   });
 });
