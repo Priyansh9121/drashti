@@ -8,7 +8,7 @@ import { isDeckNativeTransition } from '../shared/deck-transition';
 import { type Db, openDatabase } from './db/database';
 import { PresentationRepo } from './db/presentations';
 import { deckShow } from './engine/deck-steps';
-import { casesUntil, leftoversIn } from './perf-animations';
+import { casesUntil, DECK_FOUR_THREE_ROWS, FOUR_THREE_BLOCK_MS, leftoversIn } from './perf-animations';
 import { isPerfScenario, scenarioFor, startScenario } from './perf-scenarios';
 import { ffmpegHere } from './testing/ffmpeg-here';
 
@@ -75,13 +75,22 @@ describe('the animations scenario', () => {
     expect(leftoversIn({ streaming: false, twoCores: false })).toBe(true);
   });
 
-  it('stops pressing at its six minutes, or once Drashti has been up 12 minutes if that comes first (the check stops at 14)', () => {
+  it('stops pressing at its seven minutes, or once Drashti has been up 12 minutes if that comes first (the check stops at 14)', () => {
     const now = 1_800_000_000_000;
-    expect(casesUntil(now, 60_000)).toEqual({ at: now + 360_000, by: 'budget' });
-    expect(casesUntil(now, 6 * 60_000)).toEqual({ at: now + 360_000, by: 'budget' });
+    expect(casesUntil(now, 60_000)).toEqual({ at: now + 420_000, by: 'budget' });
+    expect(casesUntil(now, 5 * 60_000)).toEqual({ at: now + 420_000, by: 'budget' });
+    expect(casesUntil(now, 6 * 60_000)).toEqual({ at: now + 360_000, by: 'uptime' });
     expect(casesUntil(now, 9 * 60_000)).toEqual({ at: now + 180_000, by: 'uptime' });
     // Up longer already: no case at all.
     expect(casesUntil(now, 13 * 60_000)).toEqual({ at: now - 60_000, by: 'uptime' });
+  });
+
+  it('keeps every row phase1 measures: the 4:3 deck (Q58-36) has its own time on top of the six minutes they had (review of f45c90d9)', () => {
+    // Its four rounds as set, twice over for pressing them; the table slides (MS-1) and the jump (DK-6) went out of
+    // time without it on CI's Mac and Windows.
+    const now = 1_800_000_000_000;
+    expect(casesUntil(now, 60_000).at - now - 6 * 60_000).toBeGreaterThanOrEqual(2 * FOUR_THREE_BLOCK_MS);
+    expect(FOUR_THREE_BLOCK_MS).toBe(4 * (700 + 4 * (700 + 700)));
   });
 
   describe.skipIf(!ffmpegHere(ffmpeg))('set up on a library, with FFmpeg', () => {
@@ -249,6 +258,41 @@ describe('the animations scenario', () => {
       expect(new Set([...at1, ...at3.map((e) => e.shapeId)]).size).toBe(6);
       // Nothing else moves on the deck's slides: their own transitions only.
       expect(slides.slice(0, -1).every((s) => s.slide.deck?.motion?.effects.length === 0)).toBe(true);
+    });
+
+    it('makes a 4:3 deck Drashti plays itself, fitted between bars on the 16:9 hall: by Next its own Wipe, Cover, Uncover and Push (Q58-36)', () => {
+      dir = mkdtempSync(join(tmpdir(), 'drashti-perf-animations-'));
+      db = openDatabase(':memory:');
+      startScenario('animations', { db, mediaDir: dir, ffmpeg, engine: engine(), outputs: () => [] });
+      const repo = new PresentationRepo(db);
+      const four = repo
+        .list()
+        .find((p) => p.name === 'Placeholder perf deck Drashti plays, 4:3 between bars');
+      expect(four).toMatchObject({ width: 1440, height: 1080 });
+      const slides = repo.get(four?.id ?? '')?.groups.flatMap((g) => g.slides) ?? [];
+      expect(slides).toHaveLength(5);
+      const at = 1_800_000_000_000;
+      const came = slides.map((s, i) => {
+        const deck = s.slide.deck;
+        expect(deck?.steps).toEqual([]);
+        expect(deck?.motion?.approximate).toBe(false);
+        expect(s.transition).toEqual({ kind: 'cut', durationMs: 0 });
+        // Every element on the 4:3 slide.
+        for (const e of s.slide.elements) expect(e.frame.x + e.frame.width).toBeLessThanOrEqual(1440);
+        if (!deck) return null;
+        const t = deckShow(deck, 'order', i > 0, undefined, at).transition;
+        return isDeckNativeTransition(t)
+          ? `${t.deckEffect} ${String(t.direction)} ${String(t.durationMs)}`
+          : null;
+      });
+      expect(came).toEqual([null, 'wipe left 700', 'cover left 700', 'uncover up 700', 'push left 700']);
+      // Its rows, each listed by the tables with the deck's own ('deck Drashti plays: ').
+      expect(DECK_FOUR_THREE_ROWS).toEqual([
+        'deck Drashti plays: its 4:3 Wipe 700 (between bars)',
+        'deck Drashti plays: its 4:3 Cover 700 (between bars)',
+        'deck Drashti plays: its 4:3 Uncover 700 (between bars)',
+        'deck Drashti plays: its 4:3 Push 700 (between bars)',
+      ]);
     });
   });
 });
