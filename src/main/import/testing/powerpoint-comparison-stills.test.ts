@@ -110,13 +110,14 @@ describe('the stills PowerPoint draws for PF-12', () => {
     expect(paragraphsOf('Edges · before the first paragraph, spcFirstLastPara')?.style.spaceAtTextEdges).toBe(
       true,
     );
-    // The words' box where the slide puts it.
-    const box = paragraphsOf('Spacing · none')?.frame;
-    expect(box).toEqual({
-      x: STILLS_LIGHT.slides[0]?.box.x / PX,
-      y: STILLS_LIGHT.slides[0]?.box.y / PX,
-      width: STILLS_LIGHT.slides[0]?.box.w / PX,
-      height: STILLS_LIGHT.slides[0]?.box.h / PX,
+    // The words where the slide puts them: the box less PowerPoint's own insets (0.1 in each side, 0.05 in above and
+    // below: 9.6 and 4.8 of Drashti's pixels).
+    const words = STILLS_LIGHT.slides[0]?.box;
+    expect(paragraphsOf('Spacing · none')?.frame).toEqual({
+      x: (words?.x ?? 0) / PX + 9.6,
+      y: (words?.y ?? 0) / PX + 4.8,
+      width: (words?.w ?? 0) / PX - 19.2,
+      height: (words?.h ?? 0) / PX - 9.6,
     });
   });
 
