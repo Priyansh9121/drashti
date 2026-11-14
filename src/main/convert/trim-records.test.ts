@@ -37,7 +37,7 @@ const cut = (n: number) => ({
   name: `Placeholder ${String(n)}.mp4`,
 });
 const copy = { path: 'ab/Placeholder trimmed.mp4', identity: '1:2:3:4' };
-const nothingBefore = { waiting: () => undefined, copies: () => undefined };
+const nothingBefore = { waiting: () => undefined, copies: () => undefined, clear: () => undefined };
 const onDisk = () => JSON.parse(readFileSync(file, 'utf8')) as unknown;
 
 /** A busy disk: each write in the background waits until let go; the main process never waits for it. */
@@ -130,7 +130,7 @@ it('writes at quit what is not on the disk yet, and any change after the quit at
 });
 
 it('reads what alpha.17 kept in the library’s settings once, while the file is not there, so a waiting cut carries on', async () => {
-  const before = { waiting: vi.fn(() => [cut(1)]), copies: vi.fn(() => [copy]) };
+  const before = { waiting: vi.fn(() => [cut(1)]), copies: vi.fn(() => [copy]), clear: vi.fn() };
   const first = new TrimRecords(file, { before });
   expect(first.kept.load()).toEqual([cut(1)]);
   expect(first.copies.load()).toEqual([copy]);
@@ -144,7 +144,9 @@ it('reads what alpha.17 kept in the library’s settings once, while the file is
 });
 
 it('starts with nothing waiting and writes nothing when neither the file nor the settings hold anything', async () => {
-  const records = new TrimRecords(file, { before: { waiting: () => 'not a list', copies: () => null } });
+  const records = new TrimRecords(file, {
+    before: { waiting: () => 'not a list', copies: () => null, clear: () => undefined },
+  });
   expect(records.kept.load()).toEqual([]);
   expect(records.copies.load()).toEqual([]);
   await records.settle();
@@ -154,7 +156,7 @@ it('starts with nothing waiting and writes nothing when neither the file nor the
 it('keeps a file it cannot read aside, never writes over it, and starts with nothing waiting', async () => {
   writeFileSync(file, '{"version": 1, "waiting": [');
   const log = vi.fn<(message: string) => void>();
-  const before = { waiting: vi.fn(() => [cut(1)]), copies: vi.fn(() => [copy]) };
+  const before = { waiting: vi.fn(() => [cut(1)]), copies: vi.fn(() => [copy]), clear: vi.fn() };
   const records = new TrimRecords(file, { before, log });
   expect(records.kept.load()).toEqual([]);
   expect(records.copies.load()).toEqual([]);
@@ -170,7 +172,7 @@ it('keeps a file it cannot read aside, never writes over it, and starts with not
 
 it('carries nothing over from the library before a restore: the restored library’s own settings, as before alpha.18', () => {
   writeFileSync(file, JSON.stringify({ version: 1, waiting: [cut(1)], copies: [copy] }));
-  const before = { waiting: () => [cut(2)], copies: () => [] };
+  const before = { waiting: () => [cut(2)], copies: () => [], clear: () => undefined };
   const records = new TrimRecords(file, { before, otherLibrary: true });
   expect(records.kept.load()).toEqual([cut(2)]);
   expect(records.copies.load()).toEqual([]);
@@ -209,7 +211,10 @@ it('clears a restored backup’s alpha.17 settings once they are in the file, an
   expect(clear).toHaveBeenCalledOnce();
   rmSync(file);
   const none = vi.fn();
-  new TrimRecords(file, { before: { waiting: () => [], copies: () => undefined, clear: none }, otherLibrary: true });
+  new TrimRecords(file, {
+    before: { waiting: () => [], copies: () => undefined, clear: none },
+    otherLibrary: true,
+  });
   expect(none).not.toHaveBeenCalled();
 });
 

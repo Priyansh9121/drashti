@@ -3965,12 +3965,17 @@ function start(): void {
     !quitStarted && !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers);
   // Trim's records (FT-4): the cuts accepted and waiting, and the copies not yet taken in, kept in a small file written
   // in the background (no longer library settings written on Main, which waited there for an import's write lock).
-  // alpha.17's settings are read once while the file is not there; a restored library carries nothing over from the
-  // library before it.
+  // alpha.17's settings are read once while the file is not there, then cleared; a restored library carries nothing
+  // over from the library before it.
   const trimRecords = new TrimRecords(join(userDataDir, 'trim-cuts.json'), {
     before: {
       waiting: () => settings.get('playlistTrimsWaiting'),
       copies: () => settings.get('playlistTrimCopies'),
+      // Once the file holds them (LOW-2): a backup, a restore or alpha.17 after a downgrade never reads them again.
+      clear: () => {
+        laterSetting('playlistTrimsWaiting', []);
+        laterSetting('playlistTrimCopies', []);
+      },
     },
     otherLibrary: restoredInUse,
     log: (message) => {
