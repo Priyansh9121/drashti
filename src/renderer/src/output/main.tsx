@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
 import { groupLookIn } from '../../../shared/looks';
+import type { OutputWarmUpEnd } from '../../../shared/screens';
 import { stageDrawsHall, stageShows } from '../../../shared/stage-layouts';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { engineNow, holdClock } from '../render/clock';
@@ -12,7 +13,7 @@ import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
 import { Scene } from '../render/Scene';
 import { StageScreen } from '../render/StageScreen';
-import { WarmUp } from '../render/WarmUp';
+import { WarmUp, type WarmUpEnd } from '../render/WarmUp';
 import { KeepQuestion } from './KeepQuestion';
 import { SwitchQuestion } from './SwitchQuestion';
 import { connectOutput, useOutput } from './output-store';
@@ -108,6 +109,8 @@ function ThrowForTests(): never {
 let paintedRevNow = -1;
 /** This page's first painted frame (its revision, this computer's time), for the start's phase lines. */
 let firstPaintNow: { rev: number; wallAt: number } | null = null;
+/** How this page's warm-up ended and how long it took, for the log (Session 58, WU-2): with each report from then. */
+let warmUpNow: OutputWarmUpEnd | null = null;
 /** Send this page's report now (set by useFrameReports while it runs). */
 let reportNow: () => void = () => undefined;
 const late: number[] = [];
@@ -143,6 +146,7 @@ function useFrameReports(refreshHz: number, drawing: boolean) {
           warming: !drawing,
           missingFonts,
           firstPaint: firstPaintNow,
+          warmUp: warmUpNow,
         })
         .catch(() => undefined);
     };
@@ -186,6 +190,14 @@ function Output() {
   const [warmed, setWarmed] = useState(SKIP_WARM_UP);
   const warmedUp = useCallback(() => {
     setWarmed(true);
+  }, []);
+  // How it ended and how long it took, said once in Main's log (Session 58, WU-2): cut short, why, as the context says.
+  const warmUpEnded = useCallback((how: WarmUpEnd, ms: number) => {
+    const told = useOutput.getState().context;
+    const why = told?.noGpu === true ? 'no-gpu' : told?.role === 'stage' ? 'stage' : 'other';
+    // eslint-disable-next-line no-restricted-properties -- when this page's warm-up ended, for the log once: draws nothing
+    warmUpNow = { how, ms: Math.round(ms), at: Date.now(), ...(how === 'cut' ? { why } : {}) };
+    reportNow();
   }, []);
   // None where Chromium draws without a graphics chip (Session 57): Main says so in this screen's context once
   // Chromium has said how it draws, a warm-up begun before then ending there, and it holds from then. A test that
@@ -265,6 +277,7 @@ function Output() {
             matte={matte}
             hold={HOLD_WARM_UP}
             onDone={warmedUp}
+            onEnded={warmUpEnded}
           />
         </PlacedInParent>
       )}

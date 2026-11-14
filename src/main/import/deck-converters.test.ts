@@ -334,3 +334,30 @@ describe.skipIf(!wanted || !(has.keynote || has.powerpoint))('Keynote and PowerP
     180_000,
   );
 });
+
+/*
+ * Another app's reason, in a few words, goes in a sentence that names the app already: "PowerPoint could not save it
+ * as PDF (it stopped answering), so Keynote did." It never names the app again, nor says to do it by hand once the
+ * other app has (C17's review, L3). A Mac's reasons come from AppleScript, which only a Mac with the apps runs: they
+ * are read here from the code.
+ */
+describe('another app’s reasons', () => {
+  it('say why in a few words, after the app’s name', async () => {
+    const r = await convertToPdf('powerpoint', 'Placeholder deck.pptx', tmpdir(), { platform: 'linux' });
+    expect(r).toMatchObject({ ok: false, reason: 'it is not on this computer' });
+  });
+
+  it('never name the app, nor say what to do by hand', () => {
+    const reasons = ['deck-converters.ts', join('deck', 'bake.ts')].flatMap((file) =>
+      [
+        ...readFileSync(join(__dirname, file), 'utf8').matchAll(
+          /\b(?:reason:|fail\()\s*(['`])((?:(?!\1)[^\\]|\\.)*)\1/gu,
+        ),
+      ].map((m) => ({ file, reason: m[2] ?? '' })),
+    );
+    expect(reasons.length).toBeGreaterThan(10);
+    expect(
+      reasons.filter(({ reason }) => /PowerPoint|Keynote|\$\{name\}|appName|by hand/u.test(reason)),
+    ).toEqual([]);
+  });
+});
