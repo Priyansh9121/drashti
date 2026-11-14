@@ -1,6 +1,7 @@
 import { type AnimationSpeed, animationById, DEFAULT_ANIMATION } from './lower-third-animations';
-import { DESIGN_MOTIONS } from './lower-third-design-motions';
+import { DESIGN_MOTIONS, isDesignMotion } from './lower-third-design-motions';
 import { LOWER_THIRD_DESIGNS } from './lower-third-designs';
+import { MORE_LOWER_THIRD_DESIGNS, type MoreDesign } from './lower-third-designs-more';
 import { isOffered, OFFERED_MOTIONS, OFFERED_STYLES } from './lower-third-studio';
 import type { LowerThirdMotion, LowerThirdStyle } from './lower-third-styles';
 import { DEFAULT_LOWER_THIRD_LOOK, type LowerThirdInput, type LowerThirdLook } from './lower-thirds';
@@ -204,6 +205,38 @@ const STUDIO_TEMPLATES: readonly LowerThirdTemplate[] = MAKINGS.map((m) => {
   };
 });
 
+/**
+ * A template made since alpha.17 (Session 58) is offered only while everything it is made of is: its animation (a
+ * design's move, or one the studio offers), how it goes out, its style and its moving background. One whose part the
+ * Performance run leaves out of OFFERED is left out with it, never drawn with something in that part's place.
+ */
+const isWhole = (d: MoreDesign): boolean =>
+  (isDesignMotion(d.animation) || isOffered(d.animation)) &&
+  (d.outAnimation === undefined || isOffered(d.outAnimation)) &&
+  OFFERED_STYLES.includes(d.look.style) &&
+  OFFERED_MOTIONS.includes(d.look.motion ?? 'none');
+
+const MORE_TEMPLATES: readonly LowerThirdTemplate[] = MORE_LOWER_THIRD_DESIGNS.filter(isWhole).map(
+  (d): LowerThirdTemplate => {
+    const move = isDesignMotion(d.animation) ? DESIGN_MOTIONS[d.animation] : null;
+    return {
+      id: d.id,
+      name: d.name,
+      direction: move?.direction ?? d.direction ?? 'left',
+      kind: move?.kind ?? d.kind ?? 'slide',
+      feel: d.feel,
+      speed: animationById(d.animation).speed,
+      input: {
+        lines: [...(d.lines ?? ['Placeholder name', 'Placeholder role', ''])],
+        look: { ...DEFAULT_LOWER_THIRD_LOOK, ...d.look },
+        where: 'both',
+        animation: d.animation,
+        ...(d.outAnimation ? { outAnimation: d.outAnimation } : {}),
+      },
+    };
+  },
+);
+
 export const LOWER_THIRD_TEMPLATES: readonly LowerThirdTemplate[] = [
   ...STUDIO_TEMPLATES,
   ...LOWER_THIRD_DESIGNS.map(({ id, name, feel, animation, look }): LowerThirdTemplate => {
@@ -223,6 +256,7 @@ export const LOWER_THIRD_TEMPLATES: readonly LowerThirdTemplate[] = [
       },
     };
   }),
+  ...MORE_TEMPLATES,
 ];
 
 const BEST_IDS = [
