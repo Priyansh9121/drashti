@@ -153,6 +153,8 @@ describe('playlists the operator edits', () => {
         kind: 'media',
         label: 'Placeholder old.mov',
         mediaId: 'prores',
+        // The file's own name, read with the row (C18, FT-2).
+        mediaName: 'Placeholder old.mov',
         media: 'video',
         missing: false,
         unplayable: 'ProRes 422 video (QuickTime)',
