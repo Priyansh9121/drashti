@@ -33,8 +33,7 @@ import {
   INDIC_LINE_HEIGHT_MIN,
   REFERENCE_LINES,
 } from '../../../shared/readable';
-import { isIndic, SHAPE_KINDS, SHAPE_NAMES, TIMER_FORMATS, type TimerFormat } from '../../../shared/model';
-import { DEFAULT_DRAWING } from '../../../shared/shape-path';
+import { SHAPE_KINDS, SHAPE_NAMES, TIMER_FORMATS, type TimerFormat } from '../../../shared/model';
 import { wordsContrast, WORDS_CONTRAST_AIM, WORDS_CONTRAST_MIN } from '../../../shared/contrast';
 import { LANG_NAMES } from '../../../shared/themes';
 import { boxLines } from '../../../shared/tracks';
@@ -50,7 +49,9 @@ import { MissingFontNote } from './FontOptions';
 import type { BoxPatch, TextPatch } from './ops';
 import { deleteElements, duplicateElements, findSlide, mapElements, setShapeFill, styleBox } from './ops';
 import { restyle, restyleAll, selectedLook } from './runs-doc';
+import { crowdedIndicSpacing } from './line-spacing';
 import { SlidePanel } from './SlidePanel';
+import { withShapeKind } from './shape-kind';
 import { useTickerOver } from './SafeAreas';
 import { SourceObjectFormat, TableEditor } from './SourceObjectTools';
 import { activeText, finishTextEditing } from './TextBoxEditor';
@@ -374,10 +375,9 @@ function Readability({ el }: { el: TextElement }) {
   const px = measured ? Math.round(drawnPx(el, height, measured.fit)) : 0;
   const floor = measured ? floorOf(drawnPx(el, height, measured.fit)) : null;
   const shrinks = el.style.shrinkToFit === true;
-  // Gujarati or Hindi lines closer than 1.3 (Sessions 31–36, I18N-2): their marks can touch.
-  const indicCrowded =
-    el.style.lineHeight < INDIC_LINE_HEIGHT_MIN - 0.0001 &&
-    (isIndic(el.lang) || boxLines(el).some((l) => isIndic(l.lang ?? el.lang)));
+  // Gujarati or Hindi lines closer than 1.3 (Sessions 31–36, I18N-2): their marks can touch. As they are drawn: a
+  // deck's line can set its own spacing (Session 58, PF-14).
+  const crowded = crowdedIndicSpacing(el);
   // The words' contrast against what is behind them, darkening included (Sessions 31–36, SLD-3).
   const slide = useEditor((s) =>
     s.doc && s.slideId ? slidesOf(s.doc).find((x) => x.id === s.slideId) : undefined,
@@ -436,10 +436,10 @@ function Readability({ el }: { el: TextElement }) {
           shows the band).
         </p>
       )}
-      {indicCrowded && (
+      {crowded !== null && (
         <p className="text-sm text-warning-fg" data-testid="inspector-line-height" data-level="warning">
-          The line spacing is {String(el.style.lineHeight)}: below {String(INDIC_LINE_HEIGHT_MIN)}, Gujarati
-          and Hindi marks can touch the line above. Line spacing is under Words.
+          The line spacing is {String(crowded)}: below {String(INDIC_LINE_HEIGHT_MIN)}, Gujarati and Hindi
+          marks can touch the line above. Line spacing is under Words.
         </p>
       )}
       {measured?.over && (
@@ -621,22 +621,7 @@ function ShapeSection({ el, change }: { el: ShapeElement; change: Change }) {
           value={kind}
           onChange={(e) => {
             const next = e.target.value as ShapeKind;
-            if (next === 'path')
-              set({
-                shape: 'path',
-                path: el.path ?? structuredClone(DEFAULT_DRAWING),
-                fill: null,
-                outline: outline ?? { color: '#ffffff', width: 3 },
-              });
-            else if (next === 'line')
-              set({
-                shape: 'line',
-                path: undefined,
-                fill: null,
-                outline: outline ?? { color: el.fill?.slice(0, 7) ?? '#ffffff', width: 6 },
-                frame: { ...el.frame, y: el.frame.y + el.frame.height / 2 - 10, height: 20 },
-              });
-            else set({ shape: next, path: undefined, fill: el.fill ?? (kind === 'line' ? '#000000' : null) });
+            change([el.id], (element) => (element.kind === 'shape' ? withShapeKind(element, next) : element));
           }}
         >
           {SHAPE_KINDS.map((shape) => (
