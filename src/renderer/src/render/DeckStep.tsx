@@ -142,14 +142,61 @@ interface Ahead {
  */
 const ahead = new Set<Ahead>();
 
+/** Of the clips held ahead, the one of this file waiting at `fromMs` (ms) first, else any of that file. */
+export function chooseAhead<T extends { url: string; fromMs: number }>(
+  held: Iterable<T>,
+  url: string,
+  fromMs: number,
+): T | undefined {
+  const same = [...held].filter((a) => a.url === url);
+  return same.find((a) => Math.abs(a.fromMs - fromMs) < 1) ?? same[0];
+}
+
+/**
+ * How a slide's first clip starts (C3, Session 57; C3, Session 58), as its step mounts it `mountedAt` (the engine's
+ * time) for a slide shown `shownAt`, `fromMs` into the clip. A screen joining a slide already up (`deadline` null)
+ * plays it by the engine's time, as any clip. Fresh and cold, it is sought, paused, to that frame from the slide's
+ * showing (and plays once the frame is in, catching up then). Loaded ahead at that frame (`warmed`) and mounted within
+ * a moment of the slide's showing, it plays from there by the engine's time at once; more than a moment late, from
+ * there at once all the same, catching up a tenth faster at most: a seek to where the clock is would be a wait for a
+ * frame, the slide going away held meanwhile.
+ */
+export function firstClipStart(o: {
+  deadline: number | null;
+  warmed: boolean;
+  shownAt: number;
+  mountedAt: number;
+  fromMs: number;
+}): { seek?: PlaybackSeek; catchUp?: PlaybackCatchUp } {
+  if (o.deadline === null) return {};
+  if (!o.warmed) return { seek: { at: o.shownAt, toMs: o.fromMs, paused: true } };
+  if (o.mountedAt - o.shownAt <= FROM_WHERE_IT_IS_MS) return {};
+  return playingFrom(o.shownAt, o.fromMs, o.mountedAt);
+}
+
+/**
+ * A first clip's clock as it plays from its frame (`fromMs` into it) at `at`, as late as the slide's showing makes it
+ * (C3's review M1): its frame then, catching up a tenth faster at most until it is on the engine's time.
+ */
+export function playingFrom(
+  shownAt: number,
+  fromMs: number,
+  at: number,
+): { seek: PlaybackSeek; catchUp?: PlaybackCatchUp } {
+  const lateMs = Math.max(0, at - shownAt);
+  return {
+    seek: { at, toMs: fromMs },
+    ...(lateMs > 0 ? { catchUp: { at, lateMs, maxRate: CATCH_UP_RATE } } : {}),
+  };
+}
+
 /**
  * The element the Preloader holds for this file, decoded, now the caller's to play and let go of; else null. The one
  * waiting where the step starts it (`fromMs`) first: Next's waits at its start, a click's past the deck's own
  * transition.
  */
 function takeClipAhead(url: string, fromMs: number): HTMLVideoElement | null {
-  const held = [...ahead].filter((a) => a.url === url);
-  const chosen = held.find((a) => Math.abs(a.fromMs - fromMs) < 1) ?? held[0];
+  const chosen = chooseAhead(ahead, url, fromMs);
   if (!chosen) return null;
   ahead.delete(chosen);
   chosen.taken = true;
@@ -375,23 +422,10 @@ function FirstClip({
       v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
       !v.seeking &&
       Math.abs(v.currentTime * 1000 - fromMs) < 1;
-    const mountedAt = engineNow();
-    const lateMs = Math.max(0, mountedAt - shownAt);
     // On a direct jump, keep the seek past PowerPoint's incoming transition. While the clip is cold, decode exactly
     // that frame and start there once it can be drawn, even if the file arrived after the press. Loaded ahead at that
-    // frame (Next's, or the slide the operator pointed at: C3, Session 58) but come more than a moment late, it plays
-    // from that frame at once and catches up as a cold one does: a seek to where the clock is would be a wait for a
-    // frame, the slide going away held meanwhile.
-    let seek: PlaybackSeek | undefined =
-      deadline === null
-        ? undefined
-        : !warmed
-          ? { at: shownAt, toMs: fromMs, paused: true }
-          : lateMs > FROM_WHERE_IT_IS_MS
-            ? { at: mountedAt, toMs: fromMs }
-            : undefined;
-    let catchUp: PlaybackCatchUp | undefined =
-      seek && !seek.paused ? { at: mountedAt, lateMs, maxRate: CATCH_UP_RATE } : undefined;
+    // frame (Next's, or the slide the operator pointed at: C3, Session 58), it plays from there at once.
+    let { seek, catchUp } = firstClipStart({ deadline, warmed, shownAt, mountedAt: engineNow(), fromMs });
     let playFrame = 0;
     const tell = (ready: boolean) => {
       v.dataset['deckFirstFrame'] = ready ? 'ready' : 'failed';
