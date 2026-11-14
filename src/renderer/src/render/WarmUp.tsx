@@ -517,12 +517,14 @@ export function WarmUp({
     const cap = setTimeout(() => {
       finish('cap');
     }, CAP_MS);
+    // When it began (set once, as it was made), for how long it ran if it is cut short.
+    const from = began.current;
     return () => {
       document.removeEventListener('visibilitychange', unseen);
       clearTimeout(cap);
       if (!finished.current) {
         performance.mark(`${mark}-cut`);
-        ended.current?.('cut', lengthClock() - began.current);
+        ended.current?.('cut', lengthClock() - from);
       }
     };
   }, [finish, mark]);
