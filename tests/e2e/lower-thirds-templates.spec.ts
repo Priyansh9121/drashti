@@ -111,14 +111,15 @@ test('each new layout makes a lower third as designed, saved and shown on the ha
     await expect(drawn, t.id).toHaveAttribute('data-lt-style', t.input.look.style ?? 'box');
     await expect(drawn, t.id).toHaveAttribute('data-lt-motion', t.input.look.motion ?? 'none');
 
-    // Saved, then shown from the studio: on the hall screen as designed, every line of it.
-    await studio.getByTestId('lower-third-save').click();
-    await expect(
-      studio
-        .getByTestId('studio-row')
-        .filter({ hasText: words[0] ?? '' })
-        .first(),
-    ).toHaveAttribute('data-saved', 'true');
+    // Saved (the open row saved, Save done with), then shown from the studio: on the hall screen as designed, every
+    // line of it.
+    const save = studio.getByTestId('lower-third-save');
+    await save.click();
+    await expect(save, t.id).toBeDisabled();
+    await expect(studio.getByTestId('studio-show'), t.id).toHaveText('Show');
+    const row = studio.getByTestId('studio-row').filter({ has: studio.locator('[aria-current="true"]') });
+    await expect(row, t.id).toHaveAttribute('data-saved', 'true');
+    await expect(row, t.id).toContainText(words[0] ?? '');
     await studio.getByTestId('studio-show').click();
     await expect(onScreen, t.id).toHaveAttribute('data-lt-animation', t.input.animation);
     await expect(onScreen, t.id).toHaveAttribute('data-lt-style', t.input.look.style ?? 'box');
