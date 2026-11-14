@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { idSchema, langSchema } from './model-schema';
+import { cleanNameSchema } from './rename-name';
 import type { CoverOptions, ScreenPatch } from './screens';
 import { SCALING_MODES } from './screens';
 
 /* Validation for screen-setup requests, which arrive over IPC. Main process only. */
 
-export const nameSchema = z.string().trim().min(1).max(80);
+/** A screen's or a screen group's name, cleaned as Rename… cleans a file's (Session 58, X3). */
+export const nameSchema = cleanNameSchema(80);
 export const canvasSizeSchema = z.number().int().min(16).max(16384);
 
 export const screenPatchSchema: z.ZodType<ScreenPatch> = z

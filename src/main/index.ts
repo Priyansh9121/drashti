@@ -2862,13 +2862,13 @@ function start(): void {
     shell.showItemInFolder(path);
     return { ok: true as const };
   };
-  /** Rename… of a picture, video or sound, from the window or a phone (Session 55, Part 9). */
+  /**
+   * Rename… of a picture, video or sound, from the window or a phone (Session 55, Part 9): refused in words, the name
+   * rule or the file no longer in the library (Session 58, X3).
+   */
   const renameMediaFile = (mediaId: string, name: string) => {
-    if (!MEDIA_ID_PATTERN.test(mediaId) || !fileActions.renameMedia(mediaId, name))
-      return {
-        ok: false as const,
-        message: 'A name needs 1 to 200 characters, for media still in the library.',
-      };
+    const kept = fileActions.renameMedia(mediaId, name);
+    if (!kept.ok) return kept;
     mediaRemovalChanged();
     return { ok: true as const, ids: [mediaId] };
   };
@@ -2890,13 +2890,10 @@ function start(): void {
       ? fileActions.presentationUsage(parsed.data)
       : { playlists: { names: [], count: 0 }, live: false };
   });
-  /** Rename… of a presentation, from the window or a phone (Session 55, Part 9). */
+  /** Rename… of a presentation, from the window or a phone (Session 55, Part 9); refused in words as a file's. */
   const renamePresentationNamed = (presentationId: string, name: string) => {
-    if (!fileActions.renamePresentation(presentationId, name))
-      return {
-        ok: false as const,
-        message: 'A name needs 1 to 200 characters, for a presentation in the library.',
-      };
+    const kept = fileActions.renamePresentation(presentationId, name);
+    if (!kept.ok) return kept;
     slides.invalidate(presentationId);
     engine.refreshNext();
     libraryChanged(true);
