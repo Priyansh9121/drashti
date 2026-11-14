@@ -777,7 +777,7 @@ export async function editablePdfPage(
                 } catch {
                   // PDF.js can throw before it settles its render promise.
                 } finally {
-                  reject(reason);
+                  reject(reason instanceof Error ? reason : new Error(String(reason)));
                 }
               });
           };
