@@ -53,6 +53,8 @@ interface ItemRow {
   presentation_name: string | null;
   presentation_deleted: string | null;
   arrangement_name: string | null;
+  /** The media file's own name in the library (C18): what Rename… shows, where the row's label may be its own. */
+  media_name: string | null;
   media_kind: 'image' | 'video' | 'audio' | null;
   media_missing: number | null;
   media_playable: number | null;
@@ -184,6 +186,7 @@ function itemInfo(
         kind: 'media',
         label: r.label,
         mediaId: r.media_id ?? '',
+        ...(r.media_name === null ? {} : { mediaName: r.media_name }),
         media: r.media_kind ?? 'video',
         missing: r.media_missing === 1,
         unplayable: r.media_playable === 0 ? (r.media_format ?? 'a kind of file Drashti cannot play') : null,
@@ -493,7 +496,7 @@ export class PlaylistRepo {
           `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
                   i.own_order, i.passage, i.timers, i.input_name, i.when_ends,
                   p.name AS presentation_name, p.deleted_at AS presentation_deleted, a.name AS arrangement_name,
-                  m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format,
+                  m.name AS media_name, m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format,
                   p.slide_count AS presentation_slides, p.source_kind AS presentation_source, m.duration_ms AS media_duration,
                   m.from_device AS media_device, p.from_device AS presentation_device,
                   EXISTS (SELECT 1 FROM smart_files sf WHERE sf.item_id = i.id AND sf.state = 'missing') AS smart_gone

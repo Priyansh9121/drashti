@@ -6,8 +6,9 @@ import type { RenderSlide } from '../../../shared/model';
  * The warm-up's deck (13 Nov 2026, the review of h-p3tr's part B; render/WarmUp.tsx draws it with the rest, through the
  * same Scene). A deck Drashti plays itself draws three things nothing else on a show screen does, each a new kind of
  * drawing for a GPU to make (100-600 ms on CI's Mac, every screen waiting) at a show's first one:
- * - its own Wipe: a gradient mask of 21 stops over the whole slide coming in, until 13 Nov 2026 (Q57-28: it dropped
- *   frames on Windows while streaming); a hard-edged clip since (transition-frame.ts), still drawn here, harmless;
+ * - its own Wipe: PowerPoint's soft band since Session 58 (transition-frame.ts wipeBandStyles), a gradient mask of 22
+ *   stops that never changes on a box two slides long, moved over the slide coming in by a transform, the slide moved
+ *   back inside it, each a layer of its own (Q57-28's mask moved its stops every frame and dropped frames);
  * - its own Cover and Uncover: the slide they move a shade darker, a brightness filter over the whole slide;
  * - a Split: a gradient mask the size of its shape (deck-target-paint.ts), of 4, 5 or 6 stops as it goes. A GPU draws
  *   a gradient of up to 4 stops, of up to 8 and of more each its own way, so it is drawn on three shapes, one at each.
@@ -18,6 +19,14 @@ import type { RenderSlide } from '../../../shared/model';
 /** The deck's own transitions the warm-up draws (an Uncover draws as a Cover does: the slide it moves, shaded). */
 export const WARM_DECK_TRANSITIONS = ['wipe', 'cover'] as const;
 export type WarmDeckTransition = (typeof WARM_DECK_TRANSITIONS)[number];
+
+/**
+ * Half a pixel off the screen's pixel grid (Session 58, review-c2 MEDIUM-2): a deck's Wipe drawn there has the GPU draw
+ * its mask as an anti-aliased rect (traced on CI's Mac at the first deck Wipe on air: AnalyticRRect with a gradient of
+ * more than 8 stops), as a screen does where a slide's edges fall between pixels; the grid-aligned scene draws only the
+ * pixel-aligned kind. The warm-up draws its deck Wipe once more, moved this much.
+ */
+export const OFF_GRID = 'translate(0.5px, 0.5px)';
 
 /** A deck's own transition as the import gives one (import/deck/pptx-native-transition.ts), from the right. */
 export function warmDeckTransition(effect: WarmDeckTransition, durationMs: number): DeckNativeTransition {

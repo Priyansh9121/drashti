@@ -4,19 +4,44 @@ import { fileStamp } from '../../shared/format';
 import { SPEECH_RATE, type Heard } from '../../shared/speech';
 import { RECORD_PART_BYTES, type StreamStatus } from '../../shared/stream';
 import { recordingWarning } from './recording-drive';
+import { QUIET_DBFS } from './worker/sound-meter';
 
 const BYTES_PER_SECOND = SPEECH_RATE * 2;
 const HEADER_BYTES = 44;
 const MAX_QUEUED_BYTES = 4 * BYTES_PER_SECOND;
-const INPUT_WAIT_MS = 10_000;
-const CHECK_EVERY_MS = 3_000;
+/** A second of sound whose mean square (16-bit samples) is below this is quiet: -50 dBFS, as the stream's No sound. */
+const QUIET_MEAN_SQUARE = 10 ** (QUIET_DBFS / 10) * 32_768 ** 2;
+/*
+ * The sound input's wait (Session 58, X2: the alpha.16 review's L1). With nothing from the sound input (unplugged, a
+ * USB interface connecting again, the stream's page stopped), the operator is told after 5 s, and the recording stops
+ * after 30 s: time to plug it back in, and an input that comes back within it goes on in the same file. The time the
+ * input is held back, not silent (the macOS microphone question still open, the stream's page still opening), never
+ * counts. The words say these times as written here.
+ */
+const INPUT_WARN_MS = 5_000;
+const INPUT_WAIT_MS = 30_000;
+const INPUT_WARNING =
+  'Nothing has come from the sound input for 5 seconds. Check the input and its cable: Drashti stops the sound recording after 30 seconds without it.';
+const INPUT_BACK = 'Sound is coming from the sound input again: the sound recording goes on.';
+const INPUT_STOPPED =
+  'Sound recording stopped: nothing came from the sound input for 30 seconds. Check the input and its cable, then record again.';
+/** The sound input's wait is looked at every second, the disk every third. */
+const TICK_MS = 1_000;
+const DISK_EVERY_TICKS = 3;
 const SYNC_EVERY_MS = 9_000;
+/**
+ * How long a quit waits for the WAV to be finished (Session 58, X2: L3): a disk that does not answer by then (a
+ * network share gone away, a USB stick that hangs) never holds Drashti's quit.
+ */
+export const QUIT_FINISH_MS = 5_000;
 /** The longest caption phrase (12 s), plus the hub's allowed recognition delay (10 s). */
 const CAPTION_WINDOW_MS = 25_000;
 const WRITE_FAILED = 'Sound recording stopped because the audio file could not be written.';
 const DRAFT_FAILED = 'The caption draft could not be saved. Sound recording continues.';
 
 type RecordingStatus = StreamStatus['recording'];
+/** How a quit's wait for the WAV ended: finished, or left behind after QUIT_FINISH_MS. */
+export type SoundQuit = 'finished' | 'late';
 
 interface Part {
   file: FileHandle;
@@ -43,11 +68,18 @@ interface Session {
   writes: Promise<void>;
   finishing: Promise<void> | null;
   queuedBytes: number;
+  /** When the sound input last sent anything, and when it was last heard above -50 dBFS (the time it is held back never counts). */
   lastAudioAt: number;
+  lastSoundAt: number;
+  /** The second of sound being measured: its sum of squares and samples counted. */
+  squares: number;
+  counted: number;
+  ticks: number;
   lastSyncAt: number;
   timer: NodeJS.Timeout | null;
   message: string | null;
-  fat: boolean | null;
+  /** The operator was told nothing has come from the sound input (taken back when it comes). */
+  inputWarned: boolean;
   draftFailed: boolean;
   driveWarning: string | null;
 }
@@ -55,9 +87,12 @@ interface Session {
 interface Options {
   now(): number;
   freeBytes(folder: string): Promise<number | null>;
-  onFat(folder: string): Promise<boolean | null>;
   keepFree: number;
   partBytes?: number;
+  /** The sound input is held back, not silent: the system's microphone question is open, or the stream's page is still opening. */
+  waiting?(): boolean;
+  /** Every second while it records (the stream service judges No sound then). */
+  tick?(): void;
   stopping?(): void;
   changed(): void;
   notice(text: string): void;
@@ -109,6 +144,8 @@ function audioTime(spans: readonly CaptureSpan[], at: number): { part: Part; ms:
 /** One local recording of the raw sound tap. File work is asynchronous and queued with a bound. */
 export class SoundRecording {
   private session: Session | null = null;
+  /** A quit's wait for the WAV (QUIT_FINISH_MS at most), and whether it is over. */
+  private quitWait: { done: Promise<SoundQuit>; over: boolean } | null = null;
   private status: RecordingStatus = {
     kind: 'sound',
     state: 'off',
@@ -146,10 +183,14 @@ export class SoundRecording {
       finishing: null,
       queuedBytes: 0,
       lastAudioAt: now,
+      lastSoundAt: now,
+      squares: 0,
+      counted: 0,
+      ticks: 0,
       lastSyncAt: now,
       timer: null,
       message: null,
-      fat: null,
+      inputWarned: false,
       draftFailed: false,
       driveWarning: null,
     };
@@ -165,26 +206,56 @@ export class SoundRecording {
       message: null,
       warning: null,
     };
+    // No FAT32 look (Session 58, X2: L2): a WAV part of 3.5 GB holds about 32 hours, so a FAT32 drive's 4 GB limit
+    // never matters to it. The room left on the disk is told (checkDisk).
     this.queue(session, () => this.checkDisk(session, true));
-    // Filesystem discovery can take several seconds on Windows. Do not hold up PCM writes for it.
-    void this.options.onFat(folder).then(
-      (fat) => {
-        if (this.session !== session || session.finishing || !fat) return;
-        session.fat = fat;
-        this.warnAboutDrive(session);
-      },
-      () => undefined,
-    );
     session.timer = setInterval(() => {
-      const time = this.options.now();
-      if (time - session.lastAudioAt > INPUT_WAIT_MS) {
-        void this.stop('Sound recording stopped because the chosen sound input stopped sending audio.');
-        return;
-      }
-      this.queue(session, () => this.checkDisk(session, false));
-    }, CHECK_EVERY_MS);
+      this.everySecond(session);
+    }, TICK_MS);
     session.timer.unref();
     this.options.changed();
+  }
+
+  /** Each second: the sound input's wait, the disk every third second, and No sound's judging (`tick`). */
+  private everySecond(session: Session): void {
+    const nothingFor = this.nothingFor(session, this.options.now());
+    if (nothingFor >= INPUT_WAIT_MS) {
+      void this.stop(INPUT_STOPPED);
+      return;
+    }
+    if (nothingFor >= INPUT_WARN_MS && !session.inputWarned) {
+      session.inputWarned = true;
+      this.showWarning(session);
+      this.options.notice(INPUT_WARNING);
+    }
+    session.ticks++;
+    if (session.ticks % DISK_EVERY_TICKS === 0) this.queue(session, () => this.checkDisk(session, false));
+    this.options.tick?.();
+  }
+
+  /** The time the sound input is held back (not silent) never counts: its clocks start again when it ends. */
+  private holdBack(session: Session, now: number): void {
+    if (!this.options.waiting?.()) return;
+    session.lastAudioAt = now;
+    session.lastSoundAt = now;
+  }
+
+  /** How long nothing at all has come from the sound input: ms. */
+  private nothingFor(session: Session, now: number): number {
+    this.holdBack(session, now);
+    return now - session.lastAudioAt;
+  }
+
+  /**
+   * How long this recording has heard nothing above -50 dBFS (a second at a time, as the stream's No sound does),
+   * the time nothing came at all included: No sound's quiet for Record sound. 0 while it is not recording.
+   */
+  quietMs(): number {
+    const session = this.session;
+    if (!session || session.finishing) return 0;
+    const now = this.options.now();
+    this.holdBack(session, now);
+    return now - session.lastSoundAt;
   }
 
   stop(message?: string): Promise<void> | null {
@@ -216,6 +287,37 @@ export class SoundRecording {
     return session.finishing;
   }
 
+  /**
+   * Drashti is quitting (Session 58, X2: the alpha.16 review's L3): the WAV is finished (its header written, synced and
+   * closed), and the quit waits for that QUIT_FINISH_MS at most. A disk that has not answered by then is left behind,
+   * 'late': the file plays up to the last whole second its header says (it is rewritten after every second of sound),
+   * and what had not reached the disk is lost. Null when nothing is recording, and once the wait is over, so the
+   * quit's next before-quit is never held again.
+   */
+  quitting(limitMs = QUIT_FINISH_MS): Promise<SoundQuit> | null {
+    if (this.quitWait) return this.quitWait.over ? null : this.quitWait.done;
+    const finishing = this.stop();
+    if (!finishing) return null;
+    const wait: { done: Promise<SoundQuit>; over: boolean } = {
+      over: false,
+      done: new Promise<SoundQuit>((resolve) => {
+        const timer = setTimeout(() => {
+          resolve('late');
+        }, limitMs);
+        timer.unref();
+        void finishing.then(() => {
+          clearTimeout(timer);
+          resolve('finished');
+        });
+      }).then((how) => {
+        wait.over = true;
+        return how;
+      }),
+    };
+    this.quitWait = wait;
+    return wait.done;
+  }
+
   chunk(samples: Int16Array, endAt: number, startAt: number): void {
     const session = this.session;
     if (!session || session.finishing || endAt < session.startedAt) return;
@@ -226,7 +328,14 @@ export class SoundRecording {
       void this.stop('Sound recording stopped because the disk could not keep up.');
       return;
     }
-    session.lastAudioAt = this.options.now();
+    const now = this.options.now();
+    session.lastAudioAt = now;
+    this.hear(session, audio, now);
+    if (session.inputWarned) {
+      session.inputWarned = false;
+      this.showWarning(session);
+      this.options.notice(INPUT_BACK);
+    }
     session.queuedBytes += audio.byteLength;
     this.queue(
       session,
@@ -253,14 +362,33 @@ export class SoundRecording {
         await this.saveCaption(session, phrase);
       } catch {
         session.draftFailed = true;
-        this.status = {
-          ...this.status,
-          warning: [session.driveWarning, DRAFT_FAILED].filter(Boolean).join(' '),
-        };
+        this.showWarning(session);
         this.options.notice(DRAFT_FAILED);
-        this.options.changed();
       }
     });
+  }
+
+  /** The sound's level, a second at a time (as ./worker/sound-meter.ts): a second above -50 dBFS ends as sound heard. */
+  private hear(session: Session, audio: Int16Array, now: number): void {
+    for (const v of audio) {
+      session.squares += v * v;
+      session.counted++;
+      if (session.counted < SPEECH_RATE) continue;
+      if (session.squares / session.counted >= QUIET_MEAN_SQUARE) session.lastSoundAt = now;
+      session.squares = 0;
+      session.counted = 0;
+    }
+  }
+
+  /** The recording's warning: the sound input's wait, then the drive, then a caption draft that failed. */
+  private showWarning(session: Session): void {
+    const said = [
+      session.inputWarned ? INPUT_WARNING : null,
+      session.driveWarning,
+      session.draftFailed ? DRAFT_FAILED : null,
+    ].filter(Boolean);
+    this.status = { ...this.status, warning: said.length > 0 ? said.join(' ') : null };
+    this.options.changed();
   }
 
   private queue(session: Session, work: () => Promise<void>, done?: () => void): void {
@@ -301,19 +429,16 @@ export class SoundRecording {
 
   private warnAboutDrive(session: Session): void {
     const warning = recordingWarning({
-      fat: session.fat,
+      // FAT32 never matters to a WAV part (32 hours): only the room left is told.
+      fat: null,
       freeBytes: this.status.freeBytes,
       bytesPerHour: BYTES_PER_SECOND * 3600,
       keepFree: this.options.keepFree,
     });
     if (!warning || session.driveWarning === warning) return;
     session.driveWarning = warning;
-    this.status = {
-      ...this.status,
-      warning: session.draftFailed ? `${warning} ${DRAFT_FAILED}` : warning,
-    };
+    this.showWarning(session);
     this.options.notice(warning);
-    this.options.changed();
   }
 
   private async nextPart(session: Session): Promise<Part> {
@@ -373,8 +498,13 @@ export class SoundRecording {
     session.part = part;
     const bytes = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
     const fromMs = (part.bytes / BYTES_PER_SECOND) * 1000;
+    const before = part.bytes;
     await writeAt(part.file, bytes, HEADER_BYTES + part.bytes);
     part.bytes += bytes.length;
+    // Its header says how long it is after every second of sound (Session 58, X2: L3), not only every 9 s: a crash,
+    // or a quit that could not wait for the disk, leaves at most the last second outside it for players that trust it.
+    if (Math.floor(part.bytes / BYTES_PER_SECOND) > Math.floor(before / BYTES_PER_SECOND))
+      await writeAt(part.file, wavHeader(part.bytes), 0);
     session.spans.push({ part, startAt, endAt, fromMs, toMs: (part.bytes / BYTES_PER_SECOND) * 1000 });
     const oldest = endAt - CAPTION_WINDOW_MS;
     while ((session.spans[0]?.endAt ?? endAt) < oldest) session.spans.shift();
