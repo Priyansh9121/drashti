@@ -70,6 +70,7 @@ interface PlaylistTrimsDeps {
   quiet(): boolean;
   /** A file's sha256 and length, read off Main's thread (library/hash-off-main.ts); stops when `signal` aborts. */
   hash(file: string, signal: AbortSignal): Promise<{ sha256: string; bytes: number }>;
+  /** The cuts accepted and waiting, and the copies made but not taken in: saved in the background (trim-records.ts). */
   kept: {
     load(): unknown;
     save(cuts: KeptTrim[]): void;
@@ -78,6 +79,8 @@ interface PlaylistTrimsDeps {
     load(): unknown;
     save(copies: TrimCopy[]): void;
   };
+  /** What `kept` and `copies` were given is on the disk when this returns (FT-4); throws when it cannot be written. */
+  saveNow(): void;
   trash(file: string): Promise<void>;
   pendingChanged(ids: string[]): void;
   rowChanged(added: string | null): void;
@@ -530,7 +533,10 @@ export class PlaylistTrims {
     this.deps.pendingChanged(this.list());
   }
 
-  /** The settings write completes before ConvertService publishes the cut. */
+  /**
+   * The cut's records are on the disk before ConvertService publishes it (saveNow, FT-4): a crash just after can never
+   * leave it in Media with no record. If they cannot be written, it is not published.
+   */
   private rememberCopy(mediaDir: string, pending: PendingTrim, temporary: string, destination: string): void {
     if (!pending.kept || this.pending.get(pending.kept.itemId) !== pending)
       throw new Error('The cut stopped before publication.');
@@ -544,6 +550,27 @@ export class PlaylistTrims {
     this.deps.copies.save([...this.copies]);
     pending.kept.copy = copy;
     this.keepWaiting();
+    this.deps.saveNow();
+  }
+
+  /**
+   * The files in Media that Trim's records hold (FT-8), by their paths in the media folder: each copy made and not yet
+   * taken in (being made, finished, or waiting to carry on after a restart) and each such cut's original. The unused
+   * cuts sweep never moves one.
+   */
+  heldFiles(): Set<string> {
+    const held = new Set<string>();
+    const hold = (cut: KeptTrim | null | undefined) => {
+      if (cut?.copy) held.add(cut.copy.path);
+      if (cut?.request) held.add(cut.request.sourcePath);
+    };
+    for (const copy of this.copies) held.add(copy.path);
+    for (const pending of this.pending.values()) {
+      if (pending.copy) held.add(pending.copy.path);
+      hold(pending.kept);
+    }
+    for (const cut of this.interrupted) hold(cut);
+    return held;
   }
 
   /** Retry cleanup for copies left without a current accepted Trim. */
