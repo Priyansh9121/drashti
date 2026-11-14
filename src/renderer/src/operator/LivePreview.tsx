@@ -121,7 +121,15 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
       {/* The same scene as the outputs: if it fails as it draws, the preview is black (the rest of
             the window carries on) and tries again with the next change (Session 23). */}
       <SceneBoundary resetKey={rev} fallbackClassName="aspect-video w-full bg-black">
-        <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
+        {/* The warm-up and the show each in a box of their own, as on an output (NG-1, Session 58): a new box draws
+            nothing until it has measured itself, a render later and before the frame, by when the warm-up taken away
+            has let go of the clock it paused, so the show's first render reads the clock, never that paused moment. */}
+        <PlacedInParent
+          key={warming ? 'warming' : 'show'}
+          content={canvas}
+          mode="fit"
+          className="relative aspect-video w-full"
+        >
           {warming && (
             <WarmUp page="live" canvas={canvas} scaling={scaling} hold={HOLD_WARM_UP} onDone={warmedUp} />
           )}
