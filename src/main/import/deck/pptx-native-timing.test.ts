@@ -383,7 +383,7 @@ describe('PowerPoint slide animation timing', () => {
       });
     // Leaving to another size or place, each its entrance played backwards as PowerPoint writes them: Out, In Slightly
     // and In To Screen Center compared with PowerPoint's own movie (13 Nov, run 2: within a pixel); Out To Screen
-    // Bottom drawn so, keeping PowerPoint's video (its last frame, a sliver across the slide's foot, is 0.26 px off).
+    // Bottom too (14 Nov, runs 2 and 3 at three lengths: within, its last sliver by its edges).
     const shrink = (width: string, height: string, ...moves: string[]) =>
       alone(
         '23',
@@ -418,7 +418,7 @@ describe('PowerPoint slide animation timing', () => {
         effects: [{ shapeId: '2', phase: 'out', kind: 'zoom', zoomAway, durationMs: 500 }],
       });
     expect(shrink(formula(big.w), formula(big.h), ...toBottom)).toMatchObject({
-      approximate: true,
+      approximate: false,
       effects: [{ phase: 'out', kind: 'zoom', zoomAway: { ...big, x: '0.5', y: `1+${large('#ppt_h')}/2` } }],
     });
     // A width and height that grow apart, or a formula Drashti cannot read: the closest zoom, keeping the video.
@@ -561,15 +561,55 @@ describe('PowerPoint slide animation timing', () => {
     ).toMatchObject({ approximate: true, effects: [{ kind: 'zoom', accel: 0.5 }] });
   });
 
-  it('draws Shape, Wheel, Random Bars and Bounce, keeping PowerPoint’s video where one can be made', () => {
-    expect(alone('6', 'entr', filtered(2, 'circle(out)'))).toMatchObject({
-      approximate: true,
-      effects: [{ kind: 'shape', shape: 'circle', durationMs: 500 }],
-    });
-    expect(alone('6', 'exit', filtered(2, 'diamond(in)', 'out'))).toMatchObject({
-      approximate: true,
-      effects: [{ phase: 'out', kind: 'shape', shape: 'diamond', inward: true }],
-    });
+  it('plays Shape as PowerPoint does, exactly where its own movies say so (Session 58: run 2 and run 3, 16:9 and 4:3)', () => {
+    // Within a pixel or two and a frame in every movie: drawn by Drashti itself wherever it plays.
+    const exact = [
+      ['entr', 'circle(in)'],
+      ['entr', 'circle(out)'],
+      ['entr', 'box(in)'],
+      ['entr', 'box(out)'],
+      ['entr', 'diamond(in)'],
+      ['entr', 'diamond(out)'],
+      ['entr', 'plus(in)'],
+      ['exit', 'circle(in)'],
+      ['exit', 'box(in)'],
+      ['exit', 'diamond(in)'],
+      ['exit', 'diamond(out)'],
+      ['exit', 'plus(out)'],
+    ] as const;
+    // Off on a faint first or last frame in at least one movie: drawn so, keeping PowerPoint's video.
+    const close = [
+      ['entr', 'plus(out)'],
+      ['exit', 'circle(out)'],
+      ['exit', 'box(out)'],
+      ['exit', 'plus(in)'],
+    ] as const;
+    for (const [list, approximate] of [
+      [exact, false],
+      [close, true],
+    ] as const)
+      for (const [presetClass, filter] of list) {
+        const leaving = presetClass === 'exit';
+        const [shape = '', way = ''] = filter.split(/[()]/u);
+        expect(
+          alone('6', presetClass, filtered(2, filter, leaving ? 'out' : 'in')),
+          `${presetClass} ${filter}`,
+        ).toMatchObject({
+          approximate,
+          effects: [
+            {
+              phase: leaving ? 'out' : 'in',
+              kind: 'shape',
+              shape,
+              ...(way === 'in' ? { inward: true } : {}),
+              durationMs: 500,
+            },
+          ],
+        });
+      }
+  });
+
+  it('draws Wheel, Random Bars and Bounce, keeping PowerPoint’s video where one can be made', () => {
     expect(alone('21', 'entr', filtered(2, 'wheel(4)'))).toMatchObject({
       approximate: true,
       effects: [{ kind: 'wheel', spokes: 4 }],
