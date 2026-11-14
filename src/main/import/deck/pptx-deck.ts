@@ -1,6 +1,6 @@
 import type { DeckEffect } from '../../../shared/deck';
 import { deckBackgroundTarget } from '../../../shared/deck-motion';
-import { pptxFormula, type ShapePlace } from '../../../shared/pptx-formula';
+import { pptxFormula, pptxFormulaMeasured, type ShapePlace } from '../../../shared/pptx-formula';
 import type { XmlNode } from '../xml';
 import { type NativePptxTransition, nativePptxTransition } from './pptx-native-transition';
 
@@ -555,7 +555,15 @@ function basicZoom(behaviours: readonly XmlNode[], entering: boolean): NativeLoo
   if (!zoomAway) return { kind: 'zoom', partial: true };
   const moves = zoomAway.x !== undefined || zoomAway.y !== undefined;
   const vanishes = zoomAway.w === '0' && zoomAway.h === '0';
-  return { kind: 'zoom', zoomAway, ...(!entering && moves && !vanishes ? { partial: true } : {}) };
+  // A formula read but never compared with PowerPoint's own movie: drawn as written, keeping the video (EF-2).
+  const measured = [zoomAway.w, zoomAway.h, zoomAway.x, zoomAway.y].every(
+    (formula) => formula === undefined || pptxFormulaMeasured(formula),
+  );
+  return {
+    kind: 'zoom',
+    zoomAway,
+    ...((!entering && moves && !vanishes) || !measured ? { partial: true } : {}),
+  };
 }
 
 /**
