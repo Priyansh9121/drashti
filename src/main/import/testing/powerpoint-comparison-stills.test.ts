@@ -6,7 +6,7 @@ import { powerPointPlan } from '../deck/plan';
 import { readEditablePptx } from '../deck/editable-pptx';
 import { readPptxDeck } from '../pictures';
 import { readZipEntries } from '../zip';
-import { STILLS_DARK, STILLS_LIGHT, writeStillsDeck } from './powerpoint-comparison-stills';
+import { STILLS_DARK, STILLS_LIGHT, STILLS_SHRINK, writeStillsDeck } from './powerpoint-comparison-stills';
 
 /*
  * PF-12 (Session 58): PowerPoint's own stills of what Drashti's reader assumes about spacing and tables, never seen in
@@ -135,5 +135,74 @@ describe('the stills PowerPoint draws for PF-12', () => {
       expect(cells, deck.file).toHaveLength(12);
       expect(read.slides[index]?.issues ?? [], deck.file).toEqual([]);
     }
+  });
+});
+
+/*
+ * PF-4b (h-pptx3, 14 Nov evening): boxes PowerPoint shrinks, their words past the box at full size, with the shrink PowerPoint
+ * saves (normAutofit's fontScale and lnSpcReduction), so that its own movie shows them as it draws them and Drashti's
+ * drawing (its fit starting at PowerPoint's scale, the line spacing cut as PowerPoint cuts it) can be measured against it.
+ */
+describe('the shrink stills (PF-4b)', () => {
+  const where = mkdtempSync(join(tmpdir(), 'drashti-comparison-shrink-'));
+  let file = '';
+  beforeAll(async () => {
+    file = await writeStillsDeck(where, STILLS_SHRINK);
+  });
+  afterAll(() => {
+    rmSync(where, { recursive: true, force: true });
+  });
+
+  it('saves each box’s shrink as PowerPoint does, and Drashti reads it, its sizes, line spacings and bullets', async () => {
+    expect(file.endsWith('Placeholder PowerPoint shrink.pptx')).toBe(true);
+    const read = await readPptxDeck(file);
+    expect(read.slides).toHaveLength(STILLS_SHRINK.slides.length);
+    expect(STILLS_SHRINK.slides.map((slide) => slide.marker)).toEqual(
+      STILLS_SHRINK.slides.map((_, i) => 20 + 4 * i),
+    );
+    const parts = await readZipEntries(file, (name) => /^ppt\/slides\/slide\d+\.xml$/u.test(name));
+    const deck = await readEditablePptx(file, join(where, 'editable'));
+    let shrunk = 0;
+    for (const [index, slide] of STILLS_SHRINK.slides.entries()) {
+      const xml = parts.get(`ppt/slides/slide${String(index + 1)}.xml`)?.toString('utf8') ?? '';
+      const words = deck.slides[index]?.elements.find((e) => e.kind === 'text');
+      expect(words, slide.name).toBeDefined();
+      if (words?.kind !== 'text') continue;
+      const fit = slide.fit;
+      if (fit) {
+        shrunk++;
+        expect(xml, slide.name).toContain(
+          `<a:normAutofit fontScale="${String(fit.fontScale)}"${fit.lnSpcReduction ? ` lnSpcReduction="${String(fit.lnSpcReduction)}"` : ''}/>`,
+        );
+        expect(words.style.sourceFit, slide.name).toEqual({
+          fontScale: fit.fontScale / 100_000,
+          lineSpacingReduction: (fit.lnSpcReduction ?? 0) / 100_000,
+        });
+      } else {
+        expect(xml, slide.name).toContain('<a:noAutofit/>');
+        expect(words.style.sourceFit, slide.name).toBeUndefined();
+      }
+      // The words' size and line spacing as written (the reader's slide pixels: 4/3 a point; 1.2 lines a 100% spacing).
+      const sizes = new Set(
+        (words.runs ?? []).filter((r) => r.text.trim() !== '').map((r) => thousandths(r.size ?? 0)),
+      );
+      expect([...sizes], slide.name).toEqual([thousandths(((slide.size ?? 4000) / 100) * (4 / 3))]);
+      const spacing = slide.lineSpacing ?? 100;
+      const heights = new Set((words.runs ?? []).map((r) => r.paragraph?.lineHeight ?? 1.2));
+      expect(
+        [...heights].map((h) => Math.round(h * 1000) / 1000),
+        slide.name,
+      ).toEqual([Math.round((spacing / 100) * 1.2 * 1000) / 1000]);
+      if (slide.bullets)
+        expect(
+          (words.runs ?? []).some((r) => r.paragraph?.bullet === '•'),
+          slide.name,
+        ).toBe(true);
+    }
+    expect(shrunk).toBeGreaterThanOrEqual(6);
+    // A Gujarati placeholder box among them.
+    expect(
+      STILLS_SHRINK.slides.some((slide) => slide.paragraphs?.some((p) => p.text.includes('નમૂના'))),
+    ).toBe(true);
   });
 });

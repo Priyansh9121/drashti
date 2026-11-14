@@ -25,11 +25,15 @@
 // (ELECTRON_RUN_AS_NODE), NODE_OPTIONS and --inspect off, file:// pages' privileges kept. And started with
 // ELECTRON_RUN_AS_NODE=1 and a script to run, it must start as Drashti (its FFmpeg self-test), never as Node.
 //
+// On Windows (Session 58, X2b) the installed captions engine must decode a generated clip with Drashti's smallest
+// model, its Visual C++ libraries loaded from its own folder, never the system's (scripts/whisper-decode-check.mjs).
+//
 //   node scripts/check-installers.mjs
 import { spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -43,6 +47,7 @@ import whisperWindowsRuntime from '../src/shared/whisper-windows-runtime.json' w
 import { fusesAsWanted, runAsNodeRefused } from './fuse-checks.mjs';
 import { iconFiles, macAppIcon, windowsProgramIcon } from './icon-checks.mjs';
 import { makeTempRoot, removeTempRoot } from './temp-root.mjs';
+import { decodeCheck, fetchModel, modelDir, readModelPin } from './whisper-decode-check.mjs';
 
 const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
 const out = resolve('release', version);
@@ -68,6 +73,34 @@ const pass = (name, what) => {
   results.push({ name, ok: true, why: what });
   console.log(`  ${what}`);
 };
+
+/**
+ * The installed captions engine decodes a generated clip with Drashti's smallest model, and the Visual C++ libraries
+ * it loaded are those beside it, not the system's (scripts/whisper-decode-check.mjs; Session 58, X2b).
+ */
+async function captionsDecode(name, installDir) {
+  const exe = join(installDir, 'resources', 'whisper', 'whisper-server.exe');
+  const ffmpeg = join(installDir, 'resources', 'ffmpeg', 'ffmpeg.exe');
+  try {
+    const dir = modelDir();
+    mkdirSync(dir, { recursive: true });
+    const model = await fetchModel(readModelPin(), dir);
+    const workDir = mkdtempSync(join(tmpdir(), 'drashti-captions-clip-'));
+    const checks = await decodeCheck({
+      exe,
+      ffmpeg,
+      model,
+      workDir,
+      libraries: Object.keys(whisperWindowsRuntime),
+    });
+    for (const c of checks) (c.ok ? pass : fail)(name, c.line);
+  } catch (error) {
+    fail(
+      name,
+      `the captions engine's decode check could not run: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
 
 const GUIDES = ['operator-guide.md', 'presenter-guide.md', 'admin-guide.md', 'setup-day.md'];
 /** The pictures the four guides show ("screenshots/<name>.png"), as Drashti's Markdown reader finds them. */
@@ -441,6 +474,8 @@ async function checkWindows(f) {
         `the installed captions runtime differs from the staged Microsoft DLLs: ${changedRuntime.join(', ')}`,
       );
     else pass(f.name, 'installs the four Microsoft captions runtime DLLs with their original bytes');
+    // Session 58 (X2b): the installed engine decodes a generated clip, its Visual C++ libraries its own folder's.
+    await captionsDecode(f.name, installDir);
     if (existsSync(menu)) {
       const entry = shortcut(menu);
       const same = (a, b) => resolve(a).toLowerCase() === resolve(b).toLowerCase();
