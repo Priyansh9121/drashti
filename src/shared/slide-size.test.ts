@@ -65,6 +65,12 @@ describe('a paragraph on slides of another size (Paste, Presentation size)', () 
       runs: [{ text: 'Placeholder point', size: 32, list: 'disc', paragraph }],
     };
     const [fitted] = fitElements([words], { width: 1280, height: 720 }, { width: 1920, height: 1080 });
-    expect(fitted?.kind === 'text' && fitted.runs?.[0]?.paragraph).toEqual(scaleParagraphSpacing(paragraph, 1.5));
+    expect(fitted?.kind === 'text' && fitted.runs?.[0]?.paragraph).toMatchObject({
+      marginLeft: 72,
+      marginRight: 18,
+      indent: -36,
+      lineHeightPx: 45,
+      bulletSize: 30,
+    });
   });
 });
