@@ -14,9 +14,10 @@ Update after a sabha, and update Main and nodes together.
 - Lower Thirds has 18 more templates, 68 in all.
 - A phone's Save of a slide waits while the hall screens move, so a Next just after it stays smooth on a two-core laptop; when it saves a picture from the slide instead, it says so.
 - Names of playlists, audio playlists, wallpapers, screens and screen groups leave out hidden characters copied with them, as Rename… does, and a name with nothing visible is refused. Rename's Undo says the name as it was kept.
-- Lower Thirds has twelve more moving backgrounds, calm ones first (Light rising, Lamps glowing, Petals falling and more), then livelier ones. One box in the studio finds an animation or a template by any words, such as "slide up slow" or "calm".
+- Lower Thirds has 23 more moving backgrounds, thirty in all, calm ones first (Light rising, Lamps glowing, Lanterns floating up and more), then livelier ones, each made ready before the show so none stutters the first time. One box in the studio finds an animation or a template by any words, such as "slide up slow" or "calm".
 - A PowerPoint text box keeps PowerPoint's own shrink of its words and lines. Edit slides shows a box's line spacing as drawn, and warns of close Gujarati or Hindi lines.
 - On a two-core Windows computer, an import while streaming no longer holds the library for seconds, which could hold up a slide change for up to 2 seconds.
+- On a Mac the opening plays its full two seconds smoothly: it waits, black, until Drashti's window has readied the computer's graphics.
 - The stream, the decks Drashti plays itself, the start and the Edit slides fixes since alpha.17 (this list is written in full before the release).
 
 ## 1.0.0-alpha.17 (13 Nov 2026)
