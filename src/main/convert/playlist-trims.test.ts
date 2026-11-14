@@ -163,6 +163,25 @@ const request = {
   },
 };
 
+/** The next start after Drashti closed with the row's cut accepted but not made: the cut waits to carry on. */
+async function waitingAfterRestart(x: Awaited<ReturnType<typeof setup>>) {
+  expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+  x.service.close();
+  x.finish({ ok: false, stopped: true, message: 'Stopped.' });
+  x.pendingChanged.mockClear();
+  return x.restart();
+}
+
+/** A second original video in Media, at the end of the playlist: its row. */
+async function secondOriginal(x: Awaited<ReturnType<typeof setup>>) {
+  db.prepare(
+    "INSERT INTO media (id, kind, name, path) VALUES ('second', 'video', 'Placeholder second.mp4', 'second.mp4')",
+  ).run();
+  await writeFile(join(dir, 'second.mp4'), 'placeholder second original');
+  const [row = ''] = x.playlists.addItems(x.playlist, null, [{ kind: 'media', mediaId: 'second' }]);
+  return row;
+}
+
 describe('trimming a playlist video', () => {
   it('offers Reset for old file playback points and clears them only for that row', async () => {
     const x = await setup();
@@ -544,11 +563,7 @@ describe('trimming a playlist video', () => {
 
   it('names at once only the cuts that cannot carry on; the rest carry on once the start is known and nothing is up', async () => {
     const x = await setup();
-    db.prepare(
-      "INSERT INTO media (id, kind, name, path) VALUES ('second', 'video', 'Placeholder second.mp4', 'second.mp4')",
-    ).run();
-    await writeFile(join(dir, 'second.mp4'), 'placeholder second original');
-    const [secondRow = ''] = x.playlists.addItems(x.playlist, null, [{ kind: 'media', mediaId: 'second' }]);
+    const secondRow = await secondOriginal(x);
     expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
     expect(await x.service.apply(secondRow, { ...request, mediaId: 'second' })).toEqual({ ok: true });
     x.service.close();
@@ -556,18 +571,24 @@ describe('trimming a playlist video', () => {
     await writeFile(join(dir, 'second.mp4'), 'placeholder replacement of the second original');
 
     const restarted = x.restart();
-    // The start notice waits for no FFmpeg: it names the cut that cannot carry on, and only that one.
+    // Both rows say Preparing from the start (TM-1).
+    expect(restarted.list()).toEqual([x.itemId, secondRow]);
+    // The start notice waits for no FFmpeg: it names the cut that cannot carry on, and only that one, with why
+    // (TM-3); that row stops saying Preparing.
     expect(restarted.reportInterrupted()).toBe(
-      'The cut of “Placeholder second.mp4” wasn’t made because Drashti closed. Open Trim and save it again.',
+      'The cut of “Placeholder second.mp4” wasn’t made because its original video changed while Drashti was closed. Open Trim and save it again.',
     );
+    expect(restarted.list()).toEqual([x.itemId]);
+    expect(x.pendingChanged).toHaveBeenLastCalledWith([x.itemId]);
     expect(restarted.reportInterrupted()).toBeNull();
     expect(x.queue).toHaveBeenCalledTimes(2);
-    // Recovery put a video back on LIVE: the cut waits for the start to be known, then for nothing to be up.
+    // Recovery put a video back on LIVE: the cut waits for the start to be known, then for nothing to be up, its row
+    // saying Preparing all the while.
     x.show('original');
     restarted.resumeWhenQuiet();
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(x.queue).toHaveBeenCalledTimes(2);
-    expect(restarted.list()).toEqual([]);
+    expect(restarted.list()).toEqual([x.itemId]);
     x.show(null);
     restarted.activityChanged();
     await vi.waitFor(() => expect(x.queue).toHaveBeenCalledTimes(3));
@@ -576,6 +597,147 @@ describe('trimming a playlist video', () => {
     x.finish({ ok: true, copy: x.output });
     await vi.waitFor(() => expect(restarted.list()).toEqual([]));
     expect(x.repo.view(x.itemId)?.markers).toEqual(request.points);
+  });
+
+  /*
+   * A cut waiting to carry on after a restart (TM-1; review LOW-1 of afdcf0ed): its row says Preparing from the start,
+   * as any cut being made does, and the cut is let go only once the operator's Stop or Reset is accepted.
+   */
+
+  it('shows a cut waiting to carry on after a restart as Preparing from the start, until it is taken in', async () => {
+    const x = await setup();
+    const restarted = await waitingAfterRestart(x);
+    expect(restarted.list()).toEqual([x.itemId]);
+    expect(restarted.reportInterrupted()).toBeNull();
+    expect(restarted.list()).toEqual([x.itemId]);
+    restarted.resumeWhenQuiet();
+    await vi.waitFor(() => expect(x.queue).toHaveBeenCalledTimes(2));
+    expect(restarted.list()).toEqual([x.itemId]);
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(() => expect(restarted.list()).toEqual([]));
+    expect(x.pendingChanged).toHaveBeenLastCalledWith([]);
+    expect(x.repo.view(x.itemId)?.markers).toEqual(request.points);
+  });
+
+  it('stops saying Preparing when a waiting cut cannot be made after all, and says why', async () => {
+    const x = await setup();
+    const restarted = await waitingAfterRestart(x);
+    x.spaceProblem.mockReturnValue(
+      'This disk has less than 2 GB free. Free up some space, then save it again.',
+    );
+    restarted.resumeWhenQuiet();
+    await vi.waitFor(() => {
+      expect(x.notice).toHaveBeenCalledWith(
+        'Drashti couldn’t make the cut of “Placeholder.mp4”. Free up some disk space, then open Trim and save it again.',
+      );
+    });
+    expect(restarted.list()).toEqual([]);
+    expect(x.pendingChanged).toHaveBeenLastCalledWith([]);
+    expect(x.kept.load()).toEqual([]);
+  });
+
+  it.each<[string, (x: Awaited<ReturnType<typeof setup>>, restarted: PlaylistTrims) => Promise<void>]>([
+    [
+      'a Reset refused while its row’s video is up',
+      async (x, restarted) => {
+        x.show('original');
+        expect(restarted.reset(x.itemId, 'original')).toEqual({
+          ok: false,
+          message: 'Take the video off before resetting this row.',
+        });
+        x.show(null);
+      },
+    ],
+    [
+      'a Trim saved while it waits (refused, as while any cut is being made)',
+      async (x, restarted) => {
+        expect(
+          await restarted.apply(x.itemId, { ...request, points: { ...request.points, endMs: 3000 } }),
+        ).toEqual({
+          ok: false,
+          message:
+            'This video is already being trimmed. Wait for Preparing to clear, or open Trim again and press Stop.',
+        });
+      },
+    ],
+    [
+      'a save of markers alone while it waits',
+      async (x, restarted) => {
+        const points = { ...NO_MARKERS, markers: [{ id: 'cue', name: 'Placeholder cue', atMs: 900 }] };
+        expect(await restarted.apply(x.itemId, { mediaId: 'original', points })).toMatchObject({ ok: false });
+        // Nothing saved: the cut, once taken in, carries the markers it was accepted with.
+        expect(x.media.markersOf('original')).toBeNull();
+      },
+    ],
+  ])('keeps a cut waiting to carry on through %s', async (_name, act) => {
+    const x = await setup();
+    const restarted = await waitingAfterRestart(x);
+    await act(x, restarted);
+    expect(restarted.list()).toEqual([x.itemId]);
+    expect(x.kept.load()).toMatchObject([{ itemId: x.itemId, request: { points: request.points } }]);
+    restarted.resumeWhenQuiet();
+    await vi.waitFor(() => expect(x.queue).toHaveBeenCalledTimes(2));
+    expect(x.queue.mock.calls[1]?.[0]).toMatchObject({ startMs: 500, endMs: 2500 });
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(() => expect(restarted.list()).toEqual([]));
+    expect(x.repo.view(x.itemId)?.markers).toEqual(request.points);
+  });
+
+  it('lets a cut waiting to carry on go once Stop is accepted', async () => {
+    const x = await setup();
+    const restarted = await waitingAfterRestart(x);
+    expect(restarted.stop(x.itemId, 'original')).toEqual({ ok: true });
+    expect(restarted.list()).toEqual([]);
+    expect(x.pendingChanged).toHaveBeenLastCalledWith([]);
+    expect(x.kept.load()).toEqual([]);
+    expect(restarted.stop(x.itemId, 'original')).toMatchObject({ ok: false });
+    restarted.resumeWhenQuiet();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(x.queue).toHaveBeenCalledOnce();
+    expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
+  });
+
+  it('lets a cut waiting to carry on go once a Reset is accepted', async () => {
+    const x = await setup();
+    // Points of the file's own (Media's): Reset to original is offered on the row.
+    x.media.setMarkers('original', { ...NO_MARKERS, startMs: 100, endMs: 3000 });
+    const restarted = await waitingAfterRestart(x);
+    expect(restarted.reset(x.itemId, 'original')).toEqual({ ok: true });
+    expect(restarted.list()).toEqual([]);
+    expect(x.pendingChanged).toHaveBeenLastCalledWith([]);
+    expect(x.kept.load()).toEqual([]);
+    restarted.resumeWhenQuiet();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(x.queue).toHaveBeenCalledOnce();
+    expect(x.repo.view(x.itemId)?.markers).toMatchObject({ startMs: null, endMs: null });
+  });
+
+  /* The start notice says why a cut cannot carry on (TM-3; review LOW-6 of d487b875, LOW-4 of afdcf0ed). */
+
+  it('says why cuts cannot carry on: Drashti closed before they were made, or their original video changed', async () => {
+    const x = await setup();
+    const secondRow = await secondOriginal(x);
+    expect(await x.service.apply(secondRow, { ...request, mediaId: 'second' })).toEqual({ ok: true });
+    x.service.close();
+    await writeFile(join(dir, 'second.mp4'), 'placeholder replacement of the second original');
+    // The first row's record is from before cuts carried on: Drashti closed before it was made.
+    x.kept.save([{ itemId: x.itemId, mediaId: 'original', name: 'Placeholder.mp4' }, ...x.kept.load()]);
+    expect(x.restart().reportInterrupted()).toBe(
+      'The cut of “Placeholder.mp4” wasn’t made because Drashti closed. The cut of “Placeholder second.mp4” wasn’t made because its original video changed while Drashti was closed. Open Trim and save them again.',
+    );
+  });
+
+  it('names several cuts whose original videos changed in one sentence', async () => {
+    const x = await setup();
+    const secondRow = await secondOriginal(x);
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    expect(await x.service.apply(secondRow, { ...request, mediaId: 'second' })).toEqual({ ok: true });
+    x.service.close();
+    await writeFile(x.original, 'placeholder replacement of the original');
+    await writeFile(join(dir, 'second.mp4'), 'placeholder replacement of the second original');
+    expect(x.restart().reportInterrupted()).toBe(
+      'The cuts of “Placeholder.mp4” and “Placeholder second.mp4” weren’t made because their original videos changed while Drashti was closed. Open Trim and save them again.',
+    );
   });
 
   it('checks a finished cut off Main’s thread, and only while nothing is up', async () => {
