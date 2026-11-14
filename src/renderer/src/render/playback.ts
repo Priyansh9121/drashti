@@ -16,7 +16,8 @@ import { engineNow } from './clock';
  * at `at`, `lateMs` behind the engine's time. It plays a little faster, `maxRate` at most, until it is where the engine's
  * time has it, never jumping there: its start is seen whole, and every screen, the slide's sounds and the engine's next
  * step are on the same time again within the clip (or its hold, going round after it). A step's hold that starts late
- * because its clip ended late makes up the rest the same way.
+ * because its clip ended late makes up the rest the same way. For muted pictures only, with no time bar (a deck's clips
+ * and holds): a sound or a video the time bar moves is never sped up this way (C3T-4).
  */
 export interface PlaybackCatchUp {
   /** When it plays from that frame (the engine's time). */
@@ -52,6 +53,12 @@ export interface PlaybackOptions {
    * whatever the element holds.
    */
   reuseLoadedSource?: boolean;
+  /**
+   * A deck's clip or hold that may start late and catch up (`timing().catchUp`; render/DeckStep.tsx alone asks): its
+   * pace is set from its first moving frame, not the next check. Left out (every other caller), nothing more listens to
+   * it than before (C3T-1).
+   */
+  catchesUp?: boolean;
   /** When the playback started (ms since the epoch, main-process clock). */
   startedAt: number;
   /** The file has its first frame (or sound), at the right point. */
@@ -229,7 +236,10 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   const onMetadata = () => {
     tellLength(mediaId, v.duration);
     const at = expected();
-    if (at > 0.05) {
+    // Within a moment of where it is, it plays from there at once: a file just loaded is at its start, and one loaded
+    // ahead may wait decoded at the frame its clock starts it from (C3, Session 58: a click on a deck slide's row, past
+    // the deck's own transition), where a seek to the same place would only be a wait for that frame again.
+    if (Math.abs(at - v.currentTime) > 0.05) {
       v.addEventListener('seeked', whenFrame, { once: true });
       v.currentTime = at;
     } else whenFrame();
@@ -394,7 +404,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   };
   v.muted = !audible;
   v.addEventListener('playing', onPlaying, { once: true });
-  v.addEventListener('playing', paceAtStart);
+  if (options.catchesUp === true) v.addEventListener('playing', paceAtStart);
   v.addEventListener('loadedmetadata', onMetadata, { once: true });
   v.addEventListener('error', failed);
   v.addEventListener('seeked', landed);
