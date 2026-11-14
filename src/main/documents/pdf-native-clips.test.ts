@@ -214,7 +214,11 @@ async function expectFullPaint(doc: PDFDocumentProxy, page: PDFPageProxy, count:
   let differingPixels = 0;
   for (let offset = 0; offset < expected.length; offset += 4) {
     // Allow the rounding introduced by encoding a transparent crop as PNG.
-    if ([0, 1, 2, 3].some((channel) => Math.abs(expected[offset + channel] - actual[offset + channel]) > 2))
+    if (
+      expected
+        .subarray(offset, offset + 4)
+        .some((value, channel) => Math.abs(value - (actual[offset + channel] ?? 0)) > 2)
+    )
       differingPixels++;
   }
   expect(differingPixels).toBe(0);
@@ -227,6 +231,7 @@ describe('whole paint on PDF effect pages', () => {
     ['a closed stroke', '48 40 m 193 40 l 193 130 l 48 130 l s'],
     ['an acute miter', '0 j 10 M 35 60 m 130 72 l 35 84 l S'],
     ['a diagonal square cap', '2 J 55 35 m 135 115 l S'],
+    ['a transformed hairline', 'q 3 0.5 1 0.75 40 25 cm 0 w 2 J 5 15 m 35 55 l S Q'],
   ])('matches the full page for %s', async (_, paint) => {
     await withPage(strokedEffectPdf(paint), (doc, page) => expectFullPaint(doc, page, 1));
   });
@@ -296,7 +301,11 @@ describe('whole paint on PDF effect pages', () => {
 describe('long and complex generated PDFs', () => {
   it('keeps forty small effects editable on a generated 1920 by 1080 page', async () => {
     await withPage(effectDeckPdf([smallPaint(40)]), async (doc, page) => {
+      const render = vi.spyOn(page, 'render');
       const result = await editablePdfPage(doc, page, pdfjs.OPS);
+      // One reference and one replay for the disjoint rectangles.
+      expect(render).toHaveBeenCalledTimes(2);
+      render.mockRestore();
       expect(result).toMatchObject({ width: 1920, height: 1080 });
       const images = result.elements.filter((element) => element.kind === 'image');
       expect(images).toHaveLength(40);
