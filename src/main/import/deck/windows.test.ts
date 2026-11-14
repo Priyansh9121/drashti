@@ -152,7 +152,7 @@ describe('a PowerPoint that does not finish is stopped only while it shows no wi
     expect(asked).toEqual([`${String(hidden.pid)},${String(shown.pid)}`]);
     expect(await hidden.ended()).toBe(true);
     expect(await shown.ended(300)).toBe(false);
-    expect(r).toMatchObject({ ok: false, reason: 'PowerPoint stopped answering' });
+    expect(r).toMatchObject({ ok: false, reason: 'it stopped answering' });
     expect(r.ok ? '' : r.message).toContain(
       'PowerPoint shows a window now (opened meanwhile), so Drashti left it open: look at PowerPoint.',
     );
@@ -170,7 +170,7 @@ describe('a PowerPoint that does not finish is stopped only while it shows no wi
     });
     expect(await hidden.ended()).toBe(true);
     expect(await shown.ended(300)).toBe(false);
-    expect(r).toMatchObject({ ok: false, reason: 'PowerPoint stopped answering' });
+    expect(r).toMatchObject({ ok: false, reason: 'it stopped answering' });
     expect(r.ok ? '' : r.message).toContain('so Drashti left it open: look at PowerPoint.');
   });
 
@@ -269,7 +269,7 @@ describe('PowerPoint on Windows, with a stand-in for PowerShell', () => {
       runPowerShell: fake,
       log: (line) => log.push(line),
     });
-    expect(r).toMatchObject({ ok: false, reason: 'it could not make the movie' });
+    expect(r).toMatchObject({ ok: false, reason: 'it stopped with an error' });
     expect(r.ok ? '' : r.message).toBe('PowerPoint could not make the deck’s movie.');
     expect(log).toEqual(['PowerPoint: failed: PowerPoint could not make the movie.']);
   });
@@ -299,7 +299,7 @@ describe('PowerPoint on Windows, with a stand-in for PowerShell', () => {
     const r = await deckOnWindows({ input: deck, movie: join(work, 'movie.mp4') }, work, {
       runPowerShell: stuck,
     });
-    expect(r).toMatchObject({ ok: false, reason: 'PowerPoint stopped answering' });
+    expect(r).toMatchObject({ ok: false, reason: 'it stopped answering' });
     const stopped: PowerShellRunner = () =>
       Promise.resolve({ code: null, stdout: '', stderr: '', timedOut: false, aborted: true });
     expect(
@@ -391,7 +391,7 @@ describe('PowerPoint’s own settings, put back even when its script was stopped
     expect(asked).toHaveLength(1);
     expect(asked[0]?.['settings']).toBe('2,1');
     expect(asked[0]?.['Copy']).toMatch(/Drashti copy \d+\.pptx$/u);
-    expect(r).toMatchObject({ ok: false, reason: 'PowerPoint stopped answering' });
+    expect(r).toMatchObject({ ok: false, reason: 'it stopped answering' });
     expect(r.ok ? '' : r.message).not.toContain('could not be put back');
     expect(log).toContain('PowerPoint: its alerts and macro settings put back as they were');
   });
@@ -429,7 +429,7 @@ describe('PowerPoint’s own settings, put back even when its script was stopped
       runPowerShell: stuckAfterChanging(POWERPOINT_WINDOWS_SCRIPT, { settings: '1,2' }, asked),
     });
     expect(asked.map((a) => a['settings'])).toEqual(['1,2']);
-    expect(r).toMatchObject({ ok: false, reason: 'PowerPoint stopped answering' });
+    expect(r).toMatchObject({ ok: false, reason: 'it stopped answering' });
   });
 
   it('nothing to put back when the script stopped before it changed them, or when the PowerPoint Drashti started was stopped', async () => {

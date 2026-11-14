@@ -151,7 +151,7 @@ export interface NetworkDeps {
   reads: NetworkReads;
   /**
    * The stream is on air or recording (Session 50's rule: background work stays off then): a phone's Save captures
-   * nothing, and answers with the slide as it starts (C6's review, MEDIUM 3).
+   * nothing, and answers with a picture from the slide (C6's review, MEDIUM 3).
    */
   onAir?(): boolean;
   /**
@@ -1022,7 +1022,7 @@ export class NetworkService implements EngineTransport {
         (element) => element.kind === 'image' && !element.hidden,
       );
       return picture?.kind === 'image'
-        ? ok({ mediaId: picture.mediaId, message: `This is the slide as it starts. ${retry}` })
+        ? ok({ mediaId: picture.mediaId, message: `This is a picture from the slide. ${retry}` })
         : deny(409, `This slide couldn’t be saved now. ${retry}`);
     };
     const onAir = () => this.deps.onAir?.() === true;
