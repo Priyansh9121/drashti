@@ -387,6 +387,30 @@ test('where Chromium draws without a graphics chip an output draws the show with
   await app.close();
 });
 
+test('where Chromium draws without a graphics chip the stream’s page draws the show without a warm-up, as the outputs do, and the log says so once (WU-1)', async () => {
+  test.setTimeout(180_000);
+  const { app, userData } = await launchApp({ ...WITHOUT_A_CHIP, DRASHTI_TEST_FAKE_DEVICES: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // Chromium has said how it draws (the LIVE picture's warm-up is over: it draws without a chip too, but warms up).
+  await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  await win.getByTestId('open-stream').click();
+  const program = await streamPage(app);
+  const root = program.getByTestId('program-root');
+  await expect(root).toHaveAttribute('data-warm-up', 'skipped', { timeout: 30_000 });
+  await expect(root).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
+  // It never warmed up: no warm-up drawn, no mark of one.
+  expect(await warmUpMarks(program), 'the stream’s page’s warm-up marks').toEqual([]);
+  await expect
+    .poll(() => warmUpLines(userData).filter((line) => line.endsWith('for the stream’s page')))
+    .toEqual([
+      'Warm-up: skipped, no graphics chip (gpu_compositing disabled_software), for the stream’s page',
+    ]);
+  await app.close();
+});
+
 test('an output told it draws without a graphics chip after its warm-up began ends the warm-up there and draws the show, black until something goes up', async () => {
   test.setTimeout(180_000);
   const { app, userData } = await launchApp({

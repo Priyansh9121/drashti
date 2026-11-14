@@ -297,3 +297,24 @@ describe('how an output’s warm-up ended, as its page says it and the log says 
       expect(line({ how, ms: 1 })).not.toContain('Warm-up: ');
   });
 });
+
+describe('the stream’s page beside the outputs (Session 58, WU-1)', () => {
+  it('Main follows more than one set of pages: each is told once it skips its warm-up, the outputs and the stream’s page', () => {
+    const lines: string[] = [];
+    const choices = new WarmUpChoices({
+      status: () => ({ gpu_compositing: 'disabled_software' }),
+      log: (l) => lines.push(l),
+    });
+    const told: string[] = [];
+    choices.follow(() => [{ id: 1, name: 'output "Placeholder Hall"', tell: () => told.push('hall') }]);
+    choices.follow(() => [{ id: 2, name: 'the stream’s page', tell: () => told.push('stream') }]);
+    choices.gpuSaid();
+    expect(told).toEqual(['hall', 'stream']);
+    choices.gpuSaid();
+    expect(told).toEqual(['hall', 'stream']);
+    expect(lines).toEqual([
+      'Warm-up: skipped, no graphics chip (gpu_compositing disabled_software), for output "Placeholder Hall"',
+      'Warm-up: skipped, no graphics chip (gpu_compositing disabled_software), for the stream’s page',
+    ]);
+  });
+});
