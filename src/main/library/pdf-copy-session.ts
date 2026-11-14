@@ -133,7 +133,7 @@ export class PdfCopySession {
     }
     if (signal.aborted || !current()) return null;
     // A phone's picture is the lowest of this window's jobs (C6's review, LOW 1): the operator's copy ends it (the
-    // phone gets the slide as it starts) and goes ahead, while a picture never waits for another job.
+    // phone gets a picture from the slide) and goes ahead, while a picture never waits for another job.
     if (this.active?.job.picture && !plan.picture) this.active.finish(null);
     if (this.active) return null;
     const picture = plan.picture;
@@ -230,7 +230,7 @@ export class PdfCopySession {
       active.captures >= 128
     )
       return null;
-    // A phone's picture that cannot be made ends at once: the phone gets the slide as it starts without waiting out
+    // A phone's picture that cannot be made ends at once: the phone gets a picture from the slide without waiting out
     // the job's time (C6's review, LOW 4).
     const refuse = () => {
       if (active.job.picture) active.finish(null);
