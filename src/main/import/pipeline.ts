@@ -603,8 +603,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       const shown = replaced.slice(0, 3).join(', ');
       const more = replaced.length > 3 ? ` and ${plural(replaced.length - 3, 'other', 'others')}` : '';
       const one = replaced.length === 1;
+      // An automatic import never moves what is playing (Q57-25, Q57-27). The notice's own ending names the new points
+      // and markers (import-notices.ts): once.
       const when = ctx.options.automatic
-        ? '. The new points and markers take effect the next time the media plays.'
+        ? `, from the next time ${one ? 'it plays' : 'they play'}.`
         : `, and what is up playing ${one ? 'it' : 'them'} moved to them at once.`;
       issues.push({
         severity: 'info',
