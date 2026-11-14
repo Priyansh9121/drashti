@@ -84,14 +84,18 @@ export function framePeriod(frames: readonly number[]): number {
 
 /**
  * One run of a case: the frames that moved from a frame before its press (one that began a moment before it may show
- * it) until the next case's, its delay, its length and the intervals between its frames.
+ * it) until the next case's, its delay, its length and the intervals between its frames. The next case's run begins a
+ * frame before its press (`until`) likewise, so this one ends there: a frame begun just before the next press that
+ * already shows it is the next case's alone (Session 58, C24: counted in both, a run stretched over every still frame
+ * up to it, and CI's Mac draws a third of its still frames late).
  */
 export function measureRun(record: MotionRecord, window: CaseWindow, periodMs: number): MotionRun {
   const { frames } = record;
   const from = window.pressAt - periodMs;
+  const to = window.until - periodMs;
   const own = record.changes.filter((i) => {
     const at = frames[i];
-    return at !== undefined && at >= from && at < window.until;
+    return at !== undefined && at >= from && at < to;
   });
   const first = own[0];
   const last = own.at(-1);
