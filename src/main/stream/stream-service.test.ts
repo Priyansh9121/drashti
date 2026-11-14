@@ -70,3 +70,52 @@ describe('the shared sound tap and Program', () => {
     stream.close();
   });
 });
+
+describe('the stream’s page without a graphics chip (Session 58, WU-1)', () => {
+  it('its context says it draws without one once Main’s choice for its page says so, as an output’s does', async () => {
+    const send = vi.fn<(channel: string, context: ProgramContext) => void>();
+    const webContents = Object.assign(new EventEmitter(), {
+      id: 41,
+      isDestroyed: () => false,
+      postMessage: vi.fn(),
+      send,
+    });
+    const program = Object.assign(new EventEmitter(), {
+      webContents,
+      isDestroyed: () => false,
+      getContentSize: () => [1920, 1080],
+      destroy: vi.fn(),
+    });
+    const profile = { id: 'test-profile', preset: 'good', camera: null, sound: null };
+    let skips = false;
+    const asked: number[] = [];
+    const createProgram = vi.fn(() => program as unknown as BrowserWindow);
+    const stream = new StreamService({
+      profiles: { get: () => profile },
+      settings: { get: (key: string) => (key === 'stream.profileId' ? profile.id : undefined) },
+      screens: { streamGroup: () => null },
+      createProgram,
+      sendToOperator: vi.fn(),
+      platform: 'darwin',
+      mediaAccess: () => 'granted',
+      askMediaAccess: () => Promise.resolve(true),
+      fakeDevices: true,
+      ffmpegPath: () => null,
+      now: Date.now,
+      log: vi.fn(),
+      warmUpFact: (win: { webContents: { id: number } }) => {
+        asked.push(win.webContents.id);
+        return skips ? { noGpu: true } : {};
+      },
+    } as unknown as StreamServiceDeps);
+    stream.hold('a test of its page', true);
+    await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
+    webContents.emit('did-finish-load');
+    // Chromium has not said it draws without a chip: as before.
+    expect(stream.context().noGpu).toBeUndefined();
+    skips = true;
+    expect(stream.context()).toMatchObject({ noGpu: true });
+    expect(asked).toContain(41);
+    stream.close();
+  });
+});
