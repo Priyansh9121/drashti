@@ -407,11 +407,16 @@ function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly Text
         const size = first.size ?? el.style.fontSize;
         const { mark, label } = line.mark;
         const blank = line.pieces.every((p) => p.text.trim() === '');
-        // Each line at its own largest size (Q58-54), so its CSS strut is that line's own, as PowerPoint lays each line
-        // out (run 5): only where every run on it has its own size (a deck's), so no run takes a size it did not have.
+        // A deck's own box (its source shape's ID, as the deck reader sets it) lays each line at its own largest size
+        // (Q58-54), so its CSS strut is that line's own, as PowerPoint lays each line out (run 5); only where every run
+        // on it has its own size, so no run takes a size it did not have. A Drashti-made box lays out as it always has,
+        // so a prepared show's words never move.
         const sized = line.pieces.length > 0 ? line.pieces.map((p) => p.run.size) : [line.end?.size];
         const sizes = sized.filter((px): px is number => px !== undefined);
-        const lineSize = sizes.length > 0 && sizes.length === sized.length ? Math.max(...sizes) : undefined;
+        const lineSize =
+          el.sourceShapeId !== undefined && sizes.length > 0 && sizes.length === sized.length
+            ? Math.max(...sizes)
+            : undefined;
         return (
           <div
             key={li}
