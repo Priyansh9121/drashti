@@ -597,9 +597,11 @@ describe('a ProPresenter 6 video’s start and end points (Session 14)', () => {
     expect(transport.messages).toHaveLength(messages);
     engine.dispatch(play);
     expect(engine.current.layers.background).toEqual(playing);
+    // Its notice says when they take effect; the notice's ending then says "new points and markers", once (C17's
+    // review, words; import-notices.ts).
     const automaticItem = followed.report?.items.find((i) => i.format === 'pp6');
-    expect(automaticItem?.issues.find((i) => i.code === 'markers-replaced')?.message).toContain(
-      'The new points and markers take effect the next time the media plays.',
+    expect(automaticItem?.issues.find((i) => i.code === 'markers-replaced')?.message).toBe(
+      'Marked Loop.mov was in the library already, with other start and end points or markers: it has this import’s now, from the next time it plays.',
     );
     engine.dispatch({ type: 'clearAll' });
     engine.dispatch(play);

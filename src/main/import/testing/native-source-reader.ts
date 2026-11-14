@@ -18,6 +18,7 @@ export const nativeSourceReader: SourceReader = async (request) => {
   await mkdir(request.outDir, { recursive: true });
   const pages: PreparedSourcePage[] = [];
   const failed: number[] = [];
+  const failedNotes: Record<number, string[]> = {};
   if (request.ext === 'pptx') {
     // As the document reader does (W6's review N4): the asked pages' clicks too, checked as Main checks them.
     const {
@@ -30,6 +31,9 @@ export const nativeSourceReader: SourceReader = async (request) => {
       const page = native.slides.find((entry) => entry.sourceIndex === sourceIndex);
       if (!page) {
         failed.push(sourceIndex);
+        // A page over a limit has its own note for Edit slides, as the document reader passes it (C23's LOW-3).
+        const notes = native.failedNotes?.[sourceIndex];
+        if (notes?.length) failedNotes[sourceIndex] = notes;
         continue;
       }
       const tokens = new Set(
@@ -54,7 +58,14 @@ export const nativeSourceReader: SourceReader = async (request) => {
         }),
       });
     }
-    return { ok: true, pages, total: native.slides.length, failed };
+    // The deck's own page count, as the document reader sends it: a page over a limit is among them.
+    return {
+      ok: true,
+      pages,
+      total: native.sourceCount,
+      failed,
+      ...(Object.keys(failedNotes).length > 0 ? { failedNotes } : {}),
+    };
   }
   // Uses the installed Node canvas only in unit tests. Production PDF uses bundled DOM renderer/data.
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');

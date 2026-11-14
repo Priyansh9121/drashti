@@ -18,7 +18,7 @@ import { useProgram } from './program-store';
 import { ProgramView } from './ProgramView';
 import { StreamSound } from './sound';
 import { reportRenderError } from '../ui/render-errors';
-import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
+import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { ClockStyleContext } from '../render/clock-style';
 import { setLiveWindowSize } from '../render/live-window';
 import { useStopFade } from '../render/StopFade';
@@ -83,7 +83,11 @@ function Program() {
   const warmedUp = useCallback(() => {
     setWarmed(true);
   }, []);
-  const ready = fontsReady && warmed;
+  // None where Chromium draws without a graphics chip (Session 58, WU-1, as an output since Session 57): Main says so in
+  // this page's context once Chromium has said how it draws, a warm-up begun before then ending there.
+  const [noGpu, setNoGpu] = useState(false);
+  if (!noGpu && (!HOLD_WARM_UP || NO_GPU_ENDS_HOLD) && context?.noGpu === true) setNoGpu(true);
+  const ready = fontsReady && (warmed || noGpu);
   // The Lower Thirds studio's fonts once the stream's picture is drawn (Session 55): never with this page's own start.
   useEffect(() => {
     if (!ready) return;
@@ -129,9 +133,9 @@ function Program() {
       data-sound={soundState}
       // Ready to draw the show: its fonts loaded, and the GPU warmed up (WarmUp).
       data-fonts={ready ? 'ready' : 'loading'}
-      data-warm-up={warmed ? 'done' : 'warming'}
+      data-warm-up={warmed ? 'done' : noGpu ? 'skipped' : 'warming'}
     >
-      {context?.picture && fontsReady && !warmed && (
+      {context?.picture && fontsReady && !ready && (
         <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
           <WarmUp
             page="stream"

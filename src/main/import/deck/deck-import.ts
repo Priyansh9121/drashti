@@ -812,6 +812,8 @@ export function picturesMediaIssues(d: {
   left: number;
   /** Its videos and sounds that could not be put on their slides (its pictures not one a slide; C review). */
   unmatched?: number;
+  /** Why: a Keynote PDF's pages in another order than its PowerPoint copy's slides (C15's review, L1). */
+  outOfOrder?: boolean;
   /** Sounds set to play across slides, as their slides' sounds saying so (Session 54). */
   across?: number;
   /** Slides (from 1) whose own sound goes up where one of those plays on: it takes its place (one sound a slide). */
@@ -822,7 +824,7 @@ export function picturesMediaIssues(d: {
     out.push({
       severity: 'warning',
       code: 'deck-media-unmatched',
-      message: `${d.unmatched === 1 ? 'Its video or sound was' : `Its ${String(d.unmatched)} videos and sounds were`} left out: its pictures could not be matched to its slides one for one (some pages could not be drawn, or the PDF has a different number of pages than it has slides shown).`,
+      message: `${d.unmatched === 1 ? 'Its video or sound was' : `Its ${String(d.unmatched)} videos and sounds were`} left out: its pictures could not be matched to its slides one for one (${d.outOfOrder ? 'the PDF’s pages are in a different order than its slides' : 'some pages could not be drawn, or the PDF has a different number of pages than it has slides shown'}).`,
       fix: null,
     });
   if (d.videos > 0)
