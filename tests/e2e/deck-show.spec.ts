@@ -1147,9 +1147,18 @@ test('a deck slide the operator points at in the list (or whose number is typed)
     // hall's screens do (from its start: the deck's own transition plays inside it), and plays it at once.
     await win.mouse.move(4, 4);
     await row(0).click();
-    await win.mouse.move(4, 4);
     await expect.poll(async () => (await state(win)).live.slideIndex).toBe(0);
+    // The pointer rests on its row on: once its first click goes on (its first clip let go of), each screen loads that
+    // clip again, for another click on the row; it lets it go once the pointer moves off.
+    const firstClip = files.clips[0] ?? '';
+    const firstAhead = (s: { page: Page; box: string }) =>
+      s.page.getByTestId(s.box).locator(`video[data-preload="${firstClip}"][data-deck-ahead="pointed"]`);
     await dispatch(win, { type: 'next' });
+    await expect.poll(() => step(win)).toBe(1);
+    for (const s of screens)
+      await expect(firstAhead(s), `${s.name}: loaded again`).toHaveAttribute('data-state', 'ready');
+    await win.mouse.move(4, 4);
+    for (const s of screens) await expect(firstAhead(s), `${s.name}: let go`).toHaveCount(0);
     await dispatch(win, { type: 'next' });
     await expect.poll(() => step(win)).toBe(2);
     for (const s of screens) {
@@ -1167,13 +1176,10 @@ test('a deck slide the operator points at in the list (or whose number is typed)
 
     // Jump to a row: the first slide's number typed (1), the pointer nowhere near its row, points at it as it is typed;
     // Enter puts it up from the element loaded ahead, at once.
-    const firstClip = files.clips[0] ?? '';
-    const typedAhead = (s: { page: Page; box: string }) =>
-      s.page.getByTestId(s.box).locator(`video[data-preload="${firstClip}"][data-deck-ahead="pointed"]`);
     await win.keyboard.press('1');
     for (const s of screens) {
-      await expect(typedAhead(s), s.name).toHaveAttribute('data-state', 'ready');
-      await markPrepared(typedAhead(s));
+      await expect(firstAhead(s), s.name).toHaveAttribute('data-state', 'ready');
+      await markPrepared(firstAhead(s));
       await recordPhases(s.page, firstClip);
     }
     await win.keyboard.press('Enter');
