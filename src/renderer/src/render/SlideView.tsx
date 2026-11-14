@@ -40,7 +40,7 @@ import { missingFontsOf } from './font-probe';
 import { queueFit } from './shrink-to-fit';
 import { standsUpright } from '../../../shared/text-runs';
 import { drawnLines, hasList } from '../../../shared/text-lists';
-import { cutLineHeight, sourceLineCut } from '../../../shared/source-fit';
+import { cutLineHeight, sourceFitScale, sourceLineCut } from '../../../shared/source-fit';
 import { TimerElementView } from './TimerElementView';
 import { PlayBar } from './PlayBar';
 import type { DeckMedia } from '../../../shared/deck';
@@ -524,8 +524,8 @@ export function useShrinkToFit(
     let live = true;
     const forget = queueFit({
       on,
-      // A deck's box starts its search where PowerPoint's own shrink left its words (Session 58, PF-4b).
-      guess: on ? el.style.sourceFit?.fontScale : undefined,
+      // A deck's box is drawn at PowerPoint's own shrunk size where its words fit at it (Session 58, PF-4b; Q58-42).
+      guess: on ? sourceFitScale(el) : undefined,
       write: (fit) => {
         if (fit !== null) {
           b.style.setProperty('--fit', String(fit));
