@@ -291,6 +291,28 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
     expect(at(300, [bars]).wipe).toBeNull();
   });
 
+  it('never draws a Split stop that adds nothing, however far through it is (EF-1: float noise near nothing)', () => {
+    // At every thousandth of the way, in and out, each way round: its middle, its two soft edges and its ends at most.
+    for (const inward of [false, true])
+      for (const phase of ['in', 'out'] as const)
+        for (const axis of ['x', 'y'] as const)
+          for (let k = 1; k < 1000; k++) {
+            const split: DeckEffect = {
+              ...effect,
+              kind: 'split',
+              splitAxis: axis,
+              phase,
+              ...(inward ? { inward: true as const } : {}),
+            };
+            const mask = deckWipeMask(at(75 + (225 * k) / 1000, [split]).wipe, bounds, bounds);
+            const stops = mask.match(/rgb\(/gu)?.length ?? 0;
+            expect(
+              stops,
+              `${phase} ${axis} ${inward ? 'In' : 'Out'} at ${String(k / 10)} %`,
+            ).toBeLessThanOrEqual(6);
+          }
+  });
+
   it('brings Split in from both edges, the gap closing in the middle, with PowerPoint’s soft edges', () => {
     const split: DeckEffect = { ...effect, kind: 'split', splitAxis: 'x', inward: true };
     expect(clipAt(187.5, split)).toBe('');
