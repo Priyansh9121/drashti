@@ -229,6 +229,8 @@ export interface WarmScene {
   clip?: string;
   /** Drawn moved by this transform (OFF_GRID: half a pixel off the grid, Session 58). */
   offset?: string;
+  /** Drawn inside a rounded overflow clip to warm the GPU’s analytic clip for a shaded slide. */
+  rounded?: boolean;
   /**
    * Drawn in place of a Scene of its state (Session 58: the moving backgrounds, each a small lower third), as a key
    * and fill pair's page draws (its matte).
@@ -434,7 +436,9 @@ export function warmScenes(): WarmScene[] {
     ...transitions,
     ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
     ...offGrid(deckWipe, 'deck-wipe/calm/off-grid'),
-    ...offGrid(deckCover, 'deck-cover/calm/off-grid'),
+    // CI’s Mac traces a separate pipeline for the wide Cover’s shaded quad with an analytic clip.
+    // Use an overflow clip with rounded corners so the compositor can draw it analytically.
+    ...offGrid(deckCover && { ...deckCover, rounded: true }, 'deck-cover/calm/off-grid'),
     ...offGrid(deckCover && fourThreeScene(deckCover), 'deck-cover-four-three/calm/off-grid'),
     ...list,
   ];
@@ -606,7 +610,15 @@ function WarmScenes({
           data-warm-scene={s.key}
           style={{ position: 'absolute', inset: 0, mixBlendMode: 'plus-lighter' }}
         >
-          <div style={{ position: 'absolute', inset: 0, clipPath: s.clip, transform: s.offset }}>
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              clipPath: s.clip,
+              transform: s.offset,
+              ...(s.rounded ? { overflow: 'hidden', borderRadius: 12 } : {}),
+            }}
+          >
             {s.draw ? (
               s.draw(during, at, canvas, matte)
             ) : (
