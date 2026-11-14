@@ -8,10 +8,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { EngineMirror } from '../../shared/engine/mirror';
+import { diffState } from '../../shared/engine/patch';
 import type { EngineMessage, EngineSnapshotMessage } from '../../shared/engine/protocol';
-import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
+import { ENGINE_STATE_VERSION, type EngineState, initialEngineState } from '../../shared/engine/state';
+import { lowerThirdSchema, NEW_LOWER_THIRD } from '../../shared/lower-thirds';
 import type { ToDevice } from '../../shared/network';
 import type { DeviceAuth, DeviceRequest } from '../../shared/network-api';
+import { alpha17LowerThirdSchema } from '../../shared/testing/alpha17-lower-third';
 import { NetworkServer, type ServerHost, SOCKET_LIMITS } from './server';
 import { hashToken } from './tokens';
 
@@ -627,6 +630,70 @@ describe('the network server', () => {
     expect(await closed).toBe(4000);
     expect(messages.at(-1)).toEqual({ type: 'bye', reason: 'revoked' });
     await until(() => host.connectedNow.length === 0);
+  });
+
+  it('sends a compatible lower third to a phone tab left open from alpha.17', async () => {
+    const { port, server: s } = await start();
+    const lowerThird = lowerThirdSchema.parse({
+      ...NEW_LOWER_THIRD,
+      id: 'placeholder-third',
+      lines: ['Placeholder speaker', 'Placeholder title'],
+      look: { ...NEW_LOWER_THIRD.look, style: 'ribbon', accent: '#446688', motion: 'streaks' },
+      outAnimation: 'slide-left-steady',
+      seconds: 15,
+    });
+    expect(alpha17LowerThirdSchema.safeParse(lowerThird).success).toBe(false);
+    const active = { ...lowerThird, shownAt: 1000 };
+    const initial = initialEngineState();
+    const showing = { ...initial, layers: { ...initial.layers, lowerThird: active } };
+    const offAt = 2000;
+    const hiding = { ...initial, lowerThirdOff: { layer: active, at: offAt } };
+
+    s.engine({ kind: 'snapshot', version: ENGINE_STATE_VERSION, rev: 5, state: showing, sentAt: 1100 });
+    const [oldTab, currentTab] = await Promise.all([feed(port), feed(port)]);
+    oldTab.ws.send(JSON.stringify({ type: 'hello', token: REMOTE_TOKEN }));
+    currentTab.ws.send(JSON.stringify({ type: 'hello', token: REMOTE_TOKEN, lowerThirdMotions: 'alpha.18' }));
+
+    const tabs = [
+      { ...oldTab, mirror: new EngineMirror(), schema: alpha17LowerThirdSchema, motion: 'line' },
+      { ...currentTab, mirror: new EngineMirror(), schema: lowerThirdSchema, motion: 'streaks' },
+    ];
+    const expectLayer = async (index: number, kind: EngineMessage['kind'], leaving = false) => {
+      for (const tab of tabs) {
+        await until(() => tab.messages.length > index);
+        const envelope = tab.messages[index];
+        if (envelope?.type !== 'engine') throw new Error('Expected an engine message');
+        expect(envelope.message.kind).toBe(kind);
+        expect(tab.mirror.apply(envelope.message)).toBe('applied');
+        const state = tab.mirror.state;
+        const layer = leaving ? state?.lowerThirdOff?.layer : state?.layers.lowerThird;
+        if (!layer) throw new Error('Expected a lower third');
+        const { shownAt, ...third } = layer;
+        expect(third, kind).toEqual({ ...lowerThird, look: { ...lowerThird.look, motion: tab.motion } });
+        expect(tab.schema.safeParse(third).success, kind).toBe(true);
+        expect(shownAt).toBe(active.shownAt);
+        expect(state?.lowerThirdOff?.at ?? null).toBe(leaving ? offAt : null);
+        if (leaving) expect(state?.layers.lowerThird).toBeNull();
+      }
+    };
+    const patch = (baseRev: number, from: EngineState, to: EngineState) =>
+      s.engine({
+        kind: 'patch',
+        version: ENGINE_STATE_VERSION,
+        baseRev,
+        rev: baseRev + 1,
+        ops: diffState(from, to),
+        sentAt: offAt,
+      });
+
+    await expectLayer(1, 'snapshot');
+    patch(5, showing, hiding);
+    await expectLayer(2, 'patch', true);
+    for (const tab of tabs) tab.ws.send(JSON.stringify({ type: 'resync' }));
+    await expectLayer(3, 'snapshot', true);
+    patch(6, hiding, showing);
+    await expectLayer(4, 'patch');
+    for (const tab of tabs) tab.ws.close();
   });
 
   // Session 53: each run of the engine (Drashti started again after a crash or an update) counts its revisions from
