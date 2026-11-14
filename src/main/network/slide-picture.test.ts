@@ -76,6 +76,27 @@ it('also unsubscribes after the capture deadline aborts', async () => {
   expect(off).toHaveBeenCalledOnce();
 });
 
+it('hands a capture no longer wanted at the start a stopped signal, so its hidden window never opens', async () => {
+  // The screens changed between Main's last look and the capture (C18's review, LOW-1): the session's start()
+  // refuses a stopped signal before opening anything (library/pdf-copy-session.ts).
+  const off = vi.fn();
+  const deadline = new AbortController();
+  const stoppedAtStart: boolean[] = [];
+  const result = captureWithShowAbort(
+    () => off,
+    () => false,
+    deadline.signal,
+    (signal) => {
+      stoppedAtStart.push(signal.aborted);
+      return Promise.resolve(null);
+    },
+  );
+  expect(await result).toBeNull();
+  expect(stoppedAtStart).toEqual([true]);
+  expect(deadline.signal.aborted).toBe(false);
+  expect(off).toHaveBeenCalledOnce();
+});
+
 function stateWith(change: (state: EngineState) => void): EngineState {
   const state = initialEngineState();
   change(state);
@@ -346,7 +367,7 @@ describe('waiting for a capture’s quiet time', () => {
     return { now: () => Date.now(), pass: (ms: number) => vi.advanceTimersByTimeAsync(ms) };
   }
 
-  it('answers with the slide as it starts at once when the slide moves on within the capture’s time', async () => {
+  it('answers with a picture from the slide at once when the slide moves on within the capture’s time', async () => {
     const c = clock();
     const s = stateWith((x) => {
       x.autoAdvance = { startedAt: NOW - 1_000, durationMs: 5_000 };
