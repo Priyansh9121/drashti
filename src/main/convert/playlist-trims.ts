@@ -14,11 +14,11 @@ import type { TrimCopyInput } from './trim-copy';
 
 type TrimSource = NonNullable<ReturnType<TrimmedVideos['row']>>;
 
-const trimCopySchema = z.object({ path: z.string().min(1), identity: z.string().min(1) });
+export const trimCopySchema = z.object({ path: z.string().min(1), identity: z.string().min(1) });
 const trimCopiesSchema = z.array(trimCopySchema);
 type TrimCopy = z.infer<typeof trimCopySchema>;
 const TRIM_PART = /^\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.mp4$/u;
-const keptTrimSchema = z.object({
+export const keptTrimSchema = z.object({
   itemId: idSchema,
   mediaId: idSchema,
   name: z.string().min(1),

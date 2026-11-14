@@ -38,7 +38,17 @@ const cut = (n: number) => ({
 });
 const copy = { path: 'ab/Placeholder trimmed.mp4', identity: '1:2:3:4' };
 const nothingBefore = { waiting: () => undefined, copies: () => undefined, clear: () => undefined };
-const onDisk = () => JSON.parse(readFileSync(file, 'utf8')) as unknown;
+const readRecords = () =>
+  JSON.parse(readFileSync(file, 'utf8')) as {
+    version: number;
+    waiting: unknown[];
+    copies: unknown[];
+    legacy: string | null;
+  };
+const onDisk = () => {
+  const { version, waiting, copies } = readRecords();
+  return { version, waiting, copies };
+};
 
 /** A busy disk: each write in the background waits until let go; the main process never waits for it. */
 function busyDisk() {
@@ -139,8 +149,9 @@ it('reads what alpha.17 kept in the library’s settings once, while the file is
   expect(onDisk()).toEqual({ version: 1, waiting: [cut(1)], copies: [copy] });
   const next = new TrimRecords(file, { before });
   expect(next.kept.load()).toEqual([cut(1)]);
-  expect(before.waiting).toHaveBeenCalledOnce();
-  expect(before.copies).toHaveBeenCalledOnce();
+  expect(before.waiting).toHaveBeenCalledTimes(2);
+  expect(before.copies).toHaveBeenCalledTimes(2);
+  expect(readRecords().legacy).toMatch(/^[0-9a-f]{64}$/u);
 });
 
 it('removes partial Trim writes left by a crash and keeps the records on disk', () => {
@@ -160,12 +171,37 @@ it('takes in new alpha.17 records after a downgrade alongside cuts already in th
   const later = { path: 'cd/Placeholder second cut.mp4', identity: '2:3:4:5' };
   const clear = vi.fn();
   const before = { waiting: () => [cut(2)], copies: () => [later], clear };
-  const records = new TrimRecords(file, { before });
+  const records = new TrimRecords(file, { before, afterDowngrade: true });
   expect(records.kept.load()).toEqual([cut(1), cut(2)]);
   expect(records.copies.load()).toEqual([copy, later]);
   await records.settle();
   expect(onDisk()).toMatchObject({ waiting: [cut(1), cut(2)], copies: [copy, later] });
   expect(clear).toHaveBeenCalledOnce();
+});
+
+it('does not resume a cut twice after a crash before the legacy settings were cleared', async () => {
+  const before = { waiting: () => [cut(1)], copies: () => [copy], clear: vi.fn() };
+  const first = new TrimRecords(file, { before });
+  await first.settle();
+  first.kept.save([]);
+  first.copies.save([]);
+  await first.settle();
+
+  const afterCrash = new TrimRecords(file, { before });
+  expect(afterCrash.kept.load()).toEqual([]);
+  expect(afterCrash.copies.load()).toEqual([]);
+  expect(before.clear).toHaveBeenCalledTimes(2);
+});
+
+it('prefers the newer request for the same row and keeps each unfinished copy once', async () => {
+  writeFileSync(file, JSON.stringify({ version: 1, waiting: [cut(1)], copies: [copy], legacy: null }));
+  const newest = { ...cut(1), name: 'Placeholder later request' };
+  const before = { waiting: () => [newest], copies: () => [copy], clear: vi.fn() };
+  const records = new TrimRecords(file, { before });
+  expect(records.kept.load()).toEqual([newest]);
+  expect(records.copies.load()).toEqual([copy]);
+  await records.settle();
+  expect(onDisk()).toEqual({ version: 1, waiting: [newest], copies: [copy] });
 });
 
 it('starts with nothing waiting and writes nothing when neither the file nor the settings hold anything', async () => {
@@ -251,8 +287,7 @@ it('writes empty records after setting a file aside, so the next start never rea
   expect(onDisk()).toEqual({ version: 1, waiting: [], copies: [] });
   const next = new TrimRecords(file, { before });
   expect(next.kept.load()).toEqual([]);
-  expect(before.waiting).not.toHaveBeenCalled();
-  expect(before.copies).not.toHaveBeenCalled();
+  expect(before.clear).toHaveBeenCalledTimes(2);
 });
 
 // LOW-3 (review of 50566755): a file that could be neither read nor moved aside at the start (Windows: another program
