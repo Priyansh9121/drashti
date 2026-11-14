@@ -279,6 +279,34 @@ const atLength = (length: number) => (name: string) => `${name} · ${String(leng
  * soft edge a share of the way, as at 700 ms, or a time?); every transition at 1 s, PowerPoint's own length for most
  * (markers from 24); then every transition at 2 s (markers from 26). Session 57's Cover and Uncover rest on 700 ms.
  */
+/**
+ * Basic Zoom as PowerPoint writes it (EF-4, the review of h-p3fx's part 4, L2 and L3): run 1's deck wrote Out and Out
+ * From Screen Bottom as 4 times the shape, where PowerPoint writes its own formula (8 times a shape under 0.3 of the
+ * slide, twice one its size); and the sixth variants, never measured: Out Slightly coming in (from 4/3), and leaving
+ * In (to nothing, in place) and Out Slightly (to 4/3).
+ */
+const ZOOM_OWN: ComparisonMotion[] = [
+  effect('Basic Zoom · Out · as PowerPoint writes it', 'in', 23, [
+    track('ppt_w', `${LARGE}#ppt_w`, '#ppt_w'),
+    track('ppt_h', `${LARGE}#ppt_h`, '#ppt_h'),
+  ]),
+  effect('Basic Zoom · Out From Screen Bottom · as PowerPoint writes it', 'in', 23, [
+    track('ppt_w', `${LARGE}#ppt_w`, '#ppt_w'),
+    track('ppt_h', `${LARGE}#ppt_h`, '#ppt_h'),
+    position('x', 0.5, '#ppt_x'),
+    position('y', `1+${LARGE}#ppt_h/2`, '#ppt_y'),
+  ]),
+  effect('Basic Zoom · Out Slightly', 'in', 23, [
+    track('ppt_w', '4/3*#ppt_w', '#ppt_w'),
+    track('ppt_h', '4/3*#ppt_h', '#ppt_h'),
+  ]),
+  effect('Basic Zoom exit · In', 'out', 23, scale(1, 0)),
+  effect('Basic Zoom exit · Out Slightly', 'out', 23, [
+    track('ppt_w', '#ppt_w', '4/3*#ppt_w'),
+    track('ppt_h', '#ppt_h', '4/3*#ppt_h'),
+  ]),
+];
+
 const RUN3: readonly ComparisonSlide[] = [
   ...timed(
     [
@@ -286,6 +314,7 @@ const RUN3: readonly ComparisonSlide[] = [
       lasting('Basic Zoom exit · Out To Screen Bottom', 1000),
       lasting('Shape in · Circle Out', 2000),
       lasting('Shape out · Box In', 2000),
+      ...motionScenes(ZOOM_OWN),
       ...transitionScenes(atLength(1000), 1000),
     ],
     24,
@@ -329,6 +358,7 @@ const STANDARD_NAMES = [
   'Grow/Shrink 150%',
   'Basic Zoom · In From Screen Center',
   'Basic Zoom · Out From Screen Bottom',
+  'Basic Zoom · Out From Screen Bottom · as PowerPoint writes it',
   'Basic Zoom exit · Out',
   'Basic Zoom exit · In To Screen Center',
   'Basic Zoom exit · Out To Screen Bottom',
@@ -352,7 +382,7 @@ export const COMPARISON_STANDARD: ComparisonDeck = {
   },
   slides: timed(
     [
-      ...motionScenes(STANDARD_NAMES.map((name) => byName([...MOTIONS, ...RUN2_MOTIONS], name))),
+      ...motionScenes(STANDARD_NAMES.map((name) => byName([...MOTIONS, ...RUN2_MOTIONS, ...ZOOM_OWN], name))),
       ...motionScenes(RUN2_MOTIONS.filter((motion) => motion.name.startsWith('Shape '))),
       ...transitionScenes((name) => name),
     ],
