@@ -412,6 +412,15 @@ test('a Trim accepted while the show is busy continues after a clean restart', a
     app = (await relaunchApp(first.userData)).app;
     const reopened = await operatorPage(app);
     await operatorReady(reopened);
+    // The row says Preparing from the start (TM-1), as the cut waits to carry on (it waits AFTER_START_MS, 10 s, after
+    // the window has loaded, then for nothing to be up), until it is taken in.
+    const preparingRows = () =>
+      reopened.evaluate(() => (globalThis as PageGlobals).drashti.media.preparingTrims());
+    expect(await preparingRows()).toEqual([rowId]);
+    await sizeOperatorWindow(app, reopened, CI_WINDOW);
+    await reopened.getByTestId('playlist-node').filter({ hasText: 'Placeholder restart trim' }).click();
+    const preparing = videoRow(reopened, rowId).getByTestId('trim-preparing');
+    await expect(preparing).toHaveText('Preparing');
     await expect
       .poll(
         async () => {
@@ -421,6 +430,8 @@ test('a Trim accepted while the show is busy continues after a clean restart', a
         { timeout: 30_000 },
       )
       .toBe(true);
+    await expect(preparing).toHaveCount(0);
+    expect(await preparingRows()).toEqual([]);
     expect(
       await reopened.evaluate((id) => (globalThis as PageGlobals).drashti.media.rowTrim(id), rowId),
     ).toMatchObject({ sourceId: mediaId, markers: points });
