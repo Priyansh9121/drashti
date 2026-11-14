@@ -364,6 +364,8 @@ test('a 4:3 deck’s Push on a 16:9 hall moves its slides by the slide’s width
     }
     await holdClock(app, (entered?.shownAt ?? 0) + PUSH_MS);
     await expect(hall.locator('[data-layer="slide"]')).not.toHaveAttribute('data-fading', 'true');
+    // Over: no clip left on the layer.
+    await expect(hall.locator('[data-layer="slide"]')).toHaveCSS('clip-path', 'none');
     await holdClock(app, null);
   } finally {
     await app.close();
