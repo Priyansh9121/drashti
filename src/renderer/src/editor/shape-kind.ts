@@ -27,7 +27,8 @@ export function withShapeKind(el: ShapeElement, next: ShapeKind): ShapeElement {
       shape: 'line',
       path: undefined,
       fill: null,
-      outline: outline ?? { color: el.fill?.slice(0, 7) ?? '#ffffff', width: 6 },
+      // The fill's colour without its alpha ("#rrggbbaa" → "#rrggbb"), else white.
+      outline: outline ?? { color: /^#[0-9a-f]{6}/iu.exec(el.fill ?? '')?.[0] ?? '#ffffff', width: 6 },
       frame: { ...el.frame, y: el.frame.y + el.frame.height / 2 - 10, height: 20 },
     };
   }

@@ -43,6 +43,9 @@ describe('a shape made another kind in the inspector (Session 58, ED-6)', () => 
       fill: null,
       frame: { x: 100, y: 340, width: 400, height: 20 },
     });
+    // A solid shape's line takes its colour, without its alpha.
+    const solid = withShapeKind({ ...imported(), gradient: undefined, fill: '#336699cc' }, 'line');
+    expect(solid.outline).toEqual({ color: '#336699', width: 6 });
     // Back to a box: the line's black, as before, not the gradient it had.
     const box = withShapeKind(line, 'rectangle');
     expect(box).not.toHaveProperty('gradient');
