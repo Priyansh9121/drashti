@@ -31,6 +31,13 @@ export const OPENING_MS = 2000;
  * while they are still getting ready, so it never slows them (their warm-up waits for frames that come on time).
  */
 export const OPENING_HOLD_MS = 2000;
+/**
+ * The longest it waits for the operator window underneath to have started (Session 58, C4: Q57-32): opened, its own GPU
+ * warm-up over (render/WarmUp.tsx, over by its own 8 s limit from when the window starts under the opening's black)
+ * and its frames on time; then it moves as it would. Longer than the screens' wait, as that warm-up takes seconds on a
+ * slow GPU (CI's Mac), and the opening's two seconds must never share the GPU with it.
+ */
+export const OPENING_START_HOLD_MS = 9000;
 /** The opening's own copy of its photo is at most this big (it fills the operator window). */
 export const OPENING_COPY_WIDTH = 1920;
 export const OPENING_COPY_HEIGHT = 1200;
@@ -162,6 +169,46 @@ export function openingPlanOf(
 
 /** How it ended, for the log: by itself, or a key, a click or a tap. */
 export type OpeningEnd = 'itself' | 'key' | 'click';
+
+/** A time in the opening's figures (ms), whole and never below 0; null when it never got so far. */
+const figureMs = z
+  .number()
+  .min(0)
+  .max(3_600_000)
+  .transform((v) => Math.round(v));
+
+/**
+ * The opening's own figures as Drashti starts (Session 58, C4: the Mac's full two seconds, Q57-32), as the operator
+ * window drew it (renderer/opening/opening-figures.ts): how long it held its black from the main process's answer and
+ * what let it go (`ready`: everything it waits for; `limit`: its time limit, something not ready); then, from when it
+ * might move, how soon the window first drew it moving and how far into its two seconds that frame was; how long it
+ * ran from that frame to its end; and its longest frame meanwhile. Main writes them in the log as it ends, so a start
+ * on any computer can be read afterwards (numbers only, never a name). A figure it never got to (a key ended it
+ * first) is null.
+ */
+export const openingFiguresSchema = z.object({
+  heldMs: figureMs,
+  releasedBy: z.enum(['ready', 'limit']),
+  movedAfterMs: figureMs.nullable(),
+  firstAtMs: figureMs.nullable(),
+  ranMs: figureMs.nullable(),
+  longestFrameMs: figureMs.nullable(),
+});
+
+export type OpeningFigures = z.infer<typeof openingFiguresSchema>;
+
+/** The figures as the log says them, after "Opening: ended … after N ms" (what it never got to, left out). */
+export function openingFiguresWords(f: OpeningFigures): string {
+  const words = [`held ${String(f.heldMs)} ms (${f.releasedBy === 'ready' ? 'all ready' : 'its limit'})`];
+  words.push(
+    f.movedAfterMs === null
+      ? 'never moved'
+      : `first moved ${String(f.movedAfterMs)} ms after, at ${String(f.firstAtMs ?? 0)} ms of its ${String(OPENING_MS)}`,
+  );
+  if (f.ranMs !== null) words.push(`ran ${String(f.ranMs)} ms`);
+  if (f.longestFrameMs !== null) words.push(`longest frame ${String(f.longestFrameMs)} ms`);
+  return words.join('; ');
+}
 
 /**
  * File › Opening…'s view: the switch; the photo, its name, whether its copy is made and whether it left Media; the

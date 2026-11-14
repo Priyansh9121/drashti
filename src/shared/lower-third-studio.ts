@@ -149,7 +149,18 @@ export const OFFERED: readonly Row[] = [
   { kind: 'background', key: 'streaks' },
   { kind: 'background', key: 'waves' },
   { kind: 'background', key: 'chase' },
-  // C12's eleven: one row each, here.
+  // C12's eleven (alpha.18, lower-third-motions-more.ts): the lower-thirds-more scenario measures them too.
+  { kind: 'background', key: 'bloom' },
+  { kind: 'background', key: 'spotlight' },
+  { kind: 'background', key: 'fireflies' },
+  { kind: 'background', key: 'rings' },
+  { kind: 'background', key: 'lanterns' },
+  { kind: 'background', key: 'kites' },
+  { kind: 'background', key: 'garland' },
+  { kind: 'background', key: 'bars' },
+  { kind: 'background', key: 'fireworks' },
+  { kind: 'background', key: 'hexagons' },
+  { kind: 'background', key: 'tiles' },
 ];
 
 // ---- every family the studio knows ----------------------------------------------------------------------------
