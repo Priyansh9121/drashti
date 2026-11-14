@@ -546,6 +546,12 @@ const STEP: readonly [number, number][] = [
   [0, 1],
 ];
 
+/** STEP with its colours swapped: everything before the line, nothing past it. */
+const STEP_SWAPPED: readonly [number, number][] = [
+  [0, 1],
+  [0, 0],
+];
+
 /**
  * How the layers of a Box's, a Plus's or a Diamond's masks are laid on one another (CSS mask-composite, the first on
  * top): the ramp over the two half-planes, which `exclude` makes the two wedges beside the other two sides.
@@ -560,8 +566,10 @@ const SHAPE_COMPOSITE = 'add, exclude';
  * multiply); so each ramp is drawn beside its own sides, on the part (`outer`) and on an element within it (`inner`),
  * two half-planes through the box's middle laid on one another by `exclude` letting everything through beside the
  * other sides, and the two masks multiply to exactly what PowerPoint shows: the half-planes' steps fall where the two
- * ramps are equal, so nothing steps there. (Their cost on the screens: the shape drawn through one more layer the size
- * of its box, two for a Box, a Plus or a Diamond, while it runs.)
+ * ramps are equal, so nothing steps there. Both masks draw each of those two lines with one gradient, the element
+ * within one of them with its colours swapped, so a pixel exactly on a line (a square on PowerPoint's grid at 1080p:
+ * its diagonal through pixel centres) is on the same side in both. (Their cost on the screens: the shape drawn through
+ * one more layer the size of its box, two for a Box, a Plus or a Diamond, while it runs.)
  */
 function shapeMasks(wipe: DeckShape, target: Rect, frame: Rect): { outer: string; inner: string } {
   const none = { outer: '', inner: '' };
@@ -584,35 +592,39 @@ function shapeMasks(wipe: DeckShape, target: Rect, frame: Rect): { outer: string
   // as Chromium draws a linear gradient's (it smooths a conic gradient's over a fraction of a degree, which left a faint
   // line along the seam between the ramps where nothing should show: CI's Mac, 14 Nov 2026).
   const side = (per: Point) => rampGradient(per, STEP, target, frame);
+  // The other side of the same line, drawn by the same gradient with its colours swapped: a renderer gives a pixel
+  // exactly on the line the same colour stop of one gradient on the shape and within it, so it falls on one side in
+  // both. (A step pointing the other way could get its second colour too: everything showed there, a white line across
+  // what is hidden, along a square's falling diagonal and a Diamond's middle column: C1's review, 14 Nov 2026.)
+  const otherSide = (per: Point) => rampGradient(per, STEP_SWAPPED, target, frame);
   // Kept beside two opposite sides: the ramp, over two half-planes laid on one another by `exclude` (SHAPE_COMPOSITE),
   // which let everything through over the other two.
-  const beside = (per: Point, first: Point, second: Point) =>
-    `${rampGradient(per, ramp, target, frame)}, ${side(first)}, ${side(second)}`;
+  const beside = (per: Point, first: string, second: string) =>
+    `${rampGradient(per, ramp, target, frame)}, ${first}, ${second}`;
   // The box's diagonals (v = u and v = −u, u and v from −1 to 1 across it) and its middle lines, as px measures.
   const belowFalling: Point = [-1 / a, 1 / b];
   const aboveFalling: Point = [1 / a, -1 / b];
   const belowRising: Point = [1 / a, 1 / b];
   const right: Point = [1, 0];
-  const left: Point = [-1, 0];
   const down: Point = [0, 1];
   switch (wipe.shape) {
     case 'box':
       // max(|u|, |v|): |u| beside the left and right sides, |v| above and below.
       return {
-        outer: beside([1 / a, 0], aboveFalling, belowRising),
-        inner: beside([0, 1 / b], belowFalling, belowRising),
+        outer: beside([1 / a, 0], side(aboveFalling), side(belowRising)),
+        inner: beside([0, 1 / b], otherSide(aboveFalling), side(belowRising)),
       };
     case 'plus':
       // min(|u|, |v|): |u| above and below, |v| beside the left and right sides.
       return {
-        outer: beside([1 / a, 0], belowFalling, belowRising),
-        inner: beside([0, 1 / b], aboveFalling, belowRising),
+        outer: beside([1 / a, 0], side(belowFalling), side(belowRising)),
+        inner: beside([0, 1 / b], otherSide(belowFalling), side(belowRising)),
       };
     case 'diamond':
       // (|u| + |v|) / 2: |u + v| / 2 where u and v have the same sign (bottom right, top left), else |u − v| / 2.
       return {
-        outer: beside([1 / (2 * a), 1 / (2 * b)], right, down),
-        inner: beside([1 / (2 * a), -1 / (2 * b)], left, down),
+        outer: beside([1 / (2 * a), 1 / (2 * b)], side(right), side(down)),
+        inner: beside([1 / (2 * a), -1 / (2 * b)], otherSide(right), side(down)),
       };
   }
 }
