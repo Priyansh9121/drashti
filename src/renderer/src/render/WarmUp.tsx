@@ -16,7 +16,7 @@ import { DEFAULT_LOWER_THIRD_LOOK } from '../../../shared/lower-thirds';
 import { engineNow, pauseClock } from './clock';
 import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
-import { SPLIT_MS, WARM_DECK_TRANSITIONS, warmDeckTransition, withSplits } from './warm-up-deck';
+import { SPLIT_MS, WARM_DECK_TRANSITIONS, warmDeckTransition, withShapes, withSplits } from './warm-up-deck';
 import { WARM_UP_FAILS } from './warm-up-mode';
 import { WarmUpBoundary } from './WarmUpBoundary';
 
@@ -331,7 +331,8 @@ export function warmScenes(): WarmScene[] {
   }
   // A deck Drashti plays itself (Session 57, warm-up-deck.ts): its own Wipe (a hard-edged clip since Q57-28) and
   // Cover (the slide coming in a shade darker), part-way, from its slide whose picture, shape and words are each
-  // part-way through a Split (a mask the size of each). Once: a deck's own transitions move alike on Calm and Bold.
+  // part-way through a Split (a mask the size of each), for the Cover through a Shape (Session 58: a Circle's radial
+  // mask, a Box's and a Diamond's two). Once: a deck's own transitions move alike on Calm and Bold.
   for (const effect of WARM_DECK_TRANSITIONS)
     transitions.push({
       key: `deck-${effect}/calm`,
@@ -346,7 +347,10 @@ export function warmScenes(): WarmScene[] {
                 at - PART * MAX_TRANSITION_MS,
                 warmDeckTransition(effect, MAX_TRANSITION_MS),
               )
-            : layerOf(withSplits(slide(`deck-${effect}-a`, false)), at - SPLIT_MS),
+            : layerOf(
+                (effect === 'cover' ? withShapes : withSplits)(slide(`deck-${effect}-a`, false)),
+                at - SPLIT_MS,
+              ),
         },
       }),
     });
