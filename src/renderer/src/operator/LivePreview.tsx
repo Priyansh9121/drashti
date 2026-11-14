@@ -21,7 +21,7 @@ import { dispatch } from './actions';
 import { LiveZoomControls, ZoomablePreview } from './LiveZoom';
 import { useNow } from '../render/useNow';
 import { useWhatIsThis } from '../help/WhatIsThis';
-import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
+import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { PipDragHandle, PipLiveStrip } from './PipLive';
 import { PlayingBars } from '../markers/PlayingBars';
@@ -110,7 +110,28 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   }, []);
   // Once something has been drawn, it never warms up again.
   if (drawsSomething && !warmed) setWarmed(true);
-  const warming = !warmed && !drawsSomething && !practising;
+  // None where Chromium draws without a graphics chip (Session 58, WU-1, as the outputs and the stream's page): asked as
+  // the window opens, and told once Chromium has said; a warm-up begun before then ends there. A test's hold comes first.
+  const [noGpu, setNoGpu] = useState(false);
+  useEffect(() => {
+    if (HOLD_WARM_UP && !NO_GPU_ENDS_HOLD) return;
+    let live = true;
+    const told = () => {
+      if (live) setNoGpu(true);
+    };
+    void window.drashti.app.noGpu().then(
+      (on) => {
+        if (on) told();
+      },
+      () => undefined,
+    );
+    const off = window.drashti.app.onNoGpu(told);
+    return () => {
+      live = false;
+      off();
+    };
+  }, []);
+  const warming = !warmed && !drawsSomething && !practising && !noGpu;
   // The Lower Thirds studio's fonts once the LIVE picture draws the show (Session 55): never with the window's start.
   useEffect(() => {
     if (warming) return;
@@ -121,7 +142,15 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
       {/* The same scene as the outputs: if it fails as it draws, the preview is black (the rest of
             the window carries on) and tries again with the next change (Session 23). */}
       <SceneBoundary resetKey={rev} fallbackClassName="aspect-video w-full bg-black">
-        <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
+        {/* The warm-up and the show each in a box of their own, as on an output (NG-1, Session 58): a new box draws
+            nothing until it has measured itself, a render later and before the frame, by when the warm-up taken away
+            has let go of the clock it paused, so the show's first render reads the clock, never that paused moment. */}
+        <PlacedInParent
+          key={warming ? 'warming' : 'show'}
+          content={canvas}
+          mode="fit"
+          className="relative aspect-video w-full"
+        >
           {warming && (
             <WarmUp page="live" canvas={canvas} scaling={scaling} hold={HOLD_WARM_UP} onDone={warmedUp} />
           )}
