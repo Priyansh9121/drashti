@@ -377,11 +377,19 @@ export function listMarkerBoxStyle(
 function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly TextRun[]; reveal?: Reveal }) {
   const langOf = useHtmlLang();
   const lines = drawnLines(runs);
-  // The box's last paragraph, decided before an empty one at the end goes (Session 58, PF-11): the paragraph before
-  // that is not the last, so it keeps its space after, as in the slide editor.
+  // The box's last paragraph, decided before an empty one at the end is looked at (Session 58, PF-11): the paragraph
+  // before that is not the last, so it keeps its space after, as in the slide editor.
   const last = lines.length - 1;
-  // A last line left empty by a line break at the end is not drawn: words without a list draw none there either.
-  if (lines.length > 1 && lines.at(-1)?.pieces.length === 0) lines.pop();
+  const tail = lines.at(-1);
+  const before = lines.at(-2);
+  if (lines.length > 1 && tail && tail.pieces.length === 0) {
+    // A deck's empty last paragraph (Enter at the end of its words) is drawn as PowerPoint lays it out (Session 58,
+    // FT-7): one line, in the look of the paragraph before it (what PowerPoint's Enter carries on, as the deck reader
+    // keeps no look of its own for it), with its space before, so a box aligned to its middle or bottom sits where
+    // PowerPoint puts it. Words without a deck's paragraphs draw none there, as plain words never have.
+    if (before?.end?.paragraph) tail.end = before.end;
+    else lines.pop();
+  }
   return (
     <>
       {lines.map((line, li) => {
