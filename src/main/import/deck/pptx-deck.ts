@@ -1,6 +1,6 @@
 import type { DeckEffect } from '../../../shared/deck';
 import { deckBackgroundTarget } from '../../../shared/deck-motion';
-import { pptxFormula, type ShapePlace } from '../../../shared/pptx-formula';
+import { pptxFormula, pptxFormulaMeasured, type ShapePlace } from '../../../shared/pptx-formula';
 import type { XmlNode } from '../xml';
 import { type NativePptxTransition, nativePptxTransition } from './pptx-native-transition';
 
@@ -545,17 +545,23 @@ function zoomTracks(behaviours: readonly XmlNode[], entering: boolean): DeckEffe
  * the shape is away from rest to where it rests. In grows from nothing where the shape stands (and leaves back to
  * nothing); Out, In Slightly, In From Screen Center and Out From Screen Bottom start from the size and place their
  * tracks say, PowerPoint's own formulas of the shape's place and size, worked out for the shape as it is drawn; leaving,
- * Out, In Slightly and In To Screen Center end there (run 2, each within a pixel). One that moves away still showing
- * (Out To Screen Bottom) is drawn so but keeps PowerPoint's video: its last frame, a sliver across the slide's foot,
- * measured 0.26 px thinner in PowerPoint's movie than its own formulas say, more than the comparison lets through.
+ * Out, In Slightly, In To Screen Center and Out To Screen Bottom end there (runs 2 and 3, each within a pixel; Out To
+ * Screen Bottom's last sliver across the slide's foot within by its edges, its own movie's whole pixels and 1/600 s
+ * frame times). A formula Drashti reads but PowerPoint's movies never showed keeps the video (EF-2).
  */
 function basicZoom(behaviours: readonly XmlNode[], entering: boolean): NativeLook {
   if (zoomLimit(behaviours, entering) === 0) return { kind: 'zoom' };
   const zoomAway = zoomTracks(behaviours, entering);
   if (!zoomAway) return { kind: 'zoom', partial: true };
-  const moves = zoomAway.x !== undefined || zoomAway.y !== undefined;
-  const vanishes = zoomAway.w === '0' && zoomAway.h === '0';
-  return { kind: 'zoom', zoomAway, ...(!entering && moves && !vanishes ? { partial: true } : {}) };
+  // A formula read but never compared with PowerPoint's own movie: drawn as written, keeping the video (EF-2).
+  const measured = [zoomAway.w, zoomAway.h, zoomAway.x, zoomAway.y].every(
+    (formula) => formula === undefined || pptxFormulaMeasured(formula),
+  );
+  return {
+    kind: 'zoom',
+    zoomAway,
+    ...(measured ? {} : { partial: true }),
+  };
 }
 
 /**
@@ -595,13 +601,33 @@ const SPLITS = new Map<string, NativeLook>([
 ]);
 
 /**
- * Office's own reveal filters (ECMA-376 §19.5.3) that Drashti draws as clips: Shape's circle, box, diamond and plus,
- * Wheel's spokes and Random Bars. A slide using one keeps PowerPoint's video wherever one can be made, and plays these
- * where none can. Shape is drawn as PowerPoint's own movie shows it (13 Nov 2026, run 2: its outlines, its pace and
- * its exits' way round), but with a hard edge where PowerPoint's is soft, so it comes close, not the same; Wheel and
- * Random Bars are not yet compared.
+ * Shape's variants PowerPoint's own movies show Drashti drawing within a pixel or two and a frame in every one (Session
+ * 58: run 2, and run 3 at 16:9 and 4:3): entering, each outline In and Out but Plus Out; leaving, each In but Plus In,
+ * and Diamond Out and Plus Out. The other four differ only on a faint first or last frame in a movie or more, so they keep
+ * PowerPoint's video wherever one can be made.
  */
-function filterLook(filter: string | undefined): NativeLook | null {
+const EXACT_SHAPES = new Set([
+  'in circle(in)',
+  'in circle(out)',
+  'in box(in)',
+  'in box(out)',
+  'in diamond(in)',
+  'in diamond(out)',
+  'in plus(in)',
+  'out circle(in)',
+  'out box(in)',
+  'out diamond(in)',
+  'out diamond(out)',
+  'out plus(out)',
+]);
+
+/**
+ * Office's own reveal filters (ECMA-376 §19.5.3) that Drashti draws itself: Shape's circle, box, diamond and plus with
+ * PowerPoint's soft edge (shared/deck-motion.ts, deckShapeShows), exact where its own movies say so (EXACT_SHAPES); and
+ * as clips, Wheel's spokes and Random Bars, not yet compared, so a slide using one keeps PowerPoint's video wherever
+ * one can be made and plays these where none can.
+ */
+function filterLook(filter: string | undefined, phase: DeckEffect['phase']): NativeLook | null {
   if (!filter) return null;
   const outline = OUTLINES.find((shape) => filter === `${shape}(in)` || filter === `${shape}(out)`);
   if (outline)
@@ -609,7 +635,7 @@ function filterLook(filter: string | undefined): NativeLook | null {
       kind: 'shape',
       shape: outline,
       ...(filter.endsWith('(in)') ? { inward: true } : {}),
-      partial: true,
+      ...(EXACT_SHAPES.has(`${phase} ${filter}`) ? {} : { partial: true }),
     };
   const wheel = /^wheel\(([12348])\)$/u.exec(filter);
   if (wheel) return { kind: 'wheel', spokes: Number(wheel[1]), partial: true };
@@ -671,7 +697,7 @@ function nativeLook(
   if (preset === '31' && filter === 'fade') return growAndTurn(behaviours, phase === 'in');
   // Bounce's own path (its falls and squashes) is not read: Drashti drops the shape in with a bounce of its own.
   if (preset === '26') return { kind: 'bounce', partial: true };
-  return filterLook(filter);
+  return filterLook(filter, phase);
 }
 
 const PLAYED_BEHAVIOURS: Record<DeckEffect['kind'], readonly string[]> = {

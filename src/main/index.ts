@@ -194,6 +194,7 @@ import { TrimSaves } from './convert/trim-saves';
 import { rowTrimRequestSchema, saveRequestSchema } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
 import { PlaylistTrims } from './convert/playlist-trims';
+import { TrimRecords } from './convert/trim-records';
 import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
 import { frameAtOrBefore } from './convert/frame-at';
 import { isRepeatId, repeatPresentationId } from '../shared/repeat';
@@ -3962,6 +3963,25 @@ function start(): void {
   // Trim's background work waits for a quiet moment (Q57-7): nothing up on LIVE, no stream on air or recording.
   const trimWorkQuiet = () =>
     !quitStarted && !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers);
+  // Trim's records (FT-4): the cuts accepted and waiting, and the copies not yet taken in, kept in a small file written
+  // in the background (no longer library settings written on Main, which waited there for an import's write lock).
+  // alpha.17's settings are read once while the file is not there, then cleared; a restored library carries nothing
+  // over from the library before it.
+  const trimRecords = new TrimRecords(join(userDataDir, 'trim-cuts.json'), {
+    before: {
+      waiting: () => settings.get('playlistTrimsWaiting'),
+      copies: () => settings.get('playlistTrimCopies'),
+      // Once the file holds them (LOW-2): a backup, a restore or alpha.17 after a downgrade never reads them again.
+      clear: () => {
+        laterSetting('playlistTrimsWaiting', []);
+        laterSetting('playlistTrimCopies', []);
+      },
+    },
+    otherLibrary: restoredInUse,
+    log: (message) => {
+      log.warn(message);
+    },
+  });
   // A playlist video's Trim makes a cut in the background, then changes just that row (Session 57).
   const playlistTrims = new PlaylistTrims({
     repo: trimmedVideos,
@@ -3977,15 +3997,12 @@ function start(): void {
     isLive: (itemId, mediaId) => rowVideoLive(engine.current, itemId, mediaId),
     quiet: trimWorkQuiet,
     hash: (file, signal) => hashOffMain(file, signal),
-    kept: {
-      load: () => settings.get('playlistTrimsWaiting'),
-      save: (cuts) => settings.set('playlistTrimsWaiting', cuts),
-    },
+    kept: trimRecords.kept,
     spaceProblem: (file, durationMs, lengthMs) =>
       conversions.trimSpaceProblem(file, dirname(file), durationMs, lengthMs),
-    copies: {
-      load: () => settings.get('playlistTrimCopies'),
-      save: (copies) => settings.set('playlistTrimCopies', copies),
+    copies: trimRecords.copies,
+    saveNow: () => {
+      trimRecords.saveNow();
     },
     trash: (file) => shell.trashItem(file),
     queue: (input, beforePublish) =>
@@ -4023,6 +4040,15 @@ function start(): void {
     trimCleanupQuiet,
     async (signal) => {
       const gone = await mediaRemoval.trashUnusedTrims(mediaDir, trashCut, trimCleanupQuiet, signal);
+      // A cut's file that a quit left in Media during its move goes now (FT-8), named in the same notice.
+      gone.push(
+        ...(await mediaRemoval.trashLeftTrims(mediaDir, trashCut, trimCleanupQuiet, signal, {
+          held: () => playlistTrims.heldFiles(),
+          log: (message) => {
+            log.info(message);
+          },
+        })),
+      );
       if (gone.length === 0 || quitStarted) return;
       libraryChanged(true);
       log.info(`Media: moved ${String(gone.length)} unused Trim cut(s) to the Trash`);
@@ -4048,6 +4074,8 @@ function start(): void {
     testTrimActivityChanged = undefined;
     trimCleanup.close();
     playlistTrims.close();
+    // Trim's records on the disk before Drashti ends, and any change from here on at once (FT-4).
+    trimRecords.quit();
   });
   const noTrim = { ok: false as const, message: 'Open a video row’s Trim to change that playlist.' };
   handle(IPC.media.rowTrim, (e, itemId) => {

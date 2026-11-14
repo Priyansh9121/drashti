@@ -60,3 +60,59 @@ describe('stream keys', () => {
     expect(store.get('p1')).toBeNull();
   });
 });
+
+// Q58-37 (the owner, 14 Nov 2026: opening Stream asked for the laptop's password, twice): asking the system's secure
+// storage whether it works opens the Mac's keychain, which asks for the computer's password. What a window is told
+// never asks it; saving a key and going live still do.
+describe('what a window is told of secure storage (Q58-37)', () => {
+  const counted = (available = true) => {
+    const storage = fakeStorage(available);
+    const asked = { count: 0 };
+    const count =
+      <T extends unknown[], R>(fn: (...a: T) => R) =>
+      (...a: T): R => {
+        asked.count++;
+        return fn(...a);
+      };
+    return {
+      asked,
+      storage: {
+        isEncryptionAvailable: count(() => storage.isEncryptionAvailable()),
+        encryptString: count((plain: string) => storage.encryptString(plain)),
+        decryptString: count((encrypted: Buffer) => storage.decryptString(encrypted)),
+      } satisfies SecureStorage,
+    };
+  };
+
+  it('never asks the storage: a key is offered until saving one has said otherwise', () => {
+    const { asked, storage } = counted();
+    const store = new StreamKeyStore(join(dir, 'k.json'), storage);
+    expect(store.known()).toEqual({ available: true, message: null });
+    expect(asked.count).toBe(0);
+    expect(store.set('p', KEY)).toEqual({ ok: true });
+    expect(asked.count).toBeGreaterThan(0);
+    // A key saved is known from its file alone.
+    const before = asked.count;
+    expect(store.has('p')).toBe(true);
+    expect(store.known()).toEqual({ available: true, message: null });
+    expect(asked.count).toBe(before);
+  });
+
+  it('a storage that cannot keep keys is said once saving one was refused, as the refusal says', () => {
+    const { asked, storage } = counted(false);
+    const store = new StreamKeyStore(join(dir, 'k.json'), storage);
+    expect(store.known()).toEqual({ available: true, message: null });
+    expect(asked.count).toBe(0);
+    expect(store.set('p', KEY)).toEqual({ ok: false, message: NO_SECURE_STORAGE });
+    expect(store.known()).toEqual({ available: false, message: NO_SECURE_STORAGE });
+  });
+
+  it('the tests’ switch for no secure storage is said at once, as before', () => {
+    const { asked, storage } = counted();
+    expect(new StreamKeyStore(join(dir, 'k.json'), storage, true).known()).toEqual({
+      available: false,
+      message: NO_SECURE_STORAGE,
+    });
+    expect(asked.count).toBe(0);
+  });
+});
