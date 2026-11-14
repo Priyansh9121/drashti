@@ -21,6 +21,7 @@ import { DECK_FIRST_FRAME } from './DeckStep';
 import { NativeDeckMotion } from './NativeDeckElement';
 import { drawsWithoutChip } from './chipless';
 import {
+  deckSlideClip,
   deckTransitionFrame,
   takesTime,
   transitionFrame,
@@ -177,8 +178,10 @@ export interface Paint {
   height: number;
   scaleIn: number;
   scaleOut: number;
-  /** Where the incoming slide is in the layer's box (a deck's Wipe measures its band on it). */
+  /** Where the incoming slide is in the layer's box (a deck's Wipe measures its band on it, its Push and Cover moves). */
   placeIn: SlidePlace;
+  /** Where the outgoing slide is (a deck's Push and Uncover move it by its own length). */
+  placeOut: SlidePlace;
 }
 
 /** Each line, or word, of the two slides' words as a reveal has it at `p` (Session 27, render/reveal.ts). */
@@ -224,7 +227,7 @@ function paintUnits(els: Layers, how: Paint, p: number): void {
 export function paintLayers(els: Layers, how: Paint, p: number): void {
   const { kind, movement, native } = how;
   const frame = native
-    ? deckTransitionFrame(native, p, movement)
+    ? deckTransitionFrame(native, p, movement, { in: how.placeIn, out: how.placeOut })
     : kind === null
       ? null
       : transitionFrame(kind, p, movement);
@@ -586,12 +589,18 @@ export function SlideLayerView({
       ? wordsMove(kind, movement, on.slide.kirtan === true)
       : null;
   const { width, height } = canvas;
-  // Where the incoming slide is in the layer's box, as Placed puts it (a deck's Wipe measures its band on it).
+  // Where each slide is in the layer's box, as Placed puts it: a deck's own transition measures its moves and its Wipe's
+  // band on the slide (Session 58).
   const placed = on ? placeContent(on.slide, canvas, scaling) : null;
   const inX = placed?.x ?? 0;
   const inY = placed?.y ?? 0;
   const inWidth = on && placed ? on.slide.width * placed.scaleX : width;
   const inHeight = on && placed ? on.slide.height * placed.scaleY : height;
+  const placedOut = off ? placeContent(off.slide, canvas, scaling) : null;
+  const outX = placedOut?.x ?? 0;
+  const outY = placedOut?.y ?? 0;
+  const outWidth = off && placedOut ? off.slide.width * placedOut.scaleX : width;
+  const outHeight = off && placedOut ? off.slide.height * placedOut.scaleY : height;
   const scaleIn = (on?.slide.height ?? 1080) / 1080;
   const scaleOut = (off?.slide.height ?? 1080) / 1080;
   const blackRef = useRef<HTMLDivElement>(null);
@@ -624,6 +633,7 @@ export function SlideLayerView({
           scaleIn,
           scaleOut,
           placeIn: { x: inX, y: inY, width: inWidth, height: inHeight },
+          placeOut: { x: outX, y: outY, width: outWidth, height: outHeight },
         },
         p,
       );
@@ -657,6 +667,10 @@ export function SlideLayerView({
     inY,
     inWidth,
     inHeight,
+    outX,
+    outY,
+    outWidth,
+    outHeight,
   ]);
 
   // After every render, before it is painted: where the transition is now (the frames between renders set
@@ -691,6 +705,7 @@ export function SlideLayerView({
         scaleIn,
         scaleOut,
         placeIn: { x: inX, y: inY, width: inWidth, height: inHeight },
+        placeOut: { x: outX, y: outY, width: outWidth, height: outHeight },
       },
       start !== null ? fadeAt({ ms, start }, engineNow()) : 0,
     );
@@ -731,6 +746,17 @@ export function SlideLayerView({
         inset: 0,
         isolation: fading ? 'isolate' : undefined,
         overflow: fading && (kind === 'slide' || native?.over?.kind === 'slide') ? 'hidden' : undefined,
+        // A deck's own Push, Cover or Uncover moves its slides inside the slide, as PowerPoint does: the screen past it
+        // (a 4:3 deck's bars) stays as it is (Session 58, Q58-16).
+        clipPath:
+          (fading && native && off
+            ? deckSlideClip(
+                native,
+                { x: inX, y: inY, width: inWidth, height: inHeight },
+                { x: outX, y: outY, width: outWidth, height: outHeight },
+                canvas,
+              )
+            : '') || undefined,
       }}
     >
       {underlay && (
