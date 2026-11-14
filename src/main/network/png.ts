@@ -52,12 +52,11 @@ function sampleAt(pixel: number, size: number, sourceSize: number) {
 }
 
 /** The picture as a PNG: 8-bit RGB, with a 1920-pixel cap even from a high-density capture. */
-export async function pngOf({
-  width: sourceWidth,
-  height: sourceHeight,
-  pixels,
-  order,
-}: CapturedPicture): Promise<Buffer> {
+export async function pngOf(
+  { width: sourceWidth, height: sourceHeight, pixels, order }: CapturedPicture,
+  // Not looked at yet (red).
+  _pace: () => Promise<void> = () => Promise.resolve(),
+): Promise<Buffer> {
   const scale = Math.min(1, PNG_LONG_SIDE / Math.max(sourceWidth, sourceHeight));
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));

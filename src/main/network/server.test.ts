@@ -326,6 +326,39 @@ describe('the network server', () => {
     expect(saved.rows.subarray(0, 4)).toEqual(Buffer.from([0, 210, 40, 20]));
   });
 
+  it('makes the PNG only once the hall screens are still, by the engine state it follows (C18’s review, LOW-2)', async () => {
+    const { host, port, server: network } = await start();
+    // The operator's Next came just after the capture: its dissolve is under way as Main answers.
+    const shownAt = Date.now();
+    const state = initialEngineState();
+    state.layers.slide = {
+      presentationId: 'placeholder-deck',
+      slideIndex: 1,
+      slide: { id: 'placeholder-next', width: 1280, height: 720, background: '#000000', elements: [] },
+      notes: '',
+      shownAt,
+      transition: { kind: 'dissolve', durationMs: 400 },
+    };
+    network.engine({ kind: 'snapshot', version: ENGINE_STATE_VERSION, rev: 1, state, sentAt: shownAt });
+    host.request = () =>
+      Promise.resolve({
+        status: 200,
+        body: {
+          ok: true,
+          picture: { width: 2, height: 1, pixels: new Uint8Array([10, 20, 30, 255, 40, 50, 60, 255]), order: 'bgra' },
+        },
+      });
+    const response = await fetch(
+      `http://127.0.0.1:${String(port)}/api/v1/presentations/placeholder-deck?format=png&slide=placeholder-slide&click=1`,
+      { headers: bearer(REMOTE_TOKEN) },
+    );
+    expect(response.status).toBe(200);
+    expect(Date.now()).toBeGreaterThanOrEqual(shownAt + 400);
+    expect(readPng(new Uint8Array(await response.arrayBuffer())).rows).toEqual(
+      Buffer.from([0, 30, 20, 10, 60, 50, 40]),
+    );
+  });
+
   it('never sends pixels that are not the picture’s size', async () => {
     const { host, port } = await start();
     host.request = () =>

@@ -15,8 +15,10 @@ import { ZOOM_GLIDE_MS } from '../../shared/picture-look';
 import {
   captureWithShowAbort,
   nextScheduledChange,
+  PNG_WAIT_MS,
   slidePictureReadyAt,
   waitForSlidePicture,
+  whileScreensMove,
 } from './slide-picture';
 
 /*
@@ -415,5 +417,102 @@ describe('waiting for a capture’s quiet time', () => {
     expect(answer).toBeUndefined();
     await c.pass(1);
     expect(answer).toBe(Math.min(NOW + 500 + messageOut + 8_000, NOW + 9_000));
+  });
+});
+
+describe('the PNG made in the network’s process, never while the hall screens move (C18’s review, LOW-2)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The pace by these screens, with the engine's clock and the timers moved on together. */
+  function paced(state: () => EngineState | null) {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const pace = whileScreensMove(state, () => Date.now());
+    /** One look before a slice: whether it has let the PNG go on yet. */
+    const look = () => {
+      let goes = false;
+      void pace().then(() => {
+        goes = true;
+      });
+      return () => goes;
+    };
+    return { look, pass: (ms: number) => vi.advanceTimersByTimeAsync(ms) };
+  }
+
+  const dissolving = (at: number, durationMs: number): SlideLayer => ({
+    ...slideLayer(at),
+    transition: { kind: 'dissolve', durationMs },
+  });
+
+  it('goes on at once while the screens are still, and before the engine’s state has come', async () => {
+    for (const screens of [initialEngineState(), null]) {
+      const p = paced(() => screens);
+      const goes = p.look();
+      await p.pass(0);
+      expect(goes()).toBe(true);
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits out a transition the operator starts while the PNG is made, then goes on', async () => {
+    const s = stateWith((x) => {
+      x.layers.slide = dissolving(NOW, 800);
+    });
+    const p = paced(() => s);
+    const goes = p.look();
+    await p.pass(799);
+    expect(goes()).toBe(false);
+    await p.pass(1);
+    expect(goes()).toBe(true);
+    // Still now: the next slice goes on at once.
+    const next = p.look();
+    await p.pass(0);
+    expect(next()).toBe(true);
+  });
+
+  it('waits out motion that starts while it waits', async () => {
+    const s = stateWith((x) => {
+      x.layers.slide = dissolving(NOW, 500);
+    });
+    const p = paced(() => s);
+    // Next again 400 ms in: another 500 ms from then.
+    setTimeout(() => {
+      s.layers.slide = dissolving(NOW + 400, 500);
+    }, 400);
+    const goes = p.look();
+    await p.pass(899);
+    expect(goes()).toBe(false);
+    await p.pass(1);
+    expect(goes()).toBe(true);
+  });
+
+  it('waits 3 s at most in all, across its slices, then goes on without waiting again', async () => {
+    expect(PNG_WAIT_MS).toBe(3_000);
+    const s = stateWith((x) => {
+      x.layers.slide = dissolving(NOW, 2_000);
+    });
+    const p = paced(() => s);
+    const first = p.look();
+    await p.pass(2_000);
+    expect(first()).toBe(true);
+    // Then motion that keeps going (a message with a live timer): the second left of the 3 s, and no more.
+    s.layers.messages = [
+      {
+        id: 'placeholder-timed',
+        text: '[Placeholder timer]',
+        parts: [{ kind: 'timer', timerId: 'placeholder-timer' }],
+        shownAt: NOW,
+      },
+    ];
+    const second = p.look();
+    await p.pass(999);
+    expect(second()).toBe(false);
+    await p.pass(1);
+    expect(second()).toBe(true);
+    const third = p.look();
+    await p.pass(0);
+    expect(third()).toBe(true);
   });
 });
