@@ -86,4 +86,26 @@ describe('a deck’s box drawn as PowerPoint’s own shrink left its line spacin
     // Without PowerPoint's shrink, as written.
     expect(sizes(drawn(box(runs)))[1]).toBe(24);
   });
+
+  it('lays each line out at its own largest size, so a smaller line is no taller than its own words (Q58-54)', () => {
+    // PowerPoint lays each line at its own size (its PDF of run 5: in an unshrunk box of 40 and 18 pt lines, baselines
+    // 27 and 42 pt apart, not 48 each). A line's div sets its largest run's size, so its CSS strut is that line's own.
+    // A deck's words: each run with its paragraph (as the deck reader keeps them), so each line is its own div.
+    const paragraph = { align: 'left' as const };
+    const runs: TextRun[] = [
+      { text: 'Placeholder title words in line A\n', size: (40 * 4) / 3, paragraph },
+      { text: 'Placeholder smaller words B\n', size: 24, paragraph },
+      { text: 'Placeholder ', size: 24, paragraph },
+      { text: 'mixed line C', size: 32, paragraph },
+    ];
+    const el = { ...box(runs), style: { ...box(runs).style, fontSize: (40 * 4) / 3 } };
+    const lineSizes = (html: string) =>
+      [...html.matchAll(/<div data-line="\d+"([^>]*)>/gu)].map(
+        ([, attributes = '']) =>
+          /font-size:calc\(var\(--fit, 1\) \* ([\d.]+)px\)/u.exec(attributes)?.[1] ?? null,
+      );
+    expect(lineSizes(drawn(el))).toEqual([String((40 * 4) / 3), '24', '32']);
+    // Words whose runs carry no size of their own keep the box's size, as before.
+    expect(lineSizes(drawn(box([{ text: 'Placeholder plain words', paragraph }])))).toEqual([null]);
+  });
 });
