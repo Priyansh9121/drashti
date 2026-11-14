@@ -150,9 +150,12 @@ export interface PipelineContext {
   batchBudgetMs?: number;
   /**
    * Told as the import takes the library's write lock and lets it go (Session 58, h-stall2: the worker on Windows runs
-   * at normal priority meanwhile, lock-priority.ts); with it, each file is committed as it is written.
+   * at normal priority meanwhile, lock-priority.ts); with it, a worker given little of the processor keeps the lock for
+   * one file only.
    */
   holdingLock?: (on: boolean) => void;
+  /** Tests: the clocks BatchWriter tells a worker given little of the processor by (this computer's otherwise). */
+  batchClocks?: { now: () => number; cpu: () => number };
   /** Where bundles are unpacked (default: the system's temporary folder). */
   tempDir?: string;
   /** Draws a PDF's pages as pictures (the main process does, in a window; Session 15). */
@@ -416,11 +419,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     ctx.freeBytes ? { freeBytes: ctx.freeBytes } : {},
   );
   const playlists = new PlaylistRepo(ctx.db);
-  // Said while it holds the write lock (the worker on Windows, Session 58): each file is then committed as it is
-  // written, so the lock is never kept from one file into the next, the next file read meanwhile at the lowest priority.
+  // Said while it holds the write lock (the worker on Windows, Session 58): a worker given little of the processor then
+  // keeps it for one file only, never while the next file is read (BatchWriter).
   const batch = new BatchWriter(ctx.db, {
-    budgetMs: ctx.holdingLock ? 0 : (ctx.batchBudgetMs ?? 250),
+    budgetMs: ctx.batchBudgetMs ?? 250,
     ...(ctx.holdingLock ? { holding: ctx.holdingLock } : {}),
+    ...(ctx.batchClocks ?? {}),
   });
   /** Run a commit, counting it when it committed a group. */
   const groupOpen = () => batch.isOpen;

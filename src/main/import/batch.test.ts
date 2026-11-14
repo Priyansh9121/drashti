@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { describe, expect, it, vi } from 'vitest';
 import { openDatabase } from '../db/database';
-import { BatchWriter } from './batch';
+import { BatchWriter, STARVED_MS } from './batch';
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -224,5 +224,63 @@ describe('BatchWriter: while it holds the write lock (Session 58)', () => {
     other.close();
     db.close();
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('BatchWriter: a worker given little of the processor keeps the lock for one file only (Session 58)', () => {
+  function clocks() {
+    const db = openDatabase(':memory:');
+    db.prepare("INSERT INTO libraries (id, name) VALUES ('lib', 'Default')").run();
+    const c = { now: 0, cpu: 0 };
+    const make = (holding?: (on: boolean) => void) =>
+      new BatchWriter(db, {
+        budgetMs: 250,
+        now: () => c.now,
+        cpu: () => c.cpu,
+        ...(holding ? { holding } : {}),
+      });
+    const insert = (name: string) => () =>
+      db.prepare("INSERT INTO presentations (id, library_id, name) VALUES (?, 'lib', ?)").run(name, name);
+    return { db, c, make, insert };
+  }
+
+  it('given a third of the processor or less since the last group, the next group is committed at the next file', () => {
+    const { db, c, make, insert } = clocks();
+    const batch = make(() => undefined);
+    // The next file read and parsed: 2 s by the clock, 40 ms of its own processor (a busy computer).
+    c.now += 2000;
+    c.cpu += 40;
+    batch.write(insert('a'));
+    c.now += 20;
+    batch.maybeCommit();
+    expect(db.inTransaction, 'committed at the next file, long before its budget').toBe(false);
+  });
+
+  it('given the processor (or a quiet spell too short to judge), files are grouped as before, until the budget', () => {
+    const { db, c, make, insert } = clocks();
+    const batch = make(() => undefined);
+    c.now += 30;
+    c.cpu += 25;
+    batch.write(insert('a'));
+    c.now += 100;
+    batch.maybeCommit();
+    expect(db.inTransaction, 'kept open within its budget').toBe(true);
+    c.now += STARVED_MS * 5;
+    c.cpu += STARVED_MS * 5;
+    batch.write(insert('b'));
+    batch.maybeCommit();
+    expect(db.inTransaction, 'committed once its budget is spent').toBe(false);
+  });
+
+  it('where nothing says it holds the lock (macOS), files are grouped as before however little processor it had', () => {
+    const { db, c, make, insert } = clocks();
+    const batch = make();
+    c.now += 2000;
+    c.cpu += 40;
+    batch.write(insert('a'));
+    c.now += 20;
+    batch.maybeCommit();
+    expect(db.inTransaction).toBe(true);
+    batch.commit();
   });
 });
