@@ -370,6 +370,9 @@ export function listMarkerBoxStyle(
 function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly TextRun[]; reveal?: Reveal }) {
   const langOf = useHtmlLang();
   const lines = drawnLines(runs);
+  // The box's last paragraph, decided before an empty one at the end goes (Session 58, PF-11): the paragraph before
+  // that is not the last, so it keeps its space after, as in the slide editor.
+  const last = lines.length - 1;
   // A last line left empty by a line break at the end is not drawn: words without a list draw none there either.
   if (lines.length > 1 && lines.at(-1)?.pieces.length === 0) lines.pop();
   return (
@@ -390,7 +393,7 @@ function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly Text
               position: reveal ? 'relative' : undefined,
               ...paragraphLineStyle(line.mark, size, first.paragraph, {
                 before: el.style.spaceAtTextEdges === true || li > 0,
-                after: el.style.spaceAtTextEdges === true || li < lines.length - 1,
+                after: el.style.spaceAtTextEdges === true || li < last,
               }),
             }}
           >
