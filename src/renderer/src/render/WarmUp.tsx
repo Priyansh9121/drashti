@@ -445,9 +445,19 @@ function WarmScenes({
 }
 
 /**
+ * How a warm-up ended (Session 58, WU-2, for the log): it drew everything, stopped at its longest, its window was
+ * hidden, a scene failed as it drew, or it was taken away before any of those (cut short).
+ */
+export type WarmUpEnd = 'drawn' | 'cap' | 'unseen' | 'error' | 'cut';
+
+/** This computer's clock for a length of time, how long a warm-up took (for the log: it times nothing drawn). */
+// eslint-disable-next-line no-restricted-properties -- a length of time for the log, never a time anything is drawn at
+const lengthClock = (): number => performance.now();
+
+/**
  * Draws the warm-up for a few frames, then calls `onDone` (never, when `hold`: a test looks at it); at once when one
  * of its scenes fails as it draws (Session 57). The parent shows the show once it is done; nothing of the show is
- * drawn meanwhile.
+ * drawn meanwhile. `onEnded` hears how it ended and how long it took from its start (ms), once.
  */
 export function WarmUp({
   page,
@@ -457,6 +467,7 @@ export function WarmUp({
   ticker = true,
   hold = false,
   onDone,
+  onEnded,
 }: {
   /** Which page it warms up (its marks for a trace say so). */
   page: 'output' | 'stream' | 'live';
@@ -466,15 +477,20 @@ export function WarmUp({
   ticker?: boolean;
   hold?: boolean;
   onDone: () => void;
+  onEnded?: (how: WarmUpEnd, ms: number) => void;
 }) {
   const [step, setStep] = useState<{ phase: 'pictures' | 'before' | 'during'; at: number }>({
     phase: 'pictures',
     at: 0,
   });
   const done = useRef(onDone);
+  const ended = useRef(onEnded);
   useLayoutEffect(() => {
     done.current = onDone;
+    ended.current = onEnded;
   });
+  // When it began, for how long it took (Session 58, WU-2: the log's).
+  const began = useRef(lengthClock());
   // Done once, however it ends: drawn, at its cap, not seen, or a scene that failed as it drew (Session 57); marked
   // for a trace (`-cut` when it is taken away before then: the LIVE picture, as something goes up).
   const mark = `${WARM_UP_MARK}:${page}`;
@@ -486,6 +502,7 @@ export function WarmUp({
       pauseClock(null);
       if (how !== 'drawn') performance.mark(`${mark}-${how}`);
       performance.mark(`${mark}-end`);
+      ended.current?.(how, lengthClock() - began.current);
       done.current();
     },
     [hold, mark],
@@ -503,7 +520,10 @@ export function WarmUp({
     return () => {
       document.removeEventListener('visibilitychange', unseen);
       clearTimeout(cap);
-      if (!finished.current) performance.mark(`${mark}-cut`);
+      if (!finished.current) {
+        performance.mark(`${mark}-cut`);
+        ended.current?.('cut', lengthClock() - began.current);
+      }
     };
   }, [finish, mark]);
   const [tree, setTree] = useState<ShadowRoot | null>(null);
