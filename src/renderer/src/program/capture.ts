@@ -53,7 +53,8 @@ let sending: Promise<void> = Promise.resolve();
  * encoder, kept in the page as it goes (`drashtiTestEncoderFrames`: when, by this page's clock, and its light, 0 black ..
  * 1 white), so a test reads what the stream sends (Session 58, h-black2).
  */
-const probe = new URLSearchParams(location.search).get('streamProbe') === '1';
+const probe =
+  new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('streamProbe') === '1';
 
 /** Tests only: keep the light of a frame given to the encoder (a small copy of it, averaged). */
 async function probeFrame(frame: VideoFrame): Promise<void> {
