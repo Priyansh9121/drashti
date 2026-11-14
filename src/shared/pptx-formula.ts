@@ -3,7 +3,9 @@
  * animation's values, such as Basic Zoom Out's "(6*min(max(#ppt_w*#ppt_h,.3),1)-7.4)/-.7*#ppt_w"). Drashti reads the
  * part PowerPoint's own effects use: numbers, + − × ÷ and ^, brackets, min, max, abs and sqrt, and the shape's own
  * place and size: #ppt_x and #ppt_y (its centre) and #ppt_w and #ppt_h, all shares of the slide. Anything else is not
- * read. A formula is read once and kept; working it out at a frame is a few sums, never eval.
+ * read. A formula is read once and kept; working it out at a frame is a few sums, never eval. Only part of that has been
+ * compared with PowerPoint's own movie (pptxFormulaMeasured): an effect using the rest is drawn as written but keeps
+ * PowerPoint's video.
  */
 
 /** A shape's centre and size, as shares of the slide (PowerPoint's #ppt_x, #ppt_y, #ppt_w and #ppt_h). */
@@ -27,25 +29,46 @@ const FUNCTIONS: Record<string, (values: number[]) => number> = {
 };
 const ARGUMENTS: Record<string, [number, number]> = { min: [1, 8], max: [1, 8], abs: [1, 1], sqrt: [1, 1] };
 
-const read = new Map<string, PptxFormula | null>();
+/** A formula read: how to work it out, and whether it uses only what PowerPoint's own movies have measured. */
+interface Read {
+  formula: PptxFormula;
+  measured: boolean;
+}
+
+const read = new Map<string, Read | null>();
+
+function readOnce(text: string): Read | null {
+  const known = read.get(text);
+  if (known !== undefined) return known;
+  const found = parse(text);
+  // Only what could be a formula is kept: a deck's longer text is never held on to.
+  if (text.length > FORMULA_LENGTH) return found;
+  if (read.size >= 256) read.clear();
+  read.set(text, found);
+  return found;
+}
 
 /** A formula as a way to work it out for a shape's place, or null when Drashti does not read it. */
 export function pptxFormula(text: string): PptxFormula | null {
-  const known = read.get(text);
-  if (known !== undefined) return known;
-  const formula = parse(text);
-  // Only what could be a formula is kept: a deck's longer text is never held on to.
-  if (text.length > FORMULA_LENGTH) return formula;
-  if (read.size >= 256) read.clear();
-  read.set(text, formula);
-  return formula;
+  return readOnce(text)?.formula ?? null;
+}
+
+/**
+ * Whether a formula Drashti reads uses only what PowerPoint's own movies have shown it plays as written (13 Nov 2026,
+ * Basic Zoom's variants): numbers, + − × ÷, a minus sign, brackets, min and max of two values, and the shape's place and
+ * size. A power, abs, sqrt, a number with an exponent, a + sign, or min or max of one value or of three or more are
+ * read but never compared (EF-2). False for a formula Drashti does not read.
+ */
+export function pptxFormulaMeasured(text: string): boolean {
+  return readOnce(text)?.measured ?? false;
 }
 
 class Unread extends Error {}
 
-function parse(text: string): PptxFormula | null {
+function parse(text: string): Read | null {
   if (text.length === 0 || text.length > FORMULA_LENGTH) return null;
   let at = 0;
+  let measured = true;
   const next = (): string | undefined => {
     while (text[at] === ' ') at++;
     return text[at];
@@ -80,6 +103,7 @@ function parse(text: string): PptxFormula | null {
     const base = signed(depth);
     if (next() !== '^') return base;
     at++;
+    measured = false;
     const exponent = power(depth + 1);
     return (place) => base(place) ** exponent(place);
   };
@@ -88,6 +112,7 @@ function parse(text: string): PptxFormula | null {
     const sign = next();
     if (sign !== '+' && sign !== '-') return single(depth);
     at++;
+    if (sign === '+') measured = false;
     const inner = signed(depth + 1);
     return sign === '-' ? (place) => -inner(place) : inner;
   };
@@ -102,6 +127,7 @@ function parse(text: string): PptxFormula | null {
     const number = /^(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/iu.exec(rest)?.[0];
     if (number) {
       at += number.length;
+      if (/e/iu.test(number)) measured = false;
       const value = Number(number);
       return () => value;
     }
@@ -125,12 +151,13 @@ function parse(text: string): PptxFormula | null {
     }
     take(')');
     if (values.length < fewest || values.length > most) throw new Unread();
+    if ((name !== 'min' && name !== 'max') || values.length !== 2) measured = false;
     return (place) => work(values.map((value) => value(place)));
   };
 
   try {
     const formula = sum(0);
-    return next() === undefined ? formula : null;
+    return next() === undefined ? { formula, measured } : null;
   } catch (error) {
     if (error instanceof Unread) return null;
     throw error;

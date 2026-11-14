@@ -200,7 +200,7 @@ describe('the animations scenario', () => {
       expect(pictures.size).toBe(slides.length);
     });
 
-    it('makes a deck Drashti plays itself: by Next its slides come in by its own Wipe, Cover, Uncover and Push, and its last slide’s shapes come in and go out by Split, a click each', () => {
+    it('makes a deck Drashti plays itself: by Next its slides come in by its own Wipe, Cover, Uncover and Push, and its last slide’s shapes come in and go out by Split, then by Shape, a click each', () => {
       dir = mkdtempSync(join(tmpdir(), 'drashti-perf-animations-'));
       db = openDatabase(':memory:');
       startScenario('animations', { db, mediaDir: dir, ffmpeg, engine: engine(), outputs: () => [] });
@@ -228,15 +228,25 @@ describe('the animations scenario', () => {
           : null;
       });
       expect(came).toEqual([null, 'wipe left 700', 'cover left 700', 'uncover up 700', 'push left 700']);
-      // The last slide's two shapes: in by Split at its first click, out by Split at its second.
+      // The last slide's two shapes: in by Split at its first click, out by Split at its second; then four more in by
+      // Shape at its third and out at its fourth, each outline once (Session 58).
       const motion = slides.at(-1)?.slide.deck?.motion;
-      expect(motion?.stepsMs).toHaveLength(3);
-      const splits = motion?.effects ?? [];
-      expect(splits.every((e) => e.kind === 'split' && e.delayMs === 0 && e.durationMs === 500)).toBe(true);
+      expect(motion?.stepsMs).toEqual([0, 500, 500, 500, 500]);
+      const effects = motion?.effects ?? [];
+      expect(effects.every((e) => e.delayMs === 0 && e.durationMs === 500)).toBe(true);
+      const splits = effects.filter((e) => e.step <= 2);
+      expect(splits.every((e) => e.kind === 'split')).toBe(true);
       const at1 = splits.filter((e) => e.step === 1 && e.phase === 'in').map((e) => e.shapeId);
       const at2 = splits.filter((e) => e.step === 2 && e.phase === 'out').map((e) => e.shapeId);
       expect(at1).toHaveLength(2);
       expect(at2.sort()).toEqual(at1.sort());
+      const shapes = effects.filter((e) => e.step > 2);
+      expect(shapes.every((e) => e.kind === 'shape')).toBe(true);
+      const at3 = shapes.filter((e) => e.step === 3 && e.phase === 'in');
+      const at4 = shapes.filter((e) => e.step === 4 && e.phase === 'out');
+      expect(at3.map((e) => e.shape).sort()).toEqual(['box', 'circle', 'diamond', 'plus']);
+      expect(at4.map((e) => e.shapeId).sort()).toEqual(at3.map((e) => e.shapeId).sort());
+      expect(new Set([...at1, ...at3.map((e) => e.shapeId)]).size).toBe(6);
       // Nothing else moves on the deck's slides: their own transitions only.
       expect(slides.slice(0, -1).every((s) => s.slide.deck?.motion?.effects.length === 0)).toBe(true);
     });
