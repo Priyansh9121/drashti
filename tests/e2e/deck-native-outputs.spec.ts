@@ -32,6 +32,14 @@ const current = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide);
 const target = (root: Page | Locator, shape: number) => root.locator(`[data-deck-motion-target="${shape}"]`);
 
+/**
+ * Whether an output draws without a graphics chip (its warm-up skipped, as on CI's Windows): a deck's Wipe then draws
+ * PowerPoint's band on the incoming slide's band box, moved; with a chip (CI's Mac) as a mask on the slide's own box
+ * (render/chipless.ts, Session 58).
+ */
+const drawsWithoutChip = async (page: Page): Promise<boolean> =>
+  (await page.getByTestId('output-root').getAttribute('data-warm-up')) === 'skipped';
+
 /** Generated shapes with a transparent slide background, so the key can prove the click's changing opacity. */
 function outputDeck(): Buffer {
   const shape = (id: number, color: string, x: number, y: number, width: number, height: number) =>
@@ -146,12 +154,17 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       const incoming = hall.locator('[data-layer="slide"] [data-slide-in]');
       const band = incoming.locator('[data-band]');
       await holdClock(app, entryAt + WIPE_MS / 2);
-      // A deck's Wipe (Session 58): PowerPoint's soft band, a mask on the incoming slide's band box, which moves; the
-      // slide itself has no clip and no mask.
+      // A deck's Wipe (Session 58): PowerPoint's soft band, no clip. Without a graphics chip a mask on the incoming
+      // slide's band box, which moves; with one a mask on the slide's own box.
       await expect(incoming).toHaveCSS('clip-path', 'none');
-      await expect(incoming).toHaveCSS('mask-image', 'none');
-      await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
-      await expect(band).not.toHaveCSS('transform', 'none');
+      if (await drawsWithoutChip(hall)) {
+        await expect(incoming).toHaveCSS('mask-image', 'none');
+        await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
+        await expect(band).not.toHaveCSS('transform', 'none');
+      } else {
+        await expect(incoming).toHaveCSS('mask-image', /^linear-gradient\(/u);
+        await expect(band).toHaveCSS('mask-image', 'none');
+      }
       // Half-way up from the bottom, as the hall draws it: through the band, the incoming slide's full-slide shape over
       // the outgoing slide's blue box, mixed as PowerPoint's half cosine has them (a hard edge half-way would show the
       // box whole above the middle and not at all below it).
@@ -182,6 +195,7 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       await expect(incoming).toHaveCSS('clip-path', 'none');
       await expect(band).toHaveCSS('mask-image', 'none');
       await expect(band).toHaveCSS('transform', 'none');
+      await expect(incoming).toHaveCSS('mask-image', 'none');
       await expect(target(hall, 5)).toHaveCSS('opacity', '0.5');
       await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0.5');
       await holdClock(app, entryAt + WIPE_MS + FADE_MS);
