@@ -61,6 +61,11 @@ const bridge: DrashtiBridge = {
       on(IPC.app.safeAreasChanged, ({ on: shown }) => {
         listener(shown);
       }),
+    noGpu: () => invoke(IPC.app.noGpu),
+    onNoGpu: (listener) =>
+      on(IPC.app.noGpuChanged, () => {
+        listener();
+      }),
     singleKeys: () => invoke(IPC.app.singleKeys),
     setSingleKeys: (keys) => invoke(IPC.app.setSingleKeys, keys),
     onSingleKeysChanged: (listener) =>
