@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { usePractice, useShowRev, useShowState } from '../practice/practice-store';
 import { preloadFonts } from '../render/fonts';
 import { preloadStudioFontsOnceDrawn } from '../render/studio-fonts';
@@ -6,6 +6,7 @@ import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
 import { SceneBoundary } from '../render/SceneBoundary';
 import { WarmUp } from '../render/WarmUp';
+import { pauseClock } from '../render/clock';
 import { useFirstGroupLook, useScreens } from '../screens/screens-store';
 import { LANG_NAMES } from '../../../shared/themes';
 import type { EngineState, RepeatRun, TimerShow } from '../../../shared/engine/state';
@@ -115,6 +116,15 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   const chipless = useDrawingMode((s) => s.chipless);
   const noGpu = chipless && (!HOLD_WARM_UP || NO_GPU_ENDS_HOLD);
   const warming = !warmed && !drawsSomething && !practising && !noGpu;
+  // Release the warm-up's clock before rendering the show's children into the existing preview box.
+  // On a cut the warm-up's passive cleanup can run after the show's first render (NG-1).
+  const [showReady, setShowReady] = useState(!warming);
+  useLayoutEffect(() => {
+    if (warming || showReady) return;
+    pauseClock(null);
+    setShowReady(true);
+  }, [warming, showReady]);
+  const showing = !warming && showReady;
   // The Lower Thirds studio's fonts once the LIVE picture draws the show (Session 55): never with the window's start.
   useEffect(() => {
     if (warming) return;
@@ -125,19 +135,11 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
       {/* The same scene as the outputs: if it fails as it draws, the preview is black (the rest of
             the window carries on) and tries again with the next change (Session 23). */}
       <SceneBoundary resetKey={rev} fallbackClassName="aspect-video w-full bg-black">
-        {/* The warm-up and the show each in a box of their own, as on an output (NG-1, Session 58): a new box draws
-            nothing until it has measured itself, a render later and before the frame, by when the warm-up taken away
-            has let go of the clock it paused, so the show's first render reads the clock, never that paused moment. */}
-        <PlacedInParent
-          key={warming ? 'warming' : 'show'}
-          content={canvas}
-          mode="fit"
-          className="relative aspect-video w-full"
-        >
+        <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
           {warming && (
             <WarmUp page="live" canvas={canvas} scaling={scaling} hold={HOLD_WARM_UP} onDone={warmedUp} />
           )}
-          {state && !warming && (
+          {state && showing && (
             <Scene
               state={state}
               canvas={canvas}
@@ -147,7 +149,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
             />
           )}
           {/* The picture-in-picture box, to drag anywhere on the screen (Session 50): the show's, never practice's. */}
-          {state && !warming && !practising && (
+          {state && showing && !practising && (
             <PipDragHandle state={state} canvas={canvas} look={audience?.look ?? DEFAULT_LIVE_GROUP_LOOK} />
           )}
         </PlacedInParent>
