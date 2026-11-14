@@ -260,6 +260,38 @@ function themeOf(
 const isColor = (node: XmlNode): boolean =>
   ['srgbClr', 'schemeClr', 'sysClr', 'prstClr'].includes(nameOf(node));
 
+/** A colour's hue, saturation and lightness (each 0-1) from its sRGB channels (0-255). */
+function hslOf(rgb: readonly number[]): [number, number, number] {
+  const [red = 0, green = 0, blue = 0] = rgb.map((c) => c / 255);
+  const max = Math.max(red, green, blue),
+    min = Math.min(red, green, blue);
+  const light = (max + min) / 2,
+    range = max - min;
+  if (range === 0) return [0, 0, light];
+  const saturation = range / (light > 0.5 ? 2 - max - min : max + min);
+  const hue =
+    max === red
+      ? (green - blue) / range + (green < blue ? 6 : 0)
+      : max === green
+        ? (blue - red) / range + 2
+        : (red - green) / range + 4;
+  return [hue / 6, saturation, light];
+}
+
+/** sRGB channels (0-255) from a hue, saturation and lightness (each 0-1). */
+function rgbOfHsl(hue: number, saturation: number, light: number): number[] {
+  const high = light < 0.5 ? light * (1 + saturation) : light + saturation - light * saturation;
+  const low = 2 * light - high;
+  const channel = (at: number) => {
+    const t = at - Math.floor(at);
+    if (t < 1 / 6) return low + (high - low) * 6 * t;
+    if (t < 1 / 2) return high;
+    if (t < 2 / 3) return low + (high - low) * (2 / 3 - t) * 6;
+    return low;
+  };
+  return [hue + 1 / 3, hue, hue - 1 / 3].map((at) => 255 * channel(at));
+}
+
 function colorOf(node: Node, ctx: Context, placeholder?: string): string | null {
   const color = node && isColor(node) ? node : kids(node).find(isColor);
   if (!color) return null;
@@ -306,6 +338,20 @@ function colorOf(node: Node, ctx: Context, placeholder?: string): string | null 
           const mixed = linear * amount + white;
           return 255 * (mixed <= 0.0031308 ? 12.92 * mixed : 1.055 * mixed ** (1 / 2.4) - 0.055);
         });
+        break;
+      }
+      case 'lumMod':
+      case 'lumOff':
+      case 'satMod': {
+        // PowerPoint changes these in HSL, taking the amount as it is: a lumMod or satMod over 100%, a lumOff below 0.
+        const kind = nameOf(change);
+        const value = number(attr(change, 'val'), kind === 'lumOff' ? 0 : 100_000) / 100_000;
+        const [hue, saturation, light] = hslOf(rgb);
+        const within = (n: number) => Math.max(0, Math.min(1, n));
+        rgb =
+          kind === 'satMod'
+            ? rgbOfHsl(hue, within(saturation * value), light)
+            : rgbOfHsl(hue, saturation, within(kind === 'lumMod' ? light * value : light + value));
         break;
       }
       default:
