@@ -528,14 +528,19 @@ test('a deck’s video starts at its click with the time bar under LIVE, and its
     const clickAt = await stepAt(win);
     await expect(video).toHaveAttribute('data-deck-cover', 'none');
     await expect(bar).not.toHaveAttribute('data-paused', 'true');
+    // The engine starts it at its click, from its start (main/engine/deck-steps.ts forwardSeeks).
+    expect((await state(win)).layers.slide?.seeks?.[files.video]).toEqual({ at: clickAt, toMs: 0 });
+    // On the screen it plays in step with that: read by polling, as its sound below and time-bar-helpers' inStep are
+    // (a single reading could fall on the moment its start is still being put right, by design: Session 58, :504).
     await expect
-      .poll(() => video.evaluate((v: HTMLVideoElement) => !v.paused && v.currentTime > 0.2))
+      .poll(() =>
+        video.evaluate(
+          (v: HTMLVideoElement, at) =>
+            !v.paused && v.currentTime > 0.2 && Math.abs(v.currentTime - (Date.now() - at) / 1000) < 0.25,
+          clickAt,
+        ),
+      )
       .toBe(true);
-    const offset = await video.evaluate(
-      (v: HTMLVideoElement, at) => v.currentTime - (Date.now() - at) / 1000,
-      clickAt,
-    );
-    expect(Math.abs(offset)).toBeLessThan(0.25);
     // Its sound (with the slide) in the audio player, in step with the engine's time.
     await expect.poll(() => app.windows().some((w) => w.url().includes('audio.html'))).toBe(true);
     const audio = app.windows().find((w) => w.url().includes('audio.html'));
