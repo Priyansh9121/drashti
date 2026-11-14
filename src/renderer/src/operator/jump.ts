@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import type { PointAt } from '../../../shared/point-ahead';
+import { rowPointer } from '../playlists/point-ahead';
 
 /*
  * Jump by number (Session 55, Part 4, the owner's idea N): every row of the middle that goes up has a number
@@ -12,6 +14,8 @@ import { create } from 'zustand';
 export interface JumpRow {
   number: number;
   go: () => void;
+  /** The slide it puts up, said as its number is typed (C3, Session 58): a deck slide's first clip loads ahead. */
+  pointAt?: PointAt;
 }
 
 /** The most digits a number has (the longest playlist is well under 10,000 rows). */
@@ -39,6 +43,10 @@ function settle(typed: string): void {
   if (timer !== null) clearTimeout(timer);
   timer = null;
   useJump.setState({ typed });
+  // The row it would put up, said as it is typed (C3, Session 58); let go of a moment after the number goes.
+  rowPointer.number(
+    (typed === '' ? undefined : rows.find((r) => r.number === Number(typed)))?.pointAt ?? null,
+  );
   if (typed !== '')
     timer = setTimeout(() => {
       timer = null;

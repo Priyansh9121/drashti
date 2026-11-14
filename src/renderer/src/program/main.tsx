@@ -11,6 +11,7 @@ import { preloadFonts } from '../render/fonts';
 import { preloadStudioFontsOnceDrawn } from '../render/studio-fonts';
 import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
+import { DeckClipsAhead } from '../render/clips-ahead';
 import { WarmUp } from '../render/WarmUp';
 import { applyCameraChoice, listDevices } from './camera';
 import { setCaptureSize, startCapture, stopEncoder, stopPreview } from './capture';
@@ -165,6 +166,9 @@ function Program() {
           </ClockStyleContext.Provider>
         </SceneBoundary>
       )}
+      {/* The deck clips loaded ahead (C3, Session 58): Next's slide's first clip and the slide the operator points at,
+          out of sight, so a deck slide comes in on the stream on time as on the hall's screens. */}
+      {state && ready && context?.picture && <DeckClipsAhead next={state.next} />}
       {stop.cover}
     </div>
   );
