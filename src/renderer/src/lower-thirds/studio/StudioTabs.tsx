@@ -3,12 +3,7 @@ import type { RefObject } from 'react';
 import { animationById } from '../../../../shared/lower-third-animations';
 import { fontChoice, LOWER_THIRD_FONT_CHOICES, nearestWeight } from '../../../../shared/lower-third-fonts';
 import { ANIMATION_QUICK_WORDS, findAnimations } from '../../../../shared/lower-third-search';
-import {
-  OFFERED_LIST,
-  OFFERED_MOTIONS,
-  OFFERED_STYLES,
-  outName,
-} from '../../../../shared/lower-third-studio';
+import { OFFERED_MOTIONS, OFFERED_STYLES, outName } from '../../../../shared/lower-third-studio';
 import { DEFAULT_ACCENT, MOTION_NAMES, STYLE_NAMES } from '../../../../shared/lower-third-styles';
 import type { LowerThirdAlign, LowerThirdFont, LowerThirdWeight } from '../../../../shared/lower-thirds';
 import {
@@ -221,7 +216,7 @@ function AnimationList({
   listRef,
   first,
 }: {
-  items: typeof OFFERED_LIST;
+  items: ReturnType<typeof findAnimations>;
   chosen: string;
   label: string;
   testId: string;
