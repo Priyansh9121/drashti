@@ -774,6 +774,23 @@ test('a node and key and fill draw the same step as Main’s screen at held mome
     // The key is white where the fill has the deck's picture: over the whole slide.
     await allShow([key], [255, 255, 255], 'the key white over the deck’s picture');
     for (const app of apps) await holdClock(app, null);
+    // The operator points at the second slide's row on Main (C3, Session 58): the node's output loads its first clip
+    // ahead as Main's screens do, at the frame a click there starts it from, and lets it go when the pointing goes.
+    const pointAt = (slideIndex: number | null) =>
+      main.win.evaluate(
+        (target) => (globalThis as PageGlobals).drashti.engine.pointAt(target),
+        slideIndex === null ? null : { presentationId: id, slideIndex, arrangementId: null },
+      );
+    const nodeAhead = nodeOut
+      .getByTestId('preload')
+      .locator(`video[data-preload="${files.nextClip}"][data-deck-ahead="pointed"]`);
+    await pointAt(1);
+    await expect(nodeAhead).toHaveAttribute('data-state', 'ready');
+    expect(await nodeAhead.evaluate((video: HTMLVideoElement) => video.currentTime)).toBe(
+      TRANSITION_MS / 1000,
+    );
+    await pointAt(null);
+    await expect(nodeAhead).toHaveCount(0);
   } finally {
     await node.app.close();
     await main.app.close();
