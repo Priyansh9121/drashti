@@ -16,6 +16,7 @@ import {
   openLibrary,
   operatorPage,
   operatorReady,
+  type PageGlobals,
   sizeSlideEditor,
   slideEditorWindow,
 } from './helpers';
@@ -218,10 +219,27 @@ for (const p of PLACEHOLDERS.filter((x) => !real || x.kind === 'deck')) {
       const editMs = Date.now() - editFrom;
       if (p.kind === 'pdf' && p.count === 100) {
         await sizeSlideEditor(app, ed, { width: 1024, height: 645 });
+        // While something is up the pages wait, and their chip with them (Session 58: PD-2's words and PD-3's size
+        // read while it holds); once the screens are cleared, the reading carries on by itself.
+        const dispatch = (command: unknown) =>
+          win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
+        await dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 });
         const last = editor.getByTestId('editor-slide-thumb').last();
         await expect(last).toHaveAttribute('data-source-preparing', 'true');
+        const reads = 'nothing is up and the stream is neither on air nor recording';
+        await expect(last).toHaveAccessibleName(new RegExp(`, preparing when ${reads}$`, 'u'));
         await last.click();
         await expect(editor.getByText('Preparing…', { exact: true })).toBeVisible();
+        const chip = editor.getByRole('status').filter({ hasText: 'Preparing…' });
+        await expect(chip).toHaveText(`Preparing… Reading continues when ${reads}.`);
+        // A chip in the slide's top-left corner at 1024 × 645: at most 24rem wide, never a bar across the slide's top.
+        const chipBox = await chip.boundingBox();
+        const slideBox = await editor.getByTestId('editor-slide').boundingBox();
+        console.log(
+          `The Preparing chip at 1024 × 645: ${JSON.stringify({ chip: chipBox, slide: slideBox })}`,
+        );
+        expect(chipBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(384.5);
+        await dispatch({ type: 'clearLayer', layer: 'slide' });
         await expect(
           editor.getByTestId('editor-slide').locator('[data-element]').filter({ hasText: '100.' }),
         ).toBeVisible({ timeout: 30_000 });
