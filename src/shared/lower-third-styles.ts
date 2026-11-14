@@ -1,10 +1,14 @@
 import {
   accentOf,
   type Css,
+  cssNumber,
   DEFAULT_ACCENT,
   hexAlpha,
   type MotionDef,
   type PiecePose,
+  rotateBy,
+  scaleBy,
+  swell,
   transformOf,
   translate,
 } from './lower-third-motion-kit';
@@ -17,7 +21,9 @@ export type { Css, MotionDef, PiecePose };
  * How a lower third looks in the Lower Thirds studio (Session 55, Part 16): the style its words sit in (a box, as
  * before; a band across the picture, a pill, a ribbon, an outline, glass, two colours, an accent bar, an underline,
  * a slant, lines on their own, or words alone) and a moving background behind them (colours sweeping, light passing
- * over, shapes drifting, stripes, a glow, a line running, sparkles). Pure data: the CSS each draws, and each
+ * over, shapes drifting, stripes, a glow, a line running, sparkles; and since alpha.18 light rising, lamps, mist,
+ * rays, petals, ripples, stars, colours changing, confetti, streaks, waves and lights chasing, and more from
+ * lower-third-motions-more.ts). Pure data: the CSS each draws, and each
  * background's pieces at a moment, a pure function of the time since the lower third went up, so every screen, key
  * and fill and the stream draw the same frame (render/LowerThirdView.tsx draws them).
  *
@@ -401,6 +407,363 @@ const FIRST_SEVEN = {
   },
 } satisfies Record<string, MotionDef>;
 
+/** Where a piece is `turn` of the way round its own loop, started `phase` of the way in and going `speed` times. */
+const loop = (turn: number, speed = 1, phase = 0): number => (((turn * speed + phase) % 1) + 1) % 1;
+/**
+ * Seen fully in the middle of a loop, faded in over its first `fadeIn` and out over its last `fadeOut`, and hidden
+ * for the loop's first and last 2% (so a piece that starts again elsewhere never leaps while it shows).
+ */
+const fadeEnds = (q: number, fadeIn: number, fadeOut: number): number =>
+  Math.max(0, Math.min(1, (q - 0.02) / fadeIn, (0.98 - q) / fadeOut));
+
+const LAMPS: readonly { left: number; phase: number }[] = [
+  { left: 10, phase: 0 },
+  { left: 30, phase: 0.43 },
+  { left: 50, phase: 0.17 },
+  { left: 70, phase: 0.61 },
+  { left: 90, phase: 0.29 },
+];
+
+const MIST: readonly { top: number; height: number; width: number; phase: number }[] = [
+  { top: -25, height: 100, width: 55, phase: 0 },
+  { top: 35, height: 90, width: 65, phase: 0.36 },
+  { top: -5, height: 120, width: 45, phase: 0.7 },
+];
+
+const RAYS: readonly { left: number; angle: number; phase: number }[] = [
+  { left: 14, angle: 26, phase: 0 },
+  { left: 42, angle: 17, phase: 0.33 },
+  { left: 70, angle: 9, phase: 0.66 },
+];
+
+const PETALS: readonly { left: number; phase: number; light: boolean }[] = [
+  { left: 7, phase: 0, light: false },
+  { left: 23, phase: 0.52, light: true },
+  { left: 38, phase: 0.18, light: false },
+  { left: 55, phase: 0.71, light: true },
+  { left: 71, phase: 0.36, light: false },
+  { left: 88, phase: 0.86, light: true },
+];
+
+const STARS: readonly { left: number; top: number; size: number; speed: number; phase: number }[] = [
+  { left: 5, top: 22, size: 0.14, speed: 1, phase: 0 },
+  { left: 14, top: 70, size: 0.11, speed: 2, phase: 0.4 },
+  { left: 24, top: 35, size: 0.17, speed: 1, phase: 0.7 },
+  { left: 33, top: 80, size: 0.11, speed: 1, phase: 0.2 },
+  { left: 45, top: 18, size: 0.14, speed: 2, phase: 0.55 },
+  { left: 56, top: 62, size: 0.11, speed: 1, phase: 0.85 },
+  { left: 64, top: 28, size: 0.17, speed: 2, phase: 0.1 },
+  { left: 75, top: 75, size: 0.14, speed: 1, phase: 0.45 },
+  { left: 85, top: 40, size: 0.11, speed: 2, phase: 0.75 },
+  { left: 94, top: 15, size: 0.14, speed: 1, phase: 0.3 },
+];
+
+const CONFETTI: readonly { left: number; speed: number; phase: number; colour: number; spin: number }[] = [
+  { left: 4, speed: 1, phase: 0, colour: 0, spin: 2 },
+  { left: 13, speed: 2, phase: 0.3, colour: 1, spin: 1 },
+  { left: 22, speed: 1, phase: 0.65, colour: 2, spin: 3 },
+  { left: 31, speed: 2, phase: 0.15, colour: 0, spin: 1 },
+  { left: 41, speed: 1, phase: 0.45, colour: 1, spin: 2 },
+  { left: 50, speed: 2, phase: 0.8, colour: 2, spin: 1 },
+  { left: 60, speed: 1, phase: 0.25, colour: 0, spin: 3 },
+  { left: 69, speed: 2, phase: 0.55, colour: 1, spin: 2 },
+  { left: 79, speed: 1, phase: 0.9, colour: 2, spin: 1 },
+  { left: 90, speed: 2, phase: 0.4, colour: 0, spin: 2 },
+];
+
+const STREAKS: readonly { top: number; speed: number; phase: number }[] = [
+  { top: 16, speed: 1, phase: 0 },
+  { top: 34, speed: 2, phase: 0.4 },
+  { top: 55, speed: 1, phase: 0.7 },
+  { top: 72, speed: 2, phase: 0.15 },
+  { top: 88, speed: 1, phase: 0.55 },
+];
+
+/** How many lights chase along the bottom. */
+const CHASERS = 12;
+
+/**
+ * Twelve more (Session 58, alpha.18): calm ones first, for a mandir hall (slow light, soft colours, gentle shapes),
+ * then a few livelier. Each is the studio's own design, drawn from the lower third's two colours and white.
+ */
+const TWELVE = {
+  dawn: {
+    name: 'Light rising',
+    periodMs: 9000,
+    feel: 'calm',
+    // A soft band of the second colour rises slowly through the band, from below it to above it, fading in and out.
+    pieces: (look) => [
+      {
+        ...at,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        background: `linear-gradient(0deg, ${hexAlpha(accentOf(look), 0)} 0%, ${hexAlpha(accentOf(look), 0.4)} 50%, ${hexAlpha(accentOf(look), 0)} 100%)`,
+      },
+    ],
+    at: (turn, count) =>
+      each(count, () => ({
+        transform: translate(0, 100 - 200 * turn, '%'),
+        opacity: Math.sin(Math.PI * turn),
+      })),
+  },
+  lamps: {
+    name: 'Lamps glowing',
+    periodMs: 6000,
+    feel: 'calm',
+    // Five soft lights rising from the band's lower edge, each glowing brighter and softer in its own time.
+    pieces: (look) =>
+      LAMPS.map((l) => ({
+        ...at,
+        left: `${String(l.left)}%`,
+        bottom: '-0.3em',
+        width: '1.4em',
+        height: '1.4em',
+        marginLeft: '-0.7em',
+        borderRadius: '50%',
+        background: `radial-gradient(circle, ${hexAlpha(accentOf(look), 0.6)} 0%, ${hexAlpha(accentOf(look), 0.22)} 35%, ${hexAlpha(accentOf(look), 0)} 70%)`,
+      })),
+    at: (turn, count) =>
+      each(count, (i) => {
+        const s = swell(turn + (LAMPS[i % LAMPS.length]?.phase ?? 0));
+        return { transform: scaleBy(0.85 + 0.25 * s), opacity: 0.35 + 0.6 * s };
+      }),
+  },
+  mist: {
+    name: 'Mist drifting',
+    periodMs: 20_000,
+    feel: 'calm',
+    // Three soft clouds of light drift slowly from right to left, each across the band and on round again.
+    pieces: () =>
+      MIST.map((m) => ({
+        ...at,
+        left: 0,
+        top: `${String(m.top)}%`,
+        height: `${String(m.height)}%`,
+        width: `${String(m.width)}%`,
+        background: 'radial-gradient(closest-side, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0))',
+      })),
+    at: (turn, count) =>
+      each(count, (i) => {
+        const m = MIST[i % MIST.length] ?? { width: 50, phase: 0 };
+        const q = loop(turn, 1, m.phase);
+        // From just past the band's right edge to just past its left (percent of its own width).
+        const from = (100 * 100) / m.width;
+        return { transform: translate(from - (from + 100) * q, 0, '%'), opacity: fadeEnds(q, 0.1, 0.1) };
+      }),
+  },
+  rays: {
+    name: 'Rays of light',
+    periodMs: 12_000,
+    feel: 'calm',
+    // Three soft beams from above, each leaning a little this way and that and brightening in its own time.
+    pieces: () =>
+      RAYS.map((r) => ({
+        ...at,
+        left: `${String(r.left)}%`,
+        top: '-40%',
+        width: '16%',
+        height: '260%',
+        transformOrigin: '50% 0',
+        background:
+          'linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.14) 50%, rgba(255, 255, 255, 0) 100%)',
+      })),
+    at: (turn, count) =>
+      each(count, (i) => {
+        const r = RAYS[i % RAYS.length] ?? { angle: 15, phase: 0 };
+        const lean = r.angle + 7 * Math.sin(2 * Math.PI * (turn + r.phase));
+        return { transform: rotateBy(-lean), opacity: 0.5 + 0.5 * swell(turn + r.phase) };
+      }),
+  },
+  petals: {
+    name: 'Petals falling',
+    periodMs: 10_000,
+    feel: 'calm',
+    // Six petals in the second colour and white float down, swaying and turning slowly.
+    pieces: (look) =>
+      PETALS.map((p) => ({
+        ...at,
+        left: `${String(p.left)}%`,
+        top: '-0.3em',
+        width: '0.3em',
+        height: '0.17em',
+        borderRadius: '0.17em 0',
+        background: p.light ? 'rgba(255, 255, 255, 0.8)' : hexAlpha(accentOf(look), 0.85),
+      })),
+    at: (turn, count) =>
+      each(count, (i) => {
+        const p = PETALS[i % PETALS.length] ?? { phase: 0 };
+        const q = loop(turn, 1, p.phase);
+        const sway = 0.3 * Math.sin(2 * Math.PI * (2 * q + p.phase));
+        return {
+          transform: transformOf(translate(sway, 3.6 * q, 'em'), rotateBy(360 * loop(q, 1, p.phase))),
+          opacity: fadeEnds(q, 0.12, 0.18),
+        };
+      }),
+  },
+  ripples: {
+    name: 'Ripples spreading',
+    periodMs: 8000,
+    feel: 'calm',
+    // Three thin rings in the second colour spread from the middle of the band, one after another, fading as they go.
+    pieces: (look) =>
+      [0, 1, 2].map(() => ({
+        ...at,
+        left: '50%',
+        top: '50%',
+        width: '3em',
+        height: '3em',
+        marginLeft: '-1.5em',
+        marginTop: '-1.5em',
+        boxSizing: 'border-box',
+        borderRadius: '50%',
+        border: `0.06em solid ${hexAlpha(accentOf(look), 0.55)}`,
+      })),
+    at: (turn, count) =>
+      each(count, (i) => {
+        const q = loop(turn, 1, i / 3);
+        return { transform: scaleBy(0.15 + 2.25 * q), opacity: (1 - q) * Math.min(1, q * 6) };
+      }),
+  },
+  stars: {
+    name: 'Stars twinkling',
+    periodMs: 6000,
+    feel: 'calm',
+    // Ten small stars, still, each brightening and dimming in its own time.
+    pieces: () =>
+      STARS.map((s) => ({
+        ...at,
+        left: `${String(s.left)}%`,
+        top: `${String(s.top)}%`,
+        width: `${String(s.size)}em`,
+        height: `${String(s.size)}em`,
+        borderRadius: '50%',
+        background: 'rgba(255, 255, 255, 0.95)',
+      })),
+    at: (turn, count) =>
+      each(count, (i) => {
+        const star = STARS[i % STARS.length] ?? { speed: 1, phase: 0 };
+        const s = swell(turn * star.speed + star.phase);
+        return { transform: scaleBy(0.6 + 0.6 * s), opacity: 0.1 + 0.9 * s * s };
+      }),
+  },
+  tint: {
+    name: 'Colours changing gently',
+    periodMs: 10_000,
+    feel: 'calm',
+    // The second colour comes over the band from its start, slowly, at most halfway, and goes again.
+    pieces: (look) => [
+      {
+        ...at,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        background: `linear-gradient(90deg, ${hexAlpha(accentOf(look), look.bandOpacity)} 0%, ${hexAlpha(accentOf(look), look.bandOpacity * 0.3)} 100%)`,
+      },
+    ],
+    at: (turn, count) => each(count, () => ({ transform: '', opacity: 0.5 * swell(turn) })),
+  },
+  confetti: {
+    name: 'Confetti falling',
+    periodMs: 3600,
+    feel: 'lively',
+    // Ten small pieces in the second colour and white fall, swaying, turning and tumbling.
+    pieces: (look) =>
+      CONFETTI.map((c) => ({
+        ...at,
+        left: `${String(c.left)}%`,
+        top: '-0.2em',
+        width: '0.16em',
+        height: '0.08em',
+        background:
+          [accentOf(look), 'rgba(255, 255, 255, 0.92)', hexAlpha(accentOf(look), 0.6)][c.colour] ?? '',
+      })),
+    at: (turn, count) =>
+      each(count, (i) => {
+        const c = CONFETTI[i % CONFETTI.length] ?? { speed: 1, phase: 0, spin: 1 };
+        const q = loop(turn, c.speed, c.phase);
+        const sway = 0.15 * Math.sin(2 * Math.PI * (2 * q + c.phase));
+        // One and a half flips a fall (a half flip looks the same, so it comes round without a jump).
+        const tumble = Math.abs(Math.cos(Math.PI * (3 * q + 2 * c.phase)));
+        return {
+          transform: transformOf(
+            translate(sway, 3.6 * q, 'em'),
+            rotateBy(360 * loop(q, c.spin)),
+            `scale(${cssNumber(Math.max(0.05, tumble))}, 1)`,
+          ),
+          opacity: fadeEnds(q, 0.12, 0.14),
+        };
+      }),
+  },
+  streaks: {
+    name: 'Streaks of light',
+    periodMs: 2400,
+    feel: 'lively',
+    // Five thin streaks of light run across the band at different heights and speeds.
+    pieces: () =>
+      STREAKS.map((s) => ({
+        ...at,
+        left: 0,
+        top: `${String(s.top)}%`,
+        width: '24%',
+        height: '0.035em',
+        borderRadius: '0.035em',
+        background: 'linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.6))',
+      })),
+    at: (turn, count) =>
+      each(count, (i) => {
+        const s = STREAKS[i % STREAKS.length] ?? { speed: 1, phase: 0 };
+        const q = loop(turn, s.speed, s.phase);
+        // From just past the band's left edge to just past its right (percent of its own width, 24% of the band).
+        return {
+          transform: translate(-100 + (100 + 100 / 0.24) * q, 0, '%'),
+          opacity: fadeEnds(q, 0.18, 0.18),
+        };
+      }),
+  },
+  waves: {
+    name: 'Waves rolling',
+    periodMs: 2000,
+    feel: 'lively',
+    // A row of small rounded waves in the second colour along the band's foot, rolling on by two waves each loop.
+    pieces: (look) => [
+      {
+        ...at,
+        left: 0,
+        bottom: 0,
+        width: 'calc(100% + 1em)',
+        height: '0.3em',
+        background: `radial-gradient(circle at 50% 100%, ${hexAlpha(accentOf(look), 0.45)} 0.22em, ${hexAlpha(accentOf(look), 0)} 0.235em) 0 0 / 0.5em 0.3em repeat-x, linear-gradient(${hexAlpha(accentOf(look), 0.45)}, ${hexAlpha(accentOf(look), 0.45)}) 0 100% / 100% 0.08em no-repeat`,
+      },
+    ],
+    // Two waves' width (1em) along each loop: it never jumps.
+    at: (turn, count) => each(count, () => ({ transform: translate(-turn, 0, 'em'), opacity: 1 })),
+  },
+  chase: {
+    name: 'Lights chasing',
+    periodMs: 1800,
+    feel: 'lively',
+    // Twelve small lights in the second colour along the band's foot, lighting one after another.
+    pieces: (look) =>
+      Array.from({ length: CHASERS }, (_, i) => ({
+        ...at,
+        left: `${cssNumber(4 + (92 * i) / (CHASERS - 1))}%`,
+        bottom: '0.14em',
+        width: '0.14em',
+        height: '0.14em',
+        borderRadius: '50%',
+        background: accentOf(look),
+      })),
+    at: (turn, count) =>
+      each(count, (i) => {
+        const p = ((1 + Math.cos(2 * Math.PI * (turn - (i % CHASERS) / CHASERS))) / 2) ** 4;
+        return { transform: scaleBy(0.8 + 0.4 * p), opacity: 0.18 + 0.82 * p };
+      }),
+  },
+} satisfies Record<string, MotionDef>;
+
 /**
  * THE REGISTRY (Session 58): every moving background but None, by its key (the key a lower third keeps, so never
  * renamed). The studio offers those in OFFERED (lower-third-studio.ts), in OFFERED's order.
@@ -410,6 +773,7 @@ const FIRST_SEVEN = {
  */
 const MOTIONS = {
   ...FIRST_SEVEN,
+  ...TWELVE,
   // C12 JOINS HERE: ...MORE_MOTIONS,
 } satisfies Record<string, MotionDef>;
 
@@ -418,6 +782,12 @@ export type LowerThirdMotion = 'none' | keyof typeof MOTIONS;
 
 /** Every moving background a lower third may have (None first). */
 export const LOWER_THIRD_MOTIONS = ['none', ...(Object.keys(MOTIONS) as (keyof typeof MOTIONS)[])] as const;
+
+/**
+ * The studio's first seven (alpha.15 to alpha.17), in their order: the Performance check's lower-thirds scenario
+ * measures them, and the lower-thirds-more scenario every background since.
+ */
+export const FIRST_MOTIONS = Object.keys(FIRST_SEVEN) as readonly LowerThirdMotion[];
 
 const definition = (motion: LowerThirdMotion): MotionDef | null =>
   motion === 'none' ? null : ((MOTIONS[motion] as MotionDef | undefined) ?? null);
@@ -431,6 +801,11 @@ export const MOTION_NAMES = Object.fromEntries(
 export const MOTION_PERIOD_MS = Object.fromEntries(
   LOWER_THIRD_MOTIONS.map((m) => [m, definition(m)?.periodMs ?? 1000]),
 ) as Record<LowerThirdMotion, number>;
+
+/** How each background feels: calm (slow light, soft colours, gentle shapes) or lively; None is calm. */
+export const MOTION_FEEL = Object.fromEntries(
+  LOWER_THIRD_MOTIONS.map((m) => [m, definition(m)?.feel ?? 'calm']),
+) as Record<LowerThirdMotion, MotionDef['feel']>;
 
 /** Whether a background is the colour itself (the sweep): its shape has no colour of its own under it. */
 export const motionIsFill = (motion: LowerThirdMotion): boolean => definition(motion)?.fill === true;

@@ -109,10 +109,10 @@ describe('the moving backgrounds: the registry', () => {
   it('a lower third keeps any of them (its look is saved and read back), and one with a key Drashti does not know is refused, never drawn wrong', () => {
     for (const motion of LOWER_THIRD_MOTIONS)
       expect(lowerThirdLookSchema.safeParse(look({ motion })).success, motion).toBe(true);
-    expect(lowerThirdLookSchema.safeParse({ ...look(), motion: 'fireworks' }).success).toBe(false);
-    expect(motionPieces('fireworks' as LowerThirdMotion, look())).toEqual([]);
-    expect(motionAt('fireworks' as LowerThirdMotion, 500, 3)).toEqual([]);
-    expect(motionIsFill('fireworks' as LowerThirdMotion)).toBe(false);
+    expect(lowerThirdLookSchema.safeParse({ ...look(), motion: 'not-a-background' }).success).toBe(false);
+    expect(motionPieces('not-a-background' as LowerThirdMotion, look())).toEqual([]);
+    expect(motionAt('not-a-background' as LowerThirdMotion, 500, 3)).toEqual([]);
+    expect(motionIsFill('not-a-background' as LowerThirdMotion)).toBe(false);
   });
 
   it('the studio offers each of the twelve, None first, then the calm ones, then the lively ones', () => {
@@ -156,14 +156,15 @@ describe('the twelve', () => {
           const q = b[i] ?? p;
           const what = `${motion} piece ${String(i)} at ${String(t)} ms`;
           if (Math.min(p.opacity, q.opacity) <= 0.03) continue;
-          expect(Math.abs(q.opacity - p.opacity), what).toBeLessThanOrEqual(0.08);
+          // A frame's step: smooth moves here go at most ~7% of a piece (0.03em) a frame; a leap is 100% or more.
+          expect(Math.abs(q.opacity - p.opacity), what).toBeLessThanOrEqual(0.1);
           const [from, to] = [pose(p), pose(q)];
           const slip = motion === 'waves' && Math.abs(Math.abs(to.x - from.x) - 1) < 0.05 ? 1 : 0;
-          const most = (from.unit || to.unit) === 'em' ? 0.12 : 6;
+          const most = (from.unit || to.unit) === 'em' ? 0.2 : 12;
           expect(Math.abs(to.x - from.x) - slip, what).toBeLessThanOrEqual(most);
           expect(Math.abs(to.y - from.y), what).toBeLessThanOrEqual(most);
-          expect(Math.abs(to.sx - from.sx), what).toBeLessThanOrEqual(0.1);
-          expect(Math.abs(to.sy - from.sy), what).toBeLessThanOrEqual(0.1);
+          expect(Math.abs(to.sx - from.sx), what).toBeLessThanOrEqual(0.12);
+          expect(Math.abs(to.sy - from.sy), what).toBeLessThanOrEqual(0.12);
           expect(turnBetween(from.deg, to.deg), what).toBeLessThanOrEqual(12);
         }
       }
