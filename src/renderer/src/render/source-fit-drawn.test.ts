@@ -58,4 +58,32 @@ describe('a deck’s box drawn as PowerPoint’s own shrink left its line spacin
     expect(lineSpacings(drawn(box(runs, SHRUNK)))).toEqual(['0.96', 'calc(var(--fit, 1) * 48px)']);
     expect(lineSpacings(drawn(box(runs)))).toEqual(['1.08', 'calc(var(--fit, 1) * 48px)']);
   });
+
+  it('each run at PowerPoint’s own shrunk size, rounded to a whole point on its own (run 5)', () => {
+    // 40 and 18 pt at 62.5%: PowerPoint draws 25 and 11 pt (h-pptx3's run 5). At the box's fit (25/40), the 18 pt run
+    // is drawn 11 pt where it was 11.25: its size is 24 px x (11/18) / (25/40) before the fit.
+    const runs: TextRun[] = [
+      { text: 'Placeholder title words in line A\n', size: (40 * 4) / 3 },
+      { text: 'Placeholder smaller words B', size: 24 },
+    ];
+    const el = {
+      ...box(runs, { fontScale: 0.625, lineSpacingReduction: 0.2 }),
+      style: {
+        ...box(runs).style,
+        fontSize: (40 * 4) / 3,
+        sourceFit: { fontScale: 0.625, lineSpacingReduction: 0.2 },
+      },
+    };
+    const sizes = (html: string) =>
+      [
+        ...html.matchAll(
+          /<span data-run="\d+"[^>]*?style="[^"]*?font-size:calc\(var\(--fit, 1\) \* ([\d.]+)px\)/gu,
+        ),
+      ].map(([, px = '']) => Number(px));
+    const [large, small] = sizes(drawn(el));
+    expect(large).toBeCloseTo((40 * 4) / 3, 4);
+    expect(((small ?? 0) * 0.625 * 3) / 4).toBeCloseTo(11, 3);
+    // Without PowerPoint's shrink, as written.
+    expect(sizes(drawn(box(runs)))[1]).toBe(24);
+  });
 });
