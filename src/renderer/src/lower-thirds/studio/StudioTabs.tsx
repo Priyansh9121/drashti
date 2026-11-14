@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import { animationById } from '../../../../shared/lower-third-animations';
 import { fontChoice, LOWER_THIRD_FONT_CHOICES, nearestWeight } from '../../../../shared/lower-third-fonts';
+import { ANIMATION_QUICK_WORDS, findAnimations } from '../../../../shared/lower-third-search';
 import {
   OFFERED_LIST,
   OFFERED_MOTIONS,
@@ -21,6 +23,7 @@ import {
 import { cx } from '../../ui/cx';
 import { ColorInput, Field, NumberInput, Select, Slider, TextInput } from '../../ui/Field';
 import { Choices } from './Choices';
+import { FindBox } from './FindBox';
 import { change, changeLook, leaveOut, playAgain, useStudio } from './studio-store';
 
 /*
@@ -200,27 +203,12 @@ export function StyleTab() {
   );
 }
 
-/** Words for searching, lower case, without marks or little words (as the library's own search has them). */
-const words = (s: string) =>
-  s
-    .toLowerCase()
-    .replace(/[^a-z0-9 ]+/gu, ' ')
-    .split(/\s+/u)
-    .filter((w) => w !== '' && !['in', 'from', 'the', 'by', 'and', 'a', 'to', 'out'].includes(w));
-
-/** The offered animations whose name (as it comes in, or goes out) or other names hold each word asked for. */
-function found(query: string, out: boolean): typeof OFFERED_LIST {
-  const asked = words(query);
-  if (asked.length === 0) return OFFERED_LIST;
-  return OFFERED_LIST.filter(({ animation: a }) => {
-    const has = [...words(a.name), ...(out ? words(outName(a.id)) : []), ...a.keywords];
-    return asked.every((w) => has.some((h) => h.startsWith(w)));
-  });
-}
-
 const rowButton = 'block w-full rounded-sm px-2 py-1.5 text-left text-sm';
 
-/** A list of animations, by their headings: the one chosen pressed. */
+/**
+ * A list of animations, by their headings: the one chosen pressed. One Tab stop (the one chosen, or the first); the
+ * arrows move along it, and up from its first goes back to the search box.
+ */
 function AnimationList({
   items,
   chosen,
@@ -229,6 +217,8 @@ function AnimationList({
   itemTestId,
   nameOf,
   onChoose,
+  onUp,
+  listRef,
   first,
 }: {
   items: typeof OFFERED_LIST;
@@ -238,80 +228,120 @@ function AnimationList({
   itemTestId: string;
   nameOf: (id: string) => string;
   onChoose: (id: string) => void;
+  /** Up from its first: back to the search box. */
+  onUp: () => void;
+  listRef: RefObject<HTMLUListElement | null>;
   /** An entry above the rest (the out's "As it came in"). */
   first?: { name: string };
 }) {
+  const [focused, setFocused] = useState<string | null>(null);
+  const above = first !== undefined;
+  const ids = useMemo(() => [...(above ? [''] : []), ...items.map((o) => o.animation.id)], [above, items]);
+  const stop = focused !== null && ids.includes(focused) ? focused : ids.includes(chosen) ? chosen : ids[0];
   // Each heading over its first.
   const rows = items.map((item, i) => ({ ...item, head: i === 0 || items[i - 1]?.group !== item.group }));
+  const row = (id: string, name: string) => (
+    <button
+      type="button"
+      aria-pressed={id === chosen}
+      tabIndex={id === stop ? 0 : -1}
+      data-testid={itemTestId}
+      data-id={id}
+      className={cx(
+        rowButton,
+        id === chosen ? 'bg-panel-3 text-fg' : 'text-muted hover:bg-panel-2 hover:text-fg',
+      )}
+      onFocus={() => {
+        setFocused(id);
+      }}
+      onClick={() => {
+        onChoose(id);
+      }}
+    >
+      {name}
+    </button>
+  );
   return (
     <ul
+      ref={listRef}
       aria-label={label}
       data-testid={testId}
       className="max-h-44 min-h-0 space-y-0.5 overflow-y-auto rounded-md border border-line p-1"
+      onKeyDown={(e) => {
+        const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-id]')];
+        const i = buttons.findIndex((b) => b === document.activeElement);
+        if (i < 0) return;
+        let next: number;
+        if (e.key === 'ArrowDown') next = Math.min(i + 1, buttons.length - 1);
+        else if (e.key === 'ArrowUp') next = i - 1;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = buttons.length - 1;
+        else return;
+        e.preventDefault();
+        if (next < 0) onUp();
+        else buttons[next]?.focus();
+      }}
     >
-      {first && (
-        <li>
-          <button
-            type="button"
-            aria-pressed={chosen === ''}
-            data-testid={itemTestId}
-            data-id=""
-            className={cx(
-              rowButton,
-              chosen === '' ? 'bg-panel-3 text-fg' : 'text-muted hover:bg-panel-2 hover:text-fg',
-            )}
-            onClick={() => {
-              onChoose('');
-            }}
+      {first && <li>{row('', first.name)}</li>}
+      {rows.map(({ group, animation: a, head }) => [
+        head && (
+          <li
+            key={`h-${group}`}
+            aria-hidden="true"
+            className="px-2 pt-2 pb-0.5 text-xs font-semibold text-faint"
           >
-            {first.name}
-          </button>
-        </li>
-      )}
-      {rows.map(({ group, animation: a, head }) => {
-        return [
-          head && (
-            <li
-              key={`h-${group}`}
-              aria-hidden="true"
-              className="px-2 pt-2 pb-0.5 text-xs font-semibold text-faint"
-            >
-              {group}
-            </li>
-          ),
-          <li key={a.id}>
-            <button
-              type="button"
-              aria-pressed={a.id === chosen}
-              data-testid={itemTestId}
-              data-id={a.id}
-              className={cx(
-                rowButton,
-                a.id === chosen ? 'bg-panel-3 text-fg' : 'text-muted hover:bg-panel-2 hover:text-fg',
-              )}
-              onClick={() => {
-                onChoose(a.id);
-              }}
-            >
-              {nameOf(a.id)}
-            </button>
-          </li>,
-        ];
-      })}
-      {items.length === 0 && <li className="px-2 py-1.5 text-sm text-muted">No animation is called that.</li>}
+            {group}
+          </li>
+        ),
+        <li key={a.id}>{row(a.id, nameOf(a.id))}</li>,
+      ])}
+      {items.length === 0 && <li className="px-2 py-1.5 text-sm text-muted">Nothing matches.</li>}
     </ul>
   );
 }
 
+const ways = (n: number, way: 'in' | 'out') => `${String(n)} way${n === 1 ? '' : 's'} ${way}`;
+
+/**
+ * How it comes in and goes out (Session 58, the owner's simpler search): one box at the top finds the ways in and the
+ * ways out together, by their names and plain words ("slide up slow", "soft", "from below"), with quick words under
+ * it; each list stays where it was, showing what the box found, to pick from.
+ */
 export function AnimationTab() {
   const draft = useStudio((s) => s.draft);
-  const [inQuery, setInQuery] = useState('');
-  const [outQuery, setOutQuery] = useState('');
-  const ins = useMemo(() => found(inQuery, false), [inQuery]);
-  const outs = useMemo(() => found(outQuery, true), [outQuery]);
+  const [query, setQuery] = useState('');
+  const ins = useMemo(() => findAnimations(query, 'in'), [query]);
+  const outs = useMemo(() => findAnimations(query, 'out'), [query]);
+  const box = useRef<HTMLDivElement>(null);
+  const inList = useRef<HTMLUListElement>(null);
+  const outList = useRef<HTMLUListElement>(null);
+  // What the box found starts at the top of each list.
+  useEffect(() => {
+    inList.current?.scrollTo({ top: 0 });
+    outList.current?.scrollTo({ top: 0 });
+  }, [query]);
+  const toBox = () => {
+    box.current?.querySelector('input')?.focus();
+  };
   const asCameIn = 'As it came in, backwards';
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      <div ref={box}>
+        <FindBox
+          label="Find an animation"
+          query={query}
+          onQuery={setQuery}
+          placeholder="slide up slow, soft, letters…"
+          testId="lower-third-search"
+          statusTestId="lower-third-search-status"
+          words={ANIMATION_QUICK_WORDS}
+          found={`${ways(ins.length, 'in')}, ${ways(outs.length, 'out')}`}
+          nothing={ins.length === 0 && outs.length === 0}
+          onDown={() => {
+            inList.current?.querySelector<HTMLElement>('button[tabindex="0"]')?.focus();
+          }}
+        />
+      </div>
       <section aria-label="Comes in" className="space-y-1.5">
         <p className="text-xs font-medium text-muted">
           Comes in:{' '}
@@ -319,17 +349,6 @@ export function AnimationTab() {
             {animationById(draft.animation).name}
           </span>
         </p>
-        <Field label="Find how it comes in" hint={`${String(ins.length)} of ${String(OFFERED_LIST.length)}`}>
-          <TextInput
-            type="search"
-            value={inQuery}
-            placeholder="fade, slide left, bounce…"
-            data-testid="lower-third-search"
-            onChange={(e) => {
-              setInQuery(e.target.value);
-            }}
-          />
-        </Field>
         <AnimationList
           items={ins}
           chosen={draft.animation}
@@ -337,6 +356,8 @@ export function AnimationTab() {
           testId="lower-third-animations"
           itemTestId="lower-third-animation"
           nameOf={(id) => animationById(id).name}
+          onUp={toBox}
+          listRef={inList}
           onChoose={(id) => {
             change({ animation: id });
             playAgain();
@@ -350,17 +371,6 @@ export function AnimationTab() {
             {draft.outAnimation ? outName(draft.outAnimation) : asCameIn}
           </span>
         </p>
-        <Field label="Find how it goes out" hint={`${String(outs.length)} of ${String(OFFERED_LIST.length)}`}>
-          <TextInput
-            type="search"
-            value={outQuery}
-            placeholder="fade, wipe, blur…"
-            data-testid="lower-third-out-search"
-            onChange={(e) => {
-              setOutQuery(e.target.value);
-            }}
-          />
-        </Field>
         <AnimationList
           items={outs}
           chosen={draft.outAnimation ?? ''}
@@ -369,6 +379,8 @@ export function AnimationTab() {
           itemTestId="lower-third-out-animation"
           nameOf={outName}
           first={{ name: asCameIn }}
+          onUp={toBox}
+          listRef={outList}
           onChoose={(id) => {
             if (id === '') leaveOut('outAnimation');
             else change({ outAnimation: id });

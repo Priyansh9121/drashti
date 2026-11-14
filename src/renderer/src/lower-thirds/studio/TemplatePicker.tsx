@@ -1,5 +1,5 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { animationById } from '../../../../shared/lower-third-animations';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { findTemplates, TEMPLATE_QUICK_WORDS } from '../../../../shared/lower-third-search';
 import {
   BEST_LOWER_THIRD_TEMPLATES,
   LOWER_THIRD_TEMPLATES,
@@ -8,9 +8,9 @@ import {
 import { Button, IconButton } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import { Dialog } from '../../ui/Dialog';
-import { Field, Select, TextInput } from '../../ui/Field';
 import { LayoutTemplate, Star } from '../../ui/icons';
 import { usePersistentState } from '../../ui/persist';
+import { FindBox } from './FindBox';
 import { makeNew } from './studio-store';
 import { StudioPreview } from './StudioPreview';
 
@@ -23,28 +23,17 @@ const COLLECTIONS = {
 const COLLECTION_KEYS = ['best', 'all', 'favourites', 'recent'] as const;
 type Collection = (typeof COLLECTION_KEYS)[number];
 
-const FILTERS = {
-  direction: {
-    label: 'Direction',
-    values: { left: 'Left', right: 'Right', up: 'Up', down: 'Down', centre: 'Centre' },
-  },
-  kind: {
-    label: 'Kind',
-    values: { slide: 'Slide', wipe: 'Wipe', reveal: 'Reveal', pop: 'Pop', letters: 'Letters' },
-  },
-  feel: { label: 'Feel', values: { quick: 'Quick', elegant: 'Elegant', bold: 'Bold', calm: 'Calm' } },
-  speed: { label: 'Speed', values: { quick: 'Quick', steady: 'Steady', slow: 'Slow' } },
-} as const;
-const FILTER_KEYS = ['direction', 'kind', 'feel', 'speed'] as const;
-
-const FILTER_OPTIONS = new Map(
-  FILTER_KEYS.map((key) => [
-    key,
-    Object.entries(FILTERS[key].values).filter(([value]) =>
-      LOWER_THIRD_TEMPLATES.some((t) => t[key] === value),
-    ),
-  ]),
-);
+/*
+ * Its four tags in words, for the tile's description (Session 58: the gallery's filters are words its one search box
+ * understands now, lower-third-search.ts).
+ */
+const TAGS = {
+  kind: { slide: 'Slide', wipe: 'Wipe', reveal: 'Reveal', pop: 'Pop', letters: 'Letters' },
+  feel: { quick: 'Quick', elegant: 'Elegant', bold: 'Bold', calm: 'Calm' },
+  speed: { quick: 'Quick', steady: 'Steady', slow: 'Slow' },
+} as const satisfies {
+  [K in 'kind' | 'feel' | 'speed']: Record<LowerThirdTemplate[K], string>;
+};
 const DIRECTIONS: Record<LowerThirdTemplate['direction'], string> = {
   left: 'From the left',
   right: 'From the right',
@@ -92,10 +81,10 @@ const TemplateTile = memo(function TemplateTile({
 }) {
   const { id, name, direction, kind, feel, speed } = template;
   const description = [
-    FILTERS.kind.values[kind],
+    TAGS.kind[kind],
     DIRECTIONS[direction],
-    FILTERS.feel.values[feel] + ' feel',
-    FILTERS.speed.values[speed] + ' speed',
+    TAGS.feel[feel] + ' feel',
+    TAGS.speed[speed] + ' speed',
   ].join('. ');
   return (
     <li
@@ -168,9 +157,10 @@ function Gallery({
 }) {
   const [collection, setCollection] = useState<Collection>('best');
   const [query, setQuery] = useState('');
-  const [filters, setFilters] = useState({ direction: '', kind: '', feel: '', speed: '' });
   const [playing, setPlaying] = useState<string | null>(null);
   const favouritesButton = useRef<HTMLButtonElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
+  const finding = useRef<HTMLDivElement>(null);
   const stop = useCallback((id: string) => {
     setPlaying((current) => (current === id ? null : current));
   }, []);
@@ -185,25 +175,25 @@ function Gallery({
     () => templatesIn(collection, favourites, recent),
     [collection, favourites, recent],
   );
-  const matches = useMemo(() => {
-    const words = query.toLowerCase().trim().split(/\s+/u);
-    return available.filter((template) => {
-      const animation = animationById(template.input.animation);
-      const text = [template.name, animation.name, ...FILTER_KEYS.map((key) => template[key])]
-        .join(' ')
-        .toLowerCase();
-      return (
-        FILTER_KEYS.every((key) => !filters[key] || filters[key] === template[key]) &&
-        words.every((word) => text.includes(word))
-      );
-    });
-  }, [available, filters, query]);
+  const matches = useMemo(() => findTemplates(available, query), [available, query]);
+  // Searching Best 20, Favourites or Recently used: how many more All templates has.
+  const asked = query.trim() !== '';
+  const more = useMemo(
+    () =>
+      asked && collection !== 'all' ? findTemplates(LOWER_THIRD_TEMPLATES, query).length - matches.length : 0,
+    [asked, collection, matches, query],
+  );
+  // What the box found starts at the top.
+  useEffect(() => {
+    grid.current?.scrollTo({ top: 0 });
+  }, [query, collection]);
   const empty =
-    available.length === 0 && collection === 'favourites'
+    collection === 'favourites'
       ? 'Star a template to keep it here.'
-      : available.length === 0 && collection === 'recent'
+      : collection === 'recent'
         ? 'Choose a template to see it here.'
-        : 'No templates match. Try a different search or filter.';
+        : null;
+  const count = `${String(matches.length)} template${matches.length === 1 ? '' : 's'}`;
 
   return (
     <Dialog
@@ -231,43 +221,52 @@ function Gallery({
             </Button>
           ))}
         </div>
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-          <Field label="Search templates" className="col-span-4 min-w-0 sm:col-span-2">
-            <TextInput
-              type="search"
-              value={query}
-              data-autofocus=""
-              onChange={(event) => {
-                setQuery(event.currentTarget.value);
-                setPlaying(null);
-              }}
-            />
-          </Field>
-          {FILTER_KEYS.map((key) => (
-            <Field key={key} label={FILTERS[key].label} className="min-w-0">
-              <Select
-                value={filters[key]}
-                onChange={(event) => {
-                  setFilters({ ...filters, [key]: event.currentTarget.value });
-                  setPlaying(null);
-                }}
-              >
-                <option value="">Any</option>
-                {FILTER_OPTIONS.get(key)?.map(([value, name]) => (
-                  <option key={value} value={value}>
-                    {name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          ))}
+        <div ref={finding} className="max-w-2xl">
+          <FindBox
+            label="Find a template"
+            query={query}
+            onQuery={(next) => {
+              setQuery(next);
+              setPlaying(null);
+            }}
+            placeholder="gold, from below, calm, slow…"
+            testId="studio-template-search"
+            statusTestId="studio-template-status"
+            words={TEMPLATE_QUICK_WORDS}
+            found={more > 0 ? `${count}; ${String(more)} more in All templates` : count}
+            nothing={asked && matches.length === 0}
+            {...(collection === 'all' ? {} : { where: COLLECTIONS[collection] })}
+            actions={
+              more > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setCollection('all');
+                    setPlaying(null);
+                    // It goes as All shows them all: the box keeps the keyboard.
+                    finding.current?.querySelector('input')?.focus();
+                  }}
+                >
+                  Look in All templates
+                </Button>
+              )
+            }
+            onDown={() => {
+              grid.current?.querySelector<HTMLElement>('[data-testid="studio-template"]')?.focus();
+            }}
+            autoFocus
+          />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      <div ref={grid} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {matches.length === 0 ? (
-          <p role="status" className="text-sm text-muted">
-            {empty}
-          </p>
+          !asked &&
+          empty && (
+            <p role="status" className="text-sm text-muted">
+              {empty}
+            </p>
+          )
         ) : (
           <ul aria-label="Templates" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {matches.map((template) => (
