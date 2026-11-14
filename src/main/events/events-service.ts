@@ -106,7 +106,7 @@ export function testAnswer(result: TryResult): { ok: boolean; message: string } 
 }
 
 export interface EventsOutDeps {
-  store: Pick<StreamKeyStore, 'status' | 'ids' | 'get' | 'set' | 'remove'>;
+  store: Pick<StreamKeyStore, 'status' | 'known' | 'ids' | 'get' | 'set' | 'remove'>;
   spawn(): EventsWorker;
   /** Tests (never a packaged Drashti): events go only to 127.0.0.1. */
   onlyThisComputer: boolean;
@@ -169,7 +169,8 @@ export class EventsOut {
   }
 
   view(): EventsOutView {
-    const storage = this.deps.store.status();
+    // Never asks the system's secure storage (on a Mac, the keychain: Q58-37); adding an address does.
+    const storage = this.deps.store.known();
     const addresses: EventAddressView[] = [];
     for (const [id, a] of this.addresses) {
       const url = new URL(a.url);
