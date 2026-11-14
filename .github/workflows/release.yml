@@ -151,6 +151,8 @@ jobs:
 
   # Session 30 (Q6): the tag is new, the commit is main, a CI run from a push of it passed every app job, and
   # every file matches its checksums (scripts/release-gate.mjs). A dry run reports it; a publish stops here.
+  # Session 58: a job GitHub never started (no runner) is named so, never as a test failure, from its check run's
+  # annotations (checks: read); it has not passed either.
   gate:
     name: The release gate
     needs: assemble
@@ -158,6 +160,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      checks: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
