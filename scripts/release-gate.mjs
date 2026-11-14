@@ -2,12 +2,14 @@
 // origin/main; a CI run from a push of that very commit must have passed every app job (a manual quick run
 // never counts); every file must match SHA256SUMS.txt and the update manifest's sha512 and size; and (Session
 // 54) the access list's address and public key built in must be real, never placeholders. A dry run reports what
-// it finds and goes on; a publish stops at any failure.
+// it finds and goes on; a publish stops at any failure. Since Session 58 a job GitHub never started (no runner: it
+// ran no step, and its annotation says so) is named as such, never as a test failure; it has not passed either
+// (.github/workflows/rerun-unstarted.yml re-runs one by itself).
 //
 //   node scripts/release-gate.mjs --dir release-files --sha <commit> --repo <owner/repo> [--report]
 //
 // It asks git (ls-remote, no credentials: the repository is public) and the GitHub CLI (the workflow's own
-// token, with actions: read) and runs neither through a shell.
+// token, with actions: read and checks: read) and runs neither through a shell.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -77,10 +79,69 @@ export function mainCheck(lsRemote, sha) {
 }
 
 /**
- * The CI runs for the commit (the API's workflow_runs) and each run's jobs (by run id): passed when a run from
- * a push of exactly this commit passed every app job. A run passed on a re-run still counts, and says so.
+ * What a job's annotation says when GitHub gave it no runner and cancelled it (Session 58: GitHub short of Mac
+ * runners on 12-13 Nov 2026, "The job was not acquired by Runner of type hosted even after multiple attempts").
  */
-export function ciCheck(runs, jobsOf, sha) {
+export const NO_RUNNER_SAID = /\bThe job was not acquired by Runner\b/u;
+/** What a run cancelled by a newer push of its branch says (ci.yml's concurrency: a push cancels its branch's run). */
+const NEWER_PUSH_SAID = /\bCanceling since a higher priority waiting request\b/u;
+
+/**
+ * Whether a job ended without passing having run nothing: no step ran and it had no runner (GitHub's API gives an
+ * empty name and runner 0, or none). Either GitHub never started it, or it was cancelled before it began (by a newer
+ * push, or by hand): its annotations tell which.
+ */
+export function ranNothing(job) {
+  return (
+    job.status === 'completed' &&
+    (job.conclusion === 'cancelled' || job.conclusion === 'failure') &&
+    Array.isArray(job.steps) &&
+    job.steps.length === 0 &&
+    !job.runner_name &&
+    !job.runner_id
+  );
+}
+
+/**
+ * Whether GitHub never started a job: it ran nothing (ranNothing) and its annotation says GitHub gave it no runner.
+ * Nothing was tested: it is not a test failure.
+ */
+export function neverStarted(job, annotations = []) {
+  return (
+    ranNothing(job) &&
+    annotations.some((a) => a.annotation_level === 'failure' && NO_RUNNER_SAID.test(a.message ?? ''))
+  );
+}
+
+/**
+ * What became of a CI job, from its own data (a run's jobs from GitHub's API, and its check run's annotations):
+ * 'never-started' (GitHub gave it no runner), 'newer-push' (cancelled by a newer push of its branch), 'running'
+ * (queued or still going), 'missing' (no such job), else its conclusion as GitHub says it ('success', 'failure', a
+ * flaky test's too since CI fails on one, 'cancelled', 'skipped', 'timed_out'…).
+ */
+export function jobState(job, annotations = []) {
+  if (!job) return 'missing';
+  if (job.status !== undefined && job.status !== 'completed') return 'running';
+  if (neverStarted(job, annotations)) return 'never-started';
+  if (job.conclusion === 'cancelled' && annotations.some((a) => NEWER_PUSH_SAID.test(a.message ?? '')))
+    return 'newer-push';
+  return job.conclusion ?? 'unknown';
+}
+
+/** How the gate's lines say a job's state. */
+const SAID = {
+  'never-started': 'never started by GitHub (no runner)',
+  'newer-push': 'cancelled by a newer push',
+  running: 'still running',
+};
+
+/**
+ * The CI runs for the commit (the API's workflow_runs), each run's jobs (by run id) and the annotations of any job
+ * that may never have started (by job id): passed when a run from a push of exactly this commit passed every app
+ * job. A run passed on a re-run still counts, and says so. A job GitHub never started (no runner) is named as such,
+ * never as a test failure, but a run with one has not passed: nothing it should have tested was.
+ */
+export function ciCheck(runs, jobsOf, sha, annotationsOf = {}) {
   const pushed = runs.filter((r) => r.event === 'push' && r.head_sha === sha);
   if (pushed.length === 0)
     return {
@@ -88,9 +149,13 @@ export function ciCheck(runs, jobsOf, sha) {
       line: `No CI run from a push of ${short(sha)}: push it and wait for CI (a run started by hand never counts).`,
     };
   const states = [];
+  let newest = null;
   for (const run of [...pushed].sort((a, b) => Number(b.id) - Number(a.id))) {
     const jobs = jobsOf[run.id] ?? [];
-    const of = (name) => jobs.find((j) => j.name === name)?.conclusion ?? 'missing';
+    const of = (name) => {
+      const job = jobs.find((j) => j.name === name);
+      return jobState(job, job ? (annotationsOf[job.id] ?? []) : []);
+    };
     const got = APP_JOBS.map(of);
     if (got.every((c) => c === 'success')) {
       const again =
@@ -100,11 +165,22 @@ export function ciCheck(runs, jobsOf, sha) {
         line: `CI run ${String(run.id)}, from a push of ${short(sha)}, passed every app job${again}.`,
       };
     }
-    states.push(`run ${String(run.id)}: ${got.map((c, i) => `${JOB_NAMES[i] ?? ''} ${c}`).join(', ')}`);
+    newest ??= { run, got };
+    states.push(
+      `run ${String(run.id)}: ${got.map((c, i) => `${JOB_NAMES[i] ?? ''} ${SAID[c] ?? c}`).join(', ')}`,
+    );
   }
+  // The newest run's jobs that did not pass were only ones GitHub never started (or still going): not a test failure.
+  const notPassed = newest?.got.filter((c) => c !== 'success') ?? [];
+  const whatNext =
+    notPassed.length > 0 && notPassed.every((c) => c === 'never-started' || c === 'running')
+      ? notPassed.includes('never-started')
+        ? ' A job GitHub never started is not a test failure: re-run it (CI re-runs such a job by itself as its run ends: .github/workflows/rerun-unstarted.yml) and wait for that attempt.'
+        : ' Wait for it.'
+      : '';
   return {
     ok: false,
-    line: `No CI run from a push of ${short(sha)} passed every app job (${states.join('; ')}).`,
+    line: `No CI run from a push of ${short(sha)} passed every app job (${states.join('; ')}).${whatNext}`,
   };
 }
 
@@ -188,11 +264,19 @@ async function main() {
     run('gh', ['api', `repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${sha}&event=push&per_page=20`]),
   ).workflow_runs;
   const jobsOf = {};
-  for (const r of runs)
+  const annotationsOf = {};
+  for (const r of runs) {
     jobsOf[r.id] = JSON.parse(
       run('gh', ['api', `repos/${repo}/actions/runs/${String(r.id)}/jobs?per_page=50`]),
     ).jobs;
-  results.push(ciCheck(runs, jobsOf, sha));
+    // A job that ran nothing: whether GitHub never started it, from what its annotations say.
+    for (const job of jobsOf[r.id])
+      if (ranNothing(job))
+        annotationsOf[job.id] = JSON.parse(
+          run('gh', ['api', `repos/${repo}/check-runs/${String(job.id)}/annotations?per_page=50`]),
+        );
+  }
+  results.push(ciCheck(runs, jobsOf, sha, annotationsOf));
   results.push(...(await filesCheck(dir)));
   results.push(accessCheck(readFileSync('src/shared/access-config.ts', 'utf8')));
   const failed = results.filter((r) => !r.ok);
