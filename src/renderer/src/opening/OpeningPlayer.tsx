@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type OpeningPlan, OPENING_TIMES, OPENING_ZOOM } from '../../../shared/opening';
 import { cx } from '../ui/cx';
 import { LitLamp } from '../ui/Mark';
+import type { OpeningFrame } from './opening-figures';
 import { photoWait } from './opening-order';
 import { openingSound, type OpeningSoundPlayer } from './opening-sound';
 
@@ -20,6 +21,8 @@ import { openingSound, type OpeningSoundPlayer } from './opening-sound';
 
 /** The longest an unreadable photo can hold up the opening, once nothing else holds it (opening-order.ts). */
 const READY_WAIT = 600;
+/** The most frames its figures are read from: ten seconds at 60 a second, far more than its two seconds draw. */
+const FIGURE_FRAMES = 600;
 /** The zoom is centred on the photo's upper middle, so its subject stays where it is. */
 const ORIGIN = '50% 35%';
 
@@ -74,6 +77,7 @@ export function OpeningPlayer({
   prepare = true,
   onDone,
   coverWhilePreparing = false,
+  onFrame,
   className,
   testId = 'opening',
 }: {
@@ -88,15 +92,19 @@ export function OpeningPlayer({
   onDone?: () => void;
   /** Black while its photo prepares (at start, over the window starting underneath), else nothing shown till then. */
   coverWhilePreparing?: boolean;
+  /** Each frame the window draws while it runs, until its end, for its figures (at start: opening-figures.ts). */
+  onFrame?: (frame: OpeningFrame) => void;
   className?: string;
   testId?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const done = useRef(onDone);
+  const framed = useRef(onFrame);
   const motion = useRef(still);
   const zoom = useRef<Animation | undefined>(undefined);
   useLayoutEffect(() => {
     done.current = onDone;
+    framed.current = onFrame;
     motion.current = still;
     if (still) {
       zoom.current?.cancel();
@@ -151,6 +159,21 @@ export function OpeningPlayer({
     const playing = animate(root, motion.current);
     zoom.current = playing.zoom;
     let cancelled = false;
+    // Its figures: at every frame from here, how far into its two seconds it is, until its end (a few seconds of
+    // frames at most: a test that pauses it keeps it from its end).
+    let frame = 0;
+    if (framed.current) {
+      let left = FIGURE_FRAMES;
+      const tick = (at: number) => {
+        const t = playing.fade.currentTime;
+        const progress = typeof t === 'number' ? t : null;
+        framed.current?.({ at, progress });
+        left -= 1;
+        if (left > 0 && (progress === null || progress < OPENING_TIMES.end))
+          frame = requestAnimationFrame(tick);
+      };
+      frame = requestAnimationFrame(tick);
+    }
     void playing.fade.ready
       .then(() => {
         if (!cancelled && showPhoto) sound.current?.start();
@@ -158,11 +181,16 @@ export function OpeningPlayer({
       .catch(() => undefined);
     void playing.fade.finished
       .then(() => {
-        if (!cancelled) done.current?.();
+        if (cancelled) return;
+        // The frame it ended at, for its figures: its end is said before that frame's own callbacks run.
+        const at = document.timeline.currentTime;
+        if (typeof at === 'number') framed.current?.({ at, progress: OPENING_TIMES.end });
+        done.current?.();
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
+      cancelAnimationFrame(frame);
       for (const animation of playing.out) animation.cancel();
       zoom.current = undefined;
     };

@@ -27,6 +27,8 @@ const MAC = 'End-to-end and installers (macos-latest)';
 const MAC_SECOND = 'End-to-end, second half (macos-latest)';
 const WINDOWS = 'End-to-end and installers (windows-latest)';
 const BLACK = 'End-to-end in Black (windows-latest)';
+/** The app jobs as they were when these runs were recorded (before Session 58 split each system into three parts). */
+const RECORDED_APP_JOBS = [MAC, WINDOWS, BLACK, MAC_SECOND];
 
 function take(key: string): Recorded {
   const r = recorded[key];
@@ -114,15 +116,19 @@ describe('a CI job GitHub never started (Session 58), on runs recorded from GitH
   it('the release gate names a job GitHub never started as such, never as a failure, and still does not pass', () => {
     const gate = gateWithoutMac();
     const sha = gate.run.head_sha;
-    expect(ciCheck([gate.run], { [gate.run.id]: gate.jobs }, sha, annotationsOf(gate))).toEqual({
+    expect(
+      ciCheck([gate.run], { [gate.run.id]: gate.jobs }, sha, annotationsOf(gate), RECORDED_APP_JOBS),
+    ).toEqual({
       ok: false,
-      line: 'No CI run from a push of 9befbc8 passed every app job (run 43361930288: macOS never started by GitHub (no runner), Windows success, Windows in Black success, macOS second half success). A job GitHub never started is not a test failure, and its re-run is not the one re-run a failure gets (nothing was tested): re-run it (CI re-runs such a job by itself as its run ends: .github/workflows/rerun-unstarted.yml) and wait for that attempt.',
+      line: 'No CI run from a push of 9befbc8 passed every app job (run 43361930288: macOS part 1 never started by GitHub (no runner), Windows part 1 success, Windows in Black success, macOS second half success). A job GitHub never started is not a test failure, and its re-run is not the one re-run a failure gets (nothing was tested): re-run it (CI re-runs such a job by itself as its run ends: .github/workflows/rerun-unstarted.yml) and wait for that attempt.',
     });
     // Not read (no annotations): only "cancelled", as before.
-    expect(ciCheck([gate.run], { [gate.run.id]: gate.jobs }, sha).line).toContain('macOS cancelled,');
+    expect(ciCheck([gate.run], { [gate.run.id]: gate.jobs }, sha, {}, RECORDED_APP_JOBS).line).toContain(
+      'macOS part 1 cancelled,',
+    );
     // Its re-run, attempt 2, passed every job: that counts, and says so.
     const rerun = take('flakyGateRerun');
-    expect(ciCheck([rerun.run], { [rerun.run.id]: rerun.jobs }, sha)).toEqual({
+    expect(ciCheck([rerun.run], { [rerun.run.id]: rerun.jobs }, sha, {}, RECORDED_APP_JOBS)).toEqual({
       ok: true,
       line: 'CI run 43361930288, from a push of 9befbc8, passed every app job (on attempt 2: a re-run counts).',
     });
@@ -131,19 +137,33 @@ describe('a CI job GitHub never started (Session 58), on runs recorded from GitH
   it('the release gate keeps a failure, a flaky test and a newer push’s cancelling what they are', () => {
     const flaky = take('flakyGate');
     expect(
-      ciCheck([flaky.run], { [flaky.run.id]: flaky.jobs }, flaky.run.head_sha, annotationsOf(flaky)),
+      ciCheck(
+        [flaky.run],
+        { [flaky.run.id]: flaky.jobs },
+        flaky.run.head_sha,
+        annotationsOf(flaky),
+        RECORDED_APP_JOBS,
+      ),
     ).toEqual({
       ok: false,
-      line: 'No CI run from a push of 9befbc8 passed every app job (run 43361930288: macOS failure, Windows success, Windows in Black success, macOS second half success).',
+      line: 'No CI run from a push of 9befbc8 passed every app job (run 43361930288: macOS part 1 failure, Windows part 1 success, Windows in Black success, macOS second half success).',
     });
     const newer = take('newerPush');
     expect(
-      ciCheck([newer.run], { [newer.run.id]: newer.jobs }, newer.run.head_sha, annotationsOf(newer)),
+      ciCheck(
+        [newer.run],
+        { [newer.run.id]: newer.jobs },
+        newer.run.head_sha,
+        annotationsOf(newer),
+        RECORDED_APP_JOBS,
+      ),
     ).toEqual({
       ok: false,
-      line: 'No CI run from a push of 27e8424 passed every app job (run 41497139815: macOS cancelled by a newer push, Windows failure, Windows in Black cancelled by a newer push, macOS second half missing).',
+      line: 'No CI run from a push of 27e8424 passed every app job (run 41497139815: macOS part 1 cancelled by a newer push, Windows part 1 failure, Windows in Black cancelled by a newer push, macOS second half missing).',
     });
-    expect(APP_JOBS).toContain(MAC_SECOND);
+    // Today's gate counts every part of every system (Session 58); the names above are the recorded runs' own.
+    expect(APP_JOBS).toHaveLength(9);
+    expect(APP_JOBS).toContain(MAC);
   });
 });
 
@@ -178,7 +198,7 @@ describe('re-running the jobs GitHub never started (Session 58, rerun-unstarted.
       jobs: gate.jobs.map((j) =>
         j.id === ubuntu.id
           ? { ...job(take('noRunnerBesideSuccess'), MAC), id: j.id, name: j.name }
-          : APP_JOBS.includes(j.name)
+          : RECORDED_APP_JOBS.includes(j.name)
             ? { ...skipped, id: j.id, name: j.name }
             : j,
       ),
