@@ -283,7 +283,8 @@ export class StreamService {
 
   profilesView(): StreamProfiles {
     const active = this.activeProfile();
-    return { profiles: this.deps.profiles.list(), activeId: active.id, keyStorage: this.deps.keys.status() };
+    // Never asks the system's secure storage (on a Mac, the keychain: Q58-37); saving a key and going live do.
+    return { profiles: this.deps.profiles.list(), activeId: active.id, keyStorage: this.deps.keys.known() };
   }
 
   /** On air or recording: the profile in use and its inputs stay as they are. */

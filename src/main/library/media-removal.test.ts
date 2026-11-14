@@ -1,5 +1,15 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -370,6 +380,262 @@ it('takes a moved cut’s still frame, sharpened and blurred copies with it, and
     for (const file of held) expect(existsSync(join(x.mediaDir, file)), file).toBe(false);
     for (const file of newer) expect(existsSync(join(x.mediaDir, file)), file).toBe(true);
     expect(gone).toEqual(['held.mp4']);
+  } finally {
+    x.close();
+  }
+});
+
+/*
+ * A quit in the middle of a cut's move (FT-8): TM-7 marked its row gone, but its file stayed in Media, named by
+ * nothing. The next quiet start's sweep finds it and finishes the job; a file it cannot be sure of stays.
+ */
+
+/** A cut's row marked gone as TM-7's move marks it, its file left where it was (Drashti quit before the move). */
+function leftBehind(x: ReturnType<typeof earlierCuts>, id = 'held') {
+  x.db
+    .prepare("UPDATE media SET path = '', missing = 1, deleted_at = ? WHERE id = ?")
+    .run(new Date().toISOString(), id);
+  expect(x.exists(id)).toBe(true);
+}
+
+const heldByNone = { held: () => new Set<string>() };
+
+it('finishes moving a cut a quit left in Media: its row gone, its file named by nothing (FT-8)', async () => {
+  const x = earlierCuts();
+  try {
+    const held = derivedOf(x, 'held');
+    const newer = derivedOf(x, 'newer');
+    leftBehind(x);
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    const sweep = () =>
+      removal.trashLeftTrims(x.mediaDir, x.trash, () => true, new AbortController().signal, heldByNone);
+    expect(await sweep()).toEqual(['held.mp4']);
+    expect(x.trashed()).toEqual(['held.mp4']);
+    for (const file of held) expect(existsSync(join(x.mediaDir, file)), file).toBe(false);
+    for (const file of newer) expect(existsSync(join(x.mediaDir, file)), file).toBe(true);
+    expect(x.exists('newer')).toBe(true);
+    expect(existsSync(join(x.mediaDir, 'original.mp4'))).toBe(true);
+    expect(rowOf(x.db, 'held')).toMatchObject({ path: '', missing: 1 });
+    // Done: the next start finds nothing more.
+    expect(await sweep()).toEqual([]);
+    expect(x.trash).toHaveBeenCalledOnce();
+  } finally {
+    x.close();
+  }
+});
+
+// LOW-1 (review of 50566755): dragging a gone cut back from the Trash imports its bytes, and the import's copy waits at
+// a path named by them (media-store.ts) until its row comes back there; if the cut's bytes begin as its original's do,
+// that copy is in the folder FT-8 reads. A file named by its own bytes is an import's copy (Trim never names one so).
+it('leaves a file named by its own bytes, as an import names its copy, even with a gone cut’s bytes (LOW-1)', async () => {
+  const x = earlierCuts();
+  try {
+    const { sha256 } = x.db.prepare("SELECT sha256 FROM media WHERE id = 'held'").get() as { sha256: string };
+    mkdirSync(join(x.mediaDir, 'ab'));
+    renameSync(join(x.mediaDir, 'original.mp4'), join(x.mediaDir, 'ab', 'original.mp4'));
+    x.db.prepare("UPDATE media SET path = 'ab/original.mp4' WHERE id = 'original'").run();
+    // The cut went to the Trash; the operator drags it back, and the import's copy is not yet named by its row.
+    leftBehind(x);
+    renameSync(join(x.mediaDir, 'held.mp4'), join(x.mediaDir, 'ab', `${sha256}.mp4`));
+    const log = vi.fn<(message: string) => void>();
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    expect(
+      await removal.trashLeftTrims(x.mediaDir, x.trash, () => true, new AbortController().signal, {
+        ...heldByNone,
+        log,
+      }),
+    ).toEqual([]);
+    expect(x.trash).not.toHaveBeenCalled();
+    expect(existsSync(join(x.mediaDir, 'ab', `${sha256}.mp4`))).toBe(true);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('an import’s copy'));
+  } finally {
+    x.close();
+  }
+});
+
+it('looks only in the folder Trim wrote the cut into, and never at a hidden part or a link', async () => {
+  const x = earlierCuts();
+  const outside = mkdtempSync(join(tmpdir(), 'drashti-left-trims-outside-'));
+  try {
+    const bytes = 'Placeholder held cut.';
+    // The original in a folder of its own, as Media keeps it: Trim writes its cuts beside it.
+    mkdirSync(join(x.mediaDir, 'ab'));
+    renameSync(join(x.mediaDir, 'original.mp4'), join(x.mediaDir, 'ab', 'original.mp4'));
+    renameSync(join(x.mediaDir, 'held.mp4'), join(x.mediaDir, 'ab', 'held.mp4'));
+    x.db.prepare("UPDATE media SET path = 'ab/original.mp4' WHERE id = 'original'").run();
+    x.db.prepare("UPDATE media SET path = 'ab/held.mp4' WHERE id = 'held'").run();
+    // Marked gone as TM-7 marks it, its file left in the original's folder.
+    x.db
+      .prepare("UPDATE media SET path = '', missing = 1, deleted_at = ? WHERE id = 'held'")
+      .run(new Date().toISOString());
+    expect(existsSync(join(x.mediaDir, 'ab', 'held.mp4'))).toBe(true);
+    writeFileSync(join(x.mediaDir, 'held elsewhere.mp4'), bytes);
+    writeFileSync(join(x.mediaDir, 'ab', '.11111111-1111-4111-8111-111111111111.mp4'), bytes);
+    writeFileSync(join(outside, 'linked.mp4'), bytes);
+    symlinkSync(join(outside, 'linked.mp4'), join(x.mediaDir, 'ab', 'held link.mp4'));
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    expect(
+      await removal.trashLeftTrims(x.mediaDir, x.trash, () => true, new AbortController().signal, heldByNone),
+    ).toEqual(['held.mp4']);
+    expect(x.trashed()).toEqual(['held.mp4']);
+    expect(readdirSync(join(x.mediaDir, 'ab')).sort()).toEqual([
+      '.11111111-1111-4111-8111-111111111111.mp4',
+      'held link.mp4',
+      'original.mp4',
+    ]);
+    expect(existsSync(join(x.mediaDir, 'held elsewhere.mp4'))).toBe(true);
+    expect(existsSync(join(outside, 'linked.mp4'))).toBe(true);
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+    x.close();
+  }
+});
+
+it.each([
+  [
+    'a row names it',
+    (x: ReturnType<typeof earlierCuts>) => {
+      x.db.prepare("UPDATE media SET path = 'held.mp4' WHERE id = 'newer'").run();
+    },
+    {},
+  ],
+  ['Trim’s records hold it (a copy waiting to be taken in)', () => undefined, { held: ['held.mp4'] }],
+  ['Trim’s records hold it, by another case of its name', () => undefined, { held: ['HELD.mp4'] }],
+] as const)('leaves a cut’s file when %s', async (_why, change, over: { held?: readonly string[] }) => {
+  const x = earlierCuts();
+  try {
+    leftBehind(x);
+    change(x);
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    expect(
+      await removal.trashLeftTrims(x.mediaDir, x.trash, () => true, new AbortController().signal, {
+        held: () => new Set(over.held ?? []),
+      }),
+    ).toEqual([]);
+    expect(x.trash).not.toHaveBeenCalled();
+    expect(x.exists('held')).toBe(true);
+  } finally {
+    x.close();
+  }
+});
+
+it.each([
+  ['its path in Media', (_media: string): string => 'held.mp4'],
+  ['its full path', (media: string): string => join(realpathSync.native(media), 'held.mp4')],
+  ['its full path as Media is named', (media: string): string => join(media, 'held.mp4')],
+] as const)(
+  'leaves a cut’s file that Trim’s records come to hold, by %s, before it moves (review of c01f5fcf)',
+  async (_form, path) => {
+    const x = earlierCuts();
+    try {
+      leftBehind(x);
+      // Held by none as the folder is read (one look), then by Trim's records at the last check before the move.
+      const held = vi.fn(() => new Set([path(x.mediaDir)]));
+      held.mockReturnValueOnce(new Set());
+      const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+      expect(
+        await removal.trashLeftTrims(x.mediaDir, x.trash, () => true, new AbortController().signal, { held }),
+      ).toEqual([]);
+      expect(held.mock.calls.length).toBeGreaterThan(1);
+      expect(x.trash).not.toHaveBeenCalled();
+      expect(x.exists('held')).toBe(true);
+    } finally {
+      x.close();
+    }
+  },
+);
+
+it('leaves a file it cannot be sure of, and says why: other bytes, two files with the same bytes, no known folder', async () => {
+  const x = earlierCuts(['held', 'twice', 'lost', 'newer']);
+  try {
+    const log = vi.fn();
+    // `held`: a file of the same length in its place, other bytes.
+    const length = Buffer.byteLength('Placeholder held cut.');
+    x.db.prepare("UPDATE media SET bytes = ? WHERE id = 'held'").run(length);
+    leftBehind(x, 'held');
+    writeFileSync(join(x.mediaDir, 'held.mp4'), 'Placeholder HELD cut.');
+    // `twice`: its bytes in two files, so which is the cut cannot be known.
+    leftBehind(x, 'twice');
+    writeFileSync(join(x.mediaDir, 'twice copy.mp4'), 'Placeholder twice cut.');
+    // `lost`: cut from an original whose own file went for good: the folder it was written into is not known.
+    x.db.exec(`
+      INSERT INTO media (id, kind, name, path, missing, deleted_at) VALUES ('gone-original', 'video', 'Gone', '', 1, 'earlier');
+      UPDATE trimmed_videos SET original_id = 'gone-original' WHERE media_id = 'lost';
+    `);
+    leftBehind(x, 'lost');
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    expect(
+      await removal.trashLeftTrims(x.mediaDir, x.trash, () => true, new AbortController().signal, {
+        ...heldByNone,
+        log,
+      }),
+    ).toEqual([]);
+    expect(x.trash).not.toHaveBeenCalled();
+    expect(x.exists('held')).toBe(true);
+    expect(x.exists('twice')).toBe(true);
+    expect(existsSync(join(x.mediaDir, 'twice copy.mp4'))).toBe(true);
+    expect(x.exists('lost')).toBe(true);
+    // Why, by the cut's id where there is one: never a file's name or path (the log's rule).
+    const said = log.mock.calls.map(([message]) => String(message));
+    expect(said).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('the folder it was written into is not known'),
+        expect.stringContaining('no earlier Trim cut whose row is gone has its bytes'),
+        expect.stringMatching(/the bytes of cut twice are in more than one file/u),
+        expect.stringMatching(/the bytes of cut lost, .*folder/u),
+      ]),
+    );
+    for (const message of said) expect(message).not.toMatch(/\.mp4|Placeholder/u);
+  } finally {
+    x.close();
+  }
+});
+
+it('waits for a quiet moment, and stops when the show starts', async () => {
+  const x = earlierCuts();
+  try {
+    leftBehind(x);
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    expect(
+      await removal.trashLeftTrims(
+        x.mediaDir,
+        x.trash,
+        () => false,
+        new AbortController().signal,
+        heldByNone,
+      ),
+    ).toEqual([]);
+    const stopped = new AbortController();
+    stopped.abort();
+    expect(await removal.trashLeftTrims(x.mediaDir, x.trash, () => true, stopped.signal, heldByNone)).toEqual(
+      [],
+    );
+    expect(x.trash).not.toHaveBeenCalled();
+    expect(x.exists('held')).toBe(true);
+  } finally {
+    x.close();
+  }
+});
+
+it('keeps the still frame and copies when an import of the same bytes brings the row back while the file moves', async () => {
+  const x = earlierCuts();
+  try {
+    const held = derivedOf(x, 'held');
+    leftBehind(x);
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    const trash = vi.fn(async (file: string) => {
+      // The import keeps its own copy, at a path of its own (media-store.ts).
+      x.db
+        .prepare(
+          "UPDATE media SET deleted_at = NULL, path = 'he/held-import.mp4', missing = 0 WHERE id = 'held'",
+        )
+        .run();
+      await x.trash(file);
+    });
+    expect(
+      await removal.trashLeftTrims(x.mediaDir, trash, () => true, new AbortController().signal, heldByNone),
+    ).toEqual(['held.mp4']);
+    for (const file of held) expect(existsSync(join(x.mediaDir, file)), file).toBe(true);
   } finally {
     x.close();
   }
