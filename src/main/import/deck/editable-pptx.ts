@@ -1228,12 +1228,26 @@ type TableEdgeCandidate = Omit<TableEdge, 'outline'> & { outline: Outline | null
 const tableEdgeKey = (vertical: boolean, boundary: number, start: number) =>
   `${vertical ? 'v' : 'h'}:${boundary}:${start}`;
 
-/** The widest perpendicular stroke that touches this end of an edge. */
-function joiningStroke(edges: ReadonlyMap<string, TableEdgeCandidate>, edge: TableEdge, end: number): number {
-  return Math.max(
-    edges.get(tableEdgeKey(!edge.vertical, end, edge.boundary - 1))?.outline?.width ?? 0,
-    edges.get(tableEdgeKey(!edge.vertical, end, edge.boundary))?.outline?.width ?? 0,
-  );
+/**
+ * The stroke that squares off this end of an edge (`after`: the end the run reaches, else the one it starts from). Only
+ * a true corner grows: exactly one perpendicular border meets the end and no border carries the run on. A free end, a
+ * T-junction, a crossing and a run that carries on in another colour or width don't, so a see-through border never
+ * paints a junction twice.
+ */
+function cornerStroke(
+  edges: ReadonlyMap<string, TableEdgeCandidate>,
+  edge: TableEdge,
+  end: number,
+  after: boolean,
+): number {
+  const painted = (vertical: boolean, boundary: number, start: number) =>
+    edges.get(tableEdgeKey(vertical, boundary, start))?.outline ?? null;
+  const across = [
+    painted(!edge.vertical, end, edge.boundary - 1),
+    painted(!edge.vertical, end, edge.boundary),
+  ].filter((outline) => outline !== null);
+  const onward = painted(edge.vertical, edge.boundary, after ? end : end - 1);
+  return across.length === 1 && !onward ? (across[0]?.width ?? 0) : 0;
 }
 
 function addTableEdge(edges: Map<string, TableEdgeCandidate>, edge: TableEdgeCandidate): void {
@@ -1397,11 +1411,11 @@ async function tableObjects(
     const first = stops[start];
     const last = stops[end];
     if (at === undefined || first === undefined || last === undefined) return null;
-    // Square off a join without extending a free end or adding another editable object.
+    // Square off a corner without extending a free end or adding another editable object.
     const scale = vertical ? Math.hypot(matrix[2], matrix[3]) : Math.hypot(matrix[0], matrix[1]);
     const halfStroke = EMU / (2 * scale);
-    const from = first - joiningStroke(edges, border, start) * halfStroke;
-    const to = last + joiningStroke(edges, border, end) * halfStroke;
+    const from = first - cornerStroke(edges, border, start, false) * halfStroke;
+    const to = last + cornerStroke(edges, border, end, true) * halfStroke;
     const edge = vertical
       ? { x: rect.x + at, y: rect.y + from, width: 0, height: to - from }
       : { x: rect.x + from, y: rect.y + at, width: to - from, height: 0 };
