@@ -102,6 +102,12 @@ const GROUPS: readonly TabItem<EditorGroup>[] = [
   { id: 'slides', label: 'Slides', icon: LayoutTemplate },
 ];
 
+/**
+ * When Drashti reads a page's or slide's words and shapes for editing (Session 58, PD-2): one phrase for the Preparing
+ * chip, a slide's name in the list and the operator guide (operator-guide.md's PowerPoint and PDF paragraph).
+ */
+const READ_WHEN = 'nothing is up and the stream is neither on air nor recording';
+
 export function SlideEditor({ platform }: { platform: string }) {
   const open = useEditor((s) => s.open);
   if (!open) return <Loading label="Opening the slides…" className="h-screen" />;
@@ -698,12 +704,11 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               {preparingSource && (
                 <div
                   role="status"
-                  className="pointer-events-none absolute left-3 top-3 z-10 rounded bg-panel px-2 py-1 text-sm text-muted shadow"
+                  // A chip in the corner (Session 58, PD-3): at most two lines at 1024 × 645, never a bar across the
+                  // slide's top.
+                  className="pointer-events-none absolute left-3 top-3 z-10 max-w-sm rounded bg-panel px-2 py-1 text-sm text-muted shadow"
                 >
-                  <span>Preparing…</span>{' '}
-                  <span>
-                    Reading continues when nothing is on the screens and streaming and recording are off.
-                  </span>
+                  <span>Preparing…</span> <span>Reading continues when {READ_WHEN}.</span>
                 </div>
               )}
               {finding && (
@@ -944,7 +949,7 @@ function SlideList({
             <ol className={horizontal ? 'flex gap-2' : 'space-y-2'}>
               {g.slides.map((s, index) => {
                 const n = numbers.get(s.id) ?? 0;
-                const label = `Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}${overset.has(s.id) ? ', words run past a box' : ''}${preparing.has(s.id) ? ', preparing when the screens are clear and streaming and recording are off' : ''}`;
+                const label = `Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}${overset.has(s.id) ? ', words run past a box' : ''}${preparing.has(s.id) ? `, preparing when ${READ_WHEN}` : ''}`;
                 const here = s.id === current;
                 const marker = dropAt?.groupId === g.id && dropAt.index === index;
                 return (

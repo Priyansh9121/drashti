@@ -2,13 +2,24 @@ import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
+  closeLibrary,
   holdStill,
   importAndGetIds,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   relaunchApp,
@@ -171,6 +182,70 @@ const background = (win: Page) =>
   win.evaluate(
     async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background,
   );
+
+/** A video black and silent for 1.5 s, then 3 s of picture and a tone, then black and silent for 1 s (5.5 s). */
+function edgesVideo(file: string): void {
+  ffmpeg([
+    ...['-f', 'lavfi', '-i', 'color=c=black:s=320x180:r=25:d=1.5'],
+    ...['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=3'],
+    ...['-f', 'lavfi', '-i', 'color=c=black:s=320x180:r=25:d=1'],
+    ...['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo:d=1.5'],
+    ...['-f', 'lavfi', '-i', 'sine=f=440:r=48000:d=3'],
+    ...['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo:d=1'],
+    '-filter_complex',
+    '[0:v][1:v][2:v]concat=n=3:v=1:a=0[v];[4:a]aformat=channel_layouts=stereo[s];[3:a][s][5:a]concat=n=3:v=0:a=1[a]',
+    ...['-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p'],
+    ...['-c:a', 'aac', file],
+  ]);
+}
+
+const dispatch = (win: Page, command: unknown) =>
+  win.evaluate(
+    (c) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch(
+        c as Parameters<PageGlobals['drashti']['engine']['dispatch']>[0],
+      ),
+    command,
+  );
+
+/** The operator's Trim of a row, saved over the video its Trim shows (`mediaId`). */
+const trimRow = (win: Page, rowId: string, mediaId: string, startMs: number, endMs: number) =>
+  win.evaluate(
+    ({ rowId, mediaId, startMs, endMs }) =>
+      (globalThis as PageGlobals).drashti.media.applyRowTrim(rowId, {
+        mediaId,
+        points: { startMs, endMs, markers: [] },
+      }),
+    { rowId, mediaId, startMs, endMs },
+  );
+
+const rowTrimOf = (win: Page, rowId: string) =>
+  win.evaluate((id) => (globalThis as PageGlobals).drashti.media.rowTrim(id), rowId);
+
+/** The row's video once a cut has taken the place of `was` in it. */
+async function nextVideo(win: Page, playlistId: string, rowId: string, was: string): Promise<string> {
+  let now = '';
+  await expect
+    .poll(
+      async () => {
+        const [row] = await items(win, playlistId);
+        now = row?.kind === 'media' && row.id === rowId ? row.mediaId : '';
+        return now !== '' && now !== was;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  return now;
+}
+
+/** A point as Trim's dialog writes it: minutes, seconds and milliseconds, its last zeros left off. */
+function trimTime(ms: number): string {
+  const seconds = ((ms % 60_000) / 1000)
+    .toFixed(3)
+    .padStart(6, '0')
+    .replace(/0{1,2}$/u, '');
+  return `${String(Math.floor(ms / 60_000))}:${seconds}`;
+}
 
 test('Trim waits while on air, cuts exact frames in the same row, and widens or resets from the original', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-trim-copy-'));
@@ -454,6 +529,140 @@ test('a Trim accepted while the show is busy continues after a clean restart', a
     expect(stamp(file)).toEqual(before);
   } finally {
     await app.close().catch(() => undefined);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an earlier cut that nothing uses any more goes to the Trash after a restart, once nothing is up, and the operator is told', async () => {
+  // TM-8 (review LOW-2 of d487b875), with TM-4's notice: the sweep in the running app, from the window opening to
+  // Media refreshed, into a test Trash (DRASHTI_TEST_TRASH_DIR).
+  test.setTimeout(180_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-trim-sweep-'));
+  const trash = join(dir, 'Trash');
+  mkdirSync(trash);
+  const env = { DRASHTI_TEST_TRASH_DIR: trash, DRASHTI_TEST_ON_AIR_HOOK: '1' };
+  const first = await launchApp(env);
+  let app = first.app;
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const file = join(dir, 'Placeholder sweep clip.mp4');
+    numberedVideo(file);
+    const [mediaId = ''] = await importAndGetIds(win, [file]);
+    const { playlistId, rowId } = await makeVideoPlaylist(win, mediaId, 'Placeholder sweep trim');
+    // Something up, then Clear all: Put it back could bring it back, so this run moves nothing (sweepQuiet).
+    const up = { kind: 'media', mediaId, media: 'video', fit: 'fit', loop: false };
+    expect(await dispatch(win, { type: 'setBackground', background: up })).toMatchObject({ ok: true });
+    expect(await dispatch(win, { type: 'clearAll' })).toMatchObject({ ok: true });
+
+    expect(await trimRow(win, rowId, mediaId, 1000, 3000)).toEqual({ ok: true });
+    const earlier = await nextVideo(win, playlistId, rowId, mediaId);
+    // A wider cut takes its place: the earlier one stays in Media, and nothing uses it any more.
+    expect(await trimRow(win, rowId, earlier, 500, 4000)).toEqual({ ok: true });
+    const wider = await nextVideo(win, playlistId, rowId, earlier);
+    const media = await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
+    const nameOf = (id: string) => media.find((m) => m.id === id)?.name ?? '';
+    expect(nameOf(earlier)).toBe('Placeholder sweep clip trimmed.mp4');
+    const sha = stamp(file).sha256;
+    const original = join(first.userData, 'Media', sha.slice(0, 2), `${sha}.mp4`);
+    const earlierFile = join(dirname(original), nameOf(earlier));
+    const widerFile = join(dirname(original), nameOf(wider));
+    expect(existsSync(earlierFile)).toBe(true);
+    expect(existsSync(widerFile)).toBe(true);
+    expect(readdirSync(trash)).toEqual([]);
+    await app.close();
+
+    // The next start, the stream "on air" from its first moment: the sweep waits, so Media is seen first.
+    app = (await relaunchApp(first.userData, env)).app;
+    await onAirFromStart(app);
+    const reopened = await operatorPage(app);
+    await operatorReady(reopened);
+    await sizeOperatorWindow(app, reopened, CI_WINDOW);
+    await openLibrary(reopened);
+    await reopened.getByTestId('library-tab-media').click();
+    const listed = (name: string) => reopened.getByTestId('media-item').filter({ hasText: name });
+    await expect(listed(nameOf(earlier))).toHaveCount(1);
+    await expect(listed(nameOf(wider))).toHaveCount(1);
+    expect(readdirSync(trash)).toEqual([]);
+
+    // Off air, nothing up and nothing to bring back: AFTER_START_MS later the earlier cut goes to the Trash.
+    await onAir(app, false);
+    await expect.poll(() => readdirSync(trash), { timeout: 40_000 }).toEqual([nameOf(earlier)]);
+    expect(existsSync(earlierFile)).toBe(false);
+    expect(existsSync(widerFile)).toBe(true);
+    expect(stamp(original).sha256).toBe(sha);
+    // Media refreshes by itself, and one notice says which went, and where.
+    await expect(listed(nameOf(earlier))).toHaveCount(0);
+    await expect(listed(nameOf(wider))).toHaveCount(1);
+    const where = process.platform === 'win32' ? 'the Recycle Bin' : 'the Trash';
+    await expect(reopened.getByTestId('operator-notice')).toContainText(
+      `An earlier Trim cut that nothing uses any more went to ${where}: “${nameOf(earlier)}”.`,
+    );
+    expect(await items(reopened, playlistId)).toMatchObject([{ id: rowId, mediaId: wider }]);
+  } finally {
+    await app.close().catch(() => undefined);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Trim shows a cut’s black-and-silence points as its start and end, and a wider cut keeps the one whose handle is left', async () => {
+  // TM-11 (review LOW-5 of 2cb6fec1): TR-7 in the running app.
+  test.setTimeout(150_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-trim-edges-'));
+  const { app } = await launchApp();
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await sizeOperatorWindow(app, win, CI_WINDOW);
+    const file = join(dir, 'Placeholder edges.mp4');
+    edgesVideo(file);
+    const [mediaId = ''] = await importAndGetIds(win, [file]);
+    const playlistName = 'Placeholder edges trim';
+    const { playlistId, rowId } = await makeVideoPlaylist(win, mediaId, playlistName);
+    // A cut with black and silence at both its ends.
+    expect(await trimRow(win, rowId, mediaId, 500, 5000)).toEqual({ ok: true });
+    const cut = await nextVideo(win, playlistId, rowId, mediaId);
+    const own = await rowTrimOf(win, rowId);
+    expect(own?.markers).toMatchObject({ endMs: 5000 });
+    expect(own?.markers.startMs).toBeLessThanOrEqual(500);
+
+    // Trim black and silence on the cut, from its menu in Media.
+    await openLibrary(win);
+    await win.getByTestId('library-tab-media').click();
+    await win
+      .getByTestId('media-item')
+      .filter({ hasText: 'Placeholder edges trimmed' })
+      .click({ button: 'right' });
+    await win.getByRole('menuitem', { name: 'Trim black and silence' }).click();
+    const cutPoints = () => win.evaluate((id) => (globalThis as PageGlobals).drashti.media.markers(id), cut);
+    await expect.poll(async () => (await cutPoints()).startMs, { timeout: 30_000 }).not.toBeNull();
+    await closeLibrary(win);
+
+    // Trim on the row shows them in the original's time (past its black and silence), not the cut's own ends.
+    const shown = (await rowTrimOf(win, rowId))?.markers;
+    const startMs = shown?.startMs ?? null;
+    const endMs = shown?.endMs ?? null;
+    if (startMs === null || endMs === null) throw new Error('Trim shows no start or end.');
+    expect(startMs).toBeGreaterThanOrEqual(1400);
+    expect(startMs).toBeLessThanOrEqual(1600);
+    expect(endMs).toBeGreaterThanOrEqual(4400);
+    expect(endMs).toBeLessThanOrEqual(4600);
+    await win.getByTestId('playlist-node').filter({ hasText: playlistName }).click();
+    const row = videoRow(win, rowId);
+    await row.click({ button: 'right' });
+    await win.getByRole('menuitem', { name: 'Trim (start, end and markers)…' }).click();
+    const dialog = win.getByTestId('markers-dialog');
+    await expect(dialog.getByTestId('markers-start')).toHaveValue(trimTime(startMs));
+    await expect(dialog.getByTestId('markers-end')).toHaveValue(trimTime(endMs));
+
+    // A wider cut, End moved out and Start left as Trim shows it: the start keeps its point, the end stands as saved.
+    await dialog.getByTestId('markers-end').fill('0:05.4');
+    await dialog.getByTestId('markers-save').click();
+    await expect(dialog).toHaveCount(0);
+    await nextVideo(win, playlistId, rowId, cut);
+    expect((await rowTrimOf(win, rowId))?.markers).toMatchObject({ startMs, endMs: 5400 });
+  } finally {
+    await app.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });
