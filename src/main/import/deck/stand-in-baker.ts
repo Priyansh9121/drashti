@@ -179,10 +179,17 @@ export async function standInMovie(
           before.copy(frame, row + edge * 3, row + edge * 3, row + width * 3);
         }
       }
+      // A frame bigger than the pipe holds waits for it to drain (or close), then lets go of both listeners: one
+      // left behind at each wait made Node warn of a leak after eleven (Session 58, h-flaky).
       if (!child.stdin.write(frame))
         await new Promise<void>((resolve) => {
-          child.stdin.once('drain', resolve);
-          child.stdin.once('close', resolve);
+          const go = () => {
+            child.stdin.off('drain', go);
+            child.stdin.off('close', go);
+            resolve();
+          };
+          child.stdin.once('drain', go);
+          child.stdin.once('close', go);
         });
     }
     child.stdin.end();
