@@ -40,7 +40,7 @@ import {
 } from '../shared/media';
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
-import { MediaRemoval, sweepQuiet, TrimCleanup } from './library/media-removal';
+import { MediaRemoval, sweepQuiet, trashedTrimsNotice, TrimCleanup } from './library/media-removal';
 import { hashOffMain } from './library/hash-off-main';
 import { FileActions } from './library/file-actions';
 import {
@@ -4002,18 +4002,23 @@ function start(): void {
   // below), and the copies nothing carries on go to the Trash then.
   // The unused cuts sweep also waits until nothing Oops, Put it back or Back could bring back (sweepQuiet).
   const trimCleanupQuiet = () => trimWorkQuiet() && sweepQuiet(engine);
+  // Tests only, never packaged (DRASHTI_TEST_TRASH_DIR, TM-8): the sweep moves its cuts into this folder in place of
+  // the computer's Trash.
+  const testTrash = packaged() ? undefined : sw('DRASHTI_TEST_TRASH_DIR');
+  const trashCut = (file: string) =>
+    testTrash === undefined
+      ? shell.trashItem(file)
+      : fsPromises.rename(file, join(testTrash, basename(file)));
   const trimCleanup = new TrimCleanup(
     trimCleanupQuiet,
     async (signal) => {
-      const gone = await mediaRemoval.trashUnusedTrims(
-        mediaDir,
-        (file) => shell.trashItem(file),
-        trimCleanupQuiet,
-        signal,
-      );
-      if (gone === 0 || quitStarted) return;
+      const gone = await mediaRemoval.trashUnusedTrims(mediaDir, trashCut, trimCleanupQuiet, signal);
+      if (gone.length === 0 || quitStarted) return;
       libraryChanged(true);
-      log.info(`Media: moved ${String(gone)} unused Trim cut(s) to the Trash`);
+      log.info(`Media: moved ${String(gone.length)} unused Trim cut(s) to the Trash`);
+      // The operator is told which, in one notice (TM-4): the sweep runs only while nothing is up.
+      const text = trashedTrimsNotice(gone);
+      if (text) sendToOperator(IPC.app.notice, { text });
     },
     (error) => log.warn('Media: could not check unused Trim cuts', error),
     AFTER_START_MS,

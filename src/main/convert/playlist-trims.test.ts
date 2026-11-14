@@ -356,10 +356,35 @@ describe('trimming a playlist video', () => {
     expect(x.service.list()).toEqual([]);
     expect(x.kept.load()).toEqual([]);
 
-    x.finish({ ok: true, copy: x.output });
-    await vi.waitFor(async () => {
-      await expect(stat(x.output)).rejects.toMatchObject({ code: 'ENOENT' });
+    // As on a busy machine (the merge check of 14 Nov 2026, under load), the late copy's move to the Trash takes its
+    // time: held here until the test lets it go. The test reads the stop's own clean-up at its moments (the move
+    // reached, then done), never a 1-s poll.
+    let release: () => void = () => undefined;
+    const slow = new Promise<void>((resolve) => {
+      release = resolve;
     });
+    let reached: (file: string) => void = () => undefined;
+    const moving = new Promise<string>((resolve) => {
+      reached = resolve;
+    });
+    let done: () => void = () => undefined;
+    const moved = new Promise<void>((resolve) => {
+      done = resolve;
+    });
+    x.trash.mockImplementationOnce(async (file: string) => {
+      reached(file);
+      await slow;
+      await rename(file, join(dir, 'Trash', basename(file)));
+      done();
+    });
+    x.finish({ ok: true, copy: x.output });
+    expect(await moving).toBe(x.output);
+    // However long the move takes, nothing takes the late copy in meanwhile.
+    expect(x.rowChanged).not.toHaveBeenCalled();
+    expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
+    release();
+    await moved;
+    await expect(stat(x.output)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(x.repo.row(x.itemId)?.mediaId).toBe('original');
     expect(x.rowChanged).not.toHaveBeenCalled();
     expect(await readFile(x.original, 'utf8')).toBe('placeholder original');
