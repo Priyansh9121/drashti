@@ -135,7 +135,9 @@ const OFFICE_THEME =
     .map((w) => `<a:ln w="${String(w)}"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln>`)
     .join('') +
   '</a:lnStyleLst><a:bgFillStyleLst><a:solidFill><a:srgbClr val="AA0000"/></a:solidFill>' +
-  '<a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>';
+  '<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>' +
+  gradient(stop(0, '') + stop(100_000, change('shade', 50_000))) +
+  '</a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>';
 
 const BOX =
   '<a:xfrm><a:off x="95250" y="190500"/><a:ext cx="952500" cy="952500"/></a:xfrm><a:prstGeom prst="rect"/>';
@@ -194,5 +196,174 @@ describe('PowerPoint’s colour changes', () => {
     );
     expect(elements).toMatchObject([{ kind: 'shape', fill: '#4472c4' }]);
     expect(issues).toContain('Some source colour adjustments are not reproduced.');
+  });
+});
+
+describe('a shape’s and a table’s theme styles', () => {
+  const fillStyle = (index: number) =>
+    `<p:style><a:lnRef idx="0"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="${String(index)}"><a:schemeClr val="accent1"/></a:fillRef><a:effectRef idx="0"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></p:style>`;
+  const outlined = '<a:ln w="12700"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>';
+
+  it('fills a shape from its theme’s fill style, a gradient too, as PowerPoint’s shape styles do', async () => {
+    const { elements } = await readSlide(
+      slideXml(
+        shape(20, outlined, fillStyle(0)) +
+          shape(21, '', fillStyle(1)) +
+          shape(22, '', fillStyle(2)) +
+          shape(23, '', fillStyle(3)) +
+          shape(24, '<a:solidFill><a:srgbClr val="123456"/></a:solidFill>', fillStyle(3)),
+      ),
+    );
+    const linear = (colors: string[]) => ({
+      kind: 'linear',
+      angle: 90,
+      stops: colors.map((color, i) => ({ offset: i / 2, color })),
+    });
+    expect(elements.map((el) => (el.kind === 'shape' ? [el.fill, el.gradient ?? null] : el.kind))).toEqual([
+      [null, null],
+      ['#4472c4', null],
+      // The Office theme's two gradients from accent 1, each stop's lumMod and satMod in HSL, its tint or shade in
+      // linear light (worked out by hand).
+      ['#a8b7df', linear(['#a8b7df', '#9aabd9', '#879ed7'])],
+      ['#6083cb', linear(['#6083cb', '#3e70ca', '#2e61ba'])],
+      ['#123456', null],
+    ]);
+  });
+
+  it('keeps a shape’s reference colour when its theme has no fill styles, with no note', async () => {
+    const { elements, issues } = await readSlide(slideXml(shape(21, '', fillStyle(3))), {
+      'ppt/theme/theme1.xml': OFFICE_THEME.replace(/<a:fmtScheme[\s\S]*<\/a:fmtScheme>/u, ''),
+    });
+    expect(elements).toMatchObject([{ kind: 'shape', fill: '#4472c4' }]);
+    expect(elements[0]).not.toHaveProperty('gradient');
+    expect(issues).toEqual([]);
+  });
+
+  it('draws a slide background from its theme’s background style, a gradient too', async () => {
+    const root = folder();
+    const file = join(root, 'Placeholder background style.pptx');
+    writeFileSync(
+      file,
+      editablePptxFixture({
+        slides: [
+          slideXml('').replace(
+            '<p:cSld>',
+            '<p:cSld><p:bg><p:bgRef idx="1003"><a:schemeClr val="accent1"/></p:bgRef></p:bg>',
+          ),
+        ],
+        parts: { 'ppt/theme/theme1.xml': OFFICE_THEME },
+      }),
+    );
+    const deck = await readEditablePptx(file, join(root, 'prepared'));
+    const page = deck.slides[0];
+    // The theme's third background fill, from accent 1 to it shaded by half in linear light (worked out by hand).
+    expect(page?.background).toBe('#4472c4');
+    expect(page?.elements).toMatchObject([
+      {
+        kind: 'shape',
+        name: 'Background gradient',
+        frame: { x: 0, y: 0, width: 1280, height: 720 },
+        gradient: {
+          kind: 'linear',
+          angle: 90,
+          stops: [
+            { offset: 0, color: '#4472c4' },
+            { offset: 1, color: '#2f528f' },
+          ],
+        },
+      },
+    ]);
+    expect(page?.issues).toEqual([]);
+  });
+
+  const MEDIUM_2_ACCENT_1 = '{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}';
+  const table = (styleId: string, rows = 3) => {
+    const cell = (words: string) =>
+      `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${words}</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>`;
+    const row = (r: number) =>
+      `<a:tr h="285750">${cell(`Placeholder ${String(r)} a`)}${cell(`Placeholder ${String(r)} b`)}</a:tr>`;
+    return (
+      '<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="7" name="Placeholder table"/></p:nvGraphicFramePr>' +
+      '<p:xfrm><a:off x="95250" y="190500"/><a:ext cx="2857500" cy="857250"/></p:xfrm><a:graphic><a:graphicData>' +
+      `<a:tbl><a:tblPr firstRow="1" bandRow="1"><a:tableStyleId>${styleId}</a:tableStyleId></a:tblPr>` +
+      '<a:tblGrid><a:gridCol w="1428750"/><a:gridCol w="1428750"/></a:tblGrid>' +
+      Array.from({ length: rows }, (_, r) => row(r)).join('') +
+      '</a:tbl></a:graphicData></a:graphic></p:graphicFrame>'
+    );
+  };
+  /** A table style list naming its default and holding no definitions, as python-pptx writes it. */
+  const EMPTY_STYLES = `<a:tblStyleLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" def="${MEDIUM_2_ACCENT_1}"/>`;
+
+  it('draws PowerPoint’s own Medium Style 2 for a table naming it when the deck doesn’t save it', async () => {
+    const { elements, issues } = await readSlide(slideXml(table(MEDIUM_2_ACCENT_1)), {
+      'ppt/tableStyles.xml': EMPTY_STYLES,
+    });
+    const fills = elements.flatMap((el) => (el.kind === 'shape' && el.shape !== 'line' ? [el.fill] : []));
+    // The header row in accent 1, then its banded rows at 40% and 20% (PowerPoint's E9EBF5 and CFD5EA for 4472C4).
+    expect(fills).toEqual(['#4472c4', '#4472c4', '#cfd5ea', '#cfd5ea', '#e9ebf5', '#e9ebf5']);
+    const words = elements.filter((el) => el.kind === 'text');
+    expect(words.map((el) => el.kind === 'text' && [el.runs?.[0]?.color, el.runs?.[0]?.weight])).toEqual([
+      ['#ffffff', 700],
+      ['#ffffff', 700],
+      ['#000000', 400],
+      ['#000000', 400],
+      ['#000000', 400],
+      ['#000000', 400],
+    ]);
+    // White 1 pt borders, the header's foot 3 pt.
+    const lines = elements.filter((el) => el.kind === 'shape' && el.shape === 'line');
+    expect(lines.map((el) => el.kind === 'shape' && el.outline)).toEqual([
+      ...Array.from({ length: 4 }, () => ({ color: '#ffffff', width: 4 / 3 })),
+      { color: '#ffffff', width: 4 },
+      ...Array.from({ length: 2 }, () => ({ color: '#ffffff', width: 4 / 3 })),
+    ]);
+    expect(issues).not.toContain(
+      'A table style was not included in the source; its own cell formatting is used.',
+    );
+  });
+
+  it('draws each accent of Medium Style 2, and the plain grid, from their IDs in any case', async () => {
+    const header = async (styleId: string) => {
+      const { elements } = await readSlide(slideXml(table(styleId, 1)), {
+        'ppt/tableStyles.xml': EMPTY_STYLES,
+      });
+      return (
+        elements.flatMap((el) => (el.kind === 'shape' && el.shape !== 'line' ? [el.fill] : []))[0] ?? null
+      );
+    };
+    expect(await header('{073A0DAA-6AF3-43AB-8588-CEC1D06C72B9}')).toBe('#000000');
+    expect(await header('{21e4aea4-8dfa-4a89-87eb-49c32662afe8}')).toBe('#ed7d31');
+    expect(await header('{F5AB1C69-6EDB-4FF4-983F-18BD219EF322}')).toBe('#a5a5a5');
+    expect(await header('{00A15C55-8517-42AA-B614-E9B94910E393}')).toBe('#ffc000');
+    expect(await header('{7DF18680-E054-41AD-8BC1-D1AEF772440D}')).toBe('#5b9bd5');
+    expect(await header('{93296810-A885-4BE3-A3E7-6D5BEEA58F35}')).toBe('#70ad47');
+    // No Style, Table Grid: no fill, 1 pt lines in the text colour.
+    const { elements } = await readSlide(slideXml(table('{5940675A-B579-460E-94D1-54222C63F5DA}', 1)), {
+      'ppt/tableStyles.xml': EMPTY_STYLES,
+    });
+    expect(elements.filter((el) => el.kind === 'shape' && el.shape !== 'line')).toEqual([]);
+    const grid = elements.filter((el) => el.kind === 'shape' && el.shape === 'line');
+    expect(grid.map((el) => el.kind === 'shape' && el.outline)).toEqual(
+      Array.from({ length: 5 }, () => ({ color: '#000000', width: 4 / 3 })),
+    );
+    // No Style, No Grid: nothing drawn but the words.
+    const plain = await readSlide(slideXml(table('{2D5ABB26-0587-4C30-8999-92F81FD0307C}', 1)), {
+      'ppt/tableStyles.xml': EMPTY_STYLES,
+    });
+    expect(plain.elements.map((el) => el.kind)).toEqual(['text', 'text']);
+  });
+
+  it('keeps a deck’s own definition of a built-in style’s ID', async () => {
+    const own =
+      `<a:tblStyleLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" def="${MEDIUM_2_ACCENT_1}">` +
+      `<a:tblStyle styleId="${MEDIUM_2_ACCENT_1}" styleName="Placeholder own"><a:wholeTbl><a:tcStyle>` +
+      '<a:fill><a:solidFill><a:srgbClr val="ABCDEF"/></a:solidFill></a:fill></a:tcStyle></a:wholeTbl></a:tblStyle></a:tblStyleLst>';
+    const { elements } = await readSlide(slideXml(table(MEDIUM_2_ACCENT_1, 1)), {
+      'ppt/tableStyles.xml': own,
+    });
+    expect(elements.flatMap((el) => (el.kind === 'shape' && el.shape !== 'line' ? [el.fill] : []))).toEqual([
+      '#abcdef',
+      '#abcdef',
+    ]);
   });
 });
