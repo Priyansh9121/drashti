@@ -144,6 +144,8 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 68, name: 'approved AI sabha suggestions', up: aiSabhas },
   { version: 69, name: 'Sanskrit captions', up: sanskritCaptions },
   { version: 72, name: 'trimmed videos and their originals', up: trimmedVideos },
+  // 070, 071 and 073–081 are void (Session 57's parts never used theirs). A library at 82 never runs a lower number,
+  // so none of them can be added now: the next migration is 083.
   { version: 82, name: 'keep playlist resets through sound trim Undo', up: soundTrimUndo },
 ];
 

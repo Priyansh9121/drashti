@@ -9,6 +9,7 @@ import {
   editorGroup,
   importAndGetIds,
   launchApp,
+  onEditorSlide,
   openLibrary,
   operatorPage,
   operatorReady,
@@ -28,14 +29,6 @@ import {
  */
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
-
-async function onCanvas(win: Page, x: number, y: number): Promise<{ x: number; y: number }> {
-  const canvas = win.getByTestId('editor-canvas');
-  const box = await canvas.boundingBox();
-  const scale = Number(await canvas.getAttribute('data-scale'));
-  if (!box) throw new Error('no canvas');
-  return { x: box.x + x * scale, y: box.y + y * scale };
-}
 
 /** Drag in small steps between two points of the window. */
 async function drag(win: Page, a: { x: number; y: number }, b: { x: number; y: number }): Promise<void> {
@@ -96,8 +89,8 @@ test('several elements resize and turn together, each change one Undo; copy and 
   // Moved together: drag one of them 150 px down (Alt: no snapping); both move, and one Undo puts both back.
   const first = before[0];
   if (!first) throw new Error('no element');
-  const grab = await onCanvas(ed, first.left + 30, first.top + 30);
-  const dropAt = await onCanvas(ed, first.left + 30, first.top + 180);
+  const grab = await onEditorSlide(ed, first.left + 30, first.top + 30);
+  const dropAt = await onEditorSlide(ed, first.left + 30, first.top + 180);
   await ed.keyboard.down('Alt');
   await drag(ed, grab, dropAt);
   await ed.keyboard.up('Alt');
@@ -150,7 +143,7 @@ test('several elements resize and turn together, each change one Undo; copy and 
   // Copy the rectangle, paste it on the second slide (where it was), and in place on this one.
   const rect = before[1];
   if (!rect) throw new Error('no rectangle');
-  const p = await onCanvas(ed, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  const p = await onEditorSlide(ed, rect.left + rect.width / 2, rect.top + rect.height / 2);
   await ed.mouse.click(p.x, p.y);
   await expect(status).toContainText('Rectangle selected');
   await ed.keyboard.press(`${mod}+C`);
@@ -174,7 +167,7 @@ test('several elements resize and turn together, each change one Undo; copy and 
   await editor.getByTestId('editor-slide-thumb').nth(0).click();
   const words = before[0];
   if (!words) throw new Error('no words');
-  const w = await onCanvas(ed, words.left + 20, words.top + 20);
+  const w = await onEditorSlide(ed, words.left + 20, words.top + 20);
   await ed.mouse.click(w.x, w.y);
   await expect(status).toContainText('Text box');
   await ed.keyboard.press(`${mod}+C`);
