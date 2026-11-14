@@ -126,8 +126,9 @@ const MAX_MS = 5000;
 const CAP_MS = 8000;
 /**
  * Its last step when it ends before its frames came on time (Session 58, h-black2, fault 2): stopped (told the page
- * draws without a graphics chip), at its cap, or by a scene that failed. It lets go of its drawing (nothing but black)
- * and waits until the page's frames come on time again, SETTLE_MS at most, before the show is drawn. Without a chip
+ * draws without a graphics chip), at its cap, or by a scene that failed, once a frame of it has been drawn. It lets go
+ * of its drawing (nothing but black) and waits until the page's frames come on time again, SETTLE_MS at most (by this
+ * computer's clock too: a window that draws no frames still draws the show), before the show is drawn. Without a chip
  * (CI's Windows, traced) the warm-up's drawing had used up the page's tile memory, and Chromium's software compositor
  * was still drawing its frames, ~0.8 s each: the show's first frames came with their tiles missing, black, then 256-px
  * parts, for up to 3.3 s. Frames on time again: the compositor has drawn the black, and the warm-up's tiles are back.
@@ -651,11 +652,9 @@ export function WarmUp({
     ended.current = onEnded;
     stopped.current = onStopped;
   });
-  // Where it is (read as it ends: one that has drawn nothing yet needs no last step).
-  const phase = useRef(step.phase);
-  useLayoutEffect(() => {
-    phase.current = step.phase;
-  }, [step.phase]);
+  // Whether it has had a frame of its scenes drawn (read as it ends): one that never had (not drawing yet, or its window
+  // covered or asleep, drawing no frames) has nothing to let go of.
+  const drewFrame = useRef(false);
   // What follows its last step: the parent told it is done, or that it has stopped.
   const afterSettle = useRef<() => void>(() => undefined);
   // When it began, for how long it took (Session 58, WU-2: the log's).
@@ -675,8 +674,8 @@ export function WarmUp({
       if (how !== 'cut') performance.mark(`${mark}-end`);
       ended.current?.(how, lengthClock() - began.current);
       const then = how === 'cut' ? () => stopped.current?.() : () => done.current();
-      // Drawn to its end on time, not seen (no frames come), or nothing drawn yet: nothing to let go of.
-      if (how === 'drawn' || how === 'unseen' || phase.current === 'pictures') then();
+      // Drawn to its end on time, not seen (no frames come), or no frame of it drawn: nothing to let go of.
+      if (how === 'drawn' || how === 'unseen' || !drewFrame.current) then();
       else {
         afterSettle.current = then;
         setStep((s) => ({ phase: 'settle', at: s.at }));
@@ -763,17 +762,27 @@ export function WarmUp({
     };
     /** Each frame a new one for the GPU (a speck moves), which waits for the one before it to be drawn. */
     const each = (n: number) => {
+      drewFrame.current = true;
       if (pulse.current) pulse.current.style.transform = `translateX(${String(n % 2)}px)`;
     };
+    let settleCap: ReturnType<typeof setTimeout> | undefined;
     if (step.phase === 'settle') {
       // Its last step (Session 58, h-black2): nothing drawn but black until the frames come on time again; the clock
-      // is the show's already (let go as it ended), and nothing here reads it.
-      void framesOnTime({ maxMs: SETTLE_MS, each, live, keep }).then(() => {
-        if (live()) afterSettle.current();
-      });
+      // is the show's already (let go as it ended), and nothing here reads it. SETTLE_MS at most by this computer's
+      // clock too: a window that stops drawing frames (covered, or on a screen asleep) still draws the show.
+      let over = false;
+      const end = () => {
+        if (over || !live()) return;
+        over = true;
+        afterSettle.current();
+      };
+      // eslint-disable-next-line no-restricted-syntax -- the last step's cap (a window that draws no frames): never a frame of the show
+      settleCap = setTimeout(end, SETTLE_MS);
+      void framesOnTime({ maxMs: SETTLE_MS, each, live, keep }).then(end);
     } else if (step.phase === 'before') {
       let left = BEFORE_FRAMES;
       const tick = () => {
+        drewFrame.current = true;
         left -= 1;
         if (left > 0) frame = requestAnimationFrame(tick);
         else setStep({ phase: 'during', at: engineNow() });
@@ -803,6 +812,7 @@ export function WarmUp({
     return () => {
       run.live = false;
       cancelAnimationFrame(frame);
+      clearTimeout(settleCap);
       pauseClock(null);
     };
   }, [step, tree, finish]);
