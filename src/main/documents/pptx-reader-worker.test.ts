@@ -43,10 +43,9 @@ it('keeps valid siblings when PowerPoint pages exceed their individual editing l
   // Only the file metadata is simulated. No large picture needs to be generated or read.
   fileSizes.set(shared, EDITABLE_SOURCE_LIMITS.pageAssetBytes);
   fileSizes.set(extra, 1);
-  const previousNote =
-    'PowerPoint source page 3 exceeds the 500-object editing limit and stays as its saved picture.';
+  const previousNote = 'Page 3 of the original has more than 500 objects, so it stays as its saved picture.';
   const beyond = (page: number) =>
-    `PowerPoint source page ${String(page)} has an object placed or sized beyond what Drashti can edit, and stays as its saved picture.`;
+    `Page ${String(page)} of the original has an object placed or sized beyond what Drashti can edit, so it stays as its saved picture.`;
   // Only a fault in the reader could give a drawing no frame (C25's review LOW-1): that page alone fails.
   const noFrame = { ...shape, id: 'placeholder-no-frame', frame: null } as unknown as ShapeElement;
 
@@ -103,7 +102,7 @@ it('keeps valid siblings when PowerPoint pages exceed their individual editing l
       2: [previousNote],
       3: [beyond(4)],
       4: [
-        'PowerPoint source page 5 has more than 32 MB of pictures, more than Drashti can edit on one page, and stays as its saved picture.',
+        'Page 5 of the original has more than 32 MB of pictures, more than Drashti can edit on one page, so it stays as its saved picture.',
       ],
       6: [beyond(7)],
     });
