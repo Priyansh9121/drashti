@@ -88,14 +88,23 @@ function Program() {
   // None where Chromium draws without a graphics chip (Session 58, WU-1, as an output since Session 57): Main says so in
   // this page's context once Chromium has said how it draws, a warm-up begun before then ending there.
   const [noGpu, setNoGpu] = useState(false);
-  if (!noGpu && (!HOLD_WARM_UP || NO_GPU_ENDS_HOLD) && context?.noGpu === true) setNoGpu(true);
+  const toldNoGpu = noGpu || ((!HOLD_WARM_UP || NO_GPU_ENDS_HOLD) && context?.noGpu === true);
+  if (!noGpu && toldNoGpu) setNoGpu(true);
+  // A warm-up begun before then is stopped, and the show waits for its last step (Session 58, h-black2, fault 2: drawn
+  // at once, the show's first frames came with their tiles missing, black then 256-px parts, for up to 3.3 s).
+  const [began, setBegan] = useState(false);
+  const [stopped, setStopped] = useState(false);
+  const warmUpStopped = useCallback(() => {
+    setStopped(true);
+  }, []);
   // A deck's own Wipe draws PowerPoint's band the way this page holds its frames (render/chipless.ts, Session 58):
   // told by the context itself, whatever a test does with the warm-up.
   const chipless = context?.noGpu === true;
   useEffect(() => {
     setDrawsWithoutChip(chipless);
   }, [chipless]);
-  const ready = fontsReady && (warmed || noGpu);
+  const ready = fontsReady && (warmed || (toldNoGpu && (!began || stopped)));
+  if (context?.picture && fontsReady && !ready && !began) setBegan(true);
   // The Lower Thirds studio's fonts once the stream's picture is drawn (Session 55): never with this page's own start.
   useEffect(() => {
     if (!ready) return;
@@ -151,7 +160,9 @@ function Program() {
             scaling="fit"
             ticker={false}
             hold={HOLD_WARM_UP}
+            stop={toldNoGpu}
             onDone={warmedUp}
+            onStopped={warmUpStopped}
           />
         </PlacedInParent>
       )}

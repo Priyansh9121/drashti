@@ -21,6 +21,7 @@ import {
 } from '../../../shared/lower-third-styles';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../../shared/lower-thirds';
 import { engineNow, pauseClock } from './clock';
+import { framesOnTime } from './frames-on-time';
 import { LowerThirdView } from './LowerThirdView';
 import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
@@ -112,12 +113,10 @@ const PART = 0.4;
 /** Frames drawn of the slides before the transitions (so each starts from one). */
 const BEFORE_FRAMES = 2;
 /**
- * Then until the GPU keeps up: this many frames in a row, each within ON_TIME_MS of the one before, or within
- * twice the middle of every wait so far (a slow GPU drawing all this evenly), as a GPU still making what the
+ * Then until the GPU keeps up: its frames on time (frames-on-time.ts: six in a row, each within 50 ms of the one before,
+ * or within twice the middle of every wait so far: a slow GPU drawing all this evenly), as a GPU still making what the
  * frames need keeps them waiting (on CI's Mac for seconds); MAX_MS at most each time.
  */
-const STEADY_FRAMES = 6;
-const ON_TIME_MS = 50;
 const MAX_MS = 5000;
 /**
  * The longest a page warms up, by this computer's clock: a window that draws no frames (covered, or on a
@@ -125,6 +124,15 @@ const MAX_MS = 5000;
  * not warm up.
  */
 const CAP_MS = 8000;
+/**
+ * Its last step when it ends before its frames came on time (Session 58, h-black2, fault 2): stopped (told the page
+ * draws without a graphics chip), at its cap, or by a scene that failed. It lets go of its drawing (nothing but black)
+ * and waits until the page's frames come on time again, SETTLE_MS at most, before the show is drawn. Without a chip
+ * (CI's Windows, traced) the warm-up's drawing had used up the page's tile memory, and Chromium's software compositor
+ * was still drawing its frames, ~0.8 s each: the show's first frames came with their tiles missing, black, then 256-px
+ * parts, for up to 3.3 s. Frames on time again: the compositor has drawn the black, and the warm-up's tiles are back.
+ */
+const SETTLE_MS = 3000;
 
 /**
  * Each transition scene again under a clip-path with two notches, across the pictures, the background and
@@ -601,7 +609,11 @@ const lengthClock = (): number => performance.now();
 /**
  * Draws the warm-up for a few frames, then calls `onDone` (never, when `hold`: a test looks at it); at once when one
  * of its scenes fails as it draws (Session 57). The parent shows the show once it is done; nothing of the show is
- * drawn meanwhile. `onEnded` hears how it ended and how long it took from its start (ms), once.
+ * drawn meanwhile. `onEnded` hears how it ended and how long it took from its start (ms), once. `stop`: the page draws
+ * without a graphics chip, told after the warm-up began (Session 58, h-black2): it ends there, cut short, and calls
+ * `onStopped` once its last step is over. Ended before its frames came on time (stopped, at its cap, or by a scene that
+ * failed) once it has drawn anything, its last step comes first: nothing drawn until the page's frames come on time
+ * again (SETTLE_MS at most), so the show's first frames never come with their tiles missing.
  */
 export function WarmUp({
   page,
@@ -610,8 +622,10 @@ export function WarmUp({
   matte = null,
   ticker = true,
   hold = false,
+  stop = false,
   onDone,
   onEnded,
+  onStopped,
 }: {
   /** Which page it warms up (its marks for a trace say so). */
   page: WarmPage;
@@ -620,19 +634,30 @@ export function WarmUp({
   matte?: 'fill' | 'key' | null;
   ticker?: boolean;
   hold?: boolean;
+  stop?: boolean;
   onDone: () => void;
   onEnded?: (how: WarmUpEnd, ms: number) => void;
+  onStopped?: () => void;
 }) {
-  const [step, setStep] = useState<{ phase: 'pictures' | 'before' | 'during'; at: number }>({
+  const [step, setStep] = useState<{ phase: 'pictures' | 'before' | 'during' | 'settle'; at: number }>({
     phase: 'pictures',
     at: 0,
   });
   const done = useRef(onDone);
   const ended = useRef(onEnded);
+  const stopped = useRef(onStopped);
   useLayoutEffect(() => {
     done.current = onDone;
     ended.current = onEnded;
+    stopped.current = onStopped;
   });
+  // Where it is (read as it ends: one that has drawn nothing yet needs no last step).
+  const phase = useRef(step.phase);
+  useLayoutEffect(() => {
+    phase.current = step.phase;
+  }, [step.phase]);
+  // What follows its last step: the parent told it is done, or that it has stopped.
+  const afterSettle = useRef<() => void>(() => undefined);
   // When it began, for how long it took (Session 58, WU-2: the log's).
   const began = useRef(lengthClock());
   // Done once, however it ends: drawn, at its cap, not seen, or a scene that failed as it drew (Session 57); marked
@@ -640,17 +665,29 @@ export function WarmUp({
   const mark = `${WARM_UP_MARK}:${page}`;
   const finished = useRef(false);
   const finish = useCallback(
-    (how: 'drawn' | 'cap' | 'unseen' | 'error') => {
-      if (finished.current || hold) return;
+    (how: 'drawn' | 'cap' | 'unseen' | 'error' | 'cut') => {
+      // A test's held warm-up ends only when stopped (DRASHTI_TEST_GPU_SAID=late: until told).
+      if (finished.current || (hold && how !== 'cut')) return;
       finished.current = true;
       pauseClock(null);
       if (how !== 'drawn') performance.mark(`${mark}-${how}`);
-      performance.mark(`${mark}-end`);
+      // Cut short: marked as when it is taken away (no end of its own).
+      if (how !== 'cut') performance.mark(`${mark}-end`);
       ended.current?.(how, lengthClock() - began.current);
-      done.current();
+      const then = how === 'cut' ? () => stopped.current?.() : () => done.current();
+      // Drawn to its end on time, not seen (no frames come), or nothing drawn yet: nothing to let go of.
+      if (how === 'drawn' || how === 'unseen' || phase.current === 'pictures') then();
+      else {
+        afterSettle.current = then;
+        setStep((s) => ({ phase: 'settle', at: s.at }));
+      }
     },
     [hold, mark],
   );
+  // Told the page draws without a graphics chip (Session 58, h-black2): it ends here.
+  useEffect(() => {
+    if (stop) finish('cut');
+  }, [stop, finish]);
   useEffect(() => {
     const unseen = () => {
       if (document.visibilityState === 'hidden') finish('unseen');
@@ -714,14 +751,27 @@ export function WarmUp({
   // then done.
   const pulse = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    // Nothing more once it has ended: a scene that failed as its step was drawn (Session 57) ends it before this
-    // step's frames would begin, so the clock it let go stays free for the show.
-    if (step.phase === 'pictures' || finished.current) return;
+    // Nothing more once it has ended (but its last step): a scene that failed as its step was drawn (Session 57) ends
+    // it before this step's frames would begin, so the clock it let go stays free for the show.
+    if (step.phase === 'pictures' || (finished.current && step.phase !== 'settle')) return;
     let frame = 0;
     // False once this step is left (read through a function: the checker cannot follow the cleanup).
     const run = { live: true };
     const live = () => run.live;
-    if (step.phase === 'before') {
+    const keep = (request: number) => {
+      frame = request;
+    };
+    /** Each frame a new one for the GPU (a speck moves), which waits for the one before it to be drawn. */
+    const each = (n: number) => {
+      if (pulse.current) pulse.current.style.transform = `translateX(${String(n % 2)}px)`;
+    };
+    if (step.phase === 'settle') {
+      // Its last step (Session 58, h-black2): nothing drawn but black until the frames come on time again; the clock
+      // is the show's already (let go as it ended), and nothing here reads it.
+      void framesOnTime({ maxMs: SETTLE_MS, each, live, keep }).then(() => {
+        if (live()) afterSettle.current();
+      });
+    } else if (step.phase === 'before') {
       let left = BEFORE_FRAMES;
       const tick = () => {
         left -= 1;
@@ -731,33 +781,9 @@ export function WarmUp({
       frame = requestAnimationFrame(tick);
     } else {
       /**
-       * Frames until they come on time (or MAX_MS). A speck moves at each one, so every frame is a new one
-       * for the GPU, which waits for the one before it to be drawn: on time, all of it has been.
+       * Frames until they come on time (or MAX_MS): on time, all of it has been drawn (frames-on-time.ts).
        */
-      const steadyFrames = () =>
-        new Promise<void>((resolve) => {
-          let steady = 0;
-          let last: number | null = null;
-          let first: number | null = null;
-          const gaps: number[] = [];
-          const tick = (t: number) => {
-            if (!live()) return;
-            first ??= t;
-            if (pulse.current) pulse.current.style.transform = `translateX(${String(gaps.length % 2)}px)`;
-            if (last !== null) {
-              const gap = t - last;
-              gaps.push(gap);
-              // The middle wait only once there are enough to say how this GPU draws it (the first wait longest).
-              const middle =
-                gaps.length >= 10 ? ([...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] ?? 0) : 0;
-              steady = gap <= Math.max(ON_TIME_MS, 2 * middle) ? steady + 1 : 0;
-            }
-            last = t;
-            if (steady < STEADY_FRAMES && t - first < MAX_MS) frame = requestAnimationFrame(tick);
-            else resolve();
-          };
-          frame = requestAnimationFrame(tick);
-        });
+      const steadyFrames = () => framesOnTime({ maxMs: MAX_MS, each, live, keep });
       void (async () => {
         pauseClock(step.at);
         await steadyFrames();
@@ -810,7 +836,7 @@ export function WarmUp({
               ref={pulse}
               style={{ position: 'absolute', left: 0, top: 0, width: 2, height: 2, background: '#000000' }}
             />
-            {step.phase !== 'pictures' && (
+            {step.phase !== 'pictures' && step.phase !== 'settle' && (
               // Everything it draws, its scenes made inside: one that fails ends the warm-up (Session 57).
               <WarmUpBoundary onError={failed}>
                 <div
