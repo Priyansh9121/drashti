@@ -1,4 +1,4 @@
-import type { BrowserWindow } from 'electron';
+import { type BrowserWindow, contentTracing } from 'electron';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EngineCommand } from '../shared/engine/commands';
@@ -1226,6 +1226,50 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         await press('deck slide in, then 20 s still', 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 20_000);
         await press('deck click after 20 s still', 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
       } else note(`${stopped}: no click after 20 s still`);
+      // Q58-56 diagnostic only. Each trace covers one deck move, so Chromium’s buffer holds every case.
+      const rawDir = sw('DRASHTI_PERF_RAW');
+      const pages = () => ({ screen: deps.outputs()[0], stream: deps.program?.(), operator: operator() });
+      const mark = async (name: string) => {
+        const screen = pages().screen;
+        if (!screen || screen.webContents.isDestroyed()) return;
+        await screen.webContents.executeJavaScript(
+          `performance.mark(${JSON.stringify(`x11-${name}`)}, { detail: { at: Date.now() } });`,
+          true,
+        );
+      };
+      const traceOnce = async (name: string, first: boolean, run: () => Promise<void>) => {
+        const dir = first ? rawDir : undefined;
+        if (dir) {
+          mkdirSync(dir, { recursive: true });
+          await contentTracing.startRecording({
+            included_categories: [
+              'toplevel',
+              'toplevel.flow',
+              'blink.user_timing',
+              'benchmark',
+              'disabled-by-default-devtools.timeline',
+              'disabled-by-default-devtools.timeline.frame',
+              'viz',
+            ],
+            excluded_categories: ['*'],
+          });
+        }
+        try {
+          await run();
+        } finally {
+          if (dir) {
+            const key = `x11-${name}-${streaming ? 'streaming' : 'plain'}`;
+            await contentTracing.stopRecording(join(dir, `${key}.json`));
+            const pids = Object.fromEntries(
+              Object.entries(pages()).map(([role, win]) => [
+                role,
+                win && !win.webContents.isDestroyed() ? win.webContents.getOSProcessId() : null,
+              ]),
+            );
+            writeFileSync(join(dir, `${key}-pids.json`), JSON.stringify(pids));
+          }
+        }
+      };
       // A deck Drashti plays itself (13 Nov 2026), as dissolve 800 was measured (one hall screen, no other window
       // open), before the leftovers, so it runs on two cores too: from its first slide (a cut) by Next, its own Wipe,
       // Cover, Uncover and Push, then its last slide's shapes in by Split and out by Split, then in by Shape and out
@@ -1239,10 +1283,15 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         progress(
           'a deck Drashti plays itself: its own Wipe, Cover, Uncover and Push, its shapes in and out by Split and by Shape',
         );
-        await rounds(SHORT_RUNS, 'the deck Drashti plays itself', async () => {
+        await rounds(SHORT_RUNS, 'the deck Drashti plays itself', async (i) => {
           await press(DECK_OWN_FIRST, 'slide', 0, goLive(deckOwnId, 0), SETTLE_MS);
-          for (const own of DECK_OWN)
-            await press(own.row, 'slide', DECK_OWN_MS, { type: 'next' }, DECK_OWN_MS + SETTLE_MS);
+          for (const own of DECK_OWN) {
+            const tracing = i === 0 && rawDir !== undefined && own.transition.deckEffect !== 'wipe';
+            await traceOnce(`wide-${own.transition.deckEffect}`, tracing, async () => {
+              if (tracing) await mark(own.name);
+              await press(own.row, 'slide', DECK_OWN_MS, { type: 'next' }, DECK_OWN_MS + SETTLE_MS);
+            });
+          }
           for (const row of [DECK_SPLIT_IN, DECK_SPLIT_OUT])
             await press(row, 'nativeDeck', DECK_SPLIT_MS, { type: 'next' }, DECK_SPLIT_MS + SETTLE_MS);
           for (const row of [DECK_SHAPE_IN, DECK_SHAPE_OUT])
@@ -1252,10 +1301,15 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       // The same four by a 4:3 deck between bars on the hall (Session 58, Q58-36), on two cores too.
       if (timeFor(FOUR_THREE_BLOCK_MS, 'a 4:3 deck Drashti plays itself, between bars')) {
         progress('a 4:3 deck Drashti plays itself between bars: its own Wipe, Cover, Uncover and Push');
-        await rounds(SHORT_RUNS, 'the 4:3 deck Drashti plays itself, between bars', async () => {
+        await rounds(SHORT_RUNS, 'the 4:3 deck Drashti plays itself, between bars', async (i) => {
           await press(DECK_FOUR_THREE_FIRST, 'slide', 0, goLive(deckFourThreeId, 0), SETTLE_MS);
-          for (const own of DECK_FOUR_THREE)
-            await press(own.row, 'slide', DECK_OWN_MS, { type: 'next' }, DECK_OWN_MS + SETTLE_MS);
+          for (const own of DECK_FOUR_THREE) {
+            const tracing = i === 0 && rawDir !== undefined && own.transition.deckEffect !== 'wipe';
+            await traceOnce(`fitted-${own.transition.deckEffect}`, tracing, async () => {
+              if (tracing) await mark(own.name);
+              await press(own.row, 'slide', DECK_OWN_MS, { type: 'next' }, DECK_OWN_MS + SETTLE_MS);
+            });
+          }
         });
       }
       // Session 57's leftovers last (MS-1, DK-6, DK-2), as the click after 20 s still: each only when there is time
