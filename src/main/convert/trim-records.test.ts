@@ -143,6 +143,31 @@ it('reads what alpha.17 kept in the library’s settings once, while the file is
   expect(before.copies).toHaveBeenCalledOnce();
 });
 
+it('removes partial Trim writes left by a crash and keeps the records on disk', () => {
+  const stale = `${file}.11111111-1111-4111-8111-111111111111.tmp`;
+  const unrelated = `${file}.other.tmp`;
+  writeFileSync(file, JSON.stringify({ version: 1, waiting: [cut(1)], copies: [copy] }));
+  writeFileSync(stale, 'Placeholder partial write');
+  writeFileSync(unrelated, 'Placeholder unrelated file');
+  const records = new TrimRecords(file, { before: nothingBefore });
+  expect(records.kept.load()).toEqual([cut(1)]);
+  expect(records.copies.load()).toEqual([copy]);
+  expect(readdirSync(dir).sort()).toEqual(['trim-cuts.json', 'trim-cuts.json.other.tmp']);
+});
+
+it('takes in new alpha.17 records after a downgrade alongside cuts already in the file', async () => {
+  writeFileSync(file, JSON.stringify({ version: 1, waiting: [cut(1)], copies: [copy] }));
+  const later = { path: 'cd/Placeholder second cut.mp4', identity: '2:3:4:5' };
+  const clear = vi.fn();
+  const before = { waiting: () => [cut(2)], copies: () => [later], clear };
+  const records = new TrimRecords(file, { before });
+  expect(records.kept.load()).toEqual([cut(1), cut(2)]);
+  expect(records.copies.load()).toEqual([copy, later]);
+  await records.settle();
+  expect(onDisk()).toMatchObject({ waiting: [cut(1), cut(2)], copies: [copy, later] });
+  expect(clear).toHaveBeenCalledOnce();
+});
+
 it('starts with nothing waiting and writes nothing when neither the file nor the settings hold anything', async () => {
   const records = new TrimRecords(file, {
     before: { waiting: () => 'not a list', copies: () => null, clear: () => undefined },
