@@ -100,14 +100,18 @@ async function expectEnded(userData: string, ended: RegExp): Promise<void> {
 
 /**
  * The log says which Main chose for the output: once for each output window (one made again, after a display change
- * say, is decided afresh and said again), and never the other choice.
+ * say, is decided afresh and said again), and never the other choice. (The LIVE picture's and the stream's page's own
+ * lines, since Session 58, are their tests'.)
  */
 async function expectSaid(userData: string, said: RegExp): Promise<void> {
-  await expect
-    .poll(() => warmUpLines(userData).length, { message: 'the log’s Warm-up lines' })
-    .toBeGreaterThan(0);
-  for (const line of warmUpLines(userData)) expect(line).toMatch(said);
+  const outputs = () => warmUpLines(userData).filter((line) => line.includes(', for output "'));
+  await expect.poll(() => outputs().length, { message: 'the log’s Warm-up lines' }).toBeGreaterThan(0);
+  for (const line of outputs()) expect(line).toMatch(said);
 }
+
+/** The log's line for the LIVE picture where Chromium draws without a graphics chip (Session 58, WU-1). */
+const LIVE_SKIPPED =
+  'Warm-up: skipped, no graphics chip (gpu_compositing disabled_software), for the LIVE picture';
 
 /** A page's warm-up marks for a trace (render/WarmUp.tsx), in the order they came. */
 const warmUpMarks = (page: Page) =>
@@ -387,6 +391,24 @@ test('where Chromium draws without a graphics chip an output draws the show with
   await app.close();
 });
 
+test('where Chromium draws without a graphics chip the LIVE picture draws the show without a warm-up, as the outputs do, and the log says so once (WU-1)', async () => {
+  test.setTimeout(180_000);
+  const { app, userData } = await launchApp(WITHOUT_A_CHIP);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // Never warmed up to its end: not begun, or cut short as soon as Chromium said how it draws (a moment after the start).
+  await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0, {
+    timeout: 30_000,
+  });
+  await expect
+    .poll(() => warmUpLines(userData).filter((line) => line.endsWith('for the LIVE picture')))
+    .toEqual([LIVE_SKIPPED]);
+  expect(await warmUpMarks(win), 'the LIVE picture’s warm-up marks').not.toContain(
+    'drashti-warm-up:live-end',
+  );
+  await app.close();
+});
+
 test('where Chromium draws without a graphics chip the stream’s page draws the show without a warm-up, as the outputs do, and the log says so once (WU-1)', async () => {
   test.setTimeout(180_000);
   const { app, userData } = await launchApp({ ...WITHOUT_A_CHIP, DRASHTI_TEST_FAKE_DEVICES: '1' });
@@ -445,6 +467,9 @@ test('an output told it draws without a graphics chip after its warm-up began en
     (globalThis as MainGlobals).drashtiTestGpuSaid?.();
   });
   await expect(root).toHaveAttribute('data-warm-up', 'skipped');
+  // The LIVE picture's held warm-up ends there too (Session 58, WU-1).
+  await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0);
+  await expect.poll(() => warmUpMarks(win)).toContain('drashti-warm-up:live-cut');
   await expect(root).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   // Marked as the warm-up goes (its effect's cleanup, which React may run a moment after the page changed).
   await expect
