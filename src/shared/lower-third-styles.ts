@@ -12,6 +12,7 @@ import {
   transformOf,
   translate,
 } from './lower-third-motion-kit';
+import { MORE_MOTIONS } from './lower-third-motions-more';
 import type { LowerThirdLook } from './lower-thirds';
 
 export { DEFAULT_ACCENT, hexAlpha };
@@ -774,7 +775,7 @@ const TWELVE = {
 const MOTIONS = {
   ...FIRST_SEVEN,
   ...TWELVE,
-  // C12 JOINS HERE: ...MORE_MOTIONS,
+  ...MORE_MOTIONS,
 } satisfies Record<string, MotionDef>;
 
 /** A moving background's key; 'none' for none. */

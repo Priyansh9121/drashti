@@ -134,7 +134,7 @@ const bridge: DrashtiBridge = {
   },
   opening: {
     atStart: () => invoke(IPC.opening.atStart),
-    ended: (how) => invoke(IPC.opening.ended, how),
+    ended: (how, figures) => invoke(IPC.opening.ended, how, figures),
     onEnd: (listener) =>
       on(IPC.opening.key, () => {
         listener();
@@ -220,6 +220,7 @@ const bridge: DrashtiBridge = {
     subscribe: () => invoke(IPC.engine.subscribe),
     snapshot: () => invoke(IPC.engine.snapshot),
     dispatch: (command) => invoke(IPC.engine.command, command),
+    pointAt: (target) => invoke(IPC.engine.pointAt, target),
   },
   library: {
     listPresentations: async () => summariesOf(await invoke(IPC.library.listPresentations)),
@@ -675,6 +676,10 @@ const bridge: DrashtiBridge = {
     onGpuRestarted: (listener) =>
       on(IPC.output.gpuRestarted, () => {
         listener();
+      }),
+    onPointed: (listener) =>
+      on(IPC.output.pointed, ({ clip }) => {
+        listener(clip);
       }),
     onTestThrow: (listener) =>
       on(IPC.output.testThrow, () => {

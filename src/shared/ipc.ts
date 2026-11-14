@@ -17,7 +17,14 @@ import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from '
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
-import type { OpeningChoice, OpeningEnd, OpeningPlan, OpeningResult, OpeningView } from './opening';
+import type {
+  OpeningChoice,
+  OpeningEnd,
+  OpeningFigures,
+  OpeningPlan,
+  OpeningResult,
+  OpeningView,
+} from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
@@ -141,6 +148,7 @@ import type {
 } from './video-inputs';
 import type { ScreenSwitch, ScreenSwitches, ScreenSwitchResult } from './screen-switches';
 import type { PendingScreens } from './keep-screens';
+import type { PointAt, PointedClip } from './point-ahead';
 import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
 import type { EvenResult, FileSoundView, SoundView, SoundViewResult, TrimEdgesResult } from './sound';
@@ -392,6 +400,11 @@ export const IPC = {
     command: 'engine:command',
     /** main -> renderer: an EngineMessage (snapshot or patch). */
     message: 'engine:message',
+    /**
+     * The operator window's pointer on a slide's row, or null (C3, Session 58: Q57-26): the screens load that deck
+     * slide's first clip ahead (shared/point-ahead.ts). Operator window only.
+     */
+    pointAt: 'engine:point-at',
   },
   library: {
     listPresentations: 'library:list-presentations',
@@ -1075,6 +1088,11 @@ export const IPC = {
      */
     switchQuestion: 'output:switch-question',
     switchAnswer: 'output:switch-answer',
+    /**
+     * main -> every window that draws the show (C3, Session 58: Q57-26): the deck slide's first clip to load ahead
+     * for the operator's pointer, and from where (null: none). Only the outputs' Preloader loads it.
+     */
+    pointed: 'output:pointed',
   },
   pdfExport: {
     capture: 'pdfcopy:capture',
@@ -1214,7 +1232,7 @@ export interface InvokeContract {
   [IPC.drop.setOn]: { args: [on: boolean]; result: DropFolderResult };
   [IPC.drop.importAnyway]: { args: [name: string]; result: DropFolderResult };
   [IPC.opening.atStart]: { args: []; result: OpeningPlan | null };
-  [IPC.opening.ended]: { args: [how: OpeningEnd]; result: null };
+  [IPC.opening.ended]: { args: [how: OpeningEnd, figures?: OpeningFigures]; result: null };
   [IPC.opening.view]: { args: []; result: OpeningView };
   [IPC.opening.setOn]: { args: [on: boolean]; result: OpeningResult };
   [IPC.opening.setChoice]: { args: [choice: OpeningChoice]; result: OpeningResult };
@@ -1267,6 +1285,7 @@ export interface InvokeContract {
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
+  [IPC.engine.pointAt]: { args: [target: PointAt | null]; result: null };
   [IPC.library.listPresentations]: { args: []; result: PresentationListing[] };
   [IPC.library.listMedia]: { args: []; result: MediaSummary[] };
   [IPC.library.search]: { args: [query: string]; result: SearchResult };
@@ -1749,6 +1768,7 @@ export interface EventContract {
   [IPC.output.identify]: { name: string; groupName: string; label?: string };
   [IPC.output.mediaReady]: { mediaId: string };
   [IPC.output.gpuRestarted]: { at: number };
+  [IPC.output.pointed]: { clip: PointedClip | null };
   [IPC.output.testThrow]: Record<string, never>;
   [IPC.output.testClock]: { at: number | null };
   [IPC.audio.chosen]: { device: AudioDevice | null };
