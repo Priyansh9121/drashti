@@ -3,7 +3,7 @@ import { NAME_MAX } from './media-removal';
 import { idSchema } from './model-schema';
 import { pictureLookSchema } from './picture-look';
 import { quickPinsSchema } from './quick-bar';
-import { normalizeRenameName } from './rename-name';
+import { cleanNameSchema } from './rename-name';
 import { WHEN_ENDS } from './wallpapers';
 import { wallpaperNameSchema } from './wallpapers';
 
@@ -43,7 +43,7 @@ export interface RemoteSimple {
 }
 
 /** The file and presentation names a phone takes as the window's Rename… does. */
-const phoneName = z.string().transform(normalizeRenameName).pipe(z.string().min(1).max(NAME_MAX));
+const phoneName = cleanNameSchema(NAME_MAX);
 
 /** What each of the phone's own requests may carry, and nothing else (the route puts the id from its path in). */
 export const PHONE_ARGS = {
