@@ -10,6 +10,7 @@ import { IPC } from '../../shared/ipc';
 import { blurMediaId, copyMediaId, MEDIA_SCHEME, mediaUrl } from '../../shared/media';
 import { sharpenStep } from '../../shared/picture-look';
 import { mediaInState } from '../../shared/node-media';
+import { type PointedClip, sameClip } from '../../shared/point-ahead';
 import {
   DEFAULT_NODE_PORT,
   type LinkState,
@@ -540,6 +541,12 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         .catch(() => undefined);
     }
   };
+  let pointed: PointedClip | null = null;
+  const updatePointed = (clip: PointedClip | null) => {
+    if (sameClip(pointed, clip)) return;
+    pointed = clip;
+    for (const win of outputWindows.values()) sendToPage(win, IPC.output.pointed, { clip });
+  };
   const fromMain = (message: ToNode) => {
     switch (message.type) {
       case 'engine': {
@@ -592,7 +599,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         return;
       // The deck slide the operator points at on Main (C3, Session 58): this node's outputs load its clip ahead.
       case 'pointed':
-        for (const win of outputWindows.values()) sendToPage(win, IPC.output.pointed, { clip: message.clip });
+        updatePointed(message.clip);
         return;
       case 'tryAgain': {
         // Try again on Main's dashboard or its notice (Sessions 31–36): an output given up on, tried again
@@ -651,6 +658,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
             log.info(`Node: link ${state}${why ? ` (${why})` : ''}`);
           }
           if (state === 'online') cache.backOnline();
+          else updatePointed(null);
           viewChanged();
         },
         welcome: (main) => {
@@ -841,6 +849,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     const screenId = manager.screenIdFor(event.sender.id);
     return screenId ? contextFor(screenId) : null;
   });
+  handle(IPC.output.getPointed, ({ sender }) =>
+    manager.screenIdFor(sender.id) !== undefined ? pointed : null,
+  );
   // Render errors in the node's windows (Session 23): logged; an output draws black and is reloaded once.
   hearRenderErrors({
     log: (line) => {

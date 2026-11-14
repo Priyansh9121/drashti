@@ -1,9 +1,10 @@
-import { randomUUID } from 'node:crypto';
-import { existsSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { rm, writeFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { z } from 'zod';
 import { readStateTwice, setAside } from '../state-file';
+import { keptTrimSchema, trimCopySchema } from './playlist-trims';
 
 /*
  * Trim's records (FT-4, Session 58): the cuts accepted and waiting to be made or taken in, and the copies made but not
@@ -16,19 +17,23 @@ import { readStateTwice, setAside } from '../state-file';
  * just after could leave it there with no record), and at quit (quit: the newest is on the disk before Drashti ends,
  * and every change after it is written at once).
  *
- * The first start of alpha.18 reads what alpha.17 kept in the library's settings, once (a cut waiting then carries
- * on), and writes it to the file. A restored library is the library before's no more: its records are not carried
- * over, and the restored library's own settings are read, as before alpha.18. Once the file holds what the settings
- * held, they are cleared, so a backup restored later, or alpha.17 after a downgrade, never reads records since
- * finished or stopped (LOW-2). A file that cannot be read is moved aside and empty records written in its place, so
- * the next start reads neither it nor the settings; one that can be neither read nor moved aside is never written
- * over: saves fail (and are tried again) until it moves aside (LOW-3).
+ * When alpha.18 takes in alpha.17's settings, the file fingerprints what it read before clearing them.
+ * A restart can then distinguish settings left behind by a failed clear from records alpha.17 wrote later.
+ * A restored library starts with its own settings. An unreadable file is set aside where possible. If it is
+ * held, later writes retry moving it aside before replacing it (LOW-3).
  */
+
+export const TRIM_RECORDS_FILE = 'trim-cuts.json';
 
 const fileSchema = z.object({
   version: z.literal(1),
   waiting: z.array(z.unknown()),
   copies: z.array(z.unknown()),
+  legacy: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/u)
+    .nullable()
+    .optional(),
 });
 
 /** After a write that fails, the newest is written again this long after, then twice as long after each failure. */
@@ -48,11 +53,12 @@ const pause = (ms: number) => {
 
 export interface TrimRecordsOptions {
   /**
-   * What alpha.17 and before kept in the library's settings: read once, while the file is not there, and cleared
-   * (`clear`) once the file holds what they held.
+   * What alpha.17 and before kept in the library's settings. Cleared once the file holds what they held.
    */
   before: { waiting: () => unknown; copies: () => unknown; clear: () => void };
-  /** A backup restored at this start is in use: the file holds the library before's records. */
+  /** The last start used alpha.17. Used for files written before the legacy settings fingerprint was added. */
+  afterDowngrade?: boolean;
+  /** A backup restored at this start is in use. Read its own settings even if a record file is present. */
   otherLibrary?: boolean;
   log?: (message: string) => void;
   /** How a background write writes its partial file (tests: a busy or failing disk). The file system's own unless given. */
@@ -83,6 +89,8 @@ export class TrimRecords {
   private quitting = false;
   /** The change whose write holds what alpha.17's settings held: once it is on the disk, they are cleared. */
   private clearAt: number | null = null;
+  /** The legacy settings last consumed. A crash before SQLite clears them cannot bring their cuts back. */
+  private legacy: string | null | undefined;
   /** The file could be neither read nor moved aside at the start: never written over until it moves aside. */
   private held = false;
 
@@ -109,6 +117,7 @@ export class TrimRecords {
     private readonly file: string,
     private readonly options: TrimRecordsOptions,
   ) {
+    this.removePartials();
     const found = options.otherLibrary
       ? null
       : readStateTwice(file, (raw) => {
@@ -118,6 +127,8 @@ export class TrimRecords {
     if (found?.status === 'ok') {
       this.waiting = found.value.waiting;
       this.copyRecords = found.value.copies;
+      this.legacy = found.value.legacy;
+      this.takeLegacy(found.value.legacy !== undefined || options.afterDowngrade === true);
       return;
     }
     if (found && found.status !== 'missing') {
@@ -127,24 +138,78 @@ export class TrimRecords {
         `Trim’s waiting cuts could not be read (${found.reason}): ${aside ? `kept as ${basename(aside)}` : 'left where it is, and never written over until it can be moved aside'}; nothing waits to carry on`,
       );
       if (aside) {
-        // Empty records in its place: the next start reads them, never the library's settings (LOW-2).
-        this.changes = 1;
-        this.later();
+        // Record the legacy snapshot as already seen without resuming it (LOW-2).
+        this.takeLegacy(false);
+        if (this.changes === 0) this.changed();
       } else this.held = true;
       return;
     }
-    // Not there yet (the first start of alpha.18), or the library before a restore's: the library's settings, once.
-    this.waiting = list(options.before.waiting());
-    this.copyRecords = list(options.before.copies());
-    const fromSettings = this.waiting.length > 0 || this.copyRecords.length > 0;
+    this.takeLegacy(true);
     if (options.otherLibrary) {
-      // At once: a crash now must never bring the library before's records back.
-      this.changes = 1;
-      if (fromSettings) this.clearAt = 1;
+      if (this.changes === 0) this.changes = 1;
       this.writeNowSaying();
-    } else if (fromSettings) {
-      this.changed();
-      this.clearAt = this.changes;
+    }
+  }
+
+  private takeLegacy(merge: boolean): void {
+    const waiting = list(this.options.before.waiting());
+    const copies = list(this.options.before.copies());
+    if (waiting.length === 0 && copies.length === 0) {
+      if (this.legacy) {
+        // A durable clear was observed. An identical request written during a later downgrade is new again.
+        this.legacy = null;
+        this.changed();
+      }
+      return;
+    }
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify([waiting, copies]))
+      .digest('hex');
+    if (this.legacy === fingerprint) {
+      this.options.before.clear();
+      return;
+    }
+    if (merge) {
+      // alpha.17's newer request wins for the same row. Both copies are kept for the normal identity checks.
+      const cuts = new Map<string, unknown>();
+      for (const value of [...this.waiting, ...waiting]) {
+        const cut = keptTrimSchema.safeParse(value);
+        if (cut.success) cuts.set(cut.data.itemId, cut.data);
+      }
+      const files = new Map<string, unknown>();
+      for (const value of [...this.copyRecords, ...copies]) {
+        const copy = trimCopySchema.safeParse(value);
+        if (copy.success) files.set(JSON.stringify([copy.data.path, copy.data.identity]), copy.data);
+      }
+      this.waiting = [...cuts.values()];
+      this.copyRecords = [...files.values()];
+    }
+    this.legacy = fingerprint;
+    this.changed();
+    this.clearAt = this.changes;
+  }
+
+  private removePartials(): void {
+    const folder = dirname(this.file);
+    const prefix = `${basename(this.file)}.`;
+    try {
+      for (const entry of readdirSync(folder, { withFileTypes: true })) {
+        if (
+          entry.isFile() &&
+          entry.name.startsWith(prefix) &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/u.test(
+            entry.name.slice(prefix.length),
+          )
+        ) {
+          try {
+            rmSync(join(folder, entry.name), { force: true });
+          } catch {
+            // A scanner may hold the file. The next start can remove it.
+          }
+        }
+      }
+    } catch {
+      // The folder may be missing or held. Reading the records below has its own recovery.
     }
   }
 
@@ -170,7 +235,11 @@ export class TrimRecords {
         }
       }
     } catch (error) {
-      rmSync(partial, { force: true });
+      try {
+        rmSync(partial, { force: true });
+      } catch {
+        // A held partial is cleaned up at another start.
+      }
       this.failed(error);
       throw error;
     }
@@ -273,7 +342,12 @@ export class TrimRecords {
   }
 
   private text(): string {
-    return JSON.stringify({ version: 1, waiting: this.waiting, copies: this.copyRecords });
+    return JSON.stringify({
+      version: 1,
+      waiting: this.waiting,
+      copies: this.copyRecords,
+      legacy: this.legacy ?? null,
+    });
   }
 
   private wrote(change: number): void {
