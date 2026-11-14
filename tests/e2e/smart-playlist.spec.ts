@@ -319,7 +319,7 @@ function trimmedDeck(path: string, video: string, poster: string, startMs: numbe
 const words = (text: string) => ({ text: [{ rtf: cocoaRtf([[text, 80, [255, 255, 255]]]) }] });
 
 test('a deck a smart playlist imports again never moves the video playing: no jump, Next carries on between its points, its next play takes the new ones (Q57-25, Q57-27)', async () => {
-  test.skip(ffmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
+  test.skip(!ffmpeg && !process.env['CI'], 'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs');
   test.setTimeout(240_000);
   const work = mkdtempSync(join(tmpdir(), 'drashti-smart-points-'));
   const folder = join(work, 'Placeholder Followed');
