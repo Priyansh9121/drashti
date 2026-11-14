@@ -1,4 +1,17 @@
+import {
+  accentOf,
+  type Css,
+  DEFAULT_ACCENT,
+  hexAlpha,
+  type MotionDef,
+  type PiecePose,
+  transformOf,
+  translate,
+} from './lower-third-motion-kit';
 import type { LowerThirdLook } from './lower-thirds';
+
+export { DEFAULT_ACCENT, hexAlpha };
+export type { Css, MotionDef, PiecePose };
 
 /*
  * How a lower third looks in the Lower Thirds studio (Session 55, Part 16): the style its words sit in (a box, as
@@ -43,53 +56,6 @@ export const STYLE_NAMES: Record<LowerThirdStyle, string> = {
   stacked: 'Lines on their own',
   words: 'Words only',
 };
-
-export const LOWER_THIRD_MOTIONS = [
-  'none',
-  'sweep',
-  'shine',
-  'shapes',
-  'stripes',
-  'glow',
-  'line',
-  'sparkles',
-] as const;
-export type LowerThirdMotion = (typeof LOWER_THIRD_MOTIONS)[number];
-
-export const MOTION_NAMES: Record<LowerThirdMotion, string> = {
-  none: 'None',
-  sweep: 'Colours sweeping',
-  shine: 'Light passing over',
-  shapes: 'Shapes drifting',
-  stripes: 'Stripes moving',
-  glow: 'Glowing',
-  line: 'A line running',
-  sparkles: 'Sparkles rising',
-};
-
-/** How long each background takes to come round to where it began (ms). */
-export const MOTION_PERIOD_MS: Record<LowerThirdMotion, number> = {
-  none: 1000,
-  sweep: 6000,
-  shine: 4000,
-  shapes: 12_000,
-  stripes: 1600,
-  glow: 3000,
-  line: 2400,
-  sparkles: 4000,
-};
-
-/** The second colour a style or background uses when a lower third has none (one made before the studio). */
-export const DEFAULT_ACCENT = '#f59e0b';
-
-/** CSS as plain data (React's style object takes it as it is). */
-export type Css = Record<string, string | number>;
-
-/** A colour with how solid it is, "#rrggbbaa". */
-export const hexAlpha = (hex: string, alpha: number): string =>
-  `${hex}${Math.round(Math.min(1, Math.max(0, alpha)) * 255)
-    .toString(16)
-    .padStart(2, '0')}`;
 
 export interface StyleDrawing {
   style: LowerThirdStyle;
@@ -264,8 +230,10 @@ export function styleDrawing(look: LowerThirdLook, size: number): StyleDrawing {
 
 // ---- moving backgrounds --------------------------------------------------------------------------------------
 
-/** Whether a background is the colour itself (the sweep): its shape has no colour of its own under it. */
-export const motionIsFill = (motion: LowerThirdMotion): boolean => motion === 'sweep';
+const at = { position: 'absolute' } as const;
+/** Each of `count` pieces' pose. */
+const each = (count: number, pose: (i: number) => PiecePose): PiecePose[] =>
+  Array.from({ length: count }, (_, i) => pose(i));
 
 const SHAPES: readonly { left: number; top: number; height: number; light: boolean; turns: number }[] = [
   { left: 4, top: -40, height: 150, light: false, turns: 1 },
@@ -286,16 +254,16 @@ const SPARKS: readonly { left: number; speed: number }[] = [
   { left: 91, speed: 2 },
 ];
 
-/** A background's pieces, as each is drawn whatever the time (where it is, its size and its colour). */
-export function motionPieces(motion: LowerThirdMotion, look: LowerThirdLook): Css[] {
-  const accent = look.accent ?? DEFAULT_ACCENT;
-  const at = { position: 'absolute' } as const;
-  switch (motion) {
-    case 'none':
-      return [];
-    case 'sweep': {
+/** The studio's first seven (Session 55, Part 16), drawn as they always were. */
+const FIRST_SEVEN = {
+  sweep: {
+    name: 'Colours sweeping',
+    periodMs: 6000,
+    feel: 'calm',
+    fill: true,
+    pieces: (look) => {
       const a = hexAlpha(look.band, look.bandOpacity);
-      const b = hexAlpha(accent, look.bandOpacity);
+      const b = hexAlpha(accentOf(look), look.bandOpacity);
       return [
         {
           ...at,
@@ -306,64 +274,116 @@ export function motionPieces(motion: LowerThirdMotion, look: LowerThirdLook): Cs
           background: `linear-gradient(90deg, ${a} 0%, ${b} 25%, ${a} 50%, ${b} 75%, ${a} 100%)`,
         },
       ];
-    }
-    case 'shine':
-      return [
-        {
-          ...at,
-          top: '-30%',
-          bottom: '-30%',
-          left: 0,
-          width: '30%',
-          background:
-            'linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.34) 50%, rgba(255, 255, 255, 0) 100%)',
-        },
-      ];
-    case 'shapes':
-      return SHAPES.map((s) => ({
+    },
+    at: (turn, count) => each(count, () => ({ transform: translate(-50 * turn, 0, '%'), opacity: 1 })),
+  },
+  shine: {
+    name: 'Light passing over',
+    periodMs: 4000,
+    feel: 'calm',
+    pieces: () => [
+      {
+        ...at,
+        top: '-30%',
+        bottom: '-30%',
+        left: 0,
+        width: '30%',
+        background:
+          'linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.34) 50%, rgba(255, 255, 255, 0) 100%)',
+      },
+    ],
+    // Across in the first third of each period, then out of sight until the next.
+    at: (turn, count) => {
+      const across = turn / 0.35;
+      const to = (x: number) => transformOf(translate(x, 0, '%'), 'skewX(-20deg)');
+      return each(count, () =>
+        across >= 1
+          ? { transform: to(-130), opacity: 0 }
+          : { transform: to(-130 + 495 * across), opacity: 1 },
+      );
+    },
+  },
+  shapes: {
+    name: 'Shapes drifting',
+    periodMs: 12_000,
+    feel: 'calm',
+    pieces: (look) =>
+      SHAPES.map((s) => ({
         ...at,
         left: `${String(s.left)}%`,
         top: `${String(s.top)}%`,
         height: `${String(s.height)}%`,
         aspectRatio: '1',
         borderRadius: '50%',
-        background: s.light ? 'rgba(255, 255, 255, 0.16)' : hexAlpha(accent, 0.3),
-      }));
-    case 'stripes':
-      return [
-        {
-          ...at,
-          top: 0,
-          bottom: 0,
-          left: 0,
-          width: 'calc(100% + 1em)',
-          background: `repeating-linear-gradient(-45deg, ${hexAlpha(accent, 0.28)} 0 0.35em, ${hexAlpha(accent, 0)} 0.35em 0.7em)`,
-        },
-      ];
-    case 'glow':
-      return [
-        {
-          ...at,
-          top: 0,
-          right: 0,
-          bottom: 0,
-          left: 0,
-          background: `radial-gradient(ellipse at 50% 120%, ${hexAlpha(accent, 0.75)} 0%, ${hexAlpha(accent, 0)} 70%)`,
-        },
-      ];
-    case 'line':
-      return [
-        {
-          ...at,
-          left: 0,
-          bottom: 0,
-          height: '0.07em',
-          width: '35%',
-          background: `linear-gradient(90deg, ${hexAlpha(accent, 0)}, ${accent}, ${hexAlpha(accent, 0)})`,
-        },
-      ];
-    case 'sparkles':
-      return SPARKS.map((s) => ({
+        background: s.light ? 'rgba(255, 255, 255, 0.16)' : hexAlpha(accentOf(look), 0.3),
+      })),
+    at: (turn, count) =>
+      each(count, (i) => {
+        const s = SHAPES[i % SHAPES.length] ?? { turns: 1 };
+        const a = 2 * Math.PI * (turn * s.turns + i / SHAPES.length);
+        return { transform: translate(40 * Math.cos(a), 25 * Math.sin(a), '%'), opacity: 1 };
+      }),
+  },
+  stripes: {
+    name: 'Stripes moving',
+    periodMs: 1600,
+    feel: 'lively',
+    pieces: (look) => [
+      {
+        ...at,
+        top: 0,
+        bottom: 0,
+        left: 0,
+        width: 'calc(100% + 1em)',
+        background: `repeating-linear-gradient(-45deg, ${hexAlpha(accentOf(look), 0.28)} 0 0.35em, ${hexAlpha(accentOf(look), 0)} 0.35em 0.7em)`,
+      },
+    ],
+    // One stripe's width along the band each period: it never jumps (0.7em across a 45° stripe).
+    at: (turn, count) => each(count, () => ({ transform: translate(-0.99 * turn, 0, 'em'), opacity: 1 })),
+  },
+  glow: {
+    name: 'Glowing',
+    periodMs: 3000,
+    feel: 'calm',
+    pieces: (look) => [
+      {
+        ...at,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        background: `radial-gradient(ellipse at 50% 120%, ${hexAlpha(accentOf(look), 0.75)} 0%, ${hexAlpha(accentOf(look), 0)} 70%)`,
+      },
+    ],
+    at: (turn, count) =>
+      each(count, () => ({
+        transform: '',
+        opacity: 0.35 + 0.45 * (0.5 - 0.5 * Math.cos(2 * Math.PI * turn)),
+      })),
+  },
+  line: {
+    name: 'A line running',
+    periodMs: 2400,
+    feel: 'lively',
+    pieces: (look) => [
+      {
+        ...at,
+        left: 0,
+        bottom: 0,
+        height: '0.07em',
+        width: '35%',
+        background: `linear-gradient(90deg, ${hexAlpha(accentOf(look), 0)}, ${accentOf(look)}, ${hexAlpha(accentOf(look), 0)})`,
+      },
+    ],
+    at: (turn, count) =>
+      each(count, () => ({ transform: translate(-100 + 385.7 * turn, 0, '%'), opacity: 1 })),
+  },
+  sparkles: {
+    name: 'Sparkles rising',
+    periodMs: 4000,
+    feel: 'lively',
+    pieces: () =>
+      SPARKS.map((s) => ({
         ...at,
         left: `${String(s.left)}%`,
         bottom: 0,
@@ -371,22 +391,53 @@ export function motionPieces(motion: LowerThirdMotion, look: LowerThirdLook): Cs
         height: '0.12em',
         borderRadius: '50%',
         background: 'rgba(255, 255, 255, 0.9)',
-      }));
-  }
-}
+      })),
+    at: (turn, count) =>
+      each(count, (i) => {
+        const s = SPARKS[i % SPARKS.length] ?? { speed: 1 };
+        const q = (turn * s.speed + i / SPARKS.length) % 1;
+        return { transform: translate(0, -1800 * q, '%'), opacity: Math.sin(Math.PI * q) };
+      }),
+  },
+} satisfies Record<string, MotionDef>;
 
-/** A number for CSS: rounded, and no "-0". */
-const n = (x: number, places = 3) => {
-  const r = Math.round(x * 10 ** places) / 10 ** places;
-  return Object.is(r, -0) ? '0' : String(r);
-};
-const translate = (x: number, y: number, unit: '%' | 'em') =>
-  Math.abs(x) < 0.0005 && Math.abs(y) < 0.0005 ? '' : `translate(${n(x)}${unit}, ${n(y)}${unit})`;
+/**
+ * THE REGISTRY (Session 58): every moving background but None, by its key (the key a lower third keeps, so never
+ * renamed). The studio offers those in OFFERED (lower-third-studio.ts), in OFFERED's order.
+ *
+ * C12's eleven (lower-third-motions-more.ts, `MORE_MOTIONS`) join at the one marked line below, with their import
+ * at the top of this file; nothing else here changes for them.
+ */
+const MOTIONS = {
+  ...FIRST_SEVEN,
+  // C12 JOINS HERE: ...MORE_MOTIONS,
+} satisfies Record<string, MotionDef>;
 
-/** One piece of a background at a moment. */
-export interface PiecePose {
-  transform: string;
-  opacity: number;
+/** A moving background's key; 'none' for none. */
+export type LowerThirdMotion = 'none' | keyof typeof MOTIONS;
+
+/** Every moving background a lower third may have (None first). */
+export const LOWER_THIRD_MOTIONS = ['none', ...(Object.keys(MOTIONS) as (keyof typeof MOTIONS)[])] as const;
+
+const definition = (motion: LowerThirdMotion): MotionDef | null =>
+  motion === 'none' ? null : ((MOTIONS[motion] as MotionDef | undefined) ?? null);
+
+/** Each background's name in the studio's list. */
+export const MOTION_NAMES = Object.fromEntries(
+  LOWER_THIRD_MOTIONS.map((m) => [m, definition(m)?.name ?? 'None']),
+) as Record<LowerThirdMotion, string>;
+
+/** How long each background takes to come round to where it began (ms). */
+export const MOTION_PERIOD_MS = Object.fromEntries(
+  LOWER_THIRD_MOTIONS.map((m) => [m, definition(m)?.periodMs ?? 1000]),
+) as Record<LowerThirdMotion, number>;
+
+/** Whether a background is the colour itself (the sweep): its shape has no colour of its own under it. */
+export const motionIsFill = (motion: LowerThirdMotion): boolean => definition(motion)?.fill === true;
+
+/** A background's pieces, as each is drawn whatever the time (where it is, its size and its colour). */
+export function motionPieces(motion: LowerThirdMotion, look: LowerThirdLook): Css[] {
+  return definition(motion)?.pieces(look) ?? [];
 }
 
 /**
@@ -394,45 +445,9 @@ export interface PiecePose {
  * and round: the same again a period later.
  */
 export function motionAt(motion: LowerThirdMotion, t: number, count: number): PiecePose[] {
-  const period = MOTION_PERIOD_MS[motion];
+  const d = definition(motion);
+  if (!d) return [];
+  const period = d.periodMs;
   const turn = Math.round((((t % period) + period) % period) * 1e6) / 1e6 / period;
-  const pieces = Array.from({ length: count }, (_, i) => i);
-  switch (motion) {
-    case 'none':
-      return [];
-    case 'sweep':
-      return pieces.map(() => ({ transform: translate(-50 * turn, 0, '%'), opacity: 1 }));
-    case 'shine': {
-      // Across in the first third of each period, then out of sight until the next.
-      const across = turn / 0.35;
-      const at = (x: number) => [translate(x, 0, '%'), 'skewX(-20deg)'].filter((p) => p !== '').join(' ');
-      return pieces.map(() =>
-        across >= 1
-          ? { transform: at(-130), opacity: 0 }
-          : { transform: at(-130 + 495 * across), opacity: 1 },
-      );
-    }
-    case 'shapes':
-      return pieces.map((i) => {
-        const s = SHAPES[i % SHAPES.length] ?? { turns: 1 };
-        const a = 2 * Math.PI * (turn * s.turns + i / SHAPES.length);
-        return { transform: translate(40 * Math.cos(a), 25 * Math.sin(a), '%'), opacity: 1 };
-      });
-    case 'stripes':
-      // One stripe's width along the band each period: it never jumps (0.7em across a 45° stripe).
-      return pieces.map(() => ({ transform: translate(-0.99 * turn, 0, 'em'), opacity: 1 }));
-    case 'glow':
-      return pieces.map(() => ({
-        transform: '',
-        opacity: 0.35 + 0.45 * (0.5 - 0.5 * Math.cos(2 * Math.PI * turn)),
-      }));
-    case 'line':
-      return pieces.map(() => ({ transform: translate(-100 + 385.7 * turn, 0, '%'), opacity: 1 }));
-    case 'sparkles':
-      return pieces.map((i) => {
-        const s = SPARKS[i % SPARKS.length] ?? { speed: 1 };
-        const q = (turn * s.speed + i / SPARKS.length) % 1;
-        return { transform: translate(0, -1800 * q, '%'), opacity: Math.sin(Math.PI * q) };
-      });
-  }
+  return d.at(turn, count);
 }
