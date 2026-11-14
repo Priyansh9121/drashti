@@ -6,12 +6,13 @@ import {
   deckParagraphRuns,
   deckShapeShows,
   deckWipeClip,
+  deckWipeInnerMask,
   deckWipeMask,
   smoothedProgress,
 } from './deck-motion';
 import { deckFromJson, deckMediaIds, deckToJson, mapDeckMedia } from './deck-schema';
 import { deckPictureId, deckPictures, deckSlideAt, nativeStepTiming, stepOf } from './deck-show';
-import type { RenderSlide, TextElement } from './model';
+import type { Rect, RenderSlide, TextElement } from './model';
 
 const effect = {
   shapeId: '7',
@@ -270,6 +271,66 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
     expect(deckShapeShows(closing, 0, 0)).toBe(1);
     expect(deckShapeShows(closing, 1, 1)).toBe(0);
     expect(at(300, [box])).toMatchObject({ opacity: 0, wipe: null });
+  });
+
+  it('steps a Box’s, a Plus’s and a Diamond’s two masks on the very same lines, so a pixel on a seam is on one side in both', () => {
+    // Each mask is a ramp over two half-planes, a step each, laid by `exclude`; the four steps' exclusive-or must be 1
+    // everywhere, so that between them the shape's mask and the element's within it let each ramp through beside its
+    // own sides once. A pixel whose centre lies on a seam (a square on PowerPoint's grid at 1080p: its falling diagonal
+    // through pixel centres) is exactly at a step, and a renderer gives it one of the step's two colours, the same for
+    // the same gradient. So the element within draws each seam with the shape's own gradient, the one as it is and the
+    // other with its colours swapped: a step pointing the other way got its second colour too (Chromium, 14 Nov 2026),
+    // everything showed there, a white line across what is hidden (C1's review, HIGH-1).
+    const layersOf = (mask: string): string[] => {
+      const out: string[] = [];
+      let depth = 0;
+      let start = 0;
+      for (let i = 0; i < mask.length; i++) {
+        if (mask[i] === '(') depth++;
+        if (mask[i] === ')') depth--;
+        if (mask[i] === ',' && depth === 0) {
+          out.push(mask.slice(start, i).trim());
+          start = i + 1;
+        }
+      }
+      if (mask.trim()) out.push(mask.slice(start).trim());
+      return out;
+    };
+    /** A step (two stops at one place, one colour each side) with its colours swapped. */
+    const swapped = (step: string): string => {
+      const m =
+        /^linear-gradient\((-?[\d.]+deg), (rgb\(0 0 0 \/ [01]\)) (-?[\d.]+%), (rgb\(0 0 0 \/ [01]\)) (-?[\d.]+%)\)$/u.exec(
+          step,
+        );
+      expect(m, step).not.toBeNull();
+      expect(m?.[3], step).toBe(m?.[5]);
+      expect(m?.[2], step).not.toBe(m?.[4]);
+      return `linear-gradient(${m?.[1] ?? ''}, ${m?.[4] ?? ''} ${m?.[3] ?? ''}, ${m?.[2] ?? ''} ${m?.[5] ?? ''})`;
+    };
+    // The whole shape, a square one, and one part of a group (its right half, a little lower).
+    const square = { x: 216, y: 144, width: 432, height: 432 };
+    const cases: [Rect, Rect][] = [
+      [bounds, bounds],
+      [square, square],
+      [bounds, { x: 400, y: 150, width: 300, height: 350 }],
+    ];
+    for (const shape of ['box', 'plus', 'diamond'] as const)
+      for (const inward of [false, true])
+        for (const leaving of [false, true])
+          for (const progress of [0.03, 0.3, 0.5, 0.92])
+            for (const [target, part] of cases) {
+              const wipe = { shape, inward, leaving, progress };
+              const name = `${shape} ${inward ? 'In' : 'Out'} ${leaving ? 'leaving' : 'coming in'} at ${String(progress)}, ${JSON.stringify(part)}`;
+              const outer = layersOf(deckWipeMask(wipe, target, part));
+              const inner = layersOf(deckWipeInnerMask(wipe, target, part));
+              expect(outer, name).toHaveLength(3);
+              expect(inner, name).toHaveLength(3);
+              const [first = '', second = ''] = outer.slice(1);
+              const steps = inner.slice(1).sort();
+              expect([[swapped(first), second].sort(), [first, swapped(second)].sort()], name).toContainEqual(
+                steps,
+              );
+            }
   });
 
   it('sweeps Wheel’s spokes clockwise from twelve o’clock', () => {
