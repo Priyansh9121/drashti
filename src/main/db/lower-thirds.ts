@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { isLowerThirdAnimation } from '../../shared/lower-third-animations';
-import { LOWER_THIRD_MOTIONS } from '../../shared/lower-third-styles';
+import { FIRST_MOTIONS, LOWER_THIRD_MOTIONS, NEAREST_ALPHA17_MOTION } from '../../shared/lower-third-styles';
+import type { LowerThirdMotion } from '../../shared/lower-third-styles';
 import type { LowerThird, LowerThirdInput } from '../../shared/lower-thirds';
 import {
   DEFAULT_LOWER_THIRD_LOOK,
@@ -20,8 +21,12 @@ import type { Db } from './database';
  * look's own new fields (a style, an accent, a moving background), and beside them how it goes out (`outAnimation`)
  * and the seconds it stays up (`seconds`). One kept before the studio has none of them and reads as it was; an out
  * or seconds this Drashti cannot use are left out, the rest kept. So is a moving background a later Drashti added
- * (Session 58, Q58-30): this one draws none and keeps the rest of the look, never the default look in its place;
- * anything else in the look it cannot read still reads as the default, as before (the look stays strict).
+ * (Session 58, Q58-30): the rest of the look is kept. Anything else in the look this Drashti cannot read
+ * still reads as the default.
+ *
+ * For a background added in alpha.18, the look holds the closest alpha.17 background and app_meta holds both
+ * background IDs. Alpha.17 ignores these keys and sees a look it can read. Alpha.18 uses the new background
+ * while the look still has the paired one, including after alpha.17 edits other fields of the lower third.
  */
 
 interface Row {
@@ -30,9 +35,21 @@ interface Row {
   look: string;
   target: string;
   animation: string;
+  saved_motion: string | null;
 }
 
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+const MOTION_KEY_PREFIX = 'lower-third.motion.';
+const SELECT_WITH_MOTION = `
+  SELECT t.id, t.lines, t.look, t.target, t.animation, m.value AS saved_motion
+    FROM lower_thirds t LEFT JOIN app_meta m ON m.key = ? || t.id`;
+const motionPairSchema = z
+  .object({
+    motion: z.enum(LOWER_THIRD_MOTIONS),
+    fallback: z.enum(FIRST_MOTIONS),
+  })
+  .nullable();
+type MotionPair = z.infer<typeof motionPairSchema>;
 const linesSchema = z.array(z.string()).min(1).max(3);
 const placeholders = (n: number) => Array.from({ length: n }, () => '?').join(', ');
 
@@ -46,7 +63,10 @@ function parse<T>(schema: z.ZodType<T>, json: string, otherwise: T): T {
 }
 
 /** The look column: the look itself, and the studio's out and seconds kept beside it. */
-function lookOf(json: string): Pick<LowerThird, 'look' | 'outAnimation' | 'seconds'> {
+function lookOf(
+  json: string,
+  savedMotion: string | null,
+): Pick<LowerThird, 'look' | 'outAnimation' | 'seconds'> {
   let raw: unknown;
   try {
     raw = JSON.parse(json);
@@ -58,19 +78,31 @@ function lookOf(json: string): Pick<LowerThird, 'look' | 'outAnimation' | 'secon
   const { outAnimation, seconds, ...rest } = raw as Record<string, unknown>;
   const { motion, ...still } = rest;
   const later = typeof motion === 'string' && !(LOWER_THIRD_MOTIONS as readonly string[]).includes(motion);
-  const look = lowerThirdLookSchema.safeParse(later ? still : rest);
+  const parsed = lowerThirdLookSchema.safeParse(later ? still : rest);
+  const look = parsed.success ? parsed.data : DEFAULT_LOWER_THIRD_LOOK;
+  const pair = savedMotion === null ? null : parse(motionPairSchema, savedMotion, null);
   const kept = lowerThirdSecondsSchema.safeParse(seconds);
   return {
-    look: look.success ? look.data : DEFAULT_LOWER_THIRD_LOOK,
+    // Compare with the fallback written then, so a mapping change cannot undo an older edit.
+    look:
+      pair && look.motion === pair.fallback && NEAREST_ALPHA17_MOTION[pair.motion] !== undefined
+        ? { ...look, motion: pair.motion }
+        : look,
     ...(typeof outAnimation === 'string' && isLowerThirdAnimation(outAnimation) ? { outAnimation } : {}),
     ...(kept.success ? { seconds: kept.data } : {}),
   };
 }
 
+function motionPairOf(motion: LowerThirdMotion | undefined): MotionPair {
+  const fallback = motion === undefined ? undefined : NEAREST_ALPHA17_MOTION[motion];
+  return motion !== undefined && fallback !== undefined ? { motion, fallback } : null;
+}
+
 /** What the look column keeps: the look, with the studio's out and seconds when it has them. */
-const lookColumn = (input: LowerThirdInput): string =>
+const lookColumn = (input: LowerThirdInput, pair: MotionPair): string =>
   JSON.stringify({
     ...input.look,
+    motion: pair?.fallback ?? input.look.motion,
     ...(input.outAnimation === undefined ? {} : { outAnimation: input.outAnimation }),
     ...(input.seconds === undefined ? {} : { seconds: input.seconds }),
   });
@@ -79,7 +111,7 @@ function fromRow(r: Row): LowerThird {
   return {
     id: r.id,
     lines: parse(linesSchema, r.lines, ['']),
-    ...lookOf(r.look),
+    ...lookOf(r.look, r.saved_motion),
     where: r.target === 'hall' || r.target === 'stream' ? r.target : 'both',
     animation: r.animation,
   };
@@ -91,49 +123,61 @@ export class LowerThirdRepo {
   /** Every one not deleted, in the list's order. */
   list(): LowerThird[] {
     const rows = this.db
-      .prepare(
-        `SELECT id, lines, look, target, animation FROM lower_thirds
-          WHERE deleted_at IS NULL ORDER BY position, rowid`,
-      )
-      .all() as Row[];
+      .prepare<[string], Row>(`${SELECT_WITH_MOTION} WHERE t.deleted_at IS NULL ORDER BY t.position, t.rowid`)
+      .all(MOTION_KEY_PREFIX);
     return rows.map(fromRow);
   }
 
   get(id: string): LowerThird | null {
     const row = this.db
-      .prepare(
-        'SELECT id, lines, look, target, animation FROM lower_thirds WHERE id = ? AND deleted_at IS NULL',
-      )
-      .get(id) as Row | undefined;
+      .prepare<[string, string], Row>(`${SELECT_WITH_MOTION} WHERE t.id = ? AND t.deleted_at IS NULL`)
+      .get(MOTION_KEY_PREFIX, id);
     return row ? fromRow(row) : null;
   }
 
   /** A new one at the end of the list: its id. */
   create(input: LowerThirdInput): string {
     const id = randomUUID();
-    const { next } = this.db
-      .prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM lower_thirds')
-      .get() as {
-      next: number;
-    };
-    this.db
-      .prepare(
-        'INSERT INTO lower_thirds (id, position, lines, look, target, animation) VALUES (?, ?, ?, ?, ?, ?)',
-      )
-      .run(id, next, JSON.stringify(input.lines), lookColumn(input), input.where, input.animation);
+    const pair = motionPairOf(input.look.motion);
+    this.db.transaction(() => {
+      const { next } = this.db
+        .prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM lower_thirds')
+        .get() as { next: number };
+      this.db
+        .prepare(
+          'INSERT INTO lower_thirds (id, position, lines, look, target, animation) VALUES (?, ?, ?, ?, ?, ?)',
+        )
+        .run(id, next, JSON.stringify(input.lines), lookColumn(input, pair), input.where, input.animation);
+      if (pair) this.setMotion(id, pair);
+    })();
     return id;
   }
 
   /** Change one: false when it is not there (or deleted). */
   update(id: string, input: LowerThirdInput): boolean {
-    return (
-      this.db
+    const pair = motionPairOf(input.look.motion);
+    return this.db.transaction(() => {
+      const result = this.db
         .prepare(
           `UPDATE lower_thirds SET lines = ?, look = ?, target = ?, animation = ?, updated_at = ${NOW}
             WHERE id = ? AND deleted_at IS NULL`,
         )
-        .run(JSON.stringify(input.lines), lookColumn(input), input.where, input.animation, id).changes > 0
-    );
+        .run(JSON.stringify(input.lines), lookColumn(input, pair), input.where, input.animation, id);
+      if (result.changes === 0) return false;
+      this.setMotion(id, pair);
+      return true;
+    })();
+  }
+
+  private setMotion(id: string, pair: MotionPair): void {
+    const key = `${MOTION_KEY_PREFIX}${id}`;
+    if (pair)
+      this.db
+        .prepare(
+          'INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+        )
+        .run(key, JSON.stringify(pair));
+    else this.db.prepare('DELETE FROM app_meta WHERE key = ?').run(key);
   }
 
   /** Mark these deleted (Undo can bring them back until Drashti next starts): the ids it marked. */
@@ -180,8 +224,22 @@ export class LowerThirdRepo {
     })();
   }
 
-  /** Those deleted before this start go for good (they can no longer be undone). */
+  /** Those deleted before this start go for good, along with background choices an older Drashti replaced. */
   purge(): void {
-    this.db.prepare('DELETE FROM lower_thirds WHERE deleted_at IS NOT NULL').run();
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM lower_thirds WHERE deleted_at IS NOT NULL').run();
+      this.db
+        .prepare(
+          `DELETE FROM app_meta WHERE key GLOB ?
+            AND NOT EXISTS (
+              SELECT 1 FROM lower_thirds
+                WHERE id = substr(app_meta.key, ?)
+                  AND CASE WHEN json_valid(look) AND json_valid(app_meta.value) THEN
+                    json_extract(look, '$.motion') = json_extract(app_meta.value, '$.fallback')
+                  END
+            )`,
+        )
+        .run(`${MOTION_KEY_PREFIX}*`, MOTION_KEY_PREFIX.length + 1);
+    })();
   }
 }

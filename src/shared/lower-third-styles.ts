@@ -790,6 +790,33 @@ export const LOWER_THIRD_MOTIONS = ['none', ...(Object.keys(MOTIONS) as (keyof t
  */
 export const FIRST_MOTIONS = Object.keys(FIRST_SEVEN) as readonly LowerThirdMotion[];
 
+/** The closest moving background alpha.17 can draw for each background added since. */
+export const NEAREST_ALPHA17_MOTION: Readonly<Partial<Record<LowerThirdMotion, keyof typeof FIRST_SEVEN>>> = {
+  dawn: 'shine',
+  lamps: 'glow',
+  mist: 'shine',
+  rays: 'shine',
+  petals: 'sparkles',
+  ripples: 'glow',
+  stars: 'sparkles',
+  tint: 'sweep',
+  confetti: 'sparkles',
+  streaks: 'line',
+  waves: 'stripes',
+  chase: 'line',
+  bloom: 'shapes',
+  spotlight: 'shine',
+  fireflies: 'shapes',
+  rings: 'shapes',
+  lanterns: 'sparkles',
+  kites: 'shapes',
+  garland: 'shapes',
+  bars: 'glow',
+  fireworks: 'sparkles',
+  hexagons: 'glow',
+  tiles: 'stripes',
+} satisfies Record<Exclude<LowerThirdMotion, 'none' | keyof typeof FIRST_SEVEN>, keyof typeof FIRST_SEVEN>;
+
 /** A background's definition: none for None, or for a key Drashti does not know (from a newer look), drawn as None. */
 const definition = (motion: LowerThirdMotion): MotionDef | null =>
   motion !== 'none' && Object.hasOwn(MOTIONS, motion) ? MOTIONS[motion] : null;
