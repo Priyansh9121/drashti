@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { cleanNameSchema } from './rename-name';
 import { CALENDAR_LANGS, type CalendarLang } from './calendar';
 import type { LiveFit } from './engine/state';
 import type { Rect } from './model';
@@ -259,7 +260,8 @@ export const stageLayoutDefinitionSchema = z.object({
 });
 export type StageLayoutDefinition = z.infer<typeof stageLayoutDefinitionSchema>;
 
-export const stageLayoutNameSchema = z.string().trim().min(1).max(60);
+/** A stage layout's name as the operator gives it: cleaned as Rename… cleans a name (C15, FT-1). */
+export const stageLayoutNameSchema = cleanNameSchema(60);
 
 /** A new box of a kind, in the middle of the canvas, in the usual look. */
 export function newStageBox(kind: StageBoxKind, id: string): StageBox {

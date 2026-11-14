@@ -36,7 +36,7 @@ const graphic = (data: string) =>
   '</a:graphicData></a:graphic></p:graphicFrame>';
 
 describe('keeping a generated PPTX editable', () => {
-  it('keeps paragraph spacing in points or percentages, with local overrides', async () => {
+  it('keeps paragraph spacing in points or percentages of the line, with local overrides', async () => {
     const run = (size: number, words: string) =>
       `<a:r><a:rPr sz="${String(size)}"/><a:t>${words}</a:t></a:r>`;
     const words = wordsShape(
@@ -61,13 +61,51 @@ describe('keeping a generated PPTX editable', () => {
     if (box?.kind !== 'text') throw new Error('The editable words are missing.');
     expect(box.style).toMatchObject({ spaceAtTextEdges: true });
     const paragraph = (text: string) => box.runs?.find((run) => run.text === text)?.paragraph;
-    expect(paragraph('Placeholder first run ')).toMatchObject({ spaceBefore: 20, spaceAfter: 6 });
+    // Percentages of the line (PF-12): the first line's 30 pt (40 px) a line of 48 px, the last's 18 pt (24 px) 28.8.
+    expect(paragraph('Placeholder first run ')).toMatchObject({ spaceBefore: 24, spaceAfter: 7.2 });
     expect(paragraph('Placeholder continuation')).toEqual(paragraph('Placeholder first run '));
     expect(paragraph('Placeholder zero before')).toMatchObject({ spaceBefore: 0, spaceAfter: 4 });
     expect(paragraph('Placeholder inherited spacing')).toMatchObject({ spaceBefore: 8, spaceAfter: 4 });
     const [resized] = fitElements([box], { width: 1280, height: 720 }, { width: 640, height: 360 });
     if (resized?.kind !== 'text') throw new Error('The resized words are missing.');
-    expect(resized.runs?.[0]?.paragraph).toMatchObject({ spaceBefore: 10, spaceAfter: 3 });
+    expect(resized.runs?.[0]?.paragraph).toMatchObject({ spaceBefore: 12, spaceAfter: 3.6 });
+  });
+
+  it('takes a percentage of paragraph spacing as a share of the line, as PowerPoint does (PF-12, measured 14 Nov 2026)', async () => {
+    // PowerPoint's own stills: 40 pt Arial lines 48 pt apart, and 100% before adds 48 pt (a line), not 40 (the size).
+    const paragraph = (props: string, words: string) =>
+      `<a:p><a:pPr>${props}</a:pPr><a:r><a:rPr sz="4000"/><a:t>${words}</a:t></a:r></a:p>`;
+    const words = wordsShape(
+      paragraph('<a:spcBef><a:spcPct val="100000"/></a:spcBef>', 'Placeholder a line before') +
+        paragraph(
+          '<a:spcBef><a:spcPct val="50000"/></a:spcBef><a:spcAft><a:spcPct val="100000"/></a:spcAft>',
+          'Placeholder half before, a line after',
+        ) +
+        paragraph('<a:spcBef><a:spcPts val="2400"/></a:spcBef>', 'Placeholder points before') +
+        paragraph(
+          '<a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:spcBef><a:spcPct val="100000"/></a:spcBef>',
+          'Placeholder closer lines',
+        ) +
+        paragraph(
+          '<a:lnSpc><a:spcPts val="3600"/></a:lnSpc><a:spcBef><a:spcPct val="50000"/></a:spcBef>',
+          'Placeholder exact lines',
+        ),
+    );
+    const { elements } = await read(slideXml(words));
+    const box = elements.find((el) => el.kind === 'text');
+    if (box?.kind !== 'text') throw new Error('The editable words are missing.');
+    const spacing = (text: string) => box.runs?.find((run) => run.text === text)?.paragraph;
+    // 40 pt is 53.33 px of the slide; its line, 1.2 of it, 64 px.
+    expect(spacing('Placeholder a line before')?.spaceBefore).toBe(64);
+    expect(spacing('Placeholder half before, a line after')).toMatchObject({
+      spaceBefore: 32,
+      spaceAfter: 64,
+    });
+    // Points stay points: 24 pt is 32 px.
+    expect(spacing('Placeholder points before')?.spaceBefore).toBe(32);
+    // The paragraph's own line: 90% of a single line (57.6 px), or exactly 36 pt (48 px).
+    expect(spacing('Placeholder closer lines')?.spaceBefore).toBe(57.6);
+    expect(spacing('Placeholder exact lines')?.spaceBefore).toBe(24);
   });
 
   it('keeps fixed line spacing in slide pixels and permits a proportional override', async () => {
