@@ -424,7 +424,7 @@ A phone or a script may clear a video input and take the box off, and since Sess
 
 **Session 57** (version 28) also added:
 
-- **Where a background video came from.** `sourceItemId` on a video background (`layers.background` of kind `media`): the playlist row that put it up, or null when it came straight from Media or from a slide’s background cue; left out of a show an older Drashti saved. Only the engine sets it. While it names a row, that row’s finished Trim cut waits for the video to come off, and its **Reset to original** is refused.
+- **Where a background video came from.** `sourceItemId` on a video background (`layers.background` of kind `media`): the playlist row that put it up, or null when it came straight from Media or from a slide's background cue; left out of a show an older Drashti saved. Only the engine sets it. While it names a row, that row's finished Trim cut waits for the video to come off, and its **Reset to original** is refused.
 
 ## Companion (Stream Deck)
 
