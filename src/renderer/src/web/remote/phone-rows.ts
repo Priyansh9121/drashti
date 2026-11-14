@@ -178,7 +178,8 @@ export function rowMenu(row: MiddleRow, ctx: RowMenuContext): RowAction[] {
       out.push({
         id: 'rename',
         what: { kind: 'media', mediaId: item.mediaId, media: item.media },
-        name: item.label,
+        // The file's own name, never a label the row has of its own (C18, FT-2).
+        name: item.mediaName ?? item.label,
       });
     else if (item.kind === 'presentation' && item.presentationName !== null)
       out.push({
