@@ -109,6 +109,8 @@ interface StepVideoTold {
 
 /** The incoming layer can show the first clip once its start frame, including any initial seek, has decoded. */
 export const DECK_FIRST_FRAME = 'drashti-deck-first-frame';
+/** A slide's step lets go of its first clip (C3, Session 58): one the Preloader loaded ahead loads again if still wanted. */
+const DECK_CLIP_LET_GO = 'drashti-deck-clip-let-go';
 // A newly shown slide may wait for its first frame. An output joining a slide already on screen uses its clock.
 const FRESH_DECK_ENTRY_MS = 500;
 const FIRST_FRAME_WAIT_MS = 3000;
@@ -225,6 +227,9 @@ export function DeckClipAhead({
 }) {
   const attempt = useMediaAttempt(mediaId);
   const holder = useRef<HTMLSpanElement | null>(null);
+  // Loaded again once the step that took it lets it go, while it is still wanted (C3, Session 58: the pointer resting
+  // on a row it clicked, for another click on it).
+  const [round, setRound] = useState(0);
   // An effect, not a layout effect: when this goes at the moment its slide comes in, the slide's step (its layout
   // effect, first) has taken the element by then, and it is not let go of here.
   useEffect(() => {
@@ -233,6 +238,10 @@ export function DeckClipAhead({
     const url = mediaUrl(mediaId, attempt);
     const video = document.createElement('video');
     const held: Ahead = { url, video, fromMs, taken: false };
+    const letGo = () => {
+      setRound((r) => r + 1);
+    };
+    video.addEventListener(DECK_CLIP_LET_GO, letGo, { once: true });
     video.muted = true;
     video.playsInline = true;
     video.disablePictureInPicture = true;
@@ -265,6 +274,7 @@ export function DeckClipAhead({
       video.removeEventListener('loadeddata', loaded);
       video.removeEventListener('seeked', ready);
       video.removeEventListener('error', failed);
+      video.removeEventListener(DECK_CLIP_LET_GO, letGo);
       ahead.delete(held);
       // Taken: the step plays it now, and lets go of it.
       if (held.taken) return;
@@ -272,7 +282,7 @@ export function DeckClipAhead({
       video.load();
       video.remove();
     };
-  }, [mediaId, attempt, fromMs, role]);
+  }, [mediaId, attempt, fromMs, role, round]);
   return <span ref={holder} />;
 }
 
@@ -477,6 +487,8 @@ function FirstClip({
       cancelAnimationFrame(playFrame);
       stop();
       v.remove();
+      // Let go of: the Preloader loads it again if its slide is still wanted (pointed at, or Next's).
+      v.dispatchEvent(new Event(DECK_CLIP_LET_GO));
     };
   }, [mediaId, attempt, startedAt, shownAt, clipEndsAt, deadline]);
   return <div ref={slot} data-deck-slot="" style={filling(fit)} />;
