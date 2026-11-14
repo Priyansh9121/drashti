@@ -300,6 +300,34 @@ test('Rename and Delete from the library, each with Undo: Delete at once when no
   expect(existsSync(loose)).toBe(true);
   await win.getByTestId('undo-removal').getByRole('button', { name: 'Undo' }).click();
   await expect(looseRow).toHaveCount(1);
+
+  // Session 58, X3: Undo says the name as Drashti kept it (hidden characters left out); a rename that keeps the old
+  // name again offers no Undo; and an Undo Drashti refuses says why (the picture deleted meanwhile, not from here).
+  const looseName = (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia())).find(
+    (m) => m.id === looseId,
+  )?.name;
+  expect(looseName).toMatch(/^Placeholder loose/u);
+  const renamed = `Renamed “${looseName ?? ''}” to “Placeholder kept”`;
+  const undoBar = win.getByTestId('undo-removal');
+  await looseRow.click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Rename…' }).click();
+  await win.getByTestId('rename-field').fill('Placeholder kept\u202E\u200F');
+  await win.getByTestId('rename-save').click();
+  const keptRow = win.getByTestId('media-item').filter({ hasText: 'Placeholder kept' });
+  await expect(keptRow).toHaveCount(1);
+  await expect.soft(undoBar).toContainText(renamed);
+  await keptRow.click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Rename…' }).click();
+  await win.getByTestId('rename-field').fill('Placeholder kept\u200E');
+  await win.getByTestId('rename-save').click();
+  await expect(win.getByTestId('rename-dialog')).toHaveCount(0);
+  await expect.soft(undoBar).toContainText(renamed);
+  const removed = await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.remove([id]), looseId);
+  expect(removed.ok).toBe(true);
+  await undoBar.getByRole('button', { name: 'Undo' }).click();
+  await expect
+    .soft(win.getByTestId('operator-notice'))
+    .toContainText('That picture is no longer in the library.');
   await app.close();
 });
 
