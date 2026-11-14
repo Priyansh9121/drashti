@@ -201,7 +201,7 @@ it('tries a write that failed again by itself, saying so once', async () => {
   expect(readdirSync(dir)).toEqual(['trim-cuts.json']);
 });
 
-it('tries again, at once, a rename held for a moment before a cut can appear in Media (Windows: a scanner reading the file)', () => {
+it('tries again, at once, a rename held for a moment before a cut can appear in Media (Windows: a scanner reading the file)', async () => {
   let held = 2;
   const rename = vi.fn((from: string, to: string) => {
     if (held-- > 0) throw Object.assign(new Error('Placeholder: the file is held.'), { code: 'EPERM' });
@@ -213,9 +213,13 @@ it('tries again, at once, a rename held for a moment before a cut can appear in 
   expect(onDisk()).toEqual({ version: 1, waiting: [], copies: [copy] });
   expect(rename).toHaveBeenCalledTimes(3);
   expect(readdirSync(dir)).toEqual(['trim-cuts.json']);
+  // The background write the save queued finds the records on the disk already, and writes nothing.
+  await records.settle();
+  expect(rename).toHaveBeenCalledTimes(3);
+  expect(readdirSync(dir)).toEqual(['trim-cuts.json']);
 });
 
-it('throws when the records cannot be written before a cut can appear in Media, so it is not published', () => {
+it('throws when the records cannot be written before a cut can appear in Media, so it is not published', async () => {
   const log = vi.fn<(message: string) => void>();
   const rename = vi.fn(() => {
     throw Object.assign(new Error('Placeholder: the folder cannot be written.'), { code: 'EACCES' });
@@ -229,4 +233,8 @@ it('throws when the records cannot be written before a cut can appear in Media, 
   expect(readdirSync(dir)).toEqual([]);
   expect(log).toHaveBeenCalledWith(expect.stringContaining('Could not save'));
   records.quit();
+  // The background write the save queued fails too, and takes its partial file away (CI: the folder was being
+  // removed while it wrote).
+  await records.settle();
+  expect(readdirSync(dir)).toEqual([]);
 });
