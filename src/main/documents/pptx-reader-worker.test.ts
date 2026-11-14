@@ -20,7 +20,7 @@ vi.mock('node:fs/promises', async (original) => ({
   lstat: (file: string) => Promise.resolve({ isFile: () => fileSizes.has(file), size: fileSizes.get(file) }),
 }));
 
-it('keeps valid siblings when PowerPoint pages exceed their individual editing limits', async () => {
+it('keeps valid siblings when PowerPoint pages exceed their individual editing limits, or a drawing has no frame', async () => {
   const shape: ShapeElement = {
     id: 'placeholder-shape',
     kind: 'shape',
@@ -43,12 +43,15 @@ it('keeps valid siblings when PowerPoint pages exceed their individual editing l
   // Only the file metadata is simulated. No large picture needs to be generated or read.
   fileSizes.set(shared, EDITABLE_SOURCE_LIMITS.pageAssetBytes);
   fileSizes.set(extra, 1);
-  const previousNote =
-    'PowerPoint source page 3 exceeds the 500-object editing limit and stays as its saved picture.';
+  const previousNote = 'Page 3 of the original has more than 500 objects, so it stays as its saved picture.';
+  const beyond = (page: number) =>
+    `Page ${String(page)} of the original has an object placed or sized beyond what Drashti can edit, so it stays as its saved picture.`;
+  // Only a fault in the reader could give a drawing no frame (C25's review LOW-1): that page alone fails.
+  const noFrame = { ...shape, id: 'placeholder-no-frame', frame: null } as unknown as ShapeElement;
 
   vi.mocked(readEditableWithTiming).mockResolvedValueOnce({
     editable: {
-      sourceCount: 6,
+      sourceCount: 7,
       width: 1280,
       height: 720,
       media: [shared, shared, extra].map((originalPath) => ({ kind: 'image', originalPath })),
@@ -59,6 +62,7 @@ it('keeps valid siblings when PowerPoint pages exceed their individual editing l
         { ...slide, sourceIndex: 3, elements: [{ ...shape, frame: { ...shape.frame, x: 1_000_001 } }] },
         { ...slide, sourceIndex: 4, elements: [image(0), image(2)] },
         { ...slide, sourceIndex: 5, elements: [image(0), image(1)] },
+        { ...slide, sourceIndex: 6, elements: [shape, noFrame] },
       ],
     },
     decks: new Map(),
@@ -79,28 +83,28 @@ it('keeps valid siblings when PowerPoint pages exceed their individual editing l
         jobId: 'placeholder-job',
         file: join(os.tmpdir(), 'Placeholder.pptx'),
         outDir,
-        sourcePages: [0, 1, 2, 3, 4, 5],
+        sourcePages: [0, 1, 2, 3, 4, 5, 6],
       },
     });
     const result = await message;
     expect(result).toMatchObject({
       type: 'prepared',
       jobId: 'placeholder-job',
-      total: 6,
-      failed: [0, 2, 3, 4],
-      failedNotes: {
-        2: [previousNote],
-        3: [
-          'PowerPoint source page 4 has a drawing outside the editing limits and stays as its saved picture.',
-        ],
-        4: [
-          'PowerPoint source page 5 uses more than 32 MB of media for editing and stays as its saved picture.',
-        ],
-      },
+      total: 7,
+      failed: [0, 2, 3, 4, 6],
       pages: [
         { sourceIndex: 1, elements: [shape] },
         { sourceIndex: 5, elements: [image(0), image(1)] },
       ],
+    });
+    // These notes and no others: page 0's bad colour has none, so Edit slides gives it the general line (NIT-2).
+    expect(result.type === 'prepared' ? result.failedNotes : undefined).toEqual({
+      2: [previousNote],
+      3: [beyond(4)],
+      4: [
+        'Page 5 of the original has more than 32 MB of pictures, more than Drashti can edit on one page, so it stays as its saved picture.',
+      ],
+      6: [beyond(7)],
     });
   } finally {
     if (parent) Object.defineProperty(process, 'parentPort', parent);
