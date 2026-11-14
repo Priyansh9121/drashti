@@ -405,12 +405,12 @@ describe('a deck’s own Wipe, PowerPoint’s soft band (Session 58, C2)', () =>
       }
   });
 
-  /** A length in a band's style, in px of the slide's `size` ('-100%', '50%', '0', or '12px'). */
-  const lengthOf = (value: string, size: number): number => {
-    if (value === '0' || value === '' || value === 'auto') return 0;
-    const m = /^(-?[\d.]+)(%|px)$/u.exec(value);
-    if (!m) throw new Error(`not a length: ${value}`);
-    return m[2] === '%' ? (Number(m[1]) / 100) * size : Number(m[1]);
+  /** A length in a band's style, in px ('0', '12px' or '-12.5px'). */
+  const lengthOf = (value: string): number => {
+    if (value === '0') return 0;
+    const m = /^(-?[\d.e+-]+)px$/u.exec(value);
+    if (!m) throw new Error(`not a length in px: ${value}`);
+    return Number(m[1]);
   };
   /** A translateX or translateY in px. */
   const moveOf = (transform: string): { axis: 'X' | 'Y'; px: number } => {
@@ -436,55 +436,85 @@ describe('a deck’s own Wipe, PowerPoint’s soft band (Session 58, C2)', () =>
     }
     return last.a;
   };
+  /** Screens and the slide's place on each (the layer's box, as Placed puts the slide in it). */
+  const PLACES = [
+    {
+      what: 'a 16:9 slide filling a 16:9 screen',
+      canvas: { width: 1920, height: 1080 },
+      slide: { x: 0, y: 0, width: 1920, height: 1080 },
+    },
+    {
+      what: 'a 4:3 slide fitted to a 16:9 screen',
+      canvas: { width: 1920, height: 1080 },
+      slide: { x: 240, y: 0, width: 1440, height: 1080 },
+    },
+    {
+      what: 'a 4:3 slide filling a 16:9 screen',
+      canvas: { width: 1920, height: 1080 },
+      slide: { x: 0, y: -180, width: 1920, height: 1440 },
+    },
+    {
+      what: 'a 16:9 slide fitted to a 4:3 box',
+      canvas: { width: 1440, height: 1080 },
+      slide: { x: 0, y: 135, width: 1440, height: 810 },
+    },
+  ] as const;
 
-  it('is drawn as a mask that never changes on a box two slides long, moved by whole device pixels, the slide moved back inside it: what shows is the band, everywhere', () => {
-    const W = 1920;
-    const H = 1080;
-    for (const direction of ['left', 'right', 'up', 'down'] as const) {
-      const across = direction === 'left' || direction === 'right';
-      const size = across ? W : H;
-      const masks = new Set<string>();
-      for (const dpr of [1, 1.25, 2])
-        for (let i = 1; i < 20; i++) {
-          const p = i / 20 + 0.0123;
-          const t = deckNative('wipe', direction);
-          const band = deckTransitionFrame(t, p).in.band;
-          expect(band, `${direction} at ${String(p)}`).toBeDefined();
-          if (!band) continue;
-          const s = wipeBandStyles(band, W, H, dpr);
-          masks.add(s.holder.maskImage);
-          const holderMove = moveOf(s.holder.transform);
-          const slideMove = moveOf(s.slide.transform);
-          expect(holderMove.axis).toBe(across ? 'X' : 'Y');
-          // Whole device pixels, and the slide moved back by exactly as much.
-          expect(Math.abs(holderMove.px * dpr - Math.round(holderMove.px * dpr))).toBeLessThan(1e-9);
-          expect(slideMove.px).toBe(-holderMove.px);
-          // The box: two slides long along the band, the slide's own size across it.
-          const [top = '', right = '', bottom = '', left = ''] = s.holder.inset.split(' ');
-          const start = lengthOf(across ? left : top, size);
-          expect(across ? right : bottom).toBe('auto');
-          expect(lengthOf(across ? s.holder.width : s.holder.height, size)).toBe(2 * size);
-          const [sTop = '', , , sLeft = ''] = s.slide.inset.split(' ');
-          const inside = lengthOf(across ? sLeft : sTop, 2 * size);
-          expect(lengthOf(across ? s.slide.width : s.slide.height, 2 * size)).toBe(size);
-          // The slide stays exactly where it is.
-          expect(Math.abs(start + holderMove.px + inside + slideMove.px)).toBeLessThan(1e-9);
-          // What shows at each point of the slide is the band's.
-          const toward = /^linear-gradient\(to (left|right|top|bottom), /u.exec(s.holder.maskImage)?.[1];
-          for (let k = 0; k <= 48; k++) {
-            const x = (k / 48) * size;
-            const inBox = (x - (start + holderMove.px)) / (2 * size);
-            const along = toward === 'right' || toward === 'bottom' ? inBox : 1 - inBox;
-            const at = direction === 'left' || direction === 'up' ? 1 - x / size : x / size;
-            expect(
-              Math.abs(alphaAt(s.holder.maskImage, along) - deckWipeShows(t, p, at)),
-              `${direction} dpr ${String(dpr)} at ${String(p)}, ${at.toFixed(3)} across`,
-            ).toBeLessThanOrEqual(0.002);
+  it('is drawn as a mask that never changes on a box two slides long, moved by whole device pixels, the slide moved back inside it: what shows is the band, one slide long wherever the slide is placed', () => {
+    for (const { what, canvas, slide } of PLACES)
+      for (const direction of ['left', 'right', 'up', 'down'] as const) {
+        const across = direction === 'left' || direction === 'right';
+        const masks = new Set<string>();
+        for (const dpr of [1, 1.25, 2])
+          for (let i = 1; i < 20; i++) {
+            const p = i / 20 + 0.0123;
+            const t = deckNative('wipe', direction);
+            const band = deckTransitionFrame(t, p).in.band;
+            const where = `${what}, ${direction}, dpr ${String(dpr)} at ${String(p)}`;
+            expect(band, where).toBeDefined();
+            if (!band) continue;
+            const s = wipeBandStyles(band, slide, canvas, dpr);
+            masks.add(s.holder.maskImage);
+            const holderMove = moveOf(s.holder.transform);
+            const slideMove = moveOf(s.slide.transform);
+            expect(holderMove.axis, where).toBe(across ? 'X' : 'Y');
+            // Whole device pixels, and the slide moved back by exactly as much.
+            expect(Math.abs(holderMove.px * dpr - Math.round(holderMove.px * dpr)), where).toBeLessThan(1e-9);
+            expect(slideMove.px, where).toBe(-holderMove.px);
+            // The box: two slides long along the band, the whole screen across it; the slide's box inside it the
+            // screen's own, where the screen's is.
+            const [top = '', right = '', bottom = '', left = ''] = s.holder.inset.split(' ');
+            expect([across ? top : left, across ? bottom : right], where).toEqual(['0', '0']);
+            expect(across ? right : bottom, where).toBe('auto');
+            const start = lengthOf(across ? left : top);
+            const length = lengthOf(across ? s.holder.width : s.holder.height);
+            const slideLength = across ? slide.width : slide.height;
+            expect(Math.abs(length - 2 * slideLength), where).toBeLessThanOrEqual(1 / dpr);
+            const [sTop = '', sRight = '', sBottom = '', sLeft = ''] = s.slide.inset.split(' ');
+            expect([across ? sTop : sLeft, across ? sBottom : sRight], where).toEqual(['0', '0']);
+            const inside = lengthOf(across ? sLeft : sTop);
+            expect(lengthOf(across ? s.slide.width : s.slide.height), where).toBe(
+              across ? canvas.width : canvas.height,
+            );
+            // The slide stays exactly where it is.
+            expect(Math.abs(start + holderMove.px + inside + slideMove.px), where).toBeLessThan(1e-9);
+            // What shows at each point of the slide is the band's, the slide's own length long.
+            const toward = /^linear-gradient\(to (left|right|top|bottom), /u.exec(s.holder.maskImage)?.[1];
+            const slideStart = across ? slide.x : slide.y;
+            for (let k = 0; k <= 48; k++) {
+              const x = slideStart + (k / 48) * slideLength;
+              const inBox = (x - (start + holderMove.px)) / length;
+              const along = toward === 'right' || toward === 'bottom' ? inBox : 1 - inBox;
+              const at = direction === 'left' || direction === 'up' ? 1 - k / 48 : k / 48;
+              expect(
+                Math.abs(alphaAt(s.holder.maskImage, along) - deckWipeShows(t, p, at)),
+                `${where}, ${at.toFixed(3)} across`,
+              ).toBeLessThanOrEqual(0.003);
+            }
           }
-        }
-      // One mask the whole Wipe long, whatever the screen.
-      expect(masks.size, direction).toBe(1);
-    }
+        // One mask the whole Wipe long, whatever the screen.
+        expect(masks.size, `${what}, ${direction}`).toBe(1);
+      }
   });
 });
 
