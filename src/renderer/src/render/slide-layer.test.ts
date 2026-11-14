@@ -160,7 +160,7 @@ const box = (): HTMLDivElement =>
   }) as unknown as HTMLDivElement;
 /** The incoming slide's place in the layer's box: the whole 1920 x 1080 screen, unless said. */
 const FULL = { x: 0, y: 0, width: 1920, height: 1080 };
-const deckPaint = (native: DeckNativeTransition, placeIn = FULL): Paint => ({
+const deckPaint = (native: DeckNativeTransition, placeIn = FULL, placeOut = placeIn): Paint => ({
   kind: native.kind,
   native,
   movement: 'calm',
@@ -170,6 +170,7 @@ const deckPaint = (native: DeckNativeTransition, placeIn = FULL): Paint => ({
   scaleIn: 1,
   scaleOut: 1,
   placeIn,
+  placeOut,
 });
 const layersOf = (coming: HTMLDivElement, going: HTMLDivElement): Layers => ({
   in: coming,
@@ -177,6 +178,24 @@ const layersOf = (coming: HTMLDivElement, going: HTMLDivElement): Layers => ({
   black: null,
   wordsIn: null,
   wordsOut: null,
+});
+
+describe('a deck’s own Push on a 4:3 slide fitted to a 16:9 screen (Session 58, Q58-16)', () => {
+  it('both slides move by the slide’s own width in px', () => {
+    const bars = { x: 240, y: 0, width: 1440, height: 1080 };
+    const native: DeckNativeTransition = {
+      kind: 'slide',
+      deckEffect: 'push',
+      durationMs: 700,
+      direction: 'left',
+    };
+    const coming = box();
+    const going = box();
+    paintLayers(layersOf(coming, going), deckPaint(native, bars), 0.5);
+    // Half-way (eased in and out: half): the slide going half its width out, the one coming half its width in.
+    expect(going.style.transform).toBe('translateX(-720px)');
+    expect(coming.style.transform).toBe('translateX(720px)');
+  });
 });
 
 describe('Back during a deck’s own transition (TX-1, review-p3tr LOW-1)', () => {
