@@ -4,6 +4,7 @@ import {
   deckEffectsByTarget,
   deckMotionFrame,
   deckTargetBounds,
+  deckWipeInnerMask,
   deckWipeMask,
 } from '../../../shared/deck-motion';
 import { nativeStepTiming } from '../../../shared/deck-show';
@@ -22,7 +23,9 @@ import { type WarmScene, warmScenes } from './WarmUp';
  * Uncover), the slide it moves a shade darker, a filter; and a Split, a gradient mask the size of its shape, of 4, 5 or
  * 6 stops as it goes (a GPU draws a gradient of up to 4 stops, of up to 8 and of more each its own way). Its own Wipe
  * is drawn again with a hard-edged clip (Q57-28: PowerPoint's soft band, a mask over the whole slide coming in, dropped
- * frames on Windows while streaming); the warm-up still draws it part-way. Placeholder slides only.
+ * frames on Windows while streaming); the warm-up still draws it part-way. Since Session 58 a Shape draws three more
+ * (C1): a radial gradient (a Circle), and a repeating conic gradient over a straight ramp on the shape and again on an
+ * element within it (a Box, a Plus, a Diamond); the Cover's slide going draws them. Placeholder slides only.
  */
 
 /** The engine's time as the warm-up's slides before go up (it draws everything part-way a few frames later). */
@@ -91,8 +94,8 @@ describe('the warm-up', () => {
     expect(scene('deck-cover/calm/clipped').clip).toBe(scene('wipe/calm/clipped').clip);
   });
 
-  it('the slide going is a deck’s Drashti plays itself, its picture, shape and words each part-way through a Split: masks of 4, 5 and 6 stops', () => {
-    for (const key of ['deck-wipe/calm', 'deck-cover/calm']) {
+  it('the Wipe’s slide going is a deck’s Drashti plays itself, its picture, shape and words each part-way through a Split: masks of 4, 5 and 6 stops', () => {
+    for (const key of ['deck-wipe/calm']) {
       // What is up before: the screen keeps it up, its shapes moving on, as the next comes in.
       const going = slideOf(scene(key), false, BEFORE);
       const motion = nativeDeckMotion(going.slide.deck);
@@ -131,6 +134,37 @@ describe('the warm-up', () => {
           `${key} after ${String(gap)} ms`,
         ).toEqual([4, 5, 6]);
       }
+    }
+  });
+
+  it('the Cover’s slide going is a deck’s Drashti plays itself, its picture, shape and words each part-way through a Shape: a Circle’s radial mask, a Box’s and a Diamond’s wedge over a ramp, twice', () => {
+    const going = slideOf(scene('deck-cover/calm'), false, BEFORE);
+    const motion = nativeDeckMotion(going.slide.deck);
+    const timing = nativeStepTiming(going);
+    expect(motion).toBeDefined();
+    expect(timing).not.toBeNull();
+    if (!motion || !timing) return;
+    const byTarget = deckEffectsByTarget(motion.effects);
+    const bounds = deckTargetBounds(going.slide.elements, byTarget);
+    expect(motion.effects.map((e) => [e.kind, e.shape])).toEqual([
+      ['shape', 'circle'],
+      ['shape', 'box'],
+      ['shape', 'diamond'],
+    ]);
+    const kinds = (mask: string) => mask.match(/[a-z-]+-gradient\(/gu) ?? [];
+    for (const gap of [33, 5_000, 30_000]) {
+      const drawn = [...byTarget].map(([id, effects]) => {
+        const box = bounds.get(id) ?? { x: 0, y: 0, width: 0, height: 0 };
+        const frame = deckMotionFrame(effects, timing.index, BEFORE + gap - timing.clipAt, box, going.slide);
+        expect(frame.opacity, `${id} after ${String(gap)} ms`).toBe(1);
+        return [kinds(deckWipeMask(frame.wipe, box, box)), kinds(deckWipeInnerMask(frame.wipe, box, box))];
+      });
+      const twice = ['repeating-conic-gradient(', 'linear-gradient('];
+      expect(drawn, `after ${String(gap)} ms`).toEqual([
+        [['radial-gradient('], []],
+        [twice, twice],
+        [twice, twice],
+      ]);
     }
   });
 });
