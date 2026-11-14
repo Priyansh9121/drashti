@@ -11,7 +11,14 @@ export interface CheckLine {
 export function modelPin(modelsTs: string): ModelPin;
 export function runtimeLoaded(modules: string[], folder: string, libraries: string[]): CheckLine;
 export function decodeReply(status: number, body: string): CheckLine;
-export function fetchModel(pin: ModelPin, dir: string): Promise<string>;
+export function readModelPin(): ModelPin;
+export function modelDir(): string;
+export function fetchModel(
+  pin: ModelPin,
+  dir: string,
+  fetch?: (url: string) => Promise<Response>,
+  pause?: (ms: number) => Promise<void>,
+): Promise<string>;
 export function decodeCheck(given: {
   exe: string;
   ffmpeg: string;

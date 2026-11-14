@@ -47,7 +47,7 @@ import whisperWindowsRuntime from '../src/shared/whisper-windows-runtime.json' w
 import { fusesAsWanted, runAsNodeRefused } from './fuse-checks.mjs';
 import { iconFiles, macAppIcon, windowsProgramIcon } from './icon-checks.mjs';
 import { makeTempRoot, removeTempRoot } from './temp-root.mjs';
-import { decodeCheck, fetchModel, modelPin } from './whisper-decode-check.mjs';
+import { decodeCheck, fetchModel, modelDir, readModelPin } from './whisper-decode-check.mjs';
 
 const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
 const out = resolve('release', version);
@@ -82,12 +82,9 @@ async function captionsDecode(name, installDir) {
   const exe = join(installDir, 'resources', 'whisper', 'whisper-server.exe');
   const ffmpeg = join(installDir, 'resources', 'ffmpeg', 'ffmpeg.exe');
   try {
-    const modelDir = join(tmpdir(), 'drashti-captions-model');
-    mkdirSync(modelDir, { recursive: true });
-    const model = await fetchModel(
-      modelPin(readFileSync(join('src', 'main', 'speech', 'models.ts'), 'utf8')),
-      modelDir,
-    );
+    const dir = modelDir();
+    mkdirSync(dir, { recursive: true });
+    const model = await fetchModel(readModelPin(), dir);
     const workDir = mkdtempSync(join(tmpdir(), 'drashti-captions-clip-'));
     const checks = await decodeCheck({
       exe,
