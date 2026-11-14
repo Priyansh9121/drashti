@@ -175,7 +175,7 @@ export function ciCheck(runs, jobsOf, sha, annotationsOf = {}) {
   const whatNext =
     notPassed.length > 0 && notPassed.every((c) => c === 'never-started' || c === 'running')
       ? notPassed.includes('never-started')
-        ? ' A job GitHub never started is not a test failure: re-run it (CI re-runs such a job by itself as its run ends: .github/workflows/rerun-unstarted.yml) and wait for that attempt.'
+        ? ' A job GitHub never started is not a test failure, and its re-run is not the one re-run a failure gets (nothing was tested): re-run it (CI re-runs such a job by itself as its run ends: .github/workflows/rerun-unstarted.yml) and wait for that attempt.'
         : ' Wait for it.'
       : '';
   return {
