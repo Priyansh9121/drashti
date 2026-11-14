@@ -55,12 +55,11 @@ describe('native PowerPoint import without Office', () => {
         motion: { approximate: false, stepsMs: [260, 480, 620, 300] },
       },
     });
-    // Its Wipe is the closest Drashti draws (a hard edge; PowerPoint's is a soft band): played here with no Office,
-    // said so.
+    // Its Wipe is PowerPoint's soft band, drawn as PowerPoint draws it (Session 58): exact.
     expect(slides[1]?.slide.deck).toMatchObject({
       transition: { name: 'p:wipe', durationMs: 650 },
       steps: [],
-      motion: { approximate: true, stepsMs: [0] },
+      motion: { approximate: false, stepsMs: [0] },
     });
   });
 

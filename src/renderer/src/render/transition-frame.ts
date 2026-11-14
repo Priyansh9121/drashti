@@ -38,11 +38,29 @@ export interface SlideFrame {
   clip?: string;
   /**
    * A deck's own transition only: a CSS mask-image on the whole slide. None draws one now: PowerPoint's Wipe band was
-   * one, until it dropped frames on Windows while streaming (Q57-28, 13 Nov 2026).
+   * one, until it dropped frames on Windows while streaming (Q57-28, 13 Nov 2026); it is `band` since Session 58.
    */
   mask?: string;
   /** A deck's own transition only: a CSS filter on the whole slide (the slide PowerPoint's Cover or Uncover moves). */
   filter?: string;
+  /**
+   * A deck's own Wipe only (Session 58): PowerPoint's soft band over the slide, drawn on the slide's two band boxes by
+   * wipeBandStyles (render/SlideLayerView.tsx), never as a mask on the slide itself.
+   */
+  band?: WipeBand;
+}
+
+/** The way a deck's own Wipe goes: 'left' comes in from the right, 'up' from the bottom (as its clip did before). */
+type WipeDirection = NonNullable<DeckNativeTransition['direction']>;
+
+/** A deck's own Wipe part-way (Session 58): where PowerPoint's soft band is over the incoming slide. */
+export interface WipeBand {
+  direction: WipeDirection;
+  /**
+   * Where the band starts, in slides from the incoming slide's own side: -1 (none of it shows) to 1 (all of it). The
+   * slide shows whole up to there, through the band one slide long past it (deckWipeShows), not at all beyond.
+   */
+  at: number;
 }
 
 /** A part of a slide while a move runs (its words): its opacity, transform and clip ('' for none). */
@@ -117,16 +135,23 @@ export function transitionFrame(
   }
 }
 
-/** The original PowerPoint effect draws entire slides, even on Calm screens. */
+/**
+ * The original PowerPoint effect draws entire slides, even on Calm screens. Given where each slide is in the layer's box
+ * (`places`, as Placed puts them), a slide that moves moves by its own width or height in px, as PowerPoint moves it
+ * (Session 58, Q58-16: a 4:3 deck between bars on a 16:9 screen moves 1440 px, not the screen's 1920); without them, by
+ * the layer's box in % (the PowerPoint comparison's probe draws the slide alone, where both are the same).
+ */
 export function deckTransitionFrame(
   transition: DeckNativeTransition,
   progress: number,
   movement: Movement = 'calm',
+  places?: { in: SlidePlace; out: SlidePlace },
 ): TransitionFrame {
   const elapsed = clamp(progress) * transition.durationMs;
   const original = powerPointFrame(
     transition,
     elapsed / (transition.deckDurationMs ?? transition.durationMs),
+    places,
   );
   const over = transition.over;
   if (!over || over.durationMs <= 0) return original;
@@ -148,19 +173,32 @@ export function deckTransitionFrame(
   };
 }
 
-function powerPointFrame(transition: DeckNativeTransition, progress: number): TransitionFrame {
+function powerPointFrame(
+  transition: DeckNativeTransition,
+  progress: number,
+  places?: { in: SlidePlace; out: SlidePlace },
+): TransitionFrame {
   const p = clamp(progress);
   const settled: SlideFrame = { opacity: 1, transform: '' };
   const direction = transition.direction ?? 'left';
   const horizontal = direction === 'left' || direction === 'right';
   const toward = direction === 'left' || direction === 'up' ? -1 : 1;
-  const shift = (fraction: number) =>
-    fraction === 0 ? '' : `translate${horizontal ? 'X' : 'Y'}(${String(fraction * toward * 100)}%)`;
+  // A slide's move, `fraction` of its own length along the way: in px of the slide where it is placed, else in %.
+  const along = (place: SlidePlace | undefined) =>
+    place ? (horizontal ? place.width : place.height) : undefined;
+  const shiftBy = (fraction: number, length: number | undefined) =>
+    fraction === 0
+      ? ''
+      : length === undefined
+        ? `translate${horizontal ? 'X' : 'Y'}(${String(fraction * toward * 100)}%)`
+        : `translate${horizontal ? 'X' : 'Y'}(${String(fraction * toward * length)}px)`;
+  const shiftIn = (fraction: number) => shiftBy(fraction, along(places?.in));
+  const shift = (fraction: number) => shiftBy(fraction, along(places?.out));
   switch (transition.deckEffect) {
     case 'push': {
       const e = easeInOut(p);
       return {
-        in: { ...settled, transform: shift(e - 1) },
+        in: { ...settled, transform: shiftIn(e - 1) },
         out: { ...settled, transform: shift(e) },
         black: 0,
         add: false,
@@ -172,22 +210,18 @@ function powerPointFrame(transition: DeckNativeTransition, progress: number): Tr
       const e = SLIDE_CURVES[transition.deckEffect][horizontal ? 'across' : 'down'](p);
       const moving: SlideFrame = { ...settled, ...(p > 0 && p < 1 ? { filter: MOVING_SHADE } : {}) };
       return transition.deckEffect === 'cover'
-        ? { in: { ...moving, transform: shift(e - 1) }, out: settled, black: 0, add: false }
+        ? { in: { ...moving, transform: shiftIn(e - 1) }, out: settled, black: 0, add: false }
         : { in: settled, out: { ...moving, transform: shift(e) }, black: 0, add: false };
     }
-    case 'wipe': {
-      // A hard edge moving evenly from the incoming slide's own side (Q57-28, 13 Nov 2026). PowerPoint's is a soft band
-      // one slide long, but drawn as a mask over the whole slide it dropped frames on Windows while streaming, so a
-      // deck's Wipe only comes close (import/deck/pptx-native-transition.ts marks it approximate).
-      const edge = `${String((1 - p) * 100)}%`;
-      const clip = {
-        left: `inset(0 0 0 ${edge})`,
-        right: `inset(0 ${edge} 0 0)`,
-        up: `inset(${edge} 0 0 0)`,
-        down: `inset(0 0 ${edge} 0)`,
-      }[direction];
-      return { in: { ...settled, clip }, out: settled, black: 0, add: false };
-    }
+    case 'wipe':
+      // PowerPoint's soft band (Session 58), its start moving evenly from a slide outside the incoming slide's own side
+      // to its far side: drawn by wipeBandStyles, below.
+      return {
+        in: p >= 1 ? settled : { ...settled, band: { direction, at: 2 * p - 1 } },
+        out: settled,
+        black: 0,
+        add: false,
+      };
     case 'zoom': {
       const e = easeInOut(p);
       return {
@@ -201,6 +235,189 @@ function powerPointFrame(transition: DeckNativeTransition, progress: number): Tr
     case 'dissolve':
       return transitionFrame(transition.deckEffect, p);
   }
+}
+
+/*
+ * A deck's own Wipe as PowerPoint's own movie draws it (h-p3tr, 13 Nov 2026: measured frame by frame at 320 x 180):
+ * the incoming slide shows through a soft band one slide long, its middle moving at an even speed from half a slide
+ * outside the incoming slide's own side (nothing shows) to half a slide past the far side (all of it shows). Across the
+ * band it fades as a half cosine (the movie's band, averaged, is within 0.3% of one), drawn as WIPE_STEPS + 1 stops
+ * with straight lines between them (within 0.15% of the cosine).
+ *
+ * Drawn so that no frame draws anything again (Session 58, C2). Q57-28: drawn as a mask over the whole slide whose
+ * stops moved every frame, the slide and its mask were painted again each frame, and on Windows while streaming it
+ * dropped 18 of 165 frames. Now the slide sits in a box two slides long, the band's mask on that box and never changed;
+ * the box moves along by a transform and the slide moves back inside it by as much, each a layer of its own, in whole
+ * device pixels. Only the compositor moves them: nothing is painted or rastered again while the band crosses
+ * (measured on this Mac without a graphics chip: about a dissolve's work a frame, the moving mask 1.5-2.3 times it).
+ */
+
+/** The steps of the Wipe band's gradient. */
+const WIPE_STEPS = 20;
+
+/** How much of the incoming slide shows at each step across the Wipe band, from its own side (1) to the far end (0). */
+const WIPE_BAND = Array.from({ length: WIPE_STEPS + 1 }, (_, j) =>
+  Number((0.5 + 0.5 * Math.cos((Math.PI * j) / WIPE_STEPS)).toFixed(4)),
+);
+
+/** From the incoming slide's own side toward the far side, as a CSS gradient's way. */
+const WIPE_TOWARD: Readonly<Record<WipeDirection, string>> = {
+  left: 'to left',
+  right: 'to right',
+  up: 'to top',
+  down: 'to bottom',
+};
+
+/**
+ * The band's mask on its box, the same the whole Wipe long: from the box's end a slide beyond the incoming slide's own
+ * side, whole for its first half (a slide long), then the band over its second.
+ */
+const WIPE_MASKS = Object.fromEntries(
+  (['left', 'right', 'up', 'down'] as const).map((direction) => [
+    direction,
+    `linear-gradient(${WIPE_TOWARD[direction]}, rgba(0, 0, 0, 1) 0%, ${WIPE_BAND.map(
+      (shown, j) => `rgba(0, 0, 0, ${String(shown)}) ${String(50 + (50 * j) / WIPE_STEPS)}%`,
+    ).join(', ')})`,
+  ]),
+) as Readonly<Record<WipeDirection, string>>;
+
+/** How much of the incoming slide `band` shows `at` across (0 at its own side, 1 at the far side), as its mask draws it. */
+function bandShows(band: WipeBand | undefined, at: number): number {
+  if (!band) return 1;
+  const u = (at - band.at) * WIPE_STEPS;
+  if (u <= 0) return 1;
+  if (u >= WIPE_STEPS) return 0;
+  const j = Math.floor(u);
+  const from = WIPE_BAND[j] ?? 0;
+  return from + ((WIPE_BAND[j + 1] ?? 0) - from) * (u - j);
+}
+
+/**
+ * How much of the incoming slide a deck's own transition shows at `progress` (0 to 1), `at` across from the slide's own
+ * side (0) to the far side (1), as every screen draws it: 0 to 1, PowerPoint's band while a Wipe runs, else all of it.
+ * For the PowerPoint comparison's probe (h-pptx3) and the tests.
+ */
+export function deckWipeShows(transition: DeckNativeTransition, progress: number, at: number): number {
+  return bandShows(deckTransitionFrame(transition, progress).in.band, at);
+}
+
+/** The styles of a slide's two band boxes (render/SlideLayerView.tsx) while a deck's own Wipe runs. */
+export interface WipeBandStyles {
+  /** The box two slides long, with the band's mask. */
+  holder: { inset: string; width: string; height: string; maskImage: string; transform: string };
+  /** The slide inside it. */
+  slide: { inset: string; width: string; height: string; transform: string };
+}
+
+/** Where a slide is in its layer's box, in CSS px (as Placed puts it: render/Placed.tsx, shared/scaling.ts). */
+export interface SlidePlace {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The band's two boxes at `band`, for a slide placed at `slide` in a layer `canvas` large, of `dpr` device px a CSS
+ * px. PowerPoint's band is one slide long in the slide's own measure, so it is measured on the slide where it is (a
+ * 4:3 deck between bars on a 16:9 screen, cropped to fill it, or in a picture-in-picture box): the holder two slides
+ * long along the band and the whole layer across it, its mask the band (WIPE_MASKS: the same the whole Wipe long),
+ * moved toward the far side by `band.at` slides; the slide's box inside it the layer's own, moved back by exactly as
+ * much, so the slide stays where it is. All in whole device pixels.
+ */
+export function wipeBandStyles(
+  band: WipeBand,
+  slide: SlidePlace,
+  canvas: { width: number; height: number },
+  dpr: number,
+): WipeBandStyles {
+  const { direction } = band;
+  const across = direction === 'left' || direction === 'right';
+  // Left and up come in from the slide's end (its right, its bottom), right and down from its start.
+  const fromEnd = direction === 'left' || direction === 'up';
+  const scale = dpr > 0 ? dpr : 1;
+  const snap = (v: number) => Math.round(v * scale) / scale;
+  const length = snap(across ? slide.width : slide.height);
+  const slideStart = snap(across ? slide.x : slide.y);
+  // The box reaches a slide past the incoming slide's own side: from the slide's start to a slide past its end, or
+  // from a slide before its start to its end.
+  const start = fromEnd ? slideStart : slideStart - length;
+  const px = snap(band.at * length);
+  const toward = fromEnd ? -px : px;
+  const move = (by: number) => `translate${across ? 'X' : 'Y'}(${String(by)}px)`;
+  const at = (v: number) => (v === 0 ? '0' : `${String(v)}px`);
+  const long = `${String(2 * length)}px`;
+  const screen = `${String(across ? canvas.width : canvas.height)}px`;
+  return {
+    holder: {
+      inset: across ? `0 auto 0 ${at(start)}` : `${at(start)} 0 auto 0`,
+      width: across ? long : '',
+      height: across ? '' : long,
+      maskImage: WIPE_MASKS[direction],
+      transform: move(toward),
+    },
+    slide: {
+      inset: across ? `0 auto 0 ${at(-start)}` : `${at(-start)} 0 auto 0`,
+      width: across ? screen : '',
+      height: across ? '' : screen,
+      transform: move(-toward),
+    },
+  };
+}
+
+/**
+ * The band as a mask on the incoming slide's own box (the layer's), for a page that draws with a graphics chip
+ * (render/chipless.ts): a new mask each frame, its stops moved, which a chip draws again cheaply (measured on CI's Mac;
+ * without a chip it dropped frames while streaming, Q57-28, so such a page draws wipeBandStyles' boxes instead). The
+ * gradient runs across the whole layer from the edge on the incoming side, its stops in px: the band one slide long on
+ * the slide where it is placed, whole before it, nothing past it.
+ */
+export function wipeSlideMask(
+  band: WipeBand,
+  slide: SlidePlace,
+  canvas: { width: number; height: number },
+): string {
+  const { direction } = band;
+  const across = direction === 'left' || direction === 'right';
+  const fromEnd = direction === 'left' || direction === 'up';
+  const length = across ? slide.width : slide.height;
+  const slideStart = across ? slide.x : slide.y;
+  const screen = across ? canvas.width : canvas.height;
+  // How far the slide's own incoming side is from the layer's edge the gradient starts at.
+  const side = fromEnd ? screen - (slideStart + length) : slideStart;
+  const stops = WIPE_BAND.map(
+    (shown, j) =>
+      `rgba(0, 0, 0, ${String(shown)}) ${(side + (band.at + j / WIPE_STEPS) * length).toFixed(2)}px`,
+  );
+  return `linear-gradient(${WIPE_TOWARD[direction]}, ${stops.join(', ')})`;
+}
+
+/**
+ * The clip on the slide layer while a deck's own Push, Cover or Uncover moves a slide (Session 58, Q58-16): PowerPoint
+ * moves its slides inside the slide, so where the screen shows past the slide (a 4:3 deck between bars on a 16:9
+ * screen) both are clipped to it and the bars stay as they are. Round both slides' places (a slide of another size going
+ * is never cut), and only where that leaves part of the layer out; none for a slide that fills or is cropped to the
+ * screen, for the effects that move nothing, or under a transition of Drashti's own (which moves the whole layer).
+ */
+export function deckSlideClip(
+  transition: DeckNativeTransition,
+  placeIn: SlidePlace,
+  placeOut: SlidePlace,
+  canvas: { width: number; height: number },
+): string {
+  const moves =
+    transition.deckEffect === 'push' ||
+    transition.deckEffect === 'cover' ||
+    transition.deckEffect === 'uncover';
+  if (!moves || transition.over) return '';
+  // In whole pixels (review LOW-2): a bar a part of a pixel wide is none.
+  const whole = (v: number) => Math.max(0, Math.round(v));
+  const top = whole(Math.min(placeIn.y, placeOut.y));
+  const left = whole(Math.min(placeIn.x, placeOut.x));
+  const bottom = whole(canvas.height - Math.max(placeIn.y + placeIn.height, placeOut.y + placeOut.height));
+  const right = whole(canvas.width - Math.max(placeIn.x + placeIn.width, placeOut.x + placeOut.width));
+  if (top === 0 && left === 0 && bottom === 0 && right === 0) return '';
+  return `inset(${[top, right, bottom, left].map((v) => `${String(v)}px`).join(' ')})`;
 }
 
 /*
