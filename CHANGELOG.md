@@ -2,14 +2,14 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## 1.0.0-alpha.18 (14 Nov 2026)
+## 1.0.0-alpha.18 (15 Nov 2026)
 
 Update after a sabha, and update Main and nodes together.
 
 - The stream never sends black or half-drawn frames as a slide comes up: it loads what Next will show ahead, as the hall's screens do, and waits for the pictures of a slide you jump to.
 - Without a graphics chip, the stream's picture no longer stays black for up to 8 seconds as it starts, and on a two-core Windows computer an import while streaming no longer holds up slide changes.
 - Clicking a deck slide's row starts its first animation at once on every screen and the stream: the slide the mouse rests on is made ready ahead, by a screen that opens meanwhile too.
-- A PowerPoint deck's Wipe transition and its Shape effect (all 16 of its ways) now play as PowerPoint plays them, soft edges included, and so does Basic Zoom leaving Out To Screen Bottom; a 4:3 deck's Push, Cover and Uncover stay inside the slide on a wide screen; and Back during a deck's transition no longer leaves a slide part-way.
+- A PowerPoint deck's Wipe transition and its Shape effect (all 16 of its ways) now play as PowerPoint plays them, soft edges included (without a graphics chip Shape keeps a hard edge, so its frames hold), and so does Basic Zoom leaving Out To Screen Bottom; a 4:3 deck's Push, Cover and Uncover stay inside the slide on a wide screen; and Back during a deck's transition no longer leaves a slide part-way.
 - On a Mac the opening plays its full two seconds smoothly, once Drashti's window has readied the computer's graphics. The log says how long each hall screen took to get ready.
 - PowerPoint slides look more as they do in PowerPoint: theme colour shades, styled gradients, Medium Style 2 tables, outline widths, table corners, paragraph spacing and indents through a change of size. A picture fill Drashti can't copy is no longer drawn as a flat colour.
 - A PowerPoint text box keeps PowerPoint's own shrink of its words and lines, at the size PowerPoint draws them, until you edit it, and draws an empty last paragraph as PowerPoint does. Edit slides shows a box's line spacing as drawn and warns of close Gujarati or Hindi lines.
@@ -21,7 +21,6 @@ Update after a sabha, and update Main and nodes together.
 - A phone's Save of a slide waits while the hall screens move, and says so when it saves a picture from the slide instead.
 - Opening the Stream panel no longer makes a Mac ask for the computer's password; only saving a key and going live use its keychain.
 - Record sound shows No sound as the stream does, says after 5 seconds when nothing comes from its input and stops after 30, and a quit waits at most 5 seconds for it to be saved.
-- The stream, the decks Drashti plays itself, the start and the Edit slides fixes since alpha.17 (this list is written in full before the release).
 
 ## 1.0.0-alpha.17 (13 Nov 2026)
 
