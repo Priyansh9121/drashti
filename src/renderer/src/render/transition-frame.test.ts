@@ -518,6 +518,67 @@ describe('a deck’s own Wipe, PowerPoint’s soft band (Session 58, C2)', () =>
   });
 });
 
+describe('a deck’s own Wipe where the page draws with a graphics chip: the band as a mask on the slide’s box (Session 58)', () => {
+  /** A linear gradient's alpha `d` px along it, straight between its stops (in px). */
+  const alphaAtPx = (gradient: string, d: number): number => {
+    const stops = [...gradient.matchAll(/rgba\(0, 0, 0, ([\d.]+)\) (-?[\d.]+)px/gu)].map((m) => ({
+      a: Number(m[1]),
+      at: Number(m[2]),
+    }));
+    const first = stops[0];
+    const last = stops[stops.length - 1];
+    if (!first || !last) throw new Error(`no stops: ${gradient}`);
+    if (d <= first.at) return first.a;
+    if (d >= last.at) return last.a;
+    for (let i = 1; i < stops.length; i++) {
+      const a = stops[i - 1];
+      const b = stops[i];
+      if (a && b && d <= b.at) return b.at === a.at ? b.a : a.a + ((b.a - a.a) * (d - a.at)) / (b.at - a.at);
+    }
+    return last.a;
+  };
+  const PLACES = [
+    { canvas: { width: 1920, height: 1080 }, slide: { x: 0, y: 0, width: 1920, height: 1080 } },
+    { canvas: { width: 1920, height: 1080 }, slide: { x: 240, y: 0, width: 1440, height: 1080 } },
+    { canvas: { width: 1920, height: 1080 }, slide: { x: 0, y: -180, width: 1920, height: 1440 } },
+    { canvas: { width: 1440, height: 1080 }, slide: { x: 0, y: 135, width: 1440, height: 810 } },
+  ] as const;
+
+  it('what shows at each point of the slide is the band, one slide long wherever the slide is placed, the gradient running across the whole layer from the incoming side', () => {
+    for (const { canvas, slide } of PLACES)
+      for (const direction of ['left', 'right', 'up', 'down'] as const) {
+        const across = direction === 'left' || direction === 'right';
+        const fromEnd = direction === 'left' || direction === 'up';
+        const length = across ? slide.width : slide.height;
+        const start = across ? slide.x : slide.y;
+        const screen = across ? canvas.width : canvas.height;
+        const t = deckNative('wipe', direction);
+        for (let i = 1; i < 20; i++) {
+          const p = i / 20 + 0.0123;
+          const band = deckTransitionFrame(t, p).in.band;
+          if (!band) throw new Error('no band');
+          const mask = wipeSlideMask(band, slide, canvas);
+          expect(mask, direction).toMatch(
+            new RegExp(
+              `^linear-gradient\\(to ${{ left: 'left', right: 'right', up: 'top', down: 'bottom' }[direction]}, `,
+              'u',
+            ),
+          );
+          for (let k = 0; k <= 48; k++) {
+            const x = start + (k / 48) * length;
+            // Along the gradient: from the layer's edge on the incoming side.
+            const d = fromEnd ? screen - x : x;
+            const at = fromEnd ? 1 - k / 48 : k / 48;
+            expect(
+              Math.abs(alphaAtPx(mask, d) - deckWipeShows(t, p, at)),
+              `${direction} on ${JSON.stringify(slide)} at ${String(p)}, ${at.toFixed(3)} across`,
+            ).toBeLessThanOrEqual(0.002);
+          }
+        }
+      }
+  });
+});
+
 describe('a deck’s own Push, Cover and Uncover on the slide where it is placed (Session 58, Q58-16)', () => {
   const SCREEN = { width: 1920, height: 1080 };
   const FULL = { x: 0, y: 0, width: 1920, height: 1080 };
