@@ -1,6 +1,6 @@
 import { type BigIntStats, lstatSync, realpathSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
-import { isAbsolute, join, resolve } from 'node:path';
+import { readdir, rm } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { type EngineState, nothingUp } from '../../shared/engine/state';
 import type { MediaUsage, UsedIn } from '../../shared/media-removal';
@@ -37,6 +37,19 @@ interface TrimRow {
   sha256: string;
   /** Its name in Media, for the operator's notice. */
   name: string;
+}
+
+/**
+ * An earlier Trim cut whose row is gone (TM-7's mark, or the purge's): its bytes' sha256 and length, its name for the
+ * notice, and its original's path and sha256, for the folder Trim wrote it into.
+ */
+interface GoneTrim {
+  id: string;
+  sha256: string;
+  bytes: number | null;
+  name: string;
+  originalPath: string;
+  originalSha256: string | null;
 }
 
 /** A cut's row as the statements bind it. */
@@ -386,6 +399,176 @@ export class MediaRemoval {
       // same bytes brought its row back to life meanwhile, when they are that file's.
       if (stillMarked.get({ id: marked.id, at: marked.at, sha256: marked.sha256 }) !== undefined)
         await removeDerived(mediaDir, row.sha256);
+    }
+    return gone;
+  }
+
+  /**
+   * Earlier Trim cuts whose move to the Trash a quit cut short (FT-8): each row was marked gone (TM-7's mark, or the
+   * purge's) but its file stayed in Media, named by nothing. In the same quiet moment as trashUnusedTrims, such a file
+   * goes to the Trash with its still frame, sharpened and blurred copies (TM-5). Only a regular file (no link, no hidden
+   * part) in the folder Trim wrote the cut into (its original's: trim-copy.ts), named by no row, held by none of Trim's
+   * records (`held`: a cut being made or waiting, its copy, its original), with the very bytes of one cut whose row is
+   * gone, and the only file with them. Anything less certain stays where it is, and the log says why. The names of the
+   * cuts whose files moved, for the operator's notice (TM-4).
+   *
+   * No row can come to name such a file while it moves: an import keeps its copy at a path named by its own bytes
+   * (media-store.ts), and Trim publishes a cut only at a free name (trim.ts's freeFileName). An import of the same bytes
+   * meanwhile brings the cut's row back to life at that other path: the file left still goes, its still frame and
+   * copies stay (the row's again).
+   */
+  async trashLeftTrims(
+    mediaDir: string,
+    trash: (file: string) => Promise<void>,
+    quiet: () => boolean,
+    signal: AbortSignal,
+    options: { held: () => ReadonlySet<string>; log?: (message: string) => void },
+  ): Promise<string[]> {
+    const paused = () => signal.aborted || !quiet();
+    if (paused()) return [];
+    const cuts = this.db
+      .prepare(
+        `SELECT m.id, m.sha256, m.bytes, m.name, o.path AS originalPath, o.sha256 AS originalSha256
+           FROM trimmed_videos t JOIN media m ON m.id = t.media_id JOIN media o ON o.id = t.original_id
+          WHERE m.source_kind = 'drashti' AND m.path = '' AND m.missing = 1 AND m.deleted_at IS NOT NULL
+            AND m.sha256 IS NOT NULL
+          ORDER BY m.id`,
+      )
+      .all() as GoneTrim[];
+    if (cuts.length === 0) return [];
+    const say = (message: string) => options.log?.(`Media: ${message}`);
+    const root = realpathSync.native(mediaDir);
+    const slash = (path: string) => path.replaceAll('\\', '/');
+    const inMedia = (file: string) => slash(relative(root, file));
+    // Why, by the cut's id where there is one: never a file's name or path (the log's rule).
+    const left = (why: string) => {
+      say(`left a file in a Trim cut's folder where it is: ${why}`);
+    };
+    // The folder Trim wrote a cut into: its original's, or (the original gone for good) where Media keeps its bytes.
+    const folderOf = (cut: GoneTrim): string | null => {
+      const folder =
+        cut.originalPath !== ''
+          ? isAbsolute(cut.originalPath)
+            ? null
+            : dirname(resolve(root, cut.originalPath))
+          : cut.originalSha256
+            ? join(root, cut.originalSha256.slice(0, 2))
+            : null;
+      return folder !== null && (folder === root || isInside(root, folder)) ? folder : null;
+    };
+    const bySha = new Map(cuts.map((cut) => [cut.sha256, cut]));
+    const folders = new Map<string, GoneTrim[]>();
+    for (const cut of cuts) {
+      const folder = folderOf(cut);
+      if (folder === null)
+        say(
+          `earlier Trim cut ${cut.id} may have left its file in Media: the folder it was written into is not known, so none was looked for`,
+        );
+      else folders.set(folder, [...(folders.get(folder) ?? []), cut]);
+    }
+
+    // Every path a row names (its file, or where it came from), as compared: slashes one way, any case.
+    const named = new Set(
+      (
+        this.db
+          .prepare(
+            `SELECT path AS named FROM media WHERE path <> ''
+             UNION SELECT source_path FROM media WHERE source_path IS NOT NULL AND source_path <> ''`,
+          )
+          .all() as { named: string }[]
+      ).map(({ named: path }) => slash(path).toLowerCase()),
+    );
+    const namedNow = this.db.prepare(
+      `SELECT 1 FROM media
+        WHERE replace(path, char(92), '/') COLLATE NOCASE IN (@path, @absolute, @real)
+           OR replace(source_path, char(92), '/') COLLATE NOCASE IN (@path, @absolute, @real)
+        LIMIT 1`,
+    );
+    const keys = (file: string) => {
+      const path = inMedia(file);
+      return { path, absolute: slash(resolve(mediaDir, path)), real: slash(file) };
+    };
+    const heldNow = () => new Set([...options.held()].map((path) => slash(path).toLowerCase()));
+    const known = (file: string, held: ReadonlySet<string>) =>
+      Object.values(keys(file)).some((key) => named.has(key.toLowerCase()) || held.has(key.toLowerCase()));
+
+    const found: { cut: GoneTrim; file: string; before: BigIntStats }[] = [];
+    for (const [folder, inFolder] of folders) {
+      // No such folder any more: nothing was left in it.
+      const entries = await readdir(folder, { withFileTypes: true }).catch(() => null);
+      if (!entries) continue;
+      const held = heldNow();
+      for (const entry of entries) {
+        const file = join(folder, entry.name);
+        // A link, a folder or a hidden part (a cut being made, an import's copy) is never one.
+        if (!entry.isFile() || entry.name.startsWith('.') || known(file, held)) continue;
+        await setImmediate();
+        if (paused()) return [];
+        try {
+          const before = lstatSync(file, { bigint: true });
+          // Only a file as long as a cut of this folder whose row is gone (or one whose length was never kept).
+          if (
+            !before.isFile() ||
+            !inFolder.some((cut) => cut.bytes === null || BigInt(cut.bytes) === before.size)
+          )
+            continue;
+          if (realpathSync.native(file) !== file) {
+            left('it is reached through a link');
+            continue;
+          }
+          const { sha256 } = await hashOffMain(file, signal);
+          if (paused()) return [];
+          const cut = bySha.get(sha256);
+          if (!cut) left('no earlier Trim cut whose row is gone has its bytes');
+          else if (folderOf(cut) !== folder)
+            left(`it has the bytes of cut ${cut.id}, written into another folder`);
+          else if (!sameFile(file, before)) left(`cut ${cut.id}'s file changed while it was read`);
+          else found.push({ cut, file, before });
+        } catch {
+          if (paused()) return [];
+          left('it could not be read');
+        }
+      }
+    }
+    await setImmediate();
+    if (paused() || found.length === 0) return [];
+
+    const files = new Map<string, number>();
+    for (const { cut } of found) files.set(cut.id, (files.get(cut.id) ?? 0) + 1);
+    const stillGone = this.db.prepare(
+      "SELECT 1 FROM media WHERE id = @id AND sha256 = @sha256 AND path = '' AND deleted_at IS NOT NULL",
+    );
+    const inUse = () => new Set([...this.deps.onScreens(), ...(this.deps.putBack?.() ?? [])]);
+    const gone: string[] = [];
+    for (const { cut, file, before } of found) {
+      if ((files.get(cut.id) ?? 0) > 1) {
+        left(`the bytes of cut ${cut.id} are in more than one file, so which is the cut cannot be known`);
+        continue;
+      }
+      if (paused()) break;
+      const key = { id: cut.id, sha256: cut.sha256 };
+      // The last check, in the same turn as the move: its row still gone and not on the screens or in what a crash
+      // would put back, the file named by no row and held by no Trim record, and the same file as was read.
+      if (
+        stillGone.get(key) === undefined ||
+        inUse().has(cut.id) ||
+        namedNow.get(keys(file)) !== undefined ||
+        heldNow().has(inMedia(file).toLowerCase()) ||
+        !sameFile(file, before)
+      ) {
+        left(`cut ${cut.id} or its file changed since it was read`);
+        continue;
+      }
+      try {
+        await trash(file);
+      } catch {
+        // A file the system could not move stays, for a later start.
+        continue;
+      }
+      gone.push(cut.name);
+      // Its still frame, sharpened and blurred copies go with it (TM-5): unless an import of the same bytes brought
+      // its row back to life meanwhile, when they are that file's.
+      if (stillGone.get(key) !== undefined) await removeDerived(mediaDir, cut.sha256);
     }
     return gone;
   }
