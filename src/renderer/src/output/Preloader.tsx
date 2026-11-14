@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { deckStep } from '../../../shared/deck-show';
 import type { PreloadMedia } from '../../../shared/engine/preload';
 import { mediaToPreload } from '../../../shared/engine/preload';
 import type { UpNext } from '../../../shared/engine/state';
 import { mediaUrl } from '../../../shared/media';
 import type { PictureLook } from '../../../shared/picture-look';
+import { deckClip, pointedBeside, usePointedClip } from '../render/clips-ahead';
 import { DeckClipAhead } from '../render/DeckStep';
 import { useMediaAttempt } from '../render/media-attempts';
 import { useSharpCopy } from '../render/picture-looks';
@@ -81,20 +81,10 @@ function PreloadOne({ media, look }: { media: PreloadMedia; look: PictureLook | 
 }
 
 /**
- * The clip of a deck's step Next plays (Session 57, item 6): a slide's first (`first`), loaded and decoded here in an
- * element its step takes as the slide comes in (render/DeckStep.tsx's DeckClipAhead), so it plays from the press; or
- * the slide up's next click's, which its step keeps loaded itself, so it is not loaded twice. Null for anything else
- * (a clip with no motion is never played).
+ * Loads what Next will show (PLAN.md 4.3), so its images and videos are never a frame late; and the first clip of the
+ * deck slide the operator points at (C3, Session 58), waiting decoded at the frame a click on its row starts it from,
+ * so the click plays it at once: at most two such clips, Next's and that one.
  */
-function deckClip(next: UpNext | null): { mediaId: string; first: boolean } | null {
-  if (next?.kind !== 'slide') return null;
-  const index = next.step ?? 0;
-  const step = deckStep(next.slide.deck, index);
-  if (!step || step.clipMs <= 0) return null;
-  return { mediaId: step.clipId, first: index === 0 };
-}
-
-/** Loads what Next will show (PLAN.md 4.3), so its images and videos are never a frame late. */
 export function Preloader({
   next,
   pictures = {},
@@ -105,6 +95,8 @@ export function Preloader({
 }) {
   const wanted: PreloadMedia[] = useMemo(() => mediaToPreload(next), [next]);
   const clip = useMemo(() => deckClip(next), [next]);
+  // The slide the operator points at (C3, Session 58), but Next's own already, from the same frame: loaded once.
+  const pointed = pointedBeside(usePointedClip(), clip);
   return (
     <div
       data-testid="preload"
@@ -125,6 +117,14 @@ export function Preloader({
           return clip.first ? <DeckClipAhead key={`deck:${m.mediaId}`} mediaId={m.mediaId} /> : null;
         return <PreloadOne key={`${m.media}:${m.mediaId}`} media={m} look={pictures[m.mediaId] ?? null} />;
       })}
+      {pointed && (
+        <DeckClipAhead
+          key={`pointed:${pointed.mediaId}@${String(pointed.fromMs)}`}
+          mediaId={pointed.mediaId}
+          fromMs={pointed.fromMs}
+          role="pointed"
+        />
+      )}
     </div>
   );
 }
