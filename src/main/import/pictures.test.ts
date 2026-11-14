@@ -178,7 +178,7 @@ describe('the slides a document makes', () => {
     const issues = picturesIssues({
       source: 'key',
       converter: 'keynote',
-      firstTried: { converter: 'powerpoint', reason: 'PowerPoint stopped answering' },
+      firstTried: { converter: 'powerpoint', reason: 'it stopped answering' },
       pages: 1,
       total: 1,
       failed: [],
@@ -189,7 +189,7 @@ describe('the slides a document makes', () => {
     expect(issues.find((i) => i.code === 'pictures-converter')).toMatchObject({
       severity: 'warning',
       message:
-        'PowerPoint could not save it as PDF (PowerPoint stopped answering), so Keynote did. Check the pictures look right.',
+        'PowerPoint could not save it as PDF (it stopped answering), so Keynote did. Check the pictures look right.',
     });
     const text = issues.map((i) => i.message).join('\n');
     expect(text).toContain('The page became a slide holding its picture');
