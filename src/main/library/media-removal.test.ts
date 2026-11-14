@@ -424,6 +424,35 @@ it('finishes moving a cut a quit left in Media: its row gone, its file named by 
   }
 });
 
+// LOW-1 (review of 50566755): dragging a gone cut back from the Trash imports its bytes, and the import's copy waits at
+// a path named by them (media-store.ts) until its row comes back there; if the cut's bytes begin as its original's do,
+// that copy is in the folder FT-8 reads. A file named by its own bytes is an import's copy (Trim never names one so).
+it('leaves a file named by its own bytes, as an import names its copy, even with a gone cut’s bytes (LOW-1)', async () => {
+  const x = earlierCuts();
+  try {
+    const { sha256 } = x.db.prepare("SELECT sha256 FROM media WHERE id = 'held'").get() as { sha256: string };
+    mkdirSync(join(x.mediaDir, 'ab'));
+    renameSync(join(x.mediaDir, 'original.mp4'), join(x.mediaDir, 'ab', 'original.mp4'));
+    x.db.prepare("UPDATE media SET path = 'ab/original.mp4' WHERE id = 'original'").run();
+    // The cut went to the Trash; the operator drags it back, and the import's copy is not yet named by its row.
+    leftBehind(x);
+    renameSync(join(x.mediaDir, 'held.mp4'), join(x.mediaDir, 'ab', `${sha256}.mp4`));
+    const log = vi.fn<(message: string) => void>();
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    expect(
+      await removal.trashLeftTrims(x.mediaDir, x.trash, () => true, new AbortController().signal, {
+        ...heldByNone,
+        log,
+      }),
+    ).toEqual([]);
+    expect(x.trash).not.toHaveBeenCalled();
+    expect(existsSync(join(x.mediaDir, 'ab', `${sha256}.mp4`))).toBe(true);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("an import's copy"));
+  } finally {
+    x.close();
+  }
+});
+
 it('looks only in the folder Trim wrote the cut into, and never at a hidden part or a link', async () => {
   const x = earlierCuts();
   const outside = mkdtempSync(join(tmpdir(), 'drashti-left-trims-outside-'));
