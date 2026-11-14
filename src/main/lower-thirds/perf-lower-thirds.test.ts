@@ -18,7 +18,10 @@ import { keptOf, keptOfPhase, playedRows, scheduledMs } from './perf-lower-third
 const APP = join(__dirname, '..', '..', '..');
 
 /** What both lower-thirds scenarios play (Session 58: alpha.17's rows, then every row added since). */
-const everyPlayedRow = async () => [...(await playedRows('lower-thirds')), ...(await playedRows('lower-thirds-more'))];
+const everyPlayedRow = async () => [
+  ...(await playedRows('lower-thirds')),
+  ...(await playedRows('lower-thirds-more')),
+];
 
 describe('the lower-thirds scenario', () => {
   it('plays each row of OFFERED once, as a lower third the library takes, with placeholder words', async () => {
@@ -81,7 +84,10 @@ describe('the lower-thirds scenario', () => {
     for (const row of measured) {
       const template = LOWER_THIRD_TEMPLATES.find((t) => row.row === 'template ' + t.id);
       expect(template, row.row).toBeDefined();
-      expect(row.lowerThird, row.row).toEqual({ ...template?.input, id: 'perf-lt-template-' + (template?.id ?? '') });
+      expect(row.lowerThird, row.row).toEqual({
+        ...template?.input,
+        id: 'perf-lt-template-' + (template?.id ?? ''),
+      });
       expect(row.measure).toBe('phases');
     }
   });
@@ -130,7 +136,8 @@ describe('the two lower-thirds scenarios: alpha.17’s rows, and every row added
     'hindi',
   ];
   const designIds = new Set(LOWER_THIRD_DESIGNS.map((d) => d.id));
-  const after = (row: string, kind: string) => (row.startsWith(kind + ' ') ? row.slice(kind.length + 1) : null);
+  const after = (row: string, kind: string) =>
+    row.startsWith(kind + ' ') ? row.slice(kind.length + 1) : null;
 
   it('lower-thirds-more is a scenario of the check too, and the Performance workflow offers it', () => {
     expect(isPerfScenario('lower-thirds-more')).toBe(true);
@@ -183,7 +190,9 @@ describe('the two lower-thirds scenarios: alpha.17’s rows, and every row added
         expect(r.measure, r.row).toBe('phases');
       }
     }
-    const since = LOWER_THIRD_TEMPLATES.filter((t) => !designIds.has(t.id) && !STUDIO_TEMPLATES.includes(t.id));
+    const since = LOWER_THIRD_TEMPLATES.filter(
+      (t) => !designIds.has(t.id) && !STUDIO_TEMPLATES.includes(t.id),
+    );
     expect(more.filter((r) => after(r.row, 'template') !== null).map((r) => r.row)).toEqual(
       since.map((t) => 'template ' + t.id),
     );
