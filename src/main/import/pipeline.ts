@@ -148,6 +148,11 @@ export interface PipelineContext {
   progressEveryMs?: number;
   /** Commit a group of writes once it has been open this long (default 250 ms). */
   batchBudgetMs?: number;
+  /**
+   * Told as the import takes the library's write lock and lets it go (Session 58, h-stall2: the worker on Windows runs
+   * at normal priority meanwhile, lock-priority.ts); with it, each file is committed as it is written.
+   */
+  holdingLock?: (on: boolean) => void;
   /** Where bundles are unpacked (default: the system's temporary folder). */
   tempDir?: string;
   /** Draws a PDF's pages as pictures (the main process does, in a window; Session 15). */
@@ -411,7 +416,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     ctx.freeBytes ? { freeBytes: ctx.freeBytes } : {},
   );
   const playlists = new PlaylistRepo(ctx.db);
-  const batch = new BatchWriter(ctx.db, { budgetMs: ctx.batchBudgetMs ?? 250 });
+  // Said while it holds the write lock (the worker on Windows, Session 58): each file is then committed as it is
+  // written, so the lock is never kept from one file into the next, the next file read meanwhile at the lowest priority.
+  const batch = new BatchWriter(ctx.db, {
+    budgetMs: ctx.holdingLock ? 0 : (ctx.batchBudgetMs ?? 250),
+    ...(ctx.holdingLock ? { holding: ctx.holdingLock } : {}),
+  });
   /** Run a commit, counting it when it committed a group. */
   const groupOpen = () => batch.isOpen;
   const countCommit = (run: () => void) => {
