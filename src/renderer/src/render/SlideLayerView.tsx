@@ -272,11 +272,11 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
   const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1;
   const bandOf = (band: WipeBand | undefined) =>
     band && chipless ? wipeBandStyles(band, how.placeIn, how, dpr) : null;
-  // Each box's record says which way its band went only while it is drawn: '' at rest (a page that draws the mask).
+  // Each box's record keys what it draws only while it is drawn: '' at rest (a page that draws the mask).
   const bandIn = bandOf(frame?.in.band);
   const bandOut = bandOf(frame?.out.band);
-  paintBand(els.bandIn, bandIn, bandIn ? (frame?.in.band?.direction ?? '') : '');
-  paintBand(els.bandOut, bandOut, bandOut ? (frame?.out.band?.direction ?? '') : '');
+  paintBand(els.bandIn, bandIn);
+  paintBand(els.bandOut, bandOut);
   if (els.out) els.out.style.zIndex = native?.deckEffect === 'uncover' ? '1' : '';
   if (els.black) els.black.style.opacity = frame ? String(frame.black) : '0';
   const move = kind === null ? null : how.move;
@@ -315,13 +315,17 @@ function writeBand(
 }
 
 /**
- * A slide's band boxes as `s` has them while a deck's own Wipe brings the slide in, its band going `way` (each a layer
- * of its own, only their transforms changing as it runs), or at rest (null, '').
+ * A slide's band boxes as `s` has them while a deck's own Wipe brings the slide in (each a layer of its own, only their
+ * transforms changing as it runs), or at rest (null). Each box's record keys its sizes and mask, so a slide placed anew
+ * part-way (the screen's canvas or pixels changed: review LOW-3) has them written again; '' at rest.
  */
-function paintBand(boxes: BandBoxes | undefined, s: WipeBandStyles | null, way: string): void {
+function paintBand(boxes: BandBoxes | undefined, s: WipeBandStyles | null): void {
   const holder = boxes?.holder;
   const slide = boxes?.slide;
   if (!holder || !slide) return;
+  const way = s
+    ? `${s.holder.inset}|${s.holder.width}|${s.holder.height}|${s.holder.maskImage}|${s.slide.inset}|${s.slide.width}|${s.slide.height}`
+    : '';
   writeBand(
     holder,
     way,
@@ -366,7 +370,7 @@ export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'bandOut'>): void 
   if (before.style.maskImage !== '') before.style.maskImage = '';
   if (before.style.filter !== '') before.style.filter = '';
   before.style.zIndex = '';
-  paintBand(els.bandOut, null, '');
+  paintBand(els.bandOut, null);
 }
 
 /**
