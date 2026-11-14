@@ -62,6 +62,21 @@ describe('scanPaths', () => {
     expect(result.missing).toEqual([]);
   });
 
+  it('passes over the system files by their whole name in any case, never a file merely named like one (Session 57, IM-8)', async () => {
+    const root = tree({
+      'DESKTOP.INI': 'x',
+      'a/THUMBS.DB': 'x',
+      'Icon.png': 'png',
+      icon: 'x',
+    });
+    const result = await scanPaths([root]);
+    expect(result.files.map((f) => [relative(root, f.path), f.format, f.size])).toEqual([
+      ['Icon.png', 'media', 3],
+      ['icon', 'unknown', 1],
+    ]);
+    expect([...result.mediaByName.keys()]).toEqual(['icon.png']);
+  });
+
   it('takes files given directly, once each, and reports paths that do not exist', async () => {
     const root = tree({ 'Song.txt': 'x' });
     const file = join(root, 'Song.txt');
