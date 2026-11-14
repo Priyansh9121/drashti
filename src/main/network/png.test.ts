@@ -91,7 +91,9 @@ describe('a phone’s picture made a PNG', () => {
     const stride = 1920 * 3 + 1;
     for (let y = 0; y < 48; y++) {
       const row = png.rows.subarray(y * stride, (y + 1) * stride);
-      expect([...row.subarray(0, 4), ...row.subarray(stride - 3)]).toEqual([0, 200 - y, 100, y, 200 - y, 100, y]);
+      // Its filter byte and first pixel, and its last pixel.
+      const ends = [...row.subarray(0, 4), ...row.subarray(stride - 3)];
+      expect(ends).toEqual([0, 200 - y, 100, y, 200 - y, 100, y]);
     }
   });
 
