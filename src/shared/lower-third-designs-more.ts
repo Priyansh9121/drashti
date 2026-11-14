@@ -281,14 +281,16 @@ export const MORE_LOWER_THIRD_DESIGNS: readonly MoreDesign[] = [
     },
   },
   {
-    id: 'deep-green-ribbon',
-    name: 'Deep green ribbon',
+    // In Deep green ribbon's place (a ribbon revealed at a steady pace: it dipped twice while streaming): a box, its
+    // lines rising slowly.
+    id: 'deep-green-nameplate',
+    name: 'Deep green nameplate',
     feel: 'calm',
-    animation: 'reveal-up-steady',
+    animation: 'line-rise-band-fade-slow',
     direction: 'up',
     kind: 'reveal',
     look: {
-      style: 'ribbon',
+      style: 'box',
       band: '#0f3d2a',
       accent: '#cfe8b8',
       text: '#f4fbef',
