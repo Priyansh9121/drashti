@@ -3967,7 +3967,7 @@ function start(): void {
   // in the background (no longer library settings written on Main, which waited there for an import's write lock).
   // New Trim records left by alpha.17 carry on after an upgrade or downgrade. A restored library begins with its
   // own settings.
-  const clearTrimSettings = opened.db.transaction(() => {
+  const clearTrimSettings = libraryDb.transaction(() => {
     settings.set('playlistTrimsWaiting', []);
     settings.set('playlistTrimCopies', []);
   });
