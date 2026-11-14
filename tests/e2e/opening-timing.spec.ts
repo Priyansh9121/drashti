@@ -1,13 +1,45 @@
 import { expect, test } from '@playwright/test';
-import { OPENING_DEFAULT_PHOTO_URL } from '../../src/shared/opening';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { OPENING_DEFAULT_PHOTO_URL, OPENING_MS, OPENING_START_HOLD_MS } from '../../src/shared/opening';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
 
 type TimingGlobals = typeof globalThis & {
   openingDecode?: { previewVisible: boolean | null; readyAt: number | null };
   /** Each frame the operator window drew as Drashti started (the order test below). */
   openingOrder?: OrderFrame[];
-  openingCap?: { held: boolean; releasedAt: number | null; lampAt: number | null; decodeStalled: boolean };
+  openingCap?: {
+    held: boolean;
+    releasedAt: number | null;
+    lampAt: number | null;
+    photoLoadedAtRelease: boolean | null;
+  };
+  /** Each frame as Drashti started: the window's own GPU warm-up drawing, and the opening there and moving. */
+  openingWarm?: WarmFrame[];
+  /** When the opening came, when it let go, and whether the window's warm-up still drew then (ms, the page's clock). */
+  openingLimit?: {
+    cameAt: number | null;
+    releasedAt: number | null;
+    warmingAtRelease: boolean | null;
+    moved: boolean;
+  };
 };
+
+/** A frame of the operator window as Drashti starts: its own GPU warm-up drawing, and the opening there and moving. */
+interface WarmFrame {
+  warming: boolean;
+  cover: boolean;
+  moving: boolean;
+}
+
+/**
+ * How late the main process answers for the photo in the cap's test (ms): past the window's limit, the photo's own
+ * 600 ms after it and the two seconds.
+ */
+const PHOTO_LATE_MS = 30_000;
+
+/** The operator window's own GPU warm-up (its LIVE picture's, render/WarmUp.tsx), while it draws. */
+const LIVE_WARM_UP = '[data-testid="live-preview"] [data-warm-up]';
 
 /** A frame of the operator window as Drashti starts: the window underneath opened, and the opening there and moving. */
 interface OrderFrame {
@@ -137,15 +169,22 @@ test('startup releases the cover at its cap and lights the lamp if the photo sti
   } finally {
     await first.app.close();
   }
-  const { app } = await relaunchApp(first.userData, { DRASHTI_TEST_OPENING: '1' });
+  // The photo's file answered PHOTO_LATE_MS late by the main process (a test switch, from the start: Session 58), so
+  // it cannot have decoded when the cover lets go at its limit, whatever the page did first. Before, a decode() stalled
+  // from the page itself came after the page's own call on a quick start (CI's Windows once LIVE skipped its warm-up
+  // there), and the photo decoded.
+  const { app } = await relaunchApp(first.userData, {
+    DRASHTI_TEST_OPENING: '1',
+    DRASHTI_TEST_MEDIA_DELAY_MS: String(PHOTO_LATE_MS),
+  });
   try {
     const win = await operatorPage(app);
-    await win.evaluate((photo) => {
+    await win.evaluate(() => {
       const probe: NonNullable<TimingGlobals['openingCap']> = {
         held: false,
         releasedAt: null,
         lampAt: null,
-        decodeStalled: false,
+        photoLoadedAtRelease: null,
       };
       (globalThis as TimingGlobals).openingCap = probe;
       const root = document.documentElement;
@@ -156,20 +195,15 @@ test('startup releases the cover at its cap and lights the lamp if the photo sti
       });
       keepClosed();
 
-      const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode');
-      if (typeof descriptor?.value !== 'function') throw new Error('The image decoder is unavailable.');
-      const decode = descriptor.value as HTMLImageElement['decode'];
-      HTMLImageElement.prototype.decode = function (this: HTMLImageElement) {
-        if (this.src !== photo) return decode.call(this);
-        probe.decodeStalled = true;
-        return new Promise<void>(() => undefined);
-      };
-
       const sample = () => {
         const player = root.querySelector('[data-testid="opening"]');
         const held = player?.getAttribute('data-opening-held');
         if (held === 'true') probe.held = true;
-        if (held === 'false') probe.releasedAt ??= performance.now();
+        if (held === 'false' && probe.releasedAt === null) {
+          probe.releasedAt = performance.now();
+          const photo = player?.querySelector<HTMLImageElement>('img[data-opening-photo]');
+          probe.photoLoadedAtRelease = photo ? photo.complete && photo.naturalWidth > 0 : false;
+        }
         if (player?.querySelector('[data-opening-lamp]')) {
           probe.lampAt ??= performance.now();
           observer.disconnect();
@@ -183,7 +217,7 @@ test('startup releases the cover at its cap and lights the lamp if the photo sti
         attributeFilter: ['data-opening-held'],
       });
       sample();
-    }, OPENING_DEFAULT_PHOTO_URL);
+    });
 
     const cover = win.getByTestId('opening-start');
     const player = cover.getByTestId('opening');
@@ -194,7 +228,7 @@ test('startup releases the cover at its cap and lights the lamp if the photo sti
       opened: document.documentElement.hasAttribute('data-opened'),
     }));
     expect(trace.opened).toBe(false);
-    expect(trace.probe).toMatchObject({ held: true, decodeStalled: true });
+    expect(trace.probe).toMatchObject({ held: true, photoLoadedAtRelease: false });
     const released = trace.probe?.releasedAt;
     const lamp = trace.probe?.lampAt;
     if (typeof released !== 'number' || typeof lamp !== 'number')
@@ -204,4 +238,176 @@ test('startup releases the cover at its cap and lights the lamp if the photo sti
   } finally {
     await app.close();
   }
+});
+
+test('as Drashti starts, the opening holds its black until the window’s own GPU warm-up is over, so its two seconds never share the GPU with it', async () => {
+  // Session 58 (C4, Q57-32): the operator window's LIVE picture warms the GPU up as it starts (render/WarmUp.tsx), making
+  // every kind of drawing the show will need; while the GPU makes one, every window waits (100-600 ms each on CI's Mac).
+  // It was still making some twenty after the window had opened, as the opening moved: its first move came 0.3-3 s late
+  // there and it lost that much of its two seconds (on this Mac a few ms each, the same order).
+  test.setTimeout(120_000);
+  const first = await launchApp();
+  await operatorReady(await operatorPage(first.app));
+  await first.app.close();
+  const { app } = await relaunchApp(first.userData, { DRASHTI_TEST_OPENING: '1' });
+  try {
+    const win = await operatorPage(app);
+    await win.evaluate((warmUp) => {
+      const seen: WarmFrame[] = [];
+      (globalThis as TimingGlobals).openingWarm = seen;
+      const look = () => {
+        const player = document.querySelector('[data-testid="opening"]');
+        seen.push({
+          warming: document.querySelector(warmUp) !== null,
+          cover: player !== null,
+          moving: player !== null && player.getAnimations({ subtree: true }).length > 0,
+        });
+        if (seen.length < 6000) requestAnimationFrame(look);
+      };
+      look();
+    }, LIVE_WARM_UP);
+    const cover = win.getByTestId('opening-start');
+    await expect(cover).toBeVisible({ timeout: 15_000 });
+    // It ends by itself.
+    await expect(cover).toHaveCount(0, { timeout: OPENING_START_HOLD_MS + 15_000 });
+    const seen = await win.evaluate(() => (globalThis as TimingGlobals).openingWarm ?? []);
+    // A Mac always draws with its graphics chip, so its LIVE picture warms up under the opening; a Windows computer
+    // drawing without one (CI's) has nothing to warm, and may not.
+    if (process.platform === 'darwin')
+      expect(
+        seen.some((f) => f.cover && f.warming),
+        'the window warmed its GPU up under the opening',
+      ).toBe(true);
+    const moved = seen.findIndex((f) => f.moving);
+    expect(moved, 'the opening moved').toBeGreaterThanOrEqual(0);
+    expect(
+      seen.filter((f) => f.moving && f.warming).length,
+      'frames the opening moved in while the window still warmed its GPU up',
+    ).toBe(0);
+    // And the window underneath is the operator's, with its controls.
+    await operatorReady(win);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the window’s own warm-up kept drawing (a test switch): the opening holds its black to the window’s limit, then plays', async () => {
+  // Its limit, OPENING_START_HOLD_MS, is longer than the screens' (they then play still): the window's warm-up is over by
+  // its own limit before then, so only a warm-up that never ends (this switch) meets it.
+  test.setTimeout(120_000);
+  const first = await launchApp();
+  await operatorReady(await operatorPage(first.app));
+  await first.app.close();
+  const { app } = await relaunchApp(first.userData, {
+    DRASHTI_TEST_OPENING: '1',
+    DRASHTI_TEST_HOLD_WARM_UP: '1',
+  });
+  try {
+    const win = await operatorPage(app);
+    await win.evaluate((warmUp) => {
+      const probe: NonNullable<TimingGlobals['openingLimit']> = {
+        cameAt: null,
+        releasedAt: null,
+        warmingAtRelease: null,
+        moved: false,
+      };
+      (globalThis as TimingGlobals).openingLimit = probe;
+      const sample = () => {
+        const player = document.querySelector('[data-testid="opening"]');
+        if (!player) return;
+        probe.cameAt ??= performance.now();
+        if (player.getAttribute('data-opening-held') === 'false' && probe.releasedAt === null) {
+          probe.releasedAt = performance.now();
+          probe.warmingAtRelease = document.querySelector(warmUp) !== null;
+        }
+        if (probe.releasedAt === null && player.getAnimations({ subtree: true }).length > 0)
+          probe.moved = true;
+      };
+      new MutationObserver(sample).observe(document.documentElement, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['data-opening-held'],
+      });
+      sample();
+    }, LIVE_WARM_UP);
+    const cover = win.getByTestId('opening-start');
+    const player = cover.getByTestId('opening');
+    await expect(player).toHaveAttribute('data-opening-held', 'false', {
+      timeout: OPENING_START_HOLD_MS + 10_000,
+    });
+    const probe = await win.evaluate(() => (globalThis as TimingGlobals).openingLimit);
+    const came = probe?.cameAt;
+    const released = probe?.releasedAt;
+    if (typeof came !== 'number' || typeof released !== 'number')
+      throw new Error('The opening’s hold was missed.');
+    expect(probe?.moved, 'nothing moved while it held').toBe(false);
+    // Its limit counts from when it was asked for, a moment before this page was first looked at (at most 2 s here).
+    expect(released - came, 'it held its black to the window’s limit').toBeGreaterThanOrEqual(
+      OPENING_START_HOLD_MS - 2000,
+    );
+    expect(probe?.warmingAtRelease, 'the window’s warm-up still drew as it let go').toBe(true);
+    // Then it plays, and ends by itself.
+    await expect(player.locator('[data-opening-photo]')).toHaveCount(1);
+    await expect(cover).toHaveCount(0, { timeout: 15_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+/** The figures in the log line of an opening that ended by itself (shared/opening.ts, openingFiguresWords). */
+const FIGURES =
+  /^Opening: ended by itself after (\d+) ms; held (\d+) ms \((all ready|its limit)\); first moved (\d+) ms after, at (\d+) ms of its (\d+); ran (\d+) ms; longest frame (\d+) ms$/u;
+
+test('as it ends, the log says its figures: how long it held and why it let go, its first move and how far into its two seconds that was, how long it ran, its longest frame', async () => {
+  // Session 58 (C4, Q57-32): the owner wants the Mac's full two seconds measured on the owner's own Mac as well as on
+  // CI; these lines are how a start anywhere can be read afterwards. DRASHTI_OPENING_STARTS starts it that many times
+  // (the lead's check on that Mac, loud), and DRASHTI_OPENING_OWN_PHOTO=1 with Drashti's own default photo instead of
+  // the tests' placeholder (a one-off check: never kept).
+  const starts = Math.max(1, Number(process.env['DRASHTI_OPENING_STARTS'] ?? '1') || 1);
+  const ownPhoto = process.env['DRASHTI_OPENING_OWN_PHOTO'] === '1';
+  test.setTimeout(60_000 + starts * (OPENING_START_HOLD_MS + 20_000));
+  const first = await launchApp();
+  await operatorReady(await operatorPage(first.app));
+  await first.app.close();
+  const file = join(first.userData, 'logs', 'drashti.log');
+  const lines = () =>
+    existsSync(file)
+      ? readFileSync(file, 'utf8')
+          .split('\n')
+          .map((l) => l.slice(l.indexOf('Opening: ')))
+          .filter((l) => l.startsWith('Opening: ended'))
+      : [];
+  const said: string[] = [];
+  for (let i = 0; i < starts; i++) {
+    const before = lines().length;
+    const { app } = await relaunchApp(first.userData, {
+      DRASHTI_TEST_OPENING: '1',
+      ...(ownPhoto ? { DRASHTI_TEST_OPENING_PHOTO: '' } : {}),
+    });
+    try {
+      const win = await operatorPage(app);
+      const cover = win.getByTestId('opening-start');
+      await expect(cover).toBeVisible({ timeout: 15_000 });
+      // It ends by itself.
+      await expect(cover).toHaveCount(0, { timeout: OPENING_START_HOLD_MS + 15_000 });
+      await expect.poll(() => lines().length).toBe(before + 1);
+    } finally {
+      await app.close();
+    }
+    const line = lines().at(-1) ?? '';
+    said.push(line);
+    console.log(`start ${String(i + 1)}: ${line}`);
+    const m = FIGURES.exec(line);
+    expect(m, line).not.toBeNull();
+    const [after, held, , moved, at, of, ran, longest] = (m ?? []).slice(1).map(Number);
+    expect(of).toBe(OPENING_MS);
+    // Each figure as it can be: held within the window's limit, its first frame within its two seconds, a length.
+    expect(held).toBeLessThanOrEqual(OPENING_START_HOLD_MS + 1000);
+    expect(after).toBeGreaterThanOrEqual((held ?? 0) + (moved ?? 0));
+    expect(at).toBeLessThanOrEqual(OPENING_MS);
+    expect(ran).toBeGreaterThan(0);
+    expect(longest).toBeGreaterThan(0);
+  }
+  await test.info().attach('opening figures', { body: said.join('\n'), contentType: 'text/plain' });
 });
