@@ -117,6 +117,12 @@ const COPY_CASES: CopyCase[] = [
     shifted: false,
   },
   {
+    rule: 'one slide’s words extracted twice do not independently confirm a shift',
+    slides: [VERSE, CHORUS, VERSE_TWO],
+    pdf: pdfOf(CHORUS, CHORUS, CHORUS),
+    shifted: false,
+  },
+  {
     rule: 'a page with a repeated chorus’s words names neither slide',
     slides: [VERSE, CHORUS, CHORUS],
     pdf: pdfOf(CHORUS, null, CHORUS),

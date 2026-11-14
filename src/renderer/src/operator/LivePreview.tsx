@@ -122,6 +122,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   useLayoutEffect(() => {
     if (warming || showReady) return;
     pauseClock(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- commit the warm-up's removal before drawing from the live clock
     setShowReady(true);
   }, [warming, showReady]);
   const showing = !warming && showReady;
