@@ -94,10 +94,6 @@ const LINE_ONE = 'Placeholder line one';
 const LINES_TWO = `${LINE_ONE} line two`;
 const LINES_THREE = `${LINES_TWO} line three`;
 
-/*
- * When the copy is set aside (C15's review, M3 and L4): only for a page whose words are another slide's alone, neither
- * holding the other's. Pages without words, words on two slides, and slides built line by line keep the count match.
- */
 /** A rule's case: the copy's slides by their words (or skipped), the PDF's pages, and whether the copy is set aside. */
 interface CopyCase {
   rule: string;
@@ -152,6 +148,11 @@ const COPY_CASES: CopyCase[] = [
     shifted: false,
   },
 ];
+
+/*
+ * When the copy is set aside (C15's review, M3 and L4): only for a page whose words are another slide's alone, neither
+ * holding the other's. Pages without words, words on two slides, and slides built line by line keep the count match.
+ */
 it.each(COPY_CASES)('Keynote’s two copies: $rule', ({ slides: copy, pdf, shifted }) => {
   const read = copy.map((words) =>
     words !== null && typeof words === 'object' ? slideOf(words.skipped, true) : slideOf(words),
