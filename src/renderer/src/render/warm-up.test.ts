@@ -11,7 +11,7 @@ import { isDeckNativeTransition } from '../../../shared/deck-transition';
 import type { SlideLayer } from '../../../shared/engine/state';
 import { MOVEMENTS } from '../../../shared/looks';
 import { TRANSITION_KINDS } from '../../../shared/model';
-import { deckTransitionFrame } from './transition-frame';
+import { deckTransitionFrame, deckWipeShows, wipeBandStyles } from './transition-frame';
 import { type WarmScene, warmScenes } from './WarmUp';
 
 /*
@@ -20,9 +20,9 @@ import { type WarmScene, warmScenes } from './WarmUp';
  * "pipeline") then and not at the show's first (100-600 ms each on CI's Mac, every screen waiting). A deck Drashti
  * plays itself draws two kinds nothing else does (13 Nov 2026, the review of h-p3tr's part B): its own Cover (and
  * Uncover), the slide it moves a shade darker, a filter; and a Split, a gradient mask the size of its shape, of 4, 5 or
- * 6 stops as it goes (a GPU draws a gradient of up to 4 stops, of up to 8 and of more each its own way). Its own Wipe
- * is drawn again with a hard-edged clip (Q57-28: PowerPoint's soft band, a mask over the whole slide coming in, dropped
- * frames on Windows while streaming); the warm-up still draws it part-way. Placeholder slides only.
+ * 6 stops as it goes (a GPU draws a gradient of up to 4 stops, of up to 8 and of more each its own way); and since
+ * Session 58 its own Wipe, PowerPoint's soft band: a mask that never changes on a box two slides long, moved over the
+ * slide coming in (the slide moved back inside it), each a layer of its own. Placeholder slides only.
  */
 
 /** The engine's time as the warm-up's slides before go up (it draws everything part-way a few frames later). */
@@ -63,14 +63,26 @@ describe('the warm-up', () => {
       }
   });
 
-  it('draws a deck’s own Wipe part-way: a hard-edged clip over the whole slide coming in, no mask (Q57-28)', () => {
+  it('draws a deck’s own Wipe part-way: PowerPoint’s band, a mask on a box two slides long moved over the slide coming in, the band itself on the screen (Session 58)', () => {
     for (const key of ['deck-wipe/calm', 'deck-wipe/calm/clipped']) {
       const { t, p, frame } = deckFrameOf(key, BEFORE + 33);
       expect(t.deckEffect, key).toBe('wipe');
       expect(p, key).toBeGreaterThan(0.3);
       expect(p, key).toBeLessThan(0.7);
+      expect(frame.in.clip ?? '', key).toBe('');
       expect(frame.in.mask ?? '', key).toBe('');
-      expect(frame.in.clip ?? '', key).toMatch(/^inset\(0 0 0 [\d.]+%\)$/u);
+      const band = frame.in.band;
+      expect(band, key).toEqual({ direction: 'left', at: 2 * p - 1 });
+      if (!band) continue;
+      // The band's mask on its box, the slide moved back inside it (as every screen draws it).
+      const styles = wipeBandStyles(band, 1920, 1080, 1);
+      expect(styles.holder.maskImage, key).toMatch(/^linear-gradient\(/u);
+      expect(styles.holder.transform, key).toMatch(/^translateX\(-?\d+px\)$/u);
+      // Part of the slide coming in shows through the band, part not: the band is on the screen.
+      expect(deckWipeShows(t, p, 0), key).toBeGreaterThan(0.5);
+      expect(deckWipeShows(t, p, 0.5), key).toBeGreaterThan(0);
+      expect(deckWipeShows(t, p, 0.5), key).toBeLessThan(1);
+      expect(deckWipeShows(t, p, 0.95), key).toBe(0);
       // The slide going stays as it is, under it.
       expect(frame.out, key).toEqual({ opacity: 1, transform: '' });
     }

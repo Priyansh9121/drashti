@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckNativeTransition } from '../../../shared/deck-transition';
 import type { SlideLayer } from '../../../shared/engine/state';
-import { fadeAt, type Layers, nextShowing, type Paint, paintLayers, paintWaiting } from './SlideLayerView';
+import { type BandBoxes, fadeAt, type Layers, nextShowing, type Paint, paintLayers, paintWaiting } from './SlideLayerView';
+import { deckTransitionFrame, wipeBandStyles } from './transition-frame';
 
 const layer = (id: string, shownAt: number, transition?: SlideLayer['transition']): SlideLayer => ({
   presentationId: 'p',
@@ -194,5 +195,65 @@ describe('Back during a deck’s own transition (TX-1, review-p3tr LOW-1)', () =
         });
         expect(back.style.opacity, `${deckEffect} ${direction}`).toBe('0');
       }
+  });
+});
+
+/** A slide's two band boxes (Session 58, C2) as the JSX leaves them: filling the slide's box, nothing else. */
+const bandBoxes = (): BandBoxes => ({
+  holder: {
+    style: { inset: '0', width: '', height: '', maskImage: '', transform: '', willChange: '', overflow: '' },
+  } as unknown as HTMLDivElement,
+  slide: {
+    style: { inset: '0', width: '', height: '', maskImage: '', transform: '', willChange: '', overflow: '' },
+  } as unknown as HTMLDivElement,
+});
+const AT_REST = { inset: '0', width: '', height: '', maskImage: '', transform: '', willChange: '', overflow: '' };
+
+describe('a deck’s own Wipe drawn on a screen: PowerPoint’s band (Session 58, C2)', () => {
+  it('the incoming slide’s band boxes are the band while it runs (no clip or mask on the slide), at rest once over; the outgoing slide’s never move', () => {
+    for (const direction of ['left', 'right', 'up', 'down'] as const) {
+      const native: DeckNativeTransition = { kind: 'wipe', deckEffect: 'wipe', durationMs: 700, direction };
+      const coming = box();
+      const going = box();
+      const bandIn = bandBoxes();
+      const bandOut = bandBoxes();
+      const els = { ...layersOf(coming, going), bandIn, bandOut };
+      for (const p of [0, 0.3, 0.5, 0.9]) {
+        paintLayers(els, deckPaint(native), p);
+        const band = deckTransitionFrame(native, p).in.band;
+        if (!band) throw new Error('no band');
+        const want = wipeBandStyles(band, 1920, 1080, 1);
+        expect(bandIn.holder?.style, `${direction} at ${String(p)}`).toEqual({
+          ...want.holder,
+          willChange: 'transform',
+          overflow: 'hidden',
+        });
+        expect(bandIn.slide?.style, `${direction} at ${String(p)}`).toEqual({
+          ...AT_REST,
+          ...want.slide,
+          willChange: 'transform',
+        });
+        expect([coming.style.clipPath, coming.style.maskImage, coming.style.transform]).toEqual(['', '', '']);
+        expect(bandOut.holder?.style).toEqual(AT_REST);
+        expect(bandOut.slide?.style).toEqual(AT_REST);
+      }
+      paintLayers(els, deckPaint(native), 1);
+      expect(bandIn.holder?.style, `${direction} over`).toEqual(AT_REST);
+      expect(bandIn.slide?.style, `${direction} over`).toEqual(AT_REST);
+      // Not in a transition: at rest too.
+      paintLayers(els, { ...deckPaint(native), kind: null, native: undefined }, 0);
+      expect(bandIn.holder?.style).toEqual(AT_REST);
+    }
+  });
+
+  it('Back during it: the slide that was coming in is drawn whole, its band boxes at rest (TX-1)', () => {
+    const native: DeckNativeTransition = { kind: 'wipe', deckEffect: 'wipe', durationMs: 700, direction: 'up' };
+    const coming = box();
+    const bandIn = bandBoxes();
+    paintLayers({ ...layersOf(coming, box()), bandIn, bandOut: bandBoxes() }, deckPaint(native), 0.6);
+    expect(bandIn.holder?.style.maskImage).not.toBe('');
+    paintWaiting({ in: box(), out: coming, bandIn: bandBoxes(), bandOut: bandIn });
+    expect(bandIn.holder?.style).toEqual(AT_REST);
+    expect(bandIn.slide?.style).toEqual(AT_REST);
   });
 });
