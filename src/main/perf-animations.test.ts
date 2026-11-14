@@ -5,10 +5,17 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { EngineCommand } from '../shared/engine/commands';
 import { deckFromJson } from '../shared/deck-schema';
 import { isDeckNativeTransition } from '../shared/deck-transition';
+import { PERF_CASES_MS, PERF_FIGURES_MS, PERF_SETUP_MS, PERF_STOP_MS } from '../shared/perf-limits';
 import { type Db, openDatabase } from './db/database';
 import { PresentationRepo } from './db/presentations';
 import { deckShow } from './engine/deck-steps';
-import { casesUntil, DECK_FOUR_THREE_ROWS, FOUR_THREE_BLOCK_MS, leftoversIn } from './perf-animations';
+import {
+  casesUntil,
+  DECK_FOUR_THREE_ROWS,
+  FOUR_THREE_BLOCK_MS,
+  leftoversIn,
+  pressRounds,
+} from './perf-animations';
 import { isPerfScenario, scenarioFor, startScenario } from './perf-scenarios';
 import { ffmpegHere } from './testing/ffmpeg-here';
 
@@ -75,14 +82,66 @@ describe('the animations scenario', () => {
     expect(leftoversIn({ streaming: false, twoCores: false })).toBe(true);
   });
 
-  it('stops pressing at its seven minutes, or once Drashti has been up 12 minutes if that comes first (the check stops at 14)', () => {
+  it('gives the cases their own eight minutes from when they begin, however long the set-up and the import took before them (Session 58, the sweep’s #17)', () => {
     const now = 1_800_000_000_000;
-    expect(casesUntil(now, 60_000)).toEqual({ at: now + 420_000, by: 'budget' });
-    expect(casesUntil(now, 5 * 60_000)).toEqual({ at: now + 420_000, by: 'budget' });
-    expect(casesUntil(now, 6 * 60_000)).toEqual({ at: now + 360_000, by: 'uptime' });
-    expect(casesUntil(now, 9 * 60_000)).toEqual({ at: now + 180_000, by: 'uptime' });
+    // A quick runner: the cases begin two or three minutes after Drashti starts.
+    expect(casesUntil(now, 2 * 60_000)).toEqual({ at: now + 8 * 60_000, by: 'budget' });
+    // The slowest runners of 14 Nov 2026 (two-core Windows while streaming: c2fourthree p, c1fix p, c1fix2 t): the
+    // import took 522-656 s, and the cases began 564, 653 and 711 s after the start, when stopping at 12 minutes up left
+    // them 156, 67 and 10 s (17, 8 and 2 rows of 41-46).
+    for (const up of [564_000, 653_000, 711_000])
+      expect(casesUntil(now, up)).toEqual({ at: now + 8 * 60_000, by: 'budget' });
+    // The set-up and the import have up to 14 minutes of their own (the whole check's time before).
+    expect(casesUntil(now, PERF_SETUP_MS)).toEqual({ at: now + PERF_CASES_MS, by: 'budget' });
+  });
+
+  it('stops pressing early only after a set-up and an import longer than their 14 minutes, the figures keeping their two before the check stops Drashti at 24', () => {
+    const now = 1_800_000_000_000;
+    expect(casesUntil(now, 15 * 60_000)).toEqual({ at: now + 7 * 60_000, by: 'uptime' });
+    expect(casesUntil(now, 20 * 60_000)).toEqual({ at: now + 2 * 60_000, by: 'uptime' });
     // Up longer already: no case at all.
-    expect(casesUntil(now, 13 * 60_000)).toEqual({ at: now - 60_000, by: 'uptime' });
+    expect(casesUntil(now, 23 * 60_000)).toEqual({ at: now - 60_000, by: 'uptime' });
+    // Whenever they begin, they stop by 22 minutes up: two before the check's stop.
+    for (const up of [0, 60_000, 5 * 60_000, 14 * 60_000, 15 * 60_000, 21 * 60_000])
+      expect(casesUntil(now, up).at - now + up).toBeLessThanOrEqual(PERF_STOP_MS - PERF_FIGURES_MS);
+    expect(PERF_STOP_MS).toBe(24 * 60_000);
+  });
+
+  it('is stopped by the same limits: the Performance spec stops a heavy run at the set-up’s, the cases’ and the figures’ time, never at one of its own', () => {
+    const spec = readFileSync(join(APP, 'tests', 'perf', 'performance.spec.ts'), 'utf8');
+    expect(spec).toContain("import { PERF_STOP_MS } from '../../src/shared/perf-limits';");
+    expect(spec).toMatch(/const STOP_AFTER_MS = SLOW \? PERF_STOP_MS : 240_000;/u);
+  });
+
+  it('leaves its last rows a minute in hand: DK-2 began 384-391 s into the cases on every run of C2’s budget pairs (Mac and Windows, plain and streaming)', () => {
+    const now = 1_800_000_000_000;
+    // DK-2 as set: three rounds of a plain slide, the deck in and its two clicks (3 x (0.7 + 3 x 2.3 s)).
+    const dk2 = 3 * (700 + 3 * 2300);
+    expect(casesUntil(now, 2 * 60_000).at - now - 391_000 - dk2).toBeGreaterThanOrEqual(60_000);
+  });
+
+  it('says when its time cut a block of the last cases short, never dropping a row’s runs silently (DK-6’s jumps: 3 of 4 on four Mac runs of 14 Nov 2026, said nowhere)', async () => {
+    let clock = 0;
+    const ran: number[] = [];
+    const until = { deadline: 25_000, now: () => clock, stopped: 'out of time' };
+    const what = 'a jump to a deck slide Drashti plays itself';
+    const said = await pressRounds(4, { ...until, what }, (i) => {
+      ran.push(i);
+      clock += 10_000;
+      return Promise.resolve();
+    });
+    // Each round begins only before the deadline, as before.
+    expect(ran).toEqual([0, 1, 2]);
+    expect(said).toBe(
+      'out of time: a jump to a deck slide Drashti plays itself cut short, 3 of its 4 rounds',
+    );
+    // Every round in time: nothing to say.
+    clock = 0;
+    const whole = await pressRounds(2, { ...until, what }, () => {
+      clock += 10_000;
+      return Promise.resolve();
+    });
+    expect(whole).toBeNull();
   });
 
   it('keeps every row phase1 measures: the 4:3 deck (Q58-36) has its own time on top of the six minutes they had (review of f45c90d9)', () => {
