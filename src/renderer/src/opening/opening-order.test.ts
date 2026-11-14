@@ -5,6 +5,7 @@ import {
   photoWait,
   releasedBy,
   stillAfterHold,
+  type FrameWatch,
   type StartFacts,
   watchFrame,
   windowMayStart,
@@ -151,11 +152,21 @@ describe('its photo', () => {
 });
 
 describe('the window’s frames before it moves (Session 58)', () => {
-  /** Frames every `step` ms from `from`, each read `late` ms after it began, `busy` as given; ready at which one. */
-  function readyAt(frames: { at: number; late?: number; busy?: boolean }[]): number | null {
-    let w = { previous: null as number | null, steady: 0 };
+  /**
+   * Frames every 17 ms (or as given), each read `late` ms after it began, its own warm-up drawing (`warming`) or fonts
+   * loading as given; the index of the frame it may move at, or null.
+   */
+  function readyAt(
+    frames: { at: number; late?: number; warming?: boolean; fonts?: boolean }[],
+  ): number | null {
+    let w: FrameWatch = { previous: null, steady: 0, warmedUp: false };
     for (const [i, f] of frames.entries()) {
-      const next = watchFrame(w, { at: f.at, now: f.at + (f.late ?? 2), busy: f.busy ?? false }, 50, 4);
+      const next = watchFrame(
+        w,
+        { at: f.at, now: f.at + (f.late ?? 2), warming: f.warming ?? false, fontsLoading: f.fonts ?? false },
+        50,
+        4,
+      );
       if (next.ready) return i;
       w = next;
     }
@@ -164,22 +175,33 @@ describe('the window’s frames before it moves (Session 58)', () => {
   const even = (n: number, from = 0, step = 17) =>
     Array.from({ length: n }, (_, i) => ({ at: from + i * step }));
 
-  it('moves after four frames in a row on time', () => {
-    expect(readyAt(even(10))).toBe(4);
+  it('with no warm-up of its own (a computer drawing without a graphics chip skips it): at the first frame on time', () => {
+    // As before Session 58: the plain Windows pair moved four frames later with four for everyone (c4winb).
+    expect(readyAt(even(10))).toBe(1);
   });
 
-  it('never while its own GPU warm-up draws or its fonts load: the count starts again after', () => {
-    const frames = even(12).map((f, i) => ({ ...f, busy: i < 5 }));
+  it('after its own warm-up: four frames in a row on time, for what comes just after it (its fonts, two frames on)', () => {
+    const frames = even(14).map((f, i) => ({ ...f, warming: i < 5 }));
     expect(readyAt(frames)).toBe(9);
   });
 
+  it('never while its fonts load, and after them at the first frame on time when it had no warm-up', () => {
+    const frames = even(10).map((f, i) => ({ ...f, fonts: i < 4 }));
+    expect(readyAt(frames)).toBe(5);
+  });
+
+  it('after its warm-up, its fonts loading start the count again', () => {
+    const frames = even(16).map((f, i) => ({ ...f, warming: i < 3, fonts: i >= 5 && i < 7 }));
+    expect(readyAt(frames)).toBe(11);
+  });
+
   it('a long frame (the fonts laid out, 115-560 ms on CI’s Mac) starts the count again', () => {
-    const frames = [...even(3), ...even(8, 34 + 300)];
-    expect(readyAt(frames)).toBe(3 + 4);
+    const frames = [...even(3).map((f) => ({ ...f, warming: true })), ...even(3, 51), ...even(8, 85 + 300)];
+    expect(readyAt(frames)).toBe(6 + 4);
   });
 
   it('a frame read long after it began does not count', () => {
-    const frames = even(10).map((f, i) => ({ ...f, late: i === 3 ? 80 : 2 }));
-    expect(readyAt(frames)).toBe(7);
+    const frames = even(10).map((f, i) => ({ ...f, late: i === 1 ? 80 : 2 }));
+    expect(readyAt(frames)).toBe(2);
   });
 });
