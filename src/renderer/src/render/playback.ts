@@ -52,6 +52,12 @@ export interface PlaybackOptions {
    * whatever the element holds.
    */
   reuseLoadedSource?: boolean;
+  /**
+   * A deck's clip or hold that may start late and catch up (`timing().catchUp`; render/DeckStep.tsx alone asks): its
+   * pace is set from its first moving frame, not the next check. Left out (every other caller), nothing more listens to
+   * it than before (C3T-1).
+   */
+  catchesUp?: boolean;
   /** When the playback started (ms since the epoch, main-process clock). */
   startedAt: number;
   /** The file has its first frame (or sound), at the right point. */
@@ -397,7 +403,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   };
   v.muted = !audible;
   v.addEventListener('playing', onPlaying, { once: true });
-  v.addEventListener('playing', paceAtStart);
+  if (options.catchesUp === true) v.addEventListener('playing', paceAtStart);
   v.addEventListener('loadedmetadata', onMetadata, { once: true });
   v.addEventListener('error', failed);
   v.addEventListener('seeked', landed);

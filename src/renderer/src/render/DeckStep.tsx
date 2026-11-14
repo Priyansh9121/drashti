@@ -345,6 +345,8 @@ function StepVideo({
       startedAt,
       // A clip may be the next click's, loaded already (above): it plays from where it is. A hold loads as before.
       reuseLoadedSource: role === 'clip',
+      // A hold after a first clip that ended late makes up the rest going round (C3's review M1).
+      catchesUp: catchUp !== undefined,
       timing: () => ({ loop, catchUp }),
       onFrame: () => {
         told.current.onFrame?.();
@@ -436,6 +438,8 @@ function FirstClip({
       attempt,
       startedAt,
       reuseLoadedSource: true,
+      // Cold, or loaded ahead and mounted late, it catches up from its frame (C3's review M1).
+      catchesUp: true,
       timing: () => ({ loop: false, seek, catchUp }),
       onFrame: () => {
         const readyAt = engineNow();
