@@ -214,6 +214,38 @@ function durationOf(lowerThird: LowerThird, phase: 'in' | 'out'): number {
   return animationLength(animation, phase, cutIntoUnits(shownLines(lowerThird.lines), animation).units);
 }
 
+/**
+ * A row's verdict over the screens counted (in their order: the hall screens, then the stream's page): its worst
+ * screen's share of frames (null when a screen never saw it move), that screen's name, and whether it kept 9 in 10.
+ * The name says where a row dipped: on the stream's page, drawn offscreen and paced by the main process, a stall of the
+ * main process costs frames that a hall screen keeps.
+ */
+export function rowVerdict(
+  p: Pick<Played, 'lowerThird' | 'measure'>,
+  seen: readonly (Record<string, Counted> | null)[],
+  screens: readonly { fps: number; name: string }[],
+): { worst: number | null; where: string | null; smooth: boolean } {
+  const id = p.lowerThird.id.slice(8);
+  let worst: number | null = null;
+  let where: string | null = null;
+  for (const [i, screen] of seen.entries()) {
+    const fps = screens[i]?.fps ?? 60;
+    const kept =
+      p.measure !== 'phases'
+        ? [keptOf(screen?.[id + '|' + p.measure], fps)]
+        : (['in', 'out'] as const).map((phase) =>
+            keptOfPhase(screen?.[id + '|' + phase], fps, durationOf(p.lowerThird, phase)),
+          );
+    if (kept.some((k) => k === null)) return { worst: null, where: screens[i]?.name ?? null, smooth: false };
+    const own = Math.min(...(kept as number[]));
+    if (worst === null || own < worst) {
+      worst = own;
+      where = screens[i]?.name ?? null;
+    }
+  }
+  return { worst, where, smooth: worst !== null && worst >= 0.9 };
+}
+
 /** How long a scenario's rows take as it plays them (ms): each one's in, its hold, its out and the gap after it. */
 export function scheduledMs(rows: readonly Played[]): number {
   return rows.reduce(
@@ -224,11 +256,16 @@ export function scheduledMs(rows: readonly Played[]): number {
 
 export function lowerThirdsScenario(deps: ScenarioDeps, set: LowerThirdsSet): ScenarioRun {
   // Each screen, and how many frames a second it draws: an output the display's 60, the stream's page its own.
-  const screens = (): { page: Pick<BrowserWindow, 'webContents'>; fps: number }[] => {
+  const screens = (): { page: Pick<BrowserWindow, 'webContents'>; fps: number; name: string }[] => {
     const program = deps.program?.() ?? null;
+    const outputs = deps.outputs();
     return [
-      ...deps.outputs().map((page) => ({ page, fps: 60 })),
-      ...(program ? [{ page: program, fps: PROGRAM_FPS }] : []),
+      ...outputs.map((page, i) => ({
+        page,
+        fps: 60,
+        name: outputs.length === 1 ? 'the hall screen' : `hall screen ${String(i + 1)}`,
+      })),
+      ...(program ? [{ page: program, fps: PROGRAM_FPS, name: 'the stream’s page' }] : []),
     ];
   };
   return {
@@ -255,20 +292,8 @@ export function lowerThirdsScenario(deps: ScenarioDeps, set: LowerThirdsSet): Sc
         counted.map((s) => s.page.webContents.executeJavaScript(READ, true).catch(() => null)),
       )) as (Record<string, Counted> | null)[];
       const percent = (k: number | null) => (k === null ? 'unseen' : `${String(Math.round(k * 100))}%`);
-      // Each row's worst screen, and the rows not smooth on one of them.
-      const results = rows.map((p) => {
-        const id = p.lowerThird.id.slice(8);
-        const kept = seen.flatMap((screen, i) => {
-          const fps = counted[i]?.fps ?? 60;
-          if (p.measure !== 'phases') return [keptOf(screen?.[id + '|' + p.measure], fps)];
-          return (['in', 'out'] as const).map((phase) =>
-            keptOfPhase(screen?.[id + '|' + phase], fps, durationOf(p.lowerThird, phase)),
-          );
-        });
-        const worst =
-          kept.length === 0 || kept.some((k) => k === null) ? null : Math.min(...(kept as number[]));
-        return { row: p.row, worst, smooth: worst !== null && worst >= 0.9 };
-      });
+      // Each row's worst screen, and the rows not smooth on one of them (and where).
+      const results = rows.map((p) => ({ row: p.row, ...rowVerdict(p, seen, counted) }));
       const rough = results.filter((r) => !r.smooth);
       const minutes = (ms: number) => `${(ms / 60_000).toFixed(1)} min`;
       return {
@@ -282,10 +307,10 @@ export function lowerThirdsScenario(deps: ScenarioDeps, set: LowerThirdsSet): Sc
                 ? `no rows to play in ${set}`
                 : rough.length === 0
                   ? `all ${plural(results.length, 'row')} smooth`
-                  : `not smooth: ${rough.map((r) => `${r.row} ${percent(r.worst)}`).join(', ')}`,
+                  : `not smooth: ${rough.map((r) => `${r.row} ${percent(r.worst)}${r.where ? ` (${r.where})` : ''}`).join(', ')}`,
           },
         ],
-        summary: `scenario ${set}: ${plural(seen.length, 'screen')} (the stream’s page last when on), ${plural(results.length, 'row')} in ${minutes(took)} (${minutes(scheduledMs(rows))} as scheduled), each row’s frames kept on its worst screen: ${results.map((r) => `${r.row} ${percent(r.worst)}`).join(', ')}`,
+        summary: `scenario ${set}: ${plural(seen.length, 'screen')} (the stream’s page last when on), ${plural(results.length, 'row')} in ${minutes(took)} (${minutes(scheduledMs(rows))} as scheduled), each row’s frames kept on its worst screen (named where one was not smooth): ${results.map((r) => `${r.row} ${percent(r.worst)}${!r.smooth && r.where ? ` (${r.where})` : ''}`).join(', ')}`,
       };
     },
   };
