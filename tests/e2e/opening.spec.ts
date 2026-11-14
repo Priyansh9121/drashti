@@ -104,6 +104,16 @@ async function startedOnce(
 
 const opening = (win: Page) => win.getByTestId('opening-start');
 
+/**
+ * The log's line for an opening a key or a click ended, with the figures it had got to (Session 58: none if it ended
+ * while it held black; never a length if it was ended, or held, before its end).
+ */
+const endedBy = (how: 'key' | 'click') =>
+  new RegExp(
+    `^Opening: ended by a ${how} after \\d+ ms(?:; held \\d+ ms \\((?:all ready|its limit)\\); (?:never moved|first moved \\d+ ms after, at \\d+ ms of its ${String(OPENING_MS)}(?:; ran \\d+ ms)?(?:; longest frame \\d+ ms)?))?$`,
+    'u',
+  );
+
 /** Its parts that would be words, a name, the light or the sparkles (none now). */
 const WORDS_AND_SPARKLES =
   '[data-opening-line], [data-opening-word], [data-opening-sweep], [data-opening-sparkle]';
@@ -367,9 +377,7 @@ test('any key ends it at once, and the show never hears that key: Space changes 
   );
   await win.keyboard.press('Space');
   await expect.poll(live).not.toBe(`${id} · 0`);
-  await expect
-    .poll(() => openingLog(userData).at(-1) ?? '')
-    .toMatch(/^Opening: ended by a key after \d+ ms$/u);
+  await expect.poll(() => openingLog(userData).at(-1) ?? '').toMatch(endedBy('key'));
   await app.close();
 });
 
@@ -397,9 +405,7 @@ test('a click ends it at once and lands on nothing beneath; a tap ends it too', 
   await blackout.click();
   await expect.poll(async () => (await engineState(win)).blackout).toBe(true);
   await first.app.close();
-  await expect
-    .poll(() => openingLog(userData).at(-1) ?? '')
-    .toMatch(/^Opening: ended by a click after \d+ ms$/u);
+  await expect.poll(() => openingLog(userData).at(-1) ?? '').toMatch(endedBy('click'));
 
   // A tap (a touch screen's finger): the same.
   const second = await relaunchApp(userData, ASK);
@@ -413,9 +419,7 @@ test('a click ends it at once and lands on nothing beneath; a tap ends it too', 
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await expect(opening(again)).toHaveCount(0);
   await second.app.close();
-  await expect
-    .poll(() => openingLog(userData).at(-1) ?? '')
-    .toMatch(/^Opening: ended by a click after \d+ ms$/u);
+  await expect.poll(() => openingLog(userData).at(-1) ?? '').toMatch(endedBy('click'));
 });
 
 test('never after an unexpected stop: the show comes back first, as before', async () => {
@@ -542,9 +546,7 @@ test('in Simple Mode too, ended by a key the same way', async () => {
   await expect(win.getByTestId('simple-mode')).toBeAttached();
   await win.keyboard.press('Enter');
   await expect(opening(win)).toHaveCount(0);
-  await expect
-    .poll(() => openingLog(userData).at(-1) ?? '')
-    .toMatch(/^Opening: ended by a key after \d+ ms$/u);
+  await expect.poll(() => openingLog(userData).at(-1) ?? '').toMatch(endedBy('key'));
   await app.close();
 });
 
