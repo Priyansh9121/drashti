@@ -41,6 +41,20 @@ beforeEach(() => {
 const labels = (id: string) => playlists.itemsOf(id).map((i) => i.label);
 
 describe('playlists the operator edits', () => {
+  it('give a media row its file’s own name beside its label, read from the library, never kept twice (C18, FT-2)', () => {
+    const id = playlists.create('Placeholder Sunday', null, false) ?? '';
+    playlists.addItems(id, null, [{ kind: 'media', mediaId: 'loop' }]);
+    const itemId = playlists.itemsOf(id)[0]?.id ?? '';
+    // A label of the row's own (an import's, a folder's), then the file renamed in the library: each as it is.
+    db.prepare('UPDATE playlist_items SET label = ? WHERE id = ?').run('Placeholder row label', itemId);
+    db.prepare("UPDATE media SET name = 'Placeholder renamed.mp4' WHERE id = 'loop'").run();
+    expect(playlists.itemsOf(id)[0]).toMatchObject({
+      kind: 'media',
+      label: 'Placeholder row label',
+      mediaName: 'Placeholder renamed.mp4',
+    });
+  });
+
   it('say on each card what an item is: a deck, its slides, a video’s length (Session 26a)', () => {
     const id = playlists.create('Placeholder Sunday', null, false) ?? '';
     db.prepare("UPDATE presentations SET source_kind = 'pictures' WHERE id = ?").run(dhun);
