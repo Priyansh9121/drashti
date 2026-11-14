@@ -235,11 +235,20 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
 
 /**
  * A deck's slide coming in by a cut, its clip not yet drawn (Session 54, C2): the slide before stays up, the new one
- * unseen, until it can be drawn.
+ * unseen, until it can be drawn. The slide before is drawn whole, as at rest: after Back during a deck's own
+ * transition it is the slide that was coming in, and keeps nothing of it (its move, clip, mask, shade or place above;
+ * TX-1, Session 58).
  */
 export function paintWaiting(els: Pick<Layers, 'in' | 'out'>): void {
   if (els.in) els.in.style.opacity = '0';
-  if (els.out) els.out.style.opacity = '';
+  const before = els.out;
+  if (!before) return;
+  before.style.opacity = '';
+  before.style.transform = '';
+  before.style.clipPath = '';
+  if (before.style.maskImage !== '') before.style.maskImage = '';
+  if (before.style.filter !== '') before.style.filter = '';
+  before.style.zIndex = '';
 }
 
 /**
