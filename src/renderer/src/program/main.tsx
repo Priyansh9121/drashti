@@ -12,6 +12,7 @@ import { preloadStudioFontsOnceDrawn } from '../render/studio-fonts';
 import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
 import { WarmUp } from '../render/WarmUp';
+import { Preloader } from '../output/Preloader';
 import { applyCameraChoice, listDevices } from './camera';
 import { setCaptureSize, startCapture, stopEncoder, stopPreview } from './capture';
 import { useProgram } from './program-store';
@@ -162,6 +163,9 @@ function Program() {
         </SceneBoundary>
       )}
       {stop.cover}
+      {/* What Next shows, loaded ahead as the hall's screens load it (Session 58, Q57-35): a slide cut in on the stream
+          is drawn with its pictures at once (it is drawn only once they can be: render/SlideLayerView.tsx). */}
+      {state && context?.picture && <Preloader next={state.next} pictures={state.pictures} />}
     </div>
   );
 }
