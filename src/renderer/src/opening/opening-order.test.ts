@@ -6,6 +6,7 @@ import {
   releasedBy,
   stillAfterHold,
   type StartFacts,
+  watchFrame,
   windowMayStart,
 } from './opening-order';
 
@@ -146,5 +147,39 @@ describe('its photo', () => {
 
   it('holds it up for its limit at most once nothing else does (then the lamp lights in its place)', () => {
     expect(photoWait(false, 600)).toBe(600);
+  });
+});
+
+describe('the window’s frames before it moves (Session 58)', () => {
+  /** Frames every `step` ms from `from`, each read `late` ms after it began, `busy` as given; ready at which one. */
+  function readyAt(frames: { at: number; late?: number; busy?: boolean }[]): number | null {
+    let w = { previous: null as number | null, steady: 0 };
+    for (const [i, f] of frames.entries()) {
+      const next = watchFrame(w, { at: f.at, now: f.at + (f.late ?? 2), busy: f.busy ?? false }, 50, 4);
+      if (next.ready) return i;
+      w = next;
+    }
+    return null;
+  }
+  const even = (n: number, from = 0, step = 17) =>
+    Array.from({ length: n }, (_, i) => ({ at: from + i * step }));
+
+  it('moves after four frames in a row on time', () => {
+    expect(readyAt(even(10))).toBe(4);
+  });
+
+  it('never while its own GPU warm-up draws or its fonts load: the count starts again after', () => {
+    const frames = even(12).map((f, i) => ({ ...f, busy: i < 5 }));
+    expect(readyAt(frames)).toBe(9);
+  });
+
+  it('a long frame (the fonts laid out, 115-560 ms on CI’s Mac) starts the count again', () => {
+    const frames = [...even(3), ...even(8, 34 + 300)];
+    expect(readyAt(frames)).toBe(3 + 4);
+  });
+
+  it('a frame read long after it began does not count', () => {
+    const frames = even(10).map((f, i) => ({ ...f, late: i === 3 ? 80 : 2 }));
+    expect(readyAt(frames)).toBe(7);
   });
 });

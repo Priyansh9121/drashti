@@ -60,6 +60,31 @@ export function releasedBy(f: StartFacts): 'ready' | 'limit' {
   return f.screensWarming || !f.windowOpened || f.windowWarming || !f.windowFrameReady ? 'limit' : 'ready';
 }
 
+/** Its watch of the window's frames before it moves: when the last frame began, and how many in a row came on time. */
+export interface FrameWatch {
+  previous: number | null;
+  steady: number;
+}
+
+/**
+ * The watch after one more frame of the window (Session 58): `at` when the frame began, `now` when it is read (ms, the
+ * page's clock), `busy` while the window's own GPU warm-up still draws or its fonts load (its frames then are theirs,
+ * and the frame that lays the fonts out may come long). A frame counts when it began within `budget` of the one before
+ * and is read within `budget` of its start; a busy, late or long one starts the count again. Ready at `needed` in a
+ * row.
+ */
+export function watchFrame(
+  w: FrameWatch,
+  f: { at: number; now: number; busy: boolean },
+  budget: number,
+  needed: number,
+): FrameWatch & { ready: boolean } {
+  if (f.busy) return { previous: null, steady: 0, ready: false };
+  const onTime = w.previous !== null && f.at - w.previous <= budget && f.now - f.at <= budget;
+  const steady = onTime ? w.steady + 1 : 0;
+  return { previous: f.at, steady, ready: steady >= needed };
+}
+
 /** Whether the window underneath may start (the App mounts): at once with no opening, else once its black covers it. */
 export function windowMayStart(f: StartFacts): boolean {
   return f.plan === 'none' || f.ended || (f.plan === 'plays' && f.covered);
