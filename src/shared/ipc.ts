@@ -1270,7 +1270,7 @@ export interface InvokeContract {
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
-  [IPC.engine.pointAt]: { args: [target: PointAt | null]; result: void };
+  [IPC.engine.pointAt]: { args: [target: PointAt | null]; result: null };
   [IPC.library.listPresentations]: { args: []; result: PresentationListing[] };
   [IPC.library.listMedia]: { args: []; result: MediaSummary[] };
   [IPC.library.search]: { args: [query: string]; result: SearchResult };

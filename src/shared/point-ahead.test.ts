@@ -34,12 +34,16 @@ describe('pointedClip', () => {
     expect(pointedClip(deck({ preparing: true }))).toBeNull();
     // A first step with no motion, or one whose whole clip is the deck's own transition (shown at its last frame).
     expect(
-      pointedClip(deck({ steps: [{ clipId: 'placeholder-clip-0', clipMs: 0, lastId: 'placeholder-last-0' }] })),
+      pointedClip(
+        deck({ steps: [{ clipId: 'placeholder-clip-0', clipMs: 0, lastId: 'placeholder-last-0' }] }),
+      ),
     ).toBeNull();
     expect(
       pointedClip(
         deck({
-          steps: [{ clipId: 'placeholder-clip-0', clipMs: 400, transitionMs: 400, lastId: 'placeholder-last-0' }],
+          steps: [
+            { clipId: 'placeholder-clip-0', clipMs: 400, transitionMs: 400, lastId: 'placeholder-last-0' },
+          ],
         }),
       ),
     ).toBeNull();

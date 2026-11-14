@@ -26,7 +26,9 @@ function clock() {
     pass(ms: number) {
       const until = now + ms;
       for (;;) {
-        const first = [...due.entries()].filter(([, t]) => t.at <= until).sort((a, b) => a[1].at - b[1].at)[0];
+        const first = [...due.entries()]
+          .filter(([, t]) => t.at <= until)
+          .sort((a, b) => a[1].at - b[1].at)[0];
         if (!first) break;
         due.delete(first[0]);
         now = first[1].at;

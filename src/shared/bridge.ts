@@ -358,7 +358,7 @@ export interface DrashtiBridge {
      * The operator's pointer on a slide's row, or null (C3, Session 58: Q57-26): the screens load that deck slide's
      * first clip ahead. Only the operator window may.
      */
-    pointAt(target: PointAt | null): Promise<void>;
+    pointAt(target: PointAt | null): Promise<null>;
   };
   library: {
     listPresentations(): Promise<PresentationSummary[]>;
