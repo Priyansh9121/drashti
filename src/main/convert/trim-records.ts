@@ -17,13 +17,10 @@ import { keptTrimSchema, trimCopySchema } from './playlist-trims';
  * just after could leave it there with no record), and at quit (quit: the newest is on the disk before Drashti ends,
  * and every change after it is written at once).
  *
- * On upgrade from alpha.17, any cuts it kept in library settings carry on. After a downgrade and re-upgrade, any
- * new records from those settings are merged with the file's records. A restored library is the library before's no more: its records are not carried
- * over, and the restored library's own settings are read, as before alpha.18. Once the file holds what the settings
- * held, they are cleared, so a backup restored later, or alpha.17 after a downgrade, never reads records since
- * finished or stopped (LOW-2). A file that cannot be read is moved aside and empty records written in its place, so
- * the next start reads neither it nor the settings; one that can be neither read nor moved aside is never written
- * over: saves fail (and are tried again) until it moves aside (LOW-3).
+ * When alpha.18 takes in alpha.17's settings, the file fingerprints what it read before clearing them.
+ * A restart can then distinguish settings left behind by a failed clear from records alpha.17 wrote later.
+ * A restored library starts with its own settings. An unreadable file is set aside where possible. If it is
+ * held, later writes retry moving it aside before replacing it (LOW-3).
  */
 
 export const TRIM_RECORDS_FILE = 'trim-cuts.json';
@@ -32,7 +29,11 @@ const fileSchema = z.object({
   version: z.literal(1),
   waiting: z.array(z.unknown()),
   copies: z.array(z.unknown()),
-  legacy: z.string().nullable().optional(),
+  legacy: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/u)
+    .nullable()
+    .optional(),
 });
 
 /** After a write that fails, the newest is written again this long after, then twice as long after each failure. */
@@ -153,7 +154,14 @@ export class TrimRecords {
   private takeLegacy(merge: boolean): void {
     const waiting = list(this.options.before.waiting());
     const copies = list(this.options.before.copies());
-    if (waiting.length === 0 && copies.length === 0) return;
+    if (waiting.length === 0 && copies.length === 0) {
+      if (this.legacy) {
+        // A durable clear was observed. An identical request written during a later downgrade is new again.
+        this.legacy = null;
+        this.changed();
+      }
+      return;
+    }
     const fingerprint = createHash('sha256')
       .update(JSON.stringify([waiting, copies]))
       .digest('hex');

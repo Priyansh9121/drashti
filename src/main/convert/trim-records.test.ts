@@ -193,6 +193,27 @@ it('does not resume a cut twice after a crash before the legacy settings were cl
   expect(before.clear).toHaveBeenCalledTimes(2);
 });
 
+it('accepts an identical alpha.17 request after a start has seen the settings clear', async () => {
+  let waiting = [cut(1)];
+  const before = {
+    waiting: () => waiting,
+    copies: () => [],
+    clear: () => {
+      waiting = [];
+    },
+  };
+  const migrated = new TrimRecords(file, { before });
+  await migrated.settle();
+  migrated.kept.save([]);
+  await migrated.settle();
+  const cleared = new TrimRecords(file, { before });
+  await cleared.settle();
+  waiting = [cut(1)];
+  const upgradedAgain = new TrimRecords(file, { before });
+  expect(upgradedAgain.kept.load()).toEqual([cut(1)]);
+  await upgradedAgain.settle();
+});
+
 it('prefers the newer request for the same row and keeps each unfinished copy once', async () => {
   writeFileSync(file, JSON.stringify({ version: 1, waiting: [cut(1)], copies: [copy], legacy: null }));
   const newest = { ...cut(1), name: 'Placeholder later request' };
