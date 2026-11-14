@@ -9,6 +9,7 @@ import {
   FEED_PATH,
   type FromDevice,
   type NetworkChange,
+  PHONE_LOWER_THIRD_MOTIONS,
   type ToDevice,
 } from '../../../shared/network';
 import { connectEngineSource } from '../engine/engine-store';
@@ -173,7 +174,12 @@ function open(): void {
   const ws = new WebSocket(`ws://${location.host}${FEED_PATH}`);
   socket = ws;
   ws.onopen = () => {
-    ws.send(JSON.stringify({ type: 'hello', token: device.token } satisfies FromDevice));
+    const hello = {
+      type: 'hello',
+      token: device.token,
+      lowerThirdMotions: PHONE_LOWER_THIRD_MOTIONS,
+    } satisfies FromDevice;
+    ws.send(JSON.stringify(hello));
   };
   ws.onmessage = (event) => {
     try {
