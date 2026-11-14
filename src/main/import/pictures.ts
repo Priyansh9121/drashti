@@ -199,37 +199,56 @@ function pageWords(text: string | undefined): string[] {
   ].sort();
 }
 
+/** A PDF page whose words are another slide's (each from 0): `expected` is the slide the page count gives it. */
+export interface KeynoteShift {
+  page: number;
+  slide: number;
+  expected: number;
+}
+
 /**
  * Reject a count-based match only when the PDF's words identify another slide uniquely and neither set of words
  * contains the other. A picture, repeated text or a partial extraction leaves the original count check in use.
+ * One such page is enough (C15's review, M3, the optional second page left out: a copy set aside only loses Edit slides
+ * from PowerPoint's copy, where a shift missed would put another slide's words under Edit slides). The first such page,
+ * or null.
  */
-export function keynotePagesShifted(
+export function keynoteShift(
   slides: readonly PptxSlide[],
   drawn: { total: number; pages: readonly { index: number; pageText?: string }[] },
-): boolean {
-  if (!drawn.pages.some((page) => page.pageText)) return false;
+): KeynoteShift | null {
+  if (!drawn.pages.some((page) => page.pageText)) return null;
   const indices = slides.flatMap((slide, index) =>
     drawn.total === slides.length || !slide.hidden ? [index] : [],
   );
-  if (indices.length !== drawn.total) return false;
+  if (indices.length !== drawn.total) return null;
   const words = slides.map((slide) => pageWords(slide.pageText));
   const byWords = new Map<string, number | null>();
   for (const [index, list] of words.entries()) {
     const key = list.join(' ');
     if (key !== '') byWords.set(key, byWords.has(key) ? null : index);
   }
-  return drawn.pages.some((page) => {
+  for (const page of drawn.pages) {
     const expectedIndex = indices[page.index];
     const expected = expectedIndex === undefined ? undefined : words[expectedIndex];
-    if (!expected?.length) return false;
+    if (expectedIndex === undefined || !expected?.length) continue;
     const actual = pageWords(page.pageText);
     const match = byWords.get(actual.join(' '));
-    if (typeof match !== 'number' || match === expectedIndex) return false;
-    if (actual.length === expected.length) return true;
+    if (typeof match !== 'number' || match === expectedIndex) continue;
     const [shorter, longer] = actual.length < expected.length ? [actual, expected] : [expected, actual];
     const includes = new Set(longer);
-    return shorter.some((word) => !includes.has(word));
-  });
+    if (actual.length === expected.length || shorter.some((word) => !includes.has(word)))
+      return { page: page.index, slide: match, expected: expectedIndex };
+  }
+  return null;
+}
+
+/** Whether a Keynote PDF's pages are in another order than its PowerPoint copy's slides (keynoteShift). */
+export function keynotePagesShifted(
+  slides: readonly PptxSlide[],
+  drawn: { total: number; pages: readonly { index: number; pageText?: string }[] },
+): boolean {
+  return keynoteShift(slides, drawn) !== null;
 }
 
 /**
