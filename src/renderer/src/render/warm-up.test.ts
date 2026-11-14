@@ -111,6 +111,36 @@ describe('the warm-up', () => {
     expect(warmScenes().some((s) => s.key === 'deck-wipe/calm/off-grid/clipped')).toBe(false);
   });
 
+  it('draws a deck’s own Cover again half a pixel off the grid, and a 4:3 deck’s Cover between bars off the grid too (C24)', () => {
+    // CI's Mac, traced (c24 profiled run on 7e12c229): the scene on the grid makes the shade's pipelines as
+    // 'CoverBoundsRenderStep[NonAAFill] + ...+MatrixColorFilter'; the first 16:9 Cover on air, its slide between pixels,
+    // made 'PerEdgeAAQuadRenderStep + ...+MatrixColorFilter SrcOver AnalyticClip' (three render passes), and the first
+    // 4:3 Cover between bars the same without the clip (drawn under its bars' clip) and the clip's own solid rect: one
+    // frame of 218-335 ms on that VM each, every plain run.
+    const offGrid = scene('deck-cover/calm/off-grid');
+    expect(offGrid.offset).toBe('translate(0.5px, 0.5px)');
+    expect(offGrid.clip).toBeUndefined();
+    const at = BEFORE + 33;
+    expect(offGrid.state(true, at)).toEqual(scene('deck-cover/calm').state(true, at));
+    expect(offGrid.state(false, at)).toEqual(scene('deck-cover/calm').state(false, at));
+    const four = scene('deck-cover-four-three/calm/off-grid');
+    expect(four.offset).toBe('translate(0.5px, 0.5px)');
+    expect(four.clip).toBeUndefined();
+    const { t, p, frame } = deckFrameOf('deck-cover-four-three/calm/off-grid', at);
+    expect(t.deckEffect).toBe('cover');
+    expect(p).toBeGreaterThan(0.3);
+    expect(p).toBeLessThan(0.7);
+    expect(frame.in.filter).toMatch(/^brightness\(0\.\d+\)$/u);
+    for (const during of [true, false]) {
+      const s = slideOf(four, during, at).slide;
+      expect([s.width, s.height], String(during)).toEqual([1440, 1080]);
+      for (const e of s.elements) expect(e.frame.x + e.frame.width, e.id).toBeLessThanOrEqual(1440);
+    }
+    // Once each: no clipped twins of them.
+    for (const key of ['deck-cover/calm/off-grid/clipped', 'deck-cover-four-three/calm/off-grid/clipped'])
+      expect(warmScenes().some((s) => s.key === key)).toBe(false);
+  });
+
   it('draws a deck’s own Cover part-way: the slide coming in moved and a shade darker, a filter over the whole slide', () => {
     for (const key of ['deck-cover/calm', 'deck-cover/calm/clipped']) {
       const { t, p, frame } = deckFrameOf(key, BEFORE + 33);
