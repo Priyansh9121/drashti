@@ -66,7 +66,14 @@ import type { PictureAssetKind, SharpenJobView } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
-import type { OpeningChoice, OpeningEnd, OpeningPlan, OpeningResult, OpeningView } from './opening';
+import type {
+  OpeningChoice,
+  OpeningEnd,
+  OpeningFigures,
+  OpeningPlan,
+  OpeningResult,
+  OpeningView,
+} from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
@@ -139,6 +146,7 @@ import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
+import type { PointAt, PointedClip } from './point-ahead';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
@@ -262,7 +270,8 @@ export interface DrashtiBridge {
   opening: {
     /** What to play as the window opens, or null (main decides, once). */
     atStart(): Promise<OpeningPlan | null>;
-    ended(how: OpeningEnd): Promise<null>;
+    /** It ended; with the window's figures for it, for the log (Session 58). */
+    ended(how: OpeningEnd, figures?: OpeningFigures): Promise<null>;
     /** A key ended it (main kept that key from the show). */
     onEnd(listener: () => void): () => void;
     /** Every hall screen has drawn its first frame. */
@@ -359,6 +368,11 @@ export interface DrashtiBridge {
     snapshot(): Promise<EngineSnapshotMessage>;
     /** Ask the engine to do something. Only the operator window may. */
     dispatch(command: EngineCommand): Promise<CommandResult>;
+    /**
+     * The operator's pointer on a slide's row, or null (C3, Session 58: Q57-26): the screens load that deck slide's
+     * first clip ahead. Only the operator window may.
+     */
+    pointAt(target: PointAt | null): Promise<null>;
   };
   library: {
     listPresentations(): Promise<PresentationSummary[]>;
@@ -1030,6 +1044,8 @@ export interface DrashtiBridge {
     onMediaReady(listener: (mediaId: string) => void): () => void;
     /** The GPU process stopped and another starts (Sessions 31–36, ROB-5): play again a video that failed. */
     onGpuRestarted(listener: () => void): () => void;
+    /** The deck slide's first clip to load ahead for the operator's pointer (C3, Session 58), null for none. */
+    onPointed(listener: (clip: PointedClip | null) => void): () => void;
     /** Tests only (a packaged Drashti never sends it): draw an element that throws (Session 23). */
     onTestThrow(listener: () => void): () => void;
     /** Tests only (a packaged Drashti never sends it): hold the clock at a moment, or let it go (Session 26d). */

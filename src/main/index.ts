@@ -311,7 +311,7 @@ import {
 import { spawnEventsWorker } from './events/spawn-worker';
 import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
-import { OPENING_HOLD_MS, OPENING_MS } from '../shared/opening';
+import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { LiveWindowService } from './live-window/live-window-service';
 import { electronWindowSources } from './live-window/electron-sources';
@@ -391,6 +391,8 @@ import { removeOldRoles } from './old-roles';
 import { startNode } from './node-mode/node-app';
 import { NodeRepo } from './db/nodes';
 import { NodeService } from './nodes/node-service';
+import { PointAhead } from './point-ahead';
+import { roomToLoadAhead } from '../shared/point-ahead';
 import { spawnLinkWorker } from './nodes/link-worker';
 import { type IdentityLoad, loadIdentity, makeNewIdentity } from './nodes/identity';
 import { RECENT_DAYS, WantedMedia } from './nodes/wanted-media';
@@ -629,8 +631,8 @@ const noQuitConfirm = sw('DRASHTI_NO_QUIT_CONFIRM') === '1';
 const noRelaunch = sw('DRASHTI_TEST_NO_RELAUNCH') === '1';
 // Log every permission a page checks or asks for (diagnosing sound output choice).
 const logPermissions = sw('DRASHTI_LOG_PERMISSIONS') === '1';
-// Tests only: answer media requests late, as a slow disk would.
-const mediaDelayMs = Math.min(5000, Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_DELAY_MS') ?? 0) || 0));
+// Tests only: answer media requests late, as a slow disk would (up to a minute: the opening's photo past its limit).
+const mediaDelayMs = Math.min(60_000, Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_DELAY_MS') ?? 0) || 0));
 
 // Drashti's sound is the show's, not the computer's media (Session 15): the system's media controls
 // (Windows' media overlay, macOS's Now Playing) and the keyboard's or a headset's media keys never see
@@ -974,6 +976,14 @@ function pendingRestore(): ReturnType<typeof applyPendingRestore> {
 
 const fromOperator = (event: IpcMainInvokeEvent) => event.sender.id === operatorWindow?.webContents.id;
 const idListSchema = z.array(idSchema).min(1).max(10_000);
+/** A slide's row the operator's pointer is on (C3, Session 58), or null. */
+const pointAtSchema = z
+  .object({
+    presentationId: idSchema,
+    slideIndex: z.number().int().min(0).max(100_000),
+    arrangementId: idSchema.nullable(),
+  })
+  .nullable();
 /** What the import's file dialog offers: everything Drashti imports (one list, the scanner's). */
 const IMPORTABLE_EXTENSIONS = importableExtensions();
 /** What Simple Mode's Add files… offers (Session 55, Part 18): sounds, videos, pictures, PDFs and decks. */
@@ -4180,6 +4190,27 @@ function start(): void {
   );
   handle(IPC.engine.snapshot, () => engine.snapshot());
   handle(IPC.engine.command, (event, command) => runEngineCommand(engine, command, fromOperator(event)));
+  // The deck slide the operator points at (C3, Session 58: Q57-26): its first clip loaded ahead, where a click on its
+  // row starts it, by every screen that loads what comes next (each output's Preloader, a node's too), never while
+  // this computer is short of memory (main/point-ahead.ts).
+  const pointAhead = new PointAhead({
+    deckAt: (t) => playable.order(t.presentationId, t.arrangementId)?.slides[t.slideIndex]?.slide.deck,
+    room: () => roomToLoadAhead(process.getSystemMemoryInfo(), process.platform),
+    tell: (clip) => {
+      for (const w of BrowserWindow.getAllWindows())
+        if (!w.isDestroyed()) sendToPage(w, IPC.output.pointed, { clip });
+      nodeService?.tellPointed(clip);
+    },
+  });
+  stops.add('pointing ahead', () => {
+    pointAhead.stop();
+  });
+  handle(IPC.engine.pointAt, (event, raw) => {
+    if (!fromOperator(event)) return null;
+    const target = pointAtSchema.safeParse(raw);
+    pointAhead.point(target.success ? target.data : null);
+    return null;
+  });
   handle(IPC.library.listPresentations, () => presentations.list());
   handle(IPC.library.listMedia, () => media.list());
   // The words editor and themes: edited words and applied themes go back into the slides; Undo
@@ -6698,15 +6729,18 @@ function start(): void {
     openingSince = Date.now();
     openingKeys.start();
     // A page that never says it ended (it stopped, say) leaves the keys to the show soon after its two seconds.
-    openingLimit = setTimeout(openingOver, OPENING_MS + OPENING_HOLD_MS + 3000);
+    // Its longest hold (the window's, longer than the screens': OPENING_START_HOLD_MS), its photo's wait and its two
+    // seconds, with room to spare (Session 58).
+    openingLimit = setTimeout(openingOver, OPENING_MS + OPENING_START_HOLD_MS + 3000);
     // It never moves while the hall's screens are getting ready: told here once they all have drawn.
     openingWaits = screensWarming();
     return { ...plan, hold: openingWaits };
   });
-  handle(IPC.opening.ended, (e, how) => {
+  handle(IPC.opening.ended, (e, how, figures) => {
     if (!fromOperator(e) || openingSince === null) return null;
     openingOver();
-    opening.ended(how === 'key' || how === 'click' ? how : 'itself', Date.now() - openingSince);
+    // With the window's figures for it (Session 58), read whole by the service.
+    opening.ended(how === 'key' || how === 'click' ? how : 'itself', Date.now() - openingSince, figures);
     openingSince = null;
     return null;
   });

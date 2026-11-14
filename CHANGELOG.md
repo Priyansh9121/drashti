@@ -6,13 +6,19 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 Update after a sabha, and update Main and nodes together.
 
-- A Trim cut that carries on after a restart says Preparing on its row from the start, and Stop lets it go. If one can't carry on, the notice as Drashti starts says why.
+- A Trim cut that carries on after a restart says Preparing on its row from the start, and Stop lets it go. If one can't carry on, the notice as Drashti starts says why. An earlier cut nothing uses goes to the Trash with its still frame, and a notice names it.
 - Where a computer draws without a graphics chip, the stream's picture no longer stays black for up to 8 seconds as it starts. Drashti's log says how long each hall screen took to get ready.
 - Import notices say each thing once: another app's reason no longer repeats the app's name, a Keynote deck whose PDF pages are in another order says so for its videos too, and an automatic import names its new points once.
 - PowerPoint slides look more as they do in PowerPoint: theme colour shades, styled shapes' and backgrounds' gradients, Medium Style 2 tables, outline widths and table corners, and a list's indents through a change of size. A picture fill Drashti can't copy is no longer drawn as a flat colour.
 - Edit slides keeps a deck's other pages editable when one page can't be read or the deck has more than 128 MB of pictures, and a page left as a picture says plainly why.
 - Lower Thirds has 18 more templates, 68 in all.
 - A phone's Save of a slide waits while the hall screens move, so a Next just after it stays smooth on a two-core laptop; when it saves a picture from the slide instead, it says so.
+- Names of playlists, audio playlists, wallpapers, screens and screen groups leave out hidden characters copied with them, as Rename… does, and a name with nothing visible is refused. Rename's Undo says the name as it was kept.
+- Lower Thirds has 23 more moving backgrounds, thirty in all, calm ones first (Light rising, Lamps glowing, Lanterns floating up and more), then livelier ones, each made ready before the show so none stutters the first time. One box in the studio finds an animation or a template by any words, such as "slide up slow" or "calm".
+- A PowerPoint text box keeps PowerPoint's own shrink of its words and lines. Edit slides shows a box's line spacing as drawn, and warns of close Gujarati or Hindi lines.
+- On a two-core Windows computer, an import while streaming no longer holds the library for seconds, which could hold up a slide change for up to 2 seconds.
+- On a Mac the opening plays its full two seconds smoothly: it waits, black, until Drashti's window has readied the computer's graphics.
+- Clicking a deck slide's row starts its first animation at once on every screen and the stream: the slide the mouse rests on is made ready ahead, and the stream starts a deck's slides on time by Next too.
 - The stream, the decks Drashti plays itself, the start and the Edit slides fixes since alpha.17 (this list is written in full before the release).
 
 ## 1.0.0-alpha.17 (13 Nov 2026)
