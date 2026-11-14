@@ -237,7 +237,9 @@ test('the LIVE picture and Screens card use the moving Wipe band in software', a
 
     await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
     for (const preview of previews) await expect(target(preview, 3)).toHaveCount(1);
-    await dispatch(win, { type: 'next' });
+    // Next first reveals slide one's click. The second Next enters the slide with the Wipe.
+    expect(await dispatch(win, { type: 'next' })).toMatchObject({ ok: true });
+    expect(await dispatch(win, { type: 'next' })).toMatchObject({ ok: true });
     const entered = await current(win);
     expect(entered).toMatchObject({ slideIndex: 1, transition: { kind: 'wipe', durationMs: WIPE_MS } });
     await holdClock(app, (entered?.shownAt ?? 0) + WIPE_MS / 2);
