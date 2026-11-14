@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { cleanNameSchema } from '../../shared/rename-name';
 import { describeDisplay } from '../../shared/display-match';
 import type { PendingScreens } from '../../shared/keep-screens';
 import { idSchema } from '../../shared/model-schema';
@@ -298,7 +299,9 @@ const inputRef = z.object({ inputId: idSchema }).strict();
 const windowRef = z.object({ id: z.string().min(1).max(200) }).strict();
 // The library's (Session 54): names and words as the window's requests take them, things by their ids only, at most
 // 50 at once from a phone; what is added to a playlist is a presentation or a file of Media's, never a path.
-const libraryName = z.string().trim().min(1).max(200);
+// Cleaned as Rename… cleans a name (C15, FT-3): one with nothing visible is a bad request here, in the name rule's
+// words, as the window's own check refuses it.
+const libraryName = cleanNameSchema(200);
 const fromWords = z.object({ name: libraryName, words: z.string().min(1).max(200_000) }).strict();
 const someIds = z.object({ ids: z.array(idSchema).min(1).max(PHONE_LIBRARY_IDS_MAX) }).strict();
 const playlistName = z

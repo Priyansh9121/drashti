@@ -10,16 +10,12 @@ import { whyPictures } from './deck/deck-import';
 
 it('says PowerPoint or Keynote could not do it, and how to do it by hand, never AppleScript’s own words (DEV-1)', () => {
   const said = 'execution error: Microsoft PowerPoint got an error: Parameter error. (-50)';
-  expect(appErrorWords('powerpoint', 'save it as PDF', said)).toBe(
+  // What the app said is the converter's to log (fromError); the words never have it.
+  expect(said).toContain('execution error');
+  expect(appErrorWords('powerpoint', 'save it as PDF')).toBe(
     'PowerPoint could not save it as PDF. Open it in PowerPoint and choose File > Save As, PDF, then import the PDF.',
   );
-  expect(
-    appErrorWords(
-      'keynote',
-      'open it',
-      'execution error: Keynote got an error: AppleEvent timed out. (-1712)',
-    ),
-  ).toBe(
+  expect(appErrorWords('keynote', 'open it')).toBe(
     'Keynote could not open it. Open it in Keynote and choose File > Export To > PDF…, then import the PDF.',
   );
 });

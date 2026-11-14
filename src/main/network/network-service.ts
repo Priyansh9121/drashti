@@ -8,6 +8,7 @@ import {
 } from './slide-picture';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
+import { cleanNameSchema } from '../../shared/rename-name';
 import { type CommandResult, type EngineCommand, parseEngineCommand } from '../../shared/engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from '../../shared/engine/protocol';
 import type { EngineState } from '../../shared/engine/state';
@@ -398,7 +399,8 @@ const WRONG_TRIES = 10;
 const SEEN_WRITE_MS = 10 * 60 * 1000;
 
 const portSchema = z.number().int().min(MIN_NETWORK_PORT).max(MAX_NETWORK_PORT);
-const nameSchema = z.string().trim().min(1).max(DEVICE_NAME_MAX);
+/** A device's name as the operator gives it: cleaned as Rename… cleans a name (C15, FT-1). */
+const nameSchema = cleanNameSchema(DEVICE_NAME_MAX);
 const kindSchema = z.enum(DEVICE_KINDS);
 const showSchema = z
   .object({
