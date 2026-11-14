@@ -292,11 +292,14 @@ test('the stream starts from the first frame that shows the show: recording begu
   // Nothing has the stream's page open: the recording opens it, and its encoder is given the page as it loads.
   await record(app, win);
   const program = await streamPage(app);
-  await expect
-    .poll(async () => (await encoderFrames(program)).length, { timeout: 30_000 })
-    .toBeGreaterThanOrEqual(15);
-  const frames = await encoderFrames(program);
   const level = DARK / 255;
+  // Until the slide reaches the encoder (a still picture gives the capture a frame only when it changes).
+  await expect
+    .poll(async () => (await encoderFrames(program)).some((f) => Math.abs(f.mean - level) <= 0.03), {
+      timeout: 30_000,
+    })
+    .toBe(true);
+  const frames = await encoderFrames(program);
   // Every frame the stream sends, its first among them, is the slide whole: never black before it, nor part of it.
   const off = frames.filter((f) => Math.abs(f.mean - level) > 0.03);
   expect(
