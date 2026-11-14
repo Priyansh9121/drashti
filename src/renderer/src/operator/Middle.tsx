@@ -146,6 +146,11 @@ function PresentationRows({ doc, platform }: { doc: PresentationDoc; platform: s
           ? [
               {
                 number: r.number,
+                pointAt: {
+                  presentationId: doc.id,
+                  slideIndex: r.at.position,
+                  arrangementId: r.arrangementId,
+                },
                 go: () => {
                   leaveItem();
                   void goLive(doc.id, r.at.position, r.arrangementId, null);

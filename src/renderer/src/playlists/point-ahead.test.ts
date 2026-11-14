@@ -123,4 +123,22 @@ describe('RowPointer', () => {
     expect(told.at(-1)).toBeNull();
     expect(told).toHaveLength(5);
   });
+
+  it('says the row whose number is typed at once, before the pointer’s, and lets it go a moment after the number goes', () => {
+    const { c, told, pointer } = setUp();
+    pointer.enter(row(1));
+    c.pass(REST_MS);
+    pointer.number(row(12));
+    expect(told).toEqual([row(1), row(12)]);
+    // Enter puts it up: still loaded as it goes up, let go of a moment later, the pointer's row again.
+    pointer.number(null);
+    c.pass(LINGER_MS - 1);
+    expect(told.at(-1)).toEqual(row(12));
+    c.pass(1);
+    expect(told.at(-1)).toEqual(row(1));
+    // A number with no slide of a deck's (no row, or not a slide): nothing more said.
+    pointer.number(null);
+    c.pass(LINGER_MS);
+    expect(told).toHaveLength(3);
+  });
 });
