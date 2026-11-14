@@ -921,7 +921,25 @@ test('a cold direct jump keeps the outgoing slide, plays the full first animatio
     const win = await operatorPage(app);
     await operatorReady(win);
     const files = await makeDeckFiles(win);
-    const id = await writeDeck(win, 'Placeholder direct jump', standInDecks(files));
+    // The second slide's first step with a hold going round after it (C3T-3): it starts as late as the clip ends.
+    const id = await writeDeck(
+      win,
+      'Placeholder direct jump',
+      standInDecks(files, {
+        second: {
+          steps: [
+            {
+              clipId: files.nextClip,
+              clipMs: CLIP_MS,
+              transitionMs: TRANSITION_MS,
+              lastId: files.nextLast,
+              holdId: files.hold,
+              holdMs: 1000,
+            },
+          ],
+        },
+      }),
+    );
     const live = win.getByTestId('live-preview').getByTestId('scene').first();
     await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
     await expect(live.locator('[data-deck-step="0"]')).toHaveAttribute('data-deck-phase', 'held');
@@ -974,7 +992,14 @@ test('a cold direct jump keeps the outgoing slide, plays the full first animatio
     expect(await holdLive(app, at + CLIP_MS - TRANSITION_MS + 340)).toBe(true);
     await expect(showing).toHaveAttribute('data-deck-phase', 'clip');
     expect(await holdLive(app, at + CLIP_MS - TRANSITION_MS + 360)).toBe(true);
-    await expect(showing).toHaveAttribute('data-deck-phase', 'held');
+    await expect(showing).not.toHaveAttribute('data-deck-phase', 'clip');
+    // Its hold then goes round from there, 0.35 s late, and makes that up a little faster, never more than a tenth
+    // (C3T-3).
+    await expect(showing).toHaveAttribute('data-deck-phase', 'hold');
+    const hold = showing.locator('video[data-deck-video="hold"]');
+    const holdRate = () => hold.evaluate((video: HTMLVideoElement) => video.playbackRate);
+    await expect.poll(holdRate).toBeGreaterThan(1);
+    expect(await holdRate()).toBeLessThanOrEqual(1.1);
     await holdLive(app, null);
   } finally {
     await app.close();
