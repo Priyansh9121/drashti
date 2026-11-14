@@ -125,9 +125,9 @@ describe('the report’s words on a deck', () => {
       'PowerPoint made the deck’s movie, but it was 1 min 40 s long where 1 min 0 s were planned (it did not use the deck’s timings), so its clicks could not be cut exactly: its slides came in as pictures, without their animations.',
     );
     expect(
-      whyPictures({ kind: 'app', reason: 'PowerPoint stopped answering', message: '' }, 'powerpoint').message,
+      whyPictures({ kind: 'app', reason: 'it stopped answering', message: '' }, 'powerpoint').message,
     ).toBe(
-      'PowerPoint could not make the deck’s movie (PowerPoint stopped answering): its slides came in as pictures, without their animations.',
+      'PowerPoint could not make the deck’s movie (it stopped answering): its slides came in as pictures, without their animations.',
     );
     expect(whyPictures({ kind: 'cut', detail: 'FFmpeg could not cut the movie' }, 'powerpoint').message).toBe(
       'PowerPoint made the deck’s movie, but it could not be cut into its steps (FFmpeg could not cut the movie): its slides came in as pictures, without their animations.',
