@@ -9,6 +9,7 @@ Update after a sabha, and update Main and nodes together.
 - The stream never sends black or half-drawn frames as a slide comes up: it loads what Next will show ahead, as the hall's screens do, and waits for the pictures of a slide you jump to.
 - Without a graphics chip, the stream's picture no longer stays black for up to 8 seconds as it starts, and on a two-core Windows computer an import while streaming no longer holds up slide changes.
 - Clicking a deck slide's row starts its first animation at once on every screen and the stream: the slide the mouse rests on is made ready ahead.
+- A PowerPoint deck's Wipe transition now plays as PowerPoint plays it, its soft edge included; a 4:3 deck's Push, Cover and Uncover stay inside the slide on a wide screen; and Back during a deck's transition no longer leaves a slide part-way.
 - On a Mac the opening plays its full two seconds smoothly, once Drashti's window has readied the computer's graphics. The log says how long each hall screen took to get ready.
 - PowerPoint slides look more as they do in PowerPoint: theme colour shades, styled gradients, Medium Style 2 tables, outline widths, table corners, paragraph spacing and indents through a change of size. A picture fill Drashti can't copy is no longer drawn as a flat colour.
 - A PowerPoint text box keeps PowerPoint's own shrink of its words and lines until you edit it, and draws an empty last paragraph as PowerPoint does. Edit slides shows a box's line spacing as drawn and warns of close Gujarati or Hindi lines.
