@@ -1,4 +1,5 @@
 import type { EngineMessage } from './engine/protocol';
+import type { PointedClip } from './point-ahead';
 import type { UpdateView } from './updates';
 import type { DisplayInfo, DisplayKey, ScalingMode, ScreenFeed, ScreenRole } from './screens';
 import type { ClockStyle } from './format';
@@ -168,6 +169,11 @@ export type ToNode =
    * node shows only while it hears a Main let in: told not, or hearing nothing of it for 2 minutes, its screens go black.
    */
   | { type: 'access'; letIn: boolean }
+  /**
+   * The deck slide's first clip the operator points at on Main (C3, Session 58: Q57-26), and from where, for the
+   * node's outputs to load ahead as Main's do; null: none.
+   */
+  | { type: 'pointed'; clip: PointedClip | null }
   | { type: 'bye'; reason: NodeByeReason; mainVersion?: string };
 
 /** What each kind of goodbye means, as the node's window says it. */
