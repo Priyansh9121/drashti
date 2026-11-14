@@ -6,13 +6,21 @@
 // C++ libraries the running engine has loaded are the app-local ones (its process's modules), so a PC without them
 // in its system folder would load the same files. GitHub's Windows runners have them in System32, which is what this
 // tells apart.
+//
+// The model is downloaded in three tries with pauses (scripts/download-source.mjs) and, in the Release run, kept in
+// a cache by its pinned SHA-256 after the installers are uploaded (.github/workflows/release.yml), so a slow Hugging
+// Face never stops a publish; whatever is there is checked against the SHA-256 before use.
+//
+//   node scripts/whisper-decode-check.mjs --sha256   prints sha256=<the model's pinned SHA-256> (the cache's key)
+//   node scripts/whisper-decode-check.mjs --fetch    the model into DRASHTI_CAPTIONS_MODEL_DIR, checked
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { createWriteStream, existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { join, win32 } from 'node:path';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, win32 } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { downloadSource } from './download-source.mjs';
 
 /** The smallest captions model Drashti offers, as main/speech/models.ts pins it (read from its text). */
 export function modelPin(modelsTs) {
@@ -80,18 +88,47 @@ export function decodeReply(status, body) {
   };
 }
 
-const sha256Of = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
+/** The pin of the smallest model, read from this checkout's main/speech/models.ts. */
+export const readModelPin = () =>
+  modelPin(
+    readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'main', 'speech', 'models.ts'),
+      'utf8',
+    ),
+  );
 
-/** The model, downloaded once into `dir` and checked against its SHA-256 (thrown away when it fails). */
-export async function fetchModel(pin, dir) {
+/** Where the model is kept for the check: the Release run's cached folder, else this computer's temp folder. */
+export const modelDir = () =>
+  process.env['DRASHTI_CAPTIONS_MODEL_DIR'] || join(tmpdir(), 'drashti-captions-model');
+
+const sha256Of = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
+const pinned = (file, pin) =>
+  existsSync(file) && statSync(file).size === pin.bytes && sha256Of(file) === pin.sha256;
+
+/**
+ * The model in `dir`: kept when the file there is the one pinned (as the cache restores it), else downloaded in
+ * three tries with pauses (scripts/download-source.mjs; `fetch` and `pause` passed in for the unit test) and
+ * checked against its size and SHA-256: one that is not the pinned one is removed and fails loudly.
+ */
+export async function fetchModel(
+  pin,
+  dir,
+  fetch = (url) => globalThis.fetch(url, { redirect: 'follow' }),
+  pause = (ms) => new Promise((r) => setTimeout(r, ms)),
+) {
   const file = join(dir, pin.file);
-  if (existsSync(file) && statSync(file).size === pin.bytes && sha256Of(file) === pin.sha256) return file;
-  const response = await fetch(pin.url, { redirect: 'follow' });
-  if (!response.ok || !response.body)
-    throw new Error(`the captions model could not be downloaded (HTTP ${String(response.status)})`);
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(file));
-  if (statSync(file).size !== pin.bytes || sha256Of(file) !== pin.sha256)
-    throw new Error('the captions model downloaded is not the one pinned (size or SHA-256)');
+  if (pinned(file, pin)) return file;
+  rmSync(file, { force: true });
+  await downloadSource(
+    { name: `the captions model ${pin.file}`, url: pin.url, sha256: pin.sha256 },
+    file,
+    fetch,
+    pause,
+  );
+  if (!pinned(file, pin)) {
+    rmSync(file, { force: true });
+    throw new Error(`the captions model downloaded is not the one pinned (size or SHA-256): ${pin.url}`);
+  }
   return file;
 }
 
@@ -205,5 +242,19 @@ export async function decodeCheck({ exe, ffmpeg, model, workDir, libraries, time
     return [decoded, runtimeLoaded(modules, win32.dirname(exe), libraries)];
   } finally {
     if (child.exitCode === null) child.kill();
+  }
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const pin = readModelPin();
+  if (process.argv[2] === '--sha256') process.stdout.write(`sha256=${pin.sha256}\n`);
+  else if (process.argv[2] === '--fetch') {
+    const dir = modelDir();
+    mkdirSync(dir, { recursive: true });
+    const file = await fetchModel(pin, dir);
+    console.log(`The captions model ${pin.file} is in ${file}, its SHA-256 the one pinned (${pin.sha256}).`);
+  } else {
+    process.stderr.write('usage: node scripts/whisper-decode-check.mjs --sha256 | --fetch\n');
+    process.exit(2);
   }
 }

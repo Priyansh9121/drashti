@@ -55,7 +55,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      # No cache of any kind in the release build (Session 30, Q7): every download fresh, checked by its hash.
+      # No cache before the installers are kept (Session 30, Q7): every download fresh, checked by its hash. Since
+      # Session 58 one cache after: the captions model for the installed check (never shipped; see its steps).
       - name: This version's notes are in CHANGELOG.md
         run: node scripts/release-notes.mjs
       - run: pnpm install --frozen-lockfile
@@ -99,8 +100,8 @@ jobs:
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Restart after a restore (packaged app)
         run: node scripts/check-relaunch.mjs --packaged
-      - name: Each installer installs as a person would, and what it installs starts
-        run: node scripts/check-installers.mjs
+      # The installers are kept (uploaded) before anything comes from a cache, so no cache can reach them; the
+      # Assemble job takes them only if every check below passed (needs: build).
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installers-${{ runner.os }}
@@ -110,6 +111,38 @@ jobs:
             release/*/*.exe
           if-no-files-found: error
           retention-days: 7
+      # Session 58 (X2b): on Windows the installed check has the captions engine decode a generated clip with
+      # Drashti's smallest model (scripts/whisper-decode-check.mjs), downloaded for the check only, never shipped.
+      # It is cached by its pinned SHA-256 (a dry run on main saves it, the publish restores it), so a slow Hugging
+      # Face never stops a publish; whatever the cache gives is checked against the SHA-256 before use, and a
+      # download is tried three times and must match it too.
+      - name: The captions model's pinned SHA-256
+        if: runner.os == 'Windows'
+        id: captions-model
+        shell: bash
+        run: node scripts/whisper-decode-check.mjs --sha256 >> "$GITHUB_OUTPUT"
+      - name: The captions model from the cache, by its SHA-256
+        if: runner.os == 'Windows'
+        id: captions-model-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/captions-model
+          key: captions-model-${{ steps.captions-model.outputs.sha256 }}
+      - name: The captions model, checked (downloaded in three tries if the cache had none)
+        if: runner.os == 'Windows'
+        env:
+          DRASHTI_CAPTIONS_MODEL_DIR: ${{ runner.temp }}/captions-model
+        run: node scripts/whisper-decode-check.mjs --fetch
+      - name: Keep the captions model in the cache
+        if: runner.os == 'Windows' && steps.captions-model-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/captions-model
+          key: captions-model-${{ steps.captions-model.outputs.sha256 }}
+      - name: Each installer installs as a person would, and what it installs starts
+        env:
+          DRASHTI_CAPTIONS_MODEL_DIR: ${{ runner.temp }}/captions-model
+        run: node scripts/check-installers.mjs
 
   assemble:
     name: Assemble the release
