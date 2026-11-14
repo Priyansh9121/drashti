@@ -139,6 +139,12 @@ export interface TextStyle {
   glow?: Glow | null;
   /** Make the words smaller until they fit the box (never bigger than they are set). */
   shrinkToFit?: boolean;
+  /**
+   * The source's own shrink of these words as it saved it (PowerPoint's `normAutofit`): the share of their size it drew
+   * them at (0.01-1) and of their line spacing it took off (0-1). Kept for the fit to start from; Drashti's own fit
+   * still decides.
+   */
+  sourceFit?: { fontScale: number; lineSpacingReduction: number };
   /** Apply paragraph spacing at the outside edges of this text box too. */
   spaceAtTextEdges?: boolean;
   /** Crop words to the text rectangle when the source requests clipping. */
