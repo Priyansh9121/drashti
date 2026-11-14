@@ -8,7 +8,12 @@ type TimingGlobals = typeof globalThis & {
   openingDecode?: { previewVisible: boolean | null; readyAt: number | null };
   /** Each frame the operator window drew as Drashti started (the order test below). */
   openingOrder?: OrderFrame[];
-  openingCap?: { held: boolean; releasedAt: number | null; lampAt: number | null; decodeStalled: boolean };
+  openingCap?: {
+    held: boolean;
+    releasedAt: number | null;
+    lampAt: number | null;
+    photoLoadedAtRelease: boolean | null;
+  };
   /** Each frame as Drashti started: the window's own GPU warm-up drawing, and the opening there and moving. */
   openingWarm?: WarmFrame[];
   /** When the opening came, when it let go, and whether the window's warm-up still drew then (ms, the page's clock). */
@@ -26,6 +31,12 @@ interface WarmFrame {
   cover: boolean;
   moving: boolean;
 }
+
+/**
+ * How late the main process answers for the photo in the cap's test (ms): past the window's limit, the photo's own
+ * 600 ms after it and the two seconds.
+ */
+const PHOTO_LATE_MS = 30_000;
 
 /** The operator window's own GPU warm-up (its LIVE picture's, render/WarmUp.tsx), while it draws. */
 const LIVE_WARM_UP = '[data-testid="live-preview"] [data-warm-up]';
@@ -158,15 +169,22 @@ test('startup releases the cover at its cap and lights the lamp if the photo sti
   } finally {
     await first.app.close();
   }
-  const { app } = await relaunchApp(first.userData, { DRASHTI_TEST_OPENING: '1' });
+  // The photo's file answered PHOTO_LATE_MS late by the main process (a test switch, from the start: Session 58), so
+  // it cannot have decoded when the cover lets go at its limit, whatever the page did first. Before, a decode() stalled
+  // from the page itself came after the page's own call on a quick start (CI's Windows once LIVE skipped its warm-up
+  // there), and the photo decoded.
+  const { app } = await relaunchApp(first.userData, {
+    DRASHTI_TEST_OPENING: '1',
+    DRASHTI_TEST_MEDIA_DELAY_MS: String(PHOTO_LATE_MS),
+  });
   try {
     const win = await operatorPage(app);
-    await win.evaluate((photo) => {
+    await win.evaluate(() => {
       const probe: NonNullable<TimingGlobals['openingCap']> = {
         held: false,
         releasedAt: null,
         lampAt: null,
-        decodeStalled: false,
+        photoLoadedAtRelease: null,
       };
       (globalThis as TimingGlobals).openingCap = probe;
       const root = document.documentElement;
@@ -177,20 +195,15 @@ test('startup releases the cover at its cap and lights the lamp if the photo sti
       });
       keepClosed();
 
-      const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode');
-      if (typeof descriptor?.value !== 'function') throw new Error('The image decoder is unavailable.');
-      const decode = descriptor.value as HTMLImageElement['decode'];
-      HTMLImageElement.prototype.decode = function (this: HTMLImageElement) {
-        if (this.src !== photo) return decode.call(this);
-        probe.decodeStalled = true;
-        return new Promise<void>(() => undefined);
-      };
-
       const sample = () => {
         const player = root.querySelector('[data-testid="opening"]');
         const held = player?.getAttribute('data-opening-held');
         if (held === 'true') probe.held = true;
-        if (held === 'false') probe.releasedAt ??= performance.now();
+        if (held === 'false' && probe.releasedAt === null) {
+          probe.releasedAt = performance.now();
+          const photo = player?.querySelector<HTMLImageElement>('img[data-opening-photo]');
+          probe.photoLoadedAtRelease = photo ? photo.complete && photo.naturalWidth > 0 : false;
+        }
         if (player?.querySelector('[data-opening-lamp]')) {
           probe.lampAt ??= performance.now();
           observer.disconnect();
@@ -204,7 +217,7 @@ test('startup releases the cover at its cap and lights the lamp if the photo sti
         attributeFilter: ['data-opening-held'],
       });
       sample();
-    }, OPENING_DEFAULT_PHOTO_URL);
+    });
 
     const cover = win.getByTestId('opening-start');
     const player = cover.getByTestId('opening');
@@ -215,7 +228,7 @@ test('startup releases the cover at its cap and lights the lamp if the photo sti
       opened: document.documentElement.hasAttribute('data-opened'),
     }));
     expect(trace.opened).toBe(false);
-    expect(trace.probe).toMatchObject({ held: true, decodeStalled: true });
+    expect(trace.probe).toMatchObject({ held: true, photoLoadedAtRelease: false });
     const released = trace.probe?.releasedAt;
     const lamp = trace.probe?.lampAt;
     if (typeof released !== 'number' || typeof lamp !== 'number')

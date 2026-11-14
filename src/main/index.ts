@@ -627,8 +627,8 @@ const noQuitConfirm = sw('DRASHTI_NO_QUIT_CONFIRM') === '1';
 const noRelaunch = sw('DRASHTI_TEST_NO_RELAUNCH') === '1';
 // Log every permission a page checks or asks for (diagnosing sound output choice).
 const logPermissions = sw('DRASHTI_LOG_PERMISSIONS') === '1';
-// Tests only: answer media requests late, as a slow disk would.
-const mediaDelayMs = Math.min(5000, Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_DELAY_MS') ?? 0) || 0));
+// Tests only: answer media requests late, as a slow disk would (up to a minute: the opening's photo past its limit).
+const mediaDelayMs = Math.min(60_000, Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_DELAY_MS') ?? 0) || 0));
 
 // Drashti's sound is the show's, not the computer's media (Session 15): the system's media controls
 // (Windows' media overlay, macOS's Now Playing) and the keyboard's or a headset's media keys never see
