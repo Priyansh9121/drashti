@@ -77,7 +77,7 @@ import { hallPicture, type StageLayout } from '../shared/stage-layouts';
 import { DEFAULT_THEME } from '../shared/themes';
 import type { SlideSource } from './engine/slide-source';
 import type { Db } from './db/database';
-import { LATEST_VERSION, LIBRARY_BUSY_TIMEOUT_MS, openDatabase } from './db/database';
+import { LATEST_VERSION, leaveCopyingToImports, LIBRARY_BUSY_TIMEOUT_MS, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
 import { carryInputName } from './db/input-renames';
 import { MediaRepo } from './db/media';
@@ -3558,6 +3558,9 @@ function start(): void {
     // No deck's movie is made while the stream is on air or recording (Session 54, C2; Session 50's rule).
     onAir: () => streaming.inUse() || testOnAir,
     playsHevc: () => hevc.wait(),
+    // While an import runs, its own connection copies the WAL into the library file, never a write of Main's (Session
+    // 58: such a write copied the import's pages and waited for the disk on the main thread).
+    running: leaveCopyingToImports(libraryDb),
     onProgress: (progress) => {
       sendToOperator(IPC.library.importProgress, progress);
     },
