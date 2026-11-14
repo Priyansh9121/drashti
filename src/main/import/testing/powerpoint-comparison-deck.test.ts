@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -6,6 +6,8 @@ import { powerPointPlan } from '../deck/plan';
 import { type PptxDeck, readPptxDeck } from '../pictures';
 import { readZipEntries } from '../zip';
 import {
+  COMPARISON_SHAPES_STANDARD,
+  COMPARISON_SHAPES_WIDE,
   COMPARISON_SLIDES,
   COMPARISON_STANDARD,
   type ComparisonSlide,
@@ -405,5 +407,52 @@ describe('the 4:3 deck PowerPoint’s own movie is compared against', () => {
       shape: 'plus',
       inward: true,
     });
+  });
+});
+
+/** Run 4's Shape decks (h-pptx3, 14 Nov evening): every outline In and Out, coming in and leaving, at 1 s and at 2 s. */
+const SHAPES_RUN4 = [1000, 2000].flatMap((ms) =>
+  ['in', 'out'].flatMap((phase) =>
+    OUTLINES.flatMap((outline) =>
+      ['In', 'Out'].map((way) => `Shape ${phase} · ${outline} ${way} · ${String(ms)} ms`),
+    ),
+  ),
+);
+
+describe('run 4’s Shape decks, wide and 4:3', () => {
+  const where = mkdtempSync(join(tmpdir(), 'drashti-comparison-shapes-'));
+  afterAll(() => {
+    rmSync(where, { recursive: true, force: true });
+  });
+
+  it('has every outline In and Out, coming in and leaving, at 1 s and 2 s, each one click of one Shape', async () => {
+    for (const [deck, cx, file] of [
+      [COMPARISON_SHAPES_WIDE, 12_192_000, 'Placeholder PowerPoint shapes.pptx'],
+      [COMPARISON_SHAPES_STANDARD, 9_144_000, 'Placeholder PowerPoint shapes 4x3.pptx'],
+    ] as const) {
+      expect(deck.slides.map((slide) => slide.name)).toEqual(SHAPES_RUN4);
+      // 1 s from 20, 2 s from 22: every marker a gray, each 4 lighter than the one before in its block.
+      expect(deck.slides.map((slide) => slide.marker)).toEqual([
+        ...SHAPES_RUN4.slice(0, 16).map((_, i) => 20 + 4 * i),
+        ...SHAPES_RUN4.slice(16).map((_, i) => 22 + 4 * i),
+      ]);
+      mkdirSync(join(where, String(cx)));
+      const written = await writeComparisonDeck(join(where, String(cx)), deck);
+      expect(written.endsWith(file)).toBe(true);
+      const read = await readPptxDeck(written);
+      expect(read.size).toEqual({ cx, cy: 6_858_000 });
+      const plan = powerPointPlan(read.slides);
+      for (const [index, slide] of deck.slides.entries()) {
+        const ms = slide.name.endsWith('2000 ms') ? 2000 : 1000;
+        expect(slide.duration, slide.name).toBe(ms);
+        expect(read.slides[index]?.deck?.motion?.effects, slide.name).toEqual([
+          expect.objectContaining({ kind: 'shape', durationMs: ms }),
+        ]);
+        expect(
+          plan.slides[index]?.groups.map((group) => group.endMs - group.startMs),
+          slide.name,
+        ).toEqual([ms]);
+      }
+    }
   });
 });
