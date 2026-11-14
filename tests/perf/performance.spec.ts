@@ -133,8 +133,10 @@ async function runPerformanceTest(
     child.on('exit', (code) => {
       clearTimeout(timer);
       load.stop();
-      // The animations scenario's lines as it went (Session 57), a check stopped at its time limit's included.
-      for (const l of log.split('\n')) if (l.startsWith('PERF-ANIMATIONS ')) console.log(l);
+      // The animations scenario's lines as it went (Session 57), a check stopped at its time limit's included; and what
+      // Drashti's log said of each page's warm-up (Session 58: how it chose, how it ended and how long it took).
+      for (const l of log.split('\n'))
+        if (l.startsWith('PERF-ANIMATIONS ') || / Warm-up(?::| of )/u.test(l)) console.log(l);
       const line = log.split('\n').find((l) => l.startsWith('DRASHTI_PERFTEST_RESULT '));
       resolve({
         code,

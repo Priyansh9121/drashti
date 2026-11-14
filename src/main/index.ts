@@ -141,6 +141,7 @@ import {
 } from './ipc/handle';
 import { readOrDefault } from './ipc/read-or-default';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
+import { LockWatch } from './perf-lock';
 import { isPerfScenario, scenarioFor } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { SoundRepo } from './db/sound';
@@ -7562,6 +7563,39 @@ function start(): void {
             override: sw('DRASHTI_FFMPEG'),
           }),
         cpu: () => app.getAppMetrics().reduce((sum, m) => sum + m.cpu.percentCPUUsage, 0),
+        // The library's write lock as Main sees it while measured (Session 58): a write then would have waited so long.
+        lock: new LockWatch({ free: () => writeLockFree(libraryDb, LIBRARY_BUSY_TIMEOUT_MS) }),
+        // Each page's warm-up marks (Session 58, WU-1): the LIVE picture's, the stream's page's and each output's.
+        warmUps: async () => {
+          const pages: [string, Electron.WebContents | null][] = [
+            [
+              'the LIVE picture',
+              operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null,
+            ],
+            ['the stream’s page', streaming.programContents() ?? null],
+            ...[...outputWindows.entries()].map(([screenId, w]): [string, Electron.WebContents | null] => [
+              outputNames.get(screenId) ?? 'an output',
+              w.isDestroyed() ? null : w.webContents,
+            ]),
+          ];
+          return Promise.all(
+            pages
+              .flatMap(([page, contents]) =>
+                !contents || contents.isDestroyed() ? [] : [[page, contents] as const],
+              )
+              .map(async ([page, contents]): Promise<[string, [string, number][] | null]> => {
+                try {
+                  const marks = (await contents.executeJavaScript(
+                    "performance.getEntriesByType('mark').filter((m) => m.name.startsWith('drashti-warm-up')).map((m) => [m.name, Math.round(m.startTime)])",
+                    true,
+                  )) as [string, number][];
+                  return [page, marks];
+                } catch {
+                  return [page, null];
+                }
+              }),
+          );
+        },
         priority: {
           started: startedPriority,
           others: () =>
