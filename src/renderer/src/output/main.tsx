@@ -20,6 +20,7 @@ import { Preloader } from './Preloader';
 import { DisplayNumber } from './SetupCards';
 import { reportRenderError } from '../ui/render-errors';
 import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-mode';
+import { setDrawsWithoutChip } from '../render/chipless';
 import { ClockStyleContext } from '../render/clock-style';
 import { LiveHere } from '../render/live-here';
 import { useStopFade } from '../render/StopFade';
@@ -191,6 +192,12 @@ function Output() {
   // keeps the warm-up drawn still sees it, unless it held it only until then (DRASHTI_TEST_GPU_SAID=late).
   const [noGpu, setNoGpu] = useState(false);
   if (!noGpu && (!HOLD_WARM_UP || NO_GPU_ENDS_HOLD) && context?.noGpu === true) setNoGpu(true);
+  // A deck's own Wipe draws PowerPoint's band the way this screen holds its frames (render/chipless.ts, Session 58):
+  // told by the context itself, whatever a test does with the warm-up.
+  const chipless = context?.noGpu === true;
+  useEffect(() => {
+    setDrawsWithoutChip(chipless);
+  }, [chipless]);
   const [testThrow, setTestThrow] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(
