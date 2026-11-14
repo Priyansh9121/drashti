@@ -447,7 +447,7 @@ it('leaves a file named by its own bytes, as an import names its copy, even with
     ).toEqual([]);
     expect(x.trash).not.toHaveBeenCalled();
     expect(existsSync(join(x.mediaDir, 'ab', `${sha256}.mp4`))).toBe(true);
-    expect(log).toHaveBeenCalledWith(expect.stringContaining("an import's copy"));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('an import’s copy'));
   } finally {
     x.close();
   }

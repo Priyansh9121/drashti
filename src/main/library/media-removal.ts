@@ -531,7 +531,7 @@ export class MediaRemoval {
           // Named by its own bytes, as an import names its copy (media-store.ts) and Trim never names a cut: a gone
           // cut dragged back from the Trash, its row not yet back at it (LOW-1).
           else if (basename(file).toLowerCase().startsWith(sha256.toLowerCase()))
-            left(`it has the bytes of cut ${cut.id} and is named by them: an import's copy`);
+            left(`it has the bytes of cut ${cut.id} and is named by them: an import’s copy`);
           else if (folderOf(cut) !== folder)
             left(`it has the bytes of cut ${cut.id}, written into another folder`);
           else if (!sameFile(file, before)) left(`cut ${cut.id}'s file changed while it was read`);
