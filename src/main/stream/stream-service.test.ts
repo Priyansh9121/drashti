@@ -1,8 +1,12 @@
 import { EventEmitter } from 'node:events';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { IPC } from '../../shared/ipc';
 import type { ProgramContext } from '../../shared/stream';
+import { type SecureStorage, StreamKeyStore } from './key-store';
 import { StreamService, type MediaAccess, type StreamServiceDeps } from './stream-service';
 
 vi.mock('electron', () => ({
@@ -117,5 +121,41 @@ describe('the stream’s page without a graphics chip (Session 58, WU-1)', () =>
     expect(stream.context()).toMatchObject({ noGpu: true });
     expect(asked).toContain(41);
     stream.close();
+  });
+});
+
+// Q58-37 (the owner, 14 Nov 2026): opening Stream asked for the laptop's password, twice. Its panel's view is told
+// whether keys can be kept without asking the system's secure storage (on a Mac, its keychain).
+describe('the Stream panel’s profiles and keys', () => {
+  it('are shown without asking the system’s secure storage', () => {
+    let asked = 0;
+    const storage: SecureStorage = {
+      isEncryptionAvailable: () => {
+        asked++;
+        return true;
+      },
+      encryptString: (s) => {
+        asked++;
+        return Buffer.from(s);
+      },
+      decryptString: (b) => {
+        asked++;
+        return b.toString();
+      },
+    };
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-stream-keys-'));
+    try {
+      const profile = { id: 'test-profile', name: 'Placeholder profile', preset: 'good' };
+      const stream = new StreamService({
+        profiles: { get: () => profile, list: () => [profile] },
+        settings: { get: () => profile.id },
+        keys: new StreamKeyStore(join(dir, 'stream-keys.json'), storage),
+        log: vi.fn(),
+      } as unknown as StreamServiceDeps);
+      expect(stream.profilesView()).toMatchObject({ activeId: profile.id, keyStorage: { available: true } });
+      expect(asked).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

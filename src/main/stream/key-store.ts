@@ -38,7 +38,13 @@ export class StreamKeyStore {
     private readonly unavailable = NO_SECURE_STORAGE,
   ) {}
 
-  /** Whether keys can be kept here, and why not. */
+  /** The system's last answer this run (set when it is asked), or null while it has not been. */
+  private answered: { available: boolean; message: string | null } | null = null;
+
+  /**
+   * Whether keys can be kept here, and why not: asks the system's secure storage, which on a Mac opens the keychain
+   * (it may ask for the computer's password). Only to save a key and to go live.
+   */
   status(): { available: boolean; message: string | null } {
     if (this.forceUnavailable) return { available: false, message: this.unavailable };
     let available: boolean;
@@ -48,7 +54,18 @@ export class StreamKeyStore {
     } catch {
       available = false;
     }
-    return available ? { available, message: null } : { available, message: this.unavailable };
+    this.answered = available ? { available, message: null } : { available, message: this.unavailable };
+    return this.answered;
+  }
+
+  /**
+   * What a window is told (Session 58, Q58-37: opening Stream asked for the laptop's password, twice): never asks the
+   * system's secure storage. Its last answer this run; before one, keys are offered, and a storage that cannot keep
+   * them is said when a key is saved (its refusal says so, and this from then on).
+   */
+  known(): { available: boolean; message: string | null } {
+    if (this.forceUnavailable) return { available: false, message: this.unavailable };
+    return this.answered ?? { available: true, message: null };
   }
 
   private read(): Record<string, string> {
