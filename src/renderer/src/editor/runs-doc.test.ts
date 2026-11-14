@@ -440,3 +440,29 @@ it('replaces imported fixed spacing when the operator changes line spacing', () 
   expect(formatted).toMatchObject({ lineHeight: 1.4 });
   expect(formatted).not.toHaveProperty('lineHeightPx');
 });
+
+// Session 58 (FT-5): a deck box keeps PowerPoint's own shrink (style.sourceFit: its closer lines and smaller words)
+// only while it still describes these words with shrink-to-fit on; PowerPoint works its shrink out again then.
+describe('PowerPoint’s own shrink of a box, once the box changes (FT-5)', () => {
+  const fitted = (): TextElement => {
+    const b = box(undefined, 'Placeholder deck words');
+    return {
+      ...b,
+      style: { ...b.style, shrinkToFit: true, sourceFit: { fontScale: 0.9, lineSpacingReduction: 0.1 } },
+    };
+  };
+
+  it('goes when the box’s words are edited, and stays while they are the same', () => {
+    const el = fitted();
+    expect(withRuns(el, [{ text: 'Placeholder deck words' }]).style.sourceFit).toEqual(el.style.sourceFit);
+    expect(withRuns(el, [{ text: 'Placeholder deck words, edited' }]).style).not.toHaveProperty('sourceFit');
+    expect(withRuns(el, [{ text: 'Placeholder deck words, edited' }]).style.shrinkToFit).toBe(true);
+  });
+
+  it('goes when shrink-to-fit is turned off, and stays when it is left on', () => {
+    const el = fitted();
+    expect(styleBox(el, {}, { shrinkToFit: false }).style).not.toHaveProperty('sourceFit');
+    expect(styleBox(el, {}, { shrinkToFit: true }).style.sourceFit).toEqual(el.style.sourceFit);
+    expect(styleBox(el, {}, { align: 'left' }).style.sourceFit).toEqual(el.style.sourceFit);
+  });
+});
