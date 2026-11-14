@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { DeckEffect } from '../../../shared/deck';
-import { deckMotionFrame, deckShapeShows } from '../../../shared/deck-motion';
+import { deckMotionFrame, deckShapeShows, deckSplitShows } from '../../../shared/deck-motion';
 import type { Rect } from '../../../shared/model';
 import { setDrawsWithoutChip } from './chipless';
 import { deckTargetMaskedTwice, paintDeckTarget } from './deck-target-paint';
@@ -15,7 +15,17 @@ function effect(kind: DeckEffect['kind'], more: Partial<DeckEffect> = {}): DeckE
 function drawing() {
   const writes: string[] = [];
   const style = new Proxy(
-    { transform: '', opacity: '', clipPath: '', maskImage: '', maskComposite: '', willChange: '' },
+    {
+      transform: '',
+      opacity: '',
+      clipPath: '',
+      maskImage: '',
+      maskComposite: '',
+      maskSize: '',
+      maskPosition: '',
+      maskClip: '',
+      outline: '',
+    },
     {
       set(target, key, value: string) {
         writes.push(String(key));
@@ -26,29 +36,59 @@ function drawing() {
   return { writes, style };
 }
 
-it('draws a Split’s soft edges as a mask on the moving shape, never a clip, and takes it off when the Split ends', () => {
+it('draws a Split’s soft edges as a mask on the moving shape, never a clip, on a tile reaching 8 px past it with a clear outline as far, and takes it all off when the Split ends (Q58-55)', () => {
+  // A mask on a box whose edge falls between pixels drew that edge's row at three quarters, with a graphics chip and
+  // without (CI's Mac and Windows, C22's diagnostics: one plain gradient on a box 150.996 px high, its last row 192 for
+  // 255); a mask reaching past the box (its tile, mask-clip: no-clip) over a box drawing past its edge (a clear
+  // outline) draws that row as the rows above it.
   const { style, writes } = drawing();
   const split = effect('split', { splitAxis: 'x' });
-  const paint = (ms: number, part = bounds) =>
-    paintDeckTarget(style, deckMotionFrame([split], 1, ms, bounds, slide), bounds, part);
-  // Half-way: the middle shows, each soft edge 13.5 % of the half box wide (40.5 px), beyond it nothing.
+  const frame = (ms: number) => deckMotionFrame([split], 1, ms, bounds, slide);
+  const paint = (ms: number, part = bounds) => paintDeckTarget(style, frame(ms), bounds, part);
   paint(200);
   expect(style).toMatchObject({
     clipPath: '',
-    maskImage:
-      'linear-gradient(to right, rgb(0 0 0 / 0) 0%, rgb(0 0 0 / 0) 21.625%, rgb(0 0 0 / 1) 28.375%, rgb(0 0 0 / 1) 71.625%, rgb(0 0 0 / 0) 78.375%, rgb(0 0 0 / 0) 100%)',
+    maskSize: 'calc(100% + 16px) calc(100% + 16px)',
+    maskPosition: '-8px -8px',
+    maskClip: 'no-clip',
+    outline: '8px solid transparent',
   });
-  expect(writes).toEqual(['maskImage']);
+  expect(style.maskImage).toMatch(/^linear-gradient\(to right, /u);
+  expect(writes.sort()).toEqual(['maskClip', 'maskImage', 'maskPosition', 'maskSize', 'outline']);
   writes.length = 0;
   paint(200);
   expect(writes).toEqual([]);
-  // One part of a group, its left half: the same edges, where they fall across the whole group.
-  paint(200, { ...bounds, width: 300 });
-  expect(style.maskImage).toBe(
-    'linear-gradient(to right, rgb(0 0 0 / 0) 0%, rgb(0 0 0 / 0) 43.25%, rgb(0 0 0 / 1) 56.75%, rgb(0 0 0 / 1) 143.25%, rgb(0 0 0 / 0) 156.75%, rgb(0 0 0 / 0) 200%)',
-  );
+  // Half-way, the whole box and one part of a group (its left half): what shows, every 9 px and at each edge pixel,
+  // PowerPoint's (deckSplitShows) where the edges fall across the whole group.
+  const wipe = frame(200).wipe;
+  for (const part of [bounds, { ...bounds, width: 300 }]) {
+    paint(200, part);
+    const at = maskOf(style.maskImage, part, style.maskComposite, style);
+    const off: string[] = [];
+    for (const x of [
+      0.5,
+      ...Array.from({ length: Math.floor(part.width / 9) }, (_, i) => 9 * i + 4.5),
+      part.width - 0.5,
+    ]) {
+      const u = (part.x + x - (bounds.x + bounds.width / 2)) / (bounds.width / 2);
+      const wanted = deckSplitShows(wipe, u);
+      for (const y of [0.5, part.height / 2, part.height - 0.5])
+        if (Math.abs(at(x, y) - wanted) > 0.002)
+          off.push(`(${String(x)}, ${String(y)}): ${String(at(x, y))}, not ${String(wanted)}`);
+    }
+    expect(off.slice(0, 5), JSON.stringify(part)).toEqual([]);
+  }
   paint(400);
-  expect(style).toMatchObject({ clipPath: '', maskImage: '', opacity: '', transform: '' });
+  expect(style).toMatchObject({
+    clipPath: '',
+    maskImage: '',
+    maskSize: '',
+    maskPosition: '',
+    maskClip: '',
+    outline: '',
+    opacity: '',
+    transform: '',
+  });
 });
 
 it('leaves a Wipe and the other reveals to their clip, with no mask', () => {
@@ -68,10 +108,20 @@ it('leaves a Wipe and the other reveals to their clip, with no mask', () => {
  */
 function maskOf(
   mask: string,
-  size: { width: number; height: number },
+  element: { width: number; height: number },
   composite = '',
+  tile: { maskSize: string; maskPosition: string } = { maskSize: '', maskPosition: '' },
 ): (x: number, y: number) => number {
   if (mask === '') return () => 1;
+  // A tile reaching `past` px past the element on every side, as mask-size and mask-position say.
+  let past = 0;
+  if (tile.maskSize !== '' || tile.maskPosition !== '') {
+    const m = /^-([\d.]+)px -\1px$/u.exec(tile.maskPosition);
+    expect(m, tile.maskPosition).not.toBeNull();
+    past = Number(m?.[1]);
+    expect(tile.maskSize).toBe(`calc(100% + ${String(2 * past)}px) calc(100% + ${String(2 * past)}px)`);
+  }
+  const size = { width: element.width + 2 * past, height: element.height + 2 * past };
   const layers: string[] = [];
   let depth = 0;
   let start = 0;
@@ -89,7 +139,7 @@ function maskOf(
   for (const op of ops) expect(['add', 'exclude'], composite).toContain(op);
   return (x, y) =>
     read.reduceRight((below, top, i) => {
-      const s = top(x, y);
+      const s = top(x + past, y + past);
       return ops[i % ops.length] === 'exclude' ? s * (1 - below) + below * (1 - s) : s + below * (1 - s);
     }, 0);
 }
@@ -118,9 +168,10 @@ function along(stops: readonly [number, number][], at: number): number {
 }
 
 function layerOf(layer: string, size: { width: number; height: number }): (x: number, y: number) => number {
-  let m = /^linear-gradient\((-?[\d.]+)deg, (.*)\)$/u.exec(layer);
+  let m = /^linear-gradient\((-?[\d.]+deg|to right|to bottom), (.*)\)$/u.exec(layer);
   if (m) {
-    const angle = (Number(m[1]) * Math.PI) / 180;
+    const degrees = m[1] === 'to right' ? 90 : m[1] === 'to bottom' ? 180 : Number(m[1]?.replace('deg', ''));
+    const angle = (degrees * Math.PI) / 180;
     const [ex, ey] = [Math.sin(angle), -Math.cos(angle)];
     const length = Math.abs(size.width * ex) + Math.abs(size.height * ey);
     const stops = stopsOf(m[2] ?? '', '%');
@@ -325,25 +376,21 @@ it('draws Shape’s hard edge where the page draws without a graphics chip: a cl
   expect(inner.style.maskImage).toMatch(/^linear-gradient\(/u);
 });
 
-it('leaves a Split’s soft edges to their mask where the page draws without a graphics chip, the shape a layer of its own while masked (Q58-55)', () => {
-  // Drawn in software, a mask on a box whose edge falls between pixels drew that edge's row at three quarters of what
-  // it should be, any mask (CI's Windows: C22's diagnostic, a box 150.996 px high); on a layer of its own, exactly.
+it('leaves a Split’s soft edges to their mask where the page draws without a graphics chip, on the same tile reaching past the shape (Q58-55)', () => {
   setDrawsWithoutChip(true);
   try {
     const { style } = drawing();
     const split = effect('split', { splitAxis: 'x' });
     paintDeckTarget(style, deckMotionFrame([split], 1, 200, bounds, slide), bounds, bounds);
-    expect(style.clipPath).toBe('');
+    expect(style).toMatchObject({
+      clipPath: '',
+      maskSize: 'calc(100% + 16px) calc(100% + 16px)',
+      maskPosition: '-8px -8px',
+      maskClip: 'no-clip',
+      outline: '8px solid transparent',
+    });
     expect(style.maskImage).toMatch(/^linear-gradient\(to right, /u);
-    expect(style.willChange).toBe('transform');
-    paintDeckTarget(style, deckMotionFrame([split], 1, 400, bounds, slide), bounds, bounds);
-    expect(style).toMatchObject({ maskImage: '', willChange: '' });
   } finally {
     setDrawsWithoutChip(false);
   }
-  // With a chip: no layer of its own.
-  const { style } = drawing();
-  const split = effect('split', { splitAxis: 'x' });
-  paintDeckTarget(style, deckMotionFrame([split], 1, 200, bounds, slide), bounds, bounds);
-  expect(style.willChange).toBe('');
 });
