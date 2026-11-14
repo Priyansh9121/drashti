@@ -65,7 +65,8 @@ import { sw } from './switches';
  *   measured (one hall screen, no other window open): by Next its slides come in by its own Wipe (a hard-edged clip
  *   since Q57-28; a mask over the whole slide before), Cover and Uncover (the moving slide shaded, a filter) and Push
  *   (transforms only: the control), then two shapes of its last slide come in and go out by Split (a mask the size of
- *   each), a click each;
+ *   each), a click each, and four more by Shape (Session 58: a Circle, a Box, a Diamond and a Plus, PowerPoint's soft
+ *   edge as masks the size of each, a Box's, a Diamond's and a Plus's two, one inside the other), a click each;
  * then Session 57's leftovers (h-left2's MS-1, DK-6 and DK-2), left out of the two-core streaming check (after3's ran
  * into its 14-minute stop with them):
  * - a slide of an imported, editable PowerPoint table of 250 cells (each cell a text box that measures itself on the
@@ -194,11 +195,23 @@ const DECK_OWN: readonly { row: string; name: string; transition: DeckNativeTran
 const DECK_SPLIT_MS = 500;
 const DECK_SPLIT_IN = 'deck Drashti plays: shapes in by Split 500';
 const DECK_SPLIT_OUT = 'deck Drashti plays: shapes out by Split 500';
+/**
+ * Then four more of its shapes in by Shape at its third click and out at its fourth (Session 58; PowerPoint's own
+ * 0.5 s): a Circle, a Box, a Diamond and a Plus, each outline once, its soft edge drawn by masks (shared/deck-motion.ts,
+ * shapeMasks: a Circle's one radial gradient; a Box's, a Diamond's and a Plus's two, one inside the other).
+ */
+const DECK_SHAPE_MS = 500;
+const DECK_SHAPE_IN = 'deck Drashti plays: shapes in by Shape 500';
+const DECK_SHAPE_OUT = 'deck Drashti plays: shapes out by Shape 500';
+const DECK_SHAPES: readonly NonNullable<DeckEffect['shape']>[] = ['circle', 'box', 'diamond', 'plus'];
 /** Its first slide, put up by a cut before each round: only by Next from the slide before is a deck's own played. */
 const DECK_OWN_FIRST = '(to the first slide of the deck Drashti plays)';
-/** One round of it: its first slide, its four transitions, its two clicks, each then still SETTLE_MS. */
+/** One round of it: its first slide, its four transitions, its four clicks, each then still SETTLE_MS. */
 const DECK_OWN_ROUND_MS =
-  SETTLE_MS + DECK_OWN.length * (DECK_OWN_MS + SETTLE_MS) + 2 * (DECK_SPLIT_MS + SETTLE_MS);
+  SETTLE_MS +
+  DECK_OWN.length * (DECK_OWN_MS + SETTLE_MS) +
+  2 * (DECK_SPLIT_MS + SETTLE_MS) +
+  2 * (DECK_SHAPE_MS + SETTLE_MS);
 
 /** How long a screen opened for a case may take to be ready: its page loaded, its fonts in, its warm-up done. */
 const SCREEN_LIMIT_MS = 20_000;
@@ -412,7 +425,8 @@ const NATIVE_MOTION: DeckEffect[] = [
  * The deck Drashti plays itself, its own transitions (13 Nov 2026), as its import keeps a deck it can play from the
  * deck's shapes (import/deck/native-deck-import.ts): its first slide, then one coming in by each of DECK_OWN, every one
  * over the same full-slide picture (a deck's own background, drawn once) with its title and a line; on the last, a
- * shape and words its two clicks bring in and take out by Split. A jump to any of them is a cut.
+ * shape and words its first two clicks bring in and take out by Split, then two shapes and two words its next two
+ * bring in and take out by Shape, each outline once (Session 58). A jump to any of them is a cut.
  */
 function deckOwnSlides(picture: string) {
   const words = (id: string, shapeId: string, text: string, frame: Rect, fontSize: number): SlideElement => ({
@@ -435,6 +449,23 @@ function deckOwnSlides(picture: string) {
       delayMs: 0,
       durationMs: DECK_SPLIT_MS,
     }));
+  const shape = (shapeId: string, outline: NonNullable<DeckEffect['shape']>): DeckEffect[] =>
+    [3, 4].map((step): DeckEffect => ({
+      shapeId,
+      step,
+      phase: step === 3 ? 'in' : 'out',
+      kind: 'shape',
+      shape: outline,
+      delayMs: 0,
+      durationMs: DECK_SHAPE_MS,
+    }));
+  // Where Split's shapes were, once they have gone: two rows of two, each outline's own shape or words.
+  const shapeAt = (k: number): Rect => ({
+    x: k % 2 === 0 ? 160 : 1000,
+    y: k < 2 ? 560 : 790,
+    width: 760,
+    height: 200,
+  });
   return [null, ...DECK_OWN].map((own, i) => {
     const last = i === DECK_OWN.length;
     const elements: SlideElement[] = [
@@ -474,6 +505,21 @@ function deckOwnSlides(picture: string) {
               { x: 1000, y: 600, width: 760, height: 320 },
               64,
             ),
+            ...DECK_SHAPES.map((outline, k): SlideElement =>
+              k % 2 === 0
+                ? {
+                    id: `shape-${outline}`,
+                    kind: 'shape',
+                    shape: 'rectangle',
+                    fill: '#5a2a48cc',
+                    cornerRadius: 24,
+                    opacity: 1,
+                    frame: shapeAt(k),
+                    outline: { color: '#f3c46b', width: 4 },
+                    sourceShapeId: String(7 + k),
+                  }
+                : words(`shape-${outline}`, String(7 + k), `Placeholder words in by Shape`, shapeAt(k), 56),
+            ),
           ]
         : []),
     ];
@@ -485,8 +531,12 @@ function deckOwnSlides(picture: string) {
         : {}),
       motion: last
         ? {
-            effects: [...split('5', 'x', false), ...split('6', 'y', true)].sort((a, b) => a.step - b.step),
-            stepsMs: [0, DECK_SPLIT_MS, DECK_SPLIT_MS],
+            effects: [
+              ...split('5', 'x', false),
+              ...split('6', 'y', true),
+              ...DECK_SHAPES.flatMap((outline, k) => shape(String(7 + k), outline)),
+            ].sort((a, b) => a.step - b.step),
+            stepsMs: [0, DECK_SPLIT_MS, DECK_SPLIT_MS, DECK_SHAPE_MS, DECK_SHAPE_MS],
             approximate: false,
           }
         : { effects: [], stepsMs: [0], approximate: false },
@@ -1082,13 +1132,16 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       } else progress(`${stopped}: no click after 20 s still`);
       // A deck Drashti plays itself (13 Nov 2026), as dissolve 800 was measured (one hall screen, no other window
       // open), before the leftovers, so it runs on two cores too: from its first slide (a cut) by Next, its own Wipe,
-      // Cover, Uncover and Push, then its last slide's shapes in by Split and out by Split, a click each. Only when
-      // there is time for all its rounds, never marking the check out of time.
+      // Cover, Uncover and Push, then its last slide's shapes in by Split and out by Split, then in by Shape and out
+      // by Shape, a click each. Only when there is time for all its rounds, never marking the check out of time.
       if (
-        timeFor(SHORT_RUNS * DECK_OWN_ROUND_MS, 'deck Drashti plays itself (its own transitions, its Splits)')
+        timeFor(
+          SHORT_RUNS * DECK_OWN_ROUND_MS,
+          'deck Drashti plays itself (its own transitions, its Splits and Shapes)',
+        )
       ) {
         progress(
-          'a deck Drashti plays itself: its own Wipe, Cover, Uncover and Push, its shapes in and out by Split',
+          'a deck Drashti plays itself: its own Wipe, Cover, Uncover and Push, its shapes in and out by Split and by Shape',
         );
         for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++) {
           await press(DECK_OWN_FIRST, 'slide', 0, goLive(deckOwnId, 0), SETTLE_MS);
@@ -1096,6 +1149,8 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
             await press(own.row, 'slide', DECK_OWN_MS, { type: 'next' }, DECK_OWN_MS + SETTLE_MS);
           for (const row of [DECK_SPLIT_IN, DECK_SPLIT_OUT])
             await press(row, 'nativeDeck', DECK_SPLIT_MS, { type: 'next' }, DECK_SPLIT_MS + SETTLE_MS);
+          for (const row of [DECK_SHAPE_IN, DECK_SHAPE_OUT])
+            await press(row, 'nativeDeck', DECK_SHAPE_MS, { type: 'next' }, DECK_SHAPE_MS + SETTLE_MS);
         }
       }
       // Session 57's leftovers last (MS-1, DK-6, DK-2), as the click after 20 s still: each only when there is time
