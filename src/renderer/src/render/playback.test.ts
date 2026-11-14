@@ -206,6 +206,35 @@ describe('a file played once to an end point', () => {
     }
   });
 
+  it('opted in, plays a file already decoded at the frame its clock starts it from, from there at once: no seek (C3, Session 58)', () => {
+    vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
+    // A deck slide's first clip loaded ahead where a click on its row starts it (0.4 s in, past the deck's own
+    // transition), its frame decoded; the slide comes up on time, or a moment late (30 ms).
+    for (const lateMs of [0, 30]) {
+      const v = new FakeMedia(6);
+      v.src = mediaUrl('clip');
+      vi.advanceTimersByTime(10);
+      v.currentTime = 0.4;
+      vi.advanceTimersByTime(10);
+      const seeksBefore = v.seeks;
+      const onFrame = vi.fn();
+      const stop = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'clip',
+        startedAt: Date.now() - 400 - lateMs,
+        reuseLoadedSource: true,
+        onFrame,
+      });
+      try {
+        expect(v.seeks, `${String(lateMs)} ms late: seeks`).toBe(seeksBefore);
+        expect(onFrame, `${String(lateMs)} ms late: its frame at once`).toHaveBeenCalledTimes(1);
+        expect(v.paused).toBe(false);
+        expect(v.currentTime).toBeCloseTo(0.4, 3);
+      } finally {
+        stop();
+      }
+    }
+  });
+
   it('opted in, takes a file still loading as it comes, and loads afresh another file or one that failed', () => {
     vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
     const options = (onFrame = vi.fn()) => ({
@@ -968,6 +997,7 @@ describe('a deck’s first clip whose first frame came in late, caught up on the
     const playback = startPlayback(v as unknown as HTMLMediaElement, {
       mediaId: 'first-clip',
       startedAt: clipAt,
+      catchesUp: true,
       timing: () => timing,
       onFrame: () => {
         const at = Date.now();
@@ -1035,6 +1065,7 @@ describe('a deck’s first clip whose first frame came in late, caught up on the
     const playback = startPlayback(v as unknown as HTMLMediaElement, {
       mediaId: 'first-clip-on-time',
       startedAt: clipAt,
+      catchesUp: true,
       timing: () => ({ loop: false, catchUp: { at: shownAt, lateMs: 0, maxRate: MAX_RATE } }),
     });
     const rates = new Set<number>();
@@ -1060,6 +1091,7 @@ describe('a deck’s first clip whose first frame came in late, caught up on the
     const playback = startPlayback(v as unknown as HTMLMediaElement, {
       mediaId: 'hold',
       startedAt: startsAt,
+      catchesUp: true,
       timing: () => ({ loop: true, catchUp: { at: startsAt, lateMs: late, maxRate: MAX_RATE } }),
     });
     // Where the engine's time has it going round: from the clip's end by the engine's time.
@@ -1077,5 +1109,31 @@ describe('a deck’s first clip whose first frame came in late, caught up on the
       IN_STEP,
     );
     playback();
+  });
+
+  it('sets its pace from its first moving frame only when its caller says it catches up (C3T-1)', () => {
+    // A late start, as a deck's first clip has it: 0.3 s behind from now. Its first moving frame comes before any
+    // check. Opted in, it plays faster from that frame; any other playback is left as it was until the check.
+    vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
+    for (const catchesUp of [true, false]) {
+      const v = new FakeMedia(6);
+      v.src = mediaUrl('clip');
+      vi.advanceTimersByTime(10);
+      const at = Date.now();
+      const playback = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'clip',
+        startedAt: at,
+        reuseLoadedSource: true,
+        catchesUp,
+        timing: () => ({ loop: false, catchUp: { at, lateMs: 300, maxRate: MAX_RATE } }),
+      });
+      try {
+        // Its 'playing' comes at once (a task later); the first check, a quarter of a second later.
+        vi.advanceTimersByTime(5);
+        expect(v.playbackRate > 1, `catchesUp ${String(catchesUp)}`).toBe(catchesUp);
+      } finally {
+        playback();
+      }
+    }
   });
 });

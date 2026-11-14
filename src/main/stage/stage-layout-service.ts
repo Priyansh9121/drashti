@@ -36,9 +36,12 @@ export interface StageLayoutServiceDeps {
 
 const inputSchema = z.object({ name: stageLayoutNameSchema }).and(stageLayoutDefinitionSchema);
 const chosenSchema = z.object({ id: idSchema.nullable() });
-/** A removed layout put back (Undo of Delete): as it was, its place, and whether it was the chosen one. */
+/**
+ * A removed layout put back (Undo of Delete): as it was, its place, and whether it was the chosen one. Its name is the
+ * one it was kept with, never cleaned again (C15, FT-1: the cleaning is for names given, not names kept).
+ */
 const restoreSchema = z.object({
-  layout: z.object({ id: idSchema, name: stageLayoutNameSchema }).and(stageLayoutDefinitionSchema),
+  layout: z.object({ id: idSchema, name: z.string().trim().min(1).max(60) }).and(stageLayoutDefinitionSchema),
   at: z.number().int().min(0).max(10_000),
   chosen: z.boolean(),
 });

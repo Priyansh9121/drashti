@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { isLowerThirdAnimation } from '../../shared/lower-third-animations';
+import { LOWER_THIRD_MOTIONS } from '../../shared/lower-third-styles';
 import type { LowerThird, LowerThirdInput } from '../../shared/lower-thirds';
 import {
   DEFAULT_LOWER_THIRD_LOOK,
@@ -18,7 +19,9 @@ import type { Db } from './database';
  * The Lower Thirds studio (Session 55, Part 16) keeps its choices in the look's JSON, so no migration is needed: the
  * look's own new fields (a style, an accent, a moving background), and beside them how it goes out (`outAnimation`)
  * and the seconds it stays up (`seconds`). One kept before the studio has none of them and reads as it was; an out
- * or seconds this Drashti cannot use are left out, the rest kept.
+ * or seconds this Drashti cannot use are left out, the rest kept. So is a moving background a later Drashti added
+ * (Session 58, Q58-30): this one draws none and keeps the rest of the look, never the default look in its place;
+ * anything else in the look it cannot read still reads as the default, as before (the look stays strict).
  */
 
 interface Row {
@@ -53,7 +56,9 @@ function lookOf(json: string): Pick<LowerThird, 'look' | 'outAnimation' | 'secon
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
     return { look: DEFAULT_LOWER_THIRD_LOOK };
   const { outAnimation, seconds, ...rest } = raw as Record<string, unknown>;
-  const look = lowerThirdLookSchema.safeParse(rest);
+  const { motion, ...still } = rest;
+  const later = typeof motion === 'string' && !(LOWER_THIRD_MOTIONS as readonly string[]).includes(motion);
+  const look = lowerThirdLookSchema.safeParse(later ? still : rest);
   const kept = lowerThirdSecondsSchema.safeParse(seconds);
   return {
     look: look.success ? look.data : DEFAULT_LOWER_THIRD_LOOK,

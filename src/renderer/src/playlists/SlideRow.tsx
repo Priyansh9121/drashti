@@ -7,12 +7,14 @@ import type {
 import type { MediaBackground } from '../../../shared/engine/state';
 import { type AudioCue, backgroundCueOf, type BackgroundCue, soundCueOf } from '../../../shared/library';
 import type { OrderedSlide } from '../../../shared/order';
+import type { PointAt } from '../../../shared/point-ahead';
 import { CannotPlayBadge } from '../library/MediaList';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
 import { OversetMark, OversetWatch } from '../render/measure';
 import { Badge, LiveBadge, MissingBadge } from '../ui/Badge';
+import { rowPointer } from './point-ahead';
 import { PreparingMark, preparingWords } from './PreparingMark';
 import { cx } from '../ui/cx';
 import { AlertTriangle, Music, Video } from '../ui/icons';
@@ -154,6 +156,11 @@ export interface SlideRowProps {
   dropLine?: 'before' | 'after' | null;
   /** The keys that move it, said to a screen reader (Part 4b: Alt+↑ ↓ within its deck in a playlist). */
   keyShortcuts?: string;
+  /**
+   * The slide a click on it puts up (C3, Session 58: Q57-26): the pointer resting on it, pressing it, or the keyboard
+   * on it has the screens load its first clip ahead, if it is a deck's (point-ahead.ts). Left out: nothing is said.
+   */
+  pointAt?: PointAt;
 }
 
 export const SlideRow = memo(function SlideRow({
@@ -173,6 +180,7 @@ export const SlideRow = memo(function SlideRow({
   onDragStart,
   dropLine = null,
   keyShortcuts,
+  pointAt,
 }: SlideRowProps) {
   const ref = useRef<HTMLButtonElement>(null);
   const info = at.slide;
@@ -224,6 +232,42 @@ export const SlideRow = memo(function SlideRow({
         onDoubleClick={onDoubleClick}
         onContextMenu={onContextMenu}
         onKeyDown={onKeyDown}
+        onPointerEnter={
+          pointAt
+            ? () => {
+                rowPointer.enter(pointAt);
+              }
+            : undefined
+        }
+        onPointerLeave={
+          pointAt
+            ? () => {
+                rowPointer.leave();
+              }
+            : undefined
+        }
+        onPointerDown={
+          pointAt
+            ? (e) => {
+                if (e.button === 0) rowPointer.press(pointAt);
+              }
+            : undefined
+        }
+        // The keyboard on it (Tab): its focus ring shows; a click's focus is the pointer's.
+        onFocus={
+          pointAt
+            ? (e) => {
+                if (e.currentTarget.matches(':focus-visible')) rowPointer.focus(pointAt);
+              }
+            : undefined
+        }
+        onBlur={
+          pointAt
+            ? () => {
+                rowPointer.blur();
+              }
+            : undefined
+        }
         className={cx(
           // Live at once, with no fade (Session 26g): the border and the red edge in one frame.
           'group flex min-h-12 w-full items-center gap-2 overflow-hidden rounded-md border-2 py-1 pr-2 text-left',

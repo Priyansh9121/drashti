@@ -986,6 +986,24 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
     expect(calls).toEqual([]);
   });
 
+  it('refuses a name with nothing visible in it as a bad request, in the name rule’s words, before asking anything (C15, FT-3)', () => {
+    const { ask, remote, calls } = setup();
+    // A zero-width space, a word joiner and a soft hyphen: nothing a person sees (X3's cleaning empties it).
+    const nothing = '\u200B\u2060\u00AD';
+    for (const [op, args] of [
+      ['playlist.rename', { playlistId: 'pl-1', name: nothing }],
+      ['playlist.new', { name: nothing }],
+      ['library.new', { name: nothing, words: 'Placeholder words' }],
+    ] as const) {
+      const answer = ask(remote, op, args);
+      expect(answer.status, op).toBe(400);
+      expect(JSON.stringify(answer.body), op).toMatch(
+        /needs 1 to 200 characters|Give the presentation a name/u,
+      );
+    }
+    expect(calls).toEqual([]);
+  });
+
   it('takes the library limit before a refused restore can look up playlist IDs', () => {
     const { ask, remote, hold, lookups, calls } = setup({ locked: true });
     hold();

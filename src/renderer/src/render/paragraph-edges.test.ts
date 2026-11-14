@@ -48,7 +48,7 @@ function drawn(el: TextElement): { words: string; before: boolean; after: boolea
 }
 
 describe('a deck’s paragraph spacing at the edges of a box (Session 58, PF-11)', () => {
-  it('a box ending in an empty paragraph keeps the space after the paragraph before it', () => {
+  it('a box ending in an empty paragraph draws it as PowerPoint does (FT-7), and keeps the space after the paragraph before it', () => {
     const lines = drawn(
       box([
         { text: 'Placeholder first point\n', paragraph: SPACED },
@@ -56,11 +56,37 @@ describe('a deck’s paragraph spacing at the edges of a box (Session 58, PF-11)
         { text: '', paragraph: SPACED },
       ]),
     );
-    // The empty paragraph is not drawn; the second point is not the last paragraph, so its space after stays.
+    // The second point is not the last paragraph, so its space after stays (PF-11); the empty one is drawn, one line
+    // with its space before, as PowerPoint lays it out, so a box aligned to its middle or bottom sits where PowerPoint
+    // puts it (Session 58, FT-7).
     expect(lines).toEqual([
       { words: 'Placeholder first point', before: false, after: true },
       { words: 'Placeholder second point', before: true, after: true },
+      { words: '', before: true, after: false },
     ]);
+  });
+
+  it('its empty last paragraph takes the look of the paragraph before it, as PowerPoint’s Enter carries it on (FT-7)', () => {
+    const html = renderToStaticMarkup(
+      createElement(ElementView, {
+        el: box([
+          { text: 'Placeholder point\n', paragraph: SPACED, size: 60 },
+          { text: '', paragraph: SPACED },
+        ]),
+        media: 'still',
+      }),
+    );
+    const empty = /<div data-line="1"[^>]*>(.*?)<\/div>/u.exec(html)?.[1] ?? '';
+    expect(empty).toContain('<br/>');
+    // The size it is drawn at (60 px, as shrink-to-fit scales it), not the box's 40.
+    expect(empty).toContain('* 60px)');
+  });
+
+  it('words without a deck’s paragraphs (a list made in Drashti) draw no empty last line, as before (FT-7)', () => {
+    const lines = drawn({
+      ...box([{ text: 'Placeholder listed point\n', list: 'disc' }]),
+    });
+    expect(lines.map((l) => l.words)).toEqual(['Placeholder listed point']);
   });
 
   it('a box whose words end its last paragraph has no space after it, as before', () => {

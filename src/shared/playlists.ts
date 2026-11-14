@@ -244,7 +244,8 @@ export const newItemsSchema: z.ZodType<NewItem[]> = z
     z.discriminatedUnion('kind', [
       z.object({ kind: z.literal('presentation'), presentationId: id }).strict(),
       z.object({ kind: z.literal('media'), mediaId: id }).strict(),
-      z.object({ kind: z.literal('header'), label: z.string().trim().min(1).max(200) }).strict(),
+      // A header's words as it is added, cleaned as when it is renamed (C15, FT-1).
+      z.object({ kind: z.literal('header'), label: playlistNameSchema }).strict(),
       z.object({ kind: z.literal('shastra'), passageId: passageIdSchema }).strict(),
       z
         .object({ kind: z.literal('input'), name: z.string().trim().min(1).max(VIDEO_INPUT_NAME_MAX) })
@@ -257,14 +258,14 @@ export const newItemsSchema: z.ZodType<NewItem[]> = z
 export const POSITION_MAX = 100_000;
 export const positionSchema = z.number().int().min(0).max(POSITION_MAX);
 export const templateRequestSchema: z.ZodType<TemplateRequest> = z
-  .object({ name: z.string().trim().min(1).max(200), slots: z.array(id).max(1000) })
+  .object({ name: playlistNameSchema, slots: z.array(id).max(1000) })
   .strict();
 export const timerCuesSchema: z.ZodType<TimerCue[]> = z
   .array(z.object({ timerId: id, action: z.enum(TIMER_CUE_ACTIONS) }).strict())
   .max(MAX_TIMER_CUES);
 
 export const slotSchema = z
-  .object({ label: z.string().trim().min(1).max(200), category: z.string().trim().min(1).max(60).nullable() })
+  .object({ label: cleanNameSchema(200), category: cleanNameSchema(60).nullable() })
   .strict();
 export const itemOrderSchema: z.ZodType<ItemOrder> = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('presentation') }).strict(),
