@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { DeckNativeTransition } from '../../../shared/deck-transition';
 import type { SlideLayer } from '../../../shared/engine/state';
-import { fadeAt, nextShowing } from './SlideLayerView';
+import { fadeAt, type Layers, nextShowing, type Paint, paintLayers, paintWaiting } from './SlideLayerView';
 
 const layer = (id: string, shownAt: number, transition?: SlideLayer['transition']): SlideLayer => ({
   presentationId: 'p',
@@ -140,5 +141,58 @@ describe('a deck’s slide coming in by a cut (Session 54, C2)', () => {
       3000,
     );
     expect(stepped.fade).toBeNull();
+  });
+});
+
+/** A slide's box on a screen, as the paint writes it (no page in a unit test: its inline style only). */
+const box = (): HTMLDivElement =>
+  ({
+    style: { opacity: '', transform: '', clipPath: '', maskImage: '', filter: '', zIndex: '' },
+  }) as unknown as HTMLDivElement;
+const deckPaint = (native: DeckNativeTransition): Paint => ({
+  kind: native.kind,
+  native,
+  movement: 'calm',
+  move: null,
+  width: 1920,
+  height: 1080,
+  scaleIn: 1,
+  scaleOut: 1,
+});
+const layersOf = (coming: HTMLDivElement, going: HTMLDivElement): Layers => ({
+  in: coming,
+  out: going,
+  black: null,
+  wordsIn: null,
+  wordsOut: null,
+});
+
+describe('Back during a deck’s own transition (TX-1, review-p3tr LOW-1)', () => {
+  it('the slide that was coming in stays up whole, as it is at rest, while the slide gone back to waits for its clip', () => {
+    for (const deckEffect of ['push', 'cover', 'uncover', 'wipe', 'zoom'] as const)
+      for (const direction of ['left', 'up'] as const) {
+        const native: DeckNativeTransition = {
+          kind: deckEffect === 'wipe' ? 'wipe' : deckEffect === 'zoom' ? 'zoom-dissolve' : 'slide',
+          deckEffect,
+          durationMs: 700,
+          direction,
+        };
+        const coming = box();
+        const going = box();
+        paintLayers(layersOf(coming, going), deckPaint(native), 0.4);
+        // Back part-way: the slide that was coming in is now the one up, the slide gone back to (a deck's, by a cut)
+        // unseen until its clip can be drawn.
+        const back = box();
+        paintWaiting({ in: back, out: coming });
+        expect(coming.style, `${deckEffect} ${direction}`).toEqual({
+          opacity: '',
+          transform: '',
+          clipPath: '',
+          maskImage: '',
+          filter: '',
+          zIndex: '',
+        });
+        expect(back.style.opacity, `${deckEffect} ${direction}`).toBe('0');
+      }
   });
 });

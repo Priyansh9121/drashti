@@ -135,7 +135,7 @@ export const fadeAt = (fade: { ms: number; start: number }, now: number): number
   Math.min(1, Math.max(0, (now - fade.start) / fade.ms));
 
 /** The layers a transition draws: the two slides, the black, and the two slides' words while drawn apart. */
-interface Layers {
+export interface Layers {
   in: HTMLDivElement | null;
   out: HTMLDivElement | null;
   black: HTMLDivElement | null;
@@ -147,7 +147,7 @@ interface Layers {
  * How a transition paints: its kind (null when not in one), the group's Movement, how its words move (null:
  * whole slides), the canvas, and each slide's height against 1080 (a line's rise is the lab's, at 1080).
  */
-interface Paint {
+export interface Paint {
   kind: TransitionKind | null;
   native: DeckNativeTransition | undefined;
   movement: Movement;
@@ -198,7 +198,7 @@ function paintUnits(els: Layers, how: Paint, p: number): void {
 }
 
 /** The two slides and the black as the transition has them at `p`, the words too while apart (nothing set when not in one). */
-function paintLayers(els: Layers, how: Paint, p: number): void {
+export function paintLayers(els: Layers, how: Paint, p: number): void {
   const { kind, movement, native } = how;
   const frame = native
     ? deckTransitionFrame(native, p, movement)
@@ -231,6 +231,15 @@ function paintLayers(els: Layers, how: Paint, p: number): void {
     set(els.wordsOut, String(words.out.opacity), words.out.transform, words.out.clip);
     if (move === 'lines' || move === 'words') paintUnits(els, how, p);
   }
+}
+
+/**
+ * A deck's slide coming in by a cut, its clip not yet drawn (Session 54, C2): the slide before stays up, the new one
+ * unseen, until it can be drawn.
+ */
+export function paintWaiting(els: Pick<Layers, 'in' | 'out'>): void {
+  if (els.in) els.in.style.opacity = '0';
+  if (els.out) els.out.style.opacity = '';
 }
 
 /**
@@ -509,8 +518,7 @@ export function SlideLayerView({
   const fading = fade !== null;
   useLayoutEffect(() => {
     if (kind === 'cut' && start === null && fading) {
-      if (inRef.current) inRef.current.style.opacity = '0';
-      if (outRef.current) outRef.current.style.opacity = '';
+      paintWaiting({ in: inRef.current, out: outRef.current });
       return;
     }
     paintLayers(
