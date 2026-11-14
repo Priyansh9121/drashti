@@ -7,6 +7,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 Update after a sabha, and update Main and nodes together.
 
 - A Trim cut that carries on after a restart says Preparing on its row from the start, and Stop lets it go. If one can't carry on, the notice as Drashti starts says why.
+- Where a computer draws without a graphics chip, the stream's picture no longer stays black for up to 8 seconds as it starts. Drashti's log says how long each hall screen took to get ready.
 - The stream, the decks Drashti plays itself, the start and the Edit slides fixes since alpha.17 (this list is written in full before the release).
 
 ## 1.0.0-alpha.17 (13 Nov 2026)
