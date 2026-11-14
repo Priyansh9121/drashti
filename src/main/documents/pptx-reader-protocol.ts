@@ -1,15 +1,26 @@
 import { z } from 'zod';
 import { sourceTimingDeck } from '../../shared/deck-source-timing';
 import { EDITABLE_SOURCE_LIMITS, type PreparedSourcePage } from '../../shared/editable-source';
-import type { Rect } from '../../shared/model';
 import { hexColorSchema, slideElementSchema } from '../../shared/model-schema';
 
-export function pptxFramesWithinLimit(elements: readonly { frame: Rect }[]): boolean {
-  return elements.every(({ frame }) =>
-    Object.values(frame).every(
-      (value: unknown) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1_000_000,
-    ),
-  );
+/**
+ * Every drawing's frame is finite numbers within ±1,000,000, Main's own bound. It answers for any value and never
+ * throws: the worker also asks it of a page the schema refused, as the reader made it (C25's review LOW-1), where a
+ * drawing without a frame is not within, and that page alone stays its saved picture.
+ */
+export function pptxFramesWithinLimit(elements: readonly unknown[]): boolean {
+  return elements.every((element) => {
+    const frame: unknown =
+      typeof element === 'object' && element !== null && 'frame' in element ? element.frame : undefined;
+    return (
+      typeof frame === 'object' &&
+      frame !== null &&
+      Object.values(frame).every(
+        (value: unknown) =>
+          typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1_000_000,
+      )
+    );
+  });
 }
 
 /** Both sides check a page's shape, while Main also checks the job and the files it names. */
