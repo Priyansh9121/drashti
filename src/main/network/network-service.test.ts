@@ -366,7 +366,7 @@ describe('saving a native click from a paired phone', () => {
         status: 200,
         body: {
           mediaId: 'placeholder-picture',
-          message: 'This is the slide as it starts. Try saving this click again in a moment.',
+          message: 'This is a picture from the slide. Try saving this click again in a moment.',
         },
       });
       expect(t.capture).not.toHaveBeenCalled();
@@ -400,13 +400,13 @@ describe('saving a native click from a paired phone', () => {
       status: 200,
       body: {
         mediaId: 'placeholder-picture',
-        message: 'This is the slide as it starts. Try again when the screens are still to save this click.',
+        message: 'This is a picture from the slide. Try again when the screens are still to save this click.',
       },
     });
     expect(t.capture).not.toHaveBeenCalled();
   });
 
-  it('answers with the slide as it starts while the stream is on air or recording, and stops a capture then', async () => {
+  it('answers with a picture from the slide while the stream is on air or recording, and stops a capture then', async () => {
     const t = pictureSetup();
     // C6's review, MEDIUM 3: no new background work while the stream is on air or recording.
     t.onAir.now = true;
@@ -415,7 +415,7 @@ describe('saving a native click from a paired phone', () => {
       body: {
         mediaId: 'placeholder-picture',
         message:
-          'This is the slide as it starts. Try again after streaming or recording stops to save this click.',
+          'This is a picture from the slide. Try again after streaming or recording stops to save this click.',
       },
     });
     expect(t.capture).not.toHaveBeenCalled();
@@ -431,19 +431,22 @@ describe('saving a native click from a paired phone', () => {
       body: {
         mediaId: 'placeholder-picture',
         message:
-          'This is the slide as it starts. Try again after streaming or recording stops to save this click.',
+          'This is a picture from the slide. Try again after streaming or recording stops to save this click.',
       },
     });
     expect(t.capture).toHaveBeenCalledTimes(1);
   });
 
-  it('answers with the slide as it starts when the slide moves on by itself within the capture’s time', async () => {
+  it('answers with a picture from the slide when the slide moves on by itself within the capture’s time', async () => {
     const t = pictureSetup();
     // Repeat Slides or the slide's timing: on to the next in 4 s (C6's review, MEDIUM 2).
     t.state.autoAdvance = { startedAt: 1_000_000 - 1_000, durationMs: 5_000 };
     expect(await t.service.presentationPicture(t.request)).toMatchObject({
       status: 200,
-      body: { mediaId: 'placeholder-picture' },
+      body: {
+        mediaId: 'placeholder-picture',
+        message: 'This is a picture from the slide. Try again when the screens are still to save this click.',
+      },
     });
     expect(t.capture).not.toHaveBeenCalled();
   });
@@ -484,7 +487,14 @@ describe('saving a native click from a paired phone', () => {
       await vi.advanceTimersByTimeAsync(1);
       expect(signal?.aborted).toBe(true);
       done?.(null);
-      expect(await pending).toMatchObject({ status: 200, body: { mediaId: 'placeholder-picture' } });
+      // Stopped at its end with the screens still: worth asking again soon.
+      expect(await pending).toMatchObject({
+        status: 200,
+        body: {
+          mediaId: 'placeholder-picture',
+          message: 'This is a picture from the slide. Try saving this click again in a moment.',
+        },
+      });
     } finally {
       vi.useRealTimers();
     }
