@@ -428,6 +428,23 @@ describe('PowerPoint slide animation timing', () => {
       expect(motion).toMatchObject({ approximate: true, effects: [{ kind: 'zoom' }] });
       expect(motion?.effects[0]).not.toHaveProperty('zoomAway');
     }
+    // Read, but never compared with PowerPoint's own movie (EF-2): a power, abs, sqrt, a number with an exponent, a +
+    // sign, min or max of other than two values. Drawn as written, keeping PowerPoint's video.
+    for (const width of [
+      '#ppt_w^1*2',
+      'abs(-2*#ppt_w)',
+      'sqrt(4)*#ppt_w',
+      '2e0*#ppt_w',
+      '+2*#ppt_w',
+      '2*max(#ppt_w,#ppt_w,#ppt_w)',
+      '2*min(#ppt_w)',
+    ]) {
+      const height = width.replaceAll('#ppt_w', '#ppt_h');
+      expect(grow(formula(width), formula(height)), width).toMatchObject({
+        approximate: true,
+        effects: [{ kind: 'zoom', zoomAway: { w: width, h: height } }],
+      });
+    }
   });
 
   it('turns Grow & Turn and Shrink & Turn while they scale and fade, as PowerPoint plays them', () => {
