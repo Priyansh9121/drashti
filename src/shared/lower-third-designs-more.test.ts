@@ -35,8 +35,9 @@ const linesOf = (d: (typeof made)[number]) =>
   shownLines(d.lines ?? ['Placeholder name', 'Placeholder role', '']);
 
 describe('the templates made since alpha.17', () => {
-  it('come after alpha.17’s 50 in the gallery: part A’s 18, then part B’s 12, 80 in all, every one offered', () => {
-    expect(made).toHaveLength(30);
+  it('come after alpha.17’s 50 in the gallery: part A’s 18, then part B’s 11, 79 in all, every one offered', () => {
+    // 30 made; Festival fireworks left out by the final Performance round with no replacement (Q58-35): 29.
+    expect(made).toHaveLength(29);
     expect(LOWER_THIRD_TEMPLATES).toHaveLength(ALPHA17 + made.length);
     expect(LOWER_THIRD_TEMPLATES.slice(ALPHA17).map((t) => t.id)).toEqual(made.map((d) => d.id));
     expect(new Set(LOWER_THIRD_TEMPLATES.map((t) => t.id)).size).toBe(LOWER_THIRD_TEMPLATES.length);
@@ -70,12 +71,12 @@ describe('the templates made since alpha.17', () => {
     expect(count('quick')).toBeGreaterThanOrEqual(2);
   });
 
-  it('part B: twelve with the moving backgrounds added since alpha.17, each another one, calm ones first, in the studio’s layouts', () => {
-    const partB = made.slice(18, 30);
-    expect(partB).toHaveLength(12);
+  it('part B: eleven with the moving backgrounds added since alpha.17, each another one, calm ones first, in the studio’s layouts', () => {
+    const partB = made.slice(18);
+    expect(partB).toHaveLength(11);
     const motions = partB.map((d) => d.look.motion ?? 'none');
     for (const m of motions) expect(['none', ...ALPHA17_MOTIONS], m).not.toContain(m);
-    expect(new Set(motions).size).toBe(12);
+    expect(new Set(motions).size).toBe(partB.length);
     // Both parts of alpha.18's backgrounds: the registry's first twelve new ones (C11) and the eleven after them (C12).
     const added = LOWER_THIRD_MOTIONS.filter((m) => m !== 'none' && !ALPHA17_MOTIONS.includes(m));
     expect(added.length).toBeGreaterThanOrEqual(23);
@@ -89,7 +90,7 @@ describe('the templates made since alpha.17', () => {
     expect(feels.filter((f) => f === 'calm' || f === 'elegant').length).toBeGreaterThanOrEqual(8);
   });
 
-  it('leaves out the six that dipped under 90% in two lower-thirds-more runs (Q57-18), steadier ones in their places', () => {
+  it('leaves out the seven that dipped under 90% in two lower-thirds-more runs (Q57-18): six with steadier ones in their places, the last with none', () => {
     // Two-core Windows, the streaming check: Peacock shapes 81% (run 43547437227) and 75% (43553501189); Vermilion
     // stripes under 90% (43547437227, named not smooth) and 70% (43553521539); White and maroon pill 71% (43547437227)
     // and 68% (43553521539). Their backgrounds stay in part A, in steadier designs of their own.
@@ -102,6 +103,9 @@ describe('the templates made since alpha.17', () => {
       'deep-green-ribbon',
       'lotus-bloom',
       'single-title-band',
+      // In the final round (Q58-35: a second dip there is left out with no replacement): 87% (43561751495) and 87%
+      // (43564999378), both on the stream's page.
+      'festival-fireworks',
     ])
       expect(
         LOWER_THIRD_TEMPLATES.some((t) => t.id === id),
