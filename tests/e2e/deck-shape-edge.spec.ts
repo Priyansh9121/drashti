@@ -22,9 +22,11 @@ import { holdClock } from './placeholder-slides';
  * Shape's soft edge as the screens draw it (Session 58, C1): PowerPoint's own movie shows each outline's edge as a
  * straight soft band (shared/deck-motion.ts, deckShapeShows), a Box's and a Plus's corners square. Drashti draws a
  * Circle's with one radial mask, and a Box's, a Plus's and a Diamond's with two masks multiplied, the moving shape's
- * own and an element's within it (render/NativeDeckElement.tsx), each a straight ramp beside two sides and a repeating
- * conic gradient letting everything through beside the other two. Unit tests read the masks as CSS says to; this reads
- * what Chromium itself draws, on a hall screen, half-way: white shapes on black, so a pixel's red is how much shows.
+ * own and an element's within it (render/NativeDeckElement.tsx), each a straight ramp beside two sides and two
+ * half-planes through the middle, laid on one another by `exclude`, letting everything through beside the other two.
+ * (A conic gradient there drew a faint line along each seam where nothing shows, on CI's Mac: Chromium smooths its hard
+ * stop.) Unit tests read the masks as CSS says to; this reads what Chromium itself draws, on a hall screen, half-way:
+ * white shapes on black, so a pixel's red is how much shows, the hidden points on the seams too.
  * Generated placeholder deck only.
  */
 
@@ -81,12 +83,15 @@ const POINTS: Record<(typeof SHAPES)[number]['outline'], readonly [u: number, v:
     [-0.5, 0.1, 0.5],
     [0.25, -0.25, 1],
     [0.75, 0.2, 0],
+    [0.8, -0.8, 0],
+    [-0.9, 0.9, 0],
   ],
   plus: [
     [0.5, 0.5, 0.5],
     [-0.5, 0.9, 0.5],
     [0.1, -0.85, 1],
     [-0.8, 0.8, 0],
+    [0.9, -0.9, 0],
   ],
   diamond: [
     [0.5, 0.5, 0.5],
@@ -140,9 +145,14 @@ test('Shape’s soft edge on a hall screen, half-way: a Box’s, a Plus’s and 
           await expect(target(s.id), s.outline).toHaveCSS('mask-image', /^radial-gradient\(/u);
           await expect(inner, s.outline).toHaveCount(0);
         } else {
-          await expect(target(s.id), s.outline).toHaveCSS('mask-image', /^repeating-conic-gradient\(/u);
           await expect(inner, s.outline).toHaveCount(1);
-          await expect(inner, s.outline).toHaveCSS('mask-image', /^repeating-conic-gradient\(/u);
+          for (const masked of [target(s.id), inner]) {
+            await expect(masked, s.outline).toHaveCSS(
+              'mask-image',
+              /^linear-gradient\(.*\), linear-gradient\(/u,
+            );
+            await expect(masked, s.outline).toHaveCSS('mask-composite', /^add, exclude/u);
+          }
         }
       }
       // Every other moving shape's DOM as before: nothing between its motion's element and its own.

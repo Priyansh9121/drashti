@@ -6,16 +6,18 @@ import {
   deckTargetBounds,
   deckWipeInnerMask,
   deckWipeMask,
+  deckWipeMaskComposite,
 } from '../../../shared/deck-motion';
 import type { RenderSlide } from '../../../shared/model';
 import { deckTargetMaskedTwice } from './deck-target-paint';
 import { SHAPE_MS, withShapes } from './warm-up-deck';
 
 /*
- * Shape's soft edge (Session 58, C1) draws three kinds of mask nothing else on a show screen draws, each a new kind of
+ * Shape's soft edge (Session 58, C1) draws kinds of mask nothing else on a show screen draws, each a new kind of
  * drawing for a GPU to make at a show's first (100-600 ms on CI's Mac, every screen waiting): a radial gradient (a
- * Circle), a repeating conic gradient (the wedge that picks one side's ramp for a Box, a Plus or a Diamond), and two
- * masks one inside the other (those three). The warm-up draws them all once, part-way, unseen. Placeholder slide only.
+ * Circle); two half-planes through the box's middle laid on one another by `exclude` (the wedges that keep each of a Box's,
+ * a Plus's or a Diamond's two ramps beside its own sides), under a ramp; and two masks one inside the other (those
+ * three). The warm-up draws them all once, part-way, unseen. Placeholder slide only.
  */
 
 const placeholder: RenderSlide = {
@@ -108,6 +110,7 @@ describe('the warm-up’s Shapes', () => {
           twice: deckTargetMaskedTwice(effects),
           outer: layers(deckWipeMask(frame.wipe, box, box)),
           inner: layers(deckWipeInnerMask(frame.wipe, box, box)),
+          composite: deckWipeMaskComposite(frame.wipe),
         };
       });
       const [circle, box, diamond] = drawn;
@@ -120,26 +123,28 @@ describe('the warm-up’s Shapes', () => {
       ).toEqual(['radial-gradient']);
       expect(circle?.outer.map(stops), at).toEqual([4]);
       expect(circle?.inner, at).toEqual([]);
-      // The Box: on the target and on the part within it, a wedge of 4 stops over a straight ramp.
+      expect(circle?.composite, at).toBe('');
+      // The Box: on the target and on the part within it, a straight ramp over two half-planes (a step each) by exclude.
       // The Diamond: the same, its ramps along the shape's diagonals.
       for (const [name, two] of [
         ['box', box],
         ['diamond', diamond],
       ] as const) {
         expect(two?.twice, `${name} ${at}`).toBe(true);
+        expect(two?.composite, `${name} ${at}`).toBe('add, exclude');
         for (const mask of [two?.outer ?? [], two?.inner ?? []]) {
           expect(
             mask.map((l) => l.split('(')[0]),
             `${name} ${at}`,
-          ).toEqual(['repeating-conic-gradient', 'linear-gradient']);
-          expect(stops(mask[0] ?? ''), `${name} ${at}`).toBe(4);
-          expect(stops(mask[1] ?? ''), `${name} ${at}`).toBeGreaterThanOrEqual(4);
+          ).toEqual(['linear-gradient', 'linear-gradient', 'linear-gradient']);
+          expect(stops(mask[0] ?? ''), `${name} ${at}`).toBeGreaterThanOrEqual(4);
+          expect(mask.slice(1).map(stops), `${name} ${at}`).toEqual([2, 2]);
         }
       }
       // The Box's ramps run across and down; the Diamond's along its diagonals.
-      expect(box?.outer[1], at).toMatch(/^linear-gradient\(90deg, /u);
-      expect(box?.inner[1], at).toMatch(/^linear-gradient\(180deg, /u);
-      for (const ramp of [diamond?.outer[1] ?? '', diamond?.inner[1] ?? ''])
+      expect(box?.outer[0], at).toMatch(/^linear-gradient\(90deg, /u);
+      expect(box?.inner[0], at).toMatch(/^linear-gradient\(180deg, /u);
+      for (const ramp of [diamond?.outer[0] ?? '', diamond?.inner[0] ?? ''])
         expect(ramp, at).not.toMatch(/^linear-gradient\((0|90|180|270)deg, /u);
     }
   });

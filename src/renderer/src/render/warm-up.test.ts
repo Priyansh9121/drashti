@@ -24,8 +24,9 @@ import { type WarmScene, warmScenes } from './WarmUp';
  * 6 stops as it goes (a GPU draws a gradient of up to 4 stops, of up to 8 and of more each its own way). Its own Wipe
  * is drawn again with a hard-edged clip (Q57-28: PowerPoint's soft band, a mask over the whole slide coming in, dropped
  * frames on Windows while streaming); the warm-up still draws it part-way. Since Session 58 a Shape draws three more
- * (C1): a radial gradient (a Circle), and a repeating conic gradient over a straight ramp on the shape and again on an
- * element within it (a Box, a Plus, a Diamond); the Cover's slide going draws them. Placeholder slides only.
+ * (C1): a radial gradient (a Circle), and a straight ramp over two half-planes laid on one another by `exclude`, on the
+ * shape and again on an element within it (a Box, a Plus, a Diamond); the Cover's slide going draws them. Placeholder
+ * slides only.
  */
 
 /** The engine's time as the warm-up's slides before go up (it draws everything part-way a few frames later). */
@@ -137,7 +138,7 @@ describe('the warm-up', () => {
     }
   });
 
-  it('the Cover’s slide going is a deck’s Drashti plays itself, its picture, shape and words each part-way through a Shape: a Circle’s radial mask, a Box’s and a Diamond’s wedge over a ramp, twice', () => {
+  it('the Cover’s slide going is a deck’s Drashti plays itself, its picture, shape and words each part-way through a Shape: a Circle’s radial mask, a Box’s and a Diamond’s ramp over two half-planes, twice', () => {
     const going = slideOf(scene('deck-cover/calm'), false, BEFORE);
     const motion = nativeDeckMotion(going.slide.deck);
     const timing = nativeStepTiming(going);
@@ -159,7 +160,7 @@ describe('the warm-up', () => {
         expect(frame.opacity, `${id} after ${String(gap)} ms`).toBe(1);
         return [kinds(deckWipeMask(frame.wipe, box, box)), kinds(deckWipeInnerMask(frame.wipe, box, box))];
       });
-      const twice = ['repeating-conic-gradient(', 'linear-gradient('];
+      const twice = ['linear-gradient(', 'linear-gradient(', 'linear-gradient('];
       expect(drawn, `after ${String(gap)} ms`).toEqual([
         [['radial-gradient('], []],
         [twice, twice],

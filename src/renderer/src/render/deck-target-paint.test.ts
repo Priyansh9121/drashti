@@ -14,7 +14,7 @@ function effect(kind: DeckEffect['kind'], more: Partial<DeckEffect> = {}): DeckE
 function drawing() {
   const writes: string[] = [];
   const style = new Proxy(
-    { transform: '', opacity: '', clipPath: '', maskImage: '' },
+    { transform: '', opacity: '', clipPath: '', maskImage: '', maskComposite: '' },
     {
       set(target, key, value: string) {
         writes.push(String(key));
@@ -61,10 +61,15 @@ it('leaves a Wipe and the other reveals to their clip, with no mask', () => {
  * What a CSS mask lets through at a point of the element it is on (x, y in px from the element's own top left): the
  * kinds of gradient Drashti writes, read as a browser draws them (CSS Images 3 and 4: a linear gradient's line through
  * the box's centre, as long as the box's own extent along it; a radial gradient's ellipse; a repeating conic gradient
- * from twelve o'clock, clockwise), its stops straight between them, the layers laid on one another as `mask-composite:
- * add` does (the first on top). Only the forms Drashti writes are read; anything else fails the test.
+ * from twelve o'clock, clockwise), its stops straight between them (two at one place a step), the layers laid on one
+ * another as `mask-composite` says (`add` unless it says `exclude`; the first on top, each over all below it). Only the
+ * forms Drashti writes are read; anything else fails the test.
  */
-function maskOf(mask: string, size: { width: number; height: number }): (x: number, y: number) => number {
+function maskOf(
+  mask: string,
+  size: { width: number; height: number },
+  composite = '',
+): (x: number, y: number) => number {
   if (mask === '') return () => 1;
   const layers: string[] = [];
   let depth = 0;
@@ -79,7 +84,13 @@ function maskOf(mask: string, size: { width: number; height: number }): (x: numb
   }
   layers.push(mask.slice(start).trim());
   const read = layers.map((layer) => layerOf(layer, size));
-  return (x, y) => read.reduceRight((below, top) => top(x, y) + below * (1 - top(x, y)), 0);
+  const ops = composite === '' ? ['add'] : composite.split(',').map((op) => op.trim());
+  for (const op of ops) expect(['add', 'exclude'], composite).toContain(op);
+  return (x, y) =>
+    read.reduceRight((below, top, i) => {
+      const s = top(x, y);
+      return ops[i % ops.length] === 'exclude' ? s * (1 - below) + below * (1 - s) : s + below * (1 - s);
+    }, 0);
 }
 
 function stopsOf(list: string, unit: '%' | 'deg'): [number, number][] {
@@ -157,8 +168,11 @@ it('draws Shape’s soft edge with masks that let through exactly what PowerPoin
             const name = `${phase} ${shape} ${inward ? 'In' : 'Out'} at ${String(ms)} ms, part ${JSON.stringify(part)}`;
             expect(outer.style.clipPath, name).toBe('');
             // Every 9 px across the part, each mask read once.
-            const outerAt = maskOf(outer.style.maskImage, part);
-            const innerAt = maskOf(inner.style.maskImage, part);
+            const outerAt = maskOf(outer.style.maskImage, part, outer.style.maskComposite);
+            const innerAt = maskOf(inner.style.maskImage, part, inner.style.maskComposite);
+            // No conic gradient: Chromium smooths a conic's hard stop over a fraction of a degree, which drew a faint
+            // line along the seam between the two ramps where nothing should show (CI's Mac, 14 Nov 2026).
+            expect(`${outer.style.maskImage} ${inner.style.maskImage}`, name).not.toMatch(/conic/u);
             const off: string[] = [];
             for (let y = 0.5; y < part.height; y += 9)
               for (let x = 0.5; x < part.width; x += 9) {
@@ -185,17 +199,27 @@ it('masks a Circle once, and a Box, a Plus or a Diamond twice (the target and th
   const paint = (ms: number) =>
     paintDeckTarget(outer.style, deckMotionFrame([box], 1, ms, bounds, slide), bounds, bounds, inner.style);
   paint(200);
-  expect(outer.style.maskImage).toMatch(/^repeating-conic-gradient\(.*\), linear-gradient\(/u);
-  expect(inner.style.maskImage).toMatch(/^repeating-conic-gradient\(.*\), linear-gradient\(/u);
+  // Each a straight ramp over two half-planes through the box's middle, kept beside two sides by `exclude`.
+  for (const style of [outer.style, inner.style]) {
+    expect(style.maskImage).toMatch(/^linear-gradient\(.*\), linear-gradient\(.*\), linear-gradient\(/u);
+    expect(style.maskComposite).toBe('add, exclude');
+  }
   inner.writes.length = 0;
   paint(200);
   expect(inner.writes).toEqual([]);
   paint(400);
-  expect(outer.style).toMatchObject({ clipPath: '', maskImage: '', opacity: '', transform: '' });
-  expect(inner.style.maskImage).toBe('');
+  expect(outer.style).toMatchObject({
+    clipPath: '',
+    maskImage: '',
+    maskComposite: '',
+    opacity: '',
+    transform: '',
+  });
+  expect(inner.style).toMatchObject({ maskImage: '', maskComposite: '' });
   // A circle: one radial gradient on the target itself.
   const circle = effect('shape', { shape: 'circle' });
   paintDeckTarget(outer.style, deckMotionFrame([circle], 1, 200, bounds, slide), bounds, bounds, inner.style);
   expect(outer.style.maskImage).toMatch(/^radial-gradient\(/u);
+  expect(outer.style.maskComposite).toBe('');
   expect(inner.style.maskImage).toBe('');
 });
