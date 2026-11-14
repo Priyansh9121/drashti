@@ -3,6 +3,7 @@ import {
   afterCoverFrame,
   openingHolds,
   photoWait,
+  releasedBy,
   stillAfterHold,
   type StartFacts,
   windowMayStart,
@@ -23,7 +24,9 @@ const covered: StartFacts = {
   screensWarming: false,
   windowOpened: false,
   windowFrameReady: false,
+  windowWarming: false,
   waitedOut: false,
+  startWaitedOut: false,
   ended: false,
 };
 
@@ -79,7 +82,25 @@ describe('the opening holds, black', () => {
     const busy = { ...covered, windowOpened: true, windowFrameReady: false };
     expect(openingHolds(busy)).toBe(true);
     expect(openingHolds({ ...busy, windowFrameReady: true })).toBe(false);
-    expect(openingHolds({ ...busy, waitedOut: true })).toBe(false);
+    // The screens' limit is not the window's (Session 58).
+    expect(openingHolds({ ...busy, waitedOut: true })).toBe(true);
+    expect(openingHolds({ ...busy, startWaitedOut: true })).toBe(false);
+  });
+
+  // Session 58 (C4, Q57-32): on CI's Mac the window's own GPU warm-up was still making pipelines (100-600 ms each, every
+  // window waiting) after the window had opened, and the opening's first move came 0.3-3 s late.
+  it('and until the window’s own GPU warm-up is over, so its two seconds never share the GPU with it', () => {
+    const warming = { ...covered, windowOpened: true, windowFrameReady: true, windowWarming: true };
+    expect(openingHolds(warming)).toBe(true);
+    expect(openingHolds({ ...warming, windowWarming: false })).toBe(false);
+    // Past the screens' limit too: that one is theirs.
+    expect(openingHolds({ ...warming, waitedOut: true })).toBe(true);
+  });
+
+  it('for OPENING_START_HOLD_MS at most for the window: then it moves, as it would', () => {
+    const late = { ...covered, windowWarming: true, waitedOut: true, startWaitedOut: true };
+    expect(openingHolds(late)).toBe(false);
+    expect(stillAfterHold(late)).toBe(false);
   });
 
   it('and until the hall’s screens have drawn, as before', () => {
@@ -88,8 +109,8 @@ describe('the opening holds, black', () => {
     ).toBe(true);
   });
 
-  it('for OPENING_HOLD_MS at most: then it moves, still only when the screens were what it waited for', () => {
-    const late = { ...covered, waitedOut: true };
+  it('for OPENING_HOLD_MS at most for the screens: then it moves, still only when the screens were what it waited for', () => {
+    const late = { ...covered, windowOpened: true, windowFrameReady: true, waitedOut: true };
     expect(openingHolds(late)).toBe(false);
     expect(stillAfterHold(late)).toBe(false);
     expect(openingHolds({ ...late, screensWarming: true })).toBe(false);
@@ -100,6 +121,19 @@ describe('the opening holds, black', () => {
     expect(openingHolds({ ...covered, ended: true })).toBe(false);
     expect(openingHolds({ ...covered, plan: 'none' })).toBe(false);
     expect(openingHolds({ ...covered, plan: 'asking' })).toBe(false);
+  });
+});
+
+describe('what let it go, for its figures', () => {
+  const ready = { ...covered, windowOpened: true, windowFrameReady: true };
+  it('everything it waits for ready', () => {
+    expect(releasedBy(ready)).toBe('ready');
+  });
+
+  it('a limit, with something still not ready: the screens, the window or its warm-up', () => {
+    expect(releasedBy({ ...ready, screensWarming: true, waitedOut: true })).toBe('limit');
+    expect(releasedBy({ ...ready, windowWarming: true, startWaitedOut: true })).toBe('limit');
+    expect(releasedBy({ ...ready, windowFrameReady: false, startWaitedOut: true })).toBe('limit');
   });
 });
 

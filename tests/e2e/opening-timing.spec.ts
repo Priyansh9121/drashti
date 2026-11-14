@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { OPENING_DEFAULT_PHOTO_URL } from '../../src/shared/opening';
+import { OPENING_DEFAULT_PHOTO_URL, OPENING_START_HOLD_MS } from '../../src/shared/opening';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
 
 type TimingGlobals = typeof globalThis & {
@@ -7,7 +7,26 @@ type TimingGlobals = typeof globalThis & {
   /** Each frame the operator window drew as Drashti started (the order test below). */
   openingOrder?: OrderFrame[];
   openingCap?: { held: boolean; releasedAt: number | null; lampAt: number | null; decodeStalled: boolean };
+  /** Each frame as Drashti started: the window's own GPU warm-up drawing, and the opening there and moving. */
+  openingWarm?: WarmFrame[];
+  /** When the opening came, when it let go, and whether the window's warm-up still drew then (ms, the page's clock). */
+  openingLimit?: {
+    cameAt: number | null;
+    releasedAt: number | null;
+    warmingAtRelease: boolean | null;
+    moved: boolean;
+  };
 };
+
+/** A frame of the operator window as Drashti starts: its own GPU warm-up drawing, and the opening there and moving. */
+interface WarmFrame {
+  warming: boolean;
+  cover: boolean;
+  moving: boolean;
+}
+
+/** The operator window's own GPU warm-up (its LIVE picture's, render/WarmUp.tsx), while it draws. */
+const LIVE_WARM_UP = '[data-testid="live-preview"] [data-warm-up]';
 
 /** A frame of the operator window as Drashti starts: the window underneath opened, and the opening there and moving. */
 interface OrderFrame {
@@ -201,6 +220,118 @@ test('startup releases the cover at its cap and lights the lamp if the photo sti
       throw new Error('Opening frames were missed.');
     expect(lamp - released, 'the decode timeout starts when the cover releases').toBeGreaterThanOrEqual(500);
     await expect(cover).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('as Drashti starts, the opening holds its black until the window’s own GPU warm-up is over, so its two seconds never share the GPU with it', async () => {
+  // Session 58 (C4, Q57-32): the operator window's LIVE picture warms the GPU up as it starts (render/WarmUp.tsx), making
+  // every kind of drawing the show will need; while the GPU makes one, every window waits (100-600 ms each on CI's Mac).
+  // It was still making some twenty after the window had opened, as the opening moved: its first move came 0.3-3 s late
+  // there and it lost that much of its two seconds (on this Mac a few ms each, the same order).
+  test.setTimeout(120_000);
+  const first = await launchApp();
+  await operatorReady(await operatorPage(first.app));
+  await first.app.close();
+  const { app } = await relaunchApp(first.userData, { DRASHTI_TEST_OPENING: '1' });
+  try {
+    const win = await operatorPage(app);
+    await win.evaluate((warmUp) => {
+      const seen: WarmFrame[] = [];
+      (globalThis as TimingGlobals).openingWarm = seen;
+      const look = () => {
+        const player = document.querySelector('[data-testid="opening"]');
+        seen.push({
+          warming: document.querySelector(warmUp) !== null,
+          cover: player !== null,
+          moving: player !== null && player.getAnimations({ subtree: true }).length > 0,
+        });
+        if (seen.length < 6000) requestAnimationFrame(look);
+      };
+      look();
+    }, LIVE_WARM_UP);
+    const cover = win.getByTestId('opening-start');
+    await expect(cover).toBeVisible({ timeout: 15_000 });
+    // It ends by itself.
+    await expect(cover).toHaveCount(0, { timeout: OPENING_START_HOLD_MS + 15_000 });
+    const seen = await win.evaluate(() => (globalThis as TimingGlobals).openingWarm ?? []);
+    expect(
+      seen.some((f) => f.cover && f.warming),
+      'the window warmed its GPU up under the opening',
+    ).toBe(true);
+    const moved = seen.findIndex((f) => f.moving);
+    expect(moved, 'the opening moved').toBeGreaterThanOrEqual(0);
+    expect(
+      seen.filter((f) => f.moving && f.warming).length,
+      'frames the opening moved in while the window still warmed its GPU up',
+    ).toBe(0);
+    // And the window underneath is the operator's, with its controls.
+    await operatorReady(win);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the window’s own warm-up kept drawing (a test switch): the opening holds its black to the window’s limit, then plays', async () => {
+  // Its limit, OPENING_START_HOLD_MS, is longer than the screens' (they then play still): the window's warm-up is over by
+  // its own limit before then, so only a warm-up that never ends (this switch) meets it.
+  test.setTimeout(120_000);
+  const first = await launchApp();
+  await operatorReady(await operatorPage(first.app));
+  await first.app.close();
+  const { app } = await relaunchApp(first.userData, {
+    DRASHTI_TEST_OPENING: '1',
+    DRASHTI_TEST_HOLD_WARM_UP: '1',
+  });
+  try {
+    const win = await operatorPage(app);
+    await win.evaluate((warmUp) => {
+      const probe: NonNullable<TimingGlobals['openingLimit']> = {
+        cameAt: null,
+        releasedAt: null,
+        warmingAtRelease: null,
+        moved: false,
+      };
+      (globalThis as TimingGlobals).openingLimit = probe;
+      const sample = () => {
+        const player = document.querySelector('[data-testid="opening"]');
+        if (!player) return;
+        probe.cameAt ??= performance.now();
+        if (player.getAttribute('data-opening-held') === 'false' && probe.releasedAt === null) {
+          probe.releasedAt = performance.now();
+          probe.warmingAtRelease = document.querySelector(warmUp) !== null;
+        }
+        if (probe.releasedAt === null && player.getAnimations({ subtree: true }).length > 0)
+          probe.moved = true;
+      };
+      new MutationObserver(sample).observe(document.documentElement, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['data-opening-held'],
+      });
+      sample();
+    }, LIVE_WARM_UP);
+    const cover = win.getByTestId('opening-start');
+    const player = cover.getByTestId('opening');
+    await expect(player).toHaveAttribute('data-opening-held', 'false', {
+      timeout: OPENING_START_HOLD_MS + 10_000,
+    });
+    const probe = await win.evaluate(() => (globalThis as TimingGlobals).openingLimit);
+    const came = probe?.cameAt;
+    const released = probe?.releasedAt;
+    if (typeof came !== 'number' || typeof released !== 'number')
+      throw new Error('The opening’s hold was missed.');
+    expect(probe?.moved, 'nothing moved while it held').toBe(false);
+    // Its limit counts from when it was asked for, a moment before this page was first looked at (at most 2 s here).
+    expect(released - came, 'it held its black to the window’s limit').toBeGreaterThanOrEqual(
+      OPENING_START_HOLD_MS - 2000,
+    );
+    expect(probe?.warmingAtRelease, 'the window’s warm-up still drew as it let go').toBe(true);
+    // Then it plays, and ends by itself.
+    await expect(player.locator('[data-opening-photo]')).toHaveCount(1);
+    await expect(cover).toHaveCount(0, { timeout: 15_000 });
   } finally {
     await app.close();
   }
