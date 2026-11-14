@@ -190,6 +190,20 @@ const DECK_OWN: readonly { row: string; name: string; transition: DeckNativeTran
     transition: { kind: 'slide', deckEffect: 'push', direction: 'left', durationMs: DECK_OWN_MS },
   },
 ];
+/**
+ * The same four, by a 4:3 deck (1440 x 1080) fitted to the 16:9 hall between bars (Session 58, Q58-36): the band and the
+ * moves measured on the slide where it is placed, the slides kept inside it (render/transition-frame.ts).
+ */
+const DECK_FOUR_THREE: readonly { row: string; name: string; transition: DeckNativeTransition }[] =
+  DECK_OWN.map((own) => ({
+    ...own,
+    row: `${own.row.replace(' (the control)', '').replace('its ', 'its 4:3 ')} (between bars)`,
+  }));
+/** Its rows, each listed by the tables with the deck's own. */
+export const DECK_FOUR_THREE_ROWS = DECK_FOUR_THREE.map((own) => own.row);
+const DECK_FOUR_THREE_FIRST = '(to the first slide of the 4:3 deck Drashti plays)';
+/** A 4:3 deck's slide size. */
+const FOUR_THREE = { width: 1440, height: 1080 };
 /** Its last slide's two shapes, in by Split at its first click and out at its second (PowerPoint's own 0.5 s). */
 const DECK_SPLIT_MS = 500;
 const DECK_SPLIT_IN = 'deck Drashti plays: shapes in by Split 500';
@@ -199,6 +213,8 @@ const DECK_OWN_FIRST = '(to the first slide of the deck Drashti plays)';
 /** One round of it: its first slide, its four transitions, its two clicks, each then still SETTLE_MS. */
 const DECK_OWN_ROUND_MS =
   SETTLE_MS + DECK_OWN.length * (DECK_OWN_MS + SETTLE_MS) + 2 * (DECK_SPLIT_MS + SETTLE_MS);
+/** One round of the 4:3 deck: its first slide, then its four transitions. */
+const DECK_FOUR_THREE_ROUND_MS = SETTLE_MS + DECK_FOUR_THREE.length * (DECK_OWN_MS + SETTLE_MS);
 
 /** How long a screen opened for a case may take to be ready: its page loaded, its fonts in, its warm-up done. */
 const SCREEN_LIMIT_MS = 20_000;
@@ -414,7 +430,12 @@ const NATIVE_MOTION: DeckEffect[] = [
  * over the same full-slide picture (a deck's own background, drawn once) with its title and a line; on the last, a
  * shape and words its two clicks bring in and take out by Split. A jump to any of them is a cut.
  */
-function deckOwnSlides(picture: string) {
+function deckOwnSlides(
+  picture: string,
+  size: { width: number; height: number } = { width: 1920, height: 1080 },
+  transitions: readonly { name: string; transition: DeckNativeTransition }[] = DECK_OWN,
+  splits = true,
+) {
   const words = (id: string, shapeId: string, text: string, frame: Rect, fontSize: number): SlideElement => ({
     id,
     kind: 'text',
@@ -435,13 +456,14 @@ function deckOwnSlides(picture: string) {
       delayMs: 0,
       durationMs: DECK_SPLIT_MS,
     }));
-  return [null, ...DECK_OWN].map((own, i) => {
-    const last = i === DECK_OWN.length;
+  const across = size.width - 320;
+  return [null, ...transitions].map((own, i) => {
+    const last = splits && i === transitions.length;
     const elements: SlideElement[] = [
       {
         id: 'picture',
         kind: 'image',
-        frame: { x: 0, y: 0, width: 1920, height: 1080 },
+        frame: { x: 0, y: 0, width: size.width, height: size.height },
         mediaId: picture,
         fit: 'fill',
         sourceShapeId: '2',
@@ -450,10 +472,16 @@ function deckOwnSlides(picture: string) {
         'title',
         '3',
         `Placeholder deck title ${String(i + 1)}`,
-        { x: 160, y: 120, width: 1600, height: 200 },
+        { x: 160, y: 120, width: across, height: 200 },
         80,
       ),
-      words('line', '4', 'A placeholder line on the slide', { x: 160, y: 360, width: 1600, height: 140 }, 56),
+      words(
+        'line',
+        '4',
+        'A placeholder line on the slide',
+        { x: 160, y: 360, width: across, height: 140 },
+        56,
+      ),
       ...(last
         ? [
             {
@@ -752,6 +780,23 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
     libraryId,
     name: 'Placeholder perf deck Drashti plays, its own transitions',
     groups: [{ name: '', slides: deckOwnSlides(makePicture(deps, 'animations-deck-own', 270, null)) }],
+  });
+  // The same four by a 4:3 deck, between bars on the 16:9 hall (Session 58, Q58-36), over a picture of its own.
+  const deckFourThreeId = repo.insert({
+    libraryId,
+    name: 'Placeholder perf deck Drashti plays, 4:3 between bars',
+    ...FOUR_THREE,
+    groups: [
+      {
+        name: '',
+        slides: deckOwnSlides(
+          makePicture(deps, 'animations-deck-four-three', 330, null),
+          FOUR_THREE,
+          DECK_FOUR_THREE,
+          false,
+        ),
+      },
+    ],
   });
   const pressed: Pressed[] = [];
   const operator = (): BrowserWindow | null => {
@@ -1096,6 +1141,15 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
             await press(own.row, 'slide', DECK_OWN_MS, { type: 'next' }, DECK_OWN_MS + SETTLE_MS);
           for (const row of [DECK_SPLIT_IN, DECK_SPLIT_OUT])
             await press(row, 'nativeDeck', DECK_SPLIT_MS, { type: 'next' }, DECK_SPLIT_MS + SETTLE_MS);
+        }
+      }
+      // The same four by a 4:3 deck between bars on the hall (Session 58, Q58-36), on two cores too.
+      if (timeFor(SHORT_RUNS * DECK_FOUR_THREE_ROUND_MS, 'a 4:3 deck Drashti plays itself, between bars')) {
+        progress('a 4:3 deck Drashti plays itself between bars: its own Wipe, Cover, Uncover and Push');
+        for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++) {
+          await press(DECK_FOUR_THREE_FIRST, 'slide', 0, goLive(deckFourThreeId, 0), SETTLE_MS);
+          for (const own of DECK_FOUR_THREE)
+            await press(own.row, 'slide', DECK_OWN_MS, { type: 'next' }, DECK_OWN_MS + SETTLE_MS);
         }
       }
       // Session 57's leftovers last (MS-1, DK-6, DK-2), as the click after 20 s still: each only when there is time
