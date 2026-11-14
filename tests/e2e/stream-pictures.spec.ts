@@ -158,13 +158,37 @@ test('the stream’s page draws a slide already up as it comes up only with its 
   });
   // Captured from before the first slide goes up, while the stream's page is still coming up.
   await captureOwnFrames(program);
+  // When the stream's page puts the slide in its page, by its own clock (before the frame that draws it).
+  await program.evaluate(() => {
+    const g = globalThis as unknown as { drashtiTestSlideIn?: number };
+    const look = () => {
+      if (g.drashtiTestSlideIn !== undefined) return;
+      if (document.querySelector('[data-testid="program-root"] [data-layer="slide"] [data-slide]'))
+        g.drashtiTestSlideIn = performance.now();
+    };
+    new MutationObserver(look).observe(document.body, { subtree: true, childList: true, attributes: true });
+    look();
+  });
   await holdClock(app, null);
   await goLive(win, id, 0);
   for (const out of [hall, program]) {
     await expect(out.locator('[data-layer="slide"] [data-slide]')).toHaveCount(1, { timeout: 20_000 });
     await drawnAt(out, 1);
   }
-  // At once, as Session 57's check did: the dissolve held at its very start, then drawn moment by moment.
+  const drawn = await program.evaluate(
+    () => (globalThis as unknown as { drashtiTestSlideIn?: number }).drashtiTestSlideIn ?? Number.NaN,
+  );
+  // From the dark slide's own light up to the bright one's: a frame darker than the dark slide is black where its
+  // picture goes, or part of it drawn.
+  const floor = 0.85 * (DARK / 255);
+  // At once, as Session 57's check did, from the moment the stream shows the slide (its newest frame the slide whole):
+  // until then it shows what was up before it (here nothing: black), as any page does for the frame or two a picture
+  // just drawn takes to be on screen, and the stream sends none of it (capture.ts: from the first frame showing the show).
+  await expect
+    .poll(async () => (await framesSince(program, drawn)).at(-1)?.mean ?? -1, { timeout: 20_000 })
+    .toBeGreaterThanOrEqual(floor);
+  const first =
+    (await framesSince(program, drawn)).find((f) => f.mean >= floor)?.t ?? Number.POSITIVE_INFINITY;
   await holdClock(app, Date.now() - 60_000);
   const from = await pageNow(program);
   await goLive(win, id, 1);
@@ -179,15 +203,24 @@ test('the stream’s page draws a slide already up as it comes up only with its 
   }
   await holdClock(app, null);
   await drawnAt(program, 1);
-  const frames = await framesSince(program, from);
-  expect(frames.length, 'the stream’s page gave frames through the dissolve').toBeGreaterThan(0);
-  // From the dark slide's own light up to the bright one's: a frame darker than the dark slide is black where its
-  // picture goes, or part of it drawn.
-  const floor = 0.85 * (DARK / 255);
-  const off = frames.filter((f) => f.mean < floor);
+  const frames = await framesSince(program, drawn);
   expect(
-    off.length,
-    `frames darker than the dark slide (${floor.toFixed(3)}) from going live with the dissolve (light@ms): ${shown(frames, from)}`,
+    frames.filter((f) => f.t >= from).length,
+    'the stream’s page gave frames through the dissolve',
+  ).toBeGreaterThan(0);
+  const seen = `light@ms from the page drawing the slide, the dissolve from ${String(Math.round(from - drawn))}: ${shown(frames, drawn)}`;
+  // Shown whole within a second of its page drawing it (a slide's usual way there: 0.05 to 0.35 s).
+  expect(first - drawn, `the slide shown whole on the stream (${seen})`).toBeLessThan(1000);
+  // Never part of it: every frame black (what was up before) or the slide whole, then the dissolve only brightening.
+  expect(
+    frames.filter((f) => f.mean > 0.02 && f.mean < floor).length,
+    `frames with part of the slide drawn (${seen})`,
+  ).toBe(0);
+  // And once it showed whole, never darker than it again: before and through the dissolve from it (every frame from
+  // going live counted, as Session 57's check counted).
+  expect(
+    frames.filter((f) => f.t > first && f.mean < floor).length,
+    `frames darker than the dark slide once it showed whole (${seen})`,
   ).toBe(0);
   await app.close();
 });
