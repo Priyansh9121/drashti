@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import type { PresentationUsage, UsedIn } from '../../shared/media-removal';
 import { NAME_MAX, USED_IN_NAMES } from '../../shared/media-removal';
-import { normalizeRenameName } from '../../shared/rename-name';
+import { cleanRenameName } from '../../shared/rename-name';
 import type { Db } from '../db/database';
 import { isInside } from '../media/contained';
 
@@ -25,7 +25,7 @@ const usedIn = (rows: readonly { name: string }[]): UsedIn => ({
 /** A name as Rename takes it, 1 to NAME_MAX characters after cleaning. */
 export function cleanName(name: unknown): string | null {
   if (typeof name !== 'string') return null;
-  const cleaned = normalizeRenameName(name);
+  const cleaned = cleanRenameName(name);
   return cleaned === '' || cleaned.length > NAME_MAX ? null : cleaned;
 }
 
