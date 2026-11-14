@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Quote } from './idle';
 import { NAME_MAX } from './media-removal';
 import { idSchema } from './model-schema';
+import { cleanNameSchema } from './rename-name';
 import { cutText } from './text';
 
 /*
@@ -167,7 +168,8 @@ export function inLastSeconds(leftMs: number | null | undefined): boolean {
 // ---- what the operator window may ask ---------------------------------------------------------------------------
 
 export const wallpaperIdSchema = idSchema;
-export const wallpaperNameSchema = z.string().trim().min(1).max(NAME_MAX);
+/** Cleaned as Rename… cleans a file's name (Session 58, X3), on the computer and a phone alike. */
+export const wallpaperNameSchema = cleanNameSchema(NAME_MAX);
 export const wallpaperPicturesSchema = z.array(idSchema).min(1).max(WALLPAPER_PICTURES_MAX);
 export const wallpaperTimingSchema = z
   .object({
