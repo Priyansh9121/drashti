@@ -13,10 +13,12 @@ import { motionOff } from '../ui/motion';
 import { type OpeningFrame, openingFigures } from './opening-figures';
 import {
   afterCoverFrame,
+  type FrameWatch,
   openingHolds,
   releasedBy,
   stillAfterHold,
   type StartFacts,
+  watchFrame,
   windowMayStart,
 } from './opening-order';
 import { OpeningPlayer } from './OpeningPlayer';
@@ -211,28 +213,22 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!plan || !covered || state !== 'playing' || startWaitedOut || windowFrameReady) return;
     if (screensWarming && !waitedOut) return;
-    let previous: number | null = null;
-    let steady = 0;
+    let watched: FrameWatch = { previous: null, steady: 0 };
     let frame = 0;
     const sample = (at: number) => {
       // Its frames while it warms up are the warm-up's (on time between the pipelines the GPU makes for it), and while
       // fonts load (the studio's, after the warm-up) a frame that lays them out may come long.
-      if (windowWarming() || document.fonts.status !== 'loaded') {
-        previous = null;
-        steady = 0;
-        frame = requestAnimationFrame(sample);
-        return;
-      }
-      const onTime =
-        previous !== null &&
-        at - previous <= OPENING_FRAME_BUDGET_MS &&
-        performance.now() - at <= OPENING_FRAME_BUDGET_MS;
-      steady = onTime ? steady + 1 : 0;
-      if (steady >= OPENING_STEADY_FRAMES) {
+      const next = watchFrame(
+        watched,
+        { at, now: performance.now(), busy: windowWarming() || document.fonts.status !== 'loaded' },
+        OPENING_FRAME_BUDGET_MS,
+        OPENING_STEADY_FRAMES,
+      );
+      if (next.ready) {
         setWindowFrameReady(true);
         return;
       }
-      previous = at;
+      watched = next;
       frame = requestAnimationFrame(sample);
     };
     const watch = new MutationObserver(begin);
