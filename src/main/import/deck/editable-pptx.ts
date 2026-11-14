@@ -820,6 +820,32 @@ function textDirection(bodies: Node[]): Pick<TextStyle, 'writingMode' | 'textOri
   }
 }
 
+/**
+ * The source's own shrink of a box's words (`normAutofit`'s font scale and line spacing reduction, as fractions), from
+ * the nearest body that sets how its words fit, when that is a shrink that says how much.
+ */
+function sourceFitOf(bodies: Node[]): TextStyle['sourceFit'] {
+  const fit = [...bodies]
+    .reverse()
+    .map((body) => kids(body).find((n) => ['noAutofit', 'normAutofit', 'spAutoFit'].includes(nameOf(n))))
+    .find((found) => found !== undefined);
+  if (!fit || nameOf(fit) !== 'normAutofit') return undefined;
+  const scale = attr(fit, 'fontScale'),
+    reduction = attr(fit, 'lnSpcReduction');
+  if (scale === undefined && reduction === undefined) return undefined;
+  // Thousandths of a percent, or (Strict) a percentage.
+  const share = (value: string | undefined, fallback: number) =>
+    value === undefined
+      ? fallback
+      : value.endsWith('%')
+        ? number(value.slice(0, -1), fallback * 100) / 100
+        : number(value, fallback * 100_000) / 100_000;
+  return {
+    fontScale: Math.max(0.01, Math.min(1, share(scale, 1))),
+    lineSpacingReduction: Math.max(0, Math.min(1, share(reduction, 0))),
+  };
+}
+
 function textElement(
   node: XmlNode,
   chain: XmlNode[],
@@ -904,6 +930,7 @@ function textElement(
   const clipToBox = ['vertOverflow', 'horzOverflow'].some((key) => lowToHighValue(bodies, key) === 'clip');
   const paragraph = first?.paragraph;
   const align = paragraph?.align === 'justify' ? 'left' : (paragraph?.align ?? 'left');
+  const sourceFit = sourceFitOf(bodies);
   return {
     id: ctx.id(),
     kind: 'text',
@@ -921,6 +948,7 @@ function textElement(
       lineHeight: paragraph?.lineHeight ?? DEFAULT_LINE_HEIGHT,
       shadow: false,
       ...(!clipToBox || lastChild(bodies, 'normAutofit') ? { shrinkToFit: true } : {}),
+      ...(sourceFit ? { sourceFit } : {}),
       ...(clipToBox ? { clipToBox: true } : {}),
       ...(flag(lowToHighValue(bodies, 'spcFirstLastPara')) ? { spaceAtTextEdges: true } : {}),
       ...(lowToHighValue(bodies, 'wrap') === 'none' ? { noWrap: true } : {}),
