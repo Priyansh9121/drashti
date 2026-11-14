@@ -27,6 +27,8 @@ export const CAPTURE_MS = 8_000;
 export const ANSWER_MS = 9_000;
 /** Keep the last second of the quiet window for making the PNG in the network's process. */
 export const PNG_MARGIN_MS = 1_000;
+/** The longest a phone's PNG waits, in all, for the hall screens to be still again (as long as the settle wait). */
+export const PNG_WAIT_MS = SETTLE_MS;
 /** A moment past a change that was due, for the engine to have made it before the screens are looked at again. */
 const PAST_MS = 50;
 
@@ -246,4 +248,12 @@ export async function waitForSlidePicture(
     if (until - asked > SETTLE_MS) return null;
     await new Promise<void>((resolve) => setTimeout(resolve, until - at));
   }
+}
+
+/** Not looked at yet (red). */
+export function whileScreensMove(
+  _state: () => EngineState | null,
+  _now: () => number = Date.now,
+): () => Promise<void> {
+  return () => Promise.resolve();
 }
