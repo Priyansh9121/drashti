@@ -155,7 +155,8 @@ export function playlistRow(item: PlaylistItemInfo, playlistId: string, extra: M
         edit: mediaEdit(item.mediaId, item.label, item.media, can),
         ...(item.media !== 'image' && can ? { trim: () => openMarkers(markersMedia(item)) } : {}),
         rename: () => {
-          renameMedia(item.mediaId, item.label, item.media);
+          // By the file's own name, never a label the row has of its own (C18, FT-2): Undo puts that name back.
+          renameMedia(item.mediaId, item.mediaName ?? item.label, item.media);
         },
         reveal: () => void revealFile({ mediaId: item.mediaId }),
       };

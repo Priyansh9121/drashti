@@ -147,6 +147,11 @@ export type PlaylistItemInfo =
       kind: 'media';
       label: string;
       mediaId: string;
+      /**
+       * The library file's own name (C18, Session 58: FT-2), read with the row, never kept twice: what Rename… shows and
+       * renames, where the row's label may be its own. Left out (an older Main's page): its label.
+       */
+      mediaName?: string;
       media: 'image' | 'video' | 'audio';
       /** The file was not found at import. */
       missing: boolean;
