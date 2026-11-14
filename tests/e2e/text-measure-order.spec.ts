@@ -17,6 +17,7 @@ import {flushSync} from 'react-dom';
 import {createRoot} from 'react-dom/client';
 import {useShrinkToFit} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/SlideView.tsx'))};
 import {MeasureContext} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/measure.tsx'))};
+import {reportFitFailuresTo} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/shrink-to-fit.ts'))};
 import {StageView} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/StageView.tsx'))};
 import {holdClock} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/clock.ts'))};
 import {initialEngineState} from ${JSON.stringify(join(process.cwd(), 'src/shared/engine/state.ts'))};
@@ -39,7 +40,8 @@ globalThis.runTextMeasure=async(on,reporting)=>{
  reads=0;let calls=0,snapshot,fail;const host=document.createElement('div');document.body.append(host);const root=createRoot(host,{onUncaughtError:e=>fail(e)});
  const done=new Promise((resolve,reject)=>{fail=reject;
   function Probe(){const box=useRef(null),words=useRef(null);useShrinkToFit(box,words,{id:'placeholder-text',style:{shrinkToFit:on}});
-   useLayoutEffect(()=>{snapshot={readsAtCommit:reads,reportsAtCommit:calls};requestAnimationFrame(()=>{snapshot.readsBeforeFrame=reads;snapshot.reportsBeforeFrame=calls;snapshot.fitBeforeFrame=box.current.getAttribute('data-fit');resolve()})});
+   // After the commit, in its own task: the batch's microtask was queued first, by useShrinkToFit's layout effect.
+   useLayoutEffect(()=>{snapshot={readsAtCommit:reads,reportsAtCommit:calls};queueMicrotask(()=>{snapshot.fitInTask=box.current.getAttribute('data-fit');snapshot.reportsInTask=calls});requestAnimationFrame(()=>{snapshot.readsBeforeFrame=reads;snapshot.reportsBeforeFrame=calls;snapshot.fitBeforeFrame=box.current.getAttribute('data-fit');resolve()})});
    return <div ref={box} data-measure-box="yes" style={{width:160,height:16,overflow:'hidden'}}><div ref={words} data-measure-words="yes" style={{fontSize:'calc(24px * var(--fit, 1))',lineHeight:1.1}}>Placeholder words for a narrow box. Placeholder words for a narrow box.</div></div>
   }
   root.render(reporting?<MeasureContext.Provider value={()=>{calls++}}><Probe/></MeasureContext.Provider>:<Probe/>);
@@ -64,6 +66,19 @@ globalThis.runTextBatch=async(count,together)=>{
  }
  for(const root of roots)root.unmount();for(const host of hosts)host.remove();
  return results;
+};
+globalThis.runFailingReports=async()=>{
+ const reported=[],uncaughtBefore=fixtureErrors.length,host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+ reportFitFailuresTo(e=>{reported.push(e.message)});
+ const report=(id,measured)=>{if(measured)throw new Error('Placeholder report failure for '+id)};
+ function Box({i}){const box=useRef(null),words=useRef(null);useShrinkToFit(box,words,{id:'placeholder-failing-'+i,style:{shrinkToFit:true}});
+  return <div ref={box} data-failing-box={i} style={{width:150,height:40,overflow:'hidden'}}><div ref={words} style={{fontSize:'calc(24px * var(--fit, 1))',lineHeight:1.1}}>{'Placeholder words for a narrow box. '.repeat(3)}</div></div>
+ }
+ flushSync(()=>root.render(<MeasureContext.Provider value={report}><Box i={0}/><Box i={1}/></MeasureContext.Provider>));
+ await settle();
+ const fits=[0,1].map(i=>host.querySelector('[data-failing-box="'+i+'"]').getAttribute('data-fit'));
+ const result={reported,fits,uncaught:fixtureErrors.slice(uncaughtBefore)};
+ root.unmount();host.remove();return result;
 };
 globalThis.runStageMeasure=async(long)=>{
  reads=0;let snapshot,fail;const host=document.createElement('div');document.body.append(host);const root=createRoot(host,{onUncaughtError:e=>fail(e)});
@@ -169,6 +184,8 @@ globalThis.runStageMeasure=async(long)=>{
                 over: boolean;
                 fit: string | null;
                 fitBeforeFrame: string | null;
+                fitInTask: string | null;
+                reportsInTask: number;
               }>;
             }
           ).runTextMeasure(on, reporting),
@@ -182,6 +199,9 @@ globalThis.runStageMeasure=async(long)=>{
     const fit = await run(true, false);
     expect(fit.readsBeforeFrame, 'shrink-to-fit finishes before the box is first drawn').toBeGreaterThan(0);
     expect(fit.fitBeforeFrame).toBe(fit.fit);
+    // In the commit's own task, before any other task or frame (Session 58, MS-3): a batch moved to a later task or to a
+    // passive effect would still usually land before the frame, but misses it for a commit made inside a frame.
+    expect(fit.fitInTask, 'shrink-to-fit is measured in the commit’s own task').toBe(fit.fit);
     expect(fit.fit).not.toBeNull();
     expect(Number(fit.fit)).toBeGreaterThan(0);
     expect(Number(fit.fit)).toBeLessThan(1);
@@ -189,7 +209,23 @@ globalThis.runStageMeasure=async(long)=>{
     const editor = await run(false, true);
     expect(editor.readsBeforeFrame).toBeGreaterThan(0);
     expect(editor.reportsBeforeFrame, 'the editor is told before the box is first drawn').toBeGreaterThan(0);
+    expect(editor.reportsInTask, 'the editor is told in the commit’s own task').toBeGreaterThan(0);
     expect(editor.over).toBe(true);
+    // A report that fails (a fault in whoever asked: the slide editor, a thumbnail) leaves every box fitted, and each
+    // failure goes to the window's own report of render errors, never through as uncaught (Session 58, MS-2).
+    const failing = await page.evaluate(() =>
+      (
+        globalThis as unknown as {
+          runFailingReports(): Promise<{ reported: string[]; fits: (string | null)[]; uncaught: string[] }>;
+        }
+      ).runFailingReports(),
+    );
+    expect(failing.uncaught).toEqual([]);
+    expect(failing.reported).toEqual([
+      'Placeholder report failure for placeholder-failing-0',
+      'Placeholder report failure for placeholder-failing-1',
+    ]);
+    expect(failing.fits.every((fit) => fit !== null && Number(fit) > 0 && Number(fit) < 1)).toBe(true);
     // A slide of many shrinking boxes (Session 57, MS-1): drawn in one commit, they are measured together in a few
     // of the browser's layouts, and each ends exactly where it ends measured alone (one box to a commit).
     const BOXES = 60;
