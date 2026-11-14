@@ -229,8 +229,10 @@ export interface WarmScene {
   clip?: string;
   /** Drawn moved by this transform (OFF_GRID: half a pixel off the grid, Session 58). */
   offset?: string;
-  /** Drawn inside a rounded overflow clip to warm the GPU’s analytic clip for a shaded slide. */
+  /** Drawn inside a rounded overflow clip to warm the GPU's analytic clip for a shaded slide. */
   rounded?: boolean;
+  /** Transforms the contents inside the clip, so the clip itself stays on its own axes. */
+  contentTransform?: string;
   /**
    * Drawn in place of a Scene of its state (Session 58: the moving backgrounds, each a small lower third), as a key
    * and fill pair's page draws (its matte).
@@ -436,9 +438,12 @@ export function warmScenes(): WarmScene[] {
     ...transitions,
     ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
     ...offGrid(deckWipe, 'deck-wipe/calm/off-grid'),
-    // CI’s Mac traces a separate pipeline for the wide Cover’s shaded quad with an analytic clip.
-    // Use an overflow clip with rounded corners so the compositor can draw it analytically.
-    ...offGrid(deckCover && { ...deckCover, rounded: true }, 'deck-cover/calm/off-grid'),
+    // A rounded clip alone still let the wide Cover's shaded quad snap to the grid (Mac trace on 41d40ee1).
+    // Turn the scene slightly inside the clip so the compositor needs edge antialiasing and the analytic clip together.
+    ...offGrid(
+      deckCover && { ...deckCover, rounded: true, contentTransform: 'rotate(0.25deg)' },
+      'deck-cover/calm/off-grid',
+    ),
     ...offGrid(deckCover && fourThreeScene(deckCover), 'deck-cover-four-three/calm/off-grid'),
     ...list,
   ];
@@ -603,38 +608,45 @@ function WarmScenes({
   const list = useMemo(() => warmScenes().filter((s) => s.pages?.includes(page) ?? true), [page]);
   return (
     <>
-      {list.map((s) => (
+      {list.map((s) => {
+        const content = s.draw ? (
+          s.draw(during, at, canvas, matte)
+        ) : (
+          <Scene
+            state={s.state(during, at)}
+            canvas={canvas}
+            scaling={scaling}
+            look={s.look}
+            matte={matte}
+            ticker={ticker}
+          />
+        );
         // Each scene added light for light (none of it opaque to the GPU), so none hides another.
-        <div
-          key={s.key}
-          data-warm-scene={s.key}
-          style={{ position: 'absolute', inset: 0, mixBlendMode: 'plus-lighter' }}
-        >
+        return (
           <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              clipPath: s.clip,
-              transform: s.offset,
-              ...(s.rounded ? { overflow: 'hidden', borderRadius: 12 } : {}),
-            }}
+            key={s.key}
+            data-warm-scene={s.key}
+            style={{ position: 'absolute', inset: 0, mixBlendMode: 'plus-lighter' }}
           >
-            {s.draw ? (
-              s.draw(during, at, canvas, matte)
-            ) : (
-              <Scene
-                state={s.state(during, at)}
-                canvas={canvas}
-                scaling={scaling}
-                look={s.look}
-                matte={matte}
-                ticker={ticker}
-              />
-            )}
-            {during && s.key === WARM_UP_FAILS && <FailForTests />}
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                clipPath: s.clip,
+                transform: s.offset,
+                ...(s.rounded ? { overflow: 'hidden', borderRadius: 12 } : {}),
+              }}
+            >
+              {s.contentTransform ? (
+                <div style={{ position: 'absolute', inset: 0, transform: s.contentTransform }}>{content}</div>
+              ) : (
+                content
+              )}
+              {during && s.key === WARM_UP_FAILS && <FailForTests />}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </>
   );
 }
