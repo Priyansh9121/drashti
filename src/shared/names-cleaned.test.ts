@@ -10,9 +10,9 @@ import { stageLayoutNameSchema } from './stage-layouts';
  */
 
 /** A zero-width space, a word joiner and a soft hyphen: nothing a person sees. */
-const NOTHING = '​⁠­';
+const NOTHING = '\u200B\u2060\u00AD';
 /** A name with a hidden direction mark (copied words can bring one), and one with a tab. */
-const MARKED = 'Placeholder‎ hall';
+const MARKED = 'Placeholder\u200E hall';
 const TABBED = 'Placeholder\thall';
 const KEPT = 'Placeholder hall';
 
@@ -23,7 +23,7 @@ describe('names given to Drashti, cleaned as Rename… cleans one (C15, FT-1)', 
     expect(nodeNameSchema.parse(TABBED)).toBe(KEPT);
     // Its computer's name as it pairs: nothing visible left is "Node", as an empty one is.
     expect(nodeNameFrom(`${NOTHING}.local`)).toBe('Node');
-    expect(nodeNameFrom('Placeholder‮-Mac.local')).toBe('Placeholder-Mac');
+    expect(nodeNameFrom('Placeholder\u202E-Mac.local')).toBe('Placeholder-Mac');
   });
 
   it('a stage layout’s', () => {
