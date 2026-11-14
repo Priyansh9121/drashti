@@ -230,6 +230,22 @@ describe('a deck’s own Wipe drawn on a screen with a graphics chip: PowerPoint
 });
 
 describe('a deck’s own Push on a 4:3 slide fitted to a 16:9 screen (Session 58, Q58-16)', () => {
+  it('a slide that fills the screen moves exactly as before (in % of the layer), as phase1 draws it', () => {
+    for (const deckEffect of ['push', 'cover', 'uncover'] as const) {
+      const native: DeckNativeTransition = { kind: 'slide', deckEffect, durationMs: 700, direction: 'left' };
+      for (const p of [0.25, 0.5, 0.75]) {
+        const coming = box();
+        const going = box();
+        paintLayers(layersOf(coming, going), deckPaint(native), p);
+        const before = deckTransitionFrame(native, p);
+        expect([coming.style.transform, going.style.transform], `${deckEffect} at ${String(p)}`).toEqual([
+          before.in.transform,
+          before.out.transform,
+        ]);
+      }
+    }
+  });
+
   it('both slides move by the slide’s own width in px', () => {
     const bars = { x: 240, y: 0, width: 1440, height: 1080 };
     const native: DeckNativeTransition = {
