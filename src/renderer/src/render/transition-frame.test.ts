@@ -641,6 +641,12 @@ describe('a deck’s own Push, Cover and Uncover on the slide where it is placed
     }
     for (const effect of ['wipe', 'dissolve', 'fade-black', 'zoom'] as const)
       expect(deckSlideClip(deckNative(effect, 'left'), BARS, BARS, SCREEN), effect).toBe('');
+    // Whole pixels (review LOW-2): a third of a pixel short of the screen is no clip; a part-pixel bar rounds.
+    const t = deckNative('push', 'left');
+    const near = { x: 0.33333, y: 0, width: 1365.33333, height: 768 };
+    expect(deckSlideClip(t, near, near, { width: 1366, height: 768 })).toBe('');
+    const part = { x: 240.4, y: 0, width: 1439.2, height: 1080 };
+    expect(deckSlideClip(t, part, part, SCREEN)).toBe('inset(0px 240px 0px 240px)');
   });
 });
 
