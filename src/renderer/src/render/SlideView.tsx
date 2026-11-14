@@ -40,7 +40,7 @@ import { missingFontsOf } from './font-probe';
 import { queueFit } from './shrink-to-fit';
 import { standsUpright } from '../../../shared/text-runs';
 import { drawnLines, hasList } from '../../../shared/text-lists';
-import { cutLineHeight, sourceFitScale, sourceLineCut } from '../../../shared/source-fit';
+import { cutLineHeight, sourceFitScale, sourceLineCut, sourceRunScale } from '../../../shared/source-fit';
 import { TimerElementView } from './TimerElementView';
 import { PlayBar } from './PlayBar';
 import type { DeckMedia } from '../../../shared/deck';
@@ -141,6 +141,16 @@ function frameStyle(el: SlideElement): CSSProperties {
 const fitted = (px: number | undefined) => (px === undefined ? undefined : `calc(var(--fit, 1) * ${px}px)`);
 
 /**
+ * A run's size in a deck's box that PowerPoint shrank: each run at its own size rounded to a whole point once the box
+ * is at PowerPoint's fit (shared/source-fit.ts sourceRunScale; Q58-50). As written for every other box.
+ */
+const ownSize = (px: number | undefined, el: TextElement) => {
+  if (px === undefined) return undefined;
+  const share = sourceRunScale(el, px);
+  return share === 1 ? px : Math.round(px * share * 10_000) / 10_000;
+};
+
+/**
  * How a run is drawn inside its box (the slide editor draws text it edits the same way). Gujarati and
  * Devanagari stand upright with no letter-spacing (Sessions 31–36, I18N-2: shared/text-runs.ts
  * standsUpright), whatever was stored, which is kept.
@@ -150,7 +160,7 @@ export function runStyle(run: Omit<TextRun, 'text'> & { text?: string }, el: Tex
   const upright = standsUpright(run, el.lang);
   return {
     fontFamily: fontFamilyFor(run.font ?? el.style.fontFamily, lang),
-    fontSize: fitted(run.size),
+    fontSize: fitted(ownSize(run.size, el)),
     color: run.color,
     fontWeight: run.weight,
     fontStyle: run.italic && !upright ? 'italic' : undefined,
@@ -397,6 +407,16 @@ function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly Text
         const size = first.size ?? el.style.fontSize;
         const { mark, label } = line.mark;
         const blank = line.pieces.every((p) => p.text.trim() === '');
+        // A deck's own box (its source shape's ID, as the deck reader sets it) lays each line at its own largest size
+        // (Q58-54), so its CSS strut is that line's own, as PowerPoint lays each line out (run 5); only where every run
+        // on it has its own size, so no run takes a size it did not have. A Drashti-made box lays out as it always has,
+        // so a prepared show's words never move.
+        const sized = line.pieces.length > 0 ? line.pieces.map((p) => p.run.size) : [line.end?.size];
+        const sizes = sized.filter((px): px is number => px !== undefined);
+        const lineSize =
+          el.sourceShapeId !== undefined && sizes.length > 0 && sizes.length === sized.length
+            ? Math.max(...sizes)
+            : undefined;
         return (
           <div
             key={li}
@@ -406,6 +426,7 @@ function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly Text
             data-reveal-empty={reveal && blank ? '' : undefined}
             style={{
               position: reveal ? 'relative' : undefined,
+              fontSize: fitted(ownSize(lineSize, el)),
               ...paragraphLineStyle(line.mark, size, first.paragraph, {
                 before: el.style.spaceAtTextEdges === true || li > 0,
                 after: el.style.spaceAtTextEdges === true || li < last,
@@ -566,7 +587,7 @@ export function textBoxStyle(el: TextElement): CSSProperties {
     textOrientation: s.textOrientation,
     overflow: s.clipToBox ? 'hidden' : undefined,
     fontFamily: fontFamilyFor(s.fontFamily, el.lang),
-    fontSize: fitted(s.fontSize),
+    fontSize: fitted(ownSize(s.fontSize, el)),
     fontWeight: s.fontWeight,
     // A deck's box drawn with its line spacing as PowerPoint shrank it (Session 58, PF-4b; shared/source-fit.ts).
     lineHeight: cutLineHeight(s.lineHeight, sourceLineCut(s)),

@@ -51,6 +51,23 @@ export function sourceFitScale(el: TextElement): number | undefined {
   return shrunk > 0 ? Math.min(1, shrunk / points) : fit.fontScale;
 }
 
+/**
+ * A run's own size under PowerPoint's shrink, as a share of the box's fit (sourceFitScale): PowerPoint rounds EACH run's
+ * size to a whole point on its own (its PDF and movie of shrunk boxes with two sizes, h-pptx3's run 5, 14 Nov 2026: 40
+ * and 18 pt at 62.5% are drawn 25 and 11 pt, 36 and 24 at 70% 25 and 17, 32 and 20 at 77.5% 25 and 16), so a run not of
+ * the box's main size is drawn this much larger or smaller than the box's fit alone makes it (Q58-50). 1 for the main
+ * size, a box without PowerPoint's numbers, or one Drashti does not fit.
+ */
+export function sourceRunScale(el: TextElement, size: number | undefined): number {
+  const fit = el.style.sourceFit;
+  if (!fit || el.style.shrinkToFit !== true) return 1;
+  const box = sourceFitScale(el);
+  const points = (size ?? el.style.fontSize) * POINTS_A_PIXEL;
+  if (box === undefined || !(box > 0) || !(points > 0)) return 1;
+  const shrunk = Math.round(points * fit.fontScale);
+  return shrunk > 0 ? Math.min(1, shrunk / points) / box : 1;
+}
+
 /** How much the source's own shrink takes off a box's line spacing multiples (0 for none). */
 export function sourceLineCut(style: Pick<TextStyle, 'sourceFit'>): number {
   const reduction = style.sourceFit?.lineSpacingReduction ?? 0;
