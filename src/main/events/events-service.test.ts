@@ -357,6 +357,7 @@ describe('events out', () => {
         asked += 1;
         return { available: true, message: null };
       },
+      known: () => ({ available: true, message: null }),
       ids: () => [] as string[],
       get: () => null,
       set: () => ({ ok: true as const }),
