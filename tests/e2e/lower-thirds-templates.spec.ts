@@ -18,7 +18,8 @@ import { CI_WINDOW } from './window-size';
 /*
  * The templates made since alpha.17 (Session 58, C14): every one in the Lower Thirds studio's gallery, under All
  * templates, by its name; and each layout new to the gallery made into a lower third as designed, saved and shown on
- * a placeholder hall screen: three lines, one line, a Gujarati name, and a moving background moving while it is up.
+ * a placeholder hall screen: three lines, one line, a Gujarati name, and a moving background moving while it is up
+ * (one of alpha.17's, and one added since).
  * The studio at CI's 1024 × 645. Placeholder words only.
  */
 
@@ -63,6 +64,18 @@ async function allTemplates(studio: Page) {
   return picker;
 }
 
+/** alpha.17's moving backgrounds (and none). */
+const ALPHA17_MOTIONS: readonly string[] = [
+  'none',
+  'sweep',
+  'shine',
+  'shapes',
+  'stripes',
+  'glow',
+  'line',
+  'sparkles',
+];
+
 const made = LOWER_THIRD_TEMPLATES.filter((t) => MORE_LOWER_THIRD_DESIGNS.some((d) => d.id === t.id));
 
 /** The first template made since alpha.17 that `fits` picks (one the Performance run leaves out is not offered). */
@@ -88,7 +101,7 @@ test('All templates lists every template made since alpha.17 by its name, after 
   await app.close();
 });
 
-test('each new layout makes a lower third as designed, saved and shown on the hall screen: three lines, one line, a Gujarati name, a moving background moving', async () => {
+test('each new layout makes a lower third as designed, saved and shown on the hall screen: three lines, one line, a Gujarati name, a moving background moving, one of alpha.18’s too', async () => {
   test.setTimeout(240_000);
   const { app, win, out } = await start();
   const studio = await openStudio(app, win);
@@ -97,6 +110,10 @@ test('each new layout makes a lower third as designed, saved and shown on the ha
     first('one line', (t) => shownLines(t.input.lines).length === 1),
     first('a Gujarati name', (t) => shownLines(t.input.lines)[0]?.startsWith('નમૂના') === true),
     first('a moving background', (t) => (t.input.look.motion ?? 'none') !== 'none'),
+    first(
+      'a moving background added since alpha.17',
+      (t) => !ALPHA17_MOTIONS.includes(t.input.look.motion ?? 'none'),
+    ),
   ];
   const onScreen = out.getByTestId('lower-third-layer');
   for (const t of chosen) {
