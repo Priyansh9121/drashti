@@ -74,6 +74,14 @@ export function fitTogether(boxes: readonly FitBox[]): void {
   if (failures.length > 0) throw failures[0];
 }
 
+/**
+ * How the window reports a failure telling a box its measure (Session 58, MS-2). Red: not used yet, so a failure
+ * still comes through uncaught, the first only.
+ */
+export function reportFitFailuresTo(_report: (error: unknown) => void): void {
+  // Red (Session 58, MS-2): the failing tests first.
+}
+
 /** The boxes queued since the last batch, in the order their layout effects ran. */
 const queued = new Set<FitBox>();
 let batchQueued = false;
