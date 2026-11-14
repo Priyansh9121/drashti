@@ -77,7 +77,7 @@ import { hallPicture, type StageLayout } from '../shared/stage-layouts';
 import { DEFAULT_THEME } from '../shared/themes';
 import type { SlideSource } from './engine/slide-source';
 import type { Db } from './db/database';
-import { LATEST_VERSION, LIBRARY_BUSY_TIMEOUT_MS, openDatabase } from './db/database';
+import { LATEST_VERSION, leaveCopyingToImports, LIBRARY_BUSY_TIMEOUT_MS, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
 import { carryInputName } from './db/input-renames';
 import { MediaRepo } from './db/media';
@@ -141,6 +141,7 @@ import {
 } from './ipc/handle';
 import { readOrDefault } from './ipc/read-or-default';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
+import { LockWatch } from './perf-lock';
 import { isPerfScenario, scenarioFor } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { SoundRepo } from './db/sound';
@@ -3578,6 +3579,9 @@ function start(): void {
     // No deck's movie is made while the stream is on air or recording (Session 54, C2; Session 50's rule).
     onAir: () => streaming.inUse() || testOnAir,
     playsHevc: () => hevc.wait(),
+    // While an import runs, its own connection copies the WAL into the library file, never a write of Main's (Session
+    // 58: such a write copied the import's pages and waited for the disk on the main thread).
+    running: leaveCopyingToImports(libraryDb),
     onProgress: (progress) => {
       sendToOperator(IPC.library.importProgress, progress);
     },
@@ -7589,6 +7593,39 @@ function start(): void {
             override: sw('DRASHTI_FFMPEG'),
           }),
         cpu: () => app.getAppMetrics().reduce((sum, m) => sum + m.cpu.percentCPUUsage, 0),
+        // The library's write lock as Main sees it while measured (Session 58): a write then would have waited so long.
+        lock: new LockWatch({ free: () => writeLockFree(libraryDb, LIBRARY_BUSY_TIMEOUT_MS) }),
+        // Each page's warm-up marks (Session 58, WU-1): the LIVE picture's, the stream's page's and each output's.
+        warmUps: async () => {
+          const pages: [string, Electron.WebContents | null][] = [
+            [
+              'the LIVE picture',
+              operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null,
+            ],
+            ['the stream’s page', streaming.programContents() ?? null],
+            ...[...outputWindows.entries()].map(([screenId, w]): [string, Electron.WebContents | null] => [
+              outputNames.get(screenId) ?? 'an output',
+              w.isDestroyed() ? null : w.webContents,
+            ]),
+          ];
+          return Promise.all(
+            pages
+              .flatMap(([page, contents]) =>
+                !contents || contents.isDestroyed() ? [] : [[page, contents] as const],
+              )
+              .map(async ([page, contents]): Promise<[string, [string, number][] | null]> => {
+                try {
+                  const marks = (await contents.executeJavaScript(
+                    "performance.getEntriesByType('mark').filter((m) => m.name.startsWith('drashti-warm-up')).map((m) => [m.name, Math.round(m.startTime)])",
+                    true,
+                  )) as [string, number][];
+                  return [page, marks];
+                } catch {
+                  return [page, null];
+                }
+              }),
+          );
+        },
         priority: {
           started: startedPriority,
           others: () =>

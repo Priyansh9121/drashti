@@ -47,6 +47,12 @@ export interface ImportServiceDeps {
   onAutoMarked?(mediaIds: string[]): void;
   /** After every run, with its summary when it finished. */
   onFinished(run: ImportRunSummary | null): void;
+  /**
+   * A run's worker is running (true), then has ended (false), once each, however it ends (Session 58): the main
+   * process's library connection leaves copying the WAL into the library file to the import meanwhile
+   * (db/database.ts, leaveCopyingToImports). Never for a worker that could not start.
+   */
+  running?(on: boolean): void;
   /** Record a run as failed (its worker died or could not start). */
   failRun(runId: string, paths: string[], message: string): void;
   /**
@@ -203,6 +209,7 @@ export class ImportService {
     const active = this.active;
     if (!active) return;
     this.active = null;
+    this.deps.running?.(false);
     active.drawing.abort();
     for (const done of [...active.ways.values()]) done();
     active.worker.kill();
@@ -238,10 +245,12 @@ export class ImportService {
       boosted: 0,
     };
     this.active = active;
+    this.deps.running?.(true);
     let settled = false;
     const settle = (result: ImportResult, run: ImportRunSummary | null) => {
       if (settled || this.stopped) return;
       settled = true;
+      this.deps.running?.(false);
       active.drawing.abort();
       // Writes waiting for the import to give way need wait no more.
       for (const done of [...active.ways.values()]) done();
