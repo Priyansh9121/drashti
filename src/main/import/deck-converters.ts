@@ -290,7 +290,10 @@ export type Converted =
       ok: false;
       /** What to tell the operator, with what to do. */
       message: string;
-      /** In a few words, for a report that goes on to try another app. */
+      /**
+       * In a few words, for a report that goes on to try another app, after the app's name (C17's review, L3): "PowerPoint
+       * could not save it as PDF (it stopped answering), so Keynote did". It never names the app, nor says what to do.
+       */
       reason: string;
       /** The operator cancelled the import. */
       cancelled?: boolean;
@@ -355,7 +358,7 @@ export async function convertToPdf(
   if (platform === 'darwin') return convertOnMac(converter, input, work, limits, options);
   if (platform === 'win32' && converter === 'powerpoint')
     return convertOnWindows(input, work, limits, options);
-  return { ok: false, message: byHand(converter), reason: `no ${appName(converter)} here` };
+  return { ok: false, message: byHand(converter), reason: 'it is not on this computer' };
 }
 
 // ---- on a Mac ----------------------------------------------------------------------------------
@@ -573,7 +576,7 @@ export async function withMacSession<T>(
   const silentFail = (when: string): ConvertFailed => {
     state.answering = false;
     return fail(
-      `${name} stopped answering`,
+      'it stopped answering',
       `${name} stopped answering while ${when}: it may be asking a question about this file in a window behind Drashti. ${leftAs()} ${byHand(app.converter)}`,
     );
   };
@@ -581,11 +584,13 @@ export async function withMacSession<T>(
     if (r.aborted) return cancelled();
     const n = errorNumber(r.stderr);
     if (n === NOT_ALLOWED)
-      return fail(`not allowed to use ${name}`, notAllowedMessage(app.converter), { notAllowed: true });
+      return fail('macOS did not let Drashti control it', notAllowedMessage(app.converter), {
+        notAllowed: true,
+      });
     if (r.timedOut || n === TIMED_OUT) return silentFail(when);
     const detail = firstLine(r.stderr);
     return fail(
-      `${name} could not ${what}`,
+      `it gave an error while ${when}`,
       `${name} could not ${what}${detail ? ` (${detail})` : ''}. ${byHand(app.converter)}`,
     );
   };
@@ -695,7 +700,7 @@ export async function withMacSession<T>(
         return {
           ok: false,
           failed: fail(
-            `${name} could not open it`,
+            'it showed a message instead of opening the file',
             `${name} could not open the file and showed a message about it: it may be damaged. ${leftAs()} ${byHand(app.converter)}`,
           ),
         };
@@ -704,7 +709,7 @@ export async function withMacSession<T>(
         return {
           ok: false,
           failed: fail(
-            `${name} did not open it`,
+            'it did not open the file in time',
             `${name} did not open the file: it may be damaged, or ${name} may be asking about it in a window behind Drashti. ${byHand(app.converter)}`,
           ),
         };
@@ -801,7 +806,7 @@ export async function withMacSession<T>(
       if (signal?.aborted) return cancelled();
       if ((await pidsOf(app)).length === 0) {
         if (launches === 2)
-          return fail(`${name} did not start`, `${name} did not start. ${byHand(app.converter)}`);
+          return fail('it did not start', `${name} did not start. ${byHand(app.converter)}`);
         launches++;
         log(launches === 1 ? 'starting it' : 'starting it again (it quit while starting)');
         await run(
@@ -839,7 +844,7 @@ export async function withMacSession<T>(
       if (n === NOT_ALLOWED) return fromError(r, 'starting', 'start');
       if (Date.now() > deadline)
         return fail(
-          `${name} did not answer`,
+          'it did not start or answer in time',
           `${name} did not start or answer within ${String(Math.round(limits.startMs / 1000))} seconds. If macOS asked whether Drashti may control ${name}, choose Allow, then import the file again. ${byHand(app.converter)}`,
         );
       // Not answering yet, or gone (it quit while starting, as a first start after an update can).
@@ -939,7 +944,7 @@ async function convertOnMac(
     if (!exists(inApp))
       return {
         ok: false,
-        reason: `${name} could not save it as PDF: save it as PDF by hand and import that`,
+        reason: 'it wrote no PDF',
         message: `${name} could not save it as PDF. ${byHand(converter)}`,
       };
     await copyFile(inApp, pdf);
@@ -1197,7 +1202,7 @@ async function powerPointOnWindows(
     if (r.aborted) return cancelled();
     return {
       ok: false,
-      reason: 'PowerPoint stopped answering',
+      reason: 'it stopped answering',
       message: `PowerPoint did not finish within ${String(Math.round(timeoutMs / 60_000))} minutes.${leftOpenWords(left)}${notBackWords(back)} ${byHand('powerpoint')}`,
     };
   }
@@ -1499,7 +1504,7 @@ export async function deckOnWindows(
       if (r.aborted) return cancelled();
       return {
         ok: false,
-        reason: 'PowerPoint stopped answering',
+        reason: 'it stopped answering',
         message: `PowerPoint did not finish within ${String(Math.round(timeoutMs / 60_000))} minutes.${leftOpenWords(left)}${notBackWords(back)}`,
       };
     }
@@ -1517,7 +1522,7 @@ export async function deckOnWindows(
         };
       return {
         ok: false,
-        reason: job.movie ? 'it could not make the movie' : 'it could not save it as a .pptx',
+        reason: job.movie ? 'it stopped with an error' : 'it could not save it as a .pptx',
         message: job.movie
           ? 'PowerPoint could not make the deck’s movie.'
           : 'PowerPoint could not save it as a .pptx.',
