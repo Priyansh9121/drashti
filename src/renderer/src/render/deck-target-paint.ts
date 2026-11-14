@@ -4,14 +4,18 @@ import {
   deckWipeClip,
   deckWipeInnerMask,
   deckWipeMask,
+  deckWipeMaskComposite,
 } from '../../../shared/deck-motion';
 import type { Rect } from '../../../shared/model';
 
 /** What a deck's moving shape writes of its style (an element's own, or a test's stand-in). */
-export type DeckTargetStyle = Pick<CSSStyleDeclaration, 'transform' | 'opacity' | 'clipPath' | 'maskImage'>;
+export type DeckTargetStyle = Pick<
+  CSSStyleDeclaration,
+  'transform' | 'opacity' | 'clipPath' | 'maskImage' | 'maskComposite'
+>;
 
 /** What the element within a moving shape writes of its style: its own mask, multiplying the shape's. */
-export type DeckTargetInnerStyle = Pick<CSSStyleDeclaration, 'maskImage'>;
+export type DeckTargetInnerStyle = Pick<CSSStyleDeclaration, 'maskImage' | 'maskComposite'>;
 
 /**
  * Whether a deck's moving shape needs an element of its own within it for a second mask (deckWipeInnerMask): a Shape's
@@ -47,8 +51,12 @@ export function paintDeckTarget(
   if (style.transform !== transform) style.transform = transform;
   if (style.opacity !== opacity) style.opacity = opacity;
   if (style.clipPath !== clip) style.clipPath = clip;
+  const composite = mask ? deckWipeMaskComposite(frame.wipe) : '';
   if (style.maskImage !== mask) style.maskImage = mask;
+  if (style.maskComposite !== composite) style.maskComposite = composite;
   if (!inner) return;
   const second = deckWipeInnerMask(frame.wipe, target, element);
+  const secondComposite = second ? deckWipeMaskComposite(frame.wipe) : '';
   if (inner.maskImage !== second) inner.maskImage = second;
+  if (inner.maskComposite !== secondComposite) inner.maskComposite = secondComposite;
 }

@@ -540,15 +540,28 @@ function rampGradient(per: Point, stops: readonly [number, number][], target: Re
   return `linear-gradient(${fixed(angle, 4)}deg, ${stops.map(([m, shows]) => `${ink(shows)} ${at(m)}`).join(', ')})`;
 }
 
+/** A step from nothing to everything at a line (rampGradient's measure 0). */
+const STEP: readonly [number, number][] = [
+  [0, 0],
+  [0, 1],
+];
+
+/**
+ * How the layers of a Box's, a Plus's or a Diamond's masks are laid on one another (CSS mask-composite, the first on
+ * top): the ramp over the two half-planes, which `exclude` makes the two wedges beside the other two sides.
+ */
+const SHAPE_COMPOSITE = 'add, exclude';
+
 /**
  * A Shape's soft edge as CSS masks over one of a group's rendered parts drawn at `frame`, at the same slide position
  * across the whole group (`target`): '' while nothing is hidden. A Circle's is one radial gradient on the part. A Box's,
  * a Plus's and a Diamond's edge is two straight ramps meeting at square corners (PowerPoint's: its movie shows as much
  * on the corners' diagonal as anywhere along the edge), which one element's mask cannot draw (its layers only add or
  * multiply); so each ramp is drawn beside its own sides, on the part (`outer`) and on an element within it (`inner`),
- * a wedge about the box's middle (a repeating conic gradient) letting everything through beside the other sides, and
- * the two masks multiply to exactly what PowerPoint shows. (Their cost on the screens: the shape drawn through one more
- * layer the size of its box, two for a Box, a Plus or a Diamond, while it runs.)
+ * two half-planes through the box's middle laid on one another by `exclude` letting everything through beside the
+ * other sides, and the two masks multiply to exactly what PowerPoint shows: the half-planes' steps fall where the two
+ * ramps are equal, so nothing steps there. (Their cost on the screens: the shape drawn through one more layer the size
+ * of its box, two for a Box, a Plus or a Diamond, while it runs.)
  */
 function shapeMasks(wipe: DeckShape, target: Rect, frame: Rect): { outer: string; inner: string } {
   const none = { outer: '', inner: '' };
@@ -567,26 +580,39 @@ function shapeMasks(wipe: DeckShape, target: Rect, frame: Rect): { outer: string
     };
   }
   const ramp = bothWays(half);
-  // Lets everything through over `width` degrees from `from` (clockwise from twelve o'clock), and again half a turn on.
-  const wedge = (from: number, width: number) =>
-    `repeating-conic-gradient(from ${fixed(from, 4)}deg at ${fixed(x)}px ${fixed(y)}px, ${ink(1)} 0deg, ${ink(1)} ${fixed(width, 4)}deg, ${ink(0)} ${fixed(width, 4)}deg, ${ink(0)} 180deg)`;
-  const beside = (opening: string, per: Point) => `${opening}, ${rampGradient(per, ramp, target, frame)}`;
-  // From twelve o'clock to the box's top right corner: the wedges above and below run from −corner to corner.
-  const corner = (Math.atan2(a, b) * 180) / Math.PI;
-  const aboveAndBelow = wedge(-corner, 2 * corner);
-  const leftAndRight = wedge(corner, 180 - 2 * corner);
+  // One side of a line through the box's middle (everything where the measure along `per` is past 0): a step, crisp
+  // as Chromium draws a linear gradient's (it smooths a conic gradient's over a fraction of a degree, which left a faint
+  // line along the seam between the ramps where nothing should show: CI's Mac, 14 Nov 2026).
+  const side = (per: Point) => rampGradient(per, STEP, target, frame);
+  // Kept beside two opposite sides: the ramp, over two half-planes laid on one another by `exclude` (SHAPE_COMPOSITE),
+  // which let everything through over the other two.
+  const beside = (per: Point, first: Point, second: Point) =>
+    `${rampGradient(per, ramp, target, frame)}, ${side(first)}, ${side(second)}`;
+  // The box's diagonals (v = u and v = −u, u and v from −1 to 1 across it) and its middle lines, as px measures.
+  const belowFalling: Point = [-1 / a, 1 / b];
+  const aboveFalling: Point = [1 / a, -1 / b];
+  const belowRising: Point = [1 / a, 1 / b];
+  const right: Point = [1, 0];
+  const left: Point = [-1, 0];
+  const down: Point = [0, 1];
   switch (wipe.shape) {
     case 'box':
       // max(|u|, |v|): |u| beside the left and right sides, |v| above and below.
-      return { outer: beside(aboveAndBelow, [1 / a, 0]), inner: beside(leftAndRight, [0, 1 / b]) };
+      return {
+        outer: beside([1 / a, 0], aboveFalling, belowRising),
+        inner: beside([0, 1 / b], belowFalling, belowRising),
+      };
     case 'plus':
       // min(|u|, |v|): |u| above and below, |v| beside the left and right sides.
-      return { outer: beside(leftAndRight, [1 / a, 0]), inner: beside(aboveAndBelow, [0, 1 / b]) };
+      return {
+        outer: beside([1 / a, 0], belowFalling, belowRising),
+        inner: beside([0, 1 / b], aboveFalling, belowRising),
+      };
     case 'diamond':
       // (|u| + |v|) / 2: |u + v| / 2 where u and v have the same sign (bottom right, top left), else |u − v| / 2.
       return {
-        outer: beside(wedge(0, 90), [1 / (2 * a), 1 / (2 * b)]),
-        inner: beside(wedge(90, 90), [1 / (2 * a), -1 / (2 * b)]),
+        outer: beside([1 / (2 * a), 1 / (2 * b)], right, down),
+        inner: beside([1 / (2 * a), -1 / (2 * b)], left, down),
       };
   }
 }
@@ -619,6 +645,14 @@ export function deckWipeMask(wipe: DeckWipe | null, target: Rect, frame: Rect): 
  */
 export function deckWipeInnerMask(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
   return wipe && 'shape' in wipe ? shapeMasks(wipe, target, frame).inner : '';
+}
+
+/**
+ * How the layers of deckWipeMask's and deckWipeInnerMask's masks are laid on one another (CSS mask-composite): a Box's,
+ * a Plus's or a Diamond's while it runs (SHAPE_COMPOSITE); '' (each mask one layer) for anything else.
+ */
+export function deckWipeMaskComposite(wipe: DeckWipe | null): string {
+  return wipe && 'shape' in wipe && wipe.shape !== 'circle' && wipe.progress < 1 ? SHAPE_COMPOSITE : '';
 }
 
 /**
