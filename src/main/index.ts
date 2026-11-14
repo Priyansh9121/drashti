@@ -309,7 +309,7 @@ import {
 import { spawnEventsWorker } from './events/spawn-worker';
 import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
-import { OPENING_HOLD_MS, OPENING_MS } from '../shared/opening';
+import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { LiveWindowService } from './live-window/live-window-service';
 import { electronWindowSources } from './live-window/electron-sources';
@@ -6637,7 +6637,9 @@ function start(): void {
     openingSince = Date.now();
     openingKeys.start();
     // A page that never says it ended (it stopped, say) leaves the keys to the show soon after its two seconds.
-    openingLimit = setTimeout(openingOver, OPENING_MS + OPENING_HOLD_MS + 3000);
+    // Its longest hold (the window's, longer than the screens': OPENING_START_HOLD_MS), its photo's wait and its two
+    // seconds, with room to spare (Session 58).
+    openingLimit = setTimeout(openingOver, OPENING_MS + OPENING_START_HOLD_MS + 3000);
     // It never moves while the hall's screens are getting ready: told here once they all have drawn.
     openingWaits = screensWarming();
     return { ...plan, hold: openingWaits };

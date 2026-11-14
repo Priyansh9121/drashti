@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { OPENING_HOLD_MS, type OpeningEnd, type OpeningPlan } from '../../../shared/opening';
+import {
+  OPENING_HOLD_MS,
+  OPENING_START_HOLD_MS,
+  type OpeningEnd,
+  type OpeningPlan,
+} from '../../../shared/opening';
 import { motionOff } from '../ui/motion';
 import {
   afterCoverFrame,
@@ -24,8 +29,10 @@ import { OpeningPlayer } from './OpeningPlayer';
  * The window starts underneath as soon as the opening's black covers it (Session 57, item 6; opening-order.ts), and
  * the opening holds, black, until the window has opened (its controls drawn with their first data, the page then
  * idle: ui/motion.ts), so its two seconds run with nothing starting under them: on CI's Mac the window's start had
- * taken the main thread for a second at a time while it moved. That hold is OPENING_HOLD_MS at most too, and then it
- * moves as it would.
+ * taken the main thread for a second at a time while it moved. And until the window's own GPU warm-up is over
+ * (Session 58: its LIVE picture's, render/WarmUp.tsx), so its two seconds never share the GPU with it: on CI's Mac
+ * the GPU was still making that warm-up's pipelines, every window waiting, as the opening moved. That hold is
+ * OPENING_START_HOLD_MS at most, and then it moves as it would.
  */
 
 /** Asked once a page (StrictMode's second effect, or a window loaded again, is told no by the main process anyway). */
@@ -34,8 +41,20 @@ let asked: Promise<OpeningPlan | null> | null = null;
 /** Whether the window underneath has opened: its controls drawn with their first data, the page then idle (ui/motion.ts). */
 const windowOpen = () => document.documentElement.hasAttribute('data-opened');
 
+/**
+ * Whether the window's own GPU warm-up still draws: its LIVE picture's (render/WarmUp.tsx, there from when the window
+ * starts until it is over; read as the Performance check's cold start reads it, main/perftest.ts).
+ */
+const windowWarming = () => document.querySelector('[data-testid="live-preview"] [data-warm-up]') !== null;
+
 // Allow regular frames on slow displays and reject the long gaps caused by loading the operator window.
 const OPENING_FRAME_BUDGET_MS = 50;
+/**
+ * Frames in a row within that budget before it moves (Session 58): its start's last chores come a few frames after its
+ * warm-up (the LIVE picture's first Scene, the Lower Thirds studio's fonts two frames on: CI's Mac drew one frame of
+ * 115-560 ms for them, 40-125 ms after the warm-up ended).
+ */
+const OPENING_STEADY_FRAMES = 4;
 
 export function OpeningAtStart({ children }: { children: ReactNode }) {
   const [plan, setPlan] = useState<OpeningPlan | null>(null);
@@ -45,8 +64,10 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
   /** Its black has drawn its first frame over the window. */
   const [covered, setCovered] = useState(false);
   const [windowFrameReady, setWindowFrameReady] = useState(false);
-  /** It has held for OPENING_HOLD_MS. */
+  /** It has held for OPENING_HOLD_MS (the screens' limit). */
   const [waitedOut, setWaitedOut] = useState(false);
+  /** It has held for OPENING_START_HOLD_MS (the window's limit). */
+  const [startWaitedOut, setStartWaitedOut] = useState(false);
   const screensUp = useRef(false);
   const warming = useRef(false);
   const playing = useRef(false);
@@ -141,30 +162,46 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
   useEffect(() => {
     warming.current = screensWarming;
   });
-  // It holds OPENING_HOLD_MS at most; the screens not drawn by then, it plays still, so it never moves beside their
-  // warm-up (and stays still should they draw while it plays).
+  // It holds for the screens OPENING_HOLD_MS at most; not drawn by then, it plays still, so it never moves beside
+  // their warm-up (and stays still should they draw while it plays). For the window underneath, OPENING_START_HOLD_MS.
   useEffect(() => {
     if (!plan) return;
     const wait = setTimeout(() => {
       setWaitedOut(true);
       if (stillAfterHold({ waitedOut: true, screensWarming: warming.current })) setStill(true);
     }, OPENING_HOLD_MS);
+    const start = setTimeout(() => {
+      setStartWaitedOut(true);
+    }, OPENING_START_HOLD_MS);
     return () => {
       clearTimeout(wait);
+      clearTimeout(start);
     };
   }, [plan]);
-  // The opened attribute can arrive before the window has caught up with painting. Keep black across any
-  // long gaps that follow it. The same hold timer above also caps this wait.
+  // The opened attribute can arrive before the window has caught up with painting, and its own GPU warm-up goes on
+  // after it. Keep black until that is over and across any long gaps that follow. The window's limit above caps this
+  // wait; it begins once the screens have drawn (or their limit came), so the frames are read just before it moves.
   useEffect(() => {
-    if (!plan || !covered || state !== 'playing' || screensWarming || waitedOut || windowFrameReady) return;
+    if (!plan || !covered || state !== 'playing' || startWaitedOut || windowFrameReady) return;
+    if (screensWarming && !waitedOut) return;
     let previous: number | null = null;
+    let steady = 0;
     let frame = 0;
     const sample = (at: number) => {
-      if (
+      // Its frames while it warms up are the warm-up's (on time between the pipelines the GPU makes for it), and while
+      // fonts load (the studio's, after the warm-up) a frame that lays them out may come long.
+      if (windowWarming() || document.fonts.status !== 'loaded') {
+        previous = null;
+        steady = 0;
+        frame = requestAnimationFrame(sample);
+        return;
+      }
+      const onTime =
         previous !== null &&
         at - previous <= OPENING_FRAME_BUDGET_MS &&
-        performance.now() - at <= OPENING_FRAME_BUDGET_MS
-      ) {
+        performance.now() - at <= OPENING_FRAME_BUDGET_MS;
+      steady = onTime ? steady + 1 : 0;
+      if (steady >= OPENING_STEADY_FRAMES) {
         setWindowFrameReady(true);
         return;
       }
@@ -183,7 +220,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
       watch.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [covered, plan, screensWarming, state, waitedOut, windowFrameReady]);
+  }, [covered, plan, screensWarming, startWaitedOut, state, waitedOut, windowFrameReady]);
   useEffect(() => {
     if (!plan) return;
     const check = () => {
@@ -213,10 +250,13 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
     screensWarming,
     windowOpened: windowOpen(),
     windowFrameReady,
+    windowWarming: windowWarming(),
     waitedOut,
+    startWaitedOut,
     ended: state !== 'playing',
   };
   const mountApp = windowMayStart(facts);
+  const held = openingHolds(facts);
   if (!plan || state === 'over') return <>{mountApp && children}</>;
   const cover = createPortal(
     <div
@@ -247,7 +287,7 @@ export function OpeningAtStart({ children }: { children: ReactNode }) {
         <OpeningPlayer
           plan={plan}
           still={still}
-          held={openingHolds(facts)}
+          held={held}
           prepare={!screensWarming || waitedOut}
           className="absolute inset-0"
           // The window starts under its black: the black stays until the photo is ready.
