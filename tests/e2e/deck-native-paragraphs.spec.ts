@@ -17,11 +17,12 @@ import {
   setUpScreen,
   slideEditorClosed,
 } from './helpers';
-import { holdClock } from './placeholder-slides';
+import { holdClock, makeSlides } from './placeholder-slides';
 
 /*
  * A PowerPoint text box built paragraph by paragraph, played by Drashti itself (no Office here): each paragraph,
- * its list mark with it, shows from its own click and never before, on the screens, while the box stays put.
+ * its list mark with it, shows from its own click and never before, on the screens, while the box stays put; its
+ * paragraph spacing outlives an edit and Save. A deck's own line spacing shows in the slide editor as it is drawn.
  */
 
 const dispatch = (win: Page, command: EngineCommand) =>
@@ -149,6 +150,8 @@ test('a paragraph build shows each paragraph from its own click on the screens, 
       const added = build.locator('[data-run]', { hasText: addedPoint });
       await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
       await inStep(app, win, 0, 0);
+      // The paragraph spacing outlives the edit and Save (Session 58, PF-10): the second point keeps its space before.
+      await expect(words(1).locator('..')).toHaveCSS('padding-block-start', '16px');
       await expect(added).toHaveCSS('opacity', '0');
       for (const step of [1, 2, 3]) {
         await dispatch(win, { type: 'next' });
@@ -166,5 +169,61 @@ test('a paragraph build shows each paragraph from its own click on the screens, 
     }
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a deck’s own line spacing shows in Words as drawn, and Gujarati lines set closer than 1.3 are warned of', async () => {
+  // Session 58, PF-14: until then Words showed the box's own spacing and the warning read only that.
+  const { app } = await launchApp();
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    // A box as a deck's import makes it: 48 px between its lines of 40 px Gujarati words (PowerPoint's spacing in
+    // points, 1.2 of their size), over the box's own 1.35.
+    const lines = 'નમૂનાની પંક્તિ\nબીજી નમૂના પંક્તિ';
+    await makeSlides(
+      win,
+      'Placeholder fixed spacing',
+      [
+        {
+          elements: [
+            {
+              id: 'placeholder-fixed-spacing',
+              kind: 'text',
+              frame: { x: 160, y: 300, width: 1600, height: 400 },
+              text: lines,
+              lang: 'gu',
+              runs: [{ text: lines, lang: 'gu', paragraph: { align: 'left', lineHeightPx: 48 } }],
+              style: {
+                fontFamily: null,
+                fontSize: 40,
+                fontWeight: 400,
+                color: '#ffffff',
+                align: 'left',
+                verticalAlign: 'top',
+                lineHeight: 1.35,
+                shadow: false,
+              },
+            },
+          ],
+        },
+      ],
+      { kind: 'cut', durationMs: 0 },
+    );
+    const { editor } = await openEditor(app, win, 'Placeholder fixed spacing');
+    await sourceWord(editor, 'બીજી નમૂના પંક્તિ').click();
+    await expect(editor.getByTestId('inspector-text')).toBeVisible();
+    const spacing = editor.getByTestId('field-line-height');
+    const warning = editor.getByTestId('inspector-line-height');
+    await expect(spacing).toHaveValue('1.2');
+    await expect(warning).toHaveText(
+      'The line spacing is 1.2: below 1.3, Gujarati and Hindi marks can touch the line above. Line spacing is under Words.',
+    );
+    // Set at 1.4 in Words: the box's own spacing takes the deck's place, and there is nothing to warn of.
+    await spacing.fill('1.4');
+    await expect(warning).toHaveCount(0);
+    await expect(spacing).toHaveValue('1.4');
+  } finally {
+    await app.close();
   }
 });
