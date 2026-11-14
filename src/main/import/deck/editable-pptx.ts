@@ -897,6 +897,12 @@ function lineOutline(line: Node, ctx: Context, placeholder?: string): Outline | 
   return color ? { color, width: lineWidth(attr(line, 'w')) } : null;
 }
 
+/** The theme's line that a line reference names (none for `idx="0"`). */
+function themeLine(ref: Node, ctx: Context): Node {
+  const index = number(attr(ref, 'idx'), 0);
+  return index > 0 ? kids(child(ctx.theme.format, 'lnStyleLst'), 'ln')[index - 1] : undefined;
+}
+
 function referenceLine(
   ref: XmlNode,
   ctx: Context,
@@ -905,7 +911,7 @@ function referenceLine(
 ): Outline | null {
   const index = number(attr(ref, 'idx'), 0);
   if (index === 0) return null;
-  const line = kids(child(ctx.theme.format, 'lnStyleLst'), 'ln')[index - 1];
+  const line = themeLine(ref, ctx);
   const color = colorOf(ref, ctx) ?? fallback;
   if (line) return lineOutline(line, ctx, color ?? undefined);
   if (missingNote) ctx.issues.add(missingNote);
@@ -946,7 +952,10 @@ function shapeOutline(
       : connectorColor
         ? { color: connectorColor, width: 1 }
         : null;
-  return outline ? { ...outline, width: lineWidth(lowToHighValue(lines, 'w'), outline.width) } : null;
+  // A paint of its own keeps the style line's width when no width is given (PowerPoint, when only the outline's
+  // colour was changed).
+  const width = lowToHighValue(lines, 'w') ?? (paint ? attr(themeLine(style, ctx), 'w') : undefined);
+  return outline ? { ...outline, width: lineWidth(width, outline.width) } : null;
 }
 /** A line that says how it is painted, or that it isn't, rather than giving only its width. */
 function paintedLine(line: Node): boolean {
