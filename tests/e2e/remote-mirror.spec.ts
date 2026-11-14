@@ -3,7 +3,7 @@ import { chromium, expect, test, webkit } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { NEW_LOWER_THIRD } from '../../src/shared/lower-thirds';
+import { type LowerThirdInput, NEW_LOWER_THIRD } from '../../src/shared/lower-thirds';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
   apiCall,
@@ -249,11 +249,12 @@ test('from a phone, as from the operator window: media with its skips, the stage
     await expect.poll(async () => (await layers(win)).timer ?? null).toBeNull();
 
     // The current phone page draws the same new moving background as Main.
-    await win.evaluate((input) => (globalThis as PageGlobals).drashti.lowerThirds.save(null, input), {
+    const input: LowerThirdInput = {
       ...NEW_LOWER_THIRD,
       look: { ...NEW_LOWER_THIRD.look, motion: 'streaks' },
       lines: ['Placeholder Speaker', 'Placeholder title', ''],
-    });
+    };
+    await win.evaluate((made) => (globalThis as PageGlobals).drashti.lowerThirds.save(null, made), input);
     const third = p.getByTestId('remote-lower-third').filter({ hasText: 'Placeholder Speaker' });
     await expect(third).toContainText('Placeholder title');
     await third.getByRole('button', { name: 'Show' }).click();
