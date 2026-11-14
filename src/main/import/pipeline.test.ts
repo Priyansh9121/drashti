@@ -737,7 +737,7 @@ describe('every picture type, every way in (Session 55, Part 5): the report says
 });
 
 describe('the import’s hold on the write lock (Session 58, h-stall2)', () => {
-  it('while it says it holds the lock (the worker on Windows), it never keeps the lock from one file into the next: each file is committed as it is written', async () => {
+  it('tells whoever holds the lock for it once per group, in turn, ending let go; given the processor, it still groups files as before', async () => {
     const t = setup();
     t.write('a.txt', SONG_A);
     t.write('b.txt', SONG_B);
@@ -750,14 +750,55 @@ describe('the import’s hold on the write lock (Session 58, h-stall2)', () => {
       [t.source],
       {},
       {
-        // A budget that would otherwise keep one group for the whole run.
+        // One group for the whole run while the worker is given the processor (clocks that never move: never starved).
         batchBudgetMs: 60_000,
+        batchClocks: { now: () => 0, cpu: () => 0 },
         holdingLock: (on) => {
           held.push(on);
         },
         way: {
           loop: () => undefined,
-          // Between files: a write of the main process goes at once, the lock never held across.
+          wanted: () => {
+            try {
+              main.prepare("INSERT OR REPLACE INTO app_meta (key, value) VALUES ('placeholder', '1')").run();
+              between.push('wrote');
+            } catch (error) {
+              between.push((error as { code?: string }).code ?? 'failed');
+            }
+            return false;
+          },
+          give: () => Promise.resolve(),
+        },
+      },
+    );
+    expect(summary.totals.imported).toBe(3);
+    // Grouped across the files as before (each commit costs on Windows): the lock kept from one file into the next.
+    expect(between).toEqual(['SQLITE_BUSY', 'SQLITE_BUSY', 'SQLITE_BUSY']);
+    // Each hold said and let go, in turn, ending let go.
+    expect(held.length).toBeGreaterThanOrEqual(2);
+    expect(held.every((on, i) => on === (i % 2 === 0))).toBe(true);
+    main.close();
+  });
+
+  it('a worker given little of the processor never keeps the lock from one file into the next: each file is committed as it is written', async () => {
+    const t = setup();
+    t.write('a.txt', SONG_A);
+    t.write('b.txt', SONG_B);
+    t.write('c.txt', '[Verse]\nA third placeholder\n\nIts second slide\n');
+    const main = openDatabase(join(t.dir, 'drashti.sqlite'));
+    main.pragma('busy_timeout = 0');
+    const between: string[] = [];
+    // A busy computer: a second by the clock goes by at each look, and none of the processor.
+    let clock = 0;
+    const { summary } = await t.run(
+      [t.source],
+      {},
+      {
+        batchBudgetMs: 60_000,
+        batchClocks: { now: () => (clock += 1000), cpu: () => 0 },
+        holdingLock: () => undefined,
+        way: {
+          loop: () => undefined,
           wanted: () => {
             try {
               main.prepare("INSERT OR REPLACE INTO app_meta (key, value) VALUES ('placeholder', '1')").run();
@@ -773,9 +814,6 @@ describe('the import’s hold on the write lock (Session 58, h-stall2)', () => {
     );
     expect(summary.totals.imported).toBe(3);
     expect(between).toEqual(['wrote', 'wrote', 'wrote']);
-    // Each hold said and let go, in turn, ending let go.
-    expect(held.length).toBeGreaterThanOrEqual(6);
-    expect(held.every((on, i) => on === (i % 2 === 0))).toBe(true);
     main.close();
   });
 });
