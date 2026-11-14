@@ -53,7 +53,8 @@ describe('frames on time (the warm-up and its last step, Session 58 fault 2)', (
     await w.page.at(800 + STEADY_FRAMES * 33);
     expect(w.done()).toBe(true);
     expect(w.page.waiting(), 'no frame asked for once done').toBe(0);
-    expect(w.seen).toEqual(Array.from({ length: STEADY_FRAMES + 2 }, (_, n) => n));
+    // Each frame given the waits measured before it (the warm-up moves its speck by it): none at the first two.
+    expect(w.seen).toEqual([0, ...Array.from({ length: STEADY_FRAMES + 1 }, (_, n) => n)]);
     expect(w.kept.length, 'each request kept, to be cancelled').toBe(STEADY_FRAMES + 2);
   });
 
@@ -66,7 +67,7 @@ describe('frames on time (the warm-up and its last step, Session 58 fault 2)', (
     expect(w.done()).toBe(false);
     for (let i = 0; i < STEADY_FRAMES - 1; i++) await w.page.at((t += 33));
     expect(w.done()).toBe(false);
-    await w.page.at((t += 33));
+    await w.page.at(t + 33);
     expect(w.done()).toBe(true);
   });
 
