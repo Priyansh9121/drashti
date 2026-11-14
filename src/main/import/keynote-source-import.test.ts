@@ -55,7 +55,7 @@ const slides = [
 ];
 /** The log's line when the copy is set aside, for PDF pages in the order last, first (C15's review, L6). */
 const KEYNOTE_COPY_SET_ASIDE =
-  'Keynote: PDF page 1 has the words of slide 3 of its PowerPoint copy (by the page count, slide 1), so the copy was set aside and Edit slides uses the PDF';
+  'Keynote: PDF page 1 has the words of slide 3 of its PowerPoint copy (by the page count, slide 1), and another page confirms the shift, so the copy was set aside and Edit slides uses the PDF';
 
 beforeEach(() => {
   convert.mockReset();
@@ -150,8 +150,8 @@ const COPY_CASES: CopyCase[] = [
 ];
 
 /*
- * When the copy is set aside (C15's review, M3 and L4): only for a page whose words are another slide's alone, neither
- * holding the other's. Pages without words, words on two slides, and slides built line by line keep the count match.
+ * A shift needs two distinct pages whose words are another slide's alone, neither holding the other's.
+ * Pages without words, words on two slides, and slides built line by line keep the count match.
  */
 it.each(COPY_CASES)('Keynote’s two copies: $rule', ({ slides: copy, pdf, shifted }) => {
   const read = copy.map((words) =>
