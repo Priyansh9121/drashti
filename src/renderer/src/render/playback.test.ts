@@ -206,6 +206,35 @@ describe('a file played once to an end point', () => {
     }
   });
 
+  it('opted in, plays a file already decoded at the frame its clock starts it from, from there at once: no seek (C3, Session 58)', () => {
+    vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
+    // A deck slide's first clip loaded ahead where a click on its row starts it (0.4 s in, past the deck's own
+    // transition), its frame decoded; the slide comes up on time, or a moment late (30 ms).
+    for (const lateMs of [0, 30]) {
+      const v = new FakeMedia(6);
+      v.src = mediaUrl('clip');
+      vi.advanceTimersByTime(10);
+      v.currentTime = 0.4;
+      vi.advanceTimersByTime(10);
+      const seeksBefore = v.seeks;
+      const onFrame = vi.fn();
+      const stop = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'clip',
+        startedAt: Date.now() - 400 - lateMs,
+        reuseLoadedSource: true,
+        onFrame,
+      });
+      try {
+        expect(v.seeks, `${String(lateMs)} ms late: seeks`).toBe(seeksBefore);
+        expect(onFrame, `${String(lateMs)} ms late: its frame at once`).toHaveBeenCalledTimes(1);
+        expect(v.paused).toBe(false);
+        expect(v.currentTime).toBeCloseTo(0.4, 3);
+      } finally {
+        stop();
+      }
+    }
+  });
+
   it('opted in, takes a file still loading as it comes, and loads afresh another file or one that failed', () => {
     vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
     const options = (onFrame = vi.fn()) => ({

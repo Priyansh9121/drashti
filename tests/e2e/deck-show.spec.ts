@@ -980,3 +980,105 @@ test('a cold direct jump keeps the outgoing slide, plays the full first animatio
     await app.close();
   }
 });
+
+test('a deck slide the operator points at in the list has its first clip ready at the jump’s frame on every hall screen, and the click plays that very element at once, never holding the slide going away (Q57-26)', async () => {
+  test.skip(ffmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
+  test.setTimeout(240_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const files = await makeDeckFiles(win);
+    const id = await writeDeck(win, 'Placeholder pointed deck', standInDecks(files));
+    const halls = [
+      await outputFor(app, await setUpScreen(win, 'Main Hall', 0)),
+      await outputFor(app, await setUpScreen(win, 'Side Hall', 1)),
+    ];
+    // Its slides as rows in the middle, as an operator chooses it in the library.
+    await openLibrary(win);
+    await win
+      .getByTestId('presentation-list')
+      .getByTestId('presentation-row')
+      .filter({ hasText: 'Placeholder pointed deck' })
+      .click();
+    await expect(win.getByTestId('slide-grid')).toHaveAttribute('data-presentation-id', id);
+    await closeLibrary(win);
+    const row = (index: number) =>
+      win.getByTestId('slide-list').locator(`[data-testid="slide-thumb"][data-index="${String(index)}"]`);
+    // The deck's first slide up by a click on its row: what Next shows is that slide's own next click, so nothing but
+    // the pointing loads the second slide's clip.
+    await row(0).click();
+    await expect
+      .poll(async () => (await state(win)).live)
+      .toMatchObject({ presentationId: id, slideIndex: 0 });
+    for (const out of halls)
+      await expect(out.locator('[data-deck-step="0"]')).toHaveAttribute('data-deck-phase', 'held');
+    const pointed = (out: Page) =>
+      out.getByTestId('preload').locator(`video[data-preload="${files.nextClip}"]`);
+    for (const out of halls) await expect(pointed(out)).toHaveCount(0);
+
+    // The pointer comes to rest on the second slide's row: each hall screen loads its first clip, muted and paused, at
+    // the frame a click there starts it from (past the deck's own transition), and only it beside Next's.
+    const loadedAhead = async () => {
+      for (const out of halls) {
+        await expect(pointed(out)).toHaveAttribute('data-state', 'ready');
+        expect(
+          await pointed(out).evaluate((video: HTMLVideoElement) => ({
+            at: video.currentTime,
+            muted: video.muted,
+            paused: video.paused,
+            decoded: video.readyState >= 2 && !video.seeking,
+          })),
+        ).toEqual({ at: TRANSITION_MS / 1000, muted: true, paused: true, decoded: true });
+        await expect(out.getByTestId('preload').locator('video[data-deck-ahead]')).toHaveCount(1);
+      }
+    };
+    await row(1).hover();
+    await loadedAhead();
+    // The pointer moves off the list: each screen lets the clip go.
+    await win.mouse.move(4, 4);
+    for (const out of halls) await expect(pointed(out)).toHaveCount(0);
+    // Back on the row, it loads again, and is marked: a check after the click tells the very element plays.
+    await row(1).hover();
+    await loadedAhead();
+    for (const out of halls) {
+      await markPrepared(pointed(out));
+      // Each frame each screen draws from now: the phase of the second slide's first step, once it is there.
+      await out.evaluate((clipId) => {
+        const seen: string[] = [];
+        (globalThis as { deckCheckPhases?: string[] }).deckCheckPhases = seen;
+        const until = performance.now() + 20_000;
+        const each = () => {
+          const clip = document.querySelector(`[data-deck-step] [data-media-id="${clipId}"]`);
+          const phase = clip?.closest<HTMLElement>('[data-deck-step]')?.dataset['deckPhase'];
+          if (phase !== undefined) seen.push(phase);
+          if (performance.now() < until && seen.length < 30) requestAnimationFrame(each);
+        };
+        requestAnimationFrame(each);
+      }, files.nextClip);
+    }
+
+    // The click: a jump, its clip from past the deck's own transition, played on each screen from the element loaded
+    // ahead, from the first frame the slide is drawn: never a frame held on the slide going away while it loads.
+    await row(1).click();
+    await expect.poll(async () => (await state(win)).live.slideIndex).toBe(1);
+    expect((await state(win)).layers.slide).toMatchObject({ step: 0, stepFromMs: TRANSITION_MS });
+    for (const out of halls) {
+      await expect(
+        out.locator(`[data-deck-step="0"] video[data-deck-video="clip"][data-media-id="${files.nextClip}"]`),
+      ).toHaveAttribute('data-deck-check-prepared', 'true');
+      await expect
+        .poll(() =>
+          out.evaluate(() => (globalThis as { deckCheckPhases?: string[] }).deckCheckPhases?.length ?? 0),
+        )
+        .toBeGreaterThan(3);
+      const phases = await out.evaluate(
+        () => (globalThis as { deckCheckPhases?: string[] }).deckCheckPhases ?? [],
+      );
+      expect(phases[0], `each frame’s phase: ${phases.join(', ')}`).toBe('clip');
+      expect(phases, 'never held while its clip loads').not.toContain('loading');
+    }
+  } finally {
+    await app.close();
+  }
+});
