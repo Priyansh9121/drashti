@@ -304,4 +304,29 @@ describe('shrink-to-fit over a slide of many boxes (Session 57, MS-1)', () => {
     expect(next.settled).toHaveLength(1);
     expect(reported).toEqual([failure]);
   });
+
+  it('reports a failure that comes again on every fit once in the window, and a different one once too', async () => {
+    // The lead's review of Session 58's MS-2: a report that keeps failing would otherwise go to the window's report
+    // (its console, the main process) on every slide drawn and every key typed.
+    const reported: string[] = [];
+    reportFitFailuresTo((error) => {
+      reported.push(error instanceof Error ? error.message : String(error));
+    });
+    const failing = (message: string) =>
+      probe(new Layout(), needing(2), {
+        told: () => {
+          throw new Error(message);
+        },
+      });
+    for (let fit = 0; fit < 3; fit++) {
+      queueFit(failing('Placeholder failure on every fit'));
+      queueFit(failing('Placeholder failure on every fit'));
+      await measured();
+    }
+    queueFit(failing('Placeholder other failure'));
+    await measured();
+    queueFit(failing('Placeholder other failure'));
+    await measured();
+    expect(reported).toEqual(['Placeholder failure on every fit', 'Placeholder other failure']);
+  });
 });
