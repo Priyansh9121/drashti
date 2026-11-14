@@ -98,6 +98,32 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 origin main
           node scripts/bar-guard.mjs origin/main
+      # CI's own Linux FFmpeg for the unit tests (Session 58, CI-1): Drashti ships none for Linux, so this job skipped
+      # the tests that need one, among them deck-import.test.ts. Pinned and checked by its SHA-256 as the bundled
+      # builds are (scripts/fetch-ci-ffmpeg.mjs), for this job only, never shipped. Its download is cached by that
+      # SHA-256, saved only by pushes to main and phase1 (a quick check's branch never runs again), and tried three
+      # times; if it still cannot be had, a warning says why and those tests are skipped, as before. A download that
+      # does not match its SHA-256 fails the job.
+      - name: CI's Linux FFmpeg, its pinned SHA-256
+        id: ci-ffmpeg-pin
+        run: echo "sha256=$(node scripts/fetch-ci-ffmpeg.mjs --sha256)" >> "$GITHUB_OUTPUT"
+      - name: Restore CI's Linux FFmpeg download
+        id: ci-ffmpeg-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/drashti/ffmpeg-ci
+          key: ffmpeg-ci-linux-x64-${{ steps.ci-ffmpeg-pin.outputs.sha256 }}
+      - name: Fetch CI's Linux FFmpeg (if it cannot be had, its tests skip, with a warning)
+        id: ci-ffmpeg
+        run: node scripts/fetch-ci-ffmpeg.mjs
+      - name: Save CI's Linux FFmpeg download (pushes to main and phase1)
+        if: >-
+          steps.ci-ffmpeg.outputs.ready == 'true' && steps.ci-ffmpeg-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/drashti/ffmpeg-ci
+          key: ffmpeg-ci-linux-x64-${{ steps.ci-ffmpeg-pin.outputs.sha256 }}
       - name: Unit tests (inside Electron's Node)
         run: pnpm test
 
@@ -164,14 +190,17 @@ jobs:
         if: env.QUICK != 'true'
         continue-on-error: true
         run: node scripts/disk-note.mjs "before the end-to-end tests"
-      # Session 55 (alpha.14's gate): on macOS, the first half of the suite; its second half runs beside it in its
-      # own job (app-mac-second, below), so neither runs into the stall CI's Mac falls into from about 1 h 50 min on.
-      - name: End-to-end tests (Playwright + Electron)
+      # Session 58 (the owner: a faster gate, without running less): on each system the suite runs in three parts
+      # side by side, by Playwright's --shard (whole spec files: fullyParallel is off); this job takes part 1, app-parts
+      # (below) parts 2 and 3. First, the check that the three parts hold every test of the whole suite, each spec in
+      # exactly one part (scripts/e2e-parts.mjs). Session 55 split the Mac in two first, so neither part ran into the
+      # stall CI's Mac falls into from about 1 h 50 min on.
+      - name: Every end-to-end test is in exactly one part (scripts/e2e-parts.mjs)
         if: env.QUICK != 'true'
-        shell: bash
-        env:
-          SHARD: ${{ runner.os == 'macOS' && '--shard=1/2' || '' }}
-        run: pnpm test:e2e $SHARD
+        run: node scripts/e2e-parts.mjs --check
+      - name: End-to-end tests, part 1 of 3 (Playwright + Electron)
+        if: env.QUICK != 'true'
+        run: pnpm test:e2e --shard=1/3
       - name: The disk after the end-to-end tests (reports, never fails)
         if: always() && env.QUICK != 'true'
         continue-on-error: true
@@ -309,21 +338,24 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Session 55 (alpha.14's gate): the second half of the end-to-end suite on macOS, beside the first half in the job
-  # above. From about 1 h 50 min into a job (tests 650 to 705 of one run), CI's Mac stalled on video: every start
-  # took 15 s more (the operator window waiting for its HEVC answer), VideoToolbox's test encode hung, and pages'
-  # recorders and cameras stopped; tests late in the run failed there and only there. The same runs as the jobs
-  # above, but not a quick check or a Windows-only run; no unit tests and no packaging (the Mac job above does both).
-  # The release gate counts it with the other three (scripts/release-gate.mjs).
-  app-mac-second:
-    name: End-to-end, second half (macos-latest)
+  # Session 58: parts 2 and 3 of the end-to-end suite on macOS and Windows, beside part 1 in the job above (Session
+  # 55 split the Mac in two first: from about 1 h 50 min into a job CI's Mac stalled on video). The same runs as the
+  # jobs above, but not a quick check; no unit tests and no packaging (the job above does both). The release gate
+  # counts every part (scripts/release-gate.mjs).
+  app-parts:
+    name: End-to-end, part ${{ matrix.part }} of 3 (${{ matrix.os }})
     needs: [secrets, checks]
     if: >-
       github.event_name == 'pull_request' ||
       (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.os != 'windows' && inputs.specs == '' &&
+      (github.event_name == 'workflow_dispatch' && inputs.specs == '' &&
       !inputs.screenshots && inputs.unit == '' && inputs.pixels_base == '')
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os == 'windows' && '["windows-latest"]' || inputs.os == 'macos' && '["macos-latest"]' || '["macos-latest","windows-latest"]') }}
+        part: [2, 3]
+    runs-on: ${{ matrix.os }}
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
@@ -348,15 +380,18 @@ jobs:
       - name: Cache Playwright's browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/Library/Caches/ms-playwright
+          path: ${{ runner.os == 'Windows' && '~\AppData\Local\ms-playwright' || '~/Library/Caches/ms-playwright' }}
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Playwright's Chromium and WebKit
         run: pnpm exec playwright install chromium webkit
       - name: The disk before the end-to-end tests (reports, never fails)
         continue-on-error: true
         run: node scripts/disk-note.mjs "before the end-to-end tests"
-      - name: End-to-end tests, second half (Playwright + Electron)
-        run: pnpm test:e2e --shard=2/2
+      - name: End-to-end tests, part ${{ matrix.part }} of 3 (Playwright + Electron)
+        shell: bash
+        env:
+          PART: ${{ matrix.part }}
+        run: pnpm test:e2e "--shard=$PART/3"
       - name: The disk after the end-to-end tests (reports, never fails)
         if: always()
         continue-on-error: true
@@ -368,7 +403,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report-macOS-second-half
+          name: playwright-report-${{ runner.os }}-part-${{ matrix.part }}
           path: |
             playwright-report
             test-results
@@ -380,15 +415,20 @@ jobs:
   # starts begins in Black (DRASHTI_TEST_APPEARANCE), except in the tests of Follow the computer, the default and
   # a choice kept over a restart, which give their own switch (tests/e2e/helpers.ts, OWN_APPEARANCE). The same
   # runs as the jobs above, but not a quick check or a Mac-only run; no unit tests (the Windows job above runs
-  # them) and no packaging. The release gate counts it with the other two (scripts/release-gate.mjs).
+  # them) and no packaging. The release gate counts each part (scripts/release-gate.mjs).
   app-black:
-    name: End-to-end in Black (windows-latest)
+    name: End-to-end in Black, part ${{ matrix.part }} of 3 (windows-latest)
     needs: [secrets, checks]
     if: >-
       github.event_name == 'pull_request' ||
       (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1')) ||
       (github.event_name == 'workflow_dispatch' && inputs.os != 'macos' && inputs.specs == '' &&
       !inputs.screenshots && inputs.unit == '' && inputs.pixels_base == '')
+    # Session 58: in three parts side by side, as the jobs above.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3]
     runs-on: windows-latest
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -422,8 +462,14 @@ jobs:
       - name: The disk before the end-to-end tests (reports, never fails)
         continue-on-error: true
         run: node scripts/disk-note.mjs "before the end-to-end tests"
-      - name: End-to-end tests in Black (Playwright + Electron)
-        run: pnpm test:e2e
+      - name: Every end-to-end test is in exactly one part (scripts/e2e-parts.mjs)
+        if: matrix.part == 1
+        run: node scripts/e2e-parts.mjs --check
+      - name: End-to-end tests in Black, part ${{ matrix.part }} of 3 (Playwright + Electron)
+        shell: bash
+        env:
+          PART: ${{ matrix.part }}
+        run: pnpm test:e2e "--shard=$PART/3"
       - name: The disk after the end-to-end tests (reports, never fails)
         if: always()
         continue-on-error: true
@@ -435,7 +481,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report-Windows-black
+          name: playwright-report-Windows-black-part-${{ matrix.part }}
           path: |
             playwright-report
             test-results
