@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import { z } from 'zod';
 import type { EngineMessage, EngineSnapshotMessage } from '../../shared/engine/protocol';
 import type { EngineState } from '../../shared/engine/state';
+import type { PointedClip } from '../../shared/point-ahead';
 import type { EngineTransport } from '../../shared/engine/transport';
 import {
   DEFAULT_NODE_PORT,
@@ -658,6 +659,15 @@ export class NodeService implements EngineTransport {
     this.letIn = letIn;
     for (const [nodeId, l] of this.live)
       if (l.online) this.worker?.send({ type: 'to-node', nodeId, message: { type: 'access', letIn } });
+  }
+
+  /**
+   * The deck slide's first clip the operator points at (C3, Session 58: Q57-26), or null: every node connected loads
+   * it ahead on its outputs, as Main's outputs do.
+   */
+  tellPointed(clip: PointedClip | null): void {
+    for (const [nodeId, l] of this.live)
+      if (l.online) this.worker?.send({ type: 'to-node', nodeId, message: { type: 'pointed', clip } });
   }
 
   reload(nodeId: string, screenId: string): NodesResult {

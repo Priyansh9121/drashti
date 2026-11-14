@@ -590,6 +590,10 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       case 'access':
         mainAccess.heard(message.letIn);
         return;
+      // The deck slide the operator points at on Main (C3, Session 58): this node's outputs load its clip ahead.
+      case 'pointed':
+        for (const win of outputWindows.values()) sendToPage(win, IPC.output.pointed, { clip: message.clip });
+        return;
       case 'tryAgain': {
         // Try again on Main's dashboard or its notice (Sessions 31–36): an output given up on, tried again
         // now by the node's watchdog, its count of crashes starting afresh.
