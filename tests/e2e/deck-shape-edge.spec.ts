@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { editablePptxFixture, slideXml } from '../../src/main/import/testing/editable-pptx-fixture';
+import { deckShapeShows } from '../../src/shared/deck-motion';
 import type { EngineCommand } from '../../src/shared/engine/commands';
 import {
   importAndGetIds,
@@ -39,6 +40,22 @@ const current = (win: Page) =>
 const SHAPE_MS = 2000;
 const EMU = 6350;
 
+interface Frame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A white shape on the slide coming in by Shape: its id, outline, In or Out, PowerPoint's preset and its frame. */
+interface ShapeIn {
+  id: number;
+  outline: 'box' | 'plus' | 'diamond' | 'circle';
+  way: 'in' | 'out';
+  preset: number;
+  frame: Frame;
+}
+
 /** The four shapes on a 1920 × 1080 slide, their outlines and ids, each a quarter of the slide less a margin. */
 const SHAPES = [
   { id: 3, outline: 'box', way: 'out', preset: 4, frame: { x: 80, y: 60, width: 800, height: 440 } },
@@ -51,24 +68,40 @@ const SHAPES = [
 const FADING = { id: 7, frame: { x: 900, y: 510, width: 120, height: 60 } };
 
 /**
- * One slide: a black full-slide shape, then the four white shapes, all four coming in by Shape at its one click, with
- * the small one fading in.
+ * Seams on pixel centres (C1's review, HIGH-1, 14 Nov 2026). A screen drawing the slide at exactly half its size
+ * (960 × 540 pixels) draws a 432-px square at an even place as a 216-pixel square on whole pixels, its falling
+ * diagonal through pixel centres, as a square on PowerPoint's 1/12-inch grid (12 px) is on a 1080p hall screen; and a
+ * Diamond 402 px wide as 201 pixels, its middle column through pixel centres. Such a pixel lies on the step of both
+ * masks' half-planes, and the two masks must put it on one side of the seam: two steps pointing opposite ways both gave
+ * it their second colour, so everything showed there, a white line across what is hidden.
  */
-function shapeDeck(): Buffer {
-  const rect = (id: number, color: string, f: { x: number; y: number; width: number; height: number }) =>
+const SEAMS: readonly ShapeIn[] = [
+  { id: 3, outline: 'box', way: 'out', preset: 4, frame: { x: 216, y: 144, width: 432, height: 432 } },
+  { id: 4, outline: 'plus', way: 'out', preset: 13, frame: { x: 1080, y: 144, width: 432, height: 432 } },
+  { id: 5, outline: 'diamond', way: 'in', preset: 8, frame: { x: 216, y: 624, width: 402, height: 302 } },
+];
+
+/**
+ * One slide: a black full-slide shape, then white shapes, all coming in by Shape at its one click, with a small one
+ * fading in when given.
+ */
+function shapeDeck(shapes: readonly ShapeIn[], fading?: { id: number; frame: Frame }): Buffer {
+  const rect = (id: number, color: string, f: Frame) =>
     `<p:sp><p:nvSpPr><p:cNvPr id="${String(id)}" name="Placeholder rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${String(f.x * EMU)}" y="${String(f.y * EMU)}"/><a:ext cx="${String(f.width * EMU)}" cy="${String(f.height * EMU)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>`;
   // As PowerPoint writes Shape: shown at its start, then its reveal filter over the effect's length.
-  const effect = (k: number, s: (typeof SHAPES)[number]) => {
+  const effect = (k: number, s: ShapeIn) => {
     const id = 10 + 10 * k;
     return `<p:par><p:cTn id="${String(id)}" presetID="${String(s.preset)}" presetClass="entr" presetSubtype="${s.way === 'in' ? '16' : '32'}" fill="hold" nodeType="${k === 0 ? 'clickEffect' : 'withEffect'}"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst><p:set><p:cBhvr><p:cTn id="${String(id + 1)}" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn><p:tgtEl><p:spTgt spid="${String(s.id)}"/></p:tgtEl><p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="visible"/></p:to></p:set><p:animEffect transition="in" filter="${s.outline}(${s.way})"><p:cBhvr><p:cTn id="${String(id + 2)}" dur="${String(SHAPE_MS)}"/><p:tgtEl><p:spTgt spid="${String(s.id)}"/></p:tgtEl></p:cBhvr></p:animEffect></p:childTnLst></p:cTn></p:par>`;
   };
-  const fade = `<p:par><p:cTn id="90" presetID="10" presetClass="entr" fill="hold" nodeType="withEffect"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst><p:animEffect transition="in" filter="fade"><p:cBhvr><p:cTn id="91" dur="${String(SHAPE_MS)}"/><p:tgtEl><p:spTgt spid="${String(FADING.id)}"/></p:tgtEl></p:cBhvr></p:animEffect></p:childTnLst></p:cTn></p:par>`;
-  const click = `<p:par><p:cTn id="3" fill="hold"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst><p:par><p:cTn id="4" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>${SHAPES.map((s, k) => effect(k, s)).join('')}${fade}</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par>`;
+  const fade = fading
+    ? `<p:par><p:cTn id="90" presetID="10" presetClass="entr" fill="hold" nodeType="withEffect"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst><p:animEffect transition="in" filter="fade"><p:cBhvr><p:cTn id="91" dur="${String(SHAPE_MS)}"/><p:tgtEl><p:spTgt spid="${String(fading.id)}"/></p:tgtEl></p:cBhvr></p:animEffect></p:childTnLst></p:cTn></p:par>`
+    : '';
+  const click = `<p:par><p:cTn id="3" fill="hold"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst><p:par><p:cTn id="4" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>${shapes.map((s, k) => effect(k, s)).join('')}${fade}</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par>`;
   const timing = `<p:timing><p:tnLst><p:par><p:cTn id="1" nodeType="tmRoot"><p:childTnLst><p:seq><p:cTn id="2" nodeType="mainSeq"><p:childTnLst>${click}</p:childTnLst></p:cTn></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>`;
   const tree =
     rect(2, '000000', { x: 0, y: 0, width: 1920, height: 1080 }) +
-    SHAPES.map((s) => rect(s.id, 'FFFFFF', s.frame)).join('') +
-    rect(FADING.id, 'FFFFFF', FADING.frame);
+    shapes.map((s) => rect(s.id, 'FFFFFF', s.frame)).join('') +
+    (fading ? rect(fading.id, 'FFFFFF', fading.frame) : '');
   return editablePptxFixture({ slides: [slideXml(tree).replace('</p:sld>', `${timing}</p:sld>`)] });
 }
 
@@ -111,7 +144,7 @@ test('Shape’s soft edge on a hall screen, half-way: a Box’s, a Plus’s and 
   const dir = await mkdtemp(join(tmpdir(), 'drashti-shape-edge-'));
   try {
     const file = join(dir, 'Placeholder Shape edges.pptx');
-    await writeFile(file, shapeDeck());
+    await writeFile(file, shapeDeck(SHAPES, FADING));
     // No PowerPoint (a stand-in converter, no deck's movie made): Drashti plays the click itself.
     const { app } = await launchApp({
       DRASHTI_WINDOWED_OUTPUTS: '1',
@@ -192,6 +225,161 @@ test('Shape’s soft edge on a hall screen, half-way: a Box’s, a Plus’s and 
         const inner = target(s.id).locator(':scope > [data-deck-motion-mask]');
         if (s.outline !== 'circle') await expect(inner, s.outline).toHaveCSS('mask-image', 'none');
       }
+      await holdClock(app, null);
+    } finally {
+      await app.close();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+/** The colour of each pixel (whole x and y, the screen's own pixels) in a page's screenshot at its own pixel size. */
+async function screenPixels(page: Page, points: readonly { x: number; y: number }[]): Promise<number[][]> {
+  const png = (await page.screenshot({ scale: 'device' })).toString('base64');
+  return page.evaluate(
+    async ({ png, points }) => {
+      // Decoded by hand: the page's security policy refuses fetch() of a data URL.
+      const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return [];
+      ctx.drawImage(bitmap, 0, 0);
+      const { data } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+      return points.map(({ x, y }) => [
+        ...data.subarray((y * bitmap.width + x) * 4, (y * bitmap.width + x) * 4 + 4),
+      ]);
+    },
+    { png, points },
+  );
+}
+
+test('Shape’s seams through pixel centres: nothing shows across what is hidden (a square Box’s and Plus’s falling diagonal, a Diamond’s middle column)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'drashti-shape-seams-'));
+  try {
+    const file = join(dir, 'Placeholder Shape seams.pptx');
+    await writeFile(file, shapeDeck(SEAMS));
+    const { app } = await launchApp({
+      DRASHTI_WINDOWED_OUTPUTS: '1',
+      DRASHTI_TEST_CLOCK_HOLD: '1',
+      DRASHTI_TEST_DECK_CONVERTER: '1',
+    });
+    try {
+      const win = await operatorPage(app);
+      await operatorReady(win);
+      const [id = ''] = await importAndGetIds(win, [file]);
+      expect(id).not.toBe('');
+      await setUpScreen(win, 'Main Hall', 0);
+      const out = await outputPage(app);
+      await outputReady(out);
+      // The hall screen 960 × 540 of its own pixels: the slide at exactly half its size, on whole pixels.
+      const ratio = await out.evaluate(() => devicePixelRatio);
+      await app.evaluate(
+        ({ BrowserWindow }, css) => {
+          for (const w of BrowserWindow.getAllWindows()) {
+            const url = w.webContents.getURL();
+            if (url.includes('output.html') && !url.includes('identify='))
+              w.setContentSize(css.width, css.height);
+          }
+        },
+        { width: 960 / ratio, height: 540 / ratio },
+      );
+      await expect
+        .poll(() =>
+          out
+            .getByTestId('scene')
+            .first()
+            .evaluate((scene) => {
+              const r = scene.getBoundingClientRect();
+              return [r.left, r.top, r.width, r.height].map(
+                (n) => Math.round(n * devicePixelRatio * 1000) / 1000,
+              );
+            }),
+        )
+        .toEqual([0, 0, 960, 540]);
+      const target = (shape: number) => out.locator(`[data-deck-motion-target="${String(shape)}"]`);
+
+      await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+      await expect.poll(async () => (await current(win))?.step).toBe(0);
+      await dispatch(win, { type: 'next' });
+      await expect.poll(async () => (await current(win))?.step).toBe(1);
+      const stepAt = (await current(win))?.stepAt ?? 0;
+      await holdClock(app, stepAt + SHAPE_MS / 2);
+      for (const s of SEAMS) {
+        await expect(target(s.id), s.outline).toHaveCSS('mask-composite', /^add, exclude/u);
+        await expect(target(s.id).locator(':scope > [data-deck-motion-mask]'), s.outline).toHaveCSS(
+          'mask-composite',
+          /^add, exclude/u,
+        );
+      }
+
+      // Every pixel along each seam (its centre on it), half-way: its red within 26 of 255 times how much shows there.
+      // A square's falling diagonal (and, drawn by one step both masks share, its rising one); a Diamond's middle
+      // column (and its middle row, shared).
+      const seams = SEAMS.flatMap((s) => {
+        const wipe = { shape: s.outline, inward: s.way === 'in', leaving: false, progress: 0.5 };
+        // The shape's box on the screen, in its own pixels (half the slide's).
+        const left = s.frame.x / 2;
+        const top = s.frame.y / 2;
+        const width = s.frame.width / 2;
+        const height = s.frame.height / 2;
+        const across = (i: number, n = width) => ((i + 0.5) / n) * 2 - 1;
+        const lines: { name: string; at: { x: number; y: number }; u: number; v: number }[][] =
+          s.outline === 'diamond'
+            ? [
+                Array.from({ length: height }, (_, j) => ({
+                  name: `${s.outline}'s middle column`,
+                  at: { x: left + (width - 1) / 2, y: top + j },
+                  u: 0,
+                  v: across(j, height),
+                })),
+                Array.from({ length: width }, (_, i) => ({
+                  name: `${s.outline}'s middle row`,
+                  at: { x: left + i, y: top + (height - 1) / 2 },
+                  u: across(i),
+                  v: 0,
+                })),
+              ]
+            : [
+                Array.from({ length: width }, (_, i) => ({
+                  name: `${s.outline}'s falling diagonal`,
+                  at: { x: left + i, y: top + i },
+                  u: across(i),
+                  v: across(i),
+                })),
+                Array.from({ length: width }, (_, i) => ({
+                  name: `${s.outline}'s rising diagonal`,
+                  at: { x: left + i, y: top + height - 1 - i },
+                  u: across(i),
+                  v: -across(i),
+                })),
+              ];
+        return lines.flat().map((p) => ({ ...p, shows: deckShapeShows(wipe, p.u, p.v) }));
+      });
+      // Each seam pixel's place on the screen is whole: the premise of this test.
+      expect(seams.filter((p) => !Number.isInteger(p.at.x) || !Number.isInteger(p.at.y))).toEqual([]);
+      await expect
+        .poll(async () => {
+          const got = await screenPixels(
+            out,
+            seams.map((p) => p.at),
+          );
+          const off = new Map<string, string[]>();
+          seams.forEach((p, i) => {
+            const red = got[i]?.[0] ?? -1;
+            if (Math.abs(red - 255 * p.shows) <= 26) return;
+            const list = off.get(p.name) ?? [];
+            list.push(
+              `(${String(p.at.x)}, ${String(p.at.y)}) ${String(red)} not ${String(Math.round(255 * p.shows))}`,
+            );
+            off.set(p.name, list);
+          });
+          return [...off].map(
+            ([name, list]) => `${name}: ${String(list.length)} off, ${list.slice(0, 3).join('; ')}`,
+          );
+        })
+        .toEqual([]);
       await holdClock(app, null);
     } finally {
       await app.close();
