@@ -643,6 +643,12 @@ const SCREEN_STATE = `(() => {
   };
 })()`;
 
+/** The stream's page: its fonts and warm-up (program/main.tsx), as SCREEN_STATE reads an output's; null before it draws. */
+const PROGRAM_STATE = `(() => {
+  const root = document.querySelector('[data-testid="program-root"]');
+  return root ? { fonts: root.getAttribute('data-fonts') ?? '', warmUp: root.getAttribute('data-warm-up') ?? '' } : null;
+})()`;
+
 /** Screens, the projector card on top (the operator window's own key for it, Mod+Shift+S), as the operator opens it. */
 const OPEN_SCREENS = (mac: boolean) => `(() => {
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'S', code: 'KeyS', shiftKey: true, ${mac ? 'metaKey' : 'ctrlKey'}: true, bubbles: true, cancelable: true }));
@@ -676,12 +682,18 @@ interface WindowsOpen {
   stageCard: boolean;
   stageScreen: boolean;
   streamPicture: boolean;
+  /**
+   * How long each took to be ready to draw the show (ms from asking: its page loaded, its fonts in, its warm-up over;
+   * Screens' from opening it to its cards drawn), null when it never was. The stream's page is 0 when it was open
+   * already (the streaming check streams to FFmpeg on this computer from its start).
+   */
+  readyMs: { stageScreen: number | null; screens: number | null; streamPicture: number | null };
   /** Why one was not. */
   why: string[];
 }
 
 const windowsLine = (w: WindowsOpen) => {
-  const names: [keyof Omit<WindowsOpen, 'why'>, string][] = [
+  const names: [keyof Omit<WindowsOpen, 'why' | 'readyMs'>, string][] = [
     ['live', 'LIVE’s picture'],
     ['projectorCard', 'the projector card'],
     ['stageCard', 'the stage screen’s card'],
@@ -690,7 +702,9 @@ const windowsLine = (w: WindowsOpen) => {
   ];
   const open = names.filter(([k]) => w[k]).map(([, n]) => n);
   const shut = names.filter(([k]) => !w[k]).map(([, n]) => n);
-  return `open: ${open.join(', ') || 'none'}; not open: ${shut.join(', ') || 'none'}${w.why.length > 0 ? ` (${w.why.join('; ')})` : ''}`;
+  const ms = (n: number | null) => (n === null ? 'never' : `${String(n)} ms`);
+  const ready = `ready after: a stage screen ${ms(w.readyMs.stageScreen)}, Screens ${ms(w.readyMs.screens)}, the stream’s picture ${ms(w.readyMs.streamPicture)}`;
+  return `open: ${open.join(', ') || 'none'}; not open: ${shut.join(', ') || 'none'}${w.why.length > 0 ? ` (${w.why.join('; ')})` : ''}; ${ready}`;
 };
 
 export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
@@ -1396,7 +1410,9 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
     if (!live) why.push('LIVE’s picture was not drawn in the operator window');
     // A stage screen first (on the second hall screen's display, if DK-6 had one): the stage screen's card in Screens
     // draws only once a stage screen is set up.
+    const stageFrom = Date.now();
     const stage = await openScreen('stage', display);
+    const stageMs = typeof stage === 'string' ? null : Date.now() - stageFrom;
     if (typeof stage === 'string') why.push(`a stage screen: ${stage}`);
     const seen = async (selector: string, ms: number) => {
       const until = Date.now() + ms;
@@ -1406,6 +1422,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       }
       return false;
     };
+    const screensFrom = Date.now();
     await ask<boolean, boolean>(op, OPEN_SCREENS(process.platform === 'darwin'), false);
     let projectorCard = await seen('[data-testid="projector-preview"]', 3000);
     if (!projectorCard) {
@@ -1415,8 +1432,11 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
     if (!projectorCard) why.push('Screens did not open in the operator window');
     const stageCard = await seen('[data-testid="screens-card-stage"] [data-testid="stage-preview"]', 3000);
     if (!stageCard && typeof stage !== 'string') why.push('the stage screen’s card drew no picture');
+    const screensMs = projectorCard && stageCard ? Date.now() - screensFrom : null;
     const streamOpen = () => (deps.program?.() ?? null) !== null;
-    let streamPicture = streamOpen();
+    const streamFrom = Date.now();
+    const openBefore = streamOpen();
+    let streamPicture = openBefore;
     if (!streamPicture) {
       await ask<boolean, boolean>(op, WATCH_STREAM, false);
       const until = Date.now() + 10_000;
@@ -1426,7 +1446,42 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       }
       if (!streamPicture) why.push('the stream’s page did not open for its preview');
     }
-    return { live, projectorCard, stageCard, stageScreen: typeof stage !== 'string', streamPicture, why };
+    // DK-2 (C19): the stream's page ready to draw the show before the deck's first click, as the stage screen is
+    // (openScreen): on CI's Mac its loading and warm-up, still under way, made the first round late.
+    let streamMs: number | null = null;
+    if (streamPicture) {
+      const until = Date.now() + SCREEN_LIMIT_MS;
+      while (Date.now() < until) {
+        const program = deps.program?.() ?? null;
+        const state =
+          program && !program.webContents.isDestroyed()
+            ? await within(
+                program.webContents.executeJavaScript(PROGRAM_STATE, true) as Promise<{
+                  fonts: string;
+                  warmUp: string;
+                } | null>,
+                PAGE_LIMIT_MS,
+                null,
+              )
+            : null;
+        if (state?.fonts === 'ready' && state.warmUp !== 'warming') {
+          streamMs = openBefore ? 0 : Date.now() - streamFrom;
+          break;
+        }
+        await sleep(100);
+      }
+      if (streamMs === null)
+        why.push(`the stream’s page was not ready within ${String(SCREEN_LIMIT_MS / 1000)} s`);
+    }
+    return {
+      live,
+      projectorCard,
+      stageCard,
+      stageScreen: typeof stage !== 'string',
+      streamPicture,
+      readyMs: { stageScreen: stageMs, screens: screensMs, streamPicture: streamMs },
+      why,
+    };
   }
 }
 
