@@ -45,9 +45,12 @@ function hearPointing(): void {
     update(clip);
   });
   // Subscribe first; a change while the initial read is in flight takes precedence over its reply.
-  void window.drashti.output.getPointed().then((clip) => {
-    if (!heardChange) update(clip);
-  }, () => undefined);
+  void window.drashti.output.getPointed().then(
+    (clip) => {
+      if (!heardChange) update(clip);
+    },
+    () => undefined,
+  );
 }
 
 function subscribePointed(listener: () => void): () => void {

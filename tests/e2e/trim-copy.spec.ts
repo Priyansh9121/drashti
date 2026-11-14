@@ -15,7 +15,6 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { stillPath } from '../../src/main/media/media-protocol';
 import {
   closeLibrary,
   holdStill,
@@ -641,7 +640,7 @@ test('a cut’s file that a quit left in Media while it moved to the Trash goes 
     const widerFile = join(dirname(original), nameOf(wider));
     expect(existsSync(earlierFile)).toBe(true);
     const mediaDir = join(first.userData, 'Media');
-    const derivatives = join(mediaDir, stillPath(stamp(earlierFile).sha256));
+    const derivatives = join(mediaDir, 'stills', `${stamp(earlierFile).sha256}.jpg`);
     mkdirSync(dirname(derivatives), { recursive: true });
     writeFileSync(derivatives, 'Placeholder still');
     await app.close();

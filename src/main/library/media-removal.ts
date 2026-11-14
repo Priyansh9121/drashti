@@ -68,7 +68,9 @@ async function removeDerived(mediaDir: string, sha256: string): Promise<void> {
 async function derivativesIn(mediaDir: string): Promise<Set<string>> {
   const folders = [dirname(stillPath('')), SHARPENED_DIR, BLURRED_DIR];
   const names = await Promise.all(folders.map((folder) => readdir(join(mediaDir, folder)).catch(() => [])));
-  return new Set(names.flatMap((files) => files.flatMap((name) => /^[a-f0-9]{64}(?=[.-])/u.exec(name)?.[0] ?? [])));
+  return new Set(
+    names.flatMap((files) => files.flatMap((name) => /^[a-f0-9]{64}(?=[.-])/u.exec(name)?.[0] ?? [])),
+  );
 }
 
 /**
@@ -556,10 +558,7 @@ export class MediaRemoval {
           const size = Number(before.size);
           possibleUnknown = unknownVideo && unknownSizes.has(size);
           // The unknown-folder scan hashes only videos whose size is in the library.
-          if (
-            !before.isFile() ||
-            (!possibleUnknown && !knownSizes.has(size) && !knownSizes.has(null))
-          )
+          if (!before.isFile() || (!possibleUnknown && !knownSizes.has(size) && !knownSizes.has(null)))
             continue;
           if (paused()) return [];
           if (realpathSync.native(file) !== file) {
@@ -599,7 +598,9 @@ export class MediaRemoval {
     for (const { cut } of found) files.set(cut.id, (files.get(cut.id) ?? 0) + 1);
     for (const cut of unknownFolders)
       if (!files.has(cut.id))
-        say(`earlier Trim cut ${cut.id}: the folder it was written into is not known and no file could be proved to be the cut`);
+        say(
+          `earlier Trim cut ${cut.id}: the folder it was written into is not known and no file could be proved to be the cut`,
+        );
     const stillGone = this.db.prepare(
       "SELECT 1 FROM media WHERE id = @id AND sha256 = @sha256 AND path = '' AND deleted_at IS NOT NULL",
     );
