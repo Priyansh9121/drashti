@@ -11,6 +11,7 @@ import { freePort, testFfmpeg } from '../e2e/stream-helpers';
 import { recoveryAgainstBudget } from '../e2e/recovery-figure';
 import { caseLine, caseRow, framePeriod, measureRun, type MotionRun } from '../../src/shared/motion-measure';
 import { OPENING_MS } from '../../src/shared/opening';
+import { PERF_STOP_MS } from '../../src/shared/perf-limits';
 
 /*
  * The performance check, started by hand (pnpm test:perf, or the
@@ -41,7 +42,12 @@ interface PerfResult {
 const HANDICAP = process.env['DRASHTI_PERF_HANDICAP'] === '1';
 /** A heavy case or modest hardware takes longer (the stream encoded in software on two cores, say): it reports, not times out. */
 const SLOW = HANDICAP || (process.env['DRASHTI_PERF_SCENARIO'] ?? '') !== '';
-const STOP_AFTER_MS = SLOW ? 840_000 : 240_000;
+/**
+ * Drashti is stopped this long after its start: on a heavy run, its set-up and import's 14 minutes, the animations
+ * scenario's cases' own 8 on top and 2 for the figures (src/shared/perf-limits.ts; Session 58: on two slow cores while
+ * streaming the import took 9 to 11 minutes and left the cases 10 to 156 s of the 14 the whole check had then).
+ */
+const STOP_AFTER_MS = SLOW ? PERF_STOP_MS : 240_000;
 
 function handicap(): { what: string; stop(): void } {
   if (!HANDICAP) return { what: '', stop: () => undefined };
