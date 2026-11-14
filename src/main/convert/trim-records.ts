@@ -1,65 +1,266 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { renameSync, rmSync, writeFileSync } from 'node:fs';
+import { rm, writeFile } from 'node:fs/promises';
+import { basename } from 'node:path';
+import { z } from 'zod';
+import { readStateTwice, setAside } from '../state-file';
 
 /*
- * RED STUB (FT-4): Trim's records as they behave today, each change written at once on Main, nothing read from the
- * library's settings, nothing written at quit. The fix replaces it.
+ * Trim's records (FT-4, Session 58): the cuts accepted and waiting to be made or taken in, and the copies made but not
+ * yet taken into their rows (playlist-trims.ts). Before, each change was a library setting written on Main, which
+ * waited there for an import's write lock. Now they are a small file in the data folder (`trim-cuts.json`), written
+ * as recovery/live-state.ts writes the show: in the background, after the writes before it, as a partial file moved
+ * over the old one whole. A run of changes is one write; a write that fails is tried again by itself.
+ *
+ * Written at once, on Main, only where the order matters: before a cut can appear in Media (saveNow: else a crash
+ * just after could leave it there with no record), and at quit (quit: the newest is on the disk before Drashti ends,
+ * and every change after it is written at once).
+ *
+ * The first start of alpha.18 reads what alpha.17 kept in the library's settings, once (a cut waiting then carries
+ * on), and writes it to the file. A restored library is the library before's no more: its records are not carried
+ * over, and the restored library's own settings are read, as before alpha.18.
  */
 
+const fileSchema = z.object({
+  version: z.literal(1),
+  waiting: z.array(z.unknown()),
+  copies: z.array(z.unknown()),
+});
+
+/** After a write that fails, the newest is written again this long after, then twice as long after each failure. */
+const RETRY_FIRST_MS = 250;
+const RETRY_MAX_MS = 5000;
+/**
+ * A write at once moves its partial file over the old one up to this many times, this far apart: Windows refuses the
+ * rename for a moment while another program (a scanner) reads the file, and a cut is not published without it.
+ */
+const RENAME_TRIES = 3;
+const RENAME_PAUSE_MS = 50;
+
+const pause = (ms: number) => {
+  // Synchronous on purpose, and only after a refused rename: a cut is about to appear in Media, or Drashti is quitting.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+};
+
 export interface TrimRecordsOptions {
+  /** What alpha.17 and before kept in the library's settings: read once, while the file is not there. */
   before: { waiting: () => unknown; copies: () => unknown };
+  /** A backup restored at this start is in use: the file holds the library before's records. */
   otherLibrary?: boolean;
   log?: (message: string) => void;
+  /** How a background write writes its partial file (tests: a busy or failing disk). The file system's own unless given. */
   writeFile?: (file: string, text: string) => Promise<void>;
+  /** How a write moves its partial file over the old one (tests: Windows holding the file for a moment). */
   renameSync?: (from: string, to: string) => void;
+  /** The first wait before a failed write is tried again (tests). */
   retryMs?: number;
 }
+
+const list = (value: unknown): unknown[] => (Array.isArray(value) ? [...(value as unknown[])] : []);
 
 export class TrimRecords {
   private waiting: unknown[] = [];
   private copyRecords: unknown[] = [];
+  /** Changes made, and the last of them on the disk. */
+  private changes = 0;
+  private written = 0;
+  private writing: Promise<void> = Promise.resolve();
+  /** A background write is waiting its turn: changes until it starts are written by it. */
+  private queued = false;
+  private retry: NodeJS.Timeout | null = null;
+  /** Writes that failed in a row: the first is said, and the one that works after them. */
+  private failures = 0;
+  /** Drashti is quitting: every change is written at once. */
+  private quitting = false;
 
+  /** The cuts accepted and waiting (playlist-trims.ts's `kept`). */
   readonly kept = {
     load: (): unknown[] => this.waiting,
     save: (cuts: readonly unknown[]): void => {
-      this.waiting = [...cuts];
-      this.write();
+      // As they are now: a record changed after (playlist-trims.ts adds a cut's copy to it) is saved again then.
+      this.waiting = structuredClone([...cuts]);
+      this.changed();
     },
   };
 
+  /** The copies made and not yet taken in (playlist-trims.ts's `copies`). */
   readonly copies = {
     load: (): unknown[] => this.copyRecords,
     save: (copies: readonly unknown[]): void => {
-      this.copyRecords = [...copies];
-      this.write();
+      this.copyRecords = structuredClone([...copies]);
+      this.changed();
     },
   };
 
   constructor(
     private readonly file: string,
-    _options: TrimRecordsOptions,
+    private readonly options: TrimRecordsOptions,
   ) {
+    const found = options.otherLibrary
+      ? null
+      : readStateTwice(file, (raw) => {
+          const parsed = fileSchema.safeParse(raw);
+          return parsed.success ? parsed.data : null;
+        });
+    if (found?.status === 'ok') {
+      this.waiting = found.value.waiting;
+      this.copyRecords = found.value.copies;
+      return;
+    }
+    if (found && found.status !== 'missing') {
+      // Damaged, or held by another program: moved aside with the date (state-file.ts), and nothing waits to carry on.
+      const aside = setAside(file);
+      options.log?.(
+        `Trim’s waiting cuts could not be read (${found.reason}): ${aside ? `kept as ${basename(aside)}` : 'left where it is'}; nothing waits to carry on`,
+      );
+      return;
+    }
+    // Not there yet (the first start of alpha.18), or the library before a restore's: the library's settings, once.
+    this.waiting = list(options.before.waiting());
+    this.copyRecords = list(options.before.copies());
+    if (options.otherLibrary) {
+      // At once: a crash now must never bring the library before's records back.
+      this.changes = 1;
+      this.writeNowSaying();
+    } else if (this.waiting.length > 0 || this.copyRecords.length > 0) this.changed();
+  }
+
+  /**
+   * What the records hold now is on the disk before this returns (a cut is about to appear in Media). Throws when it
+   * cannot be written.
+   */
+  saveNow(): void {
+    this.cancelRetry();
+    const change = this.changes;
+    if (this.written >= change) return;
+    const partial = this.partial();
     try {
-      const raw = JSON.parse(readFileSync(file, 'utf8')) as { waiting: unknown[]; copies: unknown[] };
-      this.waiting = raw.waiting;
-      this.copyRecords = raw.copies;
-    } catch {
-      // None.
+      writeFileSync(partial, this.text());
+      for (let tries = 1; ; tries++) {
+        try {
+          this.rename(partial, this.file);
+          break;
+        } catch (error) {
+          if (tries >= RENAME_TRIES) throw error;
+          pause(RENAME_PAUSE_MS);
+        }
+      }
+    } catch (error) {
+      rmSync(partial, { force: true });
+      this.failed(error);
+      throw error;
+    }
+    this.wrote(change);
+  }
+
+  /**
+   * Drashti is quitting on purpose: what is not on the disk yet is written now, and every change from here on at
+   * once, so no save is lost (a copy let go as the conversions stop, say). A write under way never lands over them.
+   */
+  quit(): void {
+    this.quitting = true;
+    this.writeNowSaying();
+  }
+
+  /** Wait for the writes started and queued (tests). */
+  async settle(): Promise<void> {
+    for (;;) {
+      const writing = this.writing;
+      await writing;
+      if (writing === this.writing) return;
     }
   }
 
-  saveNow(): void {
-    // Written at once already.
+  private changed(): void {
+    this.changes += 1;
+    if (this.quitting) this.writeNowSaying();
+    else this.later();
   }
 
-  quit(): void {
-    // Written at once already.
+  /** At once, never throwing (it says why in the log). */
+  private writeNowSaying(): void {
+    try {
+      this.saveNow();
+    } catch {
+      // Said by failed().
+    }
   }
 
-  settle(): Promise<void> {
-    return Promise.resolve();
+  /** One write in the background, after the writes before it, of the records as they are when it starts. */
+  private later(): void {
+    this.cancelRetry();
+    if (this.queued) return;
+    this.queued = true;
+    this.writing = this.writing.then(async () => {
+      this.queued = false;
+      await this.inBackground();
+    });
   }
 
-  private write(): void {
-    writeFileSync(this.file, JSON.stringify({ version: 1, waiting: this.waiting, copies: this.copyRecords }));
+  private async inBackground(): Promise<void> {
+    const change = this.changes;
+    if (this.written >= change) return;
+    const partial = this.partial();
+    try {
+      await (this.options.writeFile ?? writeFile)(partial, this.text());
+      // Moved over the file in the same turn as this check: never older records over newer ones written at once.
+      if (this.written >= change) {
+        await rm(partial, { force: true });
+        return;
+      }
+      this.rename(partial, this.file);
+    } catch (error) {
+      await rm(partial, { force: true }).catch(() => undefined);
+      this.failed(error);
+      return;
+    }
+    this.wrote(change);
+  }
+
+  private rename(from: string, to: string): void {
+    (this.options.renameSync ?? renameSync)(from, to);
+  }
+
+  private partial(): string {
+    return `${this.file}.${randomUUID()}.tmp`;
+  }
+
+  private text(): string {
+    return JSON.stringify({ version: 1, waiting: this.waiting, copies: this.copyRecords });
+  }
+
+  private wrote(change: number): void {
+    this.written = Math.max(this.written, change);
+    if (this.failures > 0) {
+      const failed = this.failures === 1 ? '1 failed save' : `${String(this.failures)} failed saves`;
+      this.options.log?.(`Saved Trim’s waiting cuts again, after ${failed}`);
+    }
+    this.failures = 0;
+  }
+
+  /**
+   * Said once for failures in a row, and tried again by itself (the next change may never come): RETRY_FIRST_MS on,
+   * twice as long after each failure in a row, up to RETRY_MAX_MS. Never after the quit's writes.
+   */
+  private failed(error: unknown): void {
+    this.failures += 1;
+    if (this.failures === 1)
+      this.options.log?.(`Could not save Trim’s waiting cuts: ${(error as Error).message}`);
+    if (this.quitting || this.retry) return;
+    const first = this.options.retryMs ?? RETRY_FIRST_MS;
+    this.retry = setTimeout(
+      () => {
+        this.retry = null;
+        if (this.written < this.changes) this.later();
+      },
+      Math.min(first * 2 ** (this.failures - 1), RETRY_MAX_MS),
+    );
+    // It never keeps a process up by itself (Node's, in tests); Drashti's own runs on, so it comes.
+    this.retry.unref();
+  }
+
+  private cancelRetry(): void {
+    if (this.retry) clearTimeout(this.retry);
+    this.retry = null;
   }
 }
