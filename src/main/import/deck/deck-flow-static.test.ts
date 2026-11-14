@@ -34,6 +34,15 @@ it.each([
     kind: 'baked',
   },
   {
+    // Its "after N s" alone does not make a slide move: still, it goes to the converter like any still slide
+    // (C27's review, NIT-1).
+    title: 'leaves a still slide with automatic advance to the selected picture converter',
+    noConverter: false,
+    shadow: false,
+    advanceMs: 4200,
+    kind: 'pictures',
+  },
+  {
     title: 'keeps the selected picture converter even with movies off',
     noConverter: false,
     shadow: false,
