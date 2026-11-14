@@ -443,6 +443,8 @@ export const Scene = memo(function Scene({
           movement={look.movement}
           // A Timer on the slide in the box counts from the state drawn, as the main picture's does (Session 50).
           timers={state.timers}
+          // The stream's page draws a slide only once its pictures can be drawn (Session 58, Q57-35).
+          picturesFirst={place === 'stream'}
         />
       );
     const box = boxRun?.layer;
@@ -509,6 +511,8 @@ export const Scene = memo(function Scene({
                     // A timer shown alone fades out as it came on; its Timers' time from this state (Session 50).
                     leaving={shown('slide') ? state.slideOff : null}
                     timers={state.timers}
+                    // The stream's page draws a slide only once its pictures can be drawn (Session 58, Q57-35).
+                    picturesFirst={place === 'stream'}
                   />
                   {lowerThirds && shown('slide') && (
                     <SlideLowerThird
