@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { cleanNameSchema, cleanRenameName } from './rename-name';
 import { MEDIA_ID_PATTERN } from './media';
 import { MEDIA_EXT_PATTERN, NODE_NAME_MAX } from './nodes';
 import type { MediaWant, NodeHealth, NodeScreen } from './nodes';
@@ -105,7 +106,8 @@ export const nodeHealthSchema: z.ZodType<NodeHealth> = z.object({
   rev: z.number().int(),
 });
 
-export const nodeNameSchema = z.string().trim().min(1).max(NODE_NAME_MAX);
+/** A node's name as the operator gives it: cleaned as Rename… cleans a name (C15, FT-1; shared/rename-name.ts). */
+export const nodeNameSchema = cleanNameSchema(NODE_NAME_MAX);
 
 /** What a node sends to start pairing. */
 export const pairStartSchema = z
@@ -121,12 +123,7 @@ export const pairFinishSchema = z.object({ session: z.uuid(), confirm: z.string(
 
 /** A node's name as it gives it (its computer's name), fitted to what Main keeps. */
 export function nodeNameFrom(given: string): string {
-  const name = cutText(
-    given
-      .replace(/\.local$/iu, '')
-      .replace(/[\p{Cc}]/gu, '')
-      .trim(),
-    NODE_NAME_MAX,
-  );
+  // Cleaned as Rename… cleans a name (C15, FT-1): nothing visible left is "Node", as an empty one is.
+  const name = cutText(cleanRenameName(given.replace(/\.local$/iu, '')), NODE_NAME_MAX);
   return name === '' ? 'Node' : name;
 }

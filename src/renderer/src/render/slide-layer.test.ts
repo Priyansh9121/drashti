@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SlideLayer } from '../../../shared/engine/state';
-import { fadeAt, nextShowing } from './SlideLayerView';
+import { fadeAt, firstShowing, nextShowing } from './SlideLayerView';
 
 const layer = (id: string, shownAt: number, transition?: SlideLayer['transition']): SlideLayer => ({
   presentationId: 'p',
@@ -140,5 +140,48 @@ describe('a deck’s slide coming in by a cut (Session 54, C2)', () => {
       3000,
     );
     expect(stepped.fade).toBeNull();
+  });
+});
+
+describe('the stream’s page draws a slide only once its pictures can be drawn (Session 58, Q57-35)', () => {
+  const wait = (by: number) => ({ kind: 'cut' as const, ms: 1, start: null, picturesBy: by });
+
+  it('a slide cut in waits for its pictures, keeping what is on screen; the hall’s screens cut at once', () => {
+    const a = layer('a', 1000);
+    const shown = { on: a, off: null, fade: null };
+    const b = layer('b', 2000);
+    expect(nextShowing(shown, b, 2010, null, true)).toEqual({ on: b, off: a, fade: wait(5010) });
+    expect(nextShowing(shown, b, 2010)).toEqual({ on: b, off: null, fade: null });
+    // The first slide up waits on nothing shown; a cut with no length too.
+    expect(nextShowing(none, b, 2010, null, true)).toEqual({ on: b, off: null, fade: wait(5010) });
+    const noLength = layer('b', 2000, { kind: 'slide', durationMs: 0 });
+    expect(nextShowing(shown, noLength, 2010, null, true).fade).toEqual(wait(5010));
+    // Heard of long after it came (a dissolve over by then): it still waits for its pictures, from now.
+    const late = layer('b', 2000, { kind: 'dissolve', durationMs: 800 });
+    expect(nextShowing(shown, late, 9000, null, true)).toEqual({ on: late, off: a, fade: wait(12000) });
+  });
+
+  it('a transition waits for its pictures as before, and a cut cut in while another waits goes from what is on screen', () => {
+    const a = layer('a', 1000);
+    const b = layer('b', 2000, { kind: 'dissolve', durationMs: 800 });
+    expect(nextShowing({ on: a, off: null, fade: null }, b, 2010, null, true)).toEqual({
+      on: b,
+      off: a,
+      fade: { kind: 'dissolve', ms: 800, start: null },
+    });
+    const waiting = { on: layer('b', 2000), off: a, fade: wait(5010) };
+    const c = layer('c', 2100);
+    expect(nextShowing(waiting, c, 2110, null, true)).toEqual({ on: c, off: a, fade: wait(5110) });
+    // The same slide with new content keeps waiting; taken off, it goes at once.
+    const edited = { ...layer('b', 2000), notes: 'Placeholder note' };
+    expect(nextShowing(waiting, edited, 2110, null, true)).toEqual({ ...waiting, on: edited });
+    expect(nextShowing(waiting, null, 2110, null, true)).toEqual(none);
+  });
+
+  it('a page that comes along later draws the slide up only once its pictures can be drawn; a hall screen at once', () => {
+    const a = layer('a', 1000);
+    expect(firstShowing(a, 60_000, true)).toEqual({ on: a, off: null, fade: wait(63_000) });
+    expect(firstShowing(a, 60_000)).toEqual({ on: a, off: null, fade: null });
+    expect(firstShowing(null, 60_000, true)).toEqual(none);
   });
 });

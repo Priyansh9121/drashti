@@ -53,18 +53,32 @@ interface Showing {
   /** The click pressed while PowerPoint's incoming transition is still on screen. */
   afterTransition?: SlideLayer;
   /** The transition's kind and length, and when it started (null: the new slide's media is still loading). */
-  fade: { kind: TransitionKind; ms: number; start: number | null; native?: DeckNativeTransition } | null;
+  fade: {
+    kind: TransitionKind;
+    ms: number;
+    start: number | null;
+    native?: DeckNativeTransition;
+    /**
+     * A cut on the stream's page that waits for the slide's pictures (Session 58, Q57-35): the latest it waits to, by
+     * the engine's clock. It is made in the very frame its pictures can be drawn in.
+     */
+    picturesBy?: number;
+  } | null;
 }
 
 /** The slide just taken off on its own, and when (the engine's slideOff). */
 type Leaving = EngineState['slideOff'];
 
-/** What to show for a new state of the layer (`leaving`: the slide just taken off on its own, if any). */
+/**
+ * What to show for a new state of the layer (`leaving`: the slide just taken off on its own, if any; `picturesFirst`:
+ * a slide cut in waits for its pictures, the stream's page).
+ */
 export function nextShowing(
   prev: Showing,
   layer: SlideLayer | null,
   now: number,
   leaving: Leaving = null,
+  picturesFirst = false,
 ): Showing {
   if (!layer) {
     // A timer shown alone goes off as it came on, fading over its transition's length from when it was taken
@@ -123,6 +137,31 @@ export function nextShowing(
       on: layer,
       off: prev.fade?.start === null ? prev.off : prev.on,
       fade: { kind: 'cut', ms: 1, start: null },
+    };
+  // The stream's page (Session 58, Q57-35) draws a slide cut in only once its pictures can be drawn, keeping what is
+  // on screen until then (MEDIA_WAIT_MS at most), as a transition waits for them: its encoder never takes a frame of
+  // the slide black where a picture goes, or with part of it. Loading what Next shows ahead, as the hall's screens do
+  // (output/Preloader.tsx), it waits only for a picture it has not loaded.
+  if (picturesFirst)
+    return {
+      on: layer,
+      off: prev.fade?.start === null ? prev.off : prev.on,
+      fade: { kind: 'cut', ms: 1, start: null, picturesBy: now + MEDIA_WAIT_MS },
+    };
+  return { on: layer, off: null, fade: null };
+}
+
+/**
+ * What a screen shows of the layer it first draws: the slide as it is (a screen that comes along later), on the
+ * stream's page once its pictures can be drawn (`picturesFirst`, Session 58, Q57-35: Session 57's black frames were
+ * the first slide drawn as the stream's page came up, its picture still loading).
+ */
+export function firstShowing(layer: SlideLayer | null, now: number, picturesFirst = false): Showing {
+  if (picturesFirst && layer)
+    return {
+      on: layer,
+      off: null,
+      fade: { kind: 'cut', ms: 1, start: null, picturesBy: now + MEDIA_WAIT_MS },
     };
   return { on: layer, off: null, fade: null };
 }
@@ -233,6 +272,32 @@ function paintLayers(els: Layers, how: Paint, p: number): void {
   }
 }
 
+/** The pictures and videos in `root` that cannot be drawn yet, and the deck's first clip among them, if any. */
+function notDrawable(
+  root: HTMLElement,
+  layer: SlideLayer,
+): { images: HTMLImageElement[]; videos: HTMLVideoElement[]; first: HTMLVideoElement | undefined } {
+  const native = nativeDeckMotion(layer.slide.deck) !== undefined;
+  const images = Array.from(root.querySelectorAll('img')).filter((img) => !img.complete);
+  const all = Array.from(root.querySelectorAll('video'));
+  const first = all.find((video) => video.dataset['deckFirstFrame'] !== undefined);
+  const videos = all.filter((video) =>
+    video === first
+      ? video.dataset['deckFirstFrame'] === 'loading'
+      : video.readyState < 2 &&
+        video.dataset['deckVideo'] !== 'preparing' &&
+        (!first || video.dataset['deckVideo'] !== 'hold') &&
+        (!native || (video.dataset['deckCover'] !== 'poster' && video.dataset['deckCover'] !== 'hidden')),
+  );
+  return { images, videos, first };
+}
+
+/** Whether every picture and video in `root` can be drawn now (Session 58: asked before a frame is painted). */
+export function slideMediaDrawable(root: HTMLElement, layer: SlideLayer): boolean {
+  const { images, videos } = notDrawable(root, layer);
+  return images.length === 0 && videos.length === 0;
+}
+
 /**
  * Whether every picture and video in `root` can be drawn now; else a promise for when it can, or for
  * `deadline` (the engine's time) if that comes first.
@@ -242,29 +307,17 @@ export function slideMediaReady(
   deadline: number,
   layer: SlideLayer,
 ): true | Promise<void> {
-  const native = nativeDeckMotion(layer.slide.deck) !== undefined;
-  const waits: Promise<unknown>[] = [];
-  for (const img of root.querySelectorAll('img'))
-    if (!img.complete) waits.push(img.decode().catch(() => undefined));
-  const videos = Array.from(root.querySelectorAll('video'));
-  const first = videos.find((video) => video.dataset['deckFirstFrame'] !== undefined);
+  const { images, videos, first } = notDrawable(root, layer);
+  const waits: Promise<unknown>[] = images.map((img) => img.decode().catch(() => undefined));
   for (const video of videos)
-    if (
-      video === first
-        ? video.dataset['deckFirstFrame'] === 'loading'
-        : video.readyState < 2 &&
-          video.dataset['deckVideo'] !== 'preparing' &&
-          (!first || video.dataset['deckVideo'] !== 'hold') &&
-          (!native || (video.dataset['deckCover'] !== 'poster' && video.dataset['deckCover'] !== 'hidden'))
-    )
-      waits.push(
-        new Promise<void>((resolve) => {
-          // The clip's own notification waits for the frame at the seek position. A hold or the next click does
-          // not draw while this first clip plays.
-          for (const event of video === first ? [DECK_FIRST_FRAME] : ['loadeddata', 'canplay', 'error'])
-            video.addEventListener(event, () => resolve(), { once: true });
-        }),
-      );
+    waits.push(
+      new Promise<void>((resolve) => {
+        // The clip's own notification waits for the frame at the seek position. A hold or the next click does
+        // not draw while this first clip plays.
+        for (const event of video === first ? [DECK_FIRST_FRAME] : ['loadeddata', 'canplay', 'error'])
+          video.addEventListener(event, () => resolve(), { once: true });
+      }),
+    );
   if (waits.length === 0) return true;
   return Promise.race([
     Promise.all(waits).then(() => undefined),
@@ -399,6 +452,7 @@ export function SlideLayerView({
   movement = 'calm',
   leaving = null,
   timers,
+  picturesFirst = false,
 }: {
   layer: SlideLayer | null;
   canvas: Size;
@@ -413,13 +467,18 @@ export function SlideLayerView({
   leaving?: Leaving;
   /** The timers of the state drawn, for the slides' Timers (Session 50); left out: this page's own. */
   timers?: readonly TimerState[];
+  /**
+   * The stream's page (Session 58, Q57-35): a slide is drawn only once its pictures can be drawn, the first one it
+   * draws too; a slide cut in waits for them, keeping what is on screen.
+   */
+  picturesFirst?: boolean;
 }) {
-  // A screen that comes along later shows the slide as it is (no fade).
-  const [showing, setShowing] = useState<Showing>(() => ({ on: layer, off: null, fade: null }));
+  // A screen that comes along later shows the slide as it is (no fade): the stream's page once its pictures can be drawn.
+  const [showing, setShowing] = useState<Showing>(() => firstShowing(layer, engineNow(), picturesFirst));
   const [seen, setSeen] = useState(layer);
   if (seen !== layer) {
     setSeen(layer);
-    setShowing((prev) => nextShowing(prev, layer, engineNow(), leaving));
+    setShowing((prev) => nextShowing(prev, layer, engineNow(), leaving, picturesFirst));
   }
   const { on, off, fade } = showing;
   const inRef = useRef<HTMLDivElement>(null);
@@ -430,28 +489,31 @@ export function SlideLayerView({
   // already could (every screen at the same point), else when they can.
   const waiting = fade !== null && fade.start === null;
   const native = fade?.native;
+  // A cut waiting for its pictures (the stream's page): the latest it waits to, and it is made whole at once.
+  const picturesBy = fade?.picturesBy;
   const onKey = on ? keyOf(on) : null;
   useEffect(() => {
     if (!waiting || !on || !inRef.current) return;
     const shownAt = on.shownAt;
-    const ready = slideMediaReady(inRef.current, shownAt + MEDIA_WAIT_MS, on);
+    const ready = slideMediaReady(inRef.current, picturesBy ?? shownAt + MEDIA_WAIT_MS, on);
     const begin = (start: number) => {
       setShowing((s) =>
         s.on && keyOf(s.on) === onKey && s.fade?.start === null ? { ...s, fade: { ...s.fade, start } } : s,
       );
     };
+    const whole = () => (picturesBy === undefined ? null : engineNow() - 1);
     if (ready === true) {
-      begin(shownAt);
+      begin(whole() ?? shownAt);
       return;
     }
     let live = true;
     void ready.then(() => {
-      if (live) begin(native ? shownAt : Math.max(shownAt, engineNow()));
+      if (live) begin(whole() ?? (native ? shownAt : Math.max(shownAt, engineNow())));
     });
     return () => {
       live = false;
     };
-  }, [waiting, on, onKey, native]);
+  }, [waiting, on, onKey, native, picturesBy]);
 
   // Run the transition, frame by frame, from the clock every screen shares.
   const start = fade?.start ?? null;
@@ -525,6 +587,19 @@ export function SlideLayerView({
       start !== null ? fadeAt({ ms, start }, engineNow()) : 0,
     );
   });
+
+  // A cut on the stream's page whose pictures can already be drawn (loaded ahead, as the hall's screens load them) is
+  // made before this frame is painted, as every cut is: the wait above only ever holds back a picture still loading.
+  useLayoutEffect(() => {
+    if (!waiting || picturesBy === undefined || !on || !inRef.current) return;
+    if (!slideMediaDrawable(inRef.current, on)) return;
+    const begin = (start: number) => {
+      setShowing((s) =>
+        s.on && keyOf(s.on) === onKey && s.fade?.start === null ? { ...s, fade: { ...s.fade, start } } : s,
+      );
+    };
+    begin(engineNow() - 1);
+  }, [waiting, picturesBy, on, onKey]);
 
   if (!on && !off) return null;
   // One list, keyed by slide and time, so the slide going away keeps its elements (its videos play on); a timer

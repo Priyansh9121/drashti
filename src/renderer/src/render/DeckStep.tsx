@@ -109,6 +109,8 @@ interface StepVideoTold {
 
 /** The incoming layer can show the first clip once its start frame, including any initial seek, has decoded. */
 export const DECK_FIRST_FRAME = 'drashti-deck-first-frame';
+/** A slide's step lets go of its first clip (C3, Session 58): one the Preloader loaded ahead loads again if still wanted. */
+const DECK_CLIP_LET_GO = 'drashti-deck-clip-let-go';
 // A newly shown slide may wait for its first frame. An output joining a slide already on screen uses its clock.
 const FRESH_DECK_ENTRY_MS = 500;
 const FIRST_FRAME_WAIT_MS = 3000;
@@ -117,34 +119,117 @@ const FIRST_FRAME_WAIT_MS = 3000;
  * tenth faster, which nobody sees, so every screen, the slide's sounds and the engine's next step meet again.
  */
 const CATCH_UP_RATE = 1.1;
+/**
+ * How late a clip loaded ahead at its start frame may come and still play from where it waits (ms), as playback.ts
+ * plays a file already where its clock is within that (Next's clip came so before C3, Session 58).
+ */
+const FROM_WHERE_IT_IS_MS = 50;
+
+/** Why the Preloader holds a deck slide's first clip: the slide Next shows, or the one the operator points at. */
+export type AheadFor = 'next' | 'pointed';
+
+/** A deck slide's first clip the Preloader holds, loaded and decoded where its slide's step will start it. */
+interface Ahead {
+  url: string;
+  video: HTMLVideoElement;
+  /** Where in the clip it waits (ms): 0 for Next's, past the deck's own transition for a click's (a jump). */
+  fromMs: number;
+  taken: boolean;
+}
 
 /**
- * The next slide's first clip, loaded and decoded ahead by this page's Preloader (Session 57, item 6), until the
- * slide's step takes it (FirstClip); null when none is held. One a page: a page has one Preloader, and Next shows one
- * slide.
+ * The first clips this page's Preloader loaded and decoded ahead (Session 57, item 6; C3, Session 58), until a slide's
+ * step takes one (FirstClip): at most two, the slide Next shows and the slide the operator points at (a page has one
+ * Preloader).
  */
-let ahead: { url: string; video: HTMLVideoElement; taken: boolean } | null = null;
+const ahead = new Set<Ahead>();
 
-/** The element the Preloader holds for this file, decoded, now the caller's to play and let go of; else null. */
-function takeClipAhead(url: string): HTMLVideoElement | null {
-  const held = ahead;
-  if (held?.url !== url) return null;
-  ahead = null;
-  held.taken = true;
-  held.video.removeAttribute('data-preload');
-  held.video.removeAttribute('data-state');
-  return held.video;
+/** Of the clips held ahead, the one of this file waiting at `fromMs` (ms) first, else any of that file. */
+export function chooseAhead<T extends { url: string; fromMs: number }>(
+  held: Iterable<T>,
+  url: string,
+  fromMs: number,
+): T | undefined {
+  const same = [...held].filter((a) => a.url === url);
+  return same.find((a) => Math.abs(a.fromMs - fromMs) < 1) ?? same[0];
+}
+
+/**
+ * How a slide's first clip starts (C3, Session 57; C3, Session 58), as its step mounts it `mountedAt` (the engine's
+ * time) for a slide shown `shownAt`, `fromMs` into the clip. A screen joining a slide already up (`deadline` null)
+ * plays it by the engine's time, as any clip. Fresh and cold, it is sought, paused, to that frame from the slide's
+ * showing (and plays once the frame is in, catching up then). Loaded ahead at that frame (`warmed`) and mounted within
+ * a moment of the slide's showing, it plays from there by the engine's time at once; more than a moment late, from
+ * there at once all the same, catching up a tenth faster at most: a seek to where the clock is would be a wait for a
+ * frame, the slide going away held meanwhile.
+ */
+export function firstClipStart(o: {
+  deadline: number | null;
+  warmed: boolean;
+  shownAt: number;
+  mountedAt: number;
+  fromMs: number;
+}): { seek?: PlaybackSeek; catchUp?: PlaybackCatchUp } {
+  if (o.deadline === null) return {};
+  if (!o.warmed) return { seek: { at: o.shownAt, toMs: o.fromMs, paused: true } };
+  if (o.mountedAt - o.shownAt <= FROM_WHERE_IT_IS_MS) return {};
+  return playingFrom(o.shownAt, o.fromMs, o.mountedAt);
+}
+
+/**
+ * A first clip's clock as it plays from its frame (`fromMs` into it) at `at`, as late as the slide's showing makes it
+ * (C3's review M1): its frame then, catching up a tenth faster at most until it is on the engine's time.
+ */
+export function playingFrom(
+  shownAt: number,
+  fromMs: number,
+  at: number,
+): { seek: PlaybackSeek; catchUp?: PlaybackCatchUp } {
+  const lateMs = Math.max(0, at - shownAt);
+  return {
+    seek: { at, toMs: fromMs },
+    ...(lateMs > 0 ? { catchUp: { at, lateMs, maxRate: CATCH_UP_RATE } } : {}),
+  };
+}
+
+/**
+ * The element the Preloader holds for this file, decoded, now the caller's to play and let go of; else null. The one
+ * waiting where the step starts it (`fromMs`) first: Next's waits at its start, a click's past the deck's own
+ * transition.
+ */
+function takeClipAhead(url: string, fromMs: number): HTMLVideoElement | null {
+  const chosen = chooseAhead(ahead, url, fromMs);
+  if (!chosen) return null;
+  ahead.delete(chosen);
+  chosen.taken = true;
+  chosen.video.removeAttribute('data-preload');
+  chosen.video.removeAttribute('data-state');
+  chosen.video.removeAttribute('data-deck-ahead');
+  return chosen.video;
 }
 
 /**
  * The outputs' Preloader's way of loading a deck's slide's first clip ahead (output/Preloader.tsx; Session 57, item
  * 6): as its other videos, muted, out of sight and never played, but in an element of its own that the slide's step
  * takes as it is, decoded, when that slide comes in (FirstClip), so the clip plays from the press. A new element there
- * took 0.2 to 1.1 s to load and draw (the measurement before).
+ * took 0.2 to 1.1 s to load and draw (the measurement before). For the slide the operator points at (C3, Session 58:
+ * a click on its row is a jump, its clip started past the deck's own transition), it waits decoded at that frame.
  */
-export function DeckClipAhead({ mediaId }: { mediaId: string }) {
+export function DeckClipAhead({
+  mediaId,
+  fromMs = 0,
+  role = 'next',
+}: {
+  mediaId: string;
+  /** Where the step will start it (ms into the clip). */
+  fromMs?: number;
+  role?: AheadFor;
+}) {
   const attempt = useMediaAttempt(mediaId);
   const holder = useRef<HTMLSpanElement | null>(null);
+  // Loaded again once the step that took it lets it go, while it is still wanted (C3, Session 58: the pointer resting
+  // on a row it clicked, for another click on it).
+  const [round, setRound] = useState(0);
   // An effect, not a layout effect: when this goes at the moment its slide comes in, the slide's step (its layout
   // effect, first) has taken the element by then, and it is not let go of here.
   useEffect(() => {
@@ -152,15 +237,30 @@ export function DeckClipAhead({ mediaId }: { mediaId: string }) {
     if (!host) return;
     const url = mediaUrl(mediaId, attempt);
     const video = document.createElement('video');
-    const held = { url, video, taken: false };
+    const held: Ahead = { url, video, fromMs, taken: false };
+    const letGo = () => {
+      setRound((r) => r + 1);
+    };
+    video.addEventListener(DECK_CLIP_LET_GO, letGo, { once: true });
     video.muted = true;
     video.playsInline = true;
     video.disablePictureInPicture = true;
     video.preload = 'auto';
     video.setAttribute('data-preload', mediaId);
     video.setAttribute('data-state', 'loading');
-    const loaded = () => {
+    video.setAttribute('data-deck-ahead', role);
+    const ready = () => {
       if (!held.taken) video.setAttribute('data-state', 'ready');
+    };
+    // Its first frame in; a click's then waits for the frame past the deck's own transition.
+    const loaded = () => {
+      if (held.taken) return;
+      if (fromMs <= 0) {
+        ready();
+        return;
+      }
+      video.addEventListener('seeked', ready, { once: true });
+      video.currentTime = fromMs / 1000;
     };
     const failed = () => {
       if (!held.taken) video.setAttribute('data-state', 'failed');
@@ -169,18 +269,20 @@ export function DeckClipAhead({ mediaId }: { mediaId: string }) {
     video.addEventListener('error', failed, { once: true });
     host.append(video);
     video.src = url;
-    ahead = held;
+    ahead.add(held);
     return () => {
       video.removeEventListener('loadeddata', loaded);
+      video.removeEventListener('seeked', ready);
       video.removeEventListener('error', failed);
-      if (ahead === held) ahead = null;
+      video.removeEventListener(DECK_CLIP_LET_GO, letGo);
+      ahead.delete(held);
       // Taken: the step plays it now, and lets go of it.
       if (held.taken) return;
       video.removeAttribute('src');
       video.load();
       video.remove();
     };
-  }, [mediaId, attempt]);
+  }, [mediaId, attempt, fromMs, role, round]);
   return <span ref={holder} />;
 }
 
@@ -253,6 +355,8 @@ function StepVideo({
       startedAt,
       // A clip may be the next click's, loaded already (above): it plays from where it is. A hold loads as before.
       reuseLoadedSource: role === 'clip',
+      // A hold after a first clip that ended late makes up the rest going round (C3's review M1).
+      catchesUp: catchUp !== undefined,
       timing: () => ({ loop, catchUp }),
       onFrame: () => {
         told.current.onFrame?.();
@@ -315,7 +419,8 @@ function FirstClip({
   useLayoutEffect(() => {
     const host = slot.current;
     if (!host) return;
-    const v = takeClipAhead(mediaUrl(mediaId, attempt)) ?? document.createElement('video');
+    const fromMs = Math.max(0, shownAt - startedAt);
+    const v = takeClipAhead(mediaUrl(mediaId, attempt), fromMs) ?? document.createElement('video');
     v.muted = true;
     v.playsInline = true;
     v.disablePictureInPicture = true;
@@ -325,16 +430,14 @@ function FirstClip({
     v.setAttribute('data-media-id', mediaId);
     Object.assign(v.style, filling('inherit'), { opacity: '0', transform: '', mixBlendMode: '' });
     host.append(v);
-    const fromMs = Math.max(0, shownAt - startedAt);
     const warmed =
       v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
       !v.seeking &&
       Math.abs(v.currentTime * 1000 - fromMs) < 1;
     // On a direct jump, keep the seek past PowerPoint's incoming transition. While the clip is cold, decode exactly
-    // that frame and start there once it can be drawn, even if the file arrived after the press.
-    let seek: PlaybackSeek | undefined =
-      deadline !== null && !warmed ? { at: shownAt, toMs: fromMs, paused: true } : undefined;
-    let catchUp: PlaybackCatchUp | undefined;
+    // that frame and start there once it can be drawn, even if the file arrived after the press. Loaded ahead at that
+    // frame (Next's, or the slide the operator pointed at: C3, Session 58), it plays from there at once.
+    let { seek, catchUp } = firstClipStart({ deadline, warmed, shownAt, mountedAt: engineNow(), fromMs });
     let playFrame = 0;
     const tell = (ready: boolean) => {
       v.dataset['deckFirstFrame'] = ready ? 'ready' : 'failed';
@@ -345,6 +448,8 @@ function FirstClip({
       attempt,
       startedAt,
       reuseLoadedSource: true,
+      // Cold, or loaded ahead and mounted late, it catches up from its frame (C3's review M1).
+      catchesUp: true,
       timing: () => ({ loop: false, seek, catchUp }),
       onFrame: () => {
         const readyAt = engineNow();
@@ -356,13 +461,21 @@ function FirstClip({
           }
           // From that frame, as late as it came; then it catches up (C3's review M1), so it ends only as late as it
           // has not made up by its end (the step's last frame and hold wait for that, the hold making up the rest).
-          const lateMs = Math.max(0, readyAt - shownAt);
-          seek = { at: readyAt, toMs: fromMs };
-          catchUp = lateMs > 0 ? { at: readyAt, lateMs, maxRate: CATCH_UP_RATE } : undefined;
-          told.current.onFrame(catchUpLeftMs(lateMs, clipEndsAt - shownAt, CATCH_UP_RATE));
-          // Paint the decoded frame before the video advances.
-          playFrame = requestAnimationFrame(() => void v.play().catch(() => undefined));
-        } else told.current.onFrame(0);
+          ({ seek, catchUp } = playingFrom(shownAt, fromMs, readyAt));
+          told.current.onFrame(
+            catchUpLeftMs(Math.max(0, readyAt - shownAt), clipEndsAt - shownAt, CATCH_UP_RATE),
+          );
+          // Paint the decoded frame before the video advances; its clock from the moment it plays (C3T-2: from the
+          // frame's coming in, a frame or more before on a slow computer, the first check found it that far behind and
+          // could jump it 2-3 frames about 0.3 s in).
+          playFrame = requestAnimationFrame(() => {
+            ({ seek, catchUp } = playingFrom(shownAt, fromMs, engineNow()));
+            void v.play().catch(() => undefined);
+          });
+        } else
+          told.current.onFrame(
+            catchUp ? catchUpLeftMs(catchUp.lateMs, clipEndsAt - shownAt, CATCH_UP_RATE) : 0,
+          );
         tell(true);
       },
       onError: () => {
@@ -374,6 +487,8 @@ function FirstClip({
       cancelAnimationFrame(playFrame);
       stop();
       v.remove();
+      // Let go of: the Preloader loads it again if its slide is still wanted (pointed at, or Next's).
+      v.dispatchEvent(new Event(DECK_CLIP_LET_GO));
     };
   }, [mediaId, attempt, startedAt, shownAt, clipEndsAt, deadline]);
   return <div ref={slot} data-deck-slot="" style={filling(fit)} />;
