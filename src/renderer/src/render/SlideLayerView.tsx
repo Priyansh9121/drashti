@@ -223,11 +223,24 @@ function paintUnits(els: Layers, how: Paint, p: number): void {
   if (els.wordsOut) els.wordsOut.style.opacity = String(r.out(t));
 }
 
+/**
+ * Each slide's place for a deck's own transition (Session 58, Q58-16), or none where both fill the layer's box: there
+ * its slides move in % of the box exactly as before, the same as by their own length.
+ */
+function slidePlaces(how: Paint): { in: SlidePlace; out: SlidePlace } | undefined {
+  const fills = (place: SlidePlace) =>
+    Math.abs(place.x) < 0.5 &&
+    Math.abs(place.y) < 0.5 &&
+    Math.abs(place.width - how.width) < 0.5 &&
+    Math.abs(place.height - how.height) < 0.5;
+  return fills(how.placeIn) && fills(how.placeOut) ? undefined : { in: how.placeIn, out: how.placeOut };
+}
+
 /** The two slides and the black as the transition has them at `p`, the words too while apart (nothing set when not in one). */
 export function paintLayers(els: Layers, how: Paint, p: number): void {
   const { kind, movement, native } = how;
   const frame = native
-    ? deckTransitionFrame(native, p, movement, { in: how.placeIn, out: how.placeOut })
+    ? deckTransitionFrame(native, p, movement, slidePlaces(how))
     : kind === null
       ? null
       : transitionFrame(kind, p, movement);
