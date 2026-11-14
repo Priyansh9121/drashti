@@ -835,7 +835,8 @@ export function WarmUp({
     if (step.phase === 'cover' || step.phase === 'cover-before' || step.phase === 'before') {
       const next = { 'cover-before': 'cover', cover: 'before', before: 'during' } as const;
       const phase = step.phase;
-      if (phase === 'cover') performance.mark(`${mark}-deck-cover`);
+      const coverMark = `drashti-deck-cover-warm-up:${page}`;
+      if (phase === 'cover') performance.mark(coverMark);
       let left = BEFORE_FRAMES;
       const tick = () => {
         left -= 1;
@@ -843,7 +844,7 @@ export function WarmUp({
         if (phase === 'cover' ? engineNow() < step.at + COVER_MS * (1 - COVER_START) : left > 0) {
           frame = requestAnimationFrame(tick);
         } else {
-          if (phase === 'cover') performance.mark(`${mark}-deck-cover-end`);
+          if (phase === 'cover') performance.mark(`${coverMark}-end`);
           setStep({ phase: next[phase], at: engineNow() });
         }
       };
@@ -898,7 +899,7 @@ export function WarmUp({
       cancelAnimationFrame(frame);
       pauseClock(null);
     };
-  }, [step, tree, finish, mark]);
+  }, [step, tree, finish, page]);
   const urlOf = useCallback(
     (id: string, attempt?: number) => pictures[id] ?? mediaUrl(id, attempt),
     [pictures],
