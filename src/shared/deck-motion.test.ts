@@ -4,6 +4,7 @@ import {
   builtParagraphEffects,
   deckMotionFrame,
   deckParagraphRuns,
+  deckShapeShows,
   deckWipeClip,
   deckWipeMask,
   smoothedProgress,
@@ -226,38 +227,48 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
     expect(at(300, [turn])).toMatchObject({ opacity: 1, scale: 1, rotation: 0, moving: false });
   });
 
-  it('opens Shape from the centre, or closes it in from the edges, and leaves nothing clipped at the end', () => {
-    // Its edge where PowerPoint's soft edge is half-way: from half that edge's width (14 % of the way) before the
-    // middle to half past the corners, evenly, so it is where Drashti's old edge was only half-way through.
+  it('opens Shape from the centre, or closes it in from the edges, softly, and leaves nothing masked at the end', () => {
+    // Its soft edge is 0.142 of the way (from the middle to the corners, in its outline's own measure) wide, its middle
+    // running evenly from half that before the middle to half past the corners: half-way, at half the way. No clip.
     const box: DeckEffect = { ...effect, kind: 'shape', shape: 'box' };
-    expect(clipAt(187.5, box)).toBe('polygon(25% 25%, 75% 25%, 75% 75%, 25% 75%)');
-    expect(clipAt(131.25, box)).toBe('polygon(39.25% 39.25%, 60.75% 39.25%, 60.75% 60.75%, 39.25% 60.75%)');
-    const inward: DeckEffect = { ...box, shape: 'diamond', inward: true };
-    expect(clipAt(187.5, inward)).toBe(
-      'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 50% 0%, 100% 50%, 50% 100%, 0% 50%, 50% 0%)',
-    );
+    const half = at(187.5, [box]).wipe;
+    expect(clipAt(187.5, box)).toBe('');
+    expect(deckShapeShows(half, 0, 0)).toBe(1);
+    expect(deckShapeShows(half, 0.5, 0.2)).toBeCloseTo(0.5, 6);
+    expect(deckShapeShows(half, 0.2, -0.5)).toBeCloseTo(0.5, 6);
+    // Its corners square: as much on the diagonal as across the middle.
+    expect(deckShapeShows(half, -0.5, -0.5)).toBeCloseTo(0.5, 6);
+    expect(deckShapeShows(half, 0.75, 0)).toBe(0);
+    // A diamond closing in from its corners: what the edge has passed shows.
+    const closing = at(187.5, [{ ...box, shape: 'diamond', inward: true }]).wipe;
+    expect(deckShapeShows(closing, 1, 1)).toBe(1);
+    expect(deckShapeShows(closing, 0.6, 0.4)).toBeCloseTo(0.5, 6);
+    expect(deckShapeShows(closing, 0, 0)).toBe(0);
     // PowerPoint's circle is an ellipse of the shape's own proportions, through its corners at the end.
-    const circle = clipAt(187.5, { ...box, shape: 'circle' });
-    expect(circle.startsWith('polygon(85.355% 50%, ')).toBe(true);
-    expect(circle.split(', ')[18]).toBe('50% 85.355%');
-    expect(clipAt(75, { ...box, shape: 'circle' }).startsWith('polygon(50% 50%, 50% 50%')).toBe(true);
+    const circle = at(187.5, [{ ...box, shape: 'circle' }]).wipe;
+    expect(deckShapeShows(circle, Math.SQRT1_2, 0)).toBeCloseTo(0.5, 6);
+    expect(deckShapeShows(circle, 0.5, -0.5)).toBeCloseTo(0.5, 6);
+    expect(deckShapeShows(circle, 1, 1)).toBe(0);
     // PowerPoint's plus: two bars across the whole shape, widening from its middle lines.
-    expect(clipAt(187.5, { ...box, shape: 'plus' })).toBe(
-      'polygon(25% 0%, 75% 0%, 75% 25%, 100% 25%, 100% 75%, 75% 75%, 75% 100%, 25% 100%, 25% 75%, 0% 75%, 0% 25%, 25% 25%)',
-    );
+    const plus = at(187.5, [{ ...box, shape: 'plus' }]).wipe;
+    expect(deckShapeShows(plus, 0.5, 0.95)).toBeCloseTo(0.5, 6);
+    expect(deckShapeShows(plus, 0.1, 1)).toBe(1);
+    expect(deckShapeShows(plus, 0.8, 0.8)).toBe(0);
     expect(at(300, [box]).wipe).toBeNull();
   });
 
-  it('leaves by Shape the way PowerPoint does: its edges travel as they come in, hiding what they pass', () => {
-    // Out: a hole opening from the middle, the corners last.
+  it('leaves by Shape the way PowerPoint does: its soft edge travels as it comes in, hiding what it passes', () => {
+    // Out: a hole opening from the middle, the corners last (a quarter of the way through: its edge's middle at 0.2145).
     const box: DeckEffect = { ...effect, kind: 'shape', shape: 'box', phase: 'out' };
-    expect(clipAt(131.25, box)).toBe(
-      'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 39.25% 39.25%, 60.75% 39.25%, 60.75% 60.75%, 39.25% 60.75%, 39.25% 39.25%)',
-    );
+    const quarter = at(131.25, [box]).wipe;
+    expect(clipAt(131.25, box)).toBe('');
+    expect(deckShapeShows(quarter, 0, 0)).toBe(0);
+    expect(deckShapeShows(quarter, 0.2145, -0.1)).toBeCloseTo(0.5, 6);
+    expect(deckShapeShows(quarter, 1, 1)).toBe(1);
     // In: closing from the edges to the middle, the middle last.
-    expect(clipAt(131.25, { ...box, shape: 'diamond', inward: true })).toBe(
-      'polygon(50% -28.5%, 128.5% 50%, 50% 128.5%, -28.5% 50%)',
-    );
+    const closing = at(131.25, [{ ...box, shape: 'diamond', inward: true }]).wipe;
+    expect(deckShapeShows(closing, 0, 0)).toBe(1);
+    expect(deckShapeShows(closing, 1, 1)).toBe(0);
     expect(at(300, [box])).toMatchObject({ opacity: 0, wipe: null });
   });
 
@@ -278,6 +289,28 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
     const half = clipAt(187.5, bars);
     expect(half.split(', ').length).toBe(4 * 24);
     expect(at(300, [bars]).wipe).toBeNull();
+  });
+
+  it('never draws a Split stop that adds nothing, however far through it is (EF-1: float noise near nothing)', () => {
+    // At every thousandth of the way, in and out, each way round: its middle, its two soft edges and its ends at most.
+    for (const inward of [false, true])
+      for (const phase of ['in', 'out'] as const)
+        for (const axis of ['x', 'y'] as const)
+          for (let k = 1; k < 1000; k++) {
+            const split: DeckEffect = {
+              ...effect,
+              kind: 'split',
+              splitAxis: axis,
+              phase,
+              ...(inward ? { inward: true as const } : {}),
+            };
+            const mask = deckWipeMask(at(75 + (225 * k) / 1000, [split]).wipe, bounds, bounds);
+            const stops = mask.match(/rgb\(/gu)?.length ?? 0;
+            expect(
+              stops,
+              `${phase} ${axis} ${inward ? 'In' : 'Out'} at ${String(k / 10)} %`,
+            ).toBeLessThanOrEqual(6);
+          }
   });
 
   it('brings Split in from both edges, the gap closing in the middle, with PowerPoint’s soft edges', () => {
