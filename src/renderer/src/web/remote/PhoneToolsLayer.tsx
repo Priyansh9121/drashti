@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { NAME_MAX } from '../../../../shared/media-removal';
 import { Button } from '../../ui/Button';
 import { useFocusTrap } from '../../ui/Dialog';
 import { cx } from '../../ui/cx';
@@ -146,10 +147,12 @@ function RenameDialog({ renaming }: { renaming: Renaming }) {
             <span className="block text-base text-muted">Its new name</span>
             <input
               value={name}
-              maxLength={200}
+              maxLength={NAME_MAX}
               data-autofocus
               onChange={(e) => {
                 setName(e.target.value);
+                // Why the last name was refused goes as it is typed again, as in the window's question.
+                setProblem(null);
               }}
               className="h-12 w-full rounded-lg border border-field bg-panel-3 px-3 text-base text-fg"
             />

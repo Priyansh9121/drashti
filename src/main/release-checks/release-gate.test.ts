@@ -16,7 +16,7 @@ import { accessConfigReal } from '../../shared/access-config';
 /*
  * The release gate (Session 30 step 5), on canned answers from git and GitHub: the tag new, the commit
  * main, a push CI run of that commit green on every app job (the Mac's, Windows', and since Session 41 Windows' in
- * Black), every file as its checksums say.
+ * Black; since Session 58 each in three parts), every file as its checksums say.
  */
 
 const SHA = 'a'.repeat(40);
@@ -49,32 +49,50 @@ describe('the release gate', () => {
     });
     const byHand = { ...push, event: 'workflow_dispatch' };
     expect(ciCheck([byHand], { 7: green }, SHA)).toMatchObject({ ok: false });
-    const red = [
-      { name: APP_JOBS[0] ?? '', conclusion: 'success' },
-      { name: APP_JOBS[1] ?? '', conclusion: 'failure' },
-      { name: APP_JOBS[2] ?? '', conclusion: 'success' },
-    ];
+    // A failed part fails the gate, and the line names every part.
+    const red = green.map((j) =>
+      j.name === 'End-to-end and installers (windows-latest)' ? { ...j, conclusion: 'failure' } : j,
+    );
     expect(ciCheck([push], { 7: red }, SHA)).toEqual({
       ok: false,
-      line: 'No CI run from a push of aaaaaaa passed every app job (run 7: macOS success, Windows failure, Windows in Black success, macOS second half missing).',
+      line: 'No CI run from a push of aaaaaaa passed every app job (run 7: macOS part 1 success, macOS part 2 success, macOS part 3 success, Windows part 1 failure, Windows part 2 success, Windows part 3 success, Windows in Black part 1 success, Windows in Black part 2 success, Windows in Black part 3 success).',
     });
-    // The Black job counts too (Session 41): the two in White green is not enough, nor a run from before it.
+    // Every part of every system counts (Session 58: each system's suite in three parts side by side; the Black ones
+    // since Session 41, the Mac in parts since Session 55): every one green is the only pass.
     expect(APP_JOBS).toEqual([
+      'End-to-end and installers (macos-latest)',
+      'End-to-end, part 2 of 3 (macos-latest)',
+      'End-to-end, part 3 of 3 (macos-latest)',
+      'End-to-end and installers (windows-latest)',
+      'End-to-end, part 2 of 3 (windows-latest)',
+      'End-to-end, part 3 of 3 (windows-latest)',
+      'End-to-end in Black, part 1 of 3 (windows-latest)',
+      'End-to-end in Black, part 2 of 3 (windows-latest)',
+      'End-to-end in Black, part 3 of 3 (windows-latest)',
+    ]);
+    for (const name of APP_JOBS) {
+      const short = green.filter((j) => j.name !== name);
+      expect(ciCheck([push], { 7: short }, SHA).ok).toBe(false);
+      expect(ciCheck([push], { 7: short }, SHA).line).toContain(' missing');
+    }
+    const white = green.filter((j) => !j.name.startsWith('End-to-end in Black'));
+    expect(ciCheck([push], { 7: white }, SHA).line).toContain(
+      'Windows in Black part 1 missing, Windows in Black part 2 missing, Windows in Black part 3 missing',
+    );
+    // A run from before the parts (alpha.17's names) reads as it did.
+    const before = [
       'End-to-end and installers (macos-latest)',
       'End-to-end and installers (windows-latest)',
       'End-to-end in Black (windows-latest)',
       'End-to-end, second half (macos-latest)',
-    ]);
-    const white = green.filter((j) => j.name !== 'End-to-end in Black (windows-latest)');
-    expect(ciCheck([push], { 7: white }, SHA)).toEqual({
+    ];
+    const old = before.map((name) => ({
+      name,
+      conclusion: name.includes('second half') ? 'failure' : 'success',
+    }));
+    expect(ciCheck([push], { 7: old }, SHA, {}, before)).toEqual({
       ok: false,
-      line: 'No CI run from a push of aaaaaaa passed every app job (run 7: macOS success, Windows success, Windows in Black missing, macOS second half success).',
-    });
-    // The Mac's second half counts too (Session 55: CI's Mac runs the suite in two halves side by side).
-    const firstHalfOnly = green.filter((j) => j.name !== 'End-to-end, second half (macos-latest)');
-    expect(ciCheck([push], { 7: firstHalfOnly }, SHA)).toEqual({
-      ok: false,
-      line: 'No CI run from a push of aaaaaaa passed every app job (run 7: macOS success, Windows success, Windows in Black success, macOS second half missing).',
+      line: 'No CI run from a push of aaaaaaa passed every app job (run 7: macOS part 1 success, Windows part 1 success, Windows in Black success, macOS second half failure).',
     });
     // Passed on a re-run: it counts, and says so.
     expect(ciCheck([{ ...push, run_attempt: 2 }], { 7: green }, SHA)).toEqual({

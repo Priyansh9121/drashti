@@ -40,7 +40,7 @@ import {
 } from '../shared/media';
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
-import { MediaRemoval, sweepQuiet, TrimCleanup } from './library/media-removal';
+import { MediaRemoval, sweepQuiet, trashedTrimsNotice, TrimCleanup } from './library/media-removal';
 import { hashOffMain } from './library/hash-off-main';
 import { FileActions } from './library/file-actions';
 import {
@@ -77,7 +77,7 @@ import { hallPicture, type StageLayout } from '../shared/stage-layouts';
 import { DEFAULT_THEME } from '../shared/themes';
 import type { SlideSource } from './engine/slide-source';
 import type { Db } from './db/database';
-import { LATEST_VERSION, LIBRARY_BUSY_TIMEOUT_MS, openDatabase } from './db/database';
+import { LATEST_VERSION, leaveCopyingToImports, LIBRARY_BUSY_TIMEOUT_MS, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
 import { carryInputName } from './db/input-renames';
 import { MediaRepo } from './db/media';
@@ -141,6 +141,7 @@ import {
 } from './ipc/handle';
 import { readOrDefault } from './ipc/read-or-default';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
+import { LockWatch } from './perf-lock';
 import { isPerfScenario, scenarioFor } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { SoundRepo } from './db/sound';
@@ -2862,13 +2863,13 @@ function start(): void {
     shell.showItemInFolder(path);
     return { ok: true as const };
   };
-  /** Rename… of a picture, video or sound, from the window or a phone (Session 55, Part 9). */
+  /**
+   * Rename… of a picture, video or sound, from the window or a phone (Session 55, Part 9): refused in words, the name
+   * rule or the file no longer in the library (Session 58, X3).
+   */
   const renameMediaFile = (mediaId: string, name: string) => {
-    if (!MEDIA_ID_PATTERN.test(mediaId) || !fileActions.renameMedia(mediaId, name))
-      return {
-        ok: false as const,
-        message: 'A name needs 1 to 200 characters, for media still in the library.',
-      };
+    const kept = fileActions.renameMedia(mediaId, name);
+    if (!kept.ok) return kept;
     mediaRemovalChanged();
     return { ok: true as const, ids: [mediaId] };
   };
@@ -2890,13 +2891,10 @@ function start(): void {
       ? fileActions.presentationUsage(parsed.data)
       : { playlists: { names: [], count: 0 }, live: false };
   });
-  /** Rename… of a presentation, from the window or a phone (Session 55, Part 9). */
+  /** Rename… of a presentation, from the window or a phone (Session 55, Part 9); refused in words as a file's. */
   const renamePresentationNamed = (presentationId: string, name: string) => {
-    if (!fileActions.renamePresentation(presentationId, name))
-      return {
-        ok: false as const,
-        message: 'A name needs 1 to 200 characters, for a presentation in the library.',
-      };
+    const kept = fileActions.renamePresentation(presentationId, name);
+    if (!kept.ok) return kept;
     slides.invalidate(presentationId);
     engine.refreshNext();
     libraryChanged(true);
@@ -3581,6 +3579,9 @@ function start(): void {
     // No deck's movie is made while the stream is on air or recording (Session 54, C2; Session 50's rule).
     onAir: () => streaming.inUse() || testOnAir,
     playsHevc: () => hevc.wait(),
+    // While an import runs, its own connection copies the WAL into the library file, never a write of Main's (Session
+    // 58: such a write copied the import's pages and waited for the disk on the main thread).
+    running: leaveCopyingToImports(libraryDb),
     onProgress: (progress) => {
       sendToOperator(IPC.library.importProgress, progress);
     },
@@ -4001,18 +4002,23 @@ function start(): void {
   // below), and the copies nothing carries on go to the Trash then.
   // The unused cuts sweep also waits until nothing Oops, Put it back or Back could bring back (sweepQuiet).
   const trimCleanupQuiet = () => trimWorkQuiet() && sweepQuiet(engine);
+  // Tests only, never packaged (DRASHTI_TEST_TRASH_DIR, TM-8): the sweep moves its cuts into this folder in place of
+  // the computer's Trash.
+  const testTrash = packaged() ? undefined : sw('DRASHTI_TEST_TRASH_DIR');
+  const trashCut = (file: string) =>
+    testTrash === undefined
+      ? shell.trashItem(file)
+      : fsPromises.rename(file, join(testTrash, basename(file)));
   const trimCleanup = new TrimCleanup(
     trimCleanupQuiet,
     async (signal) => {
-      const gone = await mediaRemoval.trashUnusedTrims(
-        mediaDir,
-        (file) => shell.trashItem(file),
-        trimCleanupQuiet,
-        signal,
-      );
-      if (gone === 0 || quitStarted) return;
+      const gone = await mediaRemoval.trashUnusedTrims(mediaDir, trashCut, trimCleanupQuiet, signal);
+      if (gone.length === 0 || quitStarted) return;
       libraryChanged(true);
-      log.info(`Media: moved ${String(gone)} unused Trim cut(s) to the Trash`);
+      log.info(`Media: moved ${String(gone.length)} unused Trim cut(s) to the Trash`);
+      // The operator is told which, in one notice (TM-4): the sweep runs only while nothing is up.
+      const text = trashedTrimsNotice(gone);
+      if (text) sendToOperator(IPC.app.notice, { text });
     },
     (error) => log.warn('Media: could not check unused Trim cuts', error),
     AFTER_START_MS,
@@ -7592,6 +7598,39 @@ function start(): void {
             override: sw('DRASHTI_FFMPEG'),
           }),
         cpu: () => app.getAppMetrics().reduce((sum, m) => sum + m.cpu.percentCPUUsage, 0),
+        // The library's write lock as Main sees it while measured (Session 58): a write then would have waited so long.
+        lock: new LockWatch({ free: () => writeLockFree(libraryDb, LIBRARY_BUSY_TIMEOUT_MS) }),
+        // Each page's warm-up marks (Session 58, WU-1): the LIVE picture's, the stream's page's and each output's.
+        warmUps: async () => {
+          const pages: [string, Electron.WebContents | null][] = [
+            [
+              'the LIVE picture',
+              operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null,
+            ],
+            ['the stream’s page', streaming.programContents() ?? null],
+            ...[...outputWindows.entries()].map(([screenId, w]): [string, Electron.WebContents | null] => [
+              outputNames.get(screenId) ?? 'an output',
+              w.isDestroyed() ? null : w.webContents,
+            ]),
+          ];
+          return Promise.all(
+            pages
+              .flatMap(([page, contents]) =>
+                !contents || contents.isDestroyed() ? [] : [[page, contents] as const],
+              )
+              .map(async ([page, contents]): Promise<[string, [string, number][] | null]> => {
+                try {
+                  const marks = (await contents.executeJavaScript(
+                    "performance.getEntriesByType('mark').filter((m) => m.name.startsWith('drashti-warm-up')).map((m) => [m.name, Math.round(m.startTime)])",
+                    true,
+                  )) as [string, number][];
+                  return [page, marks];
+                } catch {
+                  return [page, null];
+                }
+              }),
+          );
+        },
         priority: {
           started: startedPriority,
           others: () =>

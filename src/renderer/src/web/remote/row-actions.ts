@@ -1,6 +1,7 @@
 import type { PresentationDoc } from '../../../../shared/library';
 import { WHEN_ENDS_NAMES } from '../../../../shared/wallpapers';
 import { useEngine } from '../../engine/engine-store';
+import { renameWithUndo } from '../../files/rename-undo';
 import type { MiddleRow } from '../../playlists/rows';
 import { itemOrder } from '../../playlists/rows';
 import { ImageDown, Pencil, Pin, PinOff, Play, SlidersHorizontal, Trash2, ZoomIn } from '../../ui/icons';
@@ -78,21 +79,26 @@ function rename(action: Extract<RowAction, { id: 'rename' }>, playlistId: string
     what: word,
     name: action.name,
     save: async (to) => {
-      const r = await post(path, { name: to });
-      if (!r.ok) return r.message;
-      usePhoneTools.setState({
-        undo: {
-          where: 'rows',
-          text: `Renamed “${action.name}” to “${to}”`,
-          undo: async () => {
-            const back = await post(path, { name: action.name });
-            if (!back.ok) useTapNotice.setState({ text: back.message });
-            await refreshPlaylist(playlistId);
-          },
+      const why = await renameWithUndo(action.name, to, {
+        keep: (name) => post(path, { name }),
+        offerUndo: (text, undo) => {
+          usePhoneTools.setState({
+            undo: {
+              where: 'rows',
+              text,
+              undo: async () => {
+                await undo();
+                await refreshPlaylist(playlistId);
+              },
+            },
+          });
+        },
+        say: (text) => {
+          useTapNotice.setState({ text });
         },
       });
-      await refreshPlaylist(playlistId);
-      return null;
+      if (why === null) await refreshPlaylist(playlistId);
+      return why;
     },
   });
 }
