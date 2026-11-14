@@ -8,6 +8,7 @@ Update after a sabha, and update Main and nodes together.
 
 - A Trim cut that carries on after a restart says Preparing on its row from the start, and Stop lets it go. If one can't carry on, the notice as Drashti starts says why.
 - Where a computer draws without a graphics chip, the stream's picture no longer stays black for up to 8 seconds as it starts. Drashti's log says how long each hall screen took to get ready.
+- Import notices say each thing once: another app's reason no longer repeats the app's name, a Keynote deck whose PDF pages are in another order says so for its videos too, and an automatic import names its new points once.
 - The stream, the decks Drashti plays itself, the start and the Edit slides fixes since alpha.17 (this list is written in full before the release).
 
 ## 1.0.0-alpha.17 (13 Nov 2026)
