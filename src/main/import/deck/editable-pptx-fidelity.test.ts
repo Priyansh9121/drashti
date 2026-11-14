@@ -232,6 +232,53 @@ describe('keeping a generated PPTX editable', () => {
     ]);
   });
 
+  it('grows a border’s end only at a true corner, not where another border crosses or carries it on', async () => {
+    const side = (name: string, color = '000000') =>
+      `<a:${name} w="38100"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill></a:${name}>`;
+    const cell = (top = '000000') =>
+      '<a:tc><a:txBody><a:bodyPr/><a:p/></a:txBody><a:tcPr>' +
+      side('lnL') +
+      side('lnR') +
+      side('lnT', top) +
+      side('lnB') +
+      '</a:tcPr></a:tc>';
+    const { elements } = await read(
+      slideXml(
+        graphic(
+          '<a:tbl><a:tblGrid><a:gridCol w="1428750"/><a:gridCol w="1428750"/></a:tblGrid>' +
+            '<a:tr h="428625">' +
+            cell() +
+            cell('2244AA') +
+            '</a:tr><a:tr h="428625">' +
+            cell() +
+            cell() +
+            '</a:tr></a:tbl>',
+        ),
+      ),
+    );
+    const lines = elements.filter((el) => el.kind === 'shape' && el.shape === 'line');
+    // 4 px borders on a 300 × 90 table at (10, 20): an outer corner squares off by 2 px each way; a T-junction, a
+    // crossing and a run carried on in another colour don't grow (a see-through border would paint there twice).
+    expect(lines.map((el) => [el.rotation, el.frame.x, el.frame.y, el.frame.width])).toEqual([
+      [90, -37, 64.5, 94],
+      [90, 115, 64.5, 90],
+      [90, 263, 64.5, 94],
+      [0, 8, 19.5, 152],
+      [0, 160, 19.5, 152],
+      [0, 10, 64.5, 300],
+      [0, 8, 109.5, 304],
+    ]);
+    expect(lines.map((el) => (el.kind === 'shape' ? el.outline?.color : undefined))).toEqual([
+      '#000000',
+      '#000000',
+      '#000000',
+      '#000000',
+      '#2244aa',
+      '#000000',
+      '#000000',
+    ]);
+  });
+
   it('applies table style tints and shades in linear light', async () => {
     const part = (name: string, effect: string, value: number) =>
       `<a:${name}><a:tcStyle><a:fill><a:solidFill><a:srgbClr val="4472C4"><a:${effect} val="${String(value)}"/></a:srgbClr></a:solidFill></a:fill></a:tcStyle></a:${name}>`;
@@ -447,7 +494,7 @@ describe('keeping a generated PPTX editable', () => {
       sourceCount: 1,
       slides: [],
       failedNotes: {
-        0: ['PowerPoint source page 1 exceeds the 500-object editing limit and stays as its saved picture.'],
+        0: ['Page 1 of the original has more than 500 objects, so it stays as its saved picture.'],
       },
     });
   });
@@ -474,7 +521,7 @@ describe('keeping a generated PPTX editable', () => {
     expect(deck.slides.map((slide) => slide.sourceIndex)).toEqual([0, 2]);
     expect(deck).toMatchObject({
       failedNotes: {
-        1: ['PowerPoint source page 2 exceeds the 500-object editing limit and stays as its saved picture.'],
+        1: ['Page 2 of the original has more than 500 objects, so it stays as its saved picture.'],
       },
     });
     expect(deck.slides[0]?.elements).toHaveLength(500);
