@@ -225,7 +225,7 @@ export function nextScheduledChange(state: EngineState, now: number): number {
 /**
  * Wait (SETTLE_MS at most) until nothing on the hall screens moves and nothing the engine has scheduled falls within a
  * capture and PNG encode from then; then the end of that quiet window (within ANSWER_MS of the ask), or
- * null for the slide as it starts.
+ * null for a picture from the slide instead.
  */
 export async function waitForSlidePicture(
   state: () => EngineState,
