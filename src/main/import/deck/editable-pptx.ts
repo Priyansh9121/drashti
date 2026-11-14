@@ -1721,8 +1721,15 @@ function imageExtension(bytes: Buffer): string | null {
   return null;
 }
 
-/** Read source objects without changing its bytes or invoking a presentation app. */
-export async function readEditablePptx(file: string, outDir: string): Promise<EditablePptx> {
+/**
+ * Read source objects without changing its bytes or invoking a presentation app. `limits.pictureBytes`, the most
+ * picture bytes read for one deck, is given only by tests.
+ */
+export async function readEditablePptx(
+  file: string,
+  outDir: string,
+  limits: { pictureBytes: number } = { pictureBytes: MAX_IMAGE_TOTAL },
+): Promise<EditablePptx> {
   if ((await stat(file)).size > 1024 ** 3)
     throw new Error('This presentation is too large to prepare safely.');
   const entries = await listZip(file),
@@ -1792,9 +1799,9 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
   const selectedImages = entries.filter(
     (entry) => pictureParts.has(entry.name) && entry.size <= MAX_IMAGE && entry.compressedSize <= MAX_IMAGE,
   );
-  if (selectedImages.reduce((sum, entry) => sum + entry.size, 0) > MAX_IMAGE_TOTAL)
+  if (selectedImages.reduce((sum, entry) => sum + entry.size, 0) > limits.pictureBytes)
     throw new Error('The embedded pictures exceed the editable memory limit.');
-  const pictures = await readParts(file, selectedImages, MAX_IMAGE, MAX_IMAGE_TOTAL);
+  const pictures = await readParts(file, selectedImages, MAX_IMAGE, limits.pictureBytes);
   const media: ParsedMediaRef[] = [],
     saved = new Map<string, string>();
   let assetDir: string | null = null;
