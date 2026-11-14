@@ -123,8 +123,8 @@ export function createProgramWindow(
     webPreferences: {
       ...secureWebPreferences(),
       partition: STREAM_PARTITION,
-      // Drawn off screen. Its frames reach the encoder through the page's own capture, so the
-      // painted textures are let go at once: no copy of each frame in the main process.
+      // Drawn off screen. Its frames reach the preview and the encoder through the page's own capture: none is
+      // handed to the main process (painting stops below).
       offscreen: { useSharedTexture: true },
       backgroundThrottling: false,
       autoplayPolicy: 'no-user-gesture-required',
@@ -134,6 +134,13 @@ export function createProgramWindow(
   const [w, h] = win.getContentSize();
   if (w !== size.width || h !== size.height) win.setContentSize(size.width, size.height);
   win.webContents.setFrameRate(PROGRAM_FPS);
+  // None of its frames reach the main process (Session 58, C26): nothing here uses them. Painting into it cost, where
+  // Chromium draws without a graphics chip, a whole picture (1920 x 1080: 8 MB) copied on the main thread for each
+  // frame, thirty a second while anything moves, and the page's next frame waited for that copy; with a chip, a
+  // texture made for each frame and let go at once. Set before the page loads, it holds for every view the window
+  // makes (a reload, the page started again after a crash). The page's own capture is not painting: it goes on.
+  win.webContents.stopPainting();
+  // A texture handed over all the same is let go at once.
   win.webContents.on('paint', (event) => {
     event.texture?.release();
   });
