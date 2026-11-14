@@ -22,6 +22,7 @@ import { z } from 'zod';
 import { fileStamp } from '../../shared/format';
 import type { Db } from '../db/database';
 import { CONVERTING_DIR, UPLOADS_DIR } from '../import/media-store';
+import { TRIM_RECORDS_FILE } from '../convert/trim-records';
 import { SHARPENED_DIR } from '../media/sharpened';
 import { BLURRED_DIR } from '../media/blurred';
 import { realPlace } from '../media/contained';
@@ -591,6 +592,16 @@ export function applyPendingRestore(
       mergeOriginalSetSync(incomingMedia, mediaDir, check.originals.set, {
         moveBadTo: join(keptIn, DAMAGED_ORIGINALS),
       });
+    // Move the old library's Trim records before the database swap. Even if the new library cannot
+    // write its records at startup, a restart cannot read these cuts into it.
+    const trimRecords = join(userData, TRIM_RECORDS_FILE);
+    const keptTrimRecords = join(keptIn, TRIM_RECORDS_FILE);
+    if (existsSync(trimRecords)) {
+      renameSync(trimRecords, keptTrimRecords);
+      undo.push(() => {
+        renameSync(keptTrimRecords, trimRecords);
+      });
+    }
     for (const name of upgradeCopies(userData)) {
       renameSync(join(userData, name), join(keptIn, name));
       undo.push(() => {
@@ -673,6 +684,8 @@ export function rollBackRestore(userData: string, keptIn: string, options: { now
     if (keptNote?.originals && !keptNote.media)
       mergeOriginalSetSync(join(kept, MEDIA), mediaDir, keptNote.originals);
     // Copied, not moved: the kept folder stays a backup of the library from before.
+    const keptTrimRecords = join(kept, TRIM_RECORDS_FILE);
+    if (existsSync(keptTrimRecords)) copyFileSync(keptTrimRecords, join(userData, TRIM_RECORDS_FILE));
     for (const suffix of ['', '-wal', '-shm'])
       if (existsSync(join(kept, `${LIBRARY_FILE}${suffix}`)))
         copyFileSync(join(kept, `${LIBRARY_FILE}${suffix}`), `${current}${suffix}`);
