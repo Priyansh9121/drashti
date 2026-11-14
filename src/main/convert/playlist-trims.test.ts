@@ -639,13 +639,14 @@ describe('trimming a playlist video', () => {
   it.each<[string, (x: Awaited<ReturnType<typeof setup>>, restarted: PlaylistTrims) => Promise<void>]>([
     [
       'a Reset refused while its row’s video is up',
-      async (x, restarted) => {
+      (x, restarted) => {
         x.show('original');
         expect(restarted.reset(x.itemId, 'original')).toEqual({
           ok: false,
           message: 'Take the video off before resetting this row.',
         });
         x.show(null);
+        return Promise.resolve();
       },
     ],
     [
