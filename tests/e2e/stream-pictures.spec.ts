@@ -10,10 +10,12 @@ import {
   operatorPage,
   operatorReady,
   outputPage,
+  type PageGlobals,
   setUpScreen,
   windowShowing,
 } from './helpers';
 import { engineState, goLive, holdClock, makeSlides } from './placeholder-slides';
+import { streamPage, testFfmpeg } from './stream-helpers';
 
 /*
  * The stream's own frames never show a slide before its pictures are drawn (Session 58, Q57-35). The stream's page
@@ -121,16 +123,11 @@ async function drawnAt(out: Page, p: number): Promise<void> {
   else await expect(out.locator('[data-layer="slide"]')).toHaveAttribute('data-fade', p.toFixed(3));
 }
 
-/**
- * The operator, the hall's screen and the stream's page, with these pictures imported (their media ids); `env`, more
- * test switches. With Chromium's word held back (DRASHTI_TEST_GPU_SAID=late) the hall's screen still warms up as the
- * stream's page opens, so it is not waited for.
- */
+/** The operator, the hall's screen and the stream's page, with these pictures imported (their media ids). */
 async function setUp(
   greys: number[],
-  env: Record<string, string> = {},
 ): Promise<{ app: ElectronApplication; win: Page; hall: Page; program: Page; ids: string[] }> {
-  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1', ...env });
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-stream-pictures-'));
@@ -140,8 +137,7 @@ async function setUp(
   const ids = await importAndGetIds(win, files);
   await setUpScreen(win);
   const hall = await outputPage(app);
-  if (env['DRASHTI_TEST_GPU_SAID'] !== 'late')
-    await expect(hall.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
+  await expect(hall.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   await win.getByTestId('open-stream').click();
   const program = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
   await expect(program.getByTestId('program-root')).toBeVisible();
@@ -243,18 +239,104 @@ test('the stream’s page never cuts to a slide before its pictures are drawn: N
   await app.close();
 });
 
-test('the stream’s page told it draws without a graphics chip after its warm-up began draws the slide up whole: a dissolve from it at once never starts on black (fault 2)', async () => {
+/**
+ * Tests only (DRASHTI_TEST_STREAM_PROBE): the light of every frame the stream's page gave its encoder, kept as it went
+ * (src/renderer/src/program/capture.ts): what the stream sends.
+ */
+const encoderFrames = (p: Page) =>
+  p.evaluate(
+    () => (globalThis as unknown as { drashtiTestEncoderFrames?: Captured[] }).drashtiTestEncoderFrames ?? [],
+  );
+
+/** Recording begun, into a folder of the test's own: the stream's encoder at work, never sending to the internet. */
+async function record(app: ElectronApplication, win: Page): Promise<void> {
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-stream-start-'));
+  await app.evaluate(({ dialog }, into) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [into] });
+  }, dir);
+  const began = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const folder = await d.stream.pickFolder();
+    if (!folder.ok) return folder.message;
+    const r = await d.stream.startRecording();
+    return r.ok ? 'ok' : r.message;
+  });
+  expect(began, 'recording begun').toBe('ok');
+}
+
+const stopRecording = (win: Page) =>
+  win.evaluate(() => (globalThis as PageGlobals).drashti.stream.stopRecording());
+
+test('the stream starts from the first frame that shows the show: recording begun as its page comes up, a slide up, every frame its encoder gets is the slide whole, never the page’s own black (Session 58)', async () => {
+  // CI fetches FFmpeg first (scripts/fetch-ffmpeg.mjs): there, a missing one is a failure, not a skip.
+  test.skip(
+    !testFfmpeg() && !process.env['CI'],
+    'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs',
+  );
+  test.setTimeout(180_000);
+  // Without a graphics chip, so neither system warms the stream's page up: it comes up as fast as it can.
+  const DARK = 54;
+  const { app } = await launchApp({
+    DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software',
+    DRASHTI_TEST_STREAM_PROBE: '1',
+    DRASHTI_TEST_FAKE_DEVICES: '1',
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-stream-pictures-'));
+  const [picture = ''] = await importAndGetIds(win, [
+    await drawNoise(win, join(dir, 'Placeholder noise start.png'), DARK),
+  ]);
+  const id = await makeSlides(win, 'Placeholder stream start', [{ picture }], { kind: 'cut', durationMs: 0 });
+  await goLive(win, id, 0);
+  // Nothing has the stream's page open: the recording opens it, and its encoder is given the page as it loads.
+  await record(app, win);
+  const program = await streamPage(app);
+  await expect
+    .poll(async () => (await encoderFrames(program)).length, { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(15);
+  const frames = await encoderFrames(program);
+  const level = DARK / 255;
+  // Every frame the stream sends, its first among them, is the slide whole: never black before it, nor part of it.
+  const off = frames.filter((f) => Math.abs(f.mean - level) > 0.03);
+  expect(
+    off.length,
+    `frames the encoder got that were not the slide whole (light@ms from the first): ${shown(frames, frames[0]?.t ?? 0)}`,
+  ).toBe(0);
+  expect((await stopRecording(win)).ok, 'recording stopped').toBe(true);
+  await app.close();
+});
+
+test('the stream’s page told it draws without a graphics chip after its warm-up began: every frame the stream sends is the slide up whole, or a dissolve from it begun at once, never black nor part of it (fault 2)', async () => {
+  test.skip(
+    !testFfmpeg() && !process.env['CI'],
+    'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs',
+  );
   test.setTimeout(180_000);
   // Chromium's word on how it draws held back, as on a slow computer's start, and then: no graphics chip. The stream's
-  // page opened before it warms up as with one (in software where there is none, as on CI's Windows); told, it stops.
-  // Session 58 (h-black2): its first frames were then drawn with their tiles missing, black then 256-px parts, for up to
-  // 3.3 s, the warm-up having used up the page's tile memory while the display compositor drew its frames (~0.8 s each).
+  // page, opened before then by the recording, warms up as with one (in software where there is none, as on CI's
+  // Windows); told, it stops. Session 58 (h-black2): its first frames were then drawn with their tiles missing, black then
+  // 256-px parts, for 1.6 to 3.3 s after the page had drawn the slide (now and then a whole frame followed by a black or
+  // part-drawn one), the warm-up having used up the page's tile memory while the display compositor drew its frames
+  // (~0.8 s each); and the stream sent the page's own black as it came up. Recording and the next slide each begin as
+  // early as Drashti lets them: the recording before the page is open, the dissolve as soon as the page draws the slide.
   const DARK = 54;
   const BRIGHT = 160;
-  const { app, win, hall, program, ids } = await setUp([DARK, BRIGHT], {
+  const { app } = await launchApp({
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_TEST_CLOCK_HOLD: '1',
     DRASHTI_TEST_GPU_SAID: 'late',
     DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software',
+    DRASHTI_TEST_STREAM_PROBE: '1',
+    DRASHTI_TEST_FAKE_DEVICES: '1',
   });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-stream-pictures-'));
+  const ids = await importAndGetIds(win, [
+    await drawNoise(win, join(dir, 'Placeholder noise told 0.png'), DARK),
+    await drawNoise(win, join(dir, 'Placeholder noise told 1.png'), BRIGHT),
+  ]);
   const [dark = '', bright = ''] = ids;
   const MS = 1000;
   const id = await makeSlides(
@@ -266,11 +348,14 @@ test('the stream’s page told it draws without a graphics chip after its warm-u
       durationMs: MS,
     },
   );
+  await setUpScreen(win);
+  const hall = await outputPage(app);
+  await record(app, win);
+  const program = await streamPage(app);
   // The stream's page warming up: drawing its scenes.
   await expect(program.locator('[data-testid="program-root"] [data-warm-up="during"]')).toHaveCount(1, {
     timeout: 60_000,
   });
-  await captureOwnFrames(program);
   await holdClock(app, null);
   await goLive(win, id, 0);
   await letTimePass(program, 400, 'the warm-up still drawing when Chromium’s word comes');
@@ -282,7 +367,6 @@ test('the stream’s page told it draws without a graphics chip after its warm-u
     await expect(out.locator('[data-layer="slide"] [data-slide]')).toHaveCount(1, { timeout: 20_000 });
     await drawnAt(out, 1);
   }
-  const drawn = await pageNow(program);
   // At once, as Session 57's check did: the dissolve held at its very start, then drawn moment by moment.
   await holdClock(app, Date.now() - 60_000);
   const from = await pageNow(program);
@@ -298,21 +382,18 @@ test('the stream’s page told it draws without a graphics chip after its warm-u
   }
   await holdClock(app, null);
   await drawnAt(program, 1);
-  const frames = await framesSince(program, drawn);
-  // From the dark slide's own light up to the bright one's: a frame darker than the dark slide is black where its
-  // picture goes, or part of it drawn. Counted from going live with the dissolve, as Session 57's check counted.
+  await expect
+    .poll(async () => (await encoderFrames(program)).filter((f) => f.t >= from).length, { timeout: 20_000 })
+    .toBeGreaterThan(0);
+  const frames = await encoderFrames(program);
+  // From the dark slide's own light up to the bright one's: a frame darker than the dark slide is black, or part of a
+  // picture drawn. Every frame the stream sent, from its first.
   const floor = 0.85 * (DARK / 255);
-  const off = frames.filter((f) => f.t >= from && f.mean < floor);
+  const off = frames.filter((f) => f.mean < floor);
   expect(
     off.length,
-    `frames darker than the dark slide (${floor.toFixed(3)}) from going live with the dissolve (light@ms from the slide drawn): ${shown(frames, drawn)}`,
+    `frames the encoder got darker than the dark slide (${floor.toFixed(3)}) (light@ms from going live with the dissolve): ${shown(frames, from)}`,
   ).toBe(0);
-  // And once the stream showed the slide whole, it never showed it black or part-drawn again.
-  const whole = frames.findIndex((f) => f.mean >= floor);
-  const after = whole < 0 ? [] : frames.slice(whole).filter((f) => f.t < from && f.mean < floor);
-  expect(
-    after.length,
-    `frames black or part-drawn after the slide showed whole: ${shown(frames, drawn)}`,
-  ).toBe(0);
+  expect((await stopRecording(win)).ok, 'recording stopped').toBe(true);
   await app.close();
 });
