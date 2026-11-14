@@ -21,7 +21,8 @@ import { MIN_FIT } from '../../../shared/readable';
  * must never draw the boxes again with new effect dependencies each time it is told (Session 58, MS-4): those boxes
  * would be queued and measured again, report again, and so on for ever, in microtasks, where React's limit on nested
  * updates never stops it, and the window would freeze with no error. A report that fails is the window's to report,
- * as a render error, while every other box is still told and the window draws on (MS-2; reportFitFailuresTo).
+ * as a render error, once for each distinct failure, while every other box is still told and the window draws on
+ * (MS-2; reportFitFailuresTo).
  */
 
 /** A box of words as shrink-to-fit measures it. */
@@ -66,6 +67,23 @@ export function reportFitFailuresTo(report: (error: unknown) => void): void {
 }
 
 /**
+ * The failures this window has reported: each distinct one is reported once (the lead's review of MS-2), as a report
+ * that keeps failing fails on every slide drawn and every key typed. Distinct: its words and where it was thrown (its
+ * stack). At most this many are kept: past them, nothing more is reported (the console and the log have plenty).
+ */
+const reportedFailures = new Set<string>();
+const MOST_FAILURES_REPORTED = 50;
+
+/** Reports a failure telling a box its measure, unless this window has reported the same one. */
+function reportOnce(error: unknown): void {
+  const key =
+    error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error);
+  if (reportedFailures.has(key) || reportedFailures.size >= MOST_FAILURES_REPORTED) return;
+  reportedFailures.add(key);
+  reportFailure(error);
+}
+
+/**
  * Measures boxes together, each step for all of them at once: every box drawn, then every box measured. A failure
  * telling one box its measure leaves the others told; each is reported after, as the window reports a render error
  * (reportFitFailuresTo).
@@ -98,7 +116,7 @@ export function fitTogether(boxes: readonly FitBox[]): void {
     }
   }
   // Each on its own (Session 58, MS-2): until then the first came through uncaught, to the console only.
-  for (const error of failures) reportFailure(error);
+  for (const error of failures) reportOnce(error);
 }
 
 /** The boxes queued since the last batch, in the order their layout effects ran. */
