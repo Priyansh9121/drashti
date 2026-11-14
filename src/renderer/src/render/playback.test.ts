@@ -959,6 +959,65 @@ describe('a start still to come (Session 54, C2)', () => {
   }
 });
 
+describe('a deck’s video not ready to play at its click (Session 58, deck-show.spec.ts:504)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    vi.setSystemTime(new Date('2026-11-15T01:00:00Z'));
+    vi.stubGlobal('HTMLMediaElement', { HAVE_CURRENT_DATA: 2 });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('starts the moment it can play, not at the next quarter-second check', () => {
+    const v = new FakeMedia(8);
+    // Its click 1260 ms on: just after a quarter-second check (they come every 250 ms from its start).
+    const startsAt = Date.now() + 1260;
+    const playback = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'not-ready',
+      startedAt: Date.now() - 5000,
+      audible: false,
+      limits: PICTURE_LIMITS,
+      timing: () => ({ loop: false, seek: { at: startsAt, toMs: 2000 } }),
+    });
+    // Loaded ahead, waiting at its point; just before its click its data is not in (readyState below 2).
+    runFor(v, 1250);
+    expect(v.paused).toBe(true);
+    v.readyState = 1;
+    // Its click comes while it can't play yet; 10 ms later it says it can.
+    runFor(v, 20);
+    expect(v.paused).toBe(true);
+    v.readyState = 4;
+    v.dispatchEvent(new Event('canplay'));
+    // It plays at once, in step: not 230 ms later at the next check.
+    runFor(v, 15);
+    expect(v.paused).toBe(false);
+    const clock = 2 + (Date.now() - startsAt) / 1000;
+    expect(Math.abs(v.currentTime - clock)).toBeLessThan(2 / 30);
+    playback();
+  });
+
+  it('a video already able to play at its click starts as it always did', () => {
+    const v = new FakeMedia(8);
+    const startsAt = Date.now() + 1260;
+    const playback = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'ready',
+      startedAt: Date.now() - 5000,
+      audible: false,
+      limits: PICTURE_LIMITS,
+      timing: () => ({ loop: false, seek: { at: startsAt, toMs: 2000 } }),
+    });
+    runFor(v, 1250);
+    expect(v.paused).toBe(true);
+    runFor(v, 30);
+    expect(v.paused).toBe(false);
+    playback();
+  });
+});
+
 describe('a deck’s first clip whose first frame came in late, caught up on the engine’s time (Session 57, C3’s review M1)', () => {
   beforeEach(() => {
     vi.useFakeTimers({
