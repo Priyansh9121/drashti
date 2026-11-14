@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Wallpaper, WallpaperResult, WallpapersView } from '../../../shared/wallpapers';
 import { refusedWords } from '../../../shared/wallpapers';
-import { askRename } from '../files/FileMenu';
+import { askRenameWithUndo } from '../files/rename-in-window';
 import { useConvert } from '../library/convert-store';
 import { copyFor } from '../library/converting';
 import { importPaths } from '../library/import-store';
@@ -116,19 +116,9 @@ export async function chooseWallpaper(id: string | null): Promise<void> {
   settled(await api().choose(id));
 }
 
-/** Rename one (asked, with Undo). */
+/** Rename one (asked, with Undo, as a file's: Session 58, X3). */
 export function renameWallpaper(wallpaper: Wallpaper): void {
-  askRename('the wallpaper', wallpaper.name, async (to) => {
-    const result = await api().rename(wallpaper.id, to);
-    if (!result.ok) return result.message;
-    pushRemoval({
-      text: `Renamed “${wallpaper.name}” to “${to}”`,
-      restore: async () => {
-        await api().rename(wallpaper.id, wallpaper.name);
-      },
-    });
-    return null;
-  });
+  askRenameWithUndo('the wallpaper', wallpaper.name, (to) => api().rename(wallpaper.id, to));
 }
 
 /** Delete one, with Undo: the chosen one is asked about first (it is on the screens whenever nothing is up). */

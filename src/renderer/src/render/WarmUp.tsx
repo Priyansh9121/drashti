@@ -12,8 +12,16 @@ import { WARM_UP_MARK } from '../../../shared/perf-marks';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { animationById, animationLength, cutIntoUnits } from '../../../shared/lower-third-animations';
+import {
+  LOWER_THIRD_MOTIONS,
+  type LowerThirdMotion,
+  motionAt,
+  MOTION_PERIOD_MS,
+  motionPieces,
+} from '../../../shared/lower-third-styles';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../../shared/lower-thirds';
 import { engineNow, pauseClock } from './clock';
+import { LowerThirdView } from './LowerThirdView';
 import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
 import { SPLIT_MS, WARM_DECK_TRANSITIONS, warmDeckTransition, withShapes, withSplits } from './warm-up-deck';
@@ -202,6 +210,9 @@ const layerOf = (s: RenderSlide, shownAt: number, transition?: Transition): Slid
   ...(transition ? { transition } : {}),
 });
 
+/** The pages that warm up (WarmUp's `page`). */
+export type WarmPage = 'output' | 'stream' | 'live';
+
 export interface WarmScene {
   key: string;
   look: LiveGroupLook;
@@ -209,6 +220,13 @@ export interface WarmScene {
   state: (during: boolean, at: number) => EngineState;
   /** Drawn under this clip-path (NOTCHED). */
   clip?: string;
+  /**
+   * Drawn in place of a Scene of its state (Session 58: the moving backgrounds, each a small lower third), as a key
+   * and fill pair's page draws (its matte).
+   */
+  draw?: (during: boolean, at: number, canvas: Size, matte: 'fill' | 'key' | null) => ReactNode;
+  /** Only the pages that draw it (every page when not said). */
+  pages?: readonly WarmPage[];
 }
 
 const LONG_AGO = 60_000;
@@ -383,11 +401,114 @@ export function warmScenes(): WarmScene[] {
         };
       },
     });
+  // Every moving background of the Lower Thirds studio (Session 58, Q58-18): one scene of small lower thirds, each
+  // background at the moments of its loop where every piece shows, from the registry, so one added there is warmed
+  // too. The hall's screens and the stream's page draw it; the LIVE picture does not (the operator's own, and the
+  // opening waits for its warm-up).
+  list.push({
+    key: WARM_BACKGROUNDS_SCENE,
+    look: look('calm'),
+    state: () => base,
+    draw: (during, at, canvas, matte) =>
+      during ? <WarmBackgrounds at={at} canvas={canvas} matte={matte} /> : null,
+    pages: ['output', 'stream'],
+  });
   return [
     ...transitions,
     ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
     ...list,
   ];
+}
+
+/** The scene that draws every moving background (Session 58, Q58-18). */
+export const WARM_BACKGROUNDS_SCENE = 'lower-third-backgrounds';
+
+/** Moments of its loop the warm-up may draw a background at (parts of the way round): the first two always. */
+const WARM_MOMENTS = [0.3, 0.8, ...Array.from({ length: 19 }, (_, i) => (i + 1) / 20)];
+
+/**
+ * Where in its loop the warm-up draws a background: at two moments, and at more only until every piece has shown at
+ * one of them (one still to burst, or out of sight then, is drawn at another), so none is left for the show to make.
+ */
+function warmMomentsOf(motion: LowerThirdMotion): number[] {
+  const count = motionPieces(motion, { ...DEFAULT_LOWER_THIRD_LOOK, motion }).length;
+  const shown = Array.from({ length: count }, () => false);
+  const moments: number[] = [];
+  for (const part of WARM_MOMENTS) {
+    const seen = motionAt(motion, MOTION_PERIOD_MS[motion] * part, count).map((p) => p.opacity > 0.05);
+    if (moments.length >= 2 && !seen.some((s, i) => s && !shown[i])) continue;
+    moments.push(part);
+    for (const [i, s] of seen.entries()) if (s) shown[i] = true;
+    if (moments.length >= 2 && shown.every(Boolean)) break;
+  }
+  return moments;
+}
+
+/**
+ * The moving backgrounds the warm-up draws (Session 58, Q58-18): every one in the Lower Thirds studio's registry, each
+ * at the moments of its loop where every piece of it shows.
+ */
+export const WARM_BACKGROUNDS: readonly { motion: LowerThirdMotion; part: number }[] =
+  LOWER_THIRD_MOTIONS.filter((motion) => motion !== 'none').flatMap((motion) =>
+    warmMomentsOf(motion).map((part) => ({ motion, part })),
+  );
+
+/** How many lower thirds across, how big each one's words (percent of its own picture's height), and how it came in. */
+const BACKGROUNDS_ACROSS = 5;
+const BACKGROUND_WORDS = 10;
+const BACKGROUND_CAME_IN = 'fade-steady';
+
+/**
+ * Each a small lower third in its own fifth of the canvas, one frame at its moment as a template's thumbnail is, drawn
+ * as the show draws it: its band, its words in Noto Sans (no studio font is asked for as a page starts) and its
+ * moving background's pieces where they are then; on a key page white, under the key's own filter, as Scene draws one.
+ * The rows overlap, each lower third clear of the next, all on the canvas (the GPU draws only what is on it).
+ */
+function WarmBackgrounds({ at, canvas, matte }: { at: number; canvas: Size; matte: 'fill' | 'key' | null }) {
+  const size = { width: canvas.width / BACKGROUNDS_ACROSS, height: canvas.height / BACKGROUNDS_ACROSS };
+  const rows = Math.ceil(WARM_BACKGROUNDS.length / BACKGROUNDS_ACROSS);
+  const step = rows > 1 ? (canvas.height - size.height) / (rows - 1) : 0;
+  return (
+    <div
+      data-matte={matte ?? undefined}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        ...(matte === 'key' ? { filter: 'brightness(0) invert(1)' } : {}),
+      }}
+    >
+      {WARM_BACKGROUNDS.map(({ motion, part }, n) => {
+        // Up long enough to be still, and `part` of the way round its loop at `at`.
+        const shownAt = at - MOTION_PERIOD_MS[motion] * (10 + part);
+        return (
+          <div
+            key={`${motion}/${String(part)}`}
+            style={{
+              position: 'absolute',
+              left: (n % BACKGROUNDS_ACROSS) * size.width,
+              top: Math.floor(n / BACKGROUNDS_ACROSS) * step,
+              ...size,
+            }}
+          >
+            <LowerThirdView
+              layer={{
+                id: `${W}-background-${motion}`,
+                lines: ['Placeholder name'],
+                look: { ...DEFAULT_LOWER_THIRD_LOOK, size: BACKGROUND_WORDS, motion },
+                where: 'both',
+                animation: BACKGROUND_CAME_IN,
+                shownAt,
+              }}
+              off={null}
+              canvas={size}
+              place="hall"
+              frozenAt={at}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /** Each host's shadow tree: one an element (a second attachShadow is refused). */
@@ -407,6 +528,7 @@ function FailForTests(): never {
  * as one that cannot be drawn does.
  */
 function WarmScenes({
+  page,
   during,
   at,
   canvas,
@@ -414,6 +536,7 @@ function WarmScenes({
   matte,
   ticker,
 }: {
+  page: WarmPage;
   during: boolean;
   at: number;
   canvas: Size;
@@ -421,7 +544,7 @@ function WarmScenes({
   matte: 'fill' | 'key' | null;
   ticker: boolean;
 }) {
-  const list = useMemo(() => warmScenes(), []);
+  const list = useMemo(() => warmScenes().filter((s) => s.pages?.includes(page) ?? true), [page]);
   return (
     <>
       {list.map((s) => (
@@ -432,14 +555,18 @@ function WarmScenes({
           style={{ position: 'absolute', inset: 0, mixBlendMode: 'plus-lighter' }}
         >
           <div style={{ position: 'absolute', inset: 0, clipPath: s.clip }}>
-            <Scene
-              state={s.state(during, at)}
-              canvas={canvas}
-              scaling={scaling}
-              look={s.look}
-              matte={matte}
-              ticker={ticker}
-            />
+            {s.draw ? (
+              s.draw(during, at, canvas, matte)
+            ) : (
+              <Scene
+                state={s.state(during, at)}
+                canvas={canvas}
+                scaling={scaling}
+                look={s.look}
+                matte={matte}
+                ticker={ticker}
+              />
+            )}
             {during && s.key === WARM_UP_FAILS && <FailForTests />}
           </div>
         </div>
@@ -474,7 +601,7 @@ export function WarmUp({
   onEnded,
 }: {
   /** Which page it warms up (its marks for a trace say so). */
-  page: 'output' | 'stream' | 'live';
+  page: WarmPage;
   canvas: Size;
   scaling: ScalingMode;
   matte?: 'fill' | 'key' | null;
@@ -698,6 +825,7 @@ export function WarmUp({
                 </div>
                 <MediaUrls.Provider value={urlOf}>
                   <WarmScenes
+                    page={page}
                     during={step.phase === 'during'}
                     at={step.at}
                     canvas={canvas}

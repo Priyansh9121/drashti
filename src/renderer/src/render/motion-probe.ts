@@ -57,11 +57,13 @@ export const AUDIENCE_TRACKS: readonly MotionTrack[] = [
 
 /**
  * The operator window's opening as Drashti starts (opening/OpeningPlayer.tsx): its photo (or lamp) as seen, with the
- * whole's fade; and when it came (black over the window), stopped waiting for the hall's screens, and went.
+ * whole's fade; and when it came (black over the window), stopped waiting for the hall's screens, and went; and when
+ * its photo was there to load and when it went still (Session 58: opening.spec.ts reads the frame its photo came in).
  */
 export const OPERATOR_TRACKS: readonly MotionTrack[] = [
   { name: 'opening', parts: '[data-opening-photo], [data-opening-lamp]' },
   { name: 'opening-shown', parts: '[data-testid="opening"]', attrs: ['data-opening-held'] },
+  { name: 'opening-photo', parts: '[data-testid="opening"]', attrs: ['data-photos', 'data-opening-motion'] },
 ];
 
 /** What the probe gives the main process (or a test) for a stretch of time. */
