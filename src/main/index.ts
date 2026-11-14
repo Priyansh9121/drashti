@@ -4211,6 +4211,9 @@ function start(): void {
       nodeService?.tellPointed(clip);
     },
   });
+  handle(IPC.output.getPointed, ({ sender }) =>
+    manager.screenIdFor(sender.id) !== undefined || streaming.isProgram(sender) ? pointAhead.current() : null,
+  );
   stops.add('pointing ahead', () => {
     pointAhead.stop();
   });
@@ -5488,6 +5491,7 @@ function start(): void {
     },
     screens: screenRepo,
     settings,
+    pointed: () => pointAhead.current(),
     spawn: () =>
       spawnLinkWorker((line) => {
         log.info(`[node link worker] ${line}`);

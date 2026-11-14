@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { deckStep } from '../../../shared/deck-show';
 import type { UpNext } from '../../../shared/engine/state';
-import type { PointedClip } from '../../../shared/point-ahead';
+import { type PointedClip, sameClip } from '../../../shared/point-ahead';
 
 /*
  * A deck slide's first clip loaded ahead (Session 57, item 6; C3, Session 58: Q57-26): the slide Next shows (by
@@ -34,10 +34,20 @@ let hearing = false;
 function hearPointing(): void {
   if (hearing) return;
   hearing = true;
-  window.drashti.output.onPointed((clip) => {
+  const update = (clip: PointedClip | null) => {
+    if (sameClip(pointedNow, clip)) return;
     pointedNow = clip;
     for (const listener of pointedListeners) listener();
+  };
+  let heardChange = false;
+  window.drashti.output.onPointed((clip) => {
+    heardChange = true;
+    update(clip);
   });
+  // Subscribe first; a change while the initial read is in flight takes precedence over its reply.
+  void window.drashti.output.getPointed().then((clip) => {
+    if (!heardChange) update(clip);
+  }, () => undefined);
 }
 
 function subscribePointed(listener: () => void): () => void {
