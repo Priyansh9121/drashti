@@ -995,7 +995,7 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       ['playlist.new', { name: nothing }],
       ['library.new', { name: nothing, words: 'Placeholder words' }],
     ] as const) {
-      const answer = ask(remote, op, args as Record<string, unknown>);
+      const answer = ask(remote, op, args);
       expect(answer.status, op).toBe(400);
       expect(JSON.stringify(answer.body), op).toMatch(
         /needs 1 to 200 characters|Give the presentation a name/u,
