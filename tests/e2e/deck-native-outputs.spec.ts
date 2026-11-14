@@ -21,6 +21,7 @@ import {
 import { launchMain, launchNode, pairNode } from './nodes';
 import { canvasPixels, near } from './pixels';
 import { holdClock } from './placeholder-slides';
+import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 const CLOCK = { DRASHTI_TEST_CLOCK_HOLD: '1', DRASHTI_TEST_DECK_CONVERTER: '1' };
 const FADE_MS = 400;
@@ -208,6 +209,47 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       await expect(target(live, 5)).toHaveCSS('opacity', '0');
     } finally {
       await phone.close();
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test('the LIVE picture and Screens card use the moving Wipe band in software', async () => {
+  const { app } = await launchApp({
+    ...CLOCK,
+    DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software',
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '1',
+  });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await sizeOperatorWindow(app, win, CI_WINDOW);
+    const id = await importOutputDeck(win);
+    const hallId = await setUpScreen(win, 'Placeholder Hall', 1);
+    const hall = await outputFor(app, hallId);
+    await expect(hall.getByTestId('output-root')).toHaveAttribute('data-warm-up', 'skipped');
+    await win.getByRole('button', { name: 'Screens', exact: true }).click();
+    const projector = win.getByTestId('projector-preview');
+    await expect(projector).toBeVisible();
+    const previews = [win.getByTestId('live-preview'), projector];
+
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    for (const preview of previews) await expect(target(preview, 3)).toHaveCount(1);
+    // Next first reveals slide one's click. The second Next enters the slide with the Wipe.
+    expect(await dispatch(win, { type: 'next' })).toMatchObject({ ok: true });
+    expect(await dispatch(win, { type: 'next' })).toMatchObject({ ok: true });
+    const entered = await current(win);
+    expect(entered).toMatchObject({ slideIndex: 1, transition: { kind: 'wipe', durationMs: WIPE_MS } });
+    await holdClock(app, (entered?.shownAt ?? 0) + WIPE_MS / 2);
+
+    for (const preview of previews) {
+      const incoming = preview.locator('[data-layer="slide"] [data-slide-in]');
+      const band = incoming.locator('[data-band]');
+      await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
+      await expect(band).not.toHaveCSS('transform', 'none');
+      await expect(incoming).toHaveCSS('mask-image', 'none');
     }
   } finally {
     await app.close();

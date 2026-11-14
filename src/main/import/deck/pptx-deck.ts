@@ -601,33 +601,14 @@ const SPLITS = new Map<string, NativeLook>([
 ]);
 
 /**
- * Shape's variants PowerPoint's own movies show Drashti drawing within a pixel or two and a frame in every one (Session
- * 58: run 2, and run 3 at 16:9 and 4:3): entering, each outline In and Out but Plus Out; leaving, each In but Plus In,
- * and Diamond Out and Plus Out. The other four differ only on a faint first or last frame in a movie or more, so they keep
- * PowerPoint's video wherever one can be made.
- */
-const EXACT_SHAPES = new Set([
-  'in circle(in)',
-  'in circle(out)',
-  'in box(in)',
-  'in box(out)',
-  'in diamond(in)',
-  'in diamond(out)',
-  'in plus(in)',
-  'out circle(in)',
-  'out box(in)',
-  'out diamond(in)',
-  'out diamond(out)',
-  'out plus(out)',
-]);
-
-/**
  * Office's own reveal filters (ECMA-376 §19.5.3) that Drashti draws itself: Shape's circle, box, diamond and plus with
- * PowerPoint's soft edge (shared/deck-motion.ts, deckShapeShows), exact where its own movies say so (EXACT_SHAPES); and
- * as clips, Wheel's spokes and Random Bars, not yet compared, so a slide using one keeps PowerPoint's video wherever
- * one can be made and plays these where none can.
+ * PowerPoint's soft edge (shared/deck-motion.ts, deckShapeShows), exact in all sixteen ways, In and Out, coming in and
+ * leaving (PowerPoint's own movies, runs 2, 3 and 4 at 16:9 and 4:3: within a pixel or two and a frame, a frame's shape
+ * judged from 1 % of the box and its amount on every frame; under that, a trace's centre, size and turn are the movie's
+ * encoding: C21); and as clips, Wheel's spokes and Random Bars, not yet compared, so a slide using one keeps
+ * PowerPoint's video wherever one can be made and plays these where none can.
  */
-function filterLook(filter: string | undefined, phase: DeckEffect['phase']): NativeLook | null {
+function filterLook(filter: string | undefined): NativeLook | null {
   if (!filter) return null;
   const outline = OUTLINES.find((shape) => filter === `${shape}(in)` || filter === `${shape}(out)`);
   if (outline)
@@ -635,7 +616,6 @@ function filterLook(filter: string | undefined, phase: DeckEffect['phase']): Nat
       kind: 'shape',
       shape: outline,
       ...(filter.endsWith('(in)') ? { inward: true } : {}),
-      ...(EXACT_SHAPES.has(`${phase} ${filter}`) ? {} : { partial: true }),
     };
   const wheel = /^wheel\(([12348])\)$/u.exec(filter);
   if (wheel) return { kind: 'wheel', spokes: Number(wheel[1]), partial: true };
@@ -697,7 +677,7 @@ function nativeLook(
   if (preset === '31' && filter === 'fade') return growAndTurn(behaviours, phase === 'in');
   // Bounce's own path (its falls and squashes) is not read: Drashti drops the shape in with a bounce of its own.
   if (preset === '26') return { kind: 'bounce', partial: true };
-  return filterLook(filter, phase);
+  return filterLook(filter);
 }
 
 const PLAYED_BEHAVIOURS: Record<DeckEffect['kind'], readonly string[]> = {

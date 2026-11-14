@@ -424,6 +424,61 @@ it('finishes moving a cut a quit left in Media: its row gone, its file named by 
   }
 });
 
+it('removes a gone cut’s derivatives if its video reached the Trash before the quit', async () => {
+  const x = earlierCuts();
+  try {
+    const held = derivedOf(x, 'held');
+    const newer = derivedOf(x, 'newer');
+    leftBehind(x);
+    await x.trash(join(x.mediaDir, 'held.mp4'));
+    const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+    expect(
+      await removal.trashLeftTrims(x.mediaDir, x.trash, () => true, new AbortController().signal, heldByNone),
+    ).toEqual([]);
+    expect(x.trash).toHaveBeenCalledOnce();
+    for (const file of held) expect(existsSync(join(x.mediaDir, file)), file).toBe(false);
+    for (const file of newer) expect(existsSync(join(x.mediaDir, file)), file).toBe(true);
+  } finally {
+    x.close();
+  }
+});
+
+it.each([false, true])(
+  'checks managed folders for a gone cut with no original folder (duplicate: %s)',
+  async (duplicate) => {
+    const x = earlierCuts();
+    try {
+      const bytes = Buffer.byteLength('Placeholder held cut.');
+      x.db.prepare("UPDATE media SET bytes = ? WHERE id = 'held'").run(bytes);
+      x.db
+        .prepare("UPDATE media SET path = '', deleted_at = 'earlier', missing = 1 WHERE id = 'original'")
+        .run();
+      leftBehind(x);
+      mkdirSync(join(x.mediaDir, 'ab'));
+      const cut = join(x.mediaDir, 'ab', 'held.mp4');
+      renameSync(join(x.mediaDir, 'held.mp4'), cut);
+      if (duplicate) writeFileSync(join(x.mediaDir, 'held.mp4'), 'Placeholder held cut.');
+      const log = vi.fn<(message: string) => void>();
+      const removal = new MediaRemoval(x.db, { onScreens: () => new Set() });
+      expect(
+        await removal.trashLeftTrims(x.mediaDir, x.trash, () => true, new AbortController().signal, {
+          ...heldByNone,
+          log,
+        }),
+      ).toEqual(duplicate ? [] : ['held.mp4']);
+      expect(existsSync(cut)).toBe(duplicate);
+      if (duplicate) {
+        expect(log).toHaveBeenCalledWith(
+          expect.stringContaining('the bytes of cut held are in more than one file'),
+        );
+        expect(x.exists('held')).toBe(true);
+      }
+    } finally {
+      x.close();
+    }
+  },
+);
+
 // LOW-1 (review of 50566755): dragging a gone cut back from the Trash imports its bytes, and the import's copy waits at
 // a path named by them (media-store.ts) until its row comes back there; if the cut's bytes begin as its original's do,
 // that copy is in the folder FT-8 reads. A file named by its own bytes is an import's copy (Trim never names one so).

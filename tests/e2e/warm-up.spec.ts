@@ -575,6 +575,8 @@ test('the LIVE picture’s warm-up cut short as the first slide goes up never le
   await operatorReady(win);
   const live = '[data-testid="live-preview"]';
   await expect(win.locator(`${live} [data-warm-up="during"]`)).toHaveCount(1, { timeout: 30_000 });
+  const picture = win.locator(`${live} [data-box]`).first();
+  const original = await picture.evaluateHandle((box) => box);
   const id = await makeSlides(
     win,
     'Placeholder slides cut in',
@@ -594,6 +596,8 @@ test('the LIVE picture’s warm-up cut short as the first slide goes up never le
   await expect(win.locator(`${live} [data-testid="audience-timer-time"]`)).toHaveCount(1, {
     timeout: 20_000,
   });
+  expect(await picture.evaluate((box, before) => box === before, original)).toBe(true);
+  await original.dispose();
   const shown = await timesShown(win);
   expect(shown.length, 'the timer shown at all').toBeGreaterThan(0);
   // The first time it showed is the clock's (3 s or more gone), never the paused moment's (the whole minute).
