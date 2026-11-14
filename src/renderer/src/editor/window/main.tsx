@@ -5,6 +5,7 @@ import '../../styles/app.css';
 import { preloadFonts } from '../../render/fonts';
 import { preloadStudioFonts } from '../../render/studio-fonts';
 import { reportRenderError } from '../../ui/render-errors';
+import { reportFitFailuresTo } from '../../render/shrink-to-fit';
 import { WindowBoundary } from '../../ui/WindowBoundary';
 import { EditorWindow } from './EditorWindow';
 
@@ -20,9 +21,15 @@ void preloadFonts();
 preloadStudioFonts();
 const sendError = (report: Parameters<typeof window.drashti.app.renderError>[0]) =>
   window.drashti.app.renderError(report);
+const caught = reportRenderError('slide editor', 'caught', sendError);
+// The inspector or a slide's thumbnail failing to take a text box's measure (Session 58, MS-2): logged as the
+// window's render errors are, while the editor draws on.
+reportFitFailuresTo((error) => {
+  caught(error, {});
+});
 createRoot(root, {
   onUncaughtError: reportRenderError('slide editor', 'uncaught', sendError),
-  onCaughtError: reportRenderError('slide editor', 'caught', sendError),
+  onCaughtError: caught,
 }).render(
   <StrictMode>
     <WindowBoundary reloadLabel="Reload the slide editor">

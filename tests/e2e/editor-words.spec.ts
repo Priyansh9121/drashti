@@ -8,6 +8,7 @@ import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
   launchApp,
+  onEditorSlide,
   openLibrary,
   operatorPage,
   operatorReady,
@@ -42,16 +43,8 @@ async function importKirtan(win: Page, name: string, words: string): Promise<str
   return id;
 }
 
-async function onCanvas(ed: Page, x: number, y: number): Promise<{ x: number; y: number }> {
-  const canvas = ed.getByTestId('editor-canvas');
-  const box = await canvas.boundingBox();
-  const scale = Number(await canvas.getAttribute('data-scale'));
-  if (!box) throw new Error('no canvas');
-  return { x: box.x + x * scale, y: box.y + y * scale };
-}
-
 async function clickSlide(ed: Page, x: number, y: number): Promise<void> {
-  const p = await onCanvas(ed, x, y);
+  const p = await onEditorSlide(ed, x, y);
   await ed.mouse.click(p.x, p.y);
 }
 

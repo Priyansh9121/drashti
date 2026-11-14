@@ -10,6 +10,8 @@ Drashti ships **FFmpeg 9.0.2** as a separate program, `ffmpeg` (`ffmpeg.exe` on 
 
 Each download is pinned to one SHA-256 in `scripts/fetch-ffmpeg.mjs` and checked before it is unpacked. The executables are never committed to this repository.
 
+Drashti's CI also runs one FFmpeg build that is not in the app, for its unit tests on Linux only (Drashti is never built for Linux): FFmpeg-Builds' static Linux build of FFmpeg 9.0.2, `https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n9.0.2-17-g2a571b6068-linux64-gpl-9.0.tar.xz`, GPL version 3 (or later), pinned and checked the same way in `scripts/fetch-ci-ffmpeg.mjs`. It is never shipped or given to anyone.
+
 **Copyright:** FFmpeg is copyright (c) 2000-2026 the FFmpeg developers. The builds also contain other free libraries, under their own licences, among them x264 (GPL), x265 (GPL), libvpx (BSD), OpenSSL (Apache 2.0) on macOS and GnuTLS (LGPL) on Windows, LAME (LGPL), Opus (BSD) and others; each build lists its libraries with `ffmpeg -version`.
 
 **Source code:** the corresponding source is FFmpeg 9.0.2 (`https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz`; the Windows build names commit `946fcce07b` of `https://github.com/FFmpeg/FFmpeg`), with each builder's published build scripts and library versions (`https://git.martin-riedl.de/ffmpeg/build-script` for macOS; `https://www.gyan.dev/ffmpeg/builds/` for Windows). On request, the maintainers of Drashti will provide a copy of the complete corresponding source of the FFmpeg build they distribute, for at least three years after the last time it was distributed.
