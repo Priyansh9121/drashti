@@ -197,4 +197,94 @@ describe('the warm-up', () => {
       ]);
     }
   });
+
+  it('draws every kind of mask a deck’s Split or Shape draws on air, on the shape and within it: each layer’s gradient and its tier of stops (C1’s review, MEDIUM-1)', () => {
+    // A GPU makes one pipeline per kind of drawing at its first use (100-600 ms on CI's Mac, every screen waiting): a
+    // gradient's type and its stops' tier (up to 4, up to 8, more), a layer each. Every kind a deck's Split or Shape
+    // draws on air (each outline, In and Out, coming in and leaving, all the way through), on the moving shape and on
+    // the element within it, must be one the warm-up draws: its deck scenes' slides going, as they are at its moment.
+    const kindsOf = (mask: string, where: string): string | null => {
+      if (mask === '') return null;
+      const layers: string[] = [];
+      let depth = 0;
+      let start = 0;
+      for (let i = 0; i < mask.length; i++) {
+        if (mask[i] === '(') depth++;
+        if (mask[i] === ')') depth--;
+        if (mask[i] === ',' && depth === 0) {
+          layers.push(mask.slice(start, i).trim());
+          start = i + 1;
+        }
+      }
+      layers.push(mask.slice(start).trim());
+      const kinds = layers.map((layer) => {
+        const n = stops(layer);
+        return `${/^([a-z-]+)\(/u.exec(layer)?.[1] ?? '?'}[${n <= 4 ? '<=4' : n <= 8 ? '<=8' : '>8'}]`;
+      });
+      return `${where}: ${kinds.join(' + ')}`;
+    };
+    const box = { x: 100, y: 60, width: 640, height: 380 };
+    const onAir = new Map<string, string>();
+    const note = (kind: string | null, first: string) => {
+      if (kind !== null && !onAir.has(kind)) onAir.set(kind, first);
+    };
+    for (let i = 1; i < 200; i++) {
+      const progress = i / 200;
+      for (const inward of [false, true])
+        for (const leaving of [false, true]) {
+          const way = `${inward ? 'In' : 'Out'} ${leaving ? 'leaving' : 'coming in'} at ${String(progress)}`;
+          for (const shape of ['circle', 'box', 'diamond', 'plus'] as const) {
+            const wipe = { shape, inward, leaving, progress };
+            note(kindsOf(deckWipeMask(wipe, box, box), 'on the shape'), `${shape} ${way}`);
+            note(kindsOf(deckWipeInnerMask(wipe, box, box), 'within it'), `${shape} ${way}`);
+          }
+          for (const axis of ['x', 'y'] as const)
+            note(
+              kindsOf(deckWipeMask({ axis, inward, leaving, progress }, box, box), 'on the shape'),
+              `split ${axis} ${way}`,
+            );
+        }
+    }
+    // Not nothing: the Circle's radial mask, Split's and Shape's straight ones, and the masks within a Box.
+    expect([...onAir.keys()]).toEqual(
+      expect.arrayContaining([
+        'on the shape: radial-gradient[<=4]',
+        'on the shape: linear-gradient[<=8]',
+        'on the shape: linear-gradient[<=4]',
+        'within it: linear-gradient[<=8] + linear-gradient[<=4] + linear-gradient[<=4]',
+      ]),
+    );
+    // What the warm-up draws, however long the slides before took to draw (two frames, or seconds on a GPU still
+    // making their pipelines): every scene's slide going that is a deck's Drashti plays itself.
+    for (const gap of [33, 5_000, 30_000]) {
+      const warmed = new Set<string>();
+      for (const s of warmScenes()) {
+        const going = s.state(false, BEFORE).layers.slide;
+        const motion = going ? nativeDeckMotion(going.slide.deck) : undefined;
+        const timing = going ? nativeStepTiming(going) : null;
+        if (!going || !motion || !timing) continue;
+        const byTarget = deckEffectsByTarget(motion.effects);
+        const bounds = deckTargetBounds(going.slide.elements, byTarget);
+        for (const [id, effects] of byTarget) {
+          const target = bounds.get(id) ?? { x: 0, y: 0, width: 0, height: 0 };
+          const frame = deckMotionFrame(
+            effects,
+            timing.index,
+            BEFORE + gap - timing.clipAt,
+            target,
+            going.slide,
+          );
+          for (const kind of [
+            kindsOf(deckWipeMask(frame.wipe, target, target), 'on the shape'),
+            kindsOf(deckWipeInnerMask(frame.wipe, target, target), 'within it'),
+          ])
+            if (kind !== null) warmed.add(kind);
+        }
+      }
+      expect(
+        [...onAir].filter(([kind]) => !warmed.has(kind)).map(([kind, first]) => `${kind} (first: ${first})`),
+        `after ${String(gap)} ms`,
+      ).toEqual([]);
+    }
+  });
 });
