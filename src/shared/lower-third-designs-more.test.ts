@@ -89,11 +89,12 @@ describe('the templates made since alpha.17', () => {
     expect(feels.filter((f) => f === 'calm' || f === 'elegant').length).toBeGreaterThanOrEqual(8);
   });
 
-  it('leaves out the three that dipped under 90% in two lower-thirds-more runs (Q57-18), steadier ones in their places', () => {
+  it('leaves out the four that dipped under 90% in two lower-thirds-more runs (Q57-18), steadier ones in their places', () => {
     // Two-core Windows, the streaming check: Peacock shapes 81% (run 43547437227) and 75% (43553501189); Vermilion
     // stripes under 90% (43547437227, named not smooth) and 70% (43553521539); White and maroon pill 71% (43547437227)
     // and 68% (43553521539). Their backgrounds stay in part A, in steadier designs of their own.
-    for (const id of ['peacock-shapes', 'vermilion-stripes', 'white-and-maroon-pill'])
+    // Deep green ribbon 89% (43544996865) and 86% (43557441565).
+    for (const id of ['peacock-shapes', 'vermilion-stripes', 'white-and-maroon-pill', 'deep-green-ribbon'])
       expect(
         LOWER_THIRD_TEMPLATES.some((t) => t.id === id),
         id,
