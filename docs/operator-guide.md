@@ -220,7 +220,7 @@ In the studio, **Save** keeps it, **Show** puts it up (**Save and show** when it
 
 **No sound in the hall.** Check the status bar: it says where the sound goes and warns when the chosen output is missing (Drashti then plays on the computer's own speakers). Check the mixer's channel.
 
-**No sound on the stream.** While on air or recording, the header shows **No sound** beside ON AIR when nothing has reached the stream for 20 seconds (or 3 seconds after its microphone was unplugged), and a yellow notice under the header says what to check: the microphone, its cable and the sound desk. It goes by itself as soon as sound comes back. Drashti never changes the microphone by itself; choosing another is in Stream settings (Pro Mode).
+**No sound on the stream.** While on air or recording, the header shows **No sound** beside ON AIR when nothing has reached the stream for 20 seconds (or 3 seconds after its microphone was unplugged), and a yellow notice under the header says what to check: the microphone, its cable and the sound desk. It goes by itself as soon as sound comes back. **Record sound** has it too (since alpha.18): off air the notice says **No sound in the sound recording**. If nothing at all comes from the sound input, Drashti says so after 5 seconds and stops the sound recording after 30; plug the input back in within that time and the recording goes on in the same file. Drashti never changes the microphone by itself; choosing another is in Stream settings (Pro Mode).
 
 **The stream's picture has stopped.** A red notice under the header says so when the stream's own page kept failing (six times in a minute), in Simple Mode too: the stream shows its last picture. Press **Try again**; if it stops again, tell whoever looks after Drashti.
 
