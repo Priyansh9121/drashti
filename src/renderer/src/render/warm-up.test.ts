@@ -120,8 +120,9 @@ describe('the warm-up', () => {
     const offGrid = scene('deck-cover/calm/off-grid');
     expect(offGrid.offset).toBe('translate(0.5px, 0.5px)');
     expect(offGrid.clip).toBeUndefined();
-    // The wide Cover's shaded quad needs an analytic clip. The notched polygon draws a mask instead.
-    expect(offGrid).toMatchObject({ rounded: true });
+    // The shader trace on 41d40ee1 showed the rounded clip with a pixel-aligned shade quad.
+    // A fractional translation can still snap. The wide warm-up needs a non-axis-aligned quad under the clip.
+    expect(offGrid).toMatchObject({ rounded: true, contentTransform: 'rotate(0.25deg)' });
     const at = BEFORE + 33;
     expect(offGrid.state(true, at)).toEqual(scene('deck-cover/calm').state(true, at));
     expect(offGrid.state(false, at)).toEqual(scene('deck-cover/calm').state(false, at));
