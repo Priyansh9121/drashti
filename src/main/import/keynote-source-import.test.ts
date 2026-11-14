@@ -105,10 +105,10 @@ const COPY_CASES: CopyCase[] = [
   { rule: 'pages in the copy’s order', slides: [VERSE, CHORUS], pdf: pdfOf(VERSE, CHORUS), shifted: false },
   { rule: 'two pages swapped', slides: [VERSE, CHORUS], pdf: pdfOf(CHORUS, VERSE), shifted: true },
   {
-    rule: 'one page with another slide’s words is enough',
+    rule: 'one page with another slide’s words leaves the copy available',
     slides: [VERSE, CHORUS, VERSE_TWO],
     pdf: pdfOf(VERSE, VERSE_TWO, VERSE_TWO),
-    shifted: true,
+    shifted: false,
   },
   {
     rule: 'a chorus repeated, in order',
@@ -139,7 +139,7 @@ const COPY_CASES: CopyCase[] = [
     rule: 'a skipped slide’s words on a page of the shown slides',
     slides: [VERSE, { skipped: CHORUS }, VERSE_TWO],
     pdf: pdfOf(CHORUS, VERSE_TWO),
-    shifted: true,
+    shifted: false,
   },
   {
     rule: 'a PDF of every slide, the skipped one in its place',
