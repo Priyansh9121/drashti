@@ -35,6 +35,11 @@ export interface EditablePptxSlide {
   background: string | null;
   elements: SlideElement[];
   issues: string[];
+  /**
+   * A picture fill here (the background's, a shape's or a table cell's) could not be copied, so this copy draws its
+   * reference colour instead: Drashti never plays such a slide itself (Q58-13).
+   */
+  lostPictureFill?: true;
 }
 export interface EditablePptx {
   sourceCount: number;
@@ -207,6 +212,8 @@ interface Context {
   defaults: Node;
   tableStyles: ReadonlyMap<string, { style: XmlNode; part: Part }>;
   issues: Set<string>;
+  /** Set when a picture fill could not be copied (see `EditablePptxSlide.lostPictureFill`). */
+  lostPictureFill: boolean;
   id: () => string;
   asset: (part: Part, relId: string, issues: Set<string>) => Promise<string | null>;
 }
@@ -252,6 +259,38 @@ function themeOf(
 }
 const isColor = (node: XmlNode): boolean =>
   ['srgbClr', 'schemeClr', 'sysClr', 'prstClr'].includes(nameOf(node));
+
+/** A colour's hue, saturation and lightness (each 0-1) from its sRGB channels (0-255). */
+function hslOf(rgb: readonly number[]): [number, number, number] {
+  const [red = 0, green = 0, blue = 0] = rgb.map((c) => c / 255);
+  const max = Math.max(red, green, blue),
+    min = Math.min(red, green, blue);
+  const light = (max + min) / 2,
+    range = max - min;
+  if (range === 0) return [0, 0, light];
+  const saturation = range / (light > 0.5 ? 2 - max - min : max + min);
+  const hue =
+    max === red
+      ? (green - blue) / range + (green < blue ? 6 : 0)
+      : max === green
+        ? (blue - red) / range + 2
+        : (red - green) / range + 4;
+  return [hue / 6, saturation, light];
+}
+
+/** sRGB channels (0-255) from a hue, saturation and lightness (each 0-1). */
+function rgbOfHsl(hue: number, saturation: number, light: number): number[] {
+  const high = light < 0.5 ? light * (1 + saturation) : light + saturation - light * saturation;
+  const low = 2 * light - high;
+  const channel = (at: number) => {
+    const t = at - Math.floor(at);
+    if (t < 1 / 6) return low + (high - low) * 6 * t;
+    if (t < 1 / 2) return high;
+    if (t < 2 / 3) return low + (high - low) * (2 / 3 - t) * 6;
+    return low;
+  };
+  return [hue + 1 / 3, hue, hue - 1 / 3].map((at) => 255 * channel(at));
+}
 
 function colorOf(node: Node, ctx: Context, placeholder?: string): string | null {
   const color = node && isColor(node) ? node : kids(node).find(isColor);
@@ -299,6 +338,20 @@ function colorOf(node: Node, ctx: Context, placeholder?: string): string | null 
           const mixed = linear * amount + white;
           return 255 * (mixed <= 0.0031308 ? 12.92 * mixed : 1.055 * mixed ** (1 / 2.4) - 0.055);
         });
+        break;
+      }
+      case 'lumMod':
+      case 'lumOff':
+      case 'satMod': {
+        // PowerPoint changes these in HSL, taking the amount as it is: a lumMod or satMod over 100%, a lumOff below 0.
+        const kind = nameOf(change);
+        const value = number(attr(change, 'val'), kind === 'lumOff' ? 0 : 100_000) / 100_000;
+        const [hue, saturation, light] = hslOf(rgb);
+        const within = (n: number) => Math.max(0, Math.min(1, n));
+        rgb =
+          kind === 'satMod'
+            ? rgbOfHsl(hue, within(saturation * value), light)
+            : rgbOfHsl(hue, saturation, within(kind === 'lumMod' ? light * value : light + value));
         break;
       }
       default:
@@ -767,6 +820,32 @@ function textDirection(bodies: Node[]): Pick<TextStyle, 'writingMode' | 'textOri
   }
 }
 
+/**
+ * The source's own shrink of a box's words (`normAutofit`'s font scale and line spacing reduction, as fractions), from
+ * the nearest body that sets how its words fit, when that is a shrink that says how much.
+ */
+function sourceFitOf(bodies: Node[]): TextStyle['sourceFit'] {
+  const fit = [...bodies]
+    .reverse()
+    .map((body) => kids(body).find((n) => ['noAutofit', 'normAutofit', 'spAutoFit'].includes(nameOf(n))))
+    .find((found) => found !== undefined);
+  if (!fit || nameOf(fit) !== 'normAutofit') return undefined;
+  const scale = attr(fit, 'fontScale'),
+    reduction = attr(fit, 'lnSpcReduction');
+  if (scale === undefined && reduction === undefined) return undefined;
+  // Thousandths of a percent, or (Strict) a percentage.
+  const share = (value: string | undefined, fallback: number) =>
+    value === undefined
+      ? fallback
+      : value.endsWith('%')
+        ? number(value.replace(/%$/u, ''), fallback * 100) / 100
+        : number(value, fallback * 100_000) / 100_000;
+  return {
+    fontScale: Math.max(0.01, Math.min(1, share(scale, 1))),
+    lineSpacingReduction: Math.max(0, Math.min(1, share(reduction, 0))),
+  };
+}
+
 function textElement(
   node: XmlNode,
   chain: XmlNode[],
@@ -851,6 +930,7 @@ function textElement(
   const clipToBox = ['vertOverflow', 'horzOverflow'].some((key) => lowToHighValue(bodies, key) === 'clip');
   const paragraph = first?.paragraph;
   const align = paragraph?.align === 'justify' ? 'left' : (paragraph?.align ?? 'left');
+  const sourceFit = sourceFitOf(bodies);
   return {
     id: ctx.id(),
     kind: 'text',
@@ -868,6 +948,7 @@ function textElement(
       lineHeight: paragraph?.lineHeight ?? DEFAULT_LINE_HEIGHT,
       shadow: false,
       ...(!clipToBox || lastChild(bodies, 'normAutofit') ? { shrinkToFit: true } : {}),
+      ...(sourceFit ? { sourceFit } : {}),
       ...(clipToBox ? { clipToBox: true } : {}),
       ...(flag(lowToHighValue(bodies, 'spcFirstLastPara')) ? { spaceAtTextEdges: true } : {}),
       ...(lowToHighValue(bodies, 'wrap') === 'none' ? { noWrap: true } : {}),
@@ -897,6 +978,12 @@ function lineOutline(line: Node, ctx: Context, placeholder?: string): Outline | 
   return color ? { color, width: lineWidth(attr(line, 'w')) } : null;
 }
 
+/** The theme's line that a line reference names (none for `idx="0"`). */
+function themeLine(ref: Node, ctx: Context): Node {
+  const index = number(attr(ref, 'idx'), 0);
+  return index > 0 ? kids(child(ctx.theme.format, 'lnStyleLst'), 'ln')[index - 1] : undefined;
+}
+
 function referenceLine(
   ref: XmlNode,
   ctx: Context,
@@ -905,7 +992,7 @@ function referenceLine(
 ): Outline | null {
   const index = number(attr(ref, 'idx'), 0);
   if (index === 0) return null;
-  const line = kids(child(ctx.theme.format, 'lnStyleLst'), 'ln')[index - 1];
+  const line = themeLine(ref, ctx);
   const color = colorOf(ref, ctx) ?? fallback;
   if (line) return lineOutline(line, ctx, color ?? undefined);
   if (missingNote) ctx.issues.add(missingNote);
@@ -946,7 +1033,10 @@ function shapeOutline(
       : connectorColor
         ? { color: connectorColor, width: 1 }
         : null;
-  return outline ? { ...outline, width: lineWidth(lowToHighValue(lines, 'w'), outline.width) } : null;
+  // A paint of its own keeps the style line's width when no width is given (PowerPoint, when only the outline's
+  // colour was changed).
+  const width = lowToHighValue(lines, 'w') ?? (paint ? attr(themeLine(style, ctx), 'w') : undefined);
+  return outline ? { ...outline, width: lineWidth(width, outline.width) } : null;
 }
 /** A line that says how it is painted, or that it isn't, rather than giving only its width. */
 function paintedLine(line: Node): boolean {
@@ -1032,6 +1122,7 @@ async function shapePaintOf(
       }
       case 'blipFill': {
         const picture = await pictureOf(fill, part, ctx);
+        if (!picture) ctx.lostPictureFill = true;
         return picture ? { color: null, picture } : { color: reference };
       }
       default:
@@ -1110,10 +1201,12 @@ function drawingElement(name: string, children: XmlNode[] = [], attrs = {}): Xml
   return { name: 'a:' + name, attrs, children, text: '' };
 }
 
-function tableStylePaint(node: Node, part: Part, ctx: Context): PaintSource[] {
-  const fill = child(node, 'fill');
-  if (fill) return [{ props: fill, part }];
-  const ref = child(node, 'fillRef');
+/**
+ * The fill a style reference names in the theme (a table part's or a shape's `fillRef`, a background's `bgRef`): from 1
+ * the theme's fill styles, from 1001 its background fills, each in the reference's colour; 0 and 1000 no fill. A theme
+ * without that style gives the reference colour (with the note, if one is given).
+ */
+function themeFill(ref: Node, part: Part, ctx: Context, missingNote?: string): PaintSource[] {
   if (!ref) return [];
   const index = number(attr(ref, 'idx'), 0);
   if (index === 0 || index === 1000)
@@ -1123,11 +1216,22 @@ function tableStylePaint(node: Node, part: Part, ctx: Context): PaintSource[] {
   const themed = kids(list)[index - (index >= 1001 ? 1001 : 1)];
   if (themed && ctx.theme.part)
     return [{ props: drawingElement('fill', [themed]), part: ctx.theme.part, placeholder }];
-  ctx.issues.add('A table fill style is missing from its theme; its reference colour is used.');
+  if (missingNote) ctx.issues.add(missingNote);
   const copy = placeholder
     ? drawingElement('solidFill', kids(ref).filter(isColor))
     : drawingElement('noFill');
   return [{ props: drawingElement('fill', [copy]), part }];
+}
+
+function tableStylePaint(node: Node, part: Part, ctx: Context): PaintSource[] {
+  const fill = child(node, 'fill');
+  if (fill) return [{ props: fill, part }];
+  return themeFill(
+    child(node, 'fillRef'),
+    part,
+    ctx,
+    'A table fill style is missing from its theme; its reference colour is used.',
+  );
 }
 
 function tableTextStyle(part: XmlNode): XmlNode[] {
@@ -1219,12 +1323,26 @@ type TableEdgeCandidate = Omit<TableEdge, 'outline'> & { outline: Outline | null
 const tableEdgeKey = (vertical: boolean, boundary: number, start: number) =>
   `${vertical ? 'v' : 'h'}:${boundary}:${start}`;
 
-/** The widest perpendicular stroke that touches this end of an edge. */
-function joiningStroke(edges: ReadonlyMap<string, TableEdgeCandidate>, edge: TableEdge, end: number): number {
-  return Math.max(
-    edges.get(tableEdgeKey(!edge.vertical, end, edge.boundary - 1))?.outline?.width ?? 0,
-    edges.get(tableEdgeKey(!edge.vertical, end, edge.boundary))?.outline?.width ?? 0,
-  );
+/**
+ * The stroke that squares off this end of an edge (`after`: the end the run reaches, else the one it starts from). Only
+ * a true corner grows: exactly one perpendicular border meets the end and no border carries the run on. A free end, a
+ * T-junction, a crossing and a run that carries on in another colour or width don't, so a see-through border never
+ * paints a junction twice.
+ */
+function cornerStroke(
+  edges: ReadonlyMap<string, TableEdgeCandidate>,
+  edge: TableEdge,
+  end: number,
+  after: boolean,
+): number {
+  const painted = (vertical: boolean, boundary: number, start: number) =>
+    edges.get(tableEdgeKey(vertical, boundary, start))?.outline ?? null;
+  const across = [
+    painted(!edge.vertical, end, edge.boundary - 1),
+    painted(!edge.vertical, end, edge.boundary),
+  ].filter((outline) => outline !== null);
+  const onward = painted(edge.vertical, edge.boundary, after ? end : end - 1);
+  return across.length === 1 && !onward ? (across[0]?.width ?? 0) : 0;
 }
 
 function addTableEdge(edges: Map<string, TableEdgeCandidate>, edge: TableEdgeCandidate): void {
@@ -1261,6 +1379,81 @@ function joinedTableEdges(edges: Iterable<TableEdge>): TableEdge[] {
   return joined;
 }
 
+/** A border line in a theme colour, as PowerPoint's built-in table styles draw them (1 pt is 12,700 EMU). */
+const styleLine = (width: number, color: string) =>
+  `<a:ln w="${String(width)}" cmpd="sng"><a:solidFill><a:schemeClr val="${color}"/></a:solidFill></a:ln>`;
+const TABLE_SIDES = ['left', 'right', 'top', 'bottom', 'insideH', 'insideV'];
+const tablePart = (name: string, style: string, words = '') =>
+  `<a:${name}>${words}<a:tcStyle>${style}</a:tcStyle></a:${name}>`;
+
+/** PowerPoint's Medium Style 2 in one colour: its body at 20% and its bands at 40%, its header and edges in full. */
+function mediumStyle2(color: string): string {
+  const words = (bold: boolean, inColor: string) =>
+    `<a:tcTxStyle${bold ? ' b="on"' : ''}><a:fontRef idx="minor"><a:prstClr val="black"/></a:fontRef><a:schemeClr val="${inColor}"/></a:tcTxStyle>`;
+  const fill = (tint = 0) =>
+    `<a:fill><a:solidFill><a:schemeClr val="${color}">${tint ? `<a:tint val="${String(tint)}"/>` : ''}</a:schemeClr></a:solidFill></a:fill>`;
+  const sides = TABLE_SIDES.map((side) => `<a:${side}>${styleLine(12_700, 'lt1')}</a:${side}>`).join('');
+  return (
+    tablePart('wholeTbl', `<a:tcBdr>${sides}</a:tcBdr>${fill(20_000)}`, words(false, 'dk1')) +
+    tablePart('band1H', `<a:tcBdr/>${fill(40_000)}`) +
+    tablePart('band2H', '<a:tcBdr/>') +
+    tablePart('band1V', `<a:tcBdr/>${fill(40_000)}`) +
+    tablePart('band2V', '<a:tcBdr/>') +
+    tablePart('lastCol', `<a:tcBdr/>${fill()}`, words(true, 'lt1')) +
+    tablePart('firstCol', `<a:tcBdr/>${fill()}`, words(true, 'lt1')) +
+    tablePart(
+      'lastRow',
+      `<a:tcBdr><a:top>${styleLine(38_100, 'lt1')}</a:top></a:tcBdr>${fill()}`,
+      words(true, 'lt1'),
+    ) +
+    tablePart(
+      'firstRow',
+      `<a:tcBdr><a:bottom>${styleLine(38_100, 'lt1')}</a:bottom></a:tcBdr>${fill()}`,
+      words(true, 'lt1'),
+    )
+  );
+}
+
+/** PowerPoint's two plain styles: no fill and words in the text colour, with or without a 1 pt grid in it. */
+function plainStyle(grid: boolean): string {
+  const line = grid ? styleLine(12_700, 'tx1') : '<a:ln><a:noFill/></a:ln>';
+  const sides = TABLE_SIDES.map((side) => `<a:${side}>${line}</a:${side}>`).join('');
+  return tablePart(
+    'wholeTbl',
+    `<a:tcBdr>${sides}</a:tcBdr><a:fill><a:noFill/></a:fill>`,
+    '<a:tcTxStyle><a:fontRef idx="minor"><a:scrgbClr r="0" g="0" b="0"/></a:fontRef><a:schemeClr val="tx1"/></a:tcTxStyle>',
+  );
+}
+
+/**
+ * PowerPoint's commonest built-in table styles, by ID, for a deck that names one without saving its definition
+ * (python-pptx and some exporters name Medium Style 2 - Accent 1 over an empty style list): the Medium Style 2 family
+ * and the two plain styles. A deck's own definition comes first; another unsaved style keeps its note.
+ */
+const BUILT_IN_TABLE_STYLES = new Map<string, () => string>([
+  ['{073a0daa-6af3-43ab-8588-cec1d06c72b9}', () => mediumStyle2('dk1')],
+  ['{5c22544a-7ee6-4342-b048-85bdc9fd1c3a}', () => mediumStyle2('accent1')],
+  ['{21e4aea4-8dfa-4a89-87eb-49c32662afe8}', () => mediumStyle2('accent2')],
+  ['{f5ab1c69-6edb-4ff4-983f-18bd219ef322}', () => mediumStyle2('accent3')],
+  ['{00a15c55-8517-42aa-b614-e9b94910e393}', () => mediumStyle2('accent4')],
+  ['{7df18680-e054-41ad-8bc1-d1aef772440d}', () => mediumStyle2('accent5')],
+  ['{93296810-a885-4be3-a3e7-6d5beea58f35}', () => mediumStyle2('accent6')],
+  ['{2d5abb26-0587-4c30-8999-92f81fd0307c}', () => plainStyle(false)],
+  ['{5940675a-b579-460e-94d1-54222c63f5da}', () => plainStyle(true)],
+]);
+const builtInTableStyles = new Map<string, XmlNode>();
+
+/** A built-in table style's definition (see `BUILT_IN_TABLE_STYLES`), read once. */
+function builtInTableStyle(id: string | undefined): XmlNode | undefined {
+  const make = id === undefined ? undefined : BUILT_IN_TABLE_STYLES.get(id);
+  if (id === undefined || !make) return undefined;
+  const known = builtInTableStyles.get(id);
+  if (known) return known;
+  const style = parseXml(`<a:tblStyle styleId="${id}">${make()}</a:tblStyle>`);
+  builtInTableStyles.set(id, style);
+  return style;
+}
+
 async function tableObjects(
   table: XmlNode,
   part: Part,
@@ -1282,7 +1475,9 @@ async function tableObjects(
   const properties = child(table, 'tblPr');
   const inline = child(properties, 'tableStyle');
   const styleId = child(properties, 'tableStyleId')?.text.trim().toLowerCase();
-  const style = inline ? { style: inline, part } : ctx.tableStyles.get(styleId ?? '');
+  const saved = inline ? { style: inline, part } : ctx.tableStyles.get(styleId ?? '');
+  const builtIn = saved ? undefined : builtInTableStyle(styleId);
+  const style = saved ?? (builtIn ? { style: builtIn, part } : undefined);
   if (styleId && !style)
     ctx.issues.add('A table style was not included in the source; its own cell formatting is used.');
   const addPaint = (paint: SourcePaint, place: NonNullable<ReturnType<typeof placed>>) => {
@@ -1388,11 +1583,11 @@ async function tableObjects(
     const first = stops[start];
     const last = stops[end];
     if (at === undefined || first === undefined || last === undefined) return null;
-    // Square off a join without extending a free end or adding another editable object.
+    // Square off a corner without extending a free end or adding another editable object.
     const scale = vertical ? Math.hypot(matrix[2], matrix[3]) : Math.hypot(matrix[0], matrix[1]);
     const halfStroke = EMU / (2 * scale);
-    const from = first - joiningStroke(edges, border, start) * halfStroke;
-    const to = last + joiningStroke(edges, border, end) * halfStroke;
+    const from = first - cornerStroke(edges, border, start, false) * halfStroke;
+    const to = last + cornerStroke(edges, border, end, true) * halfStroke;
     const edge = vertical
       ? { x: rect.x + at, y: rect.y + from, width: 0, height: to - from }
       : { x: rect.x + from, y: rect.y + at, width: to - from, height: 0 };
@@ -1513,7 +1708,12 @@ async function objectOf(
     return fallbackPicture(rect, matrix, ctx);
   }
   const output: SlideElement[] = [];
-  const paint = await shapePaintOf(paints, ctx, referenceColor(chain, 'fillRef', ctx));
+  // The shape's own fill, else its style's fill from the theme (a gradient too), as PowerPoint draws a styled shape.
+  const style = lastChild(
+    chain.map((shape) => child(shape, 'style')),
+    'fillRef',
+  );
+  const paint = await shapePaintOf([...themeFill(style, part, ctx), ...paints], ctx, null);
   const outline = shapeOutline(chain, props, ctx, shape === 'line' ? (paint.color ?? '#000000') : null);
   if (paint.picture) {
     output.push({
@@ -1686,7 +1886,7 @@ async function walk(
       ctx.issues.add('Tables, charts and embedded objects are not reproduced in this editable slide.');
     }
     if (result.length > available)
-      throw new EditableObjectLimit('A source slide exceeds the 500 editable-object limit.');
+      throw new EditableObjectLimit(`A source page has more than ${String(MAX_ELEMENTS)} objects.`);
   }
   return result;
 }
@@ -1698,8 +1898,15 @@ function imageExtension(bytes: Buffer): string | null {
   return null;
 }
 
-/** Read source objects without changing its bytes or invoking a presentation app. */
-export async function readEditablePptx(file: string, outDir: string): Promise<EditablePptx> {
+/**
+ * Read source objects without changing its bytes or invoking a presentation app. `limits.pictureBytes`, the most
+ * picture bytes read for one deck, is given only by tests.
+ */
+export async function readEditablePptx(
+  file: string,
+  outDir: string,
+  limits: { pictureBytes: number } = { pictureBytes: MAX_IMAGE_TOTAL },
+): Promise<EditablePptx> {
   if ((await stat(file)).size > 1024 ** 3)
     throw new Error('This presentation is too large to prepare safely.');
   const entries = await listZip(file),
@@ -1760,18 +1967,49 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
   const ids = kids(child(presentation.root, 'sldIdLst'), 'sldId');
   if (ids.length === 0 || ids.length > 2000)
     throw new Error('A presentation must have between 1 and 2000 editable slides.');
-  const pictureParts = new Set<string>();
-  for (const path of roots.keys()) {
-    if (!path.endsWith('.xml')) continue;
-    for (const rel of makePart(path, roots)?.rels.values() ?? [])
-      if (!rel.external && rel.target && rel.type.endsWith('/image')) pictureParts.add(rel.target);
-  }
-  const selectedImages = entries.filter(
-    (entry) => pictureParts.has(entry.name) && entry.size <= MAX_IMAGE && entry.compressedSize <= MAX_IMAGE,
+  // Each page with its parts, in deck order.
+  const pages = ids.map((id, sourceIndex) => {
+    const rel = presentation.rels.get(attr(id, 'r:id') ?? '');
+    const slide =
+      rel?.target && rel.type.endsWith('/slide') && !rel.external ? makePart(rel.target, roots) : undefined;
+    if (!slide || nameOf(slide.root) !== 'sld') return null;
+    const layout = related(slide, 'slideLayout', roots),
+      master = related(layout, 'slideMaster', roots);
+    return { sourceIndex, slide, layout, master, theme: related(master, 'theme', roots) };
+  });
+  // The pictures are read within one budget, page by page in deck order (PF-13): a page whose new pictures don't fit
+  // in what is left stays as its saved picture, with a note, and the deck's other pages are read. A page counts the
+  // pictures it can draw: its own, its layout's, master's and theme's, and the table styles'.
+  const sizes = new Map(
+    entries.flatMap((entry) =>
+      entry.size <= MAX_IMAGE && entry.compressedSize <= MAX_IMAGE ? [[entry.name, entry.size] as const] : [],
+    ),
   );
-  if (selectedImages.reduce((sum, entry) => sum + entry.size, 0) > MAX_IMAGE_TOTAL)
-    throw new Error('The embedded pictures exceed the editable memory limit.');
-  const pictures = await readParts(file, selectedImages, MAX_IMAGE, MAX_IMAGE_TOTAL);
+  const kept = new Set<string>();
+  const overBudget = new Set<number>();
+  let left = limits.pictureBytes;
+  for (const page of pages) {
+    if (!page) continue;
+    const fresh = new Set<string>();
+    for (const part of [page.slide, page.layout, page.master, page.theme, stylePart])
+      for (const rel of part?.rels.values() ?? []) {
+        const target = !rel.external && rel.type.endsWith('/image') ? rel.target : null;
+        if (target && sizes.has(target) && !kept.has(target)) fresh.add(target);
+      }
+    const bytes = [...fresh].reduce((sum, name) => sum + (sizes.get(name) ?? 0), 0);
+    if (bytes > left) {
+      overBudget.add(page.sourceIndex);
+      continue;
+    }
+    left -= bytes;
+    for (const name of fresh) kept.add(name);
+  }
+  const pictures = await readParts(
+    file,
+    entries.filter((entry) => kept.has(entry.name)),
+    MAX_IMAGE,
+    limits.pictureBytes,
+  );
   const media: ParsedMediaRef[] = [],
     saved = new Map<string, string>();
   let assetDir: string | null = null;
@@ -1810,15 +2048,16 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
   };
   const slides: EditablePptxSlide[] = [];
   const failedNotes: Record<number, string[]> = {};
-  for (const [sourceIndex, id] of ids.entries()) {
-    const rel = presentation.rels.get(attr(id, 'r:id') ?? '');
-    const slide =
-      rel?.target && rel.type.endsWith('/slide') && !rel.external ? makePart(rel.target, roots) : undefined;
-    if (!slide || nameOf(slide.root) !== 'sld') continue;
-    const layout = related(slide, 'slideLayout', roots),
-      master = related(layout, 'slideMaster', roots);
-    const theme = related(master, 'theme', roots),
-      issues = new Set<string>();
+  for (const page of pages) {
+    if (!page) continue;
+    const { sourceIndex, slide, layout, master, theme } = page;
+    if (overBudget.has(sourceIndex)) {
+      failedNotes[sourceIndex] = [
+        `Page ${String(sourceIndex + 1)} of the original stays as its saved picture: its pictures go past the ${String(MAX_IMAGE_TOTAL / 1024 ** 2)} MB of pictures Drashti can edit in one deck.`,
+      ];
+      continue;
+    }
+    const issues = new Set<string>();
     if (
       (!layout && [...slide.rels.values()].some((r) => r.type.endsWith('/slideLayout'))) ||
       (!master && [...(layout?.rels.values() ?? [])].some((r) => r.type.endsWith('/slideMaster')))
@@ -1834,6 +2073,7 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       defaults: child(presentation.root, 'defaultTextStyle'),
       tableStyles,
       issues,
+      lostPictureFill: false,
       id: () => `pptx-${String(sourceIndex)}-${String(++nextId)}`,
       asset,
     };
@@ -1841,20 +2081,27 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       const bg = child(child(part?.root, 'cSld'), 'bg');
       return part && bg ? [{ part, bg }] : [];
     });
+    // The nearest background wins: its own fill, or the theme's background style it names (a gradient or a picture
+    // too, in its colour).
+    const nearest = backgrounds.at(-1);
+    const ref = child(nearest?.bg, 'bgRef');
     const paint = await shapePaintOf(
-      backgrounds.map(({ part, bg }) => ({ part, props: child(bg, 'bgPr') })),
+      ref && nearest
+        ? themeFill(
+            ref,
+            nearest.part,
+            ctx,
+            'A theme background style uses its reference colour in the editable copy.',
+          )
+        : backgrounds.map(({ part, bg }) => ({ part, props: child(bg, 'bgPr') })),
       ctx,
       ctx.theme.colors[ctx.theme.map['bg1'] ?? 'lt1'] ?? '#ffffff',
     );
-    let background = paint.color;
-    const ref = child(backgrounds.at(-1)?.bg, 'bgRef');
-    if (ref) {
-      background = colorOf(ref, ctx) ?? background;
-      ctx.issues.add('A theme background style uses its reference colour in the editable copy.');
-    }
+    // A style index of no fill (0 or 1000) keeps the reference colour, as before.
+    const background = ref && paint.color === null && !paint.picture ? colorOf(ref, ctx) : paint.color;
     const frame = { x: 0, y: 0, width, height };
     const elements: SlideElement[] = [];
-    if (!ref && paint.picture) {
+    if (paint.picture) {
       elements.push({
         id: ctx.id(),
         kind: 'image',
@@ -1863,7 +2110,7 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
         ...paint.picture,
         fit: 'stretch',
       });
-    } else if (!ref && paint.gradient) {
+    } else if (paint.gradient) {
       const backdrop: ShapeElement = {
         id: ctx.id(),
         kind: 'shape',
@@ -1895,7 +2142,7 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       // An absent source page stays as its retained picture. The rest of the deck is still editable.
       if (error instanceof EditableObjectLimit) {
         failedNotes[sourceIndex] = [
-          `PowerPoint source page ${String(sourceIndex + 1)} exceeds the ${String(MAX_ELEMENTS)}-object editing limit and stays as its saved picture.`,
+          `Page ${String(sourceIndex + 1)} of the original has more than ${String(MAX_ELEMENTS)} objects, so it stays as its saved picture.`,
         ];
         continue;
       }
@@ -1907,6 +2154,7 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
       background,
       elements,
       issues: [...issues],
+      ...(ctx.lostPictureFill ? { lostPictureFill: true as const } : {}),
     });
   }
   const hasFailedNotes = Object.keys(failedNotes).length > 0;

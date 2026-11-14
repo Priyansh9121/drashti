@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { EDITABLE_SOURCE_LIMITS, type PreparedSource } from '../../shared/editable-source';
 import type { SourceRead } from './source-reader';
 import type { PptxReaderChild, ToPptxReader } from './pptx-reader-protocol';
 import { pptxReader } from './pptx-reader-service';
@@ -44,6 +45,43 @@ function setup() {
   const read = pptxReader(() => child, { timeoutMs: 5_000, cancelGraceMs: 10, exitGraceMs: 10 });
   return { root, request, stop, child, read };
 }
+/** The worker's one reply to the job it was given, then its exit: what Main makes of it. */
+async function answer(
+  t: ReturnType<typeof setup>,
+  reply: (jobId: string) => unknown,
+): Promise<PreparedSource> {
+  const pending = t.read(t.request);
+  await vi.waitFor(() => expect(t.child.sent).toHaveLength(1), { interval: 1 });
+  const start = t.child.sent[0];
+  if (start?.type !== 'read') throw new Error('No source start.');
+  t.child.message(reply(start.jobId));
+  t.child.exit(0);
+  return await pending;
+}
+const page = (elements: unknown[], assets: unknown[]) => ({
+  sourceIndex: 0,
+  width: 960,
+  height: 540,
+  background: '#ffffff',
+  elements,
+  assets,
+  issues: [],
+});
+const placeholderShape = {
+  id: 'Placeholder shape',
+  kind: 'shape',
+  frame: { x: 0, y: 0, width: 10, height: 10 },
+  fill: '#123456',
+  opacity: 1,
+  cornerRadius: 0,
+};
+const placeholderImage = (index: number) => ({
+  id: `Placeholder image ${String(index)}`,
+  kind: 'image',
+  mediaId: `media-ref:${String(index)}`,
+  fit: 'fit',
+  frame: { x: 0, y: 0, width: 10, height: 10 },
+});
 afterEach(() => {
   vi.useRealTimers();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -86,19 +124,74 @@ describe('PPTX source utility lifecycle', () => {
     expect(t.child.killed).toBe(1);
   });
 
-  it.each([0, 1])('passes a source note only for its own failed page (%s)', async (index) => {
+  // A note on page 1 of a one-page deck fails on the deck's length first; in a two-page deck, it reaches the check
+  // that its page is one that failed (C23's review LOW-3).
+  it.each([
+    { index: 0, total: 1, kept: true },
+    { index: 1, total: 1, kept: false },
+    { index: 1, total: 2, kept: false },
+  ])(
+    'passes a source note only for its own failed page ($index of $total)',
+    async ({ index, total, kept }) => {
+      const t = setup();
+      const pending = t.read(t.request);
+      await vi.waitFor(() => expect(t.child.sent).toHaveLength(1), { interval: 1 });
+      const start = t.child.sent[0];
+      if (start?.type !== 'read') throw new Error('No source start.');
+      const failedNotes = { [index]: ['Placeholder source page exceeds the 500-object editing limit.'] };
+      t.child.message({ type: 'prepared', jobId: start.jobId, pages: [], total, failed: [0], failedNotes });
+      await vi.waitFor(() => expect(t.child.killed).toBe(1), { interval: 1 });
+      t.child.exit(0);
+      expect(await pending).toMatchObject(
+        kept ? { ok: true, pages: [], total, failed: [0], failedNotes } : { ok: false },
+      );
+    },
+  );
+
+  // C25's review LOW-2: Main's own checks refuse a hostile reply, whatever the worker says it checked.
+  it.each([
+    [1_000_000, true],
+    [1_000_001, false],
+  ])('checks a drawing placed at %s itself', async (x, kept) => {
     const t = setup();
-    const pending = t.read(t.request);
-    await vi.waitFor(() => expect(t.child.sent).toHaveLength(1), { interval: 1 });
-    const start = t.child.sent[0];
-    if (start?.type !== 'read') throw new Error('No source start.');
-    const failedNotes = { [index]: ['Placeholder source page exceeds the 500-object editing limit.'] };
-    t.child.message({ type: 'prepared', jobId: start.jobId, pages: [], total: 1, failed: [0], failedNotes });
-    await vi.waitFor(() => expect(t.child.killed).toBe(1), { interval: 1 });
-    t.child.exit(0);
-    expect(await pending).toMatchObject(
-      index === 0 ? { ok: true, pages: [], failed: [0], failedNotes } : { ok: false },
-    );
+    const result = await answer(t, (jobId) => ({
+      type: 'prepared',
+      jobId,
+      total: 1,
+      failed: [],
+      pages: [page([{ ...placeholderShape, frame: { x, y: 0, width: 10, height: 10 } }], [])],
+    }));
+    expect(result.ok).toBe(kept);
+  });
+
+  it('checks a page’s pictures itself: each file once, up to 32 MiB', async () => {
+    for (const over of [false, true]) {
+      const t = setup();
+      // A file made as long as the limit without writing it (sparse where the disk allows): Main reads only its size.
+      const big = join(t.request.outDir, 'placeholder-big.png');
+      writeFileSync(big, '');
+      truncateSync(big, EDITABLE_SOURCE_LIMITS.pageAssetBytes);
+      writeFileSync(join(t.request.outDir, 'placeholder-small.png'), 'x');
+      // Two pictures of the one big file count it once: the page is exactly at the limit, and one byte more is over.
+      const files = [
+        'placeholder-big.png',
+        'placeholder-big.png',
+        ...(over ? ['placeholder-small.png'] : []),
+      ];
+      const result = await answer(t, (jobId) => ({
+        type: 'prepared',
+        jobId,
+        total: 1,
+        failed: [],
+        pages: [
+          page(
+            files.map((_, i) => placeholderImage(i)),
+            files.map((relative, i) => ({ token: `media-ref:${String(i)}`, relative, kind: 'image' })),
+          ),
+        ],
+      }));
+      expect(result.ok, over ? 'one byte over the limit' : 'exactly the limit').toBe(!over);
+    }
   });
 
   it('cancels with a bounded grace and quarantines unconfirmed output without spawning another child', async () => {
