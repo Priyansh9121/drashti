@@ -101,6 +101,41 @@ const CHANGED = {
 };
 const FAILED = 'Drashti couldn’t keep the trimmed video. Check the video file and try Trim again.';
 const RESET_LIVE = 'Take the video off before resetting this row.';
+const BEING_MADE = {
+  ok: false as const,
+  message:
+    'This video is already being trimmed. Wait for Preparing to clear, or open Trim again and press Stop.',
+};
+
+/** Why a cut accepted before Drashti closed cannot carry on: its row changed, it was never made, or its original. */
+type NotResumable = 'row' | 'closed' | 'original';
+
+/** The names, each once, in one list: “A”, “B” and “C”. */
+const quotedList = (names: readonly string[]) =>
+  new Intl.ListFormat('en').format([...new Set(names.map((name) => `“${name}”`))]);
+
+/**
+ * The start notice for the cuts that cannot carry on, with why (TM-3): those Drashti closed before making (a record
+ * from before cuts carried on), then those whose original video changed while it was closed.
+ */
+function notMadeNotice(closed: readonly string[], changed: readonly string[]): string | null {
+  const count = closed.length + changed.length;
+  if (count === 0) return null;
+  const sentences: string[] = [];
+  if (closed.length === 1)
+    sentences.push(`The cut of ${quotedList(closed)} wasn’t made because Drashti closed.`);
+  else if (closed.length > 1)
+    sentences.push(`The cuts of ${quotedList(closed)} weren’t made because Drashti closed.`);
+  if (changed.length === 1)
+    sentences.push(
+      `The cut of ${quotedList(changed)} wasn’t made because its original video changed while Drashti was closed.`,
+    );
+  else if (changed.length > 1)
+    sentences.push(
+      `The cuts of ${quotedList(changed)} weren’t made because their original videos changed while Drashti was closed.`,
+    );
+  return `${sentences.join(' ')} Open Trim and save ${count === 1 ? 'it' : 'them'} again.`;
+}
 
 function cutFailed(name: string, reason: string): string {
   const failed = `Drashti couldn’t make the cut of “${name}”.`;
@@ -147,8 +182,12 @@ export class PlaylistTrims {
     this.copies = new Set(trimCopiesSchema.safeParse(deps.copies.load()).data ?? []);
   }
 
+  /**
+   * The rows that say Preparing: a cut being made, or one accepted before Drashti closed and waiting to carry on
+   * (TM-1), from the start.
+   */
   list(): string[] {
-    return [...this.pending.keys()];
+    return [...new Set([...this.pending.keys(), ...this.interrupted.map((cut) => cut.itemId)])];
   }
 
   /**
@@ -161,25 +200,27 @@ export class PlaylistTrims {
     this.activityChanged();
   }
 
-  /** A cut accepted before Drashti closed can carry on: its row, its original and the original's file are as they were. */
-  private canResume(cut: KeptTrim): { row: TrimSource; request: KeptRequest; mediaDir: string } | null {
-    const request = cut.request;
-    if (!request) return null;
+  /**
+   * A cut accepted before Drashti closed can carry on: its row, its original and the original's file are as they were.
+   * If not, why: its row changed (nothing to name), it is a record from before cuts carried on (Drashti closed before
+   * making it), or its original video changed (another file, or the file itself changed or gone).
+   */
+  private resumable(
+    cut: KeptTrim,
+  ): { row: TrimSource; request: KeptRequest; mediaDir: string } | NotResumable {
     const row = this.deps.repo.row(cut.itemId);
-    if (
-      row?.mediaId !== cut.mediaId ||
-      row.sourceId !== request.sourceId ||
-      row.sourcePath !== request.sourcePath
-    )
-      return null;
+    if (row?.mediaId !== cut.mediaId) return 'row';
+    const request = cut.request;
+    if (!request) return 'closed';
+    if (row.sourceId !== request.sourceId || row.sourcePath !== request.sourcePath) return 'original';
     try {
       const mediaDir = realpathSync.native(this.deps.mediaDir);
       const source = realpathSync.native(join(mediaDir, row.sourcePath));
       return isInside(mediaDir, source) && fileIdentity(source) === request.sourceIdentity
         ? { row, request, mediaDir }
-        : null;
+        : 'original';
     } catch {
-      return null;
+      return 'original';
     }
   }
 
@@ -198,8 +239,8 @@ export class PlaylistTrims {
         this.resuming = 'waiting';
         return;
       }
-      const start = this.canResume(cut);
-      if (!start) {
+      const start = this.resumable(cut);
+      if (typeof start === 'string') {
         // The start notice names it (or has, and the operator changed its row since): Trim is opened again.
         if (this.reported) this.removeInterrupted(cut);
         continue;
@@ -216,7 +257,6 @@ export class PlaylistTrims {
         if (copy && path && !this.deps.repo.referencesFile(copy.path, path)) {
           const pending: PendingTrim = { queueId: null, kept: cut, copy, wake: null };
           this.pending.set(cut.itemId, pending);
-          this.deps.pendingChanged(this.list());
           this.removeInterrupted(cut);
           void this.finish(
             row,
@@ -245,35 +285,44 @@ export class PlaylistTrims {
     await this.cleanupCopies();
   }
 
+  /** A cut accepted before Drashti closed is done with (carried on, made, or not to be): its row's Preparing goes. */
   private removeInterrupted(cut: KeptTrim): void {
     this.interrupted = this.interrupted.filter((record) => record !== cut);
     this.keepWaiting();
+    this.deps.pendingChanged(this.list());
   }
 
-  /** The operator's own Trim or Reset of a row takes the place of that row's cut accepted before Drashti closed. */
-  private forgetInterrupted(itemId: string): void {
-    if (!this.interrupted.some((cut) => cut.itemId === itemId)) return;
+  /**
+   * The operator's Stop or Reset of a row, once accepted, lets go of that row's cut accepted before Drashti closed
+   * (TM-1: never before, so a refused Reset keeps it). Whether there was one.
+   */
+  private forgetInterrupted(itemId: string): boolean {
+    if (!this.interrupted.some((cut) => cut.itemId === itemId)) return false;
     this.interrupted = this.interrupted.filter((cut) => cut.itemId !== itemId);
     this.keepWaiting();
+    this.deps.pendingChanged(this.list());
+    return true;
   }
 
   /**
    * The operator reads this once at startup, after the window can show a notice. It waits for no FFmpeg: it names
-   * the cuts that cannot carry on (their row, original or original's file changed, or a record from before cuts
-   * carried on), by the cheap checks alone; the rest carry on once the start is known.
+   * the cuts that cannot carry on, with why (TM-3: Drashti closed before making one, from before cuts carried on, or
+   * its original video changed), by the cheap checks alone, and their rows stop saying Preparing; a cut whose row
+   * changed goes unnamed. The rest carry on once the start is known.
    */
   reportInterrupted(): string | null {
     this.reported = true;
-    const cannot = this.interrupted.filter((cut) => this.canResume(cut) === null);
+    const cannot = this.interrupted.flatMap((cut) => {
+      const why = this.resumable(cut);
+      return typeof why === 'string' ? [{ cut, why }] : [];
+    });
     if (cannot.length === 0) return null;
-    this.interrupted = this.interrupted.filter((cut) => !cannot.includes(cut));
+    this.interrupted = this.interrupted.filter((cut) => !cannot.some((record) => record.cut === cut));
     this.keepWaiting();
-    const missed = cannot.filter((cut) => this.deps.repo.row(cut.itemId)?.mediaId === cut.mediaId);
-    if (missed.length === 0) return null;
-    const names = new Intl.ListFormat('en').format([...new Set(missed.map((cut) => `“${cut.name}”`))]);
-    return missed.length === 1
-      ? `The cut of ${names} wasn’t made because Drashti closed. Open Trim and save it again.`
-      : `The cuts of ${names} weren’t made because Drashti closed. Open Trim and save them again.`;
+    this.deps.pendingChanged(this.list());
+    const named = (why: NotResumable) =>
+      cannot.filter((record) => record.why === why).map(({ cut }) => cut.name);
+    return notMadeNotice(named('closed'), named('original'));
   }
 
   /**
@@ -292,25 +341,27 @@ export class PlaylistTrims {
       });
   }
 
-  /** The operator's Trim of a row: it takes the place of any cut of that row accepted before Drashti closed. */
+  /**
+   * The operator's Trim of a row. While that row says Preparing (a cut being made, or one accepted before Drashti
+   * closed waiting to carry on: TM-1) only a Reset is taken; Stop lets the cut go first.
+   */
   async apply(itemId: string, request: RowTrimRequest): Promise<RowTrimResult> {
-    this.forgetInterrupted(itemId);
-    return this.applyRequest(itemId, request);
+    return this.applyRequest(itemId, request, true);
   }
 
-  private async applyRequest(itemId: string, { mediaId, points }: RowTrimRequest): Promise<RowTrimResult> {
+  private async applyRequest(
+    itemId: string,
+    { mediaId, points }: RowTrimRequest,
+    byOperator = false,
+  ): Promise<RowTrimResult> {
     const row = this.deps.repo.row(itemId);
     if (row?.mediaId !== mediaId || this.closed) return CHANGED;
     const before = this.deps.repo.view(itemId);
     if (!before) return CHANGED;
     if (points.startMs === null && points.endMs === null && before.canReset)
       return this.resetRow(row, resetMarkerEdits(before.markers, points));
-    if (this.pending.has(itemId))
-      return {
-        ok: false,
-        message:
-          'This video is already being trimmed. Wait for Preparing to clear, or open Trim again and press Stop.',
-      };
+    if (this.pending.has(itemId) || (byOperator && this.interrupted.some((cut) => cut.itemId === itemId)))
+      return BEING_MADE;
     if ((points.startMs ?? 0) === (before.markers.startMs ?? 0) && points.endMs === before.markers.endMs)
       return this.saveMarkers(row, points);
 
@@ -405,16 +456,17 @@ export class PlaylistTrims {
   }
 
   reset(itemId: string, mediaId: string): RowTrimResult {
-    this.forgetInterrupted(itemId);
     const row = this.deps.repo.row(itemId);
     if (row?.mediaId !== mediaId) return CHANGED;
     return this.resetRow(row);
   }
 
+  /** Stop: the row's cut being made stops, or its cut waiting to carry on after a restart is let go (TM-1). */
   stop(itemId: string, mediaId: string): RowTrimResult {
     const row = this.deps.repo.row(itemId);
     if (this.closed || row?.mediaId !== mediaId) return CHANGED;
-    if (!this.cancelPending(itemId))
+    const waiting = this.forgetInterrupted(itemId);
+    if (!this.cancelPending(itemId) && !waiting)
       return {
         ok: false,
         message: 'This cut is no longer preparing. Open Trim again to see the video’s points.',
@@ -439,6 +491,8 @@ export class PlaylistTrims {
         message: 'The original can hold up to 50 markers. Remove a marker and save again.',
       };
     if (reset === 'changed') return CHANGED;
+    // Accepted: the row plays its original again, so its cut waiting to carry on goes too (TM-1), and any being made.
+    this.forgetInterrupted(row.itemId);
     this.cancelPending(row.itemId);
     this.deps.rowChanged(null);
     if (edits) this.deps.markersChanged(row.sourceId);
