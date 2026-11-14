@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import type { DeckEffect } from '../../../shared/deck';
 import { deckMotionFrame, deckShapeShows } from '../../../shared/deck-motion';
 import type { Rect } from '../../../shared/model';
+import { setDrawsWithoutChip } from './chipless';
 import { deckTargetMaskedTwice, paintDeckTarget } from './deck-target-paint';
 
 const bounds = { x: 100, y: 100, width: 600, height: 400 };
@@ -245,5 +246,94 @@ it('takes both of a Box’s masks off when Back paints the step before over it r
     );
     expect(outer.style, name).toMatchObject({ clipPath: '', maskImage: '', maskComposite: '', opacity });
     expect(inner.style, name).toMatchObject({ maskImage: '', maskComposite: '' });
+  }
+});
+
+/** Whether a point (x, y in px from the element's own top left) is inside a CSS polygon clip of a part `size` big. */
+function insideClip(
+  clip: string,
+  size: { width: number; height: number },
+): (x: number, y: number) => boolean {
+  const m = /^polygon\((evenodd, )?(.*)\)$/u.exec(clip);
+  expect(m, clip).not.toBeNull();
+  const points = (m?.[2] ?? '').split(', ').map((pair): [number, number] => {
+    const [x = '', y = ''] = pair.split(' ');
+    expect(x.endsWith('%') && y.endsWith('%'), clip).toBe(true);
+    return [(Number.parseFloat(x) / 100) * size.width, (Number.parseFloat(y) / 100) * size.height];
+  });
+  // Crossings of a ray to the right: odd inside (the even-odd rule; a simple polygon's nonzero one is the same).
+  return (x, y) => {
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const [xi, yi] = points[i] ?? [0, 0];
+      const [xj, yj] = points[j] ?? [0, 0];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+}
+
+it('draws Shape’s hard edge where the page draws without a graphics chip: a clip where PowerPoint’s soft edge is half-way, no masks (C1’s review, HIGH-2)', () => {
+  // Two masks of three gradients each on every moving Box, Plus and Diamond cost frames on a two-core Windows PC while
+  // streaming, where Chromium composites in software (render/chipless.ts); a clip costs what Session 57's hard edge
+  // did. The soft edge stays wherever a graphics chip draws.
+  const parts: Rect[] = [bounds, { x: 400, y: 150, width: 300, height: 350 }];
+  setDrawsWithoutChip(true);
+  try {
+    for (const shape of ['circle', 'box', 'diamond', 'plus'] as const)
+      for (const inward of [false, true])
+        for (const phase of ['in', 'out'] as const)
+          for (const ms of [40, 140, 200, 330]) {
+            const one = effect('shape', { shape, phase, ...(inward ? { inward: true as const } : {}) });
+            const frame = deckMotionFrame([one], 1, ms, bounds, slide);
+            for (const part of parts) {
+              const { outer, inner } = twoStyles();
+              paintDeckTarget(outer.style, frame, bounds, part, inner.style);
+              const name = `${phase} ${shape} ${inward ? 'In' : 'Out'} at ${String(ms)} ms, part ${JSON.stringify(part)}`;
+              expect(outer.style, name).toMatchObject({ maskImage: '', maskComposite: '' });
+              expect(inner.style, name).toMatchObject({ maskImage: '', maskComposite: '' });
+              // Inside the clip exactly where more than half shows (points near the half-way line left out).
+              const inside = insideClip(outer.style.clipPath, part);
+              const off: string[] = [];
+              for (let y = 0.5; y < part.height; y += 9)
+                for (let x = 0.5; x < part.width; x += 9) {
+                  const u = (part.x + x - (bounds.x + bounds.width / 2)) / (bounds.width / 2);
+                  const v = (part.y + y - (bounds.y + bounds.height / 2)) / (bounds.height / 2);
+                  const shows = deckShapeShows(frame.wipe, u, v);
+                  if (Math.abs(shows - 0.5) < 0.1) continue;
+                  if (inside(x, y) !== shows > 0.5)
+                    off.push(`(${String(x)}, ${String(y)}): shows ${String(shows)}`);
+                }
+              expect(off.slice(0, 5), name).toEqual([]);
+            }
+          }
+    // At the end: whole, nothing clipped.
+    const { outer, inner } = twoStyles();
+    const box = effect('shape', { shape: 'box' });
+    paintDeckTarget(outer.style, deckMotionFrame([box], 1, 200, bounds, slide), bounds, bounds, inner.style);
+    paintDeckTarget(outer.style, deckMotionFrame([box], 1, 400, bounds, slide), bounds, bounds, inner.style);
+    expect(outer.style).toMatchObject({ clipPath: '', maskImage: '', opacity: '' });
+  } finally {
+    setDrawsWithoutChip(false);
+  }
+  // With a chip (or not told): the soft edge, as before.
+  const { outer, inner } = twoStyles();
+  const box = effect('shape', { shape: 'box' });
+  paintDeckTarget(outer.style, deckMotionFrame([box], 1, 200, bounds, slide), bounds, bounds, inner.style);
+  expect(outer.style.clipPath).toBe('');
+  expect(outer.style.maskImage).toMatch(/^linear-gradient\(/u);
+  expect(inner.style.maskImage).toMatch(/^linear-gradient\(/u);
+});
+
+it('leaves a Split’s soft edges to their mask where the page draws without a graphics chip, as with one', () => {
+  setDrawsWithoutChip(true);
+  try {
+    const { style } = drawing();
+    const split = effect('split', { splitAxis: 'x' });
+    paintDeckTarget(style, deckMotionFrame([split], 1, 200, bounds, slide), bounds, bounds);
+    expect(style.clipPath).toBe('');
+    expect(style.maskImage).toMatch(/^linear-gradient\(to right, /u);
+  } finally {
+    setDrawsWithoutChip(false);
   }
 });
