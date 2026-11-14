@@ -518,6 +518,69 @@ describe('a deck’s own Wipe, PowerPoint’s soft band (Session 58, C2)', () =>
   });
 });
 
+describe('a deck’s own Push, Cover and Uncover on the slide where it is placed (Session 58, Q58-16)', () => {
+  const SCREEN = { width: 1920, height: 1080 };
+  const FULL = { x: 0, y: 0, width: 1920, height: 1080 };
+  /** A 4:3 slide fitted to a 16:9 screen: bars either side. */
+  const BARS = { x: 240, y: 0, width: 1440, height: 1080 };
+  /** A move in px ('' for none). */
+  const pxOf = (transform: string): number => {
+    if (transform === '') return 0;
+    const m = /^translate[XY]\((-?[\d.e+-]+)px\)$/u.exec(transform);
+    if (!m) throw new Error(`not a move in px: ${transform}`);
+    return Number(m[1]);
+  };
+
+  it('a 4:3 slide fitted to a 16:9 screen moves by its own width (or height) in px, as PowerPoint moves it, its shade and order as before', () => {
+    for (const effect of ['push', 'cover', 'uncover'] as const)
+      for (const direction of ['left', 'right', 'up', 'down'] as const) {
+        const length = direction === 'left' || direction === 'right' ? BARS.width : BARS.height;
+        const t = deckNative(effect, direction);
+        for (const p of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1]) {
+          const onScreen = deckTransitionFrame(t, p);
+          const onSlide = deckTransitionFrame(t, p, 'calm', { in: BARS, out: BARS });
+          for (const side of ['in', 'out'] as const) {
+            // The screen's move, in % of the layer's box, is the slide's in px of the slide's own length.
+            const want = (shiftOf(onScreen[side], 100) / 100) * length;
+            expect(
+              Math.abs(pxOf(onSlide[side].transform) - want),
+              `${effect} ${direction} ${side} at ${String(p)}`,
+            ).toBeLessThan(1e-6);
+            expect(onSlide[side].filter, `${effect} ${direction} ${side}`).toBe(onScreen[side].filter);
+          }
+        }
+      }
+  });
+
+  it('both slides are clipped to the slide where the screen shows past it (the bars stay black); not where the slide fills or crops the screen, nor for the other effects', () => {
+    for (const effect of ['push', 'cover', 'uncover'] as const) {
+      const t = deckNative(effect, 'left');
+      expect(deckSlideClip(t, BARS, BARS, SCREEN), effect).toBe('inset(0px 240px 0px 240px)');
+      // A 16:9 slide fitted to a 4:3 box: bars above and below.
+      expect(
+        deckSlideClip(
+          t,
+          { x: 0, y: 135, width: 1440, height: 810 },
+          { x: 0, y: 135, width: 1440, height: 810 },
+          {
+            width: 1440,
+            height: 1080,
+          },
+        ),
+        effect,
+      ).toBe('inset(135px 0px 135px 0px)');
+      expect(deckSlideClip(t, FULL, FULL, SCREEN), effect).toBe('');
+      // Cropped to fill: the screen's own edge is the slide's.
+      const cropped = { x: 0, y: -180, width: 1920, height: 1440 };
+      expect(deckSlideClip(t, cropped, cropped, SCREEN), effect).toBe('');
+      // A slide of another size going (a 16:9 one before a 4:3 deck): round both, so neither is cut.
+      expect(deckSlideClip(t, BARS, FULL, SCREEN), effect).toBe('');
+    }
+    for (const effect of ['wipe', 'dissolve', 'fade-black', 'zoom'] as const)
+      expect(deckSlideClip(deckNative(effect, 'left'), BARS, BARS, SCREEN), effect).toBe('');
+  });
+});
+
 describe('Drashti’s own transitions are not PowerPoint’s', () => {
   it('Drashti’s own Wipe is as it was: its pictures dissolve and its words’ hard diagonal edge crosses, with no mask or filter', () => {
     const size = { width: 1920, height: 1080 };
