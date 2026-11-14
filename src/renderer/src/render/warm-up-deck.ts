@@ -77,3 +77,55 @@ export function withSplits(slide: RenderSlide): RenderSlide {
   };
   return { ...slide, elements, deck };
 }
+
+/**
+ * How long each shape's Shape runs in the warm-up (Session 58): as long as a Split's, so either slide goes up as long
+ * before the warm-up's moment.
+ */
+export const SHAPE_MS = SPLIT_MS;
+
+/**
+ * Each shape's Shape, by the slide's elements in order, and how far through it is at the warm-up's moment (0 to 1). Its
+ * soft edge (shared/deck-motion.ts, shapeMasks) draws kinds of mask nothing else draws: a Circle a radial gradient of
+ * 4 stops (both sides of its edge inside the shape); a Box a repeating conic gradient (its wedges) over a straight
+ * ramp, on the shape and again on an element within it; a Diamond the same with its ramps along its diagonals.
+ */
+const SHAPES: readonly { shape: NonNullable<DeckEffect['shape']>; inward: boolean; at: number }[] = [
+  { shape: 'circle', inward: true, at: 0.5 },
+  { shape: 'box', inward: false, at: 0.5 },
+  { shape: 'diamond', inward: true, at: 0.4 },
+];
+
+/**
+ * `slide` as a deck's slide Drashti plays itself: its first three elements its shapes, each coming in by a Shape (a
+ * Circle, a Box, a Diamond) that is part-way SHAPE_MS after the slide goes up.
+ */
+export function withShapes(slide: RenderSlide): RenderSlide {
+  const effects: DeckEffect[] = [];
+  const elements = slide.elements.map((element, i) => {
+    const one = SHAPES[i];
+    if (!one) return element;
+    const shapeId = String(i + 2);
+    effects.push({
+      shapeId,
+      step: 0,
+      phase: 'in',
+      kind: 'shape',
+      shape: one.shape,
+      ...(one.inward ? { inward: true as const } : {}),
+      delayMs: Math.round((1 - one.at) * SHAPE_MS),
+      durationMs: SHAPE_MS,
+    });
+    return { ...element, sourceShapeId: shapeId };
+  });
+  const deck: DeckSlide = {
+    steps: [],
+    media: [],
+    motion: {
+      effects,
+      stepsMs: [Math.max(0, ...effects.map((e) => e.delayMs + e.durationMs))],
+      approximate: false,
+    },
+  };
+  return { ...slide, elements, deck };
+}
