@@ -117,7 +117,9 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
     await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
     webContents.emit('did-finish-load');
     await pass(1000, TONE);
-    await vi.waitFor(() => expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'recording' }));
+    await vi.waitFor(() =>
+      expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'recording' }),
+    );
     expect(stream.status().noSound).toBeNull();
     await pass(QUIET_MS + 1500, SILENCE);
     expect(stream.status().live.state).toBe('off');
@@ -131,7 +133,8 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
   });
 
   it('with its sound input unplugged, No sound says so after 3 s, and the recording warns before it gives up', async () => {
-    const { stream, webContents, createProgram, notice, pass } = service();
+    // No sound's own 20 s for quiet here: the unplugged input's 3 s grace comes first, as in a show.
+    const { stream, webContents, createProgram, notice, pass } = service({ noSoundMs: 20_000 });
     expect(stream.startSoundRecording()).toMatchObject({ ok: true });
     await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
     webContents.emit('did-finish-load');
@@ -144,14 +147,17 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
     });
     await pass(2000);
     expect(stream.status().noSound).toBeNull();
-    await pass(1500);
+    // Judged each second: within the second after the 3 s.
+    await pass(2500);
     expect(stream.status().noSound).toMatchObject({
       why: 'input',
       message:
         'The sound input “Generated sound” is not connected. Connect it, or choose another in Stream settings. Until then the sound recording gets no sound.',
     });
     await pass(2000);
-    expect(stream.status().recording.warning).toMatch(/^Nothing has come from the sound input for 5 seconds\./u);
+    expect(stream.status().recording.warning).toMatch(
+      /^Nothing has come from the sound input for 5 seconds\./u,
+    );
     expect(notice).toHaveBeenCalledWith(stream.status().recording.warning);
   });
 
@@ -177,7 +183,9 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
     expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'starting', warning: null });
     webContents.emit('did-finish-load');
     await pass(1000, TONE);
-    await vi.waitFor(() => expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'recording' }));
+    await vi.waitFor(() =>
+      expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'recording' }),
+    );
   });
 
   it('says nothing about FAT32 for a sound recording on such a drive (a WAV part holds 32 hours)', async () => {
@@ -187,7 +195,9 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
     await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
     webContents.emit('did-finish-load');
     await pass(3500, TONE);
-    await vi.waitFor(() => expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'recording' }));
+    await vi.waitFor(() =>
+      expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'recording' }),
+    );
     expect(stream.status().recording.warning ?? '').not.toContain('FAT32');
     expect(notice).not.toHaveBeenCalledWith(expect.stringContaining('FAT32'));
   });

@@ -47,7 +47,6 @@ describe('Record sound from generated input', () => {
     const rec = new SoundRecording({
       now: () => START,
       freeBytes: () => Promise.resolve(100 * 1024 ** 3),
-      onFat: () => Promise.resolve(false),
       keepFree: KEEP_FREE,
       changed: () => undefined,
       notice,
@@ -168,10 +167,8 @@ describe('Record sound from generated input', () => {
   it('warns about the room left but never about FAT32 (a WAV part holds 32 hours), and stops with a playable file if the disk fills later', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     let free = KEEP_FREE + 58 * 1024 ** 2;
-    const { rec, notice } = setup({
-      freeBytes: () => Promise.resolve(free),
-      onFat: () => Promise.resolve(true),
-    });
+    // Not even asked whether the drive is FAT32 (the stream service's test gives one that is: record-sound.test.ts).
+    const { rec, notice } = setup({ freeBytes: () => Promise.resolve(free) });
     rec.chunk(TONE, START + 100, START);
     await vi.waitFor(() => expect(rec.view(dir).state).toBe('recording'));
     expect(rec.view(dir).warning).toContain('minutes of recording');
@@ -213,7 +210,6 @@ describe('Record sound’s sound input (Session 58, X2: the alpha.16 review’s 
     const rec = new SoundRecording({
       now: () => clock,
       freeBytes: () => Promise.resolve(100 * 1024 ** 3),
-      onFat: () => Promise.resolve(false),
       keepFree: KEEP_FREE,
       changed: () => undefined,
       notice,
@@ -253,7 +249,9 @@ describe('Record sound’s sound input (Session 58, X2: the alpha.16 review’s 
     expect(notice).toHaveBeenCalledTimes(1);
     await pass(1000);
     await vi.waitFor(() => expect(rec.view(dir).state).toBe('off'));
-    expect(rec.view(dir).message).toMatch(/^Sound recording stopped: nothing came from the sound input for 30 seconds\./u);
+    expect(rec.view(dir).message).toMatch(
+      /^Sound recording stopped: nothing came from the sound input for 30 seconds\./u,
+    );
     expect(notice).toHaveBeenLastCalledWith(rec.view(dir).message);
   });
 
@@ -295,7 +293,7 @@ describe('Record sound’s sound input (Session 58, X2: the alpha.16 review’s 
     expect(rec.view(dir).file).toBe(file);
   });
 
-  it('counts how long it has heard nothing above -50 dBFS, time with no sound at all included', async () => {
+  it('counts how long it has heard nothing above -50 dBFS, time with no sound at all included', () => {
     const silence = new Int16Array(TONE.length);
     const { rec } = setup();
     expect(rec.quietMs()).toBe(0);

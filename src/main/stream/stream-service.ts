@@ -42,7 +42,7 @@ import { pageAlive } from '../windows/send';
 import type { ToStreamWorker, WorkerStatus } from './worker/protocol';
 import { NO_SOUND_MS, type NoSound, NoSoundWatch } from './no-sound';
 import { bytesPerHourAt, freeBytesOf, recordingWarning } from './recording-drive';
-import { SoundRecording } from './sound-recording';
+import { type SoundQuit, SoundRecording } from './sound-recording';
 import { PictureWatch } from './picture-watch';
 import { RestartCap } from './restart-cap';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -216,6 +216,8 @@ export class StreamService {
   /** No sound (Session 31): judged from the worker's quiet count and the microphone's state. */
   private readonly noSoundWatch: NoSoundWatch;
   private noSound: NoSound | null = null;
+  /** Whose No sound it is (Session 58, X2): the stream's, or the sound recording's alone (its own words). */
+  private noSoundIn: 'stream' | 'sound' = 'stream';
   /**
    * The stream's page started again after a crash at most 5 times a minute (Session 31, ROB-7); then it
    * is left stopped (`pageStopped`) until someone presses Try again.
@@ -228,9 +230,13 @@ export class StreamService {
     this.soundRecording = new SoundRecording({
       now: () => deps.now(),
       freeBytes: freeBytesOf,
-      onFat: (folder) => deps.recordingDrive?.(folder) ?? Promise.resolve(null),
       keepFree: KEEP_FREE_BYTES,
       ...(deps.recordPartBytes ? { partBytes: deps.recordPartBytes } : {}),
+      waiting: () => this.soundInputHeldBack(),
+      // No sound for Record sound (Session 58, X2), judged every second as a video recording's is.
+      tick: () => {
+        if (this.judgeSound()) this.changed();
+      },
       stopping: () => {
         this.stopRecordingInput?.();
         this.stopRecordingInput = null;
@@ -737,32 +743,56 @@ export class StreamService {
 
   /**
    * No sound (Session 31): on air or recording, how long the worker has heard nothing, and whether the
-   * microphone is gone. Said in the log only when it starts and ends, never every second.
+   * microphone is gone. Record sound too (Session 58, X2: the alpha.16 review's L1), from its own count of what
+   * it hears, as the sound recording's own No sound when the stream is not the quiet one. Said in the log only
+   * when it starts and ends, never every second. True when it changed.
    */
-  private judgeSound(): void {
+  private judgeSound(): boolean {
     const onAir = this.live.state === 'live' || this.live.state === 'reconnecting';
-    const active = onAir || this.recording.state === 'recording';
+    const video = onAir || this.recording.state === 'recording';
+    const sound = this.soundRecording.inUse();
+    const active = video || sound;
     const input: SoundState = this.systemBlocked.microphone ? 'blocked' : this.inputs.sound;
-    const quietMs = this.worker ? (this.workerStatus?.quietMs ?? 0) : 0;
+    const streamQuietMs = this.worker ? (this.workerStatus?.quietMs ?? 0) : 0;
+    const soundQuietMs = sound ? this.soundRecording.quietMs() : 0;
+    const quietMs = Math.max(streamQuietMs, soundQuietMs);
     const r = this.noSoundWatch.update({ active, quietMs, input, now: this.deps.now() });
-    if (!r.changed) return;
+    if (!r.changed) return false;
     const before = this.noSound;
     this.noSound = r.now;
+    // Whose No sound it is: the stream's while it is on air or recording video and is the quiet one.
+    if (r.now)
+      this.noSoundIn = video && (r.now.why === 'input' || streamQuietMs >= quietMs) ? 'stream' : 'sound';
+    const where = this.noSoundIn === 'stream' ? 'stream' : 'sound recording';
     if (r.now)
       this.deps.log(
         'warn',
         r.now.why === 'input'
-          ? 'No sound: the sound input is gone, and nothing has reached the stream since'
-          : `No sound: nothing above -50 dBFS has reached the stream for ${String(Math.round(this.noSoundWatch.limit / 1000))} s`,
+          ? `No sound: the sound input is gone, and nothing has reached the ${where} since`
+          : `No sound: nothing above -50 dBFS has reached the ${where} for ${String(Math.round(this.noSoundWatch.limit / 1000))} s`,
       );
-    else if (before && active) this.deps.log('info', 'The stream has sound again');
+    else if (before && active) this.deps.log('info', `The ${where} has sound again`);
+    return true;
+  }
+
+  /**
+   * Record sound's input is held back, not silent (Session 58, X2: L1): macOS is still asking for the microphone,
+   * or the stream's page is still opening. Its wait for sound never counts this time.
+   */
+  private soundInputHeldBack(): boolean {
+    return (
+      this.mediaRequests.has('microphone') ||
+      (this.program !== null && !this.program.isDestroyed() && !this.programReady)
+    );
   }
 
   /** What the No sound notice says: why, and what to do. */
   private noSoundMessage(n: NoSound): string {
     if (n.why === 'input')
-      return `${this.inputsMessage() ?? 'The sound input is not working.'} Until then the stream has no sound.`;
+      return `${this.inputsMessage() ?? 'The sound input is not working.'} ${this.noSoundIn === 'stream' ? 'Until then the stream has no sound.' : 'Until then the sound recording gets no sound.'}`;
     const seconds = String(Math.round(this.noSoundWatch.limit / 1000));
+    if (this.noSoundIn === 'sound')
+      return `The sound recording has had no sound for ${seconds} seconds. Check the microphone, its cable and the sound desk.`;
     const profile = this.activeProfile();
     if (profile.sound === null && !profile.mixOwnSound)
       return `No sound input is chosen for the stream, so it has had no sound for ${seconds} seconds. Choose one in Stream settings.`;
@@ -1368,10 +1398,11 @@ export class StreamService {
   /**
    * Drashti is going to quit (its quit was confirmed): from now on nothing opens the stream's page
    * again, or the new window would stop the quit and leave Drashti running unseen, on air (Session 23).
+   * A sound recording is finished first, waited for 5 s at most (Session 58, X2: ./sound-recording.ts).
    */
-  quitting(): Promise<void> | null {
+  quitting(): Promise<SoundQuit> | null {
     this.closing = true;
-    return this.soundRecording.stop();
+    return this.soundRecording.quitting();
   }
 
   /** Close everything (Drashti is quitting on purpose: the stream ends, and is not resumed). */

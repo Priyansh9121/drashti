@@ -102,7 +102,8 @@ export async function freeBytesOf(folder: string): Promise<number | null> {
 
 /**
  * What to tell the operator as a recording starts, or null: the drive is FAT32, and/or the disk has
- * room for less than an hour before the space Drashti keeps free.
+ * room for less than an hour before the space Drashti keeps free. FAT32 is a video recording's notice
+ * only: a sound recording gives `fat: null` (Session 58, X2), as a WAV part of 3.5 GB holds 32 hours.
  */
 export function recordingWarning(p: {
   fat: boolean | null;

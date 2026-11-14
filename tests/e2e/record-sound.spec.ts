@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { mkdir, readdir, readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
@@ -135,5 +136,45 @@ test('Simple Mode records locally with the Pro Mode folder and cannot change it'
     }
   } finally {
     await app.close();
+  }
+});
+
+test('quitting while Record sound runs finishes its WAV first, its header saying its whole length (Session 58, X2)', async () => {
+  test.setTimeout(90_000);
+  const folder = test.info().outputPath('recordings');
+  await mkdir(folder, { recursive: true });
+  const { app, userData } = await launchApp({ DRASHTI_TEST_FAKE_DEVICES: '1' });
+  let closed = false;
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await setUpStream(app, win, await freePort(), folder);
+    const status = () => win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status());
+    const started = await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.stream.startSoundRecording(),
+    );
+    expect(started).toMatchObject({ ok: true });
+    await expect.poll(status).toMatchObject({ recording: { state: 'recording', kind: 'sound' } });
+    // A few seconds of the stand-in microphone's beeps in the file (16 kHz mono: 32,000 bytes a second).
+    const wavs = async () => (await readdir(folder)).filter((f) => f.endsWith('.wav'));
+    const written = async () => {
+      const [file] = await wavs();
+      return file ? (await stat(join(folder, file))).size : 0;
+    };
+    await expect.poll(written, { timeout: 20_000 }).toBeGreaterThan(44 + 3 * 32_000);
+    // Quit on purpose, still recording: the quit waits for the WAV (5 s at most), and here its disk answers.
+    await app.close();
+    closed = true;
+    const files = await wavs();
+    expect(files).toHaveLength(1);
+    const wave = await readFile(join(folder, files[0] ?? ''));
+    expect(wave.toString('ascii', 0, 4)).toBe('RIFF');
+    expect(wave.readUInt32LE(4)).toBe(wave.length - 8);
+    expect(wave.readUInt32LE(40)).toBe(wave.length - 44);
+    const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    expect(log).toContain('Sound recording stopped');
+    expect(log).not.toContain('did not answer in time');
+  } finally {
+    if (!closed) await app.close();
   }
 });
