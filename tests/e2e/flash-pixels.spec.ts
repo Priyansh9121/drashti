@@ -78,9 +78,10 @@ async function drawnAt(out: Page, p: number): Promise<void> {
 /**
  * The light of `out`'s picture once it holds still (Session 57): read, then read again two frames on, until two reads
  * agree. What this test checks is where each page is in the dissolve, on its still picture. Where Chromium draws
- * without a graphics chip (CI's Windows) the stream's page first draws 1 to 5 black or part-drawn frames as a
- * dissolve begins (an older fault, named in the README), and a read then came back black (the gate of 13 Nov 2026,
- * in Black, both attempts: every moment, measured from that first one, read 0.085 off).
+ * without a graphics chip (CI's Windows) the stream's page drew 1 to 5 black or part-drawn frames as a dissolve began,
+ * and a read then came back black (the gate of 13 Nov 2026, in Black, both attempts: every moment, measured from that
+ * first one, read 0.085 off): its first slide, up as the page came up, was still loading its picture (mended in Session
+ * 58: the stream's page draws a slide only once its pictures can be drawn, stream-pictures.spec.ts).
  */
 async function stillLightOf(out: Page): Promise<FrameLight> {
   let last = await lightOf(out);
