@@ -72,6 +72,28 @@ describe('the workflows’ rules', () => {
     ]);
   });
 
+  it('the release build restores a cache only after its job has kept what it built (Session 58, X2b)', () => {
+    const step = (ref: string, version: string) =>
+      `      - uses: ${ref}@${SHA} # ${version}\n        with:\n          path: x\n          key: k\n`;
+    const upload = step('actions/upload-artifact', 'v7.0.2');
+    const restore = step('actions/cache/restore', 'v6.1.0');
+    const save = step('actions/cache/save', 'v6.1.0');
+    const assemble = '  assemble:\n    runs-on: ubuntu-latest\n    steps:\n';
+    // After the upload the installers are kept: nothing a cache brings can reach them.
+    expect(checkWorkflow(`${good}${upload}${restore}${save}`, 'release.yml')).toEqual([]);
+    // Before it, or in a later job (each job starts afresh), never; restore, save or both.
+    expect(checkWorkflow(`${good}${restore}${upload}`, 'release.yml')).toEqual([
+      'release.yml:16: the release build uses a cache before its job has kept what it built (actions/cache/restore)',
+    ]);
+    expect(checkWorkflow(`${good}${upload}${assemble}${save}`, 'release.yml')).toEqual([
+      'release.yml:23: the release build uses a cache before its job has kept what it built (actions/cache/save)',
+    ]);
+    expect(checkWorkflow(`${good}${step('actions/cache', 'v6.1.0')}`, 'release.yml')).toEqual([
+      'release.yml:16: the release build uses a cache before its job has kept what it built (actions/cache)',
+    ]);
+    expect(checkWorkflow(`${good}${restore}`, 'ci.yml')).toEqual([]);
+  });
+
   it('this repository’s workflows keep them', () => {
     expect(checkWorkflows(join(__dirname, '..', '..', '..', '.github', 'workflows'))).toEqual([]);
   });
