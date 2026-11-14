@@ -1078,10 +1078,10 @@ test('a deck slide the operator points at in the list (or whose number is typed)
     await expect(stream.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
       timeout: 30_000,
     });
-    // Where each loads ahead: an output's Preloader, the stream's deck clips.
+    // Where each loads ahead: each page's Preloader, the stream's as the hall's (Session 58).
     const screens: { page: Page; box: string; name: string }[] = [
       ...halls.map((page, i) => ({ page, box: 'preload', name: `hall screen ${String(i + 1)}` })),
-      { page: stream, box: 'deck-clips-ahead', name: 'the stream' },
+      { page: stream, box: 'preload', name: 'the stream' },
     ];
     // Its slides as rows in the middle, as an operator chooses it in the library.
     await openLibrary(win);
