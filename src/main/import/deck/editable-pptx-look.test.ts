@@ -568,8 +568,9 @@ describe('words through the master’s styles (coverage)', () => {
     const box = elements.find((el) => el.kind === 'text' && el.text.startsWith('Placeholder level'));
     if (box?.kind !== 'text') throw new Error('The placeholder’s words are missing.');
     const paragraph = (words: string) => box.runs?.find((run) => run.text === words)?.paragraph;
-    // 12 pt before; after, half the line's 24 pt words: 16 px each. Level two: its own 30 pt line, no spacing.
-    expect(paragraph('Placeholder level one')).toMatchObject({ spaceBefore: 16, spaceAfter: 16 });
+    // 12 pt before (16 px); after, half the line of its 24 pt words (PF-12: a line is 1.2 times 32 px): 19.2 px. Level
+    // two: its own 30 pt line, no spacing.
+    expect(paragraph('Placeholder level one')).toMatchObject({ spaceBefore: 16, spaceAfter: 19.2 });
     expect(paragraph('Placeholder level two')).toMatchObject({ lineHeightPx: 40 });
     expect(paragraph('Placeholder level two')).not.toHaveProperty('spaceBefore');
     expect(paragraph('Placeholder level two')).not.toHaveProperty('spaceAfter');
