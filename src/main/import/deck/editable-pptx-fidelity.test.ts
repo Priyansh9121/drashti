@@ -494,7 +494,7 @@ describe('keeping a generated PPTX editable', () => {
       sourceCount: 1,
       slides: [],
       failedNotes: {
-        0: ['PowerPoint source page 1 exceeds the 500-object editing limit and stays as its saved picture.'],
+        0: ['Page 1 of the original has more than 500 objects, so it stays as its saved picture.'],
       },
     });
   });
@@ -521,7 +521,7 @@ describe('keeping a generated PPTX editable', () => {
     expect(deck.slides.map((slide) => slide.sourceIndex)).toEqual([0, 2]);
     expect(deck).toMatchObject({
       failedNotes: {
-        1: ['PowerPoint source page 2 exceeds the 500-object editing limit and stays as its saved picture.'],
+        1: ['Page 2 of the original has more than 500 objects, so it stays as its saved picture.'],
       },
     });
     expect(deck.slides[0]?.elements).toHaveLength(500);
