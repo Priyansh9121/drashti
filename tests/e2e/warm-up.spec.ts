@@ -5,7 +5,15 @@ import { join } from 'node:path';
 import { LOWER_THIRD_FONT_CHOICES } from '../../src/shared/lower-third-fonts';
 import { MOVEMENTS } from '../../src/shared/looks';
 import { TRANSITION_KINDS } from '../../src/shared/model';
-import { launchApp, operatorPage, operatorReady, outputPage, outputPages, setUpScreen } from './helpers';
+import {
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  outputPages,
+  type PageGlobals,
+  setUpScreen,
+} from './helpers';
 import { goLive, makeSlides } from './placeholder-slides';
 
 /*
@@ -72,16 +80,38 @@ function warmUpLines(userData: string): string[] {
     .map((line) => line.slice(line.indexOf('Warm-up: ')).trimEnd());
 }
 
+/** What Drashti's log has said of how its outputs' warm-ups ended (Session 58, WU-2), each line from its "Warm-up of". */
+function warmUpEndLines(userData: string): string[] {
+  const file = join(userData, 'logs', 'drashti.log');
+  if (!existsSync(file)) return [];
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .filter((line) => line.includes('Warm-up of '))
+    .map((line) => line.slice(line.indexOf('Warm-up of ')).trimEnd());
+}
+
+/** The log says how the output's warm-up ended and how long it took, once (Session 58, WU-2). */
+async function expectEnded(userData: string, ended: RegExp): Promise<void> {
+  await expect
+    .poll(() => warmUpEndLines(userData), { message: 'the log’s Warm-up of lines' })
+    .toHaveLength(1);
+  expect(warmUpEndLines(userData)[0]).toMatch(ended);
+}
+
 /**
  * The log says which Main chose for the output: once for each output window (one made again, after a display change
- * say, is decided afresh and said again), and never the other choice.
+ * say, is decided afresh and said again), and never the other choice. (The LIVE picture's and the stream's page's own
+ * lines, since Session 58, are their tests'.)
  */
 async function expectSaid(userData: string, said: RegExp): Promise<void> {
-  await expect
-    .poll(() => warmUpLines(userData).length, { message: 'the log’s Warm-up lines' })
-    .toBeGreaterThan(0);
-  for (const line of warmUpLines(userData)) expect(line).toMatch(said);
+  const outputs = () => warmUpLines(userData).filter((line) => line.includes(', for output "'));
+  await expect.poll(() => outputs().length, { message: 'the log’s Warm-up lines' }).toBeGreaterThan(0);
+  for (const line of outputs()) expect(line).toMatch(said);
 }
+
+/** The log's line for the LIVE picture where Chromium draws without a graphics chip (Session 58, WU-1). */
+const LIVE_SKIPPED =
+  'Warm-up: skipped, no graphics chip (gpu_compositing disabled_software), for the LIVE picture';
 
 /** A page's warm-up marks for a trace (render/WarmUp.tsx), in the order they came. */
 const warmUpMarks = (page: Page) =>
@@ -313,10 +343,15 @@ test('with a graphics chip the warm-up passes by itself and the show is drawn af
   // And once it has drawn, every face of the Lower Thirds studio's fonts comes (Session 55), as in the LIVE picture.
   await expect.poll(async () => Object.keys(await studioFonts(out)), { timeout: 15_000 }).toEqual(['loaded']);
   await expect.poll(async () => Object.keys(await studioFonts(win)), { timeout: 15_000 }).toEqual(['loaded']);
-  // The log says which Main chose for the output (Session 57).
+  // The log says which Main chose for the output (Session 57), and how its warm-up ended, how long it took (Session 58).
   await expectSaid(
     userData,
     /^Warm-up: as before, a graphics chip \(gpu_compositing enabled\), for output ".+"$/u,
+  );
+  // Drawn to its end, or (a slow computer) at its longest.
+  await expectEnded(
+    userData,
+    /^Warm-up of output ".+": (?:drew everything in|stopped at its longest,) \d+\.\d s$/u,
   );
   await app.close();
 });
@@ -356,6 +391,48 @@ test('where Chromium draws without a graphics chip an output draws the show with
   await app.close();
 });
 
+test('where Chromium draws without a graphics chip the LIVE picture draws the show without a warm-up, as the outputs do, and the log says so once (WU-1)', async () => {
+  test.setTimeout(180_000);
+  const { app, userData } = await launchApp(WITHOUT_A_CHIP);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // Never warmed up to its end: not begun, or cut short as soon as Chromium said how it draws (a moment after the start).
+  await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0, {
+    timeout: 30_000,
+  });
+  await expect
+    .poll(() => warmUpLines(userData).filter((line) => line.endsWith('for the LIVE picture')))
+    .toEqual([LIVE_SKIPPED]);
+  expect(await warmUpMarks(win), 'the LIVE picture’s warm-up marks').not.toContain(
+    'drashti-warm-up:live-end',
+  );
+  await app.close();
+});
+
+test('where Chromium draws without a graphics chip the stream’s page draws the show without a warm-up, as the outputs do, and the log says so once (WU-1)', async () => {
+  test.setTimeout(180_000);
+  const { app, userData } = await launchApp({ ...WITHOUT_A_CHIP, DRASHTI_TEST_FAKE_DEVICES: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // Chromium has said how it draws (the LIVE picture's warm-up is over: it draws without a chip too, but warms up).
+  await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  await win.getByTestId('open-stream').click();
+  const program = await streamPage(app);
+  const root = program.getByTestId('program-root');
+  await expect(root).toHaveAttribute('data-warm-up', 'skipped', { timeout: 30_000 });
+  await expect(root).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
+  // It never warmed up: no warm-up drawn, no mark of one.
+  expect(await warmUpMarks(program), 'the stream’s page’s warm-up marks').toEqual([]);
+  await expect
+    .poll(() => warmUpLines(userData).filter((line) => line.endsWith('for the stream’s page')))
+    .toEqual([
+      'Warm-up: skipped, no graphics chip (gpu_compositing disabled_software), for the stream’s page',
+    ]);
+  await app.close();
+});
+
 test('an output told it draws without a graphics chip after its warm-up began ends the warm-up there and draws the show, black until something goes up', async () => {
   test.setTimeout(180_000);
   const { app, userData } = await launchApp({
@@ -390,6 +467,9 @@ test('an output told it draws without a graphics chip after its warm-up began en
     (globalThis as MainGlobals).drashtiTestGpuSaid?.();
   });
   await expect(root).toHaveAttribute('data-warm-up', 'skipped');
+  // The LIVE picture's held warm-up ends there too (Session 58, WU-1).
+  await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0);
+  await expect.poll(() => warmUpMarks(win)).toContain('drashti-warm-up:live-cut');
   await expect(root).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   // Marked as the warm-up goes (its effect's cleanup, which React may run a moment after the page changed).
   await expect
@@ -402,6 +482,125 @@ test('an output told it draws without a graphics chip after its warm-up began en
   await expect.poll(() => brightest(out), { timeout: 15_000 }).toBeGreaterThan(40);
   await expect(root).toHaveAttribute('data-warm-up', 'skipped');
   await expectSaid(userData, SKIPPED);
+  // How it ended, said once (Session 58, WU-2).
+  await expectEnded(
+    userData,
+    /^Warm-up of output ".+": cut short after \d+\.\d s, told it draws without a graphics chip$/u,
+  );
+  await app.close();
+});
+
+/**
+ * Every time a timer for the audience shows in `scope` (its `data-time`), from the first the page puts there: kept in
+ * the page as it goes, before any frame of it is drawn.
+ */
+const watchTimesShown = (page: Page, scope: string) =>
+  page.evaluate((scope) => {
+    const shown: string[] = [];
+    (globalThis as { drashtiTimesShown?: string[] }).drashtiTimesShown = shown;
+    new MutationObserver(() => {
+      const time = document
+        .querySelector(`${scope} [data-testid="audience-timer-time"]`)
+        ?.getAttribute('data-time');
+      if (time && shown.at(-1) !== time) shown.push(time);
+    }).observe(document.documentElement, { subtree: true, childList: true, attributes: true });
+  }, scope);
+
+const timesShown = (page: Page) =>
+  page.evaluate(() => (globalThis as { drashtiTimesShown?: string[] }).drashtiTimesShown ?? []);
+
+/** Seconds left, as a timer shows them ("0:57", or "57"). */
+const secondsShown = (text: string) =>
+  text
+    .split(':')
+    .map(Number)
+    .reduce((sum, part) => sum * 60 + part, 0);
+
+/** A minute's countdown put up for the audience and started now: when, by the operator window's clock. */
+const countdownUp = (win: Page) =>
+  win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.timers.create({
+      name: 'Placeholder countdown',
+      kind: 'countdown',
+      durationMs: 60_000,
+      targetTime: null,
+      allowsOverrun: false,
+    });
+    if (!made.ok) throw new Error(made.message);
+    await d.engine.dispatch({ type: 'startTimer', timerId: made.id });
+    await d.engine.dispatch({ type: 'showAudienceTimer', timerId: made.id });
+    return Date.now();
+  });
+
+test('an output’s warm-up cut short never lends the show its paused clock: a timer for the audience shows its time left from its first frame (NG-1)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp({ ...WITHOUT_A_CHIP, ...SAID_LATE, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUpScreen(win);
+  const out = await outputPage(app);
+  const root = out.getByTestId('output-root');
+  // Warming up part-way, its clock paused there (held until Chromium says how it draws).
+  await expect(out.locator('[data-testid="output-root"] [data-warm-up="during"]')).toHaveCount(1, {
+    timeout: 30_000,
+  });
+  await watchTimesShown(out, '[data-testid="output-root"]');
+  // A minute's countdown for the audience, started after the warm-up paused its clock, and 3 s gone by the clock.
+  const startedAt = await countdownUp(win);
+  await expect
+    .poll(() => win.evaluate(() => Date.now()), { intervals: [250] })
+    .toBeGreaterThan(startedAt + 3000);
+  // Chromium says it draws without a graphics chip: the warm-up is cut there, the show drawn.
+  await app.evaluate(() => {
+    (globalThis as MainGlobals).drashtiTestGpuSaid?.();
+  });
+  await expect(root).toHaveAttribute('data-warm-up', 'skipped');
+  await expect(out.getByTestId('audience-timer-time')).toHaveCount(1, { timeout: 20_000 });
+  const shown = await timesShown(out);
+  expect(shown.length, 'the timer shown at all').toBeGreaterThan(0);
+  // The first time it showed is the clock's (3 s or more gone), never the paused moment's (the whole minute).
+  expect(
+    secondsShown(shown[0] ?? ''),
+    `the first time it showed (all: ${shown.join(', ')})`,
+  ).toBeLessThanOrEqual(57);
+  await app.close();
+});
+
+test('the LIVE picture’s warm-up cut short as the first slide goes up never lends the show its paused clock: a timer for the audience shows its time left from its first frame (NG-1)', async () => {
+  test.setTimeout(180_000);
+  // The LIVE picture's warm-up kept drawn, its clock paused part-way, until something goes up and cuts it short.
+  const { app } = await launchApp(HOLD);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const live = '[data-testid="live-preview"]';
+  await expect(win.locator(`${live} [data-warm-up="during"]`)).toHaveCount(1, { timeout: 30_000 });
+  const id = await makeSlides(
+    win,
+    'Placeholder slides cut in',
+    [{ words: 'Placeholder words', background: '#3a6ea5' }],
+    { kind: 'cut', durationMs: 0 },
+  );
+  await watchTimesShown(win, live);
+  // A minute's countdown for the audience (it never cuts the warm-up short by itself), 3 s gone by the clock.
+  const startedAt = await countdownUp(win);
+  await expect
+    .poll(() => win.evaluate(() => Date.now()), { intervals: [250] })
+    .toBeGreaterThan(startedAt + 3000);
+  expect(await timesShown(win), 'nothing of the show drawn in LIVE while it warms up').toEqual([]);
+  // The first slide goes up: the warm-up ends there, cut, and LIVE draws the show with the timer over it.
+  await goLive(win, id, 0);
+  await expect(win.locator(`${live} [data-warm-up]`)).toHaveCount(0);
+  await expect(win.locator(`${live} [data-testid="audience-timer-time"]`)).toHaveCount(1, {
+    timeout: 20_000,
+  });
+  const shown = await timesShown(win);
+  expect(shown.length, 'the timer shown at all').toBeGreaterThan(0);
+  // The first time it showed is the clock's (3 s or more gone), never the paused moment's (the whole minute).
+  expect(
+    secondsShown(shown[0] ?? ''),
+    `the first time it showed (all: ${shown.join(', ')})`,
+  ).toBeLessThanOrEqual(57);
   await app.close();
 });
 
