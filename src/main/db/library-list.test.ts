@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serialize } from 'node:v8';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { workNow } from '../testing/work-time';
 import { type Db, openDatabase } from './database';
 import { MIGRATIONS } from './migrate';
 import { PresentationRepo } from './presentations';
@@ -15,6 +16,9 @@ import { summariesOf } from '../../shared/library';
  * mandir's library), including turning the answer into an IPC message.
  * Kirtan details travel as the JSON kept on each presentation (migration
  * 15); the operator window reads them (summariesOf), timed here apart.
+ * Each is timed by the work it does (testing/work-time.ts): a busy computer's
+ * other programs never count (Session 58: 44 ms by the wall clock on the shared
+ * Mac, for 3.5 to 6.7 ms of work).
  */
 
 const BUDGET_MS = 20;
@@ -38,20 +42,20 @@ describe(`the library list at ${COUNT} presentations`, () => {
     const repo = new PresentationRepo(db);
     const times: number[] = [];
     for (let i = 0; i < 9; i++) {
-      const start = performance.now();
+      const start = workNow();
       const list = repo.list();
       // The IPC reply is a structured clone of the list; v8.serialize does the same work.
       serialize(list);
-      times.push(performance.now() - start);
+      times.push(workNow() - start);
       expect(list).toHaveLength(COUNT);
     }
     times.sort((a, b) => a - b);
     const median = times[4] ?? Infinity;
     // Reading the kirtan details happens in the operator window, not here; shown for the record.
     const listing = repo.list();
-    const readStart = performance.now();
+    const readStart = workNow();
     summariesOf(listing);
-    const read = performance.now() - readStart;
+    const read = workNow() - readStart;
     console.log(
       `library list at ${COUNT}: median ${median.toFixed(1)} ms, worst ${times[8]?.toFixed(1)} ms; reading the kirtan details in the window ${read.toFixed(1)} ms`,
     );
