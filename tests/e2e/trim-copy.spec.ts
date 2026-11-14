@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
+import Database from 'better-sqlite3';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -594,6 +595,72 @@ test('an earlier cut that nothing uses any more goes to the Trash after a restar
     // Media refreshes by itself, and one notice says which went, and where.
     await expect(listed(nameOf(earlier))).toHaveCount(0);
     await expect(listed(nameOf(wider))).toHaveCount(1);
+    const where = process.platform === 'win32' ? 'the Recycle Bin' : 'the Trash';
+    await expect(reopened.getByTestId('operator-notice')).toContainText(
+      `An earlier Trim cut that nothing uses any more went to ${where}: “${nameOf(earlier)}”.`,
+    );
+    expect(await items(reopened, playlistId)).toMatchObject([{ id: rowId, mediaId: wider }]);
+  } finally {
+    await app.close().catch(() => undefined);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a cut’s file that a quit left in Media while it moved to the Trash goes there at the next start (FT-8)', async () => {
+  // The sweep marks a cut's row gone, then moves its file (TM-7): Drashti quitting between the two leaves the file in
+  // Media, named by nothing. The library is left here as such a quit leaves it, the row marked as TM-7 marks it.
+  test.setTimeout(180_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-trim-left-'));
+  const trash = join(dir, 'Trash');
+  mkdirSync(trash);
+  const env = { DRASHTI_TEST_TRASH_DIR: trash };
+  const first = await launchApp(env);
+  let app = first.app;
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const file = join(dir, 'Placeholder left clip.mp4');
+    numberedVideo(file);
+    const [mediaId = ''] = await importAndGetIds(win, [file]);
+    const { playlistId, rowId } = await makeVideoPlaylist(win, mediaId, 'Placeholder left trim');
+    // Something up, then Clear all: Put it back could bring it back, so this run's sweep moves nothing.
+    const up = { kind: 'media', mediaId, media: 'video', fit: 'fit', loop: false };
+    expect(await dispatch(win, { type: 'setBackground', background: up })).toMatchObject({ ok: true });
+    expect(await dispatch(win, { type: 'clearAll' })).toMatchObject({ ok: true });
+
+    expect(await trimRow(win, rowId, mediaId, 1000, 3000)).toEqual({ ok: true });
+    const earlier = await nextVideo(win, playlistId, rowId, mediaId);
+    expect(await trimRow(win, rowId, earlier, 500, 4000)).toEqual({ ok: true });
+    const wider = await nextVideo(win, playlistId, rowId, earlier);
+    const media = await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
+    const nameOf = (id: string) => media.find((m) => m.id === id)?.name ?? '';
+    const sha = stamp(file).sha256;
+    const original = join(first.userData, 'Media', sha.slice(0, 2), `${sha}.mp4`);
+    const earlierFile = join(dirname(original), nameOf(earlier));
+    const widerFile = join(dirname(original), nameOf(wider));
+    expect(existsSync(earlierFile)).toBe(true);
+    await app.close();
+
+    // Drashti quit after the earlier cut's row was marked gone, before its file moved.
+    const db = new Database(join(first.userData, 'drashti.sqlite'));
+    try {
+      const marked = db
+        .prepare("UPDATE media SET path = '', missing = 1, deleted_at = ? WHERE id = ? AND path <> ''")
+        .run(new Date().toISOString(), earlier);
+      expect(marked.changes).toBe(1);
+    } finally {
+      db.close();
+    }
+    expect(readdirSync(trash)).toEqual([]);
+
+    // The next start, nothing up and nothing to bring back: AFTER_START_MS later the file left goes to the Trash.
+    app = (await relaunchApp(first.userData, env)).app;
+    const reopened = await operatorPage(app);
+    await operatorReady(reopened);
+    await expect.poll(() => readdirSync(trash), { timeout: 40_000 }).toEqual([nameOf(earlier)]);
+    expect(existsSync(earlierFile)).toBe(false);
+    expect(existsSync(widerFile)).toBe(true);
+    expect(stamp(original).sha256).toBe(sha);
     const where = process.platform === 'win32' ? 'the Recycle Bin' : 'the Trash';
     await expect(reopened.getByTestId('operator-notice')).toContainText(
       `An earlier Trim cut that nothing uses any more went to ${where}: “${nameOf(earlier)}”.`,
