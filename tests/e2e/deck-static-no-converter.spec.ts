@@ -28,7 +28,13 @@ for (const { title, env, editable } of cases) {
       await writeFile(
         file,
         makeTestPptx([
-          { text: 'Placeholder first slide', color: '204060', notes: 'Placeholder first notes' },
+          // Typed in an old Hindi font (Q58-8): it comes in all the same, a notice naming the font.
+          {
+            text: 'Placeholder first slide',
+            color: '204060',
+            notes: 'Placeholder first notes',
+            font: 'Kruti Dev 010',
+          },
           { text: 'Placeholder hidden slide', color: '604020', hidden: true },
           { text: 'Placeholder last slide', color: '305030', notes: 'Placeholder last notes' },
         ]),
@@ -40,6 +46,9 @@ for (const { title, env, editable } of cases) {
         await openLibrary(win);
         await dropFiles(win, win.getByTestId('library-drop'), [file]);
         await expect.poll(() => importItem(win, file)).toMatchObject({ outcome: 'imported' });
+        await expect(win.getByTestId('import-notice').filter({ hasText: 'old font' })).toContainText(
+          `“${name}” · This presentation uses the old font “Kruti Dev 010”: install it on this computer and on each node`,
+        );
 
         const slides = await win.evaluate(async (deckName) => {
           const d = (globalThis as PageGlobals).drashti;
