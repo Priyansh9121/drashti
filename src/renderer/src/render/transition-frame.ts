@@ -135,16 +135,23 @@ export function transitionFrame(
   }
 }
 
-/** The original PowerPoint effect draws entire slides, even on Calm screens. */
+/**
+ * The original PowerPoint effect draws entire slides, even on Calm screens. Given where each slide is in the layer's box
+ * (`places`, as Placed puts them), a slide that moves moves by its own width or height in px, as PowerPoint moves it
+ * (Session 58, Q58-16: a 4:3 deck between bars on a 16:9 screen moves 1440 px, not the screen's 1920); without them, by
+ * the layer's box in % (the PowerPoint comparison's probe draws the slide alone, where both are the same).
+ */
 export function deckTransitionFrame(
   transition: DeckNativeTransition,
   progress: number,
   movement: Movement = 'calm',
+  places?: { in: SlidePlace; out: SlidePlace },
 ): TransitionFrame {
   const elapsed = clamp(progress) * transition.durationMs;
   const original = powerPointFrame(
     transition,
     elapsed / (transition.deckDurationMs ?? transition.durationMs),
+    places,
   );
   const over = transition.over;
   if (!over || over.durationMs <= 0) return original;
@@ -166,19 +173,32 @@ export function deckTransitionFrame(
   };
 }
 
-function powerPointFrame(transition: DeckNativeTransition, progress: number): TransitionFrame {
+function powerPointFrame(
+  transition: DeckNativeTransition,
+  progress: number,
+  places?: { in: SlidePlace; out: SlidePlace },
+): TransitionFrame {
   const p = clamp(progress);
   const settled: SlideFrame = { opacity: 1, transform: '' };
   const direction = transition.direction ?? 'left';
   const horizontal = direction === 'left' || direction === 'right';
   const toward = direction === 'left' || direction === 'up' ? -1 : 1;
-  const shift = (fraction: number) =>
-    fraction === 0 ? '' : `translate${horizontal ? 'X' : 'Y'}(${String(fraction * toward * 100)}%)`;
+  // A slide's move, `fraction` of its own length along the way: in px of the slide where it is placed, else in %.
+  const along = (place: SlidePlace | undefined) =>
+    place ? (horizontal ? place.width : place.height) : undefined;
+  const shiftBy = (fraction: number, length: number | undefined) =>
+    fraction === 0
+      ? ''
+      : length === undefined
+        ? `translate${horizontal ? 'X' : 'Y'}(${String(fraction * toward * 100)}%)`
+        : `translate${horizontal ? 'X' : 'Y'}(${String(fraction * toward * length)}px)`;
+  const shiftIn = (fraction: number) => shiftBy(fraction, along(places?.in));
+  const shift = (fraction: number) => shiftBy(fraction, along(places?.out));
   switch (transition.deckEffect) {
     case 'push': {
       const e = easeInOut(p);
       return {
-        in: { ...settled, transform: shift(e - 1) },
+        in: { ...settled, transform: shiftIn(e - 1) },
         out: { ...settled, transform: shift(e) },
         black: 0,
         add: false,
@@ -190,7 +210,7 @@ function powerPointFrame(transition: DeckNativeTransition, progress: number): Tr
       const e = SLIDE_CURVES[transition.deckEffect][horizontal ? 'across' : 'down'](p);
       const moving: SlideFrame = { ...settled, ...(p > 0 && p < 1 ? { filter: MOVING_SHADE } : {}) };
       return transition.deckEffect === 'cover'
-        ? { in: { ...moving, transform: shift(e - 1) }, out: settled, black: 0, add: false }
+        ? { in: { ...moving, transform: shiftIn(e - 1) }, out: settled, black: 0, add: false }
         : { in: settled, out: { ...moving, transform: shift(e) }, black: 0, add: false };
     }
     case 'wipe':
@@ -370,6 +390,35 @@ export function wipeSlideMask(
       `rgba(0, 0, 0, ${String(shown)}) ${(side + (band.at + j / WIPE_STEPS) * length).toFixed(2)}px`,
   );
   return `linear-gradient(${WIPE_TOWARD[direction]}, ${stops.join(', ')})`;
+}
+
+/**
+ * The clip on the slide layer while a deck's own Push, Cover or Uncover moves a slide (Session 58, Q58-16): PowerPoint
+ * moves its slides inside the slide, so where the screen shows past the slide (a 4:3 deck between bars on a 16:9
+ * screen) both are clipped to it and the bars stay as they are. Round both slides' places (a slide of another size going
+ * is never cut), and only where that leaves part of the layer out; none for a slide that fills or is cropped to the
+ * screen, for the effects that move nothing, or under a transition of Drashti's own (which moves the whole layer).
+ */
+export function deckSlideClip(
+  transition: DeckNativeTransition,
+  placeIn: SlidePlace,
+  placeOut: SlidePlace,
+  canvas: { width: number; height: number },
+): string {
+  const moves =
+    transition.deckEffect === 'push' ||
+    transition.deckEffect === 'cover' ||
+    transition.deckEffect === 'uncover';
+  if (!moves || transition.over) return '';
+  const top = Math.max(0, Math.min(placeIn.y, placeOut.y));
+  const left = Math.max(0, Math.min(placeIn.x, placeOut.x));
+  const bottom = Math.max(
+    0,
+    canvas.height - Math.max(placeIn.y + placeIn.height, placeOut.y + placeOut.height),
+  );
+  const right = Math.max(0, canvas.width - Math.max(placeIn.x + placeIn.width, placeOut.x + placeOut.width));
+  if (top === 0 && left === 0 && bottom === 0 && right === 0) return '';
+  return `inset(${[top, right, bottom, left].map((v) => `${String(v)}px`).join(' ')})`;
 }
 
 /*
