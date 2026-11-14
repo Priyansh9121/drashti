@@ -1,0 +1,1369 @@
+{
+  "noRunnerQuickCheck": {
+    "about": "A quick check (12 Nov 2026): the Mac job never started, GitHub gave it no runner; the rest skipped as a quick check skips them.",
+    "run": {
+      "id": 43248994559,
+      "name": "CI",
+      "event": "workflow_dispatch",
+      "head_branch": "s57-qc-lead-1113-023019-20337",
+      "head_sha": "11910b130d0067b9a32739d9bfbd0aebcec10796",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "workflow_id": 368840730,
+      "head_repository": {
+        "full_name": "Priyansh9121/drashti"
+      }
+    },
+    "jobs": [
+      {
+        "id": 131289345579,
+        "run_id": 43248994559,
+        "run_attempt": 1,
+        "name": "Typecheck, lint, unit tests (Ubuntu)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-12T15:33:06Z",
+        "completed_at": "2026-11-12T15:38:56Z",
+        "runner_id": 1000005245,
+        "runner_name": "GitHub Actions 1000005245",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Run pnpm typecheck",
+          "Run pnpm lint",
+          "Run node scripts/check-workflows.mjs",
+          "Run node scripts/unicode-check.mjs --self-check",
+          "Run node scripts/unicode-check.mjs",
+          "The bar guard (reports, never fails)",
+          "Unit tests (inside Electron's Node)",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131289346106,
+        "run_id": 43248994559,
+        "run_attempt": 1,
+        "name": "Secret scan (gitleaks, whole history)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-12T15:33:07Z",
+        "completed_at": "2026-11-12T15:33:17Z",
+        "runner_id": 1000005246,
+        "runner_name": "GitHub Actions 1000005246",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run node scripts/secret-scan.mjs --self-check",
+          "Run node scripts/secret-scan.mjs",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131293120414,
+        "run_id": 43248994559,
+        "run_attempt": 1,
+        "name": "End-to-end and installers (macos-latest)",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "started_at": "2026-11-12T15:38:56Z",
+        "completed_at": "2026-11-12T15:53:59Z",
+        "runner_id": 0,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "id": 131293124402,
+        "run_id": 43248994559,
+        "run_attempt": 1,
+        "name": "End-to-end, second half (macos-latest)",
+        "status": "completed",
+        "conclusion": "skipped",
+        "started_at": "2026-11-12T15:38:57Z",
+        "completed_at": "2026-11-12T15:38:56Z",
+        "runner_id": null,
+        "runner_name": null,
+        "steps": []
+      },
+      {
+        "id": 131293125773,
+        "run_id": 43248994559,
+        "run_attempt": 1,
+        "name": "End-to-end in Black (windows-latest)",
+        "status": "completed",
+        "conclusion": "skipped",
+        "started_at": "2026-11-12T15:38:57Z",
+        "completed_at": "2026-11-12T15:38:56Z",
+        "runner_id": null,
+        "runner_name": null,
+        "steps": []
+      }
+    ],
+    "annotations": {
+      "131293120414": [
+        {
+          "annotation_level": "failure",
+          "message": "The job was not acquired by Runner of type hosted even after multiple attempts"
+        },
+        {
+          "annotation_level": "notice",
+          "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+        },
+        {
+          "annotation_level": "notice",
+          "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+        },
+        {
+          "annotation_level": "notice",
+          "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+        }
+      ],
+      "131293124402": [],
+      "131293125773": []
+    }
+  },
+  "noRunnerBesideSuccess": {
+    "about": "A quick check (12 Nov 2026): Windows passed, the Mac job never started (no runner).",
+    "run": {
+      "id": 43258704189,
+      "name": "CI",
+      "event": "workflow_dispatch",
+      "head_branch": "s57-qc-c23-1113-032601-53729",
+      "head_sha": "511d610422030163da283c3671f96823f5d2d5a4",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "workflow_id": 368840730,
+      "head_repository": {
+        "full_name": "Priyansh9121/drashti"
+      }
+    },
+    "jobs": [
+      {
+        "id": 131323838131,
+        "run_id": 43258704189,
+        "run_attempt": 1,
+        "name": "Secret scan (gitleaks, whole history)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-12T16:26:39Z",
+        "completed_at": "2026-11-12T16:26:50Z",
+        "runner_id": 1000005304,
+        "runner_name": "GitHub Actions 1000005304",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run node scripts/secret-scan.mjs --self-check",
+          "Run node scripts/secret-scan.mjs",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131323838342,
+        "run_id": 43258704189,
+        "run_attempt": 1,
+        "name": "Typecheck, lint, unit tests (Ubuntu)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-12T16:26:39Z",
+        "completed_at": "2026-11-12T16:32:51Z",
+        "runner_id": 1000005305,
+        "runner_name": "GitHub Actions 1000005305",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Run pnpm typecheck",
+          "Run pnpm lint",
+          "Run node scripts/check-workflows.mjs",
+          "Run node scripts/unicode-check.mjs --self-check",
+          "Run node scripts/unicode-check.mjs",
+          "The bar guard (reports, never fails)",
+          "Unit tests (inside Electron's Node)",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131327861041,
+        "run_id": 43258704189,
+        "run_attempt": 1,
+        "name": "End-to-end and installers (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-12T16:32:58Z",
+        "completed_at": "2026-11-12T16:36:58Z",
+        "runner_id": 1000005307,
+        "runner_name": "GitHub Actions 1000005307",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Fetch FFmpeg",
+          "Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)",
+          "Fetch yt-dlp and Deno",
+          "Fetch yt-dlp and Deno for Intel Macs too",
+          "Unit tests (inside Electron's Node)",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Unit quick check (the files named, each run as many times as asked; Session 16)",
+          "End-to-end quick check (the specs named, or the screenshots)",
+          "The audience screens against an earlier commit",
+          "Upload the screenshots",
+          "Drashti finds and runs its FFmpeg, yt-dlp and Deno (built app)",
+          "Restart after a restore (built app)",
+          "Fetch the live captions engine",
+          "Fetch the live captions engine for Intel Macs too",
+          "Package installers",
+          "Restart after a restore (packaged app)",
+          "Drashti finds and runs its FFmpeg, yt-dlp, Deno and Whisper (each packaged app)",
+          "Upload installers",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131327861061,
+        "run_id": 43258704189,
+        "run_attempt": 1,
+        "name": "End-to-end and installers (macos-latest)",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "started_at": "2026-11-12T16:32:52Z",
+        "completed_at": "2026-11-12T16:47:54Z",
+        "runner_id": 0,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "id": 131327864092,
+        "run_id": 43258704189,
+        "run_attempt": 1,
+        "name": "End-to-end in Black (windows-latest)",
+        "status": "completed",
+        "conclusion": "skipped",
+        "started_at": "2026-11-12T16:32:52Z",
+        "completed_at": "2026-11-12T16:32:51Z",
+        "runner_id": null,
+        "runner_name": null,
+        "steps": []
+      },
+      {
+        "id": 131327864218,
+        "run_id": 43258704189,
+        "run_attempt": 1,
+        "name": "End-to-end, second half (macos-latest)",
+        "status": "completed",
+        "conclusion": "skipped",
+        "started_at": "2026-11-12T16:32:52Z",
+        "completed_at": "2026-11-12T16:32:51Z",
+        "runner_id": null,
+        "runner_name": null,
+        "steps": []
+      }
+    ],
+    "annotations": {
+      "131327861061": [
+        {
+          "annotation_level": "failure",
+          "message": "The job was not acquired by Runner of type hosted even after multiple attempts"
+        },
+        {
+          "annotation_level": "notice",
+          "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+        },
+        {
+          "annotation_level": "notice",
+          "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+        },
+        {
+          "annotation_level": "notice",
+          "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+        }
+      ],
+      "131327864092": [],
+      "131327864218": []
+    }
+  },
+  "noRunnerBesideFailure": {
+    "about": "A quick check (12 Nov 2026): a Windows test failed, the Mac job never started (no runner).",
+    "run": {
+      "id": 43261275885,
+      "name": "CI",
+      "event": "workflow_dispatch",
+      "head_branch": "s57-qc-c25-1113-034025-84005",
+      "head_sha": "dd80d6f42a2707cb55d342fd9b37fdfcdd946a08",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "workflow_id": 368840730,
+      "head_repository": {
+        "full_name": "Priyansh9121/drashti"
+      }
+    },
+    "jobs": [
+      {
+        "id": 131332929836,
+        "run_id": 43261275885,
+        "run_attempt": 1,
+        "name": "Typecheck, lint, unit tests (Ubuntu)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-12T16:40:49Z",
+        "completed_at": "2026-11-12T16:47:20Z",
+        "runner_id": 1000005313,
+        "runner_name": "GitHub Actions 1000005313",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Run pnpm typecheck",
+          "Run pnpm lint",
+          "Run node scripts/check-workflows.mjs",
+          "Run node scripts/unicode-check.mjs --self-check",
+          "Run node scripts/unicode-check.mjs",
+          "The bar guard (reports, never fails)",
+          "Unit tests (inside Electron's Node)",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131332930340,
+        "run_id": 43261275885,
+        "run_attempt": 1,
+        "name": "Secret scan (gitleaks, whole history)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-12T16:40:49Z",
+        "completed_at": "2026-11-12T16:41:04Z",
+        "runner_id": 1000005314,
+        "runner_name": "GitHub Actions 1000005314",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run node scripts/secret-scan.mjs --self-check",
+          "Run node scripts/secret-scan.mjs",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131337095791,
+        "run_id": 43261275885,
+        "run_attempt": 1,
+        "name": "End-to-end and installers (windows-latest)",
+        "status": "completed",
+        "conclusion": "failure",
+        "started_at": "2026-11-12T16:47:23Z",
+        "completed_at": "2026-11-12T16:52:49Z",
+        "runner_id": 1000005318,
+        "runner_name": "GitHub Actions 1000005318",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Fetch FFmpeg",
+          "Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)",
+          "Fetch yt-dlp and Deno",
+          "Fetch yt-dlp and Deno for Intel Macs too",
+          "Unit tests (inside Electron's Node)",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Unit quick check (the files named, each run as many times as asked; Session 16)",
+          "End-to-end quick check (the specs named, or the screenshots)",
+          "The audience screens against an earlier commit",
+          "Upload the screenshots",
+          "Drashti finds and runs its FFmpeg, yt-dlp and Deno (built app)",
+          "Restart after a restore (built app)",
+          "Fetch the live captions engine",
+          "Fetch the live captions engine for Intel Macs too",
+          "Package installers",
+          "Restart after a restore (packaged app)",
+          "Drashti finds and runs its FFmpeg, yt-dlp, Deno and Whisper (each packaged app)",
+          "Upload installers",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131337095805,
+        "run_id": 43261275885,
+        "run_attempt": 1,
+        "name": "End-to-end and installers (macos-latest)",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "started_at": "2026-11-12T16:47:20Z",
+        "completed_at": "2026-11-12T17:02:22Z",
+        "runner_id": 0,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "id": 131337099279,
+        "run_id": 43261275885,
+        "run_attempt": 1,
+        "name": "End-to-end, second half (macos-latest)",
+        "status": "completed",
+        "conclusion": "skipped",
+        "started_at": "2026-11-12T16:47:20Z",
+        "completed_at": "2026-11-12T16:47:20Z",
+        "runner_id": null,
+        "runner_name": null,
+        "steps": []
+      },
+      {
+        "id": 131337101871,
+        "run_id": 43261275885,
+        "run_attempt": 1,
+        "name": "End-to-end in Black (windows-latest)",
+        "status": "completed",
+        "conclusion": "skipped",
+        "started_at": "2026-11-12T16:47:21Z",
+        "completed_at": "2026-11-12T16:47:20Z",
+        "runner_id": null,
+        "runner_name": null,
+        "steps": []
+      }
+    ],
+    "annotations": {
+      "131337095791": [
+        {
+          "annotation_level": "failure",
+          "message": "Process completed with exit code 1."
+        }
+      ],
+      "131337095805": [
+        {
+          "annotation_level": "failure",
+          "message": "The job was not acquired by Runner of type hosted even after multiple attempts"
+        },
+        {
+          "annotation_level": "notice",
+          "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+        },
+        {
+          "annotation_level": "notice",
+          "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+        },
+        {
+          "annotation_level": "notice",
+          "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+        }
+      ],
+      "131337099279": [],
+      "131337101871": []
+    }
+  },
+  "flakyGate": {
+    "about": "The alpha.17 gate's push to phase1, attempt 1 (13 Nov 2026): the Mac's first half failed on one flaky test (CI fails on a flaky test); the rest passed.",
+    "run": {
+      "id": 43361930288,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "phase1",
+      "head_sha": "9befbc8a0fd063d9742d4a98bd7c960674599256",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "workflow_id": 368840730,
+      "head_repository": {
+        "full_name": "Priyansh9121/drashti"
+      }
+    },
+    "jobs": [
+      {
+        "id": 131677222266,
+        "run_id": 43361930288,
+        "run_attempt": 1,
+        "name": "Typecheck, lint, unit tests (Ubuntu)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-13T03:53:41Z",
+        "completed_at": "2026-11-13T04:00:22Z",
+        "runner_id": 1000005498,
+        "runner_name": "GitHub Actions 1000005498",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Run pnpm typecheck",
+          "Run pnpm lint",
+          "Run node scripts/check-workflows.mjs",
+          "Run node scripts/unicode-check.mjs --self-check",
+          "Run node scripts/unicode-check.mjs",
+          "The bar guard (reports, never fails)",
+          "Unit tests (inside Electron's Node)",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131677222866,
+        "run_id": 43361930288,
+        "run_attempt": 1,
+        "name": "Secret scan (gitleaks, whole history)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-13T03:53:41Z",
+        "completed_at": "2026-11-13T03:54:00Z",
+        "runner_id": 1000005499,
+        "runner_name": "GitHub Actions 1000005499",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run node scripts/secret-scan.mjs --self-check",
+          "Run node scripts/secret-scan.mjs",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131679495415,
+        "run_id": 43361930288,
+        "run_attempt": 1,
+        "name": "End-to-end, second half (macos-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-13T04:00:25Z",
+        "completed_at": "2026-11-13T05:27:14Z",
+        "runner_id": 1000005502,
+        "runner_name": "GitHub Actions 1000005502",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp and Deno downloads",
+          "Fetch FFmpeg",
+          "Fetch yt-dlp and Deno",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests, second half (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp and Deno downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131679495430,
+        "run_id": 43361930288,
+        "run_attempt": 1,
+        "name": "End-to-end in Black (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-13T04:00:24Z",
+        "completed_at": "2026-11-13T05:52:46Z",
+        "runner_id": 1000005500,
+        "runner_name": "GitHub Actions 1000005500",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp and Deno downloads",
+          "Fetch FFmpeg",
+          "Fetch yt-dlp and Deno",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests in Black (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp and Deno downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131679495523,
+        "run_id": 43361930288,
+        "run_attempt": 1,
+        "name": "End-to-end and installers (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-13T04:00:24Z",
+        "completed_at": "2026-11-13T05:58:25Z",
+        "runner_id": 1000005501,
+        "runner_name": "GitHub Actions 1000005501",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Fetch FFmpeg",
+          "Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)",
+          "Fetch yt-dlp and Deno",
+          "Fetch yt-dlp and Deno for Intel Macs too",
+          "Unit tests (inside Electron's Node)",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Unit quick check (the files named, each run as many times as asked; Session 16)",
+          "End-to-end quick check (the specs named, or the screenshots)",
+          "The audience screens against an earlier commit",
+          "Upload the screenshots",
+          "Drashti finds and runs its FFmpeg, yt-dlp and Deno (built app)",
+          "Restart after a restore (built app)",
+          "Fetch the live captions engine",
+          "Fetch the live captions engine for Intel Macs too",
+          "Package installers",
+          "Restart after a restore (packaged app)",
+          "Drashti finds and runs its FFmpeg, yt-dlp, Deno and Whisper (each packaged app)",
+          "Upload installers",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131679495816,
+        "run_id": 43361930288,
+        "run_attempt": 1,
+        "name": "End-to-end and installers (macos-latest)",
+        "status": "completed",
+        "conclusion": "failure",
+        "started_at": "2026-11-13T04:00:25Z",
+        "completed_at": "2026-11-13T05:13:46Z",
+        "runner_id": 1000005503,
+        "runner_name": "GitHub Actions 1000005503",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Fetch FFmpeg",
+          "Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)",
+          "Fetch yt-dlp and Deno",
+          "Fetch yt-dlp and Deno for Intel Macs too",
+          "Unit tests (inside Electron's Node)",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Unit quick check (the files named, each run as many times as asked; Session 16)",
+          "End-to-end quick check (the specs named, or the screenshots)",
+          "The audience screens against an earlier commit",
+          "Upload the screenshots",
+          "Drashti finds and runs its FFmpeg, yt-dlp and Deno (built app)",
+          "Restart after a restore (built app)",
+          "Fetch the live captions engine",
+          "Fetch the live captions engine for Intel Macs too",
+          "Package installers",
+          "Restart after a restore (packaged app)",
+          "Drashti finds and runs its FFmpeg, yt-dlp, Deno and Whisper (each packaged app)",
+          "Upload installers",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      }
+    ],
+    "annotations": {
+      "131679495816": [
+        {
+          "annotation_level": "failure",
+          "message": "Process completed with exit code 1."
+        },
+        {
+          "annotation_level": "notice",
+          "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+        }
+      ]
+    }
+  },
+  "flakyGateRerun": {
+    "about": "The same gate's attempt 2 (13 Nov 2026), the Mac's first half re-run by hand: every job passed.",
+    "run": {
+      "id": 43361930288,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "phase1",
+      "head_sha": "9befbc8a0fd063d9742d4a98bd7c960674599256",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 2,
+      "workflow_id": 368840730,
+      "head_repository": {
+        "full_name": "Priyansh9121/drashti"
+      }
+    },
+    "jobs": [
+      {
+        "id": 131734724213,
+        "run_id": 43361930288,
+        "run_attempt": 2,
+        "name": "End-to-end and installers (macos-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-13T06:36:06Z",
+        "completed_at": "2026-11-13T08:20:48Z",
+        "runner_id": 1000005504,
+        "runner_name": "GitHub Actions 1000005504",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Fetch FFmpeg",
+          "Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)",
+          "Fetch yt-dlp and Deno",
+          "Fetch yt-dlp and Deno for Intel Macs too",
+          "Unit tests (inside Electron's Node)",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Unit quick check (the files named, each run as many times as asked; Session 16)",
+          "End-to-end quick check (the specs named, or the screenshots)",
+          "The audience screens against an earlier commit",
+          "Upload the screenshots",
+          "Drashti finds and runs its FFmpeg, yt-dlp and Deno (built app)",
+          "Restart after a restore (built app)",
+          "Fetch the live captions engine",
+          "Fetch the live captions engine for Intel Macs too",
+          "Package installers",
+          "Restart after a restore (packaged app)",
+          "Drashti finds and runs its FFmpeg, yt-dlp, Deno and Whisper (each packaged app)",
+          "Upload installers",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131734725657,
+        "run_id": 43361930288,
+        "run_attempt": 2,
+        "name": "End-to-end and installers (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-13T04:00:24Z",
+        "completed_at": "2026-11-13T05:58:25Z",
+        "runner_id": 1000005501,
+        "runner_name": "GitHub Actions 1000005501",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Fetch FFmpeg",
+          "Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)",
+          "Fetch yt-dlp and Deno",
+          "Fetch yt-dlp and Deno for Intel Macs too",
+          "Unit tests (inside Electron's Node)",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Unit quick check (the files named, each run as many times as asked; Session 16)",
+          "End-to-end quick check (the specs named, or the screenshots)",
+          "The audience screens against an earlier commit",
+          "Upload the screenshots",
+          "Drashti finds and runs its FFmpeg, yt-dlp and Deno (built app)",
+          "Restart after a restore (built app)",
+          "Fetch the live captions engine",
+          "Fetch the live captions engine for Intel Macs too",
+          "Package installers",
+          "Restart after a restore (packaged app)",
+          "Drashti finds and runs its FFmpeg, yt-dlp, Deno and Whisper (each packaged app)",
+          "Upload installers",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp, Deno and Whisper downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131734726159,
+        "run_id": 43361930288,
+        "run_attempt": 2,
+        "name": "End-to-end, second half (macos-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-13T04:00:25Z",
+        "completed_at": "2026-11-13T05:27:14Z",
+        "runner_id": 1000005502,
+        "runner_name": "GitHub Actions 1000005502",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp and Deno downloads",
+          "Fetch FFmpeg",
+          "Fetch yt-dlp and Deno",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests, second half (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp and Deno downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131734761740,
+        "run_id": 43361930288,
+        "run_attempt": 2,
+        "name": "End-to-end in Black (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-13T04:00:24Z",
+        "completed_at": "2026-11-13T05:52:46Z",
+        "runner_id": 1000005500,
+        "runner_name": "GitHub Actions 1000005500",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp and Deno downloads",
+          "Fetch FFmpeg",
+          "Fetch yt-dlp and Deno",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests in Black (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp and Deno downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131734763467,
+        "run_id": 43361930288,
+        "run_attempt": 2,
+        "name": "Typecheck, lint, unit tests (Ubuntu)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-13T03:53:41Z",
+        "completed_at": "2026-11-13T04:00:22Z",
+        "runner_id": 1000005498,
+        "runner_name": "GitHub Actions 1000005498",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Run pnpm typecheck",
+          "Run pnpm lint",
+          "Run node scripts/check-workflows.mjs",
+          "Run node scripts/unicode-check.mjs --self-check",
+          "Run node scripts/unicode-check.mjs",
+          "The bar guard (reports, never fails)",
+          "Unit tests (inside Electron's Node)",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 131734770024,
+        "run_id": 43361930288,
+        "run_attempt": 2,
+        "name": "Secret scan (gitleaks, whole history)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-13T03:53:41Z",
+        "completed_at": "2026-11-13T03:54:00Z",
+        "runner_id": 1000005499,
+        "runner_name": "GitHub Actions 1000005499",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run node scripts/secret-scan.mjs --self-check",
+          "Run node scripts/secret-scan.mjs",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      }
+    ],
+    "annotations": {}
+  },
+  "newerPush": {
+    "about": "A push to phase1 (2 Nov 2026): a Windows unit test failed, then a newer push cancelled the Mac job and the Black job as they ran.",
+    "run": {
+      "id": 41497139815,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "phase1",
+      "head_sha": "27e84241fc04feb756f10a806659f8b011006380",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "run_attempt": 1,
+      "workflow_id": 368840730,
+      "head_repository": {
+        "full_name": "Priyansh9121/drashti"
+      }
+    },
+    "jobs": [
+      {
+        "id": 125454950124,
+        "run_id": 41497139815,
+        "run_attempt": 1,
+        "name": "Secret scan (gitleaks, whole history)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-02T18:04:57Z",
+        "completed_at": "2026-11-02T18:05:22Z",
+        "runner_id": 1000003973,
+        "runner_name": "GitHub Actions 1000003973",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run node scripts/secret-scan.mjs --self-check",
+          "Run node scripts/secret-scan.mjs",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 125454950423,
+        "run_id": 41497139815,
+        "run_attempt": 1,
+        "name": "Typecheck, lint, unit tests (Ubuntu)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-02T18:04:57Z",
+        "completed_at": "2026-11-02T18:12:13Z",
+        "runner_id": 1000003974,
+        "runner_name": "GitHub Actions 1000003974",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Run pnpm typecheck",
+          "Run pnpm lint",
+          "Run node scripts/check-workflows.mjs",
+          "Run node scripts/unicode-check.mjs --self-check",
+          "Run node scripts/unicode-check.mjs",
+          "The bar guard (reports, never fails)",
+          "Unit tests (inside Electron's Node)",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 125458965661,
+        "run_id": 41497139815,
+        "run_attempt": 1,
+        "name": "End-to-end and installers (macos-latest)",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "started_at": "2026-11-02T18:12:17Z",
+        "completed_at": "2026-11-02T18:59:25Z",
+        "runner_id": 1000003977,
+        "runner_name": "GitHub Actions 1000003977",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp and Deno downloads",
+          "Fetch FFmpeg",
+          "Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)",
+          "Fetch yt-dlp and Deno",
+          "Fetch yt-dlp and Deno for Intel Macs too",
+          "Unit tests (inside Electron's Node)",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Unit quick check (the files named, each run as many times as asked; Session 16)",
+          "End-to-end quick check (the specs named, or the screenshots)",
+          "The audience screens against an earlier commit",
+          "Upload the screenshots",
+          "Drashti finds and runs its FFmpeg, yt-dlp and Deno (built app)",
+          "Restart after a restore (built app)",
+          "Package installers",
+          "Restart after a restore (packaged app)",
+          "Drashti finds and runs its FFmpeg, yt-dlp and Deno (each packaged app)",
+          "Upload installers",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp and Deno downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 125458965703,
+        "run_id": 41497139815,
+        "run_attempt": 1,
+        "name": "End-to-end and installers (windows-latest)",
+        "status": "completed",
+        "conclusion": "failure",
+        "started_at": "2026-11-02T18:12:16Z",
+        "completed_at": "2026-11-02T18:20:30Z",
+        "runner_id": 1000003976,
+        "runner_name": "GitHub Actions 1000003976",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp and Deno downloads",
+          "Fetch FFmpeg",
+          "Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)",
+          "Fetch yt-dlp and Deno",
+          "Fetch yt-dlp and Deno for Intel Macs too",
+          "Unit tests (inside Electron's Node)",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Unit quick check (the files named, each run as many times as asked; Session 16)",
+          "End-to-end quick check (the specs named, or the screenshots)",
+          "The audience screens against an earlier commit",
+          "Upload the screenshots",
+          "Drashti finds and runs its FFmpeg, yt-dlp and Deno (built app)",
+          "Restart after a restore (built app)",
+          "Package installers",
+          "Restart after a restore (packaged app)",
+          "Drashti finds and runs its FFmpeg, yt-dlp and Deno (each packaged app)",
+          "Upload installers",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache FFmpeg, yt-dlp and Deno downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      },
+      {
+        "id": 125458965816,
+        "run_id": 41497139815,
+        "run_attempt": 1,
+        "name": "End-to-end in Black (windows-latest)",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "started_at": "2026-11-02T18:12:16Z",
+        "completed_at": "2026-11-02T18:59:12Z",
+        "runner_id": 1000003975,
+        "runner_name": "GitHub Actions 1000003975",
+        "steps": [
+          "Set up job",
+          "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Run pnpm install --frozen-lockfile",
+          "Cache FFmpeg, yt-dlp and Deno downloads",
+          "Fetch FFmpeg",
+          "Fetch yt-dlp and Deno",
+          "Cache Playwright's browsers",
+          "Playwright's Chromium and WebKit",
+          "The disk before the end-to-end tests (reports, never fails)",
+          "End-to-end tests in Black (Playwright + Electron)",
+          "The disk after the end-to-end tests (reports, never fails)",
+          "Cap the crash files in the report",
+          "Upload Playwright report",
+          "Post Cache Playwright's browsers",
+          "Post Cache FFmpeg, yt-dlp and Deno downloads",
+          "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "Post Run pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+          "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "Complete job"
+        ]
+      }
+    ],
+    "annotations": {
+      "125458965661": [
+        {
+          "annotation_level": "failure",
+          "message": "Canceling since a higher priority waiting request for ci-refs/heads/phase1 exists"
+        },
+        {
+          "annotation_level": "failure",
+          "message": "ENOENT: no such file or directory, realpath '/Users/runner/work/drashti/drashti/test-results/editor-motion-render-the-p-cc9aa-h-the-same-progress-webkit-/crash-files/completed'"
+        },
+        {
+          "annotation_level": "failure",
+          "message": "The operation was canceled."
+        },
+        {
+          "annotation_level": "notice",
+          "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+        }
+      ],
+      "125458965703": [
+        {
+          "annotation_level": "failure",
+          "message": "Process completed with exit code 1."
+        },
+        {
+          "annotation_level": "failure",
+          "message": "AssertionError: expected [ Array(1) ] to deeply equal []\n\n- Expected\n+ Received\n\n- []\n+ [\n+   \"C:\\\\Users\\\\RUNNER~1\\\\AppData\\\\Local\\\\Temp\\\\drashti-run-3224-mvzkv6s1\\\\drashti-phone-files-kb8Po6\\\\Media\\\\.phone-uploads\\\\4d8792f7-f7a8-4206-ad0d-8e19f672c947.pptx\",\n+ ]\n\n ❯ src/main/network/phone-files.test.ts:251:22\n\n"
+        },
+        {
+          "annotation_level": "failure",
+          "message": "Error: ENOTEMPTY, Directory not empty: \\\\?\\C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\drashti-run-3224-mvzkv6s1\\drashti-phone-files-kb8Po6 '\\\\?\\C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\drashti-run-3224-mvzkv6s1\\drashti-phone-files-kb8Po6'\n ❯ src/main/network/phone-files.test.ts:146:3\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\nSerialized Error: { errno: 41, code: 'ENOTEMPTY', path: '\\\\?\\C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\drashti-run-3224-mvzkv6s1\\drashti-phone-files-kb8Po6', syscall: 'rm' }\n"
+        },
+        {
+          "annotation_level": "failure",
+          "message": "AssertionError: expected [] to deeply equal [ Array(1) ]\n\n- Expected\n+ Received\n\n- [\n-   \"Waiting for the stream to end: Drashti brings a PDF, PowerPoint or Keynote file in once it has (a deck is never converted on air).\",\n- ]\n+ []\n\n ❯ src/main/network/phone-files.test.ts:239:19\n\n"
+        },
+        {
+          "annotation_level": "failure",
+          "message": "Error: ENOENT: no such file or directory, open 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\drashti-run-3224-mvzkv6s1\\drashti-phone-files-kb8Po6\\Media\\.phone-uploads\\4d8792f7-f7a8-4206-ad0d-8e19f672c947.pptx'\n ❯ src/main/network/phone-files.test.ts:66:45\n ❯ Object.standInImport [as importFiles] src/main/network/phone-files.test.ts:63:43\n ❯ PhoneFiles.importArrived src/main/network/phone-files.ts:279:36\n ❯ PhoneFiles.arrived src/main/network/phone-files.ts:272:25\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\nSerialized Error: { errno: -4058, code: 'ENOENT', syscall: 'open', path: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\drashti-run-3224-mvzkv6s1\\drashti-phone-files-kb8Po6\\Media\\.phone-uploads\\4d8792f7-f7a8-4206-ad0d-8e19f672c947.pptx' }\nThis error originated in \"src/main/network/phone-files.test.ts\" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.\nThe last test to run before this error was \"nothing while the switch is off: refused, never imported, and the file sent removed\". This means either:\n- the error was thrown while Vitest was running this test, or\n- the error was thrown after the test completed, and this was the most recent test at that point.\n"
+        }
+      ],
+      "125458965816": [
+        {
+          "annotation_level": "failure",
+          "message": "Canceling since a higher priority waiting request for ci-refs/heads/phase1 exists"
+        },
+        {
+          "annotation_level": "failure",
+          "message": "The operation was canceled."
+        }
+      ]
+    }
+  },
+  "cancelledByHand": {
+    "about": "main's own run at the alpha.17 release (13 Nov 2026), cancelled by hand before its app jobs started.",
+    "run": {
+      "id": 43392703298,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "9befbc8a0fd063d9742d4a98bd7c960674599256",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "run_attempt": 1,
+      "workflow_id": 368840730,
+      "head_repository": {
+        "full_name": "Priyansh9121/drashti"
+      }
+    },
+    "jobs": [
+      {
+        "id": 131776187549,
+        "run_id": 43392703298,
+        "run_attempt": 1,
+        "name": "Typecheck, lint, unit tests (Ubuntu)",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "started_at": "2026-11-13T08:22:25Z",
+        "completed_at": "2026-11-13T08:22:27Z",
+        "runner_id": 1000005508,
+        "runner_name": "GitHub Actions 1000005508",
+        "steps": ["Set up job"]
+      },
+      {
+        "id": 131776188030,
+        "run_id": 43392703298,
+        "run_attempt": 1,
+        "name": "Secret scan (gitleaks, whole history)",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "started_at": "2026-11-13T08:22:25Z",
+        "completed_at": "2026-11-13T08:22:28Z",
+        "runner_id": 1000005509,
+        "runner_name": "GitHub Actions 1000005509",
+        "steps": ["Set up job"]
+      },
+      {
+        "id": 131776226555,
+        "run_id": 43392703298,
+        "run_attempt": 1,
+        "name": "End-to-end in Black (windows-latest)",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "started_at": "2026-11-13T08:22:28Z",
+        "completed_at": "2026-11-13T08:22:28Z",
+        "runner_id": null,
+        "runner_name": null,
+        "steps": []
+      },
+      {
+        "id": 131776226935,
+        "run_id": 43392703298,
+        "run_attempt": 1,
+        "name": "End-to-end, second half (macos-latest)",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "started_at": "2026-11-13T08:22:29Z",
+        "completed_at": "2026-11-13T08:22:28Z",
+        "runner_id": null,
+        "runner_name": null,
+        "steps": []
+      },
+      {
+        "id": 131776227064,
+        "run_id": 43392703298,
+        "run_attempt": 1,
+        "name": "End-to-end and installers (${{ matrix.os }})",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "started_at": "2026-11-13T08:22:29Z",
+        "completed_at": "2026-11-13T08:22:28Z",
+        "runner_id": null,
+        "runner_name": null,
+        "steps": []
+      }
+    ],
+    "annotations": {
+      "131776187549": [
+        {
+          "annotation_level": "failure",
+          "message": "The run was canceled by @Priyansh9121."
+        },
+        {
+          "annotation_level": "failure",
+          "message": "The operation was canceled."
+        },
+        {
+          "annotation_level": "notice",
+          "message": "\"The ubuntu-latest label will migrate to Ubuntu 26 beginning October 19, 2026. For more information, see https://github.com/actions/runner-images/issues/14748\""
+        }
+      ],
+      "131776188030": [
+        {
+          "annotation_level": "failure",
+          "message": "The run was canceled by @Priyansh9121."
+        },
+        {
+          "annotation_level": "failure",
+          "message": "The operation was canceled."
+        },
+        {
+          "annotation_level": "notice",
+          "message": "\"The ubuntu-latest label will migrate to Ubuntu 26 beginning October 19, 2026. For more information, see https://github.com/actions/runner-images/issues/14748\""
+        }
+      ],
+      "131776226555": [],
+      "131776226935": [],
+      "131776227064": []
+    }
+  }
+}

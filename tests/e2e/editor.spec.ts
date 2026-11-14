@@ -12,6 +12,7 @@ import {
   editorGroup,
   importAndGetIds,
   launchApp,
+  onEditorSlide,
   openLibrary,
   operatorPage,
   outputPage,
@@ -33,24 +34,15 @@ import { makeTestImage } from './test-media';
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-/** A point on the slide (slide pixels) as a point in the editor's window. */
-async function onCanvas(ed: Page, x: number, y: number): Promise<{ x: number; y: number }> {
-  const canvas = ed.getByTestId('editor-canvas');
-  const box = await canvas.boundingBox();
-  const scale = Number(await canvas.getAttribute('data-scale'));
-  if (!box) throw new Error('no canvas');
-  return { x: box.x + x * scale, y: box.y + y * scale };
-}
-
 async function clickSlide(ed: Page, x: number, y: number): Promise<void> {
-  const p = await onCanvas(ed, x, y);
+  const p = await onEditorSlide(ed, x, y);
   await ed.mouse.click(p.x, p.y);
 }
 
 /** Drag on the slide from one point to another (slide pixels), in small steps, optionally holding Alt. */
 async function dragSlide(ed: Page, from: [number, number], to: [number, number], alt = false): Promise<void> {
-  const a = await onCanvas(ed, ...from);
-  const b = await onCanvas(ed, ...to);
+  const a = await onEditorSlide(ed, ...from);
+  const b = await onEditorSlide(ed, ...to);
   await ed.mouse.move(a.x, a.y);
   if (alt) await ed.keyboard.down('Alt');
   await ed.mouse.down();
@@ -183,8 +175,8 @@ test('edit a slide: a Gujarati word in its own font and size, a shape and a pict
   await clickSlide(ed, 700, 400);
   for (let i = 0; i < 10; i++) await ed.keyboard.press('Shift+ArrowRight');
   await expect.poll(() => fieldValue(ed, 'field-x')).toBe(580);
-  const a = await onCanvas(ed, 1060, 540);
-  const b = await onCanvas(ed, 950, 540);
+  const a = await onEditorSlide(ed, 1060, 540);
+  const b = await onEditorSlide(ed, 950, 540);
   await ed.mouse.move(a.x, a.y);
   await ed.mouse.down();
   for (let i = 1; i <= 8; i++) await ed.mouse.move(a.x + ((b.x - a.x) * i) / 8, a.y);
