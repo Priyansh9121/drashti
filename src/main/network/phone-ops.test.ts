@@ -329,11 +329,17 @@ describe('the phone’s own requests (Session 55, Part 9)', () => {
     expect(ask(remote, 'wallpaper.rename', { wallpaperId: 'w-1', name: '  Placeholder dawn ' }).status).toBe(
       200,
     );
+    // Its name cleaned as a file's is (Session 58, X3): direction marks left out, one that only looks empty refused.
+    expect(
+      ask(remote, 'wallpaper.rename', { wallpaperId: 'w-1', name: 'Placeholder\u202E dawn\u200F' }).status,
+    ).toBe(200);
+    expect(ask(remote, 'wallpaper.rename', { wallpaperId: 'w-1', name: '\u200B\u2060' }).status).toBe(400);
     expect(ask(remote, 'wallpaper.remove', { wallpaperId: 'w-1' }).status).toBe(200);
     expect(ask(remote, 'wallpaper.restore', { wallpaperId: 'w-1' }).status).toBe(200);
     expect(calls.map((c) => [c.what, c.args])).toEqual([
       ['chooseWallpaper', ['w-2']],
       ['chooseWallpaper', [null]],
+      ['renameWallpaper', ['w-1', 'Placeholder dawn']],
       ['renameWallpaper', ['w-1', 'Placeholder dawn']],
       ['removeWallpaper', ['w-1']],
       ['restoreWallpaper', ['w-1']],
@@ -408,6 +414,9 @@ describe('the phone’s own requests (Session 55, Part 9)', () => {
     for (const [op, args] of [
       ['media.rename', { mediaId: 'm-video', name: '   ' }],
       ['media.rename', { mediaId: 'm-video', name: 'x'.repeat(201) }],
+      // A name that only looks empty (Session 58, X3).
+      ['media.rename', { mediaId: 'm-video', name: '\u200B' }],
+      ['presentation.rename', { presentationId: 'p-kirtan', name: '\u200D \u00AD' }],
       ['presentation.rename', { presentationId: 'p-kirtan' }],
       ['playlist.whenEnds', { itemId: 'other-video', whenEnds: 'forever' }],
       // Never anything but what it names: a path, say.
