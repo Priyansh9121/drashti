@@ -1138,6 +1138,15 @@ test('a deck slide the operator points at in the list (or whose number is typed)
     // These pages open after the pointer stopped moving, so they must read the pointing at startup.
     const lateHall = await outputFor(app, await setUpScreen(win, 'Late Hall', 2));
     await stream.reload();
+    // Opened again, the stream's page is ready to draw the show only once its fonts are in and its warm-up is over, as
+    // at the start (C19: 4.5-9.1 s on CI's Mac): a click before then finds its step held (Session 58, the lead: this
+    // test flaked on the stream after the reload came in, X13).
+    await expect(stream.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
+      timeout: 30_000,
+    });
+    await expect(stream.getByTestId('program-root')).not.toHaveAttribute('data-warm-up', 'warming', {
+      timeout: 30_000,
+    });
     screens.push({ page: lateHall, box: 'preload', name: 'the late hall' });
     await loadedAhead();
     // The pointer moves off the list: each lets the clip go.
