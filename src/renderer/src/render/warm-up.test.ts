@@ -151,7 +151,7 @@ describe('the warm-up', () => {
     expect(renderToStaticMarkup(shade.draw?.(false, BEFORE, canvas, null))).toBe('');
     const markup = renderToStaticMarkup(shade.draw?.(true, BEFORE + 33, canvas, null));
     const opening = markup.split('<img')[0];
-    const picture = markup.match(/<img[^>]*>/u)?.[0];
+    const picture = /<img[^>]*>/u.exec(markup)?.[0];
     expect(opening).toContain('overflow:hidden');
     expect(opening).toContain('border-radius:12px');
     expect(opening).not.toContain('transform:');

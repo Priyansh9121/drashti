@@ -22,7 +22,7 @@ import {
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../../shared/lower-thirds';
 import { engineNow, pauseClock } from './clock';
 import { LowerThirdView } from './LowerThirdView';
-import { MediaUrls } from './media-urls';
+import { MediaUrls, useMediaUrl } from './media-urls';
 import { Scene } from './Scene';
 import {
   OFF_GRID,
@@ -32,6 +32,7 @@ import {
   withShapes,
   withSplits,
 } from './warm-up-deck';
+import { deckTransitionFrame } from './transition-frame';
 import { WARM_UP_FAILS } from './warm-up-mode';
 import { WarmUpBoundary } from './WarmUpBoundary';
 
@@ -414,6 +415,14 @@ export function warmScenes(): WarmScene[] {
         };
       },
     });
+  // The wide Cover's shaded texture needs an analytic clip on the same draw as its antialiased edges (X12).
+  // Transform the filtered picture itself so it reaches the compositor as that quad, inside a stationary clip.
+  list.push({
+    key: 'deck-cover-shade',
+    look: look('calm'),
+    state: () => base,
+    draw: (during) => (during ? <WarmCoverShade /> : null),
+  });
   // Every moving background of the Lower Thirds studio (Session 58, Q58-18): one scene of small lower thirds, each
   // background at the moments of its loop where every piece shows, from the registry, so one added there is warmed
   // too. The hall's screens and the stream's page draw it; the LIVE picture does not (the operator's own, and the
@@ -447,6 +456,30 @@ export function warmScenes(): WarmScene[] {
     ...offGrid(deckCover && fourThreeScene(deckCover), 'deck-cover-four-three/calm/off-grid'),
     ...list,
   ];
+}
+
+/** The texture for the wide Cover's clipped, shaded quad (X12). Only the picture inside the clip turns. */
+function WarmCoverShade() {
+  const url = useMediaUrl();
+  const frame = deckTransitionFrame(warmDeckTransition('cover', MAX_TRANSITION_MS), PART, 'calm');
+  return (
+    <div style={{ position: 'absolute', inset: '5%', overflow: 'hidden', borderRadius: 12 }}>
+      <img
+        src={url(PICTURE.b)}
+        alt=""
+        draggable={false}
+        style={{
+          position: 'absolute',
+          width: '100%',
+          height: '100%',
+          objectFit: 'fill',
+          filter: frame.in.filter,
+          transform: `${frame.in.transform} rotate(1deg)`,
+          willChange: 'transform',
+        }}
+      />
+    </div>
+  );
 }
 
 /** A 4:3 deck's slide (1440 x 1080, as a deck of that shape gives), its parts placed across it as across a 16:9 one. */
