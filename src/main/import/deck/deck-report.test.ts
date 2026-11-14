@@ -145,6 +145,14 @@ describe('the report’s words on a deck', () => {
     expect(picturesMediaIssues({ videos: 0, cued: 0, left: 0, unmatched: 3 }).map((i) => i.message)).toEqual([
       'Its 3 videos and sounds were left out: its pictures could not be matched to its slides one for one (some pages could not be drawn, or the PDF has a different number of pages than it has slides shown).',
     ]);
+    // A Keynote deck whose PDF has its pages in another order than its PowerPoint copy's slides (C15's review, L1).
+    expect(
+      picturesMediaIssues({ videos: 0, cued: 0, left: 0, unmatched: 2, outOfOrder: true }).map(
+        (i) => i.message,
+      ),
+    ).toEqual([
+      'Its 2 videos and sounds were left out: its pictures could not be matched to its slides one for one (the PDF’s pages are in a different order than its slides).',
+    ]);
     expect(noAppIssue({ media: 0 }).message).toBe(
       'Its slides as pictures, and its animations, clicks and transitions, need PowerPoint (or Keynote on a Mac): import it on a computer with one, or save it as PDF there and import the PDF here.',
     );
