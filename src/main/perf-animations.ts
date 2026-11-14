@@ -36,8 +36,10 @@ import {
   POINT_AT,
   POINTED_LEAD_MS,
   POINTED_LOAD_MS,
+  POINTED_ON_AIR_ROW,
   POINTED_ROW,
   POINTED_SAY_MS,
+  pointWhileOnAir,
   windowsMemory,
   type WindowsMemory,
 } from './perf-pointed';
@@ -1044,18 +1046,29 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       }
       // C3 (Session 58, Q57-26): the cold jump as an operator makes it, the pointer resting on the deck slide's row a
       // moment before the click (perf-pointed.ts), so every hall screen has its first clip waiting at the frame the
-      // click starts it from; and what that clip costs each window in memory. Only with time for all its runs.
-      if (timeFor(SHORT_RUNS * (SETTLE_MS + POINTED_LEAD_MS + CLIP_MS + 800), 'deck slide pointed at first')) {
-        progress('the deck slide pointed at, then clicked');
+      // click starts it from; and what that clip costs each window in memory. Then, for the show's safety, a click
+      // whose clip plays on air while a slide is pointed at and let go of again and again (each pointing loads a clip
+      // on the screen's page), beside the plain clicks above. Only with time for all its runs.
+      const deckRow = { presentationId: deckId, slideIndex: 0, arrangementId: null };
+      if (
+        timeFor(
+          SHORT_RUNS * (SETTLE_MS + POINTED_LEAD_MS + 2 * (CLIP_MS + 800)),
+          'deck slide pointed at first',
+        )
+      ) {
+        progress('the deck slide pointed at, then clicked; a click with a slide pointed at meanwhile');
         for (let i = 0; i < SHORT_RUNS && Date.now() < deadline; i++) {
           await away();
           const before = windowsMemory(deps.outputs(), operator());
           await sleep(POINTED_SAY_MS);
-          await ask(operator(), POINT_AT({ presentationId: deckId, slideIndex: 0, arrangementId: null }), false);
+          await ask(operator(), POINT_AT(deckRow), false);
           await sleep(POINTED_LOAD_MS);
           pointedMemory.push(memoryAdded(before, windowsMemory(deps.outputs(), operator())));
           await press(POINTED_ROW, 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 800);
           await ask(operator(), POINT_AT(null), false);
+          const churning = pointWhileOnAir(operator, deckRow, CLIP_MS);
+          await press(POINTED_ON_AIR_ROW, 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
+          await churning;
         }
       }
       // One more click after the slide has stood still 20 s: Chromium may suspend a paused video after about 15 s, and
