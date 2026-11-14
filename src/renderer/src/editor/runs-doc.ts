@@ -6,6 +6,7 @@ import { clampLevel } from '../../../shared/text-lists';
 import { detectLang, mainLang, mergeRuns, withDetectedLangs } from '../../../shared/text-runs';
 import type { BoxPatch, TextPatch } from './ops';
 import { patchRun } from './ops';
+import { withoutSourceFit } from '../../../shared/source-fit';
 
 /*
  * A text box's words in ProseMirror, for editing in place, and back. The document is the box's lines, one block
@@ -213,7 +214,8 @@ export function withRuns(
   themeLooks?: Partial<Record<Lang, Omit<TextRun, 'text' | 'lang' | 'legacy'>>>,
 ): TextElement {
   const text = runs.map((r) => r.text).join('');
-  const { runs: _old, ...rest } = el;
+  // Its words edited: PowerPoint's own shrink of the old words no longer says how these fit (Session 58, FT-5).
+  const { runs: _old, ...rest } = text === el.text ? el : withoutSourceFit(el);
   const plain = runs.every((r) => Object.keys(r).length === 1);
   if (plain && !themeLooks) return { ...rest, text, lang: el.lang ?? detectLang(text) };
   let next: TextRun[];
