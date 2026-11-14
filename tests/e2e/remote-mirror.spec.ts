@@ -248,9 +248,10 @@ test('from a phone, as from the operator window: media with its skips, the stage
     await timer.getByTestId('remote-timer-show').click();
     await expect.poll(async () => (await layers(win)).timer ?? null).toBeNull();
 
-    // A lower third made in Drashti appears at once; Show and Hide.
+    // The current phone page draws the same new moving background as Main.
     await win.evaluate((input) => (globalThis as PageGlobals).drashti.lowerThirds.save(null, input), {
       ...NEW_LOWER_THIRD,
+      look: { ...NEW_LOWER_THIRD.look, motion: 'streaks' },
       lines: ['Placeholder Speaker', 'Placeholder title', ''],
     });
     const third = p.getByTestId('remote-lower-third').filter({ hasText: 'Placeholder Speaker' });
@@ -258,6 +259,12 @@ test('from a phone, as from the operator window: media with its skips, the stage
     await third.getByRole('button', { name: 'Show' }).click();
     await expect.poll(async () => (await layers(win)).lowerThird?.lines[0]).toBe('Placeholder Speaker');
     await expect(third).toHaveAttribute('data-up', 'true');
+    await p.getByTestId('remote-tab-show').click();
+    await expect(p.getByTestId('remote-live').getByTestId('lower-third-layer')).toHaveAttribute(
+      'data-lt-motion',
+      'streaks',
+    );
+    await p.getByTestId('remote-tab-more').click();
     await third.getByRole('button', { name: 'Hide' }).click();
     await expect.poll(async () => (await layers(win)).lowerThird).toBeNull();
 

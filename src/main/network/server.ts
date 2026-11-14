@@ -15,6 +15,7 @@ import {
   FEED_PATH,
   type FromDevice,
   type NetworkChange,
+  PHONE_LOWER_THIRD_MOTIONS,
   type ToDevice,
 } from '../../shared/network';
 import {
@@ -47,6 +48,7 @@ import { whileScreensMove } from './slide-picture';
 import { audioRoutes } from './audio-routes';
 import { mirrorRoutes } from './mirror-routes';
 import { desktopRoutes } from './desktop-routes';
+import { engineForAlpha17Phone } from './phone-lower-third-motion';
 import { phoneRoutes } from './phone-routes';
 
 /*
@@ -127,6 +129,7 @@ interface Client {
   ws: WebSocket;
   address: string;
   device: DeviceAuth | null;
+  currentLowerThirdMotions: boolean;
   alive: boolean;
 }
 
@@ -551,8 +554,24 @@ export class NetworkServer {
       return;
     }
     if (result !== 'applied') return;
+    const state = this.mirror.state;
     const text = JSON.stringify({ type: 'engine', message } satisfies ToDevice);
-    for (const c of this.clients) if (c.device) this.sendText(c, text);
+    let compatibleText: string | undefined;
+    for (const client of this.clients) {
+      if (!client.device) continue;
+      if (client.currentLowerThirdMotions || !state) {
+        this.sendText(client, text);
+        continue;
+      }
+      if (compatibleText === undefined) {
+        const compatible = engineForAlpha17Phone(message, state);
+        compatibleText =
+          compatible === message
+            ? text
+            : JSON.stringify({ type: 'engine', message: compatible } satisfies ToDevice);
+      }
+      this.sendText(client, compatibleText);
+    }
   }
 
   /**
@@ -929,7 +948,14 @@ export class NetworkServer {
   }
 
   private onConnection(ws: WebSocket, address: string): void {
-    const client: Client = { id: randomUUID(), ws, address, device: null, alive: true };
+    const client: Client = {
+      id: randomUUID(),
+      ws,
+      address,
+      device: null,
+      currentLowerThirdMotions: false,
+      alive: true,
+    };
     this.clients.add(client);
     const hello = setTimeout(() => {
       if (!client.device) this.bye(client, 'unauthorized');
@@ -987,6 +1013,7 @@ export class NetworkServer {
       }
       clearTimeout(hello);
       client.device = device;
+      client.currentLowerThirdMotions = message.lowerThirdMotions === PHONE_LOWER_THIRD_MOTIONS;
       this.send(client, { type: 'welcome', device: { name: device.name, kind: device.kind } });
       this.sendSnapshot(client);
       this.host.seen(device.id);
@@ -1003,18 +1030,19 @@ export class NetworkServer {
   private sendSnapshot(client: Client): void {
     const state = this.mirror.state;
     if (!state) return;
+    const message: EngineMessage = {
+      kind: 'snapshot',
+      version: ENGINE_STATE_VERSION,
+      rev: this.mirror.rev,
+      state,
+      sentAt: Date.now(),
+      // The run it is from (Session 53), as the engine's own pages and a node's link have it: a page left open
+      // while Drashti restarted takes the new run's state at once, though its revisions started again from 0.
+      session: this.mirror.session,
+    };
     this.send(client, {
       type: 'engine',
-      message: {
-        kind: 'snapshot',
-        version: ENGINE_STATE_VERSION,
-        rev: this.mirror.rev,
-        state,
-        sentAt: Date.now(),
-        // The run it is from (Session 53), as the engine's own pages and a node's link have it: a page left open
-        // while Drashti restarted takes the new run's state at once, though its revisions started again from 0.
-        session: this.mirror.session,
-      },
+      message: client.currentLowerThirdMotions ? message : engineForAlpha17Phone(message, state),
     });
   }
 
