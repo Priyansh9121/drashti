@@ -165,7 +165,7 @@ describe('Record sound from generated input', () => {
     expect(notice).toHaveBeenCalledWith(expect.stringContaining('Drashti keeps 2 GB free'));
   });
 
-  it('warns about the drive and stops with a playable file if the disk fills later', async () => {
+  it('warns about the room left but never about FAT32 (a WAV part holds 32 hours), and stops with a playable file if the disk fills later', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     let free = KEEP_FREE + 58 * 1024 ** 2;
     const { rec, notice } = setup({
@@ -174,8 +174,11 @@ describe('Record sound from generated input', () => {
     });
     rec.chunk(TONE, START + 100, START);
     await vi.waitFor(() => expect(rec.view(dir).state).toBe('recording'));
-    expect(rec.view(dir).warning).toContain('FAT32');
     expect(rec.view(dir).warning).toContain('minutes of recording');
+    // A WAV part of 3.5 GB holds about 32 hours of 16 kHz mono: a FAT32 drive's 4 GB limit never matters to it.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(rec.view(dir).warning).not.toContain('FAT32');
+    expect(notice).not.toHaveBeenCalledWith(expect.stringContaining('FAT32'));
     free = KEEP_FREE - 1;
     await vi.advanceTimersByTimeAsync(3_000);
     await vi.waitFor(() => expect(rec.view(dir).state).toBe('off'));
@@ -183,5 +186,150 @@ describe('Record sound from generated input', () => {
     const file = rec.view(dir).file;
     expect(file).toMatch(/\.wav$/u);
     expect((await readFile(join(dir, file ?? ''))).readUInt32LE(40)).toBe(TONE.byteLength);
+  });
+});
+
+describe('Record sound’s sound input (Session 58, X2: the alpha.16 review’s L1)', () => {
+  let dir: string;
+  let clock = START;
+  const active: SoundRecording[] = [];
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'drashti-sound-input-'));
+    clock = START;
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  });
+  afterEach(async () => {
+    vi.useRealTimers();
+    await Promise.all(
+      active.splice(0).map(async (rec) => {
+        await rec.stop();
+      }),
+    );
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  function setup(overrides: Partial<ConstructorParameters<typeof SoundRecording>[0]> = {}) {
+    const notice = vi.fn<(text: string) => void>();
+    const rec = new SoundRecording({
+      now: () => clock,
+      freeBytes: () => Promise.resolve(100 * 1024 ** 3),
+      onFat: () => Promise.resolve(false),
+      keepFree: KEEP_FREE,
+      changed: () => undefined,
+      notice,
+      ...overrides,
+    });
+    active.push(rec);
+    rec.start(dir);
+    return { rec, notice };
+  }
+
+  /** Time passes, a second at a time, with nothing from the sound input unless `each` sends it. */
+  async function pass(ms: number, each?: () => void): Promise<void> {
+    for (let t = 0; t < ms; t += 1000) {
+      clock += 1000;
+      each?.();
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+  }
+
+  /** 100 ms of sound ending now, as the stream's page sends it. */
+  const heard = (rec: SoundRecording, samples = TONE) => {
+    rec.chunk(samples, clock, clock - 100);
+  };
+
+  it('warns after 5 s with nothing from the sound input, and waits 30 s in all before it stops', async () => {
+    const { rec, notice } = setup();
+    await pass(4000);
+    expect(rec.view(dir).warning).toBeNull();
+    await pass(1000);
+    const warning = rec.view(dir).warning;
+    expect(warning).toMatch(/^Nothing has come from the sound input for 5 seconds\./u);
+    expect(warning).toContain('Drashti stops the sound recording after 30 seconds');
+    expect(notice).toHaveBeenCalledWith(warning);
+    expect(rec.view(dir).state).toBe('starting');
+    await pass(24_000);
+    expect(rec.view(dir).state).toBe('starting');
+    expect(notice).toHaveBeenCalledTimes(1);
+    await pass(1000);
+    await vi.waitFor(() => expect(rec.view(dir).state).toBe('off'));
+    expect(rec.view(dir).message).toMatch(/^Sound recording stopped: nothing came from the sound input for 30 seconds\./u);
+    expect(notice).toHaveBeenLastCalledWith(rec.view(dir).message);
+  });
+
+  it('never counts the time a macOS question (or the stream’s page opening) holds the sound input back', async () => {
+    let waiting = true;
+    const { rec } = setup({ waiting: () => waiting });
+    await pass(40_000);
+    expect(rec.view(dir).state).toBe('starting');
+    expect(rec.view(dir).warning).toBeNull();
+    waiting = false;
+    await pass(4000);
+    expect(rec.view(dir).warning).toBeNull();
+    await pass(1000);
+    expect(rec.view(dir).warning).toMatch(/^Nothing has come from the sound input for 5 seconds\./u);
+    await pass(2000, () => {
+      heard(rec);
+    });
+    await vi.waitFor(() => expect(rec.view(dir).state).toBe('recording'));
+  });
+
+  it('takes its warning back, and says so, when sound comes again; the recording goes on in the same file', async () => {
+    const { rec, notice } = setup();
+    await pass(3000, () => {
+      heard(rec);
+    });
+    await vi.waitFor(() => expect(rec.view(dir).state).toBe('recording'));
+    const file = rec.view(dir).file;
+    await pass(6000);
+    expect(rec.view(dir).warning).toMatch(/^Nothing has come from the sound input for 5 seconds\./u);
+    heard(rec);
+    expect(rec.view(dir).warning).toBeNull();
+    expect(notice).toHaveBeenLastCalledWith(
+      'Sound is coming from the sound input again: the sound recording goes on.',
+    );
+    await pass(40_000, () => {
+      heard(rec);
+    });
+    expect(rec.view(dir).state).toBe('recording');
+    expect(rec.view(dir).file).toBe(file);
+  });
+
+  it('counts how long it has heard nothing above -50 dBFS, time with no sound at all included', async () => {
+    const silence = new Int16Array(TONE.length);
+    const { rec } = setup();
+    expect(rec.quietMs()).toBe(0);
+    for (let i = 0; i < 20; i++) {
+      clock += 100;
+      heard(rec, silence);
+    }
+    expect(rec.quietMs()).toBe(2000);
+    for (let i = 0; i < 10; i++) {
+      clock += 100;
+      heard(rec);
+    }
+    expect(rec.quietMs()).toBe(0);
+    clock += 3000;
+    expect(rec.quietMs()).toBe(3000);
+  });
+
+  it('says in its header how long the file is after every second of sound, so a crash loses at most the last second', async () => {
+    const { rec } = setup();
+    for (let i = 0; i < 25; i++) {
+      clock += 100;
+      heard(rec);
+    }
+    await vi.waitFor(async () => {
+      expect(await readdir(dir)).toHaveLength(1);
+    });
+    const [file] = await readdir(dir);
+    const path = join(dir, file ?? '');
+    await vi.waitFor(async () => {
+      expect((await readFile(path)).length).toBe(44 + 25 * TONE.byteLength);
+    });
+    const wave = await readFile(path);
+    // 2.5 s of sound in the file: its header covers the first 2 s of it (whole seconds), not 0 until Stop.
+    expect(wave.readUInt32LE(40)).toBe(2 * SPEECH_RATE * 2);
+    expect(wave.readUInt32LE(4)).toBe(36 + 2 * SPEECH_RATE * 2);
   });
 });
