@@ -140,6 +140,27 @@ export interface BakeOptions extends ConvertOptions {
   pdfReady?: (pdf: string, deck: PptxDeck) => void | Promise<void>;
 }
 
+/**
+ * The log's line on the steps found in a deck's movie: the furthest from its moment of every step, and (C10's review,
+ * LOW 6) of the steps kept, those the import's notice speaks of (deck-import.ts, `deck-steps-checked`): a slide with a
+ * step off its moment comes in as its picture, its steps not kept, and a movie off its plan keeps none.
+ */
+export function stepsCheckedLine(cuts: CutPlan): string {
+  const at = (o: { slide: number; step: number; offsetMs: number }) =>
+    `${String(o.offsetMs)} ms (slide ${String(o.slide + 1)}, step ${String(o.step)})`;
+  const off = new Set(cuts.offSlides);
+  let kept: { slide: number; step: number; offsetMs: number } | null = null;
+  for (const { slide, step, offsetMs } of cuts.offsets)
+    if (offsetMs !== null && !off.has(slide) && (!kept || Math.abs(offsetMs) > Math.abs(kept.offsetMs)))
+      kept = { slide, step, offsetMs };
+  const keptWords = !onPlan(cuts)
+    ? 'none kept (off its plan)'
+    : off.size === 0
+      ? 'every one kept'
+      : `the furthest kept ${kept ? at(kept) : 'not measured'}`;
+  return `Deck: ${String(cuts.offsets.length)} steps checked, the furthest ${cuts.worst ? at(cuts.worst) : 'not measured'}, ${keptWords}; slides not found: ${cuts.lostSlides.map((i) => String(i + 1)).join(', ') || 'none'}`;
+}
+
 /** Always kept free on the disk, as converting keeps it (Session 50). */
 export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
 
@@ -278,7 +299,7 @@ async function powerPointOnMac(
       if (!deck || !deckFile)
         return {
           ok: false,
-          reason: 'no deck',
+          reason: 'the deck was unreadable',
           message: 'The deck could not be read: save it again in PowerPoint or Keynote and import that.',
         };
       // Only the slides that move go through the movie (Session 56), when any do not: the rest come in as their
@@ -383,7 +404,7 @@ async function powerPointOnMac(
           return { ok: false, reason: 'cancelled', message: 'Cancelled.', cancelled: true };
         return {
           ok: false,
-          reason: `PowerPoint did not finish the movie within ${String(Math.round(limitMs / 60_000))} minutes`,
+          reason: `it did not finish the movie within ${String(Math.round(limitMs / 60_000))} minutes`,
           message: 'PowerPoint did not finish the deck’s movie in time.',
         };
       }
@@ -883,10 +904,17 @@ export async function bakeDeck(
       };
     if (options.signal?.aborted)
       return { ok: false, why: { kind: 'cancelled' }, pdf: null, deck: read, deckFile: null, baker };
+    // Its own words for the log only (C17's review, L3): the report says the app could not make the movie, and why in a
+    // few words.
     const detail = error instanceof Error ? error.message : String(error);
+    options.log?.(`${baker}: the deck’s movie was not made, an error stopped it: ${detail}`);
     return {
       ok: false,
-      why: { kind: 'app', reason: detail, message: detail },
+      why: {
+        kind: 'app',
+        reason: 'an error stopped it',
+        message: 'An error stopped the deck’s movie: import the deck again.',
+      },
       pdf: null,
       deck: read,
       deckFile: null,
@@ -935,9 +963,7 @@ export async function bakeDeck(
         : made.deck;
     const cuts = planCuts(made.plan, motion);
     options.steps?.add('find-steps', performance.now() - findFrom);
-    options.log?.(
-      `Deck: ${String(cuts.offsets.length)} steps checked, the furthest ${cuts.worst ? `${String(cuts.worst.offsetMs)} ms (slide ${String(cuts.worst.slide + 1)}, step ${String(cuts.worst.step)})` : 'not measured'}; slides not found: ${cuts.lostSlides.map((i) => String(i + 1)).join(', ') || 'none'}`,
-    );
+    options.log?.(stepsCheckedLine(cuts));
     if (!onPlan(cuts)) return failed({ kind: 'off-plan', cuts });
     const cutFrom = performance.now();
     // A lead-in is in the movie only for the slide after it (Session 56): never cut.
