@@ -132,8 +132,11 @@ const CAP_MS = 8000;
  * (CI's Windows, traced) the warm-up's drawing had used up the page's tile memory, and Chromium's software compositor
  * was still drawing its frames, ~0.8 s each: the show's first frames came with their tiles missing, black, then 256-px
  * parts, for up to 3.3 s. Frames on time again: the compositor has drawn the black, and the warm-up's tiles are back.
+ * There the page's own compositor went on drawing the warm-up's last frames until its black could take their place,
+ * 0.3 to 3.4 s (traced): ended at 3 s, the show's first frame still came with its tiles missing; 6 s lets its frames
+ * end it.
  */
-const SETTLE_MS = 3000;
+const SETTLE_MS = 6000;
 
 /**
  * Each transition scene again under a clip-path with two notches, across the pictures, the background and
