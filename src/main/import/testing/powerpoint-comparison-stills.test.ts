@@ -29,6 +29,8 @@ const PX = 12_192_000 / 1280; // EMU a pixel of Drashti's 1280-wide slide
 /** 40 pt words, as Drashti's slide pixels: 40 x 4/3 (to the thousandth, as `space` gives them). */
 const SIZE = Math.round(((40 * 4) / 3) * 1000) / 1000;
 const thousandths = (n: number) => Math.round(n * 1000) / 1000;
+/** A 40 pt line, single spaced, in slide px: PowerPoint's own measure of spcPct (PF-12, C17: 1.2 times the size). */
+const LINE = thousandths(SIZE * 1.2);
 
 describe('the stills PowerPoint draws for PF-12', () => {
   it('writes a light deck and a dark one, each slide a gray marker as the motion decks have, all 16:9', async () => {
@@ -86,15 +88,15 @@ describe('the stills PowerPoint draws for PF-12', () => {
       [0, 0],
       [0, 0],
     ]);
-    // spcPct: of the text size here (ECMA's words), 100 % of 40 pt words.
+    // spcPct: of the line, as PowerPoint's stills measure it (PF-12, C17): 100 % of 40 pt words' single line.
     expect(space('Spacing · before 100% (spcPct)')).toEqual([
       [0, 0],
-      [SIZE, 0],
-      [SIZE, 0],
+      [LINE, 0],
+      [LINE, 0],
     ]);
     expect(space('Spacing · before 50%, after 100% (spcPct)')).toEqual([
-      [0, SIZE],
-      [thousandths(SIZE / 2), 0],
+      [0, LINE],
+      [thousandths(LINE / 2), 0],
       [0, 0],
     ]);
     // spcPts: 24 pt, exact by its definition: the measure's own check.
@@ -103,8 +105,8 @@ describe('the stills PowerPoint draws for PF-12', () => {
       [32, 0],
       [32, 0],
     ]);
-    expect(space('Edges · before the first paragraph, top')[0]).toEqual([SIZE, 0]);
-    expect(space('Edges · after the last paragraph, bottom')[2]).toEqual([0, SIZE]);
+    expect(space('Edges · before the first paragraph, top')[0]).toEqual([LINE, 0]);
+    expect(space('Edges · after the last paragraph, bottom')[2]).toEqual([0, LINE]);
     // Dropped unless the box says spcFirstLastPara (Drashti's reading of ECMA-376's rule: PowerPoint's to be seen).
     expect(paragraphsOf('Edges · before the first paragraph, top')?.style.spaceAtTextEdges).toBeUndefined();
     expect(paragraphsOf('Edges · before the first paragraph, spcFirstLastPara')?.style.spaceAtTextEdges).toBe(
