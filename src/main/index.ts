@@ -194,7 +194,7 @@ import { TrimSaves } from './convert/trim-saves';
 import { rowTrimRequestSchema, saveRequestSchema } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
 import { PlaylistTrims } from './convert/playlist-trims';
-import { TrimRecords } from './convert/trim-records';
+import { TRIM_RECORDS_FILE, TrimRecords } from './convert/trim-records';
 import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
 import { frameAtOrBefore } from './convert/frame-at';
 import { isRepeatId, repeatPresentationId } from '../shared/repeat';
@@ -3965,18 +3965,22 @@ function start(): void {
     !quitStarted && !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers);
   // Trim's records (FT-4): the cuts accepted and waiting, and the copies not yet taken in, kept in a small file written
   // in the background (no longer library settings written on Main, which waited there for an import's write lock).
-  // alpha.17's settings are read once while the file is not there, then cleared; a restored library carries nothing
-  // over from the library before it.
-  const trimRecords = new TrimRecords(join(userDataDir, 'trim-cuts.json'), {
+  // New Trim records left by alpha.17 carry on after an upgrade or downgrade. A restored library begins with its
+  // own settings.
+  const clearTrimSettings = libraryDb.transaction(() => {
+    settings.set('playlistTrimsWaiting', []);
+    settings.set('playlistTrimCopies', []);
+  });
+  const trimRecords = new TrimRecords(join(userDataDir, TRIM_RECORDS_FILE), {
     before: {
       waiting: () => settings.get('playlistTrimsWaiting'),
       copies: () => settings.get('playlistTrimCopies'),
-      // Once the file holds them (LOW-2): a backup, a restore or alpha.17 after a downgrade never reads them again.
+      // Clear both settings together once the record file has them (LOW-2).
       clear: () => {
-        laterSetting('playlistTrimsWaiting', []);
-        laterSetting('playlistTrimCopies', []);
+        later.write('trim record settings', clearTrimSettings);
       },
     },
+    afterDowngrade: settings.get('lastStartVersion') === '1.0.0-alpha.17',
     otherLibrary: restoredInUse,
     log: (message) => {
       log.warn(message);
@@ -4207,6 +4211,9 @@ function start(): void {
       nodeService?.tellPointed(clip);
     },
   });
+  handle(IPC.output.getPointed, ({ sender }) =>
+    manager.screenIdFor(sender.id) !== undefined || streaming.isProgram(sender) ? pointAhead.current() : null,
+  );
   stops.add('pointing ahead', () => {
     pointAhead.stop();
   });
@@ -5484,6 +5491,7 @@ function start(): void {
     },
     screens: screenRepo,
     settings,
+    pointed: () => pointAhead.current(),
     spawn: () =>
       spawnLinkWorker((line) => {
         log.info(`[node link worker] ${line}`);

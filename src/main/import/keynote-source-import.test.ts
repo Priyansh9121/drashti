@@ -55,7 +55,7 @@ const slides = [
 ];
 /** The log's line when the copy is set aside, for PDF pages in the order last, first (C15's review, L6). */
 const KEYNOTE_COPY_SET_ASIDE =
-  'Keynote: PDF page 1 has the words of slide 3 of its PowerPoint copy (by the page count, slide 1), so the copy was set aside and Edit slides uses the PDF';
+  'Keynote: PDF page 1 has the words of slide 3 of its PowerPoint copy (by the page count, slide 1), and another page confirms the shift, so the copy was set aside and Edit slides uses the PDF';
 
 beforeEach(() => {
   convert.mockReset();
@@ -105,15 +105,21 @@ const COPY_CASES: CopyCase[] = [
   { rule: 'pages in the copy’s order', slides: [VERSE, CHORUS], pdf: pdfOf(VERSE, CHORUS), shifted: false },
   { rule: 'two pages swapped', slides: [VERSE, CHORUS], pdf: pdfOf(CHORUS, VERSE), shifted: true },
   {
-    rule: 'one page with another slide’s words is enough',
+    rule: 'one page with another slide’s words leaves the copy available',
     slides: [VERSE, CHORUS, VERSE_TWO],
     pdf: pdfOf(VERSE, VERSE_TWO, VERSE_TWO),
-    shifted: true,
+    shifted: false,
   },
   {
     rule: 'a chorus repeated, in order',
     slides: [VERSE, CHORUS, VERSE_TWO, CHORUS],
     pdf: pdfOf(VERSE, CHORUS, VERSE_TWO, CHORUS),
+    shifted: false,
+  },
+  {
+    rule: 'one slide’s words extracted twice do not independently confirm a shift',
+    slides: [VERSE, CHORUS, VERSE_TWO],
+    pdf: pdfOf(CHORUS, CHORUS, CHORUS),
     shifted: false,
   },
   {
@@ -139,7 +145,7 @@ const COPY_CASES: CopyCase[] = [
     rule: 'a skipped slide’s words on a page of the shown slides',
     slides: [VERSE, { skipped: CHORUS }, VERSE_TWO],
     pdf: pdfOf(CHORUS, VERSE_TWO),
-    shifted: true,
+    shifted: false,
   },
   {
     rule: 'a PDF of every slide, the skipped one in its place',
@@ -150,8 +156,8 @@ const COPY_CASES: CopyCase[] = [
 ];
 
 /*
- * When the copy is set aside (C15's review, M3 and L4): only for a page whose words are another slide's alone, neither
- * holding the other's. Pages without words, words on two slides, and slides built line by line keep the count match.
+ * A shift needs two distinct pages whose words are another slide's alone, neither holding the other's.
+ * Pages without words, words on two slides, and slides built line by line keep the count match.
  */
 it.each(COPY_CASES)('Keynote’s two copies: $rule', ({ slides: copy, pdf, shifted }) => {
   const read = copy.map((words) =>
