@@ -244,6 +244,20 @@ export interface OutputReport {
   warming?: boolean;
   /** Fonts the words it draws name that this computer does not have (Sessions 31–36, I18N-1). */
   missingFonts?: string[];
+  /** How its warm-up ended and how long it took, once it has (Session 58, WU-2: said once in the log). */
+  warmUp?: OutputWarmUpEnd | null;
+}
+
+/**
+ * How an output's warm-up ended (render/WarmUp.tsx): drew everything, stopped at its longest, its window hidden, a
+ * scene that failed as it drew, or cut short (`why`: it was told it draws without a graphics chip, or it became a stage
+ * screen); how long it took (ms), and when it ended (the page's clock, ms since the epoch: one page's end, said once).
+ */
+export interface OutputWarmUpEnd {
+  how: 'drawn' | 'cap' | 'unseen' | 'error' | 'cut';
+  ms: number;
+  at: number;
+  why?: 'no-gpu' | 'stage' | 'other';
 }
 
 /** A report's missing fonts as checked: names only, a few, each short (a page is never trusted). */
