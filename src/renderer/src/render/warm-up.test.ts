@@ -95,6 +95,19 @@ describe('the warm-up', () => {
     expect(scene('deck-wipe/calm/clipped').clip).toBe(scene('wipe/calm/clipped').clip);
   });
 
+  it('draws a deck’s own Wipe again half a pixel off the grid, so its mask is drawn as an anti-aliased rect too (review-c2 MEDIUM-2)', () => {
+    // CI's Mac, traced: the first deck Wipe on air made 'AnalyticRRectRenderStep + LinearGradientBuffer' (the 21-stop
+    // mask over a slide whose edges fall between pixels); the grid-aligned scene draws only the pixel-aligned kind.
+    const offGrid = scene('deck-wipe/calm/off-grid');
+    expect(offGrid.offset).toBe('translate(0.5px, 0.5px)');
+    expect(offGrid.clip).toBeUndefined();
+    const at = BEFORE + 33;
+    expect(offGrid.state(true, at)).toEqual(scene('deck-wipe/calm').state(true, at));
+    expect(offGrid.state(false, at)).toEqual(scene('deck-wipe/calm').state(false, at));
+    // Once: no clipped twin of it.
+    expect(warmScenes().some((s) => s.key === 'deck-wipe/calm/off-grid/clipped')).toBe(false);
+  });
+
   it('draws a deck’s own Cover part-way: the slide coming in moved and a shade darker, a filter over the whole slide', () => {
     for (const key of ['deck-cover/calm', 'deck-cover/calm/clipped']) {
       const { t, p, frame } = deckFrameOf(key, BEFORE + 33);
