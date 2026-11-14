@@ -95,9 +95,12 @@ export type NetworkResult = { ok: true; status: NetworkStatus } | { ok: false; m
 /** The feed's path; HTTP requests are under /api/v1 too. */
 export const FEED_PATH = '/api/v1/feed';
 
+/** The moving backgrounds the bundled web renderer understands. Alpha.17 pages omit this in hello. */
+export const PHONE_LOWER_THIRD_MOTIONS = 'alpha.18';
+
 /** What a device sends on the feed. The first message must be `hello`, within a few seconds. */
 export type FromDevice =
-  | { type: 'hello'; token: string }
+  | { type: 'hello'; token: string; lowerThirdMotions?: typeof PHONE_LOWER_THIRD_MOTIONS }
   /** Clock sync: the device's time when it asked. */
   | { type: 'clock'; t0: number }
   /** The device's copy fell behind (a revision went missing): send the whole state again. */
