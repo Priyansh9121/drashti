@@ -52,6 +52,7 @@ import {
 } from './runs-doc';
 import { activeText } from './TextBoxEditor';
 import { shownLineSpacing } from './line-spacing';
+import { withoutSourceFit } from '../../../shared/source-fit';
 
 /*
  * The Words group along the slide editor's top (Session 55, Part 17a): how words look, for the text boxes selected, or
@@ -274,7 +275,13 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
         now,
         slide.id,
         boxes.map((b) => b.id),
-        (e) => (e.kind === 'text' ? formatTextBox(e, box) : e),
+        // A line spacing set here replaces a deck's own shrink of it (Session 58, PF-4b).
+        (e) =>
+          e.kind !== 'text'
+            ? e
+            : box.lineHeight === undefined
+              ? formatTextBox(e, box)
+              : withoutSourceFit(formatTextBox(e, box)),
       ),
       coalesce ? { coalesce } : {},
     );

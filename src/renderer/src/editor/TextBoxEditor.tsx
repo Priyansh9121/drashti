@@ -9,6 +9,7 @@ import type { CSSProperties } from 'react';
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { TextElement, TextRun } from '../../../shared/model';
 import { drawnLines } from '../../../shared/text-lists';
+import { sourceLineCut } from '../../../shared/source-fit';
 import { htmlLang, TranslitSourceContext } from '../render/lang';
 import type { TranslitSource } from '../../../shared/model';
 import {
@@ -167,6 +168,7 @@ function listDecorations(doc: PMNode, el: TextElement): DecorationSet {
     const style = paragraphLineStyle(line, size, first.paragraph, {
       before: !continued && (el.style.spaceAtTextEdges === true || i > 0),
       after: !attrs.brk?.softBreak && (el.style.spaceAtTextEdges === true || i < lines.length - 1),
+      lineCut: sourceLineCut(el.style),
     });
     decorations.push(
       Decoration.node(at, at + node.nodeSize, {

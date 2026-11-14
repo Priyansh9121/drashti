@@ -29,6 +29,11 @@ import { MIN_FIT } from '../../../shared/readable';
 export interface FitBox {
   /** Shrink-to-fit is on: its fit is searched for. Off: it is only measured, at no fit. */
   readonly on: boolean;
+  /**
+   * Where its search starts, if anywhere but halfway: the source's own fit (PowerPoint's shrink, Session 58's PF-4b),
+   * drawn and measured first; the largest fit at which the words fit still decides.
+   */
+  readonly guess?: number | undefined;
   /** Draws its words at this fit (null: none set). The next measure lays the window out again. */
   write(fit: number | null): void;
   /** Whether its words run past it as drawn now (a measure of the layout). */
