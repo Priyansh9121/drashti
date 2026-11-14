@@ -224,15 +224,18 @@ function paintUnits(els: Layers, how: Paint, p: number): void {
 }
 
 /**
- * Each slide's place for a deck's own transition (Session 58, Q58-16), or none where both fill the layer's box: there
- * its slides move in % of the box exactly as before, the same as by their own length.
+ * Each slide's place for a deck's own transition (Session 58, Q58-16), or none: where both fill the layer's box, within
+ * a pixel (there its slides move in % of the box exactly as before, the same as by their own length); and under a
+ * transition of Drashti's own set over the deck's, where no clip keeps the slides inside theirs (review MEDIUM-1: the
+ * old slide would sit over the bar to the end, then go in one frame), so they move off the screen as before.
  */
 function slidePlaces(how: Paint): { in: SlidePlace; out: SlidePlace } | undefined {
+  if (how.native?.over) return undefined;
   const fills = (place: SlidePlace) =>
-    Math.abs(place.x) < 0.5 &&
-    Math.abs(place.y) < 0.5 &&
-    Math.abs(place.width - how.width) < 0.5 &&
-    Math.abs(place.height - how.height) < 0.5;
+    Math.abs(place.x) < 1 &&
+    Math.abs(place.y) < 1 &&
+    Math.abs(place.width - how.width) < 1 &&
+    Math.abs(place.height - how.height) < 1;
   return fills(how.placeIn) && fills(how.placeOut) ? undefined : { in: how.placeIn, out: how.placeOut };
 }
 
