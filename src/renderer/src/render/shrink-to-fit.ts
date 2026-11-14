@@ -100,7 +100,9 @@ export function fitTogether(boxes: readonly FitBox[]): void {
   for (const box of boxes) if (box.on && box.over()) searches.push({ box, lo: MIN_FIT, hi: 1, mid: 1 });
   for (let step = 0; step < FIT_STEPS && searches.length > 0; step++) {
     for (const s of searches) {
-      s.mid = (s.lo + s.hi) / 2;
+      // The first step at the box's own start, where it has one inside (Session 58, PF-4b), else halfway.
+      const guess = step === 0 ? s.box.guess : undefined;
+      s.mid = guess !== undefined && guess > s.lo && guess < s.hi ? guess : (s.lo + s.hi) / 2;
       s.box.write(s.mid);
     }
     for (const s of searches) {

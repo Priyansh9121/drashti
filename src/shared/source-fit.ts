@@ -19,9 +19,9 @@ export const SOURCE_SINGLE_LINE = 1.2;
 const LEAST_LINE = 0.1;
 
 /** How much the source's own shrink takes off a box's line spacing multiples (0 for none). */
-export function sourceLineCut(_style: Pick<TextStyle, 'sourceFit'>): number {
-  // Red (PF-4b): the failing tests first.
-  return 0;
+export function sourceLineCut(style: Pick<TextStyle, 'sourceFit'>): number {
+  const reduction = style.sourceFit?.lineSpacingReduction ?? 0;
+  return reduction > 0 ? SOURCE_SINGLE_LINE * reduction : 0;
 }
 
 /** A line spacing multiple with that cut taken off (to four places), never below the least. */
@@ -35,6 +35,7 @@ export function cutLineHeight(lineHeight: number, cut: number): number {
  * PowerPoint's, as PowerPoint itself works its shrink out again when a box's spacing changes.
  */
 export function withoutSourceFit(el: TextElement): TextElement {
-  // Red (PF-4b): the failing tests first.
-  return el;
+  if (!el.style.sourceFit) return el;
+  const { sourceFit: _fit, ...style } = el.style;
+  return { ...el, style };
 }
