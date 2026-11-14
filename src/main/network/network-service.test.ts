@@ -570,6 +570,14 @@ describe('the network in the main process', () => {
     expect(poster.status.poster?.url).toMatch(/^http:\/\/192\.168\.1\.20:8740\/announce#k=/u);
   });
 
+  it('cleans a device’s name as Rename… cleans one, and refuses one with nothing visible (C15, FT-1)', () => {
+    const { service } = setup();
+    expect(service.startPairing('remote', '\u200B\u2060\u00AD')).toMatchObject({ ok: false });
+    const offered = service.startPairing('remote', 'Placeholder\u200E phone');
+    if (!offered.ok || !offered.status.pairing) throw new Error('no code');
+    expect(offered.status.pairing.name).toBe('Placeholder phone');
+  });
+
   it('drops a code after ten wrong tries, from anyone', () => {
     const { service } = setup();
     const offered = service.startPairing('remote', null);

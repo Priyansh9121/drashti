@@ -159,6 +159,29 @@ describe('replacing', () => {
     expect(next.groups[0]?.slides[1]).toBe(doc.groups[0]?.slides[1]);
   });
 
+  it('a box whose words it replaced loses PowerPoint’s own shrink of its old words (Session 58, FT-5); the others keep theirs', () => {
+    const shrunk = (el: TextElement): TextElement => ({
+      ...el,
+      style: { ...el.style, shrinkToFit: true, sourceFit: { fontScale: 0.8, lineSpacingReduction: 0.2 } },
+    });
+    const fitted: EditDoc = {
+      ...doc,
+      groups: doc.groups.map((g) => ({
+        ...g,
+        slides: g.slides.map((sl) => ({
+          ...sl,
+          elements: sl.elements.map((e) => (e.kind === 'text' ? shrunk(e) : e)),
+        })),
+      })),
+    };
+    const [first] = findMatches(fitted, 'alpha', plain);
+    if (!first) throw new Error('no match');
+    const next = replaceMatches(fitted, [first], 'gamma');
+    expect(textOf(next, 's1', 'e1')?.style).not.toHaveProperty('sourceFit');
+    expect(textOf(next, 's1', 'e1')?.style.shrinkToFit).toBe(true);
+    expect(textOf(next, 's3', 'e3')?.style.sourceFit).toEqual({ fontScale: 0.8, lineSpacingReduction: 0.2 });
+  });
+
   it('replaces one match only, when asked', () => {
     const [first] = findMatches(doc, 'alpha', plain);
     if (!first) throw new Error('no match');

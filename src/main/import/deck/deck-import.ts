@@ -785,7 +785,7 @@ export function whyPictures(
                 : `steps on ${String(why.cuts.offSlides.length)} of its ${String(why.cuts.slides.length)} slides came more than ${(MAX_OFFSET_MS / 1000).toFixed(1)} s from their moments`
             }, so its clicks could not be cut exactly: ${lost}.`
           : why.kind === 'cut'
-            ? `${app} made the deck’s movie, but it could not be cut into its steps (${why.detail}): ${lost}.`
+            ? `${app} made the deck’s movie, but it could not be cut into its steps${why.detail ? ` (${why.detail})` : ''}: ${lost}.`
             : why.kind === 'nothing'
               ? `This deck has nothing to show with its animations (${why.detail}).`
               : why.kind === 'cancelled'

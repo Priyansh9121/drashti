@@ -1,5 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
+import { cleanNameSchema } from '../../shared/rename-name';
 import { IPC } from '../../shared/ipc';
 import type { NewFromWordsResult, RevisionResult, SaveWordsResult, WordsResult } from '../../shared/library';
 import { idSchema } from '../../shared/model-schema';
@@ -28,7 +29,8 @@ export interface WordsIpcDeps {
 }
 
 const wordsSchema = z.string().max(200_000);
-const nameSchema = z.string().trim().min(1).max(200);
+/** A new presentation's name: cleaned as Rename… cleans a name, the window's and a phone's alike (C15, FT-1). */
+const nameSchema = cleanNameSchema(200);
 const onlyOperator = { ok: false as const, message: 'Only the operator window can change presentations.' };
 
 export function registerWordsIpc({
