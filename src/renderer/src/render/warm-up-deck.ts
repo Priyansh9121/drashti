@@ -87,8 +87,9 @@ export const SHAPE_MS = SPLIT_MS;
 /**
  * Each shape's Shape, by the slide's elements in order, and how far through it is at the warm-up's moment (0 to 1). Its
  * soft edge (shared/deck-motion.ts, shapeMasks) draws kinds of mask nothing else draws: a Circle a radial gradient of
- * 4 stops (both sides of its edge inside the shape); a Box a repeating conic gradient (its wedges) over a straight
- * ramp, on the shape and again on an element within it; a Diamond the same with its ramps along its diagonals.
+ * 4 stops (both sides of its edge inside the shape); a Box a straight ramp over two half-planes (its wedges, laid by
+ * mask-composite exclude), on the shape and again on an element within it; a Diamond the same with its ramps along its
+ * diagonals.
  */
 const SHAPES: readonly { shape: NonNullable<DeckEffect['shape']>; inward: boolean; at: number }[] = [
   { shape: 'circle', inward: true, at: 0.5 },
