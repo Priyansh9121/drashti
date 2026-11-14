@@ -5,7 +5,15 @@ import { join } from 'node:path';
 import { LOWER_THIRD_FONT_CHOICES } from '../../src/shared/lower-third-fonts';
 import { MOVEMENTS } from '../../src/shared/looks';
 import { TRANSITION_KINDS } from '../../src/shared/model';
-import { launchApp, operatorPage, operatorReady, outputPage, outputPages, setUpScreen } from './helpers';
+import {
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  outputPages,
+  type PageGlobals,
+  setUpScreen,
+} from './helpers';
 import { goLive, makeSlides } from './placeholder-slides';
 
 /*
@@ -402,6 +410,120 @@ test('an output told it draws without a graphics chip after its warm-up began en
   await expect.poll(() => brightest(out), { timeout: 15_000 }).toBeGreaterThan(40);
   await expect(root).toHaveAttribute('data-warm-up', 'skipped');
   await expectSaid(userData, SKIPPED);
+  await app.close();
+});
+
+/**
+ * Every time a timer for the audience shows in `scope` (its `data-time`), from the first the page puts there: kept in
+ * the page as it goes, before any frame of it is drawn.
+ */
+const watchTimesShown = (page: Page, scope: string) =>
+  page.evaluate((scope) => {
+    const shown: string[] = [];
+    (globalThis as { drashtiTimesShown?: string[] }).drashtiTimesShown = shown;
+    new MutationObserver(() => {
+      const time = document
+        .querySelector(`${scope} [data-testid="audience-timer-time"]`)
+        ?.getAttribute('data-time');
+      if (time && shown.at(-1) !== time) shown.push(time);
+    }).observe(document.documentElement, { subtree: true, childList: true, attributes: true });
+  }, scope);
+
+const timesShown = (page: Page) =>
+  page.evaluate(() => (globalThis as { drashtiTimesShown?: string[] }).drashtiTimesShown ?? []);
+
+/** Seconds left, as a timer shows them ("0:57", or "57"). */
+const secondsShown = (text: string) =>
+  text
+    .split(':')
+    .map(Number)
+    .reduce((sum, part) => sum * 60 + part, 0);
+
+/** A minute's countdown put up for the audience and started now: when, by the operator window's clock. */
+const countdownUp = (win: Page) =>
+  win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.timers.create({
+      name: 'Placeholder countdown',
+      kind: 'countdown',
+      durationMs: 60_000,
+      targetTime: null,
+      allowsOverrun: false,
+    });
+    if (!made.ok) throw new Error(made.message);
+    await d.engine.dispatch({ type: 'startTimer', timerId: made.id });
+    await d.engine.dispatch({ type: 'showAudienceTimer', timerId: made.id });
+    return Date.now();
+  });
+
+test('an output’s warm-up cut short never lends the show its paused clock: a timer for the audience shows its time left from its first frame (NG-1)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp({ ...WITHOUT_A_CHIP, ...SAID_LATE, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUpScreen(win);
+  const out = await outputPage(app);
+  const root = out.getByTestId('output-root');
+  // Warming up part-way, its clock paused there (held until Chromium says how it draws).
+  await expect(out.locator('[data-testid="output-root"] [data-warm-up="during"]')).toHaveCount(1, {
+    timeout: 30_000,
+  });
+  await watchTimesShown(out, '[data-testid="output-root"]');
+  // A minute's countdown for the audience, started after the warm-up paused its clock, and 3 s gone by the clock.
+  const startedAt = await countdownUp(win);
+  await expect
+    .poll(() => win.evaluate(() => Date.now()), { intervals: [250] })
+    .toBeGreaterThan(startedAt + 3000);
+  // Chromium says it draws without a graphics chip: the warm-up is cut there, the show drawn.
+  await app.evaluate(() => {
+    (globalThis as MainGlobals).drashtiTestGpuSaid?.();
+  });
+  await expect(root).toHaveAttribute('data-warm-up', 'skipped');
+  await expect(out.getByTestId('audience-timer-time')).toHaveCount(1, { timeout: 20_000 });
+  const shown = await timesShown(out);
+  expect(shown.length, 'the timer shown at all').toBeGreaterThan(0);
+  // The first time it showed is the clock's (3 s or more gone), never the paused moment's (the whole minute).
+  expect(
+    secondsShown(shown[0] ?? ''),
+    `the first time it showed (all: ${shown.join(', ')})`,
+  ).toBeLessThanOrEqual(57);
+  await app.close();
+});
+
+test('the LIVE picture’s warm-up cut short as the first slide goes up never lends the show its paused clock: a timer for the audience shows its time left from its first frame (NG-1)', async () => {
+  test.setTimeout(180_000);
+  // The LIVE picture's warm-up kept drawn, its clock paused part-way, until something goes up and cuts it short.
+  const { app } = await launchApp(HOLD);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const live = '[data-testid="live-preview"]';
+  await expect(win.locator(`${live} [data-warm-up="during"]`)).toHaveCount(1, { timeout: 30_000 });
+  const id = await makeSlides(
+    win,
+    'Placeholder slides cut in',
+    [{ words: 'Placeholder words', background: '#3a6ea5' }],
+    { kind: 'cut', durationMs: 0 },
+  );
+  await watchTimesShown(win, live);
+  // A minute's countdown for the audience (it never cuts the warm-up short by itself), 3 s gone by the clock.
+  const startedAt = await countdownUp(win);
+  await expect
+    .poll(() => win.evaluate(() => Date.now()), { intervals: [250] })
+    .toBeGreaterThan(startedAt + 3000);
+  expect(await timesShown(win), 'nothing of the show drawn in LIVE while it warms up').toEqual([]);
+  // The first slide goes up: the warm-up ends there, cut, and LIVE draws the show with the timer over it.
+  await goLive(win, id, 0);
+  await expect(win.locator(`${live} [data-warm-up]`)).toHaveCount(0);
+  await expect(win.locator(`${live} [data-testid="audience-timer-time"]`)).toHaveCount(1, {
+    timeout: 20_000,
+  });
+  const shown = await timesShown(win);
+  expect(shown.length, 'the timer shown at all').toBeGreaterThan(0);
+  // The first time it showed is the clock's (3 s or more gone), never the paused moment's (the whole minute).
+  expect(
+    secondsShown(shown[0] ?? ''),
+    `the first time it showed (all: ${shown.join(', ')})`,
+  ).toBeLessThanOrEqual(57);
   await app.close();
 });
 
