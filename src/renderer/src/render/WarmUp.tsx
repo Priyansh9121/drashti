@@ -220,8 +220,11 @@ export interface WarmScene {
   state: (during: boolean, at: number) => EngineState;
   /** Drawn under this clip-path (NOTCHED). */
   clip?: string;
-  /** Drawn in place of a Scene of its state (Session 58: the moving backgrounds, each a small lower third). */
-  draw?: (during: boolean, at: number, canvas: Size) => ReactNode;
+  /**
+   * Drawn in place of a Scene of its state (Session 58: the moving backgrounds, each a small lower third), as a key
+   * and fill pair's page draws (its matte).
+   */
+  draw?: (during: boolean, at: number, canvas: Size, matte: 'fill' | 'key' | null) => ReactNode;
   /** Only the pages that draw it (every page when not said). */
   pages?: readonly WarmPage[];
 }
@@ -395,13 +398,15 @@ export function warmScenes(): WarmScene[] {
       },
     });
   // Every moving background of the Lower Thirds studio (Session 58, Q58-18): one scene of small lower thirds, each
-  // background at two moments of its loop, from the registry, so one added there is warmed too. The hall's screens and
-  // the stream's page draw it; the LIVE picture does not (the operator's own, and the opening waits for its warm-up).
+  // background at the moments of its loop where every piece shows, from the registry, so one added there is warmed
+  // too. The hall's screens and the stream's page draw it; the LIVE picture does not (the operator's own, and the
+  // opening waits for its warm-up).
   list.push({
     key: WARM_BACKGROUNDS_SCENE,
     look: look('calm'),
     state: () => base,
-    draw: (during, at, canvas) => (during ? <WarmBackgrounds at={at} canvas={canvas} /> : null),
+    draw: (during, at, canvas, matte) =>
+      during ? <WarmBackgrounds at={at} canvas={canvas} matte={matte} /> : null,
     pages: ['output', 'stream'],
   });
   return [
@@ -451,15 +456,22 @@ const BACKGROUND_WORDS = 10;
 /**
  * Each a small lower third in its own fifth of the canvas, one frame at its moment as a template's thumbnail is, drawn
  * as the show draws it: its band, its words in Noto Sans (no studio font is asked for as a page starts) and its
- * moving background's pieces where they are then. The rows overlap, each lower third clear of the next, all on the
- * canvas (the GPU draws only what is on it).
+ * moving background's pieces where they are then; on a key page white, under the key's own filter, as Scene draws one.
+ * The rows overlap, each lower third clear of the next, all on the canvas (the GPU draws only what is on it).
  */
-function WarmBackgrounds({ at, canvas }: { at: number; canvas: Size }) {
+function WarmBackgrounds({ at, canvas, matte }: { at: number; canvas: Size; matte: 'fill' | 'key' | null }) {
   const size = { width: canvas.width / BACKGROUNDS_ACROSS, height: canvas.height / BACKGROUNDS_ACROSS };
   const rows = Math.ceil(WARM_BACKGROUNDS.length / BACKGROUNDS_ACROSS);
   const step = rows > 1 ? (canvas.height - size.height) / (rows - 1) : 0;
   return (
-    <>
+    <div
+      data-matte={matte ?? undefined}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        ...(matte === 'key' ? { filter: 'brightness(0) invert(1)' } : {}),
+      }}
+    >
       {WARM_BACKGROUNDS.map(({ motion, part }, n) => {
         // Up long enough to be still, and `part` of the way round its loop at `at`.
         const shownAt = at - MOTION_PERIOD_MS[motion] * (10 + part);
@@ -490,7 +502,7 @@ function WarmBackgrounds({ at, canvas }: { at: number; canvas: Size }) {
           </div>
         );
       })}
-    </>
+    </div>
   );
 }
 
@@ -539,7 +551,7 @@ function WarmScenes({
         >
           <div style={{ position: 'absolute', inset: 0, clipPath: s.clip }}>
             {s.draw ? (
-              s.draw(during, at, canvas)
+              s.draw(during, at, canvas, matte)
             ) : (
               <Scene
                 state={s.state(during, at)}

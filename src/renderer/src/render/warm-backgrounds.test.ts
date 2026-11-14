@@ -25,8 +25,12 @@ describe('the warm-up’s moving backgrounds', () => {
     expect(scenes).toHaveLength(1);
     const scene = scenes[0];
     expect(scene?.pages).toEqual(['output', 'stream']);
-    expect(scene?.draw?.(false, BEFORE, { width: 1920, height: 1080 }) ?? null).toBeNull();
-    expect(scene?.draw?.(true, BEFORE, { width: 1920, height: 1080 })).toBeTruthy();
+    const canvas = { width: 1920, height: 1080 };
+    expect(scene?.draw?.(false, BEFORE, canvas, null) ?? null).toBeNull();
+    expect(scene?.draw?.(true, BEFORE, canvas, null)).toBeTruthy();
+    // A key and fill pair's key page draws them as Scene draws its picture there: white, under the key's filter.
+    const keyed = scene?.draw?.(true, BEFORE, canvas, 'key') as { props?: { matte?: unknown } } | null;
+    expect(keyed?.props?.matte).toBe('key');
     const state = scene?.state(true, BEFORE);
     expect(state?.layers.slide).toBeNull();
     expect(state?.layers.lowerThird).toBeNull();
