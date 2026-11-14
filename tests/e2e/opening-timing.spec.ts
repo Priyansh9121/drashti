@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { OPENING_DEFAULT_PHOTO_URL, OPENING_START_HOLD_MS } from '../../src/shared/opening';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { OPENING_DEFAULT_PHOTO_URL, OPENING_MS, OPENING_START_HOLD_MS } from '../../src/shared/opening';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
 
 type TimingGlobals = typeof globalThis & {
@@ -335,4 +337,61 @@ test('the window’s own warm-up kept drawing (a test switch): the opening holds
   } finally {
     await app.close();
   }
+});
+
+/** The figures in the log line of an opening that ended by itself (shared/opening.ts, openingFiguresWords). */
+const FIGURES =
+  /^Opening: ended by itself after (\d+) ms; held (\d+) ms \((all ready|its limit)\); first moved (\d+) ms after, at (\d+) ms of its (\d+); ran (\d+) ms; longest frame (\d+) ms$/u;
+
+test('as it ends, the log says its figures: how long it held and why it let go, its first move and how far into its two seconds that was, how long it ran, its longest frame', async () => {
+  // Session 58 (C4, Q57-32): the owner wants the Mac's full two seconds measured on the owner's own Mac as well as on
+  // CI; these lines are how a start anywhere can be read afterwards. DRASHTI_OPENING_STARTS starts it that many times
+  // (the lead's check on that Mac, loud), and DRASHTI_OPENING_OWN_PHOTO=1 with Drashti's own default photo instead of
+  // the tests' placeholder (a one-off check: never kept).
+  const starts = Math.max(1, Number(process.env['DRASHTI_OPENING_STARTS'] ?? '1') || 1);
+  const ownPhoto = process.env['DRASHTI_OPENING_OWN_PHOTO'] === '1';
+  test.setTimeout(60_000 + starts * (OPENING_START_HOLD_MS + 20_000));
+  const first = await launchApp();
+  await operatorReady(await operatorPage(first.app));
+  await first.app.close();
+  const file = join(first.userData, 'logs', 'drashti.log');
+  const lines = () =>
+    existsSync(file)
+      ? readFileSync(file, 'utf8')
+          .split('\n')
+          .map((l) => l.slice(l.indexOf('Opening: ')))
+          .filter((l) => l.startsWith('Opening: ended'))
+      : [];
+  const said: string[] = [];
+  for (let i = 0; i < starts; i++) {
+    const before = lines().length;
+    const { app } = await relaunchApp(first.userData, {
+      DRASHTI_TEST_OPENING: '1',
+      ...(ownPhoto ? { DRASHTI_TEST_OPENING_PHOTO: '' } : {}),
+    });
+    try {
+      const win = await operatorPage(app);
+      const cover = win.getByTestId('opening-start');
+      await expect(cover).toBeVisible({ timeout: 15_000 });
+      // It ends by itself.
+      await expect(cover).toHaveCount(0, { timeout: OPENING_START_HOLD_MS + 15_000 });
+      await expect.poll(() => lines().length).toBe(before + 1);
+    } finally {
+      await app.close();
+    }
+    const line = lines().at(-1) ?? '';
+    said.push(line);
+    console.log(`start ${String(i + 1)}: ${line}`);
+    const m = FIGURES.exec(line);
+    expect(m, line).not.toBeNull();
+    const [after, held, , moved, at, of, ran, longest] = (m ?? []).slice(1).map(Number);
+    expect(of).toBe(OPENING_MS);
+    // Each figure as it can be: held within the window's limit, its first frame within its two seconds, a length.
+    expect(held).toBeLessThanOrEqual(OPENING_START_HOLD_MS + 1000);
+    expect(after).toBeGreaterThanOrEqual((held ?? 0) + (moved ?? 0));
+    expect(at).toBeLessThanOrEqual(OPENING_MS);
+    expect(ran).toBeGreaterThan(0);
+    expect(longest).toBeGreaterThan(0);
+  }
+  await test.info().attach('opening figures', { body: said.join('\n'), contentType: 'text/plain' });
 });
