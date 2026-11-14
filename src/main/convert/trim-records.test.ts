@@ -152,7 +152,7 @@ it('starts with nothing waiting and writes nothing when neither the file nor the
 
 it('keeps a file it cannot read aside, never writes over it, and starts with nothing waiting', async () => {
   writeFileSync(file, '{"version": 1, "waiting": [');
-  const log = vi.fn();
+  const log = vi.fn<(message: string) => void>();
   const before = { waiting: vi.fn(() => [cut(1)]), copies: vi.fn(() => [copy]) };
   const records = new TrimRecords(file, { before, log });
   expect(records.kept.load()).toEqual([]);
@@ -184,7 +184,7 @@ it('tries a write that failed again by itself, saying so once', async () => {
     writeFileSync(path, text);
     return Promise.resolve();
   });
-  const log = vi.fn();
+  const log = vi.fn<(message: string) => void>();
   // Tried again 10 ms on, then 20 ms (250 ms and 500 ms in Drashti).
   const records = new TrimRecords(file, { before: nothingBefore, writeFile, log, retryMs: 10 });
   records.kept.save([cut(1)]);
@@ -216,7 +216,7 @@ it('tries again, at once, a rename held for a moment before a cut can appear in 
 });
 
 it('throws when the records cannot be written before a cut can appear in Media, so it is not published', () => {
-  const log = vi.fn();
+  const log = vi.fn<(message: string) => void>();
   const rename = vi.fn(() => {
     throw Object.assign(new Error('Placeholder: the folder cannot be written.'), { code: 'EACCES' });
   });

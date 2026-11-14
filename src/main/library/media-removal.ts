@@ -10,6 +10,7 @@ import { removeCopiesOf } from '../media/sharpened';
 import { removeBlurredOf } from '../media/blurred';
 import { isInside } from '../media/contained';
 import type { Db } from '../db/database';
+import { MediaStore } from '../import/media-store';
 import { hashOffMain } from './hash-off-main';
 
 /*
@@ -452,7 +453,7 @@ export class MediaRemoval {
             ? null
             : dirname(resolve(root, cut.originalPath))
           : cut.originalSha256
-            ? join(root, cut.originalSha256.slice(0, 2))
+            ? dirname(join(root, MediaStore.storedPath(cut.originalSha256, '')))
             : null;
       return folder !== null && (folder === root || isInside(root, folder)) ? folder : null;
     };
@@ -489,8 +490,14 @@ export class MediaRemoval {
       return { path, absolute: slash(resolve(mediaDir, path)), real: slash(file) };
     };
     const heldNow = () => new Set([...options.held()].map((path) => slash(path).toLowerCase()));
+    // A file's path in Media, full and real, each compared in any case.
+    const forms = (file: string) => Object.values(keys(file)).map((key) => key.toLowerCase());
     const known = (file: string, held: ReadonlySet<string>) =>
-      Object.values(keys(file)).some((key) => named.has(key.toLowerCase()) || held.has(key.toLowerCase()));
+      forms(file).some((key) => named.has(key) || held.has(key));
+    const heldAny = (file: string) => {
+      const held = heldNow();
+      return forms(file).some((key) => held.has(key));
+    };
 
     const found: { cut: GoneTrim; file: string; before: BigIntStats }[] = [];
     for (const [folder, inFolder] of folders) {
@@ -553,7 +560,7 @@ export class MediaRemoval {
         stillGone.get(key) === undefined ||
         inUse().has(cut.id) ||
         namedNow.get(keys(file)) !== undefined ||
-        heldNow().has(inMedia(file).toLowerCase()) ||
+        heldAny(file) ||
         !sameFile(file, before)
       ) {
         left(`cut ${cut.id} or its file changed since it was read`);
