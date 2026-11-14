@@ -21,7 +21,7 @@ import { dispatch } from './actions';
 import { LiveZoomControls, ZoomablePreview } from './LiveZoom';
 import { useNow } from '../render/useNow';
 import { useWhatIsThis } from '../help/WhatIsThis';
-import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
+import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { PipDragHandle, PipLiveStrip } from './PipLive';
 import { PlayingBars } from '../markers/PlayingBars';
@@ -110,7 +110,28 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   }, []);
   // Once something has been drawn, it never warms up again.
   if (drawsSomething && !warmed) setWarmed(true);
-  const warming = !warmed && !drawsSomething && !practising;
+  // None where Chromium draws without a graphics chip (Session 58, WU-1, as the outputs and the stream's page): asked as
+  // the window opens, and told once Chromium has said; a warm-up begun before then ends there. A test's hold comes first.
+  const [noGpu, setNoGpu] = useState(false);
+  useEffect(() => {
+    if (HOLD_WARM_UP && !NO_GPU_ENDS_HOLD) return;
+    let live = true;
+    const told = () => {
+      if (live) setNoGpu(true);
+    };
+    void window.drashti.app.noGpu().then(
+      (on) => {
+        if (on) told();
+      },
+      () => undefined,
+    );
+    const off = window.drashti.app.onNoGpu(told);
+    return () => {
+      live = false;
+      off();
+    };
+  }, []);
+  const warming = !warmed && !drawsSomething && !practising && !noGpu;
   // The Lower Thirds studio's fonts once the LIVE picture draws the show (Session 55): never with the window's start.
   useEffect(() => {
     if (warming) return;
