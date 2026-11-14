@@ -246,6 +246,51 @@ describe('a deck’s own Push on a 4:3 slide fitted to a 16:9 screen (Session 58
     }
   });
 
+  it('under Drashti’s own transition set over the deck’s, the slides move as before, in % of the layer (review MEDIUM-1)', () => {
+    const bars = { x: 240, y: 0, width: 1440, height: 1080 };
+    for (const deckEffect of ['push', 'cover', 'uncover'] as const)
+      for (const over of [
+        { kind: 'dissolve' as const, durationMs: 700 },
+        { kind: 'fade-black' as const, durationMs: 700 },
+      ]) {
+        const native: DeckNativeTransition = {
+          kind: 'slide',
+          deckEffect,
+          durationMs: 700,
+          direction: 'left',
+          over,
+        };
+        for (const p of [0.1, 0.5, 0.97]) {
+          const coming = box();
+          const going = box();
+          paintLayers(layersOf(coming, going), deckPaint(native, bars), p);
+          const before = deckTransitionFrame(native, p);
+          expect(
+            [coming.style.transform, going.style.transform],
+            `${deckEffect} over ${over.kind} at ${String(p)}`,
+          ).toEqual([before.in.transform, before.out.transform]);
+        }
+      }
+  });
+
+  it('a slide within a pixel of filling the screen moves as before (review LOW-2): a 16:9 deck on a 1366 x 768 screen', () => {
+    const near = { x: 0.33333, y: 0, width: 1365.33333, height: 768 };
+    const native: DeckNativeTransition = {
+      kind: 'slide',
+      deckEffect: 'push',
+      durationMs: 700,
+      direction: 'left',
+    };
+    const coming = box();
+    const going = box();
+    paintLayers(layersOf(coming, going), { ...deckPaint(native, near), width: 1366, height: 768 }, 0.5);
+    const before = deckTransitionFrame(native, 0.5);
+    expect([coming.style.transform, going.style.transform]).toEqual([
+      before.in.transform,
+      before.out.transform,
+    ]);
+  });
+
   it('both slides move by the slide’s own width in px', () => {
     const bars = { x: 240, y: 0, width: 1440, height: 1080 };
     const native: DeckNativeTransition = {
@@ -358,6 +403,26 @@ describe('a deck’s own Wipe drawn on a screen without a graphics chip: PowerPo
         paintLayers(els, { ...deckPaint(native), kind: null, native: undefined }, 0);
         expect(bandIn.holder?.style).toEqual(AT_REST);
       }
+  });
+
+  it('a slide placed anew part-way (the screen’s canvas or its pixels changed) draws its band boxes at the new size (review LOW-3)', () => {
+    setDrawsWithoutChip(true);
+    const native: DeckNativeTransition = {
+      kind: 'wipe',
+      deckEffect: 'wipe',
+      durationMs: 700,
+      direction: 'left',
+    };
+    const bandIn = bandBoxes();
+    const els = { ...layersOf(box(), box()), bandIn, bandOut: bandBoxes() };
+    paintLayers(els, deckPaint(native, FULL), 0.3);
+    const bars = { x: 240, y: 0, width: 1440, height: 1080 };
+    paintLayers(els, deckPaint(native, bars), 0.4);
+    const band = deckTransitionFrame(native, 0.4).in.band;
+    if (!band) throw new Error('no band');
+    const want = wipeBandStyles(band, bars, { width: 1920, height: 1080 }, 1);
+    expect(bandIn.holder?.style).toMatchObject(want.holder);
+    expect(bandIn.slide?.style).toMatchObject(want.slide);
   });
 
   it('Back during it: the slide that was coming in is drawn whole, its band boxes at rest (TX-1)', () => {
