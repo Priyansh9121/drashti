@@ -969,11 +969,11 @@ test('a cold direct jump keeps the outgoing slide, plays the full first animatio
     const rate = () => clip.evaluate((video: HTMLVideoElement) => video.playbackRate);
     await expect.poll(rate).toBeGreaterThan(1);
     expect(await rate()).toBeLessThanOrEqual(1.1);
-    expect(await holdLive(app, at + CLIP_MS - TRANSITION_MS + 150)).toBe(true);
-    await expect(showing).toHaveAttribute('data-deck-phase', 'clip');
     // 0.45 s late with 1.1 s of the clip to come, a tenth faster makes up 0.1 s: it ends 0.35 s after the engine's
-    // time, not 0.45 s.
-    expect(await holdLive(app, at + CLIP_MS - TRANSITION_MS + 400)).toBe(true);
+    // time, not 0.45 s (C3T-5: 10 ms either side of it).
+    expect(await holdLive(app, at + CLIP_MS - TRANSITION_MS + 340)).toBe(true);
+    await expect(showing).toHaveAttribute('data-deck-phase', 'clip');
+    expect(await holdLive(app, at + CLIP_MS - TRANSITION_MS + 360)).toBe(true);
     await expect(showing).toHaveAttribute('data-deck-phase', 'held');
     await holdLive(app, null);
   } finally {
