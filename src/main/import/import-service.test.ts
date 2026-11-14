@@ -292,6 +292,53 @@ describe('ImportService', () => {
   });
 });
 
+describe('ImportService and the library file’s copying (Session 58)', () => {
+  it('says once that an import’s worker runs, and once that it has ended, however it ends; never for one that could not start', async () => {
+    const said: boolean[] = [];
+    const { service, workers } = setup({
+      running: (on) => {
+        said.push(on);
+      },
+    });
+    // Finished.
+    const first = service.start(['/a']);
+    expect(said).toEqual([true]);
+    workers[0]?.emit({ type: 'finished', run: summary(workers[0].runId) });
+    workers[0]?.exit(0);
+    await first;
+    expect(said).toEqual([true, false]);
+    // Failed, as the worker says.
+    const second = service.start(['/b']);
+    workers[1]?.emit({ type: 'failed', runId: workers[1].runId, message: 'Placeholder failure' });
+    await second;
+    expect(said).toEqual([true, false, true, false]);
+    // Its worker stopped unexpectedly.
+    const third = service.start(['/c']);
+    workers[2]?.exit(9);
+    await third;
+    expect(said).toEqual([true, false, true, false, true, false]);
+    // Stopped as Drashti quits, a run waiting behind it never started.
+    void service.start(['/d']);
+    void service.start(['/e']);
+    service.stop();
+    expect(said).toEqual([true, false, true, false, true, false, true, false]);
+  });
+
+  it('says nothing for a worker that could not start', async () => {
+    const said: boolean[] = [];
+    const { service } = setup({
+      spawn: () => {
+        throw new Error('Placeholder: no such file');
+      },
+      running: (on) => {
+        said.push(on);
+      },
+    });
+    await service.start(['/a']);
+    expect(said).toEqual([]);
+  });
+});
+
 describe('ImportService and pictures (Session 15)', () => {
   it('has the main process draw a PDF for the worker, and stops the drawing when the run is cancelled', async () => {
     const asked: { pdf: string; outDir: string; signal: AbortSignal }[] = [];
