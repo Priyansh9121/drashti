@@ -101,7 +101,8 @@ test('made from the panel (in the studio), shown on a placeholder hall screen an
   await search.fill('bounce');
   expect(await listed()).toEqual(expect.arrayContaining(['Bounce up', 'Pop in']));
   await search.fill('zzzqqq');
-  await expect(editor.getByTestId('lower-third-animations')).toContainText('No animation is called that.');
+  await expect(editor.getByTestId('lower-third-animations')).toContainText('Nothing matches.');
+  await expect(editor.getByTestId('lower-third-search-status')).toHaveText('Nothing matches “zzzqqq”.');
   await search.fill('pop in');
   // Chosen: it plays in the small picture.
   await editor
