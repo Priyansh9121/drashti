@@ -334,4 +334,26 @@ describe('the playlist’s rows on a phone (Session 55, Part 9)', () => {
     if (!gone) throw new Error('no row');
     expect(ids(gone)).toEqual(['pin', 'rename', 'remove']);
   });
+
+  it('renames a file by its own name, never a row label of its own; the row keeps its label (C18, FT-2)', () => {
+    const labelled = media('labelled', 'video', {
+      label: 'Placeholder row label',
+      mediaName: 'Placeholder file name',
+    } as Partial<PlaylistItemInfo>);
+    const plain = media('plain', 'image');
+    const own = phoneRows([labelled, plain], new Map(), new Set(), false);
+    const menu = (id: string) => {
+      const found = own.find((r) => r.kind !== 'slide' && r.item.id === id);
+      if (!found) throw new Error('no such row');
+      return rowMenu(found, ctx());
+    };
+    expect(menu('labelled').find((a) => a.id === 'rename')).toEqual({
+      id: 'rename',
+      what: { kind: 'media', mediaId: 'm-labelled', media: 'video' },
+      name: 'Placeholder file name',
+    });
+    // Remove names the row as it shows; a row with no file name given (an older Main's) renames by its label.
+    expect(menu('labelled').find((a) => a.id === 'remove')).toMatchObject({ name: 'Placeholder row label' });
+    expect(menu('plain').find((a) => a.id === 'rename')).toMatchObject({ name: 'Placeholder plain' });
+  });
 });
