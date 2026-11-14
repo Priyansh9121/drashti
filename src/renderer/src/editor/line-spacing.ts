@@ -1,5 +1,6 @@
 import { isIndic, type TextElement } from '../../../shared/model';
 import { INDIC_LINE_HEIGHT_MIN } from '../../../shared/readable';
+import { cutLineHeight, sourceLineCut } from '../../../shared/source-fit';
 import { type BoxLine, boxLines } from '../../../shared/tracks';
 
 /*
@@ -19,7 +20,8 @@ function drawnSpacing(el: TextElement, line: BoxLine): number {
   const paragraph = first?.paragraph;
   if (paragraph?.lineHeightPx !== undefined)
     return paragraph.lineHeightPx / (first?.size ?? el.style.fontSize);
-  return paragraph?.lineHeight ?? el.style.lineHeight;
+  // A deck's multiple as PowerPoint's own shrink drew it (Session 58, PF-4b).
+  return cutLineHeight(paragraph?.lineHeight ?? el.style.lineHeight, sourceLineCut(el.style));
 }
 
 /** The spacing the Words group shows for a box: its first line of words', as drawn. */

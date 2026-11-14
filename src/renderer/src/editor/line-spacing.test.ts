@@ -66,6 +66,16 @@ describe('a box’s line spacing, as Words shows it and the inspector warns of i
     expect(crowdedIndicSpacing(sized)).toBe(1.1);
   });
 
+  it('a deck box as PowerPoint’s own shrink drew it: its line spacing reduction taken off (Session 58, PF-4b)', () => {
+    const shrunk = {
+      ...box('gu', 1.32, [{ text: GUJARATI, lang: 'gu' }]),
+    };
+    shrunk.style = { ...shrunk.style, sourceFit: { fontScale: 0.9, lineSpacingReduction: 0.1 } };
+    // 1.32 less 0.12 (10% of a single line): 1.2, under 1.3.
+    expect(shownLineSpacing(shrunk)).toBe(1.2);
+    expect(crowdedIndicSpacing(shrunk)).toBe(1.2);
+  });
+
   it('a box of several languages: Words shows its first line’s, and only its Gujarati and Hindi lines are warned of', () => {
     const english = { text: 'Placeholder English line\n', lang: 'en' as const };
     const roomyGujarati = box('en', 1.35, [

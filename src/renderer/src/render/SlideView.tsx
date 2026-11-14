@@ -40,6 +40,7 @@ import { missingFontsOf } from './font-probe';
 import { queueFit } from './shrink-to-fit';
 import { standsUpright } from '../../../shared/text-runs';
 import { drawnLines, hasList } from '../../../shared/text-lists';
+import { cutLineHeight, sourceLineCut } from '../../../shared/source-fit';
 import { TimerElementView } from './TimerElementView';
 import { PlayBar } from './PlayBar';
 import type { DeckMedia } from '../../../shared/deck';
@@ -305,7 +306,8 @@ export function paragraphLineStyle(
   line: { mark: ListMark | null; level: number; label: string | null },
   size: number,
   paragraph: TextParagraph | undefined,
-  space: { before: boolean; after: boolean },
+  /** Its space before and after at the box's edges, and the source's own shrink of line spacings (PF-4b). */
+  space: { before: boolean; after: boolean; lineCut?: number },
 ): CSSProperties {
   const base = listLineStyle(line, size);
   if (!paragraph) return base;
@@ -320,7 +322,12 @@ export function paragraphLineStyle(
     ...(space.before && spaceBefore !== undefined ? { paddingBlockStart: fitted(spaceBefore) } : {}),
     ...(space.after && spaceAfter !== undefined ? { paddingBlockEnd: fitted(spaceAfter) } : {}),
     textIndent: indentWords,
-    lineHeight: lineHeightPx === undefined ? lineHeight : fitted(lineHeightPx),
+    lineHeight:
+      lineHeightPx !== undefined
+        ? fitted(lineHeightPx)
+        : lineHeight === undefined
+          ? undefined
+          : cutLineHeight(lineHeight, space.lineCut ?? 0),
   };
 }
 
@@ -394,6 +401,7 @@ function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly Text
               ...paragraphLineStyle(line.mark, size, first.paragraph, {
                 before: el.style.spaceAtTextEdges === true || li > 0,
                 after: el.style.spaceAtTextEdges === true || li < last,
+                lineCut: sourceLineCut(el.style),
               }),
             }}
           >
@@ -508,6 +516,8 @@ export function useShrinkToFit(
     let live = true;
     const forget = queueFit({
       on,
+      // A deck's box starts its search where PowerPoint's own shrink left its words (Session 58, PF-4b).
+      guess: on ? el.style.sourceFit?.fontScale : undefined,
       write: (fit) => {
         if (fit !== null) {
           b.style.setProperty('--fit', String(fit));
@@ -550,7 +560,8 @@ export function textBoxStyle(el: TextElement): CSSProperties {
     fontFamily: fontFamilyFor(s.fontFamily, el.lang),
     fontSize: fitted(s.fontSize),
     fontWeight: s.fontWeight,
-    lineHeight: s.lineHeight,
+    // A deck's box drawn with its line spacing as PowerPoint shrank it (Session 58, PF-4b; shared/source-fit.ts).
+    lineHeight: cutLineHeight(s.lineHeight, sourceLineCut(s)),
     color: s.color,
     whiteSpace: s.noWrap ? 'pre' : 'pre-wrap',
     overflowWrap: s.noWrap ? undefined : 'anywhere',
