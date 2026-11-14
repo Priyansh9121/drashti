@@ -3,7 +3,9 @@
 //   - every checkout without kept credentials (persist-credentials: false);
 //   - no ${{ … }} inside a run: script (an input or a branch name could become a command): through env:;
 //   - no pull_request_target (it runs a stranger's pull request with this repository's secrets);
-//   - the release build without caches (a poisoned cache could reach an installer).
+//   - the release build without caches (a poisoned cache could reach an installer); since Session 58 (X2b) a
+//     cache step (actions/cache, its restore or save) only after its job has uploaded what it built
+//     (actions/upload-artifact), never a setup action's cache: (restored before the build).
 //
 //   node scripts/check-workflows.mjs            check .github/workflows/*.yml; exit 1 with what is wrong
 import { readdirSync, readFileSync } from 'node:fs';
@@ -19,6 +21,8 @@ export function checkWorkflow(text, name) {
   const indent = (l) => l.length - l.trimStart().length;
   let run = null;
   let checkout = null;
+  // Whether this job has uploaded what it built yet (each job starts afresh: a line `  <job>:`).
+  let kept = false;
   const endCheckout = () => {
     if (checkout && !checkout.persist)
       problems.push(
@@ -33,6 +37,7 @@ export function checkWorkflow(text, name) {
     // A step's end: a new step (a dash) at the checkout step's own indentation, or less.
     if (checkout && trimmed !== '' && ind <= checkout.indent) endCheckout();
     if (run && trimmed !== '' && ind <= run) run = null;
+    if (/^ {2}[\w-]+:\s*$/u.test(line)) kept = false;
     if (/\bpull_request_target\b/u.test(line.replace(/#.*$/u, '')))
       problems.push(
         `${name}:${String(at)}: pull_request_target runs others' pull requests with this repository's secrets`,
@@ -48,8 +53,12 @@ export function checkWorkflow(text, name) {
       }
       if (/^actions\/checkout@/u.test(ref))
         checkout = { line: at, indent: (uses[1] ?? '').length, persist: false };
-      if (name === 'release.yml' && /^actions\/cache@/u.test(ref))
-        problems.push(`${name}:${String(at)}: the release build uses a cache`);
+      if (/^actions\/upload-artifact@/u.test(ref)) kept = true;
+      const cache = /^(actions\/cache(?:\/restore|\/save)?)@/u.exec(ref)?.[1];
+      if (name === 'release.yml' && cache && !kept)
+        problems.push(
+          `${name}:${String(at)}: the release build uses a cache before its job has kept what it built (${cache})`,
+        );
     }
     if (checkout && /^persist-credentials:\s*false\b/u.test(trimmed)) checkout.persist = true;
     if (name === 'release.yml' && /^cache:\s*\S/u.test(trimmed))

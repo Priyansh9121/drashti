@@ -42,6 +42,19 @@ export interface StillsSlide {
   paragraphs?: StillsParagraph[];
   /** A table of placeholder words in PowerPoint's default style, its first row a header and its rows banded. */
   table?: { rows: number; columns: number };
+  /** The words' size, hundredths of a point (4000 unless given). */
+  size?: number;
+  /** Each paragraph's line spacing, a percentage of a line (lnSpc spcPct; none written for 100). */
+  lineSpacing?: number;
+  /** Each paragraph a bullet (•, Arial), as PowerPoint's default list. */
+  bullets?: boolean;
+  /**
+   * PowerPoint's own shrink of words that run past the box (normAutofit), in thousandths of a percent as it saves them:
+   * the words at fontScale of their size, every line spacing lnSpcReduction less. None: noAutofit.
+   */
+  fit?: { fontScale: number; lnSpcReduction?: number };
+  /** The words' typeface (Arial unless given), for Latin and complex scripts alike. */
+  font?: string;
 }
 export interface StillsDeck {
   file: string;
@@ -118,25 +131,128 @@ export const STILLS_DARK: StillsDeck = {
   ]),
 };
 
+/*
+ * PF-4b (h-pptx3, 14 Nov evening): boxes whose words run past them at full size, each with the shrink PowerPoint saves
+ * (normAutofit fontScale and lnSpcReduction, in its own steps), the box as tall as the words take at that shrink (and
+ * a fiftieth more), so that PowerPoint's own fit lands on it. Lines short enough never to wrap, so the measure reads
+ * sizes and places alone: each line's ink (no letter below its line). Two boxes that fit unshrunk are the measure's own
+ * controls.
+ */
+const SHRINK_X = 1.5 * INCH;
+const SHRINK_Y = 0.6 * INCH;
+const SHRINK_W = 9 * INCH;
+const POINT = 12_700;
+/** Each line's own letter: none hangs below the line, so a line's lowest ink is its baseline. */
+const NUMBERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const shrinkLines = (count: number, words = (n: string) => `Placeholder line ${n}`): StillsParagraph[] =>
+  NUMBERS.slice(0, count).map((n) => ({ text: words(n) }));
+/** A box as tall as `count` lines of `size` take at the shrink given (PowerPoint's line: 1.2 x the size), insets too. */
+function shrinkBox(
+  count: number,
+  size: number,
+  spacing: number,
+  fit?: StillsSlide['fit'],
+): StillsSlide['box'] {
+  const scale = (fit?.fontScale ?? 100_000) / 100_000;
+  const cut = (fit?.lnSpcReduction ?? 0) / 1000;
+  const line = 1.2 * (size / 100) * scale * ((spacing - cut) / 100);
+  const points = fit ? (count * line + 7.2) * 1.02 : count * 1.2 * (size / 100) * (spacing / 100) * 1.1 + 7.2;
+  return { x: SHRINK_X, y: SHRINK_Y, w: SHRINK_W, h: Math.round(points * POINT) };
+}
+const shrinkSlide = (
+  name: string,
+  count: number,
+  size: number,
+  spacing: number,
+  fit?: StillsSlide['fit'],
+  more: Partial<StillsSlide> = {},
+): Omit<StillsSlide, 'marker'> => ({
+  name,
+  box: shrinkBox(count, size, spacing, fit),
+  paragraphs: shrinkLines(count),
+  size,
+  ...(spacing === 100 ? {} : { lineSpacing: spacing }),
+  ...(fit ? { fit } : {}),
+  ...more,
+});
+
+/** PF-4b's stills: boxes PowerPoint shrinks, and two that fit unshrunk (the measure's controls). */
+export const STILLS_SHRINK: StillsDeck = {
+  file: 'Placeholder PowerPoint shrink.pptx',
+  dark: false,
+  slides: marked([
+    shrinkSlide('No shrink · 28 pt, lines 100% (control)', 8, 2800, 100),
+    shrinkSlide('No shrink · 40 pt, lines 90% (control)', 6, 4000, 90),
+    shrinkSlide('Shrink · 28 pt, lines 100%, fontScale 77.5%, 20% less', 8, 2800, 100, {
+      fontScale: 77_500,
+      lnSpcReduction: 20_000,
+    }),
+    shrinkSlide('Shrink · 40 pt, lines 90%, fontScale 62.5%, 20% less', 6, 4000, 90, {
+      fontScale: 62_500,
+      lnSpcReduction: 20_000,
+    }),
+    shrinkSlide('Shrink · 24 pt, lines 120%, fontScale 85%, 10% less', 8, 2400, 120, {
+      fontScale: 85_000,
+      lnSpcReduction: 10_000,
+    }),
+    shrinkSlide('Shrink · 32 pt, lines 150%, fontScale 70%, 20% less', 6, 3200, 150, {
+      fontScale: 70_000,
+      lnSpcReduction: 20_000,
+    }),
+    shrinkSlide(
+      'Shrink · 28 pt bullets, fontScale 77.5%, 10% less',
+      7,
+      2800,
+      100,
+      {
+        fontScale: 77_500,
+        lnSpcReduction: 10_000,
+      },
+      { bullets: true },
+    ),
+    shrinkSlide('Shrink · 28 pt, fontScale 92.5% only', 8, 2800, 100, { fontScale: 92_500 }),
+    shrinkSlide(
+      'Shrink · Gujarati placeholder, 32 pt, fontScale 85%, 10% less',
+      5,
+      3200,
+      100,
+      {
+        fontScale: 85_000,
+        lnSpcReduction: 10_000,
+      },
+      { paragraphs: shrinkLines(5, () => 'નમૂના નમૂના નમૂના'), font: 'Gujarati Sangam MN' },
+    ),
+  ]),
+};
+
 const esc = (text: string) => text.replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;');
 const spaceXml = (tag: 'spcBef' | 'spcAft', space: StillsSpace | undefined) =>
   space === undefined
     ? ''
     : `<a:${tag}>${'pct' in space ? `<a:spcPct val="${String(space.pct)}"/>` : `<a:spcPts val="${String(space.pts)}"/>`}</a:${tag}>`;
 /** A run of words: in the theme's text colour (tx1, which the dark deck's colour map turns white), or the table style's. */
-const runXml = (text: string, size: number, themeText = true) =>
-  `<a:r><a:rPr lang="en-US" sz="${String(size)}" dirty="0">${themeText ? '<a:solidFill><a:schemeClr val="tx1"/></a:solidFill>' : ''}<a:latin typeface="Arial"/></a:rPr><a:t>${esc(text)}</a:t></a:r>`;
+const runXml = (text: string, size: number, themeText = true, font = 'Arial') =>
+  `<a:r><a:rPr lang="${/[\u0A80-\u0AFF]/u.test(text) ? 'gu-IN' : 'en-US'}" sz="${String(size)}" dirty="0">${themeText ? '<a:solidFill><a:schemeClr val="tx1"/></a:solidFill>' : ''}<a:latin typeface="${esc(font)}"/><a:cs typeface="${esc(font)}"/></a:rPr><a:t>${esc(text)}</a:t></a:r>`;
 const xfrm = (box: StillsSlide['box'], tag = 'a:xfrm') =>
   `<${tag}><a:off x="${String(Math.round(box.x))}" y="${String(Math.round(box.y))}"/><a:ext cx="${String(Math.round(box.w))}" cy="${String(Math.round(box.h))}"/></${tag}>`;
 
 function wordsXml(slide: StillsSlide): string {
+  const lineSpacing =
+    slide.lineSpacing === undefined
+      ? ''
+      : `<a:lnSpc><a:spcPct val="${String(slide.lineSpacing * 1000)}"/></a:lnSpc>`;
+  const list = slide.bullets ? ' marL="342900" indent="-342900"' : '';
+  const bullet = slide.bullets ? '<a:buFont typeface="Arial"/><a:buChar char="•"/>' : '<a:buNone/>';
   const paragraphs = (slide.paragraphs ?? [])
     .map(
       (p) =>
-        `<a:p><a:pPr>${spaceXml('spcBef', p.before)}${spaceXml('spcAft', p.after)}<a:buNone/></a:pPr>${runXml(p.text, 4000)}</a:p>`,
+        `<a:p><a:pPr${list}>${lineSpacing}${spaceXml('spcBef', p.before)}${spaceXml('spcAft', p.after)}${bullet}</a:pPr>${runXml(p.text, slide.size ?? 4000, true, slide.font)}</a:p>`,
     )
     .join('');
-  return `<p:sp><p:nvSpPr><p:cNvPr id="3" name="Placeholder words"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(slide.box)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="${slide.anchor ?? 't'}"${slide.firstLastPara ? ' spcFirstLastPara="1"' : ''}><a:noAutofit/></a:bodyPr><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
+  const fit = slide.fit
+    ? `<a:normAutofit fontScale="${String(slide.fit.fontScale)}"${slide.fit.lnSpcReduction ? ` lnSpcReduction="${String(slide.fit.lnSpcReduction)}"` : ''}/>`
+    : '<a:noAutofit/>';
+  return `<p:sp><p:nvSpPr><p:cNvPr id="3" name="Placeholder words"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(slide.box)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="${slide.anchor ?? 't'}"${slide.firstLastPara ? ' spcFirstLastPara="1"' : ''}>${fit}</a:bodyPr><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
 }
 
 function tableXml(slide: StillsSlide): string {
