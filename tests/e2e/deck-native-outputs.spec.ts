@@ -21,6 +21,7 @@ import {
 import { launchMain, launchNode, pairNode } from './nodes';
 import { canvasPixels, near } from './pixels';
 import { holdClock } from './placeholder-slides';
+import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 const CLOCK = { DRASHTI_TEST_CLOCK_HOLD: '1', DRASHTI_TEST_DECK_CONVERTER: '1' };
 const FADE_MS = 400;
@@ -224,12 +225,15 @@ test('the LIVE picture and Screens card use the moving Wipe band in software', a
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
+    await sizeOperatorWindow(app, win, CI_WINDOW);
     const id = await importOutputDeck(win);
     const hallId = await setUpScreen(win, 'Placeholder Hall', 1);
     const hall = await outputFor(app, hallId);
     await expect(hall.getByTestId('output-root')).toHaveAttribute('data-warm-up', 'skipped');
     await win.getByRole('button', { name: 'Screens', exact: true }).click();
-    const previews = [win.getByTestId('live-preview'), win.getByTestId('projector-preview')];
+    const projector = win.getByTestId('projector-preview');
+    await expect(projector).toBeVisible();
+    const previews = [win.getByTestId('live-preview'), projector];
 
     await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
     for (const preview of previews) await expect(target(preview, 3)).toHaveCount(1);

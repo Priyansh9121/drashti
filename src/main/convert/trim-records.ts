@@ -154,7 +154,9 @@ export class TrimRecords {
     const waiting = list(this.options.before.waiting());
     const copies = list(this.options.before.copies());
     if (waiting.length === 0 && copies.length === 0) return;
-    const fingerprint = createHash('sha256').update(JSON.stringify([waiting, copies])).digest('hex');
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify([waiting, copies]))
+      .digest('hex');
     if (this.legacy === fingerprint) {
       this.options.before.clear();
       return;
