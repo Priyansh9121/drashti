@@ -4,6 +4,8 @@ import { mediaUrl } from '../../shared/media';
 import {
   openingChoiceSchema,
   type OpeningEnd,
+  openingFiguresSchema,
+  openingFiguresWords,
   type OpeningPlan,
   openingPhotoUrl,
   openingPlanOf,
@@ -131,10 +133,16 @@ export class OpeningService {
     return plan;
   }
 
-  /** It ended. */
-  ended(how: OpeningEnd, afterMs: number): void {
+  /**
+   * It ended, `afterMs` after it was asked for; with the operator window's figures for it (Session 58, C4), read
+   * whole: what it cannot read is left out of the line, never the line.
+   */
+  ended(how: OpeningEnd, afterMs: number, figures?: unknown): void {
+    const read = openingFiguresSchema.safeParse(figures);
     this.deps.log(
-      `Opening: ended ${how === 'itself' ? 'by itself' : `by a ${how}`} after ${String(Math.round(afterMs))} ms`,
+      `Opening: ended ${how === 'itself' ? 'by itself' : `by a ${how}`} after ${String(Math.round(afterMs))} ms${
+        read.success ? `; ${openingFiguresWords(read.data)}` : ''
+      }`,
     );
   }
 

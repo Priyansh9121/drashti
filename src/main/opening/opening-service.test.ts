@@ -144,6 +144,44 @@ describe('as Drashti starts', () => {
     expect([...s.lines, ...whole.lines].join(' ')).not.toMatch(/Placeholder|sound\.wav/u);
   });
 
+  it('says how it ended, with the window’s figures for it when they are whole (Session 58: Q57-32)', () => {
+    const s = service({});
+    s.opening.ended('itself', 3456.4, {
+      heldMs: 1234.4,
+      releasedBy: 'ready',
+      movedAfterMs: 17,
+      firstAtMs: 16.6,
+      ranMs: 1999.6,
+      longestFrameMs: 33.4,
+    });
+    s.opening.ended('key', 2600, {
+      heldMs: 2001,
+      releasedBy: 'limit',
+      movedAfterMs: null,
+      firstAtMs: null,
+      ranMs: null,
+      longestFrameMs: null,
+    });
+    // Figures it cannot read are left out, never the line.
+    s.opening.ended('click', 2500.2, { heldMs: 'soon', releasedBy: 'ready' });
+    s.opening.ended('itself', 4000, {
+      heldMs: -5,
+      releasedBy: 'ready',
+      movedAfterMs: 1,
+      firstAtMs: 1,
+      ranMs: 1,
+      longestFrameMs: 1,
+    });
+    s.opening.ended('itself', 4100);
+    expect(s.lines).toEqual([
+      'Opening: ended by itself after 3456 ms; held 1234 ms (all ready); first moved 17 ms after, at 17 ms of its 2000; ran 2000 ms; longest frame 33 ms',
+      'Opening: ended by a key after 2600 ms; held 2001 ms (its limit); never moved',
+      'Opening: ended by a click after 2500 ms',
+      'Opening: ended by itself after 4000 ms',
+      'Opening: ended by itself after 4100 ms',
+    ]);
+  });
+
   it('a sound whose copy is gone plays no sound, and the log says so', () => {
     const s = service({ kept: { photo: 'photo-2', sound: keptSound(false) } });
     expect(s.opening.atStart(START)).toEqual({ photo: openingPhotoUrl('photo-2') });
