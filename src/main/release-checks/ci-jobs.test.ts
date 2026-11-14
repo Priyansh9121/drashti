@@ -116,7 +116,7 @@ describe('a CI job GitHub never started (Session 58), on runs recorded from GitH
     const sha = gate.run.head_sha;
     expect(ciCheck([gate.run], { [gate.run.id]: gate.jobs }, sha, annotationsOf(gate))).toEqual({
       ok: false,
-      line: 'No CI run from a push of 9befbc8 passed every app job (run 43361930288: macOS never started by GitHub (no runner), Windows success, Windows in Black success, macOS second half success). A job GitHub never started is not a test failure: re-run it (CI re-runs such a job by itself as its run ends: .github/workflows/rerun-unstarted.yml) and wait for that attempt.',
+      line: 'No CI run from a push of 9befbc8 passed every app job (run 43361930288: macOS never started by GitHub (no runner), Windows success, Windows in Black success, macOS second half success). A job GitHub never started is not a test failure, and its re-run is not the one re-run a failure gets (nothing was tested): re-run it (CI re-runs such a job by itself as its run ends: .github/workflows/rerun-unstarted.yml) and wait for that attempt.',
     });
     // Not read (no annotations): only "cancelled", as before.
     expect(ciCheck([gate.run], { [gate.run.id]: gate.jobs }, sha).line).toContain('macOS cancelled,');
@@ -164,11 +164,29 @@ describe('re-running the jobs GitHub never started (Session 58, rerun-unstarted.
     expect(p).toMatchObject({ rerun: true });
     expect(p.rerun && p.jobs.map((j) => j.name)).toEqual([MAC]);
     expect(p.line).toBe(
-      'Run 43361930288, attempt 1: End-to-end and installers (macos-latest) never started (GitHub gave it no runner): re-run.',
+      'Run 43361930288, attempt 1: End-to-end and installers (macos-latest) never started (GitHub gave it no runner): re-run, with any job skipped for want of it.',
     );
     // Both Mac halves without a runner: both.
     const both = plan(gateWithoutMac(true));
     expect(both.rerun && both.jobs.map((j) => j.name).sort()).toEqual([MAC, MAC_SECOND].sort());
+    // The Ubuntu checks job without a runner, the app jobs skipped for want of it (they need it, ci.yml): that job
+    // is re-run, and GitHub's job re-run brings back the jobs that need it.
+    const skipped = job(take('noRunnerQuickCheck'), BLACK);
+    const ubuntu = job(gate, 'Typecheck, lint, unit tests (Ubuntu)');
+    const checksLost: Recorded = {
+      ...gate,
+      jobs: gate.jobs.map((j) =>
+        j.id === ubuntu.id
+          ? { ...job(take('noRunnerBesideSuccess'), MAC), id: j.id, name: j.name }
+          : APP_JOBS.includes(j.name)
+            ? { ...skipped, id: j.id, name: j.name }
+            : j,
+      ),
+      annotations: { [String(ubuntu.id)]: gate.annotations[String(job(gate, MAC).id)] ?? [] },
+    };
+    const lost = plan(checksLost);
+    expect(lost.rerun && lost.jobs.map((j) => j.name)).toEqual(['Typecheck, lint, unit tests (Ubuntu)']);
+    expect(lost.line).toContain('re-run, with any job skipped for want of it.');
     // Its second attempt too, not its third.
     expect(plan(gate, { run_attempt: 2 }).rerun).toBe(true);
     expect(plan(gate, { run_attempt: MAX_ATTEMPTS })).toEqual({

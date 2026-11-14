@@ -57,7 +57,7 @@ export function rerunPlan({ run, jobs, annotationsOf = {}, newestRunId, reposito
   return {
     rerun: true,
     jobs: unstarted,
-    line: `Run ${String(run.id)}, attempt ${String(attempt)}: ${unstarted.map((j) => j.name).join(', ')} never started (GitHub gave ${unstarted.length === 1 ? 'it' : 'them'} no runner): re-run.`,
+    line: `Run ${String(run.id)}, attempt ${String(attempt)}: ${unstarted.map((j) => j.name).join(', ')} never started (GitHub gave ${unstarted.length === 1 ? 'it' : 'them'} no runner): re-run, with any job skipped for want of ${unstarted.length === 1 ? 'it' : 'them'}.`,
   };
 }
 
@@ -97,7 +97,9 @@ async function main() {
   const plan = rerunPlan({ run, jobs, annotationsOf, newestRunId: newest, repository: repo });
   let said = plan.line;
   if (plan.rerun && !dry) {
-    // One job: that job (and any job that needs it). More: the run's failed jobs, which are then exactly those.
+    // One job: that job and the jobs that need it ("Re-run a job and its dependent jobs", GitHub's API). More: the
+    // run's failed jobs and the jobs that need them, the failed ones then exactly those that never started. Either
+    // way a job skipped because one it needs never started runs again too.
     if (plan.jobs.length === 1)
       gh(['api', '-X', 'POST', `repos/${repo}/actions/jobs/${String(plan.jobs[0].id)}/rerun`]);
     else gh(['api', '-X', 'POST', `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`]);
