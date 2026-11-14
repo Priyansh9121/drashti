@@ -127,3 +127,35 @@ export function clippedDeckPdf(pageCount: number, complexPage?: number): Buffer 
   objects[1] = '<< /Type /Pages /Kids [' + pages.join(' ') + '] /Count ' + String(pages.length) + ' >>';
   return pdfFile(objects);
 }
+
+export function strokedEffectPdf(paint: string): Buffer {
+  return placeholderPdf(`q 0 0 240 160 re W n 12 w 0 0 1 RG 1 1 0 rg ${paint} Q`);
+}
+
+export function paintedClipEffectPdf(paint: string): Buffer {
+  return placeholderPdf(`q 10 w 0 1 0 RG 0 0 1 rg 48 40 145 90 re W ${paint} 1 0 0 rg 60 60 10 10 re f Q`);
+}
+
+export function rotatedGroupedEffectPdf(): Buffer {
+  return placeholderPdf(
+    'q 0 0 240 160 re W n /Half gs /Form Do Q',
+    ' /XObject << /Form 6 0 R >> /ExtGState << /Half << /Type /ExtGState /ca 0.5 /CA 0.5 >> >>',
+    [
+      stream(
+        '0 1 -1 0 175 32 cm 0 0 1 rg 0 0 95 54 re f 1 0 0 rg 55 15 53 42 re f h f',
+        ' /Type /XObject /Subtype /Form /BBox [0 0 240 160] /Group << /S /Transparency /I true >>',
+      ),
+    ],
+  );
+}
+
+export function unusedBlendModePdf(): Buffer {
+  return placeholderPdf(
+    '1 0 0 rg 20 28 100 64 re f 0 0 1 rg 90 60 110 72 re f',
+    ' /ExtGState << /Unused << /Type /ExtGState /BM /Multiply >> >>',
+  );
+}
+
+export function longTextEffectPdf(count: number): Buffer {
+  return placeholderPdf(`q 0 0 240 160 re W n BT /F1 2 Tf 3 24 Td ${'(x) Tj\n'.repeat(count)}ET Q`);
+}

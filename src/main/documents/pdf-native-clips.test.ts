@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type * as PdfJs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { editablePdfPage } from '../../shared/pdf-edit-page';
 import { PresentationRepo } from '../db/presentations';
 import { originalWorld } from '../import/testing/original-fixture';
@@ -18,7 +18,12 @@ import {
   clippedGlyphsPdf,
   clippedWordsPdf,
   formWordsPdf,
+  longTextEffectPdf,
   maskedWordsPdf,
+  paintedClipEffectPdf,
+  rotatedGroupedEffectPdf,
+  strokedEffectPdf,
+  unusedBlendModePdf,
   PDF_EDITABLE_WORDS,
   PDF_GROUP_WORDS,
 } from './testing/pdf-native-effects';
@@ -64,20 +69,23 @@ async function withPage(
   await withPdf(bytes, async (doc) => use(doc, await doc.getPage(1)));
 }
 
-async function centerPixel(png: Uint8Array): Promise<number[]> {
-  // Use the same Node canvas package PDF.js uses, resolved from PDF.js itself.
-  const canvas = createRequire(pdfPackage)('@napi-rs/canvas') as {
-    loadImage(bytes: Buffer): Promise<{ width: number; height: number }>;
-    createCanvas(
-      width: number,
-      height: number,
-    ): {
-      getContext(type: '2d'): {
-        drawImage(image: object, x: number, y: number): void;
-        getImageData(x: number, y: number, width: number, height: number): { data: Uint8ClampedArray };
-      };
+// Use the same Node canvas package PDF.js uses, resolved from PDF.js itself.
+const canvas = createRequire(pdfPackage)('@napi-rs/canvas') as {
+  loadImage(bytes: Buffer): Promise<{ width: number; height: number }>;
+  createCanvas(
+    width: number,
+    height: number,
+  ): {
+    getContext(type: '2d'): {
+      drawImage(image: object, x: number, y: number): void;
+      fillStyle: string;
+      fillRect(x: number, y: number, width: number, height: number): void;
+      getImageData(x: number, y: number, width: number, height: number): { data: Uint8ClampedArray };
     };
   };
+};
+
+async function centerPixel(png: Uint8Array): Promise<number[]> {
   const image = await canvas.loadImage(Buffer.from(png));
   const ctx = canvas.createCanvas(image.width, image.height).getContext('2d');
   ctx.drawImage(image, 0, 0);
@@ -182,6 +190,108 @@ const smallPaint = (count: number) =>
     const y = 50 + Math.floor(i / 10) * 180;
     return `q ${x} ${y} 24 18 re W n 1 0 0 rg ${x - 4} ${y - 4} 32 26 re f Q`;
   });
+
+async function expectFullPaint(doc: PDFDocumentProxy, page: PDFPageProxy, count: number): Promise<void> {
+  const result = await editablePdfPage(doc, page, pdfjs.OPS);
+  expect(result.elements).toHaveLength(count);
+  expect(result.assets).toHaveLength(count);
+  const scale = 2;
+  const viewport = page.getViewport({ scale });
+  const { width, height } = viewport;
+  const whole = canvas.createCanvas(width, height).getContext('2d');
+  await page.render({ canvas: null, canvasContext: whole as never, viewport, annotationMode: 0 }).promise;
+  const assembled = canvas.createCanvas(width, height).getContext('2d');
+  assembled.fillStyle = '#ffffff';
+  assembled.fillRect(0, 0, width, height);
+  for (const element of result.elements) {
+    const asset = result.assets.find(({ id }) => id === element.id);
+    if (!asset) throw new Error('Missing generated PDF paint.');
+    const image = await canvas.loadImage(Buffer.from(asset.png));
+    assembled.drawImage(image, element.frame.x * scale, element.frame.y * scale);
+  }
+  const expected = whole.getImageData(0, 0, width, height).data;
+  const actual = assembled.getImageData(0, 0, width, height).data;
+  let differingPixels = 0;
+  for (let offset = 0; offset < expected.length; offset += 4) {
+    // Allow the rounding introduced by encoding a transparent crop as PNG.
+    if ([0, 1, 2, 3].some((channel) => Math.abs(expected[offset + channel] - actual[offset + channel]) > 2))
+      differingPixels++;
+  }
+  expect(differingPixels).toBe(0);
+}
+
+describe('whole paint on PDF effect pages', () => {
+  it.each([
+    ['a filled border', '48 40 145 90 re B'],
+    ['a closed filled border', '48 40 m 193 40 l 193 130 l 48 130 l b'],
+    ['a closed stroke', '48 40 m 193 40 l 193 130 l 48 130 l s'],
+    ['an acute miter', '0 j 10 M 35 60 m 130 72 l 35 84 l S'],
+    ['a diagonal square cap', '2 J 55 35 m 135 115 l S'],
+  ])('matches the full page for %s', async (_, paint) => {
+    await withPage(strokedEffectPdf(paint), (doc, page) => expectFullPaint(doc, page, 1));
+  });
+
+  it.each(['f', 'B'])('keeps a path that paints (%s) and establishes a clip', async (paint) => {
+    await withPage(paintedClipEffectPdf(paint), (doc, page) => expectFullPaint(doc, page, 2));
+  });
+
+  it('keeps all paint in a rotated transparency group followed by an empty path', async () => {
+    await withPage(rotatedGroupedEffectPdf(), (doc, page) => expectFullPaint(doc, page, 1));
+  });
+
+  it('keeps the whole-page composite when a blend resource is unused', async () => {
+    await withPage(unusedBlendModePdf(), (doc, page) => expectFullPaint(doc, page, 1));
+  });
+
+  it('avoids dependency recording on thousands of text glyphs', async () => {
+    await withPage(longTextEffectPdf(1100), async (doc, page) => {
+      const render = vi.spyOn(page, 'render');
+      try {
+        await expect(editablePdfPage(doc, page, pdfjs.OPS)).rejects.toThrow('too many separately painted');
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(render.mock.calls[0]?.[0].recordOperations).not.toBe(true);
+      } finally {
+        render.mockRestore();
+      }
+    });
+  });
+
+  it('stops an active render at a chunk checkpoint and leaves the page reusable', async () => {
+    await withPage(effectDeckPdf([smallPaint(40)]), async (doc, page) => {
+      const total = (await page.getOperatorList({ annotationMode: 0 })).fnArray.length;
+      const realRender = page.render.bind(page);
+      let rendered = 0;
+      const render = vi.spyOn(page, 'render').mockImplementation((options) =>
+        realRender({
+          ...options,
+          operationsFilter(index, list) {
+            rendered = index + 1;
+            return options.operationsFilter?.(index, list) ?? true;
+          },
+        }),
+      );
+      // PDF.js's 15 ms slices must split even on a fast machine.
+      let time = Date.now();
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => (time += 20));
+      const stopped = new Error('Stop the generated page.');
+      try {
+        await expect(
+          editablePdfPage(doc, page, pdfjs.OPS, {
+            checkpoint: () =>
+              rendered > 0 && rendered < total ? Promise.reject(stopped) : Promise.resolve(),
+          }),
+        ).rejects.toBe(stopped);
+        expect(rendered).toBeGreaterThan(0);
+        expect(rendered).toBeLessThan(total);
+        expect(render).toHaveBeenCalledTimes(1);
+      } finally {
+        clock.mockRestore();
+        render.mockRestore();
+      }
+      expect((await editablePdfPage(doc, page, pdfjs.OPS)).assets).toHaveLength(40);
+    });
+  });
+});
 
 describe('long and complex generated PDFs', () => {
   it('keeps forty small effects editable on a generated 1920 by 1080 page', async () => {
