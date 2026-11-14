@@ -13,7 +13,7 @@ import { drawsWithoutChip } from './chipless';
 /** What a deck's moving shape writes of its style (an element's own, or a test's stand-in). */
 export type DeckTargetStyle = Pick<
   CSSStyleDeclaration,
-  'transform' | 'opacity' | 'clipPath' | 'maskImage' | 'maskComposite' | 'willChange'
+  'transform' | 'opacity' | 'clipPath' | 'maskImage' | 'maskComposite'
 >;
 
 /** What the element within a moving shape writes of its style: its own mask, multiplying the shape's. */
@@ -35,7 +35,7 @@ export function deckTargetMaskedTwice(effects: readonly DeckEffect[]): boolean {
  * screen's own drawing, nothing on Main), with a Box's, a Plus's or a Diamond's second mask on the element within it
  * (`inner`). Where this page draws without a graphics chip (render/chipless.ts), a Shape draws its hard edge, a clip
  * (deckShapeHardClip), in place of its masks: there they dropped frames on a two-core PC while streaming (C1's review,
- * HIGH-2); a Split's mask makes the shape a layer of its own while it is on (Q58-55). Only what changed is written.
+ * HIGH-2). Only what changed is written.
  */
 export function paintDeckTarget(
   style: DeckTargetStyle,
@@ -61,11 +61,6 @@ export function paintDeckTarget(
   const composite = mask ? deckWipeMaskComposite(frame.wipe) : '';
   if (style.maskImage !== mask) style.maskImage = mask;
   if (style.maskComposite !== composite) style.maskComposite = composite;
-  // Without a chip, a layer of its own while masked: drawn in software into its parent's layer, a mask on a box whose
-  // edge falls between pixels drew that edge's row at three quarters, any mask (CI's Windows: Q58-55); on a layer of
-  // its own, exactly. (Its cost the same: the mask is drawn again each frame either way.)
-  const layer = mask && drawsWithoutChip() ? 'transform' : '';
-  if (style.willChange !== layer) style.willChange = layer;
   if (!inner) return;
   const second = hard ? '' : deckWipeInnerMask(frame.wipe, target, element);
   const secondComposite = second ? deckWipeMaskComposite(frame.wipe) : '';
