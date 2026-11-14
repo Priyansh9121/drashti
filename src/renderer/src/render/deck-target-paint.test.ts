@@ -223,3 +223,27 @@ it('masks a Circle once, and a Box, a Plus or a Diamond twice (the target and th
   expect(outer.style.maskComposite).toBe('');
   expect(inner.style.maskImage).toBe('');
 });
+
+it('takes both of a Box’s masks off when Back paints the step before over it running, or the next click settles it (C1’s review, LOW-1)', () => {
+  const box = effect('shape', { shape: 'box' });
+  for (const [step, name, opacity] of [
+    [0, 'Back to the step before it', '0'],
+    [2, 'the next click before it ends', ''],
+  ] as const) {
+    const { outer, inner } = twoStyles();
+    // Running: a mask on the target and one on the part within it.
+    paintDeckTarget(outer.style, deckMotionFrame([box], 1, 200, bounds, slide), bounds, bounds, inner.style);
+    expect(outer.style.maskImage, name).not.toBe('');
+    expect(inner.style.maskImage, name).not.toBe('');
+    // Then that step painted, 120 ms in: the Box before its click (hidden) or after it (whole), nothing masked.
+    paintDeckTarget(
+      outer.style,
+      deckMotionFrame([box], step, 120, bounds, slide),
+      bounds,
+      bounds,
+      inner.style,
+    );
+    expect(outer.style, name).toMatchObject({ clipPath: '', maskImage: '', maskComposite: '', opacity });
+    expect(inner.style, name).toMatchObject({ maskImage: '', maskComposite: '' });
+  }
+});
