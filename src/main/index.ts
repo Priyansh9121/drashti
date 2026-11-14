@@ -145,7 +145,7 @@ import { isPerfScenario, scenarioFor } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { SoundRepo } from './db/sound';
 import { SoundPass } from './sound/sound-pass';
-import { automaticImportNotices } from './import/automatic-notices';
+import { automaticImportNotices, loadsOperatorPageAgain } from './import/automatic-notices';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { clearDeckLeftovers, OfficeCopies, officeCopiesFile } from './import/deck/leftovers';
@@ -339,7 +339,13 @@ import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
-import { followOutputs, WarmUpChoices, warmUpFact } from './outputs/warm-up-choice';
+import {
+  followOutputs,
+  WarmUpChoices,
+  warmUpEndLine,
+  warmUpEndOf,
+  warmUpFact,
+} from './outputs/warm-up-choice';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
 import { youtubeSelfTest } from './links/youtube-selftest';
@@ -375,7 +381,6 @@ import { localName } from './network/local-name';
 import { localInterfaceAddresses } from './network/addresses';
 import { previewSource } from './network/preview-source';
 import { sharedSoundFile } from './network/shared-sound';
-import { isAppUrl } from './windows/navigation';
 import { devServerUrl, rendererDir } from './windows/renderer';
 import { pageAlive, sendToPage } from './windows/send';
 import { quietTests, startQuietTests } from './windows/quiet';
@@ -2954,6 +2959,8 @@ function start(): void {
   );
   stream = new StreamService({
     clockStyle: mainClockStyle,
+    // No warm-up for the stream's page where Chromium draws without a graphics chip, as for the outputs (Session 58).
+    warmUpFact: (page) => warmUpFact(warmUps, page, 'the stream’s page'),
     profiles: new StreamProfileRepo(db, (id) => streamKeys.has(id)),
     keys: streamKeys,
     settings,
@@ -3031,6 +3038,22 @@ function start(): void {
   const streaming = stream;
   stops.add('stream', () => {
     streaming.close();
+  });
+  // The stream's page, open before Chromium said how it draws, is sent its context again once it skips its warm-up
+  // (Session 58, WU-1), as an output is.
+  warmUps.follow(() => {
+    const page = streaming.programContents();
+    return page && !page.isDestroyed()
+      ? [
+          {
+            id: page.id,
+            name: 'the stream’s page',
+            tell: () => {
+              streaming.contextChanged();
+            },
+          },
+        ]
+      : [];
   });
   // No blurred copy is made while on air or recording (Session 55, D; Session 50's rule).
   blurOnAir = () => streaming.inUse() || testOnAir;
@@ -5626,6 +5649,8 @@ function start(): void {
   });
   /** Each output page's first painted frame already said (its time, on this computer's clock). */
   const firstPaints = new Map<string, number>();
+  /** Each output page's warm-up end already said (when it ended, on its page's clock): Session 58, WU-2. */
+  const warmUpEnds = new Map<string, number>();
   /** Told as each output page's first frame is said (the opening waits for them: set further down). */
   let firstPainted: () => void = () => undefined;
   handle(IPC.output.report, (e, raw) => {
@@ -5636,7 +5661,14 @@ function start(): void {
       warming?: unknown;
       missingFonts?: unknown;
       firstPaint?: { rev?: unknown; wallAt?: unknown } | null;
+      warmUp?: unknown;
     } | null;
+    // How its page's warm-up ended and how long it took, once per page (Session 58, WU-2).
+    const warmUpEnd = warmUpEndOf(r?.warmUp);
+    if (screenId && warmUpEnd && warmUpEnds.get(screenId) !== warmUpEnd.at) {
+      warmUpEnds.set(screenId, warmUpEnd.at);
+      log.info(warmUpEndLine(outputNames.get(screenId) ?? 'an output', warmUpEnd));
+    }
     // Its page's first painted frame, once per page: the start's last phase line (Sessions 31–36, PERF-1).
     const first = r?.firstPaint;
     if (
@@ -6933,12 +6965,8 @@ function start(): void {
   operatorWindow.webContents.on('did-start-loading', () => {
     switchQuestion.asking(null);
   });
-  operatorWindow.webContents.on('did-start-navigation', ({ url, isMainFrame, isSameDocument }) => {
-    if (
-      isMainFrame &&
-      !isSameDocument &&
-      isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() })
-    )
+  operatorWindow.webContents.on('did-start-navigation', (navigation) => {
+    if (loadsOperatorPageAgain(navigation, { devServerUrl: devServerUrl(), rendererDir: rendererDir() }))
       importNotices.pause();
   });
   operatorWindow.webContents.on('render-process-gone', () => {
@@ -7211,6 +7239,26 @@ function start(): void {
   // ---- View > Show Safe Areas (Sessions 31–36): the slide editor's guides, anyone's to turn on ---------
   const safeAreasShown = () => settings.get('showSafeAreas') === true;
   handle(IPC.app.safeAreas, () => safeAreasShown());
+  // The LIVE picture's warm-up where Chromium draws without a graphics chip (Session 58, WU-1): none, as for the outputs
+  // and the stream's page. Asked as the window opens, and told once Chromium has said, should it open before then.
+  handle(IPC.app.noGpu, (e) =>
+    fromOperator(e) && operatorWindow !== null
+      ? warmUpFact(warmUps, operatorWindow, 'the LIVE picture').noGpu === true
+      : false,
+  );
+  warmUps.follow(() =>
+    operatorWindow && !operatorWindow.isDestroyed() && !operatorWindow.webContents.isDestroyed()
+      ? [
+          {
+            id: operatorWindow.webContents.id,
+            name: 'the LIVE picture',
+            tell: () => {
+              sendToOperator(IPC.app.noGpuChanged, { on: true });
+            },
+          },
+        ]
+      : [],
+  );
   // ---- Single-letter keys (Session 37, WCAG 2.1.4): B, . and ? act unless they are turned off ----
   // Kept with the library's settings, as the switch in Help › Keyboard Shortcuts… sets them. Off, they do
   // nothing in the window in either mode (no menu item answers a single key); Black-out and the Logo work
