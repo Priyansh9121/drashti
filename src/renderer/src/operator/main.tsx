@@ -7,6 +7,7 @@ import { AccessGate } from '../access/AccessGate';
 import { OpeningAtStart } from '../opening/OpeningAtStart';
 import { WindowBoundary } from '../ui/WindowBoundary';
 import { reportRenderError } from '../ui/render-errors';
+import { reportFitFailuresTo } from '../render/shrink-to-fit';
 import { setLiveWindowSize } from '../render/live-window';
 import { holdClock } from '../render/clock';
 import { OPERATOR_TRACKS, startMotionProbeIfAsked } from '../render/motion-probe';
@@ -26,9 +27,15 @@ const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
 const sendError = (report: Parameters<typeof window.drashti.app.renderError>[0]) =>
   window.drashti.app.renderError(report);
+const caught = reportRenderError('operator window', 'caught', sendError);
+// A slide row's thumbnail that failed to take a text box's measure for its mark (Session 58, MS-2): logged as the
+// window's render errors are, while the window draws on.
+reportFitFailuresTo((error) => {
+  caught(error, {});
+});
 createRoot(root, {
   onUncaughtError: reportRenderError('operator window', 'uncaught', sendError),
-  onCaughtError: reportRenderError('operator window', 'caught', sendError),
+  onCaughtError: caught,
 }).render(
   <StrictMode>
     <WindowBoundary reloadLabel="Reload the operator window">
