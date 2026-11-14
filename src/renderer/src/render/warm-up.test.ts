@@ -1,3 +1,4 @@
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { nativeDeckMotion } from '../../../shared/deck';
 import {
@@ -142,6 +143,21 @@ describe('the warm-up', () => {
     // Once each: no clipped twins of them.
     for (const key of ['deck-cover/calm/off-grid/clipped', 'deck-cover-four-three/calm/off-grid/clipped'])
       expect(warmScenes().some((s) => s.key === key)).toBe(false);
+  });
+
+  it('warms the shaded Cover quad with the rotation on the filtered picture inside a stationary rounded clip', () => {
+    const shade = scene('deck-cover-shade');
+    const canvas = { width: 1920, height: 1080 };
+    expect(renderToStaticMarkup(shade.draw?.(false, BEFORE, canvas, null))).toBe('');
+    const markup = renderToStaticMarkup(shade.draw?.(true, BEFORE + 33, canvas, null));
+    const opening = markup.split('<img')[0];
+    const picture = markup.match(/<img[^>]*>/u)?.[0];
+    expect(opening).toContain('overflow:hidden');
+    expect(opening).toContain('border-radius:12px');
+    expect(opening).not.toContain('transform:');
+    expect(picture).toMatch(/filter:brightness\(0\.986\)/u);
+    expect(picture).toMatch(/transform:[^;"]*rotate\(1deg\)/u);
+    expect(picture).toContain('will-change:transform');
   });
 
   it('draws a deck’s own Cover part-way: the slide coming in moved and a shade darker, a filter over the whole slide', () => {
