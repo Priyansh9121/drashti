@@ -11,6 +11,7 @@ import { readInfo } from '../convert/read-info';
 import { MediaStore } from './media-store';
 import { OfficeCopies, officeCopiesFile } from './deck/leftovers';
 import { runImport } from './pipeline';
+import { lockPriority } from './lock-priority';
 import { runRelink } from './relink';
 import type { FromWorker, StartMessage, ToWorker } from './protocol';
 
@@ -31,6 +32,13 @@ try {
 } catch {
   // Not allowed on this system: run at normal priority.
 }
+/** The worker's priority while it holds the library's write lock (Session 58): normal on Windows, else as it is. */
+const lockHold = (): { holdingLock?: (on: boolean) => void } => {
+  const holding = lockPriority(process.platform, (priority) => {
+    setPriority(priority);
+  });
+  return holding ? { holdingLock: holding } : {};
+};
 const cancelled = new Set<string>();
 /** Stops work in the middle of a file when its run is cancelled (Keynote or PowerPoint saving one). */
 const stoppers = new Map<string, AbortController>();
@@ -173,6 +181,8 @@ async function start(message: StartMessage): Promise<void> {
             appEnded: (pid) => {
               post({ type: 'app-ended', pid });
             },
+            // On Windows at normal priority while it holds the library's write lock (Session 58, lock-priority.ts).
+            ...lockHold(),
             converters: message.converters ?? true,
             // A deck with its animations (Session 54, C2): FFmpeg cuts its movie, never while on air.
             baker: message.baker ?? true,

@@ -32,13 +32,32 @@ export class BatchWriter {
   private savepoints = 0;
   private readonly budgetMs: number;
   private readonly now: () => number;
+  private readonly holding: ((on: boolean) => void) | undefined;
+  /** Writes under way that hold the lock (a group, or one item's retry): said held at the first, let go at the last. */
+  private holds = 0;
 
   constructor(
     private readonly db: Db,
-    options: { budgetMs?: number; now?: () => number } = {},
+    options: {
+      budgetMs?: number;
+      now?: () => number;
+      /**
+       * Told as a group takes the library's write lock (true, just before BEGIN IMMEDIATE) and lets it go (false,
+       * once its COMMIT, or a failed commit's last retry, has returned), once each (Session 58: the worker runs at
+       * normal priority on Windows meanwhile, lock-priority.ts).
+       */
+      holding?: (on: boolean) => void;
+    } = {},
   ) {
     this.budgetMs = options.budgetMs ?? 250;
     this.now = options.now ?? (() => performance.now());
+    this.holding = options.holding;
+  }
+
+  private hold(on: boolean): void {
+    if (on) {
+      if (this.holds++ === 0) this.holding?.(true);
+    } else if (this.holds > 0 && --this.holds === 0) this.holding?.(false);
   }
 
   /** True while a group is open (its rows are visible to this connection only). */
@@ -57,7 +76,13 @@ export class BatchWriter {
       // file; a group begun as a reader could not become a writer once the main process had written
       // (SQLITE_BUSY_SNAPSHOT, which no busy timeout waits out), and its file would fail. Instead the
       // main process's write waits the moment it takes the group to commit (up to the busy timeout).
-      this.db.exec('BEGIN IMMEDIATE');
+      this.hold(true);
+      try {
+        this.db.exec('BEGIN IMMEDIATE');
+      } catch (error) {
+        this.hold(false);
+        throw error;
+      }
       this.openedAt = this.now();
     }
     const name = `item${++this.savepoints}`;
@@ -92,21 +117,31 @@ export class BatchWriter {
     const group = this.pending;
     this.pending = [];
     this.openedAt = null;
+    let failed = false;
     try {
       this.db.exec('COMMIT');
     } catch {
+      failed = true;
       if (this.db.inTransaction) this.db.exec('ROLLBACK');
       // Every item again, each on its own: only the ones that fail by themselves are lost.
       for (const item of group) {
         let result: unknown;
+        this.hold(true);
         try {
           result = this.db.transaction(item.write).immediate();
         } catch (error) {
+          this.hold(false);
           item.failed?.(error);
           continue;
         }
+        this.hold(false);
         item.committed?.(result);
       }
+    } finally {
+      // The group's own hold, let go once its COMMIT (or its retries) has returned.
+      this.hold(false);
+    }
+    if (failed) {
       // Failures recorded during the retries opened a new group.
       this.commit();
       return;
