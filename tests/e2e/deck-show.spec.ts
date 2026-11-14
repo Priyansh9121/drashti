@@ -1074,7 +1074,8 @@ test('a deck slide the operator points at in the list (or whose number is typed)
     // output too.
     await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.watchPreview(true));
     const stream = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
-    await expect(stream.getByTestId('program-root')).toHaveAttribute('data-warm-up', 'done', {
+    // Ready to draw the show: its fonts in, and warmed up, or its warm-up skipped without a graphics chip (WU-1).
+    await expect(stream.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
       timeout: 30_000,
     });
     // Where each loads ahead: an output's Preloader, the stream's deck clips.
