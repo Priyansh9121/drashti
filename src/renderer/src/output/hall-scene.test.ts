@@ -74,8 +74,10 @@ describe('a hall screen waits for a slide’s pictures (X19)', () => {
     expect(html).not.toMatch(/data-layer="slide"[^>]*data-fade-start=/);
   });
 
-  it('waits the same way on a key and fill pair’s two halves', () => {
-    for (const matte of ['fill', 'key'] as const)
-      expect(drawn(matte), matte).toMatch(/data-layer="slide"[^>]*data-fading="true"/);
+  it('a key and fill pair’s two halves cut together, as before (Q59-5): never a frame apart on the keyer', () => {
+    for (const matte of ['fill', 'key'] as const) {
+      expect(drawn(matte), matte).toContain('data-layer="slide"');
+      expect(drawn(matte), matte).not.toMatch(/data-layer="slide"[^>]*data-fading="true"/);
+    }
   });
 });

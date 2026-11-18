@@ -22,32 +22,47 @@ interface HallFrame {
   bad: string;
   /** A slide cut in that still waits for its pictures (what was up before stays). */
   waiting: boolean;
+  /** The words of every slide on screen in it. */
+  shown: string;
+}
+
+/** The hall screen keeps a line for every frame it draws, from when this runs in its page. */
+function frameWatcher(): void {
+  const frames: { t: number; bad: string; waiting: boolean; shown: string }[] = [];
+  (globalThis as unknown as { drashtiTestHallFrames?: typeof frames }).drashtiTestHallFrames = frames;
+  const tick = () => {
+    const bad: string[] = [];
+    for (const img of document.querySelectorAll<HTMLImageElement>(
+      '[data-layer="slide"] [data-slide-in] img, [data-layer="slide"] [data-slide-out] img',
+    )) {
+      if (img.complete) continue;
+      const slide = img.closest<HTMLElement>('[data-slide-in], [data-slide-out]');
+      if (slide && getComputedStyle(slide).opacity !== '0') bad.push(img.src.split('/').pop() ?? '?');
+    }
+    // The words of every slide on screen now (one whose opacity is 0 shows nothing).
+    const shown = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-layer="slide"] [data-slide-in], [data-layer="slide"] [data-slide-out]',
+      ),
+    ]
+      .filter((slide) => getComputedStyle(slide).opacity !== '0')
+      .map((slide) => slide.textContent)
+      .join(' | ');
+    frames.push({
+      t: performance.now(),
+      bad: bad.join(','),
+      waiting:
+        document.querySelector('[data-layer="slide"][data-fading="true"]:not([data-fade-start])') !== null,
+      shown,
+    });
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 /** From now on, the hall screen keeps a line for every frame it draws. */
 async function watchFrames(hall: Page): Promise<void> {
-  await hall.evaluate(() => {
-    const frames: { t: number; bad: string; waiting: boolean }[] = [];
-    (globalThis as unknown as { drashtiTestHallFrames?: typeof frames }).drashtiTestHallFrames = frames;
-    const tick = () => {
-      const bad: string[] = [];
-      for (const img of document.querySelectorAll<HTMLImageElement>(
-        '[data-layer="slide"] [data-slide-in] img, [data-layer="slide"] [data-slide-out] img',
-      )) {
-        if (img.complete) continue;
-        const slide = img.closest<HTMLElement>('[data-slide-in], [data-slide-out]');
-        if (slide && getComputedStyle(slide).opacity !== '0') bad.push(img.src.split('/').pop() ?? '?');
-      }
-      frames.push({
-        t: performance.now(),
-        bad: bad.join(','),
-        waiting:
-          document.querySelector('[data-layer="slide"][data-fading="true"]:not([data-fade-start])') !== null,
-      });
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
+  await hall.evaluate(frameWatcher);
 }
 
 const hallNow = (hall: Page) => hall.evaluate(() => performance.now());
@@ -117,8 +132,15 @@ test('a hall screen never shows a slide before its pictures can be drawn: the fi
   };
   // The first slide, from nothing: its picture 1.5 s late.
   await step(0, 'the first slide');
-  // A jump to a slide not loaded ahead (Next's is slide 1): its picture 1.5 s late too.
-  await step(3, 'a jump to slide 3');
+  // A jump to a slide not loaded ahead (Next's is slide 1): its picture 1.5 s late too. Meanwhile the slide before
+  // stays up whole (h-review L8: never a blank wait).
+  const jump = await step(3, 'a jump to slide 3');
+  const waits = jump.filter((f) => f.waiting);
+  expect(waits.length, `the jump waited for its picture: ${lines.join('; ')}`).toBeGreaterThan(0);
+  expect(
+    waits.filter((f) => !f.shown.includes(words[0] ?? '?')).map((f) => f.shown),
+    'frames of the wait not showing the slide before',
+  ).toEqual([]);
   expect(shownBad, `a slide shown before its pictures could be drawn: ${lines.join('; ')}`).toBe(0);
 
   // Next's picture loaded ahead (slide 4's): the cut to it waits for nothing.
@@ -131,5 +153,18 @@ test('a hall screen never shows a slide before its pictures can be drawn: the fi
     `a slide loaded ahead waited for its pictures: ${lines.join('; ')}`,
   ).toBe(0);
   expect(shownBad, lines.join('; ')).toBe(0);
+
+  // The screen opened again onto the slide up (a reload, as after a crash): its first draw waits for the picture,
+  // 1.5 s late again, never showing the slide without it (h-review L8: firstShowing on a hall screen).
+  await hall.addInitScript(frameWatcher);
+  await hall.reload();
+  await expect(hall.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
+  await whole(hall, words[4] ?? '');
+  const again = await framesSince(hall, 0);
+  expect(again.length, 'the reloaded screen drew frames').toBeGreaterThan(0);
+  expect(
+    again.filter((f) => f.bad !== '').map((f) => f.bad),
+    'the reloaded screen showed the slide before its picture could be drawn',
+  ).toEqual([]);
   await app.close();
 });
