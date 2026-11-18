@@ -10,6 +10,7 @@ import {
   operatorPage,
   operatorReady,
   outputPage,
+  type PageGlobals,
   setUpScreen,
   windowShowing,
 } from './helpers';
@@ -197,6 +198,7 @@ for (const place of ['hall', 'stream'] as const) {
       await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
       await captureHall(app, page);
     } else {
+      await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
       await win.getByTestId('open-stream').click();
       page = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
       await expect(page.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready');
@@ -283,6 +285,7 @@ for (const place of ['hall', 'stream'] as const) {
       await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
       await captureHall(app, page);
     } else {
+      await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
       await win.getByTestId('open-stream').click();
       page = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
       await expect(page.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready');
