@@ -135,6 +135,31 @@ const LOOK_WAITS = 'Links: looking at a YouTube link waits while the stream is o
 const ACTIVE = new Set<LinkView['phase']>(['waiting', 'downloading', 'unpacking', 'converting', 'importing']);
 /** Only these are ever cleared at a start (never anything else a record might name). */
 const OURS = /^\.drashti-(download-[0-9a-f-]+\.part|unpacking-.+|youtube-[0-9a-f-]+)$/u;
+/**
+ * What a start could not remove yet, held by programs stopped a moment before (Windows), is tried again this
+ * often, for a minute; after that the next start removes it.
+ */
+const HELD_RETRY_MS = 500;
+const HELD_TRIES = 120;
+
+/** Removes it now: null, or why it cannot be removed yet (programs stopped a moment ago hold it, on Windows). */
+function removeNow(path: string): string | null {
+  try {
+    rmSync(path, { recursive: true, force: true });
+    return null;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code ?? 'an error';
+  }
+}
+
+/** The names in a folder (none when it cannot be read). */
+function namesIn(dir: string): string[] {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
+}
 
 const KIND_WORD: Record<LinkKind, string> = { dropbox: 'Dropbox', youtube: 'YouTube' };
 
@@ -173,8 +198,9 @@ export class LinkService {
   private toolsWork: string | null = null;
 
   constructor(private readonly deps: LinkServiceDeps) {
+    // A start never fails on what programs stopped a moment ago still hold (Windows): removed once it can be.
     this.clearLeftovers();
-    rmSync(deps.workDir, { recursive: true, force: true });
+    this.clearWorkDir();
     this.state = {
       phase: 'idle',
       kind: null,
@@ -238,6 +264,10 @@ export class LinkService {
     }
   }
 
+  /**
+   * A crash's or a quit's part-files and work folders, from the record (at a start). One still held by programs
+   * stopped a moment ago (Windows) stays in the record, so it is never lost, and is removed once it can be.
+   */
   private clearLeftovers(): void {
     let listed: unknown;
     try {
@@ -246,10 +276,57 @@ export class LinkService {
       return;
     }
     if (Array.isArray(listed))
-      for (const path of listed)
-        if (typeof path === 'string' && OURS.test(basename(path)))
-          rmSync(path, { recursive: true, force: true });
-    rmSync(this.deps.record, { force: true });
+      for (const path of listed) {
+        if (typeof path !== 'string' || !OURS.test(basename(path))) continue;
+        const why = removeNow(path);
+        if (why === null) continue;
+        this.deps.log(
+          'warn',
+          `Links: a download’s leftover could not be removed yet (${why}): it is removed once nothing holds it`,
+        );
+        this.temps.add(path);
+        this.removeSoon(path, true);
+      }
+    if (this.temps.size > 0) this.saveRecord();
+    else removeNow(this.deps.record);
+  }
+
+  /**
+   * Drashti's own work folder, emptied at a start. What programs stopped a moment ago still hold in it (Windows)
+   * is removed once it can be: only what was there at this start, never a work folder made since.
+   */
+  private clearWorkDir(): void {
+    const why = removeNow(this.deps.workDir);
+    if (why === null) return;
+    this.deps.log(
+      'warn',
+      `Links: the work folder could not be emptied yet (${why}): it is emptied once nothing holds it`,
+    );
+    for (const name of namesIn(this.deps.workDir)) this.removeSoon(join(this.deps.workDir, name), false);
+  }
+
+  /**
+   * Removed in the background once nothing holds it (what a start could not remove yet). A recorded one is tried
+   * only while it is still in the record (a stop or a quit may remove it first), and leaves the record once gone.
+   */
+  private removeSoon(path: string, recorded: boolean, tries = 1): void {
+    setTimeout(() => {
+      if (recorded && !this.temps.has(path)) return;
+      void rm(path, { recursive: true, force: true }).then(
+        () => {
+          this.deps.log('info', 'Links: what was held at the start is removed');
+          if (recorded && this.temps.delete(path)) this.saveRecord();
+        },
+        () => {
+          if (tries < HELD_TRIES) this.removeSoon(path, recorded, tries + 1);
+          else
+            this.deps.log(
+              'warn',
+              'Links: something held at the start is still held: the next start removes it',
+            );
+        },
+      );
+    }, HELD_RETRY_MS).unref();
   }
 
   private remember(path: string): void {
@@ -1203,6 +1280,6 @@ export class LinkService {
       this.temps.delete(path);
     }
     this.saveRecord();
-    if (this.temps.size === 0) rmSync(this.deps.record, { force: true });
+    if (this.temps.size === 0) removeNow(this.deps.record);
   }
 }
