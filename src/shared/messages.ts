@@ -3,6 +3,7 @@ import { CALENDAR_LANGS, type CalendarLang } from './calendar';
 import type { MessageItem, MessagePart } from './engine/state';
 import { keptLook, MESSAGE_SECONDS, type MessageLook, messageLookSchema } from './message-look';
 import { cutText } from './text';
+import { cleanNameSchema } from './rename-name';
 
 /*
  * Messages (PLAN.md 4.3): templates with fields, such as "Car {plate}
@@ -125,7 +126,7 @@ const fieldSchema: z.ZodType<MessageField> = z.discriminatedUnion('kind', [
 
 export const messageTemplateSchema: z.ZodType<MessageTemplateFields> = z
   .object({
-    name: z.string().trim().min(1).max(80),
+    name: cleanNameSchema(80),
     template: z.string().trim().min(1).max(300),
     fields: z
       .record(z.string().min(1).max(40), fieldSchema)

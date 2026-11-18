@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { mediaMarkersSchema } from './markers';
+import { mediaMarkersInputSchema } from './markers';
 import type { MediaMarkers } from './markers';
 import { idSchema } from './model-schema';
 
@@ -76,7 +76,7 @@ export interface RowTrimRequest {
 
 export const rowTrimRequestSchema: z.ZodType<RowTrimRequest> = z.object({
   mediaId: idSchema,
-  points: mediaMarkersSchema,
+  points: mediaMarkersInputSchema,
 });
 
 export type RowTrimResult = { ok: true } | { ok: false; message: string };

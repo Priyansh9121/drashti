@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { MessageItem } from '../../../shared/engine/state';
 import { animationById } from '../../../shared/lower-third-animations';
-import { isOffered, OFFERED_ANIMATIONS } from '../../../shared/lower-third-studio';
+import { ANIMATION_QUICK_WORDS } from '../../../shared/lower-third-search';
+import { messageAnimationChoices } from '../../../shared/message-animations';
 import { LOWER_THIRD_FONTS, type LowerThirdFont } from '../../../shared/lower-thirds';
 import {
   BEHIND_NAMES,
@@ -12,7 +13,6 @@ import {
   isDragged,
   MESSAGE_BEHIND,
   MESSAGE_COLUMNS,
-  MESSAGE_FIRST_ANIMATIONS,
   MESSAGE_ROWS,
   MESSAGE_SIZE,
   MESSAGE_WEIGHTS,
@@ -27,6 +27,7 @@ import {
   WEIGHT_NAMES,
 } from '../../../shared/message-look';
 import { engineNow } from '../render/clock';
+import { FindBox } from '../lower-thirds/studio/FindBox';
 import { HallMessages } from '../render/HallMessages';
 import { PlacedInParent } from '../render/Placed';
 import { Button, IconButton } from '../ui/Button';
@@ -152,10 +153,8 @@ function MessagePreview({
  * The ones a message offers first, and every other the Lower Thirds studio offers (Session 55, Part 16: its one table,
  * OFFERED, of what is smooth on a two-core computer without a graphics chip).
  */
-const FIRST_ANIMATIONS = MESSAGE_FIRST_ANIMATIONS.filter(isOffered);
-const MORE_ANIMATIONS = OFFERED_ANIMATIONS.filter(
-  (a) => !(MESSAGE_FIRST_ANIMATIONS as readonly string[]).includes(a.id),
-);
+/** How many it found, in words. */
+const animationsWords = (n: number): string => `${String(n)} animation${n === 1 ? '' : 's'}`;
 
 export function MessageLookFields({
   words,
@@ -172,6 +171,11 @@ export function MessageLookFields({
   onLook: (look: MessageLook) => void;
   onSeconds: (seconds: number | null) => void;
 }) {
+  // What the one search box found (X14): the list offers only that, the one chosen always listed.
+  const [query, setQuery] = useState('');
+  const choices = useMemo(() => messageAnimationChoices(query), [query]);
+  const listed = [...choices.first, ...choices.more];
+  const animationList = useRef<HTMLSelectElement>(null);
   const set = (patch: Partial<MessageLook>) => {
     onLook({ ...look, ...patch });
   };
@@ -238,30 +242,48 @@ export function MessageLookFields({
           </span>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
+          {/* The studio's one search box, where the animation is chosen (Session 59, X14: C13's search). */}
+          <FindBox
+            label="Find an animation"
+            query={query}
+            onQuery={setQuery}
+            placeholder="slide up slow, soft, letters…"
+            testId="message-animation-search"
+            statusTestId="message-animation-search-status"
+            words={ANIMATION_QUICK_WORDS}
+            found={animationsWords(listed.length)}
+            nothing={listed.length === 0}
+            onDown={() => {
+              animationList.current?.focus();
+            }}
+          />
           <Field label="Comes in and goes out">
             <Select
+              ref={animationList}
               aria-label="Comes in and goes out"
               value={look.animation}
               onChange={(e) => {
                 set({ animation: e.target.value });
               }}
             >
-              {FIRST_ANIMATIONS.map((id) => (
+              {/* The one chosen, always listed: one no longer offered (it is kept), or one the words typed leave out. */}
+              {!listed.includes(look.animation) && (
+                <option value={look.animation}>{animationById(look.animation).name}</option>
+              )}
+              {choices.first.map((id) => (
                 <option key={id} value={id}>
                   {animationById(id).name}
                 </option>
               ))}
-              {/* One chosen before that is no longer offered: it is kept, and still listed. */}
-              {!isOffered(look.animation) && (
-                <option value={look.animation}>{animationById(look.animation).name}</option>
+              {choices.more.length > 0 && (
+                <optgroup label="More, as the Lower Thirds have them">
+                  {choices.more.map((id) => (
+                    <option key={id} value={id}>
+                      {animationById(id).name}
+                    </option>
+                  ))}
+                </optgroup>
               )}
-              <optgroup label="More, as the Lower Thirds have them">
-                {MORE_ANIMATIONS.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </optgroup>
             </Select>
           </Field>
           <Field label="How long">
