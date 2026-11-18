@@ -35,9 +35,10 @@ const linesOf = (d: (typeof made)[number]) =>
   shownLines(d.lines ?? ['Placeholder name', 'Placeholder role', '']);
 
 describe('the templates made since alpha.17', () => {
-  it('come after alpha.17’s 50 in the gallery: part A’s 18, then part B’s 11, 79 in all, every one offered', () => {
-    // 30 made; Festival fireworks left out by the final Performance round with no replacement (Q58-35): 29.
-    expect(made).toHaveLength(29);
+  it('come after alpha.17’s 50 in the gallery: part A’s 18, part B’s 11, then the seven measured again, 86 in all, every one offered', () => {
+    // 30 made; Festival fireworks left out by the final Performance round with no replacement (Q58-35): 29. Then the
+    // seven left out under Q57-18, offered again once the stream's frames stopped reaching the main process (C26).
+    expect(made).toHaveLength(36);
     expect(LOWER_THIRD_TEMPLATES).toHaveLength(ALPHA17 + made.length);
     expect(LOWER_THIRD_TEMPLATES.slice(ALPHA17).map((t) => t.id)).toEqual(made.map((d) => d.id));
     expect(new Set(LOWER_THIRD_TEMPLATES.map((t) => t.id)).size).toBe(LOWER_THIRD_TEMPLATES.length);
@@ -72,7 +73,7 @@ describe('the templates made since alpha.17', () => {
   });
 
   it('part B: eleven with the moving backgrounds added since alpha.17, each another one, calm ones first, in the studio’s layouts', () => {
-    const partB = made.slice(18);
+    const partB = made.slice(18, 29);
     expect(partB).toHaveLength(11);
     const motions = partB.map((d) => d.look.motion ?? 'none');
     for (const m of motions) expect(['none', ...ALPHA17_MOTIONS], m).not.toContain(m);
@@ -90,30 +91,43 @@ describe('the templates made since alpha.17', () => {
     expect(feels.filter((f) => f === 'calm' || f === 'elegant').length).toBeGreaterThanOrEqual(8);
   });
 
-  it('leaves out the seven that dipped under 90% in two lower-thirds-more runs (Q57-18): six with steadier ones in their places, the last with none', () => {
-    // Two-core Windows, the streaming check: Peacock shapes 81% (run 43547437227) and 75% (43553501189); Vermilion
-    // stripes under 90% (43547437227, named not smooth) and 70% (43553521539); White and maroon pill 71% (43547437227)
-    // and 68% (43553521539). Their backgrounds stay in part A, in steadier designs of their own.
-    // Deep green ribbon 89% (43544996865) and 86% (43557441565); Lotus bloom 87% (43557441565) and 80% (43561734418);
-    // Single title band 89% (43553501189) and 78% (43561734418): each dip on the stream's page where the run names it.
-    for (const id of [
+  it('offers again, last, the seven left out under Q57-18, as they were designed, with the steadier ones made in their places', () => {
+    // Two-core Windows, the streaming check, before C26: Peacock shapes 81% (run 43547437227) and 75% (43553501189);
+    // Vermilion stripes under 90% (43547437227, named not smooth) and 70% (43553521539); White and maroon pill 71%
+    // (43547437227) and 68% (43553521539); Deep green ribbon 89% (43544996865) and 86% (43557441565); Lotus bloom 87%
+    // (43557441565) and 80% (43561734418); Single title band 89% (43553501189) and 78% (43561734418); Festival fireworks
+    // 87% (43561751495) and 87% (43564999378): every dip named on the stream's page, whose frames the main process then
+    // copied (C26). Measured again in lower-thirds-more with that gone.
+    expect(made.slice(29).map((d) => d.id)).toEqual([
       'peacock-shapes',
       'vermilion-stripes',
       'white-and-maroon-pill',
       'deep-green-ribbon',
       'lotus-bloom',
       'single-title-band',
-      // In the final round (Q58-35: a second dip there is left out with no replacement): 87% (43561751495) and 87%
-      // (43564999378), both on the stream's page.
       'festival-fireworks',
+    ]);
+    const look = (id: string) => made.find((d) => d.id === id)?.look;
+    expect(look('peacock-shapes')).toMatchObject({ style: 'glass', motion: 'shapes' });
+    expect(look('vermilion-stripes')).toMatchObject({ style: 'slant', motion: 'stripes' });
+    expect(look('white-and-maroon-pill')).toMatchObject({ style: 'pill' });
+    expect(look('deep-green-ribbon')).toMatchObject({ style: 'ribbon' });
+    expect(look('lotus-bloom')).toMatchObject({ style: 'stacked', motion: 'bloom' });
+    expect(look('single-title-band')).toMatchObject({ style: 'band' });
+    expect(look('festival-fireworks')).toMatchObject({ style: 'slant', motion: 'fireworks' });
+    // The steadier designs made in their places stay too.
+    for (const id of [
+      'peacock-nameplate',
+      'vermilion-bar',
+      'white-and-maroon-underline',
+      'deep-green-nameplate',
+      'lotus-nameplate',
+      'single-title-plate',
     ])
       expect(
         LOWER_THIRD_TEMPLATES.some((t) => t.id === id),
         id,
-      ).toBe(false);
-    expect(made.slice(0, 18).map((d) => d.look.motion ?? 'none')).toEqual(
-      expect.arrayContaining(['shapes', 'stripes']),
-    );
+      ).toBe(true);
   });
 
   it('each is a lower third the library takes, with placeholder words only, made only of what the studio offers', () => {
