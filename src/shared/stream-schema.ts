@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { DeviceChoice, StreamProfileInput } from './stream';
 import { MAX_PLACES, placeName, SOUND_DELAY_MAX_MS, STREAM_LAYOUTS, STREAM_PRESET_IDS } from './stream';
+import { cleanNameSchema } from './rename-name';
 
 /*
  * Stream settings as they arrive over IPC, checked before anything is kept.
@@ -38,7 +39,7 @@ export const streamUrlSchema = z
   );
 
 export const streamProfileInputSchema: z.ZodType<StreamProfileInput> = z.object({
-  name: z.string().trim().min(1).max(80),
+  name: cleanNameSchema(80),
   url: streamUrlSchema,
   preset: z.enum(STREAM_PRESET_IDS),
   camera: deviceChoiceSchema.nullable(),

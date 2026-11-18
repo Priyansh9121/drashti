@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { type ClockStyle, formatClock, formatDuration } from './format';
 import { type AudienceTimerLook, audienceTimerLookSchema } from './timer-look';
+import { cleanNameSchema } from './rename-name';
 
 /*
  * Timers and the clock (PLAN.md 4.3). The engine keeps only when a timer
@@ -189,7 +190,7 @@ export function parseDuration(text: string): number | null {
 
 export const timerFieldsSchema = z
   .object({
-    name: z.string().trim().min(1).max(80),
+    name: cleanNameSchema(80),
     kind: z.enum(TIMER_KINDS),
     durationMs: z
       .number()
