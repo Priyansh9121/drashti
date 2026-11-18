@@ -12,7 +12,7 @@ import {
 import type * as FsPromises from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
+import { constants, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { IPC } from '../../shared/ipc';
@@ -845,6 +845,9 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
           },
           deno: 'deno',
           ffmpeg: FFMPEG,
+          // Normal, not the lowest Drashti's own yt-dlp runs at: other tests beside these keep CI's Windows busy at
+          // normal priority, which starved the fake for 10 s and more (Session 59; youtube-run.test.ts pins the lowest).
+          priority: constants.priority.PRIORITY_NORMAL,
         },
       }),
     });
