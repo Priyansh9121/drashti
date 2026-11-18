@@ -150,7 +150,7 @@ test('OSC on localhost runs every supported show action, rejects bad packets and
     expect(templateId).not.toBe('');
 
     await action(win, source.socket, port, 'slide', [show.kirtanId, 0]);
-    await expect(output.getByTestId('slide-text')).toContainText('Placeholder chorus');
+    await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder chorus line');
     await action(win, source.socket, port, 'next');
     expect((await state(win)).layers.slide?.slideIndex).toBe(1);
     await action(win, source.socket, port, 'back');
