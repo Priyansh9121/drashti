@@ -435,14 +435,52 @@ export function warmScenes(): WarmScene[] {
     pages: ['output', 'stream'],
   });
   // A deck's own Wipe again half a pixel off the grid (Session 58, review-c2 MEDIUM-2), once: its mask drawn as an
-  // anti-aliased rect, a kind of drawing of its own (warm-up-deck.ts OFF_GRID).
+  // anti-aliased rect, a kind of drawing of its own (warm-up-deck.ts OFF_GRID). A 4:3 deck's Cover likewise, between
+  // bars, off the grid (C24, X12): its slide moved, shaded, drawn with anti-aliased edges under the bars' clip, as on
+  // air (traced on CI's Mac: a pipeline of its own, its first use a frame of 184-416 ms there, 30-34 ms once warmed).
   const deckWipe = transitions.find((t) => t.key === 'deck-wipe/calm');
+  const deckCover = transitions.find((t) => t.key === 'deck-cover/calm');
+  const offGrid = (t: WarmScene | undefined, key: string): WarmScene[] =>
+    t ? [{ ...t, key, offset: OFF_GRID }] : [];
   return [
     ...transitions,
     ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
-    ...(deckWipe ? [{ ...deckWipe, key: 'deck-wipe/calm/off-grid', offset: OFF_GRID }] : []),
+    ...offGrid(deckWipe, 'deck-wipe/calm/off-grid'),
+    ...offGrid(deckCover && fourThreeScene(deckCover), 'deck-cover-four-three/calm/off-grid'),
     ...list,
   ];
+}
+
+/** A 4:3 deck's slide (1440 x 1080, as a deck of that shape gives), its parts placed across it as across a 16:9 one. */
+function fourThree(s: RenderSlide): RenderSlide {
+  const across = FOUR_THREE.width / s.width;
+  return {
+    ...s,
+    id: `${s.id}-four-three`,
+    ...FOUR_THREE,
+    elements: s.elements.map((e) => ({
+      ...e,
+      frame: { ...e.frame, x: e.frame.x * across, width: e.frame.width * across },
+    })),
+  };
+}
+
+/** A 4:3 deck's slide size. */
+const FOUR_THREE = { width: 1440, height: 1080 } as const;
+
+/** A scene with its slides (before and coming in) 4:3: on a 16:9 screen, between bars (C24). */
+function fourThreeScene(t: WarmScene): WarmScene {
+  return {
+    ...t,
+    key: `${t.key}/four-three`,
+    state: (during, at) => {
+      const state = t.state(during, at);
+      const layer = state.layers.slide;
+      return layer
+        ? { ...state, layers: { ...state.layers, slide: { ...layer, slide: fourThree(layer.slide) } } }
+        : state;
+    },
+  };
 }
 
 /** The scene that draws every moving background (Session 58, Q58-18). */
