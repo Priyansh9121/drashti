@@ -100,14 +100,8 @@ export function applyStreamSessionSecurity(session: Session, rules: StreamSessio
   });
 }
 
-/**
- * The Program window: offscreen, at the stream's size, never shown. What its page says about its
- * capture (lines starting "[program]") goes to `log` (Session 18).
- */
-export function createProgramWindow(
-  size: { width: number; height: number },
-  log?: (line: string) => void,
-): BrowserWindow {
+/** A window like the stream's: offscreen, at the stream's size and frame rate, never shown, in the stream's session. */
+function offscreenStreamWindow(size: { width: number; height: number }, title: string): BrowserWindow {
   const win = new BrowserWindow({
     show: false,
     width: size.width,
@@ -117,7 +111,7 @@ export function createProgramWindow(
     // until a later resize, and the encoder, its connection with it, started again just after going on air).
     // Electron calls this macOS-only; on Windows it was measured to let the size below hold.
     enableLargerThanScreen: true,
-    title: 'Drashti stream',
+    title,
     skipTaskbar: true,
     focusable: false,
     webPreferences: {
@@ -137,9 +131,41 @@ export function createProgramWindow(
   win.webContents.on('paint', (event) => {
     event.texture?.release();
   });
+  return win;
+}
+
+/**
+ * The Program window: offscreen, at the stream's size, never shown. What its page says about its
+ * capture (lines starting "[program]") goes to `log` (Session 18).
+ */
+export function createProgramWindow(
+  size: { width: number; height: number },
+  log?: (line: string) => void,
+): BrowserWindow {
+  const win = offscreenStreamWindow(size, 'Drashti stream');
   win.webContents.on('console-message', (details) => {
     if (details.message.startsWith('[program] ')) log?.(details.message.slice(10, 310));
   });
   void loadPage(win, 'stream');
+  return win;
+}
+
+/** What the stream's warm-up page says in its log once its warm-up is over (program/warm-only.tsx). */
+export const STREAM_WARM_DONE = '[stream-warm] done';
+
+/**
+ * The stream's page's warm-up alone (Session 59, X21: stream/stream-warm.ts), in a window like the Program's: offscreen,
+ * the same size, session and frame rate, so it makes the drawing pipelines the stream's page would make. `done` hears
+ * once its warm-up is over. Its page captures nothing and asks for no device (the stream session refuses it any).
+ */
+export function createStreamWarmWindow(
+  size: { width: number; height: number },
+  done: () => void,
+): BrowserWindow {
+  const win = offscreenStreamWindow(size, 'Drashti stream warm-up');
+  win.webContents.on('console-message', (details) => {
+    if (details.message === STREAM_WARM_DONE) done();
+  });
+  void loadPage(win, 'stream-warm');
   return win;
 }
