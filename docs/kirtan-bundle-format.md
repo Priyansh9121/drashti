@@ -4,7 +4,7 @@ A kirtan bundle shares chosen kirtans with another Drashti library. It keeps the
 
 Use **Export kirtan bundle…** in the Library, choose the kirtans and whether to include their media, then save the file. On the other computer use **Library > Import… > Files…** or drop the file on the Library. This is a Pro Mode action. Nothing is sent over the network by Drashti.
 
-The import runs in the background. Its saved report has a line for each kirtan: added, updated, already there, or kept because it was edited locally. Problems appear in the usual import notices. Importing never puts anything on the screens or changes the current live slide.
+Export copies wait while the stream is on air or recording. The import runs in the background. Its saved report has a line for each kirtan: added, updated, already there, or kept because it was edited locally. Problems appear in the usual import notices. Importing never puts anything on the screens or changes the current live slide.
 
 ## Importing again
 
@@ -36,7 +36,7 @@ All JSON is UTF-8. `manifest.json` has these fields (no others):
 
 A kirtan file description has `id` (a lowercase UUID), `entry` (exactly `kirtans/<id>.json`), `sha256` (64 lowercase hexadecimal digits, over the uncompressed file bytes) and `bytes` (the exact uncompressed length).
 
-A media description has `id` (its portable reference in the kirtans), `name` (a filename only), `kind` (`image`, `video` or `audio`), `entry` (the media entry path, or `null` when omitted), `sha256` (its checksum, or `null` for a file that was already missing), `bytes`, and `markers` (the start/end points and named markers, or `null`). Entries sharing bytes are stored once. The extension is 1–10 lowercase letters or digits. A checksum checks integrity; it does not prove who sent a bundle.
+A media description has `id` (its portable reference in the kirtans), `name` (a filename only), `kind` (`image`, `video` or `audio`), `entry` (the media entry path, or `null` when omitted), `sha256` (its checksum, or `null` for a file that was already missing), `bytes`, and `markers` (the start/end points and named markers, or `null`) and optional `look` (the picture look, or `null`). Entries sharing bytes are stored once. The extension is 1–10 lowercase letters or digits. A checksum checks integrity; it does not prove who sent a bundle.
 
 ## Kirtan files
 
