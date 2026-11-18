@@ -15,14 +15,14 @@ const facts = (over: Partial<StreamWarmFacts> = {}): StreamWarmFacts => ({
   warmUpsSkipped: false,
   showBack: false,
   streamOpen: false,
+  onAir: false,
   asked: false,
   ...over,
 });
 
 describe('whether the stream’s warm-up page opens at the start (X21)', () => {
-  it('opens with a graphics chip, or before Chromium has said (warmed, as the outputs are)', () => {
+  it('opens with a graphics chip', () => {
     expect(streamWarmAtStart(facts())).toEqual({ warm: true });
-    expect(streamWarmAtStart(facts({ noGpu: null }))).toEqual({ warm: true });
   });
 
   it('never where it would cost the show, nor where there is nothing to make', () => {
@@ -39,6 +39,7 @@ describe('whether the stream’s warm-up page opens at the start (X21)', () => {
       warm: false,
       why: 'the stream’s page is open: it warms itself',
     });
+    expect(not({ onAir: true })).toMatchObject({ warm: false, why: 'something is on air already' });
     expect(not({ warmUpsSkipped: true })).toMatchObject({
       warm: false,
       why: 'no page warms up at this start',
@@ -142,6 +143,24 @@ describe('the stream’s warm-up page, run once at a start (X21)', () => {
     h.warm.settled();
     expect(h.made).toHaveLength(0);
     expect(h.lines).toEqual(['Stream warm-up: not at this start (Chromium draws without a graphics chip)']);
+  });
+
+  it('waits for Chromium to say how it draws, then decides (never warming in software before it has)', () => {
+    const h = harness({ noGpu: null });
+    h.warm.settled();
+    expect(h.made).toHaveLength(0);
+    h.set({ noGpu: true });
+    h.warm.gpuSaid();
+    expect(h.made).toHaveLength(0);
+    expect(h.lines).toEqual([
+      'Stream warm-up: waits for Chromium to say how it draws',
+      'Stream warm-up: not at this start (Chromium draws without a graphics chip)',
+    ]);
+    const chip = harness({ noGpu: null });
+    chip.warm.settled();
+    chip.set({ noGpu: false });
+    chip.warm.gpuSaid();
+    expect(chip.made).toHaveLength(1);
   });
 
   it('closes as Drashti quits', () => {
