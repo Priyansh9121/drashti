@@ -265,6 +265,9 @@ function Output() {
       className="relative h-full w-full bg-black"
       data-testid="output-root"
       data-screen={context?.screenId ?? ''}
+      // How this screen draws, as its context says (render/chipless.ts): exact where a stage screen or a test switch
+      // also skips the warm-up (X15, C2's review NIT).
+      data-chipless={chipless ? 'true' : 'false'}
       data-role={context?.role ?? 'audience'}
       // What a stage screen shows (Session 55): the chosen layout, Standard, or the audience picture with Stage off.
       data-stage-shows={stage ? stageShows(state?.stage) : undefined}
