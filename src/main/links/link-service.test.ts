@@ -27,6 +27,7 @@ import { LinkService, type LinkServiceDeps, type LinkWorker } from './link-servi
 import type { FromWorker, ToWorker } from './protocol';
 import { linkWorker } from './worker-logic';
 import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
+import { alive, processes } from '../../../tests/e2e/processes';
 
 /*
  * Import from a Link, the main process's side (Session 25b), with the real
@@ -846,13 +847,24 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     (existsSync(log) ? readFileSync(log, 'utf8') : '')
       .split('\n')
       .filter((l) => l.startsWith('start download'));
-  const alive = (pid: number) => {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
+  /**
+   * Whether these processes have ended: by number at once, as a rule. A number still taken is asked of the system,
+   * which says when the process with it started: one started after `seen` (when these were seen running) is
+   * another, as Windows gives a gone process's number to another within seconds (tests/e2e/processes.ts; Session
+   * 59: CI's Windows, with FFmpeg tests running beside these).
+   */
+  const ended = (pids: number[], seen: number) => {
+    const left = pids.filter(alive);
+    if (left.length === 0) return true;
+    const now = processes();
+    if (now.length === 0) return false;
+    // Another process started after these were seen running, and not after now: a start the clock cannot place
+    // counts as theirs.
+    const at = Date.now();
+    const same = now.filter((p) => left.includes(p.pid) && !(p.started > seen && p.started <= at));
+    if (same.length === 0)
+      console.info(`Process numbers ${left.join(', ')}, taken again by other processes once these had ended`);
+    return same.length === 0;
   };
 
   it('automatically downloads at the highest offered quality up to 1080p, even with an old 2160p setting', async () => {
@@ -942,12 +954,13 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     expect(starts(h.fakeLog)).toEqual([]);
     h.air.on = false;
     await until(() => (h.service.view().progress?.done ?? 0) > 3000);
+    const seen = Date.now();
     h.air.on = true;
     await until(() => h.service.view().phase === 'waiting');
     const [first] = starts(h.fakeLog).map((l) => l.split(' '));
     const pid = Number(first?.[4]);
     const child = Number(first?.[6]);
-    await until(() => !alive(pid) && !alive(child), 10_000);
+    await until(() => ended([pid, child], seen), 10_000);
     h.air.on = false;
     await until(() => h.service.view().phase === 'done', 60_000);
     expect(starts(h.fakeLog)).toHaveLength(2);
@@ -971,11 +984,12 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     // Off air: it looks. On air again while it looks: yt-dlp and its child stop, and it waits.
     h.air.on = false;
     await until(() => looks().length === 1);
+    const seen = Date.now();
     expect(h.service.view().waitingFor).toBeNull();
     h.air.on = true;
     await until(() => h.service.view().waitingFor !== null);
     const [first] = looks();
-    await until(() => !alive(Number(first?.[4])) && !alive(Number(first?.[6])), 10_000);
+    await until(() => ended([Number(first?.[4]), Number(first?.[6])], seen), 10_000);
     await new Promise((r) => setTimeout(r, 300));
     expect(h.service.view().phase).toBe('looking');
     expect(looks()).toHaveLength(1);
@@ -996,10 +1010,11 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     await until(() => h.service.view().phase === 'looked');
     h.service.download({ type: 'mp4', height: 720 });
     await until(() => (h.service.view().progress?.done ?? 0) > 1000);
+    const seen = Date.now();
     expect(readdirSync(h.folder).some((n) => n.startsWith('.drashti-youtube-'))).toBe(true);
     h.service.close();
     const [first] = starts(h.fakeLog).map((l) => l.split(' '));
-    await until(() => !alive(Number(first?.[4])) && !alive(Number(first?.[6])), 10_000);
+    await until(() => ended([Number(first?.[4]), Number(first?.[6])], seen), 10_000);
     expect(readdirSync(h.folder)).toEqual([]);
   });
 
@@ -1010,6 +1025,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     await until(() => h.service.view().phase === 'looked');
     h.service.download({ type: 'mp4', height: 720 });
     await until(() => (h.service.view().progress?.done ?? 0) > 1000);
+    const seen = Date.now();
     // Its work folder cannot be removed yet, as on Windows the moment after its programs were stopped.
     chmodSync(workDir, 0o555);
     try {
@@ -1020,7 +1036,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
       chmodSync(workDir, 0o755);
     }
     const [first] = starts(h.fakeLog).map((l) => l.split(' '));
-    await until(() => !alive(Number(first?.[4])) && !alive(Number(first?.[6])), 10_000);
+    await until(() => ended([Number(first?.[4]), Number(first?.[6])], seen), 10_000);
     expect(readdirSync(h.folder)).toEqual([]);
     // The next start clears it: at once, or once it can when Windows still holds it a moment after its programs
     // ended (Session 59: that start threw EPERM; a start never fails on it now, below).
@@ -1054,16 +1070,21 @@ describe('a start with something still held (Session 59)', () => {
         return Promise.resolve();
       };
     }
-    const program = spawn(process.execPath, ['-e', 'setInterval(() => undefined, 1000)'], {
-      cwd: dir,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-      stdio: 'ignore',
-    });
+    const program = spawn(
+      process.execPath,
+      ['-e', "process.stdout.write('running'); setInterval(() => undefined, 1000)"],
+      { cwd: dir, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+    // It holds the folder once it runs, which it says: 'spawn' comes before its start has made the folder its own
+    // (Session 59: on CI's Windows under load, the start then emptied the folder at once).
     await new Promise<void>((resolve, reject) => {
-      program.once('spawn', () => {
+      program.stdout.once('data', () => {
         resolve();
       });
       program.once('error', reject);
+      program.once('exit', (code) => {
+        reject(new Error(`the program holding the folder ended (${String(code)})`));
+      });
     });
     return async () => {
       const ended = new Promise<void>((resolve) => {
