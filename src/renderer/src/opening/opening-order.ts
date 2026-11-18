@@ -17,8 +17,8 @@
  * on a computer without a graphics chip none). Its two seconds then never share the GPU with it.
  *
  * Its two waits have their own limits: the screens' OPENING_HOLD_MS, then it plays still (it never moves beside their
- * warm-up); the window's OPENING_START_HOLD_MS (longer: the window's warm-up is over by its own limit before then),
- * then it moves as it would.
+ * warm-up); the window's OPENING_START_HOLD_MS (longer: the window's warm-up is over by its own limits before then,
+ * its cap and its last step), then it moves as it would.
  */
 
 /** What the operator window knows as Drashti starts. */
