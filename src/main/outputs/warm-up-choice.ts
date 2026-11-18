@@ -116,6 +116,11 @@ export class WarmUpChoices {
     },
   ) {}
 
+  /** Whether Chromium's GPU process has said how it draws (the stream's warm-up at the start waits for it, X21). */
+  get hasSaid(): boolean {
+    return this.said;
+  }
+
   /**
    * Pages to tell when Chromium says how it draws: Main's or a node's outputs, and the stream's page (Session 58,
    * WU-1), each set followed beside the others.

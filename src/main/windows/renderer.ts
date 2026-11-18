@@ -49,6 +49,8 @@ const warmUpFails = (): string | undefined => (packaged() ? undefined : sw('DRAS
  * busy for seconds at a time (the release's Intel check under Rosetta reloaded its output again and again).
  */
 const translated = (): boolean => app.runningUnderARM64Translation;
+/** No page warms up at this start: a test's switch, or an Intel Drashti under Rosetta (stream/stream-warm.ts, X21). */
+export const pagesSkipWarmUp = (): boolean => translated() || skipWarmUp();
 
 /** Load one of our HTML pages into a window, from Vite in dev or from disk. */
 export function loadPage(
