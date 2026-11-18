@@ -137,6 +137,8 @@ const CAP_MS = 8000;
  * end it.
  */
 const SETTLE_MS = 6000;
+/** The longest a page warms up, all told: its cap, then its last step (the opening's window limit is longer). */
+export const WARM_UP_LONGEST_MS = CAP_MS + SETTLE_MS;
 
 /**
  * Each transition scene again under a clip-path with two notches, across the pictures, the background and
