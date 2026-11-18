@@ -245,12 +245,18 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
     const tree = host?.shadowRoot;
     const wide = tree?.querySelector<HTMLElement>('[data-warm-scene="deck-cover-wide/calm/off-grid"]');
     const cover = tree?.querySelector<HTMLElement>('[data-warm-cover]');
+    const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
+    const pulse = tree?.querySelector<HTMLElement>('[data-warm-pulse]');
     const filters: string[] = [];
     for (let el = wide?.parentElement; el; el = el.parentElement) filters.push(getComputedStyle(el).filter);
     if (host) filters.push(getComputedStyle(host).filter);
     return {
       wide: wide !== null && wide !== undefined,
       filters,
+      isolation: host ? getComputedStyle(host).isolation : null,
+      drawingZ: drawing ? Number(getComputedStyle(drawing).zIndex) : Number.NaN,
+      pulseZ: pulse ? Number(getComputedStyle(pulse).zIndex) : Number.NaN,
+      coverZ: cover ? Number(getComputedStyle(cover).zIndex) : Number.NaN,
       opacity: cover ? getComputedStyle(cover).opacity : null,
       background: cover ? getComputedStyle(cover).backgroundColor : null,
       inset: cover ? getComputedStyle(cover).inset : null,
@@ -262,6 +268,12 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
     hiding.filters.every((filter) => filter === 'none'),
     `${what}: no outer filter`,
   ).toBe(true);
+  expect(hiding.isolation, `${what}: the warm-up blends only with itself`).toBe('isolate');
+  expect(hiding.pulseZ, `${what}: the repaint marker is above every scene`).toBeGreaterThan(hiding.drawingZ);
+  expect(
+    hiding.coverZ,
+    `${what}: the black cover is above every scene and its repaint marker`,
+  ).toBeGreaterThan(hiding.pulseZ);
   expect(hiding.opacity, `${what}: the black cover keeps the GPU drawing underneath`).toBe('0.999');
   expect(hiding.background, `${what}: a black cover`).toBe('rgb(0, 0, 0)');
   expect(hiding.inset, `${what}: the cover fills the warm-up`).toBe('0px');
