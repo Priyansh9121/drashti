@@ -203,7 +203,15 @@ function Output() {
   // Chromium has said how it draws, a warm-up begun before then ending there, and it holds from then. A test that
   // keeps the warm-up drawn still sees it, unless it held it only until then (DRASHTI_TEST_GPU_SAID=late).
   const [noGpu, setNoGpu] = useState(false);
-  if (!noGpu && (!HOLD_WARM_UP || NO_GPU_ENDS_HOLD) && context?.noGpu === true) setNoGpu(true);
+  const toldNoGpu = noGpu || ((!HOLD_WARM_UP || NO_GPU_ENDS_HOLD) && context?.noGpu === true);
+  if (!noGpu && toldNoGpu) setNoGpu(true);
+  // A warm-up begun before then is stopped, and the show waits for its last step (Session 58, h-black2, fault 2: drawn
+  // at once, the show's first frames came with their tiles missing, black then 256-px parts, for up to 3.3 s).
+  const [began, setBegan] = useState(false);
+  const [stopped, setStopped] = useState(false);
+  const warmUpStopped = useCallback(() => {
+    setStopped(true);
+  }, []);
   // A deck's own Wipe draws PowerPoint's band the way this screen holds its frames (render/chipless.ts, Session 58):
   // told by the context itself, whatever a test does with the warm-up.
   const chipless = context?.noGpu === true;
@@ -222,7 +230,8 @@ function Output() {
   // Tests only: the clock held at one moment, so two screens can be compared (Session 26d).
   useEffect(() => window.drashti.output.onTestClock(holdClock), []);
   const stage = context?.role === 'stage';
-  const ready = fontsReady && (warmed || stage || noGpu);
+  const ready = fontsReady && (warmed || stage || (toldNoGpu && (!began || stopped)));
+  if (context && fontsReady && !ready && !began) setBegan(true);
   usePaintTiming(rootRef, ready);
   useFrameReports(context?.display?.refreshHz ?? 60, ready);
   // The Lower Thirds studio's fonts once the show is drawn here (Session 55): never with this screen's own start, which
@@ -276,8 +285,10 @@ function Output() {
             scaling={scaling}
             matte={matte}
             hold={HOLD_WARM_UP}
+            stop={toldNoGpu}
             onDone={warmedUp}
             onEnded={warmUpEnded}
+            onStopped={warmUpStopped}
           />
         </PlacedInParent>
       )}

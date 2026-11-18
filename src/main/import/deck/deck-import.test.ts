@@ -66,10 +66,12 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
     beforeAll(() => {
       writeFileSync(deck, makeTestDeck(TRIAL_SLIDES, makeDeckMedia(ffmpeg, join(dir, 'made'))));
     });
+    // The folder holds every library and movie the tests made: on CI's Windows its removal took more than the hooks'
+    // 10 s (Session 58), so it has a minute, and tries again for a moment if a file is still held.
     afterAll(() => {
       for (const db of opened) db.close();
-      rmSync(dir, { recursive: true, force: true });
-    });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }, 60_000);
 
     function setup() {
       const root = mkdtempSync(join(dir, 'library-'));
