@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { constants, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FromWorker } from './protocol';
@@ -46,6 +46,9 @@ function setUp(config: Record<string, unknown> = {}) {
     },
     deno: 'deno',
     ffmpeg,
+    // Normal, not the lowest Drashti's own yt-dlp runs at: other tests beside these keep CI's Windows busy at normal
+    // priority, which would starve the fake (youtube-run.test.ts pins the lowest).
+    priority: constants.priority.PRIORITY_NORMAL,
   };
   const heard: FromWorker[] = [];
   const free = { bytes: 100 * 1024 ** 3 };
