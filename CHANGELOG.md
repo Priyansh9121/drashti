@@ -16,6 +16,7 @@ Update after a sabha, and update Main and nodes together.
 - Names given to timers, messages, markers, stream profiles, kirtan categories, video inputs and your own appearances, and a calendar’s name as it is loaded now leave out hidden characters, as Rename… does, and a name with nothing visible is refused.
 - A message’s look (Edit in Messages) finds its animation as the Lower Thirds studio does: type any words, such as “slide up slow”, in Find an animation, above Comes in and goes out.
 - On Windows, Drashti now opens as usual when started again right after a quit during an Import from a Link download: what the download still held is removed once Windows lets go of it.
+- On a computer slow to ready its graphics, the opening keeps its black until Drashti's window has readied them (15 seconds at most), so its two seconds always play smoothly.
 
 ## 1.0.0-alpha.18 (15 Nov 2026)
 
