@@ -19,7 +19,7 @@ import { goLive, makeSlides } from './placeholder-slides';
 /*
  * Warming the GPU, unseen (Session 27, render/WarmUp.tsx): before a screen first draws the show, it draws
  * every transition kind in both Movements part-way, with a lower third, messages and the ticker's band (the
- * idle rotation went in Session 55), under a brightness(0) filter, so the GPU has made what they need before the first
+ * idle rotation went in Session 55), under a black cover at opacity 0.999, so the GPU has made what they need before the first
  * Bold transition of a show; the audience sees black throughout. A test switch keeps it drawn, to look at.
  * Where Chromium draws without a graphics chip there is nothing to warm, and an output draws the show without
  * one (Session 57): a test switch says how Chromium draws, so both kinds of computer are tried on every system.
@@ -258,7 +258,10 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
     };
   }, scope);
   expect(hiding.wide, `${what}: a full-picture wide Cover`).toBe(true);
-  expect(hiding.filters.every((filter) => filter === 'none'), `${what}: no outer filter`).toBe(true);
+  expect(
+    hiding.filters.every((filter) => filter === 'none'),
+    `${what}: no outer filter`,
+  ).toBe(true);
   expect(hiding.opacity, `${what}: the black cover keeps the GPU drawing underneath`).toBe('0.999');
   expect(hiding.background, `${what}: a black cover`).toBe('rgb(0, 0, 0)');
   expect(hiding.inset, `${what}: the cover fills the warm-up`).toBe('0px');

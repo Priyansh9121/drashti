@@ -51,10 +51,11 @@ import { WarmUpBoundary } from './WarmUpBoundary';
  * It draws in a shadow tree of its own, closed, so no page script or test finds its placeholder slides,
  * tickers and lower thirds among the show's (open only when a test keeps it drawn, to look at it).
  *
- * All of it under one brightness(0) filter over black: the audience sees black throughout. Measured
- * (Session 27, a page drawing a Bold-like slide after each way of warming up, the pipelines it then made):
- * none 15; the same drawing at opacity 0, 16, or 0.001, 15 (skipped as unseen); in a window not yet shown,
- * 16 (nothing is composited until it shows); under brightness(0), 0.
+ * All of it under a black layer at opacity 0.999, over black: the compositor still draws the scenes underneath,
+ * but less than half an 8-bit colour level reaches the screen, so the audience sees black throughout (e2e checked).
+ * Unlike the old outer brightness(0), this leaves a Cover's own shade on its RGBA surface, as on air (X12 wide:
+ * the filter flattened that pass, leaving its antialiased, analytically clipped pipeline for the first live Cover).
+ * Drawing the scenes themselves at opacity 0 or 0.001 was skipped as unseen (Session 27); a cover leaves them opaque.
  *
  * A scene that fails as it draws ends it there (Session 57, WarmUpBoundary.tsx), as one drawn to its end does: the
  * page draws the show without the rest, never black for good, and Main logs the error and reloads nothing.
@@ -445,12 +446,49 @@ export function warmScenes(): WarmScene[] {
   const offGrid = (t: WarmScene | undefined, key: string): WarmScene[] =>
     t ? [{ ...t, key, offset: OFF_GRID }] : [];
   return [
+    // The wide Cover's full-slide JPEG, as the measured deck draws it, with its own shade left unfiltered by the
+    // warm-up's black cover. Keep the ordinary Cover too: its outgoing Shapes warm their masks (X12 wide).
+    {
+      key: 'deck-cover-wide/calm/off-grid',
+      look: look('calm'),
+      offset: OFF_GRID,
+      state: (during, at) => ({
+        ...base,
+        layers: {
+          ...base.layers,
+          slide: layerOf(
+            fullPictureSlide(during),
+            during ? at - PART * MAX_TRANSITION_MS : at - LONG_AGO,
+            during ? warmDeckTransition('cover', MAX_TRANSITION_MS) : undefined,
+          ),
+        },
+      }),
+    },
     ...transitions,
     ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
     ...offGrid(deckWipe, 'deck-wipe/calm/off-grid'),
     ...offGrid(deckCover && fourThreeScene(deckCover), 'deck-cover-four-three/calm/off-grid'),
     ...list,
   ];
+}
+
+/** A generated picture filling a wide deck slide, as the first Cover measured on CI draws (X12 wide). */
+function fullPictureSlide(b: boolean): RenderSlide {
+  return {
+    id: `${W}-deck-cover-wide-${b ? 'b' : 'a'}`,
+    width: 1920,
+    height: 1080,
+    background: null,
+    elements: [
+      {
+        id: 'picture',
+        kind: 'image',
+        mediaId: b ? PICTURE.b : PICTURE.a,
+        frame: { x: 0, y: 0, width: 1920, height: 1080 },
+        fit: 'fill',
+      },
+    ],
+  };
 }
 
 /** A 4:3 deck's slide (1440 x 1080, as a deck of that shape gives), its parts placed across it as across a 16:9 one. */
@@ -872,11 +910,10 @@ export function WarmUp({
       ref={host}
       data-warm-up={step.phase}
       aria-hidden="true"
-      // Black throughout: every colour to black, over black (see above).
+      // The drawing stays opaque to the GPU; the last black layer hides it (see above).
       style={{
         position: 'absolute',
         inset: 0,
-        filter: 'brightness(0)',
         pointerEvents: 'none',
         overflow: 'hidden',
       }}
@@ -928,6 +965,10 @@ export function WarmUp({
                 </MediaUrls.Provider>
               </WarmUpBoundary>
             )}
+            <div
+              data-warm-cover=""
+              style={{ position: 'absolute', inset: 0, background: '#000000', opacity: 0.999 }}
+            />
           </>,
           tree,
         )}
