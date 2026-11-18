@@ -15,6 +15,7 @@ Update after a sabha, and update Main and nodes together.
 - PowerPoint colours that work out exactly half-way between two shades are now rounded as PowerPoint rounds them, and a table naming either of the two table styles PowerPoint doesn’t know is drawn as PowerPoint draws it on a Mac, as a plain grid.
 - Names given to timers, messages, markers, stream profiles, kirtan categories, video inputs and your own appearances, and a calendar’s name as it is loaded now leave out hidden characters, as Rename… does, and a name with nothing visible is refused.
 - A message’s look (Edit in Messages) finds its animation as the Lower Thirds studio does: type any words, such as “slide up slow”, in Find an animation, above Comes in and goes out.
+- On Windows, Drashti now opens as usual when started again right after a quit during an Import from a Link download: what the download still held is removed once Windows lets go of it.
 
 ## 1.0.0-alpha.18 (15 Nov 2026)
 
