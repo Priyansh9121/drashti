@@ -1,22 +1,16 @@
 import type { Page } from '@playwright/test';
 import { type FrameLight, frameLight } from '../../src/shared/flash';
+import { decodePng } from './png-decode';
 
-/** The colour of each point (CSS pixels) in a page screenshot, decoded in the page itself. */
+/** The colour of each point (CSS pixels) in a page screenshot, decoded here, never in the page (png-decode.ts). */
 export async function pixels(page: Page, points: { x: number; y: number }[]): Promise<number[][]> {
-  const png = (await page.screenshot({ scale: 'css' })).toString('base64');
-  return page.evaluate(
-    async ({ png, points }) => {
-      // Decoded by hand: the page's security policy refuses fetch() of a data URL.
-      const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
-      const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return [];
-      ctx.drawImage(bitmap, 0, 0);
-      return points.map(({ x, y }) => [...ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data]);
-    },
-    { png, points },
-  );
+  const { width, height, rgba } = decodePng(await page.screenshot({ scale: 'css' }));
+  return points.map(({ x, y }) => {
+    const px = Math.min(width - 1, Math.max(0, Math.round(x)));
+    const py = Math.min(height - 1, Math.max(0, Math.round(y)));
+    const at = (py * width + px) * 4;
+    return [rgba[at] ?? 0, rgba[at + 1] ?? 0, rgba[at + 2] ?? 0, rgba[at + 3] ?? 0];
+  });
 }
 
 export const near = (rgba: number[] | undefined, rgb: [number, number, number], within = 40): boolean =>
@@ -51,30 +45,18 @@ export async function canvasPixels(page: Page, points: { x: number; y: number }[
  * second pixel each way, taken from a screenshot decoded in the page, measured here.
  */
 export async function lightOf(page: Page): Promise<FrameLight> {
-  const png = (await page.screenshot({ scale: 'css' })).toString('base64');
-  const grid = await page.evaluate(async (png) => {
-    const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
-    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('no 2d context');
-    ctx.drawImage(bitmap, 0, 0);
-    const { data } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
-    const w = Math.ceil(bitmap.width / 2);
-    const h = Math.ceil(bitmap.height / 2);
-    const out = new Uint8Array(w * h * 4);
-    for (let y = 0; y < h; y++)
-      for (let x = 0; x < w; x++) {
-        const from = (2 * y * bitmap.width + 2 * x) * 4;
-        const to = (y * w + x) * 4;
-        out[to] = data[from] ?? 0;
-        out[to + 1] = data[from + 1] ?? 0;
-        out[to + 2] = data[from + 2] ?? 0;
-        out[to + 3] = 255;
-      }
-    let text = '';
-    for (let i = 0; i < out.length; i += 0x8000) text += String.fromCharCode(...out.subarray(i, i + 0x8000));
-    return { w, h, base64: btoa(text) };
-  }, png);
-  return frameLight(Buffer.from(grid.base64, 'base64'), grid.w, grid.h, 1);
+  const { width, height, rgba } = decodePng(await page.screenshot({ scale: 'css' }));
+  const w = Math.ceil(width / 2);
+  const h = Math.ceil(height / 2);
+  const out = Buffer.alloc(w * h * 4);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const from = (2 * y * width + 2 * x) * 4;
+      const to = (y * w + x) * 4;
+      out[to] = rgba[from] ?? 0;
+      out[to + 1] = rgba[from + 1] ?? 0;
+      out[to + 2] = rgba[from + 2] ?? 0;
+      out[to + 3] = 255;
+    }
+  return frameLight(out, w, h, 1);
 }

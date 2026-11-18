@@ -210,6 +210,21 @@ describe('this computer’s video inputs', () => {
     expect(service.named('Placeholder mixer')?.name).toBe('Placeholder mixer');
   });
 
+  it('cleans a name given in Add a Video Input… or a change to it as Rename… cleans one (X14)', () => {
+    const { service } = setup();
+    const refused = (result: ReturnType<VideoInputsService['add']>) => (result.ok ? 'kept' : result.message);
+    // Nothing visible (a zero-width space, a word joiner, a soft hyphen) is no name.
+    expect(refused(service.add({ ...fields, name: '\u200B\u2060\u00AD' }))).toBe(
+      'Give the video input a name, such as “Input 1”.',
+    );
+    // A hidden direction mark copied with it is left out, and a tab is a space.
+    const one = added(service.add({ ...fields, name: 'Placeholder\u200E\tinput' }), 'Placeholder input');
+    const changed = service.update(one.id, { name: 'Placeholder\u202E camera' });
+    expect(changed.ok ? changed.view.inputs.map((i) => i.name) : changed.message).toEqual([
+      'Placeholder camera',
+    ]);
+  });
+
   it('refuses what it cannot keep, and says why', () => {
     const { service, views } = setup();
     added(service.add(fields), 'Placeholder input');

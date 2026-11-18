@@ -21,12 +21,12 @@ import {
 import { holdClock } from './placeholder-slides';
 
 /**
- * Whether an output draws without a graphics chip (its warm-up skipped, as on CI's Windows): a deck's Wipe then draws
+ * Whether an output draws without a graphics chip (its context says so, data-chipless: as on CI's Windows): a deck's Wipe then draws
  * PowerPoint's band on the incoming slide's band box, moved; with a chip (CI's Mac) as a mask on the slide's own box
  * (render/chipless.ts, Session 58).
  */
 const drawsWithoutChip = async (page: Page): Promise<boolean> =>
-  (await page.getByTestId('output-root').getAttribute('data-warm-up')) === 'skipped';
+  (await page.getByTestId('output-root').getAttribute('data-chipless')) === 'true';
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 const dispatch = (win: Page, command: EngineCommand) =>
