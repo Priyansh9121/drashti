@@ -18,7 +18,7 @@ import { sha256File } from '../import/media-store';
 import { ConvertService, KEEP_FREE_BYTES } from './convert-service';
 import { copyFinder } from './relink';
 import { trimArgs } from './trim';
-import { ffmpegHere } from '../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 
 /*
  * Converting with the real FFmpeg (where it has been fetched: macOS and
@@ -26,8 +26,8 @@ import { ffmpegHere } from '../testing/ffmpeg-here';
  * generated HEIC in tests/fixtures/media.
  */
 
-const exe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-const ffmpeg = join(process.cwd(), 'vendor', 'ffmpeg', `${process.platform}-${process.arch}`, exe);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const ffmpeg = testFfmpeg({ linux: true });
 const HEIC = join(process.cwd(), 'tests', 'fixtures', 'media', 'placeholder.heic');
 
 let dir = '';

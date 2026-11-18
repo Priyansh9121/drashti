@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { ffmpegHere } from '../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 import { edgePoints, findEdges, parseEdges, parseLength, parseLoudness, readSound } from './read-sound';
 
 /*
@@ -119,8 +119,8 @@ describe('a video’s points past the black and silence at its start and end', (
   });
 });
 
-const exe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-const ffmpeg = join(process.cwd(), 'vendor', 'ffmpeg', `${process.platform}-${process.arch}`, exe);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const ffmpeg = testFfmpeg({ linux: true });
 const dir = mkdtempSync(join(tmpdir(), 'drashti-read-sound-'));
 afterAll(() => {
   rmSync(dir, { recursive: true, force: true });

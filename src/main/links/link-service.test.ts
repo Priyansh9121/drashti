@@ -25,7 +25,7 @@ import { nodeGet } from './http';
 import { LinkService, type LinkServiceDeps, type LinkWorker } from './link-service';
 import type { FromWorker, ToWorker } from './protocol';
 import { linkWorker } from './worker-logic';
-import { ffmpegHere } from '../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 
 /*
  * Import from a Link, the main process's side (Session 25b), with the real
@@ -41,13 +41,8 @@ const VIDEO = Buffer.from('placeholder mp4 bytes '.repeat(5000));
 /** YouTube's tests: the fake yt-dlp (run by Electron as Node) and Drashti's own FFmpeg for its placeholders. */
 const APP = join(__dirname, '..', '..', '..');
 const FAKE = join(APP, 'tests', 'e2e', 'fake-yt-dlp.cjs');
-const FFMPEG = join(
-  APP,
-  'vendor',
-  'ffmpeg',
-  `${process.platform}-${process.arch}`,
-  process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg',
-);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const FFMPEG = testFfmpeg({ linux: true }, APP);
 const ZIP = makeZip([
   { name: 'Placeholder deck.pptx', data: 'placeholder pptx' },
   { name: 'Videos/Placeholder 1080p.mp4', data: VIDEO, deflate: true },
