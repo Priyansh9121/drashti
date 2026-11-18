@@ -228,6 +228,34 @@ describe('OSC settings and UDP lifecycle', () => {
   });
 });
 
+describe('OSC retry and clock safety', () => {
+  it('leaves a failed port closed on an unchanged access notification until explicitly configured again', async () => {
+    const t = setup();
+    t.fail();
+    expect((await t.enable()).ok).toBe(false);
+    expect(t.sockets).toHaveLength(1);
+    await t.service.accessChanged();
+    expect(t.sockets).toHaveLength(1);
+    expect(t.service.status().state).toBe('failed');
+    await t.service.close();
+  });
+
+  it('keeps the next wake within one minute if the computer clock moves far backwards', async () => {
+    vi.useFakeTimers();
+    const t = setup();
+    await t.enable();
+    t.sockets[0]?.packet(bundle(ntp(Date.now() + 2000), message()));
+    vi.setSystemTime(Date.now() - 0x1_0000_0000);
+    const scheduled = vi.spyOn(globalThis, 'setTimeout');
+    vi.advanceTimersByTime(2000);
+    expect(t.actions).toHaveLength(0);
+    expect(scheduled.mock.calls.length).toBeGreaterThan(0);
+    expect(scheduled.mock.calls.every((call) => typeof call[1] !== 'number' || call[1] <= 60_000)).toBe(true);
+    scheduled.mockRestore();
+    await t.service.close();
+  });
+});
+
 describe('OSC ingress and action bounds', () => {
   it('validates a whole bundle before any action and routes valid actions in wire order', async () => {
     const t = setup();
