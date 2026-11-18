@@ -68,9 +68,7 @@ export function loadPage(
   const warmed = fails ? { ...probed, warmUpFails: fails } : probed;
   // X15 / MS-2: only these two control windows can install the fit-report test script. Never packaged.
   const query =
-    !packaged() &&
-    sw('DRASHTI_TEST_FIT_FAILURES') === '1' &&
-    (page === 'index' || page === 'slide-editor')
+    !packaged() && sw('DRASHTI_TEST_FIT_FAILURES') === '1' && (page === 'index' || page === 'slide-editor')
       ? { ...warmed, fitFailureTest: '1' }
       : warmed;
   const dev = devServerUrl();

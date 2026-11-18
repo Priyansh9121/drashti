@@ -5,7 +5,6 @@ import '../../styles/app.css';
 import { preloadFonts } from '../../render/fonts';
 import { preloadStudioFonts } from '../../render/studio-fonts';
 import { reportRenderError } from '../../ui/render-errors';
-import { reportFitFailuresTo } from '../../render/shrink-to-fit';
 import { installFitFailureTestIfAsked } from '../../render/fit-failure-test';
 import { WindowBoundary } from '../../ui/WindowBoundary';
 import { EditorWindow } from './EditorWindow';
@@ -25,9 +24,6 @@ const sendError = (report: Parameters<typeof window.drashti.app.renderError>[0])
 const caught = reportRenderError('slide editor', 'caught', sendError);
 // The inspector or a slide's thumbnail failing to take a text box's measure (Session 58, MS-2): logged as the
 // window's render errors are, while the editor draws on.
-reportFitFailuresTo((error) => {
-  caught(error, {});
-});
 installFitFailureTestIfAsked();
 createRoot(root, {
   onUncaughtError: reportRenderError('slide editor', 'uncaught', sendError),
