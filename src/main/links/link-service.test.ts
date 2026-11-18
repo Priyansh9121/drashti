@@ -976,7 +976,9 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
   });
 
   it('waits while on air, never starting yt-dlp; stops one going (its child too), then carries on', async () => {
-    const h = await youtube({ steps: 30, stepMs: 60 });
+    // The first run waits at 5,000 bytes, so going on air always finds it part-way (Session 59: on CI's Windows
+    // under load, the hold once came after the whole 1.8 s download had finished and removed its part-file).
+    const h = await youtube({ steps: 30, stepMs: 60, pauseAt: 5000 });
     h.service.look('youtube', LINK);
     await until(() => h.service.view().phase === 'looked');
     h.air.on = true;
