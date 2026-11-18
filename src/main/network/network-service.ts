@@ -1,3 +1,4 @@
+import type { OscAction } from '../osc/mapping';
 import { nativeDeckMotion, stepCount } from '../../shared/deck';
 import { deckSlideAt } from '../../shared/deck-show';
 import {
@@ -1075,6 +1076,11 @@ export class NetworkService implements EngineTransport {
       clearTimeout(timer);
       this.savingSlide = false;
     }
+  }
+
+  /** An explicitly allowed OSC sender uses these same show actions, independent of Phones being on. */
+  runShowAction(_action: OscAction): DeviceAnswer {
+    return deny(503, 'OSC show actions are not connected yet.');
   }
 
   answer(request: DeviceRequest): DeviceAnswer {
