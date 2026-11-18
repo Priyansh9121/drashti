@@ -10,8 +10,9 @@
 // which lives until it ends: a test can see that stopping it stops that too.
 // What it is told to do comes in DRASHTI_FAKE_YT_DLP_CONFIG (JSON): title, duration, heights, live
 // (yt-dlp's live_status), failWith (a line for its error output, then it fails), steps, stepMs, lookMs (how
-// long a look takes before it answers: 0, at once, to begin with), and log (a file it notes each start,
-// resume and finish in).
+// long a look takes before it answers: 0, at once, to begin with), pauseAt (bytes: a download not carrying on
+// from a part-file stops writing there and waits to be stopped, so a test's hold always finds it part-way),
+// and log (a file it notes each start, resume and finish in).
 const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -89,6 +90,7 @@ function main() {
   const chunk = 1000;
   const total = steps * chunk;
   let done = fs.existsSync(part) ? fs.statSync(part).size : 0;
+  const pauseAt = done === 0 && typeof config.pauseAt === 'number' ? config.pauseAt : null;
   if (done > 0) {
     process.stdout.write(`[download] Resuming download at byte ${String(done)}\n`);
     log(`resume ${String(done)}`);
@@ -145,6 +147,11 @@ function main() {
   const step = () => {
     if (done >= total) {
       finish();
+      return;
+    }
+    if (pauseAt !== null && done >= pauseAt) {
+      // Part-way, as the test asked: nothing more is written until it is stopped.
+      setInterval(() => undefined, 1000);
       return;
     }
     fs.appendFileSync(part, Buffer.alloc(chunk, 0x61));

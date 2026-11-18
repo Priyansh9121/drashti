@@ -15,7 +15,7 @@ import {
   trimArgs,
 } from './trim';
 import { keyframeOf } from './trim-saves';
-import { ffmpegHere } from '../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 
 /* Saving a video's part as an MP4 by copying it (Session 26e): made-up FFmpeg output, and the real FFmpeg where it is. */
 
@@ -92,16 +92,8 @@ describe('a video saved as an MP4 by copying it', () => {
 });
 
 /** The bundled FFmpeg (pnpm fetch-ffmpeg), when it is here. */
-const ffmpeg = join(
-  __dirname,
-  '..',
-  '..',
-  '..',
-  'vendor',
-  'ffmpeg',
-  `${process.platform}-${process.arch}`,
-  process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg',
-);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const ffmpeg = testFfmpeg({ linux: true }, join(__dirname, '..', '..', '..'));
 const work = mkdtempSync(join(tmpdir(), 'drashti-trim-'));
 
 afterAll(() => {

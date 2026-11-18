@@ -2,11 +2,21 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## 1.0.0-alpha.19 (16 Nov 2026)
+## 1.0.0-alpha.19 (19 Nov 2026)
 
 Update after a sabha, and update Main and nodes together.
 
-- The stream, the hall screens and the decks Drashti plays itself: the fixes since alpha.18 (this list is written in full before the release).
+- The stream and a video recording now start with the show’s first whole picture, not black or a half-drawn slide, even while the stream’s picture is still coming up or after it started again (they wait up to 15 seconds for it).
+- On a computer without a graphics chip, the first slide on the hall’s screens, the stream and LIVE no longer comes up black or in pieces: a screen that began readying the graphics before Drashti knew lets go of it first.
+- The hall’s screens, like the stream, now put a slide up only once its pictures can be drawn, keeping what is up meanwhile (3 seconds at most), so a jump to a slide not loaded ahead, or a screen just opened, no longer shows it without its pictures. Next still changes the slide at once, its pictures loaded ahead.
+- While streaming on a computer without a graphics chip, Drashti no longer holds up slide changes for up to a third of a second at a time: the stream’s picture is no longer copied into its main process.
+- Lower Thirds has seven more templates, 86 in all, each smooth while streaming.
+- A 4:3 deck’s first Cover transition no longer stutters on a Mac.
+- PowerPoint colours that work out exactly half-way between two shades are now rounded as PowerPoint rounds them, and a table naming either of the two table styles PowerPoint doesn’t know is drawn as PowerPoint draws it on a Mac, as a plain grid.
+- Names given to timers, messages, markers, stream profiles, kirtan categories, video inputs and your own appearances, and a calendar’s name as it is loaded now leave out hidden characters, as Rename… does, and a name with nothing visible is refused.
+- A message’s look (Edit in Messages) finds its animation as the Lower Thirds studio does: type any words, such as “slide up slow”, in Find an animation, above Comes in and goes out.
+- On Windows, Drashti now opens as usual when started again right after a quit during an Import from a Link download: what the download still held is removed once Windows lets go of it.
+- On a computer slow to ready its graphics, the opening keeps its black until Drashti's window has readied them (15 seconds at most), so its two seconds always play smoothly.
 
 ## 1.0.0-alpha.18 (15 Nov 2026)
 

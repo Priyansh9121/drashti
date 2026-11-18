@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PICTURE_WIDTHS, pictureStep } from '../../shared/device-pictures';
-import { ffmpegHere } from '../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 import { readPictureInfo } from './picture-info';
 import { renditionArgs, RenditionMaker, type RenditionRun, RENDITIONS_KEEP_FREE_BYTES } from './renditions';
 
@@ -215,8 +215,8 @@ describe('making and keeping pictures for devices (Session 54, D1)', () => {
   });
 });
 
-const exe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-const ffmpeg = join(process.cwd(), 'vendor', 'ffmpeg', `${process.platform}-${process.arch}`, exe);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const ffmpeg = testFfmpeg({ linux: true });
 
 /** FFmpeg's own test picture or clip, made here. */
 function make(args: string[]): void {

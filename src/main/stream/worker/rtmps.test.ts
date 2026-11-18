@@ -9,7 +9,7 @@ import { STREAM_PRESETS } from '../../../shared/stream';
 import { makeAuthority } from '../testing/made-up-ca';
 import { StreamPipeline } from './pipeline';
 import type { WorkerStatus } from './protocol';
-import { ffmpegHere } from '../../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../../testing/ffmpeg-here';
 
 /*
  * Going live over RTMPS (Session 23), with the bundled FFmpeg, against a
@@ -24,7 +24,8 @@ import { ffmpegHere } from '../../testing/ffmpeg-here';
 const vendor = (target: string) =>
   join(process.cwd(), 'vendor', 'ffmpeg', target, target.startsWith('win32') ? 'ffmpeg.exe' : 'ffmpeg');
 /** This computer's own FFmpeg (it also stands in for YouTube). */
-const ffmpeg = vendor(`${process.platform}-${process.arch}`);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const ffmpeg = testFfmpeg({ linux: true });
 /**
  * Every bundled FFmpeg this computer can run: its own, and on an Apple-silicon Mac the Intel Mac's
  * under Rosetta when it is there (CI fetches both Mac builds).

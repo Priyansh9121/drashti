@@ -19,6 +19,12 @@ export interface YtDlpLaunch {
   /** Drashti's own Deno and FFmpeg, for yt-dlp's options. */
   deno: string;
   ffmpeg: string;
+  /**
+   * The priority it runs at (os.setPriority's number): the lowest when not said, so the show always comes first.
+   * Only tests say another (normal): on a test machine kept busy by other tests at normal priority, Windows gives a
+   * process at the lowest (its idle class) almost no time, and the fake yt-dlp did not even start (Session 59).
+   */
+  priority?: number;
 }
 
 export interface ToolRun {
@@ -47,7 +53,7 @@ export function runYtDlp(
   });
   if (child.pid !== undefined)
     try {
-      setPriority(child.pid, constants.priority.PRIORITY_LOW);
+      setPriority(child.pid, launch.priority ?? constants.priority.PRIORITY_LOW);
     } catch {
       // It inherits the download process's own low priority anyway.
     }
