@@ -57,6 +57,7 @@ function setup(saved?: unknown) {
   const actions: OscAction[] = [];
   const logs: string[] = [];
   let fail = false;
+  let runFault = false;
   const service = new OscService({
     settings: {
       get: (k) => settings.get(k),
@@ -67,6 +68,7 @@ function setup(saved?: unknown) {
     letIn: () => letIn,
     canConfigure: () => pro,
     run: (action) => {
+      if (runFault) throw new Error('Placeholder fault detail');
       actions.push(action);
       return true;
     },
@@ -97,6 +99,9 @@ function setup(saved?: unknown) {
     },
     fail: () => {
       fail = true;
+    },
+    fault: () => {
+      runFault = true;
     },
   };
 }
@@ -257,6 +262,37 @@ describe('OSC retry and clock safety', () => {
 });
 
 describe('OSC ingress and action bounds', () => {
+  it('caps the future queue even when a sender keeps its action rate within the allowance', async () => {
+    vi.useFakeTimers();
+    const t = setup();
+    await t.enable();
+    const thirtyTwo = () => bundle(ntp(Date.now() + 30_000), ...Array.from({ length: 32 }, () => message()));
+    t.sockets[0]?.packet(thirtyTwo());
+    vi.advanceTimersByTime(2000);
+    t.sockets[0]?.packet(thirtyTwo());
+    expect(t.service.status().pending).toBe(64);
+    t.sockets[0]?.packet(bundle(ntp(Date.now() + 30_000), message()));
+    expect(t.service.status().pending).toBe(64);
+    expect(t.service.status().dropped).toBe(1);
+    expect(t.actions).toHaveLength(0);
+    await t.service.close();
+  });
+
+  it('catches an action fault, keeps listening and never logs supplied error details or message content', async () => {
+    const t = setup();
+    await t.enable();
+    t.fault();
+    const stage = Buffer.concat([
+      string('/drashti/stage-message'),
+      string(',s'),
+      string('Placeholder private call'),
+    ]);
+    expect(() => t.sockets[0]?.packet(stage)).not.toThrow();
+    expect(t.service.status()).toMatchObject({ state: 'listening', dropped: 1, actions: 0 });
+    expect(t.logs.join('')).not.toMatch(/Placeholder private call|Placeholder fault detail|127\.0\.0\.1/u);
+    await t.service.close();
+  });
+
   it('validates a whole bundle before any action and routes valid actions in wire order', async () => {
     const t = setup();
     await t.enable();
@@ -332,7 +368,7 @@ describe('OSC ingress and action bounds', () => {
     await t.service.close();
   });
 
-  it('rechecks access at execution and catches action faults without killing the listener', async () => {
+  it('rechecks access at execution', async () => {
     vi.useFakeTimers();
     const t = setup();
     await t.enable();

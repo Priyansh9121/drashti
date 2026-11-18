@@ -52,6 +52,7 @@ interface Pending {
 /** A separately enabled, receive-only UDP door into the existing show action layer. */
 export class OscService {
   private config: OscSettings;
+  private accessAllowed: boolean;
   private socket: Socket | null = null;
   private state: OscStatus['state'] = 'off';
   private message: string | null = null;
@@ -70,6 +71,7 @@ export class OscService {
   private readonly overall: RateLimiter;
 
   constructor(private readonly deps: OscDeps) {
+    this.accessAllowed = deps.letIn();
     const saved = deps.settings.get('osc');
     this.config = parseOscSettings(saved) ?? {
       ...DEFAULT_OSC_SETTINGS,
@@ -133,7 +135,7 @@ export class OscService {
 
   accessChanged(): Promise<void> {
     return this.enqueue(async () => {
-      if (!this.deps.letIn() || (!this.socket && this.config.enabled)) await this.restart();
+      if (this.deps.letIn() !== this.accessAllowed) await this.restart();
     });
   }
 
@@ -183,8 +185,9 @@ export class OscService {
 
   private async restart(): Promise<void> {
     await this.stop();
+    this.accessAllowed = this.deps.letIn();
     if (this.closed || !this.config.enabled) return;
-    if (!this.deps.letIn()) {
+    if (!this.accessAllowed) {
       this.message = 'OSC is waiting until Drashti is let in.';
       this.changed();
       return;
@@ -351,7 +354,7 @@ export class OscService {
         this.counted();
         this.schedule();
       },
-      Math.max(0, first.at - this.now()),
+      Math.min(MAX_AHEAD_MS, Math.max(0, first.at - this.now())),
     );
     this.timer.unref();
   }
