@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { LiveFit } from './engine/state';
 import { nfc } from './nfc';
 
@@ -70,6 +71,8 @@ export interface VideoInputStatus {
 
 /** The longest name an operator gives a video input, and the longest device name kept (Session 50). */
 export const VIDEO_INPUT_NAME_MAX = 60;
+/** A video input's name as a phone gives it (X14). */
+export const videoInputNameSchema = z.string().trim().min(1).max(VIDEO_INPUT_NAME_MAX);
 export const VIDEO_INPUT_DEVICE_MAX = 300;
 /** The most video inputs one computer keeps. */
 export const VIDEO_INPUTS_MAX = 20;

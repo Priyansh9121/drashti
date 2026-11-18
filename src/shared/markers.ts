@@ -36,17 +36,23 @@ const ms = z
   .min(0)
   .max(24 * 3600 * 1000);
 
-export const mediaMarkersSchema: z.ZodType<MediaMarkers> = z
-  .object({
-    startMs: ms.nullable(),
-    endMs: ms.nullable(),
-    markers: z
-      .array(z.object({ id: z.string().min(1).max(64), name: z.string().trim().min(1).max(60), atMs: ms }))
-      .max(50),
-  })
-  .refine((m) => m.startMs === null || m.endMs === null || m.endMs > m.startMs, {
-    message: 'The end point must come after the start point.',
-  });
+/** A file's points, with each marker's name as `name` takes it. */
+const markersWith = (name: z.ZodType<string, string>): z.ZodType<MediaMarkers> =>
+  z
+    .object({
+      startMs: ms.nullable(),
+      endMs: ms.nullable(),
+      markers: z.array(z.object({ id: z.string().min(1).max(64), name, atMs: ms })).max(50),
+    })
+    .refine((m) => m.startMs === null || m.endMs === null || m.endMs > m.startMs, {
+      message: 'The end point must come after the start point.',
+    });
+
+/** A file's points as kept (its markers' names as they were kept). */
+export const mediaMarkersSchema = markersWith(z.string().trim().min(1).max(60));
+
+/** A file's points as the operator gives them: Set markers, a playlist row's trim (X14). */
+export const mediaMarkersInputSchema = markersWith(z.string().trim().min(1).max(60));
 
 export type MarkersResult = { ok: true; markers: MediaMarkers } | { ok: false; message: string };
 
