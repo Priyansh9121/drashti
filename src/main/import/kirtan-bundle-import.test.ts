@@ -249,11 +249,11 @@ describe('damaged and hostile kirtan bundles', () => {
     const t = await setup();
     const entries = await parts(t);
     const doc = JSON.parse(String(must(entries[1]).data)) as BundleKirtan;
-    doc.content.slides[0].group_id = 'not-a-group';
+    must(doc.content.slides[0]).group_id = 'not-a-group';
     const bytes = Buffer.from(JSON.stringify(doc));
     const manifest = JSON.parse(String(must(entries[0]).data)) as BundleManifest;
-    manifest.kirtans[0].sha256 = hash(bytes);
-    manifest.kirtans[0].bytes = bytes.length;
+    must(manifest.kirtans[0]).sha256 = hash(bytes);
+    must(manifest.kirtans[0]).bytes = bytes.length;
     const path = join(t.source.dir, 'Broken refs.drashti-kirtans');
     await writeFile(
       path,
