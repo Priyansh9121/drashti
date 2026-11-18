@@ -875,6 +875,29 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
       throw new Error(`Still running 10 s on (seen running at ${String(seen)}): ${JSON.stringify(left)}`);
     }
   };
+  /**
+   * As `until`, and when it gives up it says what the service shows and logged and what the fake yt-dlp noted, so a
+   * CI log tells a slow start from a failed one (Session 59: CI's Windows, with FFmpeg tests running beside these).
+   */
+  const untilShown = async (
+    h: { service: LinkService; logs: string[]; fakeLog: string },
+    check: () => boolean,
+    ms?: number,
+  ) => {
+    const from = Date.now();
+    try {
+      await until(check, ms);
+    } catch (error) {
+      const fake = existsSync(h.fakeLog)
+        ? readFileSync(h.fakeLog, 'utf8').trim().split('\n').join(' | ')
+        : '-';
+      throw new Error(
+        `${String(error)} after ${String(Date.now() - from)} ms. The service: ${JSON.stringify(h.service.view())}. ` +
+          `It logged: ${h.logs.join(' | ')}. The fake noted: ${fake}`,
+        { cause: error },
+      );
+    }
+  };
 
   it('automatically downloads at the highest offered quality up to 1080p, even with an old 2160p setting', async () => {
     const h = await youtube();
@@ -937,7 +960,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     h.service.look('youtube', LINK);
     await until(() => h.service.view().phase === 'looked');
     h.service.download({ type: 'mp4', height: 720 });
-    await until(() => h.service.view().phase === 'done', 30_000);
+    await untilShown(h, () => h.service.view().phase === 'done', 18_000);
     const log = h.logs.join('\n');
     expect(log).toContain('Links: looked at a YouTube video link (up to 4320p (8K))');
     expect(log).toMatch(/Links: a YouTube video download starts \(MP4, 720p, about [\d.]+ [KMG]B\)/u);
@@ -962,7 +985,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     await new Promise((r) => setTimeout(r, 300));
     expect(starts(h.fakeLog)).toEqual([]);
     h.air.on = false;
-    await until(() => (h.service.view().progress?.done ?? 0) > 3000);
+    await untilShown(h, () => (h.service.view().progress?.done ?? 0) > 3000);
     const seen = Date.now();
     h.air.on = true;
     await until(() => h.service.view().phase === 'waiting');
@@ -992,7 +1015,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     expect(looks()).toEqual([]);
     // Off air: it looks. On air again while it looks: yt-dlp and its child stop, and it waits.
     h.air.on = false;
-    await until(() => looks().length === 1);
+    await untilShown(h, () => looks().length === 1);
     const seen = Date.now();
     expect(h.service.view().waitingFor).toBeNull();
     h.air.on = true;
