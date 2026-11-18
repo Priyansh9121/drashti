@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -1021,8 +1022,10 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     const [first] = starts(h.fakeLog).map((l) => l.split(' '));
     await until(() => !alive(Number(first?.[4])) && !alive(Number(first?.[6])), 10_000);
     expect(readdirSync(h.folder)).toEqual([]);
+    // The next start clears it: at once, or once it can when Windows still holds it a moment after its programs
+    // ended (Session 59: that start threw EPERM; a start never fails on it now, below).
     await harness({ workDir });
-    expect(existsSync(workDir)).toBe(false);
+    await until(() => !existsSync(workDir) || readdirSync(workDir).length === 0, 10_000);
   });
 
   it('says plainly why a video cannot be had, and when YouTube’s programs are missing', async () => {
@@ -1035,6 +1038,88 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     });
     const r = missing.service.look('youtube', LINK);
     expect(r.ok ? '' : r.message).toBe('Drashti’s copy of yt-dlp or Deno is missing.');
+  });
+});
+
+describe('a start with something still held (Session 59)', () => {
+  /**
+   * Holds a folder as programs stopped a moment ago can still hold theirs (Windows): there, a program running in it;
+   * elsewhere, the folder made read-only. Gives back how to let go.
+   */
+  async function hold(dir: string): Promise<() => Promise<void>> {
+    if (process.platform !== 'win32') {
+      chmodSync(dir, 0o555);
+      return () => {
+        chmodSync(dir, 0o755);
+        return Promise.resolve();
+      };
+    }
+    const program = spawn(process.execPath, ['-e', 'setInterval(() => undefined, 1000)'], {
+      cwd: dir,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      stdio: 'ignore',
+    });
+    await new Promise<void>((resolve, reject) => {
+      program.once('spawn', () => {
+        resolve();
+      });
+      program.once('error', reject);
+    });
+    return async () => {
+      const ended = new Promise<void>((resolve) => {
+        program.once('exit', () => {
+          resolve();
+        });
+      });
+      program.kill();
+      await ended;
+    };
+  }
+
+  it('the links start even when their work folder cannot be emptied yet: it is emptied once nothing holds it', async () => {
+    // Session 59's whole Windows unit suite: the next start met the work folder still held by the programs stopped a
+    // moment before, and the service's constructor threw EPERM, so the links could not start.
+    const workDir = join(mkdtempSync(join(tmpdir(), 'drashti-tools-work-')), 'Link downloads');
+    const tools = join(workDir, 'youtube-placeholder');
+    mkdirSync(tools, { recursive: true });
+    writeFileSync(join(tools, 'placeholder.part'), 'placeholder');
+    const letGo = await hold(tools);
+    let h: Harness;
+    try {
+      h = await harness({ workDir });
+    } finally {
+      await letGo();
+    }
+    expect(h.service.view().phase).toBe('idle');
+    expect(h.logs.join('\n')).toContain('Links: the work folder could not be emptied yet');
+    // Let go: what was in it is removed in the background, with nothing asked of anyone.
+    await until(() => !existsSync(tools), 15_000);
+  });
+
+  it('nor when a leftover the last quit could not remove is still held: it stays in the record until it is gone', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'drashti-leftover-'));
+    const leftover = join(
+      root,
+      'Placeholder saved here',
+      '.drashti-youtube-00000000-0000-4000-8000-000000000000',
+    );
+    mkdirSync(leftover, { recursive: true });
+    writeFileSync(join(leftover, 'placeholder.part'), 'placeholder');
+    const record = join(root, 'link-downloads.json');
+    writeFileSync(record, JSON.stringify([leftover]));
+    const letGo = await hold(leftover);
+    let h: Harness;
+    try {
+      h = await harness({ record });
+      // While it is held it stays in the record, so a quit now still leaves it to the next start.
+      expect(JSON.parse(readFileSync(record, 'utf8'))).toEqual([leftover]);
+    } finally {
+      await letGo();
+    }
+    expect(h.service.view().phase).toBe('idle');
+    expect(h.logs.join('\n')).toContain('Links: a download’s leftover could not be removed yet');
+    await until(() => !existsSync(leftover), 15_000);
+    await until(() => !existsSync(record) || !readFileSync(record, 'utf8').includes('.drashti-youtube-'));
   });
 });
 
