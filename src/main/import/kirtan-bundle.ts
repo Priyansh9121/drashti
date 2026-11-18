@@ -9,13 +9,8 @@ import type { Db } from '../db/database';
 import type { ContentRows } from '../db/content';
 import { MediaRepo } from '../db/media';
 import { PresentationRepo } from '../db/presentations';
-import {
-  bundleIdentity,
-  bundleState,
-  bundleLocalHash,
-  keepBundleState,
-  mapBundleContent,
-} from './kirtan-bundle-state';
+import { realPlaceAsync } from '../media/contained';
+import { bundleIdentity, bundleState, keepBundleState, mapBundleContent } from './kirtan-bundle-state';
 import { diskFreeBytes } from './media-store';
 import { withZip, writeEntry, type ZipEntry } from './zip';
 import {
@@ -122,6 +117,8 @@ async function writeBundleZip(
     }
     const start = at;
     const cd = Buffer.concat(central);
+    if (at + cd.length + 22 > BUNDLE_LIMITS.archive)
+      throw new Error('The finished bundle would be too big. Share fewer kirtans.');
     await write(cd);
     const end = Buffer.alloc(22);
     end.writeUInt32LE(0x06054b50);
@@ -156,53 +153,76 @@ export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleM
   const files: PackedFile[] = [];
   const mediaIds = new Map<string, string>();
   let documents = 0;
-  // One short read/write transaction snapshots the chosen words and reserves their identities. No media I/O under it.
-  o.db.transaction(() => {
-    for (const id of new Set(o.presentationIds)) {
-      let content = repo.content(id);
-      const p = repo.get(id);
-      if (!content?.kirtan || !p) throw new Error('A chosen kirtan is no longer in the library.');
-      const stableId = bundleIdentity(o.db, id);
-      const prior = bundleState(o.db, stableId);
-      if (!prior) {
-        const localHash = bundleLocalHash(o.db, id);
-        if (!localHash) throw new Error('The chosen kirtan could not be read.');
-        keepBundleState(o.db, stableId, { presentationId: id, incomingHash: null, localHash, ids: {} });
-      }
-      // A received item re-exports its original reference ids, so returning it cannot create another kirtan.
-      if (prior) {
-        const original = new Map(Object.entries(prior.ids).map(([source, local]) => [local, source]));
-        content = mapBundleContent(
-          content,
-          (local) => original.get(local) ?? local,
-          (local) => original.get(local) ?? local,
-        );
-      }
-      const notes = o.db.prepare('SELECT notes FROM presentations WHERE id = ?').pluck().get(id) as string;
-      content.presentationId = stableId;
-      // A theme's styles are already on each element; a source path is never needed at the other library.
-      content.themeId = null;
-      content.arrangements = content.arrangements.map((a) => ({ ...a, source_ref: null }));
-      const parsed = bundleKirtanSchema.safeParse({ name: p.name, notes, content });
-      if (!parsed.success)
-        throw new Error(
-          `This kirtan has slide settings that cannot be shared safely (${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}).`,
-        );
-      // Media rows are read under this library's ids; the document keeps the portable reference ids.
-      for (const portable of bundleMediaIds(content)) {
-        const local = prior?.ids[portable] ?? portable;
-        const previous = mediaIds.get(portable);
-        if (previous && previous !== local) throw new Error('Two kirtans disagree about a media reference.');
-        mediaIds.set(portable, local);
-      }
-      const bytes = Buffer.from(JSON.stringify(parsed.data));
-      documents += bytes.length;
-      if (bytes.length > BUNDLE_LIMITS.document || documents > BUNDLE_LIMITS.documents)
-        throw new Error('The kirtans have too many words or slides for one bundle. Share fewer at once.');
-      const entry = `kirtans/${stableId}.json`;
-      manifest.kirtans.push({ id: stableId, entry, sha256: sha(bytes), bytes: bytes.length });
-      files.push({ name: entry, bytes });
+  // Identity bookkeeping holds the write lock briefly. Parsing/hashing never holds it.
+  const identities = o.db.transaction(
+    () => new Map([...new Set(o.presentationIds)].map((id) => [id, bundleIdentity(o.db, id)])),
+  )();
+  const newStates: { id: string; presentationId: string; localHash: string }[] = [];
+  for (const [id, stableId] of identities) {
+    o.signal?.throwIfAborted();
+    await new Promise<void>((done) => setImmediate(done));
+    // WAL readers do not block the show's writes. Each kirtan is one consistent read snapshot.
+    const snapshot = o.db
+      .transaction(() => ({
+        content: repo.content(id),
+        p: o.db
+          .prepare('SELECT name, notes FROM presentations WHERE id = ? AND deleted_at IS NULL')
+          .get(id) as { name: string; notes: string } | undefined,
+        prior: bundleState(o.db, stableId),
+      }))
+      .deferred();
+    let content = snapshot.content;
+    const { p, prior } = snapshot;
+    if (!content?.kirtan || !p) throw new Error('A chosen kirtan is no longer in the library.');
+    const notes = p.notes;
+    if (!prior) {
+      const localHash = createHash('sha256')
+        .update(JSON.stringify({ name: p.name, notes, rows: content }))
+        .digest('hex');
+      newStates.push({ id: stableId, presentationId: id, localHash });
     }
+    // A received item re-exports its original reference ids, so returning it cannot create another kirtan.
+    if (prior) {
+      const original = new Map(Object.entries(prior.ids).map(([source, local]) => [local, source]));
+      content = mapBundleContent(
+        content,
+        (local) => original.get(local) ?? local,
+        (local) => original.get(local) ?? local,
+      );
+    }
+    content.presentationId = stableId;
+    // A theme's styles are already on each element; a source path is never needed at the other library.
+    content.themeId = null;
+    content.arrangements = content.arrangements.map((a) => ({ ...a, source_ref: null }));
+    const parsed = bundleKirtanSchema.safeParse({ name: p.name, notes, content });
+    if (!parsed.success)
+      throw new Error(
+        `This kirtan has slide settings that cannot be shared safely (${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}).`,
+      );
+    // Media rows are read under this library's ids; the document keeps the portable reference ids.
+    for (const portable of bundleMediaIds(content)) {
+      const local = prior?.ids[portable] ?? portable;
+      const previous = mediaIds.get(portable);
+      if (previous && previous !== local) throw new Error('Two kirtans disagree about a media reference.');
+      mediaIds.set(portable, local);
+    }
+    const bytes = Buffer.from(JSON.stringify(parsed.data));
+    documents += bytes.length;
+    if (bytes.length > BUNDLE_LIMITS.document || documents > BUNDLE_LIMITS.documents)
+      throw new Error('The kirtans have too many words or slides for one bundle. Share fewer at once.');
+    const entry = `kirtans/${stableId}.json`;
+    manifest.kirtans.push({ id: stableId, entry, sha256: sha(bytes), bytes: bytes.length });
+    files.push({ name: entry, bytes });
+  }
+  o.db.transaction(() => {
+    for (const state of newStates)
+      if (!bundleState(o.db, state.id))
+        keepBundleState(o.db, state.id, {
+          presentationId: state.presentationId,
+          incomingHash: null,
+          localHash: state.localHash,
+          ids: {},
+        });
   })();
   let total = documents;
   const mediaEntries = new Set<string>();
@@ -230,7 +250,9 @@ export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleM
       const path = resolve(root, row.path);
       if (row.missing || row.deleted_at || !row.sha256 || !path.startsWith(root + sep))
         throw new Error('Requested media is missing. Find it before sharing, or export without media.');
-      const info = await stat(path).catch(() => null);
+      const place = await realPlaceAsync(root, path);
+      if (!place?.inside) throw new Error('Requested media is missing or outside the library’s media pool.');
+      const info = await stat(place.path).catch(() => null);
       if (!info?.isFile() || info.size !== row.bytes || info.size > BUNDLE_LIMITS.entry)
         throw new Error('Requested media is missing, changed or too big to share.');
       const ext = extname(row.path).slice(1).toLowerCase();
@@ -239,7 +261,7 @@ export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleM
       if (!mediaEntries.has(entry)) {
         mediaEntries.add(entry);
         total += info.size;
-        files.push({ name: entry, path, expectedHash: row.sha256 });
+        files.push({ name: entry, path: place.path, expectedHash: row.sha256 });
       }
     }
     manifest.media.push({
@@ -250,6 +272,7 @@ export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleM
       sha256: row.sha256,
       bytes: row.bytes ?? 0,
       markers: mediaRepo.markersOf(id),
+      look: mediaRepo.look(id),
     });
   }
   const manifestBytes = Buffer.from(JSON.stringify(bundleManifestSchema.parse(manifest)));

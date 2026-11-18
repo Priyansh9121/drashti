@@ -91,6 +91,7 @@ function applyKirtan(
       mediaMap.set(id, result.mediaId);
       // Existing files keep their local points. New files receive the sender's points, never live ones.
       if (result.outcome === 'imported' && file.markers) mediaRepo.setMarkers(result.mediaId, file.markers);
+      if (result.outcome === 'imported' && file.look) mediaRepo.setLook(result.mediaId, file.look);
     } else {
       const same = file.sha256
         ? (o.db

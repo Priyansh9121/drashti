@@ -1,9 +1,19 @@
 import { z } from 'zod';
 import type { ContentRows } from '../db/content';
 import { editDocOf } from '../library/slides';
-import { editDocSchema } from '../../shared/slide-edit';
-import { idSchema, langSchema } from '../../shared/model-schema';
+import { editDocSchema, masterFromJson } from '../../shared/slide-edit';
+import {
+  darkenSchema,
+  idSchema,
+  langSchema,
+  slideDesignSchema,
+  transitionSchema,
+} from '../../shared/model-schema';
 import { mediaMarkersSchema } from '../../shared/markers';
+import { pictureLookSchema } from '../../shared/picture-look';
+import { editorGuidesSchema } from '../../shared/editor-guides';
+import { documentPageSchema, pageSizeSchema } from '../../shared/document-page';
+import { deckSlideSchema } from '../../shared/deck-schema';
 
 export const BUNDLE_LIMITS = {
   archive: 2 * 1024 ** 3,
@@ -22,6 +32,18 @@ const hash = z.string().regex(/^[0-9a-f]{64}$/u);
 const uuid = z.uuid();
 const text = z.string().max(2000);
 const json = z.string().max(BUNDLE_LIMITS.document);
+const jsonFor = (schema: z.ZodType) =>
+  json.refine((value) => {
+    try {
+      return schema.safeParse(JSON.parse(value)).success;
+    } catch {
+      return false;
+    }
+  }, 'Invalid nested JSON settings.');
+const masterJson = json.refine((value) => {
+  const master = masterFromJson(value);
+  return master?.macroId === null;
+}, 'Invalid master slide or a local macro binding.');
 const pos = z.number().int().nonnegative().max(100_000);
 const bit = z.union([z.literal(0), z.literal(1)]);
 const nullableText = text.nullable();
@@ -32,10 +54,10 @@ const contentSchema: z.ZodType<ContentRows> = z
     presentationId: idSchema,
     width: z.number().int().min(16).max(16384),
     height: z.number().int().min(16).max(16384),
-    editorMaster: json.nullable().optional(),
+    editorMaster: masterJson.nullable().optional(),
     selectedArrangementId: idSchema.nullable(),
     themeId: z.null(),
-    transition: json.nullable(),
+    transition: jsonFor(transitionSchema).nullable(),
     loop: bit,
     groups: z
       .array(z.object({ id: idSchema, name: text, color: nullableText, position: pos }).strict())
@@ -51,8 +73,8 @@ const contentSchema: z.ZodType<ContentRows> = z
             label: text,
             notes: z.string().max(100_000),
             background: nullableText,
-            darken: json.nullable(),
-            transition: json.nullable(),
+            darken: jsonFor(darkenSchema).nullable(),
+            transition: jsonFor(transitionSchema).nullable(),
             auto_advance_ms: z
               .number()
               .int()
@@ -61,11 +83,11 @@ const contentSchema: z.ZodType<ContentRows> = z
               .nullable(),
             enabled: bit,
             macro_id: z.null(),
-            deck: json.nullable().optional(),
-            editor_guides: json.nullable().optional(),
-            editor_design: json.nullable().optional(),
-            document_page: json.nullable().optional(),
-            page_size: json.nullable().optional(),
+            deck: jsonFor(deckSlideSchema).nullable().optional(),
+            editor_guides: jsonFor(editorGuidesSchema).nullable().optional(),
+            editor_design: jsonFor(slideDesignSchema).nullable().optional(),
+            document_page: jsonFor(documentPageSchema).nullable().optional(),
+            page_size: jsonFor(pageSizeSchema).nullable().optional(),
           })
           .strict(),
       )
@@ -137,19 +159,31 @@ const contentSchema: z.ZodType<ContentRows> = z
   })
   .strict()
   .superRefine((rows, ctx) => {
+    const once = (keys: string[]) => new Set(keys).size === keys.length;
     const groups = new Set(rows.groups.map((g) => g.id));
     const slides = new Set(rows.slides.map((s) => s.id));
     const arrangements = new Set(rows.arrangements.map((a) => a.id));
     const ids = [...rows.groups, ...rows.slides, ...rows.elements, ...rows.cues, ...rows.arrangements].map(
       (r) => r.id,
     );
+    const master = masterFromJson(rows.editorMaster);
+    if (master) ids.push(master.id, ...master.elements.map((e) => e.id), ...master.cues.map((c) => c.id));
     const valid =
       new Set(ids).size === ids.length &&
       rows.slides.every((s) => groups.has(s.group_id)) &&
       [...rows.elements, ...rows.cues, ...rows.autoLines].every((r) => slides.has(r.slide_id)) &&
       rows.arrangementEntries.every((r) => arrangements.has(r.arrangement_id) && groups.has(r.group_id)) &&
       (rows.selectedArrangementId === null || arrangements.has(rows.selectedArrangementId));
-    if (!valid) ctx.addIssue({ code: 'custom', message: 'The kirtan has broken or repeated references.' });
+    const positions =
+      once(rows.groups.map((r) => String(r.position))) &&
+      once(rows.slides.map((r) => JSON.stringify([r.group_id, r.position]))) &&
+      once(rows.elements.map((r) => JSON.stringify([r.slide_id, r.position]))) &&
+      once(rows.cues.map((r) => JSON.stringify([r.slide_id, r.position]))) &&
+      once(rows.arrangements.map((r) => String(r.position))) &&
+      once(rows.arrangementEntries.map((r) => JSON.stringify([r.arrangement_id, r.position]))) &&
+      once(rows.autoLines.map((r) => JSON.stringify([r.slide_id, r.lang])));
+    if (!valid || !positions)
+      ctx.addIssue({ code: 'custom', message: 'The kirtan has broken or repeated references.' });
     try {
       const { doc, unreadable } = editDocOf(rows, 'Placeholder');
       if (unreadable > 0 || !editDocSchema.safeParse(doc).success)
@@ -196,6 +230,7 @@ export const bundleManifestSchema = z
             sha256: hash.nullable(),
             bytes: z.number().int().nonnegative().max(BUNDLE_LIMITS.entry),
             markers: mediaMarkersSchema.nullable(),
+            look: pictureLookSchema.nullable().optional(),
           })
           .strict(),
       )
