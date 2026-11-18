@@ -866,6 +866,15 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
       console.info(`Process numbers ${left.join(', ')}, taken again by other processes once these had ended`);
     return same.length === 0;
   };
+  /** Waits for these processes to end (as `ended` knows them): one still running after 10 s is named. */
+  const allEnded = async (pids: number[], seen: number) => {
+    try {
+      await until(() => ended(pids, seen), 10_000);
+    } catch {
+      const left = processes().filter((p) => pids.includes(p.pid));
+      throw new Error(`Still running 10 s on (seen running at ${String(seen)}): ${JSON.stringify(left)}`);
+    }
+  };
 
   it('automatically downloads at the highest offered quality up to 1080p, even with an old 2160p setting', async () => {
     const h = await youtube();
@@ -960,7 +969,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     const [first] = starts(h.fakeLog).map((l) => l.split(' '));
     const pid = Number(first?.[4]);
     const child = Number(first?.[6]);
-    await until(() => ended([pid, child], seen), 10_000);
+    await allEnded([pid, child], seen);
     h.air.on = false;
     await until(() => h.service.view().phase === 'done', 60_000);
     expect(starts(h.fakeLog)).toHaveLength(2);
@@ -989,7 +998,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     h.air.on = true;
     await until(() => h.service.view().waitingFor !== null);
     const [first] = looks();
-    await until(() => ended([Number(first?.[4]), Number(first?.[6])], seen), 10_000);
+    await allEnded([Number(first?.[4]), Number(first?.[6])], seen);
     await new Promise((r) => setTimeout(r, 300));
     expect(h.service.view().phase).toBe('looking');
     expect(looks()).toHaveLength(1);
@@ -1014,7 +1023,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     expect(readdirSync(h.folder).some((n) => n.startsWith('.drashti-youtube-'))).toBe(true);
     h.service.close();
     const [first] = starts(h.fakeLog).map((l) => l.split(' '));
-    await until(() => ended([Number(first?.[4]), Number(first?.[6])], seen), 10_000);
+    await allEnded([Number(first?.[4]), Number(first?.[6])], seen);
     expect(readdirSync(h.folder)).toEqual([]);
   });
 
@@ -1036,7 +1045,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
       chmodSync(workDir, 0o755);
     }
     const [first] = starts(h.fakeLog).map((l) => l.split(' '));
-    await until(() => ended([Number(first?.[4]), Number(first?.[6])], seen), 10_000);
+    await allEnded([Number(first?.[4]), Number(first?.[6])], seen);
     expect(readdirSync(h.folder)).toEqual([]);
     // The next start clears it: at once, or once it can when Windows still holds it a moment after its programs
     // ended (Session 59: that start threw EPERM; a start never fails on it now, below).
