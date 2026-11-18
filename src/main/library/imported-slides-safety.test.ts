@@ -313,7 +313,7 @@ describe('imported editor provenance and legacy safety', () => {
       const source = await bakedSource(w, false, bytes);
       const picture = editDocOf(source.before, 'Placeholder retained pages').doc.groups[0]?.slides[0]
         ?.elements[0];
-      if (!picture || picture.kind !== 'image') throw new Error('The generated saved picture is missing.');
+      if (picture?.kind !== 'image') throw new Error('The generated saved picture is missing.');
       const id = source.presentations.insert({
         libraryId: source.presentations.ensureLibrary('Placeholder real deck reader'),
         name: 'Placeholder generated over-limit deck',
