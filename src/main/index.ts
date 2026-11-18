@@ -1,3 +1,4 @@
+import { isInside } from './media/contained';
 import type { IpcMainInvokeEvent, Rectangle } from 'electron';
 import {
   app,
@@ -217,6 +218,8 @@ import { Revisions } from './library/revisions';
 import { styleNewText, themeLook } from './library/themes';
 import { defaultTransition, registerSlidesIpc } from './library/slides-ipc';
 import { registerWordsIpc } from './library/words-ipc';
+import { KirtanBundleExporter } from './import/kirtan-bundle-export-service';
+import { registerKirtanBundleIpc } from './library/kirtan-bundle-ipc';
 import { registerKirtansIpc } from './library/kirtans-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest, type SelfTestResult } from './selftest';
@@ -3229,6 +3232,7 @@ function start(): void {
   let drainSourceEdits: () => Promise<void> = () => Promise.resolve();
   let cancelPdfCopies: () => void = () => undefined;
   let drainPdfCopies: () => Promise<void> = () => Promise.resolve();
+  let drainKirtanExports: () => Promise<void> = () => Promise.resolve();
   // Simple Mode's playlist (Session 55, Part 18): the playlist open in Pro Mode when Drashti switched to Simple Mode, or
   // a new one when there was none; since Session 56 whichever its window opens after that (simple-playlist.ts).
   const simplePlaylist = new SimplePlaylist({
@@ -3442,7 +3446,13 @@ function start(): void {
     stop: async () => {
       pdfPictures.stopEditable();
       pdfCopies.stop();
-      await Promise.all([documentReaders.stop(), drainSourceEdits(), pdfGeometry.stop(), drainPdfCopies()]);
+      await Promise.all([
+        documentReaders.stop(),
+        drainSourceEdits(),
+        pdfGeometry.stop(),
+        drainPdfCopies(),
+        drainKirtanExports(),
+      ]);
       // A bounded retainOutput fallback is not confirmation that an owned writer/process stopped.
       return !sourceOutputQuarantined && pdfGeometry.exitConfirmed;
     },
@@ -4459,6 +4469,33 @@ function start(): void {
     contentChanged([id]);
     log.info('Library: a QR-code slide made');
     return { ok: true, id };
+  });
+  const bundleExporter = new KirtanBundleExporter({
+    spawn: spawnImportWorker,
+    dbFile: libraryFile(),
+    mediaDir,
+    schemaVersion: LATEST_VERSION,
+    onAir: () => streaming.inUse() || testOnAir,
+  });
+  drainKirtanExports = () => bundleExporter.stop();
+  stops.add('kirtan bundle exports', () => bundleExporter.stop());
+  registerKirtanBundleIpc({
+    fromOperator,
+    canExport: () => mode === 'pro' && documentQuit?.closing !== true,
+    exporter: bundleExporter,
+    pickOutput: async () => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export kirtan bundle',
+        defaultPath: 'Kirtans.drashti-kirtans',
+        buttonLabel: 'Save bundle',
+        filters: [{ name: 'Drashti kirtan bundle', extensions: ['drashti-kirtans'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      if (isInside(userDataDir, picked.filePath))
+        throw new Error('Choose a folder outside Drashti’s data folder.');
+      return picked.filePath;
+    },
   });
   registerKirtansIpc({
     presentations,
@@ -7829,6 +7866,12 @@ function start(): void {
         { what: 'the drop folder', stop: () => dropFolder.stop() },
         { what: 'downloads', stop: () => links.close() },
         { what: 'imports', stop: () => imports.stop() },
+        {
+          what: 'kirtan bundle exports',
+          stop: () => {
+            void bundleExporter.stop();
+          },
+        },
         { what: 'conversions', stop: () => conversions.close() },
       ],
       every: (ms, run) => {

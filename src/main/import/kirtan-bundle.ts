@@ -57,7 +57,12 @@ export function bundleMediaIds(rows: ContentRows): string[] {
 type PackedFile = { name: string; expectedHash?: string } & ({ bytes: Buffer } | { path: string });
 
 /** Stored entries, streamed to disk; neither media nor the whole archive ever has to fit in memory. */
-async function writeBundleZip(output: string, files: PackedFile[], signal?: AbortSignal): Promise<void> {
+async function writeBundleZip(
+  output: string,
+  files: PackedFile[],
+  signal?: AbortSignal,
+  gate: () => Promise<void> = () => Promise.resolve(),
+): Promise<void> {
   const out = await open(output, 'wx', 0o600);
   let at = 0;
   const write = async (bytes: Buffer, position = at) => {
@@ -72,6 +77,7 @@ async function writeBundleZip(output: string, files: PackedFile[], signal?: Abor
   const central: Buffer[] = [];
   try {
     for (const file of files) {
+      await gate();
       signal?.throwIfAborted();
       const offset = at;
       const name = Buffer.from(file.name);
@@ -87,6 +93,7 @@ async function writeBundleZip(output: string, files: PackedFile[], signal?: Abor
       const digest = createHash('sha256');
       const chunks = 'bytes' in file ? [file.bytes] : createReadStream(file.path, { signal });
       for await (const chunk of chunks) {
+        await gate();
         const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string);
         size += bytes.length;
         if (size > BUNDLE_LIMITS.entry || at + bytes.length > BUNDLE_LIMITS.archive)
@@ -137,6 +144,7 @@ export interface ExportKirtanBundle {
   includeMedia: boolean;
   freeBytes?: (folder: string) => number;
   signal?: AbortSignal;
+  onAir?: () => Promise<boolean>;
 }
 
 export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleManifest> {
@@ -260,7 +268,17 @@ export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleM
   const work = await mkdtemp(join(dirname(o.output), '.drashti-kirtan-export-'));
   try {
     const pending = join(work, 'bundle');
-    await writeBundleZip(pending, files, o.signal);
+    let lastAsked = 0;
+    const gate = async () => {
+      o.signal?.throwIfAborted();
+      if (!o.onAir || Date.now() - lastAsked < 250) return;
+      while (await o.onAir()) {
+        o.signal?.throwIfAborted();
+        await new Promise<void>((done) => setTimeout(done, 250));
+      }
+      lastAsked = Date.now();
+    };
+    await writeBundleZip(pending, files, o.signal, gate);
     o.signal?.throwIfAborted();
     await rename(pending, o.output);
   } finally {
