@@ -834,6 +834,8 @@ export function SlideLayerView({
       data-fading={fading ? 'true' : undefined}
       data-fade-start={fade?.start ?? undefined}
       data-transition={fading ? kind : undefined}
+      // A deck's own transition (Session 57): which of PowerPoint's it draws (X15's EF-5: the warm-up's tests name it).
+      data-deck-effect={fading && native ? native.deckEffect : undefined}
       // The two slides blend with each other only, then go over the background as one; a slide coming
       // in from the side stays inside the screen.
       style={{

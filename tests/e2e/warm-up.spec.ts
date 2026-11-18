@@ -176,6 +176,7 @@ const scenesIn = (page: Page, scope: string) =>
       return {
         key: s.dataset['warmScene'] ?? '',
         kind: layer?.dataset['transition'] ?? '',
+        deckEffect: layer?.dataset['deckEffect'] ?? '',
         fade: Number(layer?.dataset['fade'] ?? Number.NaN),
         apart: s.querySelector('[data-words-apart]')?.getAttribute('data-words-apart') ?? '',
         lowerThird: s.querySelector('[data-testid="lower-third"]') !== null,
@@ -217,6 +218,14 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
         movement === 'bold' ? (BOLD_APART[kind] ?? '') : kind === 'lines' || kind === 'words' ? kind : '';
       expect(s?.apart, `${what}: ${kind} on ${movement}, the words`).toBe(apart);
     }
+  // A deck Drashti plays itself (Session 57, render/warm-up-deck.ts): each of its own transitions drawn as itself,
+  // part-way (X15's EF-5: named by what it draws, not only by how far through).
+  for (const effect of ['wipe', 'cover']) {
+    const s = scenes.find((x) => x.key === `deck-${effect}/calm`);
+    expect(s?.deckEffect, `${what}: a deck's own ${effect}`).toBe(effect);
+    expect(s?.fade, `${what}: a deck's own ${effect} part-way`).toBeGreaterThan(0.3);
+    expect(s?.fade, `${what}: a deck's own ${effect} part-way`).toBeLessThan(0.7);
+  }
   for (const movement of MOVEMENTS) {
     const fade = scenes.find((x) => x.key === `dissolve/${movement}`);
     expect(fade?.messages, `${what}: a message coming in on ${movement}`).toBe(true);
