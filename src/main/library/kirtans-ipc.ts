@@ -1,6 +1,11 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { IPC } from '../../shared/ipc';
-import type { KirtanResult, MakeTranslitResult, TracksResult } from '../../shared/kirtans';
+import {
+  kirtanCategorySchema,
+  type KirtanResult,
+  type MakeTranslitResult,
+  type TracksResult,
+} from '../../shared/kirtans';
 import {
   cleanDetails,
   DEFAULT_CATEGORIES,
@@ -187,7 +192,7 @@ export function registerKirtansIpc({
 
   handle(IPC.kirtans.addCategory, (e, name) => {
     if (!fromOperator(e)) return onlyOperator;
-    const n = z.string().trim().min(1).max(60).safeParse(name);
+    const n = kirtanCategorySchema.safeParse(name);
     if (!n.success) return { ok: false as const, message: 'A category needs a name (up to 60 letters).' };
     const added = z.array(z.string()).safeParse(settings.get(CATEGORIES));
     const list = added.success ? added.data : [];

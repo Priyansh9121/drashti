@@ -70,9 +70,27 @@ test('a message keeps its own look: top left in a box, yellow, bigger, sliding i
   // Its own: top left, a box, yellow, two steps bigger, bold, sliding in from the left edge, for 10 seconds.
   await look.getByRole('radio', { name: 'Top left' }).click();
   await look.getByRole('combobox', { name: 'Behind the words' }).selectOption('box');
-  await look.getByRole('combobox', { name: 'Comes in and goes out' }).selectOption({
-    label: 'Slide in from the left edge',
-  });
+  // Found with the studio's one search box, where it is chosen (X14, C13's search): the list shows only what has
+  // every word typed; words nothing has say so, with the way back.
+  const animation = look.getByRole('combobox', { name: 'Comes in and goes out' });
+  const options = () => animation.locator('option').allTextContents();
+  const find = look.getByTestId('message-animation-search');
+  await find.fill('zzzz');
+  await expect(look.getByTestId('message-animation-search-status')).toHaveText('Nothing matches “zzzz”.');
+  await look.getByRole('button', { name: 'Clear the search' }).click();
+  await expect(find).toHaveValue('');
+  const everything = (await options()).length;
+  await find.fill('slide left');
+  await expect.poll(async () => (await options()).length).toBeLessThan(everything);
+  const found = await options();
+  // The one chosen (the standard look's Fade in) stays listed, first; the rest is what has every word.
+  expect(found[0]).toBe('Fade in');
+  expect(found.slice(1)).toContain('Slide in from the left edge');
+  expect(found.slice(1)).not.toContain('Fade in');
+  await animation.selectOption({ label: 'Slide in from the left edge' });
+  await find.fill('');
+  await expect.poll(async () => (await options()).length).toBe(everything);
+  await expect(animation).toHaveValue('across-left-steady');
   await look.getByRole('combobox', { name: 'How long' }).selectOption('10');
   await look.getByRole('button', { name: 'Bigger' }).click();
   await look.getByRole('button', { name: 'Bigger' }).click();
