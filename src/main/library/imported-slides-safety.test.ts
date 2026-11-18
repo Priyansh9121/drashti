@@ -24,6 +24,7 @@ import { OriginalsStore } from '../import/originals-store';
 import { originalWorld, PLACEHOLDER_WORDS } from '../import/testing/original-fixture';
 import { nativeSourceReader } from '../import/testing/native-source-reader';
 import { makeTestPptx } from '../import/testing/make-pptx';
+import { editablePptxFixture, slideXml, wordsShape } from '../import/testing/editable-pptx-fixture';
 import { Revisions } from './revisions';
 import { editDocOf, rowOf } from './slides';
 import { registerSlidesIpc, type SlidesIpcController } from './slides-ipc';
@@ -101,9 +102,9 @@ function originalsUnchanged(w: World) {
 }
 
 /** A genuine retained source and realistic stored baking metadata, with no clip playback. */
-async function bakedSource(w: World, editedFirst = false) {
+async function bakedSource(w: World, editedFirst = false, sourceBytes?: Buffer) {
   const words = 'Placeholder copied animated source';
-  const bytes = makeTestPptx([{ text: words, color: '204060', animated: true }]);
+  const bytes = sourceBytes ?? makeTestPptx([{ text: words, color: '204060', animated: true }]);
   const file = join(w.root, 'Placeholder copied animated source.pptx');
   writeFileSync(file, bytes);
   const originals = new OriginalsStore(w.db, w.mediaDir, { freeBytes: () => 1024 ** 4 });
@@ -285,6 +286,84 @@ describe('imported editor provenance and legacy safety', () => {
       const opened = await open(source.id);
       expect(opened.doc.groups[0]?.slides[0]?.elements.map(({ kind }) => kind)).toEqual(['image']);
       expect(opened.sourceIssues).toEqual([note]);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('reads a generated over-limit deck through Edit slides, keeping its picture and the limit note with editable siblings', async () => {
+    const w = originalWorld();
+    try {
+      const shape = (index: number, text: string) =>
+        wordsShape(`<a:p><a:r><a:rPr sz="2400"/><a:t>${text}</a:t></a:r></a:p>`).replace(
+          'id="2"',
+          `id="${String(index + 2)}"`,
+        );
+      const bytes = editablePptxFixture({
+        slides: [
+          slideXml(
+            Array.from({ length: 501 }, (_, index) =>
+              shape(index, `Placeholder over-limit object ${String(index + 1)}`),
+            ).join(''),
+          ),
+          slideXml(shape(0, 'Placeholder native sibling one')),
+          slideXml(shape(0, 'Placeholder native sibling two')),
+        ],
+      });
+      const source = await bakedSource(w, false, bytes);
+      const picture = editDocOf(source.before, 'Placeholder retained pages').doc.groups[0]?.slides[0]
+        ?.elements[0];
+      if (!picture || picture.kind !== 'image') throw new Error('The generated saved picture is missing.');
+      const id = source.presentations.insert({
+        libraryId: source.presentations.ensureLibrary('Placeholder real deck reader'),
+        name: 'Placeholder generated over-limit deck',
+        width: 1280,
+        height: 720,
+        source: { kind: 'pictures', path: source.file, ref: null, importedAt: null },
+        sourceHash: source.ref.sha256,
+        groups: [
+          {
+            name: '',
+            slides: [0, 1, 2].map((page) => ({
+              label: `Placeholder saved page ${String(page + 1)}`,
+              documentPage: { ...source.ref, page },
+              elements: [{ ...picture, id: randomUUID() }],
+            })),
+          },
+        ],
+      });
+      const before = source.presentations.content(id);
+      // A spy around the actual source reader: it reads the retained OOXML and performs the real extraction.
+      const reader = vi.fn(nativeSourceReader);
+      register(w, source.presentations, reader);
+      const opened = await open(id);
+      expect(reader).toHaveBeenCalledWith(
+        expect.objectContaining({ ext: 'pptx', file: source.owned, sourcePages: [0, 1, 2] }),
+      );
+      const note = 'Page 1 of the original has more than 500 objects, so it stays as its saved picture.';
+      expect(await reader.mock.results[0]?.value).toMatchObject({
+        ok: true,
+        total: 3,
+        failed: [0],
+        failedNotes: { 0: [note] },
+        pages: [{ sourceIndex: 1 }, { sourceIndex: 2 }],
+      });
+      const slides = opened.doc.groups.flatMap((group) => group.slides);
+      expect(slides).toHaveLength(3);
+      expect(slides[0]?.elements).toEqual([
+        expect.objectContaining({ kind: 'image', mediaId: picture.mediaId }),
+      ]);
+      for (const [index, words] of [
+        [1, 'Placeholder native sibling one'],
+        [2, 'Placeholder native sibling two'],
+      ] as const)
+        expect(slides[index]?.elements).toEqual([expect.objectContaining({ kind: 'text', text: words })]);
+      expect(opened.sourceIssues).toEqual([note]);
+      expect(source.presentations.content(id)).toEqual(before);
+      expect(await save(id, opened)).toMatchObject({ ok: true });
+      expect(source.presentations.content(id)).toEqual(before);
+      expect(readFileSync(source.file)).toEqual(bytes);
+      expect(readFileSync(source.owned)).toEqual(bytes);
     } finally {
       w.clean();
     }
