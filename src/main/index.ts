@@ -373,6 +373,7 @@ import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
+import { OscService } from './osc/service';
 import { captureWithShowAbort } from './network/slide-picture';
 import { PhoneFiles } from './network/phone-files';
 import { AnnouncementService } from './network/announcement-service';
@@ -5419,6 +5420,28 @@ function start(): void {
   network = net;
   net.resume();
   stops.add('network', () => net.close());
+  const osc = new OscService({
+    settings: { get: (key) => settings.get(key), set: laterSetting },
+    letIn: isLetIn,
+    canConfigure: () => mode === 'pro',
+    run: (action) => net.runShowAction(action).status === 200,
+    changed: (status) => sendToOperator(IPC.osc.changed, status),
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  void osc.resume();
+  stops.add('OSC', () => osc.close());
+  handle(IPC.osc.status, (e) => {
+    if (!fromOperator(e)) throw new Error('Only the operator window can read OSC settings.');
+    return osc.status();
+  });
+  handle(IPC.osc.configure, (e, settings) =>
+    fromOperator(e)
+      ? osc.configure(settings)
+      : { ok: false as const, message: 'Only the operator window can change OSC settings.' },
+  );
   // On air or off, the phones' pieces come slower or at full speed again (Session 54).
   phoneFiles.watch(() => {
     net.uploadsChanged();
@@ -7845,6 +7868,7 @@ function start(): void {
   );
   onAccessChange(() => {
     net.accessChanged();
+    void osc.accessChanged();
   });
   // Each presentation put up, counted for the Access List: never which.
   engine.onChange(showCounter((kind) => behind?.service.count(kind)));

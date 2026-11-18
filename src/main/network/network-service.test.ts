@@ -1277,16 +1277,30 @@ describe('while Drashti is not let in (Session 54, access by Gmail)', () => {
   });
 });
 
-
 describe('OSC uses the API action layer without a paired phone', () => {
   it('validates commands, uses the engine, and never accepts an action that changes settings', async () => {
     const t = setup();
     expect(t.service.status().on).toBe(false);
     expect(t.service.runShowAction({ op: 'command', args: { type: 'next' } }).status).toBe(200);
     expect(t.commands).toEqual([{ type: 'next' }]);
-    expect(t.service.runShowAction({ op: 'command', args: { type: 'setStageMessage', text: 'Placeholder stage call' } }).status).toBe(200);
-    expect(t.service.runShowAction({ op: 'command', args: { type: 'setBackground', background: { kind: 'color', color: '#000000' } } }).status).toBe(403);
-    expect(t.service.runShowAction({ op: 'command', args: { type: 'goLive', presentationId: 'p001', slideIndex: -1 } }).status).toBe(400);
+    expect(
+      t.service.runShowAction({
+        op: 'command',
+        args: { type: 'setStageMessage', text: 'Placeholder stage call' },
+      }).status,
+    ).toBe(200);
+    expect(
+      t.service.runShowAction({
+        op: 'command',
+        args: { type: 'setBackground', background: { kind: 'color', color: '#000000' } },
+      }).status,
+    ).toBe(403);
+    expect(
+      t.service.runShowAction({
+        op: 'command',
+        args: { type: 'goLive', presentationId: 'p001', slideIndex: -1 },
+      }).status,
+    ).toBe(400);
     await t.service.close();
   });
 
@@ -1299,20 +1313,42 @@ describe('OSC uses the API action layer without a paired phone', () => {
     expect(t.service.runShowAction({ op: 'command', args: { type: 'next' } }).status).toBe(200);
     await t.service.close();
     const u = setup({ locked: true });
-    expect(u.service.runShowAction({ op: 'command', args: { type: 'setStageMessage', text: 'Placeholder' } }).status).toBe(403);
-    expect(u.service.runShowAction({ op: 'command', args: { type: 'goLive', presentationId: 'p007', slideIndex: 0 } }).status).toBe(403);
-    expect(u.service.runShowAction({ op: 'command', args: { type: 'goLive', presentationId: 'p001', slideIndex: 0 } }).status).toBe(200);
+    expect(
+      u.service.runShowAction({ op: 'command', args: { type: 'setStageMessage', text: 'Placeholder' } })
+        .status,
+    ).toBe(403);
+    expect(
+      u.service.runShowAction({
+        op: 'command',
+        args: { type: 'goLive', presentationId: 'outside-all-playlists', slideIndex: 0 },
+      }).status,
+    ).toBe(403);
+    expect(
+      u.service.runShowAction({
+        op: 'command',
+        args: { type: 'goLive', presentationId: 'p001', slideIndex: 0 },
+      }).status,
+    ).toBe(200);
     expect(u.commands).toEqual([{ type: 'goLive', presentationId: 'p001', slideIndex: 0 }]);
     await u.service.close();
   });
 
   it('uses API message template filling and the existing hide id, never raw showMessage content', async () => {
     const t = setup();
-    expect(t.service.runShowAction({ op: 'message.show', args: { templateId: 'missing', values: {} } }).status).toBe(404);
+    expect(
+      t.service.runShowAction({ op: 'message.show', args: { templateId: 'missing', values: {} } }).status,
+    ).toBe(404);
     expect(t.commands).toHaveLength(0);
-    expect(t.service.runShowAction({ op: 'message.hide', args: { templateId: 'placeholder-template' } }).status).toBe(200);
+    expect(
+      t.service.runShowAction({ op: 'message.hide', args: { templateId: 'placeholder-template' } }).status,
+    ).toBe(200);
     expect(t.commands).toEqual([{ type: 'hideMessage', messageId: messageItemId('placeholder-template') }]);
-    expect(t.service.runShowAction({ op: 'command', args: { type: 'showMessage', message: { id: 'raw', text: 'Placeholder' } } }).status).toBe(403);
+    expect(
+      t.service.runShowAction({
+        op: 'command',
+        args: { type: 'showMessage', message: { id: 'raw', text: 'Placeholder' } },
+      }).status,
+    ).toBe(403);
     await t.service.close();
   });
 });

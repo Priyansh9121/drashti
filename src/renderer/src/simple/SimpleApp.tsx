@@ -18,6 +18,7 @@ import { PlayingBars } from '../markers/PlayingBars';
 import { setMidiHandler } from '../midi/midi-store';
 import { AudioGroup } from '../music/AudioGroup';
 import { NetworkBadge } from '../network/NetworkBadge';
+import { OscBadge } from '../osc/OscControl';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { useNodes } from '../nodes/nodes-store';
 import { playItem, runSimpleAction, useNotice } from '../operator/actions';
@@ -275,6 +276,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           <Badge tone="info">Simple Mode</Badge>
           <OnAirBadges />
           <NetworkBadge />
+          <OscBadge />
           {/* Its end is cut, if it must be, rather than drawn over the way out beside it. */}
           <div className="min-w-0 flex-1 overflow-hidden">
             <LiveStatus />

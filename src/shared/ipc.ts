@@ -101,6 +101,7 @@ import type {
 } from './stream';
 import type { SavePictureResult, SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
+import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
 import type {
@@ -738,6 +739,8 @@ export const IPC = {
     /** One of the show's F-keys pressed in the editor's window: the operator window acts on it, as if pressed there. */
     showKey: 'slideeditor:show-key',
   },
+  /** OSC settings belong only to this computer's operator window, in Pro Mode. */
+  osc: { status: 'osc:status', configure: 'osc:configure', changed: 'osc:changed' },
   /** The MIDI controller's settings (changing them: operator window, Pro Mode). */
   midi: {
     get: 'midi:get',
@@ -1537,6 +1540,8 @@ export interface InvokeContract {
   [IPC.slideEditor.fontFamilies]: { args: []; result: readonly string[] };
   [IPC.slideEditor.showKey]: { args: [key: string]; result: null };
   [IPC.slideEditor.close]: { args: []; result: null };
+  [IPC.osc.status]: { args: []; result: OscStatus };
+  [IPC.osc.configure]: { args: [settings: OscSettings]; result: OscResult };
   [IPC.midi.get]: { args: []; result: MidiSettings };
   [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };
   [IPC.midi.report]: { args: [seen: MidiSeen]; result: null };
@@ -1719,6 +1724,7 @@ export interface InvokeContract {
 
 /** main -> renderer event channels and their payloads. */
 export interface EventContract {
+  [IPC.osc.changed]: OscStatus;
   [IPC.appearance.changed]: AppearanceNow;
   [IPC.appearance.open]: { at: number };
   [IPC.engine.message]: EngineMessage;
