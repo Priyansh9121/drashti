@@ -262,6 +262,22 @@ describe('OSC retry and clock safety', () => {
 });
 
 describe('OSC ingress and action bounds', () => {
+  it('limits actions at execution too, so queued bundles cannot double the burst when due', async () => {
+    vi.useFakeTimers();
+    const t = setup();
+    await t.enable();
+    const twenty = () => bundle(ntp(Date.now() + 2000), ...Array.from({ length: 20 }, () => message()));
+    t.sockets[0]?.packet(twenty());
+    t.sockets[0]?.packet(twenty());
+    expect(t.service.status().pending).toBe(40);
+    vi.advanceTimersByTime(2000);
+    expect(t.actions).toHaveLength(40);
+    t.sockets[0]?.packet(bundle(1n, ...Array.from({ length: 20 }, () => message())));
+    expect(t.actions).toHaveLength(40);
+    expect(t.service.status().dropped).toBe(1);
+    await t.service.close();
+  });
+
   it('caps the future queue even when a sender keeps its action rate within the allowance', async () => {
     vi.useFakeTimers();
     const t = setup();
