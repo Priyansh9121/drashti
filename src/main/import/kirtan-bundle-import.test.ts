@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { ImportRepo } from '../db/imports';
 import { PresentationRepo } from '../db/presentations';
 import { SettingsRepo } from '../db/settings';
+import { MediaRepo } from '../db/media';
+import { PLAIN } from '../../shared/picture-look';
 import type { ImportOptions } from '../../shared/import';
 import type { BundleKirtan, BundleManifest } from './kirtan-bundle-schema';
 import { runImport } from './pipeline';
@@ -46,6 +48,71 @@ async function setup() {
   return { source, target, run, content };
 }
 describe('kirtan bundle import and re-import', () => {
+  it('keeps attached media points and picture looks, including a generated picture', async () => {
+    const t = await setup();
+    const bmp = Buffer.alloc(58);
+    bmp.write('BM');
+    bmp.writeUInt32LE(58, 2);
+    bmp.writeUInt32LE(54, 10);
+    bmp.writeUInt32LE(40, 14);
+    bmp.writeUInt32LE(1, 18);
+    bmp.writeUInt32LE(1, 22);
+    bmp.writeUInt16LE(1, 26);
+    bmp.writeUInt16LE(24, 28);
+    bmp[54] = 68;
+    bmp[55] = 85;
+    bmp[56] = 102;
+    const picture = join(t.source.dir, 'Placeholder pixel.bmp');
+    await writeFile(picture, bmp);
+    const imported = await t.source.media.importFile(picture, { kind: 'media', path: picture });
+    if (!('mediaId' in imported)) throw new Error('Generated pixel was not imported');
+    const rows = must(t.source.repo.content(t.source.id));
+    rows.elements.push({
+      id: randomUUID(),
+      slide_id: must(rows.slides[0]).id,
+      position: 1,
+      kind: 'image',
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 100,
+      rotation: 0,
+      props: JSON.stringify({ mediaId: imported.mediaId, fit: 'fit' }),
+    });
+    t.source.repo.setContent(rows);
+    const look = { ...PLAIN, brightness: 0.2, turn: 90 as const };
+    const points = {
+      startMs: 0,
+      endMs: 1,
+      markers: [{ id: 'placeholder-marker', name: 'Placeholder mark', atMs: 0 }],
+    };
+    new MediaRepo(t.source.db).setLook(imported.mediaId, look);
+    new MediaRepo(t.source.db).setMarkers(must(rows.kirtan?.row.audio_media_id), points);
+    await t.source.exportBundle();
+    await t.run();
+    const images = t.target.db.prepare("SELECT id FROM media WHERE kind = 'image'").get() as
+      { id: string } | undefined;
+    expect(new MediaRepo(t.target.db).look(must(images).id)).toEqual(look);
+    expect(new MediaRepo(t.target.db).markersOf(must(t.content().kirtan?.row.audio_media_id))).toEqual(
+      points,
+    );
+  });
+
+  it('can supply media omitted from the first bundle and preserves locally edited notes', async () => {
+    const t = await setup();
+    await t.source.exportBundle(false);
+    await t.run();
+    const id = t.content().presentationId;
+    await t.source.exportBundle(true);
+    expect((await t.run()).report.items[0]?.outcome).toBe('replaced');
+    const audioId = t.content().kirtan?.row.audio_media_id;
+    expect(t.target.db.prepare('SELECT missing FROM media WHERE id = ?').pluck().get(audioId)).toBe(0);
+    t.target.db.prepare("UPDATE presentations SET notes = 'Placeholder local notes' WHERE id = ?").run(id);
+    expect((await t.run()).report.items[0]?.issues[0]?.code).toBe('bundle-local-edit');
+    expect(t.target.db.prepare('SELECT notes FROM presentations WHERE id = ?').pluck().get(id)).toBe(
+      'Placeholder local notes',
+    );
+  });
   it('imports everything into a fresh library through the normal import pipeline, with one report per kirtan', async () => {
     const t = await setup();
     const { summary, report, wrote } = await t.run();
@@ -187,6 +254,61 @@ describe('damaged and hostile kirtan bundles', () => {
       ];
     });
   }
+
+  for (const field of [
+    'darken',
+    'transition',
+    'editor_design',
+    'editor_guides',
+    'deck',
+    'document_page',
+    'page_size',
+  ] as const)
+    it(`refuses invalid nested ${field} JSON with an otherwise matching checksum`, async () => {
+      const t = await setup();
+      const entries = await parts(t);
+      const doc = JSON.parse(String(must(entries[1]).data)) as BundleKirtan;
+      must(doc.content.slides[0])[field] = '{damaged';
+      const bytes = Buffer.from(JSON.stringify(doc));
+      const manifest = JSON.parse(String(must(entries[0]).data)) as BundleManifest;
+      must(manifest.kirtans[0]).sha256 = hash(bytes);
+      must(manifest.kirtans[0]).bytes = bytes.length;
+      const path = join(t.source.dir, 'Nested damaged.drashti-kirtans');
+      await writeFile(
+        path,
+        makeZip([
+          { name: 'manifest.json', data: JSON.stringify(manifest) },
+          { ...must(entries[1]), data: bytes },
+          ...entries.slice(2),
+        ]),
+      );
+      expect((await t.run(path)).summary.totals.failed).toBe(1);
+      expect(t.target.db.prepare('SELECT count(*) FROM presentations').pluck().get()).toBe(0);
+    });
+
+  it('validates every kirtan before applying a multi-kirtan bundle, including repeated made-line keys', async () => {
+    const t = await setup();
+    const entries = await parts(t);
+    const second = JSON.parse(String(must(entries[1]).data)) as BundleKirtan;
+    const id = randomUUID();
+    second.content.presentationId = id;
+    second.content.autoLines.push(must(second.content.autoLines[0]));
+    const bytes = Buffer.from(JSON.stringify(second));
+    const manifest = JSON.parse(String(must(entries[0]).data)) as BundleManifest;
+    const entry = `kirtans/${id}.json`;
+    manifest.kirtans.push({ id, entry, sha256: hash(bytes), bytes: bytes.length });
+    const path = join(t.source.dir, 'Two with one damaged.drashti-kirtans');
+    await writeFile(
+      path,
+      makeZip([
+        { name: 'manifest.json', data: JSON.stringify(manifest) },
+        ...entries.slice(1),
+        { name: entry, data: bytes },
+      ]),
+    );
+    expect((await t.run(path)).summary.totals.failed).toBe(1);
+    expect(t.target.db.prepare('SELECT count(*) FROM presentations').pluck().get()).toBe(0);
+  });
   const attacks: {
     name: string;
     change: (entries: ZipWriterEntry[]) => ZipWriterEntry[] | Buffer;
