@@ -8,6 +8,7 @@ import { OpeningAtStart } from '../opening/OpeningAtStart';
 import { WindowBoundary } from '../ui/WindowBoundary';
 import { reportRenderError } from '../ui/render-errors';
 import { reportFitFailuresTo } from '../render/shrink-to-fit';
+import { installFitFailureTestIfAsked } from '../render/fit-failure-test';
 import { setLiveWindowSize } from '../render/live-window';
 import { holdClock } from '../render/clock';
 import { OPERATOR_TRACKS, startMotionProbeIfAsked } from '../render/motion-probe';
@@ -33,6 +34,7 @@ const caught = reportRenderError('operator window', 'caught', sendError);
 reportFitFailuresTo((error) => {
   caught(error, {});
 });
+installFitFailureTestIfAsked();
 createRoot(root, {
   onUncaughtError: reportRenderError('operator window', 'uncaught', sendError),
   onCaughtError: caught,
