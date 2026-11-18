@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { cleanNameSchema } from './rename-name';
 
 /*
  * Playback markers (Session 14). A video or a sound in the media library
@@ -52,7 +53,7 @@ const markersWith = (name: z.ZodType<string, string>): z.ZodType<MediaMarkers> =
 export const mediaMarkersSchema = markersWith(z.string().trim().min(1).max(60));
 
 /** A file's points as the operator gives them: Set markers, a playlist row's trim (X14). */
-export const mediaMarkersInputSchema = markersWith(z.string().trim().min(1).max(60));
+export const mediaMarkersInputSchema = markersWith(cleanNameSchema(60));
 
 export type MarkersResult = { ok: true; markers: MediaMarkers } | { ok: false; message: string };
 
