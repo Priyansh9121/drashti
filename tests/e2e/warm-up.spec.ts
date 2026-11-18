@@ -238,6 +238,31 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
   }
   // The idle rotation's dissolve went with it (Session 55, Part 12): none is drawn.
   expect(scenes.map((x) => x.key)).not.toContain('idle');
+  // The wide Cover's own shade must reach the compositor without the old outer brightness(0), which flattened
+  // its RGBA pass and left a new pipeline for the first Cover on air (X12 wide). The cover stays above every scene.
+  const hiding = await page.evaluate((scope) => {
+    const host = document.querySelector(scope)?.querySelector<HTMLElement>('[data-warm-up]');
+    const tree = host?.shadowRoot;
+    const wide = tree?.querySelector<HTMLElement>('[data-warm-scene="deck-cover-wide/calm/off-grid"]');
+    const cover = tree?.querySelector<HTMLElement>('[data-warm-cover]');
+    const filters: string[] = [];
+    for (let el = wide?.parentElement; el; el = el.parentElement) filters.push(getComputedStyle(el).filter);
+    if (host) filters.push(getComputedStyle(host).filter);
+    return {
+      wide: wide !== null && wide !== undefined,
+      filters,
+      opacity: cover ? getComputedStyle(cover).opacity : null,
+      background: cover ? getComputedStyle(cover).backgroundColor : null,
+      inset: cover ? getComputedStyle(cover).inset : null,
+      above: !!wide && !!cover && !!(wide.compareDocumentPosition(cover) & Node.DOCUMENT_POSITION_FOLLOWING),
+    };
+  }, scope);
+  expect(hiding.wide, `${what}: a full-picture wide Cover`).toBe(true);
+  expect(hiding.filters.every((filter) => filter === 'none'), `${what}: no outer filter`).toBe(true);
+  expect(hiding.opacity, `${what}: the black cover keeps the GPU drawing underneath`).toBe('0.999');
+  expect(hiding.background, `${what}: a black cover`).toBe('rgb(0, 0, 0)');
+  expect(hiding.inset, `${what}: the cover fills the warm-up`).toBe('0px');
+  expect(hiding.above, `${what}: the cover follows the drawing`).toBe(true);
   // The audience sees none of it.
   expect(await brightest(page, `${scope} [data-warm-up]`), `${what}: black throughout`).toBe(0);
 }
