@@ -118,6 +118,7 @@ import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
 import type { SavePictureResult, SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
+import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
 import type {
@@ -929,6 +930,12 @@ export interface DrashtiBridge {
     dirty(dirty: boolean): Promise<null>;
     close(): Promise<null>;
     onAskClose(listener: () => void): () => void;
+  };
+  /** OSC: explicitly allowed local UDP senders, independent of Phones. */
+  osc: {
+    status(): Promise<OscStatus>;
+    configure(settings: OscSettings): Promise<OscResult>;
+    onChanged(listener: (status: OscStatus) => void): () => void;
   };
   /** The MIDI controller: which device, and what its notes and controllers do. */
   midi: {

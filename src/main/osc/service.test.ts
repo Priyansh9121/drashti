@@ -49,7 +49,7 @@ class FakeSocket extends EventEmitter {
   }
 }
 
-function setup(saved: unknown = undefined) {
+function setup(saved?: unknown) {
   let letIn = true;
   let pro = true;
   const settings = new Map<string, unknown>([['osc', saved]]);

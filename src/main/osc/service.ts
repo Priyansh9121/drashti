@@ -77,7 +77,7 @@ export class OscService {
     };
     if (saved !== undefined && !parseOscSettings(saved))
       deps.log('warn', 'OSC settings could not be read; OSC stays off');
-    this.now = deps.now ?? Date.now;
+    this.now = () => this.deps.now?.() ?? Date.now();
     this.ingress = new RateLimiter(50, 200, this.now);
     this.perSender = new RateLimiter(20, 40, this.now);
     this.overall = new RateLimiter(40, 80, this.now);
