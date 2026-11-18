@@ -116,7 +116,15 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   // The page hears Main's GPU choice even when a test asks LIVE to keep warming.
   const chipless = useDrawingMode((s) => s.chipless);
   const noGpu = chipless && (!HOLD_WARM_UP || NO_GPU_ENDS_HOLD);
-  const warming = !warmed && !drawsSomething && !practising && !noGpu;
+  // A warm-up begun before then is stopped, and the show waits for its last step (Session 58, h-black2, fault 2: drawn
+  // at once, the show's first frames came with their tiles missing, black then 256-px parts, for up to 3.3 s).
+  const [began, setBegan] = useState(false);
+  const [stopped, setStopped] = useState(false);
+  const warmUpStopped = useCallback(() => {
+    setStopped(true);
+  }, []);
+  const warming = !warmed && !drawsSomething && !practising && !(noGpu && (!began || stopped));
+  if (warming && !began) setBegan(true);
   // Release the warm-up's clock before rendering the show's children into the existing preview box.
   // On a cut the warm-up's passive cleanup can run after the show's first render (NG-1).
   const [showReady, setShowReady] = useState(!warming);
@@ -139,7 +147,15 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
       <SceneBoundary resetKey={rev} fallbackClassName="aspect-video w-full bg-black">
         <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
           {warming && (
-            <WarmUp page="live" canvas={canvas} scaling={scaling} hold={HOLD_WARM_UP} onDone={warmedUp} />
+            <WarmUp
+              page="live"
+              canvas={canvas}
+              scaling={scaling}
+              hold={HOLD_WARM_UP}
+              stop={noGpu}
+              onDone={warmedUp}
+              onStopped={warmUpStopped}
+            />
           )}
           {state && showing && (
             <Scene
