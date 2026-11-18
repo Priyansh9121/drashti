@@ -276,6 +276,17 @@ describe('OSC ingress and action bounds', () => {
     expect(t.actions).toHaveLength(40);
     expect(t.service.status().dropped).toBe(1);
     await t.service.close();
+    const u = setup();
+    await u.enable(['10.0.0.1', '10.0.0.2', '10.0.0.3']);
+    const future = bundle(ntp(Date.now() + 2000), ...Array.from({ length: 32 }, () => message()));
+    u.sockets[0]?.packet(future, '10.0.0.1');
+    u.sockets[0]?.packet(future, '10.0.0.2');
+    vi.advanceTimersByTime(2000);
+    expect(u.actions).toHaveLength(64);
+    u.sockets[0]?.packet(bundle(1n, ...Array.from({ length: 20 }, () => message())), '10.0.0.3');
+    expect(u.actions).toHaveLength(64);
+    expect(u.service.status().dropped).toBe(1);
+    await u.service.close();
   });
 
   it('caps the future queue even when a sender keeps its action rate within the allowance', async () => {
