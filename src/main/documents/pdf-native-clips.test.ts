@@ -279,7 +279,7 @@ describe('whole paint on PDF effect pages', () => {
     await withPage(nonIsolatedGroupPdf(), async (doc, page) => {
       const list = await page.getOperatorList({ annotationMode: 0 });
       const groups = list.fnArray.flatMap((fn, index) =>
-        fn === pdfjs.OPS.beginGroup ? [list.argsArray[index]] : [],
+        fn === pdfjs.OPS.beginGroup ? [list.argsArray[index] as unknown] : [],
       );
       // Prove this exercises PDF.js's non-isolated fast path, rather than an ordinary form or isolated group.
       expect(groups).toMatchObject([[{ isolated: false, knockout: false }]]);
