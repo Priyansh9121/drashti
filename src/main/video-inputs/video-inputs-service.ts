@@ -17,6 +17,7 @@ import {
 } from '../../shared/video-inputs';
 import type { CameraSystem } from './camera';
 import { readVideoInputsKept, writeVideoInputs } from './video-inputs-file';
+import { cleanRenameName } from '../../shared/rename-name';
 
 /*
  * Video inputs as the main process keeps them (Session 50): this computer's list (named in Pro Mode's Media, kept
@@ -430,7 +431,8 @@ export class VideoInputsService {
 
   /** A name and a device as they are kept, or why not. */
   private check(fields: z.infer<typeof fieldsSchema>, self: string | null): Omit<VideoInput, 'id'> | string {
-    const name = nfc(fields.name.trim());
+    // Cleaned as Rename… cleans a name (X14), as a phone's name for an input is: nothing visible is no name.
+    const name = nfc(cleanRenameName(fields.name));
     if (name === '') return 'Give the video input a name, such as “Input 1”.';
     if (name.length > VIDEO_INPUT_NAME_MAX)
       return `A video input’s name has ${String(VIDEO_INPUT_NAME_MAX)} characters at most.`;
