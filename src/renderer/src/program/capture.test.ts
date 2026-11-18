@@ -134,7 +134,13 @@ afterEach(async () => {
   }
 });
 
-async function platform(tracks: GeneratedTrack[]) {
+/** The page's show on screen (Session 58: the encoder takes the page's frames from then; absent before). */
+const showOnScreen = (capture: unknown) => {
+  (capture as { showOnScreen?: () => void }).showOnScreen?.();
+};
+
+/** `onScreen`: the page's show already on screen as capture starts (as when the stream's page has long been up). */
+async function platform(tracks: GeneratedTrack[], { onScreen = true }: { onScreen?: boolean } = {}) {
   vi.resetModules();
   const lines: string[] = [];
   vi.spyOn(console, 'info').mockImplementation((message: unknown) => {
@@ -196,6 +202,7 @@ async function platform(tracks: GeneratedTrack[]) {
     () => -100,
     () => null,
   );
+  if (onScreen) showOnScreen(capture);
   const deliver = (port: EncoderPort) => {
     const event = new Event('message');
     Object.defineProperties(event, {
@@ -308,5 +315,86 @@ describe('Program capture after a reader ends', () => {
     expect(port.close).toHaveBeenCalledTimes(1);
     expect(p.getDisplayMedia).toHaveBeenCalledTimes(1);
     expect(p.body.dataset['capture']).toBe('off');
+  });
+});
+
+describe('the stream starts from the first frame that shows the show (Session 58, h-black2)', () => {
+  it('gives a new encoder none of the frames captured before the page’s show is on screen, then the first one after it', async () => {
+    const track = new GeneratedTrack(4, 2);
+    const unexpected = new GeneratedTrack(4, 2);
+    const p = await platform([track, unexpected], { onScreen: false });
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const port = new EncoderPort();
+    p.deliver(port);
+    await expect.poll(() => track.processorStarted).toBe(true);
+    // The page's own black as it comes up, then a frame or two before the show is on screen.
+    track.frame(3);
+    track.frame(4);
+    await expect.poll(() => p.body.dataset['frames']).toBe('2');
+    expect(videoBytes(port), 'nothing to the encoder before the show is on screen').toEqual([]);
+    showOnScreen(p.capture);
+    // Not the frame captured before (the newest, kept): the window paints, and the next frame goes.
+    track.frame(90);
+    await expect.poll(() => videoBytes(port)).toEqual([Array<number>(32).fill(90)]);
+    track.frame(91);
+    await expect
+      .poll(() => videoBytes(port))
+      .toEqual([Array<number>(32).fill(90), Array<number>(32).fill(91)]);
+  });
+
+  it('gives the encoder the page as it is 15 s after its port came when the show is still not on screen, a new port meanwhile not restarting the wait', async () => {
+    const track = new GeneratedTrack(4, 2);
+    const unexpected = new GeneratedTrack(4, 2);
+    const p = await platform([track, unexpected], { onScreen: false });
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const real = globalThis.setTimeout;
+    const waits: { run: () => void; ms: number }[] = [];
+    vi.stubGlobal(
+      'setTimeout',
+      vi.fn((run: () => void, ms?: number) => {
+        if (ms === 15_000) {
+          waits.push({ run, ms });
+          return waits.length;
+        }
+        return real(run, ms);
+      }),
+    );
+    const first = new EncoderPort();
+    p.deliver(first);
+    await expect.poll(() => track.processorStarted).toBe(true);
+    track.frame(3);
+    track.frame(4);
+    await expect.poll(() => p.body.dataset['frames']).toBe('2');
+    // Main's picture watch gives the page a new port at 5 s: the wait goes on from the first port.
+    const second = new EncoderPort();
+    p.deliver(second);
+    expect(waits.map((w) => w.ms)).toEqual([15_000]);
+    expect(videoBytes(first)).toEqual([]);
+    expect(videoBytes(second)).toEqual([]);
+    // 15 s after the first port: the newest frame at once, and every frame from then.
+    waits[0]?.run();
+    await expect.poll(() => videoBytes(second)).toEqual([Array<number>(32).fill(4)]);
+    track.frame(5);
+    await expect
+      .poll(() => videoBytes(second))
+      .toEqual([Array<number>(32).fill(4), Array<number>(32).fill(5)]);
+    expect(videoBytes(first)).toEqual([]);
+  });
+
+  it('gives an encoder that comes once the show is on screen the newest frame at once, as before', async () => {
+    const track = new GeneratedTrack(4, 2);
+    const unexpected = new GeneratedTrack(4, 2);
+    const p = await platform([track, unexpected], { onScreen: false });
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const first = new EncoderPort();
+    p.deliver(first);
+    await expect.poll(() => track.processorStarted).toBe(true);
+    showOnScreen(p.capture);
+    track.frame(40);
+    await expect.poll(() => videoBytes(first)).toEqual([Array<number>(32).fill(40)]);
+    // A replacement port (Main's picture watch, or going live while recording): the picture as it stands, at once.
+    const second = new EncoderPort();
+    p.deliver(second);
+    await expect.poll(() => videoBytes(second)).toEqual([Array<number>(32).fill(40)]);
   });
 });

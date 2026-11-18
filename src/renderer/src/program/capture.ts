@@ -48,6 +48,61 @@ let nudging: ReturnType<typeof setInterval> | null = null;
 /** Frames go to the encoder one after another, in order (the newest, given to a new encoder, first). */
 let sending: Promise<void> = Promise.resolve();
 
+/*
+ * Whether the page's show is on screen yet (Session 58, h-black2: the lead's ruling on fault 2's measure). Until the page
+ * has drawn the show and its frames have come on time since (program/main.tsx calls showOnScreen), the encoder is given
+ * none of its frames: the stream starts, or carries on after its page started again, from the first frame that shows the
+ * show, never the page's own black as it comes up (it loads, warms up, or lets a stopped warm-up go), nor the frame or two
+ * before a picture just drawn is on screen. The worker starts FFmpeg on its first frame, and once going repeats its last
+ * frame until a new one comes (stream/worker/pipeline.ts). A page whose show is not on screen SHOW_WAIT_MS after its
+ * encoder came gives it its frames as they are (as before): never a stream without a picture for long.
+ *
+ * Why 15 s (Session 59): the longest a page takes to put its show on screen when nothing is wrong: its warm-up's cap
+ * (render/WarmUp.tsx CAP_MS, 8 s), the warm-up's last step (SETTLE_MS, 6 s) and about a second for its frames to come
+ * on time. Meanwhile a stream or recording that is starting sends nothing (no FFmpeg until the first frame), and one
+ * whose page started again while on air repeats its last real frame, with the page's sound or silence: never black,
+ * never nothing. Main's picture watch giving the page a new port meanwhile (at 5 s, then 10 s) never restarts the wait.
+ */
+let onScreen = false;
+/** When the show came on screen, by this page's clock: a frame captured before then never goes to the encoder. */
+let onScreenAt = Number.POSITIVE_INFINITY;
+/** The show was not on screen in time: the encoder takes the page as it is. */
+let waitedOut = false;
+let showWait: ReturnType<typeof setTimeout> | null = null;
+const SHOW_WAIT_MS = 15_000;
+/** When the newest frame was captured, by this page's clock. */
+let latestAt = 0;
+
+/** Whether the encoder takes the page's frames now. */
+const encoderTakes = (): boolean => onScreen || waitedOut;
+
+/**
+ * Tests only (DRASHTI_TEST_STREAM_PROBE, never when packaged: windows/renderer.ts): the light of each frame given to the
+ * encoder, kept in the page as it goes (`drashtiTestEncoderFrames`: when, by this page's clock, and its light, 0 black ..
+ * 1 white), so a test reads what the stream sends (Session 58, h-black2).
+ */
+const probe =
+  new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('streamProbe') === '1';
+
+/** Tests only: keep the light of a frame given to the encoder (a small copy of it, averaged). */
+async function probeFrame(frame: VideoFrame): Promise<void> {
+  const W = 32;
+  const H = 18;
+  const bitmap = await createImageBitmap(frame, { resizeWidth: W, resizeHeight: H, resizeQuality: 'low' });
+  const canvas = new OffscreenCanvas(W, H);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return;
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const d = ctx.getImageData(0, 0, W, H).data;
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4) sum += (d[i] ?? 0) + (d[i + 1] ?? 0) + (d[i + 2] ?? 0);
+  const g = globalThis as unknown as { drashtiTestEncoderFrames?: { t: number; mean: number }[] };
+  g.drashtiTestEncoderFrames ??= [];
+  // eslint-disable-next-line no-restricted-properties -- tests only: when the encoder was given it, never a frame drawn
+  g.drashtiTestEncoderFrames.push({ t: performance.now(), mean: sum / (W * H * 3 * 255) });
+}
+
 /**
  * What the capture does, for Drashti's log (Session 18: the stream that sometimes had no picture
  * after going on air again). The main process keeps the lines that start with "[program]".
@@ -143,6 +198,7 @@ async function sendFrame(frame: VideoFrame): Promise<void> {
   }
   port.postMessage({ kind: 'video', data });
   if (++encoderFrames === 1) say(`the first frame went to the encoder (${key})`);
+  if (probe) await probeFrame(frame);
 }
 
 function keepLatest(frame: VideoFrame | null): void {
@@ -242,6 +298,7 @@ async function capture(): Promise<void> {
     document.body.dataset['frames'] = String(frames);
     // eslint-disable-next-line no-restricted-properties -- capture's plumbing: how often the operator's small preview of the stream is sent
     const now = performance.now();
+    latestAt = now;
     if (preview && !previewBusy && now - lastPreview >= 1000 / PREVIEW_FPS) {
       previewBusy = true;
       lastPreview = now;
@@ -251,7 +308,7 @@ async function capture(): Promise<void> {
         previewBusy = false;
       });
     }
-    if (encoder) await toEncoder(frame);
+    if (encoder && encoderTakes()) await toEncoder(frame);
     frame.close();
   }
   if (mine === generation) {
@@ -281,6 +338,56 @@ function update(): void {
     track = null;
     document.body.dataset['capture'] = 'off';
   }
+}
+
+/**
+ * A new encoder, or the show just on screen: the newest frame at once if it shows the show (a capture already running
+ * gives no frame until the picture changes), else the window paints until one comes.
+ */
+function handOver(): void {
+  if (!encoder) return;
+  if (latest && (waitedOut || latestAt >= onScreenAt)) {
+    const still = latest.clone();
+    void toEncoder(still).finally(() => {
+      still.close();
+    });
+  } else wantFrame();
+}
+
+/** The encoder waits for the show to be on screen, SHOW_WAIT_MS at most (then it takes the page as it is). */
+function waitForShow(): void {
+  if (showWait) return;
+  say('the encoder waits for the show to be on screen');
+  // eslint-disable-next-line no-restricted-syntax -- capture's plumbing: the longest the encoder waits for the show, never a frame drawn
+  showWait = setTimeout(() => {
+    showWait = null;
+    if (onScreen || !encoder) return;
+    waitedOut = true;
+    say(
+      `the show was not on screen ${String(SHOW_WAIT_MS / 1000)} s after the encoder came: it takes the page as it is`,
+    );
+    handOver();
+  }, SHOW_WAIT_MS);
+}
+
+/** The page's show is on screen (program/main.tsx): the encoder takes its frames from now. */
+export function showOnScreen(): void {
+  if (onScreen) return;
+  onScreen = true;
+  // eslint-disable-next-line no-restricted-properties -- capture's plumbing: when the show came on screen, never a frame drawn
+  onScreenAt = performance.now();
+  if (showWait) {
+    clearTimeout(showWait);
+    showWait = null;
+  }
+  if (!encoder) return;
+  say('the show is on screen: the encoder takes the frames from now');
+  handOver();
+}
+
+/** An unseen spot repainted (at most 1/255 darker), so the window draws a frame: for the page's frames on time. */
+export function repaintUnseen(): void {
+  nudge();
 }
 
 let listening = false;
@@ -322,13 +429,9 @@ export function startCapture(
       encoderFrames = 0;
       encoderFailed = false;
       void sendSound();
-      // The picture as it stands, at once: a capture already running gives no frame until it changes.
-      if (latest) {
-        const still = latest.clone();
-        void toEncoder(still).finally(() => {
-          still.close();
-        });
-      } else wantFrame();
+      // The picture as it stands, at once, once the show is on screen (else from then).
+      if (encoderTakes()) handOver();
+      else waitForShow();
     } else return;
     port.start();
     update();
