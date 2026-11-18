@@ -914,6 +914,7 @@ export function WarmUp({
       style={{
         position: 'absolute',
         inset: 0,
+        isolation: 'isolate',
         pointerEvents: 'none',
         overflow: 'hidden',
       }}
@@ -922,52 +923,65 @@ export function WarmUp({
         createPortal(
           <>
             <div style={{ position: 'absolute', inset: 0, background: '#000000' }} />
-            <div
-              ref={pulse}
-              style={{ position: 'absolute', left: 0, top: 0, width: 2, height: 2, background: '#000000' }}
-            />
             {step.phase !== 'pictures' && step.phase !== 'settle' && (
               // Everything it draws, its scenes made inside: one that fails ends the warm-up (Session 57).
               <WarmUpBoundary onError={failed}>
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    width: canvas.width,
-                    height: canvas.height,
-                  }}
-                >
-                  <PictureStrip jpeg={pictures[PICTURE.b] ?? ''} png={pictures[PICTURE.png] ?? ''} />
+                {/* Contain every scene's layer below the cover: the old filter used to supply this boundary. */}
+                <div data-warm-drawing="" style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      width: canvas.width,
+                      height: canvas.height,
+                    }}
+                  >
+                    <PictureStrip jpeg={pictures[PICTURE.b] ?? ''} png={pictures[PICTURE.png] ?? ''} />
+                  </div>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      width: canvas.width,
+                      height: canvas.height,
+                      clipPath: NOTCHED,
+                    }}
+                  >
+                    <PictureStrip jpeg={pictures[PICTURE.a] ?? ''} png={pictures[PICTURE.png] ?? ''} />
+                  </div>
+                  <MediaUrls.Provider value={urlOf}>
+                    <WarmScenes
+                      page={page}
+                      during={step.phase === 'during'}
+                      at={step.at}
+                      canvas={canvas}
+                      scaling={scaling}
+                      matte={matte}
+                      ticker={ticker}
+                    />
+                  </MediaUrls.Provider>
                 </div>
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    width: canvas.width,
-                    height: canvas.height,
-                    clipPath: NOTCHED,
-                  }}
-                >
-                  <PictureStrip jpeg={pictures[PICTURE.a] ?? ''} png={pictures[PICTURE.png] ?? ''} />
-                </div>
-                <MediaUrls.Provider value={urlOf}>
-                  <WarmScenes
-                    page={page}
-                    during={step.phase === 'during'}
-                    at={step.at}
-                    canvas={canvas}
-                    scaling={scaling}
-                    matte={matte}
-                    ticker={ticker}
-                  />
-                </MediaUrls.Provider>
               </WarmUpBoundary>
             )}
+            {/* Above the drawing, so a moved speck still asks for a frame; below the translucent black cover. */}
+            <div
+              ref={pulse}
+              data-warm-pulse=""
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: 2,
+                height: 2,
+                background: '#000000',
+                zIndex: 1,
+              }}
+            />
             <div
               data-warm-cover=""
-              style={{ position: 'absolute', inset: 0, background: '#000000', opacity: 0.999 }}
+              style={{ position: 'absolute', inset: 0, background: '#000000', opacity: 0.999, zIndex: 2 }}
             />
           </>,
           tree,
