@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -823,7 +823,15 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
   /** The link service with YouTube's programs: the fake yt-dlp, told what to do. */
   async function youtube(config: Record<string, unknown> = {}, over: Partial<LinkServiceDeps> = {}) {
     const log = join(mkdtempSync(join(tmpdir(), 'drashti-fake-log-')), 'fake.log');
+    // yt-dlp's process each time it starts, as the service tells its process list.
+    const tools: number[] = [];
     const h = await harness({
+      children: {
+        started: (pid) => {
+          tools.push(pid);
+        },
+        ended: () => undefined,
+      },
       ...over,
       youtubeLaunch: (work) => ({
         ok: true,
@@ -840,8 +848,27 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
         },
       }),
     });
-    return { ...h, fakeLog: log };
+    return { ...h, fakeLog: log, tools };
   }
+  /** A process's priority and the processor time it has had, as the system says (for a CI log). */
+  const priorityOf = (pid: number) => {
+    if (process.platform !== 'win32')
+      return spawnSync('ps', ['-o', 'pid=,nice=,time=', '-p', String(pid)], {
+        encoding: 'utf8',
+      }).stdout.trim();
+    const env = { ...process.env };
+    delete env['PSModulePath'];
+    return spawnSync(
+      `${process.env['SystemRoot'] ?? 'C:\\Windows'}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`,
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `Get-Process -Id ${String(pid)} -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Id) $($_.PriorityClass) $([int]$_.TotalProcessorTime.TotalMilliseconds) ms of processor time" }`,
+      ],
+      { encoding: 'utf8', env },
+    ).stdout.trim();
+  };
   const LINK = 'https://youtu.be/AAAAAAAAAAA?si=placeholderShare';
   const starts = (log: string) =>
     (existsSync(log) ? readFileSync(log, 'utf8') : '')
@@ -880,7 +907,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
    * CI log tells a slow start from a failed one (Session 59: CI's Windows, with FFmpeg tests running beside these).
    */
   const untilShown = async (
-    h: { service: LinkService; logs: string[]; fakeLog: string },
+    h: { service: LinkService; logs: string[]; fakeLog: string; tools: number[] },
     check: () => boolean,
     ms?: number,
   ) => {
@@ -893,7 +920,8 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
         : '-';
       throw new Error(
         `${String(error)} after ${String(Date.now() - from)} ms. The service: ${JSON.stringify(h.service.view())}. ` +
-          `It logged: ${h.logs.join(' | ')}. The fake noted: ${fake}`,
+          `It logged: ${h.logs.join(' | ')}. The fake noted: ${fake}. yt-dlp's processes: ` +
+          h.tools.map((pid) => `${String(pid)}: ${priorityOf(pid) || 'gone'}`).join(', '),
         { cause: error },
       );
     }
