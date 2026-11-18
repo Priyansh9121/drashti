@@ -48,6 +48,41 @@ async function setup() {
   return { source, target, run, content };
 }
 describe('kirtan bundle import and re-import', () => {
+  it('updates an incoming title when this library has not edited the kirtan', async () => {
+    const t = await setup();
+    await t.run();
+    const id = t.content().presentationId;
+    t.source.db
+      .prepare("UPDATE presentations SET name = 'Placeholder incoming title' WHERE id = ?")
+      .run(t.source.id);
+    await t.source.exportBundle();
+    expect((await t.run()).report.items[0]?.outcome).toBe('replaced');
+    expect(t.target.repo.get(id)?.name).toBe('Placeholder incoming title');
+    expect(t.content().presentationId).toBe(id);
+  });
+
+  it('reports cancellation during bundle validation without a failed-file notice or library writes', async () => {
+    const t = await setup();
+    const stopper = new AbortController();
+    const summary = await runImport({
+      db: t.target.db,
+      media: t.target.media,
+      runId: randomUUID(),
+      paths: [t.source.output],
+      options: {},
+      signal: stopper.signal,
+      isCancelled: () => stopper.signal.aborted,
+      tempDir: t.target.dir,
+      progressEveryMs: 0,
+      onProgress: (p) => {
+        if (p.phase === 'importing' && p.current !== null) stopper.abort();
+      },
+    });
+    expect(summary.status).toBe('cancelled');
+    expect(summary.totals.failed).toBe(0);
+    expect(t.target.db.prepare('SELECT count(*) FROM presentations').pluck().get()).toBe(0);
+    expect((await readdir(t.target.dir)).filter((n) => n.startsWith('drashti-kirtan-import-'))).toEqual([]);
+  });
   it('keeps attached media points and picture looks, including a generated picture', async () => {
     const t = await setup();
     const bmp = Buffer.alloc(58);
