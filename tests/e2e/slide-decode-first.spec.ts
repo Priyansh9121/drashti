@@ -213,7 +213,10 @@ for (const place of ['hall', 'stream'] as const) {
     await expect(preload).toHaveAttribute('data-state', 'loading');
     await expect
       .poll(() =>
-        preload.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth === SIZE.width),
+        preload.evaluate(
+          (img: HTMLImageElement, width) => img.complete && img.naturalWidth === width,
+          SIZE.width,
+        ),
       )
       .toBe(true);
     const from = Date.now();
@@ -322,30 +325,33 @@ for (const place of ['hall', 'stream'] as const) {
           });
         }, url);
         await expect.poll(async () => matches((await frames()).at(-1), OLD)).toBe(true);
-        const from = await page.evaluate((option) => {
-          const probe = (globalThis as CostGlobals).drashtiDecodeCost;
-          if (!probe) throw new Error('no cost probe');
-          if (!probe.img.complete || probe.img.naturalWidth !== SIZE.width) throw new Error('not loaded');
-          probe.began = Date.now();
-          let last = probe.began;
-          const tick = () => {
-            const now = Date.now();
-            probe.ticks.push({ t: now, gap: now - last });
-            last = now;
+        const from = await page.evaluate(
+          ({ option, width }) => {
+            const probe = (globalThis as CostGlobals).drashtiDecodeCost;
+            if (!probe) throw new Error('no cost probe');
+            if (!probe.img.complete || probe.img.naturalWidth !== width) throw new Error('not loaded');
+            probe.began = Date.now();
+            let last = probe.began;
+            const tick = () => {
+              const now = Date.now();
+              probe.ticks.push({ t: now, gap: now - last });
+              last = now;
+              probe.raf = requestAnimationFrame(tick);
+            };
             probe.raf = requestAnimationFrame(tick);
-          };
-          probe.raf = requestAnimationFrame(tick);
-          if (option === 'sync') {
-            probe.img.decoding = 'sync';
-            probe.img.style.visibility = 'visible';
-          } else {
-            void probe.img.decode().then(() => {
-              probe.decodedAfter = Date.now() - probe.began;
+            if (option === 'sync') {
+              probe.img.decoding = 'sync';
               probe.img.style.visibility = 'visible';
-            });
-          }
-          return probe.began;
-        }, option);
+            } else {
+              void probe.img.decode().then(() => {
+                probe.decodedAfter = Date.now() - probe.began;
+                probe.img.style.visibility = 'visible';
+              });
+            }
+            return probe.began;
+          },
+          { option, width: SIZE.width },
+        );
         await expect.poll(async () => matches((await frames()).at(-1), PICTURE)).toBe(true);
         const captured = (await frames()).filter((frame) => frame.t >= from);
         const first = captured.find((frame) => matches(frame, PICTURE));
