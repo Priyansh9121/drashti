@@ -48,14 +48,14 @@ export function OscControl() {
 }
 
 function OscDialog({ status, error, pro }: { status: OscStatus; error: string | null; pro: boolean }) {
-  const [enabled, setEnabled] = useState(status?.settings.enabled ?? false);
-  const [port, setPort] = useState(String(status?.settings.port ?? 9000));
-  const [senders, setSenders] = useState(status?.settings.senders.join('\n') ?? '127.0.0.1');
+  const [enabled, setEnabled] = useState(status.settings.enabled);
+  const [port, setPort] = useState(String(status.settings.port));
+  const [senders, setSenders] = useState(status.settings.senders.join('\n'));
   const [busy, setBusy] = useState(false);
   const save = async (off = false) => {
     setBusy(true);
     await saveOsc(
-      off && status
+      off
         ? { ...status.settings, enabled: false }
         : {
             enabled,
@@ -85,13 +85,13 @@ function OscDialog({ status, error, pro }: { status: OscStatus; error: string | 
       </p>
       {!pro && <Notice tone="warning">Set up OSC in Pro Mode on this computer.</Notice>}
       {error && <Notice tone="danger">{error}</Notice>}
-      {status?.message && <Notice tone="warning">{status.message}</Notice>}
+      {status.message && <Notice tone="warning">{status.message}</Notice>}
       <p role="status" className="text-sm" data-testid="osc-state">
-        {status?.state === 'listening'
+        {status.state === 'listening'
           ? 'Listening for listed senders'
-          : status?.state === 'failed'
+          : status.state === 'failed'
             ? 'Could not listen'
-            : status?.state === 'starting'
+            : status.state === 'starting'
               ? 'Starting…'
               : 'OSC is off'}
       </p>
@@ -138,7 +138,7 @@ function OscDialog({ status, error, pro }: { status: OscStatus; error: string | 
         >
           Save OSC settings
         </Button>
-        {status?.settings.enabled && (
+        {status.settings.enabled && (
           <Button
             variant="secondary"
             onClick={() => {
@@ -151,12 +151,9 @@ function OscDialog({ status, error, pro }: { status: OscStatus; error: string | 
           </Button>
         )}
       </div>
-      {status && (
-        <p className="text-xs text-muted" data-testid="osc-counts">
-          {status.actions} actions run · {status.dropped} packets or actions refused · {status.pending}{' '}
-          waiting
-        </p>
-      )}
+      <p className="text-xs text-muted" data-testid="osc-counts">
+        {status.actions} actions run · {status.dropped} packets or actions refused · {status.pending} waiting
+      </p>
     </Dialog>
   );
 }
