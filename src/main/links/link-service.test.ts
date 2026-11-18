@@ -886,7 +886,10 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
   const ended = (pids: number[], seen: number) => {
     const left = pids.filter(alive);
     if (left.length === 0) return true;
+    const asked = Date.now();
     const now = processes();
+    if (Date.now() - asked > 1000)
+      console.info(`Asking the system for its processes took ${String(Date.now() - asked)} ms`);
     if (now.length === 0) return false;
     // Another process started after these were seen running, and not after now: a start the clock cannot place
     // counts as theirs.
@@ -896,14 +899,34 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
       console.info(`Process numbers ${left.join(', ')}, taken again by other processes once these had ended`);
     return same.length === 0;
   };
-  /** Waits for these processes to end (as `ended` knows them): one still running after 10 s is named. */
+  /**
+   * Waits for these processes to end: by number alone for the first 3 s (one taskkill ended can still show for a
+   * moment, and asking the system is slow on a busy computer), then as `ended` knows them. One still running after
+   * 10 s is named.
+   */
   const allEnded = async (pids: number[], seen: number) => {
-    try {
-      await until(() => ended(pids, seen), 10_000);
-    } catch {
-      const left = processes().filter((p) => pids.includes(p.pid));
-      throw new Error(`Still running 10 s on (seen running at ${String(seen)}): ${JSON.stringify(left)}`);
+    const from = Date.now();
+    for (;;) {
+      if (!pids.some(alive)) return;
+      const waited = Date.now() - from;
+      if (waited >= 3000 && ended(pids, seen)) return;
+      if (waited >= 10_000) {
+        const left = processes().filter((p) => pids.includes(p.pid));
+        throw new Error(`Still running 10 s on (seen running at ${String(seen)}): ${JSON.stringify(left)}`);
+      }
+      await new Promise((r) => setTimeout(r, waited >= 3000 ? 500 : 10));
     }
+  };
+  /** Says each step of a test that took over 2 s, and when it ended (CI's busy Windows: where a slow test's time goes). */
+  const pace = (name: string) => {
+    const from = Date.now();
+    let last = from;
+    return (step: string) => {
+      const now = Date.now();
+      if (now - last > 2000)
+        console.info(`${name}: "${step}" took ${String(now - last)} ms (${String(now - from)} ms in)`);
+      last = now;
+    };
   };
   /**
    * As `until`, and when it gives up it says what the service shows and logged and what the fake yt-dlp noted, so a
@@ -1009,9 +1032,12 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
   it('waits while on air, never starting yt-dlp; stops one going (its child too), then carries on', async () => {
     // The first run waits at 5,000 bytes, so going on air always finds it part-way (Session 59: on CI's Windows
     // under load, the hold once came after the whole 1.8 s download had finished and removed its part-file).
+    const step = pace('waits while on air');
     const h = await youtube({ steps: 30, stepMs: 60, pauseAt: 5000 });
+    step('made');
     h.service.look('youtube', LINK);
     await until(() => h.service.view().phase === 'looked');
+    step('looked');
     h.air.on = true;
     h.service.download({ type: 'mp4', height: 720 });
     expect(h.service.view().phase).toBe('waiting');
@@ -1019,22 +1045,28 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     expect(starts(h.fakeLog)).toEqual([]);
     h.air.on = false;
     await untilShown(h, () => (h.service.view().progress?.done ?? 0) > 3000);
+    step('started off air');
     const seen = Date.now();
     h.air.on = true;
     await until(() => h.service.view().phase === 'waiting');
+    step('waiting again');
     const [first] = starts(h.fakeLog).map((l) => l.split(' '));
     const pid = Number(first?.[4]);
     const child = Number(first?.[6]);
     await allEnded([pid, child], seen);
+    step('yt-dlp ended');
     h.air.on = false;
     await until(() => h.service.view().phase === 'done', 60_000);
+    step('done');
     expect(starts(h.fakeLog)).toHaveLength(2);
     expect(readFileSync(h.fakeLog, 'utf8')).toMatch(/^resume \d+$/mu);
     expect(files(h.folder)).toEqual(['Placeholder video.mp4']);
   });
 
   it('a look waits while on air, never starting yt-dlp; one going stops (its child too), then looks again', async () => {
+    const step = pace('a look waits while on air');
     const h = await youtube({ lookMs: 1500 });
+    step('made');
     const looks = () =>
       (existsSync(h.fakeLog) ? readFileSync(h.fakeLog, 'utf8') : '')
         .split('\n')
@@ -1049,18 +1081,22 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     // Off air: it looks. On air again while it looks: yt-dlp and its child stop, and it waits.
     h.air.on = false;
     await untilShown(h, () => looks().length === 1);
+    step('looking off air');
     const seen = Date.now();
     expect(h.service.view().waitingFor).toBeNull();
     h.air.on = true;
     await until(() => h.service.view().waitingFor !== null);
+    step('waiting again');
     const [first] = looks();
     await allEnded([Number(first?.[4]), Number(first?.[6])], seen);
+    step('yt-dlp ended');
     await new Promise((r) => setTimeout(r, 300));
     expect(h.service.view().phase).toBe('looking');
     expect(looks()).toHaveLength(1);
     // Off air: it looks again, and the details come.
     h.air.on = false;
     await until(() => h.service.view().phase === 'looked', 30_000);
+    step('looked');
     expect(h.service.view().waitingFor).toBeNull();
     expect(h.service.view().look?.name).toBe('Placeholder video');
     expect(looks()).toHaveLength(2);
@@ -1070,16 +1106,22 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
   });
 
   it('a quit stops yt-dlp and all it started, and leaves no part-file', async () => {
+    const step = pace('a quit stops yt-dlp');
     const h = await youtube({ steps: 200, stepMs: 60 });
+    step('made');
     h.service.look('youtube', LINK);
     await until(() => h.service.view().phase === 'looked');
+    step('looked');
     h.service.download({ type: 'mp4', height: 720 });
     await until(() => (h.service.view().progress?.done ?? 0) > 1000);
+    step('downloading');
     const seen = Date.now();
     expect(readdirSync(h.folder).some((n) => n.startsWith('.drashti-youtube-'))).toBe(true);
     h.service.close();
+    step('closed');
     const [first] = starts(h.fakeLog).map((l) => l.split(' '));
     await allEnded([Number(first?.[4]), Number(first?.[6])], seen);
+    step('yt-dlp ended');
     expect(readdirSync(h.folder)).toEqual([]);
   });
 
