@@ -11,9 +11,9 @@ import { preloadFonts } from '../render/fonts';
 import { preloadStudioFontsOnceDrawn } from '../render/studio-fonts';
 import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
-import { Scene } from '../render/Scene';
 import { StageScreen } from '../render/StageScreen';
 import { WarmUp, type WarmUpEnd } from '../render/WarmUp';
+import { HallScene } from './HallScene';
 import { KeepQuestion } from './KeepQuestion';
 import { SwitchQuestion } from './SwitchQuestion';
 import { connectOutput, useOutput } from './output-store';
@@ -290,7 +290,7 @@ function Output() {
                 {stage ? (
                   <StageScreen state={state} look={look} canvas={canvas} hall={context.hall} />
                 ) : (
-                  <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
+                  <HallScene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
                 )}
                 {testThrow && <ThrowForTests />}
               </PlacedInParent>
