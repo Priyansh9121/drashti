@@ -136,15 +136,32 @@ test('a dissolve on two screens at once, with its background, after its pictures
   await notFading(audience);
   for (const p of audience) await expect(p.locator('[data-slide-out]')).toHaveCount(0);
 
-  // The second slide: no pictures of its own, so both screens dissolve from the very moment it went
-  // live; the background it brings dissolves with it.
+  // Back to the first: the second slide is Next again, so every screen loads its background ahead and holds it, as
+  // for any Next (Session 59: going back to it straight from the third, a screen had it only if its renderer still
+  // kept the copy it had loaded ahead before the jump, which a garbage collection may drop at any moment; one screen
+  // then loaded it again, 300 ms late in this test, and the two dissolved about 300 ms apart, 3 runs in 25 on CI's Mac).
+  await goLive(win, id, 0);
+  for (const p of audience)
+    await expect(p.locator('[data-layer="slide"]')).toContainText('Placeholder first');
+  await notFading(audience);
+  const backdropId = await win.evaluate(
+    async () =>
+      (await (globalThis as PageGlobals).drashti.library.listMedia()).find((m) =>
+        m.name.startsWith('Placeholder backdrop'),
+      )?.id ?? '',
+  );
+  for (const p of audience)
+    await expect(p.locator(`[data-preload="${backdropId}"][data-state="ready"]`)).toHaveCount(1);
+
+  // The second slide, Next: no pictures of its own, so both screens dissolve from the very moment it went live; the
+  // background it brings, loaded ahead on both, dissolves with it, in step.
   await goLive(win, id, 1);
   const second = await shownAt(win);
   await expect.poll(() => fadeStart(one, 'slide')).toBe(second);
   await expect.poll(() => fadeStart(two, 'slide')).toBe(second);
   for (const p of audience) {
     await expect(p.locator('[data-slide-in]')).toContainText('Placeholder second');
-    await expect(p.locator('[data-slide-out]')).toContainText('Placeholder third');
+    await expect(p.locator('[data-slide-out]')).toContainText('Placeholder first');
   }
   await expect.poll(() => fadeStart(one, 'background')).not.toBeNull();
   await expect.poll(() => fadeStart(two, 'background')).not.toBeNull();
