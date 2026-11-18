@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { STREAM_PRESETS } from '../../../shared/stream';
 import { audioArgs, videoArgs } from './encoders';
-import { ffmpegHere } from '../../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../../testing/ffmpeg-here';
 
 /*
  * The encoder's keyframes, with the real FFmpeg where it has been fetched (Session 27): one every 2 s and no
@@ -13,8 +13,8 @@ import { ffmpegHere } from '../../testing/ffmpeg-here';
  * screen black before the show) used to bring one of its own from x264.
  */
 
-const exe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-const ffmpeg = join(process.cwd(), 'vendor', 'ffmpeg', `${process.platform}-${process.arch}`, exe);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const ffmpeg = testFfmpeg({ linux: true });
 
 describe('the sound the encoder makes (Session 31, MED-3)', () => {
   it('goes through a limiter at -1 dBFS, with its own level setting off, before AAC: for every stream and recording', () => {

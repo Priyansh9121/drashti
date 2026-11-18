@@ -6,7 +6,7 @@ import type { FromWorker } from './protocol';
 import type { YtDlpLaunch } from './youtube-run';
 import { toolEnv, toolFolders } from './youtube-tools';
 import { youtubeWorker } from './youtube-worker';
-import { ffmpegHere } from '../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 
 /*
  * yt-dlp in the download process (Session 25c), run for real against the
@@ -18,13 +18,8 @@ import { ffmpegHere } from '../testing/ffmpeg-here';
 
 const app = join(__dirname, '..', '..', '..');
 const fake = join(app, 'tests', 'e2e', 'fake-yt-dlp.cjs');
-const ffmpeg = join(
-  app,
-  'vendor',
-  'ffmpeg',
-  `${process.platform}-${process.arch}`,
-  process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg',
-);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const ffmpeg = testFfmpeg({ linux: true }, app);
 const LINK = 'https://www.youtube.com/watch?v=AAAAAAAAAAA';
 
 let root: string | null = null;

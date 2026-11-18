@@ -17,7 +17,7 @@ import {
   pressRounds,
 } from './perf-animations';
 import { isPerfScenario, scenarioFor, startScenario } from './perf-scenarios';
-import { ffmpegHere } from './testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from './testing/ffmpeg-here';
 
 /*
  * The Performance check's animations scenario (Session 57, item 6; main/perf-animations.ts): it sets up on the check's
@@ -26,8 +26,8 @@ import { ffmpegHere } from './testing/ffmpeg-here';
  */
 
 const APP = join(__dirname, '..', '..');
-const exe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-const ffmpeg = join(process.cwd(), 'vendor', 'ffmpeg', `${process.platform}-${process.arch}`, exe);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const ffmpeg = testFfmpeg({ linux: true });
 
 let dir = '';
 let db: Db | null = null;

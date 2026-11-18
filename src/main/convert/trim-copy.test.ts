@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
-import { ffmpegHere } from '../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 import type { ConvertService } from './convert-service';
 import { frameAtOrBefore } from './frame-at';
 import { parseFfmpegInfo } from './plan';
@@ -12,13 +12,8 @@ import type { MediaInfo } from './plan';
 import { queueTrimCopy } from './trim-copy';
 import type { TrimCopyInput } from './trim-copy';
 
-const ffmpeg = join(
-  process.cwd(),
-  'vendor',
-  'ffmpeg',
-  `${process.platform}-${process.arch}`,
-  process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg',
-);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const ffmpeg = testFfmpeg({ linux: true });
 
 const INFO: MediaInfo = {
   container: 'mov,mp4,m4a,3gp,3g2,mj2',
