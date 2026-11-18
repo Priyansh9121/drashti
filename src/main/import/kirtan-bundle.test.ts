@@ -1,11 +1,22 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, rm, writeFile, mkdir, symlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { listZip } from './zip';
 import { exportKirtanBundle, withKirtanBundle } from './kirtan-bundle';
 import { bundleLibrary } from './testing/kirtan-bundle-fixture';
 
 describe('kirtan bundle export', () => {
+  it('refuses a media-folder link leading outside its own media pool', async () => {
+    const t = await bundleLibrary();
+    const outside = join(t.dir, 'Placeholder outside pool');
+    await mkdir(outside);
+    await writeFile(join(outside, 'Placeholder.wav'), t.wav);
+    await symlink(outside, join(t.mediaDir, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+    t.db.prepare("UPDATE media SET path = 'linked/Placeholder.wav'").run();
+    await expect(t.exportBundle()).rejects.toThrow(/media|outside|pool/iu);
+    await expect(readFile(t.output)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
   it('writes a versioned ZIP with checksums, tracks, details, arrangements, hidden slides and requested media', async () => {
     const t = await bundleLibrary();
     await t.exportBundle();
