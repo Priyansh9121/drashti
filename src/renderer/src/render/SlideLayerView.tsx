@@ -78,7 +78,7 @@ type Leaving = EngineState['slideOff'];
 
 /**
  * What to show for a new state of the layer (`leaving`: the slide just taken off on its own, if any; `picturesFirst`:
- * a slide cut in waits for its pictures, the stream's page).
+ * a slide cut in waits for its pictures: the stream's page, and the hall's screens since Session 59, X19).
  */
 export function nextShowing(
   prev: Showing,
@@ -634,7 +634,8 @@ export function SlideLayerView({
   // already could (every screen at the same point), else when they can.
   const waiting = fade !== null && fade.start === null;
   const native = fade?.native;
-  // A cut waiting for its pictures (the stream's page): the latest it waits to, and it is made whole at once.
+  // A cut waiting for its pictures (the stream's page and the hall's screens): the latest it waits to, and it is
+  // made whole at once.
   const picturesBy = fade?.picturesBy;
   const onKey = on ? keyOf(on) : null;
   useEffect(() => {

@@ -359,6 +359,7 @@ export const Scene = memo(function Scene({
   matte = null,
   place = 'hall',
   captions = true,
+  picturesFirst = place === 'stream',
 }: {
   state: EngineState;
   canvas: Size;
@@ -382,6 +383,11 @@ export const Scene = memo(function Scene({
    * the screen draws its own (a stage screen's audience picture, the stream's Camera layout).
    */
   captions?: boolean;
+  /**
+   * A slide drawn only once its pictures can be drawn, keeping what is on screen until then (3 s at most): the stream's
+   * page (Session 58, Q57-35) and the hall's screens (Session 59, X19, output/HallScene.tsx). Left out: the stream only.
+   */
+  picturesFirst?: boolean;
 }) {
   const { layers } = state;
   const shown = (layer: GroupLayer) => look.layers.includes(layer);
@@ -443,8 +449,8 @@ export const Scene = memo(function Scene({
           movement={look.movement}
           // A Timer on the slide in the box counts from the state drawn, as the main picture's does (Session 50).
           timers={state.timers}
-          // The stream's page draws a slide only once its pictures can be drawn (Session 58, Q57-35).
-          picturesFirst={place === 'stream'}
+          // The stream's page and the hall's screens draw a slide only once its pictures can be drawn (X19).
+          picturesFirst={picturesFirst}
         />
       );
     const box = boxRun?.layer;
@@ -511,8 +517,8 @@ export const Scene = memo(function Scene({
                     // A timer shown alone fades out as it came on; its Timers' time from this state (Session 50).
                     leaving={shown('slide') ? state.slideOff : null}
                     timers={state.timers}
-                    // The stream's page draws a slide only once its pictures can be drawn (Session 58, Q57-35).
-                    picturesFirst={place === 'stream'}
+                    // The stream's page and the hall's screens draw a slide only once its pictures can be drawn (X19).
+                    picturesFirst={picturesFirst}
                   />
                   {lowerThirds && shown('slide') && (
                     <SlideLowerThird
