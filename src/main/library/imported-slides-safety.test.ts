@@ -337,6 +337,7 @@ describe('imported editor provenance and legacy safety', () => {
       const reader = vi.fn(nativeSourceReader);
       register(w, source.presentations, reader);
       const opened = await open(id);
+      expect(reader).toHaveBeenCalledTimes(1);
       expect(reader).toHaveBeenCalledWith(
         expect.objectContaining({ ext: 'pptx', file: source.owned, sourcePages: [0, 1, 2] }),
       );
