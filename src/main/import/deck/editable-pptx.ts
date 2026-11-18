@@ -278,6 +278,17 @@ function hslOf(rgb: readonly number[]): [number, number, number] {
   return [hue / 6, saturation, light];
 }
 
+/**
+ * A channel (0-255) as PowerPoint writes it: the nearest whole level, and at an exact half the odd one of its two
+ * neighbours (X16, PowerPoint run 5: all 13 halves measured went so, 127.5 to 127, 76.5 to 77, 229.5 to 229).
+ */
+function channelOf(c: number): number {
+  const v = Math.max(0, Math.min(255, c));
+  const below = Math.floor(v);
+  if (Math.abs(v - below - 0.5) > 1e-6) return Math.round(v);
+  return below % 2 === 1 ? below : below + 1;
+}
+
 /** sRGB channels (0-255) from a hue, saturation and lightness (each 0-1). */
 function rgbOfHsl(hue: number, saturation: number, light: number): number[] {
   const high = light < 0.5 ? light * (1 + saturation) : light + saturation - light * saturation;
@@ -358,7 +369,7 @@ function colorOf(node: Node, ctx: Context, placeholder?: string): string | null 
         ctx.issues.add('Some source colour adjustments are not reproduced.');
     }
   }
-  hex = `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
+  hex = `#${rgb.map((c) => channelOf(c).toString(16).padStart(2, '0')).join('')}`;
   return (
     hex +
     (alpha < 1
@@ -1440,7 +1451,10 @@ function plainStyle(grid: boolean): string {
 const BUILT_IN_TABLE_STYLES = new Map<string, () => string>([
   ['{073a0daa-6af3-43ab-8588-cec1d06c72b9}', () => mediumStyle2('dk1')],
   ['{5c22544a-7ee6-4342-b048-85bdc9fd1c3a}', () => mediumStyle2('accent1')],
-  ['{21e4aea4-8dfa-4a89-87eb-49c32662afe8}', () => mediumStyle2('accent2')],
+  // PowerPoint for Mac does not know these two published IDs, "Medium Style 2 - Accent 2" and "Light Style 1": it
+  // draws a table naming either as No Style, Table Grid (X16, its run 5, Q58-51), and so does Drashti.
+  ['{21e4aea4-8dfa-4a89-87eb-49c32662afe8}', () => plainStyle(true)],
+  ['{9d7b26c5-4107-4fec-aedc-1716b250ee53}', () => plainStyle(true)],
   ['{f5ab1c69-6edb-4ff4-983f-18bd219ef322}', () => mediumStyle2('accent3')],
   ['{00a15c55-8517-42aa-b614-e9b94910e393}', () => mediumStyle2('accent4')],
   ['{7df18680-e054-41ad-8bc1-d1aef772440d}', () => mediumStyle2('accent5')],
