@@ -184,7 +184,9 @@ test('a screen that opens part-way through a dissolve shows the slide and its ba
     const watch = { fading: false, weakest: 1 };
     (globalThis as { joinWatch?: typeof watch }).joinWatch = watch;
     const look = () => {
-      if (document.querySelector('[data-fading="true"]')) watch.fading = true;
+      // A fade (a transition that takes time): a cut that waits for its slide's pictures (X19: the hall's screens, as
+      // the stream's page) is marked fading too, but nothing of it shows until it is made, whole.
+      if (document.querySelector('[data-fading="true"]:not([data-transition="cut"])')) watch.fading = true;
       let sum = 0;
       let any = false;
       for (const el of document.querySelectorAll<HTMLElement>('[data-layer="background"] [data-bg-slot]')) {
