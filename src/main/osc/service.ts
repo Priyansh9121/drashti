@@ -44,6 +44,7 @@ export function parseOscSettings(raw: unknown): OscSettings | null {
 const MAX_PENDING = 64;
 const MAX_AHEAD_MS = 60_000;
 interface Pending {
+  batch: symbol;
   at: number;
   sender: string;
   action: OscAction;
@@ -69,6 +70,8 @@ export class OscService {
   private readonly ingress: RateLimiter;
   private readonly perSender: RateLimiter;
   private readonly overall: RateLimiter;
+  private readonly executionPerSender: RateLimiter;
+  private readonly executionOverall: RateLimiter;
 
   constructor(private readonly deps: OscDeps) {
     this.accessAllowed = deps.letIn();
@@ -83,6 +86,8 @@ export class OscService {
     this.ingress = new RateLimiter(50, 200, this.now);
     this.perSender = new RateLimiter(20, 40, this.now);
     this.overall = new RateLimiter(40, 80, this.now);
+    this.executionPerSender = new RateLimiter(20, 40, this.now);
+    this.executionOverall = new RateLimiter(40, 80, this.now);
   }
 
   status(): OscStatus {
@@ -283,6 +288,7 @@ export class OscService {
     }
     const now = this.now();
     const batch: Pending[] = [];
+    const batchId = Symbol();
     for (const message of messages) {
       const action = mapOsc(message);
       const at =
@@ -296,7 +302,7 @@ export class OscService {
         drop();
         return;
       }
-      batch.push({ at: Math.max(now, at), sender, action });
+      batch.push({ batch: batchId, at: Math.max(now, at), sender, action });
     }
     const future = batch.filter((p) => p.at > now);
     if (this.pending.length + future.length > MAX_PENDING) {
@@ -310,11 +316,20 @@ export class OscService {
         return;
       }
     }
-    for (const item of batch) {
-      if (item.at <= now) this.run(item);
-      else this.pending.push(item);
-    }
+    this.runBatch(batch.filter((item) => item.at <= now));
+    this.pending.push(...future);
     this.schedule();
+  }
+
+  /** A scheduled group cannot add another burst on top of actions arriving right now. */
+  private runBatch(items: Pending[]): void {
+    for (const item of items) {
+      if (!this.executionOverall.take('all') || !this.executionPerSender.take(item.sender)) {
+        this.dropped++;
+        return;
+      }
+    }
+    for (const item of items) this.run(item);
   }
 
   private run(item: Pending): void {
@@ -348,8 +363,11 @@ export class OscService {
         this.timer = null;
         const now = this.now();
         while (this.pending[0] && this.pending[0].at <= now) {
-          const item = this.pending.shift();
-          if (item) this.run(item);
+          const due = this.pending[0];
+          const sameGroup = (item: Pending) => item.batch === due.batch && item.at === due.at;
+          const group = this.pending.filter(sameGroup);
+          this.pending = this.pending.filter((item) => !sameGroup(item));
+          this.runBatch(group);
         }
         this.counted();
         this.schedule();

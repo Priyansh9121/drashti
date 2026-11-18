@@ -458,7 +458,7 @@ IDs come from the existing HTTP reads or the library, rather than OSC discovery.
 
 Immediate timetag `1` and past tags run now. NTP future tags may be at most one minute ahead, with at most 64 messages waiting across all senders; farther times or a full queue refuse the whole packet. Nested bundle tags cannot precede their parent. Future actions recheck access and sender membership when due. No scheduled action survives disable, reconfiguration, access removal or quit.
 
-Before parsing, ingress is limited to 50 packets/second with burst 200 overall, including malformed packets from listed senders. Each sender is limited as an API device is: 20 actions/second, burst 40; overall, 40 actions/second, burst 80. Every message in a bundle spends an action allowance before any part runs. An over-budget packet is dropped as a whole, with no reply. Settings show counts; logs contain fixed lifecycle and action names only, never sender addresses, arguments or packet content.
+Before parsing, ingress is limited to 50 packets/second with burst 200 overall, including malformed packets from listed senders. Each sender is limited as an API device is: 20 actions/second, burst 40; overall, 40 actions/second, burst 80. Every message in a bundle spends an action allowance before any part runs. These action limits apply at receipt and again at execution, so waiting bundles cannot add another burst when they become due. An over-budget packet (or timed group at execution) is dropped as a whole, with no reply. Settings show counts; logs contain fixed lifecycle and action names only, never sender addresses, arguments or packet content.
 
 ## Companion (Stream Deck)
 
