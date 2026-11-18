@@ -7,6 +7,7 @@ function setup() {
   const sent: ToWorker[] = [];
   let message: (m: FromWorker) => void = () => undefined;
   let exit: (code: number) => void = () => undefined;
+  const kill = vi.fn();
   const worker: WorkerProcess = {
     postMessage: (m) => {
       sent.push(m);
@@ -17,7 +18,7 @@ function setup() {
     onExit: (f) => {
       exit = f;
     },
-    kill: vi.fn(),
+    kill,
   };
   const service = new KirtanBundleExporter({
     spawn: () => worker,
@@ -34,6 +35,7 @@ function setup() {
   return {
     service,
     worker,
+    kill,
     sent,
     start,
     reply: (m: FromWorker) => message(m),
@@ -52,14 +54,14 @@ describe('background kirtan bundle export', () => {
       output: '/placeholder/Chosen.drashti-kirtans',
     });
     const request = t.sent[0];
-    if (!request || request.type !== 'export-kirtans') throw new Error('Wrong worker request');
+    if (request?.type !== 'export-kirtans') throw new Error('Wrong worker request');
     t.reply({
       type: 'exported-kirtans',
       requestId: request.requestId,
       result: { ok: true, file: request.output, kirtans: 1, media: 1 },
     });
     expect(await result).toMatchObject({ ok: true, kirtans: 1, media: 1 });
-    expect(t.worker.kill).toHaveBeenCalledOnce();
+    expect(t.kill).toHaveBeenCalledOnce();
   });
   it('reports worker failure or exit and rejects a second export while one is running', async () => {
     const t = setup();
@@ -73,7 +75,7 @@ describe('background kirtan bundle export', () => {
     const exporting = t.start();
     const stopping = t.service.stop();
     const request = t.sent[0];
-    if (!request || request.type !== 'export-kirtans') throw new Error('Wrong worker request');
+    if (request?.type !== 'export-kirtans') throw new Error('Wrong worker request');
     expect(t.sent[1]).toEqual({ type: 'cancel', runId: request.requestId });
     t.reply({
       type: 'exported-kirtans',
