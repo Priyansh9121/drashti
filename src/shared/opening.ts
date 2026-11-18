@@ -33,11 +33,12 @@ export const OPENING_MS = 2000;
 export const OPENING_HOLD_MS = 2000;
 /**
  * The longest it waits for the operator window underneath to have started (Session 58, C4: Q57-32): opened, its own GPU
- * warm-up over (render/WarmUp.tsx, over by its own 8 s limit from when the window starts under the opening's black)
- * and its frames on time; then it moves as it would. Longer than the screens' wait, as that warm-up takes seconds on a
- * slow GPU (CI's Mac), and the opening's two seconds must never share the GPU with it.
+ * warm-up over (render/WarmUp.tsx, over by its own limits from when the window starts under the opening's black: its
+ * 8 s cap, then its last step's 6 s, X24) and its frames on time; then it moves as it would. Longer than the screens'
+ * wait, as that warm-up takes seconds on a slow GPU (CI's Mac), and the opening's two seconds must never share the GPU
+ * with it (Session 59: at 9 s, outlasting the cap alone, the opening moved for 17 frames while the last step ran).
  */
-export const OPENING_START_HOLD_MS = 9000;
+export const OPENING_START_HOLD_MS = 15_000;
 /** The opening's own copy of its photo is at most this big (it fills the operator window). */
 export const OPENING_COPY_WIDTH = 1920;
 export const OPENING_COPY_HEIGHT = 1200;

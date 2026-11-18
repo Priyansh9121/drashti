@@ -12,8 +12,9 @@ import { isDeckNativeTransition } from '../../../shared/deck-transition';
 import type { SlideLayer } from '../../../shared/engine/state';
 import { MOVEMENTS } from '../../../shared/looks';
 import { TRANSITION_KINDS } from '../../../shared/model';
+import { OPENING_START_HOLD_MS } from '../../../shared/opening';
 import { deckTransitionFrame, deckWipeShows, wipeSlideMask } from './transition-frame';
-import { type WarmScene, warmScenes } from './WarmUp';
+import { type WarmScene, WARM_UP_LONGEST_MS, warmScenes } from './WarmUp';
 
 /*
  * The GPU's warm-up (render/WarmUp.tsx; tests/e2e/warm-up.spec.ts looks at it drawn): before a screen with a graphics
@@ -312,5 +313,14 @@ describe('the warm-up', () => {
         `after ${String(gap)} ms`,
       ).toEqual([]);
     }
+  });
+});
+
+describe('the warm-up and the opening (Session 59)', () => {
+  it('the opening waits for the window’s warm-up as long as it can last, its cap then its last step, so its two seconds never share the GPU with it', () => {
+    // The window's limit (Session 58, C4: Q57-32) outlasted the cap alone; the last step after it (X24, fault 2) came
+    // later. On CI's Mac the warm-up reached its cap, and the opening moved for 17 frames while that step still ran
+    // (opening-timing.spec.ts:243, Session 59's final quick check).
+    expect(OPENING_START_HOLD_MS).toBeGreaterThan(WARM_UP_LONGEST_MS);
   });
 });
