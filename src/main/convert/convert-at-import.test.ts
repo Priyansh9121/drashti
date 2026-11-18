@@ -8,7 +8,7 @@ import type { ImportIssue } from '../../shared/import';
 import { type Db, openDatabase } from '../db/database';
 import { MediaStore } from '../import/media-store';
 import { playIssues } from '../import/probe';
-import { ffmpegHere } from '../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 import { ConvertService, KEEP_FREE_BYTES } from './convert-service';
 import { atImport } from './plan';
 import { readInfo } from './read-info';
@@ -20,8 +20,8 @@ import { readInfo } from './read-info';
  * MKV with AC-3 sound, an AVI, a WMA, an AIFF, a FLAC and an MP4 that plays.
  */
 
-const exe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-const ffmpeg = join(process.cwd(), 'vendor', 'ffmpeg', `${process.platform}-${process.arch}`, exe);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const ffmpeg = testFfmpeg({ linux: true });
 
 let dir = '';
 let service: ConvertService | null = null;

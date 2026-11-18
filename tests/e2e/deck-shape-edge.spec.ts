@@ -32,13 +32,13 @@ import { holdClock } from './placeholder-slides';
  */
 
 /**
- * Whether an output draws without a graphics chip (its warm-up skipped, as on CI's Windows): a Shape then draws its
+ * Whether an output draws without a graphics chip (its context says so, data-chipless: as on CI's Windows): a Shape then draws its
  * hard edge, a clip where PowerPoint's soft edge is half-way, in place of its masks (render/deck-target-paint.ts, C1's
  * review HIGH-2: two masks of three gradients each on every moving Box, Plus and Diamond dropped frames there while
  * streaming); with one (CI's Mac) the soft edge.
  */
 const drawsWithoutChip = async (page: Page): Promise<boolean> =>
-  (await page.getByTestId('output-root').getAttribute('data-warm-up')) === 'skipped';
+  (await page.getByTestId('output-root').getAttribute('data-chipless')) === 'true';
 
 const dispatch = (win: Page, command: EngineCommand) =>
   win.evaluate((command) => (globalThis as PageGlobals).drashti.engine.dispatch(command), command);

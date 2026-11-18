@@ -18,7 +18,7 @@ import type { MkvCluster } from './mkv';
 import { MkvSplitter } from './mkv';
 import { StreamPipeline } from './pipeline';
 import type { WorkerStatus } from './protocol';
-import { ffmpegHere } from '../../testing/ffmpeg-here';
+import { ffmpegHere, testFfmpeg } from '../../testing/ffmpeg-here';
 
 /*
  * The pipeline with the real FFmpeg (where it has been fetched: macOS and
@@ -26,8 +26,8 @@ import { ffmpegHere } from '../../testing/ffmpeg-here';
  * listening for RTMP on this computer in YouTube's place. A made-up key.
  */
 
-const exe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-const ffmpeg = join(process.cwd(), 'vendor', 'ffmpeg', `${process.platform}-${process.arch}`, exe);
+// The bundled FFmpeg, and on CI's Ubuntu its pinned Linux build (Session 58 CI-1, X15's CI-2).
+const ffmpeg = testFfmpeg({ linux: true });
 const KEY = 'test-made-up-key-pipeline-0000';
 const preset = { ...STREAM_PRESETS.weak, width: 320, height: 180, videoKbps: 800 };
 

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { BrowserWindow, WebContents } from 'electron';
@@ -108,11 +108,26 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
         if (samples) send(samples);
       }
     };
-    return { stream, webContents, createProgram, notice, pass };
+    /**
+     * At least `seconds` of the sound sent so far written to its WAV on disk (X15: here the time passes in a moment, and
+     * a recording with more than 4 s waiting for the disk stops, "the disk could not keep up"; in a show the sound
+     * comes in real time and the disk keeps up, as it does here once this has waited for it).
+     */
+    const onDisk = async (seconds: number) => {
+      await vi.waitFor(
+        async () => {
+          const wav = (await readdir(folder)).find((f) => f.endsWith('.wav'));
+          const size = wav ? (await stat(join(folder, wav))).size : 0;
+          expect(size).toBeGreaterThanOrEqual(44 + seconds * SPEECH_RATE * 2);
+        },
+        { timeout: 10_000 },
+      );
+    };
+    return { stream, webContents, createProgram, notice, pass, onDisk };
   }
 
   it('off air, its quiet raises No sound in the sound recording’s own words, and sound clears it', async () => {
-    const { stream, webContents, createProgram, pass } = service();
+    const { stream, webContents, createProgram, pass, onDisk } = service();
     expect(stream.startSoundRecording()).toMatchObject({ ok: true });
     await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
     webContents.emit('did-finish-load');
@@ -121,7 +136,9 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
       expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'recording' }),
     );
     expect(stream.status().noSound).toBeNull();
+    await onDisk(0.9);
     await pass(QUIET_MS + 1500, SILENCE);
+    await onDisk(4.3);
     expect(stream.status().live.state).toBe('off');
     expect(stream.status().noSound).toMatchObject({
       why: 'quiet',
@@ -130,6 +147,8 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
     });
     await pass(1500, TONE);
     expect(stream.status().noSound).toBeNull();
+    // Still recording: its sound cleared No sound, not a recording that stopped.
+    expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'recording' });
   });
 
   it('with its sound input unplugged, No sound says so after 3 s, and the recording warns before it gives up', async () => {
