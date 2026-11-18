@@ -9,6 +9,7 @@ import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices
 import {
   importAndGetIds,
   launchApp,
+  letTimePass,
   operatorPage,
   operatorReady,
   outputPage,
@@ -34,12 +35,12 @@ const current = (win: Page) =>
 const target = (root: Page | Locator, shape: number) => root.locator(`[data-deck-motion-target="${shape}"]`);
 
 /**
- * Whether an output draws without a graphics chip (its warm-up skipped, as on CI's Windows): a deck's Wipe then draws
+ * Whether an output draws without a graphics chip (its context says so, data-chipless: as on CI's Windows): a deck's Wipe then draws
  * PowerPoint's band on the incoming slide's band box, moved; with a chip (CI's Mac) as a mask on the slide's own box
  * (render/chipless.ts, Session 58).
  */
 const drawsWithoutChip = async (page: Page): Promise<boolean> =>
-  (await page.getByTestId('output-root').getAttribute('data-warm-up')) === 'skipped';
+  (await page.getByTestId('output-root').getAttribute('data-chipless')) === 'true';
 
 /** Generated shapes with a transparent slide background, so the key can prove the click's changing opacity. */
 function outputDeck(): Buffer {
@@ -361,6 +362,53 @@ function fourThreePushDeck(): Buffer {
     },
   });
 }
+
+test('Back part-way through a deck’s own Push shows a slide whole, never the Push part-way (TX-1)', async () => {
+  const { app } = await launchApp({ ...CLOCK, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const dir = await mkdtemp(join(tmpdir(), 'drashti-back-push-'));
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const file = join(dir, 'Placeholder back push.pptx');
+    await writeFile(file, fourThreePushDeck());
+    const [id = ''] = await importAndGetIds(win, [file]);
+    const hall = await outputFor(app, await setUpScreen(win, 'Placeholder Hall', 0));
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    await expect.poll(async () => (await current(win))?.slideIndex).toBe(0);
+    await dispatch(win, { type: 'next' });
+    await expect.poll(async () => (await current(win))?.slideIndex).toBe(1);
+    const entered = await current(win);
+    await holdClock(app, (entered?.shownAt ?? 0) + PUSH_MS / 2);
+    /** The colours at the slide's left and right, as one word each (r = red, g = green, else its numbers). */
+    const sides = async () => {
+      const seen = await canvasPixels(hall, [
+        { x: 600, y: MIDDLE.y },
+        { x: 1300, y: MIDDLE.y },
+      ]);
+      return seen.map((px) =>
+        near(px, [255, 0, 0], 40) ? 'r' : near(px, [0, 255, 0], 40) ? 'g' : px.join(','),
+      );
+    };
+    // Part-way: the red slide going on the left, the green one coming on the right.
+    await expect.poll(sides, { message: 'half-way through the Push' }).toEqual(['r', 'g']);
+    // Back, part-way (TX-1): the slide that was coming in up whole, as at rest, while the slide gone back to waits for
+    // its clip, then that one whole: never the Push left part-way.
+    await dispatch(win, { type: 'back' });
+    const seen: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const [left = '', right = ''] = await sides();
+      seen.push(`${left}|${right}`);
+      expect(left, `both sides one slide after Back (read so far: ${seen.join(' ')})`).toBe(right);
+      await letTimePass(hall, 80, 'the hall screen looked at again a few frames later, after Back');
+    }
+    await expect.poll(sides, { message: 'the slide gone back to, whole' }).toEqual(['r', 'r']);
+    await expect(hall.locator('[data-layer="slide"]')).toHaveCSS('clip-path', 'none');
+    await holdClock(app, null);
+  } finally {
+    await app.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test('a 4:3 deck’s Push on a 16:9 hall moves its slides by the slide’s width inside the slide, the bars staying black (Q58-16)', async () => {
   const { app } = await launchApp({ ...CLOCK, DRASHTI_WINDOWED_OUTPUTS: '1' });
