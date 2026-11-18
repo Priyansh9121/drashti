@@ -186,6 +186,43 @@ describe('PowerPoint’s colour changes', () => {
     expect(issues).not.toContain('Some source colour adjustments are not reproduced.');
   });
 
+  it('rounds a channel at an exact half to the odd neighbour, as PowerPoint does (X16, its run 5: 13 halves)', async () => {
+    const swatch = (id: number, color: string, changes: string) => {
+      const [tag = '', value = ''] = color.split(' ');
+      return shape(id, `<a:solidFill><${tag} ${value}>${changes}</${tag}></a:solidFill>`);
+    };
+    const white = 'a:srgbClr val="FFFFFF"';
+    const black = 'a:srgbClr val="000000"';
+    const { elements } = await readSlide(
+      slideXml(
+        swatch(10, white, change('lumMod', 50_000)) +
+          swatch(11, white, change('lumMod', 10_000)) +
+          swatch(12, white, change('lumMod', 30_000)) +
+          swatch(13, white, change('lumMod', 70_000)) +
+          swatch(14, white, change('lumMod', 90_000)) +
+          swatch(15, black, change('lumOff', 10_000)) +
+          swatch(16, black, change('lumMod', 50_000) + change('lumOff', 50_000)) +
+          swatch(17, 'a:srgbClr val="FF0000"', change('lumMod', 50_000)) +
+          swatch(18, 'a:srgbClr val="0000FF"', change('lumOff', -25_000)) +
+          swatch(19, 'a:schemeClr val="accent6"', change('lumMod', 50_000)),
+      ),
+    );
+    // PowerPoint's own colours (its PDF): 127.5 -> 127, 25.5 -> 25, 76.5 -> 77, 178.5 -> 179, 229.5 -> 229, and accent
+    // 6 darker 50%'s 86.5 -> 87 and 35.5 -> 35: an exact half goes to the odd neighbour.
+    expect(elements.map((el) => el.kind === 'shape' && el.fill)).toEqual([
+      '#7f7f7f',
+      '#191919',
+      '#4d4d4d',
+      '#b3b3b3',
+      '#e5e5e5',
+      '#191919',
+      '#7f7f7f',
+      '#7f0000',
+      '#00007f',
+      '#385723',
+    ]);
+  });
+
   it('still names a colour change it doesn’t draw', async () => {
     const { elements, issues } = await readSlide(
       slideXml(
@@ -335,7 +372,6 @@ describe('a shape’s and a table’s theme styles', () => {
       );
     };
     expect(await header('{073A0DAA-6AF3-43AB-8588-CEC1D06C72B9}')).toBe('#000000');
-    expect(await header('{21e4aea4-8dfa-4a89-87eb-49c32662afe8}')).toBe('#ed7d31');
     expect(await header('{F5AB1C69-6EDB-4FF4-983F-18BD219EF322}')).toBe('#a5a5a5');
     expect(await header('{00A15C55-8517-42AA-B614-E9B94910E393}')).toBe('#ffc000');
     expect(await header('{7DF18680-E054-41AD-8BC1-D1AEF772440D}')).toBe('#5b9bd5');
@@ -354,6 +390,25 @@ describe('a shape’s and a table’s theme styles', () => {
       'ppt/tableStyles.xml': EMPTY_STYLES,
     });
     expect(plain.elements.map((el) => el.kind)).toEqual(['text', 'text']);
+  });
+
+  it('draws the two published IDs PowerPoint does not know as it does: No Style, Table Grid (X16, its run 5, Q58-51)', async () => {
+    for (const id of ['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE8}', '{9d7b26c5-4107-4fec-aedc-1716b250ee53}']) {
+      const { elements } = await readSlide(slideXml(table(id, 1)), { 'ppt/tableStyles.xml': EMPTY_STYLES });
+      expect(
+        elements.filter((el) => el.kind === 'shape' && el.shape !== 'line'),
+        id,
+      ).toEqual([]);
+      const grid = elements.filter((el) => el.kind === 'shape' && el.shape === 'line');
+      expect(
+        grid.map((el) => el.kind === 'shape' && el.outline),
+        id,
+      ).toEqual(Array.from({ length: 5 }, () => ({ color: '#000000', width: 4 / 3 })));
+      expect(
+        elements.flatMap((el) => (el.kind === 'text' ? [el.runs?.[0]?.color] : [])),
+        id,
+      ).toEqual(['#000000', '#000000']);
+    }
   });
 
   it('keeps a deck’s own definition of a built-in style’s ID', async () => {
