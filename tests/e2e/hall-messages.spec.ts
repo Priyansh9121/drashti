@@ -83,8 +83,10 @@ test('a message keeps its own look: top left in a box, yellow, bigger, sliding i
   await find.fill('slide left');
   await expect.poll(async () => (await options()).length).toBeLessThan(everything);
   const found = await options();
-  expect(found).toContain('Slide in from the left edge');
-  expect(found).not.toContain('Fade in');
+  // The one chosen (the standard look's Fade in) stays listed, first; the rest is what has every word.
+  expect(found[0]).toBe('Fade in');
+  expect(found.slice(1)).toContain('Slide in from the left edge');
+  expect(found.slice(1)).not.toContain('Fade in');
   await animation.selectOption({ label: 'Slide in from the left edge' });
   await find.fill('');
   await expect.poll(async () => (await options()).length).toBe(everything);
