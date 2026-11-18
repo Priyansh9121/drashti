@@ -3,14 +3,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  importAndGetIds,
-  launchApp,
-  operatorPage,
-  operatorReady,
-  outputPage,
-  setUpScreen,
-} from './helpers';
+import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
 import { drawPicture, goLive, makeSlides, plain } from './placeholder-slides';
 
 /*
@@ -61,9 +54,9 @@ const hallNow = (hall: Page) => hall.evaluate(() => performance.now());
 const framesSince = (hall: Page, from: number) =>
   hall.evaluate(
     (from) =>
-      (
-        (globalThis as unknown as { drashtiTestHallFrames?: HallFrame[] }).drashtiTestHallFrames ?? []
-      ).filter((f) => f.t >= from),
+      ((globalThis as unknown as { drashtiTestHallFrames?: HallFrame[] }).drashtiTestHallFrames ?? []).filter(
+        (f) => f.t >= from,
+      ),
     from,
   );
 
@@ -74,9 +67,9 @@ async function whole(hall: Page, words: string): Promise<void> {
   await expect
     .poll(() =>
       hall.evaluate(() =>
-        Array.from(document.querySelectorAll<HTMLImageElement>('[data-layer="slide"] [data-slide-in] img')).every(
-          (img) => img.complete,
-        ),
+        Array.from(
+          document.querySelectorAll<HTMLImageElement>('[data-layer="slide"] [data-slide-in] img'),
+        ).every((img) => img.complete),
       ),
     )
     .toBe(true);
