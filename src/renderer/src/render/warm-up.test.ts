@@ -112,6 +112,34 @@ describe('the warm-up', () => {
     expect(warmScenes().some((s) => s.key === 'deck-wipe/calm/off-grid/clipped')).toBe(false);
   });
 
+  it('draws the wide Cover’s shaded full-slide picture off the grid, so its first use can reuse the antialiased pipeline (X12 wide)', () => {
+    // Earlier Mac traces: the outer brightness(0) flattened the shaded RGBA pass. On air the first 16:9 Cover
+    // made PerEdgeAAQuadRenderStep + MatrixColorFilter SrcOver AnalyticClip, holding one frame for 150–450 ms.
+    // The overlay must leave this full-slide picture, and the Cover's own shade, drawn as on air.
+    const key = 'deck-cover-wide/calm/off-grid';
+    const wide = scene(key);
+    expect(wide.offset).toBe('translate(0.5px, 0.5px)');
+    expect(wide.clip).toBeUndefined();
+    const at = BEFORE + 33;
+    const { t, p, frame } = deckFrameOf(key, at);
+    expect(t.deckEffect).toBe('cover');
+    expect(p).toBeGreaterThan(0.3);
+    expect(p).toBeLessThan(0.7);
+    expect(frame.in.filter).toBe('brightness(0.986)');
+    expect(frame.in.transform).toMatch(/^translate[XY]\(/u);
+    for (const during of [false, true]) {
+      const slide = slideOf(wide, during, at).slide;
+      expect([slide.width, slide.height]).toEqual([1920, 1080]);
+      expect(slide.elements).toEqual([
+        expect.objectContaining({
+          kind: 'image',
+          fit: 'fill',
+          frame: { x: 0, y: 0, width: 1920, height: 1080 },
+        }),
+      ]);
+    }
+  });
+
   it('draws a 4:3 deck’s Cover between bars, half a pixel off the grid (C24, X12)', () => {
     // CI's Mac, traced (c24 profiled run on 7e12c229): the scene on the grid makes the shade's pipelines as
     // 'CoverBoundsRenderStep[NonAAFill] + ...+MatrixColorFilter'; the first 16:9 Cover on air, its slide between pixels,
