@@ -81,6 +81,7 @@ import {
 import { type Baker, movieChoice } from './deck/plan';
 import type { OfficeCopies } from './deck/leftovers';
 import { StepTimes, stepsLine } from './step-times';
+import { importKirtanBundle } from './kirtan-bundle-import';
 import { extractZip } from './zip';
 import { plural } from '../../shared/text';
 import { readabilityCounts, REFERENCE_LINES } from '../../shared/readable';
@@ -2095,6 +2096,51 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       return;
     }
     switch (file.format) {
+      case 'kirtan-bundle':
+        commit();
+        await importKirtanBundle({
+          db: ctx.db,
+          media: ctx.media,
+          path: file.path,
+          sourcePath: where.sourcePath,
+          ...(ctx.tempDir ? { tempDir: ctx.tempDir } : {}),
+          ...(ctx.freeBytes ? { freeBytes: ctx.freeBytes } : {}),
+          ...(ctx.signal ? { signal: ctx.signal } : {}),
+          ...(ctx.isCancelled ? { isCancelled: ctx.isCancelled } : {}),
+          write: async (apply, sourcePath) => {
+            const at = position++;
+            batch.write(
+              () => {
+                const item = apply();
+                imports.addItem(ctx.runId, at, item);
+                return item;
+              },
+              {
+                committed: (item) => {
+                  addToTotals(totals, item);
+                  if (
+                    item.target?.kind === 'presentation' &&
+                    (item.outcome === 'imported' || item.outcome === 'replaced')
+                  )
+                    ctx.onWrote?.({ presentationId: item.target.id, replaced: item.outcome === 'replaced' });
+                },
+                failed: (error) =>
+                  failed(
+                    { ...where, sourcePath },
+                    'kirtan-bundle',
+                    basename(file.path),
+                    `Could not import this kirtan: ${errorText(error)}`,
+                    [],
+                    at,
+                  ),
+              },
+            );
+            maybeCommit();
+            await giveWay();
+          },
+        });
+        commit();
+        return;
       case 'text':
         await importText(file, where);
         return;

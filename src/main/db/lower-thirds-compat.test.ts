@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_LOWER_THIRD_LOOK, type LowerThirdInput } from '../../shared/lower-thirds';
 import { applyPendingRestore, backupLibrary, LIBRARY_FILE, requestRestore } from '../library/backup';
-import { type Db, LATEST_VERSION, openDatabase } from './database';
+import { type Db, openDatabase } from './database';
 import { LowerThirdRepo } from './lower-thirds';
 import { MIGRATIONS } from './migrate';
 import { alpha17LookColumn, alpha17LookOf } from './testing/alpha17-lower-third-look';
@@ -108,13 +108,14 @@ describe('lower-third backgrounds across alpha.17 and alpha.18', () => {
 
   it('keeps both backgrounds through a library backup and restore at alpha.17’s schema version', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-lower-thirds-backup-'));
-    const library = openDatabase(join(dir, LIBRARY_FILE));
+    // This fixture represents alpha.17/18, not a later schema with new import formats.
+    const library = openDatabase(join(dir, LIBRARY_FILE), alpha17Migrations);
     try {
       const id = new LowerThirdRepo(library).create(modern);
       const now = new Date(2026, 10, 14, 12);
       const { folder } = await backupLibrary(library, dir, {
         mediaDir: null,
-        schema: LATEST_VERSION,
+        schema: ALPHA17_SCHEMA,
         app: '1.0.0-alpha.18',
         now,
       });

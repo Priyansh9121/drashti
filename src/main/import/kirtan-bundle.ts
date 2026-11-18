@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdir, mkdtemp, open, readFile, rename, rm, stat, type FileHandle } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -9,7 +9,13 @@ import type { Db } from '../db/database';
 import type { ContentRows } from '../db/content';
 import { MediaRepo } from '../db/media';
 import { PresentationRepo } from '../db/presentations';
-import { SettingsRepo } from '../db/settings';
+import {
+  bundleIdentity,
+  bundleState,
+  bundleLocalHash,
+  keepBundleState,
+  mapBundleContent,
+} from './kirtan-bundle-state';
 import { diskFreeBytes } from './media-store';
 import { withZip, writeEntry, type ZipEntry } from './zip';
 import {
@@ -22,22 +28,6 @@ import {
 
 export { BUNDLE_LIMITS } from './kirtan-bundle-schema';
 const sha = (data: Buffer) => createHash('sha256').update(data).digest('hex');
-const identityKey = (id: string) => `kirtanBundle.identity.${id}`;
-export const bundleStateKey = (id: string) => `kirtanBundle.received.${id}`;
-
-/** A per-kirtan identity, kept in the library's existing namespaced metadata. */
-export function bundleIdentity(db: Db, presentationId: string): string {
-  const settings = new SettingsRepo(db);
-  const found = settings.get(identityKey(presentationId));
-  if (typeof found === 'string' && /^[0-9a-f-]{36}$/u.test(found)) return found;
-  const made = randomUUID();
-  settings.set(identityKey(presentationId), made);
-  return made;
-}
-
-export function keepBundleIdentity(db: Db, presentationId: string, id: string): void {
-  new SettingsRepo(db).set(identityKey(presentationId), id);
-}
 
 /** Media ids in every supported slide field, including decks and the editor's master/design. */
 export function bundleMediaIds(rows: ContentRows): string[] {
@@ -156,15 +146,30 @@ export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleM
   const mediaRepo = new MediaRepo(o.db);
   const manifest: BundleManifest = { format: 'drashti-kirtans', version: 1, kirtans: [], media: [] };
   const files: PackedFile[] = [];
-  const mediaIds = new Set<string>();
+  const mediaIds = new Map<string, string>();
   let documents = 0;
   // One short read/write transaction snapshots the chosen words and reserves their identities. No media I/O under it.
   o.db.transaction(() => {
     for (const id of new Set(o.presentationIds)) {
-      const content = repo.content(id);
+      let content = repo.content(id);
       const p = repo.get(id);
       if (!content?.kirtan || !p) throw new Error('A chosen kirtan is no longer in the library.');
       const stableId = bundleIdentity(o.db, id);
+      const prior = bundleState(o.db, stableId);
+      if (!prior) {
+        const localHash = bundleLocalHash(o.db, id);
+        if (!localHash) throw new Error('The chosen kirtan could not be read.');
+        keepBundleState(o.db, stableId, { presentationId: id, incomingHash: null, localHash, ids: {} });
+      }
+      // A received item re-exports its original reference ids, so returning it cannot create another kirtan.
+      if (prior) {
+        const original = new Map(Object.entries(prior.ids).map(([source, local]) => [local, source]));
+        content = mapBundleContent(
+          content,
+          (local) => original.get(local) ?? local,
+          (local) => original.get(local) ?? local,
+        );
+      }
       const notes = o.db.prepare('SELECT notes FROM presentations WHERE id = ?').pluck().get(id) as string;
       content.presentationId = stableId;
       // A theme's styles are already on each element; a source path is never needed at the other library.
@@ -175,7 +180,13 @@ export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleM
         throw new Error(
           `This kirtan has slide settings that cannot be shared safely (${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}).`,
         );
-      for (const mediaId of bundleMediaIds(content)) mediaIds.add(mediaId);
+      // Media rows are read under this library's ids; the document keeps the portable reference ids.
+      for (const portable of bundleMediaIds(content)) {
+        const local = prior?.ids[portable] ?? portable;
+        const previous = mediaIds.get(portable);
+        if (previous && previous !== local) throw new Error('Two kirtans disagree about a media reference.');
+        mediaIds.set(portable, local);
+      }
       const bytes = Buffer.from(JSON.stringify(parsed.data));
       documents += bytes.length;
       if (bytes.length > BUNDLE_LIMITS.document || documents > BUNDLE_LIMITS.documents)
@@ -187,7 +198,7 @@ export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleM
   })();
   let total = documents;
   const mediaEntries = new Set<string>();
-  for (const id of [...mediaIds].sort()) {
+  for (const [portable, id] of [...mediaIds].sort(([a], [b]) => a.localeCompare(b))) {
     o.signal?.throwIfAborted();
     const row = o.db
       .prepare('SELECT name, kind, path, sha256, bytes, missing, deleted_at FROM media WHERE id = ?')
@@ -224,7 +235,7 @@ export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleM
       }
     }
     manifest.media.push({
-      id,
+      id: portable,
       name,
       kind: row.kind,
       entry,
@@ -333,114 +344,116 @@ export async function withKirtanBundle<T>(
   use: (bundle: OpenKirtanBundle) => T | Promise<T>,
 ): Promise<T> {
   const parent = options.tempDir ?? tmpdir();
-  const fh = await open(file, 'r');
-  let cdOffset: number;
-  try {
-    cdOffset = await preflight(fh);
-  } finally {
-    await fh.close();
-  }
   const work = await mkdtemp(join(parent, 'drashti-kirtan-import-'));
   try {
-    return await withZip(file, async (entries, zip) => {
-      const names = new Set<string>();
-      let total = 0;
-      for (const e of entries) {
-        if (
-          !/^(?:manifest\.json|kirtans\/[0-9a-f-]{36}\.json|media\/[0-9a-f]{64}\.[a-z0-9]{1,10})$/u.test(
-            e.name,
-          ) ||
-          names.has(e.name.toLowerCase()) ||
-          e.isDirectory ||
-          (e.unixMode !== null && (e.unixMode & 0o170000) !== 0 && (e.unixMode & 0o170000) !== 0o100000)
-        )
-          throw new Error('The bundle has an unsafe, repeated or unknown path or link.');
-        names.add(e.name.toLowerCase());
-        const cap =
-          e.name === 'manifest.json'
-            ? BUNDLE_LIMITS.manifest
-            : e.name.startsWith('kirtans/')
-              ? BUNDLE_LIMITS.document
-              : BUNDLE_LIMITS.entry;
-        if (
-          !Number.isSafeInteger(e.size) ||
-          e.size < 0 ||
-          e.size > cap ||
-          e.compressedSize > BUNDLE_LIMITS.entry ||
-          e.size > Math.max(1, e.compressedSize) * BUNDLE_LIMITS.ratio ||
-          (e.method !== 0 && e.method !== 8)
-        )
-          throw new Error('The bundle has an oversized entry or unsafe compression.');
-        total += e.size;
-      }
-      if (
-        total > BUNDLE_LIMITS.total ||
-        (options.freeBytes ?? diskFreeBytes)(parent) - total < BUNDLE_LIMITS.reserve
-      )
-        throw new Error(
-          'The bundle is too big or there is not enough free space; keep 2 GB free for the show.',
-        );
-      const manifestEntry = entries.find((e) => e.name === 'manifest.json');
-      if (!manifestEntry) throw new Error('The bundle has no manifest.');
-      const manifestPath = join(work, 'manifest.json');
-      await checkedEntry(zip, manifestEntry, manifestPath, cdOffset);
-      const parsed = bundleManifestSchema.safeParse(JSON.parse(await readFile(manifestPath, 'utf8')));
-      if (!parsed.success)
-        throw new Error('The bundle manifest has an unknown version, invalid value or unsafe path.');
-      const manifest = parsed.data;
-      const expected = new Map<string, { sha256: string | null; bytes: number }>();
-      expected.set('manifest.json', { sha256: null, bytes: manifestEntry.size });
-      let documents = 0;
-      for (const k of manifest.kirtans) {
-        expected.set(k.entry, k);
-        documents += k.bytes;
-      }
-      for (const m of manifest.media)
-        if (m.entry) {
-          const old = expected.get(m.entry);
-          if (old && (old.sha256 !== m.sha256 || old.bytes !== m.bytes))
-            throw new Error('The media descriptions disagree.');
-          expected.set(m.entry, m);
+    return await withZip(
+      file,
+      async (entries, zip) => {
+        const cdOffset = await preflight(zip);
+        const names = new Set<string>();
+        let total = 0;
+        for (const e of entries) {
+          if (
+            !/^(?:manifest\.json|kirtans\/[0-9a-f-]{36}\.json|media\/[0-9a-f]{64}\.[a-z0-9]{1,10})$/u.test(
+              e.name,
+            ) ||
+            names.has(e.name.toLowerCase()) ||
+            e.isDirectory ||
+            (e.unixMode !== null && (e.unixMode & 0o170000) !== 0 && (e.unixMode & 0o170000) !== 0o100000)
+          )
+            throw new Error('The bundle has an unsafe, repeated or unknown path or link.');
+          names.add(e.name.toLowerCase());
+          const cap =
+            e.name === 'manifest.json'
+              ? BUNDLE_LIMITS.manifest
+              : e.name.startsWith('kirtans/')
+                ? BUNDLE_LIMITS.document
+                : BUNDLE_LIMITS.entry;
+          if (
+            !Number.isSafeInteger(e.size) ||
+            e.size < 0 ||
+            e.size > cap ||
+            e.compressedSize > BUNDLE_LIMITS.entry ||
+            e.size > Math.max(1, e.compressedSize) * BUNDLE_LIMITS.ratio ||
+            (e.method !== 0 && e.method !== 8)
+          )
+            throw new Error('The bundle has an oversized entry or unsafe compression.');
+          total += e.size;
         }
-      if (
-        documents > BUNDLE_LIMITS.documents ||
-        expected.size !== entries.length ||
-        entries.some((e) => !expected.has(e.name))
-      )
-        throw new Error('The bundle has missing, extra or oversized files.');
-      for (const e of entries) {
-        options.signal?.throwIfAborted();
-        if (e.name === 'manifest.json') continue;
-        const want = expected.get(e.name);
-        if (!want) throw new Error('The bundle has an extra file.');
-        if (want.bytes !== e.size) throw new Error('The bundle sizes do not match the manifest.');
-        const path = join(work, ...e.name.split('/'));
-        await checkedEntry(zip, e, path, cdOffset);
-        const digest = createHash('sha256');
-        for await (const chunk of createReadStream(path) as AsyncIterable<Buffer>) digest.update(chunk);
-        if (digest.digest('hex') !== want.sha256) throw new Error('The bundle checksum does not match.');
-      }
-      const kirtans: BundleKirtan[] = [];
-      const mediaIds = new Set(manifest.media.map((m) => m.id));
-      for (const k of manifest.kirtans) {
-        const result = bundleKirtanSchema.safeParse(
-          JSON.parse(await readFile(join(work, ...k.entry.split('/')), 'utf8')),
-        );
-        if (!result.success || result.data.content.presentationId !== k.id)
-          throw new Error('The bundle has invalid kirtan data or references.');
-        if (bundleMediaIds(result.data.content).some((id) => !mediaIds.has(id)))
-          throw new Error('The bundle has an undescribed media reference.');
-        kirtans.push(result.data);
-      }
-      return await use({
-        manifest,
-        kirtans,
-        media: manifest.media.map((m) => ({
-          ...m,
-          path: m.entry ? join(work, ...m.entry.split('/')) : null,
-        })),
-      });
-    });
+        if (
+          total > BUNDLE_LIMITS.total ||
+          (options.freeBytes ?? diskFreeBytes)(parent) - total < BUNDLE_LIMITS.reserve
+        )
+          throw new Error(
+            'The bundle is too big or there is not enough free space; keep 2 GB free for the show.',
+          );
+        const manifestEntry = entries.find((e) => e.name === 'manifest.json');
+        if (!manifestEntry) throw new Error('The bundle has no manifest.');
+        const manifestPath = join(work, 'manifest.json');
+        await checkedEntry(zip, manifestEntry, manifestPath, cdOffset);
+        const parsed = bundleManifestSchema.safeParse(JSON.parse(await readFile(manifestPath, 'utf8')));
+        if (!parsed.success)
+          throw new Error('The bundle manifest has an unknown version, invalid value or unsafe path.');
+        const manifest = parsed.data;
+        const expected = new Map<string, { sha256: string | null; bytes: number }>();
+        expected.set('manifest.json', { sha256: null, bytes: manifestEntry.size });
+        let documents = 0;
+        for (const k of manifest.kirtans) {
+          expected.set(k.entry, k);
+          documents += k.bytes;
+        }
+        for (const m of manifest.media)
+          if (m.entry) {
+            const old = expected.get(m.entry);
+            if (old && (old.sha256 !== m.sha256 || old.bytes !== m.bytes))
+              throw new Error('The media descriptions disagree.');
+            expected.set(m.entry, m);
+          }
+        if (
+          documents > BUNDLE_LIMITS.documents ||
+          expected.size !== entries.length ||
+          entries.some((e) => !expected.has(e.name))
+        )
+          throw new Error('The bundle has missing, extra or oversized files.');
+        for (const e of entries) {
+          options.signal?.throwIfAborted();
+          if (e.name === 'manifest.json') continue;
+          const want = expected.get(e.name);
+          if (!want) throw new Error('The bundle has an extra file.');
+          if (want.bytes !== e.size) throw new Error('The bundle sizes do not match the manifest.');
+          const path = join(work, ...e.name.split('/'));
+          await checkedEntry(zip, e, path, cdOffset);
+          const digest = createHash('sha256');
+          for await (const chunk of createReadStream(path) as AsyncIterable<Buffer>) digest.update(chunk);
+          if (digest.digest('hex') !== want.sha256) throw new Error('The bundle checksum does not match.');
+        }
+        const kirtans: BundleKirtan[] = [];
+        const mediaIds = new Set(manifest.media.map((m) => m.id));
+        for (const k of manifest.kirtans) {
+          const result = bundleKirtanSchema.safeParse(
+            JSON.parse(await readFile(join(work, ...k.entry.split('/')), 'utf8')),
+          );
+          if (!result.success || result.data.content.presentationId !== k.id)
+            throw new Error('The bundle has invalid kirtan data or references.');
+          if (bundleMediaIds(result.data.content).some((id) => !mediaIds.has(id)))
+            throw new Error('The bundle has an undescribed media reference.');
+          kirtans.push(result.data);
+        }
+        return await use({
+          manifest,
+          kirtans,
+          media: manifest.media.map((m) => ({
+            ...m,
+            path: m.entry ? join(work, ...m.entry.split('/')) : null,
+          })),
+        });
+      },
+      {
+        maxEntries: BUNDLE_LIMITS.entries,
+        maxDirectoryBytes: 2 * 1024 ** 2,
+        maxArchiveBytes: BUNDLE_LIMITS.archive,
+      },
+    );
   } finally {
     await rm(work, { recursive: true, force: true });
   }
