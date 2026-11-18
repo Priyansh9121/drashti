@@ -65,7 +65,14 @@ export function loadPage(
   const moved = motionProbe() ? { ...warm, motionProbe: '1' } : warm;
   const probed = streamProbe() ? { ...moved, streamProbe: '1' } : moved;
   const fails = warmUpFails();
-  const query = fails ? { ...probed, warmUpFails: fails } : probed;
+  const warmed = fails ? { ...probed, warmUpFails: fails } : probed;
+  // X15 / MS-2: only these two control windows can install the fit-report test script. Never packaged.
+  const query =
+    !packaged() &&
+    sw('DRASHTI_TEST_FIT_FAILURES') === '1' &&
+    (page === 'index' || page === 'slide-editor')
+      ? { ...warmed, fitFailureTest: '1' }
+      : warmed;
   const dev = devServerUrl();
   if (dev) {
     const url = new URL(`${page}.html`, dev.endsWith('/') ? dev : dev + '/');
