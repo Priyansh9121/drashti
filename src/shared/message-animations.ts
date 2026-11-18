@@ -1,3 +1,4 @@
+import { findAnimations, searchWords } from './lower-third-search';
 import { isOffered, OFFERED_ANIMATIONS } from './lower-third-studio';
 import { MESSAGE_FIRST_ANIMATIONS } from './message-look';
 
@@ -19,7 +20,9 @@ const FIRST = MESSAGE_FIRST_ANIMATIONS.filter(isOffered);
 /** Every other the studio offers. */
 const MORE = OFFERED_ANIMATIONS.map((a) => a.id).filter((id) => !(FIRST as readonly string[]).includes(id));
 
-/** What the list offers for what is typed in the box (nothing typed: all of it). */
-export function messageAnimationChoices(_query: string): MessageAnimationChoices {
-  return { first: FIRST, more: MORE };
+/** What the list offers for what is typed in the box (nothing typed: all of it): what the studio's search finds. */
+export function messageAnimationChoices(query: string): MessageAnimationChoices {
+  if (searchWords(query).length === 0) return { first: FIRST, more: MORE };
+  const found = new Set(findAnimations(query, 'in').map((o) => o.animation.id));
+  return { first: FIRST.filter((id) => found.has(id)), more: MORE.filter((id) => found.has(id)) };
 }
