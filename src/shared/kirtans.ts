@@ -2,6 +2,9 @@ import { z } from 'zod';
 import type { Lang } from './model';
 import { idSchema, langSchema } from './model-schema';
 
+/** A kirtans' category's name as the operator adds it (X14). */
+export const kirtanCategorySchema = z.string().trim().min(1).max(60);
+
 /*
  * A kirtan (PLAN.md 3): a presentation whose words come in language tracks
  * (see tracks.ts), with details to find it by. Making a presentation a
