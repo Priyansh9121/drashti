@@ -102,6 +102,8 @@ export default defineConfig({
           audio: resolve('src/renderer/audio.html'),
           // The stream's Program, drawn off screen (src/main/stream/program-window.ts).
           stream: resolve('src/renderer/stream.html'),
+          // The stream's page's warm-up alone, at the start (src/main/stream/stream-warm.ts, Session 59 X21).
+          'stream-warm': resolve('src/renderer/stream-warm.html'),
           // A node's own window (Session 13): which Main it follows, its displays and media.
           node: resolve('src/renderer/node.html'),
           // The component gallery, for development (Diagnostics > Component Gallery).
