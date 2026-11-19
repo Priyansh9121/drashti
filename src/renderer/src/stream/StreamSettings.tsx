@@ -25,6 +25,7 @@ import { Toggle } from '../ui/Toggle';
 import { loadProfiles, streamAction, useStream, watchProgram } from './stream-store';
 import { cutText } from '../../../shared/text';
 import { RecordingFolder } from './RecordButton';
+import { VideoOutSettings } from './VideoOutSettings';
 
 /*
  * Stream settings: profiles, each with a name, where it goes (the RTMPS
@@ -496,6 +497,7 @@ function SettingsDialog() {
             <SectionTitle>Recording folder</SectionTitle>
             <RecordingFolder />
           </section>
+          <VideoOutSettings />
         </>
       )}
     </Dialog>
