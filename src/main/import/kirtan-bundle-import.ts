@@ -49,8 +49,9 @@ function applyKirtan(
   const state = bundleState(o.db, descriptor.id);
   const old = state
     ? (o.db
-        .prepare('SELECT id, name, deleted_at FROM presentations WHERE id = ?')
-        .get(state.presentationId) as { id: string; name: string; deleted_at: string | null } | undefined)
+        .prepare('SELECT id, name, library_id, deleted_at FROM presentations WHERE id = ?')
+        .get(state.presentationId) as
+        { id: string; name: string; library_id: string; deleted_at: string | null } | undefined)
     : undefined;
   const item: NewImportItem = {
     sourcePath,
@@ -154,6 +155,18 @@ function applyKirtan(
     return mappedMedia;
   });
   mapped.presentationId = id;
+  mapped.themeId = ownRows?.themeId ?? null;
+  if (old && old.name !== k.name) {
+    const taken = o.db
+      .prepare(
+        'SELECT 1 FROM presentations WHERE library_id = ? AND name = ? AND id <> ? AND deleted_at IS NULL',
+      )
+      .get(old.library_id, k.name, id);
+    if (!taken) {
+      o.db.prepare('UPDATE presentations SET name = ? WHERE id = ?').run(k.name, id);
+      item.name = k.name;
+    }
+  }
   repo.setContent(mapped);
   o.db
     .prepare('UPDATE presentations SET notes = ?, source_hash = ?, source_imported_at = ? WHERE id = ?')

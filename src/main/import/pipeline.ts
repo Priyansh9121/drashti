@@ -2232,9 +2232,17 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       try {
         await importOne(file, where);
       } catch (error) {
+        if (file.format === 'kirtan-bundle' && (ctx.signal?.aborted || ctx.isCancelled?.())) {
+          status = 'cancelled';
+          break;
+        }
         failed(where, file.format, basename(file.path), `Could not import this file: ${errorText(error)}`);
       }
       done++;
+      if (file.format === 'kirtan-bundle' && (ctx.signal?.aborted || ctx.isCancelled?.())) {
+        status = 'cancelled';
+        break;
+      }
       maybeCommit();
       await giveWay();
     }
