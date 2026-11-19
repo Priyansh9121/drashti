@@ -49,6 +49,61 @@ async function setup() {
   return { source, target, run, content };
 }
 describe('kirtan bundle import and re-import', () => {
+  it('shares one omitted-media reference across chosen kirtans and keeps its checksum and points through another hop', async () => {
+    const t = await setup();
+    const recording = must(t.source.repo.content(t.source.id)?.kirtan?.row.audio_media_id);
+    const points = {
+      startMs: 0,
+      endMs: null,
+      markers: [{ id: 'placeholder-start', name: 'Placeholder start', atMs: 0 }],
+    };
+    new MediaRepo(t.source.db).setMarkers(recording, points);
+    const second = t.source.repo.insert({
+      libraryId: t.source.repo.ensureLibrary('Placeholder library'),
+      name: 'Placeholder second kirtan',
+      groups: [{ name: 'Placeholder verse', slides: [{ elements: [] }] }],
+      kirtan: { audioMediaId: recording },
+    });
+    await exportKirtanBundle({
+      db: t.source.db,
+      mediaDir: t.source.mediaDir,
+      presentationIds: [t.source.id, second],
+      output: t.source.output,
+      includeMedia: false,
+    });
+    expect((await t.run()).summary.totals.failed).toBe(0);
+    expect(t.target.db.prepare('SELECT count(DISTINCT audio_media_id) FROM kirtans').pluck().get()).toBe(1);
+    const missing = t.target.db.prepare('SELECT id FROM media').pluck().get() as string;
+    expect(new MediaRepo(t.target.db).markersOf(missing)).toEqual(points);
+    const ids = t.target.db.prepare('SELECT id FROM presentations').pluck().all() as string[];
+    const output = join(t.target.dir, 'Placeholder shared return.drashti-kirtans');
+    await exportKirtanBundle({
+      db: t.target.db,
+      mediaDir: t.target.mediaDir,
+      presentationIds: ids,
+      output,
+      includeMedia: false,
+    });
+    await withKirtanBundle(output, {}, (b) => {
+      expect(b.manifest.media).toHaveLength(1);
+      expect(b.manifest.media[0]?.sha256).toBe(hash(t.source.wav));
+      expect(b.manifest.media[0]?.bytes).toBe(t.source.wav.length);
+      expect(b.manifest.media[0]?.markers).toEqual(points);
+    });
+    // A third library already holding the bytes can reuse them after that hop, without another copy or missing item.
+    const third = await bundleLibrary();
+    third.db.prepare('DELETE FROM presentations').run();
+    const result = await runImport({
+      db: third.db,
+      media: third.media,
+      runId: randomUUID(),
+      paths: [output],
+      options: {},
+    });
+    expect(result.totals.failed).toBe(0);
+    expect(third.db.prepare('SELECT count(*) FROM media WHERE missing = 1').pluck().get()).toBe(0);
+    expect(third.db.prepare('SELECT count(*) FROM media').pluck().get()).toBe(1);
+  });
   it('skips an unchanged kirtan on a near-full receiving disk without requiring write workspace', async () => {
     const t = await setup();
     await t.source.exportBundle(false);
