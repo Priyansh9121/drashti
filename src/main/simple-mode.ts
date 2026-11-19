@@ -147,6 +147,16 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stream.pickFolder,
   // Video out (x30): turned on, off or named in Pro Mode only (it keeps sending in Simple Mode).
   IPC.stream.setVideoOut,
+  // Scheduling on YouTube (x31): Pro Mode's, as Stream settings are (its status is read in both).
+  IPC.youtube.setClient,
+  IPC.youtube.removeClient,
+  IPC.youtube.signIn,
+  IPC.youtube.cancelSignIn,
+  IPC.youtube.signOut,
+  IPC.youtube.upcoming,
+  IPC.youtube.schedule,
+  IPC.youtube.useBroadcast,
+  IPC.youtube.endBroadcast,
   // Conversions make copies: Pro Mode's (a file's start, end and markers are bounded since Session 56, below).
   IPC.media.convert,
   IPC.media.cancelConversion,

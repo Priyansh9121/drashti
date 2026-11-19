@@ -1,5 +1,6 @@
 import type { ControllerArea, ControllerReply, ControllerRequest, EngineSeen } from './controller-actions';
 import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
+import type { YouTubeListResult, YouTubeResult, YouTubeScheduleInput, YouTubeStatus } from './youtube';
 import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { SlidePictureResult } from './slide-picture';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
@@ -936,6 +937,31 @@ export const IPC = {
     /** main -> operator: video out changed. */
     videoOutChanged: 'stream:video-out-changed',
   },
+  /**
+   * Scheduling a YouTube stream from Drashti (x31): the admin's own Google project signs in, in the computer's own
+   * browser; a broadcast's key goes into a stream profile in the main process. Never a token or a key to a window.
+   * The operator window, Pro Mode (Simple Mode refuses them all but status).
+   */
+  youtube: {
+    status: 'youtube:status',
+    /** Keep the admin's own Google client (its Client ID and Client secret), in the secure storage. */
+    setClient: 'youtube:set-client',
+    removeClient: 'youtube:remove-client',
+    /** Open Google's sign-in page in the computer's own browser; the answer comes by `changed`. */
+    signIn: 'youtube:sign-in',
+    cancelSignIn: 'youtube:cancel-sign-in',
+    /** Forget the sign-in on this computer only. */
+    signOut: 'youtube:sign-out',
+    /** The channel's coming broadcasts. */
+    upcoming: 'youtube:upcoming',
+    schedule: 'youtube:schedule',
+    /** Stream to a coming broadcast from a profile (its key saved there). */
+    useBroadcast: 'youtube:use-broadcast',
+    /** End a profile's broadcast on YouTube (End it on YouTube). */
+    endBroadcast: 'youtube:end-broadcast',
+    /** main -> operator: YouTube's state here changed. */
+    changed: 'youtube:changed',
+  },
   /** Show a Window… (Session 48): another app's window as the hall's background. */
   liveWindow: {
     /** The other apps' open windows the picker offers (operator window only; Pro Mode). */
@@ -1691,6 +1717,16 @@ export interface InvokeContract {
   [IPC.stream.setVideoOut]: { args: [settings: VideoOutSettings]; result: VideoOutResult };
   [IPC.stream.pageContext]: { args: []; result: ProgramContext | null };
   [IPC.stream.pageInputs]: { args: [inputs: ProgramInputs]; result: null };
+  [IPC.youtube.status]: { args: []; result: YouTubeStatus };
+  [IPC.youtube.setClient]: { args: [clientId: string, clientSecret: string]; result: YouTubeResult };
+  [IPC.youtube.removeClient]: { args: []; result: YouTubeResult };
+  [IPC.youtube.signIn]: { args: []; result: YouTubeResult };
+  [IPC.youtube.cancelSignIn]: { args: []; result: YouTubeResult };
+  [IPC.youtube.signOut]: { args: []; result: YouTubeResult };
+  [IPC.youtube.upcoming]: { args: []; result: YouTubeListResult };
+  [IPC.youtube.schedule]: { args: [input: YouTubeScheduleInput]; result: YouTubeResult };
+  [IPC.youtube.useBroadcast]: { args: [profileId: string, broadcastId: string]; result: YouTubeResult };
+  [IPC.youtube.endBroadcast]: { args: [profileId: string]; result: YouTubeResult };
   [IPC.liveWindow.list]: { args: []; result: WindowList };
   [IPC.liveWindow.show]: { args: [id: string]; result: LiveWindowResult };
   [IPC.liveWindow.access]: { args: []; result: null };
@@ -1848,6 +1884,7 @@ export interface EventContract {
   [IPC.quickBar.changed]: QuickPin[];
   [IPC.stream.changed]: StreamStatus;
   [IPC.stream.videoOutChanged]: VideoOutStatus;
+  [IPC.youtube.changed]: YouTubeStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];
