@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { Fragment, memo, useLayoutEffect, useMemo, useRef } from 'react';
+import { Fragment, memo, useContext, useLayoutEffect, useMemo, useRef } from 'react';
 import type { CalendarDay, CalendarLang } from '../../../shared/calendar';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import type {
@@ -15,6 +15,7 @@ import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { BackgroundMedia } from './BackgroundMedia';
+import { CanvasClip } from './canvas-clip';
 import { LiveWindowView } from './LiveWindowView';
 import { useEntrance } from './entrance';
 import { NothingUp, nothingUpShows, WallpaperCover } from './NothingUp';
@@ -390,6 +391,8 @@ export const Scene = memo(function Scene({
   picturesFirst?: boolean;
 }) {
   const captionRoot = useRef<HTMLDivElement>(null);
+  // Clipped at the canvas's edges, but on a screen warped out of square (x27: render/canvas-clip.ts).
+  const canvasClip = useContext(CanvasClip);
   const { layers } = state;
   const shown = (layer: GroupLayer) => look.layers.includes(layer);
   const band = ticker && shown('ticker') && layers.ticker ? layers.ticker : null;
@@ -485,7 +488,7 @@ export const Scene = memo(function Scene({
           position: 'relative',
           width: canvas.width,
           height: canvas.height,
-          overflow: 'hidden',
+          overflow: canvasClip ? 'hidden' : undefined,
           background: '#000000',
         }}
       >

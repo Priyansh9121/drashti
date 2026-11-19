@@ -11,6 +11,7 @@ import { hasPicture, lowerThird } from '../../../shared/program';
 import { placeContent, type Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { Placed } from './Placed';
+import { CanvasClip } from './canvas-clip';
 import { type Reveal, type SlideText, SlideView } from './SlideView';
 import type { TimerState } from '../../../shared/timers';
 import { clockHeld, engineNow, onClockJump } from './clock';
@@ -717,6 +718,8 @@ export function SlideLayerView({
   // What each slide may be backed with while it is a layer of its own without a graphics chip (X11, Q60-6): a slide as
   // designed, known to draw no see-through pixel in its place (render/slide-backing.ts).
   const screen = useContext(ScreenPictures);
+  // Whether its screen clips at the canvas's edges (x27): not one warped out of square (render/canvas-clip.ts).
+  const canvasClip = useContext(CanvasClip);
   const backings = useMemo(() => {
     const backed = drawsWithoutChip() && slides === 'designed';
     return {
@@ -959,7 +962,9 @@ export function SlideLayerView({
         position: 'absolute',
         inset: 0,
         isolation: fading ? 'isolate' : undefined,
-        overflow: fading && (kind === 'slide' || native?.over?.kind === 'slide') ? 'hidden' : undefined,
+        // A screen warped out of square has none (x27: render/canvas-clip.ts); its page's black frame covers instead.
+        overflow:
+          canvasClip && fading && (kind === 'slide' || native?.over?.kind === 'slide') ? 'hidden' : undefined,
         // A deck's own Push, Cover or Uncover moves its slides inside the slide, as PowerPoint does: the screen past it
         // (a 4:3 deck's bars) stays as it is (Session 58, Q58-16).
         clipPath:
