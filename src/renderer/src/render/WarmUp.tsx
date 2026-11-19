@@ -915,8 +915,9 @@ export function WarmUp({
         position: 'absolute',
         inset: 0,
         isolation: 'isolate',
+        // One surface before the page's clip: separately clipped drawing/cover edges leave a light rim.
+        opacity: 0.999,
         pointerEvents: 'none',
-        overflow: 'hidden',
       }}
     >
       {tree &&
@@ -927,7 +928,10 @@ export function WarmUp({
               // Everything it draws, its scenes made inside: one that fails ends the warm-up (Session 57).
               <WarmUpBoundary onError={failed}>
                 {/* Contain every scene's layer below the cover: the old filter used to supply this boundary. */}
-                <div data-warm-drawing="" style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+                <div
+                  data-warm-drawing=""
+                  style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}
+                >
                   <div
                     style={{
                       position: 'absolute',
