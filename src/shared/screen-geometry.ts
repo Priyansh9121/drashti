@@ -321,3 +321,46 @@ export function drawnGeometry(screen: ScreenConfig, group: readonly ScreenConfig
   const g = (fill ?? screen).geometry ?? null;
   return nothingSet(g) ? null : g;
 }
+
+// ---- The warp's cost (x27, Q60-20): clips under it, and what covers the screen outside the picture -----------------
+
+/** A rectangle of a window, in its pixels. */
+export interface Band {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Whether a screen's warp keeps the picture's sides square to the window (nothing set, or a zoom and a move only): a
+ * clip under it then stays a rectangle on the screen. A corner pinned (a perspective or a slant) does not: every clip
+ * under it would make Chromium draw what it holds again, into a picture of its own, each frame (cc's "clip axis
+ * alignment" render surface), so such a screen draws no clip at its picture's edges and covers the window outside its
+ * picture with black instead (output/PictureFrame.tsx).
+ */
+export function warpKeepsAxes(_g: ScreenGeometry | null | undefined, _box: Size): boolean {
+  return true;
+}
+
+/**
+ * Where the picture a screen shows lies on its window once warped: its canvas (or its part of one wide picture) placed
+ * by its scaling, cut to the window, then warped. Four corners in the window's pixels: top left, top right, bottom
+ * right, bottom left. Null when nothing is warped.
+ */
+export function shownQuad(
+  _canvas: Size,
+  _box: Size,
+  _mode: ScalingMode,
+  _g: ScreenGeometry | null | undefined,
+): Corners | null {
+  return null;
+}
+
+/**
+ * The window outside a shown quad, as four bands along its edges (top, right, bottom, left; whole pixels, each just
+ * covering the quad's edge on its side): together they hold every pixel of the window outside the quad.
+ */
+export function frameBands(_quad: Corners, _box: Size): Band[] {
+  return [];
+}

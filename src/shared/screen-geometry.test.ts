@@ -6,6 +6,7 @@ import {
   blendLight,
   cornersProblem,
   DEFAULT_CURVE,
+  frameBands,
   DEFAULT_GAMMA,
   NO_GEOMETRY,
   nothingSet,
@@ -13,7 +14,9 @@ import {
   pinnedCorners,
   placePart,
   rampAlphas,
+  shownQuad,
   squareToQuad,
+  warpKeepsAxes,
   warpMatrix,
   warpTransform,
   widePicture,
@@ -342,5 +345,142 @@ describe('widePicture', () => {
       [200, 200],
       [200, 0],
     ]);
+  });
+});
+
+describe("the warp's cost (x27, Q60-20): which warps keep their clips, and the black outside the picture", () => {
+  const keystone = pinned([
+    { x: 0.04, y: 0.03 },
+    { x: -0.03, y: 0.01 },
+    { x: -0.01, y: -0.03 },
+    { x: 0.02, y: -0.01 },
+  ]);
+  /** A slant: every corner moved across by the same share, the top more than the bottom (a parallelogram). */
+  const slant = pinned([
+    { x: 0.05, y: 0 },
+    { x: 0.05, y: 0 },
+    { x: -0.05, y: 0 },
+    { x: -0.05, y: 0 },
+  ]);
+
+  it('keeps the axes with nothing set, a zoom, a move, or a part and a blend alone', () => {
+    expect(warpKeepsAxes(null, box)).toBe(true);
+    expect(warpKeepsAxes(undefined, box)).toBe(true);
+    expect(warpKeepsAxes(NO_GEOMETRY, box)).toBe(true);
+    expect(warpKeepsAxes({ ...NO_GEOMETRY, zoom: 0.97, offsetX: 0.02, offsetY: -0.01 }, box)).toBe(true);
+    expect(
+      warpKeepsAxes(
+        {
+          ...NO_GEOMETRY,
+          part: { x: 0, width: 1920 },
+          blend: { left: 0, right: 288, gamma: DEFAULT_GAMMA, curve: DEFAULT_CURVE },
+        },
+        box,
+      ),
+    ).toBe(true);
+    // All four corners moved the same way: the picture moved, still square to the window.
+    const moved = pinned([
+      { x: 0.02, y: 0.01 },
+      { x: 0.02, y: 0.01 },
+      { x: 0.02, y: 0.01 },
+      { x: 0.02, y: 0.01 },
+    ]);
+    expect(warpKeepsAxes(moved, box)).toBe(true);
+  });
+
+  it('does not keep them with a corner pinned: a keystone, a slant, one corner alone', () => {
+    expect(warpKeepsAxes(keystone, box)).toBe(false);
+    expect(warpKeepsAxes(slant, box)).toBe(false);
+    expect(warpKeepsAxes(pinned([{ x: 0.01, y: 0 }, ZERO, ZERO, ZERO]), box)).toBe(false);
+    expect(warpKeepsAxes({ ...keystone, zoom: 0.97 }, { width: 1024, height: 768 })).toBe(false);
+  });
+
+  it('shownQuad: nothing warped gives none; else the placed canvas, cut to the window, warped corner by corner', () => {
+    const window = { width: 1024, height: 768 };
+    expect(shownQuad(box, window, 'fit', null)).toBeNull();
+    expect(shownQuad(box, window, 'fit', NO_GEOMETRY)).toBeNull();
+    const quad = shownQuad(box, window, 'fit', keystone);
+    if (!quad) throw new Error('no quad');
+    // Fit puts the 1920 x 1080 canvas at 1024 x 576, 96 pixels down: its corners, warped as the window is.
+    const m = must(warpMatrix(keystone, window));
+    const want: Point[] = [
+      applyMatrix(m, { x: 0, y: 96 }),
+      applyMatrix(m, { x: 1024, y: 96 }),
+      applyMatrix(m, { x: 1024, y: 672 }),
+      applyMatrix(m, { x: 0, y: 672 }),
+    ];
+    quad.forEach((p, i) => {
+      near(p, want[i] ?? ZERO);
+    });
+  });
+
+  it('shownQuad: Fill cuts the canvas to the window; a part shows its own slice only', () => {
+    const window = { width: 1024, height: 768 };
+    const fill = shownQuad(box, window, 'fill', keystone);
+    if (!fill) throw new Error('no quad');
+    // Fill draws the canvas wider than the window: the window's own corners, warped.
+    const m = must(warpMatrix(keystone, window));
+    near(fill[0], applyMatrix(m, ZERO));
+    near(fill[2], applyMatrix(m, { x: 1024, y: 768 }));
+    // A part 1920 wide of a 3584 canvas, Fit into a 1920 x 1080 window: the part fills the window.
+    const wide = { width: 3584, height: 1080 };
+    const g = { ...keystone, part: { x: 1664, width: 1920 } };
+    const part = shownQuad(wide, box, 'fit', g);
+    if (!part) throw new Error('no quad');
+    const mp = must(warpMatrix(g, box));
+    near(part[0], applyMatrix(mp, ZERO));
+    near(part[1], applyMatrix(mp, { x: 1920, y: 0 }));
+    near(part[2], applyMatrix(mp, { x: 1920, y: 1080 }));
+  });
+
+  it('frameBands: four bands along the edges, whole pixels, each just past the quad on its side', () => {
+    const window = { width: 1000, height: 800 };
+    const quad: Corners = [
+      { x: 40.2, y: 30.6 },
+      { x: 970.5, y: 10.1 },
+      { x: 990, y: 780.3 },
+      { x: 20.5, y: 760.7 },
+    ];
+    expect(frameBands(quad, window)).toEqual([
+      { x: 0, y: 0, width: 1000, height: 31 },
+      { x: 970, y: 0, width: 30, height: 800 },
+      { x: 0, y: 760, width: 1000, height: 40 },
+      { x: 0, y: 0, width: 41, height: 800 },
+    ]);
+  });
+
+  it('frameBands: every window pixel outside the quad is in a band; none past a quad corner beyond the window', () => {
+    const window = { width: 1000, height: 800 };
+    // The top right corner pinned out past the window: no right band above it is needed there, none is negative.
+    const quad: Corners = [
+      { x: 60, y: 50 },
+      { x: 1040, y: -20 },
+      { x: 950, y: 760 },
+      { x: 30, y: 790 },
+    ];
+    const bands = frameBands(quad, window);
+    for (const b of bands) {
+      expect(b.width).toBeGreaterThan(0);
+      expect(b.height).toBeGreaterThan(0);
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.y).toBeGreaterThanOrEqual(0);
+      expect(b.x + b.width).toBeLessThanOrEqual(1000);
+      expect(b.y + b.height).toBeLessThanOrEqual(800);
+    }
+    const inside = (p: Point) => {
+      for (let i = 0; i < 4; i++) {
+        const a = quad[i] ?? ZERO;
+        const b = quad[(i + 1) % 4] ?? ZERO;
+        if ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x) < 0) return false;
+      }
+      return true;
+    };
+    for (let y = 0.5; y < 800; y += 7)
+      for (let x = 0.5; x < 1000; x += 7) {
+        const p = { x, y };
+        if (inside(p)) continue;
+        const covered = bands.some((b) => x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height);
+        if (!covered) throw new Error(`outside the quad, in no band: ${String(x)}, ${String(y)}`);
+      }
   });
 });
