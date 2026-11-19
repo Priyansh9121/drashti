@@ -24,6 +24,7 @@ import { useGpuRestarts, useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
 import { KeptVideo } from './KeptVideo';
 import { useInputReport, useVideoInput } from './video-input';
+import { hasNoPicture, tellNoPicture } from './no-picture';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -36,7 +37,11 @@ function style(fit: MediaFit, visible: boolean) {
   } as const;
 }
 
-/** A background video: it says it is ready once its first frame (at the right point) is decoded. */
+/**
+ * A background video: it says it is ready once its first frame (at the right point) is decoded. One whose picture this
+ * computer cannot draw (Session 60, x36: Chromium plays it as sound only, at 0 × 0) is never ready, so the picture
+ * before it stays, and is said to the main process, which takes it off with its sound (render/no-picture.ts).
+ */
 function VideoSlot({
   slot,
   visible,
@@ -64,6 +69,10 @@ function VideoSlot({
       startedAt,
       timing: () => ({ loop: timing.current.loop, clip: timing.current.clip, seek: timing.current.seek }),
       onFrame: () => {
+        if (hasNoPicture(v)) {
+          tellNoPicture(mediaId, startedAt);
+          return;
+        }
         dispatch({ type: 'ready', key, at: engineNow() });
       },
       onError: () => {

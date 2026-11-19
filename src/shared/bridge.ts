@@ -686,6 +686,11 @@ export interface DrashtiBridge {
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
+    /**
+     * A video's picture cannot be drawn on this computer (Session 60, x36), found as it loaded in an output or the
+     * operator window: its showing (its file and when it went up).
+     */
+    noPicture(mediaId: string, startedAt: number): Promise<null>;
   };
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside, a file's Even loudness,
