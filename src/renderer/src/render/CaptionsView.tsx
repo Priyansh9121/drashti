@@ -30,7 +30,15 @@ export function CaptionsView({
   const band = useRef<HTMLDivElement>(null);
   const actual = useVideoCaptionClock(state, screen, videoRoot);
   const captions = captionBandFor(state, screen, actual);
-  useCaptionAvoidance(videoRoot, band, canvas, captions?.place, lift, captions?.lines.join('\n') ?? '');
+  useCaptionAvoidance(
+    videoRoot,
+    band,
+    canvas,
+    captions?.place,
+    lift,
+    captions?.lines.join('\n') ?? '',
+    state.layers,
+  );
   if (!captions) return null;
   const baseLanguage = captions.language.split('-')[0];
   const language: Lang =

@@ -1,6 +1,7 @@
 import { useLayoutEffect, type RefObject } from 'react';
 import type { CaptionPlace } from '../../../shared/captions';
 import type { Size } from '../../../shared/scaling';
+import type { Layers } from '../../../shared/engine/state';
 
 const OCCUPIED =
   '[data-testid="lower-third-layer"], [data-testid="lower-third"], [data-layer="messages"], [data-message-box], [data-testid="ticker"]';
@@ -13,6 +14,7 @@ export function useCaptionAvoidance(
   place: CaptionPlace | undefined,
   lift: number,
   content: string,
+  layers: Layers,
 ): void {
   useLayoutEffect(() => {
     const screen = root?.current;
@@ -59,5 +61,5 @@ export function useCaptionAvoidance(
       mutation.disconnect();
       resize.disconnect();
     };
-  }, [root, band, canvas.height, canvas.width, place, lift, content]);
+  }, [root, band, canvas.height, canvas.width, place, lift, content, layers]);
 }

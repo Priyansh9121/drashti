@@ -28,7 +28,10 @@ export async function readCaptionFile(
     const stat = await handle.stat();
     if (!stat.isFile()) return { track: null, problem: 'The caption file is not a regular file.' };
     if (stat.size > MAX_CAPTION_CHARS)
-      return { track: null, problem: 'The caption file is too large (over 2 MB).' };
+      return {
+        track: null,
+        problem: 'The caption file is too large (over 2 MB). Choose a smaller SRT or WebVTT file.',
+      };
     const data = Buffer.alloc(Math.min(stat.size + 1, MAX_CAPTION_CHARS + 1));
     let done = 0;
     while (done < data.length) {
