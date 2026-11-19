@@ -9,6 +9,9 @@ import type {
   ScreenPatch,
   ScreenRole,
 } from '../../shared/screens';
+import type { ScreenGeometry } from '../../shared/screen-geometry';
+import { nothingSet } from '../../shared/screen-geometry';
+import { screenGeometrySchema } from '../../shared/screens-schema';
 import type { Db } from './database';
 
 /** A group as stored, to put back exactly (Keep these screens?, Session 50). */
@@ -32,6 +35,8 @@ export interface SavedScreen {
   scaling: ScalingMode;
   enabled: boolean;
   feed: ScreenFeed | null;
+  /** Its geometry as stored (JSON, x27), or null for nothing set. */
+  geometry: string | null;
   position: number;
 }
 
@@ -64,6 +69,8 @@ interface ScreenRow {
   enabled: number;
   feed: 'fill' | 'key' | null;
   node_id: string | null;
+  /** Its geometry as JSON (x27, migration 85), or null for nothing set. */
+  geometry: string | null;
 }
 
 /** Groups in Screens' order, the stream's (YouTube, Session 26) after the rest. */
@@ -79,7 +86,24 @@ function parseKey(json: string | null): DisplayKey | null {
   }
 }
 
+/** A geometry as stored, checked as one from a page is: one that cannot be read, or nothing set, is null. */
+function parseGeometry(json: string | null): ScreenGeometry | null {
+  if (!json) return null;
+  try {
+    const parsed = screenGeometrySchema.safeParse(JSON.parse(json));
+    return parsed.success && !nothingSet(parsed.data) ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A geometry as stored: null for nothing set. */
+export const storedGeometry = (g: ScreenGeometry | null | undefined): string | null =>
+  g === null || g === undefined || nothingSet(g) ? null : JSON.stringify(g);
+
 function toScreen(r: ScreenRow): ScreenConfig {
+  // Its geometry only when something is set (x27): a screen with none reads exactly as before.
+  const geometry = parseGeometry(r.geometry);
   return {
     id: r.id,
     groupId: r.group_id,
@@ -91,6 +115,7 @@ function toScreen(r: ScreenRow): ScreenConfig {
     enabled: r.enabled === 1,
     feed: r.feed,
     nodeId: r.node_id,
+    ...(geometry === null ? {} : { geometry }),
   };
 }
 
@@ -266,12 +291,27 @@ export class ScreenRepo {
     if (patch.scaling !== undefined) set('scaling', patch.scaling);
     if (patch.enabled !== undefined) set('enabled', patch.enabled ? 1 : 0);
     if (patch.feed !== undefined) set('feed', patch.feed);
+    if (patch.geometry !== undefined) set('geometry', storedGeometry(patch.geometry));
     if (sets.length === 0) return this.screen(id) !== null;
     return (
       this.db
         .prepare(`UPDATE screens SET ${sets.join(', ')}, updated_at = ${NOW} WHERE id = ?`)
         .run(...values, id).changes > 0
     );
+  }
+
+  /** Several screens changed together, all or none (x27: One wide picture, and Separate pictures). */
+  updateScreens(changes: readonly { id: string; patch: ScreenPatch }[]): boolean {
+    const gone = new Error('a screen is gone');
+    try {
+      this.db.transaction(() => {
+        for (const { id, patch } of changes) if (!this.updateScreen(id, patch)) throw gone;
+      })();
+      return true;
+    } catch (e) {
+      if (e === gone) return false;
+      throw e;
+    }
   }
 
   setDisplayKey(id: string, key: DisplayKey | null): void {
@@ -321,6 +361,7 @@ export class ScreenRepo {
         scaling: r.scaling,
         enabled: r.enabled === 1,
         feed: r.feed,
+        geometry: r.geometry,
         position: r.position,
       })),
     };
@@ -353,12 +394,12 @@ export class ScreenRepo {
       );
       const putScreen = this.db.prepare(
         `INSERT INTO screens (id, group_id, node_id, name, display_key, canvas_width, canvas_height, scaling,
-             enabled, feed, position)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             enabled, feed, geometry, position)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (id) DO UPDATE SET group_id = excluded.group_id, node_id = excluded.node_id,
              name = excluded.name, display_key = excluded.display_key, canvas_width = excluded.canvas_width,
              canvas_height = excluded.canvas_height, scaling = excluded.scaling, enabled = excluded.enabled,
-             feed = excluded.feed, position = excluded.position, updated_at = ${NOW}`,
+             feed = excluded.feed, geometry = excluded.geometry, position = excluded.position, updated_at = ${NOW}`,
       );
       for (const s of saved.screens)
         if (s.nodeId === null || nodes.has(s.nodeId))
@@ -373,6 +414,7 @@ export class ScreenRepo {
             s.scaling,
             s.enabled ? 1 : 0,
             s.feed,
+            s.geometry,
             s.position,
           );
       return removed;

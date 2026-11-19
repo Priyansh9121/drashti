@@ -1,4 +1,13 @@
-import { type Dispatch, useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
+import {
+  type Dispatch,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import type { BackgroundLayer, MediaFit } from '../../../shared/engine/state';
 import {
   type InputSlot,
@@ -13,6 +22,7 @@ import {
   slotsReducer,
 } from './background-slots';
 import { OBJECT_FIT } from './media-style';
+import { OwnLayers } from './canvas-clip';
 import { type Playback, startPlayback } from './playback';
 import { engineNow } from './clock';
 import { dissolveCurve } from './transition-frame';
@@ -308,6 +318,8 @@ function BackgroundPlayer({
   movement?: Movement;
 }) {
   const [slots, dispatch] = useReducer(slotsReducer, NO_SLOTS);
+  // Its pictures as layers of their own, rastered once (x27): a screen warped out of square with a graphics chip.
+  const ownLayers = useContext(OwnLayers);
   // Follow the engine during render, so a new background starts loading in the same commit.
   const [seen, setSeen] = useState<BackgroundLayer | null | undefined>(undefined);
   if (seen !== layer) {
@@ -359,6 +371,7 @@ function BackgroundPlayer({
               position: 'absolute',
               inset: 0,
               mixBlendMode: fading && slot === slots.shown && slots.leaving ? 'plus-lighter' : undefined,
+              willChange: ownLayers ? 'opacity' : undefined,
             }}
           >
             {element}

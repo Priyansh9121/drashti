@@ -26,6 +26,7 @@ import {
   stillLine,
 } from '../shared/motion-measure';
 import { PERF_CASES_MS, PERF_CASES_UP_TO_MS } from '../shared/perf-limits';
+import { NO_GEOMETRY, type ScreenGeometry } from '../shared/screen-geometry';
 import { fitElements } from '../shared/slide-size';
 import { cutText, plural } from '../shared/text';
 import { PresentationRepo } from './db/presentations';
@@ -70,6 +71,8 @@ import { sw } from './switches';
  *   edge as masks the size of each, a Box's, a Diamond's and a Plus's two, one inside the other), a click each;
  * - in the streaming check only (x30): dissolve 800 and the deck's clicks again with video out on (the stream's picture to
  *   other apps by Syphon on a Mac, Spout on Windows), then off again;
+ * - dissolve 800 and the deck's clicks again on the hall screen with its whole picture warped (x27: its corners pinned,
+ *   97 %, a blend's ramp over its right edge), then nothing set again;
  * then Session 57's leftovers (h-left2's MS-1, DK-6 and DK-2), left out of the two-core streaming check (after3's ran
  * into its 14-minute stop with them):
  * - a slide of an imported, editable PowerPoint table of 250 cells (each cell a text box that measures itself on the
@@ -1375,6 +1378,38 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
             await press(own.row, 'slide', DECK_OWN_MS, { type: 'next' }, DECK_OWN_MS + SETTLE_MS);
         });
       }
+      // x27 (the owner's Q-x27-2 A): dissolve 800 and the deck's clicks again on the hall screen with its whole picture
+      // warped, as a projector not square to the wall needs, a little smaller and a blend's ramp over its right edge;
+      // then nothing set again. On two cores too, only with time for all of it, never marking the check out of time.
+      const warpMs =
+        RUNS * (DEFAULT_MS + SETTLE_MS) +
+        WARP_DECK_RUNS * (SETTLE_MS + 2 * (CLIP_MS + 800)) +
+        4 * PAGE_LIMIT_MS;
+      if (timeFor(warpMs, `the hall screen${WARPED}`)) {
+        closeCase();
+        const warped = await warpHall(output, operator(), WARP);
+        if (warped !== true) note(`the hall screen${WARPED}: ${warped}`);
+        else {
+          progress(`dissolve 800 and the deck’s clicks${WARPED}`);
+          const k = KINDS.indexOf('dissolve');
+          for (let i = 0; i < RUNS; i++)
+            await press(
+              `dissolve 800${WARPED}`,
+              'slide',
+              DEFAULT_MS,
+              goLive(slidesId, k * 2 + (i % 2)),
+              DEFAULT_MS + SETTLE_MS,
+            );
+          await rounds(WARP_DECK_RUNS, `the deck’s clicks${WARPED}`, async () => {
+            await away();
+            await press(`deck slide in (step 0)${WARPED}`, 'deck', CLIP_MS, goLive(deckId, 0), CLIP_MS + 800);
+            await press(`deck click${WARPED}`, 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
+          });
+          closeCase();
+          const back = await warpHall(output, operator(), null);
+          if (back !== true) note(`the hall screen’s picture not put back as it was: ${back}`);
+        }
+      }
       // Session 57's leftovers last (MS-1, DK-6, DK-2), as the click after 20 s still: each only when there is time
       // for all its runs, never marking the check out of time; and never in the two-core streaming check, which ran
       // into its 14-minute stop with them (after3; since Session 58 the cases have their own time, and the leftovers
@@ -1794,6 +1829,60 @@ function keep(streaming: boolean, what: object): void {
   } catch {
     // The summary has every row anyway.
   }
+}
+
+// ---- x27: a hall screen's picture warped (the owner's Q-x27-2 A) ----------------------------------------------------
+
+/** The rows measured on the hall screen with its picture warped: dissolve 800's and the deck's, named so. */
+export const WARPED = ', its screen’s picture pinned, zoomed and blended';
+/** The deck's clicks warped: rounds of a slide in and one click. */
+const WARP_DECK_RUNS = 2;
+/**
+ * A projector a little off square to the wall: each corner moved a few hundredths of the display, the picture 97 % of
+ * its size, and a blend's ramp over its right edge (15 % of a 1920 canvas): every part of the warp drawn at once.
+ */
+export const WARP: ScreenGeometry = {
+  ...NO_GEOMETRY,
+  zoom: 0.97,
+  corners: [
+    { x: 0.04, y: 0.03 },
+    { x: -0.03, y: 0.01 },
+    { x: -0.01, y: -0.03 },
+    { x: 0.02, y: -0.01 },
+  ],
+  blend: { left: 0, right: 288, gamma: 2.2, curve: 2 },
+};
+/** Which screen an output's page draws (output/main.tsx). */
+const SCREEN_OF_PAGE = `document.querySelector('[data-testid="output-root"]')?.getAttribute('data-screen') ?? ''`;
+/** Whether its page draws a geometry now: 'set', or '' for nothing set. */
+const GEOMETRY_SAID = `document.querySelector('[data-testid="output-root"]')?.getAttribute('data-geometry') ?? ''`;
+/** A screen's geometry as Adjust the picture… saves it, from the operator window's own bridge; null: nothing set. */
+const SET_GEOMETRY = (screenId: string, geometry: ScreenGeometry | null) => `(async () => {
+  const r = await globalThis.drashti.screens.updateScreen(${JSON.stringify(screenId)}, { geometry: ${JSON.stringify(geometry)} });
+  return r.ok === true;
+})()`;
+
+/** The hall screen's picture given this geometry (null: nothing set) and drawn so: true, or why not. */
+async function warpHall(
+  output: BrowserWindow | undefined,
+  op: BrowserWindow | null,
+  geometry: ScreenGeometry | null,
+): Promise<true | string> {
+  if (!output || !op) return 'no hall screen or no operator window';
+  const screenId = await ask<string, string>(output, SCREEN_OF_PAGE, '');
+  if (screenId === '') return 'its page did not say which screen it is';
+  if (!(await ask<boolean, boolean>(op, SET_GEOMETRY(screenId, geometry), false)))
+    return 'Screens did not save it';
+  const want = geometry === null ? '' : 'set';
+  const until = Date.now() + SCREEN_LIMIT_MS;
+  while (Date.now() < until) {
+    if ((await ask<string, string>(output, GEOMETRY_SAID, '-')) === want) {
+      await sleep(SETTLE_MS);
+      return true;
+    }
+    await sleep(100);
+  }
+  return `its page did not draw it within ${String(SCREEN_LIMIT_MS / 1000)} s`;
 }
 
 // ---- x30: video out on (the lead's ask) -----------------------------------------------------------------------------
