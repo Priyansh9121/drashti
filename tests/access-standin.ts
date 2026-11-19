@@ -163,7 +163,7 @@ function linkCallOf(text: string): string | null {
       !('v' in raw) &&
       'link' in raw
     )
-      return String((raw as { link: unknown }).link);
+      return String(raw.link);
   } catch {
     // Not JSON: not the page's.
   }
