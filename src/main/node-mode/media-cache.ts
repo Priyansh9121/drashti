@@ -438,6 +438,7 @@ export class MediaCache {
       const old = t - f.wantedAt > KEEP_DAYS_MS;
       if (!old && (needBytes <= 0 || this.room(needBytes))) continue;
       rmSync(this.pathOf(sha, f.ext), { force: true });
+      rmSync(join(this.deps.dir, 'stills', `${sha}.jpg`), { force: true });
       this.index.files.delete(sha);
       this.deps.log('info', `Media copies: removed a copy nothing wants (${formatBytes(f.bytes)})`);
     }
