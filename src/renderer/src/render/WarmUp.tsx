@@ -24,7 +24,7 @@ import { engineNow, pauseClock } from './clock';
 import { deckTransitionFrame } from './transition-frame';
 import { framesOnTime } from './frames-on-time';
 import { LowerThirdView } from './LowerThirdView';
-import { MediaUrls, useMediaUrl } from './media-urls';
+import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
 import {
   OFF_GRID,
@@ -282,17 +282,21 @@ export const WARM_LOWER_THIRDS = [
 ];
 
 /**
- * The shaded RGBA quad itself under a stationary analytic clip (X12 wide, traced at 28adc987). The warm-up made
- * AA shaded quads without that clip, or non-AA shaded quads; the first wide Cover made the combined kind on air.
- * The existing generated PNG samples as RGBA, the same HardwareImage + MatrixColorFilter kind as the native
- * picture-and-words surface. Turn the filtered image itself within a fixed rounded clip so both AA and the clip
- * apply to that quad. The unclipped copy primes the 4:3 shade; the notched twins prime the multisampled passes.
- * These small copies draw only below the existing black cover. The on-air renderer is unchanged.
+ * A small picture-and-words surface, shaded as a group like a native Cover. Filtering an image alone is folded
+ * into its paint (traced at 8fefcb8d); it does not prime the filtered RGBA render-pass quad used on air. A stationary
+ * fractional rectangle clips the group's transformed quad, combining its AA edge with the analytic clip. The
+ * unclipped copy primes the 4:3 path; the notched twins prime the multisampled passes. Nothing here is drawn on air.
  */
 function CoverShadeQuad({ analytic }: { analytic: boolean }) {
   const size = { width: 320, height: 180 };
-  const urlOf = useMediaUrl();
   const shade = deckTransitionFrame(warmDeckTransition('cover', MAX_TRANSITION_MS), PART).in.filter;
+  const state = useMemo(() => {
+    const base = initialEngineState();
+    return {
+      ...base,
+      layers: { ...base.layers, slide: layerOf(fullPictureSlide(true), -LONG_AGO) },
+    };
+  }, []);
   return (
     <div
       data-warm-cover-quad={analytic ? 'analytic-clip' : 'unclipped'}
@@ -302,24 +306,23 @@ function CoverShadeQuad({ analytic }: { analytic: boolean }) {
         top: 0,
         width: 384,
         height: 256,
-        ...(analytic ? { ...size, overflow: 'hidden' as const, borderRadius: 2 } : {}),
+        ...(analytic ? { ...size, clipPath: 'inset(0.5px)' } : {}),
       }}
     >
-      <img
-        src={urlOf(PICTURE.png)}
-        alt=""
-        draggable={false}
+      <div style={{ position: 'absolute', inset: 0, background: '#1b1030' }} />
+      <div
         style={{
           position: 'absolute',
           left: analytic ? 0 : 32,
           top: analytic ? 0 : 32,
           ...size,
-          display: 'block',
-          objectFit: 'fill',
           filter: shade,
           transform: 'translate(0.5px, 0.5px) rotate(7deg)',
+          willChange: 'transform',
         }}
-      />
+      >
+        <Scene state={state} canvas={size} scaling="fit" look={DEFAULT_LIVE_GROUP_LOOK} ticker={false} />
+      </div>
     </div>
   );
 }
