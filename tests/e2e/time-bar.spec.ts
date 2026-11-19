@@ -70,6 +70,16 @@ test('the background video: a click on its bar moves it in step on two screens a
     tone: 520,
   });
   const [mediaId = ''] = await importAndGetIds(win, [file]);
+  // Measuring the imported clip's loudness changes the engine revision too. Finish that work before the drag,
+  // so the exact revision check below measures the drag alone.
+  await expect
+    .poll(() =>
+      win.evaluate(
+        async (id) => (await (globalThis as PageGlobals).drashti.sound.file(id))?.measured,
+        mediaId,
+      ),
+    )
+    .toBe(true);
   // A marker, a tick on its bar.
   const marked = await win.evaluate(
     (id) =>

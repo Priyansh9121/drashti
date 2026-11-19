@@ -1,3 +1,4 @@
+import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
 import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { SlidePictureResult } from './slide-picture';
@@ -120,6 +121,7 @@ import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
 import type { SavePictureResult, SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
+import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
 import type {
@@ -298,6 +300,12 @@ export interface DrashtiBridge {
     onOpen(listener: () => void): () => void;
   };
   /** Live captions (Session 55, Part 10, operator window; Pro Mode): how they stand, never a word heard. */
+  videoCaptions: {
+    view(mediaId: string): Promise<VideoCaptionChoice>;
+    select(mediaId: string, trackId: string | null): Promise<VideoCaptionResult>;
+    add(mediaId: string): Promise<VideoCaptionResult>;
+    onChanged(listener: (change: { mediaId: string; view: VideoCaptionChoice }) => void): () => void;
+  };
   captions: {
     view(): Promise<CaptionsStatus>;
     setOn(on: boolean): Promise<CaptionsStatus>;
@@ -956,6 +964,12 @@ export interface DrashtiBridge {
     dirty(dirty: boolean): Promise<null>;
     close(): Promise<null>;
     onAskClose(listener: () => void): () => void;
+  };
+  /** OSC: explicitly allowed local UDP senders, independent of Phones. */
+  osc: {
+    status(): Promise<OscStatus>;
+    configure(settings: OscSettings): Promise<OscResult>;
+    onChanged(listener: (status: OscStatus) => void): () => void;
   };
   /** The MIDI controller: which device, and what its notes and controllers do. */
   midi: {
