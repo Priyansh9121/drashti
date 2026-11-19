@@ -158,8 +158,6 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
               onStopped={warmUpStopped}
             />
           )}
-          {/* The Stream panel's own drawing, warmed with it, unseen (Session 60, X21: operator/PanelWarmUp.tsx). */}
-          {warming && <PanelWarmUp />}
           {state && showing && (
             <Scene
               state={state}
@@ -194,7 +192,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
       <div
         className={cx(
           // The live border and its red underglow come and go in the same frame as the screens: no fade.
-          'overflow-hidden rounded-lg border-2 bg-black',
+          'relative overflow-hidden rounded-lg border-2 bg-black',
           somethingUp && !blackout ? 'border-live shadow-live' : 'border-line-strong shadow-card',
         )}
         data-testid="live-preview"
@@ -203,6 +201,9 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
         aria-hidden="true"
       >
         {practising ? picture : <ZoomablePreview>{picture}</ZoomablePreview>}
+        {/* The Stream panel's own drawing, warmed with the picture's, unseen, at its own size on whole pixels (Session
+            60, X21: operator/PanelWarmUp.tsx). */}
+        {warming && <PanelWarmUp />}
       </div>
       <PipLiveStrip />
       {/* The time bar for what plays (Session 54), where a page asks for it under the picture. */}
