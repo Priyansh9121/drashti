@@ -158,6 +158,28 @@ export const PDF_OPTIONS = {
 /** The partition of the printing window: in memory only (no "persist:"), its own, never the show's. */
 const PRINT_PARTITION = 'drashti-manual-print';
 
+/** The files the page being printed may load now (one print at a time: manual-service.ts). */
+let mayLoad: ReadonlySet<string> = new Set();
+let printSession: Electron.Session | null = null;
+
+/** The printing window's session, its rules set once: only `mayLoad`, no permission, no download. */
+function printingSession(): Electron.Session {
+  if (printSession) return printSession;
+  const made = session.fromPartition(PRINT_PARTITION, { cache: false });
+  made.webRequest.onBeforeRequest((details, callback) => {
+    callback({ cancel: !printRequestAllowed(details.url, mayLoad) });
+  });
+  made.setPermissionCheckHandler(() => false);
+  made.setPermissionRequestHandler((_contents, _permission, callback) => {
+    callback(false);
+  });
+  made.on('will-download', (event) => {
+    event.preventDefault();
+  });
+  printSession = made;
+  return made;
+}
+
 /** Whether a request from the printing page may go: only the page's own file, and the pictures named. */
 export function printRequestAllowed(url: string, allowed: ReadonlySet<string>): boolean {
   try {
@@ -198,17 +220,8 @@ export async function printManual(p: {
         // A picture not there: the page shows its description (it is never allowed by another name).
       }
     }
-    const printing = session.fromPartition(PRINT_PARTITION, { cache: false });
-    printing.webRequest.onBeforeRequest((details, callback) => {
-      callback({ cancel: !printRequestAllowed(details.url, allowed) });
-    });
-    printing.setPermissionCheckHandler(() => false);
-    printing.setPermissionRequestHandler((_contents, _permission, callback) => {
-      callback(false);
-    });
-    printing.on('will-download', (event) => {
-      event.preventDefault();
-    });
+    mayLoad = allowed;
+    const printing = printingSession();
     win = new BrowserWindow({
       show: false,
       focusable: false,
@@ -256,6 +269,7 @@ export async function printManual(p: {
     if (printed.success) return { ok: true, pdf: null };
     return { ok: false, cancelled: /cancel/iu.test(printed.why), why: printed.why };
   } finally {
+    mayLoad = new Set();
     if (win && !win.isDestroyed()) win.destroy();
     rmSync(folder, { recursive: true, force: true });
   }
