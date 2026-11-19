@@ -136,7 +136,8 @@ function NodeCard({
           }}
         />
         <p className="text-xs text-muted">
-          Show LIVE and NEXT on this computer. Main runs the show; this adds no show controls.
+          Show LIVE and NEXT on this computer. Its assigned screens keep their last show if the link drops.
+          Main runs the show; this adds no show controls.
         </p>
       </div>
       {node.versionRefused && (
