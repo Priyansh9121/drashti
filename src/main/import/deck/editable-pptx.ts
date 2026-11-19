@@ -1315,6 +1315,11 @@ function tableRegions(
   });
 }
 
+/** Whether a table style's border (its own line, or the theme's line it names) is a double one. */
+function doubleBorder(border: Node, ctx: Context): boolean {
+  return attr(child(border, 'ln') ?? themeLine(child(border, 'lnRef'), ctx), 'cmpd') === 'dbl';
+}
+
 function styledTableBorder(border: Node, ctx: Context): Outline | null | undefined {
   const line = child(border, 'ln');
   if (line) return lineOutline(line, ctx);
@@ -1334,6 +1339,8 @@ interface TableEdge {
   start: number;
   end: number;
   outline: Outline;
+  /** PowerPoint's double line: two strokes and the gap between them, a third of its width each. */
+  double: boolean;
 }
 
 type TableEdgeCandidate = Omit<TableEdge, 'outline'> & { outline: Outline | null; priority: number };
@@ -1389,7 +1396,8 @@ function joinedTableEdges(edges: Iterable<TableEdge>): TableEdge[] {
       previous.boundary === edge.boundary &&
       previous.end === edge.start &&
       previous.outline.color === edge.outline.color &&
-      previous.outline.width === edge.outline.width
+      previous.outline.width === edge.outline.width &&
+      previous.double === edge.double
     )
       previous.end = edge.end;
     else joined.push({ ...edge });
@@ -1397,70 +1405,393 @@ function joinedTableEdges(edges: Iterable<TableEdge>): TableEdge[] {
   return joined;
 }
 
-/** A border line in a theme colour, as PowerPoint's built-in table styles draw them (1 pt is 12,700 EMU). */
-const styleLine = (width: number, color: string) =>
-  `<a:ln w="${String(width)}" cmpd="sng"><a:solidFill><a:schemeClr val="${color}"/></a:solidFill></a:ln>`;
-const TABLE_SIDES = ['left', 'right', 'top', 'bottom', 'insideH', 'insideV'];
-const tablePart = (name: string, style: string, words = '') =>
-  `<a:${name}>${words}<a:tcStyle>${style}</a:tcStyle></a:${name}>`;
+/*
+ * PowerPoint's built-in table styles (X16): what real PowerPoint draws for each of its 74 table style IDs when a deck
+ * names one without saving its definition (python-pptx and other exporters write such decks, and PowerPoint keeps one
+ * so). Each family is written as PowerPoint's own definitions are: parts of the table (the whole table, its banded rows
+ * and columns, first and last columns, last and first rows, corner cells) laid over one another in that order, each
+ * with its words, its lines (in set widths, or the theme's own line styles) and its fill. Checked against its PDF of
+ * real-PowerPoint run 6 (19 Nov 2026) cell by cell and line by line (editable-pptx-table-families.test.ts). Without an
+ * accent a Light or Themed style is drawn in the text colour, a Medium or Dark one in the dark colour (run 6's deck, with
+ * the usual colour map, draws both alike).
+ */
+const TABLE_SIDES = ['left', 'right', 'top', 'bottom', 'insideH', 'insideV'] as const;
+type TableSide = (typeof TABLE_SIDES)[number];
+/** A theme colour, perhaps tinted toward white, shaded toward black or see-through (20% is 20,000). */
+const scheme = (name: string, change?: 'tint' | 'shade' | 'alpha', share = 0) =>
+  `<a:schemeClr val="${name}">${change ? `<a:${change} val="${String(share)}"/>` : ''}</a:schemeClr>`;
+/** A line of a set width (1 pt is 12,700 EMU): single, or double (two strokes and the gap between, a third each). */
+const setLine = (width: number, color: string, compound: 'sng' | 'dbl' = 'sng') =>
+  `<a:ln w="${String(width)}" cmpd="${compound}"><a:solidFill>${color}</a:solidFill></a:ln>`;
+/** The theme's own line style `index` (1 to 3), in a colour. */
+const lineRef = (index: number, color: string) => `<a:lnRef idx="${String(index)}">${color}</a:lnRef>`;
+const NO_LINE = '<a:ln><a:noFill/></a:ln>';
+const solid = (color: string) => `<a:fill><a:solidFill>${color}</a:solidFill></a:fill>`;
+const NO_FILL = '<a:fill><a:noFill/></a:fill>';
+/** A part's words: bold or not, in a colour (else the whole table's). */
+const tableWords = (bold: boolean, color = '') =>
+  `<a:tcTxStyle${bold ? ' b="on"' : ''}>${color ? `<a:fontRef idx="minor"><a:prstClr val="black"/></a:fontRef>${color}` : ''}</a:tcTxStyle>`;
+const BOLD = tableWords(true);
+
+interface StylePart {
+  words?: string;
+  lines?: Partial<Record<TableSide, string>>;
+  fill?: string;
+}
+function stylePart(name: string, { words = '', lines = {}, fill = '' }: StylePart): string {
+  const sides = TABLE_SIDES.map((side) => (lines[side] ? `<a:${side}>${lines[side]}</a:${side}>` : ''));
+  return `<a:${name}>${words}<a:tcStyle><a:tcBdr>${sides.join('')}</a:tcBdr>${fill}</a:tcStyle></a:${name}>`;
+}
+const everySide = (line: string): Partial<Record<TableSide, string>> =>
+  Object.fromEntries(TABLE_SIDES.map((side) => [side, line]));
+const outerSides = (line: string) => ({ left: line, right: line, top: line, bottom: line });
+/** The first band of rows and of columns alike (the second ones are the whole table's). */
+const bands = (part: StylePart) => stylePart('band1H', part) + stylePart('band1V', part);
+/** First and last columns alike. */
+const sideColumns = (part: StylePart) => stylePart('lastCol', part) + stylePart('firstCol', part);
+
+/** Themed Style 1: the theme's second fill behind it, lines in the colour, a solid header with a light line under it. */
+function themedStyle1(color: string): string {
+  const strong = lineRef(2, scheme(color));
+  return (
+    `<a:tblBg><a:fillRef idx="2">${scheme(color)}</a:fillRef></a:tblBg>` +
+    stylePart('wholeTbl', {
+      words: tableWords(false, scheme('dk1')),
+      lines: everySide(lineRef(1, scheme(color))),
+      fill: NO_FILL,
+    }) +
+    bands({ fill: solid(scheme(color, 'alpha', 40_000)) }) +
+    stylePart('lastCol', { words: BOLD, lines: { left: strong } }) +
+    stylePart('firstCol', { words: BOLD, lines: { right: strong } }) +
+    stylePart('lastRow', {
+      words: BOLD,
+      lines: { top: strong, bottom: strong, insideV: NO_LINE },
+      fill: NO_FILL,
+    }) +
+    stylePart('firstRow', {
+      words: tableWords(true, scheme('lt1')),
+      lines: { bottom: setLine(12_700, scheme('lt1')), insideV: NO_LINE },
+      fill: solid(scheme(color)),
+    })
+  );
+}
+
+/** Themed Style 2: the theme's third fill behind it, light words, an edge in the colour at half, light inner lines. */
+function themedStyle2(color: string): string {
+  const light = (index: number) => lineRef(index, scheme('lt1'));
+  return (
+    `<a:tblBg><a:fillRef idx="3">${scheme(color)}</a:fillRef></a:tblBg>` +
+    stylePart('wholeTbl', {
+      words: tableWords(false, scheme('lt1')),
+      lines: { ...outerSides(lineRef(1, scheme(color, 'tint', 50_000))), insideH: NO_LINE, insideV: NO_LINE },
+      fill: NO_FILL,
+    }) +
+    bands({ fill: solid(scheme('lt1', 'alpha', 20_000)) }) +
+    stylePart('lastCol', { words: BOLD, lines: { left: light(2) } }) +
+    stylePart('firstCol', { words: BOLD, lines: { right: light(2) } }) +
+    stylePart('lastRow', { words: BOLD, lines: { top: light(2) }, fill: NO_FILL }) +
+    // Its corners leave out the lines that would cross into them.
+    stylePart('seCell', { lines: { left: NO_LINE, top: NO_LINE } }) +
+    stylePart('swCell', { lines: { right: NO_LINE, top: NO_LINE } }) +
+    stylePart('firstRow', { words: BOLD, lines: { bottom: light(3) }, fill: NO_FILL }) +
+    stylePart('neCell', { lines: { bottom: NO_LINE } })
+  );
+}
+
+/** Light Style 1: lines in the colour only above and below the table and its header and last row, bands at 20%. */
+function lightStyle1(color: string): string {
+  const line = setLine(12_700, scheme(color));
+  return (
+    stylePart('wholeTbl', {
+      words: tableWords(false, scheme('tx1')),
+      lines: { ...everySide(NO_LINE), top: line, bottom: line },
+      fill: NO_FILL,
+    }) +
+    bands({ fill: solid(scheme(color, 'alpha', 20_000)) }) +
+    sideColumns({ words: BOLD }) +
+    stylePart('lastRow', { words: BOLD, lines: { top: line }, fill: NO_FILL }) +
+    stylePart('firstRow', { words: BOLD, lines: { bottom: line }, fill: NO_FILL })
+  );
+}
+
+/** Light Style 2: a header in the colour, thin lines round the table and each band, a double line over the last row. */
+function lightStyle2(color: string): string {
+  const line = lineRef(1, scheme(color));
+  return (
+    stylePart('wholeTbl', {
+      words: tableWords(false, scheme('tx1')),
+      lines: outerSides(line),
+      fill: NO_FILL,
+    }) +
+    stylePart('band1H', { lines: { top: line, bottom: line } }) +
+    stylePart('band1V', { lines: { left: line, right: line } }) +
+    sideColumns({ words: BOLD }) +
+    stylePart('lastRow', { words: BOLD, lines: { top: setLine(50_800, scheme(color), 'dbl') } }) +
+    stylePart('firstRow', { words: tableWords(true, scheme('bg1')), fill: solid(scheme(color)) })
+  );
+}
+
+/** Light Style 3: a grid in the colour, a heavier line under the header and a double one over the last row. */
+function lightStyle3(color: string): string {
+  return (
+    stylePart('wholeTbl', {
+      words: tableWords(false, scheme('tx1')),
+      lines: everySide(setLine(12_700, scheme(color))),
+      fill: NO_FILL,
+    }) +
+    bands({ fill: solid(scheme(color, 'alpha', 20_000)) }) +
+    sideColumns({ words: BOLD }) +
+    stylePart('lastRow', {
+      words: BOLD,
+      lines: { top: setLine(50_800, scheme(color), 'dbl') },
+      fill: NO_FILL,
+    }) +
+    stylePart('firstRow', { words: BOLD, lines: { bottom: setLine(25_400, scheme(color)) }, fill: NO_FILL })
+  );
+}
+
+/** Medium Style 1: white, lines in the colour round it and between its rows, a header in the colour, bands at 20%. */
+function mediumStyle1(color: string): string {
+  const line = setLine(12_700, scheme(color));
+  return (
+    stylePart('wholeTbl', {
+      words: tableWords(false, scheme('dk1')),
+      lines: { ...outerSides(line), insideH: line },
+      fill: solid(scheme('lt1')),
+    }) +
+    bands({ fill: solid(scheme(color, 'tint', 20_000)) }) +
+    sideColumns({ words: BOLD }) +
+    stylePart('lastRow', {
+      words: BOLD,
+      lines: { top: setLine(50_800, scheme(color), 'dbl') },
+      fill: solid(scheme('lt1')),
+    }) +
+    stylePart('firstRow', { words: tableWords(true, scheme('lt1')), fill: solid(scheme(color)) })
+  );
+}
 
 /** PowerPoint's Medium Style 2 in one colour: its body at 20% and its bands at 40%, its header and edges in full. */
 function mediumStyle2(color: string): string {
-  const words = (bold: boolean, inColor: string) =>
-    `<a:tcTxStyle${bold ? ' b="on"' : ''}><a:fontRef idx="minor"><a:prstClr val="black"/></a:fontRef><a:schemeClr val="${inColor}"/></a:tcTxStyle>`;
-  const fill = (tint = 0) =>
-    `<a:fill><a:solidFill><a:schemeClr val="${color}">${tint ? `<a:tint val="${String(tint)}"/>` : ''}</a:schemeClr></a:solidFill></a:fill>`;
-  const sides = TABLE_SIDES.map((side) => `<a:${side}>${styleLine(12_700, 'lt1')}</a:${side}>`).join('');
+  const fill = (tint = 0) => solid(tint ? scheme(color, 'tint', tint) : scheme(color));
+  const strong = { words: tableWords(true, scheme('lt1')), fill: fill() };
   return (
-    tablePart('wholeTbl', `<a:tcBdr>${sides}</a:tcBdr>${fill(20_000)}`, words(false, 'dk1')) +
-    tablePart('band1H', `<a:tcBdr/>${fill(40_000)}`) +
-    tablePart('band2H', '<a:tcBdr/>') +
-    tablePart('band1V', `<a:tcBdr/>${fill(40_000)}`) +
-    tablePart('band2V', '<a:tcBdr/>') +
-    tablePart('lastCol', `<a:tcBdr/>${fill()}`, words(true, 'lt1')) +
-    tablePart('firstCol', `<a:tcBdr/>${fill()}`, words(true, 'lt1')) +
-    tablePart(
-      'lastRow',
-      `<a:tcBdr><a:top>${styleLine(38_100, 'lt1')}</a:top></a:tcBdr>${fill()}`,
-      words(true, 'lt1'),
-    ) +
-    tablePart(
-      'firstRow',
-      `<a:tcBdr><a:bottom>${styleLine(38_100, 'lt1')}</a:bottom></a:tcBdr>${fill()}`,
-      words(true, 'lt1'),
-    )
+    stylePart('wholeTbl', {
+      words: tableWords(false, scheme('dk1')),
+      lines: everySide(setLine(12_700, scheme('lt1'))),
+      fill: fill(20_000),
+    }) +
+    bands({ fill: fill(40_000) }) +
+    sideColumns(strong) +
+    stylePart('lastRow', { ...strong, lines: { top: setLine(38_100, scheme('lt1')) } }) +
+    stylePart('firstRow', { ...strong, lines: { bottom: setLine(38_100, scheme('lt1')) } })
+  );
+}
+
+/** Medium Style 3: white with grey bands, heavy dark lines above and below, a header and side columns in the colour. */
+function mediumStyle3(color: string): string {
+  const line = setLine(25_400, scheme('dk1'));
+  const strong = { words: tableWords(true, scheme('lt1')), fill: solid(scheme(color)) };
+  return (
+    stylePart('wholeTbl', {
+      words: tableWords(false, scheme('dk1')),
+      lines: { ...everySide(NO_LINE), top: line, bottom: line },
+      fill: solid(scheme('lt1')),
+    }) +
+    bands({ fill: solid(scheme('dk1', 'tint', 20_000)) }) +
+    sideColumns(strong) +
+    stylePart('lastRow', {
+      words: tableWords(true, scheme('dk1')),
+      lines: { top: setLine(50_800, scheme('dk1'), 'dbl') },
+      fill: solid(scheme('lt1')),
+    }) +
+    stylePart('firstRow', { ...strong, lines: { bottom: line } })
+  );
+}
+
+/** Medium Style 4: the colour at 20% with a grid in it, bands at 40%, a heavier line over the last row. */
+function mediumStyle4(color: string): string {
+  const light = solid(scheme(color, 'tint', 20_000));
+  return (
+    stylePart('wholeTbl', {
+      words: tableWords(false, scheme('dk1')),
+      lines: everySide(setLine(12_700, scheme(color))),
+      fill: light,
+    }) +
+    bands({ fill: solid(scheme(color, 'tint', 40_000)) }) +
+    sideColumns({ words: BOLD }) +
+    stylePart('lastRow', { words: BOLD, lines: { top: setLine(25_400, scheme(color)) }, fill: light }) +
+    stylePart('firstRow', { words: tableWords(true, scheme('dk1')), fill: light })
+  );
+}
+
+/**
+ * Dark Style 1: white words on the colour, its bands and side columns darker (60%), its last row darker still (40%), a
+ * dark header, and white lines between them. Without an accent, in greys: the dark colour at 20%, its bands at 40%
+ * (run 6; its side columns and last row, which run 6 did not draw, at 40% and 60%).
+ */
+function darkStyle1(color: string): string {
+  const plain = color === 'dk1';
+  const body = plain ? scheme('dk1', 'tint', 20_000) : scheme(color);
+  const darker = plain ? scheme('dk1', 'tint', 40_000) : scheme(color, 'shade', 60_000);
+  const darkest = plain ? scheme('dk1', 'tint', 60_000) : scheme(color, 'shade', 40_000);
+  const line = setLine(25_400, scheme('lt1'));
+  return (
+    stylePart('wholeTbl', { words: tableWords(false, scheme('lt1')), fill: solid(body) }) +
+    bands({ fill: solid(darker) }) +
+    stylePart('lastCol', { words: BOLD, lines: { left: line }, fill: solid(darker) }) +
+    stylePart('firstCol', { words: BOLD, lines: { right: line }, fill: solid(darker) }) +
+    stylePart('lastRow', { words: BOLD, lines: { top: line, insideV: NO_LINE }, fill: solid(darkest) }) +
+    stylePart('firstRow', {
+      words: BOLD,
+      lines: { bottom: line, insideV: NO_LINE },
+      fill: solid(scheme('dk1')),
+    })
+  );
+}
+
+/** Dark Style 2: one colour at 20% and its bands at 40%, a header in another, a dark double line over the last row. */
+function darkStyle2(color: string, header: string): string {
+  const light = solid(scheme(color, 'tint', 20_000));
+  return (
+    stylePart('wholeTbl', { words: tableWords(false, scheme('dk1')), fill: light }) +
+    bands({ fill: solid(scheme(color, 'tint', 40_000)) }) +
+    sideColumns({ words: BOLD }) +
+    stylePart('lastRow', {
+      words: tableWords(true, scheme('dk1')),
+      lines: { top: setLine(50_800, scheme('dk1'), 'dbl') },
+      fill: light,
+    }) +
+    stylePart('firstRow', { words: tableWords(true, scheme('lt1')), fill: solid(scheme(header)) })
   );
 }
 
 /** PowerPoint's two plain styles: no fill and words in the text colour, with or without a 1 pt grid in it. */
 function plainStyle(grid: boolean): string {
-  const line = grid ? styleLine(12_700, 'tx1') : '<a:ln><a:noFill/></a:ln>';
-  const sides = TABLE_SIDES.map((side) => `<a:${side}>${line}</a:${side}>`).join('');
-  return tablePart(
-    'wholeTbl',
-    `<a:tcBdr>${sides}</a:tcBdr><a:fill><a:noFill/></a:fill>`,
-    '<a:tcTxStyle><a:fontRef idx="minor"><a:scrgbClr r="0" g="0" b="0"/></a:fontRef><a:schemeClr val="tx1"/></a:tcTxStyle>',
-  );
+  return stylePart('wholeTbl', {
+    words: tableWords(false, scheme('tx1')),
+    lines: everySide(grid ? setLine(12_700, scheme('tx1')) : NO_LINE),
+    fill: NO_FILL,
+  });
+}
+
+/** A family's style IDs: without an accent (none for the Themed styles), then Accent 1 to 6, each in its colour. */
+function styleFamily(
+  make: (color: string) => string,
+  plain: string,
+  ids: readonly (string | null)[],
+): [string, () => string][] {
+  return ids.flatMap((id, i): [string, () => string][] => {
+    const color = i === 0 ? plain : `accent${String(i)}`;
+    return id ? [[id, () => make(color)]] : [];
+  });
 }
 
 /**
- * PowerPoint's commonest built-in table styles, by ID, for a deck that names one without saving its definition
- * (python-pptx and some exporters name Medium Style 2 - Accent 1 over an empty style list): the Medium Style 2 family
- * and the two plain styles. A deck's own definition comes first; another unsaved style keeps its note.
+ * PowerPoint's 74 built-in table styles, by ID, for a deck that names one without saving its definition. A deck's own
+ * definition comes first.
  */
 const BUILT_IN_TABLE_STYLES = new Map<string, () => string>([
-  ['{073a0daa-6af3-43ab-8588-cec1d06c72b9}', () => mediumStyle2('dk1')],
-  ['{5c22544a-7ee6-4342-b048-85bdc9fd1c3a}', () => mediumStyle2('accent1')],
-  // PowerPoint for Mac does not know these two published IDs, "Medium Style 2 - Accent 2" and "Light Style 1": it
-  // draws a table naming either as No Style, Table Grid (X16, its run 5, Q58-51), and so does Drashti.
-  ['{21e4aea4-8dfa-4a89-87eb-49c32662afe8}', () => plainStyle(true)],
-  ['{9d7b26c5-4107-4fec-aedc-1716b250ee53}', () => plainStyle(true)],
-  ['{f5ab1c69-6edb-4ff4-983f-18bd219ef322}', () => mediumStyle2('accent3')],
-  ['{00a15c55-8517-42aa-b614-e9b94910e393}', () => mediumStyle2('accent4')],
-  ['{7df18680-e054-41ad-8bc1-d1aef772440d}', () => mediumStyle2('accent5')],
-  ['{93296810-a885-4be3-a3e7-6d5beea58f35}', () => mediumStyle2('accent6')],
   ['{2d5abb26-0587-4c30-8999-92f81fd0307c}', () => plainStyle(false)],
   ['{5940675a-b579-460e-94d1-54222c63f5da}', () => plainStyle(true)],
+  // PowerPoint for Mac does not know these two published misspellings of Medium Style 2 - Accent 2's and Light Style
+  // 1's IDs: it draws a table naming either as No Style, Table Grid (X16, its run 5, Q58-51), and so does Drashti.
+  ['{21e4aea4-8dfa-4a89-87eb-49c32662afe8}', () => plainStyle(true)],
+  ['{9d7b26c5-4107-4fec-aedc-1716b250ee53}', () => plainStyle(true)],
+  ...styleFamily(themedStyle1, 'tx1', [
+    null,
+    '{3c2ffa5d-87b4-456a-9821-1d502468cf0f}',
+    '{284e427a-3d55-4303-bf80-6455036e1de7}',
+    '{69c7853c-536d-4a76-a0ae-dd22124d55a5}',
+    '{775dcb02-9bb8-47fd-8907-85c794f793ba}',
+    '{35758fb7-9ac5-4552-8a53-c91805e547fa}',
+    '{08fb837d-c827-4efa-a057-4d05807e0f7c}',
+  ]),
+  ...styleFamily(themedStyle2, 'tx1', [
+    null,
+    '{d113a9d2-9d6b-4929-aa2d-f23b5ee8cbe7}',
+    '{18603fdc-e32a-4ab5-989c-0864c3ead2b8}',
+    '{306799f8-075e-4a3a-a7f6-7fbc6576f1a4}',
+    '{e269d01e-bc32-4049-b463-5c60d7b0ccd2}',
+    '{327f97bb-c833-4fb7-bde5-3f7075034690}',
+    '{638b1855-1b75-4fbe-930c-398ba8c253c6}',
+  ]),
+  ...styleFamily(lightStyle1, 'tx1', [
+    '{9d7b26c5-4107-4fec-aedc-1716b250a1ef}',
+    '{3b4b98b0-60ac-42c2-afa5-b58cd77fa1e5}',
+    '{0e3fde45-af77-4b5c-9715-49d594bdf05e}',
+    '{c083e6e3-fa7d-4d7b-a595-ef9225afea82}',
+    '{d27102a9-8310-4765-a935-a1911b00ca55}',
+    '{5fd0f851-ec5a-4d38-b0ad-8093ec10f338}',
+    '{68d230f3-cf80-4859-8ce7-a43ee81993b5}',
+  ]),
+  ...styleFamily(lightStyle2, 'tx1', [
+    '{7e9639d4-e3e2-4d34-9284-5a2195b3d0d7}',
+    '{69012ecd-51fc-41f1-aa8d-1b2483cd663e}',
+    '{72833802-fef1-4c79-8d5d-14cf1eaf98d9}',
+    '{f2de63d5-997a-4646-a377-4702673a728d}',
+    '{17292a2e-f333-43fb-9621-5cbbe7fdcdcb}',
+    '{5a111915-be36-4e01-a7e5-04b1672ead32}',
+    '{912c8c85-51f0-491e-9774-3900afef0fd7}',
+  ]),
+  ...styleFamily(lightStyle3, 'tx1', [
+    '{616da210-fb5b-4158-b5e0-feb733f419ba}',
+    '{bc89ef96-8cea-46ff-86c4-4ce0e7609802}',
+    '{5da37d80-6434-44d0-a028-1b22a696006f}',
+    '{8799b23b-ec83-4686-b30a-512413b5e67a}',
+    '{ed083ae6-46fa-4a59-8fb0-9f97eb10719f}',
+    '{bdbed569-4797-4df1-a0f4-6aab3cd982d8}',
+    '{e8b1032c-ea38-4f05-ba0d-38afffc7bed3}',
+  ]),
+  ...styleFamily(mediumStyle1, 'dk1', [
+    '{793d81cf-94f2-401a-ba57-92f5a7b2d0c5}',
+    '{b301b821-a1ff-4177-aee7-76d212191a09}',
+    '{9dcaf9ed-07dc-4a11-8d7f-57b35c25682e}',
+    '{1fecb4d8-db02-4dc6-a0a2-4f2ebae1dc90}',
+    '{1e171933-4619-4e11-9a3f-f7608df75f80}',
+    '{fabfcf23-3b69-468f-b69f-88f6de6a72f2}',
+    '{10a1b5d5-9b99-4c35-a422-299274c87663}',
+  ]),
+  ...styleFamily(mediumStyle2, 'dk1', [
+    '{073a0daa-6af3-43ab-8588-cec1d06c72b9}',
+    '{5c22544a-7ee6-4342-b048-85bdc9fd1c3a}',
+    '{21e4aea4-8dfa-4a89-87eb-49c32662afe0}',
+    '{f5ab1c69-6edb-4ff4-983f-18bd219ef322}',
+    '{00a15c55-8517-42aa-b614-e9b94910e393}',
+    '{7df18680-e054-41ad-8bc1-d1aef772440d}',
+    '{93296810-a885-4be3-a3e7-6d5beea58f35}',
+  ]),
+  ...styleFamily(mediumStyle3, 'dk1', [
+    '{8ec20e35-a176-4012-bc5e-935cfff8708e}',
+    '{6e25e649-3f16-4e02-a733-19d2cdbf48f0}',
+    '{85be263c-dbd7-4a20-bb59-aab30acaa65a}',
+    '{eb344d84-9afb-497e-a393-dc336ba19d2e}',
+    '{eb9631b5-78f2-41c9-869b-9f39066f8104}',
+    '{74c1a8a3-306a-4eb7-a6b1-4f7e0eb9c5d6}',
+    '{2a488322-f2ba-4b5b-9748-0d474271808f}',
+  ]),
+  ...styleFamily(mediumStyle4, 'dk1', [
+    '{d7ac3cca-c797-4891-be02-d94e43425b78}',
+    '{69cf1ab2-1976-4502-bf36-3ff5ea218861}',
+    '{8a107856-5554-42fb-b03e-39f5dbc370ba}',
+    '{0505e3ef-67ea-436b-97b2-0124c06ebd24}',
+    '{c4b1156a-380e-4f78-bdf5-a606a8083bf9}',
+    '{22838bef-8bb2-4498-84a7-c5851f593df1}',
+    '{16d9f66e-5eb9-4882-86fb-dcbf35e3c3e4}',
+  ]),
+  ...styleFamily(darkStyle1, 'dk1', [
+    '{e8034e78-7f5d-4c2e-b375-fc64b27bc917}',
+    '{125e5076-3810-47dd-b79f-674d7ad40c01}',
+    '{37ce84f3-28c3-443e-9e96-99cf82512b78}',
+    '{d03447bb-5d67-496b-8e87-e561075ad55c}',
+    '{e929f9f4-4a8f-4326-a1b4-22849713ddab}',
+    '{8fd4443e-f989-4fc4-a0c8-d5a2af1f390b}',
+    '{af606853-7671-496a-8e4f-df71f8ec918b}',
+  ]),
+  // Dark Style 2's header takes the next accent: Accent 1 / Accent 2, 3 / 4 and 5 / 6.
+  ['{5202b0ca-fc54-4496-8bca-5ef66a818d29}', () => darkStyle2('dk1', 'dk1')],
+  ['{0660b408-b3cf-4a94-85fc-2b1e0a45f4a2}', () => darkStyle2('accent1', 'accent2')],
+  ['{91ebbbcc-dad2-459c-be2e-f6de35cf9a28}', () => darkStyle2('accent3', 'accent4')],
+  ['{46f890a9-2807-4ebb-b81d-b2aa78ec7f39}', () => darkStyle2('accent5', 'accent6')],
 ]);
 const builtInTableStyles = new Map<string, XmlNode>();
 
@@ -1574,7 +1905,8 @@ async function tableObjects(
           // The cell's own line wins over its table style's. One with a width but no colour draws nothing: Keynote
           // writes a cell with no gridlines so, whatever its table style's borders.
           const outline = paintedLine(direct) ? lineOutline(direct, ctx) : null;
-          addTableEdge(edges, { ...edge, outline, priority: Infinity });
+          const double = attr(direct, 'cmpd') === 'dbl';
+          addTableEdge(edges, { ...edge, outline, priority: Infinity, double });
           continue;
         }
         for (const region of regions) {
@@ -1586,7 +1918,9 @@ async function tableObjects(
           const side = outer ? outside : vertical ? 'insideV' : 'insideH';
           const border = child(child(child(region.node, 'tcStyle'), 'tcBdr'), side);
           const outline = styledTableBorder(border, ctx);
-          if (outline !== undefined) addTableEdge(edges, { ...edge, outline, priority: region.priority });
+          if (outline === undefined) continue;
+          const double = doubleBorder(border, ctx);
+          addTableEdge(edges, { ...edge, outline, priority: region.priority, double });
         }
       }
       column += complete ? 1 : columnSpan;
@@ -1595,7 +1929,8 @@ async function tableObjects(
   const borders = joinedTableEdges(
     [...edges.values()].flatMap((edge) => (edge.outline ? [{ ...edge, outline: edge.outline }] : [])),
   );
-  if (elements.length + borders.length > available) return null;
+  const lines = borders.reduce((count, border) => count + (border.double ? 2 : 1), 0);
+  if (elements.length + lines > available) return null;
   // Draw the edges over both cells' fills at a shared boundary.
   for (const border of borders) {
     const { vertical, boundary, start, end, outline } = border;
@@ -1609,20 +1944,29 @@ async function tableObjects(
     const halfStroke = EMU / (2 * scale);
     const from = first - cornerStroke(edges, border, start, false) * halfStroke;
     const to = last + cornerStroke(edges, border, end, true) * halfStroke;
-    const edge = vertical
-      ? { x: rect.x + at, y: rect.y + from, width: 0, height: to - from }
-      : { x: rect.x + from, y: rect.y + at, width: to - from, height: 0 };
-    elements.push({
-      id: ctx.id(),
-      kind: 'shape',
-      shape: 'line',
-      groupId,
-      ...linePlacement(edge, matrix),
-      fill: null,
-      cornerRadius: 0,
-      opacity: 1,
-      outline,
-    });
+    // A double line is two strokes a third of its width each, their middles a third of its width either side of it.
+    const across = vertical ? Math.hypot(matrix[0], matrix[1]) : Math.hypot(matrix[2], matrix[3]);
+    const third = outline.width / 3;
+    const thin = { ...outline, width: third };
+    const strokes = border.double
+      ? [-1, 1].map((side) => ({ shift: (side * third * EMU) / across, outline: thin }))
+      : [{ shift: 0, outline }];
+    for (const stroke of strokes) {
+      const edge = vertical
+        ? { x: rect.x + at + stroke.shift, y: rect.y + from, width: 0, height: to - from }
+        : { x: rect.x + from, y: rect.y + at + stroke.shift, width: to - from, height: 0 };
+      elements.push({
+        id: ctx.id(),
+        kind: 'shape',
+        shape: 'line',
+        groupId,
+        ...linePlacement(edge, matrix),
+        fill: null,
+        cornerRadius: 0,
+        opacity: 1,
+        outline: stroke.outline,
+      });
+    }
   }
   return elements;
 }

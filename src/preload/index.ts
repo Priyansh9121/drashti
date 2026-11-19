@@ -6,6 +6,7 @@ import { drawAppearance, type AppearanceRoot } from '../shared/appearance/draw';
 import { IPC } from '../shared/ipc';
 import { summariesOf } from '../shared/library';
 import { bridgeFor, pageOf } from './page-groups';
+import { EngineViewStamp } from './engine-seen';
 
 /** Typed ipcRenderer.invoke over the shared contract. */
 function invoke<C extends InvokeChannel>(channel: C, ...args: InvokeArgs<C>): Promise<InvokeResult<C>> {
@@ -30,9 +31,15 @@ const pageWindow = globalThis as unknown as {
   postMessage(message: unknown, targetOrigin: string, transfer: readonly unknown[]): void;
 };
 // And live captions' (Session 55, Part 10): the sound input's own sound goes back on it.
-ipcRenderer.on(IPC.stream.port, (event, payload: { role: 'preview' | 'encoder' | 'speech' }) => {
-  pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
-});
+// And video out's (x30): the page's frames to other software.
+ipcRenderer.on(
+  IPC.stream.port,
+  (event, payload: { role: 'preview' | 'encoder' | 'speech' | 'video-out' }) => {
+    pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
+  },
+);
+
+const engineSeen = new EngineViewStamp();
 
 const bridge: DrashtiBridge = {
   app: {
@@ -223,10 +230,22 @@ const bridge: DrashtiBridge = {
     pathFor: (file) => webUtils.getPathForFile(file),
   },
   engine: {
-    onMessage: (listener) => on(IPC.engine.message, listener),
-    subscribe: () => invoke(IPC.engine.subscribe),
-    snapshot: () => invoke(IPC.engine.snapshot),
-    dispatch: (command) => invoke(IPC.engine.command, command),
+    onMessage: (listener) =>
+      on(IPC.engine.message, (message) => {
+        engineSeen.remember(message, true);
+        listener(message);
+      }),
+    subscribe: async () => {
+      const message = await invoke(IPC.engine.subscribe);
+      engineSeen.remember(message);
+      return message;
+    },
+    snapshot: async () => {
+      const message = await invoke(IPC.engine.snapshot);
+      engineSeen.remember(message);
+      return message;
+    },
+    dispatch: (command) => invoke(IPC.engine.command, command, engineSeen.current),
     pointAt: (target) => invoke(IPC.engine.pointAt, target),
   },
   library: {
@@ -448,12 +467,14 @@ const bridge: DrashtiBridge = {
     newIdentity: () => invoke(IPC.nodes.newIdentity),
     everything: (nodeId, on) => invoke(IPC.nodes.everything, nodeId, on),
     setController: (nodeId, on) => invoke(IPC.nodes.setController, nodeId, on),
+    setControllerAreas: (nodeId, areas) => invoke(IPC.nodes.setControllerAreas, nodeId, areas),
     reload: (nodeId, screenId) => invoke(IPC.nodes.reload, nodeId, screenId),
     identify: (nodeId, displayId) => invoke(IPC.nodes.identify, nodeId, displayId),
     watch: (watching) => invoke(IPC.nodes.watch, watching),
   },
   node: {
     view: () => invoke(IPC.node.view),
+    action: (request) => invoke(IPC.node.action, request),
     onChanged: (listener) => on(IPC.node.changed, listener),
     pair: (address, code) => invoke(IPC.node.pair, address, code),
     unpair: () => invoke(IPC.node.unpair),
@@ -492,6 +513,9 @@ const bridge: DrashtiBridge = {
     pickFolder: () => invoke(IPC.stream.pickFolder),
     dismissResume: () => invoke(IPC.stream.dismissResume),
     tryAgain: () => invoke(IPC.stream.tryAgain),
+    videoOut: () => invoke(IPC.stream.videoOut),
+    setVideoOut: (settings) => invoke(IPC.stream.setVideoOut, settings),
+    onVideoOut: (listener) => on(IPC.stream.videoOutChanged, listener),
     page: {
       context: () => invoke(IPC.stream.pageContext),
       onContext: (listener) => on(IPC.stream.context, listener),
