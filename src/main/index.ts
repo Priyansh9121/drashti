@@ -313,6 +313,7 @@ import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
+import { StreamPageWarmUp } from './stream/stream-warm';
 import { LiveWindowService } from './live-window/live-window-service';
 import { electronWindowSources } from './live-window/electron-sources';
 import { standInWindowSources } from './live-window/stand-in-sources';
@@ -2956,10 +2957,25 @@ function start(): void {
     safeStorage,
     noSafeStorage,
   );
+  // The stream's page's own warm-up as it opens (Session 60, X21; the owner's answer A to Q60-1): none once a hall screen
+  // here has drawn its warm-up whole at this start and the opening is over (stream/stream-warm.ts).
+  const streamPageWarmUp = new StreamPageWarmUp((line) => {
+    log.info(line);
+  });
+  // What the warm-ups made went with a GPU process that stopped (Sessions 31–36, ROB-5: Chromium starts another).
+  app.on('child-process-gone', (_event, details) => {
+    if (details.type === 'GPU') streamPageWarmUp.gpuGone();
+  });
   stream = new StreamService({
     clockStyle: mainClockStyle,
-    // No warm-up for the stream's page where Chromium draws without a graphics chip, as for the outputs (Session 58).
-    warmUpFact: (page) => warmUpFact(warmUps, page, 'the stream’s page'),
+    // No warm-up for the stream's page where Chromium draws without a graphics chip, as for the outputs (Session 58);
+    // none of its own either once a hall screen here has drawn its warm-up whole at this start, the opening over
+    // (Session 60, X21): what it draws with is made, and its warm-up, drawn mid-show, held the hall's frames.
+    warmUpFact: (page, picture) => {
+      const fact = warmUpFact(warmUps, page, 'the stream’s page');
+      const none = fact.noGpu !== true && streamPageWarmUp.skips(page.webContents.id, picture);
+      return none ? { warmedHere: true } : fact;
+    },
     profiles: new StreamProfileRepo(db, (id) => streamKeys.has(id)),
     keys: streamKeys,
     settings,
@@ -5710,6 +5726,8 @@ function start(): void {
     if (screenId && warmUpEnd && warmUpEnds.get(screenId) !== warmUpEnd.at) {
       warmUpEnds.set(screenId, warmUpEnd.at);
       log.info(warmUpEndLine(outputNames.get(screenId) ?? 'an output', warmUpEnd));
+      // One drawn whole: the stream's page opened from now on draws without a warm-up of its own (Session 60, X21).
+      streamPageWarmUp.hallEnded(warmUpEnd.how);
     }
     // Its page's first painted frame, once per page: the start's last phase line (Sessions 31–36, PERF-1).
     const first = r?.firstPaint;
@@ -6730,6 +6748,8 @@ function start(): void {
     sendToOperator(IPC.opening.key, { at: Date.now() });
   });
   const openingOver = () => {
+    // The start has settled: the stream's page may now draw without a warm-up of its own (Session 60, X21).
+    streamPageWarmUp.openingOver();
     openingWaits = false;
     openingKeys.stop();
     if (openingLimit) clearTimeout(openingLimit);
@@ -6738,7 +6758,13 @@ function start(): void {
   handle(IPC.opening.atStart, (e) => {
     if (!fromOperator(e)) return null;
     const plan = opening.atStart({ pageAgain: openingPageAgain, sinceWindow: Date.now() - openingWindowAt });
-    if (!plan) return null;
+    if (!plan) {
+      // No opening at this start: the stream's page may draw without a warm-up of its own (Session 60, X21).
+      streamPageWarmUp.openingOver();
+      return null;
+    }
+    // Until it ends, the stream's page warms itself up as before (Session 60, X21).
+    streamPageWarmUp.openingPlays();
     openingSince = Date.now();
     openingKeys.start();
     // A page that never says it ended (it stopped, say) leaves the keys to the show soon after its two seconds.
