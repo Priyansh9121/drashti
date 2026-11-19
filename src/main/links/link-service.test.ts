@@ -580,11 +580,15 @@ describe('Import from a Link: Dropbox', () => {
     expect(h.logs.join('\n')).toMatch(/waits while the stream is on air or recording/u);
   });
 
-  it('looks at a link even while on air (asking Dropbox only its name and size): only the download waits', async () => {
+  it('waits to check Dropbox metadata while on air, then checks after the stream stops', async () => {
     const h = await harness();
     h.air.on = true;
     expect(h.service.look('dropbox', FILE_LINK).ok).toBe(true);
-    expect(h.service.view().waitingFor).toBeNull();
+    expect(h.service.view().waitingFor).toMatch(/on air or recording/u);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(requests).toBe(0);
+    expect(h.service.view().look).toBeNull();
+    h.air.on = false;
     await until(() => h.service.view().phase === 'looked');
     expect(h.service.view().look).toEqual({
       shape: 'file',
