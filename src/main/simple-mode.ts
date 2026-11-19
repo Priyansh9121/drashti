@@ -64,6 +64,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.setArrangement,
   IPC.library.removePresentations,
   IPC.library.restorePresentations,
+  IPC.kirtans.exportBundle,
   IPC.kirtans.saveTracks,
   IPC.kirtans.setDetails,
   IPC.kirtans.makeTransliteration,

@@ -100,7 +100,7 @@ test('PowerPoint clicks play on the screen without Office and survive a text edi
       await expect(out.locator('[data-layer="slide"]')).toHaveAttribute('data-transition', 'wipe');
       // A deck's Wipe (Session 58): PowerPoint's soft band, no clip. Without a graphics chip a mask on the incoming
       // slide's band box, which moves; with one a mask on the slide's own box.
-      const band = incoming.locator('[data-band]');
+      const band = incoming.locator('[data-wipe-band]');
       await expect(incoming).toHaveCSS('clip-path', 'none');
       if (await drawsWithoutChip(out)) {
         await expect(incoming).toHaveCSS('mask-image', 'none');

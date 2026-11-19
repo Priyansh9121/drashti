@@ -1,3 +1,4 @@
+import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { SlidePictureResult } from './slide-picture';
 import type { ReadyReport } from './ready';
@@ -462,6 +463,7 @@ export interface DrashtiBridge {
   };
   /** Kirtans: words by language and details; changing them is for the operator window only. */
   kirtans: {
+    exportBundle(request: KirtanBundleExportRequest): Promise<KirtanBundleExportResult>;
     /** Every slide's words by language. */
     tracks(presentationId: string): Promise<TracksResult>;
     /** Put changed lines back, slide by slide and language by language (one change for Undo). */
