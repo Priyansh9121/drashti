@@ -603,6 +603,150 @@ describe('a deck’s own Push, Cover and Uncover drawn on a screen without a gra
   });
 });
 
+describe('a deck’s own moving slide backed without a graphics chip when it is known opaque (X11, Q60-6)', () => {
+  afterEach(() => {
+    setDrawsWithoutChip(false);
+  });
+  /** A box as the JSX leaves it (inset 0), with what the backing writes. */
+  const placedBox = (): HTMLDivElement =>
+    ({
+      style: {
+        opacity: '',
+        transform: '',
+        clipPath: '',
+        maskImage: '',
+        filter: '',
+        zIndex: '',
+        backgroundColor: '',
+      },
+    }) as unknown as HTMLDivElement;
+  const BARS = { x: 240, y: 0, width: 1440, height: 1080 };
+  /** CI's hall screen: 1024 device pixels for the 1920 canvas pixels (the 4:3 slide's place lands on whole ones). */
+  const HALL = 1024 / 1920;
+  const paint = (
+    native: DeckNativeTransition,
+    place: typeof FULL,
+    p: number,
+    backing: { in?: string; out?: string },
+    k: number | null = HALL,
+  ) => {
+    const coming = placedBox();
+    const going = placedBox();
+    const shadeIn = shadeBox();
+    const shadeOut = shadeBox();
+    const els = { ...layersOf(coming, going), shadeIn, shadeOut };
+    const how: Paint = {
+      ...deckPaint(native, place),
+      ...(k === null ? {} : { devicePerCanvas: k }),
+      ...(backing.in === undefined ? {} : { backingIn: backing.in }),
+      ...(backing.out === undefined ? {} : { backingOut: backing.out }),
+    };
+    paintLayers(els, how, p);
+    return { coming, going, shadeIn, shadeOut, els, how };
+  };
+  const geometry = (el: HTMLDivElement) => {
+    const s = el.style as unknown as Record<string, string | undefined>;
+    return [s['left'], s['top'], s['width'], s['height']];
+  };
+  const push = (deckEffect: 'push' | 'cover' | 'uncover'): DeckNativeTransition => ({
+    kind: 'slide',
+    deckEffect,
+    durationMs: 700,
+    direction: 'left',
+  });
+
+  it('a slide on a layer of its own is backed by its colour while it moves, in its place only; nothing once over', () => {
+    setDrawsWithoutChip(true);
+    const both = { in: '#102030', out: '#000000' };
+    const mid = paint(push('push'), FULL, 0.5, both);
+    expect([mid.coming.style.backgroundColor, mid.going.style.backgroundColor]).toEqual([
+      '#102030',
+      '#000000',
+    ]);
+    // A slide filling the screen: its box is its place already, left as it is.
+    expect(geometry(mid.coming)).toEqual([undefined, undefined, undefined, undefined]);
+    // Cover moves the incoming slide alone, Uncover the outgoing: only the moving one is a layer, and backed.
+    const cover = paint(push('cover'), FULL, 0.5, both);
+    expect([cover.coming.style.backgroundColor, cover.going.style.backgroundColor]).toEqual(['#102030', '']);
+    const uncover = paint(push('uncover'), FULL, 0.5, both);
+    expect([uncover.coming.style.backgroundColor, uncover.going.style.backgroundColor]).toEqual([
+      '',
+      '#000000',
+    ]);
+    // Over (and before it starts): nothing of it.
+    paintLayers(mid.els, mid.how, 1);
+    expect([mid.coming.style.backgroundColor, mid.going.style.backgroundColor]).toEqual(['', '']);
+  });
+
+  it('a 4:3 slide between bars: its layer is its own place, its drawing kept where it was, so the bars stay as they are', () => {
+    setDrawsWithoutChip(true);
+    const mid = paint(push('push'), BARS, 0.5, { in: '#102030', out: '#000000' });
+    for (const [box, shade] of [
+      [mid.coming, mid.shadeIn],
+      [mid.going, mid.shadeOut],
+    ] as const) {
+      expect(geometry(box)).toEqual(['240px', '0px', '1440px', '1080px']);
+      expect(geometry(shade)).toEqual(['-240px', '0px', '1920px', '1080px']);
+    }
+    // Over: the boxes fill the screen again, as the JSX has them (inset 0).
+    paintLayers(mid.els, mid.how, 1);
+    for (const el of [mid.coming, mid.going, mid.shadeIn, mid.shadeOut])
+      expect(geometry(el)).toEqual(['0px', '0px', '', '']);
+    expect([mid.coming.style.backgroundColor, mid.going.style.backgroundColor]).toEqual(['', '']);
+  });
+
+  it('the Wipe’s outgoing slide, a still layer of its own, is backed; the masked incoming slide never', () => {
+    setDrawsWithoutChip(true);
+    const wipe: DeckNativeTransition = {
+      kind: 'wipe',
+      deckEffect: 'wipe',
+      durationMs: 700,
+      direction: 'left',
+    };
+    for (const place of [FULL, BARS]) {
+      const mid = paint(wipe, place, 0.4, { in: '#102030', out: '#000000' });
+      expect([mid.coming.style.backgroundColor, mid.going.style.backgroundColor]).toEqual(['', '#000000']);
+      expect(geometry(mid.going)).toEqual(
+        place === FULL ? [undefined, undefined, undefined, undefined] : ['240px', '0px', '1440px', '1080px'],
+      );
+    }
+  });
+
+  it('never a slide not known opaque, with a graphics chip, under Drashti’s own transition, or off whole device pixels', () => {
+    const both = { in: '#102030', out: '#000000' };
+    // With a chip.
+    let drawn = paint(push('push'), BARS, 0.5, both);
+    expect([drawn.coming.style.backgroundColor, drawn.going.style.backgroundColor]).toEqual(['', '']);
+    expect(geometry(drawn.coming)).toEqual([undefined, undefined, undefined, undefined]);
+    setDrawsWithoutChip(true);
+    // A see-through slide (no backing known): nothing, whatever moves.
+    drawn = paint(push('push'), BARS, 0.5, {});
+    expect([drawn.coming.style.backgroundColor, drawn.going.style.backgroundColor]).toEqual(['', '']);
+    expect(geometry(drawn.coming)).toEqual([undefined, undefined, undefined, undefined]);
+    // Under Drashti's own transition set over the deck's.
+    const over: DeckNativeTransition = { ...push('push'), over: { kind: 'dissolve', durationMs: 700 } };
+    drawn = paint(over, FULL, 0.5, both);
+    expect([drawn.coming.style.backgroundColor, drawn.going.style.backgroundColor]).toEqual(['', '']);
+    // A screen where the slide's place does not land on whole device pixels (1366 wide: 240 canvas px is 170.75), or
+    // where they are not known: its edge could show the colour, so none.
+    for (const k of [1366 / 1920, null]) {
+      drawn = paint(push('push'), BARS, 0.5, both, k);
+      expect([drawn.coming.style.backgroundColor, drawn.going.style.backgroundColor]).toEqual(['', '']);
+      expect(geometry(drawn.going)).toEqual([undefined, undefined, undefined, undefined]);
+    }
+  });
+
+  it('Back part-way: the slide that was coming in is drawn whole, no backing left on it and its box where it was', () => {
+    setDrawsWithoutChip(true);
+    const mid = paint(push('push'), BARS, 0.4, { in: '#102030', out: '#000000' });
+    expect(mid.coming.style.backgroundColor).toBe('#102030');
+    paintWaiting({ in: placedBox(), out: mid.coming, shadeOut: mid.shadeIn });
+    expect(mid.coming.style.backgroundColor).toBe('');
+    expect(geometry(mid.coming)).toEqual(['0px', '0px', '', '']);
+    expect(geometry(mid.shadeIn)).toEqual(['0px', '0px', '', '']);
+  });
+});
+
 describe('the stream’s page draws a slide only once its pictures can be drawn (Session 58, Q57-35)', () => {
   const wait = (by: number) => ({ kind: 'cut' as const, ms: 1, start: null, picturesBy: by });
 

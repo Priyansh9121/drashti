@@ -251,6 +251,11 @@ export interface EngineOptions {
   /** A picture's look (Session 26e), or null: shown as it is. */
   pictureLook?: (mediaId: string) => PictureLook | null;
   /**
+   * Whether a picture's file is known to draw no see-through pixel (X11, main/media/see-through.ts), as far as read
+   * yet: the screens back a deck's moving slide whose own full-slide picture is one (EngineState.opaquePictures).
+   */
+  pictureOpaque?: (mediaId: string) => boolean;
+  /**
    * A media item's kind while it is in Media to play (not missing or deleted), or null: the picture-in-picture
    * box (Session 50) takes a picture or a video as the library has it, never as a page says.
    */
