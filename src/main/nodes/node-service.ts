@@ -1,5 +1,15 @@
 import { randomInt } from 'node:crypto';
+import { cutText } from '../../shared/text';
 import { z } from 'zod';
+import {
+  controllerArea,
+  controllerAreasSchema,
+  controllerRequestSchema,
+  type ControllerArea,
+  type ControllerReply,
+} from '../../shared/controller-actions';
+import type { EngineCommand } from '../../shared/engine/commands';
+import type { DeviceAnswer } from '../../shared/network-api';
 import type { EngineMessage, EngineSnapshotMessage } from '../../shared/engine/protocol';
 import type { EngineState } from '../../shared/engine/state';
 import type { PointedClip } from '../../shared/point-ahead';
@@ -74,6 +84,8 @@ export interface NodeServiceDeps {
   engine: { snapshot(): EngineSnapshotMessage; state(): EngineState; rev(): number; session: string };
   /** What a node should copy, in order. */
   wanted(state: EngineState, everything: boolean): MediaWant[];
+  /** Main’s common show-action layer: current access and Simple Mode are checked there again. */
+  runShowAction?(command: EngineCommand, who: string): DeviceAnswer;
   /** A media file for a node: where it is, its hash, size and extension. */
   mediaFile(mediaId: string): { path: string; sha256: string; bytes: number; ext: string } | null;
   /** The stream is on air or recording: copies go slower. */
@@ -137,6 +149,11 @@ export class NodeService implements EngineTransport {
   private readonly live = new Map<string, Live>();
   /** Main's explicit shared-view choices, read once; never a new credential. */
   private readonly controllers = new Map<string, boolean>();
+  private readonly controllerAreas = new Map<string, ControllerArea[]>();
+  private readonly controllerReplies = new Map<
+    string,
+    Map<string, { request: string; answer: ControllerReply }>
+  >();
   /**
    * Whether Main is let in (Session 54, access by Gmail), as the access service last said: told to every node at each
    * change and every 15 s, and to each node as it connects. Until then, and once Drashti has stopped: no.
@@ -342,6 +359,13 @@ export class NodeService implements EngineTransport {
         }
         return;
       }
+      case 'controller-action':
+        worker.send({
+          type: 'to-node',
+          nodeId: m.nodeId,
+          message: { type: 'controller-answer', answer: this.controllerAction(m.nodeId, m.request) },
+        });
+        return;
       case 'health': {
         const l = this.liveOf(m.nodeId);
         const before = JSON.stringify(l.health?.outputs ?? null);
@@ -636,6 +660,9 @@ export class NodeService implements EngineTransport {
     const label = this.label(id.data);
     if (!this.deps.nodes.remove(id.data)) return { ok: false, message: 'That node is no longer paired.' };
     this.live.delete(id.data);
+    this.controllers.delete(id.data);
+    this.controllerAreas.delete(id.data);
+    this.controllerReplies.delete(id.data);
     this.sentWanted.delete(id.data);
     this.unsaved.delete(id.data);
     this.deps.log('info', `Nodes: removed ${label}`);
@@ -661,6 +688,7 @@ export class NodeService implements EngineTransport {
       const group = this.deps.screens.groups().find((g) => g.role === 'audience');
       const screen = group?.screens[0];
       context = {
+        areas: this.areasOf(nodeId),
         groupId: group?.id ?? null,
         groupName: group?.name ?? 'Audience',
         canvasWidth: screen?.canvasWidth ?? 1920,
@@ -679,10 +707,120 @@ export class NodeService implements EngineTransport {
       return { ok: false, message: 'That node is no longer paired.' };
     this.deps.settings.set(`nodes.controller.${id.data}`, rawOn);
     this.controllers.set(id.data, rawOn);
+    if (!rawOn) {
+      this.controllerAreas.set(id.data, []);
+      this.deps.settings.set(`nodes.controller.areas.${id.data}`, []);
+    }
     this.pushController(id.data);
     this.changed();
     this.deps.log('info', `Nodes: shared show view ${rawOn ? 'on' : 'off'} for ${this.label(id.data)}`);
     return { ok: true, status: this.status() };
+  }
+
+  private areasOf(nodeId: string): ControllerArea[] {
+    let areas = this.controllerAreas.get(nodeId);
+    if (!areas) {
+      const parsed = controllerAreasSchema.safeParse(
+        this.deps.settings.get(`nodes.controller.areas.${nodeId}`),
+      );
+      areas = parsed.success ? [...new Set(parsed.data)] : [];
+      this.controllerAreas.set(nodeId, areas);
+    }
+    return areas;
+  }
+
+  hasControllerActions(): boolean {
+    return [...this.controllerAreas].some(([id, areas]) => areas.length > 0 && this.controllerOn(id));
+  }
+
+  setControllerAreas(rawId: unknown, rawAreas: unknown): NodesResult {
+    const id = idSchema.safeParse(rawId);
+    const areas = controllerAreasSchema.safeParse(rawAreas);
+    if (!id.success || !this.deps.nodes.get(id.data))
+      return { ok: false, message: 'That node is no longer paired.' };
+    if (!areas.success) return { ok: false, message: 'Choose show controls or media playback.' };
+    if (!this.controllerOn(id.data)) return { ok: false, message: 'Turn on Shared show view first.' };
+    const kept = [...new Set(areas.data)];
+    this.deps.settings.set(`nodes.controller.areas.${id.data}`, kept);
+    this.controllerAreas.set(id.data, kept);
+    this.pushController(id.data);
+    this.changed();
+    this.deps.log('info', `Nodes: controller action areas changed for ${this.label(id.data)}`);
+    return { ok: true, status: this.status() };
+  }
+
+  /** Synchronous and bounded: Main never waits for a controller or its reply. */
+  controllerAction(nodeId: string, raw: unknown): ControllerReply {
+    const parsed = controllerRequestSchema.safeParse(raw);
+    const rawId = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>)['id'] : null;
+    const id = typeof rawId === 'string' && rawId.length <= 80 ? rawId : '';
+    const refused = (message: string): ControllerReply => ({
+      id,
+      status: 'refused',
+      rev: this.deps.engine.rev(),
+      message,
+    });
+    if (!parsed.success) return refused('That press is not offered here.');
+    const request = parsed.data;
+    const area = controllerArea(request.command);
+    if (
+      !this.deps.nodes.get(nodeId) ||
+      !this.live.get(nodeId)?.online ||
+      !this.controllerOn(nodeId) ||
+      !area ||
+      !this.areasOf(nodeId).includes(area)
+    )
+      return refused('Main has not allowed that action for this computer.');
+    if (!this.letIn || !this.deps.runShowAction) return refused('Main is not accepting show actions.');
+    let replies = this.controllerReplies.get(nodeId);
+    if (!replies) {
+      replies = new Map();
+      this.controllerReplies.set(nodeId, replies);
+    }
+    const fingerprint = JSON.stringify(request);
+    const previous = replies.get(id);
+    if (previous)
+      return previous.request === fingerprint
+        ? previous.answer
+        : refused('Use a new press after checking LIVE.');
+    const remember = (answer: ControllerReply): ControllerReply => {
+      replies.set(id, { request: fingerprint, answer });
+      if (replies.size > 128) {
+        const oldest = replies.keys().next().value;
+        if (oldest !== undefined) replies.delete(oldest);
+      }
+      return answer;
+    };
+    if (request.session !== this.deps.engine.session || request.rev !== this.deps.engine.rev())
+      return remember({
+        id,
+        status: 'stale',
+        rev: this.deps.engine.rev(),
+        message: 'The show already moved. Check LIVE and press again.',
+      });
+    try {
+      const result = this.deps.runShowAction(request.command, `Controller ${this.label(nodeId)}`);
+      const body =
+        typeof result.body === 'object' && result.body !== null
+          ? (result.body as Record<string, unknown>)
+          : {};
+      if (result.status < 200 || result.status >= 300 || body['ok'] === false)
+        return remember(
+          refused(
+            typeof body['message'] === 'string' ? cutText(body['message'], 300) : 'Main refused that press.',
+          ),
+        );
+      return remember({
+        id,
+        status: 'accepted',
+        rev: this.deps.engine.rev(),
+        changed: body['changed'] === true,
+        message: body['changed'] === true ? 'Applied on Main.' : 'No change on Main.',
+      });
+    } catch {
+      this.deps.log('warn', 'Nodes: Main could not apply a controller press.');
+      return remember(refused('Main could not apply that press. Check LIVE before pressing again.'));
+    }
   }
 
   setEverything(rawId: unknown, rawOn: unknown): NodesResult {
@@ -779,6 +917,7 @@ export class NodeService implements EngineTransport {
       versionRefused: l?.refused ?? null,
       everything: n.everything,
       controller: this.controllerOn(n.id),
+      controllerAreas: this.areasOf(n.id),
       behindSince: l?.online && l.behindSince !== null ? new Date(l.behindSince).toISOString() : null,
     };
   }

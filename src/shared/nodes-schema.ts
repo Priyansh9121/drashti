@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { controllerAreasSchema } from './controller-actions';
 import { cleanNameSchema, cleanRenameName } from './rename-name';
 import { MEDIA_ID_PATTERN } from './media';
 import { MEDIA_EXT_PATTERN, NODE_NAME_MAX } from './nodes';
@@ -82,6 +83,7 @@ export const nodeScreenListSchema = z.array(nodeScreenSchema).max(16);
 /** Only public preview geometry crosses the link; this never authorizes an incoming action. */
 export const nodeControllerContextSchema: z.ZodType<NodeControllerContext> = z
   .object({
+    areas: controllerAreasSchema.optional(),
     groupId: z.string().min(1).max(128).nullable(),
     groupName: z.string().max(200),
     canvasWidth: z.number().int().min(16).max(16384),
