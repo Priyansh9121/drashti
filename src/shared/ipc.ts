@@ -6,6 +6,7 @@ import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './s
 import type { PdfJob, PdfPage, PdfPageReceipt, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { ReadyReport } from './ready';
+import type { ToolsMenuItem } from './setup-tools';
 import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type {
@@ -245,6 +246,8 @@ export const IPC = {
     showKeys: 'app:show-keys',
     /** main -> operator: Help > Guides… was chosen (Sessions 31–36), in either mode. */
     showGuides: 'app:show-guides',
+    /** main -> operator: an item of the Tools menu was chosen (Session 60, x36; Pro Mode): which (shared/setup-tools.ts). */
+    showTool: 'app:show-tool',
   },
   /** Scheduled backups (Session 14, shared/backups.ts): changing them, and Back up now, are Pro Mode's. */
   backups: {
@@ -541,6 +544,11 @@ export const IPC = {
     savesChanged: 'media:saves-changed',
     /** An output or the audio player learned how long a file is, as it played it (stage screens show the time left). */
     reportLength: 'media:report-length',
+    /**
+     * An output or the operator window found a video's picture cannot be drawn on this computer (Session 60, x36):
+     * Chromium plays such a file as sound only. The show takes it off, says so, and converts it by itself.
+     */
+    noPicture: 'media:no-picture',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -1497,6 +1505,7 @@ export interface InvokeContract {
   [IPC.media.conversions]: { args: []; result: ConversionJob[] };
   [IPC.media.playsHevc]: { args: []; result: boolean | null };
   [IPC.media.reportLength]: { args: [mediaId: string, durationMs: number]; result: null };
+  [IPC.media.noPicture]: { args: [mediaId: string, startedAt: number]; result: null };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
@@ -1818,6 +1827,7 @@ export interface EventContract {
   [IPC.links.open]: { at: number };
   [IPC.app.showKeys]: { at: number };
   [IPC.app.showGuides]: { at: number };
+  [IPC.app.showTool]: { tool: ToolsMenuItem; at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.stageLayouts.changed]: StageLayout[];
   [IPC.midi.ask]: MidiAsk;

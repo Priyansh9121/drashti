@@ -7,7 +7,7 @@ import {
   killApp,
   launchApp,
   letTimePass,
-  openLibrary,
+  openMoreTools,
   operatorPage,
   operatorReady,
   outputPages,
@@ -60,10 +60,9 @@ function placeholder(app: ElectronApplication, id: number, act: 'hide' | 'show' 
   );
 }
 
-/** Choose the placeholder in Show a Window… (the library's Media tab) and show it on the screens. */
+/** Choose the placeholder in Show a Window… (in More tools since alpha.20) and show it on the screens. */
 async function showMeeting(win: Page): Promise<void> {
-  const sheet = await openLibrary(win);
-  await sheet.getByTestId('library-tab-media').click();
+  await openMoreTools(win);
   await win.getByTestId('show-a-window').click();
   const picker = win.getByTestId('window-picker');
   await expect(picker).toBeVisible();
@@ -340,8 +339,7 @@ test('on a Mac that has not given Screen Recording, the picker says why and open
   const { app, userData } = await launchApp({ DRASHTI_TEST_WINDOW_STANDIN: 'no-access' });
   const win = await operatorPage(app);
   await operatorReady(win);
-  const sheet = await openLibrary(win);
-  await sheet.getByTestId('library-tab-media').click();
+  await openMoreTools(win);
   await win.getByTestId('show-a-window').click();
   const why = win.getByTestId('window-permission');
   await expect(why).toContainText('Screen Recording');

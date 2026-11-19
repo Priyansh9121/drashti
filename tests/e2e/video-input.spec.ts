@@ -7,6 +7,7 @@ import {
   launchApp,
   letTimePass,
   openLibrary,
+  openMoreTools,
   operatorPage,
   operatorReady,
   outputPages,
@@ -46,12 +47,11 @@ const videoWidth = (picture: Locator) =>
   picture.locator('video').evaluate((v: HTMLVideoElement) => v.videoWidth);
 
 /**
- * Name the fake camera "Placeholder input" with Add a Video Input… (the library's Media tab): only once it is
+ * Name the fake camera "Placeholder input" with Add a Video Input… (in More tools since alpha.20): only once it is
  * chosen and named does Add to Media keep it, and nothing goes up. Its row in Media, with its own live picture.
  */
 async function addInput(win: Page): Promise<Locator> {
-  const sheet = await openLibrary(win);
-  await sheet.getByTestId('library-tab-media').click();
+  await openMoreTools(win);
   await win.getByTestId('add-video-input').click();
   const dialog = win.getByTestId('video-input-dialog');
   await expect(dialog).toBeVisible();
@@ -77,6 +77,9 @@ async function addInput(win: Page): Promise<Locator> {
   expect(await background(win)).toBeNull();
   await dialog.getByTestId('video-input-save').click();
   await expect(dialog).toHaveCount(0);
+  // Named, it is in Media's Video inputs: one click there puts it up.
+  const sheet = await openLibrary(win);
+  await sheet.getByTestId('library-tab-media').click();
   const row = sheet.getByTestId('video-input-row').and(sheet.locator(`[data-name="${INPUT}"]`));
   await expect(row).toBeVisible();
   await expect(row.getByTestId('video-input-note')).toHaveText('Video input · fitted inside');

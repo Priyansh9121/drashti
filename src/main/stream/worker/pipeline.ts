@@ -44,8 +44,13 @@ export interface PipelineHooks {
   datasync?(fd: number, done: (error: NodeJS.ErrnoException | null) => void): void;
 }
 
-/** The disk is asked to keep what has been written about this often (fdatasync), off the hot path. */
-const SYNC_EVERY_MS = 9000;
+/**
+ * The disk is asked to keep what has been written about this often (fdatasync), off the hot path: at the first write
+ * after it, so the gap is this plus the wait for that write plus any delay of a busy computer. Never more than 10 s
+ * apart is the promise (Session 31, MED-2): 8 s leaves room for both (9 s left under one; CI's Ubuntu once went 1 ms
+ * over, 20 Nov 2026).
+ */
+const SYNC_EVERY_MS = 8000;
 
 /** A recording's later part beside its first: "<name> part 2.mkv", "<name> part 3.mkv"... */
 export const partFile = (first: string, n: number) => `${first.replace(/\.mkv$/u, '')} part ${String(n)}.mkv`;

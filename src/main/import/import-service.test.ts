@@ -178,6 +178,28 @@ describe('ImportService', () => {
     await first;
   });
 
+  it('tells each import HEVC’s other kinds as the window said them with its answer, read as it starts (Session 60, x36)', async () => {
+    let kinds: { main10: boolean; rext: boolean } | null = null;
+    const { service, workers } = setup({ playsHevc: () => Promise.resolve(true), hevcKinds: () => kinds });
+    const first = service.start(['/Placeholder camera.mov']);
+    await vi.waitFor(() => {
+      expect(workers[0]?.sent[0]).toMatchObject({ type: 'start', playsHevc: true, hevcKinds: null });
+    });
+    workers[0]?.emit({ type: 'finished', run: summary(workers[0].runId) });
+    await first;
+    kinds = { main10: true, rext: false };
+    const second = service.start(['/Placeholder camera.mov']);
+    await vi.waitFor(() => {
+      expect(workers[1]?.sent[0]).toMatchObject({
+        type: 'start',
+        playsHevc: true,
+        hevcKinds: { main10: true, rext: false },
+      });
+    });
+    workers[1]?.emit({ type: 'finished', run: summary(workers[1].runId) });
+    await second;
+  });
+
   it('an import stopped while it waits for the answer never starts', async () => {
     let tell: (plays: boolean | null) => void = () => undefined;
     const answer = new Promise<boolean | null>((resolve) => {

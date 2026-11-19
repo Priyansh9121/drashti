@@ -165,6 +165,7 @@ import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
+import { noPictureNotice } from '../shared/no-picture';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -365,7 +366,7 @@ import { youtubeSelfTest } from './links/youtube-selftest';
 import { findYoutubeTools, toolFolders, youtubeLaunch } from './links/youtube-tools';
 import { spawnStreamWorker } from './stream/stream-worker';
 import { AFTER_START_MS, ConvertService, readInfo } from './convert/convert-service';
-import { HevcAnswer, playsHevcScript } from './convert/plays-hevc';
+import { HevcAnswer, hevcKindsScript, playsHevcScript } from './convert/plays-hevc';
 import { askInOwnPage, type HevcPage } from './convert/hevc-page';
 import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
@@ -3750,6 +3751,8 @@ function start(): void {
     // No deck's movie is made while the stream is on air or recording (Session 54, C2; Session 50's rule).
     onAir: () => streaming.inUse() || testOnAir,
     playsHevc: () => hevc.wait(),
+    // HEVC's other kinds, as the window said with its answer (Session 60, x36), read as the import starts.
+    hevcKinds: () => hevc.kinds,
     // While an import runs, its own connection copies the WAL into the library file, never a write of Main's (Session
     // 58: such a write copied the import's pages and waited for the disk on the main thread).
     running: leaveCopyingToImports(libraryDb),
@@ -6544,6 +6547,22 @@ function start(): void {
     engine.learnLength(mediaId, rounded);
     return null;
   });
+  // A video's picture cannot be drawn on this computer (Session 60, x36: the owner's bug, his "Yes, A"): an output or
+  // the operator window found it plays as sound only. What of it is up comes off (the background, with its sound) or
+  // waits paused (on the slide, in the box); the operator window says so, once a file; and it is converted by itself
+  // once the show is idle. Only for a video that was up, so a page's word never takes off anything else; the other
+  // windows that found the same showing find it off already, and say nothing more.
+  handle(IPC.media.noPicture, (e, mediaId, startedAt) => {
+    const drawsShow = fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined;
+    if (!drawsShow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    const file = media.kindAndName(mediaId);
+    if (file?.kind !== 'video' || !engine.noPicture(mediaId)) return null;
+    log.warn(`A video's picture cannot be drawn here (sound only): ${mediaId}; taken off`);
+    const converting = conversions.convertUndrawable(mediaId);
+    sendToOperator(IPC.app.notice, { text: noPictureNotice(file.name, converting) });
+    return null;
+  });
   handle(IPC.audio.reportDevices, (e, devices, state) => {
     if (fromAudioPlayer(e)) audioOutput.report(devices, state);
     return null;
@@ -7340,8 +7359,16 @@ function start(): void {
   let hevcPage: HevcPage | null = null;
   const askHevc = () => {
     if (hevc.now !== null || hevcPage !== null || quitStarted) return;
-    const page = askInOwnPage(playsHevcScript(hevcTest));
+    const page = askInOwnPage(playsHevcScript(hevcTest), hevcKindsScript(hevcTest));
     hevcPage = page;
+    // HEVC's other kinds (Session 60, x36), known before the answer is told, so an import has both.
+    void page.kinds.then((kinds) => {
+      if (kinds === null || quitStarted) return;
+      hevc.kinds = kinds;
+      log.info(
+        `The other kinds of HEVC on this computer: Main 10 ${kinds.main10 ? 'plays' : 'cannot play'}; 4:2:2, 4:4:4 and 12-bit ${kinds.rext ? 'play' : 'cannot play'}`,
+      );
+    });
     void page.answer.then((answer) => {
       hevcPage = null;
       // Closed as Drashti quits: nothing to tell.
@@ -7754,6 +7781,10 @@ function start(): void {
     },
     guides: () => {
       sendToOperator(IPC.app.showGuides, { at: Date.now() });
+    },
+    // The Tools menu (Session 60, x36): Pro Mode's, each item opening its window in the operator window.
+    tools: (tool) => {
+      if (mode === 'pro') sendToOperator(IPC.app.showTool, { tool, at: Date.now() });
     },
     priority: (() => {
       const item = priorityItem((text) => {

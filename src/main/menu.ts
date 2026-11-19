@@ -5,6 +5,7 @@ import type { OperatorAction } from '../shared/keymap';
 import { KEYMAP, toAccelerator } from '../shared/keymap';
 import type { OperatorMode } from '../shared/mode';
 import type { ScreenSwitch, ScreenSwitches } from '../shared/screen-switches';
+import { SETUP_TOOLS, TOOLS_MENU, type ToolsMenuItem } from '../shared/setup-tools';
 
 /** The main process's priority on Windows (Session 16): ticked is above normal, the default. */
 export interface PriorityItem {
@@ -78,6 +79,12 @@ export interface MenuActions {
   keyboardShortcuts: () => void;
   /** Help > Guides… (Sessions 31–36, both modes): the guides inside Drashti. */
   guides: () => void;
+  /**
+   * The Tools menu (Session 60, x36; the owner's "A, More tools + menu"; Pro Mode): Show a Window…, Add a Video Input…,
+   * Picture in Picture… and QR code…, then the Lower Thirds studio, the MIDI controller and OSC, each opening its
+   * window in the operator window. Left out (or null): no Tools menu.
+   */
+  tools?: ((item: ToolsMenuItem) => void) | null;
   /** File > Run Ahead of Other Programs (Windows only, Pro Mode; Session 16): null elsewhere. */
   priority: PriorityItem | null;
   /**
@@ -124,6 +131,27 @@ function shownKey(action: OperatorAction): MenuItemConstructorOptions {
   const binding = KEYMAP.find((b) => b.action === action);
   const key = binding?.shownInMenu === true ? binding.keys[0] : undefined;
   return key ? { accelerator: toAccelerator(key), registerAccelerator: false } : {};
+}
+
+/**
+ * The Tools menu (Session 60, x36): the four setup tools (shared/setup-tools.ts), then a line, then the Lower Thirds
+ * studio, the MIDI controller and OSC, as More tools has them. Each item's id is `tools-<its id>`.
+ */
+function toolsMenu(open: (item: ToolsMenuItem) => void): MenuItemConstructorOptions {
+  return {
+    id: 'tools',
+    label: 'Tools',
+    submenu: TOOLS_MENU.flatMap((tool, i): MenuItemConstructorOptions[] => [
+      ...(i === SETUP_TOOLS.length ? [{ type: 'separator' } as const] : []),
+      {
+        id: `tools-${tool.id}`,
+        label: tool.label,
+        click: () => {
+          open(tool.id);
+        },
+      },
+    ]),
+  };
 }
 
 /**
@@ -301,6 +329,8 @@ export function installMenu(actions: MenuActions): void {
         { role: 'togglefullscreen' },
       ],
     },
+    // Tools (Session 60, x36), between View and Window on the Mac and on Windows; Pro Mode's, as its tools are.
+    ...(simple || !actions.tools ? [] : [toolsMenu(actions.tools)]),
     {
       label: 'Window',
       submenu: [

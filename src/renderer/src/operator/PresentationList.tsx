@@ -20,7 +20,6 @@ import { ShastraPanel } from '../shastra/ShastraPanel';
 import { SearchResults } from '../library/SearchResults';
 import { applyFilters, filtering, KirtanFilters, toggleFilters, useFilters } from '../library/KirtanFilters';
 import { newFromWords } from '../library/words-store';
-import { openQrSlide } from '../library/QrSlideDialog';
 import { MediaList } from '../library/MediaList';
 import { ADD_LINE_HEIGHT, AddToPlaylistButton, rowMenu, usePlaylistOpen } from '../playlists/AddToPlaylist';
 import { libraryPresentation } from '../files/targets';
@@ -28,23 +27,7 @@ import { startDrag } from '../playlists/drag';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { TextInput } from '../ui/Field';
-import {
-  AppWindow,
-  FileText,
-  FolderOpen,
-  Import,
-  Link2,
-  ListFilter,
-  PictureInPicture2,
-  Plus,
-  QrCode,
-  Search,
-  Upload,
-  Video,
-} from '../ui/icons';
-import { openWindowPicker } from '../live-window/live-window-store';
-import { openAddInput } from '../video-inputs/video-inputs-store';
-import { openPipDialog } from './pip-store';
+import { FileText, FolderOpen, Import, Link2, ListFilter, Plus, Search, Upload } from '../ui/icons';
 import { openLinkDialog } from '../links/link-store';
 import { useExtras } from '../library/extras-store';
 import { MenuButton } from '../ui/Menu';
@@ -209,10 +192,12 @@ function SearchBox({ help }: { help: ReactNode }) {
 }
 
 /**
- * Under the search box, where the kirtan filters were (Session 26a): Import…, New… (from pasted words)
- * and, with View › Show Books, Templates and Kirtan Details, the filters' button.
+ * Under the search box, where the kirtan filters were (Session 26a): Import… and New… (from pasted words), in
+ * Presentations and in Media alike, and, with View › Show Books, Templates and Kirtan Details, the filters' button.
+ * QR code…, Show a Window…, Add a Video Input… and Picture in Picture… were here too until alpha.20: they are in More
+ * tools and the Tools menu now (Session 60, x36; operator/SetupTools.tsx).
  */
-function LibraryTools({ media }: { media: boolean }) {
+function LibraryTools() {
   const filtersOn = useFilters((s) => s.open || filtering(s.f));
   const extras = useExtras((s) => s.on);
   return (
@@ -221,53 +206,6 @@ function LibraryTools({ media }: { media: boolean }) {
       <Button size="md" icon={Plus} title="A new presentation from pasted words" onClick={newFromWords}>
         New…
       </Button>
-      {/* New › QR code… (Session 55, Part 8): a slide with a large code of a link or words, made offline. */}
-      {!media && (
-        <Button
-          size="md"
-          icon={QrCode}
-          title="A slide with a large QR code of a link or words, and the words under it"
-          onClick={openQrSlide}
-        >
-          QR code…
-        </Button>
-      )}
-      {/* Beside the media that go up as the background (Session 48): another app's window, live. */}
-      {media && (
-        <Button
-          size="md"
-          icon={AppWindow}
-          title="Another app’s window (a Zoom meeting, say), live as the background"
-          data-testid="show-a-window"
-          onClick={openWindowPicker}
-        >
-          Show a Window…
-        </Button>
-      )}
-      {/* Beside it (Session 50): a camera or capture input on this computer, named, then one click in Media. */}
-      {media && (
-        <Button
-          size="md"
-          icon={Video}
-          title="A camera or capture input on this computer (a video mixer’s USB output, say), named in Media"
-          data-testid="add-video-input"
-          onClick={openAddInput}
-        >
-          Add a Video Input…
-        </Button>
-      )}
-      {/* Beside them (Session 50): something small in a corner of the screens while the main picture carries on. */}
-      {media && (
-        <Button
-          size="md"
-          icon={PictureInPicture2}
-          title="Something small in a corner of the screens: a camera, a picture or video, a window, or the slides"
-          data-testid="pip-open"
-          onClick={openPipDialog}
-        >
-          Picture in Picture…
-        </Button>
-      )}
       {extras && (
         <IconButton
           icon={ListFilter}
@@ -413,7 +351,7 @@ export function PresentationList({ platform }: { platform: string }) {
       {help.card}
       {/* What is this? sits in the search row (or the Books tab's first row): the tabs keep their words. */}
       {tab !== 'shastra' && <SearchBox help={help.button} />}
-      {tab !== 'shastra' && <LibraryTools media={tab === 'media'} />}
+      {tab !== 'shastra' && <LibraryTools />}
       {tab === 'presentations' && !searching && (
         <ChosenBar
           count={marked.length}

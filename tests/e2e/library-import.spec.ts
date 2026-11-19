@@ -311,11 +311,19 @@ test('a window drop gives each refused file its own notice and retries a repaire
   const { app } = await launchApp({ DRASHTI_TEST_DECK_CONVERTER: '1' });
   const win = await operatorPage(app);
   await sizeOperatorWindow(app, win, { width: 1024, height: 645 });
+  // A playlist open, as in a sabha: a file dropped on the window goes into it (with none open, a small window asks
+  // for a new playlist or folder first since alpha.20: drop-new-playlist.spec.ts).
+  await win.evaluate(async () => {
+    const made = await (globalThis as PageGlobals).drashti.playlists.create('Placeholder drops', null, false);
+    if (!made.ok) throw new Error(made.message);
+  });
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder drops' }).click();
+  await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder drops');
   await openLibrary(win);
   const list = win.getByTestId('presentation-list');
   await expect(list.getByTestId('presentation-row')).toHaveCount(2);
 
-  await dropFiles(win, win.getByTestId('slide-grid'), [songOne], { overlay: false });
+  await dropFiles(win, win.getByTestId('live-preview'), [songOne], { overlay: false });
   await expect(list.getByRole('button', { name: /^Placeholder Song One/ })).toHaveCount(1);
   await expect(win.getByTestId('import-report')).toHaveCount(0);
 
