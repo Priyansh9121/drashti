@@ -14,7 +14,7 @@ Export copies wait while the stream is on air or recording. The import runs in t
 - An item deleted locally stays deleted when a bundle carrying its identity is imported again. Restore it through the library before updating it.
 - An explicit skip choice skips an incoming change.
 - Leaving a kirtan out of a later bundle never deletes it at the receiving library.
-- Without media bytes, the import uses matching media already present by checksum, or keeps a named missing-media item with a notice. It never follows a path from the sending computer or downloads anything.
+- Without media bytes, the import uses matching media already present by checksum, or keeps a named missing-media item with a notice. Shared missing references stay shared, and their checksums, sizes and media settings survive another export. It never follows a path from the sending computer or downloads anything.
 
 ## ZIP layout
 

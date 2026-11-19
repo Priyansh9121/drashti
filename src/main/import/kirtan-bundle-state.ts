@@ -27,6 +27,51 @@ export function keepBundleState(db: Db, id: string, state: BundleState): void {
   settings.set(identityKey(state.presentationId), id);
 }
 
+interface MissingMediaReference {
+  id: string;
+  kind: string;
+  sha256: string | null;
+}
+const missingRefKey = (file: MissingMediaReference) =>
+  file.sha256
+    ? `kirtanBundle.missingByHash.${file.kind}.${file.sha256}`
+    : `kirtanBundle.missingByRef.${file.kind}.${file.id}`;
+const missingInfoKey = (mediaId: string) => `kirtanBundle.missingInfo.${mediaId}`;
+const missingInfoSchema = z
+  .object({
+    sha256: sha.nullable(),
+    bytes: z
+      .number()
+      .int()
+      .min(0)
+      .max(512 * 1024 ** 2),
+  })
+  .strict();
+
+/** Omitted bytes still have a stable, shared reference and a portable fingerprint. */
+export function missingBundleMediaId(db: Db, file: MissingMediaReference): string | null {
+  const found = new SettingsRepo(db).get(missingRefKey(file));
+  return typeof found === 'string' && found !== '' && found.length <= 512 ? found : null;
+}
+
+export function rememberMissingBundleMedia(
+  db: Db,
+  file: MissingMediaReference & { bytes: number },
+  mediaId: string,
+): void {
+  const settings = new SettingsRepo(db);
+  settings.set(missingRefKey(file), mediaId);
+  settings.set(missingInfoKey(mediaId), { sha256: file.sha256, bytes: file.bytes });
+}
+
+export function bundleMissingFingerprint(
+  db: Db,
+  mediaId: string,
+): { sha256: string | null; bytes: number } | null {
+  const info = missingInfoSchema.safeParse(new SettingsRepo(db).get(missingInfoKey(mediaId)));
+  return info.success ? info.data : null;
+}
+
 /** All local content, title and presentation notes participate in conflict detection. */
 export function bundleLocalHash(db: Db, id: string): string | null {
   const rows = readContent(db, id);

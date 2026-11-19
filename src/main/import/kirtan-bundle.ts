@@ -10,7 +10,13 @@ import type { ContentRows } from '../db/content';
 import { MediaRepo } from '../db/media';
 import { PresentationRepo } from '../db/presentations';
 import { realPlaceAsync } from '../media/contained';
-import { bundleIdentity, bundleState, keepBundleState, mapBundleContent } from './kirtan-bundle-state';
+import {
+  bundleIdentity,
+  bundleState,
+  keepBundleState,
+  mapBundleContent,
+  bundleMissingFingerprint,
+} from './kirtan-bundle-state';
 import { diskFreeBytes } from './media-store';
 import { withZip, writeEntry, type ZipEntry } from './zip';
 import {
@@ -261,6 +267,7 @@ export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleM
         }
       | undefined;
     if (!row) throw new Error('A kirtan names media that is no longer in the library.');
+    const fingerprint = row.missing ? bundleMissingFingerprint(o.db, id) : null;
     const name =
       cutText(basename(row.name.replace(/\\/gu, '/')).replace(/\p{Cc}/gu, ''), 255) || 'Unnamed media';
     let entry: string | null = null;
@@ -288,8 +295,8 @@ export async function exportKirtanBundle(o: ExportKirtanBundle): Promise<BundleM
       name,
       kind: row.kind,
       entry,
-      sha256: row.sha256,
-      bytes: row.bytes ?? 0,
+      sha256: row.sha256 ?? fingerprint?.sha256 ?? null,
+      bytes: fingerprint?.bytes ?? row.bytes ?? 0,
       markers: mediaRepo.markersOf(id),
       look: mediaRepo.look(id),
     });

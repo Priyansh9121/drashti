@@ -14,7 +14,14 @@ import {
   type OpenBundleOptions,
   type OpenKirtanBundle,
 } from './kirtan-bundle';
-import { bundleState, keepBundleState, bundleLocalHash, mapBundleContent } from './kirtan-bundle-state';
+import {
+  bundleState,
+  keepBundleState,
+  bundleLocalHash,
+  mapBundleContent,
+  missingBundleMediaId,
+  rememberMissingBundleMedia,
+} from './kirtan-bundle-state';
 import { BUNDLE_LIMITS, type BundleKirtan } from './kirtan-bundle-schema';
 
 interface NativeBundleImport extends OpenBundleOptions {
@@ -112,18 +119,48 @@ function applyKirtan(
     } else {
       const same = file.sha256
         ? (o.db
-            .prepare('SELECT id FROM media WHERE sha256 = ? AND missing = 0 AND deleted_at IS NULL')
-            .get(file.sha256) as { id: string } | undefined)
+            .prepare(
+              'SELECT id FROM media WHERE sha256 = ? AND kind = ? AND missing = 0 AND deleted_at IS NULL',
+            )
+            .get(file.sha256, file.kind) as { id: string } | undefined)
         : undefined;
       if (same) {
         mediaMap.set(id, same.id);
         continue;
       }
-      const missing = o.media.addMissing(`kirtan-bundle/${descriptor.id}/${id}/${file.name}`, file.kind, {
-        kind: 'drashti',
-        path: sourcePath,
-        ref: id,
-      });
+      const remembered = missingBundleMediaId(o.db, file);
+      const linked = remembered
+        ? (o.db
+            .prepare('SELECT id, kind, missing, sha256, deleted_at FROM media WHERE id = ?')
+            .get(remembered) as
+            | { id: string; kind: string; missing: number; sha256: string | null; deleted_at: string | null }
+            | undefined)
+        : undefined;
+      const reusable =
+        linked?.kind === file.kind &&
+        linked.deleted_at === null &&
+        (linked.missing === 1 || file.sha256 === null || linked.sha256 === file.sha256);
+      let missing: string;
+      if (reusable) {
+        missing = linked.id;
+        if (linked.missing === 0) {
+          mediaMap.set(id, missing);
+          continue;
+        }
+      } else {
+        missing = o.media.addMissing(
+          `kirtan-bundle/media/${file.kind}/${id}/${file.sha256 ?? 'unknown'}/${file.name}`,
+          file.kind,
+          {
+            kind: 'drashti',
+            path: sourcePath,
+            ref: id,
+          },
+        );
+        if (file.markers) mediaRepo.setMarkers(missing, file.markers);
+        if (file.look) mediaRepo.setLook(missing, file.look);
+      }
+      rememberMissingBundleMedia(o.db, file, missing);
       mediaMap.set(id, missing);
       issues.push({
         severity: 'warning',
