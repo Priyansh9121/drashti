@@ -1,6 +1,4 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent, webUtils } from 'electron';
-import type { EngineSeen } from '../shared/controller-actions';
-import type { EngineMessage } from '../shared/engine/protocol';
 import type { DrashtiBridge } from '../shared/bridge';
 import type { EventChannel, EventContract, InvokeArgs, InvokeChannel, InvokeResult } from '../shared/ipc';
 import type { AppearanceNow } from '../shared/appearance/appearances';
@@ -8,6 +6,7 @@ import { drawAppearance, type AppearanceRoot } from '../shared/appearance/draw';
 import { IPC } from '../shared/ipc';
 import { summariesOf } from '../shared/library';
 import { bridgeFor, pageOf } from './page-groups';
+import { EngineViewStamp } from './engine-seen';
 
 /** Typed ipcRenderer.invoke over the shared contract. */
 function invoke<C extends InvokeChannel>(channel: C, ...args: InvokeArgs<C>): Promise<InvokeResult<C>> {
@@ -36,13 +35,7 @@ ipcRenderer.on(IPC.stream.port, (event, payload: { role: 'preview' | 'encoder' |
   pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
 });
 
-let engineSeen: EngineSeen | undefined;
-const rememberEngine = (message: EngineMessage): void => {
-  if (message.kind === 'snapshot')
-    engineSeen = message.session ? { session: message.session, rev: message.rev } : undefined;
-  else if (engineSeen && message.rev === engineSeen.rev + 1) engineSeen = { ...engineSeen, rev: message.rev };
-  else if (engineSeen && message.rev > engineSeen.rev) engineSeen = undefined;
-};
+const engineSeen = new EngineViewStamp();
 
 const bridge: DrashtiBridge = {
   app: {
@@ -235,20 +228,20 @@ const bridge: DrashtiBridge = {
   engine: {
     onMessage: (listener) =>
       on(IPC.engine.message, (message) => {
-        rememberEngine(message);
+        engineSeen.remember(message, true);
         listener(message);
       }),
     subscribe: async () => {
       const message = await invoke(IPC.engine.subscribe);
-      rememberEngine(message);
+      engineSeen.remember(message);
       return message;
     },
     snapshot: async () => {
       const message = await invoke(IPC.engine.snapshot);
-      rememberEngine(message);
+      engineSeen.remember(message);
       return message;
     },
-    dispatch: (command) => invoke(IPC.engine.command, command, engineSeen),
+    dispatch: (command) => invoke(IPC.engine.command, command, engineSeen.current),
     pointAt: (target) => invoke(IPC.engine.pointAt, target),
   },
   library: {
