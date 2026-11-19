@@ -9,6 +9,22 @@ export interface LocalOutput {
 }
 
 /**
+ * A screen's whole canvas as drawn in its window: as its scaling places it, or (x27) as its part of one wide picture
+ * fills the window, the whole canvas then that much wider, and larger by a zoom over 1 (a picture made smaller needs
+ * no smaller copy). With nothing set, exactly drawnCanvas's.
+ */
+function drawnScreen(screen: ScreenConfig, window: PixelSize): PixelSize {
+  const g = screen.geometry ?? null;
+  const part = g?.part ?? null;
+  const shown = { width: part?.width ?? screen.canvasWidth, height: screen.canvasHeight };
+  const drawn = drawnCanvas(shown, window, screen.scaling);
+  if (g === null) return drawn;
+  const across = part === null ? 1 : screen.canvasWidth / part.width;
+  const zoom = Math.max(1, g.zoom);
+  return { width: Math.round(drawn.width * across * zoom), height: Math.round(drawn.height * zoom) };
+}
+
+/**
  * The largest audience screen's picture as drawn, in pixels: the size sharpened copies are made at
  * (Session 26g). Null with none: copies at their own size. A node's screens count too (Session 26h), each
  * at the size of the node's display it is given to (its output covers that display), whether the node is
@@ -28,10 +44,9 @@ export function largestAudienceScreen(input: {
   const consider = (drawn: PixelSize) => {
     if (!largest || drawn.width * drawn.height > largest.width * largest.height) largest = drawn;
   };
-  const canvasOf = (s: ScreenConfig) => ({ width: s.canvasWidth, height: s.canvasHeight });
   for (const { screen, window } of input.local) {
     if (input.roleOf(screen.groupId) !== 'audience') continue;
-    consider(drawnCanvas(canvasOf(screen), window, screen.scaling));
+    consider(drawnScreen(screen, window));
   }
   for (const node of input.nodes) {
     const onIt = input.screens.filter(
@@ -44,7 +59,7 @@ export function largestAudienceScreen(input: {
     );
     for (const s of onIt) {
       const d = node.displays.find((x) => x.id === found.get(s.id));
-      if (d) consider(drawnCanvas(canvasOf(s), { width: d.pixelWidth, height: d.pixelHeight }, s.scaling));
+      if (d) consider(drawnScreen(s, { width: d.pixelWidth, height: d.pixelHeight }));
     }
   }
   return largest;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { copyBox, copySize } from '../../shared/picture-look';
+import { NO_GEOMETRY } from '../../shared/screen-geometry';
 import type { DisplayInfo, NodeDisplays, ScreenConfig, ScreenRole } from '../../shared/screens';
 import { largestAudienceScreen } from './copy-screen';
 
@@ -122,5 +123,30 @@ describe("the sharpened copy's size", () => {
     const box = copyBox(largestAudienceScreen({ local, screens: [mainHall, onNode], roleOf, nodes }), 1);
     expect(box).toEqual({ width: 7680, height: 4320 });
     expect(copySize({ width: 3000, height: 2000 }, box)).toEqual({ width: 3000, height: 2000 });
+  });
+
+  it('a screen of one wide picture draws its whole canvas larger, as its part fills its window; a zoom over 1 too (x27)', () => {
+    const left = screen('left', {
+      canvasWidth: 3584,
+      geometry: {
+        ...NO_GEOMETRY,
+        part: { x: 0, width: 1920 },
+        blend: { left: 0, right: 256, gamma: 2.2, curve: 2 },
+      },
+    });
+    const window = { width: 1920, height: 1080 };
+    const largest = (s: ScreenConfig) =>
+      largestAudienceScreen({ local: [{ screen: s, window }], screens: [s], roleOf, nodes: [] });
+    // The part, 1920 of the 3584, fills the 1920 window: the whole canvas is drawn 3584 wide.
+    expect(largest(left)).toEqual({ width: 3584, height: 1080 });
+    expect(largest(screen('zoomed', { geometry: { ...NO_GEOMETRY, zoom: 1.25 } }))).toEqual({
+      width: 2400,
+      height: 1350,
+    });
+    // A picture made smaller needs no smaller copy than its window.
+    expect(largest(screen('smaller', { geometry: { ...NO_GEOMETRY, zoom: 0.9 } }))).toEqual({
+      width: 1920,
+      height: 1080,
+    });
   });
 });
