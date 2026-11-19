@@ -20,7 +20,7 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Field, Select, TextInput } from '../ui/Field';
-import { Monitor, Plus, ScanEye, Trash2, Wand2 } from '../ui/icons';
+import { Blend, Crop, Monitor, Plus, ScanEye, Trash2, Wand2 } from '../ui/icons';
 import { openSetup } from '../setup/setup-store';
 import { Kbd } from '../ui/Kbd';
 import { Notice } from '../ui/Notice';
@@ -36,6 +36,8 @@ import { ScreenCards } from './ScreenCards';
 import { NodesSection } from './NodesSection';
 import { DisplayRow } from './DisplayRow';
 import { useControlsDisplay } from './controls-display';
+import { AdjustPicture } from './AdjustPicture';
+import { WidePicture } from './WidePicture';
 
 // The words are a phone's too (Session 54, the phone as a full Drashti).
 const stateText = SCREEN_STATE_WORDS;
@@ -113,6 +115,13 @@ function ScreenRow({
   const node = useScreens((s) =>
     screen.nodeId ? s.snapshot?.nodes.find((n) => n.id === screen.nodeId) : undefined,
   );
+  // Adjust the picture… (x27): its display's own pixels for the numbers, as last seen when it is not connected now.
+  const [adjusting, setAdjusting] = useState(false);
+  const pixels = shownOn
+    ? { width: shownOn.pixelWidth, height: shownOn.pixelHeight }
+    : screen.displayKey
+      ? { width: screen.displayKey.pixelWidth, height: screen.displayKey.pixelHeight }
+      : { width: screen.canvasWidth, height: screen.canvasHeight };
   return (
     <li className="space-y-2 rounded-lg border border-line bg-panel px-3 py-2.5" data-testid="screen-row">
       <div className="flex flex-wrap items-center gap-2">
@@ -229,7 +238,38 @@ function ScreenRow({
             ))}
           </Select>
         </label>
+        {/* Its picture's zoom, move and corners (x27); a key and fill pair's key draws its fill's. */}
+        {screen.feed === 'key' ? (
+          <span className="text-xs text-muted" data-testid="screen-key-follows">
+            Its picture follows the fill’s.
+          </span>
+        ) : (
+          <Button
+            size="sm"
+            icon={Crop}
+            data-testid="adjust-picture-open"
+            onClick={() => {
+              setAdjusting(true);
+            }}
+          >
+            Adjust the picture…
+          </Button>
+        )}
+        {screen.geometry && (
+          <span className="text-xs text-muted" data-testid="screen-adjusted">
+            Adjusted
+          </span>
+        )}
       </div>
+      {adjusting && (
+        <AdjustPicture
+          screen={screen}
+          pixels={pixels}
+          onClose={() => {
+            setAdjusting(false);
+          }}
+        />
+      )}
     </li>
   );
 }
@@ -252,6 +292,9 @@ function GroupCard({
     setShown(group.name);
     setName(group.name);
   }
+  // One wide picture… (x27, edge blend): an audience group's two to four screens side by side.
+  const [widening, setWidening] = useState(false);
+  const canWiden = group.role === 'audience' && group.screens.length >= 2 && group.screens.length <= 4;
   return (
     <section
       id={`screen-group-${group.id}`}
@@ -289,6 +332,18 @@ function GroupCard({
             <option value="keyfill">{GROUP_ROLE_WORDS.keyfill}</option>
           </Select>
         </label>
+        {canWiden && (
+          <Button
+            size="sm"
+            icon={Blend}
+            data-testid="wide-picture-open"
+            onClick={() => {
+              setWidening(true);
+            }}
+          >
+            One wide picture…
+          </Button>
+        )}
         <Button
           variant="danger"
           size="sm"
@@ -298,6 +353,14 @@ function GroupCard({
           Delete group
         </Button>
       </div>
+      {widening && (
+        <WidePicture
+          group={group}
+          onClose={() => {
+            setWidening(false);
+          }}
+        />
+      )}
       {/* Its languages (Session 55: here, now that Looks are gone). */}
       <GroupLanguages groupId={group.id} role={group.role} />
       {group.role === 'keyfill' && (

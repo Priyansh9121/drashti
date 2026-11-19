@@ -1,5 +1,6 @@
 import type { ClockStyle } from './format';
 import type { Lang } from './model';
+import type { ScreenGeometry } from './screen-geometry';
 import type { HallPicture } from './stage-layouts';
 
 /** How a screen's canvas is scaled into its output window. */
@@ -67,6 +68,11 @@ export interface ScreenConfig {
   feed: ScreenFeed | null;
   /** The node whose display it is on (Session 13), or null for this computer's own displays. */
   nodeId: string | null;
+  /**
+   * Its picture's geometry (x27, shared/screen-geometry.ts): a zoom and a move, its corners pinned, its part of one wide
+   * picture and the ramps over its overlaps. Null or left out: nothing set, drawn as before.
+   */
+  geometry?: ScreenGeometry | null;
 }
 
 /** A screen group. What its screens show (layers, languages, slide style) is set in the Looks (shared/looks.ts). */
@@ -116,6 +122,8 @@ export interface NodeDisplays {
   name: string;
   online: boolean;
   displays: DisplayInfo[];
+  /** It draws without a graphics chip, as it last said (x27), for Adjust the picture…. */
+  noGpu?: true;
 }
 
 export interface ScreensSnapshot {
@@ -195,6 +203,8 @@ export interface ScreenPatch {
   enabled?: boolean;
   /** In a key and fill group: the fill or the key. */
   feed?: ScreenFeed;
+  /** Its picture's geometry (x27); null: nothing set. */
+  geometry?: ScreenGeometry | null;
 }
 
 /** What an output window needs to know about itself. */
@@ -230,6 +240,13 @@ export interface OutputContext {
    * and until Chromium has said how it draws: then it warms up as before.
    */
   noGpu?: true;
+  /**
+   * Its picture's geometry (x27, shared/screen-geometry.ts), on its whole picture: a key and fill pair's key draws its
+   * fill's, so the two stay pixel-aligned. Null or left out: nothing set, drawn exactly as before.
+   */
+  geometry?: ScreenGeometry | null;
+  /** Its picture is being adjusted in Screens (x27): a grid over the show, warped with it. Never kept. */
+  grid?: true;
 }
 
 /** What an output window says about how it draws (every few seconds). */

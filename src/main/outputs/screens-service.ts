@@ -21,11 +21,13 @@ import type {
 import {
   coverOptionsSchema,
   displayIdSchema,
+  GEOMETRY_REFUSED,
   groupLanguagesSchema,
   idSchema,
   nameSchema,
   screenPatchSchema,
 } from '../../shared/screens-schema';
+import { GEOMETRY_LIMITS, NO_GEOMETRY, widePicture } from '../../shared/screen-geometry';
 import type { ScreenRepo } from '../db/screens';
 import type { JobFor, NotUsedDisplays } from './auto-screens';
 import { memoryNotUsed } from './auto-screens';
@@ -114,6 +116,9 @@ export class ScreensService {
    * these screens? asks at that change, as for any other.
    */
   private readonly switchedOffAs = new Map<ScreenSwitch, Map<string, string>>();
+
+  /** The screens whose picture is being adjusted now (x27): a grid over each. Never kept: none at a start. */
+  private readonly adjustingNow = new Set<string>();
 
   constructor(
     private readonly repo: ScreenRepo,
@@ -266,6 +271,101 @@ export class ScreensService {
     return this.done();
   }
 
+  /**
+   * One wide picture (x27, edge blend): an audience group's two to four screens, left to right in the group's order,
+   * each overlapping the next by `overlap` canvas pixels. Each screen's canvas is the wide one, with its part and the
+   * ramps over its inner edges; its own zoom, move and corners, and its ramps' gamma and curve, stay. Made again over
+   * one already wide, at a new overlap, from the screens' own size. All or nothing.
+   */
+  makeWidePicture(rawGroupId: unknown, rawOverlap: unknown): ScreensResult {
+    const groupId = idSchema.safeParse(rawGroupId);
+    const group = groupId.success ? this.repo.groups().find((g) => g.id === groupId.data) : undefined;
+    if (!group) return this.fail('That group no longer exists.');
+    if (group.role !== 'audience')
+      return this.fail('One wide picture is made from an audience group’s screens.');
+    const { screens } = group;
+    const first = screens[0];
+    if (!first || screens.length < 2 || screens.length > GEOMETRY_LIMITS.wide)
+      return this.fail('One wide picture is made from two to four screens side by side.');
+    const size = { width: first.geometry?.part?.width ?? first.canvasWidth, height: first.canvasHeight };
+    const most = Math.floor(size.width / 2);
+    const overlap = z.number().int().min(1).max(most).safeParse(rawOverlap);
+    if (!overlap.success)
+      return this.fail(`The screens overlap by 1 to ${String(most)} pixels: at most half a screen.`);
+    const wide = widePicture(screens.length, size, overlap.data);
+    if (wide.canvas.width > 16384) return this.fail('That picture would be wider than 16384 pixels.');
+    const changes = screens.map((s, i) => {
+      const own = s.geometry ?? NO_GEOMETRY;
+      const made = wide.screens[i] ?? { part: null, blend: null };
+      const blend = made.blend && {
+        ...made.blend,
+        gamma: own.blend?.gamma ?? made.blend.gamma,
+        curve: own.blend?.curve ?? made.blend.curve,
+      };
+      return {
+        id: s.id,
+        patch: {
+          canvasWidth: wide.canvas.width,
+          canvasHeight: wide.canvas.height,
+          geometry: { ...own, part: made.part, blend },
+        },
+      };
+    });
+    if (!this.repo.updateScreens(changes)) return this.fail('That group no longer exists.');
+    return this.done();
+  }
+
+  /** Separate pictures (x27): each screen of a wide picture its own canvas again, its part's size; its corners stay. */
+  separatePictures(rawGroupId: unknown): ScreensResult {
+    const groupId = idSchema.safeParse(rawGroupId);
+    const group = groupId.success ? this.repo.groups().find((g) => g.id === groupId.data) : undefined;
+    if (!group) return this.fail('That group no longer exists.');
+    const changes = group.screens.flatMap((s) => {
+      const g = s.geometry;
+      return g?.part
+        ? [
+            {
+              id: s.id,
+              patch: {
+                canvasWidth: g.part.width,
+                canvasHeight: s.canvasHeight,
+                geometry: { ...g, part: null, blend: null },
+              },
+            },
+          ]
+        : [];
+    });
+    if (!this.repo.updateScreens(changes)) return this.fail('That group no longer exists.');
+    return this.done();
+  }
+
+  /**
+   * A screen's picture being adjusted, or no longer (x27): while it is, its output draws a grid over the show, warped
+   * with it (on a node too). Kept here only: no grid at a start, and none once the operator window loads again.
+   */
+  setAdjusting(rawScreenId: unknown, rawOn: unknown): ScreensResult {
+    const id = idSchema.safeParse(rawScreenId);
+    const on = z.boolean().safeParse(rawOn);
+    if (!id.success || !on.success || this.repo.screen(id.data) === null)
+      return this.fail('That screen no longer exists.');
+    if (this.adjustingNow.has(id.data) === on.data) return { ok: true, snapshot: this.snapshot() };
+    if (on.data) this.adjustingNow.add(id.data);
+    else this.adjustingNow.delete(id.data);
+    return this.done();
+  }
+
+  /** Whether a screen's picture is being adjusted now (x27): its grid. */
+  adjusting(screenId: string): boolean {
+    return this.adjustingNow.has(screenId);
+  }
+
+  /** No screen adjusted any more (x27): the operator window loaded again, or closed. */
+  stopAdjusting(): void {
+    if (this.adjustingNow.size === 0) return;
+    this.adjustingNow.clear();
+    this.outputs.reconcile();
+  }
+
   private done(): ScreensResult {
     this.outputs.reconcile();
     return { ok: true, snapshot: this.snapshot() };
@@ -397,10 +497,26 @@ export class ScreensService {
     const patch = screenPatchSchema.safeParse(rawPatch);
     if (!id.success) return this.fail('That screen no longer exists.');
     if (!patch.success)
-      return this.fail('Canvas sizes are whole numbers from 16 to 16384; names need 1 to 80 characters.');
+      return this.fail(
+        typeof rawPatch === 'object' && rawPatch !== null && 'geometry' in rawPatch
+          ? GEOMETRY_REFUSED
+          : 'Canvas sizes are whole numbers from 16 to 16384; names need 1 to 80 characters.',
+      );
     const clean: ScreenPatch = patch.data;
     const current = this.repo.screen(id.data);
     if (!current) return this.fail('That screen no longer exists.');
+    // A screen's part of one wide picture (x27) lies inside its canvas as the change leaves it, and each overlap is at
+    // most half of that part (of the whole canvas without one).
+    const geometry = clean.geometry;
+    if (geometry) {
+      const canvasWidth = clean.canvasWidth ?? current.canvasWidth;
+      const { part, blend } = geometry;
+      if (part && part.x + part.width > canvasWidth)
+        return this.fail('A screen’s part of the picture must lie inside its canvas.');
+      const half = (part?.width ?? canvasWidth) / 2;
+      if (blend && (blend.left > half || blend.right > half))
+        return this.fail('An overlap is at most half the screen’s part.');
+    }
     if (clean.enabled === true && !current.enabled && current.displayKey && current.nodeId === null) {
       // Turning a screen back on: where would its output open?
       const displayId = matchDisplays(
