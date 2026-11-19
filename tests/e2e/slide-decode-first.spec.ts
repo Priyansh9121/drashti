@@ -45,6 +45,7 @@ interface Probe {
 type DecodeGlobals = typeof globalThis & {
   drashtiDecodeFrames?: Frame[];
   drashtiDecodeProbe?: Probe;
+  drashtiDecodeCaptureStop?: () => void;
 };
 
 /** A large PNG whose noise prevents the decoder treating it as a tiny flat-colour picture. */
@@ -74,6 +75,36 @@ async function bigPicture(page: Page, file: string): Promise<string> {
   return file;
 }
 
+/** A still page paints only on damage: keep one corner painting until this capturer has its first real frame. */
+async function paintUntilCapture(page: Page): Promise<() => Promise<void>> {
+  await page.evaluate(() => {
+    const g = globalThis as DecodeGlobals;
+    g.drashtiDecodeCaptureStop?.();
+    const spot = document.createElement('div');
+    spot.id = 'decode-test-capture-nudge';
+    spot.setAttribute('aria-hidden', 'true');
+    spot.style.cssText =
+      'position:fixed;left:0;top:0;width:1px;height:1px;pointer-events:none;z-index:2147483647;background:rgba(0,0,0,0)';
+    document.body.appendChild(spot);
+    let on = false;
+    const paint = () => {
+      on = !on;
+      spot.style.background = on ? 'rgba(0,0,0,0.004)' : 'rgba(0,0,0,0)';
+    };
+    // The same start-up painting as program/capture.ts's wantFrame. No image is prepared by this corner pixel.
+    paint();
+    const timer = setInterval(paint, 250);
+    g.drashtiDecodeCaptureStop = () => {
+      clearInterval(timer);
+      spot.remove();
+      delete g.drashtiDecodeCaptureStop;
+    };
+  });
+  return async () => {
+    await page.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeCaptureStop?.());
+  };
+}
+
 /** The hall's actual painted frames, sampled in Main without asking the renderer to decode a screenshot. */
 async function captureHall(app: ElectronApplication, hall: Page): Promise<number> {
   const by = Date.now() + 20_000;
@@ -84,79 +115,89 @@ async function captureHall(app: ElectronApplication, hall: Page): Promise<number
       timeout: Math.max(1, by - Date.now()),
     })
     .toBe(true);
-  await w.evaluate((window: BrowserWindow) => {
-    const frames: Frame[] = [];
-    (globalThis as DecodeGlobals).drashtiDecodeFrames = frames;
-    window.webContents.beginFrameSubscription(false, (image) => {
-      const bytes = image.resize({ width: 32, height: 18 }).toBitmap();
-      const sum = [0, 0, 0];
-      let count = 0;
-      for (let y = 4; y < 14; y++)
-        for (let x = 8; x < 24; x++) {
-          const i = (y * 32 + x) * 4;
-          sum[0] = (sum[0] ?? 0) + (bytes[i + 2] ?? 0);
-          sum[1] = (sum[1] ?? 0) + (bytes[i + 1] ?? 0);
-          sum[2] = (sum[2] ?? 0) + (bytes[i] ?? 0);
-          count++;
-        }
-      frames.push({ t: Date.now(), rgb: sum.map((n) => n / count) });
+  const stopPainting = await paintUntilCapture(hall);
+  try {
+    await w.evaluate((window: BrowserWindow) => {
+      const frames: Frame[] = [];
+      (globalThis as DecodeGlobals).drashtiDecodeFrames = frames;
+      window.webContents.beginFrameSubscription(false, (image) => {
+        const bytes = image.resize({ width: 32, height: 18 }).toBitmap();
+        const sum = [0, 0, 0];
+        let count = 0;
+        for (let y = 4; y < 14; y++)
+          for (let x = 8; x < 24; x++) {
+            const i = (y * 32 + x) * 4;
+            sum[0] = (sum[0] ?? 0) + (bytes[i + 2] ?? 0);
+            sum[1] = (sum[1] ?? 0) + (bytes[i + 1] ?? 0);
+            sum[2] = (sum[2] ?? 0) + (bytes[i] ?? 0);
+            count++;
+          }
+        frames.push({ t: Date.now(), rgb: sum.map((n) => n / count) });
+      });
     });
-  });
-  // beginFrameSubscription starts asynchronously. Changing the only still scene before the first delivered frame
-  // races its initial snapshot; a captured black frame cannot acknowledge a later scene that was missed.
-  await expect
-    .poll(() => app.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames?.length ?? 0), {
-      timeout: Math.max(1, by - Date.now()),
-    })
-    .toBeGreaterThan(0);
+    // beginFrameSubscription starts asynchronously. Changing the only still scene before the first delivered frame
+    // races its initial snapshot; a captured black frame cannot acknowledge a later scene that was missed.
+    await expect
+      .poll(() => app.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames?.length ?? 0), {
+        timeout: Math.max(1, by - Date.now()),
+      })
+      .toBeGreaterThan(0);
+  } finally {
+    await stopPainting();
+  }
   return by;
 }
 
 /** The stream's own captured frames, the same source its encoder uses; no recording or internet destination. */
 async function captureStream(program: Page): Promise<number> {
   const by = Date.now() + 20_000;
-  await program.evaluate(async () => {
-    const frames: Frame[] = [];
-    (globalThis as DecodeGlobals).drashtiDecodeFrames = frames;
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { width: 1920, height: 1080, frameRate: 30 },
-      audio: false,
-    });
-    const track = stream.getVideoTracks()[0];
-    if (!track) throw new Error('no own-page video track');
-    const Processor = (
-      globalThis as unknown as {
-        MediaStreamTrackProcessor: new (o: { track: MediaStreamTrack }) => {
-          readable: ReadableStream<VideoFrame>;
-        };
-      }
-    ).MediaStreamTrackProcessor;
-    const reader = new Processor({ track }).readable.getReader();
-    const canvas = new OffscreenCanvas(32, 18);
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) throw new Error('no 2d context');
-    void (async () => {
-      for (;;) {
-        const { value: frame, done } = await reader.read();
-        if (done) break;
-        ctx.drawImage(frame, 0, 0, 32, 18);
-        frame.close();
-        const bytes = ctx.getImageData(8, 4, 16, 10).data;
-        const sum = [0, 0, 0];
-        for (let i = 0; i < bytes.length; i += 4) {
-          sum[0] = (sum[0] ?? 0) + (bytes[i] ?? 0);
-          sum[1] = (sum[1] ?? 0) + (bytes[i + 1] ?? 0);
-          sum[2] = (sum[2] ?? 0) + (bytes[i + 2] ?? 0);
+  const stopPainting = await paintUntilCapture(program);
+  try {
+    await program.evaluate(async () => {
+      const frames: Frame[] = [];
+      (globalThis as DecodeGlobals).drashtiDecodeFrames = frames;
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: 1920, height: 1080, frameRate: 30 },
+        audio: false,
+      });
+      const track = stream.getVideoTracks()[0];
+      if (!track) throw new Error('no own-page video track');
+      const Processor = (
+        globalThis as unknown as {
+          MediaStreamTrackProcessor: new (o: { track: MediaStreamTrack }) => {
+            readable: ReadableStream<VideoFrame>;
+          };
         }
-        frames.push({ t: Date.now(), rgb: sum.map((n) => n / (16 * 10)) });
-      }
-    })();
-  });
-  await expect
-    .poll(() => program.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames?.length ?? 0), {
-      timeout: Math.max(1, by - Date.now()),
-    })
-    .toBeGreaterThan(0);
+      ).MediaStreamTrackProcessor;
+      const reader = new Processor({ track }).readable.getReader();
+      const canvas = new OffscreenCanvas(32, 18);
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) throw new Error('no 2d context');
+      void (async () => {
+        for (;;) {
+          const { value: frame, done } = await reader.read();
+          if (done) break;
+          ctx.drawImage(frame, 0, 0, 32, 18);
+          frame.close();
+          const bytes = ctx.getImageData(8, 4, 16, 10).data;
+          const sum = [0, 0, 0];
+          for (let i = 0; i < bytes.length; i += 4) {
+            sum[0] = (sum[0] ?? 0) + (bytes[i] ?? 0);
+            sum[1] = (sum[1] ?? 0) + (bytes[i + 1] ?? 0);
+            sum[2] = (sum[2] ?? 0) + (bytes[i + 2] ?? 0);
+          }
+          frames.push({ t: Date.now(), rgb: sum.map((n) => n / (16 * 10)) });
+        }
+      })();
+    });
+    await expect
+      .poll(() => program.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames?.length ?? 0), {
+        timeout: Math.max(1, by - Date.now()),
+      })
+      .toBeGreaterThan(0);
+  } finally {
+    await stopPainting();
+  }
   return by;
 }
 
