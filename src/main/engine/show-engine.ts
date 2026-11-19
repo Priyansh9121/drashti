@@ -45,6 +45,7 @@ import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
 import { mediaInState } from '../../shared/node-media';
 import { type ChosenWallpaper, DEFAULT_WHEN_ENDS, type WhenEnds } from '../../shared/wallpapers';
 import type { CaptionsShown } from '../../shared/captions';
+import type { VideoCaptionsShown } from '../../shared/video-captions';
 import {
   backgroundShowing,
   framed,
@@ -282,6 +283,8 @@ export interface EngineOptions {
   soundOf?: (mediaId: string) => { gain: number; silent: boolean } | null;
   /** Whether the music steps aside under a video with sound (Part 7, K: Audio's switch; on when left out). */
   stepsAside?: () => boolean;
+  /** Parsed captions for a library video, with the admin’s band size and place. */
+  videoCaptionsOf?: (mediaId: string) => VideoCaptionsShown | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -827,6 +830,43 @@ export class ShowEngine {
    * Audio's Music steps aside switched): what plays now follows at once. Not a change to the show: what Back and Put it
    * back would undo stays.
    */
+  /** A choice changes the existing video’s captions immediately, without seeking or replaying it. */
+  refreshVideoCaptions(): CommandResult {
+    this.bookkeeping = true;
+    try {
+      return this.apply([]);
+    } finally {
+      this.bookkeeping = false;
+    }
+  }
+
+  private videoCaptionsFor(state: EngineState): Record<string, VideoCaptionsShown> | undefined {
+    if (!this.options.videoCaptionsOf) return undefined;
+    const tracks: Record<string, VideoCaptionsShown> = {};
+    if (!state.blackout && !state.wallpaper && !state.stopped) {
+      // One band: background first, then a slide video, then the box. Never send every library track.
+      for (const playing of playingNow(state)) {
+        if (playing.ref.layer === 'audio' || playing.sound) continue;
+        const chosen = this.options.videoCaptionsOf(playing.mediaId);
+        if (chosen) {
+          tracks[playing.mediaId] = chosen;
+          break;
+        }
+      }
+    }
+    const old = state.videoCaptions;
+    if (
+      old &&
+      Object.keys(old).length === Object.keys(tracks).length &&
+      Object.entries(tracks).every(([id, next]) => {
+        const prev = old[id];
+        return prev?.track === next.track && prev.size === next.size && prev.place === next.place;
+      })
+    )
+      return old;
+    return tracks;
+  }
+
   refreshSound(): CommandResult {
     const sound = this.soundFor(this.state);
     if (!sound || sameData(this.state.sound, sound)) return this.unchanged();
@@ -2910,6 +2950,9 @@ export class ShowEngine {
     });
     if (!sameData(next.videoFiles ?? null, files)) next = reduce(next, { type: 'videoFiles/set', files });
     // How the files sounding now play (Session 55, Part 7): each one's even gain, and the music stepping aside.
+    const videoCaptions = this.videoCaptionsFor(next);
+    if (videoCaptions !== undefined && videoCaptions !== next.videoCaptions)
+      next = { ...next, videoCaptions };
     const sound = this.soundFor(next);
     if (sound) next = reduce(next, { type: 'sound/set', sound });
     // A lower third that hides itself (Session 55, Part 16, R) and is past its time by now (Put it back, a restart, the
