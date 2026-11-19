@@ -310,11 +310,12 @@ export class OscService {
       return;
     }
     // Reserve every action's allowance before any part of a bundle reaches the engine.
-    for (const _ of batch) {
-      if (!this.perSender.take(sender) || !this.overall.take('all')) {
-        drop();
-        return;
-      }
+    if (
+      batch.length > 0 &&
+      (!this.perSender.take(sender, batch.length) || !this.overall.take('all', batch.length))
+    ) {
+      drop();
+      return;
     }
     this.runBatch(batch.filter((item) => item.at <= now));
     this.pending.push(...future);
@@ -323,11 +324,14 @@ export class OscService {
 
   /** A scheduled group cannot add another burst on top of actions arriving right now. */
   private runBatch(items: Pending[]): void {
-    for (const item of items) {
-      if (!this.executionPerSender.take(item.sender) || !this.executionOverall.take('all')) {
-        this.dropped++;
-        return;
-      }
+    const first = items[0];
+    if (!first) return;
+    if (
+      !this.executionPerSender.take(first.sender, items.length) ||
+      !this.executionOverall.take('all', items.length)
+    ) {
+      this.dropped++;
+      return;
     }
     for (const item of items) this.run(item);
   }
