@@ -12,8 +12,9 @@ import { isDeckNativeTransition } from '../../../shared/deck-transition';
 import type { SlideLayer } from '../../../shared/engine/state';
 import { MOVEMENTS } from '../../../shared/looks';
 import { TRANSITION_KINDS } from '../../../shared/model';
+import { OPENING_START_HOLD_MS } from '../../../shared/opening';
 import { deckTransitionFrame, deckWipeShows, wipeSlideMask } from './transition-frame';
-import { type WarmScene, warmScenes } from './WarmUp';
+import { type WarmScene, WARM_UP_LONGEST_MS, warmScenes } from './WarmUp';
 
 /*
  * The GPU's warm-up (render/WarmUp.tsx; tests/e2e/warm-up.spec.ts looks at it drawn): before a screen with a graphics
@@ -109,6 +110,30 @@ describe('the warm-up', () => {
     expect(offGrid.state(false, at)).toEqual(scene('deck-wipe/calm').state(false, at));
     // Once: no clipped twin of it.
     expect(warmScenes().some((s) => s.key === 'deck-wipe/calm/off-grid/clipped')).toBe(false);
+  });
+
+  it('draws a 4:3 deck’s Cover between bars, half a pixel off the grid (C24, X12)', () => {
+    // CI's Mac, traced (c24 profiled run on 7e12c229): the scene on the grid makes the shade's pipelines as
+    // 'CoverBoundsRenderStep[NonAAFill] + ...+MatrixColorFilter'; the first 16:9 Cover on air, its slide between pixels,
+    // made 'PerEdgeAAQuadRenderStep + ...+MatrixColorFilter SrcOver AnalyticClip' (three render passes), and the first
+    // 4:3 Cover between bars the same without the clip (drawn under its bars' clip) and the clip's own solid rect: one
+    // frame of 218-335 ms on that VM each, every plain run.
+    const at = BEFORE + 33;
+    const four = scene('deck-cover-four-three/calm/off-grid');
+    expect(four.offset).toBe('translate(0.5px, 0.5px)');
+    expect(four.clip).toBeUndefined();
+    const { t, p, frame } = deckFrameOf('deck-cover-four-three/calm/off-grid', at);
+    expect(t.deckEffect).toBe('cover');
+    expect(p).toBeGreaterThan(0.3);
+    expect(p).toBeLessThan(0.7);
+    expect(frame.in.filter).toMatch(/^brightness\(0\.\d+\)$/u);
+    for (const during of [true, false]) {
+      const s = slideOf(four, during, at).slide;
+      expect([s.width, s.height], String(during)).toEqual([1440, 1080]);
+      for (const e of s.elements) expect(e.frame.x + e.frame.width, e.id).toBeLessThanOrEqual(1440);
+    }
+    // Once: no clipped twin of it.
+    expect(warmScenes().some((s) => s.key === 'deck-cover-four-three/calm/off-grid/clipped')).toBe(false);
   });
 
   it('draws a deck’s own Cover part-way: the slide coming in moved and a shade darker, a filter over the whole slide', () => {
@@ -288,5 +313,14 @@ describe('the warm-up', () => {
         `after ${String(gap)} ms`,
       ).toEqual([]);
     }
+  });
+});
+
+describe('the warm-up and the opening (Session 59)', () => {
+  it('the opening waits for the window’s warm-up as long as it can last, its cap then its last step, so its two seconds never share the GPU with it', () => {
+    // The window's limit (Session 58, C4: Q57-32) outlasted the cap alone; the last step after it (X24, fault 2) came
+    // later. On CI's Mac the warm-up reached its cap, and the opening moved for 17 frames while that step still ran
+    // (opening-timing.spec.ts:243, Session 59's final quick check).
+    expect(OPENING_START_HOLD_MS).toBeGreaterThan(WARM_UP_LONGEST_MS);
   });
 });

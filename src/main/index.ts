@@ -113,7 +113,7 @@ import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
 import { musicPlaySchema } from '../shared/music';
 import type { MediaMarkers } from '../shared/markers';
-import { mediaMarkersSchema, NO_MARKERS } from '../shared/markers';
+import { mediaMarkersInputSchema, NO_MARKERS } from '../shared/markers';
 import { evenGainDb } from '../shared/sound';
 import { UpdateService } from './update/update-service';
 import { defaultInstaller } from './update/installer';
@@ -1917,7 +1917,7 @@ function start(): void {
     if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
       return { ok: false as const, message: 'Only the operator window can set markers.' };
     const parsed = parsePlain(
-      mediaMarkersSchema,
+      mediaMarkersInputSchema,
       raw,
       'Those markers cannot be kept: check each one’s name and time, then save again.',
     );

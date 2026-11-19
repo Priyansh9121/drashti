@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import type { Lang } from './model';
 import { idSchema, langSchema } from './model-schema';
+import { cleanNameSchema } from './rename-name';
+
+/** A kirtans' category's name as the operator adds it (X14). */
+export const kirtanCategorySchema = cleanNameSchema(60);
 
 /*
  * A kirtan (PLAN.md 3): a presentation whose words come in language tracks

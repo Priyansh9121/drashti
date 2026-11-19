@@ -11,9 +11,9 @@ import { preloadFonts } from '../render/fonts';
 import { preloadStudioFontsOnceDrawn } from '../render/studio-fonts';
 import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
-import { Scene } from '../render/Scene';
 import { StageScreen } from '../render/StageScreen';
 import { WarmUp, type WarmUpEnd } from '../render/WarmUp';
+import { HallScene } from './HallScene';
 import { KeepQuestion } from './KeepQuestion';
 import { SwitchQuestion } from './SwitchQuestion';
 import { connectOutput, useOutput } from './output-store';
@@ -265,6 +265,9 @@ function Output() {
       className="relative h-full w-full bg-black"
       data-testid="output-root"
       data-screen={context?.screenId ?? ''}
+      // How this screen draws, as its context says (render/chipless.ts): exact where a stage screen or a test switch
+      // also skips the warm-up (X15, C2's review NIT).
+      data-chipless={chipless ? 'true' : 'false'}
       data-role={context?.role ?? 'audience'}
       // What a stage screen shows (Session 55): the chosen layout, Standard, or the audience picture with Stage off.
       data-stage-shows={stage ? stageShows(state?.stage) : undefined}
@@ -301,7 +304,7 @@ function Output() {
                 {stage ? (
                   <StageScreen state={state} look={look} canvas={canvas} hall={context.hall} />
                 ) : (
-                  <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
+                  <HallScene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
                 )}
                 {testThrow && <ThrowForTests />}
               </PlacedInParent>
