@@ -234,11 +234,10 @@ export class YouTubeService {
   async signIn(): Promise<YouTubeResult> {
     if (this.signing) return { ok: true, status: this.status() };
     const { secrets } = this.deps;
-    if (!secrets.has(CLIENT_ID) || !secrets.has(CLIENT_SECRET))
-      return { ok: false, message: YOUTUBE_WORDS.noClient };
+    if (!secrets.has(CLIENT_ID) || !secrets.has(CLIENT_SECRET)) return this.failed(YOUTUBE_WORDS.noClient);
     const clientId = secrets.get(CLIENT_ID);
     const clientSecret = secrets.get(CLIENT_SECRET);
-    if (!clientId || !clientSecret) return { ok: false, message: this.unreadable() };
+    if (!clientId || !clientSecret) return this.failed(this.unreadable());
     const random = this.deps.random ?? randomBytes;
     const pkce = makePkce(random);
     const state = newState(random);
@@ -246,7 +245,7 @@ export class YouTubeService {
     try {
       listener = await (this.deps.listen ?? listenForBrowser)(state);
     } catch {
-      return { ok: false, message: 'Drashti could not wait for the browser on this computer. Try again.' };
+      return this.failed('Drashti could not wait for the browser on this computer. Try again.');
     }
     const address = signInAddress(this.deps.endpoints, {
       clientId,
@@ -257,7 +256,7 @@ export class YouTubeService {
     if (this.deps.call.onlyThisComputer && !onThisComputer(address)) {
       listener.cancel();
       this.deps.log('warn', 'TEST GUARD: opening Google’s sign-in page was refused: not 127.0.0.1');
-      return { ok: false, message: YOUTUBE_WORDS.testGuard };
+      return this.failed(YOUTUBE_WORDS.testGuard);
     }
     this.signing = listener;
     this.message = null;
@@ -269,10 +268,7 @@ export class YouTubeService {
       await this.deps.openBrowser(address);
     } catch {
       listener.cancel();
-      return {
-        ok: false,
-        message: 'Drashti could not open this computer’s browser for Google’s sign-in page.',
-      };
+      return this.failed('Drashti could not open this computer’s browser for Google’s sign-in page.');
     }
     this.deps.log('info', 'YouTube: Google’s sign-in page was opened in the browser');
     return { ok: true, status: this.status() };
