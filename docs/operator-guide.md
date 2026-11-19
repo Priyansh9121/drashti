@@ -214,6 +214,8 @@ In the studio, **Save** keeps it, **Show** puts it up (**Save and show** when it
 
 **A screen shows the computer's desktop, or the stage shows the hall's picture.** **Audience** (or **Stage**) may be off: the status bar then says **Audience off** (or **Stage off**). Press **Turn on** there, or **Cmd+1** (**Cmd+2** for the stage screens), and they come back as they were.
 
+**A projector's picture is not square on the wall, or a television cuts off its edges.** Tell whoever looks after Drashti: it is set once for each screen, in **Screens** (**Adjust the picture…**, the admin's guide). Nothing to change during the sabha.
+
 **A mistake on the screens.** Put the right row up with a click, press **←** (the slide before), or press **F9** (**Oops**) to put back what was there before the last change. After **Clear all** by mistake, press **Put it back** at once.
 
 **A screen is black or frozen.** Open the screens dashboard: its picture shows what that screen really shows. Pro Mode can **Reload** it there. Drashti also restarts a screen that stops drawing by itself, within about 10 seconds. If a screen kept failing, a red notice at the top of the window says so ("“Main Hall 1” has stopped"), in Pro Mode and in Simple Mode, and the status line says **stopped**: Drashti tries it again every few minutes, and **Try again** on the notice (or in **Screens**, **Cmd+Shift+S**) tries at once. The notice goes by itself when the screen is back, or when you close it. If a whole output computer stopped (a node offline), carry on: its screens keep their last picture, and it comes back by itself when the network does.
