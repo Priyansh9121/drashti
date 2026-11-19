@@ -202,8 +202,9 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
       >
         {practising ? picture : <ZoomablePreview>{picture}</ZoomablePreview>}
         {/* The Stream panel's own drawing, warmed with the picture's, unseen, at its own size on whole pixels (Session
-            60, X21: operator/PanelWarmUp.tsx). */}
-        {warming && <PanelWarmUp />}
+            60, X21: operator/PanelWarmUp.tsx); gone at once where Chromium draws without a graphics chip (nothing to
+            warm: the warm-up's last step there draws nothing but black). */}
+        {warming && !chipless && <PanelWarmUp />}
       </div>
       <PipLiveStrip />
       {/* The time bar for what plays (Session 54), where a page asks for it under the picture. */}
