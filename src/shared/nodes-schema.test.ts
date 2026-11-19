@@ -23,6 +23,18 @@ describe("a node's health", () => {
   });
 });
 
+describe("a node's health, whether it draws without a graphics chip (x27)", () => {
+  it('keeps noGpu: true, refuses any other value, and says nothing without it', () => {
+    const base = health('showing') as Record<string, unknown>;
+    expect(nodeHealthSchema.safeParse({ ...base, noGpu: true }).data?.noGpu).toBe(true);
+    expect(nodeHealthSchema.safeParse({ ...base, noGpu: false }).success).toBe(false);
+    expect(nodeHealthSchema.safeParse({ ...base, noGpu: 'yes' }).success).toBe(false);
+    const plain = nodeHealthSchema.safeParse(base);
+    expect(plain.success).toBe(true);
+    expect(plain.data && 'noGpu' in plain.data).toBe(false);
+  });
+});
+
 describe("a node's screens, as Main sends them", () => {
   const screen = {
     screenId: 'placeholder-stage-screen',

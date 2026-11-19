@@ -132,6 +132,8 @@ export interface NodeHealth {
   clock: NodeClock | null;
   /** The engine revision it has applied. */
   rev: number;
+  /** It draws without a graphics chip (x27: Chromium composites in software there), for Adjust the picture…. */
+  noGpu?: true;
 }
 
 // ---- the feed ------------------------------------------------------------------------------
