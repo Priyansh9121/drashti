@@ -693,6 +693,56 @@ const savedGeometry = (win: Page, screenId: string) =>
     screenId,
   );
 
+/** The words Adjust the picture… says on a screen drawn without a graphics chip once a corner is moved (Q60-24 A). */
+const NO_CHIP_NOTE = /without a graphics chip.*video on a picture pinned by its corners plays unevenly/su;
+
+test('Adjust the picture… says plainly, once a corner is moved on a screen drawn without a graphics chip, that a video on the pinned picture plays unevenly; never with a chip (the owner’s Q60-24 A)', async () => {
+  test.setTimeout(240_000);
+  // The same steps without a chip and with one, Chromium's word on how it draws made either (a test switch).
+  for (const [compositing, warned] of [
+    ['disabled_software', true],
+    ['enabled_on', false],
+  ] as const) {
+    const { app } = await launchApp({ ...ONE_OUTPUT, DRASHTI_TEST_GPU_COMPOSITING: compositing });
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const screenId = await setUpScreen(win, 'Placeholder hall', 1);
+    await outputReady(await outputFor(app, screenId));
+    await win.getByRole('button', { name: 'Screens', exact: true }).click();
+    await win.getByTestId('screen-row').first().getByTestId('adjust-picture-open').click();
+    const dialog = win.getByTestId('adjust-picture');
+    await expect(dialog).toBeVisible();
+    const note = dialog.getByTestId('adjust-no-chip');
+    // Nothing pinned yet, or a zoom alone: no note either way.
+    await expect(note).toHaveCount(0);
+    await dialog.getByTestId('adjust-zoom').fill('97');
+    await dialog.getByTestId('adjust-zoom').press('Enter');
+    await expect.poll(async () => (await savedGeometry(win, screenId))?.zoom).toBe(0.97);
+    await expect(note).toHaveCount(0);
+    // A corner moved: the note without a chip, at once, in plain words; never with one.
+    await dialog.getByTestId('adjust-corner-0-x').fill('40');
+    await dialog.getByTestId('adjust-corner-0-x').press('Enter');
+    await expect.poll(async () => (await savedGeometry(win, screenId))?.corners[0].x ?? 0).toBeGreaterThan(0);
+    if (warned) {
+      await expect(note).toBeVisible();
+      await expect(note).toHaveText(NO_CHIP_NOTE);
+      await expectNoSeriousA11yIssues(
+        win,
+        'Adjust the picture… with its note',
+        '[data-testid="adjust-picture"]',
+      );
+      // The corner put back (Reset): the note goes with it.
+      await dialog.getByTestId('adjust-reset').click();
+      await expect.poll(async () => (await savedGeometry(win, screenId))?.corners[0].x ?? 0).toBe(0);
+      await expect(note).toHaveCount(0);
+    } else {
+      await expect(dialog.getByTestId('adjust-corner-0-x')).toHaveValue('40');
+      await expect(note).toHaveCount(0);
+    }
+    await app.close();
+  }
+});
+
 test('Screens: Adjust the picture… moves a corner by its numbers, the keys and a drag, with Undo, Redo and Reset, the grid on the screen while open; One wide picture… and Separate pictures', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp(ONE_OUTPUT);
