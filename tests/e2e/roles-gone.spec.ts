@@ -298,7 +298,7 @@ test('everything an admin did is anyone’s in Pro Mode: no prompt, no refusal; 
   }
   await chooseMenuItem(app, 'import-from-link');
   await expect(win.getByTestId('link-text')).toBeFocused();
-  await expect(win.getByRole('dialog')).toHaveCount(0);
+  await expect(win.getByRole('dialog', { name: 'Import from a Link', exact: true })).toHaveCount(1);
   await noRoles(win);
   await win.keyboard.press('Escape');
   await expect(win.getByTestId('link-text')).toHaveCount(0);
