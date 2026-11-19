@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { nativeDeckMotion } from '../../../shared/deck';
 import { type DeckNativeTransition, isDeckNativeTransition } from '../../../shared/deck-transition';
@@ -20,6 +20,8 @@ import { deckSlideAt, nativeStepTiming, stepTiming } from '../../../shared/deck-
 import { DECK_FIRST_FRAME } from './DeckStep';
 import { NativeDeckMotion } from './NativeDeckElement';
 import { drawsWithoutChip } from './chipless';
+import { ScreenPictures } from './picture-looks';
+import { type SlideBacking, slideBacking } from './slide-backing';
 import {
   deckSlideClip,
   deckTransitionFrame,
@@ -350,6 +352,21 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
   );
   shadeInside(els.shadeIn, inside(frame?.in) ? (frame?.in.filter ?? '') : '');
   shadeInside(els.shadeOut, inside(frame?.out) ? (frame?.out.filter ?? '') : '');
+  // Without a graphics chip, a slide on a layer of its own (one a move moves, or the Wipe's still outgoing slide) known
+  // to draw no see-through pixel anywhere in its place (render/slide-backing.ts): backed by an opaque colour in that
+  // place only, so the compositor knows the layer opaque and draws nothing under it (it drew the screen's whole picture
+  // there every frame, on CI's two-core Windows); a slide in part of the screen (a 4:3 deck's, between bars) has its
+  // layer made its own place, its drawing kept where it was, so the bars beside it stay as they are (Q60-6).
+  const layered = p > 0 && p < 1;
+  backSlide(els.in, els.shadeIn, inside(frame?.in) ? how.backingIn : undefined, how.placeIn, how, k);
+  backSlide(
+    els.out,
+    els.shadeOut,
+    inside(frame?.out) || (stillOut && layered) ? how.backingOut : undefined,
+    how.placeOut,
+    how,
+    k,
+  );
   if (els.out) els.out.style.zIndex = native?.deckEffect === 'uncover' ? '1' : '';
   if (els.black) els.black.style.opacity = frame ? String(frame.black) : '0';
   const move = kind === null ? null : how.move;
@@ -381,6 +398,59 @@ function shadeInside(box: HTMLDivElement | null | undefined, filter: string): vo
 }
 
 /**
+ * What backSlide last made of each slide's box (X11): '' when not backed, else its colour and the place its layer was
+ * made (empty when its place is the whole screen), so a box is written only when that changes.
+ */
+const backed = new WeakMap<HTMLDivElement, { colour: string; place: SlidePlace | null }>();
+
+const placeBox = (el: HTMLDivElement | null | undefined, r: SlidePlace | null): void => {
+  if (!el) return;
+  el.style.left = r ? `${String(r.x)}px` : '0px';
+  el.style.top = r ? `${String(r.y)}px` : '0px';
+  el.style.width = r ? `${String(r.width)}px` : '';
+  el.style.height = r ? `${String(r.height)}px` : '';
+};
+
+/** Whether a place lands on whole device pixels, `k` a canvas pixel: its edges never part of a pixel. */
+const onWholeDevicePixels = (r: SlidePlace, k: number): boolean =>
+  [r.x, r.y, r.width, r.height].every((v) => Math.abs(v * k - Math.round(v * k)) < 1e-6);
+
+/**
+ * A slide's box backed by `colour` in its place `place` (X11, Q60-6), or no longer (`colour` left out). Its box is the
+ * screen (inset 0, as its JSX has it) unless its place is not: then the box is made its place, and its shade box (its
+ * drawing's) moved back by as much, so the slide is drawn where it was and nothing beside it is backed. Only where the
+ * place lands on whole device pixels: else its edge could show part of the colour.
+ */
+function backSlide(
+  box: HTMLDivElement | null,
+  shade: HTMLDivElement | null | undefined,
+  colour: string | undefined,
+  place: SlidePlace,
+  canvas: Pick<Paint, 'width' | 'height'>,
+  k: number | undefined,
+): void {
+  if (!box) return;
+  const on = colour !== undefined && k !== undefined && k > 0 && onWholeDevicePixels(place, k);
+  const whole =
+    place.x === 0 && place.y === 0 && place.width === canvas.width && place.height === canvas.height;
+  const want = on ? { colour, place: whole ? null : place } : null;
+  const had = backed.get(box) ?? null;
+  const samePlace = (a: SlidePlace | null, b: SlidePlace | null) =>
+    a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height);
+  if (had?.colour === want?.colour && samePlace(had?.place ?? null, want?.place ?? null)) return;
+  if (want) backed.set(box, want);
+  else backed.delete(box);
+  box.style.backgroundColor = want?.colour ?? '';
+  if (want?.place) {
+    placeBox(box, want.place);
+    placeBox(shade, { x: -want.place.x, y: -want.place.y, width: canvas.width, height: canvas.height });
+  } else if (had?.place) {
+    placeBox(box, null);
+    placeBox(shade, null);
+  }
+}
+
+/**
  * Device pixels a canvas pixel where the slide layer `root` (the canvas's size) is drawn: its scale on the screen times
  * the pixel ratio; undefined until it has a size.
  */
@@ -389,6 +459,14 @@ function devicePerCanvas(root: HTMLElement | null, canvasWidth: number): number 
   const shown = root.getBoundingClientRect().width;
   const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1;
   return shown > 0 ? (shown / canvasWidth) * dpr : undefined;
+}
+
+/** A slide's backing as its box draws it now (X11): a picture's only once that picture is drawn in it. */
+function drawnBacking(b: SlideBacking | null, box: HTMLDivElement | null): string | undefined {
+  if (!b) return undefined;
+  if (b.picture === undefined) return b.colour;
+  const img = box?.querySelector<HTMLImageElement>(`img[data-media-id="${CSS.escape(b.picture)}"]`);
+  return img?.complete && img.naturalWidth > 0 ? b.colour : undefined;
 }
 
 /** A slide's shade box (X11), as its JSX draws it: filling the slide's box, around what it draws. */
@@ -411,6 +489,14 @@ export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'shadeOut'>): void
   if (before.style.filter !== '') before.style.filter = '';
   before.style.zIndex = '';
   shadeInside(els.shadeOut, '');
+  backSlide(
+    before,
+    els.shadeOut,
+    undefined,
+    { x: 0, y: 0, width: 0, height: 0 },
+    { width: 0, height: 0 },
+    undefined,
+  );
 }
 
 /** The pictures and videos in `root` that cannot be drawn yet, and the deck's first clip among them, if any. */
@@ -628,6 +714,16 @@ export function SlideLayerView({
   // Each slide's shade box (X11): without a graphics chip a deck's own Cover or Uncover shades its moving slide on it.
   const inShadeRef = useRef<HTMLDivElement>(null);
   const outShadeRef = useRef<HTMLDivElement>(null);
+  // What each slide may be backed with while it is a layer of its own without a graphics chip (X11, Q60-6): a slide as
+  // designed, known to draw no see-through pixel in its place (render/slide-backing.ts).
+  const screen = useContext(ScreenPictures);
+  const backings = useMemo(
+    () => ({
+      in: on && slides === 'designed' ? slideBacking(on.slide, screen) : null,
+      out: off && slides === 'designed' ? slideBacking(off.slide, screen) : null,
+    }),
+    [on, off, slides, screen],
+  );
 
   // Start the fade once the new slide's pictures and videos can be drawn: at shownAt if they
   // already could (every screen at the same point), else when they can.
@@ -692,11 +788,14 @@ export function SlideLayerView({
   useEffect(() => {
     if (start === null) return;
     let frame = 0;
-    // Without a graphics chip, where a deck's own move lands on whole device pixels (X11): read once as it starts.
+    // Without a graphics chip, where a deck's own move lands on whole device pixels (X11), and each slide's backing (a
+    // picture's once it is drawn): read once as it starts.
     const k =
       drawsWithoutChip() && native !== undefined && !native.over
         ? devicePerCanvas(rootRef.current, width)
         : undefined;
+    const backingIn = k === undefined ? undefined : drawnBacking(backings.in, inRef.current);
+    const backingOut = k === undefined ? undefined : drawnBacking(backings.out, outRef.current);
     const tick = () => {
       const now = engineNow();
       const p = fadeAt({ ms, start }, now);
@@ -722,6 +821,8 @@ export function SlideLayerView({
           placeIn: { x: inX, y: inY, width: inWidth, height: inHeight },
           placeOut: { x: outX, y: outY, width: outWidth, height: outHeight },
           ...(k === undefined ? {} : { devicePerCanvas: k }),
+          ...(backingIn === undefined ? {} : { backingIn }),
+          ...(backingOut === undefined ? {} : { backingOut }),
         },
         p,
       );
@@ -745,6 +846,7 @@ export function SlideLayerView({
     ms,
     kind,
     native,
+    backings,
     movement,
     moveNow,
     width,
@@ -777,6 +879,8 @@ export function SlideLayerView({
       fading && drawsWithoutChip() && native !== undefined && !native.over
         ? devicePerCanvas(rootRef.current, width)
         : undefined;
+    const backingIn = k === undefined ? undefined : drawnBacking(backings.in, inRef.current);
+    const backingOut = k === undefined ? undefined : drawnBacking(backings.out, outRef.current);
     paintLayers(
       {
         in: inRef.current,
@@ -799,6 +903,8 @@ export function SlideLayerView({
         placeIn: { x: inX, y: inY, width: inWidth, height: inHeight },
         placeOut: { x: outX, y: outY, width: outWidth, height: outHeight },
         ...(k === undefined ? {} : { devicePerCanvas: k }),
+        ...(backingIn === undefined ? {} : { backingIn }),
+        ...(backingOut === undefined ? {} : { backingOut }),
       },
       start !== null ? fadeAt({ ms, start }, engineNow()) : 0,
     );

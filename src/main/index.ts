@@ -174,6 +174,7 @@ import { OpeningKeys } from './opening/opening-start';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
+import { pictureCannotSeeThrough } from './media/see-through';
 import { savedName, savePicture, savesAsJpeg } from './media/save-picture';
 import { installLockedMenu, installMenu, installNodeMenu } from './menu';
 import { choiceGuard, REPEAT_CHOICE_MS } from './shown-keys';
@@ -1616,6 +1617,8 @@ function start(): void {
   let mediaLength: (mediaId: string) => number | null = () => null;
   /** A picture's look (Session 26e; the media repo, made further down). */
   let pictureLook: (mediaId: string) => PictureLook | null = () => null;
+  /** Whether a picture's file is known to draw no see-through pixel (X11; the media repo, made further down). */
+  let pictureOpaque: (mediaId: string) => boolean = () => false;
   /** A video's or sound's start and end points and markers (the media repo, made further down). */
   let mediaMarkers: (mediaId: string, itemId?: string) => MediaMarkers | null = () => null;
   /** A media item's kind while it is there to play (Session 50, the box's; the media repo, made further down). */
@@ -1671,6 +1674,7 @@ function start(): void {
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
       pictureLook: (mediaId) => pictureLook(mediaId),
+      pictureOpaque: (mediaId) => pictureOpaque(mediaId),
       // The picture-in-picture box (Session 50): what it holds, from the main process's own lists.
       mediaKind: (mediaId) => mediaKind(mediaId),
       windows: (id) => liveWindows?.offeredWindow(id) ?? null,
@@ -1899,6 +1903,24 @@ function start(): void {
       }),
     );
   pictureLook = (mediaId) => screenLook(mediaId);
+  // Which pictures can draw no see-through pixel (X11, media/see-through.ts): each file's first bytes read once, by its
+  // contents, off the main thread's way; the screens hear of one as soon as it is read (none is known before).
+  const seeThrough = new Map<string, boolean | 'reading'>();
+  pictureOpaque = (mediaId) => {
+    const found = media.kindAndFile(mediaId);
+    const sha256 = media.file(mediaId)?.sha256 ?? null;
+    if (found?.kind !== 'image' || found.missing || found.path === '' || sha256 === null) return false;
+    const known = seeThrough.get(sha256);
+    if (known === undefined) {
+      seeThrough.set(sha256, 'reading');
+      const file = isAbsolute(found.path) ? found.path : join(mediaDir, found.path);
+      void pictureCannotSeeThrough(file).then((opaque) => {
+        seeThrough.set(sha256, opaque);
+        if (opaque) engine.refreshPictures();
+      });
+    }
+    return known === true;
+  };
   mediaMarkers = (mediaId, itemId) => {
     const marks = media.markersOf(mediaId);
     return marks && itemId && trimmedVideos.playsFull(itemId, mediaId, marks)
