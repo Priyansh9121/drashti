@@ -418,9 +418,14 @@ export const Scene = memo(function Scene({
   const nothingUpNow = nothingUp ? nothingUpShows(state) : null;
   const content: CSSProperties = matte === 'key' ? { ...FULL, filter: 'brightness(0) invert(1)' } : FULL;
   // The pictures' looks and the live zoom, as the state carries them (Session 26e): every screen alike.
+  // Which can draw no see-through pixel too (X11): a deck's moving slide over one is backed without a chip.
   const pictures = useMemo(
-    () => ({ pictures: state.pictures, liveZoom: state.liveZoom }),
-    [state.pictures, state.liveZoom],
+    () => ({
+      pictures: state.pictures,
+      liveZoom: state.liveZoom,
+      ...(state.opaquePictures ? { opaque: state.opaquePictures } : {}),
+    }),
+    [state.pictures, state.liveZoom, state.opaquePictures],
   );
   // The box as drawn: the one up, or the one going out (Take off) over the main picture, already whole again.
   const boxRun = run.layer !== null && boxHere(run.layer) ? run : null;
