@@ -439,6 +439,7 @@ const bridge: DrashtiBridge = {
     remove: (nodeId) => invoke(IPC.nodes.remove, nodeId),
     newIdentity: () => invoke(IPC.nodes.newIdentity),
     everything: (nodeId, on) => invoke(IPC.nodes.everything, nodeId, on),
+    setController: (nodeId, on) => invoke(IPC.nodes.setController, nodeId, on),
     reload: (nodeId, screenId) => invoke(IPC.nodes.reload, nodeId, screenId),
     identify: (nodeId, displayId) => invoke(IPC.nodes.identify, nodeId, displayId),
     watch: (watching) => invoke(IPC.nodes.watch, watching),

@@ -1025,6 +1025,8 @@ export const IPC = {
     newIdentity: 'nodes:new-identity',
     /** Copy every picture and video to this node ("Get everything ready"), or only the week's. */
     everything: 'nodes:everything',
+    /** Main's explicit permission to share the show view (Pro Mode only). */
+    setController: 'nodes:set-controller',
     /** Reload one output window, on Main or on a node. */
     reload: 'nodes:reload',
     /** A display's number and name on it, on Main or on a node (also in Simple Mode). */
@@ -1708,6 +1710,7 @@ export interface InvokeContract {
   [IPC.nodes.remove]: { args: [nodeId: string]; result: NodesResult };
   [IPC.nodes.newIdentity]: { args: []; result: NodesResult };
   [IPC.nodes.everything]: { args: [nodeId: string, on: boolean]; result: NodesResult };
+  [IPC.nodes.setController]: { args: [nodeId: string, on: boolean]; result: NodesResult };
   [IPC.nodes.reload]: { args: [nodeId: string | null, screenId: string]; result: NodesResult };
   [IPC.nodes.identify]: { args: [nodeId: string | null, displayId: number | null]; result: null };
   [IPC.nodes.watch]: { args: [on: boolean]; result: null };

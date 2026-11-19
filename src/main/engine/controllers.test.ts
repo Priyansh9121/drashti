@@ -11,7 +11,10 @@ describe('Main with a second computer watching the show', () => {
       const mirror = new EngineMirror();
       mirror.apply(h.engine.snapshot());
       h.messages.length = 0;
-      expect(h.engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 })).toMatchObject({ ok: true, changed: true });
+      expect(h.engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 })).toMatchObject({
+        ok: true,
+        changed: true,
+      });
       expect(h.engine.dispatch({ type: 'next' })).toMatchObject({ ok: true, changed: true });
       // The worker never acknowledges either engine message. Main has already applied both.
       expect(h.engine.current.live.slideIndex).toBe(1);
@@ -28,6 +31,8 @@ describe('Main with a second computer watching the show', () => {
       expect(h.engine.current.live.slideIndex).toBe(2);
       h.online();
       expect(h.engine.current.live.slideIndex).toBe(2);
-    } finally { await h.close(); }
+    } finally {
+      await h.close();
+    }
   });
 });

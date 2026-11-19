@@ -24,9 +24,13 @@ export function controllerTest() {
   let receive: (message: FromLinkWorker) => void = () => undefined;
   let service: NodeService;
   let now = 1000;
-  const engine = new ShowEngine(makeSource(), {
-    broadcast: (message) => service.broadcast(message),
-  }, () => ++now);
+  const engine = new ShowEngine(
+    makeSource(),
+    {
+      broadcast: (message) => service.broadcast(message),
+    },
+    () => ++now,
+  );
   const deps: NodeServiceDeps = {
     nodes,
     screens,
@@ -37,16 +41,29 @@ export function controllerTest() {
         messages.push(structuredClone(message));
         if (message.type === 'stop') receive({ type: 'stopped' });
       },
-      onMessage: (listener) => { receive = listener; },
+      onMessage: (listener) => {
+        receive = listener;
+      },
       onExit: () => undefined,
       kill: () => undefined,
     }),
-    identity: () => ({ cert: 'placeholder', key: 'placeholder', fingerprint: 'placeholder', id: 'main', name: 'Placeholder Main' }),
+    identity: () => ({
+      cert: 'placeholder',
+      key: 'placeholder',
+      fingerprint: 'placeholder',
+      id: 'main',
+      name: 'Placeholder Main',
+    }),
     newIdentity: () => undefined,
     version: '1.0.0-test',
     addresses: () => ['127.0.0.1'],
     bind: '127.0.0.1',
-    engine: { snapshot: () => engine.snapshot(), state: () => engine.current, rev: () => engine.rev, session: engine.session },
+    engine: {
+      snapshot: () => engine.snapshot(),
+      state: () => engine.current,
+      rev: () => engine.rev,
+      session: engine.session,
+    },
     wanted: () => [],
     mediaFile: () => null,
     onAir: () => false,
@@ -65,11 +82,23 @@ export function controllerTest() {
   };
   start();
   return {
-    get service() { return service; },
-    engine, messages, node, nodes, screens,
+    get service() {
+      return service;
+    },
+    engine,
+    messages,
+    node,
+    nodes,
+    screens,
     emit: (message: FromLinkWorker) => receive(message),
     online: () => receive({ type: 'online', nodeId: node.id, address: '127.0.0.1', version: '1.0.0-test' }),
-    restart: async () => { await service.close(); start(); },
-    close: async () => { await service.close(); db.close(); },
+    restart: async () => {
+      await service.close();
+      start();
+    },
+    close: async () => {
+      await service.close();
+      db.close();
+    },
   };
 }

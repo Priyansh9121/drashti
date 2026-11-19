@@ -18,17 +18,29 @@ test('an explicitly enabled second computer shares Main’s live and next view; 
     await expect(node.page.getByTestId('controller-view')).toHaveCount(0);
     const dir = mkdtempSync(join(tmpdir(), 'drashti-controller-'));
     const words = join(dir, 'Placeholder Shared Show.txt');
-    writeFileSync(words, '[Verse]\nPlaceholder shared first\n\n[Chorus]\nPlaceholder shared second\n\n[Bridge]\nPlaceholder shared third\n');
+    writeFileSync(
+      words,
+      '[Verse]\nPlaceholder shared first\n\n[Chorus]\nPlaceholder shared second\n\n[Bridge]\nPlaceholder shared third\n',
+    );
     const [id = ''] = await importAndGetIds(main.win, [words]);
     await setUpScreen(main.win, 'Placeholder Hall', 1);
     const output = await outputPage(main.app);
     await outputReady(output);
-    await main.win.evaluate((pid) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', presentationId: pid, slideIndex: 0 }), id);
+    await main.win.evaluate(
+      (pid) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'goLive',
+          presentationId: pid,
+          slideIndex: 0,
+        }),
+      id,
+    );
     await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder shared first');
     await main.win.getByRole('button', { name: 'Screens', exact: true }).click();
-    const card = main.win.getByTestId('node-card').filter({ has: main.win.locator(`[data-node="${nodeId}"]`) });
     // There is exactly one paired computer; scope the permission control to its card.
-    const permission = main.win.locator(`[data-testid="node-card"][data-node="${nodeId}"]`).getByRole('checkbox', { name: 'Shared show view' });
+    const permission = main.win
+      .locator(`[data-testid="node-card"][data-node="${nodeId}"]`)
+      .getByRole('checkbox', { name: 'Shared show view' });
     await expect(permission).not.toBeChecked();
     await permission.check();
     const view = node.page.getByTestId('controller-view');
@@ -39,7 +51,9 @@ test('an explicitly enabled second computer shares Main’s live and next view; 
     await expect(view.getByRole('button')).toHaveCount(0);
     const before = await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
     // Drop just the node socket: Main and its output remain running.
-    await node.app.evaluate(() => { (globalThis as { drashtiNode?: { dropLink(): void } }).drashtiNode?.dropLink(); });
+    await node.app.evaluate(() => {
+      (globalThis as { drashtiNode?: { dropLink(): void } }).drashtiNode?.dropLink();
+    });
     await expect(view.getByTestId('controller-status')).toHaveText('Not connected');
     await expect(view.getByTestId('controller-live')).toContainText('Placeholder shared first');
     const after = await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
@@ -51,7 +65,9 @@ test('an explicitly enabled second computer shares Main’s live and next view; 
     await expect(view.getByTestId('controller-status')).toHaveText('Connected to Main');
     await expect(view.getByTestId('controller-live')).toContainText('Placeholder shared second');
     await expect(view.getByTestId('controller-next')).toContainText('Placeholder shared third');
-    const rev = await main.win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev);
+    const rev = await main.win.evaluate(
+      async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev,
+    );
     await expect(view).toHaveAttribute('data-rev', String(rev));
     // Switching it off removes the shared view without clearing Main or its output.
     await permission.uncheck();
@@ -60,8 +76,12 @@ test('an explicitly enabled second computer shares Main’s live and next view; 
     expect((await nodesStatus(main.win)).nodes[0]?.controller).toBe(false);
     // Main alone owns this permission, and Simple Mode refuses changing it.
     await main.win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
-    expect(await main.win.evaluate((nid) => (globalThis as PageGlobals).drashti.nodes.setController(nid, true), nodeId)).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
-    void card;
+    expect(
+      await main.win.evaluate(
+        (nid) => (globalThis as PageGlobals).drashti.nodes.setController(nid, true),
+        nodeId,
+      ),
+    ).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   } finally {
     await node.app.close();
     await main.app.close();
