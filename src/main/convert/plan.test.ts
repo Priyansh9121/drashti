@@ -274,6 +274,41 @@ const FILES = {
     'Stream #0:0: Video: hevc (Main), yuv420p(tv, progressive), 320x180, 25 fps, 25 tbr, 1k tbn',
     'Stream #0:1: Audio: ac3, 48000 Hz, stereo, fltp, 192 kb/s',
   ),
+  // HEVC's other kinds (Session 60, x36), as FFmpeg 9.0.2 printed them for generated files: Main 10, HDR (HLG) in
+  // Main 10, the Range Extensions (4:2:2 10-bit, 4:4:4, 12-bit), and an iPhone-style HEVC with alpha (its picture Main).
+  hevcMain10: read(
+    ISO,
+    'clip.mp4',
+    'Stream #0:0[0x1](und): Video: hevc (Main 10) (hvc1 / 0x31637668), yuv420p10le(tv, progressive), 640x360 [SAR 1:1 DAR 16:9], 9 kb/s, 30 fps, 30 tbr, 15360 tbn (default)',
+    AAC_MP4,
+  ),
+  hevcHlg: read(
+    ISO,
+    'clip.mov',
+    'Stream #0:0[0x1]: Video: hevc (Main 10) (hvc1 / 0x31637668), yuv420p10le(tv, bt2020nc/unknown/unknown, progressive), 640x360 [SAR 1:1 DAR 16:9], 9 kb/s, 30 fps, 30 tbr, 15360 tbn (default)',
+  ),
+  hevc422: read(
+    ISO,
+    'clip.mov',
+    'Stream #0:0[0x1]: Video: hevc (Rext) (hvc1 / 0x31637668), yuv422p10le(tv, progressive), 640x360 [SAR 1:1 DAR 16:9], 9 kb/s, 30 fps, 30 tbr, 15360 tbn (default)',
+    AAC_MP4,
+  ),
+  hevc444: read(
+    ISO,
+    'clip.mp4',
+    'Stream #0:0[0x1](und): Video: hevc (Rext) (hvc1 / 0x31637668), yuv444p(tv, progressive), 640x360 [SAR 1:1 DAR 16:9], 9 kb/s, 30 fps, 30 tbr, 15360 tbn (default)',
+  ),
+  hevc12: read(
+    ISO,
+    'clip.mp4',
+    'Stream #0:0[0x1](und): Video: hevc (Rext) (hvc1 / 0x31637668), yuv420p12le(tv, progressive), 640x360 [SAR 1:1 DAR 16:9], 9 kb/s, 30 fps, 30 tbr, 15360 tbn (default)',
+  ),
+  hevcAlpha: read(
+    ISO,
+    'clip.mov',
+    'Stream #0:0[0x1]: Video: hevc (Main) (hvc1 / 0x31637668), yuv420p(tv, progressive), 640x360 [SAR 1:1 DAR 16:9], 45 kb/s, 30 fps, 30 tbr, 15360 tbn (default)',
+    AAC_MP4,
+  ),
   h264TenBit: read(
     MKV,
     'clip.mkv',
@@ -354,6 +389,52 @@ describe('what Drashti’s player plays, and what is converted at import (Sessio
     expect(atImport('video', hevc, null)).toBe('hevc');
     // Its sound plays nowhere: converted either way.
     expect(atImport('video', parseFfmpegInfo(FILES.hevcAc3), true)).toBe('convert');
+  });
+
+  it('HEVC beyond Main (Session 60, x36; the owner’s "Yes, A": at import, HEVC’s own kind is asked of this computer too): converted by itself where this computer plays HEVC but not that kind; as before where it plays every kind, or the kinds are not known', () => {
+    const all = {
+      main: parseFfmpegInfo(FILES.hevc),
+      alpha: parseFfmpegInfo(FILES.hevcAlpha),
+      main10: parseFfmpegInfo(FILES.hevcMain10),
+      hlg: parseFfmpegInfo(FILES.hevcHlg),
+      rext422: parseFfmpegInfo(FILES.hevc422),
+      rext444: parseFfmpegInfo(FILES.hevc444),
+      rext12: parseFfmpegInfo(FILES.hevc12),
+    };
+    const verdicts = (playsHevc: boolean | null, kinds: { main10: boolean; rext: boolean } | null) =>
+      Object.fromEntries(
+        Object.entries(all).map(([name, info]) => [name, atImport('video', info, playsHevc, kinds)]),
+      );
+    // A computer that plays Main and Main 10 but none of the Range Extensions (4:2:2, 4:4:4, 12-bit): a camera's
+    // or an editor's file would play as sound only there (the owner's bug), so it is converted.
+    expect(verdicts(true, { main10: true, rext: false })).toEqual({
+      main: 'hevc',
+      alpha: 'hevc',
+      main10: 'hevc',
+      hlg: 'hevc',
+      rext422: 'convert',
+      rext444: 'convert',
+      rext12: 'convert',
+    });
+    // One that plays Main only (an older graphics chip): Main 10 too.
+    expect(verdicts(true, { main10: false, rext: false })).toEqual({
+      main: 'hevc',
+      alpha: 'hevc',
+      main10: 'convert',
+      hlg: 'convert',
+      rext422: 'convert',
+      rext444: 'convert',
+      rext12: 'convert',
+    });
+    // Every kind (CI’s Mac and this Mac draw them all): each plays as it is, as before.
+    const asItIs = Object.fromEntries(Object.keys(all).map((name) => [name, 'hevc']));
+    expect(verdicts(true, { main10: true, rext: true })).toEqual(asItIs);
+    // The kinds not known (the window said only whether it plays HEVC, or nothing yet): as before.
+    expect(verdicts(true, null)).toEqual(asItIs);
+    expect(verdicts(null, null)).toEqual(asItIs);
+    // No HEVC at all: every kind converted, whatever the kinds say.
+    const converted = Object.fromEntries(Object.keys(all).map((name) => [name, 'convert']));
+    expect(verdicts(false, { main10: true, rext: true })).toEqual(converted);
   });
 
   it('leaves a file FFmpeg found nothing in to its own header, as before', () => {

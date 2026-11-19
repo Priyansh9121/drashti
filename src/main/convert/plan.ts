@@ -1,3 +1,5 @@
+import type { HevcKinds } from './plays-hevc';
+
 /*
  * What a file Drashti cannot play becomes, and how FFmpeg makes it:
  *
@@ -155,6 +157,7 @@ export function atImport(
   kind: 'video' | 'audio',
   info: MediaInfo,
   playsHevc: boolean | null = null,
+  _hevcKinds: HevcKinds | null = null,
 ): AtImport {
   const picture = pictureOf(kind, info);
   if ((!picture && !info.audio) || chooseTarget(kind, info) === null) return 'unread';

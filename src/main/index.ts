@@ -362,7 +362,7 @@ import { youtubeSelfTest } from './links/youtube-selftest';
 import { findYoutubeTools, toolFolders, youtubeLaunch } from './links/youtube-tools';
 import { spawnStreamWorker } from './stream/stream-worker';
 import { AFTER_START_MS, ConvertService, readInfo } from './convert/convert-service';
-import { HevcAnswer, playsHevcScript } from './convert/plays-hevc';
+import { HevcAnswer, hevcKindsScript, playsHevcScript } from './convert/plays-hevc';
 import { askInOwnPage, type HevcPage } from './convert/hevc-page';
 import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
@@ -3691,6 +3691,8 @@ function start(): void {
     // No deck's movie is made while the stream is on air or recording (Session 54, C2; Session 50's rule).
     onAir: () => streaming.inUse() || testOnAir,
     playsHevc: () => hevc.wait(),
+    // HEVC's other kinds, as the window said with its answer (Session 60, x36), read as the import starts.
+    hevcKinds: () => hevc.kinds,
     // While an import runs, its own connection copies the WAL into the library file, never a write of Main's (Session
     // 58: such a write copied the import's pages and waited for the disk on the main thread).
     running: leaveCopyingToImports(libraryDb),
@@ -7259,8 +7261,16 @@ function start(): void {
   let hevcPage: HevcPage | null = null;
   const askHevc = () => {
     if (hevc.now !== null || hevcPage !== null || quitStarted) return;
-    const page = askInOwnPage(playsHevcScript(hevcTest));
+    const page = askInOwnPage(playsHevcScript(hevcTest), hevcKindsScript(hevcTest));
     hevcPage = page;
+    // HEVC's other kinds (Session 60, x36), known before the answer is told, so an import has both.
+    void page.kinds.then((kinds) => {
+      if (kinds === null || quitStarted) return;
+      hevc.kinds = kinds;
+      log.info(
+        `HEVC's other kinds on this computer: Main 10 ${kinds.main10 ? 'plays' : 'cannot play'}, 4:2:2, 4:4:4 and 12-bit ${kinds.rext ? 'play' : 'cannot play'}`,
+      );
+    });
     void page.answer.then((answer) => {
       hevcPage = null;
       // Closed as Drashti quits: nothing to tell.
