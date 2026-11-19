@@ -224,14 +224,23 @@ const DECK_SHAPE_MS = 500;
 const DECK_SHAPE_IN = 'deck Drashti plays: shapes in by Shape 500';
 const DECK_SHAPE_OUT = 'deck Drashti plays: shapes out by Shape 500';
 const DECK_SHAPES: readonly NonNullable<DeckEffect['shape']>[] = ['circle', 'box', 'diamond', 'plus'];
+/**
+ * Then Split's two shapes back in by Random Bars at its fifth click, across and up and down, and out by them at its
+ * sixth (Q60-15, the owner's A: drawn so only if smooth on two-core Windows while streaming; PowerPoint's own 0.5 s):
+ * hair-thin bars each fading, by a mask (shared/deck-motion.ts, barsMask), or each whole by a clip without a chip.
+ */
+const DECK_BARS_MS = 500;
+const DECK_BARS_IN = 'deck Drashti plays: shapes in by Random Bars 500';
+const DECK_BARS_OUT = 'deck Drashti plays: shapes out by Random Bars 500';
 /** Its first slide, put up by a cut before each round: only by Next from the slide before is a deck's own played. */
 const DECK_OWN_FIRST = '(to the first slide of the deck Drashti plays)';
-/** One round of it: its first slide, its four transitions, its four clicks, each then still SETTLE_MS. */
+/** One round of it: its first slide, its four transitions, its six clicks, each then still SETTLE_MS. */
 const DECK_OWN_ROUND_MS =
   SETTLE_MS +
   DECK_OWN.length * (DECK_OWN_MS + SETTLE_MS) +
   2 * (DECK_SPLIT_MS + SETTLE_MS) +
-  2 * (DECK_SHAPE_MS + SETTLE_MS);
+  2 * (DECK_SHAPE_MS + SETTLE_MS) +
+  2 * (DECK_BARS_MS + SETTLE_MS);
 /** One round of the 4:3 deck: its first slide, then its four transitions. */
 const DECK_FOUR_THREE_ROUND_MS = SETTLE_MS + DECK_FOUR_THREE.length * (DECK_OWN_MS + SETTLE_MS);
 /** All its rounds, as set. */
@@ -475,7 +484,8 @@ const NATIVE_MOTION: DeckEffect[] = [
  * deck's shapes (import/deck/native-deck-import.ts): its first slide, then one coming in by each of DECK_OWN, every one
  * over the same full-slide picture (a deck's own background, drawn once) with its title and a line; on the last, a
  * shape and words its first two clicks bring in and take out by Split, then two shapes and two words its next two
- * bring in and take out by Shape, each outline once (Session 58). A jump to any of them is a cut.
+ * bring in and take out by Shape, each outline once (Session 58), then its fifth and sixth bring Split's two in and
+ * out by Random Bars, across and up and down (Q60-15). A jump to any of them is a cut.
  */
 function deckOwnSlides(
   picture: string,
@@ -512,6 +522,16 @@ function deckOwnSlides(
       shape: outline,
       delayMs: 0,
       durationMs: DECK_SHAPE_MS,
+    }));
+  const randomBars = (shapeId: string, bars: NonNullable<DeckEffect['bars']>): DeckEffect[] =>
+    [5, 6].map((step): DeckEffect => ({
+      shapeId,
+      step,
+      phase: step === 5 ? 'in' : 'out',
+      kind: 'bars',
+      bars,
+      delayMs: 0,
+      durationMs: DECK_BARS_MS,
     }));
   // Where Split's shapes were, once they have gone: two rows of two, each outline's own shape or words.
   const shapeAt = (k: number): Rect => ({
@@ -596,8 +616,18 @@ function deckOwnSlides(
               ...split('5', 'x', false),
               ...split('6', 'y', true),
               ...DECK_SHAPES.flatMap((outline, k) => shape(String(7 + k), outline)),
+              ...randomBars('5', 'horizontal'),
+              ...randomBars('6', 'vertical'),
             ].sort((a, b) => a.step - b.step),
-            stepsMs: [0, DECK_SPLIT_MS, DECK_SPLIT_MS, DECK_SHAPE_MS, DECK_SHAPE_MS],
+            stepsMs: [
+              0,
+              DECK_SPLIT_MS,
+              DECK_SPLIT_MS,
+              DECK_SHAPE_MS,
+              DECK_SHAPE_MS,
+              DECK_BARS_MS,
+              DECK_BARS_MS,
+            ],
             approximate: false,
           }
         : { effects: [], stepsMs: [0], approximate: false },
@@ -1277,15 +1307,16 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       // A deck Drashti plays itself (13 Nov 2026), as dissolve 800 was measured (one hall screen, no other window
       // open), before the leftovers, so it runs on two cores too: from its first slide (a cut) by Next, its own Wipe,
       // Cover, Uncover and Push, then its last slide's shapes in by Split and out by Split, then in by Shape and out
-      // by Shape, a click each. Only when there is time for all its rounds, never marking the check out of time.
+      // by Shape, then in by Random Bars and out by them, a click each. Only when there is time for all its rounds,
+      // never marking the check out of time.
       if (
         timeFor(
           SHORT_RUNS * DECK_OWN_ROUND_MS,
-          'deck Drashti plays itself (its own transitions, its Splits and Shapes)',
+          'deck Drashti plays itself (its own transitions, its Splits, Shapes and Random Bars)',
         )
       ) {
         progress(
-          'a deck Drashti plays itself: its own Wipe, Cover, Uncover and Push, its shapes in and out by Split and by Shape',
+          'a deck Drashti plays itself: its own Wipe, Cover, Uncover and Push, its shapes in and out by Split, Shape and Random Bars',
         );
         await rounds(SHORT_RUNS, 'the deck Drashti plays itself', async () => {
           await press(DECK_OWN_FIRST, 'slide', 0, goLive(deckOwnId, 0), SETTLE_MS);
@@ -1295,6 +1326,8 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
             await press(row, 'nativeDeck', DECK_SPLIT_MS, { type: 'next' }, DECK_SPLIT_MS + SETTLE_MS);
           for (const row of [DECK_SHAPE_IN, DECK_SHAPE_OUT])
             await press(row, 'nativeDeck', DECK_SHAPE_MS, { type: 'next' }, DECK_SHAPE_MS + SETTLE_MS);
+          for (const row of [DECK_BARS_IN, DECK_BARS_OUT])
+            await press(row, 'nativeDeck', DECK_BARS_MS, { type: 'next' }, DECK_BARS_MS + SETTLE_MS);
         });
       }
       // x30 (the lead's ask: the show must stay safe when video out is turned on): dissolve 800 and the deck's clicks

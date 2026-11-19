@@ -1,4 +1,5 @@
 /* Placeholder-only helpers for controller and engine unit tests. */
+import type { EngineCommand } from '../../shared/engine/commands';
 import { openDatabase } from '../db/database';
 import { NodeRepo } from '../db/nodes';
 import { ScreenRepo } from '../db/screens';
@@ -21,6 +22,8 @@ export function controllerTest() {
     version: '1.0.0-test',
   });
   const messages: ToLinkWorker[] = [];
+  const actions: EngineCommand[] = [];
+  let refusal: string | null = null;
   let receive: (message: FromLinkWorker) => void = () => undefined;
   let service: NodeService;
   let now = 1000;
@@ -64,6 +67,12 @@ export function controllerTest() {
       rev: () => engine.rev,
       session: engine.session,
     },
+    runShowAction: (command: EngineCommand) => {
+      actions.push(command);
+      if (refusal) return { status: 403, body: { ok: false, message: refusal } };
+      const result = engine.dispatch(command);
+      return { status: result.ok ? 200 : 409, body: result };
+    },
     wanted: () => [],
     mediaFile: () => null,
     onAir: () => false,
@@ -87,6 +96,10 @@ export function controllerTest() {
     },
     engine,
     messages,
+    actions,
+    refuse: (message: string | null) => {
+      refusal = message;
+    },
     node,
     nodes,
     screens,
