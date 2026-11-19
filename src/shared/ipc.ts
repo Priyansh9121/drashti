@@ -1281,7 +1281,7 @@ export interface InvokeContract {
     result: LinkResult;
   };
   [IPC.links.look]: { args: [kind: LinkKind, link: string]; result: LinkResult };
-  [IPC.links.pickFolder]: { args: []; result: LinkResult };
+  [IPC.links.pickFolder]: { args: [target?: 'downloads' | 'captions']; result: LinkResult };
   [IPC.links.download]: { args: [choice?: YouTubeChoice | null]; result: LinkResult };
   [IPC.links.stop]: { args: []; result: LinkResult };
   [IPC.links.reset]: { args: []; result: LinkResult };

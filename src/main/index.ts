@@ -4796,10 +4796,23 @@ function start(): void {
         settings.set('links.folder', folder);
       },
     },
-    pickFolder: async (current) => {
+    captionPreferences: {
+      get: () => {
+        const folder = settings.get('links.captionsFolder');
+        return {
+          enabled: settings.get('links.captions') !== false,
+          folder: typeof folder === 'string' && isAbsolute(folder) ? folder : null,
+        };
+      },
+      set: (value) => {
+        settings.set('links.captions', value.enabled);
+        settings.set('links.captionsFolder', value.folder);
+      },
+    },
+    pickFolder: async (current, target) => {
       if (!operatorWindow) return null;
       const picked = await dialog.showOpenDialog(operatorWindow, {
-        title: 'Save Downloads In',
+        title: target === 'captions' ? 'Captions for Learning' : 'Save Downloads In',
         message: 'Choose where the downloaded files are saved. Drashti never moves or deletes them.',
         defaultPath: current,
         buttonLabel: 'Choose',
@@ -4908,7 +4921,9 @@ function start(): void {
       ? links.look(kind, link)
       : notLinksOperator,
   );
-  handle(IPC.links.pickFolder, (e) => (fromOperator(e) ? links.pickFolder() : notLinksOperator));
+  handle(IPC.links.pickFolder, (e, target) =>
+    fromOperator(e) ? links.pickFolder(target) : notLinksOperator,
+  );
   handle(IPC.links.download, (e, choice) => (fromOperator(e) ? links.download(choice) : notLinksOperator));
   handle(IPC.links.stop, (e) => (fromOperator(e) ? links.stop() : notLinksOperator));
   handle(IPC.links.reset, (e) => (fromOperator(e) ? links.reset() : notLinksOperator));

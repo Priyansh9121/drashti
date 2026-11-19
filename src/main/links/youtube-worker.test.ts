@@ -202,4 +202,84 @@ describe.skipIf(!ffmpegHere(ffmpeg))('yt-dlp in the download process (with the f
     expect(failed?.type === 'failed' && failed.code).toBe('sign-in');
     expect(failed?.type === 'failed' ? failed.message : '').not.toMatch(/AAAAAAAAAAA|ERROR/u);
   });
+
+  it('downloads placeholder captions after the media, pauses them on air, and never repeats the media', async () => {
+    const formats = [{ ext: 'vtt', url: 'https://captions.invalid/placeholder?lang=en' }];
+    const tracks = [
+      { language: 'en', source: 'en', kind: 'creator' as const },
+      { language: 'en', source: 'en-orig', kind: 'automatic' as const },
+    ];
+    const t = setUp({
+      steps: 1,
+      stepMs: 5,
+      captionMs: 200,
+      subtitles: { en: formats },
+      automaticCaptions: { 'en-orig': formats },
+    });
+    try {
+      t.worker.download({
+        type: 'yt-download',
+        link: LINK,
+        launch: t.launch,
+        cwd: t.cwd,
+        workDir: t.workDir,
+        choice: { type: 'mp4', height: 360 },
+        keepFree: 2 * 1024 ** 3,
+        captions: tracks,
+      });
+      await until(() => startsIn(t.log).some((run) => run.kind === 'caption'));
+      t.worker.hold(true);
+      const first = startsIn(t.log).find((run) => run.kind === 'caption');
+      await until(() => first !== undefined && !alive(first.pid) && !alive(first.child));
+      expect(t.heard.some((message) => message.type === 'yt-downloaded')).toBe(false);
+      const count = startsIn(t.log).length;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(startsIn(t.log)).toHaveLength(count);
+      t.worker.hold(false);
+      await until(() => t.heard.some((message) => message.type === 'yt-downloaded'));
+      const result = t.heard.find((message) => message.type === 'yt-downloaded');
+      if (result?.type !== 'yt-downloaded') throw new Error('No media');
+      expect(result.captions?.map((caption) => caption.kind)).toEqual(['creator', 'automatic']);
+      expect(result.captionFailures).toEqual([]);
+      expect(startsIn(t.log).filter((run) => run.kind === 'download')).toHaveLength(1);
+    } finally {
+      t.worker.stop();
+    }
+  });
+
+  it('keeps successful media and captions when one placeholder language fails', async () => {
+    const formats = [{ ext: 'vtt', url: 'https://captions.invalid/placeholder?lang=en' }];
+    const tracks = [
+      { language: 'en', source: 'en', kind: 'creator' as const },
+      { language: 'en', source: 'en-orig', kind: 'automatic' as const },
+    ];
+    const t = setUp({
+      steps: 1,
+      stepMs: 5,
+      subtitles: { en: formats },
+      automaticCaptions: { 'en-orig': formats },
+      captionFailLanguages: ['en-orig'],
+    });
+    try {
+      t.worker.download({
+        type: 'yt-download',
+        link: LINK,
+        launch: t.launch,
+        cwd: t.cwd,
+        workDir: t.workDir,
+        choice: { type: 'mp4', height: 360 },
+        keepFree: 2 * 1024 ** 3,
+        captions: tracks,
+      });
+      await until(() => t.heard.some((message) => message.type === 'yt-downloaded'));
+      const result = t.heard.find((message) => message.type === 'yt-downloaded');
+      if (result?.type !== 'yt-downloaded') throw new Error('No media');
+      expect(existsSync(result.file)).toBe(true);
+      expect(result.captions?.map((caption) => caption.kind)).toEqual(['creator']);
+      expect(result.captionFailures).toEqual([tracks[1]]);
+      expect(t.heard.some((message) => message.type === 'failed')).toBe(false);
+    } finally {
+      t.worker.stop();
+    }
+  });
 });

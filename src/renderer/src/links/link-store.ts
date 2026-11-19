@@ -123,6 +123,14 @@ function heard(view: LinkView): void {
     showImportNotice(
       'The previous downloads folder couldn’t be used. This download was saved in Drashti downloads.',
     );
+  if (view.captions?.failed.length)
+    showImportNotice(
+      `Some captions could not be saved: ${view.captions.failed.join(', ')}. The video or sound was saved.`,
+    );
+  if (view.captions?.learningSkipped)
+    showImportNotice(
+      'The captions folder could not be used. Captions were saved beside the video or sound; the learning copy was skipped.',
+    );
   for (const file of view.notTaken) showImportNotice(`“${file.name}”: ${file.reason}`);
   if (view.phase === 'failed') {
     showImportNotice(

@@ -101,7 +101,7 @@ function finish(run: Awaited<ReturnType<typeof start>>, failed = false) {
     bytes: 17,
     captions: failed ? run.files.slice(0, 1) : run.files,
     captionFailures: failed ? TRACKS.slice(1) : [],
-  } as FromWorker);
+  });
 }
 
 describe('caption files and the learning copy', () => {
@@ -190,6 +190,29 @@ describe('caption files and the learning copy', () => {
       await until(() => readdirSync(h.folder).length === 0);
       expect(h.imported).toEqual([]);
       expect(h.service.view()).toMatchObject({ phase: 'stopped', saved: null });
+    } finally {
+      h.service.close();
+    }
+  });
+
+  it('keeps learning-folder and caption choices as drafts on Cancel, then remembers them on Download', async () => {
+    const h = setup();
+    try {
+      const chosen = join(h.root, 'Chosen captions');
+      mkdirSync(chosen);
+      await h.service.pickFolder('captions');
+      expect(h.prefs.folder).toBeNull();
+      h.service.reset();
+      expect(h.service.view().captionsFolder).toBe(join(h.folder, 'Captions'));
+      await h.service.pickFolder('captions');
+      const run = await start(h, false, false);
+      expect(run.command.captions).toEqual([]);
+      finish(run);
+      await until(() => h.service.view().phase === 'done');
+      expect(h.prefs).toEqual({ enabled: false, folder: chosen });
+      expect(readdirSync(h.folder)).toEqual(['Chosen.mp4']);
+      h.service.reset();
+      expect(h.service.view()).toMatchObject({ downloadCaptions: false, captionsFolder: chosen });
     } finally {
       h.service.close();
     }

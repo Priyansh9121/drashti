@@ -340,7 +340,7 @@ export interface DrashtiBridge {
       options?: LinkDownloadOptions,
     ): Promise<LinkResult>;
     look(kind: LinkKind, link: string): Promise<LinkResult>;
-    pickFolder(): Promise<LinkResult>;
+    pickFolder(target?: 'downloads' | 'captions'): Promise<LinkResult>;
     /** Download what was looked at: a YouTube video with its type and quality. */
     download(choice?: YouTubeChoice | null): Promise<LinkResult>;
     stop(): Promise<LinkResult>;

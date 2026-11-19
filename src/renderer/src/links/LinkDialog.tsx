@@ -4,6 +4,7 @@ import { checkLink, heightLabel, linkKind } from '../../../shared/links';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Field, TextInput } from '../ui/Field';
+import { Checkbox } from '../ui/Toggle';
 import { Download, FolderOpen } from '../ui/icons';
 import { closeLinkDialog, connectLinks, importLink, lookLink, stopDownload, useLinks } from './link-store';
 
@@ -13,17 +14,24 @@ function LinkWindow({ audio }: { audio: boolean }) {
   const [name, setName] = useState('');
   const [edited, setEdited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [captionChoice, setCaptionChoice] = useState<boolean | null>(null);
   const view = useLinks((state) => state.view);
   const kind = linkKind(text);
   const check = kind ? checkLink(kind, text) : null;
   const current = check?.ok && view?.link === check.url;
-  const extension = audio
-    ? '.mp3'
-    : kind === 'youtube'
-      ? '.mp4'
+  const extension =
+    kind === 'youtube'
+      ? audio
+        ? '.mp3'
+        : '.mp4'
       : current && view.look?.shape === 'file'
         ? (/\.[^.]+$/u.exec(view.look.name)?.[0] ?? '')
         : '';
+  const downloadCaptions = captionChoice ?? view?.downloadCaptions ?? true;
+  const captionCount =
+    current && view.look?.video
+      ? new Set((view.look.video.captions ?? []).map((track) => track.language)).size
+      : null;
   useEffect(() => {
     if (!text.trim()) return;
     const timer = setTimeout(() => {
@@ -36,7 +44,7 @@ function LinkWindow({ audio }: { audio: boolean }) {
   async function submit() {
     if (submitting) return;
     setSubmitting(true);
-    if (await importLink(text, { name: displayedName })) closeLinkDialog();
+    if (await importLink(text, { name: displayedName, captions: downloadCaptions })) closeLinkDialog();
     else setSubmitting(false);
   }
   return (
@@ -121,6 +129,44 @@ function LinkWindow({ audio }: { audio: boolean }) {
             </Button>
           </div>
         </Field>
+        {kind === 'youtube' && (
+          <div className="space-y-2">
+            <Checkbox
+              data-testid="link-captions"
+              label="Download its captions"
+              checked={downloadCaptions}
+              onChange={(event) => setCaptionChoice(event.target.checked)}
+            />
+            {captionCount !== null && (
+              <p data-testid="link-caption-count" role="status" className="text-xs text-muted">
+                {captionCount
+                  ? `Captions: ${String(captionCount)} ${captionCount === 1 ? 'language' : 'languages'}`
+                  : 'Captions: none available'}
+              </p>
+            )}
+            {downloadCaptions && (
+              <Field
+                label="Captions for learning"
+                hint="A second copy, with the video’s details, in a folder for each video."
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <TextInput
+                    data-testid="link-captions-folder"
+                    className="flex-1"
+                    readOnly
+                    value={view?.captionsFolder ?? ''}
+                  />
+                  <Button
+                    data-testid="link-choose-captions-folder"
+                    onClick={() => void window.drashti.links.pickFolder('captions')}
+                  >
+                    Choose…
+                  </Button>
+                </div>
+              </Field>
+            )}
+          </div>
+        )}
         {current && (
           <p role="status" className="text-xs text-muted">
             {view.waitingFor
