@@ -19,6 +19,7 @@ Update after a sabha, and update Main and nodes together.
 - Schedule YouTube streams in Pro Mode: Stream settings › YouTube (your own free Google project: youtube-setup.md) makes a broadcast, Unlisted at first, whose new key goes straight into the stream profile; going live never waits on Google.
 - PowerPoint decks look closer to PowerPoint: every built-in table style as PowerPoint draws it, each text box’s first line where PowerPoint puts it, and Wheel and Random Bars as it plays them.
 - On a Mac, a 16:9 deck’s first Cover no longer stutters, as a 4:3 deck’s no longer did in alpha.19.
+- Screens: Adjust the picture… zooms, moves and pins a screen’s corners to square a projector’s picture, and One wide picture… blends two to four projectors into one; the stream is never changed.
 - The access list’s emailed Approve and Reject links open on any phone or computer, signed in to Google or not (the admin updates the list once: access-setup.md, section 11).
 - A video whose picture this computer can’t show (some cameras’ HEVC, ProRes) no longer plays its sound over black: within a second or two it comes off (on a slide or in picture in picture it waits, paused) with a notice, and Drashti converts it once the show is idle; import also checks which HEVC this computer plays.
 - Files dropped with no playlist open ask for a new playlist or folder; the Library button shows only while the library is shut; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… moved to More tools and a new Tools menu.
