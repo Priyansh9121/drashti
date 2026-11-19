@@ -306,10 +306,16 @@ test('a pinned picture is drawn straight through its warp: no clip under it make
       height: 1080,
     }),
   ]);
-  const slides = await makeSlides(win, 'Placeholder words', [{ backgroundCue: tall }, {}], {
-    kind: 'dissolve',
-    durationMs: 800,
-  });
+  // Words on each, so the dissolve draws (two slides with nothing on them draw no frame at all: cc's trace says so).
+  const slides = await makeSlides(
+    win,
+    'Placeholder words',
+    [{ backgroundCue: tall, words: 'Placeholder words one' }, { words: 'Placeholder words two' }],
+    {
+      kind: 'dissolve',
+      durationMs: 800,
+    },
+  );
   const go = (slideIndex: number) =>
     win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c), {
       type: 'goLive',
