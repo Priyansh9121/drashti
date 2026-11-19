@@ -169,6 +169,21 @@ export class WarmUpChoices {
   forget(id: number): void {
     this.given.delete(id);
   }
+
+  /**
+   * Whether this computer draws without a graphics chip (x27: a node says so to Main in its health, for Adjust the
+   * picture…): only once Chromium has said how it draws, by its status then. Nothing is logged.
+   */
+  drawsWithoutChip(): boolean {
+    if (!this.said) return false;
+    let status: unknown;
+    try {
+      status = this.deps.status();
+    } catch {
+      status = undefined;
+    }
+    return !warmsUp(status);
+  }
 }
 
 /** An output window as Main and a node keep them (the part of BrowserWindow used here). */

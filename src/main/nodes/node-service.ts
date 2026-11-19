@@ -29,7 +29,7 @@ import {
 } from '../../shared/nodes';
 import { nodeNameSchema } from '../../shared/nodes-schema';
 import { idSchema } from '../../shared/model-schema';
-import type { NodeDisplays, ScreenStatus } from '../../shared/screens';
+import type { NodeDisplays, ScreenConfig, ScreenStatus } from '../../shared/screens';
 import type { NodeRepo, NodeRow } from '../db/nodes';
 import type { ScreenRepo } from '../db/screens';
 import type { LinkWorker } from './link-worker';
@@ -38,6 +38,7 @@ import type { FromLinkWorker } from './worker/protocol';
 import { hashToken, newToken } from '../network/tokens';
 import type { ClockStyle } from '../../shared/format';
 import type { HallPicture } from '../../shared/stage-layouts';
+import { drawnGeometry, type ScreenGeometry } from '../../shared/screen-geometry';
 
 /*
  * Output nodes, as Main runs them (Session 13). It keeps the code on offer
@@ -74,6 +75,8 @@ export interface NodeServiceDeps {
    * own draws it in a stage layout's audience picture box, said off with Main's Audience off.
    */
   hall?(): HallPicture | null;
+  /** Whether a screen's picture is being adjusted in Main's Screens (x27): its grid, on a node's screen too. */
+  adjusting?(screenId: string): boolean;
   /** Where nodes can reach Main: numbers, then its local name. */
   addresses(): string[];
   /** Listen on every interface, or on this computer only (tests). */
@@ -126,6 +129,12 @@ interface Live {
   refused: string | null;
   /** Since when its reports have been behind the show (ms), or null while it keeps up. */
   behindSince: number | null;
+}
+
+/** A node screen's geometry (x27), as it draws it: a key's its fill's; nothing when nothing is set, as before. */
+function geometryOf(screen: ScreenConfig, group: readonly ScreenConfig[]): { geometry?: ScreenGeometry } {
+  const geometry = drawnGeometry(screen, group);
+  return geometry === null ? {} : { geometry };
 }
 
 export class NodeService implements EngineTransport {
@@ -468,6 +477,10 @@ export class NodeService implements EngineTransport {
               enabled: s.enabled,
               displayKey: s.displayKey,
               ...(g.role === 'stage' ? { hall } : {}),
+              // Its picture's geometry (x27), a key's its fill's, left out when nothing is set (as before); the grid
+              // while it is adjusted.
+              ...geometryOf(s, g.screens),
+              ...(this.deps.adjusting?.(s.id) === true ? { grid: true as const } : {}),
             },
           ]
         : [];
@@ -940,6 +953,8 @@ export class NodeService implements EngineTransport {
       name: n.name,
       online: this.live.get(n.id)?.online ?? false,
       displays: this.live.get(n.id)?.health?.displays ?? n.displays,
+      // It draws without a graphics chip, as its last health said (x27), for Adjust the picture….
+      ...(this.live.get(n.id)?.health?.noGpu === true ? { noGpu: true as const } : {}),
     }));
   }
 

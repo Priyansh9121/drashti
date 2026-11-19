@@ -33,6 +33,7 @@ const screen = (id: string, groupId: string, patch: Partial<SavedScreen> = {}): 
   scaling: 'fit',
   enabled: true,
   feed: null,
+  geometry: null,
   position: 0,
   ...patch,
 });

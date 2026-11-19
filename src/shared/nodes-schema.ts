@@ -6,6 +6,7 @@ import { MEDIA_EXT_PATTERN, NODE_NAME_MAX } from './nodes';
 import type { MediaWant, NodeControllerContext, NodeHealth, NodeScreen } from './nodes';
 import type { DisplayInfo, DisplayKey } from './screens';
 import { SCALING_MODES } from './screens';
+import { screenGeometrySchema } from './screens-schema';
 import { hallPictureSchema } from './stage-layouts';
 import { cutText } from './text';
 
@@ -72,6 +73,9 @@ export const nodeScreenSchema: z.ZodType<NodeScreen> = z.object({
   enabled: z.boolean(),
   displayKey: displayKeySchema,
   hall: hallPictureSchema.nullable().optional(),
+  // Its geometry (x27), checked as Main checks it; none in a node's screens saved before.
+  geometry: screenGeometrySchema.nullable().optional(),
+  grid: z.literal(true).optional(),
 });
 
 export const nodeScreenListSchema = z.array(nodeScreenSchema).max(16);
@@ -117,6 +121,8 @@ export const nodeHealthSchema: z.ZodType<NodeHealth> = z.object({
   }),
   clock: z.object({ offsetMs: finite, rttMs: z.number().nonnegative(), at: finite }).nullable(),
   rev: z.number().int(),
+  // It draws without a graphics chip (x27), for Adjust the picture…: said only when it does.
+  noGpu: z.literal(true).optional(),
 });
 
 /** A node's name as the operator gives it: cleaned as Rename… cleans a name (C15, FT-1; shared/rename-name.ts). */

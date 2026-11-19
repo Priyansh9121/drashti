@@ -1,9 +1,10 @@
-import { StrictMode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
 import { groupLookIn } from '../../../shared/looks';
 import type { OutputWarmUpEnd } from '../../../shared/screens';
+import { blends, nothingSet, shownQuad, warpKeepsAxes, warpTransform } from '../../../shared/screen-geometry';
 import { stageDrawsHall, stageShows } from '../../../shared/stage-layouts';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { engineNow, holdClock } from '../render/clock';
@@ -26,6 +27,11 @@ import { ClockStyleContext } from '../render/clock-style';
 import { LiveHere } from '../render/live-here';
 import { useStopFade } from '../render/StopFade';
 import { AUDIENCE_TRACKS, startMotionProbeIfAsked } from '../render/motion-probe';
+import { useElementSize } from '../render/useElementSize';
+import { CanvasClip, OwnLayers } from '../render/canvas-clip';
+import { BlendRamps } from './BlendRamps';
+import { GeometryGrid } from './GeometryGrid';
+import { PictureFrame } from './PictureFrame';
 
 function IdentifyOverlay() {
   const identify = useOutput((s) => s.identify);
@@ -250,6 +256,25 @@ function Output() {
   }, []);
   const canvas = { width: context?.canvasWidth ?? 1920, height: context?.canvasHeight ?? 1080 };
   const scaling = context?.scaling ?? 'fit';
+  // This screen's geometry (x27): its whole picture zoomed, moved and pinned by its corners as one (the window's own
+  // box, measured without the warp), its part of one wide picture, and the ramps over its overlaps. Nothing set: no
+  // style, no part, nothing more drawn, the same page as before. The box is always there, so a change never mounts the
+  // show again (the screen is never blank while it is adjusted).
+  const geometry = context?.geometry ?? null;
+  const part = geometry?.part ?? null;
+  const windowBox = useElementSize(rootRef);
+  const warp = warpTransform(geometry, windowBox);
+  const warpStyle = useMemo(
+    () => (warp === null ? undefined : { transform: warp, transformOrigin: '0 0' }),
+    [warp],
+  );
+  // Warped out of square (a corner pinned: x27, the owner's Q60-20), the picture draws no clip under its warp: each
+  // would make Chromium draw what it holds again, into a surface of its own, every frame (render/canvas-clip.ts). The
+  // window outside the picture is covered with black instead, unwarped (PictureFrame). A zoom and a move keep them.
+  const clip = warpKeepsAxes(geometry, windowBox);
+  const frame = clip ? null : shownQuad(canvas, windowBox, scaling, geometry);
+  // With a graphics chip its fading pictures are layers of their own there, rastered once (render/canvas-clip.ts).
+  const ownLayers = !clip && !chipless;
   // What this screen shows: its group's settings in the live Look.
   const look = groupLookIn(state?.look, context?.groupId);
   // A key and fill group's screen draws the fill or the key.
@@ -279,9 +304,20 @@ function Output() {
       // Ready to draw the show: its fonts loaded, and the GPU warmed up (WarmUp), or none to warm (Session 57).
       data-fonts={ready ? 'ready' : 'loading'}
       data-warm-up={stage ? 'none' : warmed ? 'done' : noGpu ? 'skipped' : 'warming'}
+      // Its geometry (x27), once its context has brought one: none said when nothing is set.
+      data-geometry={nothingSet(geometry) ? undefined : 'set'}
+      data-grid={context?.grid === true ? 'on' : undefined}
     >
       {context && fontsReady && !ready && (
-        <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
+        // The warm-up draws as the show will, warped too (x27): the graphics chip makes those pipelines unseen.
+        <PlacedInParent
+          content={canvas}
+          mode={scaling}
+          part={part}
+          style={warpStyle}
+          clip={clip}
+          className="absolute inset-0"
+        >
           <WarmUp
             page="output"
             canvas={canvas}
@@ -300,18 +336,38 @@ function Output() {
           {/* Main's way of writing the time (Sessions 31–36, I18N-8): a node in another time zone shows Main's. */}
           <ClockStyleContext.Provider value={context?.clockStyle ?? null}>
             <LiveHere.Provider value={liveHere}>
-              <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
-                {stage ? (
-                  <StageScreen state={state} look={look} canvas={canvas} hall={context.hall} />
-                ) : (
-                  <HallScene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
-                )}
+              <PlacedInParent
+                content={canvas}
+                mode={scaling}
+                part={part}
+                style={warpStyle}
+                clip={clip}
+                className="absolute inset-0"
+              >
+                <CanvasClip.Provider value={clip}>
+                  <OwnLayers.Provider value={ownLayers}>
+                    {stage ? (
+                      <StageScreen state={state} look={look} canvas={canvas} hall={context.hall} />
+                    ) : (
+                      <HallScene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
+                    )}
+                  </OwnLayers.Provider>
+                </CanvasClip.Provider>
                 {testThrow && <ThrowForTests />}
+                {/* The edge blend's ramps over everything it shows, and the grid while it is adjusted (x27). */}
+                {geometry && blends(geometry.blend) && (
+                  <BlendRamps canvas={canvas} part={part} blend={geometry.blend} />
+                )}
+                {context?.grid === true && (
+                  <GeometryGrid canvas={canvas} part={part} blend={geometry?.blend ?? null} />
+                )}
               </PlacedInParent>
             </LiveHere.Provider>
           </ClockStyleContext.Provider>
         </SceneBoundary>
       )}
+      {/* Black over the window outside a picture warped out of square, which draws no clip of its own (x27). */}
+      {frame && <PictureFrame quad={frame} box={windowBox} />}
       {stop.cover}
       {/* Stage screens show no pictures, so they load none ahead: but for a layout's audience picture
           (Session 50) and the audience picture with Stage off (Session 55), which load what comes next as the

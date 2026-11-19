@@ -318,3 +318,20 @@ describe('the stream’s page beside the outputs (Session 58, WU-1)', () => {
     ]);
   });
 });
+
+describe('whether this computer draws without a graphics chip (x27: a node says so in its health)', () => {
+  it('not until Chromium has said how it draws; then as its status says, and nothing more is logged', () => {
+    const without = main(() => 'disabled_software');
+    expect(without.choices.drawsWithoutChip()).toBe(false);
+    without.choices.gpuSaid();
+    expect(without.choices.drawsWithoutChip()).toBe(true);
+    const chip = main(() => 'enabled_on');
+    chip.choices.gpuSaid();
+    expect(chip.choices.drawsWithoutChip()).toBe(false);
+    // A status it cannot read: with a chip, as the warm-up takes it.
+    const unread = main(() => undefined);
+    unread.choices.gpuSaid();
+    expect(unread.choices.drawsWithoutChip()).toBe(false);
+    expect([...without.lines, ...chip.lines, ...unread.lines]).toEqual([]);
+  });
+});
