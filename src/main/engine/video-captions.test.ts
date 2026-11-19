@@ -18,7 +18,12 @@ describe('library video caption choices in the engine', () => {
     const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => 1000, undefined, {
       videoCaptionsOf: (id) => (id === 'video' ? { track: TRACK, size: 'large', place: 'top' } : null),
     });
-    expect(engine.dispatch({ type: 'setBackground', mediaId: 'video', media: 'video' })).toMatchObject({
+    expect(
+      engine.dispatch({
+        type: 'setBackground',
+        background: { kind: 'media', mediaId: 'video', media: 'video', fit: 'fit', loop: false },
+      }),
+    ).toMatchObject({
       ok: true,
     });
     expect(engine.current.videoCaptions?.['video']?.track).toEqual(TRACK);
@@ -34,7 +39,10 @@ describe('library video caption choices in the engine', () => {
       videoCaptionsOf: () => (track ? { track, size: 'medium', place: 'bottom' } : null),
       mediaLength: () => 10000,
     });
-    engine.dispatch({ type: 'setBackground', mediaId: 'video', media: 'video' });
+    engine.dispatch({
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: 'video', media: 'video', fit: 'fit', loop: false },
+    });
     const before = engine.current.layers.background;
     track = { ...TRACK, id: 'gu-file', language: 'gu' };
     engine.refreshVideoCaptions();
@@ -53,7 +61,10 @@ describe('library video caption choices in the engine', () => {
       videoCaptionsOf: () => ({ track: TRACK, size: 'medium', place: 'bottom' }),
     });
     for (const type of ['toggleBlackout', 'toggleWallpaper', 'clearAll'] as const) {
-      engine.dispatch({ type: 'setBackground', mediaId: 'video', media: 'video' });
+      engine.dispatch({
+        type: 'setBackground',
+        background: { kind: 'media', mediaId: 'video', media: 'video', fit: 'fit', loop: false },
+      });
       engine.dispatch({ type });
       expect(engine.current.videoCaptions).toEqual({});
     }
