@@ -15,7 +15,8 @@ export function useVideoCaptionClock(
   const playing = useMemo(
     () =>
       playingNow(state).find(
-        (p) => p.ref.layer !== 'audio' && !p.sound && state.videoCaptions?.[p.mediaId],
+        (p) =>
+          p.ref.layer !== 'audio' && !p.sound && !p.clock.seek?.waiting && state.videoCaptions?.[p.mediaId],
       ) ?? null,
     // Only fields that can change what video plays or its selected track.
     // eslint-disable-next-line react-hooks/exhaustive-deps
