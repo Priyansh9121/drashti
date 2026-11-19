@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { nativeDeckMotion } from '../../../shared/deck';
 import { type DeckNativeTransition, isDeckNativeTransition } from '../../../shared/deck-transition';
@@ -20,15 +20,18 @@ import { deckSlideAt, nativeStepTiming, stepTiming } from '../../../shared/deck-
 import { DECK_FIRST_FRAME } from './DeckStep';
 import { NativeDeckMotion } from './NativeDeckElement';
 import { drawsWithoutChip } from './chipless';
+import { ScreenPictures } from './picture-looks';
+import { type SlideBacking, slideBacking } from './slide-backing';
 import {
   deckSlideClip,
   deckTransitionFrame,
   takesTime,
   transitionFrame,
+  type SlideFrame,
   type SlidePlace,
+  type SlideShift,
   type WipeBand,
-  type WipeBandStyles,
-  wipeBandStyles,
+  wipeSlideClip,
   wipeSlideMask,
   wordsFrame,
   wordsMove,
@@ -181,18 +184,8 @@ export const fadeAt = (fade: { ms: number; start: number }, now: number): number
   Math.min(1, Math.max(0, (now - fade.start) / fade.ms));
 
 /**
- * A slide's two band boxes (Session 58, C2), inside its box and around what it draws: at rest they fill it and do
- * nothing; while a deck's own Wipe brings the slide in, the holder is PowerPoint's band (a mask on a box two slides long,
- * moved) and the slide box moves the slide back inside it (transition-frame.ts wipeBandStyles).
- */
-export interface BandBoxes {
-  holder: HTMLDivElement | null;
-  slide: HTMLDivElement | null;
-}
-
-/**
  * The layers a transition draws: the two slides, the black, and the two slides' words while drawn apart; each slide's
- * band boxes too.
+ * shade box too.
  */
 export interface Layers {
   in: HTMLDivElement | null;
@@ -200,8 +193,12 @@ export interface Layers {
   black: HTMLDivElement | null;
   wordsIn: HTMLDivElement | null;
   wordsOut: HTMLDivElement | null;
-  bandIn?: BandBoxes;
-  bandOut?: BandBoxes;
+  /**
+   * Each slide's shade box (X11): around what the slide draws, inside its box. Without a graphics chip a deck's own
+   * Cover or Uncover shades the slide it moves on it, inside the slide's own layer.
+   */
+  shadeIn?: HTMLDivElement | null;
+  shadeOut?: HTMLDivElement | null;
 }
 
 /**
@@ -221,6 +218,17 @@ export interface Paint {
   placeIn: SlidePlace;
   /** Where the outgoing slide is (a deck's Push and Uncover move it by its own length). */
   placeOut: SlidePlace;
+  /**
+   * Device pixels a canvas pixel where the layer is drawn (the screen's scale times its pixel ratio), when known: a page
+   * without a graphics chip moves a deck's own Push, Cover and Uncover in whole ones (X11).
+   */
+  devicePerCanvas?: number;
+  /**
+   * The opaque colour each slide is backed with while it is a layer of its own without a graphics chip (X11), when it
+   * is known to draw no see-through pixel anywhere in its place (render/slide-backing.ts); left out: never backed.
+   */
+  backingIn?: string;
+  backingOut?: string;
 }
 
 /** Each line, or word, of the two slides' words as a reveal has it at `p` (Session 27, render/reveal.ts). */
@@ -278,6 +286,9 @@ function slidePlaces(how: Paint): { in: SlidePlace; out: SlidePlace } | undefine
   return fills(how.placeIn) && fills(how.placeOut) ? undefined : { in: how.placeIn, out: how.placeOut };
 }
 
+/** A layer of its own that does not move (X11): a 3D translation by nothing. */
+const STILL_LAYER = 'translate3d(0px, 0px, 0px)';
+
 /** The two slides and the black as the transition has them at `p`, the words too while apart (nothing set when not in one). */
 export function paintLayers(els: Layers, how: Paint, p: number): void {
   const { kind, movement, native } = how;
@@ -292,8 +303,35 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
     el.style.transform = transform;
     el.style.clipPath = clip;
   };
-  set(els.in, frame ? String(frame.in.opacity) : '', frame?.in.transform ?? '', frame?.in.clip);
-  set(els.out, frame ? String(frame.out.opacity) : '', frame?.out.transform ?? '', frame?.out.clip);
+  const chipless = drawsWithoutChip();
+  // Without a graphics chip, a deck's own Push, Cover or Uncover alone (X11): each slide it moves is a layer of its own
+  // while it moves, by a 3D translation in whole device pixels, so nothing is painted or rastered again as it crosses
+  // (drawn again each frame, a moving slide cost the hall's screen, the stream's page and LIVE most of two cores while
+  // streaming); its shade inside it, on its shade box, drawn into the layer once. With a chip, under Drashti's own
+  // transition set over the deck's, before it starts and once it is over: as before.
+  const k = how.devicePerCanvas;
+  /** Device pixels a canvas pixel while it moves a slide on a layer of its own, or null when it draws as before. */
+  const whole =
+    chipless && native !== undefined && !native.over && k !== undefined && k > 0 && p > 0 && p < 1 ? k : null;
+  const moveOf = (f: SlideFrame | undefined): string =>
+    !f ? '' : whole !== null && f.shift ? wholePixelMove(f.shift, how, whole) : f.transform;
+  // Without a graphics chip, while a deck's own Wipe runs alone (X11): the outgoing slide a layer of its own that never
+  // moves, so that only the incoming slide, its band's mask new each frame, is drawn again (the whole layer each frame
+  // without it), and that clipped where its mask shows nothing.
+  const wipeAlone = chipless && native !== undefined && !native.over ? frame?.in.band : undefined;
+  const stillOut = wipeAlone !== undefined;
+  set(
+    els.in,
+    frame ? String(frame.in.opacity) : '',
+    moveOf(frame?.in),
+    frame?.in.clip ?? (wipeAlone ? wipeSlideClip(wipeAlone, how.placeIn, how) : undefined),
+  );
+  set(
+    els.out,
+    frame ? String(frame.out.opacity) : '',
+    stillOut ? STILL_LAYER : moveOf(frame?.out),
+    frame?.out.clip,
+  );
   // A deck's own transition only (13 Nov 2026): PowerPoint's Wipe band (a mask) and the shade of the slide its Cover or
   // Uncover moves (a filter). Written only when set or to clear them, so nothing else ever touches them.
   const deckOnly = (el: HTMLDivElement | null, mask = '', filter = '') => {
@@ -301,21 +339,34 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
     if (el.style.maskImage !== mask) el.style.maskImage = mask;
     if (el.style.filter !== filter) el.style.filter = filter;
   };
-  // PowerPoint's Wipe band (Session 58), as this page draws best (render/chipless.ts): with a graphics chip a mask on
-  // the slide's box, a new one each frame; without one on the slide's band boxes, only moved. At rest when none.
-  const chipless = drawsWithoutChip();
+  // PowerPoint's Wipe band (Session 58): a mask on the incoming slide's box, a new one each frame, with a graphics chip
+  // and without (render/chipless.ts). At rest when none.
   const slideMask = (band: WipeBand | undefined) =>
-    band && !chipless ? wipeSlideMask(band, how.placeIn, how) : undefined;
-  deckOnly(els.in, frame?.in.mask ?? slideMask(frame?.in.band), frame?.in.filter);
-  deckOnly(els.out, frame?.out.mask ?? slideMask(frame?.out.band), frame?.out.filter);
-  const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1;
-  const bandOf = (band: WipeBand | undefined) =>
-    band && chipless ? wipeBandStyles(band, how.placeIn, how, dpr) : null;
-  // Each box's record keys what it draws only while it is drawn: '' at rest (a page that draws the mask).
-  const bandIn = bandOf(frame?.in.band);
-  const bandOut = bandOf(frame?.out.band);
-  paintBand(els.bandIn, bandIn);
-  paintBand(els.bandOut, bandOut);
+    band ? wipeSlideMask(band, how.placeIn, how) : undefined;
+  const inside = (f: SlideFrame | undefined) => whole !== null && f?.shift !== undefined;
+  deckOnly(els.in, frame?.in.mask ?? slideMask(frame?.in.band), inside(frame?.in) ? '' : frame?.in.filter);
+  deckOnly(
+    els.out,
+    frame?.out.mask ?? slideMask(frame?.out.band),
+    inside(frame?.out) ? '' : frame?.out.filter,
+  );
+  shadeInside(els.shadeIn, inside(frame?.in) ? (frame?.in.filter ?? '') : '');
+  shadeInside(els.shadeOut, inside(frame?.out) ? (frame?.out.filter ?? '') : '');
+  // Without a graphics chip, a slide on a layer of its own (one a move moves, or the Wipe's still outgoing slide) known
+  // to draw no see-through pixel anywhere in its place (render/slide-backing.ts): backed by an opaque colour in that
+  // place only, so the compositor knows the layer opaque and draws nothing under it (it drew the screen's whole picture
+  // there every frame, on CI's two-core Windows); a slide in part of the screen (a 4:3 deck's, between bars) has its
+  // layer made its own place, its drawing kept where it was, so the bars beside it stay as they are (Q60-6).
+  const layered = p > 0 && p < 1;
+  backSlide(els.in, els.shadeIn, inside(frame?.in) ? how.backingIn : undefined, how.placeIn, how, k);
+  backSlide(
+    els.out,
+    els.shadeOut,
+    inside(frame?.out) || (stillOut && layered) ? how.backingOut : undefined,
+    how.placeOut,
+    how,
+    k,
+  );
   if (els.out) els.out.style.zIndex = native?.deckEffect === 'uncover' ? '1' : '';
   if (els.black) els.black.style.opacity = frame ? String(frame.black) : '0';
   const move = kind === null ? null : how.move;
@@ -327,79 +378,107 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
   }
 }
 
-/** A slide's band boxes at rest, as its JSX draws them: filling the slide's box. */
-const BAND_BOX = { position: 'absolute', inset: 0 } as const;
+/**
+ * A deck's own move (X11) by a 3D translation in whole device pixels, `k` device pixels a canvas pixel: its own layer,
+ * drawn once at the screen's own scale and only moved (a 2D move would be painted again each frame without a chip;
+ * will-change would draw it at the canvas's scale and shrink it each frame on a smaller screen). Within half a device
+ * pixel of PowerPoint's move.
+ */
+function wholePixelMove(shift: SlideShift, how: Pick<Paint, 'width' | 'height'>, k: number): string {
+  const css = shift.of === 'box' ? shift.by * (shift.axis === 'x' ? how.width : how.height) : shift.by;
+  const whole = Math.round(css * k) / k;
+  return shift.axis === 'x'
+    ? `translate3d(${String(whole)}px, 0px, 0px)`
+    : `translate3d(0px, ${String(whole)}px, 0px)`;
+}
 
-type BandStyle = 'inset' | 'width' | 'height' | 'maskImage' | 'willChange' | 'overflow';
+/** The shade of a deck's own Cover or Uncover inside its moving slide's layer (X11): on its shade box, or none. */
+function shadeInside(box: HTMLDivElement | null | undefined, filter: string): void {
+  if (box && (box.style.filter || '') !== filter) box.style.filter = filter;
+}
 
 /**
- * What paintBand last wrote on each band box: which way its band went ('' at rest) and its transform. A box is written
- * only when they change: its mask and size once as a Wipe starts and once as it ends, its transform each frame. (Read
- * back, the page writes them its own way, 0 as 0px, a gradient's colours as rgb: never compared with what is there.)
+ * What backSlide last made of each slide's box (X11): '' when not backed, else its colour and the place its layer was
+ * made (empty when its place is the whole screen), so a box is written only when that changes.
  */
-const bandWritten = new WeakMap<HTMLElement, { way: string; transform: string }>();
+const backed = new WeakMap<HTMLDivElement, { colour: string; place: SlidePlace | null }>();
 
-function writeBand(
-  el: HTMLElement,
-  way: string,
-  styles: Readonly<Record<BandStyle, string>>,
-  transform: string,
+const placeBox = (el: HTMLDivElement | null | undefined, r: SlidePlace | null): void => {
+  if (!el) return;
+  el.style.left = r ? `${String(r.x)}px` : '0px';
+  el.style.top = r ? `${String(r.y)}px` : '0px';
+  el.style.width = r ? `${String(r.width)}px` : '';
+  el.style.height = r ? `${String(r.height)}px` : '';
+};
+
+/** Whether a place lands on whole device pixels, `k` a canvas pixel: its edges never part of a pixel. */
+const onWholeDevicePixels = (r: SlidePlace, k: number): boolean =>
+  [r.x, r.y, r.width, r.height].every((v) => Math.abs(v * k - Math.round(v * k)) < 1e-6);
+
+/**
+ * A slide's box backed by `colour` in its place `place` (X11, Q60-6), or no longer (`colour` left out). Its box is the
+ * screen (inset 0, as its JSX has it) unless its place is not: then the box is made its place, and its shade box (its
+ * drawing's) moved back by as much, so the slide is drawn where it was and nothing beside it is backed. Only where the
+ * place lands on whole device pixels: else its edge could show part of the colour.
+ */
+function backSlide(
+  box: HTMLDivElement | null,
+  shade: HTMLDivElement | null | undefined,
+  colour: string | undefined,
+  place: SlidePlace,
+  canvas: Pick<Paint, 'width' | 'height'>,
+  k: number | undefined,
 ): void {
-  const last = bandWritten.get(el);
-  if (last?.way === way && last.transform === transform) return;
-  const style = el.style as unknown as Record<BandStyle | 'transform', string>;
-  if (last?.way !== way) for (const [key, value] of Object.entries(styles)) style[key as BandStyle] = value;
-  if (last?.transform !== transform) style.transform = transform;
-  bandWritten.set(el, { way, transform });
+  if (!box) return;
+  const on = colour !== undefined && k !== undefined && k > 0 && onWholeDevicePixels(place, k);
+  const whole =
+    place.x === 0 && place.y === 0 && place.width === canvas.width && place.height === canvas.height;
+  const want = on ? { colour, place: whole ? null : place } : null;
+  const had = backed.get(box) ?? null;
+  const samePlace = (a: SlidePlace | null, b: SlidePlace | null) =>
+    a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height);
+  if (had?.colour === want?.colour && samePlace(had?.place ?? null, want?.place ?? null)) return;
+  if (want) backed.set(box, want);
+  else backed.delete(box);
+  box.style.backgroundColor = want?.colour ?? '';
+  if (want?.place) {
+    placeBox(box, want.place);
+    placeBox(shade, { x: -want.place.x, y: -want.place.y, width: canvas.width, height: canvas.height });
+  } else if (had?.place) {
+    placeBox(box, null);
+    placeBox(shade, null);
+  }
 }
 
 /**
- * A slide's band boxes as `s` has them while a deck's own Wipe brings the slide in (each a layer of its own, only their
- * transforms changing as it runs), or at rest (null). Each box's record keys its sizes and mask, so a slide placed anew
- * part-way (the screen's canvas or pixels changed: review LOW-3) has them written again; '' at rest.
+ * Device pixels a canvas pixel where the slide layer `root` (the canvas's size) is drawn: its scale on the screen times
+ * the pixel ratio; undefined until it has a size.
  */
-function paintBand(boxes: BandBoxes | undefined, s: WipeBandStyles | null): void {
-  const holder = boxes?.holder;
-  const slide = boxes?.slide;
-  if (!holder || !slide) return;
-  const way = s
-    ? `${s.holder.inset}|${s.holder.width}|${s.holder.height}|${s.holder.maskImage}|${s.slide.inset}|${s.slide.width}|${s.slide.height}`
-    : '';
-  writeBand(
-    holder,
-    way,
-    {
-      inset: s?.holder.inset ?? '0',
-      width: s?.holder.width ?? '',
-      height: s?.holder.height ?? '',
-      maskImage: s?.holder.maskImage ?? '',
-      willChange: s ? 'transform' : '',
-      overflow: s ? 'hidden' : '',
-    },
-    s?.holder.transform ?? '',
-  );
-  writeBand(
-    slide,
-    way,
-    {
-      inset: s?.slide.inset ?? '0',
-      width: s?.slide.width ?? '',
-      height: s?.slide.height ?? '',
-      maskImage: '',
-      willChange: s ? 'transform' : '',
-      overflow: '',
-    },
-    s?.slide.transform ?? '',
-  );
+function devicePerCanvas(root: HTMLElement | null, canvasWidth: number): number | undefined {
+  if (!root || !(canvasWidth > 0)) return undefined;
+  const shown = root.getBoundingClientRect().width;
+  const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1;
+  return shown > 0 ? (shown / canvasWidth) * dpr : undefined;
 }
+
+/** A slide's backing as its box draws it now (X11): a picture's only once that picture is drawn in it. */
+function drawnBacking(b: SlideBacking | null, box: HTMLDivElement | null): string | undefined {
+  if (!b) return undefined;
+  if (b.picture === undefined) return b.colour;
+  const img = box?.querySelector<HTMLImageElement>(`img[data-media-id="${CSS.escape(b.picture)}"]`);
+  return img?.complete && img.naturalWidth > 0 ? b.colour : undefined;
+}
+
+/** A slide's two boxes, as its JSX draws them: filling the slide's box, around what it draws. */
+const SLIDE_BOX = { position: 'absolute', inset: 0 } as const;
 
 /**
  * A deck's slide coming in by a cut, its clip not yet drawn (Session 54, C2): the slide before stays up, the new one
  * unseen, until it can be drawn. The slide before is drawn whole, as at rest: after Back during a deck's own
- * transition it is the slide that was coming in, and keeps nothing of it (its move, clip, mask, shade, place above or
- * Wipe band; TX-1, Session 58).
+ * transition it is the slide that was coming in, and keeps nothing of it (its move or layer, clip, mask, shade or
+ * place above; TX-1, Session 58).
  */
-export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'bandOut'>): void {
+export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'shadeOut'>): void {
   if (els.in) els.in.style.opacity = '0';
   const before = els.out;
   if (!before) return;
@@ -409,7 +488,15 @@ export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'bandOut'>): void 
   if (before.style.maskImage !== '') before.style.maskImage = '';
   if (before.style.filter !== '') before.style.filter = '';
   before.style.zIndex = '';
-  paintBand(els.bandOut, null);
+  shadeInside(els.shadeOut, '');
+  backSlide(
+    before,
+    els.shadeOut,
+    undefined,
+    { x: 0, y: 0, width: 0, height: 0 },
+    { width: 0, height: 0 },
+    undefined,
+  );
 }
 
 /** The pictures and videos in `root` that cannot be drawn yet, and the deck's first clip among them, if any. */
@@ -624,11 +711,19 @@ export function SlideLayerView({
   const inRef = useRef<HTMLDivElement>(null);
   const outRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  // Each slide's band boxes (Session 58, C2): a deck's own Wipe draws PowerPoint's band on the incoming slide's.
-  const inHolderRef = useRef<HTMLDivElement>(null);
-  const inBandSlideRef = useRef<HTMLDivElement>(null);
-  const outHolderRef = useRef<HTMLDivElement>(null);
-  const outBandSlideRef = useRef<HTMLDivElement>(null);
+  // Each slide's shade box (X11): without a graphics chip a deck's own Cover or Uncover shades its moving slide on it.
+  const inShadeRef = useRef<HTMLDivElement>(null);
+  const outShadeRef = useRef<HTMLDivElement>(null);
+  // What each slide may be backed with while it is a layer of its own without a graphics chip (X11, Q60-6): a slide as
+  // designed, known to draw no see-through pixel in its place (render/slide-backing.ts).
+  const screen = useContext(ScreenPictures);
+  const backings = useMemo(() => {
+    const backed = drawsWithoutChip() && slides === 'designed';
+    return {
+      in: on && backed ? slideBacking(on.slide, screen) : null,
+      out: off && backed ? slideBacking(off.slide, screen) : null,
+    };
+  }, [on, off, slides, screen]);
 
   // Start the fade once the new slide's pictures and videos can be drawn: at shownAt if they
   // already could (every screen at the same point), else when they can.
@@ -693,6 +788,14 @@ export function SlideLayerView({
   useEffect(() => {
     if (start === null) return;
     let frame = 0;
+    // Without a graphics chip, where a deck's own move lands on whole device pixels (X11), and each slide's backing (a
+    // picture's once it is drawn): read once as it starts.
+    const k =
+      drawsWithoutChip() && native !== undefined && !native.over
+        ? devicePerCanvas(rootRef.current, width)
+        : undefined;
+    const backingIn = k === undefined ? undefined : drawnBacking(backings.in, inRef.current);
+    const backingOut = k === undefined ? undefined : drawnBacking(backings.out, outRef.current);
     const tick = () => {
       const now = engineNow();
       const p = fadeAt({ ms, start }, now);
@@ -703,8 +806,8 @@ export function SlideLayerView({
           black: blackRef.current,
           wordsIn: wordsInRef.current,
           wordsOut: wordsOutRef.current,
-          bandIn: { holder: inHolderRef.current, slide: inBandSlideRef.current },
-          bandOut: { holder: outHolderRef.current, slide: outBandSlideRef.current },
+          shadeIn: inShadeRef.current,
+          shadeOut: outShadeRef.current,
         },
         {
           kind,
@@ -717,6 +820,9 @@ export function SlideLayerView({
           scaleOut,
           placeIn: { x: inX, y: inY, width: inWidth, height: inHeight },
           placeOut: { x: outX, y: outY, width: outWidth, height: outHeight },
+          ...(k === undefined ? {} : { devicePerCanvas: k }),
+          ...(backingIn === undefined ? {} : { backingIn }),
+          ...(backingOut === undefined ? {} : { backingOut }),
         },
         p,
       );
@@ -740,6 +846,7 @@ export function SlideLayerView({
     ms,
     kind,
     native,
+    backings,
     movement,
     moveNow,
     width,
@@ -764,10 +871,16 @@ export function SlideLayerView({
       paintWaiting({
         in: inRef.current,
         out: outRef.current,
-        bandOut: { holder: outHolderRef.current, slide: outBandSlideRef.current },
+        shadeOut: outShadeRef.current,
       });
       return;
     }
+    const k =
+      fading && drawsWithoutChip() && native !== undefined && !native.over
+        ? devicePerCanvas(rootRef.current, width)
+        : undefined;
+    const backingIn = k === undefined ? undefined : drawnBacking(backings.in, inRef.current);
+    const backingOut = k === undefined ? undefined : drawnBacking(backings.out, outRef.current);
     paintLayers(
       {
         in: inRef.current,
@@ -775,8 +888,8 @@ export function SlideLayerView({
         black: blackRef.current,
         wordsIn: wordsInRef.current,
         wordsOut: wordsOutRef.current,
-        bandIn: { holder: inHolderRef.current, slide: inBandSlideRef.current },
-        bandOut: { holder: outHolderRef.current, slide: outBandSlideRef.current },
+        shadeIn: inShadeRef.current,
+        shadeOut: outShadeRef.current,
       },
       {
         kind: fading ? kind : null,
@@ -789,6 +902,9 @@ export function SlideLayerView({
         scaleOut,
         placeIn: { x: inX, y: inY, width: inWidth, height: inHeight },
         placeOut: { x: outX, y: outY, width: outWidth, height: outHeight },
+        ...(k === undefined ? {} : { devicePerCanvas: k }),
+        ...(backingIn === undefined ? {} : { backingIn }),
+        ...(backingOut === undefined ? {} : { backingOut }),
       },
       start !== null ? fadeAt({ ms, start }, engineNow()) : 0,
     );
@@ -886,13 +1002,15 @@ export function SlideLayerView({
               mixBlendMode: adds && incoming ? 'plus-lighter' : undefined,
             }}
           >
-            {/* Its band boxes (Session 58, C2): at rest they only fill its box; a deck's own Wipe draws its band on
-                them. Always there, so a Wipe starting or ending never draws the slide anew. Named for the Wipe alone
-                (Q60-2): the operator window's header band is data-band, whose rule in app.css (its height, 0 px on
-                the screens) made these 0 px tall, and without a graphics chip the Wipe then showed nothing of its
-                incoming slide until it ended. */}
-            <div ref={incoming ? inHolderRef : outHolderRef} data-wipe-band="" style={BAND_BOX}>
-              <div ref={incoming ? inBandSlideRef : outBandSlideRef} data-wipe-band-slide="" style={BAND_BOX}>
+            {/* Its two boxes, as they have been since Session 58 (its Wipe's band boxes then; named for the Wipe alone
+                since Q60-2, as the operator window's header band is data-band, whose rule in app.css would make them
+                0 px tall): with a graphics chip they only fill its box, as ever, so the page draws exactly as before.
+                Without one (X11) no band is drawn on them: the outer is the slide's shade box, where a deck's own
+                Cover or Uncover shades the slide it moves, inside its layer, and which a 4:3 slide's drawing is moved
+                back on when its box is made its own place (Q60-6). Always there, so a move starting or ending never
+                draws the slide anew. */}
+            <div ref={incoming ? inShadeRef : outShadeRef} data-wipe-band="" style={SLIDE_BOX}>
+              <div data-wipe-band-slide="" style={SLIDE_BOX}>
                 <Zoomed layer={l}>
                   <DrawnSlide
                     layer={l}

@@ -426,6 +426,10 @@ A phone or a script may clear a video input and take the box off, and since Sess
 
 - **Where a background video came from.** `sourceItemId` on a video background (`layers.background` of kind `media`): the playlist row that put it up, or null when it came straight from Media or from a slide's background cue; left out of a show an older Drashti saved. Only the engine sets it. While it names a row, that row's finished Trim cut waits for the video to come off, and its **Reset to original** is refused.
 
+**Since 1.0.0-alpha.20** the state may also carry:
+
+- **Pictures that can draw no see-through pixel.** `opaquePictures`: the media ids, among the pictures on the screens and coming next, whose files cannot be seen through anywhere (a JPEG, or a still PNG with no transparency, read from the file's first bytes once), sorted; left out while none is known. On a computer without a graphics chip, a deck slide moving in its own Push, Cover or Uncover whose own full-slide picture is one of them is backed by black while it moves, so the screens draw nothing under it. Only the engine sets it; a page may leave it alone.
+
 ## Companion (Stream Deck)
 
 Bitfocus Companion's **Generic HTTP** connection drives Drashti with a Remote device's token:

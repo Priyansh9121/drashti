@@ -6,9 +6,8 @@ import type { RenderSlide, SlideElement } from '../../../shared/model';
  * The warm-up's deck (13 Nov 2026, the review of h-p3tr's part B; render/WarmUp.tsx draws it with the rest, through the
  * same Scene). A deck Drashti plays itself draws three things nothing else on a show screen does, each a new kind of
  * drawing for a GPU to make (100-600 ms on CI's Mac, every screen waiting) at a show's first one:
- * - its own Wipe: PowerPoint's soft band since Session 58 (transition-frame.ts wipeBandStyles), a gradient mask of 22
- *   stops that never changes on a box two slides long, moved over the slide coming in by a transform, the slide moved
- *   back inside it, each a layer of its own (Q57-28's mask moved its stops every frame and dropped frames);
+ * - its own Wipe: PowerPoint's soft band since Session 58 (transition-frame.ts wipeSlideMask), a gradient mask of 21
+ *   stops on the slide coming in, its stops moved each frame;
  * - its own Cover and Uncover: the slide they move a shade darker, a brightness filter over the whole slide;
  * - a Split: a gradient mask the size of its shape (deck-target-paint.ts), of 4, 5 or 6 stops as it goes. A GPU draws
  *   a gradient of up to 4 stops, of up to 8 and of more each its own way, so it is drawn on three shapes, one at each.
