@@ -2,11 +2,12 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { closeLibrary, launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
+import { closeLibrary, launchApp, openMoreTools, operatorPage, operatorReady } from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
- * The QR-code slide (Session 55, Part 8, the owner's idea G): New › QR code… in the library: a link or words pasted,
+ * The QR-code slide (Session 55, Part 8, the owner's idea G): QR code… (in More tools and the Tools menu since alpha.20;
+ * beside New… in the library before): a link or words pasted,
  * and a slide with a large code and the words under it, made offline (the code a picture in the library). It is
  * chosen in the library, and one click on its row puts it up. Pro Mode's: Simple Mode refuses making one. At CI's
  * 1024 × 645 and at 1280 × 720. Placeholder links only.
@@ -41,15 +42,16 @@ async function expectFits(win: Page, what: string): Promise<void> {
   expect(problems, what).toEqual([]);
 }
 
-test('New › QR code…: a link pasted becomes one slide with a large code and the words under it, chosen in the library and up with one click, at 1024 × 645 and 1280 × 720', async () => {
+test('More tools › QR code…: a link pasted becomes one slide with a large code and the words under it, chosen in the library and up with one click, at 1024 × 645 and 1280 × 720', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
 
-  await openLibrary(win);
-  await win.getByTestId('library-tools').getByRole('button', { name: 'QR code…' }).click();
+  // In More tools since alpha.20 (Session 60, x36: the owner's "A, More tools + menu"), under Lower Thirds.
+  await openMoreTools(win);
+  await win.getByTestId('qr-code-open').click();
   const dialog = win.getByTestId('qr-dialog');
   await expect(dialog).toBeVisible();
   // Nothing to make yet.
@@ -103,8 +105,9 @@ test('New › QR code…: a link pasted becomes one slide with a large code and 
 
   // At 1280 × 720 the dialog fits too.
   await sizeOperatorWindow(app, win, { width: 1280, height: 720 });
-  await openLibrary(win);
-  await win.getByTestId('library-tools').getByRole('button', { name: 'QR code…' }).click();
+  // In More tools since alpha.20 (Session 60, x36: the owner's "A, More tools + menu"), under Lower Thirds.
+  await openMoreTools(win);
+  await win.getByTestId('qr-code-open').click();
   await dialog.getByRole('textbox', { name: 'Link or words' }).fill('Placeholder words for a code');
   await expectFits(win, 'the QR code dialog at 1280 × 720');
   await dialog.getByRole('button', { name: 'Cancel' }).click();
