@@ -6,20 +6,40 @@ import { cx } from '../ui/cx';
 /*
  * A guide drawn from Drashti's own Markdown reader (src/shared/markdown.ts), element by element, never as
  * HTML: its words are text, an address is text, a picture comes only from the guides' own folder
- * (drashti-media://guide/). Each passage carries its number (data-passage), so a search or Read more can
+ * (drashti-media://guide/). Each passage carries its number (data-passage), so a search, an answer or a "?" can
  * bring it into view and mark it (data-current).
  */
 
 /** Each picture's size by its name (the main process reads them), so its room is kept before it loads. */
 type Sizes = Readonly<Record<string, readonly [number, number]>>;
 
-function Inlines({ items, sizes }: { items: readonly Inline[]; sizes: Sizes }): ReactNode {
+/**
+ * A picture's address and name, from its path as the text writes it, or null for anything else: the guides' rule
+ * ("screenshots/<name>.png") unless the text is another's (the Drashti Manual's chapters, x37: "../screenshots/…").
+ */
+export type PictureOf = (src: string) => { url: string; name: string } | null;
+
+const guidePicture: PictureOf = (src) => {
+  const url = guidePictureUrl(src);
+  const name = guidePictureName(src);
+  return url && name ? { url, name } : null;
+};
+
+function Inlines({
+  items,
+  sizes,
+  pictureOf,
+}: {
+  items: readonly Inline[];
+  sizes: Sizes;
+  pictureOf: PictureOf;
+}): ReactNode {
   return items.map((n, i) => {
     if (n.kind === 'text') return n.text;
     if (n.kind === 'strong')
       return (
         <strong key={i} className="font-semibold text-fg">
-          <Inlines items={n.children} sizes={sizes} />
+          <Inlines items={n.children} sizes={sizes} pictureOf={pictureOf} />
         </strong>
       );
     if (n.kind === 'code')
@@ -28,12 +48,12 @@ function Inlines({ items, sizes }: { items: readonly Inline[]; sizes: Sizes }): 
           {n.text}
         </code>
       );
-    const url = guidePictureUrl(n.src);
-    const size = sizes[guidePictureName(n.src) ?? ''];
-    return url ? (
+    const picture = pictureOf(n.src);
+    const size = sizes[picture?.name ?? ''];
+    return picture ? (
       <img
         key={i}
-        src={url}
+        src={picture.url}
         alt={n.alt}
         width={size?.[0]}
         height={size?.[1]}
@@ -57,10 +77,13 @@ export function GuideText({
   blocks,
   current,
   sizes,
+  pictureOf = guidePicture,
 }: {
   blocks: readonly Block[];
   current: number | null;
   sizes: Sizes;
+  /** How its pictures are written (the guides' way unless given). */
+  pictureOf?: PictureOf;
 }): ReactNode {
   return blocks.map((b, i) => {
     switch (b.kind) {
@@ -71,7 +94,7 @@ export function GuideText({
             {...mark(b.pid, current)}
             className={cx('mb-3 text-xl font-bold', marked(b.pid, current))}
           >
-            <Inlines items={b.children} sizes={sizes} />
+            <Inlines items={b.children} sizes={sizes} pictureOf={pictureOf} />
           </h1>
         ) : (
           <h2
@@ -79,13 +102,13 @@ export function GuideText({
             {...mark(b.pid, current)}
             className={cx('mt-6 mb-2 scroll-mt-4 text-lg font-bold', marked(b.pid, current))}
           >
-            <Inlines items={b.children} sizes={sizes} />
+            <Inlines items={b.children} sizes={sizes} pictureOf={pictureOf} />
           </h2>
         );
       case 'paragraph':
         return (
           <p key={i} {...mark(b.pid, current)} className={cx('my-2 leading-relaxed', marked(b.pid, current))}>
-            <Inlines items={b.children} sizes={sizes} />
+            <Inlines items={b.children} sizes={sizes} pictureOf={pictureOf} />
           </p>
         );
       case 'rule':
@@ -98,7 +121,7 @@ export function GuideText({
                 <tr>
                   {b.head.map((c, j) => (
                     <th key={j} className="border-b border-line-strong px-2 py-1 text-left font-semibold">
-                      <Inlines items={c} sizes={sizes} />
+                      <Inlines items={c} sizes={sizes} pictureOf={pictureOf} />
                     </th>
                   ))}
                 </tr>
@@ -109,7 +132,7 @@ export function GuideText({
                 <tr key={r.pid} {...mark(r.pid, current)} className={marked(r.pid, current)}>
                   {r.cells.map((c, j) => (
                     <td key={j} className="border-b border-line px-2 py-1 align-top">
-                      <Inlines items={c} sizes={sizes} />
+                      <Inlines items={c} sizes={sizes} pictureOf={pictureOf} />
                     </td>
                   ))}
                 </tr>
@@ -126,7 +149,7 @@ export function GuideText({
               </span>
             )}
             {item.task && <span className="sr-only">{item.task === 'done' ? 'Done: ' : 'To do: '}</span>}
-            <GuideText blocks={item.blocks} current={current} sizes={sizes} />
+            <GuideText blocks={item.blocks} current={current} sizes={sizes} pictureOf={pictureOf} />
           </li>
         ));
         return b.ordered ? (

@@ -60,6 +60,8 @@ import { VideoInputNotice } from '../video-inputs/VideoInputNotice';
 import { connectVideoInputs } from '../video-inputs/video-inputs-store';
 import { GuidesDialog } from '../help/GuidesDialog';
 import { showGuides } from '../help/guides-store';
+import { ManualDialog } from '../help/ManualDialog';
+import { showManual } from '../help/manual-store';
 import { LivePreview } from './LivePreview';
 import { LibraryButton, LibrarySheet } from './LibrarySheet';
 import { PlaylistFolders, usePlaylistFolders } from '../playlists/PlaylistFolders';
@@ -174,6 +176,10 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     const offGuides = window.drashti.app.onShowGuides(() => {
       showGuides();
     });
+    // Help › Drashti Manual… (both modes, x37, Session 60).
+    const offManual = window.drashti.app.onShowManual(() => {
+      showManual();
+    });
     // How a restore went, told once as the page opens.
     void window.drashti.app.startNotice().then((text) => {
       if (text) useNotice.setState({ text });
@@ -193,6 +199,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
       offProgress();
       offKeys();
       offGuides();
+      offManual();
       window.removeEventListener('dragover', ignoreDrop);
       window.removeEventListener('drop', ignoreDrop);
     };
@@ -472,6 +479,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <KeysSheet platform={platform} />
       <ScreenSwitchAsk platform={platform} />
       <GuidesDialog />
+      <ManualDialog />
       <MarkersDialog />
       <PictureEditor />
       {dashboardOpen && (

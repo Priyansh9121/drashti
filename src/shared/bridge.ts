@@ -21,6 +21,7 @@ import type {
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
+import type { ManualPrinted, ManualRead } from './manual';
 import type {
   PassageInfo,
   PassageResult,
@@ -238,6 +239,8 @@ export interface DrashtiBridge {
     onShowKeys(listener: () => void): () => void;
     /** Help > Guides… was chosen (Sessions 31–36), in either mode. */
     onShowGuides(listener: () => void): () => void;
+    /** Help › Drashti Manual… was chosen (x37, Session 60), in either mode. */
+    onShowManual(listener: () => void): () => void;
     /** An item of the Tools menu was chosen (Session 60, x36; Pro Mode): which. */
     onShowTool(listener: (tool: ToolsMenuItem) => void): () => void;
   };
@@ -245,6 +248,15 @@ export interface DrashtiBridge {
   guides: {
     list(): Promise<{ id: GuideId; tab: string }[]>;
     read(id: GuideId): Promise<GuideRead>;
+  };
+  /**
+   * The Drashti Manual (x37, Session 60), in either mode: every chapter's text; the whole manual through the system's
+   * print dialog; and saved as a PDF where the person chooses (the system's save dialog).
+   */
+  manual: {
+    read(): Promise<ManualRead>;
+    print(): Promise<ManualPrinted>;
+    pdf(): Promise<ManualPrinted>;
   };
   /** Scheduled backups (Session 14, operator window). */
   backups: {

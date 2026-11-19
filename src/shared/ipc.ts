@@ -123,6 +123,7 @@ import type {
 } from './playlists';
 import type { RepeatSettings } from './repeat';
 import type { GuideId, GuideRead } from './guides';
+import type { ManualPrinted, ManualRead } from './manual';
 import type {
   KeyframeResult,
   RowTrimRequest,
@@ -247,6 +248,8 @@ export const IPC = {
     showKeys: 'app:show-keys',
     /** main -> operator: Help > Guides… was chosen (Sessions 31–36), in either mode. */
     showGuides: 'app:show-guides',
+    /** main -> operator: Help › Drashti Manual… was chosen (x37, Session 60), in either mode. */
+    showManual: 'app:show-manual',
     /** main -> operator: an item of the Tools menu was chosen (Session 60, x36; Pro Mode): which (shared/setup-tools.ts). */
     showTool: 'app:show-tool',
   },
@@ -1203,6 +1206,15 @@ export const IPC = {
     read: 'guides:read',
   },
   /**
+   * The Drashti Manual (x37, Session 60): its chapters' text, from the files beside the app (in either mode), and the
+   * whole manual printed, or saved as a PDF where the person chooses, from a hidden window of its own.
+   */
+  manual: {
+    read: 'manual:read',
+    pdf: 'manual:pdf',
+    print: 'manual:print',
+  },
+  /**
    * Access by Gmail (Session 54, E2 and E3): the lock screen and the stop, the only requests that run while this
    * computer is not let in (with Quit). The main process decides everything (src/main/access/service.ts).
    */
@@ -1271,6 +1283,9 @@ export interface InvokeContract {
   [IPC.sharpen.made]: { args: [key: string, bytes: Uint8Array | null]; result: boolean };
   [IPC.guides.list]: { args: []; result: { id: GuideId; tab: string }[] };
   [IPC.guides.read]: { args: [id: GuideId]; result: GuideRead };
+  [IPC.manual.read]: { args: []; result: ManualRead };
+  [IPC.manual.pdf]: { args: []; result: ManualPrinted };
+  [IPC.manual.print]: { args: []; result: ManualPrinted };
   [IPC.access.view]: { args: []; result: AccessView };
   [IPC.access.request]: { args: [gmail: string, name: string]; result: AccessView };
   [IPC.access.status]: { args: []; result: AccessView };
@@ -1863,6 +1878,7 @@ export interface EventContract {
   [IPC.links.open]: { at: number };
   [IPC.app.showKeys]: { at: number };
   [IPC.app.showGuides]: { at: number };
+  [IPC.app.showManual]: { at: number };
   [IPC.app.showTool]: { tool: ToolsMenuItem; at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.stageLayouts.changed]: StageLayout[];
