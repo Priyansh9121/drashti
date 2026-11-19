@@ -542,6 +542,11 @@ export const IPC = {
     savesChanged: 'media:saves-changed',
     /** An output or the audio player learned how long a file is, as it played it (stage screens show the time left). */
     reportLength: 'media:report-length',
+    /**
+     * An output or the operator window found a video's picture cannot be drawn on this computer (Session 60, x36):
+     * Chromium plays such a file as sound only. The show takes it off, says so, and converts it by itself.
+     */
+    noPicture: 'media:no-picture',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -1483,6 +1488,7 @@ export interface InvokeContract {
   [IPC.media.conversions]: { args: []; result: ConversionJob[] };
   [IPC.media.playsHevc]: { args: []; result: boolean | null };
   [IPC.media.reportLength]: { args: [mediaId: string, durationMs: number]; result: null };
+  [IPC.media.noPicture]: { args: [mediaId: string, startedAt: number]; result: null };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
