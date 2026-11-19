@@ -142,7 +142,7 @@ beforeEach(() => {
   useLibrary.setState({ item: null });
   useLanded.setState({ itemId: null });
   useMode.setState({ mode: 'pro' });
-  useLinks.setState({ view: VIEW, open: true, audio: null, request: null });
+  useLinks.setState({ view: VIEW, open: true, audio: null, request: null, problem: null });
 });
 
 /** The playlists, as the window last read them. */

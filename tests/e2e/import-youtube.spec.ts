@@ -82,9 +82,8 @@ test('YouTube: a paste downloads video at 1080p, or sound from Audio; going on a
   const field = win.getByTestId('link-paste');
   await expectNoSeriousA11yIssues(win, 'the YouTube link input', '[data-testid="link-paste"]');
   await pasteLink(win, 'https://www.youtube.com/playlist?list=PLplaceholder', false);
-  await expect(win.getByTestId('import-notice')).toContainText(
-    'That is a playlist. Drashti downloads one video at a time',
-  );
+  await expect(field.getByText(/That is a playlist. Drashti downloads one video at a time/u)).toBeVisible();
+  await expect(win.getByTestId('link-text')).toHaveAttribute('aria-invalid', 'true');
   await pasteLink(win, LINK);
   await expect(field).toHaveCount(0);
   await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);

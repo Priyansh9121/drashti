@@ -16,9 +16,17 @@ function LinkWindow({ audio }: { audio: boolean }) {
   const [submitting, setSubmitting] = useState(false);
   const [captionChoice, setCaptionChoice] = useState<boolean | null>(null);
   const view = useLinks((state) => state.view);
+  const problem = useLinks((state) => state.problem);
   const kind = linkKind(text);
   const check = kind ? checkLink(kind, text) : null;
   const current = check?.ok && view?.link === check.url;
+  const validation = !text.trim()
+    ? null
+    : kind === null
+      ? 'Paste a share link from YouTube or Dropbox.'
+      : check && !check.ok
+        ? check.message
+        : null;
   const extension =
     kind === 'youtube'
       ? audio
@@ -40,6 +48,13 @@ function LinkWindow({ audio }: { audio: boolean }) {
     return () => clearTimeout(timer);
   }, [text, submitting]);
   const displayedName = edited ? name : current ? (view.suggestedName ?? '') : '';
+
+  function changeLink(value: string) {
+    setText(value);
+    setName('');
+    setEdited(false);
+    useLinks.setState({ problem: null });
+  }
 
   async function submit() {
     if (submitting) return;
@@ -78,7 +93,7 @@ function LinkWindow({ audio }: { audio: boolean }) {
           void submit();
         }}
       >
-        <Field label="YouTube or Dropbox link">
+        <Field label="YouTube or Dropbox link" error={validation}>
           <TextInput
             data-autofocus
             data-testid="link-text"
@@ -86,16 +101,10 @@ function LinkWindow({ audio }: { audio: boolean }) {
             spellCheck={false}
             autoComplete="off"
             value={text}
-            onChange={(event) => {
-              setText(event.target.value);
-              setName('');
-              setEdited(false);
-            }}
+            onChange={(event) => changeLink(event.target.value)}
             onPaste={(event) => {
               event.preventDefault();
-              setText(event.clipboardData.getData('text/plain'));
-              setName('');
-              setEdited(false);
+              changeLink(event.clipboardData.getData('text/plain'));
             }}
           />
         </Field>
@@ -167,7 +176,12 @@ function LinkWindow({ audio }: { audio: boolean }) {
             )}
           </div>
         )}
-        {current && (
+        {problem && (
+          <p role="alert" data-testid="link-problem" className="text-sm text-danger-fg">
+            {problem}
+          </p>
+        )}
+        {current && !problem && (
           <p role="status" className="text-xs text-muted">
             {view.waitingFor
               ? 'Checking the link waits while the stream is on air or recording. Download queues it.'

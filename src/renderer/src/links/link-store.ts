@@ -34,6 +34,8 @@ interface LinkStore {
   open: boolean;
   audio: AudioTarget | null;
   request: LinkRequest | null;
+  /** A refusal shown inside the open link window. */
+  problem: string | null;
 }
 
 export const useLinks = create<LinkStore>(() => ({
@@ -41,6 +43,7 @@ export const useLinks = create<LinkStore>(() => ({
   open: false,
   audio: null,
   request: null,
+  problem: null,
 }));
 
 /** The download's title, or the file's name without its extension. */
@@ -175,6 +178,7 @@ function prepareWindow(): boolean {
     showImportNotice('A link import is going on. Wait for it to finish, or stop it first.');
     return false;
   }
+  useLinks.setState({ problem: null });
   void window.drashti.links.reset().then((result) => {
     if (result.ok) useLinks.setState({ view: result.view });
   });
@@ -183,16 +187,21 @@ function prepareWindow(): boolean {
 
 export function closeLinkDialog(): void {
   if (!useLinks.getState().request) void window.drashti.links.reset();
-  useLinks.setState({ open: false, audio: null });
+  useLinks.setState({ open: false, audio: null, problem: null });
+}
+
+function showLinkProblem(message: string): void {
+  useLinks.setState({ problem: message });
+  if (!useLinks.getState().open) showImportNotice(message);
 }
 
 async function start(request: LinkRequest): Promise<boolean> {
   const { view, request: pending } = useLinks.getState();
   if (pending || (linkBusy(view) && view?.phase !== 'looking')) {
-    showImportNotice('A link import is going on. Wait for it to finish, or stop it first.');
+    showLinkProblem('A link import is going on. Wait for it to finish, or stop it first.');
     return false;
   }
-  useLinks.setState({ request });
+  useLinks.setState({ request, problem: null });
   try {
     const result = await window.drashti.links.start(
       request.url,
@@ -201,9 +210,9 @@ async function start(request: LinkRequest): Promise<boolean> {
       request.options,
     );
     if (result.ok) return true;
-    showImportNotice(result.message);
+    showLinkProblem(result.message);
   } catch {
-    showImportNotice('Drashti could not start the download. Paste the link again.');
+    showLinkProblem('Drashti could not start the download. Paste the link again.');
   }
   if (useLinks.getState().request === request) useLinks.setState({ request: null });
   return false;
@@ -214,12 +223,12 @@ export async function importLink(text: string, options?: LinkDownloadOptions): P
   connectLinks();
   const kind = linkKind(text);
   if (kind === null) {
-    showImportNotice('Paste a share link from YouTube or Dropbox.');
+    showLinkProblem('Paste a share link from YouTube or Dropbox.');
     return false;
   }
   const check = checkLink(kind, text);
   if (!check.ok) {
-    showImportNotice(check.message);
+    showLinkProblem(check.message);
     return false;
   }
   const { audio } = useLinks.getState();
@@ -232,16 +241,15 @@ export async function lookLink(text: string): Promise<void> {
   if (request || (linkBusy(view) && view?.phase !== 'looking')) return;
   const kind = linkKind(text);
   const check = kind === null ? null : checkLink(kind, text);
-  if (!kind || !check?.ok) {
-    showImportNotice(check && !check.ok ? check.message : 'Paste a share link from YouTube or Dropbox.');
-    return;
-  }
+  // The field shows invalid links immediately, with its accessible error description.
+  if (!kind || !check?.ok) return;
+  useLinks.setState({ problem: null });
   try {
     const result = await window.drashti.links.look(kind, check.url);
     if (result.ok) useLinks.setState({ view: result.view });
-    else showImportNotice(result.message);
+    else showLinkProblem(result.message);
   } catch {
-    showImportNotice('Drashti could not check the link. Paste it again.');
+    showLinkProblem('Drashti could not check the link. Paste it again.');
   }
 }
 
