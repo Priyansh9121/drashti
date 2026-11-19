@@ -1,73 +1,197 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { LinkView } from '../../../shared/links';
-import { heightLabel } from '../../../shared/links';
-import { Button, IconButton } from '../ui/Button';
+import { checkLink, heightLabel, linkKind } from '../../../shared/links';
+import { Button } from '../ui/Button';
+import { Dialog } from '../ui/Dialog';
 import { Field, TextInput } from '../ui/Field';
-import { Download, FolderOpen, X } from '../ui/icons';
-import { closeLinkDialog, connectLinks, importLink, stopDownload, useLinks } from './link-store';
+import { Checkbox } from '../ui/Toggle';
+import { Download, FolderOpen } from '../ui/icons';
+import { closeLinkDialog, connectLinks, importLink, lookLink, stopDownload, useLinks } from './link-store';
 
-/** The link is pasted into the operator window and starts on the paste. */
-function LinkPaste({ audio }: { audio: boolean }) {
+/** Metadata is checked on paste; only Download starts a download. */
+function LinkWindow({ audio }: { audio: boolean }) {
   const [text, setText] = useState('');
+  const [name, setName] = useState('');
+  const [edited, setEdited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
+  const [captionChoice, setCaptionChoice] = useState<boolean | null>(null);
+  const view = useLinks((state) => state.view);
+  const problem = useLinks((state) => state.problem);
+  const kind = linkKind(text);
+  const check = kind ? checkLink(kind, text) : null;
+  const current = check?.ok && view?.link === check.url;
+  const validation = !text.trim()
+    ? null
+    : kind === null
+      ? 'Paste a share link from YouTube or Dropbox.'
+      : check && !check.ok
+        ? check.message
+        : null;
+  const extension =
+    kind === 'youtube'
+      ? audio
+        ? '.mp3'
+        : '.mp4'
+      : current && view.look?.shape === 'file'
+        ? (/\.[^.]+$/u.exec(view.look.name)?.[0] ?? '')
+        : '';
+  const downloadCaptions = captionChoice ?? view?.downloadCaptions ?? true;
+  const captionCount =
+    current && view.look?.video
+      ? new Set((view.look.video.captions ?? []).map((track) => track.language)).size
+      : null;
   useEffect(() => {
-    const previous = document.activeElement;
-    input.current?.focus();
-    return () => {
-      if (document.activeElement === document.body && previous instanceof HTMLElement && previous.isConnected)
-        previous.focus();
-    };
-  }, []);
+    if (!text.trim() || submitting) return;
+    const timer = setTimeout(() => {
+      void lookLink(text);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [text, submitting]);
+  const displayedName = edited ? name : current ? (view.suggestedName ?? '') : '';
 
-  async function submit(value: string) {
-    if (submitting) return;
-    setSubmitting(true);
-    if (await importLink(value)) closeLinkDialog();
-    else setSubmitting(false);
+  function changeLink(value: string) {
+    setText(value);
+    setName('');
+    setEdited(false);
+    useLinks.setState({ problem: null });
   }
 
+  async function submit() {
+    if (submitting) return;
+    setSubmitting(true);
+    if (await importLink(text, { name: displayedName, captions: downloadCaptions })) closeLinkDialog();
+    else setSubmitting(false);
+  }
   return (
-    <form
-      aria-label="Import from a Link"
-      data-testid="link-paste"
-      className="mx-auto my-1 flex w-[min(38rem,calc(100%-1.5rem))] shrink-0 items-center gap-2 rounded-md border border-line-strong bg-panel-2 px-2 py-1"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit(text);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          event.stopPropagation();
-          closeLinkDialog();
-        }
-      }}
+    <Dialog
+      title={audio ? 'Import YouTube sound (MP3)' : 'Import from a Link'}
+      size="md"
+      testId="link-paste"
+      onClose={submitting ? null : closeLinkDialog}
+      footer={
+        <>
+          <Button disabled={submitting} onClick={closeLinkDialog}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            type="submit"
+            form="link-download-form"
+            data-testid="link-download"
+            disabled={submitting || !check?.ok}
+          >
+            Download
+          </Button>
+        </>
+      }
     >
-      <Field
-        label={audio ? 'Paste a link for Audio' : 'Paste a YouTube or Dropbox link'}
-        layout="inline"
-        className="min-w-0 flex-1"
+      <form
+        id="link-download-form"
+        className="space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
       >
-        <TextInput
-          ref={input}
-          data-testid="link-text"
-          className="flex-1"
-          inputMode="url"
-          spellCheck={false}
-          autoComplete="off"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onPaste={(event) => {
-            const value = event.clipboardData.getData('text/plain');
-            event.preventDefault();
-            setText(value);
-            void submit(value);
-          }}
-        />
-      </Field>
-      <IconButton label="Close link input" icon={X} onClick={closeLinkDialog} />
-    </form>
+        <Field label="YouTube or Dropbox link" error={validation}>
+          <TextInput
+            data-autofocus
+            data-testid="link-text"
+            inputMode="url"
+            spellCheck={false}
+            autoComplete="off"
+            value={text}
+            onChange={(event) => changeLink(event.target.value)}
+            onPaste={(event) => {
+              event.preventDefault();
+              changeLink(event.clipboardData.getData('text/plain'));
+            }}
+          />
+        </Field>
+        <Field
+          label="Name"
+          hint={
+            current && view.waitingFor
+              ? 'The title comes when the stream stops. You may type a name now.'
+              : 'You can change the name. Drashti keeps the file type.'
+          }
+        >
+          <div className="flex items-center gap-2">
+            <TextInput
+              data-testid="link-name"
+              className="flex-1"
+              value={displayedName}
+              placeholder="The title appears after checking the link"
+              onChange={(event) => {
+                setEdited(true);
+                setName(event.target.value);
+              }}
+            />
+            {extension && <span className="text-sm text-muted">{extension}</span>}
+          </div>
+        </Field>
+        <Field label="Save in">
+          <div className="flex min-w-0 items-center gap-2">
+            <TextInput data-testid="link-folder" className="flex-1" readOnly value={view?.folder ?? ''} />
+            <Button data-testid="link-choose-folder" onClick={() => void window.drashti.links.pickFolder()}>
+              Choose…
+            </Button>
+          </div>
+        </Field>
+        {kind === 'youtube' && (
+          <div className="space-y-2">
+            <Checkbox
+              data-testid="link-captions"
+              label="Download its captions"
+              checked={downloadCaptions}
+              onChange={(event) => setCaptionChoice(event.target.checked)}
+            />
+            {captionCount !== null && (
+              <p data-testid="link-caption-count" role="status" className="text-xs text-muted">
+                {captionCount
+                  ? `Captions: ${String(captionCount)} ${captionCount === 1 ? 'language' : 'languages'}`
+                  : 'Captions: none available'}
+              </p>
+            )}
+            {downloadCaptions && (
+              <Field
+                label="Captions for learning"
+                hint="A second copy, with the video’s details, in a folder for each video."
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <TextInput
+                    data-testid="link-captions-folder"
+                    className="flex-1"
+                    readOnly
+                    value={view?.captionsFolder ?? ''}
+                  />
+                  <Button
+                    data-testid="link-choose-captions-folder"
+                    onClick={() => void window.drashti.links.pickFolder('captions')}
+                  >
+                    Choose…
+                  </Button>
+                </div>
+              </Field>
+            )}
+          </div>
+        )}
+        {problem && (
+          <p role="alert" data-testid="link-problem" className="text-sm text-danger-fg">
+            {problem}
+          </p>
+        )}
+        {current && !problem && (
+          <p role="status" className="text-xs text-muted">
+            {view.waitingFor
+              ? 'Checking the link waits while the stream is on air or recording. Download queues it.'
+              : view.phase === 'looking'
+                ? 'Checking link…'
+                : (view.message ?? 'Ready to download.')}
+          </p>
+        )}
+      </form>
+    </Dialog>
   );
 }
 
@@ -75,7 +199,7 @@ export function LinkDialog() {
   const open = useLinks((state) => state.open);
   const audio = useLinks((state) => state.audio !== null);
   useEffect(connectLinks, []);
-  return open ? <LinkPaste audio={audio} /> : null;
+  return open ? <LinkWindow audio={audio} /> : null;
 }
 
 function linkProgress(view: LinkView): string | null {

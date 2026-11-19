@@ -45,6 +45,7 @@ import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
 import { mediaInState } from '../../shared/node-media';
 import { type ChosenWallpaper, DEFAULT_WHEN_ENDS, type WhenEnds } from '../../shared/wallpapers';
 import type { CaptionsShown } from '../../shared/captions';
+import type { VideoCaptionsShown } from '../../shared/video-captions';
 import {
   backgroundShowing,
   framed,
@@ -59,7 +60,7 @@ import { BUILT_IN_TIMER_LOOK, timerAloneSlide, type TimerLook, timerShowId } fro
 import { INPUT_FADE_MS, type VideoInput } from '../../shared/video-inputs';
 import { ownOrderItem, remapPosition } from '../../shared/order';
 import { NO_STAGE, type StageInput, type StageLayout, type StageState } from '../../shared/stage-layouts';
-import { type SoundState, soundFilesOf } from '../../shared/sound';
+import { type SoundLevels, type SoundState, soundFilesOf } from '../../shared/sound';
 import type { EngineAction } from './actions';
 import { hidePip, leavingMedia, placePip, restoredPip, showPip, swapPip } from './pip';
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
@@ -159,6 +160,17 @@ function operatorSound(up: AudioLayer | null): AudioLayer | null {
 function keepingOver(next: AudioLayer, was: AudioLayer | null): AudioLayer {
   const over = operatorSound(was)?.over;
   return over && operatorSound(next) && next.over === undefined ? { ...next, over } : next;
+}
+
+/**
+ * Whether the engine's word on how the files play changed in the operator's levels and mutes alone (X33): a level
+ * dragged, or a mute, with the rest (Audio's switch, the files' gains, the silent ones) as it was.
+ */
+function levelsAlone(was: SoundState | undefined, now: SoundState | undefined): boolean {
+  if (!was || !now) return false;
+  const { levels: _was, ...rest } = was;
+  const { levels: _now, ...restNow } = now;
+  return sameData(rest, restNow);
 }
 
 /** Commands that come back to a playlist item rather than move on to it: its timer cues do not run again. */
@@ -287,6 +299,13 @@ export interface EngineOptions {
   soundOf?: (mediaId: string) => { gain: number; silent: boolean } | null;
   /** Whether the music steps aside under a video with sound (Part 7, K: Audio's switch; on when left out). */
   stepsAside?: () => boolean;
+  /**
+   * The operator's Audio and Video levels and mutes (X33, main/sound/levels.ts): every page that plays sound plays by
+   * them. Left out: both at 100 %, sound on.
+   */
+  levels?: () => SoundLevels;
+  /** Parsed captions for a library video, with the admin’s band size and place. */
+  videoCaptionsOf?: (mediaId: string) => VideoCaptionsShown | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -832,6 +851,43 @@ export class ShowEngine {
    * Audio's Music steps aside switched): what plays now follows at once. Not a change to the show: what Back and Put it
    * back would undo stays.
    */
+  /** A choice changes the existing video’s captions immediately, without seeking or replaying it. */
+  refreshVideoCaptions(): CommandResult {
+    this.bookkeeping = true;
+    try {
+      return this.apply([]);
+    } finally {
+      this.bookkeeping = false;
+    }
+  }
+
+  private videoCaptionsFor(state: EngineState): Record<string, VideoCaptionsShown> | undefined {
+    if (!this.options.videoCaptionsOf) return undefined;
+    const tracks: Record<string, VideoCaptionsShown> = {};
+    if (!state.blackout && !state.wallpaper && !state.stopped) {
+      // One band: background first, then a slide video, then the box. Never send every library track.
+      for (const playing of playingNow(state)) {
+        if (playing.ref.layer === 'audio' || playing.sound || playing.clock.seek?.waiting) continue;
+        const chosen = this.options.videoCaptionsOf(playing.mediaId);
+        if (chosen) {
+          tracks[playing.mediaId] = chosen;
+          break;
+        }
+      }
+    }
+    const old = state.videoCaptions;
+    if (
+      old &&
+      Object.keys(old).length === Object.keys(tracks).length &&
+      Object.entries(tracks).every(([id, next]) => {
+        const prev = old[id];
+        return prev?.track === next.track && prev.size === next.size && prev.place === next.place;
+      })
+    )
+      return old;
+    return tracks;
+  }
+
   refreshSound(): CommandResult {
     const sound = this.soundFor(this.state);
     if (!sound || sameData(this.state.sound, sound)) return this.unchanged();
@@ -849,8 +905,8 @@ export class ShowEngine {
    * an engine with no library to ask (then the state never says, and every page plays each file as it is).
    */
   private soundFor(state: EngineState): SoundState | undefined {
-    const { soundOf, stepsAside } = this.options;
-    if (!soundOf && !stepsAside) return undefined;
+    const { soundOf, stepsAside, levels } = this.options;
+    if (!soundOf && !stepsAside && !levels) return undefined;
     const gains: Record<string, number> = {};
     const silent: string[] = [];
     for (const mediaId of soundFilesOf(state)) {
@@ -859,7 +915,8 @@ export class ShowEngine {
       if (known.gain !== 1) gains[mediaId] = known.gain;
       if (known.silent) silent.push(mediaId);
     }
-    return { stepsAside: stepsAside?.() ?? true, gains, silent };
+    // The operator's Audio and Video levels and mutes (X33), as Main has them now.
+    return { stepsAside: stepsAside?.() ?? true, gains, silent, ...(levels ? { levels: levels() } : {}) };
   }
 
   refreshFiles(): CommandResult {
@@ -2938,6 +2995,9 @@ export class ShowEngine {
     });
     if (!sameData(next.videoFiles ?? null, files)) next = reduce(next, { type: 'videoFiles/set', files });
     // How the files sounding now play (Session 55, Part 7): each one's even gain, and the music stepping aside.
+    const videoCaptions = this.videoCaptionsFor(next);
+    if (videoCaptions !== undefined && videoCaptions !== next.videoCaptions)
+      next = { ...next, videoCaptions };
     const sound = this.soundFor(next);
     if (sound) next = reduce(next, { type: 'sound/set', sound });
     // A lower third that hides itself (Session 55, Part 16, R) and is past its time by now (Put it back, a restart, the
@@ -2960,7 +3020,10 @@ export class ShowEngine {
     this.state = next;
     const baseRev = this.revision;
     this.revision += 1;
-    const captionsOnly = ops.every((op) => op.path[0] === 'captions');
+    // Live captions, or the operator's levels and mutes (X33), alone: never a change to the show.
+    const captionsOnly = ops.every(
+      (op) => op.path[0] === 'captions' || (op.path[0] === 'sound' && levelsAlone(prev.sound, next.sound)),
+    );
     if (!captionsOnly) this.showRevision = this.revision;
     this.transport.broadcast({
       kind: 'patch',
@@ -2972,7 +3035,8 @@ export class ShowEngine {
     });
     // Live captions alone (Session 55, Part 10): the screens have them (the patch); nothing in the main process reads
     // them, so its listeners (the recovery file, the menus, the phones' counts…) and timers are spared the work, every
-    // second or so while someone speaks: the show comes first.
+    // second or so while someone speaks: the show comes first. The same for the operator's levels and mutes alone
+    // (X33): only the pages that play sound read them, several times a second while a level is dragged.
     if (captionsOnly) return { ok: true, changed: true, rev: this.revision };
     for (const listener of this.listeners) listener(next);
     this.scheduleAdvance();

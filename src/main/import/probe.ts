@@ -421,11 +421,18 @@ export function convertingIssue(name: string, probe: MediaProbe, mediaId: string
 /** The report's lines for a media file as the import stored it: none when it plays (Session 50). */
 export function playIssues(
   name: string,
-  stored: { probe: MediaProbe; mediaId: string; convert?: boolean; maxHeight?: number },
+  stored: {
+    probe: MediaProbe;
+    mediaId: string;
+    convert?: boolean;
+    maxHeight?: number;
+    captionIssues?: ImportIssue[];
+  },
 ): ImportIssue[] {
   if (stored.maxHeight !== undefined) {
     const height = String(stored.maxHeight);
     return [
+      ...(stored.captionIssues ?? []),
       {
         severity: 'info',
         code: 'converting-media',
@@ -439,6 +446,12 @@ export function playIssues(
       },
     ];
   }
-  if (stored.convert) return [convertingIssue(name, stored.probe, stored.mediaId)];
-  return stored.probe.playable === false ? [unplayableIssue(name, stored.probe, stored.mediaId)] : [];
+  return [
+    ...(stored.captionIssues ?? []),
+    ...(stored.convert
+      ? [convertingIssue(name, stored.probe, stored.mediaId)]
+      : stored.probe.playable === false
+        ? [unplayableIssue(name, stored.probe, stored.mediaId)]
+        : []),
+  ];
 }

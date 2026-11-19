@@ -7,6 +7,7 @@ import {
   DEFAULT_LINK_MAX_HEIGHT,
   linkKind,
   type LinkView,
+  type LinkDownloadOptions,
   waitingKind,
 } from '../../../shared/links';
 import type { NewItem } from '../../../shared/playlists';
@@ -25,6 +26,7 @@ interface LinkRequest {
   url: string;
   playlistId: string | null;
   audio: AudioTarget | null;
+  options?: LinkDownloadOptions;
 }
 
 interface LinkStore {
@@ -32,6 +34,8 @@ interface LinkStore {
   open: boolean;
   audio: AudioTarget | null;
   request: LinkRequest | null;
+  /** A refusal shown inside the open link window. */
+  problem: string | null;
 }
 
 export const useLinks = create<LinkStore>(() => ({
@@ -39,6 +43,7 @@ export const useLinks = create<LinkStore>(() => ({
   open: false,
   audio: null,
   request: null,
+  problem: null,
 }));
 
 /** The download's title, or the file's name without its extension. */
@@ -121,6 +126,14 @@ function heard(view: LinkView): void {
     showImportNotice(
       'The previous downloads folder couldn’t be used. This download was saved in Drashti downloads.',
     );
+  if (view.captions?.failed.length)
+    showImportNotice(
+      `Some captions could not be saved: ${view.captions.failed.join(', ')}. The video or sound was saved.`,
+    );
+  if (view.captions?.learningSkipped)
+    showImportNotice(
+      'The captions folder could not be used. Captions were saved beside the video or sound; the learning copy was skipped.',
+    );
   for (const file of view.notTaken) showImportNotice(`“${file.name}”: ${file.reason}`);
   if (view.phase === 'failed') {
     showImportNotice(
@@ -148,56 +161,96 @@ export function connectLinks(): void {
 
 export function openLinkDialog(): void {
   connectLinks();
+  if (!prepareWindow()) return;
   useLinks.setState({ open: true, audio: null });
 }
 
 /** Pasting from Audio takes a YouTube video's sound and adds the imported sounds to Audio. */
 export function openLinkForAudio(playlistId: string | null): void {
   connectLinks();
+  if (!prepareWindow()) return;
   useLinks.setState({ open: true, audio: { playlistId } });
 }
 
+function prepareWindow(): boolean {
+  const { view, request } = useLinks.getState();
+  if (request || (linkBusy(view) && view?.phase !== 'looking')) {
+    showImportNotice('A link import is going on. Wait for it to finish, or stop it first.');
+    return false;
+  }
+  useLinks.setState({ problem: null });
+  void window.drashti.links.reset().then((result) => {
+    if (result.ok) useLinks.setState({ view: result.view });
+  });
+  return true;
+}
+
 export function closeLinkDialog(): void {
-  useLinks.setState({ open: false, audio: null });
+  if (!useLinks.getState().request) void window.drashti.links.reset();
+  useLinks.setState({ open: false, audio: null, problem: null });
+}
+
+function showLinkProblem(message: string): void {
+  useLinks.setState({ problem: message });
+  if (!useLinks.getState().open) showImportNotice(message);
 }
 
 async function start(request: LinkRequest): Promise<boolean> {
   const { view, request: pending } = useLinks.getState();
-  if (pending || linkBusy(view)) {
-    showImportNotice('A link import is going on. Wait for it to finish, or stop it first.');
+  if (pending || (linkBusy(view) && view?.phase !== 'looking')) {
+    showLinkProblem('A link import is going on. Wait for it to finish, or stop it first.');
     return false;
   }
-  useLinks.setState({ request });
+  useLinks.setState({ request, problem: null });
   try {
     const result = await window.drashti.links.start(
       request.url,
       request.audio !== null,
       request.playlistId !== null,
+      request.options,
     );
     if (result.ok) return true;
-    showImportNotice(result.message);
+    showLinkProblem(result.message);
   } catch {
-    showImportNotice('Drashti could not start the download. Paste the link again.');
+    showLinkProblem('Drashti could not start the download. Paste the link again.');
   }
   if (useLinks.getState().request === request) useLinks.setState({ request: null });
   return false;
 }
 
-/** Start at the paste, with the playlist open then as its destination. */
-export async function importLink(text: string): Promise<boolean> {
+/** Download was pressed: use the playlist open then as its destination. */
+export async function importLink(text: string, options?: LinkDownloadOptions): Promise<boolean> {
   connectLinks();
   const kind = linkKind(text);
   if (kind === null) {
-    showImportNotice('Paste a share link from YouTube or Dropbox.');
+    showLinkProblem('Paste a share link from YouTube or Dropbox.');
     return false;
   }
   const check = checkLink(kind, text);
   if (!check.ok) {
-    showImportNotice(check.message);
+    showLinkProblem(check.message);
     return false;
   }
   const { audio } = useLinks.getState();
-  return start({ url: check.url, playlistId: audio ? null : linkPlaylistId(), audio });
+  return start({ url: check.url, playlistId: audio ? null : linkPlaylistId(), audio, options });
+}
+
+/** Checking a pasted link reads metadata only. */
+export async function lookLink(text: string): Promise<void> {
+  const { request, view } = useLinks.getState();
+  if (request || (linkBusy(view) && view?.phase !== 'looking')) return;
+  const kind = linkKind(text);
+  const check = kind === null ? null : checkLink(kind, text);
+  // The field shows invalid links immediately, with its accessible error description.
+  if (!kind || !check?.ok) return;
+  useLinks.setState({ problem: null });
+  try {
+    const result = await window.drashti.links.look(kind, check.url);
+    if (result.ok) useLinks.setState({ view: result.view });
+    else showLinkProblem(result.message);
+  } catch {
+    showLinkProblem('Drashti could not check the link. Paste it again.');
+  }
 }
 
 export async function stopDownload(): Promise<void> {

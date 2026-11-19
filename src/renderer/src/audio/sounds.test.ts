@@ -68,9 +68,9 @@ describe('the sounds the show makes', () => {
       }),
     );
     expect(sounds).toEqual([
-      { key: 'background:bg@1000', mediaId: 'bg', startedAt: 1000, loop: true, volume: 1 },
-      { key: 'slide:s/v1@5000', mediaId: 'clip', startedAt: 5000, loop: false, volume: 1 },
-      { key: 'slide:s/v2@5000', mediaId: 'quiet', startedAt: 5000, loop: false, volume: 0.25 },
+      { key: 'background:bg@1000', mediaId: 'bg', startedAt: 1000, loop: true, volume: 1, kind: 'video' },
+      { key: 'slide:s/v1@5000', mediaId: 'clip', startedAt: 5000, loop: false, volume: 1, kind: 'video' },
+      { key: 'slide:s/v2@5000', mediaId: 'quiet', startedAt: 5000, loop: false, volume: 0.25, kind: 'video' },
     ]);
   });
 
@@ -110,9 +110,10 @@ describe('the sounds the show makes', () => {
         loop: true,
         volume: 1,
         clip: { startMs: 2000, endMs: 6000 },
+        kind: 'video',
       },
       // A file without points: the whole of it, as before.
-      { key: 'slide:s/v2@5000', mediaId: 'whole', startedAt: 5000, loop: false, volume: 1 },
+      { key: 'slide:s/v2@5000', mediaId: 'whole', startedAt: 5000, loop: false, volume: 1, kind: 'video' },
     ]);
   });
 
@@ -155,7 +156,17 @@ describe('the sounds the show makes', () => {
         state({ audio: { id: 'x', title: 'Dhun', mediaId: 'dhun', volume: 0.4, loop: true, startedAt: 9 } }),
       ),
       // The music steps aside under a video with sound (Session 55, Part 7).
-    ).toEqual([{ key: 'audio:dhun@9', mediaId: 'dhun', startedAt: 9, loop: true, volume: 0.4, aside: true }]);
+    ).toEqual([
+      {
+        key: 'audio:dhun@9',
+        mediaId: 'dhun',
+        startedAt: 9,
+        loop: true,
+        volume: 0.4,
+        aside: true,
+        kind: 'audio',
+      },
+    ]);
     expect(
       soundsOf(
         state({ audio: { id: 'x', title: 'Silent', mediaId: null, volume: 1, loop: false, startedAt: 9 } }),
@@ -203,7 +214,15 @@ describe('the sounds the show makes', () => {
       }),
     );
     expect(sounds).toEqual([
-      { key: 'audio:dhun@9', mediaId: 'dhun', startedAt: 9, loop: true, volume: 0.4, aside: true },
+      {
+        key: 'audio:dhun@9',
+        mediaId: 'dhun',
+        startedAt: 9,
+        loop: true,
+        volume: 0.4,
+        aside: true,
+        kind: 'audio',
+      },
       {
         key: 'over:cue@20',
         mediaId: 'cue',
@@ -211,6 +230,7 @@ describe('the sounds the show makes', () => {
         loop: false,
         volume: 0.8,
         clip: { startMs: 500, endMs: null },
+        kind: 'audio',
       },
     ]);
   });
@@ -251,6 +271,7 @@ describe('a sound the engine sends somewhere new while it plays (Session 52)', (
     loop: false,
     volume: 1,
     clip: { startMs: 1000, endMs: null },
+    kind: 'video',
   };
 
   it('is checked again at a jump, as before', () => {
@@ -432,7 +453,74 @@ describe('a deck’s videos and sounds (Session 54, C2)', () => {
         loop: true,
         volume: 0.7,
         fades: { inMs: 500, outMs: 0 },
+        kind: 'audio',
       },
+    ]);
+  });
+
+  it('say which of the operator’s two levels each plays under (X33): its videos Video’s, its sounds and its chime Audio’s', () => {
+    const chimed = deckSlide(0);
+    if (!chimed) throw new Error('no deck');
+    const sounds = soundsOf(
+      state({ slide: { ...chimed, seeks: { ...chimed.seeks, chime: { at: 5000, toMs: 0 } } } }),
+    );
+    expect(sounds.map((s) => [s.mediaId, s.kind])).toEqual([
+      ['deck-video', 'video'],
+      ['deck-sound', 'audio'],
+      ['chime', 'audio'],
+    ]);
+  });
+});
+
+describe('which of the operator’s two levels each sound plays under (X33)', () => {
+  it('Audio: the audio layer and a sound over it; Video: the background video’s sound and the slide’s videos’', () => {
+    const sounds = soundsOf(
+      state({
+        audio: {
+          id: 'x',
+          title: 'Placeholder music',
+          mediaId: 'music',
+          volume: 1,
+          loop: true,
+          startedAt: 9,
+          over: {
+            id: 'cue',
+            title: 'Placeholder cue',
+            mediaId: 'cue',
+            volume: 1,
+            loop: false,
+            startedAt: 20,
+          },
+        },
+        background: { kind: 'media', mediaId: 'bg', media: 'video', fit: 'fill', loop: true, startedAt: 1 },
+        slide: {
+          presentationId: 'p',
+          slideIndex: 0,
+          shownAt: 30,
+          notes: '',
+          slide: {
+            id: 's',
+            width: 1920,
+            height: 1080,
+            background: null,
+            elements: [
+              {
+                id: 'v',
+                kind: 'video',
+                frame: { x: 0, y: 0, width: 10, height: 10 },
+                mediaId: 'clip',
+                fit: 'fit',
+              },
+            ],
+          },
+        },
+      }),
+    );
+    expect(sounds.map((s) => [s.key, s.kind])).toEqual([
+      ['audio:music@9', 'audio'],
+      ['over:cue@20', 'audio'],
+      ['background:bg@1', 'video'],
+      ['slide:s/v@30', 'video'],
     ]);
   });
 });
