@@ -1,3 +1,6 @@
+import type { ControllerArea, ControllerReply, ControllerRequest, EngineSeen } from './controller-actions';
+import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
+import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { SlidePictureResult } from './slide-picture';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { PdfJob, PdfPage, PdfPageReceipt, PdfDone } from './editable-source';
@@ -26,7 +29,7 @@ import type {
   OpeningView,
 } from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
-import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
+import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
@@ -101,6 +104,7 @@ import type {
 } from './stream';
 import type { SavePictureResult, SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
+import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
 import type {
@@ -135,6 +139,7 @@ import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
 import type { TimerFields, TimerResult } from './timers';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { VideoOutResult, VideoOutSettings, VideoOutStatus } from './video-out';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
 import type { AccessLength, AccessMode } from './access-protocol';
@@ -151,7 +156,15 @@ import type { PendingScreens } from './keep-screens';
 import type { PointAt, PointedClip } from './point-ahead';
 import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
-import type { EvenResult, FileSoundView, SoundView, SoundViewResult, TrimEdgesResult } from './sound';
+import type {
+  EvenResult,
+  FileSoundView,
+  SoundKind,
+  SoundLevelsResult,
+  SoundView,
+  SoundViewResult,
+  TrimEdgesResult,
+} from './sound';
 import type {
   CoverOptions,
   DisplayJob,
@@ -308,6 +321,12 @@ export const IPC = {
    * Live captions (Session 55, Part 10, shared/captions.ts): in Pro Mode only. A window is never sent a word heard:
    * only how captions stand, and the lines to draw through the engine's state.
    */
+  videoCaptions: {
+    view: 'videocaptions:view',
+    select: 'videocaptions:select',
+    add: 'videocaptions:add',
+    changed: 'videocaptions:changed',
+  },
   captions: {
     view: 'captions:view',
     /** Turn captions on or off on this computer (the model downloads once when first turned on). */
@@ -469,6 +488,7 @@ export const IPC = {
   },
   /** Kirtans: their words by language and their details; changing them is for the operator window only. */
   kirtans: {
+    exportBundle: 'kirtans:export-bundle',
     tracks: 'kirtans:tracks',
     saveTracks: 'kirtans:save-tracks',
     /** Make a presentation a kirtan with these details, or (null) not a kirtan; its words stay. */
@@ -575,6 +595,9 @@ export const IPC = {
     /** A video's or sound's loudness as measured, and its own switch. */
     file: 'sound:file',
     setStepsAside: 'sound:set-steps-aside',
+    /** The operator's Audio or Video level, and its mute (X33): every page that plays sound plays by them. */
+    setLevel: 'sound:set-level',
+    setMuted: 'sound:set-muted',
     setEven: 'sound:set-even',
     trimEdges: 'sound:trim-edges',
     /** main -> operator: Audio's switch or a file's Even loudness changed. */
@@ -738,6 +761,8 @@ export const IPC = {
     /** One of the show's F-keys pressed in the editor's window: the operator window acts on it, as if pressed there. */
     showKey: 'slideeditor:show-key',
   },
+  /** OSC settings belong only to this computer's operator window, in Pro Mode. */
+  osc: { status: 'osc:status', configure: 'osc:configure', changed: 'osc:changed' },
   /** The MIDI controller's settings (changing them: operator window, Pro Mode). */
   midi: {
     get: 'midi:get',
@@ -896,6 +921,12 @@ export const IPC = {
     pageInputs: 'stream:page-inputs',
     /** main -> the stream's page: its context changed. */
     context: 'stream:context',
+    /** Video out (x30): the stream's picture to other software, and how it is going. */
+    videoOut: 'stream:video-out',
+    /** Turn video out on or off, or name it (operator window only; Pro Mode). */
+    setVideoOut: 'stream:set-video-out',
+    /** main -> operator: video out changed. */
+    videoOutChanged: 'stream:video-out-changed',
   },
   /** Show a Window… (Session 48): another app's window as the hall's background. */
   liveWindow: {
@@ -1023,6 +1054,9 @@ export const IPC = {
     newIdentity: 'nodes:new-identity',
     /** Copy every picture and video to this node ("Get everything ready"), or only the week's. */
     everything: 'nodes:everything',
+    /** Main's explicit permission to share the show view (Pro Mode only). */
+    setController: 'nodes:set-controller',
+    setControllerAreas: 'nodes:set-controller-areas',
     /** Reload one output window, on Main or on a node. */
     reload: 'nodes:reload',
     /** A display's number and name on it, on Main or on a node (also in Simple Mode). */
@@ -1037,6 +1071,7 @@ export const IPC = {
   /** A node's own window (node mode only). */
   node: {
     view: 'node:view',
+    action: 'node:action',
     /** Pair with Main at an address, with the code it shows. */
     pair: 'node:pair',
     unpair: 'node:unpair',
@@ -1163,6 +1198,9 @@ export const IPC = {
 
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
+  [IPC.videoCaptions.view]: { args: [mediaId: string]; result: VideoCaptionChoice };
+  [IPC.videoCaptions.select]: { args: [mediaId: string, trackId: string | null]; result: VideoCaptionResult };
+  [IPC.videoCaptions.add]: { args: [mediaId: string]; result: VideoCaptionResult };
   [IPC.ready.check]: { args: [openPlaylistId: string | null]; result: ReadyReport | null };
   [IPC.quickBar.view]: { args: []; result: QuickPin[] };
   [IPC.quickBar.set]: { args: [pins: QuickPin[]]; result: QuickBarResult };
@@ -1274,9 +1312,12 @@ export interface InvokeContract {
   [IPC.updates.setAutoCheck]: { args: [on: boolean]; result: UpdateResult };
   [IPC.updates.showFile]: { args: []; result: null };
   [IPC.links.view]: { args: []; result: LinkView };
-  [IPC.links.start]: { args: [text: string, audio: boolean, intoOpenPlaylist: boolean]; result: LinkResult };
+  [IPC.links.start]: {
+    args: [text: string, audio: boolean, intoOpenPlaylist: boolean, options?: LinkDownloadOptions];
+    result: LinkResult;
+  };
   [IPC.links.look]: { args: [kind: LinkKind, link: string]; result: LinkResult };
-  [IPC.links.pickFolder]: { args: []; result: LinkResult };
+  [IPC.links.pickFolder]: { args: [target?: 'downloads' | 'captions']; result: LinkResult };
   [IPC.links.download]: { args: [choice?: YouTubeChoice | null]; result: LinkResult };
   [IPC.links.stop]: { args: []; result: LinkResult };
   [IPC.links.reset]: { args: []; result: LinkResult };
@@ -1286,7 +1327,7 @@ export interface InvokeContract {
   [IPC.links.setPlaylist]: { args: [playlistId: string]; result: LinkResult };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
-  [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
+  [IPC.engine.command]: { args: [command: EngineCommand, seen?: EngineSeen]; result: CommandResult };
   [IPC.engine.pointAt]: { args: [target: PointAt | null]; result: null };
   [IPC.library.listPresentations]: { args: []; result: PresentationListing[] };
   [IPC.library.listMedia]: { args: []; result: MediaSummary[] };
@@ -1419,6 +1460,10 @@ export interface InvokeContract {
   [IPC.library.presentationUsage]: { args: [ids: string[]]; result: PresentationUsage };
   [IPC.library.renamePresentation]: { args: [id: string, name: string]; result: RemoveResult };
   [IPC.library.revealPresentation]: { args: [id: string]; result: RevealResult };
+  [IPC.kirtans.exportBundle]: {
+    args: [request: KirtanBundleExportRequest];
+    result: KirtanBundleExportResult;
+  };
   [IPC.kirtans.tracks]: { args: [presentationId: string]; result: TracksResult };
   [IPC.kirtans.saveTracks]: { args: [presentationId: string, edits: TrackEdit[]]; result: KirtanResult };
   [IPC.kirtans.setDetails]: {
@@ -1480,6 +1525,8 @@ export interface InvokeContract {
   [IPC.sound.view]: { args: []; result: SoundView };
   [IPC.sound.file]: { args: [mediaId: string]; result: FileSoundView | null };
   [IPC.sound.setStepsAside]: { args: [on: boolean]; result: SoundViewResult };
+  [IPC.sound.setLevel]: { args: [kind: SoundKind, level: number]; result: SoundLevelsResult };
+  [IPC.sound.setMuted]: { args: [kind: SoundKind, muted: boolean]; result: SoundLevelsResult };
   [IPC.sound.setEven]: { args: [mediaId: string, on: boolean]; result: EvenResult };
   [IPC.sound.trimEdges]: { args: [mediaId: string]; result: TrimEdgesResult };
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
@@ -1537,6 +1584,8 @@ export interface InvokeContract {
   [IPC.slideEditor.fontFamilies]: { args: []; result: readonly string[] };
   [IPC.slideEditor.showKey]: { args: [key: string]; result: null };
   [IPC.slideEditor.close]: { args: []; result: null };
+  [IPC.osc.status]: { args: []; result: OscStatus };
+  [IPC.osc.configure]: { args: [settings: OscSettings]; result: OscResult };
   [IPC.midi.get]: { args: []; result: MidiSettings };
   [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };
   [IPC.midi.report]: { args: [seen: MidiSeen]; result: null };
@@ -1629,6 +1678,8 @@ export interface InvokeContract {
   [IPC.stream.pickFolder]: { args: []; result: StreamResult };
   [IPC.stream.dismissResume]: { args: []; result: null };
   [IPC.stream.tryAgain]: { args: []; result: StreamResult };
+  [IPC.stream.videoOut]: { args: []; result: VideoOutStatus };
+  [IPC.stream.setVideoOut]: { args: [settings: VideoOutSettings]; result: VideoOutResult };
   [IPC.stream.pageContext]: { args: []; result: ProgramContext | null };
   [IPC.stream.pageInputs]: { args: [inputs: ProgramInputs]; result: null };
   [IPC.liveWindow.list]: { args: []; result: WindowList };
@@ -1699,6 +1750,8 @@ export interface InvokeContract {
   [IPC.nodes.remove]: { args: [nodeId: string]; result: NodesResult };
   [IPC.nodes.newIdentity]: { args: []; result: NodesResult };
   [IPC.nodes.everything]: { args: [nodeId: string, on: boolean]; result: NodesResult };
+  [IPC.nodes.setController]: { args: [nodeId: string, on: boolean]; result: NodesResult };
+  [IPC.nodes.setControllerAreas]: { args: [nodeId: string, areas: ControllerArea[]]; result: NodesResult };
   [IPC.nodes.reload]: { args: [nodeId: string | null, screenId: string]; result: NodesResult };
   [IPC.nodes.identify]: { args: [nodeId: string | null, displayId: number | null]; result: null };
   [IPC.nodes.watch]: { args: [on: boolean]; result: null };
@@ -1707,6 +1760,7 @@ export interface InvokeContract {
     result: ScreensResult;
   };
   [IPC.node.view]: { args: []; result: NodeView };
+  [IPC.node.action]: { args: [request: ControllerRequest]; result: ControllerReply };
   [IPC.node.pair]: { args: [address: string, code: string]; result: NodeViewResult };
   [IPC.node.unpair]: { args: []; result: NodeViewResult };
   [IPC.node.useAsMain]: { args: []; result: { ok: boolean } };
@@ -1719,6 +1773,7 @@ export interface InvokeContract {
 
 /** main -> renderer event channels and their payloads. */
 export interface EventContract {
+  [IPC.osc.changed]: OscStatus;
   [IPC.appearance.changed]: AppearanceNow;
   [IPC.appearance.open]: { at: number };
   [IPC.engine.message]: EngineMessage;
@@ -1745,6 +1800,7 @@ export interface EventContract {
   [IPC.opening.key]: { at: number };
   [IPC.opening.screens]: { at: number };
   [IPC.opening.open]: { at: number };
+  [IPC.videoCaptions.changed]: { mediaId: string; view: VideoCaptionChoice };
   [IPC.captions.changed]: CaptionsStatus;
   [IPC.captions.open]: { at: number };
   [IPC.updates.changed]: UpdateView;
@@ -1781,6 +1837,7 @@ export interface EventContract {
   [IPC.sound.changed]: SoundView;
   [IPC.quickBar.changed]: QuickPin[];
   [IPC.stream.changed]: StreamStatus;
+  [IPC.stream.videoOutChanged]: VideoOutStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];

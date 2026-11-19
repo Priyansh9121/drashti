@@ -157,6 +157,9 @@ const inputsSchema = z.object({
 
 type SoundListener = (samples: Int16Array, endAt: number, startAt: number) => void;
 
+/** Video out's hold on the Program (x30), beside the window for Zoom's. */
+const VIDEO_OUT_HOLDER = 'video out';
+
 export class StreamService {
   private program: BrowserWindow | null = null;
   private programReady = false;
@@ -165,6 +168,8 @@ export class StreamService {
   private readonly watchers = new Map<number, WebContents>();
   /** What else keeps the Program open, by name (Session 48: the window for Zoom), without the preview's port. */
   private readonly holders = new Set<string>();
+  /** Video out is on (x30): the page gives each frame to video out's port as well (src/main/video-out/). */
+  private videoOutOn = false;
   /** Captions and Record sound share one raw-input tap. Neither changes the stream's mix. */
   private readonly soundListeners = new Set<SoundListener>();
   private speechPort: MessagePortMain | null = null;
@@ -469,6 +474,7 @@ export class StreamService {
       picture,
       capturing: this.videoInUse(),
       preview: this.watchers.size > 0,
+      ...(this.videoOutOn ? { videoOut: true as const } : {}),
       ...(this.deps.clockStyle ? { clockStyle: this.deps.clockStyle() } : {}),
       // No warm-up where Chromium draws without a graphics chip (Session 58, WU-1): its picture is black meanwhile.
       ...(page ? (this.deps.warmUpFact?.(page, picture) ?? {}) : {}),
@@ -506,6 +512,25 @@ export class StreamService {
     else this.holders.delete(who);
     this.updateProgram();
     this.contextChanged();
+  }
+
+  /**
+   * Video out on or off (x30): on, the Program is kept open and drawing (as for the window for Zoom) and its page is
+   * told to give its frames to video out's port (`pairVideoOut`); off, it is told to stop, and let go.
+   */
+  setVideoOut(on: boolean): void {
+    if (this.videoOutOn === on) return;
+    this.videoOutOn = on;
+    this.hold(VIDEO_OUT_HOLDER, on);
+  }
+
+  /** Give the stream's page video out's port for its frames: false while the page is not open and ready. */
+  pairVideoOut(port: MessagePortMain): boolean {
+    const program = this.program;
+    if (!this.videoOutOn || !pageAlive(program) || !this.programReady) return false;
+    program.webContents.postMessage(IPC.stream.port, { role: 'video-out' }, [port]);
+    this.deps.log('info', "The stream's page was given video out's port");
+    return true;
   }
 
   private pictureWanted(): boolean {

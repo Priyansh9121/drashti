@@ -394,3 +394,39 @@ it('leaves a Split’s soft edges to their mask where the page draws without a g
     setDrawsWithoutChip(false);
   }
 });
+
+it('draws Random Bars by its mask where a graphics chip draws, and as many bars whole by a clip where none does (Q60-15)', () => {
+  const bars = effect('bars', { bars: 'horizontal' });
+  const frame = deckMotionFrame([bars], 1, 200, bounds, slide);
+  const soft = drawing();
+  paintDeckTarget(soft.style, frame, bounds, bounds);
+  expect(soft.style.clipPath).toBe('');
+  expect(soft.style.maskImage).toMatch(/^linear-gradient\(to bottom, rgb\(0 0 0 \/ /u);
+  setDrawsWithoutChip(true);
+  try {
+    const hard = drawing();
+    paintDeckTarget(hard.style, frame, bounds, bounds);
+    expect(hard.style.maskImage).toBe('');
+    expect(hard.style.clipPath).toMatch(/^polygon\(/u);
+  } finally {
+    setDrawsWithoutChip(false);
+  }
+});
+
+it('draws Wheel’s soft edge by its mask where a graphics chip draws, and its hard edge by a clip where none does (run 6)', () => {
+  const wheel = effect('wheel', { spokes: 4 });
+  const frame = deckMotionFrame([wheel], 1, 200, bounds, slide);
+  const soft = drawing();
+  paintDeckTarget(soft.style, frame, bounds, bounds);
+  expect(soft.style.clipPath).toBe('');
+  expect(soft.style.maskImage).toMatch(/^conic-gradient\(from 0deg at 50% 50%, /u);
+  setDrawsWithoutChip(true);
+  try {
+    const hard = drawing();
+    paintDeckTarget(hard.style, frame, bounds, bounds);
+    expect(hard.style.maskImage).toBe('');
+    expect(hard.style.clipPath).toMatch(/^polygon\(/u);
+  } finally {
+    setDrawsWithoutChip(false);
+  }
+});

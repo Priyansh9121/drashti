@@ -1,3 +1,4 @@
+import { isInside } from './media/contained';
 import type { IpcMainInvokeEvent, Rectangle } from 'electron';
 import {
   app,
@@ -114,7 +115,7 @@ import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
 import { musicPlaySchema } from '../shared/music';
 import type { MediaMarkers } from '../shared/markers';
 import { mediaMarkersInputSchema, NO_MARKERS } from '../shared/markers';
-import { evenGainDb } from '../shared/sound';
+import { evenGainDb, type SoundLevelsResult } from '../shared/sound';
 import { UpdateService } from './update/update-service';
 import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
@@ -145,6 +146,7 @@ import { LockWatch } from './perf-lock';
 import { isPerfScenario, scenarioFor } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { SoundRepo } from './db/sound';
+import { SoundLevelsKeeper } from './sound/levels';
 import { SoundPass } from './sound/sound-pass';
 import { automaticImportNotices, loadsOperatorPageAgain } from './import/automatic-notices';
 import { ImportService } from './import/import-service';
@@ -173,6 +175,7 @@ import { OpeningKeys } from './opening/opening-start';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
+import { pictureCannotSeeThrough } from './media/see-through';
 import { savedName, savePicture, savesAsJpeg } from './media/save-picture';
 import { installLockedMenu, installMenu, installNodeMenu } from './menu';
 import { choiceGuard, REPEAT_CHOICE_MS } from './shown-keys';
@@ -217,6 +220,8 @@ import { Revisions } from './library/revisions';
 import { styleNewText, themeLook } from './library/themes';
 import { defaultTransition, registerSlidesIpc } from './library/slides-ipc';
 import { registerWordsIpc } from './library/words-ipc';
+import { KirtanBundleExporter } from './import/kirtan-bundle-export-service';
+import { registerKirtanBundleIpc } from './library/kirtan-bundle-ipc';
 import { registerKirtansIpc } from './library/kirtans-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest, type SelfTestResult } from './selftest';
@@ -322,6 +327,9 @@ import { PipPlaces } from './pip/pip-places';
 import { VideoInputsService } from './video-inputs/video-inputs-service';
 import { electronCamera } from './video-inputs/electron-camera';
 import { ZoomWindow } from './stream/zoom-window';
+import { videoOutSender } from './video-out/sender';
+import { spawnVideoOutWorker, videoOutChannel } from './video-out/spawn';
+import { VideoOutService } from './video-out/video-out-service';
 import { startAccessList } from './access/access-list-main';
 import { openPlaceholderMeeting, PLACEHOLDER_MEETING } from './live-window/placeholder';
 import { StreamService } from './stream/stream-service';
@@ -348,6 +356,7 @@ import {
   warmUpEndLine,
   warmUpEndOf,
   warmUpFact,
+  warmsUp,
 } from './outputs/warm-up-choice';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
@@ -370,10 +379,14 @@ import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
+import { VideoCaptionsRepo } from './db/video-captions';
+import { CaptionFileReader } from './video-captions/reader';
+import { registerVideoCaptionIpc } from './video-captions/ipc';
 import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
+import { OscService } from './osc/service';
 import { captureWithShowAbort } from './network/slide-picture';
 import { PhoneFiles } from './network/phone-files';
 import { AnnouncementService } from './network/announcement-service';
@@ -529,9 +542,11 @@ const testCompositing = sw('DRASHTI_TEST_GPU_COMPOSITING');
  * Whether each output warms its graphics chip up (Session 57, outputs/warm-up-choice.ts): not where Chromium draws
  * without one. Its status means nothing until its GPU process has said how it draws, so it is read from then.
  */
+/** Chromium's feature status now (a test switch's in the tests): how it draws, once its GPU process has said. */
+const gpuStatus = (): unknown =>
+  testCompositing === undefined ? app.getGPUFeatureStatus() : { gpu_compositing: testCompositing };
 const warmUps = new WarmUpChoices({
-  status: () =>
-    testCompositing === undefined ? app.getGPUFeatureStatus() : { gpu_compositing: testCompositing },
+  status: gpuStatus,
   log: (line) => {
     log.info(line);
   },
@@ -1613,6 +1628,8 @@ function start(): void {
   let mediaLength: (mediaId: string) => number | null = () => null;
   /** A picture's look (Session 26e; the media repo, made further down). */
   let pictureLook: (mediaId: string) => PictureLook | null = () => null;
+  /** Whether a picture's file is known to draw no see-through pixel (X11; the media repo, made further down). */
+  let pictureOpaque: (mediaId: string) => boolean = () => false;
   /** A video's or sound's start and end points and markers (the media repo, made further down). */
   let mediaMarkers: (mediaId: string, itemId?: string) => MediaMarkers | null = () => null;
   /** A media item's kind while it is there to play (Session 50, the box's; the media repo, made further down). */
@@ -1630,6 +1647,8 @@ function start(): void {
   };
   /** Music steps aside under a video with sound (Session 55, Part 7, K): Audio's switch, kept with the library; on by default. */
   let stepsAside = settings.get('music.stepsAside') !== false;
+  /** The operator's Audio and Video levels (X33), kept with the library, and their mutes, off at every start. */
+  const soundLevels = new SoundLevelsKeeper({ settings, write: laterSetting });
   /** Picture in picture's remembered place (Session 50): where a new box goes, kept in the library. */
   const pipPlaces = new PipPlaces({ settings, write: laterSetting });
   /** Audio playlists (made further down): the media library changing may change them. */
@@ -1649,6 +1668,8 @@ function start(): void {
    * tells the rest of Drashti (set further down).
    */
   let inputRenamed: (from: string, to: string) => () => void = () => () => undefined;
+  const videoCaptionsRepo = new VideoCaptionsRepo(db);
+  let videoCaptionBand = new CaptionSettingsRepo(db).get();
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
@@ -1666,8 +1687,13 @@ function start(): void {
             : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
+      videoCaptionsOf: (mediaId) => {
+        const track = videoCaptionsRepo.chosen(mediaId);
+        return track ? { track, size: videoCaptionBand.size, place: videoCaptionBand.place } : null;
+      },
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
       pictureLook: (mediaId) => pictureLook(mediaId),
+      pictureOpaque: (mediaId) => pictureOpaque(mediaId),
       // The picture-in-picture box (Session 50): what it holds, from the main process's own lists.
       mediaKind: (mediaId) => mediaKind(mediaId),
       windows: (id) => liveWindows?.offeredWindow(id) ?? null,
@@ -1682,6 +1708,8 @@ function start(): void {
       // How the files sounding play (Session 55, Part 7): each one's even loudness, and the music stepping aside.
       soundOf: (mediaId) => soundOf(mediaId),
       stepsAside: () => stepsAside,
+      // The operator's Audio and Video levels and mutes (X33).
+      levels: () => soundLevels.levels(),
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
@@ -1896,12 +1924,62 @@ function start(): void {
       }),
     );
   pictureLook = (mediaId) => screenLook(mediaId);
+  // Which pictures can draw no see-through pixel (X11, media/see-through.ts), only where Chromium draws without a
+  // graphics chip (only there do the screens back a moving slide; with one the state stays as it was): each file's first
+  // bytes read once, by its contents, off the main thread's way; the screens hear of one as soon as it is read.
+  const seeThrough = new Map<string, boolean | 'reading'>();
+  pictureOpaque = (mediaId) => {
+    if (warmsUp(gpuStatus())) return false;
+    const found = media.kindAndFile(mediaId);
+    const sha256 = media.file(mediaId)?.sha256 ?? null;
+    if (found?.kind !== 'image' || found.missing || found.path === '' || sha256 === null) return false;
+    const known = seeThrough.get(sha256);
+    if (known === undefined) {
+      seeThrough.set(sha256, 'reading');
+      const file = isAbsolute(found.path) ? found.path : join(mediaDir, found.path);
+      void pictureCannotSeeThrough(file).then((opaque) => {
+        seeThrough.set(sha256, opaque);
+        if (opaque) engine.refreshPictures();
+      });
+    }
+    return known === true;
+  };
   mediaMarkers = (mediaId, itemId) => {
     const marks = media.markersOf(mediaId);
     return marks && itemId && trimmedVideos.playsFull(itemId, mediaId, marks)
       ? { ...marks, startMs: null, endMs: null }
       : marks;
   };
+  const captionFileReader = new CaptionFileReader(spawnImportWorker);
+  stops.add('video-captions', () => {
+    captionFileReader.close();
+  });
+  registerVideoCaptionIpc({
+    fromOperator,
+    repo: videoCaptionsRepo,
+    reader: captionFileReader,
+    write: sourceWrite(
+      libraryDb,
+      () => importer?.giveWay() ?? { ready: Promise.resolve(), done: () => undefined },
+    ),
+    pick: async (event) => {
+      const parent = BrowserWindow.fromWebContents(event.sender);
+      const options = {
+        title: 'Add a Caption File',
+        buttonLabel: 'Add Caption File',
+        properties: ['openFile'] as 'openFile'[],
+        filters: [{ name: 'Captions (SRT or WebVTT)', extensions: ['srt', 'vtt'] }],
+      };
+      const picked = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options);
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+    changed: (mediaId) => {
+      engine.refreshVideoCaptions();
+      sendToOperator(IPC.videoCaptions.changed, { mediaId, view: videoCaptionsRepo.view(mediaId) });
+    },
+  });
   // Playback markers (Session 14): kept with the file; what plays it follows at once.
   handle(IPC.media.markers, (_e, mediaId) =>
     typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
@@ -2359,6 +2437,8 @@ function start(): void {
   // Show a Window… and the window for Zoom (Session 48): made with the stream, below.
   let liveWindows: LiveWindowService | null = null;
   let zoomWindow: ZoomWindow | null = null;
+  // Video out (x30): the stream's picture to other software, made with the stream, below.
+  let videoOutService: VideoOutService | null = null;
   const screens = new ScreensService(
     screenRepo,
     manager,
@@ -3044,6 +3124,7 @@ function start(): void {
     },
     programChanged: () => {
       zoomWindow?.programChanged();
+      videoOutService?.programChanged();
     },
     log: (level, message) => {
       if (level === 'warn') log.warn(message);
@@ -3115,6 +3196,8 @@ function start(): void {
     },
     onFinalPhrase: (phrase) => streaming.recordCaption(phrase),
     changed: (view) => {
+      videoCaptionBand = view.settings;
+      engine.refreshVideoCaptions();
       sendToOperator(IPC.captions.changed, view);
     },
     log,
@@ -3190,6 +3273,50 @@ function start(): void {
   stops.add('window for Zoom', () => {
     zoom.close();
   });
+
+  // ---- video out (x30): the stream's picture to other software ---------------------
+  // Off until someone turns it on (then kept over a restart). On, the stream's page is kept open and its own capture
+  // gives each frame to the video-out process as well; frames never pass through here (src/main/video-out/).
+  const videoOut = new VideoOutService({
+    readSetting: () => settings.get('videoOut'),
+    writeSetting: (value) => {
+      settings.set('videoOut', value);
+    },
+    sender: () =>
+      videoOutSender({
+        standIn: sw('DRASHTI_TEST_VIDEO_OUT_STAND_IN') ?? null,
+        platform: process.platform,
+        arch: process.arch,
+        packaged: packaged(),
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath(),
+      }),
+    holdProgram: (on) => {
+      streaming.setVideoOut(on);
+    },
+    pairProgram: (port) => streaming.pairVideoOut(port),
+    channel: videoOutChannel,
+    spawnWorker: () =>
+      spawnVideoOutWorker((line) => {
+        log.info(`[video out] ${line}`);
+      }),
+    log: (level, line) => {
+      if (level === 'warn') log.warn(line);
+      else log.info(line);
+    },
+    changed: (status) => {
+      sendToOperator(IPC.stream.videoOutChanged, status);
+    },
+    now: Date.now,
+    later: (run, ms) => {
+      setTimeout(run, ms).unref();
+    },
+  });
+  videoOutService = videoOut;
+  videoOut.start();
+  stops.add('video out', () => {
+    videoOut.close();
+  });
   // A passage fits where the live Look shows it: audience and key and fill groups, and the stream's
   // lower third while it is on air or recording in its Camera layout.
   passageTargets = () => {
@@ -3245,6 +3372,7 @@ function start(): void {
   let drainSourceEdits: () => Promise<void> = () => Promise.resolve();
   let cancelPdfCopies: () => void = () => undefined;
   let drainPdfCopies: () => Promise<void> = () => Promise.resolve();
+  let drainKirtanExports: () => Promise<void> = () => Promise.resolve();
   // Simple Mode's playlist (Session 55, Part 18): the playlist open in Pro Mode when Drashti switched to Simple Mode, or
   // a new one when there was none; since Session 56 whichever its window opens after that (simple-playlist.ts).
   const simplePlaylist = new SimplePlaylist({
@@ -3458,7 +3586,13 @@ function start(): void {
     stop: async () => {
       pdfPictures.stopEditable();
       pdfCopies.stop();
-      await Promise.all([documentReaders.stop(), drainSourceEdits(), pdfGeometry.stop(), drainPdfCopies()]);
+      await Promise.all([
+        documentReaders.stop(),
+        drainSourceEdits(),
+        pdfGeometry.stop(),
+        drainPdfCopies(),
+        drainKirtanExports(),
+      ]);
       // A bounded retainOutput fallback is not confirmation that an owned writer/process stopped.
       return !sourceOutputQuarantined && pdfGeometry.exitConfirmed;
     },
@@ -3629,6 +3763,7 @@ function start(): void {
       // so one whose background it is puts it up from now on (Session 52: while it is missing, the background stays
       // as it was), and the slide up names it as missing no more.
       slides.invalidate();
+      engine.refreshVideoCaptions();
       engine.refreshFiles();
       engine.refreshNext();
       libraryChanged(true);
@@ -3700,6 +3835,9 @@ function start(): void {
     edits.delete(c);
   // The slide editor's picture import joins the same queue.
   edits.delete(IPC.slideEditor.addPicture);
+  // These wait for the write lock themselves, after the file dialog and background reading have ended.
+  edits.delete(IPC.videoCaptions.add);
+  edits.delete(IPC.videoCaptions.select);
   setGiveWay((channel) => {
     if (imports.activeRunId === null || !edits.has(channel)) return null;
     // Usually the lock is free (the import holds it only while it writes a group): go at once.
@@ -3859,6 +3997,43 @@ function start(): void {
     fromOperator(e) && typeof on === 'boolean'
       ? setMusicStepsAside(on)
       : { ok: false as const, message: 'Only the operator window can change Audio’s switches.' },
+  );
+  // The operator's Audio and Video levels and mutes (X33): every sound plays at them at once, in the hall and the stream.
+  /** A level is said in the log once it has stayed put a moment (a drag sends several a second). */
+  let levelLogged: ReturnType<typeof setTimeout> | null = null;
+  const levelsChanged = (result: SoundLevelsResult, what: string | null): SoundLevelsResult => {
+    if (!result.ok) return result;
+    engine.refreshSound();
+    if (what !== null) log.info(`Sound: ${what}`);
+    else {
+      if (levelLogged) clearTimeout(levelLogged);
+      levelLogged = setTimeout(() => {
+        levelLogged = null;
+        const { audio, video } = soundLevels.levels();
+        log.info(
+          `Sound: Audio at ${String(Math.round(audio.level * 100))} %, Video at ${String(Math.round(video.level * 100))} %`,
+        );
+      }, 1000);
+    }
+    return result;
+  };
+  stops.add('sound levels log', () => {
+    if (levelLogged) clearTimeout(levelLogged);
+  });
+  const levelsRefused = {
+    ok: false as const,
+    message: 'Only the operator window can change the sound’s levels.',
+  };
+  handle(IPC.sound.setLevel, (e, kind, level) =>
+    fromOperator(e) ? levelsChanged(soundLevels.setLevel(kind, level), null) : levelsRefused,
+  );
+  handle(IPC.sound.setMuted, (e, kind, muted) =>
+    fromOperator(e)
+      ? levelsChanged(
+          soundLevels.setMuted(kind, muted),
+          `${kind === 'video' ? 'Video' : 'Audio'} ${muted === true ? 'muted' : 'sound on again'}`,
+        )
+      : levelsRefused,
   );
   handle(IPC.sound.setEven, (e, mediaId, on) => {
     if (
@@ -4214,7 +4389,15 @@ function start(): void {
     }),
   );
   handle(IPC.engine.snapshot, () => engine.snapshot());
-  handle(IPC.engine.command, (event, command) => runEngineCommand(engine, command, fromOperator(event)));
+  let controllersHaveActions = () => false;
+  handle(IPC.engine.command, (event, command, seen) =>
+    runEngineCommand(
+      engine,
+      command,
+      fromOperator(event),
+      controllersHaveActions() ? (seen ?? null) : undefined,
+    ),
+  );
   // The deck slide the operator points at (C3, Session 58: Q57-26): its first clip loaded ahead, where a click on its
   // row starts it, by every screen that loads what comes next (each output's Preloader, a node's too), never while
   // this computer is short of memory (main/point-ahead.ts).
@@ -4475,6 +4658,33 @@ function start(): void {
     contentChanged([id]);
     log.info('Library: a QR-code slide made');
     return { ok: true, id };
+  });
+  const bundleExporter = new KirtanBundleExporter({
+    spawn: spawnImportWorker,
+    dbFile: libraryFile(),
+    mediaDir,
+    schemaVersion: LATEST_VERSION,
+    onAir: () => streaming.inUse() || testOnAir,
+  });
+  drainKirtanExports = () => bundleExporter.stop();
+  stops.add('kirtan bundle exports', () => bundleExporter.stop());
+  registerKirtanBundleIpc({
+    fromOperator,
+    canExport: () => mode === 'pro' && documentQuit?.closing !== true,
+    exporter: bundleExporter,
+    pickOutput: async () => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export kirtan bundle',
+        defaultPath: join(app.getPath('documents'), 'Kirtans.drashti-kirtans'),
+        buttonLabel: 'Save bundle',
+        filters: [{ name: 'Drashti kirtan bundle', extensions: ['drashti-kirtans'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      if (isInside(userDataDir, picked.filePath))
+        throw new Error('Choose a folder outside Drashti’s data folder.');
+      return picked.filePath;
+    },
   });
   registerKirtansIpc({
     presentations,
@@ -4759,10 +4969,23 @@ function start(): void {
         settings.set('links.folder', folder);
       },
     },
-    pickFolder: async (current) => {
+    captionPreferences: {
+      get: () => {
+        const folder = settings.get('links.captionsFolder');
+        return {
+          enabled: settings.get('links.captions') !== false,
+          folder: typeof folder === 'string' && isAbsolute(folder) ? folder : null,
+        };
+      },
+      set: (value) => {
+        settings.set('links.captions', value.enabled);
+        settings.set('links.captionsFolder', value.folder);
+      },
+    },
+    pickFolder: async (current, target) => {
       if (!operatorWindow) return null;
       const picked = await dialog.showOpenDialog(operatorWindow, {
-        title: 'Save Downloads In',
+        title: target === 'captions' ? 'Captions for Learning' : 'Save Downloads In',
         message: 'Choose where the downloaded files are saved. Drashti never moves or deletes them.',
         defaultPath: current,
         buttonLabel: 'Choose',
@@ -4858,12 +5081,12 @@ function start(): void {
     message: 'Only the operator window can import from a link.',
   };
   handle(IPC.links.view, () => links.view());
-  handle(IPC.links.start, (e, text, audio, intoOpenPlaylist) =>
+  handle(IPC.links.start, (e, text, audio, intoOpenPlaylist, options) =>
     fromOperator(e) &&
     typeof text === 'string' &&
     typeof audio === 'boolean' &&
     typeof intoOpenPlaylist === 'boolean'
-      ? links.start(text, audio, intoOpenPlaylist)
+      ? links.start(text, audio, intoOpenPlaylist, options)
       : notLinksOperator,
   );
   handle(IPC.links.look, (e, kind, link) =>
@@ -4871,7 +5094,9 @@ function start(): void {
       ? links.look(kind, link)
       : notLinksOperator,
   );
-  handle(IPC.links.pickFolder, (e) => (fromOperator(e) ? links.pickFolder() : notLinksOperator));
+  handle(IPC.links.pickFolder, (e, target) =>
+    fromOperator(e) ? links.pickFolder(target) : notLinksOperator,
+  );
   handle(IPC.links.download, (e, choice) => (fromOperator(e) ? links.download(choice) : notLinksOperator));
   handle(IPC.links.stop, (e) => (fromOperator(e) ? links.stop() : notLinksOperator));
   handle(IPC.links.reset, (e) => (fromOperator(e) ? links.reset() : notLinksOperator));
@@ -5435,6 +5660,28 @@ function start(): void {
   network = net;
   net.resume();
   stops.add('network', () => net.close());
+  const osc = new OscService({
+    settings: { get: (key) => settings.get(key), set: laterSetting },
+    letIn: isLetIn,
+    canConfigure: () => mode === 'pro',
+    run: (action) => net.runShowAction(action).status === 200,
+    changed: (status) => sendToOperator(IPC.osc.changed, status),
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  void osc.resume();
+  stops.add('OSC', () => osc.close());
+  handle(IPC.osc.status, (e) => {
+    if (!fromOperator(e)) throw new Error('Only the operator window can read OSC settings.');
+    return osc.status();
+  });
+  handle(IPC.osc.configure, (e, settings) =>
+    fromOperator(e)
+      ? osc.configure(settings)
+      : { ok: false as const, message: 'Only the operator window can change OSC settings.' },
+  );
   // On air or off, the phones' pieces come slower or at full speed again (Session 54).
   phoneFiles.watch(() => {
     net.uploadsChanged();
@@ -5558,6 +5805,7 @@ function start(): void {
       rev: () => engine.rev,
       session: engine.session,
     },
+    runShowAction: (command, who) => net.runShowAction({ op: 'command', args: command }, who),
     wanted: (state, everything) => wanted.list(state, everything),
     mediaFile: (mediaId) => wanted.source(mediaId, mediaDir),
     onAir: () => streaming.inUse(),
@@ -5644,6 +5892,13 @@ function start(): void {
   handle(IPC.nodes.newIdentity, (e) => (fromOperator(e) ? nodes.newIdentity() : notNodesOperator));
   handle(IPC.nodes.everything, (e, id, on) =>
     fromOperator(e) ? nodes.setEverything(id, on) : notNodesOperator,
+  );
+  controllersHaveActions = () => nodes.hasControllerActions();
+  handle(IPC.nodes.setControllerAreas, (e, id, areas) =>
+    fromOperator(e) ? nodes.setControllerAreas(id, areas) : notNodesOperator,
+  );
+  handle(IPC.nodes.setController, (e, id, on) =>
+    fromOperator(e) ? nodes.setController(id, on) : notNodesOperator,
   );
   handle(IPC.nodes.reload, (e, nodeId, screenId) => {
     if (!fromOperator(e)) return notNodesOperator;
@@ -6567,6 +6822,12 @@ function start(): void {
     return null;
   });
   handle(IPC.zoom.program, (e) => (zoom.isZoomPage(e.sender) ? zoom.program() : null));
+  handle(IPC.stream.videoOut, () => videoOut.status());
+  handle(IPC.stream.setVideoOut, (e, raw) =>
+    fromOperator(e) && mode === 'pro'
+      ? videoOut.set(raw)
+      : { ok: false as const, message: 'Only the operator window, in Pro Mode, can change video out.' },
+  );
   // The screens' pages only: an output, the stream's page, and the operator window's pictures of them.
   const screenPage = (e: IpcMainInvokeEvent) =>
     fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined || streaming.isProgram(e.sender);
@@ -7855,6 +8116,12 @@ function start(): void {
         { what: 'the drop folder', stop: () => dropFolder.stop() },
         { what: 'downloads', stop: () => links.close() },
         { what: 'imports', stop: () => imports.stop() },
+        {
+          what: 'kirtan bundle exports',
+          stop: () => {
+            void bundleExporter.stop();
+          },
+        },
         { what: 'conversions', stop: () => conversions.close() },
       ],
       every: (ms, run) => {
@@ -7871,6 +8138,7 @@ function start(): void {
   );
   onAccessChange(() => {
     net.accessChanged();
+    void osc.accessChanged();
   });
   // Each presentation put up, counted for the Access List: never which.
   engine.onChange(showCounter((kind) => behind?.service.count(kind)));

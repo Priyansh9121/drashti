@@ -1,4 +1,5 @@
 import type { Db } from '../db/database';
+import { VideoCaptionsRepo } from '../db/video-captions';
 
 /*
  * After a conversion, everything that used the original uses the converted
@@ -155,6 +156,7 @@ function swapDecks(db: Db, from: string, to: string, only?: readonly string[]): 
 /** Point everything that uses `from` at `to` (one transaction); returns what moved. */
 export function moveMedia(db: Db, from: string, to: string): Moved {
   return db.transaction((): Moved => {
+    new VideoCaptionsRepo(db).copy(from, to);
     const ids = (sql: string) => (db.prepare(sql).all(from) as { id: string }[]).map((r) => r.id);
     const cues = ids('SELECT id FROM slide_cues WHERE media_id = ?');
     const items = ids('SELECT id FROM playlist_items WHERE media_id = ?');

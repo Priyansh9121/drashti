@@ -20,6 +20,8 @@ type RawFormat = 'I420' | 'NV12' | 'BGRA' | 'RGBA';
 
 let preview: MessagePort | null = null;
 let encoder: MessagePort | null = null;
+/** Video out's port (x30): each frame raw, as the encoder gets it, when video out is on (src/main/video-out/). */
+let videoOut: MessagePort | null = null;
 let track: MediaStreamTrack | null = null;
 let soundReader: ReadableStreamDefaultReader<AudioData> | null = null;
 let size = { width: 1920, height: 1080 };
@@ -75,6 +77,22 @@ let latestAt = 0;
 
 /** Whether the encoder takes the page's frames now. */
 const encoderTakes = (): boolean => onScreen || waitedOut;
+
+/*
+ * Video out (x30): the page's frames to other software, from this same capture, on a port of its own. It takes them as
+ * the encoder does (once the show is on screen, or SHOW_WAIT_MS after its port came, waited for on its own), but never
+ * holds the capture: a frame that comes while the one before is still on its way to video out is let go, never
+ * queued, so the encoder's frames and the preview's are as they were.
+ */
+/** A frame on its way to video out. */
+let videoOutBusy = false;
+let videoOutFormat = '';
+let videoOutFrames = 0;
+let videoOutFailed = false;
+/** The show was not on screen SHOW_WAIT_MS after video out's port came: it takes the page as it is. */
+let videoOutWaited = false;
+let videoOutWait: ReturnType<typeof setTimeout> | null = null;
+const videoOutTakes = (): boolean => onScreen || videoOutWaited;
 
 /**
  * Tests only (DRASHTI_TEST_STREAM_PROBE, never when packaged: windows/renderer.ts): the light of each frame given to the
@@ -201,6 +219,43 @@ async function sendFrame(frame: VideoFrame): Promise<void> {
   if (probe) await probeFrame(frame);
 }
 
+/** One frame, raw, for video out (as for the encoder): left unsent if video out stopped or changed meanwhile. */
+async function sendVideoOut(frame: VideoFrame, port: MessagePort): Promise<void> {
+  const { format, convert } = rawFormat(frame);
+  const rect = frame.visibleRect ?? { x: 0, y: 0, width: frame.codedWidth, height: frame.codedHeight };
+  const options: VideoFrameCopyToOptions = convert ? { format: 'RGBA', rect } : { rect };
+  const data = new ArrayBuffer(frame.allocationSize(options));
+  await frame.copyTo(data, options);
+  if (port !== videoOut) return;
+  const key = `${format}:${rect.width}x${rect.height}`;
+  if (key !== videoOutFormat) {
+    videoOutFormat = key;
+    port.postMessage({ kind: 'format', width: rect.width, height: rect.height, format });
+  }
+  port.postMessage({ kind: 'video', data });
+  if (++videoOutFrames === 1) say(`the first frame went to video out (${key})`);
+}
+
+/** Give video out this frame (its own copy, closed here) unless one is still on its way: then it is let go. */
+function toVideoOut(frame: VideoFrame): void {
+  const port = videoOut;
+  if (!port || videoOutBusy) {
+    frame.close();
+    return;
+  }
+  videoOutBusy = true;
+  void sendVideoOut(frame, port)
+    .catch((error: unknown) => {
+      if (videoOutFailed) return;
+      videoOutFailed = true;
+      say(`a frame could not go to video out: ${why(error)}`);
+    })
+    .finally(() => {
+      frame.close();
+      videoOutBusy = false;
+    });
+}
+
 function keepLatest(frame: VideoFrame | null): void {
   latest?.close();
   latest = frame;
@@ -309,6 +364,7 @@ async function capture(): Promise<void> {
       });
     }
     if (encoder && encoderTakes()) await toEncoder(frame);
+    if (videoOut && videoOutTakes()) toVideoOut(frame.clone());
     frame.close();
   }
   if (mine === generation) {
@@ -320,7 +376,7 @@ async function capture(): Promise<void> {
 }
 
 function wanted(): boolean {
-  return preview !== null || encoder !== null;
+  return preview !== null || encoder !== null || videoOut !== null;
 }
 
 function update(): void {
@@ -354,6 +410,29 @@ function handOver(): void {
   } else wantFrame();
 }
 
+/** Video out's port came, or the show is on screen: the newest frame at once if it shows the show, else a repaint. */
+function handOverVideoOut(): void {
+  if (!videoOut) return;
+  if (latest && (videoOutWaited || latestAt >= onScreenAt)) toVideoOut(latest.clone());
+  else wantFrame();
+}
+
+/** Video out waits for the show to be on screen, SHOW_WAIT_MS at most (then it takes the page as it is). */
+function waitForShowVideoOut(): void {
+  if (videoOutWait) return;
+  say('video out waits for the show to be on screen');
+  // eslint-disable-next-line no-restricted-syntax -- capture's plumbing: the longest video out waits for the show, never a frame drawn
+  videoOutWait = setTimeout(() => {
+    videoOutWait = null;
+    if (onScreen || !videoOut) return;
+    videoOutWaited = true;
+    say(
+      `the show was not on screen ${String(SHOW_WAIT_MS / 1000)} s after video out’s port came: it takes the page as it is`,
+    );
+    handOverVideoOut();
+  }, SHOW_WAIT_MS);
+}
+
 /** The encoder waits for the show to be on screen, SHOW_WAIT_MS at most (then it takes the page as it is). */
 function waitForShow(): void {
   if (showWait) return;
@@ -380,6 +459,11 @@ export function showOnScreen(): void {
     clearTimeout(showWait);
     showWait = null;
   }
+  if (videoOutWait) {
+    clearTimeout(videoOutWait);
+    videoOutWait = null;
+  }
+  handOverVideoOut();
   if (!encoder) return;
   say('the show is on screen: the encoder takes the frames from now');
   handOver();
@@ -432,6 +516,15 @@ export function startCapture(
       // The picture as it stands, at once, once the show is on screen (else from then).
       if (encoderTakes()) handOver();
       else waitForShow();
+    } else if (data?.drashtiStreamPort === 'video-out') {
+      say(`video out’s port arrived (${track ? 'capturing' : 'no capture yet'})`);
+      videoOut?.close();
+      videoOut = port;
+      videoOutFormat = '';
+      videoOutFrames = 0;
+      videoOutFailed = false;
+      if (videoOutTakes()) handOverVideoOut();
+      else waitForShowVideoOut();
     } else return;
     port.start();
     update();
@@ -465,6 +558,20 @@ export function stopEncoder(): void {
   encoder = null;
   void soundReader?.cancel();
   soundReader = null;
+  update();
+}
+
+/** Video out is off: frames stop going to its port (the capture stops when nothing else wants it). */
+export function stopVideoOut(): void {
+  if (!videoOut) return;
+  say('video out stops');
+  videoOut.close();
+  videoOut = null;
+  if (videoOutWait) {
+    clearTimeout(videoOutWait);
+    videoOutWait = null;
+  }
+  videoOutWaited = false;
   update();
 }
 

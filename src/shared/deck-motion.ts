@@ -148,11 +148,22 @@ interface DeckShape extends Omit<DeckSplit, 'axis'> {
 }
 
 type DeckWipe =
-  | { edge: DeckEffectDirection; fraction: number }
-  | DeckSplit
-  | DeckShape
-  | { spokes: number; amount: number }
-  | { bars: NonNullable<DeckEffect['bars']>; amount: number };
+  { edge: DeckEffectDirection; fraction: number } | DeckSplit | DeckShape | DeckSpokes | DeckBars;
+
+/** Wheel at one moment: how many spokes, how far through it is, and whether it is leaving. */
+interface DeckSpokes {
+  spokes: number;
+  progress: number;
+  leaving: boolean;
+}
+
+/** Random Bars at one moment: its hair-thin bars' way and how many there are (barCount), how far through it is. */
+interface DeckBars {
+  bars: NonNullable<DeckEffect['bars']>;
+  count: number;
+  progress: number;
+  leaving: boolean;
+}
 
 export interface DeckMotionFrame {
   opacity: number;
@@ -324,8 +335,12 @@ export function deckMotionFrame(
         leaving: !entering,
         progress,
       };
-    if (effect.kind === 'wheel') frame.wipe = { spokes: effect.spokes ?? 1, amount };
-    if (effect.kind === 'bars') frame.wipe = { bars: effect.bars ?? 'horizontal', amount };
+    if (effect.kind === 'wheel') frame.wipe = { spokes: effect.spokes ?? 1, progress, leaving: !entering };
+    if (effect.kind === 'bars') {
+      const kind = effect.bars ?? 'horizontal';
+      const count = barCount(kind === 'horizontal' ? bounds.height : bounds.width);
+      frame.wipe = { bars: kind, count, progress, leaving: !entering };
+    }
     if (effect.kind === 'zoom') {
       const away = effect.zoomAway ? zoomedAway(effect.zoomAway, bounds, slide) : null;
       frame.scale *= amount + Math.max(0, away?.scale ?? effect.scale ?? 0) * (1 - amount);
@@ -353,38 +368,219 @@ function polygon(points: readonly Point[], frame: Rect, evenodd = false): string
   return `polygon(${evenodd ? 'evenodd, ' : ''}${list.join(', ')})`;
 }
 
-/** Wheel's spokes, each sweeping clockwise from twelve o'clock (a spoke's own share of the turn). */
-function spokes(count: number, target: Rect, amount: number): Point[] {
+/**
+ * How wide PowerPoint draws Wheel's soft edge, as a share of each spoke's turn in the box's own proportions: its own
+ * movie of run 6 (19 Nov 2026), 1 to 8 spokes at 700 ms and 2 s, 10-90 % across 40-42 degrees of one spoke's whole turn.
+ */
+const WHEEL_SOFTNESS = 0.138;
+/** How many steps Wheel's mask draws its soft edge in (in true angles the even sweep is curved). */
+const WHEEL_STEPS = 6;
+
+/**
+ * How much of a shape coming in or leaving by Wheel shows at (u, v), each -1 to 1 across the box from its middle:
+ * PowerPoint's soft edge as its movie of run 6 shows it, WHEEL_SOFTNESS of a spoke's turn wide in the box's own
+ * proportions, half-way where the sweep has gone. Coming in, what the edge has passed shows; leaving, it is hidden.
+ * 1 for any other wipe, or none.
+ */
+export function deckWheelShows(wipe: DeckWipe | null, u: number, v: number): number {
+  if (!wipe || !('spokes' in wipe)) return 1;
+  // Clockwise from twelve o'clock in the square's proportions, a share of the turn, then of its own spoke's.
+  const turn = (Math.atan2(u, -v) / (2 * Math.PI) + 1) % 1;
+  return wheelShows(wipe, (turn * wipe.spokes) % 1);
+}
+
+/** How much shows `into` of the way through a spoke's own turn (0 to 1). */
+function wheelShows(wipe: DeckSpokes, into: number): number {
+  const reach = (1 + WHEEL_SOFTNESS) * wipe.progress - WHEEL_SOFTNESS / 2;
+  const passed = Math.min(1, Math.max(0, (reach - into) / WHEEL_SOFTNESS + 0.5));
+  return wipe.leaving ? 1 - passed : passed;
+}
+
+/**
+ * Wheel's soft edge as a mask of a part drawn at `frame`, its spokes about `target`'s middle: one conic gradient, its
+ * stops at the true angles of the square's even sweep stretched to the box, the soft edge in WHEEL_STEPS steps. '' where
+ * all of it shows.
+ */
+function wheelMask(wipe: DeckSpokes, target: Rect, frame: Rect): string {
+  if (!(frame.width > 0) || !(frame.height > 0)) return '';
+  const reach = (1 + WHEEL_SOFTNESS) * wipe.progress - WHEEL_SOFTNESS / 2;
+  const from = Math.min(1, Math.max(0, reach - WHEEL_SOFTNESS / 2));
+  const to = Math.min(1, Math.max(0, reach + WHEEL_SOFTNESS / 2));
+  if (wipe.leaving ? to <= 0 : from >= 1) return '';
+  // A share of the whole turn in the square's proportions as a true angle about the box's middle, in step with it.
+  const degrees = (turn: number) => {
+    const a = 2 * Math.PI * turn;
+    const d = (Math.atan2(target.width * Math.sin(a), target.height * Math.cos(a)) * 180) / Math.PI;
+    return d + 360 * Math.round(turn - d / 360);
+  };
+  const stop = (into: number, spoke: number) => {
+    const shows = Math.round(wheelShows(wipe, into) * 10_000) / 10_000;
+    const angle = Math.round(degrees((spoke + into) / wipe.spokes) * 1000) / 1000;
+    return `rgb(0 0 0 / ${String(shows)}) ${String(angle)}deg`;
+  };
+  const stops: string[] = [];
+  for (let s = 0; s < wipe.spokes; s++) {
+    stops.push(stop(0, s));
+    for (let k = 0; k <= WHEEL_STEPS; k++) stops.push(stop(from + ((to - from) * k) / WHEEL_STEPS, s));
+    stops.push(stop(1, s));
+  }
+  const at = (value: number, origin: number, size: number) =>
+    `${String(Math.round(((value - origin) / size) * 100_000) / 1000)}%`;
+  const cx = at(target.x + target.width / 2, frame.x, frame.width);
+  const cy = at(target.y + target.height / 2, frame.y, frame.height);
+  return `conic-gradient(from 0deg at ${cx} ${cy}, ${stops.join(', ')})`;
+}
+
+/**
+ * Wheel's spokes, each sweeping clockwise from twelve o'clock (a spoke's own share of the turn) as PowerPoint's movie
+ * shows them (run 6): evenly in the box's own proportions (a square's sweep, stretched to the box's shape), its edge
+ * drawn hard where PowerPoint's soft edge is half-way, so as much shows. Coming in, a spoke shows what its edge has
+ * passed; leaving, its edge goes round the same way and hides what it passes.
+ */
+function spokes(count: number, target: Rect, progress: number, leaving: boolean): Point[] {
   const cx = target.x + target.width / 2;
   const cy = target.y + target.height / 2;
-  // A little past the corners, so the chords of the arc never cut into the shape.
-  const radius = Math.hypot(target.width, target.height) * 0.55 + 1;
-  const sweep = ((2 * Math.PI) / count) * amount;
-  const segments = Math.max(1, Math.ceil((72 * amount) / count));
+  // A square's half a side and a half again, stretched to the box: past its corners (the square's are 1.41 out), so
+  // the chords of the arc never cut into the shape.
+  const rx = target.width * 0.75 + 1;
+  const ry = target.height * 0.75 + 1;
+  const passed = Math.min(1, Math.max(0, (1 + WHEEL_SOFTNESS) * progress - WHEEL_SOFTNESS / 2));
+  const [from, to] = leaving ? [passed, 1] : [0, passed];
+  const segments = Math.max(1, Math.ceil((72 * (to - from)) / count));
   const points: Point[] = [];
   for (let s = 0; s < count; s++) {
-    const from = -Math.PI / 2 + (s * 2 * Math.PI) / count;
     points.push([cx, cy]);
     for (let i = 0; i <= segments; i++) {
-      const angle = from + (sweep * i) / segments;
-      points.push([cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)]);
+      const angle = ((2 * Math.PI) / count) * (s + from + ((to - from) * i) / segments);
+      points.push([cx + rx * Math.sin(angle), cy - ry * Math.cos(angle)]);
     }
   }
   return points;
 }
 
-/** Random Bars' fixed order: 48 bars, each one's turn a fixed shuffle (29 and 48 share no factor). */
-const BARS = 48;
-const BAR_TURN = Array.from({ length: BARS }, (_, i) => ((i * 29) % BARS) + 1);
+/*
+ * Random Bars as real PowerPoint's movie of run 6 shows it (19 Nov 2026; across and up and down, coming in and leaving,
+ * at 700 ms and 2 s, and twice over): the shape's rows of pixels each fade in (or out) evenly, half-way at moments
+ * spread as BARS_HALF_IN and BARS_HALF_OUT say, in a fixed order of PowerPoint's own, the same in every play. Its order
+ * can't be had (it goes by the shape's height in its own pixels): Drashti draws hair-thin bars (BAR_PX slide px each),
+ * each fading over BARS_FADE of the effect, half-way at the same moments in a fixed random order of Drashti's own, so as
+ * much of the shape shows at every moment (Q60-15, the owner's A: within 0.017 of the box at every frame of all ten).
+ */
+/** How long each bar takes to fade in or out, a share of the effect. */
+const BARS_FADE = 0.22;
+/**
+ * When PowerPoint's rows are half in, coming in: the earliest, every twentieth of them in turn, and the last (shares of
+ * the effect, run 6's 1,536 rows at 2 s).
+ */
+const BARS_HALF_IN = [
+  0.095, 0.164, 0.206, 0.253, 0.287, 0.325, 0.35, 0.38, 0.416, 0.449, 0.477, 0.513, 0.555, 0.595, 0.633,
+  0.668, 0.705, 0.741, 0.777, 0.817, 0.911,
+];
+/** The same leaving: when each row is half gone. */
+const BARS_HALF_OUT = [
+  0.092, 0.183, 0.223, 0.258, 0.298, 0.332, 0.368, 0.406, 0.446, 0.487, 0.524, 0.552, 0.585, 0.62, 0.65,
+  0.676, 0.714, 0.749, 0.798, 0.839, 0.906,
+];
+/** A bar's thickness, slide px (hair-thin), within as few and as many bars as these. */
+const BAR_PX = 3;
+const MIN_BARS = 48;
+const MAX_BARS = 240;
 
-function bars(kind: NonNullable<DeckEffect['bars']>, target: Rect, amount: number): Point[] {
+/** How many bars Random Bars draws across `length` slide px. */
+function barCount(length: number): number {
+  return Math.min(MAX_BARS, Math.max(MIN_BARS, Math.round(length / BAR_PX)));
+}
+
+/** A bar's place scrambled (MurmurHash3's finish): a fixed order that looks random. */
+function scrambled(place: number): number {
+  let x = Math.imul(place + 1, 0x9e3779b1);
+  x ^= x >>> 16;
+  x = Math.imul(x, 0x85ebca6b);
+  x ^= x >>> 13;
+  x = Math.imul(x, 0xc2b2ae35);
+  x ^= x >>> 16;
+  return x >>> 0;
+}
+
+const barTurns = new Map<number, number[]>();
+/** Each of `count` bars' turn (0 first): the same in every play. */
+function turnsOf(count: number): number[] {
+  const known = barTurns.get(count);
+  if (known) return known;
+  const turns = new Array<number>(count).fill(0);
+  Array.from({ length: count }, (_, place) => place)
+    .sort((a, b) => scrambled(a) - scrambled(b))
+    .forEach((place, turn) => {
+      turns[place] = turn;
+    });
+  barTurns.set(count, turns);
+  return turns;
+}
+
+/** How much of bar `bar` (0 at the top or left) shows. */
+function barShows(wipe: DeckBars, bar: number): number {
+  const halves = wipe.leaving ? BARS_HALF_OUT : BARS_HALF_IN;
+  const at = (((turnsOf(wipe.count)[bar] ?? 0) + 0.5) / wipe.count) * (halves.length - 1);
+  const k = Math.min(halves.length - 2, Math.floor(at));
+  const from = halves[k] ?? 0;
+  const half = from + ((halves[k + 1] ?? from) - from) * (at - k);
+  // Its fade about that moment, within the effect: nothing at its start, everything by its end.
+  const start = Math.min(1 - BARS_FADE, Math.max(0, half - BARS_FADE / 2));
+  const done = Math.min(1, Math.max(0, (wipe.progress - start) / BARS_FADE));
+  return wipe.leaving ? 1 - done : done;
+}
+
+/**
+ * How much of a shape coming in or leaving by Random Bars shows at `at` of the way along its bars' way (0 its top, or
+ * its left for bars up and down; 1 its bottom or right): its bar's share. 1 for any other wipe, or none.
+ */
+export function deckBarsShows(wipe: DeckWipe | null, at: number): number {
+  if (!wipe || !('bars' in wipe)) return 1;
+  return barShows(wipe, Math.min(wipe.count - 1, Math.max(0, Math.floor(at * wipe.count))));
+}
+
+/** Random Bars as a mask of a part drawn at `frame`: each run of bars showing alike one stop, as much as it shows. */
+function barsMask(wipe: DeckBars, target: Rect, frame: Rect): string {
+  const across = wipe.bars === 'horizontal';
+  const length = across ? frame.height : frame.width;
+  if (!(length > 0)) return '';
+  const origin = across ? target.y : target.x;
+  const size = across ? target.height : target.width;
+  const start = across ? frame.y : frame.x;
+  const at = (bar: number) =>
+    `${String(Math.round(((origin + (bar / wipe.count) * size - start) / length) * 100_000) / 1000)}%`;
+  const level = (bar: number) => Math.round(barShows(wipe, bar) * 100) / 100;
+  const stops: string[] = [];
+  let from = 0;
+  let shows = level(0);
+  for (let bar = 1; bar <= wipe.count; bar++) {
+    const next = bar < wipe.count ? level(bar) : Number.NaN;
+    if (next === shows) continue;
+    stops.push(`rgb(0 0 0 / ${String(shows)}) ${at(from)} ${at(bar)}`);
+    from = bar;
+    shows = next;
+  }
+  if (stops.length === 1 && level(0) === 1) return '';
+  return `linear-gradient(${across ? 'to bottom' : 'to right'}, ${stops.join(', ')})`;
+}
+
+/**
+ * Random Bars' bars drawn whole: as many as its fading bars show in all, in their turn (the first ones in, or the last
+ * ones still to go), as a polygon of slide px.
+ */
+function bars(wipe: DeckBars, target: Rect): Point[] {
+  let shown = 0;
+  for (let i = 0; i < wipe.count; i++) shown += barShows(wipe, i);
+  const whole = Math.round(shown);
+  const turns = turnsOf(wipe.count);
   const points: Point[] = [];
-  const across = kind === 'horizontal';
+  const across = wipe.bars === 'horizontal';
   const length = across ? target.height : target.width;
-  for (let i = 0; i < BARS; i++) {
-    if ((BAR_TURN[i] ?? BARS) > amount * BARS) continue;
-    const from = (length * i) / BARS;
-    const to = (length * (i + 1)) / BARS;
+  for (let i = 0; i < wipe.count; i++) {
+    const turn = turns[i] ?? 0;
+    if (wipe.leaving ? turn < wipe.count - whole : turn >= whole) continue;
+    const from = (length * i) / wipe.count;
+    const to = (length * (i + 1)) / wipe.count;
     // Each bar is joined to the next along the box's left (or top) edge, which adds nothing to what shows.
     if (across) {
       const top = target.y + from;
@@ -637,6 +833,8 @@ function shapeMasks(wipe: DeckShape, target: Rect, frame: Rect): { outer: string
  */
 export function deckWipeMask(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
   if (wipe && 'shape' in wipe) return shapeMasks(wipe, target, frame).outer;
+  if (wipe && 'bars' in wipe) return barsMask(wipe, target, frame);
+  if (wipe && 'spokes' in wipe) return wheelMask(wipe, target, frame);
   if (!wipe || !('axis' in wipe)) return '';
   const across = wipe.axis === 'x';
   const length = across ? frame.width : frame.height;
@@ -739,13 +937,21 @@ function around(target: Rect, inner: readonly Point[]): Point[] {
 }
 
 /**
- * A Shape's hard edge as a clip of one of a group's rendered parts drawn at `frame`, at the same slide position across
- * the whole group (`target`): its outline where PowerPoint's soft edge is half-way (deckShapeShows 0.5), as Session 57
- * drew every Shape. Drawn in place of the soft edge's masks where a page draws without a graphics chip
+ * A Shape's or Wheel's hard edge, or Random Bars' bars whole, as a clip of one of a group's rendered parts drawn at
+ * `frame`, at the same slide position across the whole group (`target`). A Shape's outline and Wheel's spokes where
+ * PowerPoint's soft edge is half-way (deckShapeShows and deckWheelShows 0.5), as Session 57 drew every Shape; as many
+ * bars as the fading ones show in all, in their turn. Drawn in place of their masks where a page draws without a graphics chip
  * (render/deck-target-paint.ts): there two masks of three gradients each on every moving Box, Plus and Diamond dropped
  * frames on a two-core PC while streaming (C1's review, HIGH-2). '' for any other wipe, or none.
  */
-export function deckShapeHardClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
+export function deckHardClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
+  if (wipe && 'spokes' in wipe)
+    return polygon(spokes(wipe.spokes, target, wipe.progress, wipe.leaving), frame);
+  if (wipe && 'bars' in wipe) {
+    const points = bars(wipe, target);
+    if (points.length === 0) return 'inset(50% 50% 50% 50%)';
+    return points.length === 4 * wipe.count ? '' : polygon(points, frame);
+  }
   if (!wipe || !('shape' in wipe)) return '';
   // Where the soft edge is half-way: SHAPE_SOFTNESS / 2 behind its leading side.
   const reach = (1 + SHAPE_SOFTNESS) * wipe.progress - SHAPE_SOFTNESS / 2;
@@ -758,16 +964,11 @@ export function deckShapeHardClip(wipe: DeckWipe | null, target: Rect, frame: Re
 }
 
 /**
- * Clip all of a group's rendered parts at the same slide position. A Split and a Shape are drawn by their masks
- * (deckWipeMask).
+ * Clip all of a group's rendered parts at the same slide position. A Split, a Shape, Wheel and Random Bars are drawn by
+ * their masks (deckWipeMask).
  */
 export function deckWipeClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
-  if (!wipe || 'shape' in wipe) return '';
-  if ('spokes' in wipe) return polygon(spokes(wipe.spokes, target, wipe.amount), frame);
-  if ('bars' in wipe) {
-    const points = bars(wipe.bars, target, wipe.amount);
-    return points.length > 0 ? polygon(points, frame) : 'inset(50% 50% 50% 50%)';
-  }
+  if (!wipe || 'shape' in wipe || 'bars' in wipe || 'spokes' in wipe) return '';
   if ('axis' in wipe) return '';
   const { edge, fraction } = wipe;
   const top = edge === 'up' ? percentage(target.y + target.height * fraction - frame.y, frame.height) : 0;

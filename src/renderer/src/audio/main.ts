@@ -2,7 +2,7 @@ import type { AudioDevice } from '../../../shared/audio';
 import { resolveOutput } from '../../../shared/audio';
 import type { EngineState } from '../../../shared/engine/state';
 import { playbackSpanMs, SOUND_LIMITS } from '../../../shared/media';
-import { musicAside, StepAside } from '../../../shared/sound';
+import { kindLevel, musicAside, soundGain, StepAside } from '../../../shared/sound';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { engineNow } from '../render/clock';
 import { startPlayback } from '../render/playback';
@@ -17,6 +17,10 @@ import { type Sound, soundMoved, soundsOf } from './sounds';
  * Session 55, Part 7 (shared/sound.ts): every sound goes through Web Audio, each through a gain of its own, so a file
  * plays at its even loudness (a quiet one made louder than an element's volume can) and the music steps aside under a
  * video with sound, fading over about a second. Its element's volume still carries its own volume and fades.
+ *
+ * X33: the operator's Audio and Video levels and mutes are in that gain too (shared/sound.ts soundGain, the one sum the
+ * stream's page plays by as well). Moving one only eases each gain there, in a few tens of milliseconds, so it never
+ * clicks, and never stops, starts again or moves a sound in its file.
  */
 
 interface Player {
@@ -91,9 +95,16 @@ const aside = new StepAside();
 let levels: ReturnType<typeof setInterval> | null = null;
 const meterSamples = new Float32Array(2048);
 
-/** Give a player's gain its level: its file's even gain, times the music's step aside for the music. */
+/**
+ * Give a player's gain its level: its file's even gain, times the music's step aside for the music, times its kind's
+ * level (Audio's or Video's, X33: 0 while muted).
+ */
 function setLevel(player: Player, musicLevel: number): void {
-  const value = Math.round((player.sound.gain ?? 1) * (player.sound.aside ? musicLevel : 1) * 1000) / 1000;
+  const state = useEngine.getState().state;
+  const value = Math.round(soundGain(player.sound, musicLevel, state) * 1000) / 1000;
+  // Where Web Audio could not be had, the file plays as it is (as before Part 7), and silent while its kind is muted
+  // or at 0 %: a mute always holds.
+  if (!player.level) player.el.muted = kindLevel(state, player.sound.kind) === 0;
   if (player.levelSet === value) return;
   const first = player.levelSet < 0;
   player.levelSet = value;
@@ -214,6 +225,8 @@ function play(state: EngineState | null): void {
     el.crossOrigin = 'anonymous';
     el.dataset['key'] = sound.key;
     el.dataset['mediaId'] = sound.mediaId;
+    // Which of the operator's levels it plays under (X33): for the tests and diagnostics.
+    el.dataset['kind'] = sound.kind;
     document.body.append(el);
     // Through its own gain to the chosen output (Part 7); straight out where Web Audio could not be had.
     const c = audioContext();

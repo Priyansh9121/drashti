@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
+import { ACCESS_LIST_URL } from '../src/shared/access-config';
 import type { AccessComputer, AccessGrant } from '../src/shared/access-protocol';
 import {
   ACCESS_LIST_DIR,
@@ -24,10 +25,13 @@ import {
  * Drashti is pointed at it by a test switch that a packaged Drashti ignores (src/main/access/client.ts).
  *
  * It answers as Google's web app does: a POST to …/exec is answered with a redirect to a one-time address
- * (Google's is on script.googleusercontent.com), whose GET gives the answer. An Approve or Reject link opens
- * a page with one button, as the list's own page has. A test can also make it say nothing, answer an error,
- * leave its answers unsigned, or change them on the way (`tamper`). `pageUrl` gives the list's own Approve or
- * Reject page (access-list/Link.html, as Apps Script makes it), whose button reaches the list as
+ * (Google's is on script.googleusercontent.com), whose GET gives the answer, each with Google's
+ * Access-Control-Allow-Origin: *, so a page on another site may read it. An Approve or Reject link opens the link page
+ * (access-list/page/index.html, x38), served from a second address on 127.0.0.1 as GitHub Pages serves it, a site of
+ * its own, with the stand-in's address in place of the list's: its calls reach the stand-in as they reach Google, and
+ * `linkCalls` says whether each carried a cookie (a sign-in). A test can also make it say nothing, answer an error,
+ * leave its answers unsigned, or change them on the way (`tamper`). `pageUrl` gives the page a link sent before x38
+ * opened on the web app itself (access-list/Link.html, as Apps Script makes it), whose button reaches the list as
  * google.script.run does.
  */
 
@@ -36,6 +40,10 @@ const LINK = '/macros/s/stand-in/link';
 const PAGE = '/macros/s/stand-in/page';
 const RUN = '/macros/s/stand-in/run';
 const ECHO = '/macros/echo';
+/** Where GitHub Pages serves the link page (core.js's own address, https://priyansh9121.github.io/drashti/access/). */
+const LINK_PAGE_PATH = '/drashti/access/';
+/** Google's answers may be read by a page on any site (the link page's calls). */
+const ANY_SITE = { 'access-control-allow-origin': '*' };
 
 export type StandInMode = 'answer' | 'silent' | 'error' | 'unsigned';
 
@@ -58,12 +66,17 @@ export interface AccessStandIn {
   redirect: boolean;
   /** Change each answer on its way (a forged or replayed answer). */
   tamper: ((answer: { payload: string; sig: string }) => { payload: string; sig: string }) | null;
+  /** Each call from the link page (x38), in order: read or answer, and whether it carried a cookie. */
+  linkCalls: { call: string; cookie: boolean }[];
   /**
    * The button on an Approve or Reject link's page, pressed (as the approver would), with a length and a mode
    * (Session 55: 'pro' or 'simple') when given; none given, the page's own first choices.
    */
   press(link: string, length?: string, mode?: string): LinkPage;
-  /** The list's own page (access-list/Link.html) for an Approve or Reject link, as the approver's browser opens it. */
+  /**
+   * The page a link sent before x38 opens (to the web app itself: access-list/Link.html, as Apps Script makes it), for
+   * this link's request. A link now opens the link page itself.
+   */
   pageUrl(link: string): string;
   /**
    * A grant for this Gmail on this computer, made the real way (asked for, approved by the link, the
@@ -122,6 +135,40 @@ const escapeHtml = (text: string): string =>
     /[&<>"']/gu,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
   );
+
+/**
+ * The link page (access-list/page/index.html) as the stand-in serves it: the stand-in's address in place of the list's
+ * built-in one, and in its Content-Security-Policy in place of Google's two script hosts.
+ */
+function linkPageHtml(list: string, origin: string): string {
+  const html = readFileSync(join(ACCESS_LIST_DIR, 'page', 'index.html'), 'utf8');
+  const builtIn = `data-list="${ACCESS_LIST_URL}"`;
+  const hosts = 'connect-src https://script.google.com https://script.googleusercontent.com;';
+  if (!html.includes(builtIn) || !html.includes(hosts))
+    throw new Error(
+      'The link page does not have the list’s address, or Google’s hosts, as the stand-in expects.',
+    );
+  return html.replace(builtIn, `data-list="${list}"`).replace(hosts, `connect-src ${origin};`);
+}
+
+/** Whether a POST's text is the link page's call (x38: JSON with `link`, never a `v` or an `op`), and which. */
+function linkCallOf(text: string): string | null {
+  try {
+    const raw = JSON.parse(text) as unknown;
+    if (
+      raw &&
+      typeof raw === 'object' &&
+      !Array.isArray(raw) &&
+      !('op' in raw) &&
+      !('v' in raw) &&
+      'link' in raw
+    )
+      return String(raw.link);
+  } catch {
+    // Not JSON: not the page's.
+  }
+  return null;
+}
 
 function linkHtml(page: LinkPage): string {
   const lines = page.lines.map((l) => `<p>${escapeHtml(l)}</p>`).join('');
@@ -190,15 +237,19 @@ export async function accessStandIn(o: TestListOptions = {}): Promise<AccessStan
         return;
       }
       if (req.method === 'POST' && url.pathname === EXEC) {
-        const text = answer(await body(req));
+        const asked = await body(req);
+        const call = linkCallOf(asked);
+        if (call !== null) standIn.linkCalls.push({ call, cookie: Boolean(req.headers.cookie) });
+        // The link page's calls are the page's, never Drashti's: not in `calls`, and never changed on the way.
+        const text = call === null ? answer(asked) : JSON.stringify(list.handle(asked));
         if (!standIn.redirect) {
-          res.writeHead(200, { 'content-type': 'application/json' });
+          res.writeHead(200, { 'content-type': 'application/json', ...ANY_SITE });
           res.end(text);
           return;
         }
         const key = randomBytes(12).toString('hex');
         echoes.set(key, text);
-        res.writeHead(302, { location: `${base}${ECHO}?user_content_key=${key}` });
+        res.writeHead(302, { location: `${base}${ECHO}?user_content_key=${key}`, ...ANY_SITE });
         res.end();
         return;
       }
@@ -206,7 +257,7 @@ export async function accessStandIn(o: TestListOptions = {}): Promise<AccessStan
         const key = url.searchParams.get('user_content_key') ?? '';
         const text = echoes.get(key);
         echoes.delete(key);
-        res.writeHead(text === undefined ? 404 : 200, { 'content-type': 'application/json' });
+        res.writeHead(text === undefined ? 404 : 200, { 'content-type': 'application/json', ...ANY_SITE });
         res.end(text ?? '');
         return;
       }
@@ -247,6 +298,26 @@ export async function accessStandIn(o: TestListOptions = {}): Promise<AccessStan
   base = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
   list.props.webAppUrl = `${base}${EXEC}`;
 
+  // The link page's own site (GitHub Pages for the real list): another address, so its calls cross sites as there.
+  const pages = createServer((req, res) => {
+    const path = new URL(req.url ?? '/', base).pathname;
+    if (req.method === 'GET' && (path === LINK_PAGE_PATH || path === `${LINK_PAGE_PATH}index.html`)) {
+      try {
+        const html = linkPageHtml(`${base}${EXEC}`, base);
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(html);
+      } catch {
+        res.writeHead(500);
+        res.end();
+      }
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  await new Promise<void>((resolve) => pages.listen(0, '127.0.0.1', resolve));
+  list.props.linkPage = `http://127.0.0.1:${String((pages.address() as AddressInfo).port)}${LINK_PAGE_PATH}`;
+
   const call = (
     op: string,
     computer: AccessComputer,
@@ -279,13 +350,14 @@ export async function accessStandIn(o: TestListOptions = {}): Promise<AccessStan
     mode: 'answer',
     redirect: true,
     tamper: null,
+    linkCalls: [],
     press: (link, length, mode) =>
       core.answerLink(list.env, {
         ...linkParams(link),
         ...(length === undefined ? {} : { length }),
         ...(mode === undefined ? {} : { mode }),
       }),
-    pageUrl: (link) => `${base}${PAGE}${new URL(link).search}`,
+    pageUrl: (link) => `${base}${PAGE}?${new URLSearchParams(linkParams(link)).toString()}`,
     grant: (gmail, computer, o = {}) => {
       if (core.gmailKey(gmail) === core.gmailKey(list.props.approverEmail)) {
         core.letOwnerIn(list.env);
@@ -311,6 +383,8 @@ export async function accessStandIn(o: TestListOptions = {}): Promise<AccessStan
     close: () =>
       new Promise((resolve) => {
         for (const res of held) res.destroy();
+        pages.closeAllConnections();
+        pages.close();
         server.closeAllConnections();
         server.close(() => {
           resolve();
