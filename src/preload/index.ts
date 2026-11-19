@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent, webUtils } from 'electron';
+import type { EngineSeen } from '../shared/controller-actions';
+import type { EngineMessage } from '../shared/engine/protocol';
 import type { DrashtiBridge } from '../shared/bridge';
 import type { EventChannel, EventContract, InvokeArgs, InvokeChannel, InvokeResult } from '../shared/ipc';
 import type { AppearanceNow } from '../shared/appearance/appearances';
@@ -33,6 +35,14 @@ const pageWindow = globalThis as unknown as {
 ipcRenderer.on(IPC.stream.port, (event, payload: { role: 'preview' | 'encoder' | 'speech' }) => {
   pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
 });
+
+let engineSeen: EngineSeen | undefined;
+const rememberEngine = (message: EngineMessage): void => {
+  if (message.kind === 'snapshot')
+    engineSeen = message.session ? { session: message.session, rev: message.rev } : undefined;
+  else if (engineSeen && message.rev === engineSeen.rev + 1) engineSeen = { ...engineSeen, rev: message.rev };
+  else if (engineSeen && message.rev > engineSeen.rev) engineSeen = undefined;
+};
 
 const bridge: DrashtiBridge = {
   app: {
@@ -223,10 +233,22 @@ const bridge: DrashtiBridge = {
     pathFor: (file) => webUtils.getPathForFile(file),
   },
   engine: {
-    onMessage: (listener) => on(IPC.engine.message, listener),
-    subscribe: () => invoke(IPC.engine.subscribe),
-    snapshot: () => invoke(IPC.engine.snapshot),
-    dispatch: (command) => invoke(IPC.engine.command, command),
+    onMessage: (listener) =>
+      on(IPC.engine.message, (message) => {
+        rememberEngine(message);
+        listener(message);
+      }),
+    subscribe: async () => {
+      const message = await invoke(IPC.engine.subscribe);
+      rememberEngine(message);
+      return message;
+    },
+    snapshot: async () => {
+      const message = await invoke(IPC.engine.snapshot);
+      rememberEngine(message);
+      return message;
+    },
+    dispatch: (command) => invoke(IPC.engine.command, command, engineSeen),
     pointAt: (target) => invoke(IPC.engine.pointAt, target),
   },
   library: {
@@ -448,12 +470,14 @@ const bridge: DrashtiBridge = {
     newIdentity: () => invoke(IPC.nodes.newIdentity),
     everything: (nodeId, on) => invoke(IPC.nodes.everything, nodeId, on),
     setController: (nodeId, on) => invoke(IPC.nodes.setController, nodeId, on),
+    setControllerAreas: (nodeId, areas) => invoke(IPC.nodes.setControllerAreas, nodeId, areas),
     reload: (nodeId, screenId) => invoke(IPC.nodes.reload, nodeId, screenId),
     identify: (nodeId, displayId) => invoke(IPC.nodes.identify, nodeId, displayId),
     watch: (watching) => invoke(IPC.nodes.watch, watching),
   },
   node: {
     view: () => invoke(IPC.node.view),
+    action: (request) => invoke(IPC.node.action, request),
     onChanged: (listener) => on(IPC.node.changed, listener),
     pair: (address, code) => invoke(IPC.node.pair, address, code),
     unpair: () => invoke(IPC.node.unpair),
