@@ -572,6 +572,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       media: cache.status(missingNow),
       clock,
       rev: mirror.rev,
+      // Whether it draws without a graphics chip (x27), for Adjust the picture… on Main.
+      ...(deps.warmUps.drawsWithoutChip() ? { noGpu: true as const } : {}),
     };
   };
   let healthTimer: NodeJS.Timeout | null = null;
