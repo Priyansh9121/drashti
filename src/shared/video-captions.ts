@@ -129,7 +129,10 @@ function combined(cues: VideoCaptionCue[]): string {
 /** Dependency-free SRT/WebVTT, bounded before splitting or sorting. Malformed input is a notice, never a throw. */
 export function readVideoCaptions(source: string): { cues: VideoCaptionCue[]; problem: string | null } {
   if (source.length > MAX_CAPTION_CHARS)
-    return { cues: [], problem: 'The caption file is too large (over 2 MB).' };
+    return {
+      cues: [],
+      problem: 'The caption file is too large (over 2 MB). Choose a smaller SRT or WebVTT file.',
+    };
   const cues: VideoCaptionCue[] = [];
   let damaged = 0;
   const blocks = source

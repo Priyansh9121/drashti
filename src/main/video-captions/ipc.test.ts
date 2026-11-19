@@ -41,7 +41,7 @@ function setup() {
     write: (_guard, run) => Promise.resolve(run()),
   });
   return {
-    call: (name: string, ...args: unknown[]) => handlers.get(`video-captions:${name}`)?.({}, ...args),
+    call: (name: string, ...args: unknown[]) => handlers.get(`videocaptions:${name}`)?.({}, ...args),
     selected,
     put,
     pick,

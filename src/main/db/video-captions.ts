@@ -1,4 +1,5 @@
 import type { Db } from './database';
+import type { PlaybackClip } from '../../shared/media';
 import {
   MAX_CAPTION_CUES,
   MAX_CAPTION_TRACKS,
@@ -55,6 +56,56 @@ export class VideoCaptionsRepo {
       this.cached.delete(mediaId);
       return true;
     })();
+  }
+
+  /** A converted file keeps source times; a cut's own clock starts at zero. An existing target keeps its own tracks. */
+  copy(from: string, to: string, clip?: PlaybackClip): void {
+    if (from === to || this.view(to).tracks.length) return;
+    const source = this.view(from);
+    const rows = this.db
+      .prepare('SELECT id, language, automatic, name, cues FROM video_caption_tracks WHERE media_id = ?')
+      .all(from) as (TrackRow & { cues: string })[];
+    const tracks: VideoCaptionTrack[] = [];
+    for (const row of rows) {
+      try {
+        const parsed: unknown = JSON.parse(row.cues);
+        if (!Array.isArray(parsed) || parsed.length > MAX_CAPTION_CUES * 2) continue;
+        if (
+          !parsed.every((value: unknown) => {
+            if (typeof value !== 'object' || value === null) return false;
+            const cue = value as VideoCaptionCue;
+            return (
+              Number.isFinite(cue.startMs) &&
+              Number.isFinite(cue.endMs) &&
+              cue.startMs >= 0 &&
+              cue.endMs > cue.startMs &&
+              typeof cue.text === 'string'
+            );
+          })
+        )
+          continue;
+        const cues = parsed as VideoCaptionCue[];
+        const moved = clip
+          ? cues.flatMap((cue) => {
+              const startMs = Math.max(cue.startMs, clip.startMs);
+              const endMs = Math.min(cue.endMs, clip.endMs ?? Infinity);
+              return endMs > startMs
+                ? [{ ...cue, startMs: startMs - clip.startMs, endMs: endMs - clip.startMs }]
+                : [];
+            })
+          : cues;
+        tracks.push({
+          id: row.id,
+          language: row.language,
+          automatic: row.automatic === 1,
+          name: row.name,
+          cues: moved,
+        });
+      } catch {
+        /* Bad library caption data cannot stop a conversion or a cut. */
+      }
+    }
+    if (tracks.length && this.put(to, tracks)) this.select(to, source.selected);
   }
 
   select(mediaId: string, trackId: string | null): boolean {

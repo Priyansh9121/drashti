@@ -311,10 +311,10 @@ export const IPC = {
    * only how captions stand, and the lines to draw through the engine's state.
    */
   videoCaptions: {
-    view: 'video-captions:view',
-    select: 'video-captions:select',
-    add: 'video-captions:add',
-    changed: 'video-captions:changed',
+    view: 'videocaptions:view',
+    select: 'videocaptions:select',
+    add: 'videocaptions:add',
+    changed: 'videocaptions:changed',
   },
   captions: {
     view: 'captions:view',

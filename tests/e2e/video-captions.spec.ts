@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { EngineCommand } from '../../src/shared/engine/commands';
+import { NEW_LOWER_THIRD } from '../../src/shared/lower-thirds';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 import {
@@ -162,6 +163,40 @@ test('stored SRT captions follow the hall and stream video clocks through play, 
     }
     await expect(stage.getByTestId('captions')).toHaveCount(0);
     await chooseCC(win, 'English');
+    await run(win, {
+      type: 'showLowerThird',
+      lowerThird: {
+        ...NEW_LOWER_THIRD,
+        id: 'caption-third',
+        lines: ['Placeholder lower third', 'Second placeholder line'],
+      },
+    });
+    await run(win, {
+      type: 'showMessage',
+      message: { id: 'caption-message', text: 'Placeholder hall message' },
+    });
+    for (const page of [hall, program]) {
+      await expect(page.getByTestId('lower-third-layer')).toHaveAttribute('data-lt-phase', 'still');
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const caption = document
+              .querySelector('[data-testid="captions"][data-source="video"]')
+              ?.getBoundingClientRect();
+            const third = document
+              .querySelector('[data-testid="lower-third-layer"]')
+              ?.getBoundingClientRect();
+            const message = document.querySelector('[data-layer="messages"]')?.getBoundingClientRect();
+            if (!caption || !third || !message) return false;
+            const overlaps = (a: DOMRect, b: DOMRect) =>
+              a.top < b.bottom && a.bottom > b.top && a.left < b.right && a.right > b.left;
+            return !overlaps(caption, third) && !overlaps(caption, message);
+          }),
+        )
+        .toBe(true);
+    }
+    await run(win, { type: 'hideLowerThird' });
+    await run(win, { type: 'hideMessage', messageId: 'caption-message' });
     await run(win, { type: 'moveTo', playing: PLAYING, toMs: 10800 });
     await run(win, { type: 'resumePlaying', playing: PLAYING });
     for (const page of [hall, program])
