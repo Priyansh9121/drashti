@@ -69,7 +69,10 @@ static inline int dvo_read_header(FILE *in, dvo_header *h) {
   return dvo_bytes(h->format, h->width, h->height) ? 1 : -1;
 }
 
-/* One pixel's colour from video's Y, U and V (BT.709, limited range, as Chromium's captures are), as B, G, R. */
+/*
+ * One pixel's colour from video's Y, U and V (BT.709, limited range, as Chromium's captures are), as B, G, R: the
+ * reference dvo_to_bgra's 2 x 2 blocks give exactly.
+ */
 static inline void dvo_yuv_to_bgr(int y, int u, int v, unsigned char *bgr) {
   /* Fixed point, 16 bits: 1.164384, 1.792741, 0.213249, 0.532909 and 2.112402, each times 65536. */
   int c = (y - 16) * 76309, d = u - 128, e = v - 128;
@@ -81,39 +84,56 @@ static inline void dvo_yuv_to_bgr(int y, int u, int v, unsigned char *bgr) {
   bgr[2] = (unsigned char)(r < 0 ? 0 : r > 255 ? 255 : r);
 }
 
+static inline unsigned char dvo_clamp(int v) { return (unsigned char)(v < 0 ? 0 : v > 255 ? 255 : v); }
+
 /*
  * The frame as BGRA, opaque, into `out` (rows `stride` bytes apart). Used where the system has no converter of its own
- * (Windows); a Mac uses Accelerate's.
+ * (Windows); a Mac uses Accelerate's. 4:2:0 a 2 x 2 block at a time, its colour worked out once for its four pixels
+ * (BT.709, limited range, as Chromium's captures are; fixed point, 16 bits).
  */
 static inline void dvo_to_bgra(const dvo_header *h, const unsigned char *src, unsigned char *out, size_t stride) {
   uint32_t w = h->width, ht = h->height, cw = (w + 1) / 2, ch = (ht + 1) / 2;
-  const unsigned char *Y = src, *C = src + (size_t)w * ht;
-  for (uint32_t row = 0; row < ht; row++) {
-    unsigned char *o = out + (size_t)row * stride;
-    if (h->format == DVO_BGRA || h->format == DVO_RGBA) {
+  if (h->format == DVO_BGRA || h->format == DVO_RGBA) {
+    int swap = h->format == DVO_RGBA;
+    for (uint32_t row = 0; row < ht; row++) {
       const unsigned char *s = src + (size_t)row * w * 4;
+      unsigned char *o = out + (size_t)row * stride;
       for (uint32_t x = 0; x < w; x++, o += 4, s += 4) {
-        o[0] = h->format == DVO_BGRA ? s[0] : s[2];
+        o[0] = swap ? s[2] : s[0];
         o[1] = s[1];
-        o[2] = h->format == DVO_BGRA ? s[2] : s[0];
+        o[2] = swap ? s[0] : s[2];
         o[3] = 255;
       }
-      continue;
     }
-    const unsigned char *yr = Y + (size_t)row * w;
-    size_t crow = (size_t)(row / 2) * cw;
-    for (uint32_t x = 0; x < w; x++, o += 4) {
-      size_t c = crow + x / 2;
-      int u, v;
-      if (h->format == DVO_I420) {
-        u = C[c];
-        v = C[(size_t)cw * ch + c];
-      } else {
-        u = C[2 * c];
-        v = C[2 * c + 1];
+    return;
+  }
+  const unsigned char *Y = src, *C = src + (size_t)w * ht;
+  for (uint32_t row = 0; row < ht; row += 2) {
+    const unsigned char *y0 = Y + (size_t)row * w, *y1 = row + 1 < ht ? y0 + w : y0;
+    unsigned char *o0 = out + (size_t)row * stride, *o1 = row + 1 < ht ? o0 + stride : NULL;
+    const unsigned char *cr = C + (size_t)(row / 2) * (h->format == DVO_I420 ? cw : cw * 2);
+    const unsigned char *vr = C + (size_t)cw * ch + (size_t)(row / 2) * cw;
+    for (uint32_t x = 0; x < w; x += 2) {
+      uint32_t c = x / 2;
+      int d = (h->format == DVO_I420 ? cr[c] : cr[2 * c]) - 128;
+      int e = (h->format == DVO_I420 ? vr[c] : cr[2 * c + 1]) - 128;
+      int rv = 117489 * e + 32768, guv = -13975 * d - 34925 * e + 32768, bu = 138438 * d + 32768;
+      for (uint32_t dx = 0; dx < 2 && x + dx < w; dx++) {
+        int l0 = (y0[x + dx] - 16) * 76309;
+        unsigned char *p = o0 + (size_t)(x + dx) * 4;
+        p[0] = dvo_clamp((l0 + bu) >> 16);
+        p[1] = dvo_clamp((l0 + guv) >> 16);
+        p[2] = dvo_clamp((l0 + rv) >> 16);
+        p[3] = 255;
+        if (o1) {
+          int l1 = (y1[x + dx] - 16) * 76309;
+          p = o1 + (size_t)(x + dx) * 4;
+          p[0] = dvo_clamp((l1 + bu) >> 16);
+          p[1] = dvo_clamp((l1 + guv) >> 16);
+          p[2] = dvo_clamp((l1 + rv) >> 16);
+          p[3] = 255;
+        }
       }
-      dvo_yuv_to_bgr(yr[x], u, v, o);
-      o[3] = 255;
     }
   }
 }
