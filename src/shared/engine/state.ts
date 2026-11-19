@@ -14,6 +14,7 @@ import type { ChosenWallpaper } from '../wallpapers';
 import type { MessageLook } from '../message-look';
 import type { StageCall } from '../stage-message';
 import type { CaptionsShown } from '../captions';
+import type { VideoCaptionsShown } from '../video-captions';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -70,7 +71,8 @@ import type { CaptionsShown } from '../captions';
 // 25 (Part 17b): native normalized vector paths travel with slides to every player.
 // 26 adds private live captions; 27 reserves the offline helpers’ version. Each additive predecessor reads whole.
 // 28 carries PowerPoint's editable click effects and native transitions to every screen.
-export const ENGINE_STATE_VERSION = 28;
+// 29 carries a video’s stored caption track to screens and nodes; live speech stays private.
+export const ENGINE_STATE_VERSION = 29;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -82,6 +84,7 @@ export const ENGINE_STATE_VERSION = 28;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
+    version === 28 ||
     version === 27 ||
     version === 26 ||
     version === 25 ||
@@ -803,6 +806,8 @@ export interface EngineState {
    * file never keeps it. Left out (a state saved before 26) or null: no captions.
    */
   captions?: CaptionsShown | null;
+  /** The chosen library track for the first captioned video up, shared with output nodes. Off under covers. */
+  videoCaptions?: Record<string, VideoCaptionsShown>;
 }
 
 export function emptyLayers(): Layers {

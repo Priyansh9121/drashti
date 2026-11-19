@@ -27,6 +27,7 @@ import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { PipDragHandle, PipLiveStrip } from './PipLive';
 import { PlayingBars } from '../markers/PlayingBars';
+import { PanelKindKeeper, PanelWarmUp } from './PanelWarmUp';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
 
 /**
@@ -178,8 +179,13 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
     <section aria-labelledby="live-preview-title" className="space-y-2 px-3 pt-3">
       <div className="flex h-6 items-center gap-2">
         {/* LIVE (Session 26a: it said "On the screens now", with a Next preview under it). */}
-        <h2 id="live-preview-title" className="flex-1 text-2xs font-bold tracking-wider text-muted uppercase">
+        <h2
+          id="live-preview-title"
+          className="relative flex-1 text-2xs font-bold tracking-wider text-muted uppercase"
+        >
           LIVE
+          {/* The Stream panel's primary kept in the GPU's cache, unseen (Session 60, X21: operator/PanelWarmUp.tsx). */}
+          {!chipless && <PanelKindKeeper />}
         </h2>
         {blackout ? <Badge tone="live">Black-out</Badge> : somethingUp ? <LiveBadge /> : null}
         {help.button}
@@ -191,7 +197,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
       <div
         className={cx(
           // The live border and its red underglow come and go in the same frame as the screens: no fade.
-          'overflow-hidden rounded-lg border-2 bg-black',
+          'relative overflow-hidden rounded-lg border-2 bg-black',
           somethingUp && !blackout ? 'border-live shadow-live' : 'border-line-strong shadow-card',
         )}
         data-testid="live-preview"
@@ -200,6 +206,10 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
         aria-hidden="true"
       >
         {practising ? picture : <ZoomablePreview>{picture}</ZoomablePreview>}
+        {/* The Stream panel's own drawing, warmed with the picture's, unseen, at its own size on whole pixels (Session
+            60, X21: operator/PanelWarmUp.tsx); gone at once where Chromium draws without a graphics chip (nothing to
+            warm: the warm-up's last step there draws nothing but black). */}
+        {warming && !chipless && <PanelWarmUp />}
       </div>
       <PipLiveStrip />
       {/* The time bar for what plays (Session 54), where a page asks for it under the picture. */}

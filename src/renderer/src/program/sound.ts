@@ -1,6 +1,6 @@
 import type { EngineState } from '../../../shared/engine/state';
 import { SOUND_LIMITS } from '../../../shared/media';
-import { musicAside, StepAside } from '../../../shared/sound';
+import { musicAside, soundGain, StepAside } from '../../../shared/sound';
 import type { DeviceChoice } from '../../../shared/stream';
 import type { Sound } from '../audio/sounds';
 import { soundMoved, soundsOf } from '../audio/sounds';
@@ -18,7 +18,8 @@ import type { SpeechGraph } from './speech-tap';
  * stream's page, at 48 kHz: none of it reaches a loudspeaker.
  *
  * Session 55, Part 7 (shared/sound.ts): Drashti's own sound here plays as the hall's audio player plays it, each file
- * at its even loudness and the music stepping aside under a video with sound.
+ * at its even loudness and the music stepping aside under a video with sound. X33: and at the operator's Audio and
+ * Video levels, silent while one is muted (soundGain, the hall's own sum): the stream hears what the hall hears.
  */
 
 /** How often the music's step aside is looked at (ms), as the audio player does. */
@@ -171,6 +172,7 @@ export class StreamSound {
       // Read by Web Audio: fetched as Drashti's media scheme allows any of its pages to (Part 7).
       el.crossOrigin = 'anonymous';
       el.dataset['key'] = sound.key;
+      el.dataset['kind'] = sound.kind;
       document.body.append(el);
       // Into the stream's mix only (an element taken into Web Audio no longer plays out loud).
       const source = this.ctx.createMediaElementSource(el);
@@ -201,9 +203,12 @@ export class StreamSound {
     }
   }
 
-  /** How loud a sound plays in the mix now: its volume, its file's even gain, the music's step aside (Part 7). */
+  /**
+   * How loud a sound plays in the mix now: its volume, its file's even gain, the music's step aside (Part 7), and its
+   * kind's level, 0 while muted (X33).
+   */
   private levelOf(sound: Sound, musicLevel = this.musicLevel()): number {
-    return sound.volume * (sound.gain ?? 1) * (sound.aside ? musicLevel : 1);
+    return sound.volume * soundGain(sound, musicLevel, this.state);
   }
 
   /** The music's level now (Part 7, K), by the engine's time. */

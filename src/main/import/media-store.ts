@@ -16,6 +16,9 @@ import type { MediaProbe } from './probe';
 import { probeMedia } from './probe';
 import { extOf, mediaKindOf } from './scan';
 import { fileProblem } from '../plain-errors';
+import type { VideoCaptionTrack } from '../../shared/video-captions';
+import { VideoCaptionsRepo } from '../db/video-captions';
+import { discoverVideoCaptions } from './video-captions';
 
 /*
  * Drashti's media folder. Every file is stored once, under its sha256
@@ -46,6 +49,7 @@ export interface MediaStoreOptions {
 export type MediaImportResult =
   | {
       outcome: 'imported' | 'skipped';
+      captionIssues?: ImportIssue[];
       mediaId: string;
       sha256: string;
       bytes: number;
@@ -72,6 +76,8 @@ type MediaSource = { kind: Exclude<ImportSource['kind'], 'pictures'> } & {
 
 /** A file whose bytes are in the media folder, before it has a library row. */
 export interface StagedMedia {
+  captionTracks?: VideoCaptionTrack[];
+  captionIssues?: ImportIssue[];
   kind: MediaKind;
   name: string;
   /** Path inside the media folder. */
@@ -408,6 +414,12 @@ export class MediaStore {
         rel,
         ...hashed,
         ...(await this.readWithFfmpeg(kind, target, probe, maxVideoHeight)),
+        ...(kind === 'video'
+          ? await discoverVideoCaptions(path).then((c) => ({
+              captionTracks: c.tracks,
+              captionIssues: c.issues,
+            }))
+          : {}),
       },
     };
   }
@@ -428,6 +440,25 @@ export class MediaStore {
    * inside a group of writes.
    */
   addStaged(staged: StagedMedia, source: MediaSource): Extract<MediaImportResult, { mediaId: string }> {
+    const result = this.addStagedMedia(staged, source);
+    const issues = [...(staged.captionIssues ?? [])];
+    if (staged.captionTracks?.length) {
+      if (!new VideoCaptionsRepo(this.db).put(result.mediaId, staged.captionTracks))
+        issues.push({
+          severity: 'warning',
+          code: 'video-captions',
+          message:
+            'Caption files could not be kept with this video. The video can still play. Add a caption file from its Captions menu.',
+          fix: null,
+        });
+    }
+    return issues.length ? { ...result, captionIssues: issues } : result;
+  }
+
+  private addStagedMedia(
+    staged: StagedMedia,
+    source: MediaSource,
+  ): Extract<MediaImportResult, { mediaId: string }> {
     const existing = this.bySha(staged.sha256);
     const height = staged.maxHeight === undefined ? {} : { maxHeight: staged.maxHeight };
     const convert = { ...(staged.convert ? { convert: true } : {}), ...height };

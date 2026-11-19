@@ -68,6 +68,8 @@ import { sw } from './switches';
  *   (transforms only: the control), then two shapes of its last slide come in and go out by Split (a mask the size of
  *   each), a click each, and four more by Shape (Session 58: a Circle, a Box, a Diamond and a Plus, PowerPoint's soft
  *   edge as masks the size of each, a Box's, a Diamond's and a Plus's two, one inside the other), a click each;
+ * - in the streaming check only (x30): dissolve 800 and the deck's clicks again with video out on (the stream's picture to
+ *   other apps by Syphon on a Mac, Spout on Windows), then off again;
  * then Session 57's leftovers (h-left2's MS-1, DK-6 and DK-2), left out of the two-core streaming check (after3's ran
  * into its 14-minute stop with them):
  * - a slide of an imported, editable PowerPoint table of 250 cells (each cell a text box that measures itself on the
@@ -219,14 +221,23 @@ const DECK_SHAPE_MS = 500;
 const DECK_SHAPE_IN = 'deck Drashti plays: shapes in by Shape 500';
 const DECK_SHAPE_OUT = 'deck Drashti plays: shapes out by Shape 500';
 const DECK_SHAPES: readonly NonNullable<DeckEffect['shape']>[] = ['circle', 'box', 'diamond', 'plus'];
+/**
+ * Then Split's two shapes back in by Random Bars at its fifth click, across and up and down, and out by them at its
+ * sixth (Q60-15, the owner's A: drawn so only if smooth on two-core Windows while streaming; PowerPoint's own 0.5 s):
+ * hair-thin bars each fading, by a mask (shared/deck-motion.ts, barsMask), or each whole by a clip without a chip.
+ */
+const DECK_BARS_MS = 500;
+const DECK_BARS_IN = 'deck Drashti plays: shapes in by Random Bars 500';
+const DECK_BARS_OUT = 'deck Drashti plays: shapes out by Random Bars 500';
 /** Its first slide, put up by a cut before each round: only by Next from the slide before is a deck's own played. */
 const DECK_OWN_FIRST = '(to the first slide of the deck Drashti plays)';
-/** One round of it: its first slide, its four transitions, its four clicks, each then still SETTLE_MS. */
+/** One round of it: its first slide, its four transitions, its six clicks, each then still SETTLE_MS. */
 const DECK_OWN_ROUND_MS =
   SETTLE_MS +
   DECK_OWN.length * (DECK_OWN_MS + SETTLE_MS) +
   2 * (DECK_SPLIT_MS + SETTLE_MS) +
-  2 * (DECK_SHAPE_MS + SETTLE_MS);
+  2 * (DECK_SHAPE_MS + SETTLE_MS) +
+  2 * (DECK_BARS_MS + SETTLE_MS);
 /** One round of the 4:3 deck: its first slide, then its four transitions. */
 const DECK_FOUR_THREE_ROUND_MS = SETTLE_MS + DECK_FOUR_THREE.length * (DECK_OWN_MS + SETTLE_MS);
 /** All its rounds, as set. */
@@ -234,6 +245,8 @@ export const FOUR_THREE_BLOCK_MS = SHORT_RUNS * DECK_FOUR_THREE_ROUND_MS;
 
 /** How long a screen opened for a case may take to be ready: its page loaded, its fonts in, its warm-up done. */
 const SCREEN_LIMIT_MS = 20_000;
+/** The Stream panel clicked mid-show (X21): the stream's page let go, the click, its preview's picture, a second. */
+const PANEL_MS = 35_000;
 
 const KINDS: readonly TransitionKind[] = [
   'cut',
@@ -468,7 +481,8 @@ const NATIVE_MOTION: DeckEffect[] = [
  * deck's shapes (import/deck/native-deck-import.ts): its first slide, then one coming in by each of DECK_OWN, every one
  * over the same full-slide picture (a deck's own background, drawn once) with its title and a line; on the last, a
  * shape and words its first two clicks bring in and take out by Split, then two shapes and two words its next two
- * bring in and take out by Shape, each outline once (Session 58). A jump to any of them is a cut.
+ * bring in and take out by Shape, each outline once (Session 58), then its fifth and sixth bring Split's two in and
+ * out by Random Bars, across and up and down (Q60-15). A jump to any of them is a cut.
  */
 function deckOwnSlides(
   picture: string,
@@ -505,6 +519,16 @@ function deckOwnSlides(
       shape: outline,
       delayMs: 0,
       durationMs: DECK_SHAPE_MS,
+    }));
+  const randomBars = (shapeId: string, bars: NonNullable<DeckEffect['bars']>): DeckEffect[] =>
+    [5, 6].map((step): DeckEffect => ({
+      shapeId,
+      step,
+      phase: step === 5 ? 'in' : 'out',
+      kind: 'bars',
+      bars,
+      delayMs: 0,
+      durationMs: DECK_BARS_MS,
     }));
   // Where Split's shapes were, once they have gone: two rows of two, each outline's own shape or words.
   const shapeAt = (k: number): Rect => ({
@@ -589,8 +613,18 @@ function deckOwnSlides(
               ...split('5', 'x', false),
               ...split('6', 'y', true),
               ...DECK_SHAPES.flatMap((outline, k) => shape(String(7 + k), outline)),
+              ...randomBars('5', 'horizontal'),
+              ...randomBars('6', 'vertical'),
             ].sort((a, b) => a.step - b.step),
-            stepsMs: [0, DECK_SPLIT_MS, DECK_SPLIT_MS, DECK_SHAPE_MS, DECK_SHAPE_MS],
+            stepsMs: [
+              0,
+              DECK_SPLIT_MS,
+              DECK_SPLIT_MS,
+              DECK_SHAPE_MS,
+              DECK_SHAPE_MS,
+              DECK_BARS_MS,
+              DECK_BARS_MS,
+            ],
             approximate: false,
           }
         : { effects: [], stepsMs: [0], approximate: false },
@@ -666,6 +700,23 @@ const WATCH_STREAM = `(async () => {
   await globalThis.drashti.stream.watchPreview(true);
   return true;
 })()`;
+/** DK-2's own look at the stream's picture let go (the stream's page closes when nothing else needs it). */
+const UNWATCH_STREAM = `(async () => {
+  await globalThis.drashti.stream.watchPreview(false);
+  return true;
+})()`;
+/** The Stream button in the top bar, clicked as an operator does (Session 60, X21's second part). */
+const CLICK_STREAM = `(() => {
+  const button = document.querySelector('[data-testid="open-stream"]');
+  button?.click();
+  return button !== null;
+})()`;
+/** The Stream panel closed by its own button. */
+const CLOSE_STREAM_PANEL = `(() => {
+  const button = document.querySelector('[data-testid="stream-panel"] [aria-label="Close stream"]');
+  button?.click();
+  return button !== null;
+})()`;
 
 /** An output's page as SCREEN_STATE reads it. */
 interface ScreenState {
@@ -697,6 +748,24 @@ interface WindowsOpen {
   /** Why one was not. */
   why: string[];
 }
+
+/**
+ * The Stream panel clicked mid-show, as an operator opens it (Session 60, X21's second part): its own first drawing in
+ * the operator window, which its warm-up now makes ahead (operator/PanelWarmUp.tsx), and the stream's page it opens.
+ */
+interface PanelOpened {
+  /** The stream's page was open already (the streaming check streams from its start). */
+  streamOpenBefore: boolean;
+  /** From the click to its preview showing a picture (ms), null when it never did. */
+  previewMs: number | null;
+  /** The first hall screen's longest frame from the click to a second after that picture (ms), null when unread. */
+  hallLongest: number | null;
+  /** Why one was not. */
+  why: string[];
+}
+
+const panelLine = (p: PanelOpened) =>
+  `${p.streamOpenBefore ? 'the stream’s page open already' : 'the stream’s page opened by it'}; its preview showed a picture after ${p.previewMs === null ? 'never' : `${String(p.previewMs)} ms`}; the hall screen’s longest frame meanwhile: ${p.hallLongest === null ? 'not read' : `${p.hallLongest.toFixed(1)} ms`}${p.why.length > 0 ? ` (${p.why.join('; ')})` : ''}`;
 
 const windowsLine = (w: WindowsOpen) => {
   const names: [keyof Omit<WindowsOpen, 'why' | 'readyMs'>, string][] = [
@@ -1235,15 +1304,16 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       // A deck Drashti plays itself (13 Nov 2026), as dissolve 800 was measured (one hall screen, no other window
       // open), before the leftovers, so it runs on two cores too: from its first slide (a cut) by Next, its own Wipe,
       // Cover, Uncover and Push, then its last slide's shapes in by Split and out by Split, then in by Shape and out
-      // by Shape, a click each. Only when there is time for all its rounds, never marking the check out of time.
+      // by Shape, then in by Random Bars and out by them, a click each. Only when there is time for all its rounds,
+      // never marking the check out of time.
       if (
         timeFor(
           SHORT_RUNS * DECK_OWN_ROUND_MS,
-          'deck Drashti plays itself (its own transitions, its Splits and Shapes)',
+          'deck Drashti plays itself (its own transitions, its Splits, Shapes and Random Bars)',
         )
       ) {
         progress(
-          'a deck Drashti plays itself: its own Wipe, Cover, Uncover and Push, its shapes in and out by Split and by Shape',
+          'a deck Drashti plays itself: its own Wipe, Cover, Uncover and Push, its shapes in and out by Split, Shape and Random Bars',
         );
         await rounds(SHORT_RUNS, 'the deck Drashti plays itself', async () => {
           await press(DECK_OWN_FIRST, 'slide', 0, goLive(deckOwnId, 0), SETTLE_MS);
@@ -1253,7 +1323,48 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
             await press(row, 'nativeDeck', DECK_SPLIT_MS, { type: 'next' }, DECK_SPLIT_MS + SETTLE_MS);
           for (const row of [DECK_SHAPE_IN, DECK_SHAPE_OUT])
             await press(row, 'nativeDeck', DECK_SHAPE_MS, { type: 'next' }, DECK_SHAPE_MS + SETTLE_MS);
+          for (const row of [DECK_BARS_IN, DECK_BARS_OUT])
+            await press(row, 'nativeDeck', DECK_BARS_MS, { type: 'next' }, DECK_BARS_MS + SETTLE_MS);
         });
+      }
+      // x30 (the lead's ask: the show must stay safe when video out is turned on): dissolve 800 and the deck's clicks
+      // again with video out on (the stream's picture to other apps by Syphon on a Mac, Spout on Windows, Drashti's own
+      // program, sending with no receiver as it does in a hall), in the streaming check only, on two cores too, only
+      // with time for all of it, never marking the check out of time; then off again.
+      const videoOutMs =
+        2 * VIDEO_OUT_LIMIT_MS +
+        RUNS * (DEFAULT_MS + SETTLE_MS) +
+        VIDEO_OUT_DECK_RUNS * (SETTLE_MS + 2 * (CLIP_MS + 800));
+      if (streaming && timeFor(videoOutMs, `dissolve 800 and the deck’s clicks${VIDEO_OUT}`)) {
+        closeCase();
+        const on = await setVideoOut(operator(), true);
+        if (on !== true) note(`video out not on: ${on}`);
+        else {
+          progress(`dissolve 800 and the deck’s clicks${VIDEO_OUT}`);
+          const k = KINDS.indexOf('dissolve');
+          for (let i = 0; i < RUNS; i++)
+            await press(
+              `dissolve 800${VIDEO_OUT}`,
+              'slide',
+              DEFAULT_MS,
+              goLive(slidesId, k * 2 + (i % 2)),
+              DEFAULT_MS + SETTLE_MS,
+            );
+          await rounds(VIDEO_OUT_DECK_RUNS, `the deck’s clicks${VIDEO_OUT}`, async () => {
+            await away();
+            await press(
+              `deck slide in (step 0)${VIDEO_OUT}`,
+              'deck',
+              CLIP_MS,
+              goLive(deckId, 0),
+              CLIP_MS + 800,
+            );
+            await press(`deck click${VIDEO_OUT}`, 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
+          });
+          closeCase();
+        }
+        const off = await setVideoOut(operator(), false);
+        if (off !== true) note(`video out not off again: ${off}`);
       }
       // The same four by a 4:3 deck between bars on the hall (Session 58, Q58-36), on two cores too.
       if (timeFor(FOUR_THREE_BLOCK_MS, 'a 4:3 deck Drashti plays itself, between bars')) {
@@ -1346,6 +1457,13 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
           await press(`deck click, ${DK2_WINDOWS}`, 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
         });
       }
+      // The Stream panel clicked mid-show, the operator's way (Session 60, X21's second part): the hall's frames meanwhile.
+      let panel: PanelOpened | null = null;
+      if (leftovers && timeFor(PANEL_MS, 'Stream panel clicked mid-show')) {
+        closeCase();
+        panel = await clickStreamPanel(streaming);
+        progress(`the Stream panel clicked mid-show: ${panelLine(panel)}`);
+      }
       const trips = [...roundTrips].sort((a, b) => a - b);
       progress(
         `pressed ${String(pressed.length)} times; the operator window answered in median ${String(trips[Math.floor((trips.length - 1) / 2)] ?? '-')} ms, slowest ${String(trips.at(-1) ?? '-')} ms${skipped.size > 0 ? `; out of time, not all pressed: ${[...skipped].join(', ')}` : ''}`,
@@ -1376,6 +1494,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         table,
         nativeJump,
         windows,
+        panel,
         secondRuns,
         // What could stop the cases (their budget, or Drashti up 22 minutes), and whether the leftovers were pressed.
         stops: until.by,
@@ -1398,10 +1517,44 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
                 : `${plural(rows.length, 'case')}, ${plural(measured.runs.length + secondRuns.length, 'run')}`,
           },
         ],
-        summary: `scenario animations: frame period ${measured.period.toFixed(2)} ms (${String(measured.frames)} frames)${wallpaper ? '' : ', the Wallpaper black (no picture could be chosen)'}${fromMain > 0 ? `, ${String(fromMain)} pressed from the main process` : ''}; ${stillLine(measured.still)}; late: ${late.join(', ') || 'none'}; uneven: ${uneven.join(', ') || 'none'}; ${rows.map(caseLine).join(' | ')}${nativeJump ? `; ${jumpLine(nativeJump.figures)}` : ''}${windows ? `; the deck with the ${DK2_WINDOWS}, ${windowsLine(windows)}` : ''}${pointedMemory.length > 0 ? `; memory a deck slide's clip pointed at added (MB): ${memoryLine(pointedMemory)}` : ''}${notes.length > 0 ? `; notes: ${notes.join('; ')}` : ''}`,
+        summary: `scenario animations: frame period ${measured.period.toFixed(2)} ms (${String(measured.frames)} frames)${wallpaper ? '' : ', the Wallpaper black (no picture could be chosen)'}${fromMain > 0 ? `, ${String(fromMain)} pressed from the main process` : ''}; ${stillLine(measured.still)}; late: ${late.join(', ') || 'none'}; uneven: ${uneven.join(', ') || 'none'}; ${rows.map(caseLine).join(' | ')}${nativeJump ? `; ${jumpLine(nativeJump.figures)}` : ''}${windows ? `; the deck with the ${DK2_WINDOWS}, ${windowsLine(windows)}` : ''}${panel ? `; the Stream panel clicked mid-show: ${panelLine(panel)}` : ''}${pointedMemory.length > 0 ? `; memory a deck slide's clip pointed at added (MB): ${memoryLine(pointedMemory)}` : ''}${notes.length > 0 ? `; notes: ${notes.join('; ')}` : ''}`,
       };
     },
   };
+
+  /**
+   * The Stream panel clicked mid-show (Session 60, X21's second part), DK-2's own look at the stream's picture let go
+   * first, so the panel opens the stream's page as an operator's click does (in the streaming check it stays open, on
+   * air); the first hall screen's longest frame from the click to a second after the panel's preview shows a picture.
+   */
+  async function clickStreamPanel(streaming: boolean): Promise<PanelOpened> {
+    const why: string[] = [];
+    const streamOpen = () => (deps.program?.() ?? null) !== null;
+    await ask<boolean, boolean>(operator(), UNWATCH_STREAM, false);
+    const closing = Date.now() + 10_000;
+    while (!streaming && streamOpen() && Date.now() < closing) await sleep(100);
+    await sleep(1000);
+    const streamOpenBefore = streamOpen();
+    const from = Date.now();
+    const clicked = await ask<boolean, boolean>(operator(), CLICK_STREAM, false);
+    if (!clicked) why.push('the Stream button was not found');
+    let previewMs: number | null = null;
+    const until = Date.now() + SCREEN_LIMIT_MS;
+    while (clicked && previewMs === null && Date.now() < until) {
+      if (await ask<boolean, boolean>(operator(), SHOWS('[data-testid="stream-preview"]'), false))
+        previewMs = Date.now() - from;
+      else await sleep(100);
+    }
+    if (clicked && previewMs === null)
+      why.push(`its preview showed no picture within ${String(SCREEN_LIMIT_MS / 1000)} s`);
+    await sleep(1000);
+    const record = await readProbe(deps.outputs()[0], from, Date.now());
+    const frames = record?.frames ?? [];
+    const hallLongest =
+      frames.length > 1 ? Math.max(...frames.slice(1).map((t, i) => t - (frames[i] ?? t))) : null;
+    if (!(await ask<boolean, boolean>(operator(), CLOSE_STREAM_PANEL, false))) why.push('it did not close');
+    return { streamOpenBefore, previewMs, hallLongest, why };
+  }
 
   /**
    * DK-2's windows that load nothing ahead (DeckStep.tsx: each holds the next click's clip itself), opened as an
@@ -1641,4 +1794,39 @@ function keep(streaming: boolean, what: object): void {
   } catch {
     // The summary has every row anyway.
   }
+}
+
+// ---- x30: video out on (the lead's ask) -----------------------------------------------------------------------------
+
+/** The rows measured with video out on: dissolve 800's and the deck's, named so. */
+export const VIDEO_OUT = ', video out on';
+/** The deck's clicks with video out on: rounds of a slide in and one click. */
+const VIDEO_OUT_DECK_RUNS = 2;
+/** The longest video out may take to be sending (its process, its program, its first frame), or to be off again. */
+const VIDEO_OUT_LIMIT_MS = 20_000;
+/** Video out turned on or off from the operator window's own bridge, as Stream settings does. */
+const SET_VIDEO_OUT = (on: boolean) => `(async () => {
+  const r = await globalThis.drashti.stream.setVideoOut({ on: ${JSON.stringify(on)}, name: 'Drashti performance check' });
+  return r.ok === true;
+})()`;
+/** What video out says it is doing now. */
+const VIDEO_OUT_STATE = `globalThis.drashti.stream.videoOut().then((s) => s.state)`;
+
+/** Video out on (sending) or off, and settled: true, or why not. */
+async function setVideoOut(op: BrowserWindow | null, on: boolean): Promise<true | string> {
+  if (!op) return 'no operator window';
+  if (!(await ask<boolean, boolean>(op, SET_VIDEO_OUT(on), false))) return 'Stream settings did not keep it';
+  const want = on ? 'sending' : 'off';
+  const until = Date.now() + VIDEO_OUT_LIMIT_MS;
+  let state = '';
+  while (Date.now() < until) {
+    state = await ask<string, string>(op, VIDEO_OUT_STATE, '');
+    if (state === want) {
+      await sleep(SETTLE_MS);
+      return true;
+    }
+    if (on && (state === 'unavailable' || state === 'stopped')) return `it is ${state} here`;
+    await sleep(200);
+  }
+  return `not ${want} within ${String(VIDEO_OUT_LIMIT_MS / 1000)} s (${state || 'no answer'})`;
 }

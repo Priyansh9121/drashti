@@ -1,3 +1,5 @@
+import type { ControllerArea, ControllerReply, ControllerRequest } from './controller-actions';
+import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
 import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { SlidePictureResult } from './slide-picture';
@@ -102,6 +104,7 @@ import type {
   StreamStatus,
 } from './stream';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { VideoOutResult, VideoOutSettings, VideoOutStatus } from './video-out';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
 import type { AccessLength, AccessMode } from './access-protocol';
@@ -119,6 +122,7 @@ import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
 import type { SavePictureResult, SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
+import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
 import type {
@@ -151,7 +155,15 @@ import type { PointAt, PointedClip } from './point-ahead';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
-import type { EvenResult, FileSoundView, SoundView, SoundViewResult, TrimEdgesResult } from './sound';
+import type {
+  EvenResult,
+  FileSoundView,
+  SoundKind,
+  SoundLevelsResult,
+  SoundView,
+  SoundViewResult,
+  TrimEdgesResult,
+} from './sound';
 import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
@@ -289,6 +301,12 @@ export interface DrashtiBridge {
     onOpen(listener: () => void): () => void;
   };
   /** Live captions (Session 55, Part 10, operator window; Pro Mode): how they stand, never a word heard. */
+  videoCaptions: {
+    view(mediaId: string): Promise<VideoCaptionChoice>;
+    select(mediaId: string, trackId: string | null): Promise<VideoCaptionResult>;
+    add(mediaId: string): Promise<VideoCaptionResult>;
+    onChanged(listener: (change: { mediaId: string; view: VideoCaptionChoice }) => void): () => void;
+  };
   captions: {
     view(): Promise<CaptionsStatus>;
     setOn(on: boolean): Promise<CaptionsStatus>;
@@ -677,6 +695,12 @@ export interface DrashtiBridge {
     /** A video's or sound's loudness as measured, and its own switch; null for no such file. */
     file(mediaId: string): Promise<FileSoundView | null>;
     setStepsAside(on: boolean): Promise<SoundViewResult>;
+    /**
+     * The operator's Audio or Video level, 0 to 1 (X33), kept across a restart; and its mute, never kept. The engine's
+     * state says them (its sound's levels), and the hall and the stream play by them at once.
+     */
+    setLevel(kind: SoundKind, level: number): Promise<SoundLevelsResult>;
+    setMuted(kind: SoundKind, muted: boolean): Promise<SoundLevelsResult>;
     setEven(mediaId: string, on: boolean): Promise<EvenResult>;
     trimEdges(mediaId: string): Promise<TrimEdgesResult>;
     onChanged(listener: (view: SoundView) => void): () => void;
@@ -721,6 +745,11 @@ export interface DrashtiBridge {
     dismissResume(): Promise<null>;
     /** Try the stream's page again, stopped after crashing too often (Session 31). */
     tryAgain(): Promise<StreamResult>;
+    /** Video out (x30): the stream's picture to other software, off until it is turned on. */
+    videoOut(): Promise<VideoOutStatus>;
+    /** The operator window, Pro Mode: turn it on or off, or name it. */
+    setVideoOut(settings: VideoOutSettings): Promise<VideoOutResult>;
+    onVideoOut(listener: (status: VideoOutStatus) => void): () => void;
     /** The stream's own page. */
     page: {
       context(): Promise<ProgramContext | null>;
@@ -824,6 +853,9 @@ export interface DrashtiBridge {
     /** A new identity for the nodes, in place of one that could not be read (Session 23). */
     newIdentity(): Promise<NodesResult>;
     everything(nodeId: string, on: boolean): Promise<NodesResult>;
+    /** Main's Pro Mode only: enable the paired computer's shared show view, without show actions. */
+    setController(nodeId: string, on: boolean): Promise<NodesResult>;
+    setControllerAreas(nodeId: string, areas: ControllerArea[]): Promise<NodesResult>;
     /** Reload one output: on Main (nodeId null) or on a node. */
     reload(nodeId: string | null, screenId: string): Promise<NodesResult>;
     /** A display's number and name on it (null: every display of that computer). */
@@ -834,6 +866,7 @@ export interface DrashtiBridge {
   /** A node's own window (node mode only). */
   node: {
     view(): Promise<NodeView>;
+    action(request: ControllerRequest): Promise<ControllerReply>;
     onChanged(listener: (view: NodeView) => void): () => void;
     pair(address: string, code: string): Promise<NodeViewResult>;
     unpair(): Promise<NodeViewResult>;
@@ -936,6 +969,12 @@ export interface DrashtiBridge {
     dirty(dirty: boolean): Promise<null>;
     close(): Promise<null>;
     onAskClose(listener: () => void): () => void;
+  };
+  /** OSC: explicitly allowed local UDP senders, independent of Phones. */
+  osc: {
+    status(): Promise<OscStatus>;
+    configure(settings: OscSettings): Promise<OscResult>;
+    onChanged(listener: (status: OscStatus) => void): () => void;
   };
   /** The MIDI controller: which device, and what its notes and controllers do. */
   midi: {

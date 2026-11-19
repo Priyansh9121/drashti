@@ -10,6 +10,7 @@ import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Progress } from '../ui/Progress';
 import { Loading } from '../ui/States';
+import { ControllerView } from './ControllerView';
 
 /*
  * A node's own window (Session 13): which Main it follows and how the link
@@ -466,14 +467,15 @@ export function NodeApp() {
       data-testid="node-window"
     >
       <header className="flex flex-wrap items-baseline gap-x-3">
-        <h1 className="text-xl font-bold">Drashti Node</h1>
+        <h1 className="text-xl font-bold">{view.controller ? 'Drashti Controller' : 'Drashti Node'}</h1>
         <span className="text-sm text-muted">
           {view.host} · Drashti {view.version}
         </span>
       </header>
       <p className="text-sm text-muted">
-        This computer shows screens for a Main on the local network. It has no show controls and makes no
-        sound.
+        {view.controller
+          ? 'This computer follows Main’s show on the local network. Main makes the sound.'
+          : 'This computer shows screens for a Main on the local network. It has no show controls and makes no sound.'}
       </p>
       <StartNotes notes={view.startNotes} />
       {view.notice && (
@@ -481,6 +483,7 @@ export function NodeApp() {
           {view.notice}
         </Notice>
       )}
+      {view.controller && <ControllerView view={view.controller} />}
       <MainSection view={view} setView={setView} />
       <MatchMain view={view} />
       <Displays view={view} />
