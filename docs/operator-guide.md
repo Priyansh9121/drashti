@@ -4,7 +4,7 @@ This guide is for the **operators**: the people who run a sabha's screens in Dra
 
 On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows the menu bar is hidden: press **Alt** to show it.
 
-**The Drashti Manual** (since alpha.20): **Help**, then **Drashti Manual…** (the first item, in Pro Mode and Simple Mode) tells every part of this window in short steps, a chapter for each, with its pictures: what each feature is, when you would use it, and how. Choose a chapter on the left, or type a word in **Search the manual**; **Print…** prints it, and **Save as PDF…** saves it where you choose (for the setup kit). It needs no internet, and **Esc** closes it.
+**The Drashti Manual** (since alpha.20): **Help**, then **Drashti Manual…** (the first item, in Pro Mode and Simple Mode) tells every part of this window in short steps, a chapter for each, with its pictures: what each feature is, when you would use it, and how. Choose a chapter on the left, or type a word in **Search the manual**; **Print…** prints it, and **Save as PDF…** saves it where you choose (for the setup kit); both wait while anything is up, on air or recording, saying so. It needs no internet, and **Esc** closes it.
 
 **This guide is inside Drashti too:** **Help**, then **Guides…**, with the presenter's guide (and in Pro Mode the admin's and the setup day's). Type a word in **Search the guides** to find every passage that holds it, by section, after up to three answers to questions such as "When a screen is black or frozen, what do I do?"; choose one to read it in its place. The guides need no internet. **Esc** closes it.
 

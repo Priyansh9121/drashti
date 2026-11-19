@@ -1,6 +1,12 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MANUAL_CHAPTERS, type ManualPrinted, type ManualRead, manualPictureName } from '../shared/manual';
+import {
+  MANUAL_CHAPTERS,
+  MANUAL_PRINT_REFUSED,
+  type ManualPrinted,
+  type ManualRead,
+  manualPictureName,
+} from '../shared/manual';
 import { parseMarkdown } from '../shared/markdown';
 import type { GuideFiles } from './guides';
 import { fileAddress, manualHtml, type PrintOutcome, printManual } from './manual-print';
@@ -52,8 +58,11 @@ export interface ManualPrinterDeps {
   /** Printing itself (manual-print.ts; a test's stand-in). */
   print?: typeof printManual;
   write?: (file: string, data: Buffer) => void;
-  /** The red commit's stand-in (x37): not yet asked. */
-  live?: () => boolean;
+  /**
+   * Whether the show is live now (anything up, or the stream on air or recording: index.ts, as the work that waits
+   * for an idle show asks): nothing is printed then (the lead's call of 20 Nov 2026).
+   */
+  live: () => boolean;
 }
 
 /** The PDF's name the save dialog suggests. */
@@ -70,7 +79,7 @@ const MISSING: ManualPrinted = {
   message: 'The manual is missing from Drashti’s folder: install Drashti again.',
 };
 
-/** Print… and Save as PDF…, one at a time. */
+/** Print… and Save as PDF…, one at a time, and only while the show is not live. */
 export class ManualPrinter {
   private busy = false;
 
@@ -114,6 +123,8 @@ export class ManualPrinter {
   }
 
   private async once(run: () => Promise<ManualPrinted>): Promise<ManualPrinted> {
+    // Nothing printed, and nothing asked, while the show is live (the window's buttons wait then too).
+    if (this.deps.live()) return { ok: false, cancelled: false, message: MANUAL_PRINT_REFUSED };
     if (this.busy) return BUSY;
     this.busy = true;
     try {
