@@ -75,6 +75,7 @@ import { MessagesPanel } from './MessagesPanel';
 import { StageLayoutEditor } from '../stage/StageLayoutEditor';
 import { undoStage, useStageLayouts } from '../stage/stage-layouts-store';
 import { AudioGroup } from '../music/AudioGroup';
+import { SoundLevels } from '../sound/SoundLevels';
 import { connectSound } from '../sound/sound-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { MidiTool } from '../midi/MidiTool';
@@ -379,6 +380,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
               {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, then More tools folded away
                 (Session 55: Props and Looks went). */}
               <div className="mt-3 divide-y divide-line border-t border-line">
+                {/* The sound's Audio and Video levels and mutes (X33), just above Audio, seen with it folded too. */}
+                <SoundLevels />
                 {/* Audio, one part with Simple Mode's (Session 56). */}
                 <AudioGroup platform={platform} />
                 <StageMessageControl />

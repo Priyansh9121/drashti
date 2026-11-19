@@ -1,3 +1,4 @@
+import type { ReadCaptionFile } from './video-captions';
 import type { KirtanBundleExportResult } from '../../shared/kirtan-bundles';
 import type { ImportOptions, ImportProgress, ImportRunSummary, ImportTimings } from '../../shared/import';
 import type { PicturesResult } from '../../shared/pictures';
@@ -94,6 +95,7 @@ export interface GoOnMessage {
 }
 
 export type ToWorker =
+  | { type: 'read-captions'; requestId: string; file: string }
   | ExportKirtansMessage
   | StartMessage
   | CancelMessage
@@ -103,6 +105,7 @@ export type ToWorker =
   | OnAirMessage;
 
 export type FromWorker =
+  | { type: 'read-captions'; requestId: string; result: ReadCaptionFile }
   | { type: 'exported-kirtans'; requestId: string; result: KirtanBundleExportResult }
   | { type: 'progress'; progress: ImportProgress }
   /** Draw this PDF's pages as pictures into `outDir` (Session 15); the answer comes as 'drawn'. */
