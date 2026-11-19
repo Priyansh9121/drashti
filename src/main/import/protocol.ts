@@ -2,6 +2,7 @@ import type { ReadCaptionFile } from './video-captions';
 import type { KirtanBundleExportResult } from '../../shared/kirtan-bundles';
 import type { ImportOptions, ImportProgress, ImportRunSummary, ImportTimings } from '../../shared/import';
 import type { PicturesResult } from '../../shared/pictures';
+import type { HevcKinds } from '../convert/plays-hevc';
 
 /* Messages between the main process and the import worker (a utility process). */
 
@@ -52,6 +53,11 @@ export interface StartMessage {
    * while it is not known. Where it cannot, an import converts HEVC by itself.
    */
   playsHevc?: boolean | null;
+  /**
+   * HEVC's other kinds (Session 60, x36: Main 10, and 4:2:2, 4:4:4 or 12-bit), as Chromium said with that answer; null
+   * or left out while not known (then every kind is as playsHevc says).
+   */
+  hevcKinds?: HevcKinds | null;
   /** Tests only (Session 56's timing check): the stand-in's movie this many lines high (else 180). */
   standInLines?: number | null;
   /** Tests only (the timing check): only these apps make a deck's movie or PDF, in this order (else every one here). */

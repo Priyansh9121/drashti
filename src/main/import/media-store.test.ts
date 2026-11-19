@@ -241,7 +241,7 @@ const READS: Record<string, string> = {
 
 /** A store whose FFmpeg reads files as READS says, noting each file it was asked to read. */
 function checking(
-  options: Partial<Pick<MediaStoreOptions, 'readInfo' | 'playsHevc'>> & {
+  options: Partial<Pick<MediaStoreOptions, 'readInfo' | 'playsHevc' | 'hevcKinds'>> & {
     reads?: Record<string, string>;
   } = {},
 ) {
@@ -252,6 +252,7 @@ function checking(
     dir: t.mediaDir,
     freeBytes: () => 100 * GiB,
     ...(options.playsHevc === undefined ? {} : { playsHevc: options.playsHevc }),
+    ...(options.hevcKinds === undefined ? {} : { hevcKinds: options.hevcKinds }),
     readInfo:
       options.readInfo ??
       ((file) => {
@@ -322,6 +323,38 @@ describe('every video and sound read with FFmpeg at import (Session 50)', () => 
       const plays = await can.take('Placeholder phone.mov', 'placeholder mov');
       expect(plays).toMatchObject({ probe: { playable: null, format: 'HEVC (H.265) video (QuickTime)' } });
       expect(plays.outcome !== 'failed' && plays.convert).toBeFalsy();
+    }
+  });
+
+  it('HEVC beyond Main (Session 60, x36): converted by itself where this computer plays HEVC but not its kind (a camera’s 4:2:2 here); as it is where it plays that kind, or the kinds are not known', async () => {
+    const reads = {
+      mov: [
+        "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/x.mov':",
+        '  Duration: 00:00:03.00, start: 0.000000, bitrate: 134 kb/s',
+        '  Stream #0:0[0x1]: Video: hevc (Rext) (hvc1 / 0x31637668), yuv422p10le(tv, progressive), 640x360 [SAR 1:1 DAR 16:9], 9 kb/s, 30 fps, 30 tbr, 15360 tbn (default)',
+        '  Stream #0:1[0x2]: Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, mono, fltp, 125 kb/s (default)',
+      ].join('\n'),
+    };
+    const noRext = checking({ playsHevc: true, hevcKinds: { main10: true, rext: false }, reads });
+    expect(await noRext.take('Placeholder camera.mov', 'placeholder mov')).toMatchObject({
+      outcome: 'imported',
+      convert: true,
+      probe: { playable: false, format: 'HEVC (H.265) video with AAC sound (QuickTime)', kind: 'video' },
+    });
+    expect(rows(noRext.db)).toEqual([
+      {
+        name: 'Placeholder camera.mov',
+        playable: 0,
+        format: 'HEVC (H.265) video with AAC sound (QuickTime)',
+      },
+    ]);
+    for (const hevcKinds of [{ main10: true, rext: true }, null]) {
+      const plays = checking({ playsHevc: true, hevcKinds, reads });
+      const taken = await plays.take('Placeholder camera.mov', 'placeholder mov');
+      expect(taken).toMatchObject({
+        probe: { playable: null, format: 'HEVC (H.265) video with AAC sound (QuickTime)' },
+      });
+      expect(taken.outcome !== 'failed' && taken.convert).toBeFalsy();
     }
   });
 
