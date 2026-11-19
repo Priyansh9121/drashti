@@ -88,7 +88,7 @@ Drashti puts slides, pictures, videos and sound on the hall's screens. This manu
 1. Choose **Help**, then **Drashti Manual…**.
 2. Choose a chapter on the left, or type a word in **Search the manual**.
 3. Choose a result to read it in its place.
-4. Press **Print…**, or **Save as PDF…** to keep it for the setup kit.
+4. Press **Print…**, or **Save as PDF…** to keep it for the setup kit. Both wait while anything is up, on air or recording.
 5. Press **Esc** to close it.
 
 ![The Drashti Manual open at Start here](../screenshots/manual-window.png)
