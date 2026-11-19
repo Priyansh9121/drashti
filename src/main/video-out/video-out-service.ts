@@ -105,10 +105,14 @@ export class VideoOutService {
     this.settings = parsed.data;
     this.deps.writeSetting(parsed.data);
     if (!parsed.data.on) this.turnOff();
-    else if (!before.on || before.name !== parsed.data.name || this.stopped) {
-      // Turned on, or on under a new name: started afresh.
+    else if (!before.on || this.stopped) {
+      // Turned on (or on again after it stopped): started afresh.
       this.turnOff();
       this.turnOn();
+    } else if (before.name !== parsed.data.name) {
+      // On under a new name: the process started afresh, the stream's page held all along.
+      this.stopWorker();
+      this.startWorker();
     }
     this.changed();
     return { ok: true, status: this.status() };
@@ -127,9 +131,14 @@ export class VideoOutService {
 
   private turnOn(): void {
     if (this.closing || this.worker || !this.sender) return;
-    const sender = this.sender;
     this.stopped = false;
     this.deps.holdProgram(true);
+    this.startWorker();
+  }
+
+  private startWorker(): void {
+    const sender = this.sender;
+    if (this.closing || this.worker || !sender) return;
     const worker = this.deps.spawnWorker();
     this.worker = worker;
     this.workerStatus = null;
@@ -181,17 +190,21 @@ export class VideoOutService {
     }, RESTART_MS);
   }
 
-  private turnOff(): void {
+  /** The process asked to stop, ended STOP_KILL_MS later if it has not gone: whether there was one. */
+  private stopWorker(): boolean {
     const worker = this.worker;
     this.worker = null;
     this.workerStatus = null;
-    if (worker) {
-      worker.send({ type: 'stop' });
-      this.deps.later(() => {
-        worker.kill();
-      }, STOP_KILL_MS);
-      this.deps.log('info', 'Video out is off');
-    }
+    if (!worker) return false;
+    worker.send({ type: 'stop' });
+    this.deps.later(() => {
+      worker.kill();
+    }, STOP_KILL_MS);
+    return true;
+  }
+
+  private turnOff(): void {
+    if (this.stopWorker()) this.deps.log('info', 'Video out is off');
     this.deps.holdProgram(false);
     this.stopped = false;
     this.restarts.reset();
