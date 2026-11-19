@@ -7,6 +7,7 @@ import {
   initialPicturesFor,
   keepInitialPicturePriority,
   programInitialPictures,
+  prepareInitialPicture,
   settleInitialPicture,
   startInitialPicturePriority,
   type CurrentPictureSelection,
@@ -188,6 +189,16 @@ describe('initial-only picture priority cannot starve Next', () => {
     expect(complete?.until).toBe(3100);
     expect(initialPictureReadyToHandOver(complete, false)).toBe(false);
     expect(initialPictureReadyToHandOver(complete, true)).toBe(true);
+  });
+
+  it('waits for a replacement source during the same initial turn without renewing its bound', () => {
+    const ready = { ...waiting(), pending: [] };
+    const changed = prepareInitialPicture(ready, 'current-one');
+    expect(changed?.pending).toEqual(['current-one']);
+    expect(changed?.until).toBe(3100);
+    expect(initialPictureReadyToHandOver(changed, true)).toBe(false);
+    expect(prepareInitialPicture(ready, 'next-picture')).toBe(ready);
+    expect(prepareInitialPicture(null, 'current-one')).toBeNull();
   });
 
   it('ignores another consumer and duplicate completions rather than releasing the wrong picture', () => {

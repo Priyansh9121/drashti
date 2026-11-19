@@ -108,6 +108,14 @@ export function keepInitialPicturePriority(
   return priority?.current.key === currentKey && now < priority.until ? priority : null;
 }
 
+/** A replacement copy can start while the page still keeps its initial consumers. */
+export function prepareInitialPicture(
+  priority: InitialPicturePriority | null,
+  _mediaId: string,
+): InitialPicturePriority | null {
+  return priority;
+}
+
 export function settleInitialPicture(
   priority: InitialPicturePriority | null,
   mediaId: string,
