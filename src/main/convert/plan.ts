@@ -150,21 +150,51 @@ function pictureVerdict(video: NonNullable<MediaInfo['video']>): 'plays' | 'no' 
 }
 
 /**
+ * HEVC's kind, by its picture's pixel format (what a decoder needs; Session 60, x36): Main is 8-bit 4:2:0 (an
+ * iPhone's HEVC with alpha too: its picture is Main, its alpha a layer beside it), Main 10 is 10-bit 4:2:0 (HDR too),
+ * and anything else (4:2:2, 4:4:4, 12-bit, monochrome: a camera's or an editor's) is the Range Extensions.
+ */
+export function hevcKindOf(pixFmt: string): 'main' | 'main10' | 'rext' {
+  if (pixFmt === 'yuv420p' || pixFmt === 'yuvj420p' || pixFmt === 'yuva420p') return 'main';
+  if (pixFmt === 'yuv420p10le' || pixFmt === 'yuv420p10be') return 'main10';
+  return 'rext';
+}
+
+/**
+ * Whether this computer plays an HEVC picture (Session 51; its kind since Session 60, x36): no where it plays no
+ * HEVC; where it plays HEVC, its kind as Chromium said (Main always; Main 10 and the Range Extensions as asked, a
+ * computer that plays HEVC's Main playing one of these as sound only where it cannot); null while not known.
+ */
+function hevcPlays(
+  video: NonNullable<MediaInfo['video']>,
+  playsHevc: boolean | null,
+  kinds: HevcKinds | null,
+): boolean | null {
+  if (playsHevc !== true || kinds === null) return playsHevc;
+  const hevcKind = hevcKindOf(video.pixFmt);
+  return hevcKind === 'main' || (hevcKind === 'main10' ? kinds.main10 : kinds.rext);
+}
+
+/**
  * What an import does with a video or sound file Drashti took, from what FFmpeg read in it (Session 50), and
- * whether this computer plays HEVC (Session 51: Chromium's answer; null while it is not known).
+ * whether this computer plays HEVC (Session 51: Chromium's answer; null while it is not known) and HEVC's other kinds
+ * (Session 60, x36: Main 10 and the Range Extensions, as Chromium said with that answer; null while not known, every
+ * kind then as the answer says).
  */
 export function atImport(
   kind: 'video' | 'audio',
   info: MediaInfo,
   playsHevc: boolean | null = null,
-  _hevcKinds: HevcKinds | null = null,
+  hevcKinds: HevcKinds | null = null,
 ): AtImport {
   const picture = pictureOf(kind, info);
   if ((!picture && !info.audio) || chooseTarget(kind, info) === null) return 'unread';
   const shown = picture ? pictureVerdict(picture) : 'plays';
   const opens = PLAYER.containers.has(info.container ?? '');
   const heard = info.audio === null || PLAYER.audio.has(info.audio.codec);
-  if (!opens || shown === 'no' || !heard || (shown === 'hevc' && playsHevc === false)) return 'convert';
+  const hevcCannot =
+    shown === 'hevc' && picture !== null && hevcPlays(picture, playsHevc, hevcKinds) === false;
+  if (!opens || shown === 'no' || !heard || hevcCannot) return 'convert';
   return shown === 'hevc' ? 'hevc' : 'plays';
 }
 
