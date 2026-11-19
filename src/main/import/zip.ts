@@ -62,8 +62,16 @@ export async function listZip(path: string): Promise<ZipEntry[]> {
   }
 }
 
-async function listOpen(fh: FileHandle): Promise<ZipEntry[]> {
+export interface ZipReadLimits {
+  maxEntries?: number;
+  maxDirectoryBytes?: number;
+  maxArchiveBytes?: number;
+}
+
+async function listOpen(fh: FileHandle, limits: ZipReadLimits = {}): Promise<ZipEntry[]> {
   const { size: fileSize } = await fh.stat();
+  if (limits.maxArchiveBytes !== undefined && fileSize > limits.maxArchiveBytes)
+    throw new ZipError('The ZIP file is too big.');
   const tailLength = Math.min(fileSize, 65_557);
   const tail = await readAt(fh, fileSize - tailLength, tailLength);
   let at = -1;
@@ -95,6 +103,8 @@ async function listOpen(fh: FileHandle): Promise<ZipEntry[]> {
     );
   if (cdOffset + cdSize > fileSize || cdSize < count * CENTRAL_MIN)
     throw new ZipError('Broken central directory (it does not fit in the file).');
+  if (count > (limits.maxEntries ?? MAX_ZIP_ENTRIES) || cdSize > (limits.maxDirectoryBytes ?? Infinity))
+    throw new ZipError('The ZIP directory is too big.');
   const cd = await readAt(fh, cdOffset, cdSize);
   const entries: ZipEntry[] = [];
   let p = 0;
@@ -248,10 +258,11 @@ export async function writeEntry(
 export async function withZip<T>(
   path: string,
   use: (entries: ZipEntry[], fh: FileHandle) => Promise<T>,
+  limits: ZipReadLimits = {},
 ): Promise<T> {
   const fh = await open(path, 'r');
   try {
-    return await use(await listOpen(fh), fh);
+    return await use(await listOpen(fh, limits), fh);
   } finally {
     await fh.close();
   }

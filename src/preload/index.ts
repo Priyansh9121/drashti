@@ -275,6 +275,7 @@ const bridge: DrashtiBridge = {
     revealPresentation: (id) => invoke(IPC.library.revealPresentation, id),
   },
   kirtans: {
+    exportBundle: (request) => invoke(IPC.kirtans.exportBundle, request),
     tracks: (presentationId) => invoke(IPC.kirtans.tracks, presentationId),
     saveTracks: (presentationId, edits) => invoke(IPC.kirtans.saveTracks, presentationId, edits),
     setDetails: (presentationId, details) => invoke(IPC.kirtans.setDetails, presentationId, details),
