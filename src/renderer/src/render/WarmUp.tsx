@@ -981,7 +981,8 @@ export function WarmUp({
             />
             <div
               data-warm-cover=""
-              style={{ position: 'absolute', inset: 0, background: '#000000', opacity: 0.999, zIndex: 2 }}
+              // Beyond the drawing's clip: coincident, antialiased edges otherwise leave a light rim when scaled.
+              style={{ position: 'absolute', inset: '-1%', background: '#000000', opacity: 0.999, zIndex: 2 }}
             />
           </>,
           tree,

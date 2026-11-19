@@ -15,6 +15,7 @@ import {
   setUpScreen,
 } from './helpers';
 import { goLive, makeSlides } from './placeholder-slides';
+import { decodePng } from './png-decode';
 
 /*
  * Warming the GPU, unseen (Session 27, render/WarmUp.tsx): before a screen first draws the show, it draws
@@ -140,28 +141,57 @@ const studioFonts = (page: Page) =>
     return by;
   }, STUDIO_FAMILIES);
 
+/** The brightest any pixel is (0 to 255, any channel) in the whole page, decoded in Node. */
+async function brightest(page: Page): Promise<number> {
+  const decoded = decodePng(await page.screenshot({ scale: 'css' }));
+  let max = 0;
+  for (let i = 0; i < decoded.rgba.length; i += 4)
+    max = Math.max(max, decoded.rgba[i] ?? 0, decoded.rgba[i + 1] ?? 0, decoded.rgba[i + 2] ?? 0);
+  return max;
+}
+
 /**
- * The brightest any pixel is (0 to 255, any channel) in a page's screenshot, or in one element's box of it,
- * 2 px in from its edges (a box at fractions of a pixel takes in what is around it: the LIVE picture's border).
+ * Every pixel of the warm-up's whole box against black alone, including its edges. A LIVE picture's rounded UI
+ * border crosses that rectangle's corners, so its pixels must match the black-only frame too, rather than be
+ * mistaken for the warm-up's drawing (X12 wide: 12 border pixels, maximum 191, while every interior pixel was 0).
+ * Nothing is ignored or allowed a colour difference. The whole audience output and every captured frame are still
+ * checked against absolute zero below. Decode in Node, never on a show page (X17).
  */
-async function brightest(page: Page, selector?: string): Promise<number> {
-  const box = selector ? await page.locator(selector).first().boundingBox() : null;
-  const clip = box ? { x: box.x + 2, y: box.y + 2, width: box.width - 4, height: box.height - 4 } : null;
-  const png = (await page.screenshot({ scale: 'css', ...(clip ? { clip } : {}) })).toString('base64');
-  return page.evaluate(async (png) => {
-    // Decoded by hand: the page's security policy refuses fetch() of a data URL.
-    const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
-    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('no 2d context');
-    ctx.drawImage(bitmap, 0, 0);
-    const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
-    let max = 0;
-    for (let i = 0; i < data.length; i += 4)
-      max = Math.max(max, data[i] ?? 0, data[i + 1] ?? 0, data[i + 2] ?? 0);
-    return max;
-  }, png);
+async function differenceFromBlack(page: Page, scope: string): Promise<number> {
+  const selector = `${scope} [data-warm-up]`;
+  const clip = await page.locator(selector).first().boundingBox();
+  if (!clip) throw new Error('the warm-up has no visible box');
+  const drawn = decodePng(await page.screenshot({ scale: 'css', clip }));
+  const display = await page.evaluate((scope) => {
+    const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
+    const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
+    if (!drawing) throw new Error('no warm-up drawing for the black reference');
+    const before = drawing.style.display;
+    drawing.style.display = 'none';
+    if (getComputedStyle(drawing).display !== 'none') throw new Error('the reference still draws a scene');
+    return before;
+  }, scope);
+  let black: ReturnType<typeof decodePng>;
+  try {
+    black = decodePng(await page.screenshot({ scale: 'css', clip }));
+  } finally {
+    await page.evaluate(
+      ({ scope, display }) => {
+        const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
+        const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
+        if (!drawing) throw new Error('no warm-up drawing to restore');
+        drawing.style.display = display;
+      },
+      { scope, display },
+    );
+  }
+  expect([drawn.width, drawn.height], 'the same entire warm-up box').toEqual([black.width, black.height]);
+  const center = (Math.floor(black.height / 2) * black.width + Math.floor(black.width / 2)) * 4;
+  expect([...black.rgba.slice(center, center + 4)], 'the reference is opaque black').toEqual([0, 0, 0, 255]);
+  let difference = 0;
+  for (let i = 0; i < drawn.rgba.length; i++)
+    difference = Math.max(difference, Math.abs((drawn.rgba[i] ?? 0) - (black.rgba[i] ?? 0)));
+  return difference;
 }
 
 /**
@@ -259,7 +289,13 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
       coverZ: cover ? Number(getComputedStyle(cover).zIndex) : Number.NaN,
       opacity: cover ? getComputedStyle(cover).opacity : null,
       background: cover ? getComputedStyle(cover).backgroundColor : null,
-      inset: cover ? getComputedStyle(cover).inset : null,
+      coversEdges:
+        !!host &&
+        !!cover &&
+        cover.getBoundingClientRect().left < host.getBoundingClientRect().left &&
+        cover.getBoundingClientRect().top < host.getBoundingClientRect().top &&
+        cover.getBoundingClientRect().right > host.getBoundingClientRect().right &&
+        cover.getBoundingClientRect().bottom > host.getBoundingClientRect().bottom,
       above: !!wide && !!cover && !!(wide.compareDocumentPosition(cover) & Node.DOCUMENT_POSITION_FOLLOWING),
     };
   }, scope);
@@ -276,10 +312,10 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
   ).toBeGreaterThan(hiding.pulseZ);
   expect(hiding.opacity, `${what}: the black cover keeps the GPU drawing underneath`).toBe('0.999');
   expect(hiding.background, `${what}: a black cover`).toBe('rgb(0, 0, 0)');
-  expect(hiding.inset, `${what}: the cover fills the warm-up`).toBe('0px');
+  expect(hiding.coversEdges, `${what}: the cover extends beyond every clipped edge`).toBe(true);
   expect(hiding.above, `${what}: the cover follows the drawing`).toBe(true);
   // The audience sees none of it. Keep the geometry and the exact frame if the cover ever fails.
-  const light = await brightest(page, `${scope} [data-warm-up]`);
+  const light = await differenceFromBlack(page, scope);
   if (light !== 0) {
     const geometry = await page.evaluate((scope) => {
       const host = document.querySelector(scope)?.querySelector<HTMLElement>('[data-warm-up]');
@@ -324,7 +360,7 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
       contentType: 'image/png',
     });
   }
-  expect(light, `${what}: black throughout`).toBe(0);
+  expect(light, `${what}: every pixel matches black alone`).toBe(0);
 }
 
 async function streamPage(app: ElectronApplication): Promise<Page> {
