@@ -5,6 +5,7 @@ import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './s
 import type { PdfJob, PdfPage, PdfPageReceipt, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { ReadyReport } from './ready';
+import type { ToolsMenuItem } from './setup-tools';
 import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type {
@@ -243,6 +244,8 @@ export const IPC = {
     showKeys: 'app:show-keys',
     /** main -> operator: Help > Guides… was chosen (Sessions 31–36), in either mode. */
     showGuides: 'app:show-guides',
+    /** main -> operator: an item of the Tools menu was chosen (Session 60, x36; Pro Mode): which (shared/setup-tools.ts). */
+    showTool: 'app:show-tool',
   },
   /** Scheduled backups (Session 14, shared/backups.ts): changing them, and Back up now, are Pro Mode's. */
   backups: {
@@ -1793,6 +1796,7 @@ export interface EventContract {
   [IPC.links.open]: { at: number };
   [IPC.app.showKeys]: { at: number };
   [IPC.app.showGuides]: { at: number };
+  [IPC.app.showTool]: { tool: ToolsMenuItem; at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.stageLayouts.changed]: StageLayout[];
   [IPC.midi.ask]: MidiAsk;
