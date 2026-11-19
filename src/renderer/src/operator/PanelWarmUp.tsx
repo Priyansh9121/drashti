@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { buttonClass } from '../ui/Button';
 import { Loader, Mic, Radio, ScreenShare, Settings, X } from '../ui/icons';
@@ -194,10 +194,48 @@ export function PanelWarmUp() {
   );
 }
 
-/** How often the keeper draws the primary button's kind again (ms): see PanelKindKeeper. */
+/**
+ * How often the keeper draws the primary button's kind again (ms). The GPU keeps its kinds of drawing in a cache that
+ * drops one left unused (Skia's Graphite: a least-recently-used cache of 512, and a purge of those unused since a
+ * time): the warm-up's copy of the primary's was gone some seven minutes into the Performance check; others the show
+ * draws all the time stayed.
+ */
 export const KIND_KEEP_MS = 20_000;
 
-/** STUB (red): keeps the primary button's drawing kind in use mid-show. */
+/**
+ * The primary button's drawing kind, kept in use mid-show (Session 60, X21's second part; the owner's "A + keep
+ * tracing", Q60-9). The Stream panel's Go live is a primary button, its oklab gradient and inset light under rounded
+ * corners beside an icon, and the window's other primary (Next) draws that kind only when it is drawn again (pressed or
+ * pointed at; a show run from the keyboard or a clicker never does), or not at all while it can't be pressed. So this
+ * draws a tiny copy of it every KIND_KEEP_MS, in a layer of its own (an icon in it: drawn multisampled, as the panel's
+ * tile is) under a cover of the panel's own colour, a pixel larger all round: the window looks the same. Nothing in it
+ * can be reached or read out, and it asks Main for nothing.
+ */
 export function PanelKindKeeper() {
-  return null;
+  const [odd, setOdd] = useState(false);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setOdd((was) => !was);
+    }, KIND_KEEP_MS);
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+  return (
+    <span
+      aria-hidden="true"
+      inert
+      data-testid="panel-kind-keeper"
+      className="pointer-events-none absolute top-1 left-16 block h-3.5 w-7 will-change-transform"
+    >
+      {/* Drawn again as its gradient moves a pixel under the cover (nothing on screen changes). */}
+      <span
+        className="absolute inset-px flex items-center justify-center overflow-hidden rounded-lg border border-primary-lo bg-linear-to-b from-primary-hi via-primary via-55% to-primary-lo text-on-primary shadow-[inset_0_1px_0_var(--depth-primary-top)]"
+        style={{ backgroundPosition: odd ? '0 1px' : '0 0' }}
+      >
+        <Radio size={8} aria-hidden="true" />
+      </span>
+      <span className="absolute inset-0 bg-panel" />
+    </span>
+  );
 }
