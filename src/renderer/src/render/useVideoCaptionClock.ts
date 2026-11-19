@@ -73,5 +73,5 @@ export function useVideoCaptionClock(
       stop?.();
     };
   }, [chosen, playing, root, screen]);
-  return actual?.chosen === chosen && actual.playing === playing ? actual.clock : null;
+  return actual && actual.chosen === chosen && actual.playing === playing ? actual.clock : null;
 }

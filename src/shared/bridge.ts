@@ -1,3 +1,4 @@
+import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
 import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { SlidePictureResult } from './slide-picture';
@@ -289,6 +290,12 @@ export interface DrashtiBridge {
     onOpen(listener: () => void): () => void;
   };
   /** Live captions (Session 55, Part 10, operator window; Pro Mode): how they stand, never a word heard. */
+  videoCaptions: {
+    view(mediaId: string): Promise<VideoCaptionChoice>;
+    select(mediaId: string, trackId: string | null): Promise<VideoCaptionResult>;
+    add(mediaId: string): Promise<VideoCaptionResult>;
+    onChanged(listener: (change: { mediaId: string; view: VideoCaptionChoice }) => void): () => void;
+  };
   captions: {
     view(): Promise<CaptionsStatus>;
     setOn(on: boolean): Promise<CaptionsStatus>;

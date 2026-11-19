@@ -357,6 +357,8 @@ const SESSION_56_BOUNDED: readonly [InvokeChannel, SimpleBound][] = [
   [IPC.sound.setStepsAside, ([on]) => typeof on === 'boolean'],
   // A row's Trim, Trim black and silence and Even loudness (Rename… of a file is bounded above, a track's too).
   [IPC.media.setMarkers, ([id], scope) => itsFile(scope, id)],
+  [IPC.videoCaptions.select, ([id], scope) => itsFile(scope, id)],
+  [IPC.videoCaptions.add, ([id], scope) => itsFile(scope, id)],
   [IPC.media.rowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.media.applyRowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.media.resetRowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],

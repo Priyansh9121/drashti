@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { readCaptionFile } from './video-captions';
 import { randomUUID } from 'node:crypto';
 import type { PicturesResult } from '../../shared/pictures';
 import type { ImportProgress } from '../../shared/import';
@@ -269,7 +270,11 @@ async function exportKirtans(message: ExportKirtansMessage): Promise<void> {
 
 port.on('message', (event) => {
   const message = event.data as ToWorker;
-  if (message.type === 'export-kirtans') {
+  if (message.type === 'read-captions') {
+    void readCaptionFile(message.file).then((result) =>
+      post({ type: 'read-captions', requestId: message.requestId, result }),
+    );
+  } else if (message.type === 'export-kirtans') {
     void exportKirtans(message);
   } else if (message.type === 'cancel') {
     cancelled.add(message.runId);

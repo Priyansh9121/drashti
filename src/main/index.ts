@@ -373,6 +373,9 @@ import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
+import { VideoCaptionsRepo } from './db/video-captions';
+import { CaptionFileReader } from './video-captions/reader';
+import { registerVideoCaptionIpc } from './video-captions/ipc';
 import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
@@ -1652,6 +1655,8 @@ function start(): void {
    * tells the rest of Drashti (set further down).
    */
   let inputRenamed: (from: string, to: string) => () => void = () => () => undefined;
+  const videoCaptionsRepo = new VideoCaptionsRepo(db);
+  let videoCaptionBand = new CaptionSettingsRepo(db).get();
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
@@ -1669,6 +1674,10 @@ function start(): void {
             : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
+      videoCaptionsOf: (mediaId) => {
+        const track = videoCaptionsRepo.chosen(mediaId);
+        return track ? { track, size: videoCaptionBand.size, place: videoCaptionBand.place } : null;
+      },
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
       pictureLook: (mediaId) => pictureLook(mediaId),
       // The picture-in-picture box (Session 50): what it holds, from the main process's own lists.
@@ -1905,6 +1914,36 @@ function start(): void {
       ? { ...marks, startMs: null, endMs: null }
       : marks;
   };
+  const captionFileReader = new CaptionFileReader(spawnImportWorker);
+  stops.add('video-captions', () => {
+    captionFileReader.close();
+  });
+  registerVideoCaptionIpc({
+    fromOperator,
+    repo: videoCaptionsRepo,
+    reader: captionFileReader,
+    write: sourceWrite(
+      libraryDb,
+      () => importer?.giveWay() ?? { ready: Promise.resolve(), done: () => undefined },
+    ),
+    pick: async (event) => {
+      const parent = BrowserWindow.fromWebContents(event.sender);
+      const options = {
+        title: 'Add a Caption File',
+        buttonLabel: 'Add Caption File',
+        properties: ['openFile'] as 'openFile'[],
+        filters: [{ name: 'Captions (SRT or WebVTT)', extensions: ['srt', 'vtt'] }],
+      };
+      const picked = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options);
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+    changed: (mediaId) => {
+      engine.refreshVideoCaptions();
+      sendToOperator(IPC.videoCaptions.changed, { mediaId, view: videoCaptionsRepo.view(mediaId) });
+    },
+  });
   // Playback markers (Session 14): kept with the file; what plays it follows at once.
   handle(IPC.media.markers, (_e, mediaId) =>
     typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
@@ -3118,6 +3157,8 @@ function start(): void {
     },
     onFinalPhrase: (phrase) => streaming.recordCaption(phrase),
     changed: (view) => {
+      videoCaptionBand = view.settings;
+      engine.refreshVideoCaptions();
       sendToOperator(IPC.captions.changed, view);
     },
     log,
@@ -3639,6 +3680,7 @@ function start(): void {
       // so one whose background it is puts it up from now on (Session 52: while it is missing, the background stays
       // as it was), and the slide up names it as missing no more.
       slides.invalidate();
+      engine.refreshVideoCaptions();
       engine.refreshFiles();
       engine.refreshNext();
       libraryChanged(true);
