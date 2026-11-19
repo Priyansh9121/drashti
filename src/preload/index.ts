@@ -30,9 +30,13 @@ const pageWindow = globalThis as unknown as {
   postMessage(message: unknown, targetOrigin: string, transfer: readonly unknown[]): void;
 };
 // And live captions' (Session 55, Part 10): the sound input's own sound goes back on it.
-ipcRenderer.on(IPC.stream.port, (event, payload: { role: 'preview' | 'encoder' | 'speech' }) => {
-  pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
-});
+// And video out's (x30): the page's frames to other software.
+ipcRenderer.on(
+  IPC.stream.port,
+  (event, payload: { role: 'preview' | 'encoder' | 'speech' | 'video-out' }) => {
+    pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
+  },
+);
 
 const bridge: DrashtiBridge = {
   app: {
@@ -485,6 +489,9 @@ const bridge: DrashtiBridge = {
     pickFolder: () => invoke(IPC.stream.pickFolder),
     dismissResume: () => invoke(IPC.stream.dismissResume),
     tryAgain: () => invoke(IPC.stream.tryAgain),
+    videoOut: () => invoke(IPC.stream.videoOut),
+    setVideoOut: (settings) => invoke(IPC.stream.setVideoOut, settings),
+    onVideoOut: (listener) => on(IPC.stream.videoOutChanged, listener),
     page: {
       context: () => invoke(IPC.stream.pageContext),
       onContext: (listener) => on(IPC.stream.context, listener),
