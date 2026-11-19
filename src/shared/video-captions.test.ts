@@ -127,3 +127,17 @@ describe('caption file names', () => {
     expect(captionFileInfo('Sample.mp4', 'Sample.en.srt.exe')).toBeNull();
   });
 });
+
+it('bounds the normalized timeline when many long cues overlap, before it travels to output nodes', () => {
+  const stamp = (ms: number) =>
+    `00:00:${String(Math.floor(ms / 1000)).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`;
+  const source = Array.from(
+    { length: 200 },
+    (_, i) =>
+      `${String(i)}\n${stamp(i * 100)} --> ${stamp((i + 32) * 100)}\nline-${String(i)} ${'x'.repeat(4000)}`,
+  ).join('\n\n');
+  expect(source.length).toBeLessThan(MAX_CAPTION_CHARS);
+  const read = readVideoCaptions(source);
+  expect(read.cues).toEqual([]);
+  expect(read.problem).toBeTruthy();
+});
