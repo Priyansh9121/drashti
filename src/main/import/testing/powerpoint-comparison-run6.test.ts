@@ -45,7 +45,8 @@ describe('run 6’s tables (X16)', () => {
     expect(POWERPOINT_TABLE_STYLES).toHaveLength(74);
     const ids = POWERPOINT_TABLE_STYLES.map((style) => style.id);
     expect(new Set(ids).size).toBe(74);
-    for (const id of ids) expect(id).toMatch(/^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$/u);
+    for (const id of ids)
+      expect(id).toMatch(/^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$/u);
     const named = (name: string) => POWERPOINT_TABLE_STYLES.find((style) => style.name === name)?.id;
     expect(named('Medium Style 2 - Accent 2')).toBe('{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}');
     expect(named('Light Style 1')).toBe('{9D7B26C5-4107-4FEC-AEDC-1716B250A1EF}');
@@ -67,14 +68,16 @@ describe('run 6’s tables (X16)', () => {
     for (const table of small) expect(table.flags).toEqual(['firstRow', 'bandRow']);
     // The 20 families: every part on (first and last row and column, both bands), and both bands alone.
     const every = STILLS_RUN6_TABLES.slides.filter((slide) => slide.name.endsWith(', every part on'));
-    const banded = STILLS_RUN6_TABLES.slides.filter((slide) => slide.name.endsWith(', rows and columns banded'));
+    const banded = STILLS_RUN6_TABLES.slides.filter((slide) =>
+      slide.name.endsWith(', rows and columns banded'),
+    );
     expect(every).toHaveLength(20);
     expect(banded).toHaveLength(20);
     for (const slide of every) {
       const index = STILLS_RUN6_TABLES.slides.indexOf(slide);
       const xml = await slideXml(file, index);
       expect(xml, slide.name).toContain(
-        '<a:tblPr firstRow="1" lastRow="1" firstCol="1" lastCol="1" bandRow="1" bandCol="1">',
+        '<a:tblPr firstRow="1" firstCol="1" lastRow="1" lastCol="1" bandRow="1" bandCol="1">',
       );
       expect(xml, slide.name).toContain(`<a:tableStyleId>${slide.table?.style ?? '?'}</a:tableStyleId>`);
       expect(slide.table, slide.name).toMatchObject({ rows: 6, columns: 5 });
@@ -114,17 +117,25 @@ describe('run 6’s first lines (X20)', () => {
     expect(markersOf(STILLS_RUN6_LINES)).toEqual(STILLS_RUN6_LINES.slides.map((_, i) => 20 + 4 * i));
     expect(Math.max(...markersOf(STILLS_RUN6_LINES))).toBeLessThanOrEqual(250);
     for (const font of ['Arial', 'Calibri', 'Times New Roman', 'Verdana'])
-      expect(STILLS_RUN6_LINES.slides.filter((slide) => slide.name.startsWith(`${font} · `))).toHaveLength(13);
+      expect(STILLS_RUN6_LINES.slides.filter((slide) => slide.name.startsWith(`${font} · `))).toHaveLength(
+        13,
+      );
     expect(STILLS_RUN6_LINES.slides.filter((slide) => slide.name.includes('anchored'))).toHaveLength(6);
     const deck = await readEditablePptx(file, join(where, 'lines-read'));
     for (const [index, slide] of STILLS_RUN6_LINES.slides.entries()) {
-      expect(slide.boxes?.map((box) => box.size), slide.name).toEqual([1800, 2800, 4000, 6600]);
+      expect(
+        slide.boxes?.map((box) => box.size),
+        slide.name,
+      ).toEqual([1800, 2800, 4000, 6600]);
       const texts = deck.slides[index]?.elements.filter((e) => e.kind === 'text') ?? [];
       expect(texts, slide.name).toHaveLength(4);
     }
     const exact = STILLS_RUN6_LINES.slides.find((slide) => slide.name === 'Arial · exactly 1.5 x size');
     expect(exact?.boxes?.map((box) => box.lineSpacingPoints)).toEqual([2700, 4200, 6000, 9900]);
-    const xml = await slideXml(file, STILLS_RUN6_LINES.slides.findIndex((s) => s.name === 'Arial · shrunk 62.5%, 20% less'));
+    const xml = await slideXml(
+      file,
+      STILLS_RUN6_LINES.slides.findIndex((s) => s.name === 'Arial · shrunk 62.5%, 20% less'),
+    );
     expect(xml).toContain('<a:normAutofit fontScale="62500" lnSpcReduction="20000"/>');
     expect(xml).toContain('<a:latin typeface="Arial"/>');
   });
@@ -162,7 +173,9 @@ describe('run 6’s Wheel and Random Bars', () => {
     for (const ms of [700, 2000])
       for (const phase of ['in', 'out'] as const) {
         for (const spokes of [1, 2, 3, 4, 8])
-          expect(names).toContain(`Wheel ${phase} · ${String(spokes)} spoke${spokes === 1 ? '' : 's'} · ${String(ms)} ms`);
+          expect(names).toContain(
+            `Wheel ${phase} · ${String(spokes)} spoke${spokes === 1 ? '' : 's'} · ${String(ms)} ms`,
+          );
         for (const way of ['horizontal', 'vertical'])
           expect(names).toContain(`Random Bars ${phase} · ${way} · ${String(ms)} ms`);
       }
@@ -177,7 +190,13 @@ describe('run 6’s Wheel and Random Bars', () => {
     expect(written.endsWith('Placeholder PowerPoint run6 motion.pptx')).toBe(true);
     const read = await readPptxDeck(written);
     const plan = powerPointPlan(read.slides);
+    // First, the control of the bigger box: Shape's Circle Out coming in, exact since run 4.
+    expect(names[0]).toBe('Shape in · Circle Out · control');
+    expect(read.slides[0]?.deck?.motion?.effects).toEqual([
+      expect.objectContaining({ kind: 'shape', shape: 'circle', phase: 'in', durationMs: 700 }),
+    ]);
     for (const [index, slide] of COMPARISON_RUN6_MOTION.slides.entries()) {
+      if (index === 0) continue;
       const ms = slide.name.includes('· 2000 ms') ? 2000 : 700;
       const wheel = /^Wheel (in|out) · (\d) spoke/u.exec(slide.name);
       const bars = /^Random Bars (in|out) · (horizontal|vertical)/u.exec(slide.name);

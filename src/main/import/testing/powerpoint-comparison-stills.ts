@@ -1,6 +1,8 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { readZipEntries } from '../zip';
+import { eotOf, fontPanose, sfntFromWoff } from './embedded-font';
 import { DECK_HEIGHT, makeTestDeck, placeholderDeckMedia } from './make-deck';
 import { makeZip } from './zip-writer';
 
@@ -47,7 +49,19 @@ export interface StillsSlide {
    * another is named (by its ID alone, as a deck that does not save the style's definition), its columns banded too
    * where `bandCol` says so, or every part of it on (`every`: first and last row, first and last column, banded rows).
    */
-  table?: { rows: number; columns: number; style?: string; bandCol?: boolean; every?: boolean };
+  table?: {
+    rows: number;
+    columns: number;
+    style?: string;
+    bandCol?: boolean;
+    every?: boolean;
+    /** Run 6: the table's own flags, as given (else run 5's: a header and banded rows, `bandCol`, `every`). */
+    flags?: readonly TableFlag[];
+  };
+  /** Run 6: several boxes of words, each its own (X20's first lines). */
+  boxes?: readonly StillsBox[];
+  /** Run 6: several small tables, each its own (every one of PowerPoint's style IDs). */
+  tables?: readonly StillsTable[];
   /** The slide this one is measured against (its spacing, or its words' sizes, unshrunk). */
   control?: string;
   /** Each paragraph's line spacing fixed in points (lnSpc spcPts, hundredths of a point). */
@@ -77,6 +91,41 @@ export interface StillsDeck {
   office?: boolean;
   /** More table styles (a:tblStyle) written into the deck's tableStyles.xml after PowerPoint's default one. */
   tableStyles?: string;
+  /** Run 6: fonts embedded in the deck, as PowerPoint embeds them (its embeddedFontLst): each from a WOFF Drashti ships. */
+  fonts?: readonly StillsFont[];
+}
+
+/** A table's flags, as tblPr writes them (in its schema's order). */
+export type TableFlag = 'firstRow' | 'firstCol' | 'lastRow' | 'lastCol' | 'bandRow' | 'bandCol';
+const FLAG_ORDER: readonly TableFlag[] = ['firstRow', 'firstCol', 'lastRow', 'lastCol', 'bandRow', 'bandCol'];
+/** One of several tables on a slide: its place, its rows and columns, its style by ID alone, its flags. */
+export interface StillsTable {
+  box: { x: number; y: number; w: number; h: number };
+  rows: number;
+  columns: number;
+  style: string;
+  flags: readonly TableFlag[];
+  /** Its words' size, hundredths of a point. */
+  size: number;
+}
+/** One of several boxes of words on a slide (run 6's first lines). */
+export interface StillsBox {
+  box: { x: number; y: number; w: number; h: number };
+  paragraphs: StillsParagraph[];
+  /** Its words' size, hundredths of a point. */
+  size: number;
+  font: string;
+  anchor?: 't' | 'ctr' | 'b';
+  /** Each paragraph's line spacing, a percentage of a line (lnSpc spcPct). */
+  lineSpacing?: number;
+  /** Each paragraph's line spacing fixed in points (lnSpc spcPts, hundredths of a point). */
+  lineSpacingPoints?: number;
+  fit?: { fontScale: number; lnSpcReduction?: number };
+}
+/** A font embedded in a deck: its typeface (as runs name it) and the WOFF it comes from (a package's own file). */
+export interface StillsFont {
+  typeface: string;
+  woff: string;
 }
 
 const WORDS_BOX = { x: 1.5 * INCH, y: 1.2 * INCH, w: 9 * INCH, h: 4.8 * INCH };
@@ -332,7 +381,7 @@ const spaceXml = (tag: 'spcBef' | 'spcAft', space: StillsSpace | undefined) =>
     : `<a:${tag}>${'pct' in space ? `<a:spcPct val="${String(space.pct)}"/>` : `<a:spcPts val="${String(space.pts)}"/>`}</a:${tag}>`;
 /** A run of words: in the theme's text colour (tx1, which the dark deck's colour map turns white), or the table style's. */
 const runXml = (text: string, size: number, themeText = true, font = 'Arial') =>
-  `<a:r><a:rPr lang="${/[\u0A80-\u0AFF]/u.test(text) ? 'gu-IN' : 'en-US'}" sz="${String(size)}" dirty="0">${themeText ? '<a:solidFill><a:schemeClr val="tx1"/></a:solidFill>' : ''}<a:latin typeface="${esc(font)}"/><a:cs typeface="${esc(font)}"/></a:rPr><a:t>${esc(text)}</a:t></a:r>`;
+  `<a:r><a:rPr lang="${/[\u0A80-\u0AFF]/u.test(text) ? 'gu-IN' : /[\u0900-\u097F]/u.test(text) ? 'hi-IN' : 'en-US'}" sz="${String(size)}" dirty="0">${themeText ? '<a:solidFill><a:schemeClr val="tx1"/></a:solidFill>' : ''}<a:latin typeface="${esc(font)}"/><a:cs typeface="${esc(font)}"/></a:rPr><a:t>${esc(text)}</a:t></a:r>`;
 const xfrm = (box: StillsSlide['box'], tag = 'a:xfrm') =>
   `<${tag}><a:off x="${String(Math.round(box.x))}" y="${String(Math.round(box.y))}"/><a:ext cx="${String(Math.round(box.w))}" cy="${String(Math.round(box.h))}"/></${tag}>`;
 
@@ -357,18 +406,94 @@ function wordsXml(slide: StillsSlide): string {
   return `<p:sp><p:nvSpPr><p:cNvPr id="3" name="Placeholder words"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(slide.box)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="${slide.anchor ?? 't'}"${slide.firstLastPara ? ' spcFirstLastPara="1"' : ''}>${fit}</a:bodyPr><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
 }
 
-function tableXml(slide: StillsSlide): string {
-  const { rows, columns } = slide.table ?? { rows: 0, columns: 0 };
-  const width = Math.round(slide.box.w / columns);
-  const height = Math.round(slide.box.h / rows);
+interface TableFrame {
+  box: StillsSlide['box'];
+  rows: number;
+  columns: number;
+  style: string;
+  /** tblPr's attributes, as written. */
+  flags: string;
+  size: number;
+  words: (row: number, column: number) => string;
+}
+function tableFrameXml(table: TableFrame, id: number, name: string): string {
+  const { rows, columns } = table;
+  const width = Math.round(table.box.w / columns);
+  const height = Math.round(table.box.h / rows);
   const cell = (r: number, c: number) =>
-    `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p>${runXml(r === 0 ? `Heading ${String(c + 1)}` : `Cell ${String(r)}.${String(c + 1)}`, 1800, false)}</a:p></a:txBody><a:tcPr/></a:tc>`;
+    `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p>${runXml(table.words(r, c), table.size, false)}</a:p></a:txBody><a:tcPr/></a:tc>`;
   const body = Array.from(
     { length: rows },
     (_, r) =>
       `<a:tr h="${String(height)}">${Array.from({ length: columns }, (__, c) => cell(r, c)).join('')}</a:tr>`,
   ).join('');
-  return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="4" name="Placeholder table"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>${xfrm(slide.box, 'p:xfrm')}<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr ${slide.table?.every ? 'firstRow="1" firstCol="1" lastRow="1" lastCol="1" bandRow="1"' : `firstRow="1" bandRow="1"${slide.table?.bandCol ? ' bandCol="1"' : ''}`}><a:tableStyleId>${slide.table?.style ?? DEFAULT_TABLE_STYLE}</a:tableStyleId></a:tblPr><a:tblGrid>${`<a:gridCol w="${String(width)}"/>`.repeat(columns)}</a:tblGrid>${body}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+  return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${String(id)}" name="${esc(name)}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>${xfrm(table.box, 'p:xfrm')}<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr${table.flags ? ` ${table.flags}` : ''}><a:tableStyleId>${table.style}</a:tableStyleId></a:tblPr><a:tblGrid>${`<a:gridCol w="${String(width)}"/>`.repeat(columns)}</a:tblGrid>${body}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+}
+const flagsXml = (flags: readonly TableFlag[]) =>
+  FLAG_ORDER.filter((flag) => flags.includes(flag))
+    .map((flag) => `${flag}="1"`)
+    .join(' ');
+
+function tableXml(slide: StillsSlide): string {
+  const table = slide.table ?? { rows: 0, columns: 0 };
+  return tableFrameXml(
+    {
+      box: slide.box,
+      rows: table.rows,
+      columns: table.columns,
+      style: table.style ?? DEFAULT_TABLE_STYLE,
+      flags: table.flags
+        ? flagsXml(table.flags)
+        : table.every
+          ? 'firstRow="1" firstCol="1" lastRow="1" lastCol="1" bandRow="1"'
+          : `firstRow="1" bandRow="1"${table.bandCol ? ' bandCol="1"' : ''}`,
+      size: 1800,
+      words: (r, c) => (r === 0 ? `Heading ${String(c + 1)}` : `Cell ${String(r)}.${String(c + 1)}`),
+    },
+    4,
+    'Placeholder table',
+  );
+}
+
+/** Run 6: several small tables on a slide, each its own style. */
+function tablesXml(slide: StillsSlide): string {
+  return (slide.tables ?? [])
+    .map((table, i) =>
+      tableFrameXml(
+        {
+          ...table,
+          flags: flagsXml(table.flags),
+          words: (r, c) => (r === 0 ? `H${String(c + 1)}` : `${String.fromCharCode(64 + r)}${String(c + 1)}`),
+        },
+        100 + i,
+        `Placeholder table ${String(i + 1)}`,
+      ),
+    )
+    .join('');
+}
+
+/** Run 6: several boxes of words on a slide, each its own font, size, line spacing, shrink and anchor. */
+function boxesXml(slide: StillsSlide): string {
+  return (slide.boxes ?? [])
+    .map((box, i) => {
+      const lineSpacing =
+        box.lineSpacingPoints !== undefined
+          ? `<a:lnSpc><a:spcPts val="${String(box.lineSpacingPoints)}"/></a:lnSpc>`
+          : box.lineSpacing === undefined
+            ? ''
+            : `<a:lnSpc><a:spcPct val="${String(box.lineSpacing * 1000)}"/></a:lnSpc>`;
+      const paragraphs = box.paragraphs
+        .map(
+          (p) =>
+            `<a:p><a:pPr>${lineSpacing}<a:buNone/></a:pPr>${runXml(p.text, box.size, true, box.font)}</a:p>`,
+        )
+        .join('');
+      const fit = box.fit
+        ? `<a:normAutofit fontScale="${String(box.fit.fontScale)}"${box.fit.lnSpcReduction ? ` lnSpcReduction="${String(box.fit.lnSpcReduction)}"` : ''}/>`
+        : '<a:noAutofit/>';
+      return `<p:sp><p:nvSpPr><p:cNvPr id="${String(20 + i)}" name="Placeholder words ${String(i + 1)}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(box.box)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="${box.anchor ?? 't'}">${fit}</a:bodyPr><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
+    })
+    .join('');
 }
 
 /** Swatches: 6 a row (3 rows at most), 1.75 x 1.5 in each, 0.25 in apart, from (0.8, 1.0) in; no outline. */
@@ -593,6 +718,371 @@ export const STILLS_RUN5_TABLES: StillsDeck = {
   ]),
 };
 
+/*
+ * Run 6 (h-run6, Session 59): what real PowerPoint is asked next (prompt 05).
+ * - X16, tables: PowerPoint's table style families beyond Medium Style 2 and the plain ones, by their IDs alone, each
+ *   with every part on (first and last row and column, rows and columns banded: the cells where the bands meet, which
+ *   run 5 read without them) and with both bands alone; and every one of PowerPoint's 74 style IDs in a small table of
+ *   its own (the two published typos corrected), so that PowerPoint's saved copy of the deck writes each style's
+ *   definition as PowerPoint has it, and its PDF shows each drawn.
+ * - X20, first lines: where PowerPoint puts a box's first line (run 5's baselines fitted no one rule): four boxes a
+ *   slide (18, 28, 40 and 66 pt), two lines each, under single spacing, percentages, exact spacings and PowerPoint's
+ *   shrink, in Arial, PowerPoint's own Calibri, Times New Roman and Verdana (fonts whose heights split differently above
+ *   and below their baselines), a middle and a bottom anchor in Arial, and Drashti's bundled Noto Sans, Noto Sans
+ *   Gujarati and Noto Sans Devanagari, embedded in their own deck (nothing installed on the computer).
+ */
+/** PowerPoint's 74 built-in table styles, by name and ID (LibreOffice's list, MPL-2.0; the IDs only). */
+const FAMILY_IDS: readonly [string, readonly string[]][] = [
+  [
+    'Themed Style 1',
+    [
+      '3C2FFA5D-87B4-456A-9821-1D502468CF0F',
+      '284E427A-3D55-4303-BF80-6455036E1DE7',
+      '69C7853C-536D-4A76-A0AE-DD22124D55A5',
+      '775DCB02-9BB8-47FD-8907-85C794F793BA',
+      '35758FB7-9AC5-4552-8A53-C91805E547FA',
+      '08FB837D-C827-4EFA-A057-4D05807E0F7C',
+    ],
+  ],
+  [
+    'Themed Style 2',
+    [
+      'D113A9D2-9D6B-4929-AA2D-F23B5EE8CBE7',
+      '18603FDC-E32A-4AB5-989C-0864C3EAD2B8',
+      '306799F8-075E-4A3A-A7F6-7FBC6576F1A4',
+      'E269D01E-BC32-4049-B463-5C60D7B0CCD2',
+      '327F97BB-C833-4FB7-BDE5-3F7075034690',
+      '638B1855-1B75-4FBE-930C-398BA8C253C6',
+    ],
+  ],
+  [
+    'Light Style 1',
+    [
+      '9D7B26C5-4107-4FEC-AEDC-1716B250A1EF',
+      '3B4B98B0-60AC-42C2-AFA5-B58CD77FA1E5',
+      '0E3FDE45-AF77-4B5C-9715-49D594BDF05E',
+      'C083E6E3-FA7D-4D7B-A595-EF9225AFEA82',
+      'D27102A9-8310-4765-A935-A1911B00CA55',
+      '5FD0F851-EC5A-4D38-B0AD-8093EC10F338',
+      '68D230F3-CF80-4859-8CE7-A43EE81993B5',
+    ],
+  ],
+  [
+    'Light Style 2',
+    [
+      '7E9639D4-E3E2-4D34-9284-5A2195B3D0D7',
+      '69012ECD-51FC-41F1-AA8D-1B2483CD663E',
+      '72833802-FEF1-4C79-8D5D-14CF1EAF98D9',
+      'F2DE63D5-997A-4646-A377-4702673A728D',
+      '17292A2E-F333-43FB-9621-5CBBE7FDCDCB',
+      '5A111915-BE36-4E01-A7E5-04B1672EAD32',
+      '912C8C85-51F0-491E-9774-3900AFEF0FD7',
+    ],
+  ],
+  [
+    'Light Style 3',
+    [
+      '616DA210-FB5B-4158-B5E0-FEB733F419BA',
+      'BC89EF96-8CEA-46FF-86C4-4CE0E7609802',
+      '5DA37D80-6434-44D0-A028-1B22A696006F',
+      '8799B23B-EC83-4686-B30A-512413B5E67A',
+      'ED083AE6-46FA-4A59-8FB0-9F97EB10719F',
+      'BDBED569-4797-4DF1-A0F4-6AAB3CD982D8',
+      'E8B1032C-EA38-4F05-BA0D-38AFFFC7BED3',
+    ],
+  ],
+  [
+    'Medium Style 1',
+    [
+      '793D81CF-94F2-401A-BA57-92F5A7B2D0C5',
+      'B301B821-A1FF-4177-AEE7-76D212191A09',
+      '9DCAF9ED-07DC-4A11-8D7F-57B35C25682E',
+      '1FECB4D8-DB02-4DC6-A0A2-4F2EBAE1DC90',
+      '1E171933-4619-4E11-9A3F-F7608DF75F80',
+      'FABFCF23-3B69-468F-B69F-88F6DE6A72F2',
+      '10A1B5D5-9B99-4C35-A422-299274C87663',
+    ],
+  ],
+  [
+    'Medium Style 2',
+    [
+      '073A0DAA-6AF3-43AB-8588-CEC1D06C72B9',
+      '5C22544A-7EE6-4342-B048-85BDC9FD1C3A',
+      '21E4AEA4-8DFA-4A89-87EB-49C32662AFE0',
+      'F5AB1C69-6EDB-4FF4-983F-18BD219EF322',
+      '00A15C55-8517-42AA-B614-E9B94910E393',
+      '7DF18680-E054-41AD-8BC1-D1AEF772440D',
+      '93296810-A885-4BE3-A3E7-6D5BEEA58F35',
+    ],
+  ],
+  [
+    'Medium Style 3',
+    [
+      '8EC20E35-A176-4012-BC5E-935CFFF8708E',
+      '6E25E649-3F16-4E02-A733-19D2CDBF48F0',
+      '85BE263C-DBD7-4A20-BB59-AAB30ACAA65A',
+      'EB344D84-9AFB-497E-A393-DC336BA19D2E',
+      'EB9631B5-78F2-41C9-869B-9F39066F8104',
+      '74C1A8A3-306A-4EB7-A6B1-4F7E0EB9C5D6',
+      '2A488322-F2BA-4B5B-9748-0D474271808F',
+    ],
+  ],
+  [
+    'Medium Style 4',
+    [
+      'D7AC3CCA-C797-4891-BE02-D94E43425B78',
+      '69CF1AB2-1976-4502-BF36-3FF5EA218861',
+      '8A107856-5554-42FB-B03E-39F5DBC370BA',
+      '0505E3EF-67EA-436B-97B2-0124C06EBD24',
+      'C4B1156A-380E-4F78-BDF5-A606A8083BF9',
+      '22838BEF-8BB2-4498-84A7-C5851F593DF1',
+      '16D9F66E-5EB9-4882-86FB-DCBF35E3C3E4',
+    ],
+  ],
+  [
+    'Dark Style 1',
+    [
+      'E8034E78-7F5D-4C2E-B375-FC64B27BC917',
+      '125E5076-3810-47DD-B79F-674D7AD40C01',
+      '37CE84F3-28C3-443E-9E96-99CF82512B78',
+      'D03447BB-5D67-496B-8E87-E561075AD55C',
+      'E929F9F4-4A8F-4326-A1B4-22849713DDAB',
+      '8FD4443E-F989-4FC4-A0C8-D5A2AF1F390B',
+      'AF606853-7671-496A-8E4F-DF71F8EC918B',
+    ],
+  ],
+];
+export const POWERPOINT_TABLE_STYLES: readonly { name: string; id: string }[] = [
+  { name: 'No Style, No Grid', id: '{2D5ABB26-0587-4C30-8999-92F81FD0307C}' },
+  { name: 'No Style, Table Grid', id: '{5940675A-B579-460E-94D1-54222C63F5DA}' },
+  ...FAMILY_IDS.flatMap(([family, ids]) =>
+    ids.map((id, i) => ({
+      // Themed styles have no plain one: their first is accent 1.
+      name: family.startsWith('Themed')
+        ? `${family} - Accent ${String(i + 1)}`
+        : i === 0
+          ? family
+          : `${family} - Accent ${String(i)}`,
+      id: `{${id}}`,
+    })),
+  ),
+  { name: 'Dark Style 2', id: '{5202B0CA-FC54-4496-8BCA-5EF66A818D29}' },
+  { name: 'Dark Style 2 - Accent 1/Accent 2', id: '{0660B408-B3CF-4A94-85FC-2B1E0A45F4A2}' },
+  { name: 'Dark Style 2 - Accent 3/Accent 4', id: '{91EBBBCC-DAD2-459C-BE2E-F6DE35CF9A28}' },
+  { name: 'Dark Style 2 - Accent 5/Accent 6', id: '{46F890A9-2807-4EBB-B81D-B2AA78EC7F39}' },
+];
+const styleId = (name: string): string => {
+  const found = POWERPOINT_TABLE_STYLES.find((style) => style.name === name);
+  if (!found) throw new Error(`No table style ${name}`);
+  return found.id;
+};
+/** Run 5's twenty, the two published typos corrected (Light Style 1's real ID). */
+const RUN6_FAMILIES = [
+  'Themed Style 1 - Accent 1',
+  'Themed Style 1 - Accent 2',
+  'Themed Style 2 - Accent 1',
+  'Themed Style 2 - Accent 6',
+  'Light Style 1',
+  'Light Style 1 - Accent 1',
+  'Light Style 2 - Accent 1',
+  'Light Style 2 - Accent 2',
+  'Light Style 3',
+  'Light Style 3 - Accent 1',
+  'Medium Style 1 - Accent 1',
+  'Medium Style 1 - Accent 2',
+  'Medium Style 3 - Accent 1',
+  'Medium Style 3 - Accent 2',
+  'Medium Style 4 - Accent 1',
+  'Medium Style 4 - Accent 6',
+  'Dark Style 1 - Accent 1',
+  'Dark Style 1 - Accent 2',
+  'Dark Style 2',
+  'Dark Style 2 - Accent 1/Accent 2',
+];
+/** Six rows and five columns: with every part on, rows 1-4 and columns 1-3 inside, where each band meets the others. */
+const RUN6_TABLE = { rows: 6, columns: 5 };
+const EVERY_FLAG: readonly TableFlag[] = ['firstRow', 'firstCol', 'lastRow', 'lastCol', 'bandRow', 'bandCol'];
+/** Twelve small tables a slide (4 across, 3 down), each 4 rows and 3 columns, PowerPoint's flags for a new table. */
+const SMALL = {
+  w: 3.0 * INCH,
+  h: 2.0 * INCH,
+  x: 0.45 * INCH,
+  y: 0.85 * INCH,
+  dx: 3.13 * INCH,
+  dy: 2.18 * INCH,
+};
+const smallTables = (): Omit<StillsSlide, 'marker'>[] => {
+  const slides: Omit<StillsSlide, 'marker'>[] = [];
+  for (let from = 0; from < POWERPOINT_TABLE_STYLES.length; from += 12) {
+    const styles = POWERPOINT_TABLE_STYLES.slice(from, from + 12);
+    slides.push({
+      name: `IDs · ${String(from + 1)}-${String(from + styles.length)}`,
+      box: TABLE_BOX,
+      tables: styles.map((style, i) => ({
+        box: {
+          x: SMALL.x + (i % 4) * SMALL.dx,
+          y: SMALL.y + Math.floor(i / 4) * SMALL.dy,
+          w: SMALL.w,
+          h: SMALL.h,
+        },
+        rows: 4,
+        columns: 3,
+        style: style.id,
+        flags: ['firstRow', 'bandRow'],
+        size: 1000,
+      })),
+    });
+  }
+  return slides;
+};
+
+/** Run 6's tables, for X16. */
+export const STILLS_RUN6_TABLES: StillsDeck = {
+  file: 'Placeholder PowerPoint run6 tables.pptx',
+  dark: false,
+  office: true,
+  slides: marked([
+    ...smallTables(),
+    ...RUN6_FAMILIES.map((style) => ({
+      name: `Table · ${style}, every part on`,
+      box: TABLE_BOX,
+      table: { ...RUN6_TABLE, style: styleId(style), flags: EVERY_FLAG },
+    })),
+    ...RUN6_FAMILIES.map((style) => ({
+      name: `Table · ${style}, rows and columns banded`,
+      box: TABLE_BOX,
+      table: { ...RUN6_TABLE, style: styleId(style), flags: ['bandRow', 'bandCol'] as const },
+    })),
+  ]),
+};
+
+/** The first lines' sizes (points): four boxes a slide. */
+export const RUN6_LINE_SIZES = [18, 28, 40, 66] as const;
+/** Each box's width (inches), wide enough for its two lines at its size in the widest font (Verdana). */
+const LINE_WIDTHS = [1.6, 2.0, 2.8, 4.2];
+const LINE_GAP = 0.45;
+const LINE_LEFT = (13.333_333 - LINE_WIDTHS.reduce((a, b) => a + b, 0) - 3 * LINE_GAP) / 2;
+const LINE_TOP = 1.0 * INCH;
+/** Tall enough for two lines at 200% of 66 pt, so that no box's words run past its bottom. */
+const LINE_HEIGHT = 6.2 * INCH;
+/** A line spacing of run 6: single (none written), a percentage, a multiple of the size in points, or a shrink. */
+export interface Run6Spacing {
+  label: string;
+  lineSpacing?: number;
+  /** Exactly this many times the words' size, in points. */
+  exact?: number;
+  fit?: { fontScale: number; lnSpcReduction?: number };
+}
+export const RUN6_SPACINGS: readonly Run6Spacing[] = [
+  { label: 'single' },
+  { label: 'lines 100%', lineSpacing: 100 },
+  { label: 'lines 80%', lineSpacing: 80 },
+  { label: 'lines 90%', lineSpacing: 90 },
+  { label: 'lines 120%', lineSpacing: 120 },
+  { label: 'lines 150%', lineSpacing: 150 },
+  { label: 'lines 200%', lineSpacing: 200 },
+  { label: 'exactly 1.0 x size', exact: 1.0 },
+  { label: 'exactly 1.2 x size', exact: 1.2 },
+  { label: 'exactly 1.5 x size', exact: 1.5 },
+  { label: 'shrunk 62.5%, 20% less', fit: { fontScale: 62_500, lnSpcReduction: 20_000 } },
+  { label: 'shrunk 77.5%, 10% less', fit: { fontScale: 77_500, lnSpcReduction: 10_000 } },
+  { label: 'shrunk 90%', fit: { fontScale: 90_000 } },
+];
+/** The words of a script, two lines: none hangs below its line in Latin; the Indian ones are the placeholder word. */
+const LINE_WORDS: Record<string, readonly [string, string]> = {
+  latin: ['Line A', 'Line B'],
+  gujarati: ['નમૂના', 'નમૂના'],
+  devanagari: ['नमूना', 'नमूना'],
+};
+/** A slide of four boxes, one font and one spacing (and an anchor: the box's own height then 4.5 in). */
+function lineSlide(
+  name: string,
+  font: string,
+  spacing: Run6Spacing,
+  script: keyof typeof LINE_WORDS = 'latin',
+  anchor?: 'ctr' | 'b',
+): Omit<StillsSlide, 'marker'> {
+  let x = LINE_LEFT * INCH;
+  const boxes = RUN6_LINE_SIZES.map((points, i): StillsBox => {
+    const w = (LINE_WIDTHS[i] ?? 2) * INCH;
+    const at = x;
+    x += w + LINE_GAP * INCH;
+    const [first, second] = LINE_WORDS[script] ?? ['Line A', 'Line B'];
+    const paragraphs = [{ text: first }, { text: second }];
+    let h = anchor ? 4.5 * INCH : LINE_HEIGHT;
+    if (spacing.fit) {
+      // As tall as its two lines take at PowerPoint's shrink (each line 1.2 x the shrunk size, rounded to a point),
+      // a fiftieth more, so that PowerPoint keeps the shrink the deck saves (as PF-4b's boxes).
+      const shrunk = Math.round((points * spacing.fit.fontScale) / 100_000);
+      const cut = (spacing.fit.lnSpcReduction ?? 0) / 1000;
+      h = Math.round((2 * 1.2 * shrunk * ((100 - cut) / 100) + 7.2) * 1.02 * POINT);
+    }
+    return {
+      box: { x: at, y: LINE_TOP, w, h },
+      paragraphs,
+      size: points * 100,
+      font,
+      ...(anchor ? { anchor } : {}),
+      ...(spacing.lineSpacing === undefined ? {} : { lineSpacing: spacing.lineSpacing }),
+      ...(spacing.exact === undefined ? {} : { lineSpacingPoints: Math.round(spacing.exact * points * 100) }),
+      ...(spacing.fit ? { fit: spacing.fit } : {}),
+    };
+  });
+  return { name, box: WORDS_BOX, boxes };
+}
+const fontSlides = (font: string, script: keyof typeof LINE_WORDS = 'latin') =>
+  RUN6_SPACINGS.map((spacing) => lineSlide(`${font} · ${spacing.label}`, font, spacing, script));
+const SPACING = (label: string): Run6Spacing => {
+  const found = RUN6_SPACINGS.find((spacing) => spacing.label === label);
+  if (!found) throw new Error(`No spacing ${label}`);
+  return found;
+};
+
+/** Run 6's first lines in the fonts PowerPoint has of its own (and Windows has): for X20. */
+export const STILLS_RUN6_LINES: StillsDeck = {
+  file: 'Placeholder PowerPoint run6 lines.pptx',
+  dark: false,
+  slides: marked([
+    ...['Arial', 'Calibri', 'Times New Roman', 'Verdana'].flatMap((font) => fontSlides(font)),
+    ...(['ctr', 'b'] as const).flatMap((anchor) =>
+      ['single', 'lines 150%', 'lines 80%'].map((label) =>
+        lineSlide(
+          `Arial anchored ${anchor === 'ctr' ? 'middle' : 'bottom'} · ${label}`,
+          'Arial',
+          SPACING(label),
+          'latin',
+          anchor,
+        ),
+      ),
+    ),
+  ]),
+};
+
+/** Run 6's first lines in Drashti's bundled fonts, embedded in the deck (PowerPoint has none of them): for X20. */
+export const STILLS_RUN6_NOTO: StillsDeck = {
+  file: 'Placeholder PowerPoint run6 noto.pptx',
+  dark: false,
+  fonts: [
+    { typeface: 'Noto Sans', woff: '@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff' },
+    {
+      typeface: 'Noto Sans Gujarati',
+      woff: '@fontsource/noto-sans-gujarati/files/noto-sans-gujarati-gujarati-400-normal.woff',
+    },
+    {
+      typeface: 'Noto Sans Devanagari',
+      woff: '@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-400-normal.woff',
+    },
+  ],
+  slides: marked([
+    ...fontSlides('Noto Sans'),
+    ...fontSlides('Noto Sans Gujarati', 'gujarati'),
+    ...fontSlides('Noto Sans Devanagari', 'devanagari'),
+  ]),
+};
+
+const FONT_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/font';
+const require = createRequire(import.meta.url);
+
 /** Write a stills deck into `work` (its base deck beside it); returns its path. */
 export async function writeStillsDeck(work: string, deck: StillsDeck): Promise<string> {
   const base = join(work, `base ${deck.file}`);
@@ -645,7 +1135,7 @@ export async function writeStillsDeck(work: string, deck: StillsDeck): Promise<s
       )
       .replace(
         '</p:spTree>',
-        `${slide.table ? tableXml(slide) : slide.swatches ? swatchesXml(slide) : wordsXml(slide)}</p:spTree>`,
+        `${slide.table ? tableXml(slide) : slide.tables ? tablesXml(slide) : slide.boxes ? boxesXml(slide) : slide.swatches ? swatchesXml(slide) : wordsXml(slide)}</p:spTree>`,
       );
     if (!xml.includes('<a:schemeClr val="bg1"/>')) throw new Error(`Missing generated background on ${name}`);
     replacements.set(name, Buffer.from(xml));
@@ -672,14 +1162,50 @@ export async function writeStillsDeck(work: string, deck: StillsDeck): Promise<s
         'bg1="dk1" tx1="lt1" bg2="dk2" tx2="lt2"',
       ),
     );
+  // Run 6: fonts embedded as PowerPoint embeds them (Embedded OpenType parts, named in presentation.xml).
+  const fonts = await Promise.all(
+    (deck.fonts ?? []).map(async (font, i) => {
+      const sfnt = sfntFromWoff(await readFile(require.resolve(font.woff)));
+      return { ...font, id: `rId${String(4 + i)}`, part: `ppt/fonts/font${String(i + 1)}.fntdata`, sfnt };
+    }),
+  );
+  const fontRels = fonts
+    .map((f) => `<Relationship Id="${f.id}" Type="${FONT_REL}" Target="${f.part.slice(4)}"/>`)
+    .join('');
   replacements.set(
     'ppt/_rels/presentation.xml.rels',
-    replaced('ppt/_rels/presentation.xml.rels', '</Relationships>', `${TABLE_STYLES_REL}</Relationships>`),
+    replaced(
+      'ppt/_rels/presentation.xml.rels',
+      '</Relationships>',
+      `${TABLE_STYLES_REL}${fontRels}</Relationships>`,
+    ),
   );
   replacements.set(
     '[Content_Types].xml',
-    replaced('[Content_Types].xml', '</Types>', `${TABLE_STYLES_TYPE}</Types>`),
+    replaced(
+      '[Content_Types].xml',
+      '</Types>',
+      `${fonts.length ? '<Default Extension="fntdata" ContentType="application/x-fontdata"/>' : ''}${TABLE_STYLES_TYPE}</Types>`,
+    ),
   );
+  if (fonts.length) {
+    const list = fonts
+      .map(
+        (f) =>
+          `<p:embeddedFont><p:font typeface="${esc(f.typeface)}" panose="${fontPanose(f.sfnt)}" pitchFamily="34" charset="0"/><p:regular r:id="${f.id}"/></p:embeddedFont>`,
+      )
+      .join('');
+    const presentation = replaced(
+      'ppt/presentation.xml',
+      '<p:notesSz cx="6858000" cy="9144000"/>',
+      `<p:notesSz cx="6858000" cy="9144000"/><p:embeddedFontLst>${list}</p:embeddedFontLst>`,
+    ).toString('utf8');
+    if (!presentation.includes('<p:presentation ')) throw new Error('Missing generated presentation');
+    replacements.set(
+      'ppt/presentation.xml',
+      Buffer.from(presentation.replace('<p:presentation ', '<p:presentation embedTrueTypeFonts="1" ')),
+    );
+  }
   // Every part as the base deck has it but those changed, in its order, and the table styles part after them.
   const parts = [...entries].map(([name, data]) => ({
     name,
@@ -691,6 +1217,7 @@ export async function writeStillsDeck(work: string, deck: StillsDeck): Promise<s
     data: Buffer.from(TABLE_STYLES.replace('</a:tblStyleLst>', `${deck.tableStyles ?? ''}</a:tblStyleLst>`)),
     deflate: true,
   });
+  for (const f of fonts) parts.push({ name: f.part, data: eotOf(f.sfnt), deflate: true });
   await writeFile(source, makeZip(parts));
   return source;
 }
