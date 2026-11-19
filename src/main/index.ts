@@ -7657,6 +7657,10 @@ function start(): void {
     guides: () => {
       sendToOperator(IPC.app.showGuides, { at: Date.now() });
     },
+    // The Tools menu (Session 60, x36): Pro Mode's, each item opening its window in the operator window.
+    tools: (tool) => {
+      if (mode === 'pro') sendToOperator(IPC.app.showTool, { tool, at: Date.now() });
+    },
     priority: (() => {
       const item = priorityItem((text) => {
         rebuildMenu();

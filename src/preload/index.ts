@@ -91,6 +91,10 @@ const bridge: DrashtiBridge = {
       on(IPC.app.showGuides, () => {
         listener();
       }),
+    onShowTool: (listener) =>
+      on(IPC.app.showTool, ({ tool }) => {
+        listener(tool);
+      }),
   },
   guides: {
     list: () => invoke(IPC.guides.list),

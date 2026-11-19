@@ -361,3 +361,47 @@ describe('Books (alpha.15): no menu says Shastra', () => {
     },
   );
 });
+
+describe('Tools (Session 60, x36: the owner’s "A, More tools + menu")', () => {
+  it.each(PLATFORMS)(
+    'is Pro Mode’s, between View and Window: the four setup tools, a line, then Lower Thirds, MIDI and OSC, each opening its window; Simple Mode has none (%s)',
+    (platform) => {
+      const opened: string[] = [];
+      on(platform, () => {
+        const made = actions('pro');
+        installMenu({ ...made.a, tools: (tool) => opened.push(tool) });
+      });
+      const bar = (built.at(-1) ?? []).map((m) => m.label ?? m.role ?? '');
+      expect(bar.indexOf('Tools')).toBe(bar.indexOf('View') + 1);
+      expect(bar[bar.indexOf('Tools') + 1]).toBe('Window');
+      const tools = item('tools');
+      const list = Array.isArray(tools?.submenu) ? tools.submenu : [];
+      expect(list.map((i) => (i.type === 'separator' ? '—' : `${i.id ?? ''} ${i.label ?? ''}`))).toEqual([
+        'tools-show-a-window Show a Window…',
+        'tools-add-video-input Add a Video Input…',
+        'tools-picture-in-picture Picture in Picture…',
+        'tools-qr-code QR code…',
+        '—',
+        'tools-lower-thirds-studio Lower Thirds Studio…',
+        'tools-midi MIDI Controller…',
+        'tools-osc OSC Control…',
+      ]);
+      for (const entry of list) (entry.click as (() => void) | undefined)?.();
+      expect(opened).toEqual([
+        'show-a-window',
+        'add-video-input',
+        'picture-in-picture',
+        'qr-code',
+        'lower-thirds-studio',
+        'midi',
+        'osc',
+      ]);
+      on(platform, () => {
+        const made = actions('simple');
+        installMenu({ ...made.a, tools: (tool) => opened.push(tool) });
+      });
+      expect(item('tools')).toBeUndefined();
+      expect((built.at(-1) ?? []).some((m) => m.label === 'Tools')).toBe(false);
+    },
+  );
+});
