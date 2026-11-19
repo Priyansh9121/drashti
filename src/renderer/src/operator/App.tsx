@@ -80,6 +80,7 @@ import { connectSound } from '../sound/sound-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { MidiDialogHost, MidiTool } from '../midi/MidiTool';
 import { openTool, SetupTools } from './SetupTools';
+import { askWhereFilesGo, DropNewDialog } from '../playlists/DropNewDialog';
 import { OscControl, OscTool } from '../osc/OscControl';
 import { connectOsc } from '../osc/osc-store';
 import { LowerThirdsPanel } from '../lower-thirds/LowerThirdsPanel';
@@ -262,7 +263,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
   useEffect(() => addFileMenuItems(quickMenuItems), []);
   // Files dropped anywhere on the window are imported, as on the presentation list (which takes
   // its own drops): an operator drags a deck onto Drashti, wherever it lands (Session 16). A folder becomes a smart
-  // playlist following it, at once, nothing asked (Session 56, the owner's item 5).
+  // playlist following it, at once, nothing asked (Session 56, the owner's item 5). Into the open playlist; with none
+  // open, a small window asks for a new playlist or folder for them (Session 60, x36: playlists/DropNewDialog.tsx).
   useEffect(() => {
     const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') === true;
     const over = (e: DragEvent) => {
@@ -277,7 +279,12 @@ function ProApp({ info }: { info: AppInfo | null }) {
         .map((f) => window.drashti.files.pathFor(f))
         .filter((p) => p !== '');
       const destination = openImportDestination();
-      if (paths.length > 0) void dropFolders(paths, (files) => importPaths(files, undefined, destination));
+      if (paths.length > 0)
+        void dropFolders(paths, (files) => {
+          if (destination !== null) return importPaths(files, undefined, destination);
+          askWhereFilesGo(files);
+          return undefined;
+        });
     };
     window.addEventListener('dragover', over);
     window.addEventListener('drop', drop);
@@ -443,6 +450,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <PipDialog />
       {/* More tools' MIDI controller, or Tools › MIDI Controller… (Session 60, x36). */}
       <MidiDialogHost />
+      {/* Files dropped with no playlist open: a new playlist or folder for them (Session 60, x36). */}
+      <DropNewDialog />
       {/* Ready? and New › QR code… (Session 55, Part 8). */}
       <ReadyDialog />
       <QrSlideDialog />
