@@ -163,13 +163,14 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
   if (!clip) throw new Error('the warm-up has no visible box');
   const drawnPng = await page.screenshot({ scale: 'css', clip });
   const drawn = decodePng(drawnPng);
-  const display = await page.evaluate((scope) => {
+  const opacity = await page.evaluate((scope) => {
     const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
     const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
     if (!drawing) throw new Error('no warm-up drawing for the black reference');
-    const before = drawing.style.display;
-    drawing.style.display = 'none';
-    if (getComputedStyle(drawing).display !== 'none') throw new Error('the reference still draws a scene');
+    // Preserve layout/layer geometry: display:none changes Windows' rounded-border sampling.
+    const before = drawing.style.opacity;
+    drawing.style.opacity = '0';
+    if (getComputedStyle(drawing).opacity !== '0') throw new Error('the reference still draws a scene');
     return before;
   }, scope);
   let black: ReturnType<typeof decodePng>;
@@ -179,13 +180,13 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
     black = decodePng(blackPng);
   } finally {
     await page.evaluate(
-      ({ scope, display }) => {
+      ({ scope, opacity }) => {
         const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
         const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
         if (!drawing) throw new Error('no warm-up drawing to restore');
-        drawing.style.display = display;
+        drawing.style.opacity = opacity;
       },
-      { scope, display },
+      { scope, opacity },
     );
   }
   expect([drawn.width, drawn.height], 'the same entire warm-up box').toEqual([black.width, black.height]);
