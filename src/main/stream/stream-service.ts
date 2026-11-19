@@ -67,9 +67,11 @@ export interface StreamServiceDeps {
   clockStyle?(): ClockStyle;
   /**
    * Whether the stream's page skips its warm-up (Session 58, WU-1): `{ noGpu: true }` where Chromium draws without a
-   * graphics chip, as Main decides for the outputs (outputs/warm-up-choice.ts); nothing otherwise, or left out.
+   * graphics chip, as Main decides for the outputs (outputs/warm-up-choice.ts); `{ warmedHere: true }` once a hall
+   * screen here has drawn its warm-up whole at this start, the opening over (Session 60, X21: stream/stream-warm.ts);
+   * nothing otherwise, or left out.
    */
-  warmUpFact?(page: BrowserWindow): { noGpu?: true };
+  warmUpFact?(page: BrowserWindow): { noGpu?: true; warmedHere?: true };
   profiles: StreamProfileRepo;
   keys: StreamKeyStore;
   settings: SettingsRepo;

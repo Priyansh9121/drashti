@@ -200,6 +200,13 @@ export interface ProgramContext {
    * page draws the show without warming up, as there is nothing to warm. Left out: it warms up as before.
    */
   noGpu?: true;
+  /**
+   * A hall screen on this computer has drawn its warm-up whole at this start, the opening over (Session 60, X21; the
+   * owner's answer A to Q60-1: main/stream/stream-warm.ts): what the page draws with is made, so it draws the show at
+   * once, with no warm-up of its own (drawn mid-show, that warm-up held the hall's frames). Read as its warm-up would
+   * begin: one begun goes on. Left out: it warms up as before.
+   */
+  warmedHere?: true;
 }
 
 /** How well the stream is reaching YouTube. */
