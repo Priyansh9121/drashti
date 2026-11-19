@@ -3241,7 +3241,14 @@ function start(): void {
       settings.set('videoOut', value);
     },
     sender: () =>
-      videoOutSender({ standIn: sw('DRASHTI_TEST_VIDEO_OUT_STAND_IN') ?? null, platform: process.platform }),
+      videoOutSender({
+        standIn: sw('DRASHTI_TEST_VIDEO_OUT_STAND_IN') ?? null,
+        platform: process.platform,
+        arch: process.arch,
+        packaged: packaged(),
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath(),
+      }),
     holdProgram: (on) => {
       streaming.setVideoOut(on);
     },
