@@ -193,3 +193,11 @@ export function PanelWarmUp() {
     </div>
   );
 }
+
+/** How often the keeper draws the primary button's kind again (ms): see PanelKindKeeper. */
+export const KIND_KEEP_MS = 20_000;
+
+/** STUB (red): keeps the primary button's drawing kind in use mid-show. */
+export function PanelKindKeeper() {
+  return null;
+}
