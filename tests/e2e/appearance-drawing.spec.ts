@@ -111,7 +111,9 @@ test('the live slide’s red underglow sits under the live thumbnail and moves w
  * static), and a shape filled with a gradient (the mark is flat beside a name), each a new way of drawing for the
  * chip to work out; and a layer of its own (will-change), which is put together again at every frame. A
  * decoration's gradient never moves and is never on a show control or the live picture, and no words are ever
- * filled with one. Slides themselves (inside a scene) are the audience's.
+ * filled with one. Slides themselves (inside a scene) are the audience's. So is the graphics chip's own warm-up
+ * (Session 60, X21: operator/PanelWarmUp.tsx, marked data-chip-warm-up): it draws only where Chromium draws WITH a
+ * chip, the chip's ways of drawing made ahead or kept, and chipWarmUps holds it to its own rules.
  */
 function newWaysToDraw(page: Page) {
   return page.evaluate(() => {
@@ -135,6 +137,8 @@ function newWaysToDraw(page: Page) {
       `${el.getAttribute('data-testid') ?? el.tagName.toLowerCase()}${pseudo ?? ''} ${(el.getAttribute('class') ?? '').slice(0, 60)}`;
     for (const el of document.querySelectorAll('body *')) {
       if (el.closest('[data-testid="scene"]')) continue;
+      // The graphics chip's own warm-up (chipWarmUps below holds it to its own rules).
+      if (el.closest('[data-chip-warm-up]')) continue;
       for (const pseudo of [null, '::before', '::after']) {
         const st = getComputedStyle(el, pseudo);
         if (pseudo !== null && st.content === 'none') continue;
@@ -188,6 +192,59 @@ function newWaysToDraw(page: Page) {
   });
 }
 
+/**
+ * The graphics chip's own warm-up in the operator window (Session 60, X21: operator/PanelWarmUp.tsx), marked
+ * data-chip-warm-up and passed over by newWaysToDraw: the Stream panel's pieces drawn unseen while the LIVE picture
+ * warms up (in its black box, under brightness(0)), and the keeper of the primary button's kind (a speck under a
+ * cover of the heading's own colour). Where Chromium draws without a graphics chip there is none of it at all; where it
+ * draws with one, the keeper is always there; and each is unreachable and unread, and as small and unseen as built.
+ */
+async function chipWarmUps(page: Page, what: string): Promise<void> {
+  const { chipless, marks } = await page.evaluate(async () => ({
+    chipless: await (globalThis as PageGlobals).drashti.app.noGpu(),
+    marks: [...document.querySelectorAll('[data-chip-warm-up]')].map((el) => {
+      const box = el.getBoundingClientRect();
+      return {
+        id: el.getAttribute('data-testid') ?? el.tagName.toLowerCase(),
+        hidden: el.getAttribute('aria-hidden') === 'true',
+        inert: el instanceof HTMLElement && el.inert,
+        width: box.width,
+        height: box.height,
+        where: el.parentElement?.closest('[data-testid="live-preview"]')
+          ? 'the LIVE picture'
+          : el.closest('#live-preview-title')
+            ? 'the LIVE heading'
+            : 'elsewhere',
+        // Its own layers each drawn black (the tray's), and nothing in it that can be reached.
+        unfiltered: [...el.querySelectorAll('*')].filter((inner) => {
+          const st = getComputedStyle(inner);
+          return st.willChange !== 'auto' && st.filter !== 'brightness(0)';
+        }).length,
+        reachable: el.querySelectorAll('button, a[href], input, select, textarea, [tabindex]').length,
+      };
+    }),
+  }));
+  if (chipless) {
+    expect(marks, `${what}: none of the chip's warm-up without a graphics chip`).toEqual([]);
+    return;
+  }
+  expect(
+    marks.map((m) => m.id),
+    `${what}: the primary's kind kept, with a graphics chip`,
+  ).toContain('panel-kind-keeper');
+  for (const m of marks) {
+    expect(m, `${what}: ${m.id}`).toMatchObject({ hidden: true, inert: true, reachable: 0 });
+    if (m.id === 'panel-kind-keeper') {
+      const speck = `${what}: the keeper, a speck in the LIVE heading`;
+      expect(m, speck).toMatchObject({ where: 'the LIVE heading' });
+      expect(m.width * m.height, speck).toBeLessThanOrEqual(32 * 16);
+    } else {
+      const tray = `${what}: the warm-up's pieces in the LIVE picture's black box, each layer black`;
+      expect(m, tray).toMatchObject({ id: 'panel-warm-up', where: 'the LIVE picture', unfiltered: 0 });
+    }
+  }
+}
+
 for (const a of BUILT_IN)
   test(`${a.name}: in the window, Simple Mode, the Appearance window and every component: no new way of drawing, no layer of its own`, async () => {
     // Each new way of drawing costs a computer without a graphics chip a pause the first time (CI's Mac:
@@ -199,6 +256,7 @@ for (const a of BUILT_IN)
     await chooseMenuItem(app, `appearance-${a.id}`);
     await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
     expect(await newWaysToDraw(win), 'the window, nothing live').toEqual([]);
+    await chipWarmUps(win, 'the window, nothing live');
     await win.evaluate(async () => {
       const d = (globalThis as PageGlobals).drashti;
       const [p] = await d.library.listPresentations();
@@ -206,6 +264,7 @@ for (const a of BUILT_IN)
     });
     await expect(win.getByTestId('live-preview')).toHaveClass(/border-live/u);
     expect(await newWaysToDraw(win), 'the window in a show').toEqual([]);
+    await chipWarmUps(win, 'the window in a show');
     await chooseMenuItem(app, 'keyboard-shortcuts');
     await expect(win.getByRole('dialog')).toBeVisible();
     expect(await newWaysToDraw(win), 'a dialog').toEqual([]);
