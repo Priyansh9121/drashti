@@ -13,3 +13,4 @@ export const PROGRAMS: {
   win32: { sender: string; receiver: string };
 };
 export function fetchVideoOut(target: string): Promise<string>;
+export function vcvars(): string;
