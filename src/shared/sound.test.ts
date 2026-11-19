@@ -211,6 +211,45 @@ describe('music steps aside under a video with sound', () => {
     expect(soundFilesOf(up(over)).sort()).toEqual(['cue', 'track']);
   });
 
+  it('not for a video while the operator has Video muted or at 0 %: none of its sound is heard (X33)', () => {
+    const at = (video: { level: number; muted: boolean }, audioMuted = false) => ({
+      sound: {
+        stepsAside: true,
+        gains: {},
+        silent: [],
+        levels: { audio: { level: 1, muted: audioMuted }, video },
+      },
+    });
+    const bg = { background: videoBackground(T0) };
+    expect(musicAside(withMusic(bg, at({ level: 1, muted: false })), T0 + 1000)).toBe(true);
+    expect(musicAside(withMusic(bg, at({ level: 0.3, muted: false })), T0 + 1000)).toBe(true);
+    expect(musicAside(withMusic(bg, at({ level: 1, muted: true })), T0 + 1000)).toBe(false);
+    expect(musicAside(withMusic(bg, at({ level: 0, muted: false })), T0 + 1000)).toBe(false);
+    // A video on the slide up too.
+    const onSlide = withMusic(
+      {
+        slide: { presentationId: 'p', slideIndex: 0, slide: videoSlide('clip'), shownAt: T0, notes: '' },
+      },
+      { videoFiles: { clip: { durationMs: 10_000 } } },
+    );
+    expect(musicAside({ ...onSlide, ...at({ level: 1, muted: false }) }, T0 + 1000)).toBe(true);
+    expect(musicAside({ ...onSlide, ...at({ level: 1, muted: true }) }, T0 + 1000)).toBe(false);
+    // A slide's or a deck's own sound over the music is Audio's: it still steps the music aside with Video muted.
+    const base = withMusic();
+    const audio = base.layers.audio;
+    if (!audio) throw new Error('no music');
+    const over = {
+      id: 'cue',
+      title: 'Placeholder cue',
+      mediaId: 'cue',
+      volume: 1,
+      loop: false,
+      startedAt: T0,
+    };
+    const withOver = { ...base, layers: { ...base.layers, audio: { ...audio, over } } };
+    expect(musicAside({ ...withOver, ...at({ level: 1, muted: true }) }, T0 + 500)).toBe(true);
+  });
+
   it('fades down evenly over about a second, never stopping, and back up as evenly', () => {
     const aside = new StepAside();
     // First asked while a video plays: already aside.
