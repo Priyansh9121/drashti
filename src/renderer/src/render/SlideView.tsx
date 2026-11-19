@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { memo, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type VideoClips, videoClip, type VideoSeeks, videoSeek } from '../../../shared/engine/state';
 import { type PlaybackClip, type PlaybackSeek, stillUrl } from '../../../shared/media';
 import type {
