@@ -111,9 +111,12 @@ export function keepInitialPicturePriority(
 /** A replacement copy can start while the page still keeps its initial consumers. */
 export function prepareInitialPicture(
   priority: InitialPicturePriority | null,
-  _mediaId: string,
+  mediaId: string,
 ): InitialPicturePriority | null {
-  return priority;
+  if (!priority) return null;
+  if (priority.pending.includes(mediaId) || !priority.current.media.some((m) => m.mediaId === mediaId))
+    return priority;
+  return { ...priority, pending: [...priority.pending, mediaId] };
 }
 
 export function settleInitialPicture(

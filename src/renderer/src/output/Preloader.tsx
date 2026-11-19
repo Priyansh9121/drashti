@@ -12,6 +12,7 @@ import { decodeSlideImage } from '../render/slide-image-decoding';
 import {
   initialPictureReadyToHandOver,
   keepInitialPicturePriority,
+  prepareInitialPicture,
   settleInitialPicture,
   startInitialPicturePriority,
   type CurrentPictureSelection,
@@ -19,17 +20,20 @@ import {
 
 type LoadState = 'loading' | 'ready' | 'failed';
 type PictureSettled = (mediaId: string, outcome: 'ready' | 'failed') => void;
+type PictureStarting = (mediaId: string) => void;
 
 /** An image fetched and decoded out of sight, so the slide that shows it paints it at once. */
 function PreloadImage({
   mediaId,
   attempt,
   first = false,
+  onStarting,
   onSettled,
 }: {
   mediaId: string;
   attempt: number;
   first?: boolean;
+  onStarting?: PictureStarting;
   onSettled?: PictureSettled;
 }) {
   const ref = useRef<HTMLImageElement>(null);
@@ -38,6 +42,7 @@ function PreloadImage({
     const img = ref.current;
     if (!img) return;
     let current = true;
+    onStarting?.(mediaId);
     const settled = (outcome: 'ready' | 'failed') => {
       if (!current) return;
       setState(outcome);
@@ -50,7 +55,7 @@ function PreloadImage({
     return () => {
       current = false;
     };
-  }, [mediaId, attempt, onSettled]);
+  }, [mediaId, attempt, onStarting, onSettled]);
   return (
     <img
       ref={ref}
@@ -101,11 +106,13 @@ function PreloadPicture({
   mediaId,
   look,
   first = false,
+  onStarting,
   onSettled,
 }: {
   mediaId: string;
   look: PictureLook | null;
   first?: boolean;
+  onStarting?: PictureStarting;
   onSettled?: PictureSettled;
 }) {
   const attempt = useMediaAttempt(mediaId);
@@ -120,7 +127,14 @@ function PreloadPicture({
       {onSettled && <DecodedPreload mediaId={mediaId} onSettled={onSettled} />}
     </span>
   ) : (
-    <PreloadImage key={attempt} mediaId={mediaId} attempt={attempt} first={first} onSettled={onSettled} />
+    <PreloadImage
+      key={attempt}
+      mediaId={mediaId}
+      attempt={attempt}
+      first={first}
+      onStarting={onStarting}
+      onSettled={onSettled}
+    />
   );
 }
 
@@ -176,6 +190,9 @@ export function Preloader({
     : null;
   if (initial !== priority) setPriority(initial);
   const until = initial?.until ?? null;
+  const onStarting = useCallback<PictureStarting>((mediaId) => {
+    setPriority((pending) => prepareInitialPicture(pending, mediaId));
+  }, []);
   const onSettled = useCallback<PictureSettled>((mediaId, outcome) => {
     setPriority((pending) => settleInitialPicture(pending, mediaId, outcome));
   }, []);
@@ -218,6 +235,7 @@ export function Preloader({
               mediaId={m.mediaId}
               look={pictures[m.mediaId] ?? null}
               first
+              onStarting={onStarting}
               onSettled={onSettled}
             />
           ))}
