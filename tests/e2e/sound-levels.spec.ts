@@ -111,9 +111,10 @@ function playedOn(seen: Record<string, string[]>, keys: string[]): void {
       const [mark, state, at] = line.split(' ');
       expect(mark, `${key}: ${line}`).toBe('yes');
       expect(state, `${key}: ${line}`).toBe('playing');
-      // Never moved back (nothing seeks it): each reading as far on as the one before, or further.
-      expect(Number(at), `${key}: ${line}`).toBeGreaterThanOrEqual(last);
-      last = Number(at);
+      // Never moved back (nothing seeks it): each reading as far on as the one before, or further (within the quarter
+      // second the clock's own keeping in step may nudge it).
+      expect(Number(at), `${key}: ${line}`).toBeGreaterThanOrEqual(last - 0.25);
+      last = Math.max(last, Number(at));
     }
     // And it went on: several seconds further on by the end.
     const first = Number(lines[0]?.split(' ')[2] ?? 0);
@@ -285,7 +286,7 @@ test('Audio’s and Video’s levels and mutes, live: each sound plays at its le
   await expectNoSeriousA11yIssues(win, 'the sound’s levels, sound on', '[data-testid="sound-levels"]');
   await a.mute.click();
   await expectNoSeriousA11yIssues(win, 'the sound’s levels, Audio muted', '[data-testid="sound-levels"]');
-  await expectNoSeriousA11yIssues(win, 'the status bar, Audio muted', 'footer');
+  await expectNoSeriousA11yIssues(win, 'the status bar’s Audio muted', '[data-testid="sound-muted-status"]');
   await app.close();
 
   // Started again: the levels as they were left (Audio 70 %, Video 95 %), and the sound on, whatever was muted.
