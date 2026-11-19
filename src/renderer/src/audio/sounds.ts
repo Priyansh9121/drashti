@@ -3,7 +3,7 @@ import type { DeckMedia } from '../../../shared/deck';
 import { deckMediaOf, playsAcross } from '../../../shared/deck-show';
 import { MUSIC_FADE_IN_MS, MUSIC_FADE_OUT_MS } from '../../../shared/music';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
-import { gainOf } from '../../../shared/sound';
+import { gainOf, type SoundKind } from '../../../shared/sound';
 
 /** One sound the show is making: a file, when it started, and how. */
 export interface Sound {
@@ -32,6 +32,11 @@ export interface Sound {
   gain?: number;
   /** The music (Part 7, K): the audio layer's sound, which steps aside under a video with sound. */
   aside?: true;
+  /**
+   * Which of the operator's two levels it plays under (X33, shared/sound.ts): Audio's (a sound: the audio layer, a sound
+   * over it, a deck's sounds and its transition's) or Video's (a video's sound: the background's, the slide's videos').
+   */
+  kind?: SoundKind;
 }
 
 /** Its file's even-loudness gain (Session 55, Part 7), when it has one other than 1. */

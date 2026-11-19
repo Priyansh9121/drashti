@@ -59,7 +59,7 @@ import { BUILT_IN_TIMER_LOOK, timerAloneSlide, type TimerLook, timerShowId } fro
 import { INPUT_FADE_MS, type VideoInput } from '../../shared/video-inputs';
 import { ownOrderItem, remapPosition } from '../../shared/order';
 import { NO_STAGE, type StageInput, type StageLayout, type StageState } from '../../shared/stage-layouts';
-import { type SoundState, soundFilesOf } from '../../shared/sound';
+import { type SoundLevels, type SoundState, soundFilesOf } from '../../shared/sound';
 import type { EngineAction } from './actions';
 import { hidePip, leavingMedia, placePip, restoredPip, showPip, swapPip } from './pip';
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
@@ -282,6 +282,11 @@ export interface EngineOptions {
   soundOf?: (mediaId: string) => { gain: number; silent: boolean } | null;
   /** Whether the music steps aside under a video with sound (Part 7, K: Audio's switch; on when left out). */
   stepsAside?: () => boolean;
+  /**
+   * The operator's Audio and Video levels and mutes (X33, main/sound/levels.ts): every page that plays sound plays by
+   * them. Left out: both at 100 %, sound on.
+   */
+  levels?: () => SoundLevels;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */

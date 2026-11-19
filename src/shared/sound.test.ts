@@ -2,13 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { type EngineState, initialEngineState } from './engine/state';
 import type { RenderSlide } from './model';
 import {
+  cleanLevel,
   EVEN_LOUDNESS_LUFS,
   evenGainDb,
+  FULL_LEVELS,
   gainOf,
   gainOfDb,
+  kindLevel,
   MUSIC_ASIDE_DB,
   musicAside,
   soundFilesOf,
+  soundGain,
+  type SoundLevels,
   StepAside,
 } from './sound';
 
@@ -227,5 +232,86 @@ describe('the files sounding now', () => {
       slide: { presentationId: 'p', slideIndex: 0, slide: videoSlide('clip'), shownAt: T0, notes: '' },
     });
     expect(soundFilesOf(state).sort()).toEqual(['clip', 'track']);
+  });
+});
+
+describe('the operator’s levels and mutes (X33): Audio’s and Video’s, on top of everything else', () => {
+  /** The engine's state with the levels given (and Part 7's even gains and step aside as they are). */
+  const at = (levels: SoundLevels | undefined) => ({
+    sound: { stepsAside: true, gains: { loud: 0.5 }, silent: [], ...(levels ? { levels } : {}) },
+  });
+  const levels = (audio: number, video: number, muted: { audio?: boolean; video?: boolean } = {}) => ({
+    audio: { level: audio, muted: muted.audio ?? false },
+    video: { level: video, muted: muted.video ?? false },
+  });
+
+  it('each kind plays at its own level, 0 while muted, and at 100 % when the state says none', () => {
+    expect(kindLevel(at(levels(0.6, 0.25)), 'audio')).toBe(0.6);
+    expect(kindLevel(at(levels(0.6, 0.25)), 'video')).toBe(0.25);
+    // Muted: nothing, whatever its level; the other kind plays on at its own.
+    expect(kindLevel(at(levels(0.6, 0.25, { audio: true })), 'audio')).toBe(0);
+    expect(kindLevel(at(levels(0.6, 0.25, { audio: true })), 'video')).toBe(0.25);
+    expect(kindLevel(at(levels(0.6, 0.25, { video: true })), 'video')).toBe(0);
+    // An older state, an engine with no library, no state yet: as before, full.
+    expect(kindLevel(at(undefined), 'audio')).toBe(1);
+    expect(kindLevel({}, 'video')).toBe(1);
+    expect(kindLevel(null, 'audio')).toBe(1);
+    expect(FULL_LEVELS).toEqual(levels(1, 1));
+  });
+
+  it('a sound’s gain is its file’s even gain × the music stepping aside × its kind’s level; each still works under it', () => {
+    const aside = gainOfDb(MUSIC_ASIDE_DB);
+    const state = at(levels(0.5, 0.8));
+    // The music: even gain 0.5, stepped aside, at Audio's 50 %.
+    expect(soundGain({ gain: 0.5, aside: true, kind: 'audio' }, aside, state)).toBeCloseTo(
+      0.5 * aside * 0.5,
+      6,
+    );
+    // Not stepped aside: its even gain × Audio's level.
+    expect(soundGain({ gain: 0.5, aside: true, kind: 'audio' }, 1, state)).toBeCloseTo(0.25, 6);
+    // A slide's own sound (never steps aside): its even gain × Audio's level, whatever the music does.
+    expect(soundGain({ gain: 2, kind: 'audio' }, aside, state)).toBeCloseTo(1, 6);
+    // A video's sound: its even gain × Video's level.
+    expect(soundGain({ gain: 1.995, kind: 'video' }, aside, state)).toBeCloseTo(1.995 * 0.8, 6);
+    // A file played as it is (no even gain): its kind's level alone.
+    expect(soundGain({ kind: 'video' }, 1, state)).toBeCloseTo(0.8, 6);
+    // At 100 % (or a state that says none): exactly Part 7's gain, as before.
+    expect(soundGain({ gain: 0.5, aside: true, kind: 'audio' }, aside, at(FULL_LEVELS))).toBe(0.5 * aside);
+    expect(soundGain({ gain: 0.5, aside: true, kind: 'audio' }, aside, at(undefined))).toBe(0.5 * aside);
+  });
+
+  it('muted is 0 for every sound of that kind, whatever its own gain; the other kind plays on', () => {
+    const state = at(levels(0.5, 0.8, { video: true }));
+    expect(soundGain({ gain: 1.995, kind: 'video' }, 1, state)).toBe(0);
+    expect(soundGain({ kind: 'video' }, 1, state)).toBe(0);
+    expect(soundGain({ gain: 0.5, aside: true, kind: 'audio' }, 1, state)).toBeCloseTo(0.25, 6);
+    const both = at(levels(1, 1, { audio: true, video: true }));
+    expect(soundGain({ gain: 2, aside: true, kind: 'audio' }, 1, both)).toBe(0);
+    expect(soundGain({ gain: 2, kind: 'video' }, 1, both)).toBe(0);
+  });
+
+  it('with each file’s own volume, what plays is volume × even gain × step aside × level (the stream’s page’s sum)', () => {
+    const aside = gainOfDb(MUSIC_ASIDE_DB);
+    const sound = { volume: 0.8, gain: 0.5, aside: true as const, kind: 'audio' as const };
+    const plays = (s: typeof sound, music: number, state: ReturnType<typeof at>) =>
+      s.volume * soundGain(s, music, state);
+    expect(plays(sound, aside, at(levels(0.5, 1)))).toBeCloseTo(0.8 * 0.5 * aside * 0.5, 6);
+    expect(plays(sound, aside, at(levels(0.5, 1, { audio: true })))).toBe(0);
+  });
+
+  it('a level is kept and sent in whole percent, between 0 and 100 %', () => {
+    expect(cleanLevel(0.5)).toBe(0.5);
+    expect(cleanLevel(0.123)).toBe(0.12);
+    expect(cleanLevel(0.006)).toBe(0.01);
+    expect(cleanLevel(0)).toBe(0);
+    expect(cleanLevel(1)).toBe(1);
+    expect(cleanLevel(1.4)).toBe(1);
+    expect(cleanLevel(-0.2)).toBe(0);
+    // Anything that is not a level (a hand-edited setting, an older file): 100 %.
+    expect(cleanLevel(Number.NaN)).toBe(1);
+    expect(cleanLevel(Infinity)).toBe(1);
+    expect(cleanLevel('0.5')).toBe(1);
+    expect(cleanLevel(null)).toBe(1);
+    expect(cleanLevel(undefined)).toBe(1);
   });
 });
