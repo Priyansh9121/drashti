@@ -501,8 +501,8 @@ export class YouTubeService {
       .filter((b) => b.state === 'upcoming')
       .sort((a, b) => a.startsAt - b.startsAt)
       .map(({ boundStreamId: _bound, ...b }) => b);
-    this.message = null;
-    this.changed();
+    // A message from before goes; otherwise nothing changed here, and the windows are told nothing.
+    if (this.message !== null) this.say(null);
     return { ok: true, broadcasts, status: this.status() };
   }
 
