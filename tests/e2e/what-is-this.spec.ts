@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { plainWords } from '../../src/shared/guides';
+import { manualChapter } from '../../src/shared/manual';
 import { PANEL_HELP } from '../../src/shared/panel-help';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { NETWORK_ENV, networkOn } from './devices';
@@ -18,7 +18,8 @@ import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 /*
  * "What is this?" on the operator panels (Session 25): the ? on a panel's heading opens its two or
  * three sentences under the heading, never over the show controls; Got it (or Esc) closes them and
- * gives the keyboard back to the ?. Pro Mode only.
+ * gives the keyboard back to the ?. Pro Mode only. Open the manual (x37, the owner's "Yes, A" to Q60-25: Read more
+ * until then) opens the Drashti Manual at that panel's chapter.
  */
 
 /** Open the placeholder playlist and put the kirtan's second slide live. */
@@ -90,32 +91,50 @@ test('What is this? opens a panel’s words under its heading, never over the sh
   await app.close();
 });
 
-test('Read more opens the guide at the passage its words follow; Esc closes it, and Space moves the show at once (Sessions 31–36)', async () => {
+test('Open the manual opens the Drashti Manual at the panel’s chapter, at its feature; Esc closes it, and Space moves the show at once (x37, the owner’s “Yes, A”)', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
   await setUpPlaceholderShow(win);
   await showRunning(win);
-  // Next and Back's words, then Read more.
+  // Next and Back's words, in their place, then Open the manual (Read more until x37).
   await win.getByTestId('what-is-this-nextback').click();
   const card = win.getByTestId('what-is-this');
   await expect(card).toContainText(PANEL_HELP.nextback.text);
-  await card.getByTestId('what-is-this-read-more').click();
-  const guides = win.getByTestId('guides');
-  await expect(guides).toBeVisible();
-  const shown = guides.locator('[data-passage][data-current="true"]');
-  await expect(shown).toContainText(plainWords(PANEL_HELP.nextback.guide));
+  await expect(card.getByRole('button', { name: 'Read more' })).toHaveCount(0);
+  await card.getByRole('button', { name: 'Open the manual' }).click();
+  const manual = win.getByTestId('manual');
+  await expect(manual).toBeVisible();
+  // At its chapter, the feature marked and in view.
+  await expect(manual.getByRole('heading', { level: 1 })).toHaveText(
+    manualChapter(PANEL_HELP.nextback.chapter).title,
+  );
+  const shown = manual.locator('[data-passage][data-current="true"]');
+  await expect(shown).toHaveText(PANEL_HELP.nextback.feature);
   await expect(shown).toBeInViewport();
-  // The show waits while the guides are open...
+  // The show waits while the manual is open...
   await win.keyboard.press('Space');
   await expect(win.getByTestId('live-text')).toContainText(`${KIRTAN} · slide 2 of 5`);
-  // ...Esc closes them, and Space moves the show straight after.
+  // ...Esc closes it, and Space moves the show straight after.
   await win.keyboard.press('Escape');
-  await expect(guides).toBeHidden();
+  await expect(manual).toBeHidden();
   await win.keyboard.press('Space');
   await expect(win.getByTestId('live-text')).toContainText(`${KIRTAN} · slide 3 of 5`);
-  // (A card whose words were in the admin's guide, Masks', opened that guide here until Session 55 took masks out:
-  // every card's words are in the operator's guide now.)
+  // Got it puts Next and Back's words away (one card open at a time below).
+  await card.getByRole('button', { name: 'Got it' }).click();
+  await expect(card).toHaveCount(0);
+  // Another panel's, in another chapter: Messages.
+  await win.getByTestId('what-is-this-messages').click();
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText(PANEL_HELP.messages.text);
+  await card.getByRole('button', { name: 'Open the manual' }).click();
+  await expect(manual.getByRole('heading', { level: 1 })).toHaveText(
+    manualChapter(PANEL_HELP.messages.chapter).title,
+  );
+  await expect(shown).toHaveText(PANEL_HELP.messages.feature);
+  await expect(shown).toBeInViewport();
+  await win.keyboard.press('Escape');
+  await expect(manual).toBeHidden();
   await app.close();
 });

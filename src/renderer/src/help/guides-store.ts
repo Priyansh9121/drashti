@@ -3,7 +3,7 @@ import type { GuideId } from '../../../shared/guides';
 
 /*
  * The Guides window (Sessions 31–36): Help › Guides…, in either mode. Open or not, the guide shown, the
- * passage to bring into view and mark (from a search or Read more), and what is searched.
+ * passage to bring into view and mark (from a search or an answer), and what is searched.
  */
 
 interface GuidesState {

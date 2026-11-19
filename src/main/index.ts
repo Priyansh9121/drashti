@@ -354,6 +354,7 @@ import {
 import { QR_TEXT_MAX, qrPng, qrSlideName, qrSlidePresentation, qrWords } from './library/qr-slide';
 import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
+import { ManualPrinter, readManual } from './manual-service';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
 import {
@@ -3697,6 +3698,41 @@ function start(): void {
       ? { ok: false, message: 'This guide is missing from Drashti’s folder: install Drashti again.' }
       : { ok: true, text, sizes: guideFiles.sizesFor(text) };
   });
+  // ---- the Drashti Manual (x37, Session 60) ---------------------------------------------------------
+  // Read from the files beside the app, for the operator window only, in either mode (reading it changes nothing);
+  // printed, or saved as a PDF where the person chooses, from a hidden window of its own (manual-print.ts).
+  handle(IPC.manual.read, (e) =>
+    fromOperator(e)
+      ? readManual(guideFiles)
+      : { ok: false, message: 'Only Drashti’s own window can read the manual: open it from Help.' },
+  );
+  const manualPrinter = new ManualPrinter({
+    files: guideFiles,
+    // Never while the show is live (the lead's call of 20 Nov 2026): anything up, or the stream on air or recording,
+    // as Trim's and the conversions' background work waits (a test can say the stream is on air).
+    live: () => streaming.inUse() || testOnAir || !nothingUp(engine.current.layers),
+    version: () => app.getVersion(),
+    tempDir: () => app.getPath('temp'),
+    suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
+    askWhere: async (suggested) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Save the manual as a PDF',
+        defaultPath: suggested,
+        buttonLabel: 'Save',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      return picked.filePath.toLowerCase().endsWith('.pdf') ? picked.filePath : `${picked.filePath}.pdf`;
+    },
+  });
+  const notFromOperator = {
+    ok: false,
+    cancelled: false,
+    message: 'Only Drashti’s own window can print the manual: open it from Help.',
+  } as const;
+  handle(IPC.manual.print, (e) => (fromOperator(e) ? manualPrinter.print() : notFromOperator));
+  handle(IPC.manual.pdf, (e) => (fromOperator(e) ? manualPrinter.pdf() : notFromOperator));
   // ---- programs a crash left running (Session 31, ROB-3) ----------------------------------------
   // Each program Drashti starts that could outlive it is written down (src/main/system/leftovers.ts): one
   // the last run left running (the very one: id, start time and program) is stopped now, before anything
@@ -7865,6 +7901,10 @@ function start(): void {
     },
     guides: () => {
       sendToOperator(IPC.app.showGuides, { at: Date.now() });
+    },
+    // Help › Drashti Manual… (x37, Session 60), in either mode.
+    manual: () => {
+      sendToOperator(IPC.app.showManual, { at: Date.now() });
     },
     // The Tools menu (Session 60, x36): Pro Mode's, each item opening its window in the operator window.
     tools: (tool) => {

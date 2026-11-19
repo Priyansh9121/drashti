@@ -9,9 +9,9 @@ Update after a sabha, and update Main and nodes together.
 - Without a graphics chip, a deck’s own Wipe from the left or right now sweeps in on the screens, the stream and LIVE, where the old slide stood still and the new one cut in.
 - Without a graphics chip, while streaming, a deck’s own Push, Cover and Uncover stay smooth (a frame dropped now and then, not one in eight), and its Wipe drops about one frame in eight, not one in two.
 - With a graphics chip, going live, recording, watching the stream or opening the Stream panel mid-show no longer holds up the hall’s screens; the stream’s picture is ready in about a second, not 6 to 10.
-- Kirtans can be shared between libraries: Library › Export kirtan bundle… saves the chosen kirtans with their tracks, details, notes, arrangements and, if you like, media; importing adds them, updating a kirtan already there only where nobody has edited it.
+- Kirtans can be shared between libraries: Library › Export kirtan bundle… saves the chosen kirtans (and, if you like, their media); importing adds them, and updates one already there only where nobody edited it.
 - From a Link… asks for the folder and name before downloading, and saves a YouTube video’s captions in every language beside it (a copy in a Captions folder for caption learning); while on air or recording, Drashti waits to look a link up.
-- How loud, above Audio under the live picture (Pro and Simple Mode): Audio (playlists and sounds) and Video (videos’ sound), 0 to 100 %, each with a mute switch (green Sound on, red Muted); the status bar says what is muted. A change is heard at once and never stops what plays, the stream hears what the hall hears, and Drashti always starts with the sound on.
+- How loud, above Audio under the live picture (both modes): Audio (playlists, sounds) and Video (videos’ sound), 0 to 100 %, each with a mute switch; the status bar says what is muted, the stream hears what the hall hears, and Drashti always starts with the sound on.
 - A video’s captions (SRT or WebVTT beside it, or added through Captions…) can show on the audience screens and the stream: CC beside the time bar, in the language you choose; live captions step aside meanwhile.
 - OSC control for a lighting or sound console or Companion on the mandir’s network: in Pro Mode, More tools › OSC control… (off until turned on) lists the computers allowed to send Next, Back, Clear, the covers, timers and messages.
 - A paired node can show the whole show to a second operator when Main allows it in Screens (Pro Mode), and run the show controls or pause and play media if Main chooses; the first press counts. If its link drops, no screen changes.
@@ -24,6 +24,7 @@ Update after a sabha, and update Main and nodes together.
 - A video whose picture this computer can’t show (some cameras’ HEVC, ProRes) no longer plays its sound over black: within a second or two it comes off (on a slide or in picture in picture it waits, paused) with a notice, and Drashti converts it once the show is idle; import also checks which HEVC this computer plays.
 - Files dropped with no playlist open ask for a new playlist or folder; the Library button shows only while the library is shut; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… moved to More tools and a new Tools menu.
 - LIVE no longer goes black for a moment while a slow video starts: it keeps showing what the screens show.
+- Help › Drashti Manual…: every feature, searchable and printable.
 
 ## 1.0.0-alpha.19 (19 Nov 2026)
 

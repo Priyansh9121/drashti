@@ -1,0 +1,90 @@
+# Audio and the levels
+
+Under the live picture are two levels, **Audio** and **Video**, and under them **Audio**, the audio playlists. Every sound Drashti plays goes to the mixer through the sound output chosen in **Screens**.
+
+## Audio playlists
+
+**What it is.** Lists of sounds that play one after another, with short fades, whatever goes on the screens.
+
+**When you would use it.** For music before the sabha, or between its parts.
+
+**How:**
+
+1. In **Audio**, press **+**, then **Create playlist**, or **Import** to bring sounds in.
+2. Drag sounds onto a list to add them.
+3. Press **Play** to start a list; **Pause** stops it where it is.
+4. **Clear audio** along the bottom, or **F5**, stops any sound.
+
+![The Audio panel: its audio playlists, and Music steps aside for a video](../screenshots/music-panel.png)
+
+## How loud: Audio and Video
+
+**What it is.** Two lines just above **Audio** that set how loud the hall hears Drashti: **Audio** for the audio playlists and every sound, **Video** for the sound of the videos. Each goes from 0 to 100 %, heard at once and smoothly, without stopping what plays.
+
+**When you would use it.** When the music is too loud under the speaker, or a video is too quiet.
+
+**How:**
+
+1. Drag the **Audio** or **Video** line.
+2. Or put the keyboard on it and use the arrow keys, Home and End.
+3. The stream hears the same levels as the hall.
+4. Drashti keeps the levels for its next start.
+
+![How loud: the Audio and Video lines, Video muted](../screenshots/manual-levels.png)
+
+## Muting
+
+**What it is.** The switch beside each level. Green **Sound on** plays; red **Muted** silences it at once. The status bar says **Audio muted** or **Video muted** while it is.
+
+**When you would use it.** When a video's own sound should not reach the hall, or the music must stop for a moment without losing its place.
+
+**How:**
+
+1. Press the switch beside **Audio** or **Video**: it turns red, **Muted**.
+2. Press it again to have the sound back at its level.
+3. With the keyboard on it, press **Enter** (**Space** is **Next** in this window).
+4. Drashti always starts with the sound on.
+
+![How loud: the Audio and Video lines, Video muted](../screenshots/manual-levels.png)
+
+## Music steps aside for a video
+
+**What it is.** A switch under the audio playlists, on to begin with. Under a video with sound, or a slide's own sound, the music fades down and comes back up after it.
+
+**When you would use it.** Keep it on, so a video is always heard over the music.
+
+**How:**
+
+1. Leave **Music steps aside for a video** on in **Audio**.
+2. Turn it off to keep the music as loud under a video.
+
+![The Audio panel with Music steps aside for a video](../screenshots/music-panel.png)
+
+## Even loudness
+
+**What it is.** Every video and sound plays at an even loudness, in the hall and on the stream, so one file is never much louder than the next. The file itself never changes.
+
+**When you would use it.** Always; turn it off only for a file that must play exactly as recorded.
+
+**How:**
+
+1. Right-click the video or sound.
+2. Untick **Even loudness** to play it as it is.
+3. Tick it again to have it even.
+
+![A track playing in Audio, with its time bar](../screenshots/music-bar.png)
+
+## Where the sound goes
+
+**What it is.** The sound output that goes to the mixer, chosen in **Screens**. If it is not connected, Drashti plays on the computer's own speakers and the status bar warns you.
+
+**When you would use it.** When setting up, or when the hall hears nothing.
+
+**How:**
+
+1. Press **Screens** in the top bar.
+2. Under **Sound output**, choose the output that goes to the mixer.
+3. Play a sound and check the mixer hears it.
+4. Read the status bar: it always says where the sound goes.
+
+![Screens: the sound output among the settings](../screenshots/screens.png)

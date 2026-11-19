@@ -83,7 +83,7 @@ function GuidesWindow() {
     typeof doc === 'object'
       ? doc.blocks.flatMap((b) => (b.kind === 'heading' && b.level === 2 ? [b] : []))
       : [];
-  // The passage asked for (a result, Read more, a section) brought into view.
+  // The passage asked for (a result, an answer, a section) brought into view.
   useEffect(() => {
     if (passage === null || typeof doc !== 'object' || query !== '') return;
     content.current
