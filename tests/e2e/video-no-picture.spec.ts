@@ -361,15 +361,22 @@ test('HEVC taken as playable: where this computer decodes it (CI’s Mac) it pla
   }
 });
 
-test('a video only slow to load (served 3 s late, as from a slow disk) is never taken for one this computer cannot draw: the picture before stays until its first frame, then it plays; in the picture-in-picture box it plays on; no notice, nothing converted', async () => {
+test('a video only slow to load (served 3 s late, as from a slow disk) is never taken for one this computer cannot draw: the audience screen keeps the picture before until its first frame, then it plays; in the picture-in-picture box it plays on; no notice, nothing converted', async () => {
   test.setTimeout(150_000);
   expect(ffmpeg, 'the bundled FFmpeg').not.toBeNull();
   const dir = mkdtempSync(join(tmpdir(), 'drashti-slow-video-'));
   const clip = makeVideo(join(dir, 'Placeholder slow clip.mp4'), 'h264', 20);
-  const { app } = await launchApp({ DRASHTI_TEST_MEDIA_DELAY_MS: '3000' });
+  const { app } = await launchApp({
+    DRASHTI_TEST_MEDIA_DELAY_MS: '3000',
+    DRASHTI_TEST_AUTO_SCREENS: 'pretend',
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_TEST_DISPLAY_CHANGES: '1',
+  });
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
+    // The audience screen: what the hall sees (the owner's rule, "the screens keep what they showed").
+    const hall = await audienceScreen(app);
     const beforeId = await wallpaperAndPicture(win, dir);
     const [clipId = ''] = await importAndGetIds(win, [clip]);
     expect(clipId).not.toBe('');
@@ -377,17 +384,18 @@ test('a video only slow to load (served 3 s late, as from a slow disk) is never 
       type: 'setBackground',
       background: { kind: 'media', mediaId: beforeId, media: 'image', fit: 'fill', loop: false },
     });
-    await expect.poll(() => shown(win, '[data-testid="live-preview"]'), { timeout: 20_000 }).toBe('BEFORE');
+    await expect.poll(() => shown(hall, '[data-testid="output-root"]'), { timeout: 20_000 }).toBe('BEFORE');
     await dispatch(win, {
       type: 'setBackground',
       background: { kind: 'media', mediaId: clipId, media: 'video', fit: 'fill', loop: false },
     });
-    // While its file comes slowly: the picture before; then its own picture. Up all along, never taken off.
+    // While its file comes slowly: the picture before on the audience screen; then its own picture. Up all along,
+    // never taken off.
     const looks: string[] = [];
     const until = Date.now() + 15_000;
     while (Date.now() < until && looks.at(-1) !== 'VIDEO') {
       const bg = (await snapshot(win)).layers.background;
-      looks.push(await shown(win, '[data-testid="live-preview"]'));
+      looks.push(await shown(hall, '[data-testid="output-root"]'));
       expect(bg?.kind === 'media' && bg.mediaId === clipId, `still up: ${looks.join(', ')}`).toBe(true);
     }
     expect(looks.at(-1), `its picture came: ${looks.join(', ')}`).toBe('VIDEO');
