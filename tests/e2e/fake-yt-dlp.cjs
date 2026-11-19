@@ -35,15 +35,44 @@ function main() {
   const link = args[args.indexOf('--') + 1] ?? '';
   const id = new URL(link).searchParams.get('v');
   const looking = args.includes('--dump-single-json');
+  const captioning =
+    args.includes('--skip-download') && (args.includes('--write-subs') || args.includes('--write-auto-subs'));
   const child = spawn(process.execPath, [__filename, '--fake-child'], { stdio: 'ignore' });
   const end = (code) => {
     child.kill();
     process.exit(code);
   };
-  log(`start ${looking ? 'look' : 'download'} ${id} pid ${process.pid} child ${child.pid}`);
+  log(
+    `start ${looking ? 'look' : captioning ? 'caption' : 'download'} ${id} pid ${process.pid} child ${child.pid}`,
+  );
   if (config.failWith) {
     process.stderr.write(`${config.failWith}\n`);
     end(1);
+    return;
+  }
+
+  if (captioning) {
+    const source = value('--sub-langs');
+    const kind = args.includes('--write-auto-subs') ? 'automatic' : 'creator';
+    log(`caption ${kind} ${source}`);
+    setTimeout(() => {
+      if ((config.captionFailLanguages ?? []).includes(source)) {
+        process.stderr.write('ERROR: placeholder caption refused\n');
+        end(1);
+        return;
+      }
+      const available = kind === 'creator' ? config.subtitles : config.automaticCaptions;
+      if (!available?.[source]?.length) {
+        end(0);
+        return;
+      }
+      const template = value('-o') ?? `caption-${kind}.%(ext)s`;
+      const stem = template.replace('.%(ext)s', '');
+      const out = path.join(value('-P'), `${stem}.${source}.srt`);
+      fs.writeFileSync(out, `1\n00:00:00,000 --> 00:00:01,000\nPlaceholder ${kind} caption\n`);
+      log(`done caption ${kind} ${source}`);
+      end(0);
+    }, config.captionMs ?? 0);
     return;
   }
 
@@ -73,6 +102,11 @@ function main() {
         id,
         title: config.title ?? 'Placeholder video',
         duration,
+        channel: config.channel ?? 'Placeholder channel',
+        upload_date: config.uploadDate ?? '20261119',
+        language: config.language ?? 'en',
+        subtitles: config.subtitles ?? {},
+        automatic_captions: config.automaticCaptions ?? {},
         live_status: config.live ?? 'not_live',
         formats,
       })}\n`,

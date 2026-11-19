@@ -1,4 +1,10 @@
-import { heightLabel, type VideoDetails, type YouTubeType } from '../../shared/links';
+import {
+  YOUTUBE_ID,
+  heightLabel,
+  type LinkCaptionTrack,
+  type VideoDetails,
+  type YouTubeType,
+} from '../../shared/links';
 
 /*
  * YouTube in Import from a Link (Session 25c): what Drashti asks of yt-dlp
@@ -99,6 +105,88 @@ export function downloadArgs(
     '--',
     link,
   ];
+}
+
+/** Captions use a separate run, so a failed language can never fail the media download. */
+export function captionArgs(
+  p: YoutubeProgramPaths,
+  link: string,
+  track: LinkCaptionTrack,
+  workDir: string,
+): string[] {
+  return [
+    ...common(p),
+    '--skip-download',
+    ...(track.kind === 'creator'
+      ? ['--write-subs', '--no-write-auto-subs']
+      : ['--write-auto-subs', '--no-write-subs']),
+    '--sub-langs',
+    track.source,
+    '--sub-format',
+    'srt/vtt/best',
+    '--convert-subs',
+    'srt',
+    '--no-overwrites',
+    '--no-mtime',
+    '-P',
+    workDir,
+    '-o',
+    `caption-${track.kind}.%(ext)s`,
+    '--',
+    link,
+  ];
+}
+
+/** Language codes are used as exact selectors and file suffixes, never arbitrary patterns or paths. */
+export const CAPTION_LANGUAGE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$/u;
+const captionMap = (value: unknown): [string, Record<string, unknown>[]][] => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return [];
+  return Object.entries(value)
+    .flatMap(([source, formats]) => {
+      if (source === 'live_chat' || !CAPTION_LANGUAGE.test(source) || !Array.isArray(formats)) return [];
+      const entries = formats.filter(
+        (entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null,
+      );
+      return entries.length ? [[source, entries] as [string, Record<string, unknown>[]]] : [];
+    })
+    .sort(([a], [b]) => a.localeCompare(b, 'en'));
+};
+
+/** Every creator track, plus one original automatic track; translated URLs are never selected. */
+export function captionTracks(info: Record<string, unknown>): LinkCaptionTrack[] {
+  const creator = captionMap(info['subtitles']).map(([source]): LinkCaptionTrack => ({
+    language: source,
+    source,
+    kind: 'creator',
+  }));
+  const spoken = typeof info['language'] === 'string' ? info['language'] : '';
+  const originals = captionMap(info['automatic_captions']).filter(([source, formats]) => {
+    const urls = formats.flatMap((format) => (typeof format['url'] === 'string' ? [format['url']] : []));
+    const originalUrls = urls.flatMap((url) => {
+      try {
+        const parsed = new URL(url);
+        return parsed.searchParams.has('tlang') ? [] : [parsed];
+      } catch {
+        return [];
+      }
+    });
+    if (urls.length && !originalUrls.length) return false;
+    if (source.endsWith('-orig')) return true;
+    if (source === spoken) return true;
+    // Without a spoken-language field, accept only an ASR track whose own URL names that language.
+    // Creator translations have composite keys such as gu-gu and are never an original ASR track.
+    return originalUrls.some(
+      (url) => url.searchParams.get('kind') === 'asr' && url.searchParams.get('lang') === source,
+    );
+  });
+  const preferred =
+    originals.find(([source]) => source.replace(/-orig$/u, '') === spoken && source.endsWith('-orig')) ??
+    originals.find(([source]) => source.replace(/-orig$/u, '') === spoken) ??
+    originals.find(([source]) => source.endsWith('-orig')) ??
+    originals[0];
+  if (preferred)
+    creator.push({ language: preferred[0].replace(/-orig$/u, ''), source: preferred[0], kind: 'automatic' });
+  return creator;
 }
 
 /** A progress line yt-dlp printed for Drashti: bytes so far, and of how many (null: not known). */
@@ -291,6 +379,11 @@ export function parseDetails(
     ok: true,
     details: {
       title,
+      id: YOUTUBE_ID.test(text(info['id'])) ? text(info['id']) : null,
+      channel: text(info['channel']).trim() || text(info['uploader']).trim() || null,
+      uploadDate: /^\d{8}$/u.test(text(info['upload_date'])) ? text(info['upload_date']) : null,
+      language: CAPTION_LANGUAGE.test(text(info['language'])) ? text(info['language']) : null,
+      captions: captionTracks(info),
       duration,
       heights: detailsHeights,
       soundBytes: duration === null ? null : Math.round(duration * MP3_BYTES_PER_SECOND),
