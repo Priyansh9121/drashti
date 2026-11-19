@@ -128,6 +128,54 @@ describe('the stream’s page without a graphics chip (Session 58, WU-1), or onc
     expect(asked).toContain(41);
     stream.close();
   });
+
+  it('Main’s choice for its page is asked with whether the page draws a picture: not while open for sound alone (live captions), then for a picture (X21)', async () => {
+    const webContents = Object.assign(new EventEmitter(), {
+      id: 42,
+      isDestroyed: () => false,
+      postMessage: vi.fn(),
+      send: vi.fn(),
+    });
+    const program = Object.assign(new EventEmitter(), {
+      webContents,
+      isDestroyed: () => false,
+      getContentSize: () => [1920, 1080],
+      destroy: vi.fn(),
+    });
+    const sound = { id: 'generated-sound', label: 'Generated sound' };
+    const profile = { id: 'test-profile', preset: 'good', camera: null, sound };
+    const asked: [number, boolean][] = [];
+    const createProgram = vi.fn(() => program as unknown as BrowserWindow);
+    const stream = new StreamService({
+      profiles: { get: () => profile },
+      settings: { get: (key: string) => (key === 'stream.profileId' ? profile.id : undefined) },
+      screens: { streamGroup: () => null },
+      createProgram,
+      sendToOperator: vi.fn(),
+      platform: 'darwin',
+      mediaAccess: () => 'granted',
+      askMediaAccess: () => Promise.resolve(true),
+      fakeDevices: true,
+      ffmpegPath: () => null,
+      now: Date.now,
+      log: vi.fn(),
+      warmUpFact: (win: { webContents: { id: number } }, picture: boolean) => {
+        asked.push([win.webContents.id, picture]);
+        return {};
+      },
+    } as unknown as StreamServiceDeps);
+    const stop = stream.listenSound(vi.fn());
+    expect(stop).not.toBeNull();
+    await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
+    webContents.emit('did-finish-load');
+    expect(stream.context().picture).toBe(false);
+    expect(asked.at(-1)).toEqual([42, false]);
+    stream.hold('a test of its page', true);
+    expect(stream.context().picture).toBe(true);
+    expect(asked.at(-1)).toEqual([42, true]);
+    stop?.();
+    stream.close();
+  });
 });
 
 // Q58-37 (the owner, 14 Nov 2026): opening Stream asked for the laptop's password, twice. Its panel's view is told

@@ -2971,9 +2971,10 @@ function start(): void {
     // No warm-up for the stream's page where Chromium draws without a graphics chip, as for the outputs (Session 58);
     // none of its own either once a hall screen here has drawn its warm-up whole at this start, the opening over
     // (Session 60, X21): what it draws with is made, and its warm-up, drawn mid-show, held the hall's frames.
-    warmUpFact: (page) => {
+    warmUpFact: (page, picture) => {
       const fact = warmUpFact(warmUps, page, 'the stream’s page');
-      return fact.noGpu !== true && streamPageWarmUp.skips(page.webContents.id) ? { warmedHere: true } : fact;
+      const none = fact.noGpu !== true && streamPageWarmUp.skips(page.webContents.id, picture);
+      return none ? { warmedHere: true } : fact;
     },
     profiles: new StreamProfileRepo(db, (id) => streamKeys.has(id)),
     keys: streamKeys,

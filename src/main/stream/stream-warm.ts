@@ -12,6 +12,12 @@ import type { OutputWarmUpEnd } from '../../shared/screens';
  * (no hall screen here, or none whose warm-up drew everything; the opening still playing or not yet decided; the GPU
  * process started again since) it warms itself up as before. Where Chromium draws without a graphics chip nothing warms
  * up anywhere, as before. A node never has the stream's page.
+ *
+ * A page's answer is decided once the page can act on it, and stays that page's: "none" as soon as it is given (the
+ * page then never begins a warm-up), "as before" once the page draws a picture (its warm-up begins only then; a page
+ * open for sound alone, live captions, draws nothing). So a page warming itself up is never told later that it needs
+ * none (nor the log said so), a page open first for sound alone is decided when its picture is wanted, and a page that
+ * drew the show at once goes on so after the GPU process stopped (a page warms up at most once, as it opens).
  */
 
 /** The log's line for a stream's page that draws the show without a warm-up of its own. */
@@ -23,8 +29,8 @@ export class StreamPageWarmUp {
   private hallDrew = false;
   /** The opening at this start: not yet decided (the operator window has not asked), playing, or over (or none). */
   private opening: 'undecided' | 'playing' | 'over' = 'undecided';
-  /** The stream's pages already told they draw without a warm-up of their own (by their page's id). */
-  private readonly told = new Set<number>();
+  /** The answer kept for the stream's page (there is one at a time, stream-service.ts), by its page's id. */
+  private kept: { pageId: number; skip: boolean } | null = null;
 
   constructor(private readonly log: (line: string) => void) {}
 
@@ -33,7 +39,7 @@ export class StreamPageWarmUp {
     if (how === 'drawn') this.hallDrew = true;
   }
 
-  /** The GPU process stopped: the pipelines the warm-ups made went with it. */
+  /** The GPU process stopped: the pipelines the warm-ups made went with it (a page's answer stays its own). */
   gpuGone(): void {
     this.hallDrew = false;
   }
@@ -48,13 +54,17 @@ export class StreamPageWarmUp {
     this.opening = 'over';
   }
 
-  /** Whether the stream's page `pageId` draws the show without a warm-up of its own; said in the log once a page. */
-  skips(pageId: number, _picture = true): boolean {
-    if (!this.hallDrew || this.opening !== 'over') return false;
-    if (!this.told.has(pageId)) {
-      this.told.add(pageId);
-      this.log(STREAM_PAGE_NO_WARM_UP);
+  /**
+   * Whether the stream's page `pageId` draws the show without a warm-up of its own, `picture` saying whether it draws a
+   * picture now. Kept for that page once it is "none" (said in the log then) or once the page draws a picture.
+   */
+  skips(pageId: number, picture: boolean): boolean {
+    if (this.kept?.pageId === pageId) return this.kept.skip;
+    const skip = this.hallDrew && this.opening === 'over';
+    if (skip || picture) {
+      this.kept = { pageId, skip };
+      if (skip) this.log(STREAM_PAGE_NO_WARM_UP);
     }
-    return true;
+    return skip;
   }
 }
