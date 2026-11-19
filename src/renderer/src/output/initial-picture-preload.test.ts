@@ -14,39 +14,90 @@ import {
 } from './initial-picture-preload';
 
 const image: MediaElement = {
-  id: 'placeholder-image', kind: 'image', mediaId: 'current-picture', fit: 'fill',
+  id: 'placeholder-image',
+  kind: 'image',
+  mediaId: 'current-picture',
+  fit: 'fill',
   frame: { x: 0, y: 0, width: 1920, height: 1080 },
 };
 const video: MediaElement = { ...image, id: 'placeholder-video', kind: 'video', mediaId: 'current-video' };
 const words: TextElement = {
-  id: 'placeholder-words', kind: 'text', text: 'Placeholder words', lang: 'en',
+  id: 'placeholder-words',
+  kind: 'text',
+  text: 'Placeholder words',
+  lang: 'en',
   frame: { x: 40, y: 40, width: 600, height: 120 },
-  style: { fontFamily: null, fontSize: 40, fontWeight: 400, color: '#ffffff', align: 'center',
-    verticalAlign: 'middle', lineHeight: 1.2, shadow: false },
+  style: {
+    fontFamily: null,
+    fontSize: 40,
+    fontWeight: 400,
+    color: '#ffffff',
+    align: 'center',
+    verticalAlign: 'middle',
+    lineHeight: 1.2,
+    shadow: false,
+  },
 };
 const slide: RenderSlide = {
-  id: 'placeholder-slide', width: 1920, height: 1080, background: null, elements: [image],
+  id: 'placeholder-slide',
+  width: 1920,
+  height: 1080,
+  background: null,
+  elements: [image],
 };
 function live(elements = slide.elements): EngineState {
   const state = initialEngineState();
-  return { ...state, layers: { ...state.layers,
-    slide: { presentationId: 'placeholder-presentation', slideIndex: 0,
-      slide: { ...slide, elements }, shownAt: 100, notes: '' },
-  }, next: { kind: 'media', itemId: 'placeholder-next', mediaId: 'next-picture', media: 'image', label: 'Placeholder' } };
+  return {
+    ...state,
+    layers: {
+      ...state.layers,
+      slide: {
+        presentationId: 'placeholder-presentation',
+        slideIndex: 0,
+        slide: { ...slide, elements },
+        shownAt: 100,
+        notes: '',
+      },
+    },
+    next: {
+      kind: 'media',
+      itemId: 'placeholder-next',
+      mediaId: 'next-picture',
+      media: 'image',
+      label: 'Placeholder',
+    },
+  };
 }
 const look = DEFAULT_LIVE_GROUP_LOOK;
 const ids = (selected: CurrentPictureSelection | null) => selected?.media.map((m) => m.mediaId).sort() ?? [];
 function withBackground(state: EngineState): EngineState {
-  return { ...state, layers: { ...state.layers, background: {
-    kind: 'media', mediaId: 'current-background', media: 'image', fit: 'fill', loop: false, startedAt: 80,
-  } } };
+  return {
+    ...state,
+    layers: {
+      ...state.layers,
+      background: {
+        kind: 'media',
+        mediaId: 'current-background',
+        media: 'image',
+        fit: 'fill',
+        loop: false,
+        startedAt: 80,
+      },
+    },
+  };
 }
 const selected: CurrentPictureSelection = {
-  key: 'initial-picture', media: [
-    { mediaId: 'current-one', media: 'image' }, { mediaId: 'current-two', media: 'image' },
+  key: 'initial-picture',
+  media: [
+    { mediaId: 'current-one', media: 'image' },
+    { mediaId: 'current-two', media: 'image' },
   ],
 };
-const waiting = (): InitialPicturePriority => ({ current: selected, pending: ['current-one', 'current-two'], until: 3100 });
+const waiting = (): InitialPicturePriority => ({
+  current: selected,
+  pending: ['current-one', 'current-two'],
+  until: 3100,
+});
 
 describe('the picture already up gets decoded before Next', () => {
   it('takes each current image once, including its background, without starting a video or taking Next', () => {
@@ -57,7 +108,9 @@ describe('the picture already up gets decoded before Next', () => {
   });
 
   it('also prepares an image background when no slide is up', () => {
-    expect(ids(initialPicturesFor(withBackground(initialEngineState()), look))).toEqual(['current-background']);
+    expect(ids(initialPicturesFor(withBackground(initialEngineState()), look))).toEqual([
+      'current-background',
+    ]);
   });
 
   it('leaves a video-only picture and a page with nothing up free to load Next', () => {
@@ -71,7 +124,9 @@ describe('the picture already up gets decoded before Next', () => {
 
   it('prepares only the layers this picture draws', () => {
     const state = withBackground(live());
-    expect(ids(initialPicturesFor(state, { ...look, layers: ['background'] }))).toEqual(['current-background']);
+    expect(ids(initialPicturesFor(state, { ...look, layers: ['background'] }))).toEqual([
+      'current-background',
+    ]);
     expect(ids(initialPicturesFor(state, { ...look, layers: ['slide'] }))).toEqual(['current-picture']);
   });
 

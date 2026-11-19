@@ -1,7 +1,8 @@
-import type { PreloadMedia } from '../../../shared/engine/preload';
-import type { EngineState } from '../../../shared/engine/state';
-import type { LiveGroupLook } from '../../../shared/looks';
+import { mediaToPreload, type PreloadMedia } from '../../../shared/engine/preload';
+import type { EngineState, UpNext } from '../../../shared/engine/state';
+import { DEFAULT_LIVE_GROUP_LOOK, type LiveGroupLook } from '../../../shared/looks';
 import type { Lang } from '../../../shared/model';
+import { hasPicture, lowerThird, programPicture } from '../../../shared/program';
 import type { StreamLayout } from '../../../shared/stream';
 
 /** Only the current picture's addresses and identity, never a retained engine state. */
@@ -20,48 +21,107 @@ export interface InitialPicturePriority {
 /** Bounds preload ordering only; it adds no time to the slide's existing display wait. */
 export const INITIAL_PICTURE_PRIORITY_MS = 3000;
 
+/** The same slide, background and lower-third decisions as Scene/DrawnSlide; videos keep their one live decoder. */
 export function initialPicturesFor(
-  _state: EngineState,
-  _look: LiveGroupLook,
-  _enabled = true,
+  state: EngineState,
+  look: LiveGroupLook,
+  enabled = true,
 ): CurrentPictureSelection | null {
-  return null;
+  if (!enabled || state.blackout || state.wallpaper) return null;
+  const behind = state.layers.background;
+  const background = look.layers.includes('background') && behind?.kind === 'media' ? behind : null;
+  let layer = look.layers.includes('slide') ? state.layers.slide : null;
+  if (
+    layer &&
+    look.slides === 'lowerThird' &&
+    (lowerThird(layer.slide, look.languages).length > 0 || !hasPicture(layer.slide))
+  )
+    layer = null;
+  const current: UpNext | null = layer
+    ? {
+        kind: 'slide',
+        presentationId: layer.presentationId,
+        slideIndex: layer.slideIndex,
+        slide: layer.slide,
+        background,
+        step: layer.step,
+        itemId: null,
+        notes: layer.notes,
+      }
+    : background
+      ? {
+          kind: 'media',
+          itemId: background.sourceItemId ?? '',
+          mediaId: background.mediaId,
+          media: background.media,
+          label: '',
+        }
+      : null;
+  const media = mediaToPreload(current).filter((m) => m.media === 'image');
+  if (media.length === 0) return null;
+  const key = JSON.stringify([
+    layer
+      ? [
+          layer.presentationId,
+          layer.slideIndex,
+          layer.slide.id,
+          layer.shownAt,
+          layer.step ?? 0,
+          layer.stepAt ?? 0,
+        ]
+      : null,
+    background ? [background.mediaId, background.startedAt] : null,
+    media.map((m) => m.mediaId),
+  ]);
+  return { key, media };
 }
 
+/** Camera lower thirds have no slide picture; its full-frame picture follows the same Scene as Slides. */
 export function programInitialPictures(
-  _state: EngineState,
-  _layout: StreamLayout,
-  _languages: readonly Lang[] | null,
+  state: EngineState,
+  layout: StreamLayout,
+  languages: readonly Lang[] | null,
 ): CurrentPictureSelection | null {
-  return null;
+  const picture = programPicture(state, layout, languages);
+  if (picture.kind === 'camera' && picture.full === null) return null;
+  return initialPicturesFor(state, { ...DEFAULT_LIVE_GROUP_LOOK, languages });
 }
 
 export function startInitialPicturePriority(
-  _current: CurrentPictureSelection | null,
-  _now: number,
+  current: CurrentPictureSelection | null,
+  now: number,
 ): InitialPicturePriority | null {
-  return null;
+  if (!current || current.media.length === 0) return null;
+  return {
+    current,
+    pending: current.media.map((m) => m.mediaId),
+    until: now + INITIAL_PICTURE_PRIORITY_MS,
+  };
 }
 
+/** A turn cannot move to another show or restart its bound as individual images finish. */
 export function keepInitialPicturePriority(
   priority: InitialPicturePriority | null,
-  _currentKey: string | null,
-  _now: number,
+  currentKey: string | null,
+  now: number,
 ): InitialPicturePriority | null {
-  return priority;
+  return priority?.current.key === currentKey && now < priority.until ? priority : null;
 }
 
 export function settleInitialPicture(
   priority: InitialPicturePriority | null,
-  _mediaId: string,
-  _outcome: 'ready' | 'failed',
+  mediaId: string,
+  outcome: 'ready' | 'failed',
 ): InitialPicturePriority | null {
-  return priority;
+  if (!priority?.pending.includes(mediaId)) return priority;
+  if (outcome === 'failed') return null;
+  return { ...priority, pending: priority.pending.filter((id) => id !== mediaId) };
 }
 
+/** Keep the decoded consumers through the scene's handover, so a large Next cannot evict the first picture early. */
 export function initialPictureReadyToHandOver(
-  _priority: InitialPicturePriority | null,
-  _sceneReady: boolean,
+  priority: InitialPicturePriority | null,
+  sceneReady: boolean,
 ): boolean {
-  return false;
+  return priority !== null && priority.pending.length === 0 && sceneReady;
 }
