@@ -15,11 +15,12 @@ import {
   setUpScreen,
 } from './helpers';
 import { goLive, makeSlides } from './placeholder-slides';
+import { decodePng } from './png-decode';
 
 /*
  * Warming the GPU, unseen (Session 27, render/WarmUp.tsx): before a screen first draws the show, it draws
  * every transition kind in both Movements part-way, with a lower third, messages and the ticker's band (the
- * idle rotation went in Session 55), under a brightness(0) filter, so the GPU has made what they need before the first
+ * idle rotation went in Session 55), under a black cover at opacity 0.999, so the GPU has made what they need before the first
  * Bold transition of a show; the audience sees black throughout. A test switch keeps it drawn, to look at.
  * Where Chromium draws without a graphics chip there is nothing to warm, and an output draws the show without
  * one (Session 57): a test switch says how Chromium draws, so both kinds of computer are tried on every system.
@@ -140,28 +141,98 @@ const studioFonts = (page: Page) =>
     return by;
   }, STUDIO_FAMILIES);
 
+/** The brightest any pixel is (0 to 255, any channel) in the whole page, decoded in Node. */
+async function brightest(page: Page): Promise<number> {
+  const decoded = decodePng(await page.screenshot({ scale: 'css' }));
+  let max = 0;
+  for (let i = 0; i < decoded.rgba.length; i += 4)
+    max = Math.max(max, decoded.rgba[i] ?? 0, decoded.rgba[i + 1] ?? 0, decoded.rgba[i + 2] ?? 0);
+  return max;
+}
+
 /**
- * The brightest any pixel is (0 to 255, any channel) in a page's screenshot, or in one element's box of it,
- * 2 px in from its edges (a box at fractions of a pixel takes in what is around it: the LIVE picture's border).
+ * Every pixel of the warm-up's whole box against black alone, including its edges. A LIVE picture's rounded UI
+ * border crosses that rectangle's corners, so its pixels must match the black-only frame too, rather than be
+ * mistaken for the warm-up's drawing (X12 wide: 12 border pixels, maximum 191, while every interior pixel was 0).
+ * Nothing is ignored or allowed a colour difference. The whole audience output and every captured frame are still
+ * checked against absolute zero below. Decode in Node, never on a show page (X17).
  */
-async function brightest(page: Page, selector?: string): Promise<number> {
-  const box = selector ? await page.locator(selector).first().boundingBox() : null;
-  const clip = box ? { x: box.x + 2, y: box.y + 2, width: box.width - 4, height: box.height - 4 } : null;
-  const png = (await page.screenshot({ scale: 'css', ...(clip ? { clip } : {}) })).toString('base64');
-  return page.evaluate(async (png) => {
-    // Decoded by hand: the page's security policy refuses fetch() of a data URL.
-    const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
-    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('no 2d context');
-    ctx.drawImage(bitmap, 0, 0);
-    const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
-    let max = 0;
-    for (let i = 0; i < data.length; i += 4)
-      max = Math.max(max, data[i] ?? 0, data[i + 1] ?? 0, data[i + 2] ?? 0);
-    return max;
-  }, png);
+async function differenceFromBlack(page: Page, scope: string): Promise<number> {
+  const selector = `${scope} [data-warm-up]`;
+  const clip = await page.locator(selector).first().boundingBox();
+  if (!clip) throw new Error('the warm-up has no visible box');
+  const drawnPng = await page.screenshot({ scale: 'css', clip });
+  const drawn = decodePng(drawnPng);
+  const opacity = await page.evaluate((scope) => {
+    const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
+    const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
+    if (!drawing) throw new Error('no warm-up drawing for the black reference');
+    // Preserve layout/layer geometry: display:none changes Windows' rounded-border sampling.
+    const ui = [
+      ...(document.querySelector(scope)?.querySelectorAll<HTMLElement>('[data-warm-ui-drawing]') ?? []),
+    ];
+    const before = { scene: drawing.style.opacity, ui: ui.map((el) => el.style.opacity) };
+    drawing.style.opacity = '0';
+    for (const el of ui) el.style.opacity = '0';
+    if (getComputedStyle(drawing).opacity !== '0' || ui.some((el) => getComputedStyle(el).opacity !== '0'))
+      throw new Error('the reference still draws a scene');
+    return before;
+  }, scope);
+  let black: ReturnType<typeof decodePng>;
+  let blackPng: Buffer;
+  try {
+    blackPng = await page.screenshot({ scale: 'css', clip });
+    black = decodePng(blackPng);
+  } finally {
+    await page.evaluate(
+      ({ scope, opacity }) => {
+        const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
+        const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
+        if (!drawing) throw new Error('no warm-up drawing to restore');
+        drawing.style.opacity = opacity.scene;
+        const ui = [
+          ...(document.querySelector(scope)?.querySelectorAll<HTMLElement>('[data-warm-ui-drawing]') ?? []),
+        ];
+        if (ui.length !== opacity.ui.length) throw new Error('the same UI warm-up drawing is restored');
+        ui.forEach((el, i) => {
+          el.style.opacity = opacity.ui[i] ?? '';
+        });
+      },
+      { scope, opacity },
+    );
+  }
+  expect([drawn.width, drawn.height], 'the same entire warm-up box').toEqual([black.width, black.height]);
+  const center = (Math.floor(black.height / 2) * black.width + Math.floor(black.width / 2)) * 4;
+  expect([...black.rgba.slice(center, center + 4)], 'the reference is opaque black').toEqual([0, 0, 0, 255]);
+  let difference = 0;
+  let at = 0;
+  let channels = 0;
+  for (let i = 0; i < drawn.rgba.length; i++) {
+    const delta = Math.abs((drawn.rgba[i] ?? 0) - (black.rgba[i] ?? 0));
+    if (delta !== 0) channels++;
+    if (delta > difference) {
+      difference = delta;
+      at = i;
+    }
+  }
+  if (difference !== 0) {
+    const pixel = Math.floor(at / 4);
+    const first = pixel * 4;
+    await test.info().attach('warm-up-drawn-pane', { body: drawnPng, contentType: 'image/png' });
+    await test.info().attach('warm-up-black-reference', { body: blackPng, contentType: 'image/png' });
+    await test.info().attach('warm-up-pane-difference', {
+      body: JSON.stringify({
+        difference,
+        channels,
+        x: pixel % drawn.width,
+        y: Math.floor(pixel / drawn.width),
+        drawn: [...drawn.rgba.slice(first, first + 4)],
+        black: [...black.rgba.slice(first, first + 4)],
+      }),
+      contentType: 'application/json',
+    });
+  }
+  return difference;
 }
 
 /**
@@ -238,8 +309,103 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
   }
   // The idle rotation's dissolve went with it (Session 55, Part 12): none is drawn.
   expect(scenes.map((x) => x.key)).not.toContain('idle');
-  // The audience sees none of it.
-  expect(await brightest(page, `${scope} [data-warm-up]`), `${what}: black throughout`).toBe(0);
+  // The wide Cover's own shade must reach the compositor without the old outer brightness(0), which flattened
+  // its RGBA pass and left a new pipeline for the first Cover on air (X12 wide). The cover stays above every scene.
+  const hiding = await page.evaluate((scope) => {
+    const host = document.querySelector(scope)?.querySelector<HTMLElement>('[data-warm-up]');
+    const tree = host?.shadowRoot;
+    const wide = tree?.querySelector<HTMLElement>('[data-warm-scene="deck-cover-wide/calm/off-grid"]');
+    const cover = tree?.querySelector<HTMLElement>('[data-warm-cover]');
+    const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
+    const pulse = tree?.querySelector<HTMLElement>('[data-warm-pulse]');
+    const filters: string[] = [];
+    for (let el = wide?.parentElement; el; el = el.parentElement) filters.push(getComputedStyle(el).filter);
+    if (host) filters.push(getComputedStyle(host).filter);
+    return {
+      wide: wide !== null && wide !== undefined,
+      filters,
+      isolation: host ? getComputedStyle(host).isolation : null,
+      groupOpacity: host ? getComputedStyle(host).opacity : null,
+      drawingClip: drawing ? getComputedStyle(drawing).overflow : null,
+      drawingZ: drawing ? Number(getComputedStyle(drawing).zIndex) : Number.NaN,
+      pulseZ: pulse ? Number(getComputedStyle(pulse).zIndex) : Number.NaN,
+      coverZ: cover ? Number(getComputedStyle(cover).zIndex) : Number.NaN,
+      opacity: cover ? getComputedStyle(cover).opacity : null,
+      background: cover ? getComputedStyle(cover).backgroundColor : null,
+      coversEdges:
+        !!host &&
+        !!cover &&
+        cover.getBoundingClientRect().left < host.getBoundingClientRect().left &&
+        cover.getBoundingClientRect().top < host.getBoundingClientRect().top &&
+        cover.getBoundingClientRect().right > host.getBoundingClientRect().right &&
+        cover.getBoundingClientRect().bottom > host.getBoundingClientRect().bottom,
+      above: !!wide && !!cover && !!(wide.compareDocumentPosition(cover) & Node.DOCUMENT_POSITION_FOLLOWING),
+    };
+  }, scope);
+  expect(hiding.wide, `${what}: a full-picture wide Cover`).toBe(true);
+  expect(
+    hiding.filters.every((filter) => filter === 'none'),
+    `${what}: no outer filter`,
+  ).toBe(true);
+  expect(hiding.isolation, `${what}: the warm-up blends only with itself`).toBe('isolate');
+  expect(hiding.groupOpacity, `${what}: drawing and cover compose before the page clips them`).toBe('0.999');
+  expect(hiding.drawingClip, `${what}: only the placeholder drawing has the canvas clip`).toBe('hidden');
+  expect(hiding.pulseZ, `${what}: the repaint marker is above every scene`).toBeGreaterThan(hiding.drawingZ);
+  expect(
+    hiding.coverZ,
+    `${what}: the black cover is above every scene and its repaint marker`,
+  ).toBeGreaterThan(hiding.pulseZ);
+  expect(hiding.opacity, `${what}: the black cover keeps the GPU drawing underneath`).toBe('0.999');
+  expect(hiding.background, `${what}: a black cover`).toBe('rgb(0, 0, 0)');
+  expect(hiding.coversEdges, `${what}: the cover extends beyond every clipped edge`).toBe(true);
+  expect(hiding.above, `${what}: the cover follows the drawing`).toBe(true);
+  // The audience sees none of it. Keep the geometry and the exact frame if the cover ever fails.
+  const light = await differenceFromBlack(page, scope);
+  if (light !== 0) {
+    const geometry = await page.evaluate((scope) => {
+      const host = document.querySelector(scope)?.querySelector<HTMLElement>('[data-warm-up]');
+      const tree = host?.shadowRoot;
+      const box = (el: HTMLElement | null | undefined) => {
+        if (!el) return null;
+        const css = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return {
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          width: css.width,
+          height: css.height,
+          display: css.display,
+          position: css.position,
+          transform: css.transform,
+          opacity: css.opacity,
+          filter: css.filter,
+          isolation: css.isolation,
+          zIndex: css.zIndex,
+          mixBlendMode: css.mixBlendMode,
+          background: css.backgroundColor,
+        };
+      };
+      return {
+        viewport: { width: innerWidth, height: innerHeight, scale: devicePixelRatio },
+        host: box(host),
+        parent: box(host?.parentElement),
+        drawing: box(tree?.querySelector<HTMLElement>('[data-warm-drawing]')),
+        pulse: box(tree?.querySelector<HTMLElement>('[data-warm-pulse]')),
+        cover: box(tree?.querySelector<HTMLElement>('[data-warm-cover]')),
+        scenes: [...(tree?.querySelectorAll<HTMLElement>('[data-warm-scene]') ?? [])]
+          .slice(0, 4)
+          .map((el) => ({ key: el.dataset['warmScene'], ...box(el) })),
+      };
+    }, scope);
+    await test.info().attach('warm-up-cover-geometry', {
+      body: JSON.stringify({ what, light, geometry }, null, 2),
+      contentType: 'application/json',
+    });
+    await test.info().attach('warm-up-covered-frame', {
+      body: await page.screenshot({ scale: 'css' }),
+      contentType: 'image/png',
+    });
+  }
+  expect(light, `${what}: every pixel matches black alone`).toBe(0);
 }
 
 async function streamPage(app: ElectronApplication): Promise<Page> {

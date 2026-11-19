@@ -17,6 +17,7 @@ Update after a sabha, and update Main and nodes together.
 - A paired node can show the whole show to a second operator when Main allows it in Screens (Pro Mode), and run the show controls or pause and play media if Main chooses; the first press counts. If its link drops, no screen changes.
 - The stream’s picture can go to other software on the same computer (Syphon on a Mac, Spout on Windows): Send to other software in the stream’s settings, off until turned on.
 - PowerPoint decks look closer to PowerPoint: every built-in table style as PowerPoint draws it, each text box’s first line where PowerPoint puts it, and Wheel and Random Bars as it plays them.
+- On a Mac, a 16:9 deck’s first Cover no longer stutters, as a 4:3 deck’s no longer did in alpha.19.
 - The access list’s emailed Approve and Reject links open on any phone or computer, signed in to Google or not (the admin updates the list once: access-setup.md, section 11).
 - A video whose picture this computer can’t show (some cameras’ HEVC, ProRes) no longer plays its sound over black: within a second or two it comes off (on a slide or in picture in picture it waits, paused) with a notice, and Drashti converts it once the show is idle; import also checks which HEVC this computer plays.
 - Files dropped with no playlist open ask for a new playlist or folder; the Library button shows only while the library is shut; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… moved to More tools and a new Tools menu.
