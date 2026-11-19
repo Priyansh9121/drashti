@@ -26,6 +26,7 @@ import { loadProfiles, streamAction, useStream, watchProgram } from './stream-st
 import { cutText } from '../../../shared/text';
 import { RecordingFolder } from './RecordButton';
 import { VideoOutSettings } from './VideoOutSettings';
+import { YouTubeSettings } from './YouTubeSettings';
 
 /*
  * Stream settings: profiles, each with a name, where it goes (the RTMPS
@@ -493,6 +494,7 @@ function SettingsDialog() {
             </Button>
           </div>
           <ProfileForm key={profile.id} profile={profile} active={profile.id === profiles.activeId} />
+          <YouTubeSettings key={`youtube-${profile.id}`} profile={profile} />
           <section className="space-y-2" aria-label="Recording folder">
             <SectionTitle>Recording folder</SectionTitle>
             <RecordingFolder />
