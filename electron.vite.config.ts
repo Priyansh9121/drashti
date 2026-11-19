@@ -52,6 +52,8 @@ export default defineConfig({
           'pdf-geometry-worker': resolve('src/main/documents/pdf-geometry-worker.ts'),
           // The stream worker: encoding, sending and recording (src/main/stream/worker/worker.ts).
           'stream-worker': resolve('src/main/stream/worker/worker.ts'),
+          // Video out (x30): the stream's picture to other software, only while on (src/main/video-out/worker.ts).
+          'video-out-worker': resolve('src/main/video-out/worker.ts'),
           // The network worker: the HTTP and WebSocket server for paired devices (src/main/network/worker/worker.ts).
           'network-worker': resolve('src/main/network/worker/worker.ts'),
           // The node link worker: Main's side of the link to its output nodes (src/main/nodes/worker/worker.ts).

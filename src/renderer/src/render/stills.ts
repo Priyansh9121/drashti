@@ -118,3 +118,11 @@ export function requestStill(mediaId: string): void {
   queue.push(mediaId);
   void drain();
 }
+
+/** A verified node copy arrived after an earlier thumbnail failed offline: try that file once now. */
+export function retryFailedStill(mediaId: string): void {
+  if (states.get(mediaId)?.failed !== true) return;
+  asked.delete(mediaId);
+  set(mediaId, IDLE);
+  requestStill(mediaId);
+}
