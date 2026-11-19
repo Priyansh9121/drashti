@@ -7268,7 +7268,7 @@ function start(): void {
       if (kinds === null || quitStarted) return;
       hevc.kinds = kinds;
       log.info(
-        `HEVC's other kinds on this computer: Main 10 ${kinds.main10 ? 'plays' : 'cannot play'}, 4:2:2, 4:4:4 and 12-bit ${kinds.rext ? 'play' : 'cannot play'}`,
+        `The other kinds of HEVC on this computer: Main 10 ${kinds.main10 ? 'plays' : 'cannot play'}; 4:2:2, 4:4:4 and 12-bit ${kinds.rext ? 'play' : 'cannot play'}`,
       );
     });
     void page.answer.then((answer) => {
