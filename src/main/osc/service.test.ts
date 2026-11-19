@@ -262,6 +262,22 @@ describe('OSC retry and clock safety', () => {
 });
 
 describe('OSC ingress and action bounds', () => {
+  it('accepts a complete bundle again after enough allowance returns, without partially spending refused bundles', async () => {
+    vi.useFakeTimers();
+    const t = setup();
+    await t.enable();
+    const thirtyTwo = bundle(1n, ...Array.from({ length: 32 }, () => message()));
+    t.sockets[0]?.packet(thirtyTwo);
+    expect(t.actions).toHaveLength(32);
+    vi.advanceTimersByTime(1000);
+    t.sockets[0]?.packet(thirtyTwo);
+    expect(t.actions).toHaveLength(32);
+    vi.advanceTimersByTime(1000);
+    t.sockets[0]?.packet(thirtyTwo);
+    expect(t.actions).toHaveLength(64);
+    await t.service.close();
+  });
+
   it('refuses an exhausted sender before spending the shared quota needed by another console', async () => {
     vi.useFakeTimers();
     const t = setup();
