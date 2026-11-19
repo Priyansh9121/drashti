@@ -162,8 +162,8 @@ function keepingOver(next: AudioLayer, was: AudioLayer | null): AudioLayer {
 }
 
 /**
- * Whether two of the engine's word on how the files play differ in the operator's levels and mutes alone (X33): a
- * level dragged, or a mute, with the rest (Audio's switch, the files' gains) as it was.
+ * Whether the engine's word on how the files play changed in the operator's levels and mutes alone (X33): a level
+ * dragged, or a mute, with the rest (Audio's switch, the files' gains, the silent ones) as it was.
  */
 function levelsAlone(was: SoundState | undefined, now: SoundState | undefined): boolean {
   if (!was || !now) return false;
