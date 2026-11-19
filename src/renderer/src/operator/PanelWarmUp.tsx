@@ -203,25 +203,41 @@ export function PanelWarmUp() {
 export const KIND_KEEP_MS = 20_000;
 
 /**
- * The primary button's drawing kind, kept in use mid-show (Session 60, X21's second part; the owner's "A + keep
- * tracing", Q60-9). The Stream panel's Go live is a primary button, its oklab gradient and inset light under rounded
- * corners beside an icon, and the window's other primary (Next) draws that kind only when it is drawn again (pressed or
- * pointed at; a show run from the keyboard or a clicker never does), or not at all while it can't be pressed. So this
- * draws a tiny copy of it every KIND_KEEP_MS, in a layer of its own (an icon in it: drawn multisampled, as the panel's
- * tile is) under a cover of the panel's own colour, a pixel larger all round: the window looks the same. Nothing in it
- * can be reached or read out, and it asks Main for nothing.
+ * The keeper's shift onto whole device pixels: `box` is where it is drawn now (CSS px, its shift `now` in it), `ratio`
+ * device px a CSS px. The LIVE heading can sit between device pixels, and a box between pixels is drawn another way.
  */
-/** STUB (red): the keeper's shift onto whole device pixels. */
 export function keeperShift(
-  _box: { left: number; top: number },
-  _now: { dx: number; dy: number },
-  _ratio: number,
+  box: { left: number; top: number },
+  now: { dx: number; dy: number },
+  ratio: number,
 ): { dx: number; dy: number } {
-  return { dx: 0, dy: 0 };
+  return onWholePixels(box.left - now.dx, box.top - now.dy, ratio);
 }
 
+/**
+ * The primary button's drawing kind, kept in use mid-show (Session 60, X21's second part; the owner's "A + keep
+ * tracing", Q60-9). The Stream panel's Go live is a primary button, its oklab gradient and inset light under rounded
+ * corners beside an icon; the window's other primary (Next) draws with another kind (traced: x21-1119-210349-71828)
+ * and is drawn again only when pressed or pointed at anyway (a show run from the keyboard or a clicker never is). So
+ * this draws a tiny copy of it every KIND_KEEP_MS, in a layer of its own (an icon in it: drawn multisampled, as the
+ * panel's tile is) on whole device pixels, under a cover of the panel's own colour, a pixel larger all round and a
+ * pixel in from the layer's edge (a layer all of one colour is never drawn: x21-macos-25's trace): the window looks
+ * the same. Nothing in it can be reached or read out, and it asks Main for nothing.
+ */
 export function PanelKindKeeper() {
+  const root = useRef<HTMLSpanElement>(null);
+  const shift = useRef({ dx: 0, dy: 0 });
   const [odd, setOdd] = useState(false);
+  // On whole device pixels, looked at again before each drawing (the heading moves as notices come and go).
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const box = el.getBoundingClientRect();
+    const next = keeperShift(box, shift.current, window.devicePixelRatio);
+    if (next.dx === shift.current.dx && next.dy === shift.current.dy) return;
+    shift.current = next;
+    el.style.transform = `translate(${String(next.dx)}px, ${String(next.dy)}px)`;
+  }, [odd]);
   useEffect(() => {
     const timer = setInterval(() => {
       setOdd((was) => !was);
@@ -232,19 +248,21 @@ export function PanelKindKeeper() {
   }, []);
   return (
     <span
+      ref={root}
       aria-hidden="true"
       inert
       data-testid="panel-kind-keeper"
-      className="pointer-events-none absolute top-1 left-16 block h-3.5 w-7 will-change-transform"
+      className="pointer-events-none absolute top-1 left-16 block h-4 w-8 will-change-transform"
     >
       {/* Drawn again as its gradient moves a pixel under the cover (nothing on screen changes). */}
       <span
-        className="absolute inset-px flex items-center justify-center overflow-hidden rounded-lg border border-primary-lo bg-linear-to-b from-primary-hi via-primary via-55% to-primary-lo text-on-primary shadow-[inset_0_1px_0_var(--depth-primary-top)]"
+        className="absolute inset-[2px] flex items-center justify-center overflow-hidden rounded-lg border border-primary-lo bg-linear-to-b from-primary-hi via-primary via-55% to-primary-lo text-on-primary shadow-[inset_0_1px_0_var(--depth-primary-top)]"
         style={{ backgroundPosition: odd ? '0 1px' : '0 0' }}
       >
         <Radio size={8} aria-hidden="true" />
       </span>
-      <span className="absolute inset-0 bg-panel" />
+      {/* A pixel in from the layer's edge: a layer all of one colour is shown as that colour and never drawn. */}
+      <span className="absolute inset-px bg-panel" />
     </span>
   );
 }
