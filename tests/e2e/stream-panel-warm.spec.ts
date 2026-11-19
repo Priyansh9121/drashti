@@ -77,14 +77,20 @@ function newPipelines(events: TraceEvent[]): { desc: string; tiles: boolean }[] 
     }));
 }
 
-/** How each hall screen's warm-up ended, as Drashti's log says it once a screen (Session 58, WU-2). */
-function warmUpEnds(userData: string): string[] {
+/**
+ * How each hall screen's warm-up ended (Session 58, WU-2), or that it had none on a computer without a graphics chip
+ * (Session 57, Q57-17: "Warm-up: skipped, no graphics chip …, for output …"), as Drashti's log says it once a screen.
+ */
+function hallWarmUps(userData: string): string[] {
   const file = join(userData, 'logs', 'drashti.log');
   if (!existsSync(file)) return [];
   return readFileSync(file, 'utf8')
     .split('\n')
-    .filter((line) => line.includes(' Warm-up of output '));
+    .filter((line) => / Warm-up(?: of output |: skipped, no graphics chip .*, for output )/u.test(line));
 }
+/** A hall screen's warm-up skipped or cut short: this computer draws without a graphics chip (CI's Windows). */
+const chiplessLine = (line: string) =>
+  line.includes(': skipped, no graphics chip ') || line.includes(', told it draws without a graphics chip');
 
 const liveWarmedUp = (win: Page) =>
   win.evaluate(() => document.querySelector('[data-testid="live-preview"] [data-warm-up]') === null);
@@ -123,9 +129,10 @@ test('opening the Stream panel mid-show makes no new kind of drawing in any page
     // The stream's page then draws with no warm-up of its own (X21's first part), what it draws with made by the hall
     // screen's: at a new CI Mac's first start that warm-up can end at its longest, and its page loaded again draws
     // everything (stream-warm.spec.ts).
-    const ends = () => warmUpEnds(userData);
+    const ends = () => hallWarmUps(userData);
     await expect.poll(() => ends().length, { timeout: 60_000 }).toBeGreaterThanOrEqual(1);
-    if (!ends().some((line) => line.includes(': drew everything in '))) {
+    const chipless = ends().some(chiplessLine);
+    if (!chipless && !ends().some((line) => line.includes(': drew everything in '))) {
       await hall.reload();
       await expect.poll(() => ends().length, { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
       await expect(hall.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', {
