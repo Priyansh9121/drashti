@@ -1,4 +1,5 @@
 import { randomInt } from 'node:crypto';
+import { cutText } from '../../shared/text';
 import { z } from 'zod';
 import {
   controllerArea,
@@ -81,7 +82,7 @@ export interface NodeServiceDeps {
   /** What a node should copy, in order. */
   wanted(state: EngineState, everything: boolean): MediaWant[];
   /** Main’s common show-action layer: current access and Simple Mode are checked there again. */
-  runShowAction?(command: EngineCommand): DeviceAnswer;
+  runShowAction?(command: EngineCommand, who: string): DeviceAnswer;
   /** A media file for a node: where it is, its hash, size and extension. */
   mediaFile(mediaId: string): { path: string; sha256: string; bytes: number; ext: string } | null;
   /** The stream is on air or recording: copies go slower. */
@@ -738,7 +739,7 @@ export class NodeService implements EngineTransport {
   /** Synchronous and bounded: Main never waits for a controller or its reply. */
   controllerAction(nodeId: string, raw: unknown): ControllerReply {
     const parsed = controllerRequestSchema.safeParse(raw);
-    const rawId = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>).id : null;
+    const rawId = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>)['id'] : null;
     const id = typeof rawId === 'string' && rawId.length <= 80 ? rawId : '';
     const refused = (message: string): ControllerReply => ({
       id,
@@ -785,21 +786,23 @@ export class NodeService implements EngineTransport {
         message: 'The show already moved. Check LIVE and press again.',
       });
     try {
-      const result = this.deps.runShowAction(request.command);
+      const result = this.deps.runShowAction(request.command, `Controller ${this.label(nodeId)}`);
       const body =
         typeof result.body === 'object' && result.body !== null
           ? (result.body as Record<string, unknown>)
           : {};
-      if (result.status < 200 || result.status >= 300 || body.ok === false)
+      if (result.status < 200 || result.status >= 300 || body['ok'] === false)
         return remember(
-          refused(typeof body.message === 'string' ? body.message.slice(0, 300) : 'Main refused that press.'),
+          refused(
+            typeof body['message'] === 'string' ? cutText(body['message'], 300) : 'Main refused that press.',
+          ),
         );
       return remember({
         id,
         status: 'accepted',
         rev: this.deps.engine.rev(),
-        changed: body.changed === true,
-        message: body.changed === true ? 'Applied on Main.' : 'No change on Main.',
+        changed: body['changed'] === true,
+        message: body['changed'] === true ? 'Applied on Main.' : 'No change on Main.',
       });
     } catch {
       this.deps.log('warn', 'Nodes: Main could not apply a controller press.');
