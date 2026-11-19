@@ -43,6 +43,10 @@ describe('Simple Mode locks', () => {
       IPC.stream.startRecording,
       IPC.stream.startSoundRecording,
       IPC.stream.stopRecording,
+      // The sound's Audio and Video levels and mutes (X33): running the show, the same in both modes, never an edit
+      // that waits for an import.
+      IPC.sound.setLevel,
+      IPC.sound.setMuted,
     ]);
     // Locked, or (Session 55, Part 18) what Simple Mode offers now, each only within its bounds.
     for (const c of changes)
@@ -528,6 +532,14 @@ describe('Simple Mode locks', () => {
     expect(within(IPC.music.rename, 42, 'Placeholder')).toBe(false);
     expect(within(IPC.music.addTracks, 'list-1', 'not a list', null)).toBe(false);
     expect(within(IPC.sound.setStepsAside, 'yes')).toBe(false);
+  });
+
+  it('the sound’s Audio and Video levels and mutes (X33) are running the show: never locked, never waiting for an import', () => {
+    for (const channel of [IPC.sound.setLevel, IPC.sound.setMuted]) {
+      expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
+      // Not bounded either: a bounded request is an edit, which waits for an import to give way; a level never waits.
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
+    }
   });
 
   it('a row’s Trim, Trim black and silence and Even loudness (Session 56): a file a playlist (never only a template) or an audio playlist holds', () => {
