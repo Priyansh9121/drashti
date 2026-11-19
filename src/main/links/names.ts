@@ -52,14 +52,14 @@ export function safeName(raw: string, fallback: string): string {
 /** The operator edits the stem only; a typed media extension never changes the file’s real type. */
 export function downloadName(raw: string | undefined, title: string, extension: string): string {
   const stem = (value: string) => {
-    let name = safeName(value, '');
-    const suffix = extname(name);
-    if (
-      suffix &&
+    const last = (value.normalize('NFC').split(/[\\/]/u).pop() ?? '').trim();
+    const suffix = /\.[^.]+$/u.exec(last)?.[0] ?? '';
+    const typedExtension =
+      extension !== '' &&
+      suffix !== '' &&
       (suffix.toLowerCase() === extension.toLowerCase() ||
-        /^\.(mp[34]|mov|mkv|webm|m4a|aac|wav|flac|ogg|opus|pptx?|pdf|zip|srt)$/iu.test(suffix))
-    )
-      name = cutText(name, name.length - suffix.length);
+        /^\.(mp[34]|mov|mkv|webm|m4a|aac|wav|flac|ogg|opus|pptx?|pdf|zip|srt)$/iu.test(suffix));
+    const name = safeName(typedExtension ? cutText(last, last.length - suffix.length) : last, '');
     return /^[\s._-]*$/u.test(name) ? '' : name;
   };
   const fallback = stem(title.replace(/[\\/]/gu, '-')) || 'Download';

@@ -33,12 +33,12 @@ function LinkWindow({ audio }: { audio: boolean }) {
       ? new Set((view.look.video.captions ?? []).map((track) => track.language)).size
       : null;
   useEffect(() => {
-    if (!text.trim()) return;
+    if (!text.trim() || submitting) return;
     const timer = setTimeout(() => {
       void lookLink(text);
     }, 250);
     return () => clearTimeout(timer);
-  }, [text]);
+  }, [text, submitting]);
   const displayedName = edited ? name : current ? (view.suggestedName ?? '') : '';
 
   async function submit() {
