@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GUIDES } from '../shared/guides';
+import { MANUAL_CHAPTERS } from '../shared/manual';
 import { KEYMAP } from '../shared/keymap';
 import { type Block, type Inline, inlineText, parseMarkdown } from '../shared/markdown';
 
@@ -140,6 +141,26 @@ describe('the guides’ keys and Drashti’s, both ways', () => {
   it('every key named as another’s is named in a guide (the list never keeps a key no guide has)', () => {
     const named = new Set([...cardKeys(), ...keysIn(parseMarkdown(read('operator-guide.md')))]);
     expect(Object.keys(NOT_KEYMAP).filter((k) => !named.has(k))).toEqual([]);
+  });
+});
+
+describe('the Drashti Manual’s keys and Drashti’s, both ways (x37, Session 60)', () => {
+  const keysChapter = parseMarkdown(
+    read(`manual/${MANUAL_CHAPTERS.find((c) => c.id === 'keys')?.file ?? ''}`),
+  );
+  const everyChapter = MANUAL_CHAPTERS.flatMap((c) => parseMarkdown(read(`manual/${c.file}`)));
+
+  it('its Keys chapter names a key for every action in the keymap', () => {
+    const named = new Set(keysIn(keysChapter));
+    expect(
+      bindings
+        .filter((b) => !b.keys.some((k) => named.has(k)))
+        .map((b) => `${b.action} (${b.keys.join(', ')})`),
+    ).toEqual([]);
+  });
+
+  it('every key a chapter names is in the keymap, or named as another’s', () => {
+    expect(keysIn(everyChapter).filter((k) => !all.has(k) && !(k in NOT_KEYMAP))).toEqual([]);
   });
 });
 

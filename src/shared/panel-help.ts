@@ -1,4 +1,5 @@
 import type { GuideId } from './guides';
+import type { ManualChapterId } from './manual';
 
 /*
  * "What is this?" on each operator panel (Session 25): two or three plain sentences saying what the
@@ -17,6 +18,9 @@ export interface PanelHelp {
   doc: GuideId;
   /** Words of that guide's passage it follows (it must still say them, once). */
   guide: string;
+  /** The Drashti Manual's chapter for it (x37, Session 60): not yet (the red commit's stand-in). */
+  chapter?: ManualChapterId;
+  feature?: string;
 }
 
 export const PANEL_HELP = {
