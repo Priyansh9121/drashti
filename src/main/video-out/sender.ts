@@ -1,15 +1,24 @@
 import type { VideoOutSender } from './protocol';
 
-/*
- * How this computer's Drashti sends its picture to other software (x30). The tests' stand-in receiver when a test
- * names its file (DRASHTI_TEST_VIDEO_OUT_STAND_IN, honoured only when Drashti is not packaged: src/main/switches.ts).
- * Drashti's own small programs for Syphon, Spout or NDI come with the owner's choice of which to build
- * (assister/s59-notes/reports/x30-design.md): until then there is none, and video out cannot be turned on.
- */
-export function videoOutSender(place: {
+/* Red (x30): Syphon on a Mac and Spout on Windows by Drashti's own small program, not yet offered. */
+
+export interface VideoOutPlace {
   standIn: string | null;
   platform: NodeJS.Platform;
-}): VideoOutSender | null {
+  arch: string;
+  packaged: boolean;
+  resourcesPath: string;
+  appPath: string;
+}
+
+export function videoOutProgram(_place: Omit<VideoOutPlace, 'standIn'>): string | null {
+  return null;
+}
+
+export function videoOutSender(
+  place: VideoOutPlace,
+  _exists: (file: string) => boolean = () => false,
+): VideoOutSender | null {
   if (place.standIn) return { way: 'stand-in', file: place.standIn };
   return null;
 }
