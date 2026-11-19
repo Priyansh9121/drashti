@@ -447,6 +447,10 @@ Importing the same kirtan again updates its earlier copy in that library. If som
 
 ## 13. Following the show on another computer
 
-On Main in Pro Mode, open **Screens** and tick **Shared show view** beside an already paired node. The second computer's window becomes **Drashti Controller**: LIVE, NEXT and the coming playlist rows follow Main. It has no show controls yet; run the show on Main.
+On Main in Pro Mode, open **Screens** and tick **Shared show view** beside an already paired node. The second computer's window becomes **Drashti Controller**: LIVE, NEXT and the coming playlist rows follow Main. It has no controls until Main allows an area below that tick.
+
+**Show controls** adds Next, Back, previous and next playlist items, Black-out, Wallpaper, Clear all and Put it back. **Media playback** adds Pause and Play for video and sound already playing on Main, with Back 15 s, Forward 15 s and Take off for the background video and sound. Main chooses either area or both; each starts off. Main's current Simple Mode and access rules still apply. The second computer never plays sound itself.
+
+A press says **Applied on Main**, **No change on Main**, or why Main refused it. If either operator moved the show first, **The show already moved. Check LIVE and press again.** means that older press did nothing. Do not repeat a press until you have checked LIVE. While **Not connected**, controls are dimmed and a waiting press is discarded; reconnecting never repeats it. Turning Shared show view off on Main also removes its action permissions.
 
 **Connected to Main** means it has Main's current show. **Not connected** leaves the last view visible while it tries to reconnect. Main and its audience screens keep running. Any displays assigned to the controller keep their last show too, even through a longer link loss; an explicit stop from Main still applies. Untick **Shared show view** on Main to remove the view; the show stays as it was. Sound stays on Main. Main's video inputs and other app windows are named as being on Main; pictures and videos use the copies on the second computer.

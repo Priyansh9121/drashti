@@ -23,7 +23,7 @@ export class EngineViewStamp {
     }
     if (message.rev <= this.newest) return;
     this.newest = message.rev;
-    if (this.current && message.baseRev === this.current.rev && message.rev === this.current.rev + 1)
+    if (message.baseRev === this.current?.rev && message.rev === this.current.rev + 1)
       this.current = { ...this.current, rev: message.rev };
     else this.current = undefined;
   }
