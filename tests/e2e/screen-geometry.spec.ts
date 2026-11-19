@@ -431,3 +431,133 @@ test('adjusting: the grid over the show, which goes on; never blank, never loade
   await expect(out.getByTestId('geometry-grid')).toHaveCount(0);
   await app.close();
 });
+
+/** A screen's geometry as Screens has it now: null for nothing set. */
+const savedGeometry = (win: Page, screenId: string) =>
+  win.evaluate(
+    async (id) =>
+      (await (globalThis as PageGlobals).drashti.screens.get()).groups
+        .flatMap((g) => g.screens)
+        .find((s) => s.id === id)?.geometry ?? null,
+    screenId,
+  );
+
+test('Screens: Adjust the picture… moves a corner by its numbers, the keys and a drag, with Undo, Redo and Reset, the grid on the screen while open; One wide picture… and Separate pictures', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(ONE_OUTPUT);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const screenId = await setUpScreen(win, 'Placeholder hall', 1);
+  const out = await outputFor(app, screenId);
+  await outputReady(out);
+  // The display's own pixels, which the numbers are in.
+  const px = await win.evaluate(async (id) => {
+    const snap = await (globalThis as PageGlobals).drashti.screens.get();
+    const screen = snap.groups.flatMap((g) => g.screens).find((s) => s.id === id);
+    const status = snap.status.find((st) => st.screenId === id);
+    const d = snap.displays.find((x) => x.id === status?.displayId);
+    return { width: d?.pixelWidth ?? screen?.displayKey?.pixelWidth ?? 0, height: d?.pixelHeight ?? 0 };
+  }, screenId);
+  expect(px.width).toBeGreaterThan(0);
+  await win.getByRole('button', { name: 'Screens', exact: true }).click();
+  const row = win.getByTestId('screen-row').first();
+  await row.getByTestId('adjust-picture-open').click();
+  const dialog = win.getByTestId('adjust-picture');
+  await expect(dialog).toBeVisible();
+  // The grid over the show while it is open.
+  await expect(out.getByTestId('geometry-grid')).toHaveCount(1);
+  // The top left corner moved by its numbers.
+  const across = Math.round(px.width * 0.05);
+  const down = Math.round(px.height * 0.04);
+  await dialog.getByTestId('adjust-corner-0-x').fill(String(across));
+  await dialog.getByTestId('adjust-corner-0-x').press('Enter');
+  await dialog.getByTestId('adjust-corner-0-y').fill(String(down));
+  await dialog.getByTestId('adjust-corner-0-y').press('Enter');
+  await expect
+    .poll(async () => (await savedGeometry(win, screenId))?.corners[0])
+    .toEqual({ x: across / px.width, y: down / px.height });
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-geometry', 'set');
+  // The top right corner by the keys: ten display pixels left with Shift.
+  await dialog.getByTestId('adjust-handle').nth(1).focus();
+  await win.keyboard.press('Shift+ArrowLeft');
+  await expect
+    .poll(async () => (await savedGeometry(win, screenId))?.corners[1].x ?? 0)
+    .toBeCloseTo(-10 / px.width, 6);
+  // The bottom right corner dragged up and to the left.
+  const handle = dialog.getByTestId('adjust-handle').nth(2);
+  const at = await handle.boundingBox();
+  if (!at) throw new Error('no handle');
+  await win.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+  await win.mouse.down();
+  await win.mouse.move(at.x + at.width / 2 - 24, at.y + at.height / 2 - 16, { steps: 6 });
+  await win.mouse.up();
+  await expect
+    .poll(async () => {
+      const c = (await savedGeometry(win, screenId))?.corners[2];
+      return (c?.x ?? 0) < 0 && (c?.y ?? 0) < 0;
+    })
+    .toBe(true);
+  // Undo takes the drag back as one step; Redo puts it back; Cmd/Ctrl+Z undoes it again.
+  await dialog.getByTestId('adjust-undo').click();
+  await expect.poll(async () => (await savedGeometry(win, screenId))?.corners[2]).toEqual({ x: 0, y: 0 });
+  await expect
+    .poll(async () => (await savedGeometry(win, screenId))?.corners[1].x ?? 0)
+    .toBeCloseTo(-10 / px.width, 6);
+  await dialog.getByTestId('adjust-redo').click();
+  await expect.poll(async () => ((await savedGeometry(win, screenId))?.corners[2].x ?? 0) < 0).toBe(true);
+  await dialog.getByTestId('adjust-preview').click({ position: { x: 4, y: 4 } });
+  await win.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  await expect.poll(async () => (await savedGeometry(win, screenId))?.corners[2]).toEqual({ x: 0, y: 0 });
+  // Reset: nothing set, the screen as before.
+  await dialog.getByTestId('adjust-reset').click();
+  await expect.poll(() => savedGeometry(win, screenId)).toBeNull();
+  await expect(out.getByTestId('output-root')).not.toHaveAttribute('data-geometry');
+  // Done: the grid goes.
+  await dialog.getByTestId('adjust-done').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(out.getByTestId('geometry-grid')).toHaveCount(0);
+
+  // One wide picture: the main display's screen joins the group, to its right.
+  const groupId = await win.evaluate(async (id) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const snap = await d.screens.get();
+    const group = snap.groups.find((g) => g.screens.some((s) => s.id === id));
+    const main = snap.displays.find((x) => x.primary);
+    const used = await d.screens.assignDisplay(group?.id ?? '', main?.id ?? -1, { coverOperator: true });
+    if (!used.ok) throw new Error(used.message);
+    if ((await d.screens.pending()) !== null) await d.screens.keep();
+    return group?.id ?? '';
+  }, screenId);
+  const card = win.locator(`#screen-group-${groupId}`);
+  await card.getByTestId('wide-picture-open').click();
+  const wide = win.getByTestId('wide-picture');
+  await wide.getByTestId('wide-overlap').fill('300');
+  await wide.getByTestId('wide-make').click();
+  await expect(wide).toHaveCount(0);
+  const canvases = () =>
+    win.evaluate(
+      async (gid) =>
+        (await (globalThis as PageGlobals).drashti.screens.get()).groups
+          .find((g) => g.id === gid)
+          ?.screens.map((s) => [
+            s.canvasWidth,
+            s.geometry?.part?.x ?? null,
+            s.geometry?.blend?.right ?? null,
+          ]) ?? [],
+      groupId,
+    );
+  await expect.poll(canvases).toEqual([
+    [3540, 0, 300],
+    [3540, 1620, 0],
+  ]);
+  await expect(out.getByTestId('blend-ramp')).toHaveAttribute('data-side', 'right');
+  // Separate pictures: each its own canvas again, nothing set.
+  await card.getByTestId('wide-picture-open').click();
+  await wide.getByTestId('wide-separate').click();
+  await expect.poll(canvases).toEqual([
+    [1920, null, null],
+    [1920, null, null],
+  ]);
+  await expect(out.getByTestId('blend-ramp')).toHaveCount(0);
+  await app.close();
+});
