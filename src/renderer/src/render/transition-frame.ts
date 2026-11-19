@@ -173,14 +173,16 @@ export function deckTransitionFrame(
   if (!over || over.durationMs <= 0) return original;
   const outer = transitionFrame(over.kind, elapsed / over.durationMs, movement);
   const transform = (a: SlideFrame, b: SlideFrame) => [a.transform, b.transform].filter(Boolean).join(' ');
+  // Moved as Drashti's own transition moves the whole layer too: no move of the deck's own alone (X11's shift).
+  const alone = ({ shift: _shift, ...rest }: SlideFrame): SlideFrame => rest;
   return {
     in: {
-      ...original.in,
+      ...alone(original.in),
       opacity: original.in.opacity * outer.in.opacity,
       transform: transform(outer.in, original.in),
     },
     out: {
-      ...original.out,
+      ...alone(original.out),
       opacity: clamp(outer.out.opacity + original.out.opacity * outer.in.opacity),
       transform: transform(outer.out, original.out),
     },
@@ -202,20 +204,25 @@ function powerPointFrame(
   // A slide's move, `fraction` of its own length along the way: in px of the slide where it is placed, else in %.
   const along = (place: SlidePlace | undefined) =>
     place ? (horizontal ? place.width : place.height) : undefined;
-  const shiftBy = (fraction: number, length: number | undefined) =>
-    fraction === 0
-      ? ''
-      : length === undefined
-        ? `translate${horizontal ? 'X' : 'Y'}(${String(fraction * toward * 100)}%)`
-        : `translate${horizontal ? 'X' : 'Y'}(${String(fraction * toward * length)}px)`;
-  const shiftIn = (fraction: number) => shiftBy(fraction, along(places?.in));
-  const shift = (fraction: number) => shiftBy(fraction, along(places?.out));
+  // A slide's move, `fraction` of its own length along the way, as a transform and as a number (X11): in px of the
+  // slide where it is placed, else as a share of the layer's box (the transform's %). None for no move.
+  const moveBy = (fraction: number, length: number | undefined): Pick<SlideFrame, 'transform' | 'shift'> => {
+    if (fraction === 0) return { transform: '' };
+    const shift: SlideShift =
+      length === undefined
+        ? { axis: horizontal ? 'x' : 'y', of: 'box', by: fraction * toward }
+        : { axis: horizontal ? 'x' : 'y', of: 'px', by: fraction * toward * length };
+    const amount = shift.of === 'box' ? `${String(shift.by * 100)}%` : `${String(shift.by)}px`;
+    return { transform: `translate${horizontal ? 'X' : 'Y'}(${amount})`, shift };
+  };
+  const shiftIn = (fraction: number) => moveBy(fraction, along(places?.in));
+  const shift = (fraction: number) => moveBy(fraction, along(places?.out));
   switch (transition.deckEffect) {
     case 'push': {
       const e = easeInOut(p);
       return {
-        in: { ...settled, transform: shiftIn(e - 1) },
-        out: { ...settled, transform: shift(e) },
+        in: { ...settled, ...shiftIn(e - 1) },
+        out: { ...settled, ...shift(e) },
         black: 0,
         add: false,
       };
@@ -226,8 +233,8 @@ function powerPointFrame(
       const e = SLIDE_CURVES[transition.deckEffect][horizontal ? 'across' : 'down'](p);
       const moving: SlideFrame = { ...settled, ...(p > 0 && p < 1 ? { filter: MOVING_SHADE } : {}) };
       return transition.deckEffect === 'cover'
-        ? { in: { ...moving, transform: shiftIn(e - 1) }, out: settled, black: 0, add: false }
-        : { in: settled, out: { ...moving, transform: shift(e) }, black: 0, add: false };
+        ? { in: { ...moving, ...shiftIn(e - 1) }, out: settled, black: 0, add: false }
+        : { in: settled, out: { ...moving, ...shift(e) }, black: 0, add: false };
     }
     case 'wipe':
       // PowerPoint's soft band (Session 58), its start moving evenly from a slide outside the incoming slide's own side
