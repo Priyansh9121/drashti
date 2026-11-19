@@ -162,7 +162,8 @@ test('Dropbox: a file link and a folder link are pasted and imported from the de
   await expect(win.locator('[aria-modal="true"]')).toHaveCount(1);
   await expectNoSeriousA11yIssues(win, 'the link input', '[data-testid="link-paste"]');
   await pasteLink(win, 'https://example.net/scl/fi/abc/x.mp4', false);
-  await expect(win.getByTestId('import-notice')).toContainText('Paste a share link from YouTube or Dropbox.');
+  await expect(field.getByText('Paste a share link from YouTube or Dropbox.', { exact: true })).toBeVisible();
+  await expect(win.getByTestId('link-text')).toHaveAttribute('aria-invalid', 'true');
   expect(standIn.requests).toHaveLength(0);
 
   // Both Dropbox's metadata and its file wait while streaming.

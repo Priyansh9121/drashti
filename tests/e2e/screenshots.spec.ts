@@ -1604,13 +1604,14 @@ test('Import from a Link: the Dropbox paste field, status and failure notices', 
     await operatorReady(win);
     await chooseMenuItem(app, 'import-from-link');
     const field = win.getByTestId('link-paste');
+    const notices = win.getByTestId('import-notice');
     await expect(field).toBeVisible();
     await shot(win, 'import-link-kind');
     await pasteLink(win, 'https://example.net/placeholder/clip.mp4', false);
-    const notices = win.getByTestId('import-notice');
-    await expect(notices).toContainText('Paste a share link from YouTube or Dropbox.');
+    await expect(
+      field.getByText('Paste a share link from YouTube or Dropbox.', { exact: true }),
+    ).toBeVisible();
     await shot(win, 'import-link-refused');
-    await notices.getByRole('button', { name: 'Dismiss import notice' }).click();
     await win.getByTestId('link-text').fill('https://www.dropbox.com/…');
     await shot(win, 'import-link-dropbox');
     const onAir = (on: boolean) =>
