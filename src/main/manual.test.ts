@@ -6,6 +6,9 @@ import { describe, expect, it } from 'vitest';
 import {
   FEATURE_PARTS,
   indexChapter,
+  MANUAL_PRINT_REFUSED,
+  MANUAL_PRINT_WAITS,
+  manualPrintWaits,
   type ManualPrinted,
   MANUAL_CHAPTER_IDS,
   MANUAL_CHAPTERS,
@@ -14,6 +17,7 @@ import {
   savedWhere,
   searchManual,
 } from '../shared/manual';
+import { emptyLayers, type MessageItem } from '../shared/engine/state';
 import { type Block, imagesOf, inlineText, parseMarkdown, passagesOf } from '../shared/markdown';
 import { PANEL_HELP, type PanelHelp } from '../shared/panel-help';
 import { GuideFiles, guidesDir } from './guides';
@@ -292,7 +296,47 @@ describe('Print… and Save as PDF…', () => {
     version: () => '1.0.0-alpha.20',
     tempDir: () => tmpdir(),
     suggestedFolder: () => join('/placeholder', 'Documents'),
+    live: () => false,
   };
+
+  it('waits while anything is up, on air or recording, as the work that waits for an idle show does (the lead’s call, 20 Nov)', () => {
+    const off = { live: { state: 'off' }, recording: { state: 'off' } } as const;
+    const up = { ...emptyLayers(), messages: [{} as MessageItem] };
+    expect(manualPrintWaits(emptyLayers(), off as never)).toBe(false);
+    expect(manualPrintWaits(up, off as never)).toBe(true);
+    for (const state of ['starting', 'live', 'reconnecting', 'ending'] as const)
+      expect(manualPrintWaits(emptyLayers(), { ...off, live: { state } } as never), state).toBe(true);
+    expect(manualPrintWaits(emptyLayers(), { ...off, recording: { state: 'recording' } } as never)).toBe(
+      true,
+    );
+    // Not known yet: the safe side.
+    expect(manualPrintWaits(null, off as never)).toBe(true);
+    expect(MANUAL_PRINT_WAITS).toBe('Print or save the manual when nothing is up, on air or recording.');
+  });
+
+  it('prints nothing while the show is live: refused in words, nothing asked and nothing made', async () => {
+    let asked = 0;
+    let printed = 0;
+    const printer = new ManualPrinter({
+      ...base,
+      live: () => true,
+      askWhere: () => {
+        asked++;
+        return Promise.resolve('/placeholder/a.pdf');
+      },
+      print: () => {
+        printed++;
+        return Promise.resolve({ ok: true, pdf: Buffer.from('%PDF-') });
+      },
+      write: () => undefined,
+    });
+    expect(messageOf(await printer.pdf())).toBe(MANUAL_PRINT_REFUSED);
+    expect(messageOf(await printer.print())).toBe(MANUAL_PRINT_REFUSED);
+    expect([asked, printed]).toEqual([0, 0]);
+    expect(MANUAL_PRINT_REFUSED).toBe(
+      'Print or save the manual when nothing is up, on air or recording: clear what is up, and end the stream and the recording first.',
+    );
+  });
 
   it('saves the PDF where the person chose, suggesting “Drashti Manual.pdf” in Documents', async () => {
     const asked: string[] = [];
