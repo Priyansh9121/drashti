@@ -1,6 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { EngineCommand } from '../../src/shared/engine/commands';
@@ -18,6 +18,7 @@ import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
   launchApp,
+  letTimePass,
   operatorPage,
   operatorReady,
   outputPages,
@@ -217,6 +218,133 @@ test('a pinned picture: each corner where it was pinned, the quarters where the 
       ),
     )
     .toBe(true);
+  await app.close();
+});
+
+/** The render surfaces Chromium's compositor made in these pages' renderers over a stretch: its own record (cc). */
+async function surfacesWhile(
+  app: ElectronApplication,
+  pids: number[],
+  file: string,
+  during: () => Promise<void>,
+): Promise<{ reasons: string[]; draws: number }> {
+  await app.evaluate(async ({ contentTracing }) => {
+    await contentTracing.startRecording({
+      included_categories: ['cc'],
+      excluded_categories: ['*'],
+      recording_mode: 'record-until-full',
+    });
+  });
+  await during();
+  await app.evaluate(async ({ contentTracing }, f) => {
+    await contentTracing.stopRecording(f);
+  }, file);
+  const parsed = JSON.parse(readFileSync(file, 'utf8')) as {
+    traceEvents?: { name?: string; pid?: number; args?: Record<string, unknown> }[];
+  };
+  const mine = (parsed.traceEvents ?? []).filter((e) => e.pid !== undefined && pids.includes(e.pid));
+  return {
+    // cc says, each frame it draws with more than its root, how many surfaces it made and why.
+    reasons: [
+      ...new Set(
+        mine.filter((e) => e.name === 'RenderSurfaceReasonCount').flatMap((e) => Object.keys(e.args ?? {})),
+      ),
+    ].sort(),
+    draws: mine.filter((e) => e.name === 'ProxyImpl::ScheduledActionDraw').length,
+  };
+}
+
+test('a pinned picture is drawn straight through its warp: no clip under it makes Chromium draw it again each frame, and black stays outside it where the show is larger than the screen', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp(ONE_OUTPUT);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const screenId = await setUpScreen(win, 'Placeholder hall', 1);
+  const out = await outputFor(app, screenId);
+  await outputReady(out);
+  // A 4:3 picture filling the 16:9 canvas as the background (drawn past its top and bottom), under two slides of
+  // words that dissolve into each other.
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-geometry-'));
+  const [tall = ''] = await importAndGetIds(win, [
+    await drawPicture(win, join(dir, 'Placeholder tall quarters.png'), quarters(), {
+      width: 1440,
+      height: 1080,
+    }),
+  ]);
+  const slides = await makeSlides(win, 'Placeholder words', [{ backgroundCue: tall }, {}], {
+    kind: 'dissolve',
+    durationMs: 800,
+  });
+  const go = (slideIndex: number) =>
+    win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c), {
+      type: 'goLive',
+      presentationId: slides,
+      slideIndex,
+    } satisfies EngineCommand);
+  await go(0);
+  const box = await boxOf(out);
+  // Fill draws the 1440 x 1080 picture 1920 x 1440 on the canvas, 180 above and below it: its top quarters' colours
+  // near the canvas's top, as Fit places the canvas.
+  const nearTop = [
+    { x: 300, y: 40 },
+    { x: 1620, y: 40 },
+  ];
+  await expect
+    .poll(async () =>
+      (
+        await pixels(
+          out,
+          nearTop.map((p) => onWindow(HD, null, box, null, p)),
+        )
+      ).map((rgba, i) => near(rgba, QUARTERS[i] ?? [0, 0, 0], 40)),
+    )
+    .toEqual([true, true]);
+
+  expect(await bridge(win).update(screenId, KEYSTONE)).toBe('ok');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-geometry', 'set');
+  // Pinned: the picture inside, and black just outside its top and bottom edges, where the background is drawn past
+  // the canvas, and at the window's own corners.
+  const edge = (a: Point, b: Point, out: number): Point => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 + out });
+  const [tl, tr, br, bl] = [
+    { x: 0, y: 0 },
+    { x: 1920, y: 0 },
+    { x: 1920, y: 1080 },
+    { x: 0, y: 1080 },
+  ].map((p) => onWindow(HD, null, box, KEYSTONE, p)) as [Point, Point, Point, Point];
+  const outside: Point[] = [
+    edge(tl, tr, -8),
+    edge(bl, br, 8),
+    { x: 6, y: 6 },
+    { x: box.width - 6, y: box.height - 6 },
+  ];
+  await expect
+    .poll(async () => {
+      const got = await pixels(out, [
+        ...nearTop.map((p) => onWindow(HD, null, box, KEYSTONE, p)),
+        ...outside,
+      ]);
+      return got.map((rgba, i) => near(rgba, i < 2 ? (QUARTERS[i] ?? [0, 0, 0]) : [0, 0, 0], 40));
+    })
+    .toEqual([true, true, true, true, true, true]);
+
+  // Two dissolves under Chromium's own record of how it drew them: no clip under the warp (the picture box's, the
+  // scene's) made it draw the picture into a surface of its own, again each frame, before warping it.
+  const pids = await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .filter((w) => (w.webContents.getURL().split('?')[0] ?? '').endsWith('output.html'))
+      .map((w) => w.webContents.getOSProcessId()),
+  );
+  const { reasons, draws } = await surfacesWhile(app, pids, join(dir, 'surfaces.json'), async () => {
+    await go(1);
+    await letTimePass(win, 1300, 'a dissolve, then still');
+    await go(0);
+    await letTimePass(win, 1300, 'a dissolve back, then still');
+  });
+  expect(draws, 'the hall screen drew its frames while traced').toBeGreaterThan(10);
+  expect(
+    reasons.filter((r) => r.includes('clip')),
+    `the render surfaces' reasons: ${reasons.join(', ')}`,
+  ).toEqual([]);
   await app.close();
 });
 
