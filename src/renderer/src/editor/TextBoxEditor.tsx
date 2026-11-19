@@ -11,6 +11,7 @@ import type { TextElement, TextRun } from '../../../shared/model';
 import { drawnLines } from '../../../shared/text-lists';
 import { sourceLineCut } from '../../../shared/source-fit';
 import { htmlLang, TranslitSourceContext } from '../render/lang';
+import { useDeckWordsShift } from '../render/first-line-shift';
 import type { TranslitSource } from '../../../shared/model';
 import {
   listMarkerBoxStyle,
@@ -361,6 +362,8 @@ export function TextBoxEditor({
   useEffect(() => {
     view.current?.setProps({ markViews: markViews(el, source) });
   }, [el, source]);
+  // Its words moved to where PowerPoint puts a deck box's first line, as on the screens (X20).
+  const shift = useDeckWordsShift(el);
 
   return (
     <div
@@ -376,7 +379,11 @@ export function TextBoxEditor({
         outlineOffset: 2,
       }}
     >
-      <div ref={mount} />
+      <div
+        ref={mount}
+        // A deck's own box: its words where PowerPoint puts its first line, as the screens draw them (X20).
+        style={shift ? { transform: `translateY(calc(var(--fit, 1) * ${String(shift)}px))` } : undefined}
+      />
     </div>
   );
 }
