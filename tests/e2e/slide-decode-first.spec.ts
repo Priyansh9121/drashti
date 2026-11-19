@@ -19,15 +19,16 @@ import { mediaUrl } from '../../src/shared/media';
 
 /*
  * X19, L7: loaded is not decoded. Hold Next's preload just before its native decode starts, then press Next once
- * its complete flag is true, starting the real decode when the cut is inserted. No pixels or native decode result
- * are faked. For an image with no decoding hint, ask
+ * its complete flag is true. The probe starts no decode until the first actual cut frame has been captured, so it
+ * cannot prepare the picture early and hide the fault. Neutral greys avoid video colour-matrix differences. For an
+ * image with no decoding hint, ask
  * Chromium to take its permitted asynchronous path; an explicit sync hint is respected. Read actual compositor
  * frames, rather than img.complete (hall-pictures cannot see a complete image painted without its pixels).
  * Generated noise only, no capture of a real display and no encoder or network stream.
  */
 
-const OLD = [32, 64, 128] as const;
-const PICTURE = [32, 192, 48] as const;
+const OLD = [32, 32, 32] as const;
+const PICTURE = [192, 192, 192] as const;
 const SIZE = { width: 6144, height: 3456 };
 
 interface Frame {
@@ -61,9 +62,9 @@ async function bigPicture(page: Page, file: string): Promise<string> {
       seed ^= seed >>> 17;
       seed ^= seed << 5;
       const noise = ((seed >>> 0) % 33) - 16;
-      pixels.data[i] = 32 + noise;
+      pixels.data[i] = 192 + noise;
       pixels.data[i + 1] = 192 + noise;
-      pixels.data[i + 2] = 48 + noise;
+      pixels.data[i + 2] = 192 + noise;
       pixels.data[i + 3] = 255;
     }
     ctx.putImageData(pixels, 0, 0);
@@ -172,12 +173,6 @@ async function holdPreload(page: Page, id: string): Promise<void> {
         if (img.decoding === 'auto') img.decoding = 'async';
         probe.loadedAtCut = img.complete;
         probe.widthAtCut = img.naturalWidth;
-        // Start the real preload decode as the cut is inserted. Next arrived before it decoded, but the decoder
-        // must now be allowed to finish (especially in an offscreen page drawn without a graphics chip).
-        probe.release();
-        // The incoming element remains mounted after Next's preload is removed. Do not await this: the fault is
-        // presenting the complete image before this real decode finishes, not whether Chromium eventually decodes it.
-        void nativeDecode.call(img).catch(() => undefined);
       }
     }).observe(document.body, { childList: true, subtree: true });
   }, id);
@@ -187,14 +182,20 @@ const matches = (frame: Frame | undefined, rgb: readonly number[]) =>
   frame?.rgb.every((channel, i) => Math.abs(channel - (rgb[i] ?? 0)) < 12) === true;
 
 /** Retain the last actual pixels in a readiness failure, rather than only a false predicate. */
-async function waitCaptured(frames: () => Promise<Frame[]>, rgb: readonly number[]): Promise<void> {
-  await expect
-    .poll(async () => {
-      const all = await frames();
-      const last = all.at(-1);
-      return { ready: matches(last, rgb), last, count: all.length };
-    })
-    .toMatchObject({ ready: true });
+async function waitCaptured(
+  frames: () => Promise<Frame[]>,
+  rgb: readonly number[],
+  by = Date.now() + 20_000,
+): Promise<void> {
+  try {
+    await expect
+      .poll(async () => matches((await frames()).at(-1), rgb), { timeout: Math.max(1, by - Date.now()) })
+      .toBe(true);
+  } catch (error) {
+    const all = await frames();
+    console.log(`PIXEL READINESS ${JSON.stringify({ expected: rgb, last: all.at(-1), count: all.length })}`);
+    throw error;
+  }
 }
 
 for (const place of ['hall', 'stream'] as const) {
@@ -210,7 +211,7 @@ for (const place of ['hall', 'stream'] as const) {
     const id = await makeSlides(
       win,
       'Placeholder decode first',
-      [{ background: '#204080' }, { picture, background: '#c020c0' }],
+      [{ background: '#202020' }, { picture, background: '#606060' }],
       { kind: 'cut', durationMs: 0 },
     );
     let page: Page;
@@ -245,12 +246,19 @@ for (const place of ['hall', 'stream'] as const) {
       .toBe(true);
     const from = Date.now();
     await goLive(win, id, 1);
-    await waitCaptured(frames, PICTURE);
+    // Observe the first actual cut frame before the probe can start a native decode and hide the fault. A correct
+    // output's first changed frame is already the full picture; the old fast path first paints the slide background.
+    await expect
+      .poll(async () => (await frames()).some((frame) => frame.t >= from && !matches(frame, OLD)))
+      .toBe(true);
     const probe = await page.evaluate(() => {
       const probe = (globalThis as DecodeGlobals).drashtiDecodeProbe;
       probe?.release();
+      const img = document.querySelector<HTMLImageElement>('[data-slide-in] img');
+      if (img) void img.decode().catch(() => undefined);
       return { loadedAtCut: probe?.loadedAtCut, widthAtCut: probe?.widthAtCut };
     });
+    await waitCaptured(frames, PICTURE, from + 20_000);
     expect(probe, 'the cut exercised a genuinely loaded picture, before its preload decoded it').toEqual({
       loadedAtCut: true,
       widthAtCut: SIZE.width,
@@ -317,7 +325,7 @@ for (const place of ['hall', 'stream'] as const) {
       place === 'hall'
         ? app.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames ?? [])
         : page.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames ?? []);
-    const id = await makeSlides(win, 'Placeholder decode cost scene', [{ background: '#204080' }], {
+    const id = await makeSlides(win, 'Placeholder decode cost scene', [{ background: '#202020' }], {
       kind: 'cut',
       durationMs: 0,
     });
@@ -337,7 +345,7 @@ for (const place of ['hall', 'stream'] as const) {
               position: 'fixed',
               inset: '0',
               zIndex: '2147483647',
-              background: '#204080',
+              background: '#202020',
             });
             const img = new Image();
             img.decoding = option === 'sync' ? 'sync' : 'async';
