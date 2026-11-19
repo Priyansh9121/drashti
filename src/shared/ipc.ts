@@ -1,3 +1,4 @@
+import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
 import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { SlidePictureResult } from './slide-picture';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
@@ -102,6 +103,7 @@ import type {
 } from './stream';
 import type { SavePictureResult, SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
+import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
 import type {
@@ -317,6 +319,12 @@ export const IPC = {
    * Live captions (Session 55, Part 10, shared/captions.ts): in Pro Mode only. A window is never sent a word heard:
    * only how captions stand, and the lines to draw through the engine's state.
    */
+  videoCaptions: {
+    view: 'videocaptions:view',
+    select: 'videocaptions:select',
+    add: 'videocaptions:add',
+    changed: 'videocaptions:changed',
+  },
   captions: {
     view: 'captions:view',
     /** Turn captions on or off on this computer (the model downloads once when first turned on). */
@@ -751,6 +759,8 @@ export const IPC = {
     /** One of the show's F-keys pressed in the editor's window: the operator window acts on it, as if pressed there. */
     showKey: 'slideeditor:show-key',
   },
+  /** OSC settings belong only to this computer's operator window, in Pro Mode. */
+  osc: { status: 'osc:status', configure: 'osc:configure', changed: 'osc:changed' },
   /** The MIDI controller's settings (changing them: operator window, Pro Mode). */
   midi: {
     get: 'midi:get',
@@ -1176,6 +1186,9 @@ export const IPC = {
 
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
+  [IPC.videoCaptions.view]: { args: [mediaId: string]; result: VideoCaptionChoice };
+  [IPC.videoCaptions.select]: { args: [mediaId: string, trackId: string | null]; result: VideoCaptionResult };
+  [IPC.videoCaptions.add]: { args: [mediaId: string]; result: VideoCaptionResult };
   [IPC.ready.check]: { args: [openPlaylistId: string | null]; result: ReadyReport | null };
   [IPC.quickBar.view]: { args: []; result: QuickPin[] };
   [IPC.quickBar.set]: { args: [pins: QuickPin[]]; result: QuickBarResult };
@@ -1559,6 +1572,8 @@ export interface InvokeContract {
   [IPC.slideEditor.fontFamilies]: { args: []; result: readonly string[] };
   [IPC.slideEditor.showKey]: { args: [key: string]; result: null };
   [IPC.slideEditor.close]: { args: []; result: null };
+  [IPC.osc.status]: { args: []; result: OscStatus };
+  [IPC.osc.configure]: { args: [settings: OscSettings]; result: OscResult };
   [IPC.midi.get]: { args: []; result: MidiSettings };
   [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };
   [IPC.midi.report]: { args: [seen: MidiSeen]; result: null };
@@ -1741,6 +1756,7 @@ export interface InvokeContract {
 
 /** main -> renderer event channels and their payloads. */
 export interface EventContract {
+  [IPC.osc.changed]: OscStatus;
   [IPC.appearance.changed]: AppearanceNow;
   [IPC.appearance.open]: { at: number };
   [IPC.engine.message]: EngineMessage;
@@ -1767,6 +1783,7 @@ export interface EventContract {
   [IPC.opening.key]: { at: number };
   [IPC.opening.screens]: { at: number };
   [IPC.opening.open]: { at: number };
+  [IPC.videoCaptions.changed]: { mediaId: string; view: VideoCaptionChoice };
   [IPC.captions.changed]: CaptionsStatus;
   [IPC.captions.open]: { at: number };
   [IPC.updates.changed]: UpdateView;
