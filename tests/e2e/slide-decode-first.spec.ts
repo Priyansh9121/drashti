@@ -77,6 +77,11 @@ async function bigPicture(page: Page, file: string): Promise<string> {
 /** The hall's actual painted frames, sampled in Main without asking the renderer to decode a screenshot. */
 async function captureHall(app: ElectronApplication, hall: Page): Promise<void> {
   const w = await app.browserWindow(hall);
+  // DOM/font readiness can precede ready-to-show. Subscribe only after the native window is shown: showing it
+  // gives Chromium its visible capture surface, so an earlier subscription can retain just the initial black frames.
+  const visible = await w.evaluate((window: BrowserWindow) => window.isVisible());
+  console.log(`HALL CAPTURE native window visible before subscribing: ${String(visible)}`);
+  await expect.poll(() => w.evaluate((window: BrowserWindow) => window.isVisible())).toBe(true);
   await w.evaluate((window: BrowserWindow) => {
     const frames: Frame[] = [];
     (globalThis as DecodeGlobals).drashtiDecodeFrames = frames;
