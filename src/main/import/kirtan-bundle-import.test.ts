@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { copyFile, readFile, readdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ImportRepo } from '../db/imports';
@@ -9,6 +9,7 @@ import { MediaRepo } from '../db/media';
 import { PLAIN } from '../../shared/picture-look';
 import type { ImportOptions } from '../../shared/import';
 import type { BundleKirtan, BundleManifest } from './kirtan-bundle-schema';
+import type { DeckSlide } from '../../shared/deck';
 import { runImport } from './pipeline';
 import { exportKirtanBundle, withKirtanBundle, BUNDLE_LIMITS } from './kirtan-bundle';
 import { makeZip, type ZipWriterEntry } from './testing/zip-writer';
@@ -48,6 +49,66 @@ async function setup() {
   return { source, target, run, content };
 }
 describe('kirtan bundle import and re-import', () => {
+  it('keeps every deck step clip, last frame and hold reference when media bytes are omitted', async () => {
+    const t = await setup();
+    const clip = t.source.media.addMissing('Placeholder clip.mp4', 'video', {
+      kind: 'media',
+      path: 'Placeholder clip.mp4',
+    });
+    const frame = t.source.media.addMissing('Placeholder frame.png', 'image', {
+      kind: 'media',
+      path: 'Placeholder frame.png',
+    });
+    const hold = t.source.media.addMissing('Placeholder hold.mp4', 'video', {
+      kind: 'media',
+      path: 'Placeholder hold.mp4',
+    });
+    const rows = must(t.source.repo.content(t.source.id));
+    must(rows.slides[0]).deck = JSON.stringify({
+      steps: [{ clipId: clip, clipMs: 1000, lastId: frame, holdId: hold, holdMs: 1000 }],
+      media: [],
+    });
+    t.source.repo.setContent(rows);
+    await t.source.exportBundle(false);
+    await withKirtanBundle(t.source.output, {}, (b) => expect(b.media).toHaveLength(4));
+    await t.run();
+    const deck = JSON.parse(must(t.content().slides[0]?.deck)) as DeckSlide;
+    const byName = (name: string) =>
+      t.target.db.prepare('SELECT id FROM media WHERE name = ?').pluck().get(name);
+    expect(must(deck.steps[0]).clipId).toBe(byName('Placeholder clip.mp4'));
+    expect(must(deck.steps[0]).lastId).toBe(byName('Placeholder frame.png'));
+    expect(must(deck.steps[0]).holdId).toBe(byName('Placeholder hold.mp4'));
+    expect(must(deck.steps[0]).clipId).not.toBe(clip);
+  });
+
+  it('honors an explicit skip decision for an incoming change to an otherwise unedited kirtan', async () => {
+    const t = await setup();
+    await t.run();
+    const rows = must(t.source.repo.content(t.source.id));
+    must(rows.kirtan).row.raag = 'Placeholder incoming change';
+    t.source.repo.setContent(rows);
+    await t.source.exportBundle();
+    expect((await t.run(t.source.output, { onConflict: 'skip' })).report.items[0]?.outcome).toBe('skipped');
+    expect(t.content().kirtan?.row.raag).toBe('Placeholder raag');
+  });
+
+  it('keeps the receiving database disk reserve even when its unpacking disk has ample space', async () => {
+    const t = await setup();
+    await t.source.exportBundle(false);
+    const temp = join(t.target.dir, 'Placeholder unpack disk');
+    await mkdir(temp);
+    const summary = await runImport({
+      db: t.target.db,
+      media: t.target.media,
+      runId: randomUUID(),
+      paths: [t.source.output],
+      options: {},
+      tempDir: temp,
+      freeBytes: (dir) => (dir === temp ? 1024 ** 4 : BUNDLE_LIMITS.reserve),
+    });
+    expect(summary.totals.failed).toBe(1);
+    expect(t.target.db.prepare('SELECT count(*) FROM presentations').pluck().get()).toBe(0);
+  });
   it('updates an incoming title when this library has not edited the kirtan', async () => {
     const t = await setup();
     await t.run();
