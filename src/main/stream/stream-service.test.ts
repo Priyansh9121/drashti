@@ -75,7 +75,7 @@ describe('the shared sound tap and Program', () => {
   });
 });
 
-describe('the stream’s page without a graphics chip (Session 58, WU-1)', () => {
+describe('the stream’s page without a graphics chip (Session 58, WU-1), or once the hall’s screens drew theirs (X21)', () => {
   it('its context says it draws without one once Main’s choice for its page says so, as an output’s does', async () => {
     const send = vi.fn<(channel: string, context: ProgramContext) => void>();
     const webContents = Object.assign(new EventEmitter(), {
@@ -92,6 +92,7 @@ describe('the stream’s page without a graphics chip (Session 58, WU-1)', () =>
     });
     const profile = { id: 'test-profile', preset: 'good', camera: null, sound: null };
     let skips = false;
+    let warmedHere = false;
     const asked: number[] = [];
     const createProgram = vi.fn(() => program as unknown as BrowserWindow);
     const stream = new StreamService({
@@ -109,7 +110,7 @@ describe('the stream’s page without a graphics chip (Session 58, WU-1)', () =>
       log: vi.fn(),
       warmUpFact: (win: { webContents: { id: number } }) => {
         asked.push(win.webContents.id);
-        return skips ? { noGpu: true } : {};
+        return skips ? { noGpu: true } : warmedHere ? { warmedHere: true } : {};
       },
     } as unknown as StreamServiceDeps);
     stream.hold('a test of its page', true);
@@ -117,9 +118,62 @@ describe('the stream’s page without a graphics chip (Session 58, WU-1)', () =>
     webContents.emit('did-finish-load');
     // Chromium has not said it draws without a chip: as before.
     expect(stream.context().noGpu).toBeUndefined();
+    expect(stream.context().warmedHere).toBeUndefined();
+    // A hall screen here drew its warm-up whole at this start (Session 60, X21): the page is told it needs none.
+    warmedHere = true;
+    expect(stream.context()).toMatchObject({ warmedHere: true });
+    expect(stream.context().noGpu).toBeUndefined();
     skips = true;
     expect(stream.context()).toMatchObject({ noGpu: true });
     expect(asked).toContain(41);
+    stream.close();
+  });
+
+  it('Main’s choice for its page is asked with whether the page draws a picture: not while open for sound alone (live captions), then for a picture (X21)', async () => {
+    const webContents = Object.assign(new EventEmitter(), {
+      id: 42,
+      isDestroyed: () => false,
+      postMessage: vi.fn(),
+      send: vi.fn(),
+    });
+    const program = Object.assign(new EventEmitter(), {
+      webContents,
+      isDestroyed: () => false,
+      getContentSize: () => [1920, 1080],
+      destroy: vi.fn(),
+    });
+    const sound = { id: 'generated-sound', label: 'Generated sound' };
+    const profile = { id: 'test-profile', preset: 'good', camera: null, sound };
+    const asked: [number, boolean][] = [];
+    const createProgram = vi.fn(() => program as unknown as BrowserWindow);
+    const stream = new StreamService({
+      profiles: { get: () => profile },
+      settings: { get: (key: string) => (key === 'stream.profileId' ? profile.id : undefined) },
+      screens: { streamGroup: () => null },
+      createProgram,
+      sendToOperator: vi.fn(),
+      platform: 'darwin',
+      mediaAccess: () => 'granted',
+      askMediaAccess: () => Promise.resolve(true),
+      fakeDevices: true,
+      ffmpegPath: () => null,
+      now: Date.now,
+      log: vi.fn(),
+      warmUpFact: (win: { webContents: { id: number } }, picture: boolean) => {
+        asked.push([win.webContents.id, picture]);
+        return {};
+      },
+    } as unknown as StreamServiceDeps);
+    const stop = stream.listenSound(vi.fn());
+    expect(stop).not.toBeNull();
+    await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
+    webContents.emit('did-finish-load');
+    expect(stream.context().picture).toBe(false);
+    expect(asked.at(-1)).toEqual([42, false]);
+    stream.hold('a test of its page', true);
+    expect(stream.context().picture).toBe(true);
+    expect(asked.at(-1)).toEqual([42, true]);
+    stop?.();
     stream.close();
   });
 });

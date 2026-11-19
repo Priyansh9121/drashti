@@ -114,6 +114,15 @@ function Program() {
   const warmUpStopped = useCallback(() => {
     setStopped(true);
   }, []);
+  // None of its own either once a hall screen on this computer has drawn its warm-up whole at this start, the opening
+  // over (Session 60, X21; the owner's answer A): Main says so in this page's context, and what the page draws with is
+  // made. Opened mid-show, its own warm-up held the hall's frames (CI's Mac: 1-3 s). Decided before its warm-up begins
+  // (it begins only once a context has come): one begun goes on. A test that keeps the warm-up drawn still sees it.
+  const [warmedHere, setWarmedHere] = useState(false);
+  if (!warmedHere && !warmed && !began && !HOLD_WARM_UP && context?.warmedHere === true) {
+    setWarmedHere(true);
+    setWarmed(true);
+  }
   // A deck's own Wipe draws PowerPoint's band the way this page holds its frames (render/chipless.ts, Session 58):
   // told by the context itself, whatever a test does with the warm-up.
   const chipless = context?.noGpu === true;
@@ -195,9 +204,10 @@ function Program() {
       data-movement={streamLook.movement}
       data-camera={cameraState}
       data-sound={soundState}
-      // Ready to draw the show: its fonts loaded, and the GPU warmed up (WarmUp).
+      // Ready to draw the show: its fonts loaded, and the GPU warmed up (WarmUp), or none needed: a hall screen here drew
+      // its warm-up whole at this start (Session 60, X21), or no graphics chip.
       data-fonts={ready ? 'ready' : 'loading'}
-      data-warm-up={warmed ? 'done' : noGpu ? 'skipped' : 'warming'}
+      data-warm-up={warmedHere ? 'not-needed' : warmed ? 'done' : noGpu ? 'skipped' : 'warming'}
     >
       {context?.picture && fontsReady && !ready && (
         <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">

@@ -1,3 +1,4 @@
+import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { SlidePictureResult } from './slide-picture';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { PdfJob, PdfPage, PdfPageReceipt, PdfDone } from './editable-source';
@@ -477,6 +478,7 @@ export const IPC = {
   },
   /** Kirtans: their words by language and their details; changing them is for the operator window only. */
   kirtans: {
+    exportBundle: 'kirtans:export-bundle',
     tracks: 'kirtans:tracks',
     saveTracks: 'kirtans:save-tracks',
     /** Make a presentation a kirtan with these details, or (null) not a kirtan; its words stay. */
@@ -1430,6 +1432,10 @@ export interface InvokeContract {
   [IPC.library.presentationUsage]: { args: [ids: string[]]; result: PresentationUsage };
   [IPC.library.renamePresentation]: { args: [id: string, name: string]; result: RemoveResult };
   [IPC.library.revealPresentation]: { args: [id: string]; result: RevealResult };
+  [IPC.kirtans.exportBundle]: {
+    args: [request: KirtanBundleExportRequest];
+    result: KirtanBundleExportResult;
+  };
   [IPC.kirtans.tracks]: { args: [presentationId: string]; result: TracksResult };
   [IPC.kirtans.saveTracks]: { args: [presentationId: string, edits: TrackEdit[]]; result: KirtanResult };
   [IPC.kirtans.setDetails]: {
