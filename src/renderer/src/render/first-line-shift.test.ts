@@ -41,17 +41,18 @@ function box(paragraph: TextRun['paragraph'], more: Partial<TextElement> = {}, l
 
 describe('a deck box’s words moved to PowerPoint’s first line (X20)', () => {
   it('moves 150% lines down by what CSS’s half leading leaves out', () => {
-    // PowerPoint: 54 pt below the words' top (72 px); CSS: 48 + 0.6934 x 53.33 / 2 = 66.49 px.
-    expect(deckWordsShift(box({ align: 'left', lineHeight: 1.8 }), heights)).toBeCloseTo(72 - 66.49, 1);
+    // PowerPoint: 54 pt below the words' top (72 px). Chromium: the font's heights in whole pixels (48 and 11 at 53.33
+    // px), half the leading rounded down: (96 - 59) / 2 = 18, so the baseline at 66 px.
+    expect(deckWordsShift(box({ align: 'left', lineHeight: 1.8 }), heights)).toBeCloseTo(72 - 66, 3);
   });
 
   it('moves single-spaced lines a little, and lines set exactly in points by their own height', () => {
-    // Single: PowerPoint 1.2 x 0.9053 / 1.1172 of the size (51.86 px); CSS 32 + 18.49 = 50.49 px.
-    expect(deckWordsShift(box({ align: 'left', lineHeight: 1.2 }), heights)).toBeCloseTo(51.86 - 50.49, 1);
+    // Single: PowerPoint 1.2 x 0.9053 / 1.1172 of the size (51.86 px); Chromium (64 - 59) / 2 rounded down + 48 = 50.
+    expect(deckWordsShift(box({ align: 'left', lineHeight: 1.2 }), heights)).toBeCloseTo(51.86 - 50, 1);
     // Exactly 36 pt (48 px): PowerPoint loses the cut above the baseline, though never above three quarters of the
     // line (here 36 px, just below the single line's part below: 48 - 12.14).
     const exact = deckWordsShift(box({ align: 'left', lineHeightPx: 48 }), heights) ?? Number.NaN;
-    expect(exact).toBeCloseTo(Math.max(0.75 * 48, 48 - 0.2276 * SIZE) - (24 + 18.49), 1);
+    expect(exact).toBeCloseTo(Math.max(0.75 * 48, 48 - 0.2276 * SIZE) - (Math.floor((48 - 59) / 2) + 48), 1);
   });
 
   it('moves a box anchored at the bottom by its last line, and one at the middle halfway', () => {
@@ -65,7 +66,7 @@ describe('a deck box’s words moved to PowerPoint’s first line (X20)', () => 
         heights,
       ) ?? Number.NaN;
     // At the bottom PowerPoint ends the last line with the single line's part below (0.2276 of the size): 96 - 12.14.
-    expect(bottom).toBeCloseTo(96 - 0.2276 * SIZE - 66.49, 1);
+    expect(bottom).toBeCloseTo(96 - 0.2276 * SIZE - 66, 1);
     const middle =
       deckWordsShift(
         box(

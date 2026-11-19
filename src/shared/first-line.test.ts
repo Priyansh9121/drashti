@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  chromiumFirstBaseline,
   cssFirstBaseline,
   deckFirstLineShift,
   type FontHeights,
@@ -244,8 +245,14 @@ describe('a deck box’s first line, where PowerPoint puts it (X20, real-PowerPo
     }
   });
 
-  it('draws CSS’s first baseline with half the leading above the font’s own heights', () => {
+  it('draws CSS’s first baseline with half the leading above the font’s own heights, as Chromium does in pixels', () => {
     // 40 pt Arial, lines 1.2 times the size: (48 - 44.69) / 2 + 36.21 = 37.87 pt.
     expect(cssFirstBaseline(fontOf('Arial'), 40, 48)).toBeCloseTo(37.868, 2);
+    // Chromium in pixels (CI's hall screens, Mac and Windows alike, run 6's boxes before X20): 40 pt is 53.33 px, Arial's
+    // heights 48 and 11 px, so lines of 64 px put the baseline at 2 + 48 = 50 px; Noto Sans Gujarati's 48 and 22 px at
+    // 150% (96 px) at 13 + 48 = 61 px, 60 measured; Times New Roman at 66 pt single (105.6 px): 82 px, 82 measured.
+    expect(chromiumFirstBaseline(fontOf('Arial'), (40 * 4) / 3, 64)).toBe(50);
+    expect(chromiumFirstBaseline(fontOf('Arial'), (40 * 4) / 3, 96)).toBe(66);
+    expect(chromiumFirstBaseline(fontOf('Noto Sans Gujarati'), (40 * 4) / 3, 96)).toBe(61);
   });
 });

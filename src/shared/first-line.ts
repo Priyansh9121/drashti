@@ -16,9 +16,9 @@
  *   a short part above (Noto Sans Gujarati's 0.82) would sit with all the line's extra above it, up to 0.3 of the size.
  * The last line keeps the single line's part below the baseline, whatever the spacing, so a box anchored at the bottom
  * ends its words there, and one anchored at the middle centres them between that and its first line's top.
- * CSS lays each line out with half its leading above the font's own heights; a deck box's words are moved by the
- * difference (render/SlideView.tsx, editor/TextBoxEditor.tsx), so nothing else moves: the lines' gaps (C17), the words'
- * sizes and the box's fit stay as they are.
+ * CSS lays each line out with half its leading above the font's own heights (Chromium in whole pixels); a deck box's
+ * words are moved by the difference (render/first-line-shift.ts), so nothing else moves: the lines' gaps (C17), the
+ * words' sizes and the box's fit stay as they are.
  */
 
 /** A font's own heights above and below its baseline, as shares of its size. */
@@ -60,6 +60,17 @@ export function cssFirstBaseline(font: FontHeights, size: number, line: number):
 }
 
 /**
+ * The same as Chromium lays it out in pixels (`size` and `line` in px): the font's heights each rounded to a whole
+ * pixel, and half the leading rounded down (CI's hall screens, Mac and Windows alike: 331 of run 6's 336 boxes within a
+ * pixel of this, against 151 for the exact one).
+ */
+export function chromiumFirstBaseline(font: FontHeights, size: number, line: number): number {
+  const ascent = Math.round(font.ascent * size);
+  const descent = Math.round(font.descent * size);
+  return Math.floor((line - ascent - descent) / 2) + ascent;
+}
+
+/**
  * How far a deck box's words move down from where CSS lays them out (px, or whatever units the lines are given in; up
  * when negative), so that its first line sits where PowerPoint puts it: anchored at the top, its first line; at the
  * bottom, its last line; at the middle, halfway between the two (PowerPoint centres from its first line's top to its last
@@ -69,12 +80,12 @@ export function deckFirstLineShift(
   anchor: 'top' | 'middle' | 'bottom',
   first: LineLook,
   last: LineLook,
+  laidOut: (font: FontHeights, size: number, line: number) => number = cssFirstBaseline,
 ): number {
   const top =
-    powerPointFirstBaseline(first.font, first.size, first.line) -
-    cssFirstBaseline(first.font, first.size, first.line);
+    powerPointFirstBaseline(first.font, first.size, first.line) - laidOut(first.font, first.size, first.line);
   if (anchor === 'top') return top;
   const bottom =
-    last.line - powerPointLastBelow(last.font, last.size) - cssFirstBaseline(last.font, last.size, last.line);
+    last.line - powerPointLastBelow(last.font, last.size) - laidOut(last.font, last.size, last.line);
   return anchor === 'bottom' ? bottom : (top + bottom) / 2;
 }
