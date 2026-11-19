@@ -143,15 +143,16 @@ describe('the warm-up', () => {
           kind: 'text',
           sourceShapeId: '3',
           frame: { x: 160, y: 120, width: 1600, height: 200 },
-          style: expect.objectContaining({ fontSize: 80, shrinkToFit: true }),
         }),
         expect.objectContaining({
           kind: 'text',
           sourceShapeId: '4',
           frame: { x: 160, y: 360, width: 1600, height: 140 },
-          style: expect.objectContaining({ fontSize: 56, shrinkToFit: true }),
         }),
       ]);
+      expect(
+        slide.elements.map((el) => (el.kind === 'text' ? [el.style.fontSize, el.style.shrinkToFit] : null)),
+      ).toEqual([null, [80, true], [56, true]]);
     }
     // The same composition under the notched clip primes the multisampled render passes too.
     const clipped = scene(`${key}/clipped`);

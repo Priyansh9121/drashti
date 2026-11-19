@@ -445,25 +445,28 @@ export function warmScenes(): WarmScene[] {
   const deckCover = transitions.find((t) => t.key === 'deck-cover/calm');
   const offGrid = (t: WarmScene | undefined, key: string): WarmScene[] =>
     t ? [{ ...t, key, offset: OFF_GRID }] : [];
+  // The measured deck's full-slide picture and native words compose the shaded RGBA surface (X12 wide).
+  // Both render-pass kinds, first: an image alone can use a YUV pipeline instead. Keep the ordinary Cover too,
+  // whose outgoing Shapes warm their masks.
+  const wideCover: WarmScene = {
+    key: 'deck-cover-wide/calm/off-grid',
+    look: look('calm'),
+    offset: OFF_GRID,
+    state: (during, at) => ({
+      ...base,
+      layers: {
+        ...base.layers,
+        slide: layerOf(
+          fullPictureSlide(during),
+          during ? at - PART * MAX_TRANSITION_MS : at - LONG_AGO,
+          during ? warmDeckTransition('cover', MAX_TRANSITION_MS) : undefined,
+        ),
+      },
+    }),
+  };
   return [
-    // The wide Cover's full-slide JPEG, as the measured deck draws it, with its own shade left unfiltered by the
-    // warm-up's black cover. Keep the ordinary Cover too: its outgoing Shapes warm their masks (X12 wide).
-    {
-      key: 'deck-cover-wide/calm/off-grid',
-      look: look('calm'),
-      offset: OFF_GRID,
-      state: (during, at) => ({
-        ...base,
-        layers: {
-          ...base.layers,
-          slide: layerOf(
-            fullPictureSlide(during),
-            during ? at - PART * MAX_TRANSITION_MS : at - LONG_AGO,
-            during ? warmDeckTransition('cover', MAX_TRANSITION_MS) : undefined,
-          ),
-        },
-      }),
-    },
+    wideCover,
+    { ...wideCover, key: `${wideCover.key}/clipped`, clip: NOTCHED },
     ...transitions,
     ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
     ...offGrid(deckWipe, 'deck-wipe/calm/off-grid'),
@@ -472,20 +475,40 @@ export function warmScenes(): WarmScene[] {
   ];
 }
 
-/** A generated picture filling a wide deck slide, as the first Cover measured on CI draws (X12 wide). */
+/** The measured wide deck's picture and native words, generated here (X12 wide; perf-animations.ts). */
 function fullPictureSlide(b: boolean): RenderSlide {
   return {
     id: `${W}-deck-cover-wide-${b ? 'b' : 'a'}`,
     width: 1920,
     height: 1080,
     background: null,
+    deck: { steps: [], media: [], motion: { effects: [], stepsMs: [0], approximate: false } },
     elements: [
       {
         id: 'picture',
         kind: 'image',
-        mediaId: b ? PICTURE.b : PICTURE.a,
-        frame: { x: 0, y: 0, width: 1920, height: 1080 },
+        mediaId: PICTURE.b,
         fit: 'fill',
+        sourceShapeId: '2',
+        frame: { x: 0, y: 0, width: 1920, height: 1080 },
+      },
+      {
+        id: 'title',
+        kind: 'text',
+        text: b ? 'Placeholder title coming in' : 'Placeholder title going',
+        lang: 'en',
+        style: { ...WORDS, shrinkToFit: true },
+        sourceShapeId: '3',
+        frame: { x: 160, y: 120, width: 1600, height: 200 },
+      },
+      {
+        id: 'line',
+        kind: 'text',
+        text: 'A placeholder line on the slide',
+        lang: 'en',
+        style: { ...WORDS, fontSize: 56, shrinkToFit: true },
+        sourceShapeId: '4',
+        frame: { x: 160, y: 360, width: 1600, height: 140 },
       },
     ],
   };
