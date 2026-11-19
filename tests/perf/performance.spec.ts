@@ -110,9 +110,6 @@ async function runPerformanceTest(
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env))
     if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v;
-  // The start's stream warm-up as an installed Drashti has it (Session 59, X21; a test has it only when it asks): an
-  // earlier build knows no such switch.
-  env['DRASHTI_TEST_STREAM_WARM'] = '1';
   // The check runs only on a computer let in (Session 54): here, a folder of the test's own let in through the
   // stand-in access list on 127.0.0.1, which Drashti reads in place of this computer's own data folder (a test
   // switch a packaged Drashti never reads).

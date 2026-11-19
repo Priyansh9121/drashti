@@ -312,13 +312,7 @@ import { spawnEventsWorker } from './events/spawn-worker';
 import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
-import {
-  applyStreamSessionSecurity,
-  createProgramWindow,
-  createStreamWarmWindow,
-  STREAM_PARTITION,
-} from './stream/program-window';
-import { StreamWarm } from './stream/stream-warm';
+import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { LiveWindowService } from './live-window/live-window-service';
 import { electronWindowSources } from './live-window/electron-sources';
 import { standInWindowSources } from './live-window/stand-in-sources';
@@ -389,7 +383,7 @@ import { localName } from './network/local-name';
 import { localInterfaceAddresses } from './network/addresses';
 import { previewSource } from './network/preview-source';
 import { sharedSoundFile } from './network/shared-sound';
-import { devServerUrl, pagesSkipWarmUp, rendererDir } from './windows/renderer';
+import { devServerUrl, rendererDir } from './windows/renderer';
 import { pageAlive, sendToPage } from './windows/send';
 import { quietTests, startQuietTests } from './windows/quiet';
 import { readRole, startingRole, writeRole } from './role';
@@ -2962,8 +2956,6 @@ function start(): void {
     safeStorage,
     noSafeStorage,
   );
-  // The start's stream warm-up (X21), made with the opening below: told here when the stream's page opens.
-  let streamWarm: StreamWarm | null = null;
   stream = new StreamService({
     clockStyle: mainClockStyle,
     // No warm-up for the stream's page where Chromium draws without a graphics chip, as for the outputs (Session 58).
@@ -3036,8 +3028,6 @@ function start(): void {
     },
     programChanged: () => {
       zoomWindow?.programChanged();
-      // The stream's page opened: it warms itself, and the start's warm-up page closes (X21, stream/stream-warm.ts).
-      if (streamWarm && stream?.programContents()) streamWarm.streamOpened();
     },
     log: (level, message) => {
       if (level === 'warn') log.warn(message);
@@ -3046,7 +3036,6 @@ function start(): void {
   });
   const streaming = stream;
   stops.add('stream', () => {
-    streamWarm?.stop();
     streaming.close();
   });
   // The stream's page, open before Chromium said how it draws, is sent its context again once it skips its warm-up
@@ -6731,7 +6720,6 @@ function start(): void {
   /** Waiting to tell the operator window that every screen has drawn. */
   let openingWaits = false;
   firstPainted = () => {
-    if (noOpening) startSettled();
     if (!openingWaits || screensWarming()) return;
     openingWaits = false;
     sendToOperator(IPC.opening.screens, { at: Date.now() });
@@ -6741,52 +6729,7 @@ function start(): void {
   const openingKeys = new OpeningKeys(() => {
     sendToOperator(IPC.opening.key, { at: Date.now() });
   });
-  // The stream's page's warm-up at the start, alone, off screen (Session 59, X21: stream/stream-warm.ts): once the start
-  // has settled (every hall screen has drawn; the opening over, or not playing), so its drawing pipelines are made
-  // before the stream's page is ever opened on air.
-  streamWarm = new StreamWarm({
-    facts: () => ({
-      node: false,
-      selfTest: selfTestRun,
-      testNotAsking: anyTestSwitch() && sw('DRASHTI_TEST_STREAM_WARM') !== '1',
-      noGpu:
-        warmUps.hasSaid && operatorWindow && !operatorWindow.isDestroyed()
-          ? warmUpFact(warmUps, operatorWindow, 'the LIVE picture').noGpu === true
-          : null,
-      warmUpsSkipped: pagesSkipWarmUp(),
-      showBack: !startup.cleanQuit && startup.recentStop,
-      streamOpen: streaming.programContents() !== null,
-      onAir: streaming.inUse() || !nothingUp(engine.current.layers),
-      asked: false,
-    }),
-    open: (done) => {
-      const { width, height } = streaming.context();
-      return createStreamWarmWindow({ width, height }, done);
-    },
-    log: (line) => {
-      log.info(line);
-    },
-    now: () => Date.now(),
-    setTimer: (fn, ms) => {
-      const timer = setTimeout(fn, ms);
-      return {
-        cancel: () => {
-          clearTimeout(timer);
-        },
-      };
-    },
-  });
-  // A start that settled before Chromium said how it draws decides once it has (DRASHTI_TEST_GPU_SAID=late: when told).
-  app.on('gpu-info-update', () => {
-    if (!gpuSaidLate) streamWarm.gpuSaid();
-  });
-  /** No opening plays at this start: the start settles once every hall screen has drawn. */
-  let noOpening = false;
-  const startSettled = () => {
-    if (!screensWarming()) streamWarm.settled();
-  };
   const openingOver = () => {
-    setTimeout(startSettled, 0);
     openingWaits = false;
     openingKeys.stop();
     if (openingLimit) clearTimeout(openingLimit);
@@ -6795,11 +6738,7 @@ function start(): void {
   handle(IPC.opening.atStart, (e) => {
     if (!fromOperator(e)) return null;
     const plan = opening.atStart({ pageAgain: openingPageAgain, sinceWindow: Date.now() - openingWindowAt });
-    if (!plan) {
-      noOpening = true;
-      startSettled();
-      return null;
-    }
+    if (!plan) return null;
     openingSince = Date.now();
     openingKeys.start();
     // A page that never says it ended (it stopped, say) leaves the keys to the show soon after its two seconds.
