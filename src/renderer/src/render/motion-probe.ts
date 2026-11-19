@@ -27,8 +27,9 @@ export interface MotionTrack {
 }
 
 /**
- * An audience screen's moving parts (render/Scene.tsx): the slide layer's two slides (with the box a deck's own Wipe
- * draws its band on, Session 58: data-wipe-band since Q60-2), the black of a fade through black and the words drawn apart while a move runs (never
+ * An audience screen's moving parts (render/Scene.tsx): the slide layer's two slides (with the box a deck's own Cover
+ * or Uncover shades its moving slide on without a graphics chip, X11: data-slide-shade), the black of a fade through
+ * black and the words drawn apart while a move runs (never
  * a slow zoom's zooming after its fade); a deck's step's
  * pictures and videos; a lower third's band, units, accent and design panels (never its moving background's
  * pieces, which move while it is up); Black-out; and the Wallpaper with its picture. A slow zoom's slide zooms
@@ -38,7 +39,7 @@ export const AUDIENCE_TRACKS: readonly MotionTrack[] = [
   {
     name: 'slide',
     parts:
-      '[data-layer="slide"] [data-slide-in], [data-layer="slide"] [data-slide-out], [data-layer="slide"] [data-wipe-band], [data-slide-black], [data-words-in], [data-words-out], [data-words-apart] [data-reveal-line], [data-words-apart] [data-reveal-word]',
+      '[data-layer="slide"] [data-slide-in], [data-layer="slide"] [data-slide-out], [data-layer="slide"] [data-slide-shade], [data-slide-black], [data-words-in], [data-words-out], [data-words-apart] [data-reveal-line], [data-words-apart] [data-reveal-word]',
   },
   { name: 'deck', parts: '[data-deck-step] video, [data-deck-step] img' },
   {
@@ -110,8 +111,8 @@ function seenOpacity(el: Element, known: Map<Element, number>): number {
 /**
  * What of an element's own style moves it on the screen, beyond how much of it shows and its box: its transform, clip,
  * mask and filter. A deck Drashti plays itself moves by a mask alone (13 Nov 2026): a Split over its shape's box; its
- * Cover and Uncover shade the moving slide with a filter; its own Wipe (Session 58) moves the box its band's mask is on
- * by a transform, the mask itself never changing.
+ * Cover and Uncover shade the moving slide with a filter; its own Wipe (Session 58) moves the stops of its band's mask
+ * on the slide's box.
  */
 export const movedLook = (
   style: Pick<CSSStyleDeclaration, 'transform' | 'clipPath' | 'maskImage' | 'filter'>,
