@@ -60,7 +60,7 @@ describe('the Stream panel’s pieces, warmed unseen', () => {
 
   it('can’t be reached or read out, has no button, and its words are none of the panel’s', () => {
     const html = markup();
-    expect(html).toMatch(/^<div[^>]*aria-hidden="true"[^>]*inert=""/u);
+    expect(html).toMatch(/^<div[^>]*aria-hidden="true"[^>]*inert=""[^>]*data-chip-warm-up=""/u);
     expect(html.match(/data-testid=/gu)).toHaveLength(1);
     // Nothing in it is a button: the window's one primary stays its own (first-start.spec.ts, next-thing.spec.ts).
     expect(html).not.toContain('<button');
@@ -100,7 +100,7 @@ describe('the primary button’s kind, kept in use', () => {
 
   it('draws the primary’s gradient and inset light under rounded corners beside an icon, a layer of its own', () => {
     const html = keeper();
-    expect(html).toMatch(/^<span[^>]*aria-hidden="true"[^>]*inert=""/u);
+    expect(html).toMatch(/^<span[^>]*aria-hidden="true"[^>]*inert=""[^>]*data-chip-warm-up=""/u);
     expect(html).toContain('will-change-transform');
     expect(html).toMatch(/rounded-lg[^"]*bg-linear-to-b from-primary-hi via-primary via-55% to-primary-lo/u);
     expect(html).toContain('shadow-[inset_0_1px_0_var(--depth-primary-top)]');
