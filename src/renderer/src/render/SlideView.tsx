@@ -23,6 +23,7 @@ import { TranslitSourceContext, useHtmlLang } from './lang';
 import { translitSource } from '../../../shared/tracks';
 import { OBJECT_FIT } from './media-style';
 import { type Playback, startPlayback } from './playback';
+import { hasNoPicture, tellNoPicture } from './no-picture';
 import { requestStill, useStill } from './stills';
 import { clockHeld, engineFrameNow, engineNow, onClockJump } from './clock';
 import { hasElementMotion, motionFrame } from '../../../shared/element-motion';
@@ -897,6 +898,9 @@ function SlideVideo({
         // Between start and end points it goes round by playback.ts's loop, not the element's.
         loop={loop && !clip}
         onLoadedMetadata={(e) => {
+          // A file whose picture this computer cannot draw plays as sound only (Session 60, x36): said, so the show
+          // pauses it where it is (render/no-picture.ts).
+          if (hasNoPicture(e.currentTarget)) tellNoPicture(el.mediaId, start);
           if (deck && Number.isFinite(e.currentTarget.duration))
             setDurationMs(Math.round(e.currentTarget.duration * 1000));
         }}

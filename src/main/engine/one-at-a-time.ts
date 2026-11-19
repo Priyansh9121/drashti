@@ -151,3 +151,32 @@ export function oneAtATime(
   if (how.operator && cameUp && !coverWentOn) return coversOff(next);
   return actions.concat(stopped(next, now));
 }
+
+/**
+ * What takes a video this computer cannot draw off what the audience sees (Session 60, x36; the owner's "Yes, A": a
+ * window found it plays as sound only, shared/no-picture.ts): the background playing it comes off, as Clear background
+ * takes it (its sound with it); a video of it on the slide up or in the picture-in-picture box waits where it is,
+ * paused, as under a cover (its slide or its box stays). None when nothing of it is up and playing.
+ */
+export function noPictureOff(state: EngineState, mediaId: string, now: number): EngineAction[] {
+  const actions: EngineAction[] = [];
+  const bg = state.layers.background;
+  if (bg?.kind === 'media' && bg.media === 'video' && bg.mediaId === mediaId)
+    actions.push({ type: 'layer/clear', layer: 'background' });
+  const playing = videosPlaying(state, now).filter((p) => p.mediaId === mediaId);
+  const slide = state.layers.slide;
+  const onSlide = playing.filter((p) => p.ref.layer === 'slide');
+  if (slide && onSlide.length > 0) {
+    const seeks: VideoSeeks = { ...slide.seeks };
+    for (const p of onSlide) seeks[p.mediaId] = pausedHere(p, now);
+    actions.push({ type: 'slide/put', layer: { ...slide, seeks } });
+  }
+  const box = state.layers.pip;
+  const inBox = playing.find((p) => p.ref.layer === 'pip');
+  if (box && inBox)
+    actions.push({
+      type: 'pip/set',
+      layer: { ...box, seeks: { ...box.seeks, [inBox.mediaId]: pausedHere(inBox, now) } },
+    });
+  return actions;
+}

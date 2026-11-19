@@ -15,24 +15,31 @@ import { PresentationList } from './PresentationList';
  * Library button at the top of the left column). It opens over the playlists, in the left column, never over
  * the open playlist in the middle, so its rows drag into the playlist; Add to playlist works as before. It is not a modal: the
  * show's keys still work, and nothing else in the window is held back. Esc (or Close) shuts it and gives the
- * keyboard back to the Library button.
+ * keyboard back to the Library button, which is there only while it is shut (Session 60).
  */
 
-/** The Library button, at the top of the left column. */
+/**
+ * The Library button, at the top of the left column while the library is shut: the way to open it besides Cmd+F
+ * (Ctrl+F). Gone while it is open (Session 60, x36; the owner, 19 Nov 2026: "remove the library option above that, we
+ * dont need it", and "Yes, all" to hiding it only while the library is open): the sheet then starts at the column's
+ * top under its own Library header, with its close button, and the button comes back, with the keyboard, as it shuts.
+ * Kept gone while the sheet stands aside for a drag from it, so nothing under the pointer moves.
+ */
 export function LibraryButton() {
   const open = useLibraryTab((s) => s.open);
+  if (open) return null;
   return (
     <div className="flex shrink-0 items-center px-3 pt-2.5 pb-1">
       <Button
         size="md"
-        variant={open ? 'secondary' : 'ghost'}
+        variant="ghost"
         icon={BookOpen}
         data-testid="library-button"
-        aria-expanded={open}
+        aria-expanded={false}
         aria-controls="library-sheet"
         title="Every presentation and media file, with search, Import… and New…"
         className="w-full justify-start"
-        onClick={open ? closeLibrary : openLibrary}
+        onClick={openLibrary}
       >
         Library
       </Button>
