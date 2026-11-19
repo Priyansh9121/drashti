@@ -4,6 +4,7 @@ import { mediaMarkersSchema, NO_MARKERS } from '../../shared/markers';
 import type { RowTrimView } from '../../shared/trim';
 import type { EdgePoints } from '../sound/sound-pass';
 import type { Db } from './database';
+import { VideoCaptionsRepo } from './video-captions';
 import type { MediaRepo } from './media';
 import type { PlaylistRepo } from './playlists';
 
@@ -231,6 +232,10 @@ export class TrimmedVideos {
             'INSERT INTO trimmed_videos (media_id, original_id, start_ms, end_ms, source_markers) VALUES (?, ?, ?, ?, ?)',
           )
           .run(id, row.sourceId, startMs, endMs, JSON.stringify(markers));
+        const captions = new VideoCaptionsRepo(this.db);
+        const captionSource = captions.view(row.mediaId).tracks.length ? row.mediaId : row.sourceId;
+        const offset = captionSource === row.mediaId ? (row.cutStartMs ?? 0) : 0;
+        captions.copy(captionSource, id, { startMs: startMs - offset, endMs: playableEnd - offset });
         if (!this.playlists.retarget(row.itemId, { kind: 'media', mediaId: id })) {
           throw new Error('The playlist video could not be replaced');
         }
