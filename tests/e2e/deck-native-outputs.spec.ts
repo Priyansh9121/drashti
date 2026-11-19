@@ -604,7 +604,7 @@ test('without a graphics chip a deck’s moving slide known opaque is backed in 
     for (const which of ['in', 'out'] as const) {
       await expect(box(stream, which)).toHaveCSS('left', '240px');
       await expect(box(stream, which)).toHaveCSS('width', '1440px');
-      await expect(box(stream, which).locator(':scope > [data-slide-shade]')).toHaveCSS('left', '-240px');
+      await expect(box(stream, which).locator(':scope > [data-wipe-band]')).toHaveCSS('left', '-240px');
     }
     await asPowerPoint('slides known opaque, backed');
     // Over: nothing of it left.

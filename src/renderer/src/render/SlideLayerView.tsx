@@ -469,8 +469,8 @@ function drawnBacking(b: SlideBacking | null, box: HTMLDivElement | null): strin
   return img?.complete && img.naturalWidth > 0 ? b.colour : undefined;
 }
 
-/** A slide's shade box (X11), as its JSX draws it: filling the slide's box, around what it draws. */
-const SHADE_BOX = { position: 'absolute', inset: 0 } as const;
+/** A slide's two boxes, as its JSX draws them: filling the slide's box, around what it draws. */
+const SLIDE_BOX = { position: 'absolute', inset: 0 } as const;
 
 /**
  * A deck's slide coming in by a cut, its clip not yet drawn (Session 54, C2): the slide before stays up, the new one
@@ -717,13 +717,13 @@ export function SlideLayerView({
   // What each slide may be backed with while it is a layer of its own without a graphics chip (X11, Q60-6): a slide as
   // designed, known to draw no see-through pixel in its place (render/slide-backing.ts).
   const screen = useContext(ScreenPictures);
-  const backings = useMemo(
-    () => ({
-      in: on && slides === 'designed' ? slideBacking(on.slide, screen) : null,
-      out: off && slides === 'designed' ? slideBacking(off.slide, screen) : null,
-    }),
-    [on, off, slides, screen],
-  );
+  const backings = useMemo(() => {
+    const backed = drawsWithoutChip() && slides === 'designed';
+    return {
+      in: on && backed ? slideBacking(on.slide, screen) : null,
+      out: off && backed ? slideBacking(off.slide, screen) : null,
+    };
+  }, [on, off, slides, screen]);
 
   // Start the fade once the new slide's pictures and videos can be drawn: at shownAt if they
   // already could (every screen at the same point), else when they can.
@@ -1002,24 +1002,29 @@ export function SlideLayerView({
               mixBlendMode: adds && incoming ? 'plus-lighter' : undefined,
             }}
           >
-            {/* Its shade box (X11): at rest it only fills its box; without a graphics chip a deck's own Cover or
-                Uncover shades the slide it moves on it, inside the slide's own layer. Always there, so a move starting
-                or ending never draws the slide anew. (No data-band: the operator window's header band is, and its
-                rule in app.css would make this 0 px tall, Q60-2.) */}
-            <div ref={incoming ? inShadeRef : outShadeRef} data-slide-shade="" style={SHADE_BOX}>
-              <Zoomed layer={l}>
-                <DrawnSlide
-                  layer={l}
-                  canvas={canvas}
-                  scaling={scaling}
-                  languages={languages}
-                  slides={slides}
-                  text={move ? 'hidden' : 'shown'}
-                  settled={settled}
-                  movement={movement}
-                  timers={timers}
-                />
-              </Zoomed>
+            {/* Its two boxes, as they have been since Session 58 (its Wipe's band boxes then; named for the Wipe alone
+                since Q60-2, as the operator window's header band is data-band, whose rule in app.css would make them
+                0 px tall): with a graphics chip they only fill its box, as ever, so the page draws exactly as before.
+                Without one (X11) no band is drawn on them: the outer is the slide's shade box, where a deck's own
+                Cover or Uncover shades the slide it moves, inside its layer, and which a 4:3 slide's drawing is moved
+                back on when its box is made its own place (Q60-6). Always there, so a move starting or ending never
+                draws the slide anew. */}
+            <div ref={incoming ? inShadeRef : outShadeRef} data-wipe-band="" style={SLIDE_BOX}>
+              <div data-wipe-band-slide="" style={SLIDE_BOX}>
+                <Zoomed layer={l}>
+                  <DrawnSlide
+                    layer={l}
+                    canvas={canvas}
+                    scaling={scaling}
+                    languages={languages}
+                    slides={slides}
+                    text={move ? 'hidden' : 'shown'}
+                    settled={settled}
+                    movement={movement}
+                    timers={timers}
+                  />
+                </Zoomed>
+              </div>
             </div>
           </div>
         );

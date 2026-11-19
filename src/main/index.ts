@@ -352,6 +352,7 @@ import {
   warmUpEndLine,
   warmUpEndOf,
   warmUpFact,
+  warmsUp,
 } from './outputs/warm-up-choice';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
@@ -533,9 +534,11 @@ const testCompositing = sw('DRASHTI_TEST_GPU_COMPOSITING');
  * Whether each output warms its graphics chip up (Session 57, outputs/warm-up-choice.ts): not where Chromium draws
  * without one. Its status means nothing until its GPU process has said how it draws, so it is read from then.
  */
+/** Chromium's feature status now (a test switch's in the tests): how it draws, once its GPU process has said. */
+const gpuStatus = (): unknown =>
+  testCompositing === undefined ? app.getGPUFeatureStatus() : { gpu_compositing: testCompositing };
 const warmUps = new WarmUpChoices({
-  status: () =>
-    testCompositing === undefined ? app.getGPUFeatureStatus() : { gpu_compositing: testCompositing },
+  status: gpuStatus,
   log: (line) => {
     log.info(line);
   },
@@ -1903,10 +1906,12 @@ function start(): void {
       }),
     );
   pictureLook = (mediaId) => screenLook(mediaId);
-  // Which pictures can draw no see-through pixel (X11, media/see-through.ts): each file's first bytes read once, by its
-  // contents, off the main thread's way; the screens hear of one as soon as it is read (none is known before).
+  // Which pictures can draw no see-through pixel (X11, media/see-through.ts), only where Chromium draws without a
+  // graphics chip (only there do the screens back a moving slide; with one the state stays as it was): each file's first
+  // bytes read once, by its contents, off the main thread's way; the screens hear of one as soon as it is read.
   const seeThrough = new Map<string, boolean | 'reading'>();
   pictureOpaque = (mediaId) => {
+    if (warmsUp(gpuStatus())) return false;
     const found = media.kindAndFile(mediaId);
     const sha256 = media.file(mediaId)?.sha256 ?? null;
     if (found?.kind !== 'image' || found.missing || found.path === '' || sha256 === null) return false;
