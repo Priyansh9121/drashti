@@ -304,6 +304,10 @@ import {
 import { allowHangStacks, applySessionSecurity, secureWebContents } from './windows/security';
 import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
+import { YOUTUBE_WORDS } from '../shared/youtube';
+import { electronGoogleTransport } from './youtube/electron-google-transport';
+import { GOOGLE_ENDPOINTS, standInEndpoints } from './youtube/google-transport';
+import { YouTubeService } from './youtube/youtube-service';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { EventsOut, NO_SECURE_STORAGE_EVENTS } from './events/events-service';
 import {
@@ -3025,6 +3029,9 @@ function start(): void {
 
   // ---- streaming -------------------------------------------------------------
   let eventsStreamWas: StreamStatus | null = null;
+  // Scheduling on YouTube (x31): told how the stream stands (YouTube's state of the broadcast while on air).
+  // Given once the YouTube service is made, below the stream service.
+  let youtubeService: YouTubeService | undefined = undefined;
   let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
   let conversionActivityChanged: (() => void) | undefined;
   // Trim's background work (Session 57: finished cuts checked, accepted cuts carried on, unused cuts swept), told
@@ -3088,6 +3095,7 @@ function start(): void {
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
     },
     statusChanged: (status) => {
+      youtubeService?.streamChanged(status);
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
       trimActivityChanged?.();
@@ -3135,6 +3143,47 @@ function start(): void {
   const streaming = stream;
   stops.add('stream', () => {
     streaming.close();
+  });
+  // ---- scheduling on YouTube (x31) ---------------------------------------------------------------
+  // The admin's own Google project signs in, in this computer's own browser; a broadcast's key goes from Google straight
+  // into the stream key store, and its sign-in into a secure file of its own (youtube-sign-in.json). Going live never
+  // calls Google. Tests reach only the stand-in for Google on 127.0.0.1 (DRASHTI_TEST_GOOGLE_STANDIN, which a packaged
+  // Drashti never reads), and under the tests' guard (DRASHTI_TEST_LINK_GUARD) nothing else, loudly.
+  const googleStandIn = sw('DRASHTI_TEST_GOOGLE_STANDIN');
+  const youtube = new YouTubeService({
+    secrets: new StreamKeyStore(
+      join(app.getPath('userData'), 'youtube-sign-in.json'),
+      safeStorage,
+      noSafeStorage,
+      YOUTUBE_WORDS.noStorage,
+    ),
+    settings,
+    stream: streaming,
+    call: {
+      transport: electronGoogleTransport,
+      onlyThisComputer: testLinkGuard,
+      warn: (message) => {
+        log.warn(message);
+      },
+    },
+    endpoints: googleStandIn ? standInEndpoints(googleStandIn) : GOOGLE_ENDPOINTS,
+    // The person signs in there, in the computer's own browser: Drashti never drives it.
+    openBrowser: (url) => shell.openExternal(url),
+    changed: (status) => {
+      sendToOperator(IPC.youtube.changed, status);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    now: Date.now,
+    clockStyle: mainClockStyle,
+    // Tests: YouTube's state asked this often while on air (DRASHTI_TEST_YOUTUBE_STATE_MS), not 15, 20 and 60 s.
+    stateMs: swMs('DRASHTI_TEST_YOUTUBE_STATE_MS') ?? undefined,
+  });
+  youtubeService = youtube;
+  stops.add('youtube', () => {
+    youtube.cancelSignIn();
   });
   // The stream's page, open before Chromium said how it draws, is sent its context again once it skips its warm-up
   // (Session 58, WU-1), as an output is.
@@ -6771,22 +6820,34 @@ function start(): void {
   );
   handle(IPC.stream.removeProfile, (e, id) => (fromOperator(e) ? streaming.removeProfile(id) : notOperator));
   handle(IPC.stream.useProfile, (e, id) => (fromOperator(e) ? streaming.useProfile(id) : notOperator));
-  handle(IPC.stream.setKey, (e, id, key, place) =>
-    fromOperator(e) ? streaming.setKey(id, key, place) : notOperator,
-  );
-  handle(IPC.stream.removeKey, (e, id, place) =>
-    fromOperator(e) ? streaming.removeKey(id, place) : notOperator,
-  );
+  // A profile's own key typed or removed by hand: it no longer streams to its YouTube broadcast (x31).
+  const ownKey = (place: unknown) => place === undefined || place === null || place === '';
+  handle(IPC.stream.setKey, (e, id, key, place) => {
+    if (!fromOperator(e)) return notOperator;
+    const kept = streaming.setKey(id, key, place);
+    if (kept.ok && ownKey(place) && typeof id === 'string') youtube.keyChangedByHand(id);
+    return kept;
+  });
+  handle(IPC.stream.removeKey, (e, id, place) => {
+    if (!fromOperator(e)) return notOperator;
+    const removed = streaming.removeKey(id, place);
+    if (removed.ok && ownKey(place) && typeof id === 'string') youtube.keyChangedByHand(id);
+    return removed;
+  });
   handle(IPC.stream.goLive, (e, confirm) =>
     fromOperator(e) && confirmedSchema.safeParse(confirm).success
       ? streaming.goLive()
       : { ok: false as const, message: 'Going live needs the operator to confirm it.' },
   );
-  handle(IPC.stream.end, (e, confirm) =>
-    fromOperator(e) && confirmedSchema.safeParse(confirm).success
-      ? streaming.end()
-      : { ok: false as const, message: 'Ending the stream needs the operator to confirm it.' },
-  );
+  handle(IPC.stream.end, (e, confirm) => {
+    if (!fromOperator(e) || !confirmedSchema.safeParse(confirm).success)
+      return { ok: false as const, message: 'Ending the stream needs the operator to confirm it.' };
+    const profileId = streaming.profilesView().activeId;
+    const ended = streaming.end();
+    // Its profile's YouTube broadcast ends there too (x31): in the background, after the encoder was told to stop.
+    if (ended.ok && profileId !== null) youtube.streamEnded(profileId);
+    return ended;
+  });
   handle(IPC.stream.startRecording, (e) => (fromOperator(e) ? streaming.startRecording() : notOperator));
   handle(IPC.stream.startSoundRecording, (e) =>
     fromOperator(e) ? streaming.startSoundRecording() : notOperator,
@@ -6806,6 +6867,29 @@ function start(): void {
     streaming.reportInputs(e.sender, inputs);
     return null;
   });
+
+  // ---- scheduling on YouTube (x31): the operator window, Pro Mode (Simple Mode refuses all but its status) -------
+  const notYouTube = {
+    ok: false as const,
+    message: 'Only the operator window, in Pro Mode, can schedule streams on YouTube.',
+  };
+  const youtubeAsks = (e: IpcMainInvokeEvent) => fromOperator(e) && mode === 'pro';
+  handle(IPC.youtube.status, () => youtube.status());
+  handle(IPC.youtube.setClient, (e, clientId, clientSecret) =>
+    youtubeAsks(e) ? youtube.setClient(clientId, clientSecret) : notYouTube,
+  );
+  handle(IPC.youtube.removeClient, (e) => (youtubeAsks(e) ? youtube.removeClient() : notYouTube));
+  handle(IPC.youtube.signIn, (e) => (youtubeAsks(e) ? youtube.signIn() : notYouTube));
+  handle(IPC.youtube.cancelSignIn, (e) => (youtubeAsks(e) ? youtube.cancelSignIn() : notYouTube));
+  handle(IPC.youtube.signOut, (e) => (youtubeAsks(e) ? youtube.signOut() : notYouTube));
+  handle(IPC.youtube.upcoming, (e) => (youtubeAsks(e) ? youtube.upcoming() : notYouTube));
+  handle(IPC.youtube.schedule, (e, input) => (youtubeAsks(e) ? youtube.schedule(input) : notYouTube));
+  handle(IPC.youtube.useBroadcast, (e, profileId, broadcastId) =>
+    youtubeAsks(e) ? youtube.useBroadcast(profileId, broadcastId) : notYouTube,
+  );
+  handle(IPC.youtube.endBroadcast, (e, profileId) =>
+    youtubeAsks(e) ? youtube.endBroadcast(profileId) : notYouTube,
+  );
 
   // ---- Show a Window… (Session 48) ------------------------------------------------
   const notOperatorWindow = 'Only the operator window can show another app’s window.';
