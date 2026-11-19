@@ -51,6 +51,9 @@ export class FrameReceiver {
   private dropped = 0;
   private lastReport = Number.NEGATIVE_INFINITY;
   private wrongSize = false;
+  /** The newest picture (taken or let go), and when it last went out or came. */
+  private last: RawFrame | null = null;
+  private lastAt = Number.NEGATIVE_INFINITY;
 
   constructor(
     private readonly sender: Sender,
@@ -79,13 +82,28 @@ export class FrameReceiver {
       this.wrongSize = true;
       return;
     }
-    if (this.sender.frame({ ...format, data })) this.frames++;
+    const frame = { ...format, data };
+    if (this.sender.frame(frame)) this.frames++;
     else this.dropped++;
     const t = this.now();
+    this.last = frame;
+    this.lastAt = t;
     if (this.frames === 1 || t - this.lastReport >= REPORT_MS) {
       this.lastReport = t;
       this.report(this.status());
     }
+  }
+
+  /**
+   * The newest picture again once nothing has gone out for REPEAT_MS (a still picture, or one let go while the one
+   * before was going out): software that starts receiving later gets it. Not counted as a new frame.
+   */
+  repeat(): void {
+    const last = this.last;
+    if (!last) return;
+    const t = this.now();
+    if (t - this.lastAt < REPEAT_MS) return;
+    if (this.sender.frame(last)) this.lastAt = t;
   }
 
   status(): VideoOutWorkerStatus {
