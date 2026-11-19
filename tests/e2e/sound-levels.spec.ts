@@ -241,9 +241,9 @@ test('Audio’s and Video’s levels and mutes, live: each sound plays at its le
   await expect(win.getByTestId('sound-muted-status')).toHaveText('Audio muted');
   await expect.poll(() => playsAt(music)).toBe(0);
   expect(await playsAt(talk)).toBeCloseTo(evenTalk * 0.95, 2);
-  // Sound on again by the keyboard: back at its level.
+  // Sound on again by the keyboard (Enter: Space is Next in this window): back at its level.
   await a.mute.focus();
-  await win.keyboard.press('Space');
+  await win.keyboard.press('Enter');
   await expect(a.mute).toHaveText('Sound on');
   await expect(win.getByTestId('sound-muted-status')).toHaveText('');
   await expect.poll(() => playsAt(music)).toBeCloseTo(evenMusic * aside * 0.5, 2);
