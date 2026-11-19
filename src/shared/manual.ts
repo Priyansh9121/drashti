@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import type { Passage } from './markdown';
+import type { Layers } from './engine/state';
 import type { OperatorMode } from './mode';
 import { matchesAll, searchWords } from './search';
+import type { StreamStatus } from './stream';
 
 /*
  * The Drashti Manual (x37, Session 60; the owner's "A, new Manual", 19 Nov 2026): how to use every part of the
@@ -135,6 +137,16 @@ export type ManualRead =
       sizes: Record<string, [number, number]>;
     }
   | { ok: false; message: string };
+
+/** The red commit's stand-ins (x37, the lead's call of 20 Nov): not yet. */
+export const MANUAL_PRINT_WAITS = '';
+export const MANUAL_PRINT_REFUSED = '';
+export function manualPrintWaits(
+  layers: Layers | null,
+  stream: Pick<StreamStatus, 'live' | 'recording'> | null,
+): boolean {
+  return Array.of<unknown>(layers, stream).length > 2;
+}
 
 /** Where a PDF went, as the manual says it: its name, in its folder's ("Drashti Manual.pdf, in Documents"). */
 export function savedWhere(file: string): string {
