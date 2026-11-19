@@ -10,6 +10,7 @@ import { IconButton } from '../ui/Button';
 import { Pause, Play } from '../ui/icons';
 import { cx } from '../ui/cx';
 import { TimeBar } from '../ui/TimeBar';
+import { VideoCaptionButton } from '../video-captions/VideoCaptionControl';
 import { playbackAtMs, playbackLeftMs } from '../../../shared/media';
 import { inLastSeconds } from '../../../shared/wallpapers';
 import { barNow, moveCommand, pauseCommand, playCommand, type PlayingRow, playingRows } from './playing-rows';
@@ -148,6 +149,7 @@ function Row({ row, pro }: { row: PlayingRow; pro: boolean }) {
         {row.short}
       </span>
       {paused && <Badge data-testid="time-bar-paused">Paused</Badge>}
+      {playing.ref.layer !== 'audio' && !playing.sound && <VideoCaptionButton mediaId={playing.mediaId} />}
       <TimeBar
         className="min-w-0 flex-1"
         label={row.name}

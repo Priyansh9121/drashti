@@ -3,7 +3,7 @@ import type { DeckMedia } from '../../../shared/deck';
 import { deckMediaOf, playsAcross } from '../../../shared/deck-show';
 import { MUSIC_FADE_IN_MS, MUSIC_FADE_OUT_MS } from '../../../shared/music';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
-import { gainOf } from '../../../shared/sound';
+import { gainOf, type SoundKind } from '../../../shared/sound';
 
 /** One sound the show is making: a file, when it started, and how. */
 export interface Sound {
@@ -32,6 +32,11 @@ export interface Sound {
   gain?: number;
   /** The music (Part 7, K): the audio layer's sound, which steps aside under a video with sound. */
   aside?: true;
+  /**
+   * Which of the operator's two levels it plays under (X33, shared/sound.ts): Audio's (a sound: the audio layer, a sound
+   * over it, a deck's sounds and its transition's) or Video's (a video's sound: the background's, the slide's videos').
+   */
+  kind: SoundKind;
 }
 
 /** Its file's even-loudness gain (Session 55, Part 7), when it has one other than 1. */
@@ -94,6 +99,7 @@ export function soundsOf(state: EngineState): Sound[] {
       ...evenGain(state, audio.mediaId),
       // The music steps aside under a video with sound (Part 7), never a deck's own sound across its slides.
       ...(audio.across ? {} : { aside: true as const }),
+      kind: 'audio',
     });
   }
   // A slide's own sound or a deck's own soundtrack over the music (Session 55, Part 7: the owner's answer of 30 Oct),
@@ -110,6 +116,7 @@ export function soundsOf(state: EngineState): Sound[] {
       ...(over.seek ? { seek: over.seek } : {}),
       ...(over.fades ? { fades: over.fades } : {}),
       ...evenGain(state, over.mediaId),
+      kind: 'audio',
     });
   }
   const bg = state.layers.background;
@@ -123,6 +130,7 @@ export function soundsOf(state: EngineState): Sound[] {
       ...(bg.clip ? { clip: bg.clip } : {}),
       ...(bg.seek ? { seek: bg.seek } : {}),
       ...evenGain(state, bg.mediaId),
+      kind: 'video',
     });
   }
   const slide = state.layers.slide;
@@ -149,6 +157,7 @@ export function soundsOf(state: EngineState): Sound[] {
         ...(seek ? { seek } : {}),
         ...(own.fades ? { fades: own.fades } : {}),
         ...evenGain(state, el.mediaId),
+        kind: 'video',
       });
     }
     // A deck's sounds (Session 54, C2): each from its click, as the engine stamps it, between its deck's trims. One
@@ -168,6 +177,7 @@ export function soundsOf(state: EngineState): Sound[] {
         ...(seek ? { seek } : {}),
         ...(own.fades ? { fades: own.fades } : {}),
         ...evenGain(state, m.mediaId),
+        kind: 'audio',
       });
     }
     // Its deck's transition's sound, once, as the slide comes in with that transition (in order, or Drashti's own over
@@ -184,6 +194,7 @@ export function soundsOf(state: EngineState): Sound[] {
         volume: 1,
         seek: rang,
         ...evenGain(state, chime),
+        kind: 'audio',
       });
   }
   return sounds;
