@@ -214,7 +214,7 @@ function slideVideoHeard(state: EngineState, mediaId: string): boolean {
  * Whether the music steps aside at `now` (the engine's time): Audio's switch on, a sound or an audio playlist's track
  * playing on the audio layer (not a deck's own sound set to play across its slides), and a video with sound playing
  * then: the background video, or a video on the slide up, known to have sound (a file not measured yet counts),
- * started, not paused and short of its end.
+ * started, not paused and short of its end, while the operator's Video is heard (X33: not muted, not at 0 %).
  */
 export function musicAside(state: EngineState | null | undefined, now: number): boolean {
   if (!state || state.stopped || state.sound?.stepsAside === false) return false;
@@ -222,6 +222,8 @@ export function musicAside(state: EngineState | null | undefined, now: number): 
   if (!audio?.mediaId || audio.pausedAtMs !== undefined || audio.across) return false;
   // A slide's own sound or a deck's own soundtrack over it (the owner's answer of 30 Oct), until it ends.
   if (audio.over && overPlaysAt(audio.over, now)) return true;
+  // The operator's Video muted or at 0 % (X33): none of a video's sound is heard, so nothing to step aside for.
+  if (kindLevel(state, 'video') === 0) return false;
   const silent = new Set(state.sound?.silent ?? []);
   const refs: PlayingRef[] = [{ layer: 'background' }];
   const seen = new Set<string>();
