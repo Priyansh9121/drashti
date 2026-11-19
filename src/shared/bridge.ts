@@ -150,7 +150,15 @@ import type { PointAt, PointedClip } from './point-ahead';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
-import type { EvenResult, FileSoundView, SoundView, SoundViewResult, TrimEdgesResult } from './sound';
+import type {
+  EvenResult,
+  FileSoundView,
+  SoundKind,
+  SoundLevelsResult,
+  SoundView,
+  SoundViewResult,
+  TrimEdgesResult,
+} from './sound';
 import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
@@ -670,6 +678,12 @@ export interface DrashtiBridge {
     /** A video's or sound's loudness as measured, and its own switch; null for no such file. */
     file(mediaId: string): Promise<FileSoundView | null>;
     setStepsAside(on: boolean): Promise<SoundViewResult>;
+    /**
+     * The operator's Audio or Video level, 0 to 1 (X33), kept across a restart; and its mute, never kept. The engine's
+     * state says them (its sound's levels), and the hall and the stream play by them at once.
+     */
+    setLevel(kind: SoundKind, level: number): Promise<SoundLevelsResult>;
+    setMuted(kind: SoundKind, muted: boolean): Promise<SoundLevelsResult>;
     setEven(mediaId: string, on: boolean): Promise<EvenResult>;
     trimEdges(mediaId: string): Promise<TrimEdgesResult>;
     onChanged(listener: (view: SoundView) => void): () => void;

@@ -1,4 +1,10 @@
-import { FULL_LEVELS, type SoundKind, type SoundLevels, type SoundLevelsResult } from '../../shared/sound';
+import {
+  cleanLevel,
+  SOUND_KINDS,
+  type SoundKind,
+  type SoundLevels,
+  type SoundLevelsResult,
+} from '../../shared/sound';
 
 /*
  * The operator's Audio and Video levels and mutes (X33, shared/sound.ts), as Main keeps them: the levels with the
@@ -17,29 +23,46 @@ export interface SoundLevelsDeps {
   write: (name: string, value: unknown) => void;
 }
 
+const isKind = (kind: unknown): kind is SoundKind => SOUND_KINDS.includes(kind as SoundKind);
+
+/** A kept level of a kind: 0 to 100 % in whole percent, and 100 % for anything else (an older or hand-edited one). */
+function keptLevel(kept: unknown, kind: SoundKind): number {
+  if (typeof kept !== 'object' || kept === null) return 1;
+  return cleanLevel((kept as Partial<Record<SoundKind, unknown>>)[kind]);
+}
+
 export class SoundLevelsKeeper {
-  constructor(private readonly deps: SoundLevelsDeps) {}
+  private now: SoundLevels;
+
+  constructor(private readonly deps: SoundLevelsDeps) {
+    const kept = deps.settings.get(SOUND_LEVELS_SETTING);
+    // The levels as they were left; the sound on, always.
+    this.now = {
+      audio: { level: keptLevel(kept, 'audio'), muted: false },
+      video: { level: keptLevel(kept, 'video'), muted: false },
+    };
+  }
 
   /** The levels and mutes now. */
   levels(): SoundLevels {
-    void this.deps;
-    return FULL_LEVELS;
+    return this.now;
   }
 
-  /** The operator moved a level (0 to 1): it plays so at once, and is kept. */
+  /** The operator moved a level (0 to 1): it plays so at once, and is kept. A kind muted stays muted, at it. */
   setLevel(kind: unknown, level: unknown): SoundLevelsResult {
-    void kind;
-    void level;
-    return { ok: true, levels: this.levels() };
+    if (!isKind(kind)) return { ok: false, message: 'Only Audio’s and Video’s levels can be set.' };
+    if (typeof level !== 'number' || !Number.isFinite(level) || level < 0 || level > 1)
+      return { ok: false, message: 'A level is from 0 to 100 %.' };
+    this.now = { ...this.now, [kind]: { ...this.now[kind], level: cleanLevel(level) } };
+    this.deps.write(SOUND_LEVELS_SETTING, { audio: this.now.audio.level, video: this.now.video.level });
+    return { ok: true, levels: this.now };
   }
 
   /** The operator muted a kind, or turned its sound back on (at its level): never kept. */
   setMuted(kind: unknown, muted: unknown): SoundLevelsResult {
-    void kind;
-    void muted;
-    return { ok: true, levels: this.levels() };
+    if (!isKind(kind)) return { ok: false, message: 'Only Audio and Video can be muted.' };
+    if (typeof muted !== 'boolean') return { ok: false, message: 'Say whether it is muted.' };
+    this.now = { ...this.now, [kind]: { ...this.now[kind], muted } };
+    return { ok: true, levels: this.now };
   }
 }
-
-/** For the words: a kind's name as the operator sees it. */
-export const KIND_NAMES: Readonly<Record<SoundKind, string>> = { audio: 'Audio', video: 'Video' };

@@ -271,6 +271,7 @@ describe('a sound the engine sends somewhere new while it plays (Session 52)', (
     loop: false,
     volume: 1,
     clip: { startMs: 1000, endMs: null },
+    kind: 'video',
   };
 
   it('is checked again at a jump, as before', () => {

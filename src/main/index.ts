@@ -114,7 +114,7 @@ import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
 import { musicPlaySchema } from '../shared/music';
 import type { MediaMarkers } from '../shared/markers';
 import { mediaMarkersInputSchema, NO_MARKERS } from '../shared/markers';
-import { evenGainDb } from '../shared/sound';
+import { evenGainDb, type SoundLevelsResult } from '../shared/sound';
 import { UpdateService } from './update/update-service';
 import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
@@ -145,6 +145,7 @@ import { LockWatch } from './perf-lock';
 import { isPerfScenario, scenarioFor } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { SoundRepo } from './db/sound';
+import { SoundLevelsKeeper } from './sound/levels';
 import { SoundPass } from './sound/sound-pass';
 import { automaticImportNotices, loadsOperatorPageAgain } from './import/automatic-notices';
 import { ImportService } from './import/import-service';
@@ -1629,6 +1630,8 @@ function start(): void {
   };
   /** Music steps aside under a video with sound (Session 55, Part 7, K): Audio's switch, kept with the library; on by default. */
   let stepsAside = settings.get('music.stepsAside') !== false;
+  /** The operator's Audio and Video levels (X33), kept with the library, and their mutes, off at every start. */
+  const soundLevels = new SoundLevelsKeeper({ settings, write: laterSetting });
   /** Picture in picture's remembered place (Session 50): where a new box goes, kept in the library. */
   const pipPlaces = new PipPlaces({ settings, write: laterSetting });
   /** Audio playlists (made further down): the media library changing may change them. */
@@ -1681,6 +1684,8 @@ function start(): void {
       // How the files sounding play (Session 55, Part 7): each one's even loudness, and the music stepping aside.
       soundOf: (mediaId) => soundOf(mediaId),
       stepsAside: () => stepsAside,
+      // The operator's Audio and Video levels and mutes (X33).
+      levels: () => soundLevels.levels(),
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
@@ -3843,6 +3848,43 @@ function start(): void {
     fromOperator(e) && typeof on === 'boolean'
       ? setMusicStepsAside(on)
       : { ok: false as const, message: 'Only the operator window can change Audio’s switches.' },
+  );
+  // The operator's Audio and Video levels and mutes (X33): every sound plays at them at once, in the hall and the stream.
+  /** A level is said in the log once it has stayed put a moment (a drag sends several a second). */
+  let levelLogged: ReturnType<typeof setTimeout> | null = null;
+  const levelsChanged = (result: SoundLevelsResult, what: string | null): SoundLevelsResult => {
+    if (!result.ok) return result;
+    engine.refreshSound();
+    if (what !== null) log.info(`Sound: ${what}`);
+    else {
+      if (levelLogged) clearTimeout(levelLogged);
+      levelLogged = setTimeout(() => {
+        levelLogged = null;
+        const { audio, video } = soundLevels.levels();
+        log.info(
+          `Sound: Audio at ${String(Math.round(audio.level * 100))} %, Video at ${String(Math.round(video.level * 100))} %`,
+        );
+      }, 1000);
+    }
+    return result;
+  };
+  stops.add('sound levels log', () => {
+    if (levelLogged) clearTimeout(levelLogged);
+  });
+  const levelsRefused = {
+    ok: false as const,
+    message: 'Only the operator window can change the sound’s levels.',
+  };
+  handle(IPC.sound.setLevel, (e, kind, level) =>
+    fromOperator(e) ? levelsChanged(soundLevels.setLevel(kind, level), null) : levelsRefused,
+  );
+  handle(IPC.sound.setMuted, (e, kind, muted) =>
+    fromOperator(e)
+      ? levelsChanged(
+          soundLevels.setMuted(kind, muted),
+          `${kind === 'video' ? 'Video' : 'Audio'} ${muted === true ? 'muted' : 'sound on again'}`,
+        )
+      : levelsRefused,
   );
   handle(IPC.sound.setEven, (e, mediaId, on) => {
     if (
