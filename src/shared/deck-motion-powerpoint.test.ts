@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckEffect } from './deck';
-import { deckMotionFrame, deckShapeShows, deckSplitShows } from './deck-motion';
+import { deckMotionFrame, deckShapeShows, deckSplitShows, deckWipeClip } from './deck-motion';
 
 /*
  * PowerPoint's own movie of the comparison deck, measured frame by frame (Session 57, 13 Nov 2026: the lead's run 1,
@@ -645,5 +645,67 @@ describe('Shape’s soft edge as PowerPoint’s own movie shows it at 1920 × 10
     // No Shape: all of it.
     expect(deckShapeShows(null, 0.5, 0.5)).toBe(1);
     expect(deckShapeShows(deckMotionFrame([circle], 1, 700, box, screen).wipe, 1, 1)).toBe(1);
+  });
+});
+
+/*
+ * Wheel (h-run6, Session 59): real PowerPoint's movie of run 6 (19 Nov 2026), 1 to 8 spokes coming in and leaving at
+ * 700 ms and 2 s on a 960 x 576 box of the 1920 x 1080 movie (logs/h-run6/pptx-run6b/motion, run6-motion.mjs): where
+ * each spoke's leading edge is (clockwise from twelve o'clock about the box's middle, its soft edge half-way), frame by
+ * frame. PowerPoint sweeps each spoke evenly in the box's own proportions, not by its true angle; leaving, its edge goes
+ * round the same way, hiding what it passes.
+ */
+describe('Wheel as PowerPoint’s own movie shows it (run 6)', () => {
+  const wheelBox = { x: 480, y: 252, width: 960, height: 576 };
+  const movie = { width: 1920, height: 1080 };
+  /** The clip's spokes: each a run of points about the box's middle, as clockwise angles from twelve o'clock. */
+  function spokesAt(one: DeckEffect, ms: number): number[][] {
+    const clip = deckWipeClip(deckMotionFrame([one], 1, ms, wheelBox, movie).wipe, wheelBox, wheelBox);
+    const points = clip
+      .slice('polygon('.length, -1)
+      .split(', ')
+      .map((point) => point.split(' ').map((share) => parseFloat(share) / 100));
+    const spokes: number[][] = [];
+    for (const [x = 0, y = 0] of points) {
+      const dx = (x - 0.5) * wheelBox.width;
+      const dy = (y - 0.5) * wheelBox.height;
+      const degrees = (Math.atan2(dx, -dy) * 180) / Math.PI;
+      if (Math.hypot(dx, dy) < 1) spokes.push([]);
+      else spokes.at(-1)?.push(degrees < 0 ? degrees + 360 : degrees);
+    }
+    return spokes;
+  }
+  /** The smallest turn between two clockwise angles, degrees. */
+  const apart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+
+  it('sweeps each spoke evenly in the box’s own proportions, its edge where PowerPoint’s soft edge is half-way', () => {
+    // [spokes, ms after the click, PowerPoint's leading edges (degrees)]
+    const samples: [number, number, number[]][] = [
+      [1, 128.333, [63.48]],
+      [1, 326.667, [156.831]],
+      [1, 525, [276.986]],
+      [4, 126.667, [20.566, 97.549, 199.835, 277.433]],
+      [4, 325, [55.961, 117.94, 235.629, 297.865]],
+      [4, 523.333, [78.099, 149.348, 257.786, 329.456]],
+    ];
+    for (const [count, ms, edges] of samples) {
+      const drawn = spokesAt(effect('wheel', 'in', { spokes: count }), ms).map((spoke) => spoke.at(-1) ?? 0);
+      expect(drawn, `${String(count)} spokes at ${String(ms)} ms`).toHaveLength(edges.length);
+      drawn.forEach((at, i) => {
+        const name = `${String(count)} spokes at ${String(ms)} ms, spoke ${String(i + 1)}: ${String(at)}`;
+        expect(apart(at, edges[i] ?? 0), name).toBeLessThanOrEqual(1.5);
+      });
+    }
+  });
+
+  it('leaves with its edge going round the same way from twelve o’clock, hiding what it passes', () => {
+    // PowerPoint's 1 spoke leaving at 700 ms: 85 %, 53 % and 22 % of the box showing at 128, 327 and 525 ms, all of it
+    // from the edge round to twelve o'clock.
+    for (const ms of [128.333, 326.667, 525]) {
+      const [spoke = []] = spokesAt(effect('wheel', 'out', { spokes: 1 }), ms);
+      const coming = spokesAt(effect('wheel', 'in', { spokes: 1 }), ms)[0]?.at(-1) ?? 0;
+      expect(apart(spoke[0] ?? 0, coming), `${String(ms)} ms: shows from the edge`).toBeLessThanOrEqual(0.5);
+      expect(apart(spoke.at(-1) ?? 0, 0), `${String(ms)} ms: to twelve o'clock`).toBeLessThanOrEqual(0.5);
+    }
   });
 });
