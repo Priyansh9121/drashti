@@ -93,7 +93,16 @@ export function GeometryGrid({
       width={canvas.width}
       height={height}
       viewBox={`0 0 ${String(canvas.width)} ${String(height)}`}
-      style={{ position: 'absolute', left: 0, top: 0, zIndex: GRID_Z, pointerEvents: 'none' }}
+      // Unclipped at its own edge (an svg's viewport clips), as the ramps (BlendRamps): under a warp out of square a clip
+      // there is a surface drawn again every frame. Its lines lie inside the canvas.
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        zIndex: GRID_Z,
+        pointerEvents: 'none',
+        overflow: 'visible',
+      }}
       aria-hidden="true"
     >
       <g stroke="#000000" strokeOpacity={0.8}>
