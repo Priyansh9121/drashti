@@ -171,6 +171,12 @@ export class MediaCache {
     return file ? this.pathOf(known.sha256, file.ext) : null;
   }
 
+  /** The hash of an available, verified copy; thumbnails use it without asking Main to keep anything. */
+  hashFor(mediaId: string): string | null {
+    const known = this.index.ids.get(mediaId);
+    return known && this.index.files.has(known.sha256) ? known.sha256 : null;
+  }
+
   has(mediaId: string): boolean {
     return this.pathFor(mediaId) !== null;
   }
