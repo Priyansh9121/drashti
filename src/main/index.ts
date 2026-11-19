@@ -5755,7 +5755,7 @@ function start(): void {
       rev: () => engine.rev,
       session: engine.session,
     },
-    runShowAction: (command) => net.runShowAction({ op: 'command', args: command }),
+    runShowAction: (command, who) => net.runShowAction({ op: 'command', args: command }, who),
     wanted: (state, everything) => wanted.list(state, everything),
     mediaFile: (mediaId) => wanted.source(mediaId, mediaDir),
     onAir: () => streaming.inUse(),
