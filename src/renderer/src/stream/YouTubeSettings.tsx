@@ -328,9 +328,12 @@ export function YouTubeSettings({ profile }: { profile: StreamProfile }) {
     connectYouTube();
   }, []);
   const signedIn = status?.signedIn ?? null;
+  // Asked once as the channel is signed in (or changes): by its name, a plain string, never by the status's own
+  // object, which is new with every status Drashti sends (and asking sends one: it would ask again and again).
+  const channel = signedIn?.channel ?? null;
   useEffect(() => {
-    if (signedIn) void loadUpcoming();
-  }, [signedIn]);
+    if (channel !== null) void loadUpcoming();
+  }, [channel]);
   const link = status?.links[profile.id];
   return (
     <section className="space-y-2" aria-label="YouTube" data-testid="youtube-settings">

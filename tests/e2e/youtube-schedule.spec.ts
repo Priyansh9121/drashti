@@ -15,7 +15,7 @@ import {
 } from '../youtube-standin';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
-import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { launchApp, letTimePass, operatorPage, operatorReady, type PageGlobals } from './helpers';
 import { filesUnder, findSecrets } from './secrets';
 import { freePort, readFlv, rtmpListener, streamPage, testFfmpeg } from './stream-helpers';
 
@@ -124,6 +124,13 @@ test('schedule on YouTube, the key in the profile by itself, go live on that bro
   await expectNoSeriousA11yIssues(win, 'the stream settings with YouTube not set up');
   await signIn(win, standIn, opened);
   await expect(settings.getByTestId('youtube-sign-out-note')).toHaveText(YOUTUBE_WORDS.signOutNote);
+  // The channel's list is asked once as it signs in, never again and again (CI x31-1120-004519-9080: each answer
+  // sent a status, and the window asked again on every status).
+  await expect(settings.getByTestId('youtube-refresh')).toBeEnabled();
+  const listed = () => standIn.calls.filter((c) => c === 'GET /youtube/v3/liveBroadcasts').length;
+  await letTimePass(win, 3000, 'time for the list to be asked again, were it asked in a loop');
+  expect(listed()).toBeGreaterThanOrEqual(1);
+  expect(listed()).toBeLessThanOrEqual(2);
 
   // Schedule it: Unlisted and not made for children to begin with, and streamed to from this profile.
   await settings.getByTestId('youtube-schedule-open').click();
