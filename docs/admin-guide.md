@@ -296,7 +296,7 @@ Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **L
 
 ## 8. The network: firewalls and a fixed address
 
-**Firewalls.** Drashti listens for phones (port 8740, while the network is on) and, on Main, for the node (port 8741, while a node is paired). The first time each is turned on:
+**Firewalls.** Drashti listens for phones (TCP port 8740, while the network is on), on Main for the node (TCP port 8741, while a node is paired), and for OSC (UDP port 9000, only while enabled below). The first time each is turned on:
 
 - **Mac:** "Do you want the application Drashti to accept incoming network connections?" Press **Allow**. If it was refused: **System Settings**, **Network**, **Firewall**, **Options**, and set Drashti to allow incoming connections.
 - **Windows:** Windows Security asks about Drashti: tick **Private networks** only, then **Allow**. Check that Windows treats the mandir's network as private: **Settings**, **Network & internet**, the network's properties, **Private network**. If it was refused: Windows Security, **Firewall & network protection**, **Allow an app through firewall**, find Drashti and tick **Private**.
@@ -307,6 +307,21 @@ Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **L
 - Pair phones at the address that ends in **`.local`** where the Phones panel shows one (it keeps working when the number changes).
 - If the number did change: pair the node again (on the node **Unpair…**, then pair with the new address), and the phones at the new address.
 - Use the mandir's own network, never a guest Wi-Fi, which keeps devices apart. A cable between Main and the node is better than Wi-Fi.
+
+---
+
+### OSC control from a console
+
+An admin sets up **More tools › OSC control…** in Pro Mode on the Drashti computer. OSC is off to begin with, separately from Phones. A sound or lighting console, Companion, or a program on this computer can then use the show actions listed in [the API guide](api.md#osc-control-over-udp).
+
+1. Choose the **UDP port** (9000 to begin with; 1024 to 65535). Set the sender to that port on the Drashti computer's address.
+2. In **Allowed sender addresses**, list each sender's local IPv4 address, one per line. The initial `127.0.0.1` allows only programs on this computer. Names, address ranges and internet addresses are refused; at most 32 different senders.
+3. Turn on **Enable OSC control**, then **Save OSC settings**. The panel must say **Listening for listed senders**. A port already in use says so: choose another port here and on the sender. Drashti never moves to another port by itself.
+4. With generated or placeholder slides, try Next, Back and Black-out before the show. **OSC on** stays in the header in either mode; press it to open the panel. **Turn OSC off** closes the port at once and cancels waiting actions. The saved choice returns after a restart.
+
+**Trust the network.** OSC has no password, pairing or encryption. The address list limits which senders Drashti accepts, but someone on the network can pretend to use a listed address. Use a trusted private network, allow Drashti in the Mac's firewall or Windows' **Private networks** only, and never forward the UDP port through a router. Reserve both the Drashti computer's and console's addresses in the router; update the list if a sender's address changes. With only this computer listed, OSC listens on this computer alone.
+
+OSC sends no replies, slide words or timer state. UDP can lose or repeat a packet: prefer explicit Black-out on/off values over a toggle when the sender may send again. Actions keep Simple Mode's limits and stop when Drashti's access is removed. Macros are no longer in Drashti; OSC cannot run one. A console cannot change the stream, library, screens, mode or settings through OSC. Bundles can wait up to one minute, with a small limit on how many wait; turning OSC off, changing its settings or quitting cancels them. The API guide gives packet limits and the exact addresses.
 
 ---
 
