@@ -11,7 +11,7 @@ import {
   paintWaiting,
 } from './SlideLayerView';
 import { setDrawsWithoutChip } from './chipless';
-import { deckTransitionFrame, deckWipeShows, wipeSlideMask } from './transition-frame';
+import { deckTransitionFrame, deckWipeShows, wipeSlideClip, wipeSlideMask } from './transition-frame';
 
 const layer = (id: string, shownAt: number, transition?: SlideLayer['transition']): SlideLayer => ({
   presentationId: 'p',
@@ -347,7 +347,10 @@ describe('a deck’s own Wipe drawn on a screen without a graphics chip: the ban
           if (!band) throw new Error('no band');
           const what = `${direction} at ${String(p)}`;
           expect(coming.style.maskImage, what).toBe(wipeSlideMask(band, placeIn, CANVAS));
-          expect([coming.style.clipPath, coming.style.transform], what).toEqual(['', '']);
+          expect([coming.style.clipPath, coming.style.transform], what).toEqual([
+            wipeSlideClip(band, placeIn, CANVAS),
+            '',
+          ]);
           expect([going.style.transform, going.style.maskImage, going.style.clipPath], what).toEqual([
             STILL,
             '',
