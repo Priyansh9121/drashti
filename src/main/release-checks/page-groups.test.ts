@@ -90,7 +90,7 @@ describe('a narrower bridge (ARCH-7)', () => {
     expect(pageOf('about:blank')).toBeNull();
     expect(pageOf('not an address')).toBeNull();
     const everything = { app: 1, engine: 2, node: 3, sharpen: 4, library: 5 };
-    expect(bridgeFor(everything, 'node')).toEqual({ app: 1, node: 3 });
+    expect(bridgeFor(everything, 'node')).toEqual({ app: 1, engine: 2, node: 3 });
     expect(bridgeFor(everything, null)).toEqual({});
   });
 

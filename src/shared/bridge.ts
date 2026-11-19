@@ -846,6 +846,8 @@ export interface DrashtiBridge {
     /** A new identity for the nodes, in place of one that could not be read (Session 23). */
     newIdentity(): Promise<NodesResult>;
     everything(nodeId: string, on: boolean): Promise<NodesResult>;
+    /** Main's Pro Mode only: enable the paired computer's shared show view, without show actions. */
+    setController(nodeId: string, on: boolean): Promise<NodesResult>;
     /** Reload one output: on Main (nodeId null) or on a node. */
     reload(nodeId: string | null, screenId: string): Promise<NodesResult>;
     /** A display's number and name on it (null: every display of that computer). */
