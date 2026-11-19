@@ -16,13 +16,19 @@ import {
   type LinkState,
   type MediaWant,
   type NodeClock,
+  type NodeControllerContext,
   type NodeHealth,
   type NodeScreen,
   type NodeView,
   type NodeViewResult,
   type ToNode,
 } from '../../shared/nodes';
-import { mediaWantListSchema, nodeNameFrom, nodeScreenListSchema } from '../../shared/nodes-schema';
+import {
+  mediaWantListSchema,
+  nodeNameFrom,
+  nodeScreenListSchema,
+  nodeControllerContextSchema,
+} from '../../shared/nodes-schema';
 import type { DisplayInfo, OutputContext, OutputReport, ScreenConfig } from '../../shared/screens';
 import { missingFontsIn } from '../../shared/screens';
 import { hallPictureOfScreens } from '../../shared/stage-layouts';
@@ -147,6 +153,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
 
   // ---- the show, as Main's feed brings it (or as it was last kept) --------------------------
   const mirror = new EngineMirror();
+  // Public permission from Main, held through a brief link drop. No pairing or certificate data changes.
+  let controller: NodeControllerContext | null = null;
+  let controllerReady = false;
   let clock: NodeClock | null = null;
   let offsetMs = 0;
   let fromSaved = false;
@@ -552,6 +561,10 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       case 'engine': {
         const result = mirror.apply(message.message);
         if (result === 'applied') {
+          if (message.message.kind === 'snapshot') {
+            controllerReady = true;
+            viewChanged();
+          }
           heartbeat.changed(mirror.rev);
           fromSaved = false;
           // A whole state from Main keeps the black over it while no Main let in is heard (Session 54).
@@ -560,6 +573,14 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
           saver.update(snapshot(), offsetMs);
           cache.kick();
         } else if (result === 'resync') client?.send({ type: 'resync' });
+        return;
+      }
+      case 'controller': {
+        const parsed = nodeControllerContextSchema.nullable().safeParse(message.context);
+        if (parsed.success) {
+          controller = parsed.data;
+          viewChanged();
+        }
         return;
       }
       case 'screens': {
@@ -658,10 +679,14 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
             log.info(`Node: link ${state}${why ? ` (${why})` : ''}`);
           }
           if (state === 'online') cache.backOnline();
-          else updatePointed(null);
+          else {
+            controllerReady = false;
+            updatePointed(null);
+          }
           viewChanged();
         },
         welcome: (main) => {
+          controllerReady = false;
           // How Main writes the time (Sessions 31–36, I18N-8): this node's clocks show Main's.
           const style = validClockStyle(main.clock);
           if (JSON.stringify(style) !== JSON.stringify(mainClock)) {
@@ -692,7 +717,10 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
           clock = c;
           offsetMs = c.offsetMs;
           // The outputs follow Main's clock: told when it moves by more than a millisecond.
-          if (Math.abs(offsetMs - before) > 1) sendContexts();
+          if (Math.abs(offsetMs - before) > 1) {
+            sendContexts();
+            viewChanged();
+          }
         },
         removed: () => {
           log.warn('Node: Main removed this node; its pairing is forgotten');
@@ -712,6 +740,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     client?.stop();
     client = null;
     paired = null;
+    controller = null;
+    controllerReady = false;
     store.forget();
     manager.reconcile();
     link = { state: 'unpaired', why: link.why, since: Date.now() };
@@ -755,6 +785,13 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       media: cache.status(mirror.state ? inUse().filter((id) => !cache.has(id)).length : 0),
       clock,
       fromSaved,
+      controller: controller
+        ? {
+            ...controller,
+            connected: link.state === 'online' && controllerReady && mainAccess.stopped === null,
+            clockOffsetMs: outputOffset(),
+          }
+        : null,
       stopped: mainAccess.stopped,
       mainVersion: link.state === 'refused' ? mainVersion : null,
       update: updates.view(),

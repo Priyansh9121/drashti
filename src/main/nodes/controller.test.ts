@@ -11,14 +11,17 @@ describe('a paired computer’s shared show view', () => {
       h.messages.length = 0;
       expect(h.service.setController(h.node.id, true).ok).toBe(true);
       expect(h.service.status().nodes[0]?.controller).toBe(true);
-      expect(h.messages).toContainEqual(expect.objectContaining({
-        type: 'to-node', nodeId: h.node.id,
-        message: { type: 'controller', context: expect.objectContaining({ canvasWidth: 1920, canvasHeight: 1080 }) },
-      }));
+      expect(h.messages.filter((m) => m.type === 'to-node').at(-1)).toMatchObject({
+        type: 'to-node',
+        nodeId: h.node.id,
+        message: { type: 'controller', context: { canvasWidth: 1920, canvasHeight: 1080 } },
+      });
       expect(h.nodes.get(h.node.id)).toEqual(h.node);
       expect(h.engine.rev).toBe(before.rev);
       expect(h.engine.current).toEqual(before.state);
-    } finally { await h.close(); }
+    } finally {
+      await h.close();
+    }
   });
 
   it('keeps the choice on Main and sends it again on reconnect; disabling sends null immediately', async () => {
@@ -29,15 +32,24 @@ describe('a paired computer’s shared show view', () => {
       expect(h.service.status().nodes[0]?.controller).toBe(true);
       h.messages.length = 0;
       h.online();
-      expect(h.messages).toContainEqual(expect.objectContaining({
-        type: 'to-node', nodeId: h.node.id,
-        message: { type: 'controller', context: expect.any(Object) },
-      }));
+      expect(
+        h.messages.filter((m) => m.type === 'to-node' && m.message.type === 'controller').at(-1),
+      ).toMatchObject({
+        type: 'to-node',
+        nodeId: h.node.id,
+        message: { type: 'controller', context: { canvasWidth: 1920 } },
+      });
       h.messages.length = 0;
       h.service.setController(h.node.id, false);
-      expect(h.messages).toContainEqual({ type: 'to-node', nodeId: h.node.id, message: { type: 'controller', context: null } });
+      expect(h.messages).toContainEqual({
+        type: 'to-node',
+        nodeId: h.node.id,
+        message: { type: 'controller', context: null },
+      });
       expect(h.service.status().nodes[0]?.controller).toBe(false);
-    } finally { await h.close(); }
+    } finally {
+      await h.close();
+    }
   });
 
   it('refuses a missing computer and malformed permission without changing a paired node', async () => {
@@ -46,7 +58,9 @@ describe('a paired computer’s shared show view', () => {
       expect(h.service.setController('no-longer-paired', true).ok).toBe(false);
       expect(h.service.setController(h.node.id, 'yes').ok).toBe(false);
       expect(h.service.status().nodes[0]?.controller).toBe(false);
-    } finally { await h.close(); }
+    } finally {
+      await h.close();
+    }
   });
 
   it('uses Main’s audience canvas and refreshes it when screens change', async () => {
@@ -58,10 +72,16 @@ describe('a paired computer’s shared show view', () => {
       h.service.setController(h.node.id, true);
       h.messages.length = 0;
       h.service.screensChanged();
-      expect(h.messages).toContainEqual(expect.objectContaining({
-        type: 'to-node', nodeId: h.node.id,
-        message: { type: 'controller', context: expect.objectContaining({ groupId, canvasWidth: 1280, canvasHeight: 720, scaling: 'fill' }) },
-      }));
-    } finally { await h.close(); }
+      expect(h.messages.filter((m) => m.type === 'to-node').at(-1)).toMatchObject({
+        type: 'to-node',
+        nodeId: h.node.id,
+        message: {
+          type: 'controller',
+          context: { groupId, canvasWidth: 1280, canvasHeight: 720, scaling: 'fill' },
+        },
+      });
+    } finally {
+      await h.close();
+    }
   });
 });

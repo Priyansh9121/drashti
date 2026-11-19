@@ -5724,6 +5724,9 @@ function start(): void {
   handle(IPC.nodes.everything, (e, id, on) =>
     fromOperator(e) ? nodes.setEverything(id, on) : notNodesOperator,
   );
+  handle(IPC.nodes.setController, (e, id, on) =>
+    fromOperator(e) ? nodes.setController(id, on) : notNodesOperator,
+  );
   handle(IPC.nodes.reload, (e, nodeId, screenId) => {
     if (!fromOperator(e)) return notNodesOperator;
     const sid = idSchema.safeParse(screenId);
