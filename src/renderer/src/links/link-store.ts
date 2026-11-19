@@ -7,6 +7,7 @@ import {
   DEFAULT_LINK_MAX_HEIGHT,
   linkKind,
   type LinkView,
+  type LinkDownloadOptions,
   waitingKind,
 } from '../../../shared/links';
 import type { NewItem } from '../../../shared/playlists';
@@ -25,6 +26,7 @@ interface LinkRequest {
   url: string;
   playlistId: string | null;
   audio: AudioTarget | null;
+  options?: LinkDownloadOptions;
 }
 
 interface LinkStore {
@@ -148,22 +150,37 @@ export function connectLinks(): void {
 
 export function openLinkDialog(): void {
   connectLinks();
+  if (!prepareWindow()) return;
   useLinks.setState({ open: true, audio: null });
 }
 
 /** Pasting from Audio takes a YouTube video's sound and adds the imported sounds to Audio. */
 export function openLinkForAudio(playlistId: string | null): void {
   connectLinks();
+  if (!prepareWindow()) return;
   useLinks.setState({ open: true, audio: { playlistId } });
 }
 
+function prepareWindow(): boolean {
+  const { view, request } = useLinks.getState();
+  if (request || (linkBusy(view) && view?.phase !== 'looking')) {
+    showImportNotice('A link import is going on. Wait for it to finish, or stop it first.');
+    return false;
+  }
+  void window.drashti.links.reset().then((result) => {
+    if (result.ok) useLinks.setState({ view: result.view });
+  });
+  return true;
+}
+
 export function closeLinkDialog(): void {
+  if (!useLinks.getState().request) void window.drashti.links.reset();
   useLinks.setState({ open: false, audio: null });
 }
 
 async function start(request: LinkRequest): Promise<boolean> {
   const { view, request: pending } = useLinks.getState();
-  if (pending || linkBusy(view)) {
+  if (pending || (linkBusy(view) && view?.phase !== 'looking')) {
     showImportNotice('A link import is going on. Wait for it to finish, or stop it first.');
     return false;
   }
@@ -173,6 +190,7 @@ async function start(request: LinkRequest): Promise<boolean> {
       request.url,
       request.audio !== null,
       request.playlistId !== null,
+      request.options,
     );
     if (result.ok) return true;
     showImportNotice(result.message);
@@ -183,8 +201,8 @@ async function start(request: LinkRequest): Promise<boolean> {
   return false;
 }
 
-/** Start at the paste, with the playlist open then as its destination. */
-export async function importLink(text: string): Promise<boolean> {
+/** Download was pressed: use the playlist open then as its destination. */
+export async function importLink(text: string, options?: LinkDownloadOptions): Promise<boolean> {
   connectLinks();
   const kind = linkKind(text);
   if (kind === null) {
@@ -197,7 +215,24 @@ export async function importLink(text: string): Promise<boolean> {
     return false;
   }
   const { audio } = useLinks.getState();
-  return start({ url: check.url, playlistId: audio ? null : linkPlaylistId(), audio });
+  return start({ url: check.url, playlistId: audio ? null : linkPlaylistId(), audio, options });
+}
+
+/** Checking a pasted link reads metadata only. */
+export async function lookLink(text: string): Promise<void> {
+  const kind = linkKind(text);
+  const check = kind === null ? null : checkLink(kind, text);
+  if (!kind || !check?.ok) {
+    showImportNotice(check && !check.ok ? check.message : 'Paste a share link from YouTube or Dropbox.');
+    return;
+  }
+  try {
+    const result = await window.drashti.links.look(kind, check.url);
+    if (result.ok) useLinks.setState({ view: result.view });
+    else showImportNotice(result.message);
+  } catch {
+    showImportNotice('Drashti could not check the link. Paste it again.');
+  }
 }
 
 export async function stopDownload(): Promise<void> {

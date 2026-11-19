@@ -27,7 +27,7 @@ import type {
   OpeningView,
 } from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
-import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
+import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
@@ -1276,7 +1276,10 @@ export interface InvokeContract {
   [IPC.updates.setAutoCheck]: { args: [on: boolean]; result: UpdateResult };
   [IPC.updates.showFile]: { args: []; result: null };
   [IPC.links.view]: { args: []; result: LinkView };
-  [IPC.links.start]: { args: [text: string, audio: boolean, intoOpenPlaylist: boolean]; result: LinkResult };
+  [IPC.links.start]: {
+    args: [text: string, audio: boolean, intoOpenPlaylist: boolean, options?: LinkDownloadOptions];
+    result: LinkResult;
+  };
   [IPC.links.look]: { args: [kind: LinkKind, link: string]; result: LinkResult };
   [IPC.links.pickFolder]: { args: []; result: LinkResult };
   [IPC.links.download]: { args: [choice?: YouTubeChoice | null]; result: LinkResult };

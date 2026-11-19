@@ -1,5 +1,6 @@
 import { mkdir, open } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import { cutText } from '../../shared/text';
 
 /*
  * Names for what Import from a Link saves (Session 25b): safe on a Mac and
@@ -45,6 +46,23 @@ export function safeName(raw: string, fallback: string): string {
     name = `${name}${keepExt}`;
   }
   return name;
+}
+
+/** The operator edits the stem only; a typed media extension never changes the file’s real type. */
+export function downloadName(raw: string | undefined, title: string, extension: string): string {
+  const stem = (value: string) => {
+    let name = safeName(value, '');
+    const suffix = extname(name);
+    if (
+      suffix &&
+      (suffix.toLowerCase() === extension.toLowerCase() ||
+        /^\.(mp[34]|mov|mkv|webm|m4a|aac|wav|flac|ogg|opus|pptx?|pdf|zip|srt)$/iu.test(suffix))
+    )
+      name = cutText(name, name.length - suffix.length);
+    return /^[\s._-]*$/u.test(name) ? '' : name;
+  };
+  const fallback = stem(title.replace(/[\\/]/gu, '-')) || 'Download';
+  return safeName(`${stem(raw ?? '') || fallback}${extension}`, `Download${extension}`);
 }
 
 /** "clip.mp4", then "clip (2).mp4", "clip (3).mp4"… */

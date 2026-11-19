@@ -190,6 +190,11 @@ export interface LinkLook {
 /** MP4 (the video) or MP3 (its sound only). */
 export type YouTubeType = 'mp4' | 'mp3';
 
+/** Choices made in the link window; the media extension is supplied by Drashti. */
+export interface LinkDownloadOptions {
+  name?: string;
+}
+
 /** What a YouTube download is to be: asked for with each download. */
 export interface YouTubeChoice {
   type: YouTubeType;
@@ -245,6 +250,8 @@ export interface LinkView {
   folder: string;
   /** The previous folder was unavailable, so this request uses the usual downloads folder. */
   folderFallback?: boolean;
+  /** A safe title without the extension, for the editable Name field. */
+  suggestedName?: string;
   progress: { done: number; total: number | null } | null;
   /** Why it waits, in words. */
   waitingFor: string | null;

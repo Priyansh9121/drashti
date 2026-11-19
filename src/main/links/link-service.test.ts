@@ -764,9 +764,9 @@ describe('the highest video quality (Session 25c)', () => {
       expect(r.ok ? '' : r.message).toContain('Choose 1080p, 1440p, 2160p (4K) or 4320p (8K)');
     }
     expect(h.stored.maxHeight).toBe(1080);
-    h.air.on = true;
     h.service.look('dropbox', FILE_LINK);
     await until(() => h.service.view().phase === 'looked');
+    h.air.on = true;
     h.service.download();
     expect(h.service.view().phase).toBe('waiting');
     const busy = h.service.setMaxHeight(1440);

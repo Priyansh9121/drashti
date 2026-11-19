@@ -196,7 +196,8 @@ const bridge: DrashtiBridge = {
   },
   links: {
     view: () => invoke(IPC.links.view),
-    start: (text, audio, intoOpenPlaylist) => invoke(IPC.links.start, text, audio, intoOpenPlaylist),
+    start: (text, audio, intoOpenPlaylist, options) =>
+      invoke(IPC.links.start, text, audio, intoOpenPlaylist, options),
     look: (kind, link) => invoke(IPC.links.look, kind, link),
     pickFolder: () => invoke(IPC.links.pickFolder),
     download: (choice) => invoke(IPC.links.download, choice ?? null),

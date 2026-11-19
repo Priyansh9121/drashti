@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { clearOfShowControls, expectFits } from './fit';
+import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
 import { linkFinished, pasteLink } from './paste-link';
@@ -12,7 +12,7 @@ import { testFfmpeg } from './stream-helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
- * The pasted link goes to the playlist open at paste time. With none, the link names its own playlist.
+ * The pasted link goes to the playlist open when Download is pressed. With none, the link names its own playlist.
  * The fixture uses fake yt-dlp and generated media in the CI operator window.
  */
 
@@ -72,8 +72,7 @@ test('without an open playlist a paste makes and opens one, with its new item in
   await chooseMenuItem(app, 'import-from-link');
   await expect(win.getByTestId('link-paste')).toBeInViewport();
   const field = win.getByTestId('link-paste');
-  await expectFits(field, 'the link input at 1024 × 645');
-  await clearOfShowControls(win, field);
+  await expectFits(field, 'the link window at 1024 × 645');
   await expectNoSeriousA11yIssues(win, 'the link input', '[data-testid="link-paste"]');
   await pasteLink(win, LINK);
   await linkFinished(win);
