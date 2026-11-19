@@ -444,6 +444,145 @@ describe('a deck’s own Wipe drawn on a screen without a graphics chip: PowerPo
   });
 });
 
+/** A slide's band boxes as the JSX leaves them, with the filter a deck's own Cover or Uncover shades inside them (X11). */
+const shadedBandBoxes = (): BandBoxes => {
+  const rest = () => ({
+    style: {
+      inset: '0',
+      width: '',
+      height: '',
+      maskImage: '',
+      transform: '',
+      willChange: '',
+      overflow: '',
+      filter: '',
+    },
+  });
+  return { holder: rest() as unknown as HTMLDivElement, slide: rest() as unknown as HTMLDivElement };
+};
+
+describe('a deck’s own Push, Cover and Uncover drawn on a screen without a graphics chip: each moving slide a layer of its own, moved in whole device pixels (X11)', () => {
+  afterEach(() => {
+    setDrawsWithoutChip(false);
+  });
+  /** A 4:3 slide fitted to a 16:9 screen: bars either side. */
+  const BARS = { x: 240, y: 0, width: 1440, height: 1080 };
+  /** Device pixels a canvas pixel: CI's hall screen (1024 wide), the stream's page (1920), the operator's LIVE (342). */
+  const SCALES = [1024 / 1920, 1, 342 / 1920];
+  /** The model's move (phase1 draws it) in canvas px: px of the slide where it is placed, else % of the layer's box. */
+  const modelPx = (transform: string, along: number): number => {
+    const m = /^translate[XY]\((-?[\d.e+-]+)(px|%)\)$/u.exec(transform);
+    if (!m) throw new Error(`not a move: ${transform}`);
+    return m[2] === '%' ? (Number(m[1]) / 100) * along : Number(m[1]);
+  };
+  const LAYER = /^translate3d\((-?[\d.e+-]+)px, (-?[\d.e+-]+)px, 0px\)$/u;
+  const paint = (native: DeckNativeTransition, place: typeof FULL, k: number | undefined, p: number) => {
+    const coming = box();
+    const going = box();
+    const bandIn = shadedBandBoxes();
+    const bandOut = shadedBandBoxes();
+    paintLayers(
+      { ...layersOf(coming, going), bandIn, bandOut },
+      { ...deckPaint(native, place), ...(k === undefined ? {} : { devicePerCanvas: k }) },
+      p,
+    );
+    return { coming, going, bandIn, bandOut };
+  };
+
+  it('moves each moving slide by a 3D translation in whole device pixels, within half a device pixel of PowerPoint’s move, its shade inside it', () => {
+    setDrawsWithoutChip(true);
+    for (const k of SCALES)
+      for (const deckEffect of ['push', 'cover', 'uncover'] as const)
+        for (const direction of ['left', 'up'] as const)
+          for (const place of [FULL, BARS]) {
+            const native: DeckNativeTransition = { kind: 'slide', deckEffect, durationMs: 700, direction };
+            const along = direction === 'left' ? 1920 : 1080;
+            for (const p of [0.2, 0.5, 0.83]) {
+              const { coming, going, bandIn, bandOut } = paint(native, place, k, p);
+              const model = deckTransitionFrame(
+                native,
+                p,
+                'calm',
+                place === FULL ? undefined : { in: place, out: place },
+              );
+              const what = `${deckEffect} ${direction} ${String(place.width)} wide, ${k.toFixed(3)} a px, at ${String(p)}`;
+              for (const [el, f, band] of [
+                [coming, model.in, bandIn],
+                [going, model.out, bandOut],
+              ] as const) {
+                expect(el.style.filter, what).toBe('');
+                expect(band.holder?.style.filter, what).toBe(f.filter ?? '');
+                if (f.transform === '') {
+                  expect(el.style.transform, what).toBe('');
+                  continue;
+                }
+                const m = LAYER.exec(el.style.transform);
+                if (!m) throw new Error(`${what}: not a layer's move: ${el.style.transform}`);
+                const [x, y] = [Number(m[1]), Number(m[2])];
+                const moved = direction === 'left' ? x : y;
+                expect(direction === 'left' ? y : x, what).toBe(0);
+                expect(Math.abs(moved * k - Math.round(moved * k)), what).toBeLessThan(1e-6);
+                expect(Math.abs(moved - modelPx(f.transform, along)), what).toBeLessThanOrEqual(
+                  0.5 / k + 1e-9,
+                );
+              }
+            }
+          }
+  });
+
+  it('draws as before where the move has not begun or is over, with a graphics chip, under Drashti’s own transition set over the deck’s, and where the screen’s pixels are not known', () => {
+    const native: DeckNativeTransition = {
+      kind: 'slide',
+      deckEffect: 'cover',
+      durationMs: 700,
+      direction: 'left',
+    };
+    const asBefore = (
+      drawn: ReturnType<typeof paint>,
+      model: ReturnType<typeof deckTransitionFrame>,
+      what: string,
+    ) => {
+      expect([drawn.coming.style.transform, drawn.going.style.transform], what).toEqual([
+        model.in.transform,
+        model.out.transform,
+      ]);
+      expect([drawn.coming.style.filter, drawn.going.style.filter], what).toEqual([
+        model.in.filter ?? '',
+        model.out.filter ?? '',
+      ]);
+      expect([drawn.bandIn.holder?.style.filter, drawn.bandOut.holder?.style.filter], what).toEqual(['', '']);
+    };
+    setDrawsWithoutChip(true);
+    for (const p of [0, 1])
+      asBefore(paint(native, FULL, 1024 / 1920, p), deckTransitionFrame(native, p), `at ${String(p)}`);
+    asBefore(
+      paint(native, FULL, undefined, 0.5),
+      deckTransitionFrame(native, 0.5),
+      'the screen’s pixels not known',
+    );
+    const over: DeckNativeTransition = { ...native, over: { kind: 'dissolve', durationMs: 700 } };
+    asBefore(paint(over, FULL, 1024 / 1920, 0.5), deckTransitionFrame(over, 0.5), 'under a dissolve');
+    setDrawsWithoutChip(false);
+    asBefore(paint(native, FULL, 1024 / 1920, 0.5), deckTransitionFrame(native, 0.5), 'with a chip');
+  });
+
+  it('Back part-way: the slide that was coming in is drawn whole, no layer’s move and no shade left on it or inside it (TX-1)', () => {
+    setDrawsWithoutChip(true);
+    for (const deckEffect of ['push', 'cover'] as const) {
+      const native: DeckNativeTransition = { kind: 'slide', deckEffect, durationMs: 700, direction: 'left' };
+      const { coming, bandIn } = paint(native, FULL, 1024 / 1920, 0.4);
+      expect(coming.style.transform, deckEffect).toMatch(LAYER);
+      if (deckEffect === 'cover') expect(bandIn.holder?.style.filter).toBe('brightness(0.986)');
+      paintWaiting({ in: box(), out: coming, bandOut: bandIn });
+      expect([coming.style.transform, coming.style.filter, bandIn.holder?.style.filter], deckEffect).toEqual([
+        '',
+        '',
+        '',
+      ]);
+    }
+  });
+});
+
 describe('the stream’s page draws a slide only once its pictures can be drawn (Session 58, Q57-35)', () => {
   const wait = (by: number) => ({ kind: 'cut' as const, ms: 1, start: null, picturesBy: by });
 
