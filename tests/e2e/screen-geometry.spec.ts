@@ -227,7 +227,7 @@ async function surfacesWhile(
   pids: number[],
   file: string,
   during: () => Promise<void>,
-): Promise<{ reasons: string[]; draws: number }> {
+): Promise<{ reasons: string[]; draws: number; rasters: number }> {
   await app.evaluate(async ({ contentTracing }) => {
     await contentTracing.startRecording({
       included_categories: ['cc'],
@@ -251,6 +251,8 @@ async function surfacesWhile(
       ),
     ].sort(),
     draws: mine.filter((e) => e.name === 'ProxyImpl::ScheduledActionDraw').length,
+    // Each tile of a layer painted (rastered) again.
+    rasters: mine.filter((e) => e.name === 'RasterTask').length,
   };
 }
 
@@ -345,6 +347,77 @@ test('a pinned picture is drawn straight through its warp: no clip under it make
     reasons.filter((r) => r.includes('clip')),
     `the render surfaces' reasons: ${reasons.join(', ')}`,
   ).toEqual([]);
+  await app.close();
+});
+
+test('a pinned picture keeps a dissolve’s frames: with a graphics chip its slides are layers of their own, rastered once, not again at every frame', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp({ ...ONE_OUTPUT, DRASHTI_TEST_MOTION_PROBE: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const screenId = await setUpScreen(win, 'Placeholder hall', 1);
+  const out = await outputFor(app, screenId);
+  await outputReady(out);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-geometry-'));
+  const [picture = ''] = await importAndGetIds(win, [
+    await drawPicture(win, join(dir, 'Placeholder quarters.png'), quarters(), HD),
+  ]);
+  const slides = await makeSlides(win, 'Placeholder pictures', [{ picture }, { picture }], {
+    kind: 'dissolve',
+    durationMs: 800,
+  });
+  const go = (slideIndex: number) =>
+    win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c), {
+      type: 'goLive',
+      presentationId: slides,
+      slideIndex,
+    } satisfies EngineCommand);
+  await go(0);
+  expect(await bridge(win).update(screenId, KEYSTONE)).toBe('ok');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-geometry', 'set');
+  // One dissolve there and back first: what is drawn for the first time is not counted.
+  for (const slide of [1, 0]) {
+    await go(slide);
+    await letTimePass(win, 1300, 'a dissolve, then still');
+  }
+  const pids = await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .filter((w) => (w.webContents.getURL().split('?')[0] ?? '').endsWith('output.html'))
+      .map((w) => w.webContents.getOSProcessId()),
+  );
+  const now = () => out.evaluate(() => Date.now());
+  let from = 0;
+  let until = 0;
+  const { draws, rasters } = await surfacesWhile(app, pids, join(dir, 'rasters.json'), async () => {
+    from = await now();
+    for (const slide of [1, 0, 1, 0]) {
+      await go(slide);
+      await letTimePass(win, 1300, 'a dissolve, then still');
+    }
+    until = await now();
+  });
+  // The frames the screen drew meanwhile (its motion probe: every frame it drew), and how many were late.
+  const frames = await out.evaluate(
+    ({ from, until }) =>
+      (
+        globalThis as { drashtiMotionProbe?: { read(a: number, b: number): { frames: number[] } } }
+      ).drashtiMotionProbe?.read(from, until).frames ?? [],
+    { from, until },
+  );
+  const gaps = frames.slice(1).map((t, k) => t - (frames[k] ?? t));
+  const late = gaps.filter((g) => g > 25).length;
+  expect(gaps.length, 'the screen drew its frames').toBeGreaterThan(100);
+  expect(late / gaps.length, `${String(late)} of ${String(gaps.length)} frames over 25 ms`).toBeLessThan(
+    0.25,
+  );
+  // With a graphics chip, Chromium rasters a pinned picture at a whole pixel a canvas pixel at least (3.5 times the
+  // plain picture's on a 1024 x 768 display), so a slide painted afresh each frame of its dissolve was rastered again
+  // each frame: as layers of their own, the slides are rastered once. Without a chip (Chromium draws in software) the
+  // layers would cost more than the painting: there they are not made (render/canvas-clip.ts).
+  const chipless = (await out.getByTestId('output-root').getAttribute('data-chipless')) === 'true';
+  expect(draws, 'the hall screen drew its frames while traced').toBeGreaterThan(100);
+  if (!chipless)
+    expect(rasters, `${String(rasters)} tiles rastered in ${String(draws)} frames`).toBeLessThan(draws / 4);
   await app.close();
 });
 
