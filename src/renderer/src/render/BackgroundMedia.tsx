@@ -22,7 +22,7 @@ import {
   slotsReducer,
 } from './background-slots';
 import { OBJECT_FIT } from './media-style';
-import { CanvasClip, OwnLayers } from './canvas-clip';
+import { OwnLayers } from './canvas-clip';
 import { type Playback, startPlayback } from './playback';
 import { engineNow } from './clock';
 import { dissolveCurve } from './transition-frame';
@@ -86,8 +86,6 @@ function VideoSlot({
       p();
     };
   }, [key, mediaId, attempt, startedAt, dispatch]);
-  // On a screen warped out of square it draws past its box where it fills it (x27: render/canvas-clip.ts).
-  const canvasClip = useContext(CanvasClip);
   const seekAt = layer.seek?.at;
   const clipKey = `${String(layer.clip?.startMs)}/${String(layer.clip?.endMs)}`;
   useEffect(() => {
@@ -105,7 +103,7 @@ function VideoSlot({
       disablePictureInPicture
       preload="auto"
       loop={layer.loop && !layer.clip}
-      style={canvasClip ? style(layer.fit, visible) : { ...style(layer.fit, visible), overflow: 'visible' }}
+      style={style(layer.fit, visible)}
     />
   );
 }
@@ -123,8 +121,6 @@ function ImageSlot({
   const { key, layer, attempt } = slot;
   const { mediaId } = layer;
   const urlOf = useMediaUrl();
-  // On a screen warped out of square it draws past its box where it fills it (x27: render/canvas-clip.ts).
-  const canvasClip = useContext(CanvasClip);
   useEffect(() => {
     const img = ref.current;
     if (!img) return;
@@ -163,7 +159,7 @@ function ImageSlot({
           data-bg-slot={key}
           data-state={slot.state}
           data-media-id={mediaId}
-          style={canvasClip ? s : { ...s, overflow: 'visible' }}
+          style={s}
         />
       )}
     </Looked>
