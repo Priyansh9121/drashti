@@ -34,7 +34,7 @@ interface TraceEvent {
   tid?: number;
   ts?: number;
   dur?: number;
-  args?: { desc?: string };
+  args?: { desc?: string; name?: string };
 }
 
 const startTrace = (app: ElectronApplication, categories: string[]) =>
@@ -58,10 +58,18 @@ function traceEvents(file: string): TraceEvent[] {
   return Array.isArray(parsed) ? parsed : (parsed.traceEvents ?? []);
 }
 
-/** The new pipelines a trace saw: each one's description, and whether a page's tile drawing made it. */
-function newPipelines(events: TraceEvent[]): { desc: string; tiles: boolean }[] {
+/**
+ * The new pipelines a trace saw: each one's description, whether a page's tile drawing made it, and whether the
+ * compositor (Viz, in the GPU process) made it.
+ */
+function newPipelines(events: TraceEvent[]): { desc: string; tiles: boolean; compositor: boolean }[] {
   const tileWork = events.filter(
     (e) => e.ph === 'X' && e.name === 'RendererRasterWorker' && e.ts !== undefined && e.dur !== undefined,
+  );
+  const compositorThreads = new Set(
+    events
+      .filter((e) => e.ph === 'M' && e.name === 'thread_name' && e.args?.name === 'VizCompositorThread')
+      .map((e) => `${String(e.pid)}:${String(e.tid)}`),
   );
   return events
     .filter((e) => e.ph === 'X' && e.name === 'createGraphicsPipeline' && e.ts !== undefined)
@@ -74,6 +82,7 @@ function newPipelines(events: TraceEvent[]): { desc: string; tiles: boolean }[] 
           (w.ts ?? 0) <= (e.ts ?? 0) &&
           (e.ts ?? 0) <= (w.ts ?? 0) + (w.dur ?? 0),
       ),
+      compositor: compositorThreads.has(`${String(e.pid)}:${String(e.tid)}`),
     }));
 }
 
@@ -159,6 +168,11 @@ test('opening the Stream panel mid-show makes no new kind of drawing in any page
     const inTiles = opened.filter((p) => p.tiles).map((p) => p.desc);
     const why = `made in a page's tiles as the panel opened (${String(opened.length)} new in all)`;
     expect(inTiles, why).toEqual([]);
+    // Nor by the compositor for a picture under rounded corners: the panel's preview in its Program box (the red's
+    // trace, x21-1119-155149-81097: made new as the panel opened on both tries; the stream's page's own copies of its
+    // picture are made beside it, in the GPU process's main thread, and are not the panel's).
+    const rounded = opened.filter((p) => p.compositor && p.desc.includes('AnalyticClip')).map((p) => p.desc);
+    expect(rounded, 'made by the compositor under rounded corners as the panel opened').toEqual([]);
   } finally {
     await app.close();
   }
