@@ -262,6 +262,18 @@ describe('OSC retry and clock safety', () => {
 });
 
 describe('OSC ingress and action bounds', () => {
+  it('refuses an exhausted sender before spending the shared quota needed by another console', async () => {
+    vi.useFakeTimers();
+    const t = setup();
+    await t.enable(['10.0.0.1', '10.0.0.2']);
+    for (let n = 0; n < 40; n++) t.sockets[0]?.packet(message(), '10.0.0.1');
+    expect(t.actions).toHaveLength(40);
+    for (let n = 0; n < 100; n++) t.sockets[0]?.packet(message(), '10.0.0.1');
+    t.sockets[0]?.packet(message(), '10.0.0.2');
+    expect(t.actions).toHaveLength(41);
+    await t.service.close();
+  });
+
   it('limits actions at execution too, so queued bundles cannot double the burst when due', async () => {
     vi.useFakeTimers();
     const t = setup();
