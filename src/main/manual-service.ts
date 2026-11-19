@@ -52,6 +52,8 @@ export interface ManualPrinterDeps {
   /** Printing itself (manual-print.ts; a test's stand-in). */
   print?: typeof printManual;
   write?: (file: string, data: Buffer) => void;
+  /** The red commit's stand-in (x37): not yet asked. */
+  live?: () => boolean;
 }
 
 /** The PDF's name the save dialog suggests. */
