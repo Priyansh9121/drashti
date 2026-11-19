@@ -123,6 +123,8 @@ export const YOUTUBE_WORDS = {
   noStorage:
     'This computer’s secure storage for passwords is not available, so Drashti will not keep a YouTube sign-in (it would have to be kept as plain text). Sign in from a computer where it works.',
   testGuard: 'A test reaches only the stand-in for Google on this computer (127.0.0.1).',
+  signOutNote:
+    'Sign out forgets the sign-in on this computer only. To sign every computer out at once, remove Drashti’s access in your Google Account: go to its linked apps page (myaccount.google.com/linkedapps), choose Access to your Google Account, then your Google project’s app, See details, Remove access and Confirm.',
 } as const;
 
 /** YouTube's daily allowance is used up: it comes back at midnight Pacific time (Google's own rule). */
