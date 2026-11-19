@@ -49,6 +49,24 @@ async function setup() {
   return { source, target, run, content };
 }
 describe('kirtan bundle import and re-import', () => {
+  it('skips an unchanged kirtan on a near-full receiving disk without requiring write workspace', async () => {
+    const t = await setup();
+    await t.source.exportBundle(false);
+    await t.run();
+    const temp = join(t.target.dir, 'Placeholder second unpack disk');
+    await mkdir(temp);
+    const summary = await runImport({
+      db: t.target.db,
+      media: t.target.media,
+      runId: randomUUID(),
+      paths: [t.source.output],
+      options: {},
+      tempDir: temp,
+      freeBytes: (dir) => (dir === temp ? 1024 ** 4 : BUNDLE_LIMITS.reserve + 4096),
+    });
+    expect(summary.totals).toMatchObject({ skipped: 1, failed: 0 });
+    expect(t.target.db.prepare('SELECT count(*) FROM presentations').pluck().get()).toBe(1);
+  });
   it('keeps every deck step clip, last frame and hold reference when media bytes are omitted', async () => {
     const t = await setup();
     const clip = t.source.media.addMissing('Placeholder clip.mp4', 'video', {
@@ -350,6 +368,29 @@ describe('damaged and hostile kirtan bundles', () => {
       ];
     });
   }
+
+  for (const part of ['manifest', 'kirtan'] as const)
+    it(`refuses invalid UTF-8 in the ${part}, even with matching checksums`, async () => {
+      const t = await setup();
+      const entries = await parts(t);
+      const at = part === 'manifest' ? 0 : 1;
+      const entry = must(entries[at]);
+      const bytes = Buffer.from(String(entry.data), 'utf8');
+      const offset = bytes.indexOf(part === 'manifest' ? 'Placeholder.wav' : 'Placeholder');
+      if (offset < 0) throw new Error('Missing placeholder bytes');
+      bytes[offset] = 0xff;
+      entries[at] = { ...entry, data: bytes };
+      if (part === 'kirtan') {
+        const manifest = JSON.parse(String(must(entries[0]).data)) as BundleManifest;
+        must(manifest.kirtans[0]).sha256 = hash(bytes);
+        must(manifest.kirtans[0]).bytes = bytes.length;
+        entries[0] = { name: 'manifest.json', data: JSON.stringify(manifest) };
+      }
+      const path = join(t.source.dir, 'Invalid UTF8.drashti-kirtans');
+      await writeFile(path, makeZip(entries));
+      expect((await t.run(path)).summary.totals.failed).toBe(1);
+      expect(t.target.db.prepare('SELECT count(*) FROM presentations').pluck().get()).toBe(0);
+    });
 
   for (const field of [
     'darken',
