@@ -86,6 +86,15 @@ function applyKirtan(
     item.message = 'Skipped the incoming change as chosen.';
     return item;
   }
+  // A skipped item needs no row/index/WAL workspace. Check the receiving volume only for a write.
+  const databaseBytes = descriptor.bytes * 4 + 1024 ** 2;
+  if (
+    o.db.name !== ':memory:' &&
+    (o.freeBytes ?? diskFreeBytes)(dirname(o.db.name)) - databaseBytes < BUNDLE_LIMITS.reserve
+  )
+    throw new Error(
+      'There is not enough free space on the library’s disk for this kirtan while keeping 2 GB free for the show.',
+    );
   const mediaRepo = new MediaRepo(o.db);
   const mediaMap = new Map<string, string>();
   const issues: ImportIssue[] = [];
@@ -203,18 +212,6 @@ function applyKirtan(
 /** ZIP work and media copies run outside the database's write lock. */
 export async function importKirtanBundle(o: NativeBundleImport): Promise<void> {
   await withKirtanBundle(o.path, o, async (bundle) => {
-    // Unpacking and the database may live on different volumes. Include row/index/WAL workspace.
-    const databaseBytes = bundle.manifest.kirtans.reduce((n, k) => n + k.bytes, 0) * 4 + 1024 ** 2;
-    const checkDatabaseSpace = () => {
-      if (
-        o.db.name !== ':memory:' &&
-        (o.freeBytes ?? diskFreeBytes)(dirname(o.db.name)) - databaseBytes < BUNDLE_LIMITS.reserve
-      )
-        throw new Error(
-          'There is not enough free space on the library’s disk for these kirtans while keeping 2 GB free for the show.',
-        );
-    };
-    checkDatabaseSpace();
     const staged = new Map<string, StagedMedia>();
     for (const file of bundle.media) {
       o.signal?.throwIfAborted();
@@ -226,7 +223,6 @@ export async function importKirtanBundle(o: NativeBundleImport): Promise<void> {
         throw new Error('The media does not match its bundle description.');
       staged.set(file.id, { ...stage.staged, name: file.name });
     }
-    checkDatabaseSpace();
     for (const [index, k] of bundle.kirtans.entries()) {
       o.signal?.throwIfAborted();
       if (o.isCancelled?.()) return;

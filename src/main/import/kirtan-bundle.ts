@@ -24,6 +24,16 @@ import {
 export { BUNDLE_LIMITS } from './kirtan-bundle-schema';
 const sha = (data: Buffer) => createHash('sha256').update(data).digest('hex');
 
+async function bundleJson(path: string): Promise<unknown> {
+  const bytes = await readFile(path);
+  try {
+    const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    return value;
+  } catch {
+    throw new Error('The bundle JSON is damaged or is not valid UTF-8.');
+  }
+}
+
 /** Media ids in every supported slide field, including decks and the editor's master/design. */
 export function bundleMediaIds(rows: ContentRows): string[] {
   const found = new Set<string>();
@@ -441,7 +451,7 @@ export async function withKirtanBundle<T>(
         if (!manifestEntry) throw new Error('The bundle has no manifest.');
         const manifestPath = join(work, 'manifest.json');
         await checkedEntry(zip, manifestEntry, manifestPath, cdOffset);
-        const parsed = bundleManifestSchema.safeParse(JSON.parse(await readFile(manifestPath, 'utf8')));
+        const parsed = bundleManifestSchema.safeParse(await bundleJson(manifestPath));
         if (!parsed.success)
           throw new Error('The bundle manifest has an unknown version, invalid value or unsafe path.');
         const manifest = parsed.data;
@@ -480,9 +490,7 @@ export async function withKirtanBundle<T>(
         const kirtans: BundleKirtan[] = [];
         const mediaIds = new Set(manifest.media.map((m) => m.id));
         for (const k of manifest.kirtans) {
-          const result = bundleKirtanSchema.safeParse(
-            JSON.parse(await readFile(join(work, ...k.entry.split('/')), 'utf8')),
-          );
+          const result = bundleKirtanSchema.safeParse(await bundleJson(join(work, ...k.entry.split('/'))));
           if (!result.success || result.data.content.presentationId !== k.id)
             throw new Error('The bundle has invalid kirtan data or references.');
           if (bundleMediaIds(result.data.content).some((id) => !mediaIds.has(id)))
