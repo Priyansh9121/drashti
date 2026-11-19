@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import { idSchema } from './model-schema';
 
+export const KIRTAN_BUNDLE_LIMIT = 1000;
+
 export const kirtanBundleExportSchema = z
   .object({
-    presentationIds: z.array(idSchema).min(1).max(1000),
+    presentationIds: z.array(idSchema).min(1).max(KIRTAN_BUNDLE_LIMIT),
     includeMedia: z.boolean(),
   })
   .strict();

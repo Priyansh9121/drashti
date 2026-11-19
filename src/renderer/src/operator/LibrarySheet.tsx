@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
+import { KirtanBundleButton, KirtanBundleStatus } from '../library/KirtanBundleExport';
 import { importPaths } from '../library/import-store';
 import { closeLibrary, openLibrary, useLibraryTab } from '../library/library-store';
 import { Button, IconButton } from '../ui/Button';
@@ -129,6 +130,7 @@ function OpenLibrarySheet({ platform }: { platform: string }) {
         <h2 id="library-sheet-title" className="min-w-0 flex-1 truncate text-sm font-bold text-heading">
           Library
         </h2>
+        <KirtanBundleButton />
         <IconButton
           icon={X}
           label="Close the library"
@@ -138,6 +140,7 @@ function OpenLibrarySheet({ platform }: { platform: string }) {
         />
       </div>
       <PresentationList platform={platform} />
+      <KirtanBundleStatus />
       {dropProblem && (
         <Notice tone="warning" compact className="mx-3 mb-2" onDismiss={() => setDropProblem(null)}>
           {dropProblem}
