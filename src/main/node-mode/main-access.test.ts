@@ -102,3 +102,45 @@ describe('a node and its Main’s access (Session 54)', () => {
     expect(access.stopped).toBe('main-stopped');
   });
 });
+
+describe('an explicitly enabled controller’s screens', () => {
+  it('hold the last show beyond a link loss, but obey an explicit stop from Main', () => {
+    const { access, move, changes } = setup();
+    access.heard(true);
+    access.setController(true);
+    const before = changes();
+    move(TWO_MINUTES * 5);
+    expect(access.stopped).toBeNull();
+    expect(access.stop).toBeNull();
+    expect(changes()).toBe(before);
+    access.heard(false);
+    expect(access.stopped).toBe('main-stopped');
+    move(TWO_MINUTES * 5);
+    expect(access.stopped).toBe('main-stopped');
+    access.heard(true);
+    move(TWO_MINUTES * 5);
+    expect(access.stopped).toBeNull();
+  });
+
+  it('restores the ordinary node timeout when Main removes the controller permission', () => {
+    const { access, move } = setup();
+    access.heard(true);
+    access.setController(true);
+    move(TWO_MINUTES * 5);
+    access.setController(false);
+    move(TWO_MINUTES - 1);
+    expect(access.stopped).toBeNull();
+    move(1);
+    expect(access.stopped).toBe('not-heard');
+  });
+
+  it('does not lift an existing stop just because controller permission arrives', () => {
+    const { access, move } = setup();
+    access.heard(false);
+    access.setController(true);
+    move(TWO_MINUTES * 5);
+    expect(access.stopped).toBe('main-stopped');
+    access.heard(true);
+    expect(access.stopped).toBeNull();
+  });
+});
