@@ -165,9 +165,34 @@ export function downloadHostAllowed(raw: string): boolean {
   );
 }
 
+/** A caption language selected from yt-dlp’s metadata; source is its exact lookup code. */
+export interface LinkCaptionTrack {
+  language: string;
+  source: string;
+  kind: 'creator' | 'automatic';
+}
+
+export interface LinkCaptionPreferences {
+  enabled: boolean;
+  /** Null follows the downloads folder, in Captions; an explicit folder is never recreated if missing. */
+  folder: string | null;
+}
+
+export interface LinkSavedCaptions {
+  files: string[];
+  failed: string[];
+  learningSkipped: boolean;
+  learningFolder: string | null;
+}
+
 /** A YouTube video, as yt-dlp describes it before the download (Session 25c). */
 export interface VideoDetails {
   title: string;
+  id?: string | null;
+  channel?: string | null;
+  uploadDate?: string | null;
+  language?: string | null;
+  captions?: LinkCaptionTrack[];
   /** In seconds, when YouTube says. */
   duration: number | null;
   /** The heights it offers, tallest first, each with about how big its MP4 would be (null: not said). */
@@ -193,6 +218,7 @@ export type YouTubeType = 'mp4' | 'mp3';
 /** Choices made in the link window; the media extension is supplied by Drashti. */
 export interface LinkDownloadOptions {
   name?: string;
+  captions?: boolean;
 }
 
 /** What a YouTube download is to be: asked for with each download. */
@@ -252,6 +278,9 @@ export interface LinkView {
   folderFallback?: boolean;
   /** A safe title without the extension, for the editable Name field. */
   suggestedName?: string;
+  downloadCaptions?: boolean;
+  captionsFolder?: string;
+  captions?: LinkSavedCaptions | null;
   progress: { done: number; total: number | null } | null;
   /** Why it waits, in words. */
   waitingFor: string | null;

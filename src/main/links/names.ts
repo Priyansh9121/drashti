@@ -1,4 +1,5 @@
-import { mkdir, open } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, open, rm } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { cutText } from '../../shared/text';
 
@@ -79,12 +80,17 @@ const exists = (error: unknown) => (error as NodeJS.ErrnoException).code === 'EE
  * "name (n)". The file is created empty there, so no one else can take it;
  * the caller renames its finished download over it.
  */
-export async function claimFile(dir: string, name: string): Promise<string> {
+export async function claimFile(dir: string, name: string, besideSuffixes: string[] = []): Promise<string> {
   for (let n = 1; n < 10_000; n++) {
     const path = join(dir, nth(name, n, false));
     try {
       const handle = await open(path, 'wx');
       await handle.close();
+      const stem = cutText(path, path.length - extname(path).length);
+      if (besideSuffixes.some((suffix) => existsSync(`${stem}${suffix}`))) {
+        await rm(path);
+        continue;
+      }
       return path;
     } catch (error) {
       if (!exists(error)) throw error;
