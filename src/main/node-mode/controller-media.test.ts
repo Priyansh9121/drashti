@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { MediaCache } from './media-cache';
 
 describe('a controller’s next-video still', () => {
-  it('uses only the hash of a file already copied here, and refuses missing or changed copies', () => {
+  it('uses only the hash of a file already copied here, and refuses missing or changed copies', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-controller-media-'));
     const sha256 = 'a'.repeat(64);
     const mediaId = 'placeholder-video';
@@ -32,7 +32,7 @@ describe('a controller’s next-video still', () => {
       cache.setWanted([{ id: mediaId, sha256: 'b'.repeat(64), ext: 'webm', bytes: 4 }]);
       expect(cache.hashFor(mediaId)).toBeNull();
     } finally {
-      cache.close();
+      await cache.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });

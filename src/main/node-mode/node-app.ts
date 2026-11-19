@@ -194,16 +194,19 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     const stop = mainAccess.stop;
     return stop && !state.stopped ? { ...state, stopped: stop } : state;
   };
-  const snapshot = (): EngineSnapshotMessage => ({
+  const snapshot = (outputs = true): EngineSnapshotMessage => ({
     kind: 'snapshot',
     version: ENGINE_STATE_VERSION,
     rev: mirror.rev,
-    state: shown(mirror.state ?? initialEngineState()),
+    state: outputs ? shown(mirror.state ?? initialEngineState()) : (mirror.state ?? initialEngineState()),
     sentAt: engineNow(),
     ...(mirror.session !== undefined ? { session: mirror.session } : {}),
   });
   const transport = new IpcTransport((error, target) => {
     log.warn(`Node: could not send the show to window ${target.id}`, error);
+  });
+  const controllerTransport = new IpcTransport((error, target) => {
+    log.warn(`Node: could not send the shared show view to window ${target.id}`, error);
   });
   const saver = new ShowSaver(store, (m) => {
     log.warn(`Node: ${m}`);
@@ -573,6 +576,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
           fromSaved = false;
           // A whole state from Main keeps the black over it while no Main let in is heard (Session 54).
           const m = message.message;
+          controllerTransport.broadcast(m);
           transport.broadcast(m.kind === 'snapshot' ? { ...m, state: shown(m.state) } : m);
           saver.update(snapshot(), offsetMs);
           cache.kick();
@@ -587,6 +591,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         const parsed = nodeControllerContextSchema.nullable().safeParse(message.context);
         if (parsed.success) {
           controller = parsed.data;
+          nodeWindow?.setTitle(controller ? 'Drashti Controller' : 'Drashti Node');
           viewChanged();
         }
         return;
@@ -672,6 +677,18 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   };
 
   // ---- the link ------------------------------------------------------------------------------------
+  const linkChanged = (state: LinkState, why: string | null) => {
+    if (state !== link.state || why !== link.why) {
+      link = { state, why, since: Date.now() };
+      log.info(`Node: link ${state}${why ? ` (${why})` : ''}`);
+    }
+    if (state === 'online') cache.backOnline();
+    else {
+      controllerReady = false;
+      updatePointed(null);
+    }
+    viewChanged();
+  };
   const connect = () => {
     if (!paired) return;
     const pairing = paired;
@@ -681,18 +698,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       pairing.token,
       deps.version,
       {
-        state: (state, why) => {
-          if (state !== link.state || why !== link.why) {
-            link = { state, why, since: Date.now() };
-            log.info(`Node: link ${state}${why ? ` (${why})` : ''}`);
-          }
-          if (state === 'online') cache.backOnline();
-          else {
-            controllerReady = false;
-            updatePointed(null);
-          }
-          viewChanged();
-        },
+        state: linkChanged,
         welcome: (main) => {
           controllerReady = false;
           // How Main writes the time (Sessions 31–36, I18N-8): this node's clocks show Main's.
@@ -886,10 +892,13 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
 
   // The output page's own requests: the show, its screen, and how it draws.
   handle(IPC.engine.subscribe, (event) => {
-    transport.add(event.sender);
-    return snapshot();
+    const shared = pageAlive(nodeWindow) && event.sender.id === nodeWindow.webContents.id;
+    (shared ? controllerTransport : transport).add(event.sender);
+    return snapshot(!shared);
   });
-  handle(IPC.engine.snapshot, () => snapshot());
+  handle(IPC.engine.snapshot, (event) =>
+    snapshot(!(pageAlive(nodeWindow) && event.sender.id === nodeWindow.webContents.id)),
+  );
   handle(IPC.output.getContext, (event) => {
     const screenId = manager.screenIdFor(event.sender.id);
     return screenId ? contextFor(screenId) : null;
@@ -931,7 +940,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   // The shared view's NEXT thumbnails are made and kept on this computer only, never written on Main.
   handle(IPC.media.saveStill, (event, rawId, jpeg) => {
     if (
-      !controller ||
+      !paired ||
       !pageAlive(nodeWindow) ||
       event.sender.id !== nodeWindow.webContents.id ||
       typeof rawId !== 'string' ||
@@ -939,7 +948,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     )
       return {
         ok: false as const,
-        message: 'Only this computer’s shared show view can keep its still frames.',
+        message: 'Only this node’s window can keep its still frames.',
       };
     const hash = cache.hashFor(rawId);
     return hash
@@ -1027,6 +1036,15 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     mirror: () => ({ rev: mirror.rev, session: mirror.session }),
     dropLink: () => client?.drop(),
   };
+  if (!packaged() && sw('DRASHTI_TEST_NODE_LINK_HOLD') === '1') {
+    Object.assign((globalThis as { drashtiNode?: unknown }).drashtiNode ?? {}, {
+      pauseLink: () => {
+        client?.stop();
+        linkChanged('offline', 'The connection to Main was lost.');
+      },
+      resumeLink: connect,
+    });
+  }
   if (paired) connect();
   log.info(`Node: started${paired ? ` following Main “${paired.main.name}”` : ' (not paired yet)'}`);
 
