@@ -606,8 +606,9 @@ const SPLITS = new Map<string, NativeLook>([
  * leaving (PowerPoint's own movies, runs 2, 3 and 4 at 16:9 and 4:3: within a pixel or two and a frame, a frame's shape
  * judged from 1 % of the box and its amount on every frame; under that, a trace's centre, size and turn are the movie's
  * encoding: C21); and as clips, Wheel's spokes (as PowerPoint sweeps them in its movie of run 6: in the box's own
- * proportions, leaving the same way round, their edge hard where PowerPoint's soft one is half-way) and Random Bars, so
- * a slide using one keeps PowerPoint's video wherever one can be made and plays these where none can.
+ * proportions, leaving the same way round, their edge hard where PowerPoint's soft one is half-way) and Random Bars
+ * (hair-thin bars fading in their own fixed turns, as much showing at every moment as PowerPoint's rows: Q60-15), so a
+ * slide using one keeps PowerPoint's video wherever one can be made and plays these where none can.
  */
 function filterLook(filter: string | undefined): NativeLook | null {
   if (!filter) return null;

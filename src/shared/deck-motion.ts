@@ -152,7 +152,15 @@ type DeckWipe =
   | DeckSplit
   | DeckShape
   | { spokes: number; progress: number; leaving: boolean }
-  | { bars: NonNullable<DeckEffect['bars']>; amount: number };
+  | DeckBars;
+
+/** Random Bars at one moment: its hair-thin bars' way and how many there are (barCount), how far through it is. */
+interface DeckBars {
+  bars: NonNullable<DeckEffect['bars']>;
+  count: number;
+  progress: number;
+  leaving: boolean;
+}
 
 export interface DeckMotionFrame {
   opacity: number;
@@ -325,7 +333,11 @@ export function deckMotionFrame(
         progress,
       };
     if (effect.kind === 'wheel') frame.wipe = { spokes: effect.spokes ?? 1, progress, leaving: !entering };
-    if (effect.kind === 'bars') frame.wipe = { bars: effect.bars ?? 'horizontal', amount };
+    if (effect.kind === 'bars') {
+      const kind = effect.bars ?? 'horizontal';
+      const count = barCount(kind === 'horizontal' ? bounds.height : bounds.width);
+      frame.wipe = { bars: kind, count, progress, leaving: !entering };
+    }
     if (effect.kind === 'zoom') {
       const away = effect.zoomAway ? zoomedAway(effect.zoomAway, bounds, slide) : null;
       frame.scale *= amount + Math.max(0, away?.scale ?? effect.scale ?? 0) * (1 - amount);
@@ -386,18 +398,129 @@ function spokes(count: number, target: Rect, progress: number, leaving: boolean)
   return points;
 }
 
-/** Random Bars' fixed order: 48 bars, each one's turn a fixed shuffle (29 and 48 share no factor). */
-const BARS = 48;
-const BAR_TURN = Array.from({ length: BARS }, (_, i) => ((i * 29) % BARS) + 1);
+/*
+ * Random Bars as real PowerPoint's movie of run 6 shows it (19 Nov 2026; across and up and down, coming in and leaving,
+ * at 700 ms and 2 s, and twice over): the shape's rows of pixels each fade in (or out) evenly, half-way at moments
+ * spread as BARS_HALF_IN and BARS_HALF_OUT say, in a fixed order of PowerPoint's own, the same in every play. Its order
+ * can't be had (it goes by the shape's height in its own pixels): Drashti draws hair-thin bars (BAR_PX slide px each),
+ * each fading over BARS_FADE of the effect, half-way at the same moments in a fixed random order of Drashti's own, so as
+ * much of the shape shows at every moment (Q60-15, the owner's A: within 0.017 of the box at every frame of all ten).
+ */
+/** How long each bar takes to fade in or out, a share of the effect. */
+const BARS_FADE = 0.22;
+/**
+ * When PowerPoint's rows are half in, coming in: the earliest, every twentieth of them in turn, and the last (shares of
+ * the effect, run 6's 1,536 rows at 2 s).
+ */
+const BARS_HALF_IN = [
+  0.095, 0.164, 0.206, 0.253, 0.287, 0.325, 0.35, 0.38, 0.416, 0.449, 0.477, 0.513, 0.555, 0.595, 0.633, 0.668, 0.705,
+  0.741, 0.777, 0.817, 0.911,
+];
+/** The same leaving: when each row is half gone. */
+const BARS_HALF_OUT = [
+  0.092, 0.183, 0.223, 0.258, 0.298, 0.332, 0.368, 0.406, 0.446, 0.487, 0.524, 0.552, 0.585, 0.62, 0.65, 0.676, 0.714,
+  0.749, 0.798, 0.839, 0.906,
+];
+/** A bar's thickness, slide px (hair-thin), within as few and as many bars as these. */
+const BAR_PX = 3;
+const MIN_BARS = 48;
+const MAX_BARS = 240;
 
-function bars(kind: NonNullable<DeckEffect['bars']>, target: Rect, amount: number): Point[] {
+/** How many bars Random Bars draws across `length` slide px. */
+function barCount(length: number): number {
+  return Math.min(MAX_BARS, Math.max(MIN_BARS, Math.round(length / BAR_PX)));
+}
+
+/** A bar's place scrambled (MurmurHash3's finish): a fixed order that looks random. */
+function scrambled(place: number): number {
+  let x = Math.imul(place + 1, 0x9e3779b1);
+  x ^= x >>> 16;
+  x = Math.imul(x, 0x85ebca6b);
+  x ^= x >>> 13;
+  x = Math.imul(x, 0xc2b2ae35);
+  x ^= x >>> 16;
+  return x >>> 0;
+}
+
+const barTurns = new Map<number, number[]>();
+/** Each of `count` bars' turn (0 first): the same in every play. */
+function turnsOf(count: number): number[] {
+  const known = barTurns.get(count);
+  if (known) return known;
+  const turns = new Array<number>(count).fill(0);
+  Array.from({ length: count }, (_, place) => place)
+    .sort((a, b) => scrambled(a) - scrambled(b))
+    .forEach((place, turn) => {
+      turns[place] = turn;
+    });
+  barTurns.set(count, turns);
+  return turns;
+}
+
+/** How much of bar `bar` (0 at the top or left) shows. */
+function barShows(wipe: DeckBars, bar: number): number {
+  const halves = wipe.leaving ? BARS_HALF_OUT : BARS_HALF_IN;
+  const at = (((turnsOf(wipe.count)[bar] ?? 0) + 0.5) / wipe.count) * (halves.length - 1);
+  const k = Math.min(halves.length - 2, Math.floor(at));
+  const from = halves[k] ?? 0;
+  const half = from + ((halves[k + 1] ?? from) - from) * (at - k);
+  // Its fade about that moment, within the effect: nothing at its start, everything by its end.
+  const start = Math.min(1 - BARS_FADE, Math.max(0, half - BARS_FADE / 2));
+  const done = Math.min(1, Math.max(0, (wipe.progress - start) / BARS_FADE));
+  return wipe.leaving ? 1 - done : done;
+}
+
+/**
+ * How much of a shape coming in or leaving by Random Bars shows at `at` of the way along its bars' way (0 its top, or
+ * its left for bars up and down; 1 its bottom or right): its bar's share. 1 for any other wipe, or none.
+ */
+export function deckBarsShows(wipe: DeckWipe | null, at: number): number {
+  if (!wipe || !('bars' in wipe)) return 1;
+  return barShows(wipe, Math.min(wipe.count - 1, Math.max(0, Math.floor(at * wipe.count))));
+}
+
+/** Random Bars as a mask of a part drawn at `frame`: each run of bars showing alike one stop, as much as it shows. */
+function barsMask(wipe: DeckBars, target: Rect, frame: Rect): string {
+  const across = wipe.bars === 'horizontal';
+  const length = across ? frame.height : frame.width;
+  if (!(length > 0)) return '';
+  const origin = across ? target.y : target.x;
+  const size = across ? target.height : target.width;
+  const start = across ? frame.y : frame.x;
+  const at = (bar: number) =>
+    `${String(Math.round(((origin + (bar / wipe.count) * size - start) / length) * 100_000) / 1000)}%`;
+  const level = (bar: number) => Math.round(barShows(wipe, bar) * 100) / 100;
+  const stops: string[] = [];
+  let from = 0;
+  let shows = level(0);
+  for (let bar = 1; bar <= wipe.count; bar++) {
+    const next = bar < wipe.count ? level(bar) : Number.NaN;
+    if (next === shows) continue;
+    stops.push(`rgb(0 0 0 / ${String(shows)}) ${at(from)} ${at(bar)}`);
+    from = bar;
+    shows = next;
+  }
+  if (stops.length === 1 && level(0) === 1) return '';
+  return `linear-gradient(${across ? 'to bottom' : 'to right'}, ${stops.join(', ')})`;
+}
+
+/**
+ * Random Bars' bars drawn whole: as many as its fading bars show in all, in their turn (the first ones in, or the last
+ * ones still to go), as a polygon of slide px.
+ */
+function bars(wipe: DeckBars, target: Rect): Point[] {
+  let shown = 0;
+  for (let i = 0; i < wipe.count; i++) shown += barShows(wipe, i);
+  const whole = Math.round(shown);
+  const turns = turnsOf(wipe.count);
   const points: Point[] = [];
-  const across = kind === 'horizontal';
+  const across = wipe.bars === 'horizontal';
   const length = across ? target.height : target.width;
-  for (let i = 0; i < BARS; i++) {
-    if ((BAR_TURN[i] ?? BARS) > amount * BARS) continue;
-    const from = (length * i) / BARS;
-    const to = (length * (i + 1)) / BARS;
+  for (let i = 0; i < wipe.count; i++) {
+    const turn = turns[i] ?? 0;
+    if (wipe.leaving ? turn < wipe.count - whole : turn >= whole) continue;
+    const from = (length * i) / wipe.count;
+    const to = (length * (i + 1)) / wipe.count;
     // Each bar is joined to the next along the box's left (or top) edge, which adds nothing to what shows.
     if (across) {
       const top = target.y + from;
@@ -650,6 +773,7 @@ function shapeMasks(wipe: DeckShape, target: Rect, frame: Rect): { outer: string
  */
 export function deckWipeMask(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
   if (wipe && 'shape' in wipe) return shapeMasks(wipe, target, frame).outer;
+  if (wipe && 'bars' in wipe) return barsMask(wipe, target, frame);
   if (!wipe || !('axis' in wipe)) return '';
   const across = wipe.axis === 'x';
   const length = across ? frame.width : frame.height;
@@ -752,13 +876,19 @@ function around(target: Rect, inner: readonly Point[]): Point[] {
 }
 
 /**
- * A Shape's hard edge as a clip of one of a group's rendered parts drawn at `frame`, at the same slide position across
- * the whole group (`target`): its outline where PowerPoint's soft edge is half-way (deckShapeShows 0.5), as Session 57
- * drew every Shape. Drawn in place of the soft edge's masks where a page draws without a graphics chip
+ * A Shape's hard edge, or Random Bars' bars whole, as a clip of one of a group's rendered parts drawn at `frame`, at
+ * the same slide position across the whole group (`target`). A Shape's outline where PowerPoint's soft edge is
+ * half-way (deckShapeShows 0.5), as Session 57 drew every Shape; as many bars as the fading ones show in all, in their
+ * turn. Drawn in place of their masks where a page draws without a graphics chip
  * (render/deck-target-paint.ts): there two masks of three gradients each on every moving Box, Plus and Diamond dropped
  * frames on a two-core PC while streaming (C1's review, HIGH-2). '' for any other wipe, or none.
  */
-export function deckShapeHardClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
+export function deckHardClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
+  if (wipe && 'bars' in wipe) {
+    const points = bars(wipe, target);
+    if (points.length === 0) return 'inset(50% 50% 50% 50%)';
+    return points.length === 4 * wipe.count ? '' : polygon(points, frame);
+  }
   if (!wipe || !('shape' in wipe)) return '';
   // Where the soft edge is half-way: SHAPE_SOFTNESS / 2 behind its leading side.
   const reach = (1 + SHAPE_SOFTNESS) * wipe.progress - SHAPE_SOFTNESS / 2;
@@ -771,16 +901,12 @@ export function deckShapeHardClip(wipe: DeckWipe | null, target: Rect, frame: Re
 }
 
 /**
- * Clip all of a group's rendered parts at the same slide position. A Split and a Shape are drawn by their masks
- * (deckWipeMask).
+ * Clip all of a group's rendered parts at the same slide position. A Split, a Shape and Random Bars are drawn by their
+ * masks (deckWipeMask).
  */
 export function deckWipeClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
-  if (!wipe || 'shape' in wipe) return '';
+  if (!wipe || 'shape' in wipe || 'bars' in wipe) return '';
   if ('spokes' in wipe) return polygon(spokes(wipe.spokes, target, wipe.progress, wipe.leaving), frame);
-  if ('bars' in wipe) {
-    const points = bars(wipe.bars, target, wipe.amount);
-    return points.length > 0 ? polygon(points, frame) : 'inset(50% 50% 50% 50%)';
-  }
   if ('axis' in wipe) return '';
   const { edge, fraction } = wipe;
   const top = edge === 'up' ? percentage(target.y + target.height * fraction - frame.y, frame.height) : 0;
