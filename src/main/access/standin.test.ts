@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { callBody, PLACEHOLDER_APPROVER, placeholderComputer, readAnswer } from '../../../tests/access-core';
+import {
+  callBody,
+  linkParams,
+  PLACEHOLDER_APPROVER,
+  placeholderComputer,
+  readAnswer,
+  type LinkPageAnswer,
+} from '../../../tests/access-core';
 import { accessStandIn, type AccessStandIn } from '../../../tests/access-standin';
 
 /*
@@ -28,8 +35,29 @@ async function post(s: AccessStandIn, text: string): Promise<{ payload: string; 
   return (await second.json()) as { payload: string; sig: string };
 }
 
+/**
+ * A call from the link page (x38), as its browser sends it from its own site: plain text, the redirect followed, and
+ * each answer open to any site (Access-Control-Allow-Origin: *, as Google's).
+ */
+async function pageCall(
+  s: AccessStandIn,
+  link: string,
+  call: 'read' | 'answer',
+  fields: Record<string, string> = {},
+): Promise<LinkPageAnswer['page']> {
+  const text = JSON.stringify({ link: call, ...linkParams(link), ...fields });
+  const first = await fetch(s.url, { method: 'POST', body: text, redirect: 'manual' });
+  expect(first.status).toBe(302);
+  expect(first.headers.get('access-control-allow-origin')).toBe('*');
+  const second = await fetch(first.headers.get('location') ?? '', { redirect: 'manual' });
+  expect(second.status).toBe(200);
+  expect(second.headers.get('access-control-allow-origin')).toBe('*');
+  const answer = readAnswer((await second.json()) as { payload: string; sig: string }, s.publicKey);
+  return (answer as unknown as LinkPageAnswer).page;
+}
+
 describe('the stand-in list', () => {
-  it('answers on 127.0.0.1 as the web app does, signed, and its links open a page with one button', async () => {
+  it('answers on 127.0.0.1 as the web app does, signed, and its links open the link page on a site of its own, whose calls carry no cookie', async () => {
     const s = (standIn = await accessStandIn());
     expect(s.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/macros\/s\/stand-in\/exec$/u);
     const computer = placeholderComputer('stand-in-mac');
@@ -38,17 +66,27 @@ describe('the stand-in list', () => {
     expect(a).toMatchObject({ ok: true, status: 'requested', nonce: ask.nonce, computerId: computer.id });
     expect(s.calls).toEqual(['request']);
 
-    const links = s.list.linksFor(PERSON);
-    expect(links?.approve.startsWith(s.url)).toBe(true);
-    const page = await (await fetch(links?.approve ?? '')).text();
-    expect(page).toContain('data-kind="ready"');
-    expect(page).toContain('<button type="submit">Approve</button>');
+    const approve = s.list.linksFor(PERSON)?.approve ?? '';
+    // The link page, as GitHub Pages serves the real one: another site, with the stand-in's address for the list's.
+    expect(approve).toMatch(
+      /^http:\/\/127\.0\.0\.1:\d+\/drashti\/access\/#a=approve&r=[0-9a-f]{32}&x=\d+&s=[0-9a-f]{64}$/u,
+    );
+    expect(new URL(approve).origin).not.toBe(new URL(s.url).origin);
+    const html = await (await fetch(approve)).text();
+    expect(html).toContain(`data-list="${s.url}"`);
+    expect(html).toContain(`connect-src ${new URL(s.url).origin};`);
+    expect(html).not.toContain('script.google.com');
+    expect((await fetch(new URL('/drashti/other/', approve))).status).toBe(404);
+    // Its two calls: read changes nothing, answer is its one button.
+    expect(await pageCall(s, approve, 'read')).toMatchObject({ kind: 'ready', button: 'Approve' });
     expect(s.list.tokenFor(PERSON)).toBeNull();
-    const params = new URLSearchParams(new URL(links?.approve ?? '').search);
-    const pressed = await (
-      await fetch(new URL('/macros/s/stand-in/link', s.url), { method: 'POST', body: params })
-    ).text();
-    expect(pressed).toContain('<h1>Approved</h1>');
+    expect(await pageCall(s, approve, 'answer')).toMatchObject({ kind: 'done', title: 'Approved' });
+    expect(s.linkCalls).toEqual([
+      { call: 'read', cookie: false },
+      { call: 'answer', cookie: false },
+    ]);
+    // The page's calls are never Drashti's.
+    expect(s.calls).toEqual(['request']);
 
     const token = s.list.tokenFor(PERSON) ?? '';
     const redeem = callBody('redeem', computer, { gmail: PERSON, token });
@@ -56,7 +94,7 @@ describe('the stand-in list', () => {
     expect(r).toMatchObject({ ok: true, owner: false });
   });
 
-  it('serves the list’s own Approve page (Link.html, as Apps Script makes it), whose button reaches the list with the length chosen', async () => {
+  it('serves the page a link sent before x38 opens (Link.html, as Apps Script makes it), whose button reaches the list with the length chosen', async () => {
     const s = (standIn = await accessStandIn());
     const computer = placeholderComputer('stand-in-page');
     await post(s, JSON.stringify(callBody('request', computer, { gmail: PERSON }).body));
@@ -72,7 +110,7 @@ describe('the stand-in list', () => {
     expect(html).toContain('window.google = { script: { run:');
     // Every text from the list is escaped as Apps Script's printer escapes it.
     expect(html).not.toMatch(/<\?|\?>/u);
-    const params = Object.fromEntries(new URL(approve).searchParams.entries());
+    const params = linkParams(approve);
     const run = new URL('/macros/s/stand-in/run', s.url);
     const answer = async (length: string) =>
       (await (await fetch(run, { method: 'POST', body: JSON.stringify({ ...params, length }) })).json()) as {
@@ -105,7 +143,7 @@ describe('the stand-in list', () => {
     expect(html).toContain('Pro Mode and Simple Mode');
     // The page's own script sends the mode chosen with the button.
     expect(html).toContain('params.mode = modeChosen()');
-    const params = Object.fromEntries(new URL(approve).searchParams.entries());
+    const params = linkParams(approve);
     const run = new URL('/macros/s/stand-in/run', s.url);
     const done = (await (
       await fetch(run, {

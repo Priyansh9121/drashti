@@ -38,6 +38,7 @@ import { useMeasureReport } from './measure';
 import { observeTextSizes } from './observe-text-sizes';
 import { missingFontsOf } from './font-probe';
 import { queueFit } from './shrink-to-fit';
+import { useDeckWordsShift } from './first-line-shift';
 import { standsUpright } from '../../../shared/text-runs';
 import { drawnLines, hasList } from '../../../shared/text-lists';
 import { cutLineHeight, sourceFitScale, sourceLineCut, sourceRunScale } from '../../../shared/source-fit';
@@ -623,6 +624,8 @@ function TextView({
   const words = useRef<HTMLDivElement>(null);
   const langOf = useHtmlLang();
   useShrinkToFit(box, words, el);
+  // A deck's own box: its words moved to where PowerPoint puts its first line (X20), laid out as before.
+  const shift = useDeckWordsShift(el);
   // A font this computer does not have (Sessions 31–36, I18N-1): marked for the reports, drawing nothing different.
   useEffect(() => {
     const b = box.current;
@@ -650,6 +653,7 @@ function TextView({
           inlineSize: el.style.noWrap ? 'max-content' : '100%',
           ...(el.style.noWrap ? { minInlineSize: '100%' } : {}),
           flexShrink: 0,
+          ...(shift ? { transform: `translateY(${fitted(shift) ?? '0px'})` } : {}),
           // The band behind the lines: its spread is drawn outside them, so the words lie exactly as without it.
           ...(band
             ? {

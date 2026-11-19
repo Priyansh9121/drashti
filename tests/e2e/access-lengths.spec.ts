@@ -22,9 +22,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * list's own rules, its clock moved by the test): the bar in the window's flow from 7 days before the end, at once for
  * a day, in Pro and Simple Mode alike, gone with Unlimited; the stop at the end as a revoke stops it, by the list's
  * clock a year ahead of this computer's own; started again, the lock screen says access ended and how to come back,
- * and opens by itself once the owner gives a new length; and the list's own Approve page (access-list/Link.html)
- * choosing the length. Checks every 6 s here (a test switch a packaged Drashti never reads). Placeholder addresses
- * only.
+ * and opens by itself once the owner gives a new length; and the Approve link's own page (the link page,
+ * access-list/page/index.html, x38: on a site of its own, as on GitHub Pages) choosing the length and the mode, in a
+ * browser signed in to the list's site, whose calls carry no sign-in. Checks every 6 s here (a test switch a packaged
+ * Drashti never reads). Placeholder addresses only.
  */
 
 const FAST = { DRASHTI_TEST_ACCESS_CHECK_MS: '6000', DRASHTI_TEST_ACCESS_TIMEOUT_MS: '2000' };
@@ -161,12 +162,19 @@ test('the end by the list’s clock, a year ahead of this computer’s: everythi
   }
 });
 
-test('the list’s own Approve page: the lengths offered with Unlimited chosen (or the one chosen adding the Gmail), days typed checked, what they may use with Simple Mode only chosen (Session 55), and the approval for the length and the mode chosen', async () => {
+test('the Approve link’s page (x38): opened in a browser signed in to the list’s site, its calls carry no sign-in; the lengths offered with Unlimited chosen (or the one chosen adding the Gmail), days typed checked, what they may use with Simple Mode only chosen (Session 55), and the approval for the length and the mode chosen', async () => {
   test.setTimeout(120_000);
   const { app, access: s } = await launchApp(FAST);
   try {
     const gmail = 'asker.placeholder@example.com';
-    const page = await openPage(app, s.pageUrl(askedFor(s, gmail)));
+    // This browser signed in to the list's own site (a cookie, as a Google sign-in leaves one): the page sends none.
+    await app.evaluate(async ({ session }, url) => {
+      await session.defaultSession.cookies.set({ url, path: '/', name: 'SID', value: 'placeholder-sign-in' });
+    }, s.url);
+    const link = askedFor(s, gmail);
+    // The link opens the link page itself, on a site of its own (GitHub Pages for the real list), not the list's.
+    expect(new URL(link).origin).not.toBe(new URL(s.url).origin);
+    const page = await openPage(app, link);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(`Approve ${gmail}?`);
     const lengths = page.getByRole('group', { name: 'How long may they use Drashti?' });
     await expect(lengths).toBeVisible();
@@ -195,6 +203,12 @@ test('the list’s own Approve page: the lengths offered with Unlimited chosen (
     await expect(page.locator('#lines')).toContainText('Their access lasts until');
     await expect(page.locator('#lines')).toContainText('They may use Simple Mode only.');
     await expect(page.getByRole('radio')).toHaveCount(0);
+    await expect(page.getByRole('button')).toHaveCount(0);
+    // Read on opening, answered once at the button: never with a cookie, whatever the browser is signed in to.
+    expect(s.linkCalls).toEqual([
+      { call: 'read', cookie: false },
+      { call: 'answer', cookie: false },
+    ]);
     expect(s.list.sheet.find('Access List', 'Gmail', gmail)?.['Mode']).toBe('Simple');
     const ends = s.list.sheet.find('Access List', 'Gmail', gmail)?.['Access ends'];
     expect(ends).toBeInstanceOf(Date);
@@ -204,7 +218,7 @@ test('the list’s own Approve page: the lengths offered with Unlimited chosen (
     // A Gmail the owner added for 90 days, with Pro: its Approve page offers 90 days and Pro first.
     const added = 'added.placeholder@example.com';
     expect(ownerCall(s, 'add', { target: added, length: 90, mode: 'pro' })).toMatchObject({ ok: true });
-    const theirs = await openPage(app, s.pageUrl(s.list.linksFor(added)?.approve ?? ''));
+    const theirs = await openPage(app, s.list.linksFor(added)?.approve ?? '');
     await expect(theirs.getByRole('radio', { name: '90 days' })).toBeChecked();
     await expect(theirs.getByRole('radio', { name: 'Pro Mode and Simple Mode' })).toBeChecked();
   } finally {

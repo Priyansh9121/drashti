@@ -1,0 +1,395 @@
+<!doctype html>
+<!--
+  Drashti's access list: the page each emailed Approve or Reject link opens (x38, the owner's words of 19 Nov 2026:
+  the admin may open the email's link on a phone or any browser, signed in to Google or not). GitHub Pages serves it
+  from Drashti's public repository at https://priyansh9121.github.io/drashti/access/, outside Google: Google's own
+  script pages do not open in a browser signed in to another Google account, or to several. The link's details come
+  after the #, which no web server is sent. The page asks the list itself (its address below, the same one Drashti
+  has built in) with no Google sign-in, as Drashti does: on opening, what the link is for, which changes nothing (an
+  email scanner opening it does no harm); then, at its ONE button, the answer, which the list checks again (the link's
+  signature, one use, 7 days) under its lock. An Approve page also asks how long access lasts and what they may use,
+  as the list says to offer them. Every word from the list is put in as plain text. Nothing is kept in the browser.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'sha256-8UPGxy4hwRLTO1Upzp+iwoucFxM3YGgLwNbsCJ/BpqM='; style-src 'sha256-a+fpknYmcalhuXCOgG4fnxxlf3Bd05Mkee8axgc2X7Y='; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'"
+    />
+    <title>Drashti access list</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          17px/1.5 system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        color: #1f1f1f;
+        background: #f6f4ef;
+      }
+      main {
+        max-width: 34rem;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 3rem;
+      }
+      h1 {
+        font-size: 1.4rem;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+      p {
+        overflow-wrap: anywhere;
+      }
+      button {
+        min-height: 48px;
+        min-width: 10rem;
+        padding: 0.6rem 1.4rem;
+        font: inherit;
+        font-weight: 600;
+        color: #fff;
+        background: #8a3b12;
+        border: 0;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      button:focus-visible,
+      input:focus-visible {
+        outline: 3px solid #1f1f1f;
+        outline-offset: 2px;
+      }
+      fieldset {
+        margin: 0 0 1.5rem;
+        padding: 0.75rem 1rem 0.5rem;
+        border: 1px solid #b9b2a5;
+        border-radius: 8px;
+        background: #fff;
+      }
+      legend {
+        padding: 0 0.3rem;
+        font-weight: 600;
+      }
+      .choice {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        min-height: 44px;
+      }
+      .choice input {
+        width: 1.25rem;
+        height: 1.25rem;
+        margin: 0;
+        accent-color: #8a3b12;
+      }
+      #typed {
+        width: 7rem;
+        min-height: 44px;
+        margin-left: 1.85rem;
+        padding: 0 0.6rem;
+        font: inherit;
+        border: 1px solid #8b8478;
+        border-radius: 6px;
+      }
+      .hint {
+        margin: 0.4rem 0 0.25rem;
+        font-size: 0.9rem;
+        color: #55504a;
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      id="page"
+      data-list="https://script.google.com/macros/s/AKfycbw38hgrsBcIsKL4DOLBVxeVMvrgqwk0wYFsiN9Lbz12QKqd9kge1vBrgAZMcspP1bynEg/exec"
+    >
+      <h1 id="title">Drashti access list</h1>
+      <div id="lines">
+        <noscript
+          ><p>
+            This page needs JavaScript. Turn it on, or answer in Drashti on your own computer: View › Access
+            List.
+          </p></noscript
+        >
+      </div>
+      <div id="choices"></div>
+      <p id="wait" role="status"></p>
+    </main>
+    <script>
+      (function () {
+        'use strict';
+
+        var main = document.getElementById('page');
+        var title = document.getElementById('title');
+        var lines = document.getElementById('lines');
+        var choices = document.getElementById('choices');
+        var wait = document.getElementById('wait');
+        /** The list's own address: the same one Drashti has built in. */
+        var list = main.getAttribute('data-list');
+        /** How long to wait for the list's answer (Google can take some seconds to start it). */
+        var WAIT_MS = 60000;
+        var NOT_REACHED =
+          'The list could not be reached. Try again, or answer in Drashti on your own computer: View › Access List.';
+        /** The link's four, in the form the list makes them; null when the link is not all there. */
+        var link = readLink(window.location.hash);
+        /** The one button, and an Approve page's two choices, while they are on the page. */
+        var button = null;
+        var lengths = null;
+        var modes = null;
+
+        function readLink(hash) {
+          var m = /^#a=(approve|reject)&r=([0-9a-f]{32})&x=([0-9]{1,15})&s=([0-9a-f]{64})$/.exec(
+            String(hash || ''),
+          );
+          return m ? { a: m[1], r: m[2], x: m[3], s: m[4] } : null;
+        }
+
+        /** The page's title and lines, as plain text. */
+        function say(head, words) {
+          title.textContent = head;
+          lines.textContent = '';
+          words.forEach(function (w) {
+            var p = document.createElement('p');
+            p.textContent = String(w);
+            lines.appendChild(p);
+          });
+        }
+
+        /**
+         * One call to the list: JSON as plain text (so no browser asks the list first), with no cookie, so no Google
+         * sign-in goes with it, whatever this browser is signed in to. The list's page, or a failure.
+         */
+        function ask(call) {
+          var stop = typeof AbortController === 'function' ? new AbortController() : null;
+          var timer = stop
+            ? setTimeout(function () {
+                stop.abort();
+              }, WAIT_MS)
+            : null;
+          var done = function () {
+            if (timer !== null) clearTimeout(timer);
+          };
+          return fetch(list, {
+            method: 'POST',
+            body: JSON.stringify(call),
+            credentials: 'omit',
+            cache: 'no-store',
+            redirect: 'follow',
+            referrerPolicy: 'no-referrer',
+            signal: stop ? stop.signal : undefined,
+          })
+            .then(function (response) {
+              if (!response.ok) throw new Error('The list answered ' + response.status);
+              return response.json();
+            })
+            .then(function (answer) {
+              var said = JSON.parse(answer.payload);
+              var page = said && said.page;
+              if (!page || typeof page.title !== 'string' || !Array.isArray(page.lines))
+                throw new Error('Not the list’s answer');
+              done();
+              return page;
+            })
+            .catch(function (e) {
+              done();
+              throw e;
+            });
+        }
+
+        function linkCall(kind) {
+          return { link: kind, a: link.a, r: link.r, x: link.x, s: link.s };
+        }
+
+        function makeButton(words, onPress) {
+          button = document.createElement('button');
+          button.type = 'button';
+          button.id = 'go';
+          button.textContent = words;
+          button.addEventListener('click', onPress);
+          choices.appendChild(button);
+        }
+
+        function clearChoices() {
+          choices.textContent = '';
+          button = null;
+          lengths = null;
+          modes = null;
+        }
+
+        /** A radio button and its words, in a box. */
+        function choice(box, name, value, words) {
+          var label = document.createElement('label');
+          label.className = 'choice';
+          var input = document.createElement('input');
+          input.type = 'radio';
+          input.name = name;
+          input.value = value;
+          var text = document.createElement('span');
+          text.textContent = words;
+          label.appendChild(input);
+          label.appendChild(text);
+          box.appendChild(label);
+          return input;
+        }
+
+        function box(id, legendWords) {
+          var b = document.createElement('fieldset');
+          b.id = id;
+          var legend = document.createElement('legend');
+          legend.textContent = legendWords;
+          b.appendChild(legend);
+          return b;
+        }
+
+        /** How long access lasts: Unlimited, the days offered, or days typed; the list's choice chosen at first. */
+        function lengthChoice(offer) {
+          var b = box('lengths', 'How long may they use Drashti?');
+          var radios = [choice(b, 'length', 'unlimited', 'Unlimited, until you revoke it')];
+          offer.days.forEach(function (d) {
+            radios.push(choice(b, 'length', String(d), d === 1 ? '1 day (24 hours)' : d + ' days'));
+          });
+          var typedChoice = choice(b, 'length', 'typed', 'A number of days');
+          typedChoice.id = 'typed-choice';
+          radios.push(typedChoice);
+          var typed = document.createElement('input');
+          typed.id = 'typed';
+          typed.type = 'number';
+          typed.setAttribute('min', '1');
+          typed.setAttribute('max', String(offer.maxDays));
+          typed.setAttribute('step', '1');
+          typed.setAttribute('inputmode', 'numeric');
+          typed.setAttribute('aria-label', 'Number of days');
+          typed.setAttribute('aria-describedby', 'typed-hint');
+          b.appendChild(typed);
+          var hint = document.createElement('p');
+          hint.id = 'typed-hint';
+          hint.className = 'hint';
+          hint.textContent =
+            'From 1 to ' + offer.maxDays + ' whole days. Every length counts from when you press Approve.';
+          b.appendChild(hint);
+          typed.addEventListener('input', function () {
+            typedChoice.checked = true;
+          });
+          var chosen = String(offer.chosen);
+          var preset = radios.filter(function (r) {
+            return r !== typedChoice && r.value === chosen;
+          })[0];
+          if (preset) preset.checked = true;
+          else {
+            typedChoice.checked = true;
+            typed.value = chosen;
+          }
+          choices.appendChild(b);
+          lengths = { radios: radios, typed: typed, maxDays: offer.maxDays };
+        }
+
+        /** The length chosen, as the list reads it ('unlimited' or whole days), or null when the days typed are not. */
+        function lengthChosen() {
+          var picked = lengths.radios.filter(function (r) {
+            return r.checked;
+          })[0];
+          var value = picked ? picked.value : 'unlimited';
+          if (value !== 'typed') return value;
+          var text = String(lengths.typed.value).trim();
+          var days = Number(text);
+          return /^[0-9]+$/.test(text) && days >= 1 && days <= lengths.maxDays ? String(days) : null;
+        }
+
+        /** What they may use: Simple Mode only, or Pro Mode and Simple Mode; the list's choice chosen at first. */
+        function modeChoice(offer) {
+          var b = box('modes', 'What may they use?');
+          var radios = [
+            choice(b, 'mode', 'simple', 'Simple Mode only'),
+            choice(b, 'mode', 'pro', 'Pro Mode and Simple Mode'),
+          ];
+          var hint = document.createElement('p');
+          hint.className = 'hint';
+          hint.textContent =
+            'Simple Mode runs a sabha from a playlist, and nothing in it changes the library, the screens or the sound. Pro Mode is for whoever looks after Drashti.';
+          b.appendChild(hint);
+          (radios[1].value === offer.chosen ? radios[1] : radios[0]).checked = true;
+          choices.appendChild(b);
+          modes = { radios: radios };
+        }
+
+        function modeChosen() {
+          return modes.radios[1].checked ? 'pro' : 'simple';
+        }
+
+        /** On opening: what the link is for, from the list. Nothing changes. */
+        function read() {
+          clearChoices();
+          wait.textContent = 'One moment…';
+          ask(linkCall('read')).then(
+            function (page) {
+              wait.textContent = '';
+              say(page.title, page.lines);
+              if (page.kind === 'error') makeButton('Try again', read);
+              if (page.kind !== 'ready' || !page.button) return;
+              if (page.lengths) lengthChoice(page.lengths);
+              if (page.modes) modeChoice(page.modes);
+              makeButton(page.button, press);
+            },
+            function () {
+              wait.textContent = '';
+              say('The request could not be opened', [NOT_REACHED]);
+              makeButton('Try again', read);
+            },
+          );
+        }
+
+        /** The one button: the request answered, once (the list checks the link again). */
+        function press() {
+          var call = linkCall('answer');
+          if (lengths) {
+            call.length = lengthChosen();
+            if (call.length === null) {
+              wait.textContent =
+                'Type a whole number of days from 1 to ' + lengths.maxDays + ', or choose another length.';
+              lengths.typed.focus();
+              return;
+            }
+          }
+          if (modes) call.mode = modeChosen();
+          // Pressed once: never twice.
+          button.disabled = true;
+          wait.textContent = 'One moment…';
+          ask(call).then(
+            function (page) {
+              wait.textContent = '';
+              say(page.title, page.lines);
+              // Refused (the day's emails used up, say) or failed: the button stays, to try again.
+              if (page.kind === 'refused' || page.kind === 'error') button.disabled = false;
+              else clearChoices();
+            },
+            function () {
+              wait.textContent = '';
+              say('Not done', [NOT_REACHED]);
+              button.disabled = false;
+            },
+          );
+        }
+
+        if (window.top !== window.self) {
+          say('Open this link on its own', [
+            'This page works only on its own, not inside another page. Open the link from the email again.',
+          ]);
+          return;
+        }
+        if (!link) {
+          say('This link is not complete', [
+            'Open it again from the access list’s email, all of it, or answer in Drashti on your own computer: View › Access List.',
+          ]);
+          return;
+        }
+        read();
+      })();
+    </script>
+  </body>
+</html>
