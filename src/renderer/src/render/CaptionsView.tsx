@@ -1,6 +1,11 @@
-import { CAPTION_TEXT_HEIGHT, captionsFor, type CaptionScreen } from '../../../shared/captions';
+import { useRef, type RefObject } from 'react';
+import { CAPTION_TEXT_HEIGHT, type CaptionScreen } from '../../../shared/captions';
+import { captionBandFor } from '../../../shared/video-caption-display';
+import { useVideoCaptionClock } from './useVideoCaptionClock';
+import { useCaptionAvoidance } from './caption-avoidance';
 import type { EngineState } from '../../../shared/engine/state';
 import type { Size } from '../../../shared/scaling';
+import type { Lang } from '../../../shared/model';
 import { fontFamilyFor, HTML_LANG } from './fonts';
 
 /**
@@ -14,24 +19,35 @@ export function CaptionsView({
   canvas,
   screen,
   lift = 0,
+  videoRoot,
 }: {
   state: EngineState;
   canvas: Size;
   screen: CaptionScreen;
   lift?: number;
+  videoRoot?: RefObject<HTMLDivElement | null>;
 }) {
-  const captions = captionsFor(state.captions, screen);
+  const band = useRef<HTMLDivElement>(null);
+  const actual = useVideoCaptionClock(state, screen, videoRoot);
+  const captions = captionBandFor(state, screen, actual);
+  useCaptionAvoidance(videoRoot, band, canvas, captions?.place, lift, captions?.lines.join('\n') ?? '');
   if (!captions) return null;
-  const language = captions.language === 'sa' ? 'sa-gu' : captions.language;
+  const baseLanguage = captions.language.split('-')[0];
+  const language: Lang =
+    captions.language === 'sa-Gujr'
+      ? 'sa-gu'
+      : ((['en', 'gu', 'hi', 'sa'] as const).find((lang) => lang === baseLanguage) ?? 'en');
   const px = Math.round(canvas.height * CAPTION_TEXT_HEIGHT[captions.size]);
   const edge = Math.round(canvas.height * 0.04) + (captions.place === 'bottom' ? lift : 0);
   return (
     <div
+      ref={band}
       data-testid="captions"
+      data-source={captions.source}
       data-screen={screen}
       data-size={captions.size}
       data-place={captions.place}
-      lang={HTML_LANG[language]}
+      lang={captions.language === 'und' ? HTML_LANG[language] : captions.language}
       aria-hidden="true"
       style={{
         position: 'absolute',
