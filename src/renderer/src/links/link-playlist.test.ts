@@ -6,7 +6,7 @@ import { useLibrary } from '../library/library-store';
 import { useMode } from '../operator/mode-store';
 import { usePlaylists } from '../playlists/playlist-store';
 import { landInPlaylist, linkPlaylistId, useLanded } from './link-playlist';
-import { importLink, newPlaylistName, useLinks } from './link-store';
+import { importLink, lookLink, newPlaylistName, useLinks } from './link-store';
 
 let tree: PlaylistNode[] = [];
 let itemsOf: Record<string, PlaylistItemInfo[]> = {};
@@ -14,6 +14,7 @@ let refuseAdding = false;
 const made: string[] = [];
 const downloads: [url: string, audio: boolean, intoOpenPlaylist: boolean][] = [];
 const commands: EngineCommand[] = [];
+const lookedUrls: string[] = [];
 let heard: ((view: LinkView) => void) | null = null;
 
 const node = (id: string, name: string, isFolder = false): PlaylistNode => ({
@@ -58,6 +59,7 @@ beforeEach(() => {
   refuseAdding = false;
   made.length = 0;
   downloads.length = 0;
+  lookedUrls.length = 0;
   commands.length = 0;
   (globalThis as { window?: unknown }).window = {
     drashti: {
@@ -92,6 +94,10 @@ beforeEach(() => {
         },
       },
       links: {
+        look: (_kind: string, url: string) => {
+          lookedUrls.push(url);
+          return answer(VIEW);
+        },
         view: () => Promise.resolve(VIEW),
         onChanged: (listener: (view: LinkView) => void) => {
           heard = listener;
@@ -142,7 +148,7 @@ async function playlists(...nodes: PlaylistNode[]): Promise<void> {
 }
 
 describe('where a download from a link goes', () => {
-  it('uses the playlist open when the link is pasted, even after another playlist received a link', async () => {
+  it('uses the playlist open when Download is pressed, even after another playlist received a link', async () => {
     await playlists(node('sunday', 'Placeholder Sunday'), node('youth', 'Placeholder Youth'));
     usePlaylists.setState({ openId: 'sunday' });
     useLinks.setState({ view: { ...VIEW, lastPlaylist: 'youth' } });
@@ -241,8 +247,16 @@ describe('when a download is in', () => {
   });
 });
 
-describe('pasting a link', () => {
-  it('starts automatically and makes a playlist named after the video if none is open', async () => {
+describe('downloading a link from the window', () => {
+  it('does not issue a delayed metadata check after Download has started', async () => {
+    await lookLink('https://youtu.be/AAAAAAAAAAA');
+    expect(lookedUrls).toHaveLength(1);
+    expect(downloads).toEqual([]);
+    expect(await importLink('https://youtu.be/AAAAAAAAAAA')).toBe(true);
+    await lookLink('https://youtu.be/AAAAAAAAAAA');
+    expect(lookedUrls).toHaveLength(1);
+  });
+  it('Download makes a playlist named after the video if none is open', async () => {
     expect(await importLink('https://youtu.be/AAAAAAAAAAA')).toBe(true);
     expect(downloads).toEqual([['https://www.youtube.com/watch?v=AAAAAAAAAAA', false, false]]);
     heard?.({ ...VIEW, phase: 'done', runId: 'run-1', saved: { folder: '/placeholder', files: ['x.mp4'] } });
@@ -250,7 +264,7 @@ describe('pasting a link', () => {
     expect(made).toEqual(['Placeholder video']);
   });
 
-  it('adds to the playlist open at paste time even if another opens before the download finishes', async () => {
+  it('adds to the playlist open when Download is pressed even if another opens before the download finishes', async () => {
     await playlists(node('a', 'Placeholder A'), node('b', 'Placeholder B'));
     usePlaylists.setState({ openId: 'b' });
     useLinks.setState({ view: { ...VIEW, lastPlaylist: 'a' } });

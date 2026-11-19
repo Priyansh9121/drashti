@@ -12,7 +12,7 @@ const TRACKS = [
 ];
 const SRT = '1\n00:00:00,000 --> 00:00:01,000\nPlaceholder caption\n';
 
-function setup(learning?: string) {
+function setup(learning?: string, preferences = true) {
   const root = mkdtempSync(join(tmpdir(), 'drashti-caption-files-'));
   const folder = join(root, 'Saved');
   mkdirSync(folder);
@@ -39,7 +39,9 @@ function setup(learning?: string) {
     freeBytesAsync: () => Promise.resolve(100 * 1024 ** 3),
     defaultFolder: folder,
     lastFolder: { get: () => folder, set: () => undefined },
-    captionPreferences: { get: () => prefs, set: (value) => Object.assign(prefs, value) },
+    captionPreferences: preferences
+      ? { get: () => prefs, set: (value) => Object.assign(prefs, value) }
+      : undefined,
     pickFolder: () => Promise.resolve(join(root, 'Chosen captions')),
     importFiles: (paths) => {
       imported.push(paths);
@@ -213,6 +215,19 @@ describe('caption files and the learning copy', () => {
       expect(readdirSync(h.folder)).toEqual(['Chosen.mp4']);
       h.service.reset();
       expect(h.service.view()).toMatchObject({ downloadCaptions: false, captionsFolder: chosen });
+    } finally {
+      h.service.close();
+    }
+  });
+
+  it('never recreates an explicitly picked learning folder, even without a preference store', async () => {
+    const h = setup(undefined, false);
+    try {
+      await h.service.pickFolder('captions');
+      finish(await start(h));
+      await until(() => h.service.view().phase === 'done');
+      expect(existsSync(join(h.root, 'Chosen captions'))).toBe(false);
+      expect(h.service.view()).toMatchObject({ captions: { learningSkipped: true } });
     } finally {
       h.service.close();
     }
