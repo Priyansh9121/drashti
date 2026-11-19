@@ -204,6 +204,12 @@ export interface Layers {
   wordsOut: HTMLDivElement | null;
   bandIn?: BandBoxes;
   bandOut?: BandBoxes;
+  /**
+   * Each slide's shade box (X11): around what the slide draws, inside its box. Without a graphics chip a deck's own
+   * Cover or Uncover shades the slide it moves on it, inside the slide's own layer.
+   */
+  shadeIn?: HTMLDivElement | null;
+  shadeOut?: HTMLDivElement | null;
 }
 
 /**
@@ -455,7 +461,7 @@ function paintBand(boxes: BandBoxes | undefined, s: WipeBandStyles | null): void
  * transition it is the slide that was coming in, and keeps nothing of it (its move, clip, mask, shade, place above or
  * Wipe band; TX-1, Session 58).
  */
-export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'bandOut'>): void {
+export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'bandOut' | 'shadeOut'>): void {
   if (els.in) els.in.style.opacity = '0';
   const before = els.out;
   if (!before) return;

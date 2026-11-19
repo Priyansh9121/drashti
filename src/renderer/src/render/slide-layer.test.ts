@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { DeckNativeTransition } from '../../../shared/deck-transition';
 import type { SlideLayer } from '../../../shared/engine/state';
 import {
-  type BandBoxes,
   fadeAt,
   firstShowing,
   type Layers,
@@ -12,7 +11,7 @@ import {
   paintWaiting,
 } from './SlideLayerView';
 import { setDrawsWithoutChip } from './chipless';
-import { deckTransitionFrame, wipeBandStyles, wipeSlideMask } from './transition-frame';
+import { deckTransitionFrame, wipeSlideMask } from './transition-frame';
 
 const layer = (id: string, shownAt: number, transition?: SlideLayer['transition']): SlideLayer => ({
   presentationId: 'p',
@@ -182,51 +181,37 @@ const layersOf = (coming: HTMLDivElement, going: HTMLDivElement): Layers => ({
   wordsOut: null,
 });
 
+/** A slide's shade box (X11) as the JSX leaves it: around what the slide draws, no filter. */
+const shadeBox = (): HTMLDivElement => ({ style: { filter: '' } }) as unknown as HTMLDivElement;
+
 describe('a deck’s own Wipe drawn on a screen with a graphics chip: PowerPoint’s band as a mask on the slide’s box (Session 58)', () => {
   afterEach(() => {
     setDrawsWithoutChip(false);
   });
 
-  it('the incoming slide’s box takes the band’s mask, a new one each frame; its band boxes stay at rest; none once over', () => {
+  it('the incoming slide’s box takes the band’s mask, a new one each frame; the outgoing slide stays as it is; none once over', () => {
     const bars = { x: 240, y: 0, width: 1440, height: 1080 };
     for (const placeIn of [FULL, bars])
       for (const direction of ['left', 'right', 'up', 'down'] as const) {
         const native: DeckNativeTransition = { kind: 'wipe', deckEffect: 'wipe', durationMs: 700, direction };
         const coming = box();
-        const bandIn = bandBoxes();
-        const els = { ...layersOf(coming, box()), bandIn, bandOut: bandBoxes() };
+        const going = box();
+        const els = { ...layersOf(coming, going), shadeIn: shadeBox(), shadeOut: shadeBox() };
         for (const p of [0, 0.3, 0.5, 0.9]) {
           paintLayers(els, deckPaint(native, placeIn), p);
           const band = deckTransitionFrame(native, p).in.band;
           if (!band) throw new Error('no band');
-          expect(coming.style.maskImage, `${direction} at ${String(p)}`).toBe(
+          const what = `${direction} at ${String(p)}`;
+          expect(coming.style.maskImage, what).toBe(
             wipeSlideMask(band, placeIn, { width: 1920, height: 1080 }),
           );
-          expect([coming.style.clipPath, coming.style.transform]).toEqual(['', '']);
-          expect(bandIn.holder?.style).toEqual(AT_REST);
-          expect(bandIn.slide?.style).toEqual(AT_REST);
+          expect([coming.style.clipPath, coming.style.transform], what).toEqual(['', '']);
+          expect([going.style.transform, going.style.maskImage], what).toEqual(['', '']);
+          expect([els.shadeIn.style.filter, els.shadeOut.style.filter], what).toEqual(['', '']);
         }
         paintLayers(els, deckPaint(native, placeIn), 1);
         expect(coming.style.maskImage, `${direction} over`).toBe('');
       }
-  });
-
-  it('a page told part-way that it draws without a chip goes over to the band’s boxes, leaving nothing of the mask', () => {
-    const native: DeckNativeTransition = {
-      kind: 'wipe',
-      deckEffect: 'wipe',
-      durationMs: 700,
-      direction: 'left',
-    };
-    const coming = box();
-    const bandIn = bandBoxes();
-    const els = { ...layersOf(coming, box()), bandIn, bandOut: bandBoxes() };
-    paintLayers(els, deckPaint(native), 0.3);
-    expect(coming.style.maskImage).not.toBe('');
-    setDrawsWithoutChip(true);
-    paintLayers(els, deckPaint(native), 0.4);
-    expect(coming.style.maskImage).toBe('');
-    expect(bandIn.holder?.style.maskImage).not.toBe('');
   });
 });
 
@@ -339,31 +324,15 @@ describe('Back during a deck’s own transition (TX-1, review-p3tr LOW-1)', () =
   });
 });
 
-/** A slide's two band boxes (Session 58, C2) as the JSX leaves them: filling the slide's box, nothing else. */
-const bandBoxes = (): BandBoxes => ({
-  holder: {
-    style: { inset: '0', width: '', height: '', maskImage: '', transform: '', willChange: '', overflow: '' },
-  } as unknown as HTMLDivElement,
-  slide: {
-    style: { inset: '0', width: '', height: '', maskImage: '', transform: '', willChange: '', overflow: '' },
-  } as unknown as HTMLDivElement,
-});
-const AT_REST = {
-  inset: '0',
-  width: '',
-  height: '',
-  maskImage: '',
-  transform: '',
-  willChange: '',
-  overflow: '',
-};
-
-describe('a deck’s own Wipe drawn on a screen without a graphics chip: PowerPoint’s band on moved boxes (Session 58, C2)', () => {
+describe('a deck’s own Wipe drawn on a screen without a graphics chip: the band’s mask on the slide’s box as with one, the outgoing slide a still layer of its own (X11)', () => {
   afterEach(() => {
     setDrawsWithoutChip(false);
   });
+  /** The outgoing slide a layer of its own that does not move: so only the incoming slide is drawn again each frame. */
+  const STILL = 'translate3d(0px, 0px, 0px)';
+  const CANVAS = { width: 1920, height: 1080 };
 
-  it('the incoming slide’s band boxes are the band, one slide long where the slide is placed, while it runs (no clip or mask on the slide), at rest once over; the outgoing slide’s never move', () => {
+  it('the incoming slide’s box takes the band’s mask, a new one each frame, as with a chip; the outgoing slide is a still layer of its own while it runs; nothing of either once over', () => {
     setDrawsWithoutChip(true);
     // A 16:9 slide filling the screen, and a 4:3 one fitted to it (bars either side).
     for (const placeIn of [FULL, { x: 240, y: 0, width: 1440, height: 1080 }])
@@ -371,62 +340,68 @@ describe('a deck’s own Wipe drawn on a screen without a graphics chip: PowerPo
         const native: DeckNativeTransition = { kind: 'wipe', deckEffect: 'wipe', durationMs: 700, direction };
         const coming = box();
         const going = box();
-        const bandIn = bandBoxes();
-        const bandOut = bandBoxes();
-        const els = { ...layersOf(coming, going), bandIn, bandOut };
+        const els = { ...layersOf(coming, going), shadeIn: shadeBox(), shadeOut: shadeBox() };
         for (const p of [0, 0.3, 0.5, 0.9]) {
           paintLayers(els, deckPaint(native, placeIn), p);
           const band = deckTransitionFrame(native, p).in.band;
           if (!band) throw new Error('no band');
-          const want = wipeBandStyles(band, placeIn, { width: 1920, height: 1080 }, 1);
-          expect(bandIn.holder?.style, `${direction} at ${String(p)}`).toEqual({
-            ...want.holder,
-            willChange: 'transform',
-            overflow: 'hidden',
-          });
-          expect(bandIn.slide?.style, `${direction} at ${String(p)}`).toEqual({
-            ...AT_REST,
-            ...want.slide,
-            willChange: 'transform',
-          });
-          expect([coming.style.clipPath, coming.style.maskImage, coming.style.transform]).toEqual([
-            '',
+          const what = `${direction} at ${String(p)}`;
+          expect(coming.style.maskImage, what).toBe(wipeSlideMask(band, placeIn, CANVAS));
+          expect([coming.style.clipPath, coming.style.transform], what).toEqual(['', '']);
+          expect([going.style.transform, going.style.maskImage, going.style.clipPath], what).toEqual([
+            STILL,
             '',
             '',
           ]);
-          expect(bandOut.holder?.style).toEqual(AT_REST);
-          expect(bandOut.slide?.style).toEqual(AT_REST);
+          expect([els.shadeIn.style.filter, els.shadeOut.style.filter], what).toEqual(['', '']);
         }
         paintLayers(els, deckPaint(native, placeIn), 1);
-        expect(bandIn.holder?.style, `${direction} over`).toEqual(AT_REST);
-        expect(bandIn.slide?.style, `${direction} over`).toEqual(AT_REST);
-        // Not in a transition: at rest too.
+        expect([coming.style.maskImage, going.style.transform], `${direction} over`).toEqual(['', '']);
+        // Not in a transition: nothing of it.
         paintLayers(els, { ...deckPaint(native), kind: null, native: undefined }, 0);
-        expect(bandIn.holder?.style).toEqual(AT_REST);
+        expect([coming.style.maskImage, going.style.transform]).toEqual(['', '']);
       }
   });
 
-  it('a slide placed anew part-way (the screen’s canvas or its pixels changed) draws its band boxes at the new size (review LOW-3)', () => {
-    setDrawsWithoutChip(true);
+  it('a page told part-way that it draws without a chip keeps the band’s mask on the slide’s box and makes the outgoing slide a still layer', () => {
     const native: DeckNativeTransition = {
       kind: 'wipe',
       deckEffect: 'wipe',
       durationMs: 700,
       direction: 'left',
     };
-    const bandIn = bandBoxes();
-    const els = { ...layersOf(box(), box()), bandIn, bandOut: bandBoxes() };
-    paintLayers(els, deckPaint(native, FULL), 0.3);
-    const bars = { x: 240, y: 0, width: 1440, height: 1080 };
-    paintLayers(els, deckPaint(native, bars), 0.4);
+    const coming = box();
+    const going = box();
+    const els = layersOf(coming, going);
+    paintLayers(els, deckPaint(native), 0.3);
+    expect([coming.style.maskImage === '', going.style.transform]).toEqual([false, '']);
+    setDrawsWithoutChip(true);
+    paintLayers(els, deckPaint(native), 0.4);
     const band = deckTransitionFrame(native, 0.4).in.band;
     if (!band) throw new Error('no band');
-    const want = wipeBandStyles(band, bars, { width: 1920, height: 1080 }, 1);
-    expect(bandIn.holder?.style).toMatchObject(want.holder);
-    expect(bandIn.slide?.style).toMatchObject(want.slide);
+    expect([coming.style.maskImage, going.style.transform]).toEqual([
+      wipeSlideMask(band, FULL, CANVAS),
+      STILL,
+    ]);
   });
 
-  it('Back during it: the slide that was coming in is drawn whole, its band boxes at rest (TX-1)', () => {
+  it('under Drashti’s own transition set over the deck’s, the outgoing slide moves as that transition has it (no still layer)', () => {
+    setDrawsWithoutChip(true);
+    for (const kind of ['slide', 'dissolve'] as const) {
+      const native: DeckNativeTransition = {
+        kind: 'wipe',
+        deckEffect: 'wipe',
+        durationMs: 700,
+        direction: 'left',
+        over: { kind, durationMs: 700 },
+      };
+      const going = box();
+      paintLayers(layersOf(box(), going), deckPaint(native), 0.5);
+      expect(going.style.transform, kind).toBe(deckTransitionFrame(native, 0.5).out.transform);
+    }
+  });
+
+  it('Back during it: the slide that was coming in is drawn whole, no mask and no layer left on it (TX-1)', () => {
     setDrawsWithoutChip(true);
     const native: DeckNativeTransition = {
       kind: 'wipe',
@@ -435,31 +410,13 @@ describe('a deck’s own Wipe drawn on a screen without a graphics chip: PowerPo
       direction: 'up',
     };
     const coming = box();
-    const bandIn = bandBoxes();
-    paintLayers({ ...layersOf(coming, box()), bandIn, bandOut: bandBoxes() }, deckPaint(native), 0.6);
-    expect(bandIn.holder?.style.maskImage).not.toBe('');
-    paintWaiting({ in: box(), out: coming, bandOut: bandIn });
-    expect(bandIn.holder?.style).toEqual(AT_REST);
-    expect(bandIn.slide?.style).toEqual(AT_REST);
+    const going = box();
+    paintLayers(layersOf(coming, going), deckPaint(native), 0.6);
+    expect([coming.style.maskImage === '', going.style.transform]).toEqual([false, STILL]);
+    paintWaiting({ in: box(), out: coming });
+    expect([coming.style.maskImage, coming.style.transform]).toEqual(['', '']);
   });
 });
-
-/** A slide's band boxes as the JSX leaves them, with the filter a deck's own Cover or Uncover shades inside them (X11). */
-const shadedBandBoxes = (): BandBoxes => {
-  const rest = () => ({
-    style: {
-      inset: '0',
-      width: '',
-      height: '',
-      maskImage: '',
-      transform: '',
-      willChange: '',
-      overflow: '',
-      filter: '',
-    },
-  });
-  return { holder: rest() as unknown as HTMLDivElement, slide: rest() as unknown as HTMLDivElement };
-};
 
 describe('a deck’s own Push, Cover and Uncover drawn on a screen without a graphics chip: each moving slide a layer of its own, moved in whole device pixels (X11)', () => {
   afterEach(() => {
@@ -479,14 +436,14 @@ describe('a deck’s own Push, Cover and Uncover drawn on a screen without a gra
   const paint = (native: DeckNativeTransition, place: typeof FULL, k: number | undefined, p: number) => {
     const coming = box();
     const going = box();
-    const bandIn = shadedBandBoxes();
-    const bandOut = shadedBandBoxes();
+    const shadeIn = shadeBox();
+    const shadeOut = shadeBox();
     paintLayers(
-      { ...layersOf(coming, going), bandIn, bandOut },
+      { ...layersOf(coming, going), shadeIn, shadeOut },
       { ...deckPaint(native, place), ...(k === undefined ? {} : { devicePerCanvas: k }) },
       p,
     );
-    return { coming, going, bandIn, bandOut };
+    return { coming, going, shadeIn, shadeOut };
   };
 
   it('moves each moving slide by a 3D translation in whole device pixels, within half a device pixel of PowerPoint’s move, its shade inside it', () => {
@@ -498,7 +455,7 @@ describe('a deck’s own Push, Cover and Uncover drawn on a screen without a gra
             const native: DeckNativeTransition = { kind: 'slide', deckEffect, durationMs: 700, direction };
             const along = direction === 'left' ? 1920 : 1080;
             for (const p of [0.2, 0.5, 0.83]) {
-              const { coming, going, bandIn, bandOut } = paint(native, place, k, p);
+              const { coming, going, shadeIn, shadeOut } = paint(native, place, k, p);
               const model = deckTransitionFrame(
                 native,
                 p,
@@ -506,12 +463,12 @@ describe('a deck’s own Push, Cover and Uncover drawn on a screen without a gra
                 place === FULL ? undefined : { in: place, out: place },
               );
               const what = `${deckEffect} ${direction} ${String(place.width)} wide, ${k.toFixed(3)} a px, at ${String(p)}`;
-              for (const [el, f, band] of [
-                [coming, model.in, bandIn],
-                [going, model.out, bandOut],
+              for (const [el, f, shade] of [
+                [coming, model.in, shadeIn],
+                [going, model.out, shadeOut],
               ] as const) {
                 expect(el.style.filter, what).toBe('');
-                expect(band.holder?.style.filter, what).toBe(f.filter ?? '');
+                expect(shade.style.filter, what).toBe(f.filter ?? '');
                 if (f.transform === '') {
                   expect(el.style.transform, what).toBe('');
                   continue;
@@ -550,7 +507,7 @@ describe('a deck’s own Push, Cover and Uncover drawn on a screen without a gra
         model.in.filter ?? '',
         model.out.filter ?? '',
       ]);
-      expect([drawn.bandIn.holder?.style.filter, drawn.bandOut.holder?.style.filter], what).toEqual(['', '']);
+      expect([drawn.shadeIn.style.filter, drawn.shadeOut.style.filter], what).toEqual(['', '']);
     };
     setDrawsWithoutChip(true);
     for (const p of [0, 1])
@@ -570,11 +527,11 @@ describe('a deck’s own Push, Cover and Uncover drawn on a screen without a gra
     setDrawsWithoutChip(true);
     for (const deckEffect of ['push', 'cover'] as const) {
       const native: DeckNativeTransition = { kind: 'slide', deckEffect, durationMs: 700, direction: 'left' };
-      const { coming, bandIn } = paint(native, FULL, 1024 / 1920, 0.4);
+      const { coming, shadeIn } = paint(native, FULL, 1024 / 1920, 0.4);
       expect(coming.style.transform, deckEffect).toMatch(LAYER);
-      if (deckEffect === 'cover') expect(bandIn.holder?.style.filter).toBe('brightness(0.986)');
-      paintWaiting({ in: box(), out: coming, bandOut: bandIn });
-      expect([coming.style.transform, coming.style.filter, bandIn.holder?.style.filter], deckEffect).toEqual([
+      if (deckEffect === 'cover') expect(shadeIn.style.filter).toBe('brightness(0.986)');
+      paintWaiting({ in: box(), out: coming, shadeOut: shadeIn });
+      expect([coming.style.transform, coming.style.filter, shadeIn.style.filter], deckEffect).toEqual([
         '',
         '',
         '',

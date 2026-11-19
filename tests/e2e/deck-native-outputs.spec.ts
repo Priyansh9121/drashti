@@ -159,19 +159,14 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       const entryAt = entered?.shownAt ?? 0;
       expect(clicked?.stepAt).toBe(entryAt + WIPE_MS);
       const incoming = hall.locator('[data-layer="slide"] [data-slide-in]');
-      const band = incoming.locator('[data-wipe-band]');
+      const outgoing = hall.locator('[data-layer="slide"] [data-slide-out]');
       await holdClock(app, entryAt + WIPE_MS / 2);
-      // A deck's Wipe (Session 58): PowerPoint's soft band, no clip. Without a graphics chip a mask on the incoming
-      // slide's band box, which moves; with one a mask on the slide's own box.
+      // A deck's Wipe (Session 58): PowerPoint's soft band, no clip: a mask on the incoming slide's own box, with a
+      // graphics chip and without; without one the outgoing slide is a still layer of its own while it runs (X11).
       await expect(incoming).toHaveCSS('clip-path', 'none');
-      if (await drawsWithoutChip(hall)) {
-        await expect(incoming).toHaveCSS('mask-image', 'none');
-        await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
-        await expect(band).not.toHaveCSS('transform', 'none');
-      } else {
-        await expect(incoming).toHaveCSS('mask-image', /^linear-gradient\(/u);
-        await expect(band).toHaveCSS('mask-image', 'none');
-      }
+      await expect(incoming).toHaveCSS('mask-image', /^linear-gradient\(/u);
+      if (await drawsWithoutChip(hall)) await expect(outgoing).not.toHaveCSS('transform', 'none');
+      else await expect(outgoing).toHaveCSS('transform', 'none');
       // Half-way up from the bottom, as the hall draws it: through the band, the incoming slide's full-slide shape over
       // the outgoing slide's blue box, mixed as PowerPoint's half cosine has them (a hard edge half-way would show the
       // box whole above the middle and not at all below it).
@@ -200,9 +195,8 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0');
       await holdClock(app, entryAt + WIPE_MS + FADE_MS / 2);
       await expect(incoming).toHaveCSS('clip-path', 'none');
-      await expect(band).toHaveCSS('mask-image', 'none');
-      await expect(band).toHaveCSS('transform', 'none');
       await expect(incoming).toHaveCSS('mask-image', 'none');
+      await expect(incoming).toHaveCSS('transform', 'none');
       await expect(target(hall, 5)).toHaveCSS('opacity', '0.5');
       await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0.5');
       await holdClock(app, entryAt + WIPE_MS + FADE_MS);
@@ -221,7 +215,7 @@ test('stage Current and Next and a phone follow native clicks through Back and a
   }
 });
 
-test('the LIVE picture and Screens card use the moving Wipe band in software', async () => {
+test('the LIVE picture and Screens card draw the Wipe band as the slide’s mask in software, the outgoing slide a still layer', async () => {
   const { app } = await launchApp({
     ...CLOCK,
     DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software',
@@ -252,10 +246,9 @@ test('the LIVE picture and Screens card use the moving Wipe band in software', a
 
     for (const preview of previews) {
       const incoming = preview.locator('[data-layer="slide"] [data-slide-in]');
-      const band = incoming.locator('[data-wipe-band]');
-      await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
-      await expect(band).not.toHaveCSS('transform', 'none');
-      await expect(incoming).toHaveCSS('mask-image', 'none');
+      const outgoing = preview.locator('[data-layer="slide"] [data-slide-out]');
+      await expect(incoming).toHaveCSS('mask-image', /^linear-gradient\(/u);
+      await expect(outgoing).not.toHaveCSS('transform', 'none');
     }
   } finally {
     await app.close();

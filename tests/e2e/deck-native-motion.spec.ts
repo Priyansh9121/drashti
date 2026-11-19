@@ -98,24 +98,18 @@ test('PowerPoint clicks play on the screen without Office and survive a text edi
       const incoming = out.locator('[data-layer="slide"] [data-slide-in]').last();
       await holdClock(app, (next?.shownAt ?? 0) + 325);
       await expect(out.locator('[data-layer="slide"]')).toHaveAttribute('data-transition', 'wipe');
-      // A deck's Wipe (Session 58): PowerPoint's soft band, no clip. Without a graphics chip a mask on the incoming
-      // slide's band box, which moves; with one a mask on the slide's own box.
-      const band = incoming.locator('[data-wipe-band]');
+      // A deck's Wipe (Session 58): PowerPoint's soft band, no clip: a mask on the incoming slide's own box, with a
+      // graphics chip and without; without one the outgoing slide is a still layer of its own while it runs (X11).
+      const outgoing = out.locator('[data-layer="slide"] [data-slide-out]').last();
       await expect(incoming).toHaveCSS('clip-path', 'none');
-      if (await drawsWithoutChip(out)) {
-        await expect(incoming).toHaveCSS('mask-image', 'none');
-        await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
-        await expect(band).not.toHaveCSS('transform', 'none');
-      } else {
-        await expect(incoming).toHaveCSS('mask-image', /^linear-gradient\(/u);
-        await expect(band).toHaveCSS('mask-image', 'none');
-      }
+      await expect(incoming).toHaveCSS('mask-image', /^linear-gradient\(/u);
+      if (await drawsWithoutChip(out)) await expect(outgoing).not.toHaveCSS('transform', 'none');
+      else await expect(outgoing).toHaveCSS('transform', 'none');
       await holdClock(app, (next?.shownAt ?? 0) + 650);
       await expect(out.locator('[data-layer="slide"]')).not.toHaveAttribute('data-fading', 'true');
       // Over: the band gone, nothing of it left on the slide (TX-2).
-      await expect(band).toHaveCSS('mask-image', 'none');
-      await expect(band).toHaveCSS('transform', 'none');
       await expect(incoming).toHaveCSS('mask-image', 'none');
+      await expect(incoming).toHaveCSS('transform', 'none');
       await holdClock(app, null);
 
       const { ed, editor } = await openEditor(app, win, name);
