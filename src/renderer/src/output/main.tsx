@@ -1,9 +1,10 @@
-import { StrictMode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
 import { groupLookIn } from '../../../shared/looks';
 import type { OutputWarmUpEnd } from '../../../shared/screens';
+import { blends, nothingSet, warpTransform } from '../../../shared/screen-geometry';
 import { stageDrawsHall, stageShows } from '../../../shared/stage-layouts';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { engineNow, holdClock } from '../render/clock';
@@ -26,6 +27,9 @@ import { ClockStyleContext } from '../render/clock-style';
 import { LiveHere } from '../render/live-here';
 import { useStopFade } from '../render/StopFade';
 import { AUDIENCE_TRACKS, startMotionProbeIfAsked } from '../render/motion-probe';
+import { useElementSize } from '../render/useElementSize';
+import { BlendRamps } from './BlendRamps';
+import { GeometryGrid } from './GeometryGrid';
 
 function IdentifyOverlay() {
   const identify = useOutput((s) => s.identify);
@@ -250,6 +254,18 @@ function Output() {
   }, []);
   const canvas = { width: context?.canvasWidth ?? 1920, height: context?.canvasHeight ?? 1080 };
   const scaling = context?.scaling ?? 'fit';
+  // This screen's geometry (x27): its whole picture zoomed, moved and pinned by its corners as one (the window's own
+  // box, measured without the warp), its part of one wide picture, and the ramps over its overlaps. Nothing set: no
+  // style, no part, nothing more drawn, the same page as before. The box is always there, so a change never mounts the
+  // show again (the screen is never blank while it is adjusted).
+  const geometry = context?.geometry ?? null;
+  const part = geometry?.part ?? null;
+  const windowBox = useElementSize(rootRef);
+  const warp = warpTransform(geometry, windowBox);
+  const warpStyle = useMemo(
+    () => (warp === null ? undefined : { transform: warp, transformOrigin: '0 0' }),
+    [warp],
+  );
   // What this screen shows: its group's settings in the live Look.
   const look = groupLookIn(state?.look, context?.groupId);
   // A key and fill group's screen draws the fill or the key.
@@ -279,9 +295,19 @@ function Output() {
       // Ready to draw the show: its fonts loaded, and the GPU warmed up (WarmUp), or none to warm (Session 57).
       data-fonts={ready ? 'ready' : 'loading'}
       data-warm-up={stage ? 'none' : warmed ? 'done' : noGpu ? 'skipped' : 'warming'}
+      // Its geometry (x27), once its context has brought one: none said when nothing is set.
+      data-geometry={nothingSet(geometry) ? undefined : 'set'}
+      data-grid={context?.grid === true ? 'on' : undefined}
     >
       {context && fontsReady && !ready && (
-        <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
+        // The warm-up draws as the show will, warped too (x27): the graphics chip makes those pipelines unseen.
+        <PlacedInParent
+          content={canvas}
+          mode={scaling}
+          part={part}
+          style={warpStyle}
+          className="absolute inset-0"
+        >
           <WarmUp
             page="output"
             canvas={canvas}
@@ -300,13 +326,26 @@ function Output() {
           {/* Main's way of writing the time (Sessions 31–36, I18N-8): a node in another time zone shows Main's. */}
           <ClockStyleContext.Provider value={context?.clockStyle ?? null}>
             <LiveHere.Provider value={liveHere}>
-              <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
+              <PlacedInParent
+                content={canvas}
+                mode={scaling}
+                part={part}
+                style={warpStyle}
+                className="absolute inset-0"
+              >
                 {stage ? (
                   <StageScreen state={state} look={look} canvas={canvas} hall={context.hall} />
                 ) : (
                   <HallScene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
                 )}
                 {testThrow && <ThrowForTests />}
+                {/* The edge blend's ramps over everything it shows, and the grid while it is adjusted (x27). */}
+                {geometry && blends(geometry.blend) && (
+                  <BlendRamps canvas={canvas} part={part} blend={geometry.blend} />
+                )}
+                {context?.grid === true && (
+                  <GeometryGrid canvas={canvas} part={part} blend={geometry?.blend ?? null} />
+                )}
               </PlacedInParent>
             </LiveHere.Provider>
           </ClockStyleContext.Provider>
