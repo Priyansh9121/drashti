@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { ControllerActions } from './ControllerActions';
 import type { NodeView } from '../../../shared/nodes';
 import type { EngineState, UpNext } from '../../../shared/engine/state';
 import { mediaToPreload } from '../../../shared/engine/preload';
@@ -100,7 +101,9 @@ export function ControllerView({ view }: { view: SharedView }) {
         </span>
       </div>
       <p className="text-xs text-muted">
-        Main runs the show. This computer shows LIVE and NEXT, without show controls.
+        {view.areas?.length
+          ? 'Main runs the show and checks the controls it allows here.'
+          : 'Main runs the show. This computer shows LIVE and NEXT, without show controls.'}
       </p>
       {!connected && (
         <p className="text-sm text-warning-fg">
@@ -109,6 +112,7 @@ export function ControllerView({ view }: { view: SharedView }) {
             : 'The last view stays here. Check the link to Main; Main keeps running the show.'}
         </p>
       )}
+      {state && <ControllerActions view={view} state={state} />}
       {state && (
         <LiveHere.Provider value={false}>
           <ScreenPictures.Provider value={{ pictures: state.pictures, liveZoom: null }}>
