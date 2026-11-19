@@ -29,6 +29,7 @@ import {
   type SlidePlace,
   type SlideShift,
   type WipeBand,
+  wipeSlideClip,
   wipeSlideMask,
   wordsFrame,
   wordsMove,
@@ -308,9 +309,15 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
     !f ? '' : whole !== null && f.shift ? wholePixelMove(f.shift, how, whole) : f.transform;
   // Without a graphics chip, while a deck's own Wipe runs alone (X11): the outgoing slide a layer of its own that never
   // moves, so that only the incoming slide, its band's mask new each frame, is drawn again (the whole layer each frame
-  // without it).
-  const stillOut = chipless && native !== undefined && !native.over && frame?.in.band !== undefined;
-  set(els.in, frame ? String(frame.in.opacity) : '', moveOf(frame?.in), frame?.in.clip);
+  // without it), and that clipped where its mask shows nothing.
+  const wipeAlone = chipless && native !== undefined && !native.over ? frame?.in.band : undefined;
+  const stillOut = wipeAlone !== undefined;
+  set(
+    els.in,
+    frame ? String(frame.in.opacity) : '',
+    moveOf(frame?.in),
+    frame?.in.clip ?? (wipeAlone ? wipeSlideClip(wipeAlone, how.placeIn, how) : undefined),
+  );
   set(
     els.out,
     frame ? String(frame.out.opacity) : '',

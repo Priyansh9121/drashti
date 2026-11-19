@@ -347,6 +347,40 @@ export function wipeSlideMask(
 }
 
 /**
+ * Where the band's mask on the incoming slide's box (wipeSlideMask) shows nothing: past the band's far end, while that is
+ * still on the layer (the Wipe's first half). A page without a graphics chip clips the box there (X11), so that only
+ * what shows is drawn again each frame; '' where all of it may show. On the far side only, in whole px, never into the
+ * band.
+ */
+export function wipeSlideClip(
+  band: WipeBand,
+  slide: SlidePlace,
+  canvas: { width: number; height: number },
+): string {
+  const { direction } = band;
+  const across = direction === 'left' || direction === 'right';
+  const fromEnd = direction === 'left' || direction === 'up';
+  const length = across ? slide.width : slide.height;
+  const slideStart = across ? slide.x : slide.y;
+  const screen = across ? canvas.width : canvas.height;
+  const side = fromEnd ? screen - (slideStart + length) : slideStart;
+  // The mask's last stop (nothing shows past it), from the layer's edge on the incoming side.
+  const shows = side + (band.at + 1) * length;
+  const cut = Math.floor(screen - shows);
+  if (!(cut > 0)) return '';
+  const px = `${String(cut)}px`;
+  const [top, right, bottom, left] =
+    direction === 'left'
+      ? ['0px', '0px', '0px', px]
+      : direction === 'right'
+        ? ['0px', px, '0px', '0px']
+        : direction === 'up'
+          ? [px, '0px', '0px', '0px']
+          : ['0px', '0px', px, '0px'];
+  return `inset(${top} ${right} ${bottom} ${left})`;
+}
+
+/**
  * The clip on the slide layer while a deck's own Push, Cover or Uncover moves a slide (Session 58, Q58-16): PowerPoint
  * moves its slides inside the slide, so where the screen shows past the slide (a 4:3 deck between bars on a 16:9
  * screen) both are clipped to it and the bars stay as they are. Round both slides' places (a slide of another size going
