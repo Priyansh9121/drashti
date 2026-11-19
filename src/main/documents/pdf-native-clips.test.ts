@@ -21,6 +21,7 @@ import {
   formWordsPdf,
   longTextEffectPdf,
   maskedWordsPdf,
+  nonIsolatedGroupPdf,
   paintedClipEffectPdf,
   rotatedCurveEffectPdf,
   rotatedGroupedEffectPdf,
@@ -271,6 +272,20 @@ describe('whole paint on PDF effect pages', () => {
         { kind: 'text', text: 'More placeholders' },
       ]);
       expect(result.elements[1]?.frame.width).toBeLessThanOrEqual(18);
+    });
+  });
+
+  it('keeps a non-isolated PDF group as one picture, separate from outside paint, matching the full page', async () => {
+    await withPage(nonIsolatedGroupPdf(), async (doc, page) => {
+      const list = await page.getOperatorList({ annotationMode: 0 });
+      const groups = list.fnArray.flatMap((fn, index) =>
+        fn === pdfjs.OPS.beginGroup ? [list.argsArray[index] as unknown] : [],
+      );
+      // Prove this exercises PDF.js's non-isolated fast path, rather than an ordinary form or isolated group.
+      expect(groups).toMatchObject([[{ isolated: false, knockout: false }]]);
+      // Two drawings inside the group become one picture; the outside drawing stays independently movable.
+      // This also compares every assembled pixel against a direct PDF.js page render (tolerance 2 per channel).
+      await expectFullPaint(doc, page, 2);
     });
   });
 
