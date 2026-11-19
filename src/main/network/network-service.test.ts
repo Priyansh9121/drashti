@@ -73,6 +73,8 @@ function setup(
     onAir?: NetworkDeps['onAir'];
     /** This computer's addresses and name on the network as a test gives them (the guides' pictures, Session 55). */
     shown?: { addresses: string[]; localName: string };
+    /** The log's lines, for a test that reads them. */
+    logs?: string[];
   } = {},
 ) {
   const db = openDatabase(':memory:');
@@ -209,7 +211,9 @@ function setup(
     // Simple Mode as a phone's request is weighed (Session 55, the owner's answer of 30 Oct 2026).
     simple: () => (options.locked === true ? ONE : null),
     changed: (s) => statuses.push(s),
-    log: () => undefined,
+    log: (_level, line) => {
+      options.logs?.push(line);
+    },
     now: () => now,
     ...(options.letIn ? { letIn: () => options.letIn?.now ?? false } : {}),
   });
@@ -1331,6 +1335,21 @@ describe('OSC uses the API action layer without a paired phone', () => {
     ).toBe(200);
     expect(u.commands).toEqual([{ type: 'goLive', presentationId: 'p001', slideIndex: 0 }]);
     await u.service.close();
+  });
+
+  it('names who asked in the log: the OSC sender, or the caller the action layer is given (x28: a paired controller)', async () => {
+    const logs: string[] = [];
+    const t = setup({ logs });
+    expect(t.service.runShowAction({ op: 'command', args: { type: 'next' } }).status).toBe(200);
+    expect(
+      t.service.runShowAction({ op: 'command', args: { type: 'next' } }, 'the paired controller').status,
+    ).toBe(200);
+    const asked = logs.filter((line) => /^Network: (OSC sender|the paired controller) /u.test(line));
+    expect(asked.map((line) => line.split(' ').slice(1, 3).join(' '))).toEqual([
+      'OSC sender',
+      'the paired',
+    ]);
+    await t.service.close();
   });
 
   it('uses API message template filling and the existing hide id, never raw showMessage content', async () => {
