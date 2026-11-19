@@ -1078,8 +1078,11 @@ export class NetworkService implements EngineTransport {
     }
   }
 
-  /** An explicitly allowed OSC sender uses these same show actions, independent of Phones being on. */
-  runShowAction(action: OscAction): DeviceAnswer {
+  /**
+   * An explicitly allowed OSC sender uses these same show actions, independent of Phones being on; so may another
+   * caller of Main's own (x28: a paired controller), named in the log as `who`.
+   */
+  runShowAction(action: OscAction, who = 'OSC sender'): DeviceAnswer {
     if (!this.letIn()) return deny(503, STOPPED_REFUSAL);
     const args = action.args as Record<string, unknown>;
     if (this.deps.refused(IPC.engine.command, [args]))
@@ -1088,15 +1091,15 @@ export class NetworkService implements EngineTransport {
     if (simple && !phoneMayInSimpleMode(action.op, args, simple)) return deny(403, simple.refusal());
     switch (action.op) {
       case 'command':
-        return this.command(args, 'OSC sender');
+        return this.command(args, who);
       case 'message.show':
-        return this.showMessage(args, 'OSC sender');
+        return this.showMessage(args, who);
       case 'message.hide': {
         const parsed = hideSchema.safeParse(args);
         return parsed.success
           ? this.run(
               { type: 'hideMessage', messageId: messageItemId(parsed.data.templateId) },
-              'OSC sender',
+              who,
               'took a message off',
             )
           : deny(400, 'Which message?');
