@@ -138,3 +138,28 @@ describe('pictures on the screens', () => {
     expect(simple.engine.current.liveZoom).toMatchObject({ zoom: 1.5 });
   });
 });
+
+describe('pictures on the screens that can draw no see-through pixel (X11)', () => {
+  it('are listed for the screens, up and coming next, as far as their files are read; none without the library', () => {
+    const source = new MemorySlideSource();
+    source.set('deck', [picture('p1', 'm1'), picture('p2', 'm2'), textSlide('w', 'Placeholder words')]);
+    const opaque = new Set(['m1']);
+    const engine = new ShowEngine(source, new RecordingTransport(), () => 100_000, undefined, {
+      pictureOpaque: (id) => opaque.has(id),
+      schedule: () => () => undefined,
+    });
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    expect(engine.current.opaquePictures).toEqual(['m1']);
+    // The next slide's picture is read later (main/media/see-through.ts): the screens hear of it at once.
+    opaque.add('m2');
+    engine.refreshPictures();
+    expect(engine.current.opaquePictures).toEqual(['m1', 'm2']);
+    engine.dispatch({ type: 'next' });
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.opaquePictures).toEqual([]);
+    // Without the library's answer: never any (the field left out).
+    const { engine: plain } = setup();
+    plain.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    expect(plain.current.opaquePictures ?? []).toEqual([]);
+  });
+});

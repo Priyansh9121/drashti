@@ -159,19 +159,20 @@ test('Dropbox: a file link and a folder link are pasted and imported from the de
   await chooseMenuItem(app, 'import-from-link');
   const field = win.getByTestId('link-paste');
   await expect(field).toBeVisible();
-  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(1);
   await expectNoSeriousA11yIssues(win, 'the link input', '[data-testid="link-paste"]');
   await pasteLink(win, 'https://example.net/scl/fi/abc/x.mp4', false);
-  await expect(win.getByTestId('import-notice')).toContainText('Paste a share link from YouTube or Dropbox.');
+  await expect(field.getByText('Paste a share link from YouTube or Dropbox.', { exact: true })).toBeVisible();
+  await expect(win.getByTestId('link-text')).toHaveAttribute('aria-invalid', 'true');
   expect(standIn.requests).toHaveLength(0);
 
-  // Dropbox's metadata can be read while streaming; the file itself waits.
+  // Both Dropbox's metadata and its file wait while streaming.
   await setOnAir(app, true);
   await pasteLink(win, fileLink('clipAAAAAAAAAAA', 'Placeholder clip.mp4'));
   await expect(field).toHaveCount(0);
   const status = win.getByTestId('link-status');
-  await expect(status).toHaveAttribute('data-phase', 'waiting');
-  await expect(status).toContainText('Download waits');
+  await expect(status).toHaveAttribute('data-phase', 'looking');
+  await expect(status).toContainText('Link check waits');
   const asked = standIn.requests.length;
   await holdStill(() => standIn?.requests.length === asked, 2500, 'the file is not fetched on air');
   await setOnAir(app, false);
@@ -434,12 +435,12 @@ test('Dropbox: a missing saved folder falls back once and is used again when it 
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
   }, previous);
+  await chooseMenuItem(app, 'import-from-link');
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.links.pickFolder())).toMatchObject({
     ok: true,
   });
 
   const url = fileLink('clipAAAAAAAAAAA', name);
-  await chooseMenuItem(app, 'import-from-link');
   await pasteLink(win, url);
   await linkFinished(win, 60_000);
   const notice = win
@@ -560,5 +561,45 @@ test('Dropbox: a folder link becomes one playlist, folder by folder, with header
   await win.keyboard.press('Alt+ArrowUp');
   await expect.poll(async () => (await shown()).indexOf('Clip b.mp4')).toBe(8);
   await expect(items.locator('[data-label]')).toHaveText(['Clip b.mp4', 'Clip A.mp4']);
+  await app.close();
+});
+
+test('the link window waits for Download, saves the edited name and folder, and remembers that folder', async () => {
+  const work = mkdtempSync(join(tmpdir(), 'drashti-link-window-e2e-'));
+  const chosen = join(work, 'Chosen folder');
+  mkdirSync(chosen);
+  const clip = makeVideo(join(work, 'placeholder.mp4'), '320x180');
+  standIn = await dropboxStandIn(
+    { clipAAAAAAAAAAA: { name: 'Placeholder.mp4', body: clip, type: 'video/mp4' } },
+    {},
+  );
+  const { app } = await launchApp({
+    DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
+    DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1024, height: 645 });
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+  }, chosen);
+  await chooseMenuItem(app, 'import-from-link');
+  await expect(win.getByTestId('link-text')).toBeFocused();
+  await pasteLink(win, fileLink('clipAAAAAAAAAAA', 'Placeholder.mp4'), false);
+  await expect(win.getByTestId('link-name')).toHaveValue('Placeholder');
+  expect(readdirSync(chosen)).toEqual([]);
+  expect(existsSync(join(work, 'Videos', 'Drashti downloads'))).toBe(false);
+  await win.getByTestId('link-name').fill('Chosen: clip.mp3');
+  await win.getByTestId('link-choose-folder').click();
+  await expect(win.getByTestId('link-folder')).toHaveValue(chosen);
+  await win.getByTestId('link-name').press('Enter');
+  await expect(win.getByTestId('link-paste')).toHaveCount(0);
+  await linkFinished(win);
+  expect(readFileSync(join(chosen, 'Chosen_ clip.mp4'))).toEqual(clip);
+  await chooseMenuItem(app, 'import-from-link');
+  await expect(win.getByTestId('link-folder')).toHaveValue(chosen);
+  await expectNoSeriousA11yIssues(win, 'the link window', '[data-testid="link-paste"]');
+  await win.keyboard.press('Escape');
+  await expect(win.getByTestId('link-paste')).toHaveCount(0);
   await app.close();
 });

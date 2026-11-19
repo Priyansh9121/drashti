@@ -36,6 +36,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'backups',
     'calendar',
     'captions',
+    'videoCaptions',
     'drop',
     'engine',
     'events',
@@ -54,6 +55,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'nodes',
     // The opening as Drashti starts, and File › Opening… (Session 55).
     'opening',
+    'osc',
     'output',
     'pip',
     'playlists',
@@ -84,8 +86,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   audio: ['audio', 'engine', 'media'],
   // The stream's picture.
   stream: ['app', 'engine', 'liveWindow', 'media', 'output', 'stream', 'videoInputs'],
-  // A node's own window.
-  node: ['app', 'guides', 'node'],
+  // A node's own window, including its explicitly enabled shared show view. Main-only changes have no node handlers.
+  node: ['app', 'engine', 'guides', 'liveWindow', 'media', 'node', 'output', 'videoInputs'],
   // A deck's PDF made into pictures.
   pdf: ['pictures'],
   'pdf-export': ['engine', 'media', 'output', 'pdfExport'],

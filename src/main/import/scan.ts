@@ -2,6 +2,7 @@ import type { Dirent } from 'node:fs';
 import { lstat, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { isSystemFileName } from '../../shared/drop-folder';
+import { captionFileInfo } from '../../shared/video-captions';
 import type { ImportFormat } from '../../shared/import';
 import { IMAGE_EXTENSIONS, SOUND_EXTENSIONS, VIDEO_EXTENSIONS } from '../../shared/media';
 import { PICTURE_EXTENSIONS, pictureSourceOf } from '../../shared/pictures';
@@ -27,7 +28,7 @@ const IGNORED_DIRS = new Set(['__macosx', '$recycle.bin', 'system volume informa
  * PowerPoint and Keynote.
  */
 export function importableExtensions(): string[] {
-  return ['txt', 'docx', ...Object.keys(MEDIA), ...PP6, ...PP7, ...PICTURE_EXTENSIONS];
+  return ['txt', 'docx', 'drashti-kirtans', ...Object.keys(MEDIA), ...PP6, ...PP7, ...PICTURE_EXTENSIONS];
 }
 
 /**
@@ -49,6 +50,7 @@ export function mediaKindOf(path: string): MediaKind | null {
 export function formatOf(path: string): ImportFormat {
   const ext = extOf(path);
   // Lyrics: a text file, or a Word document (Session 26f; formats/docx.ts).
+  if (ext === 'drashti-kirtans') return 'kirtan-bundle';
   if (ext === 'txt' || ext === 'docx') return 'text';
   if (MEDIA[ext]) return 'media';
   // PDF, PowerPoint and Keynote files become pictures (Session 15).
@@ -164,5 +166,30 @@ export async function scanPaths(paths: readonly string[], options: ScanOptions =
       for (const f of found) addFile(f.path, f.size);
     }
   }
+  // A video imports its own caption files in MediaStore. A folder/drop must not report them as unsupported items.
+  const videoNames = new Map<string, Set<string>>();
+  const folderKey = (file: string) =>
+    process.platform === 'win32' ? dirname(file).toLowerCase() : dirname(file);
+  for (const file of result.files) {
+    if (mediaKindOf(file.path) !== 'video') continue;
+    const folder = folderKey(file.path);
+    const names = videoNames.get(folder) ?? new Set<string>();
+    names.add(
+      basename(file.path)
+        .replace(/\.[^.]+$/u, '')
+        .toLowerCase(),
+    );
+    videoNames.set(folder, names);
+  }
+  result.files = result.files.filter((file) => {
+    if (!/\.(srt|vtt)$/iu.test(file.path)) return true;
+    const names = videoNames.get(folderKey(file.path));
+    if (!names) return true;
+    const stem = basename(file.path).replace(/\.(srt|vtt)$/iu, '');
+    if (names.has(stem.toLowerCase())) return false;
+    const match = /^(.*)\.([a-z]{2,3}(?:-[a-z\d]{2,8}){0,3})(?:\.auto)?$/iu.exec(stem);
+    const name = match?.[1];
+    return !(name && names.has(name.toLowerCase()) && captionFileInfo(`${name}.mp4`, file.path));
+  });
   return result;
 }

@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { readCaptionFile } from './video-captions';
 import { randomUUID } from 'node:crypto';
 import type { PicturesResult } from '../../shared/pictures';
 import type { ImportProgress } from '../../shared/import';
@@ -8,12 +9,13 @@ import { beginImmediately, type Db } from '../db/database';
 import { ImportRepo } from '../db/imports';
 import { schemaVersion } from '../db/migrate';
 import { readInfo } from '../convert/read-info';
+import { exportKirtanBundle } from './kirtan-bundle';
 import { MediaStore } from './media-store';
 import { OfficeCopies, officeCopiesFile } from './deck/leftovers';
 import { runImport } from './pipeline';
 import { lockPriority } from './lock-priority';
 import { runRelink } from './relink';
-import type { FromWorker, StartMessage, ToWorker } from './protocol';
+import type { ExportKirtansMessage, FromWorker, StartMessage, ToWorker } from './protocol';
 
 /*
  * The import worker: an Electron utility process started for each import
@@ -219,9 +221,62 @@ async function start(message: StartMessage): Promise<void> {
   post(result);
 }
 
+async function exportKirtans(message: ExportKirtansMessage): Promise<void> {
+  let db: Db | null = null;
+  const stopper = new AbortController();
+  stoppers.set(message.requestId, stopper);
+  if (cancelled.has(message.requestId)) stopper.abort();
+  let result: Extract<FromWorker, { type: 'exported-kirtans' }>;
+  try {
+    db = openLibrary(message.dbFile, message.schemaVersion);
+    const manifest = await exportKirtanBundle({
+      db,
+      mediaDir: message.mediaDir,
+      presentationIds: message.presentationIds,
+      output: message.output,
+      includeMedia: message.includeMedia,
+      signal: stopper.signal,
+      onAir,
+    });
+    result = {
+      type: 'exported-kirtans',
+      requestId: message.requestId,
+      result: {
+        ok: true,
+        file: message.output,
+        kirtans: manifest.kirtans.length,
+        media: manifest.media.filter((m) => m.entry !== null).length,
+      },
+    };
+  } catch (error) {
+    result = {
+      type: 'exported-kirtans',
+      requestId: message.requestId,
+      result: {
+        ok: false,
+        message: stopper.signal.aborted
+          ? 'Bundle export cancelled.'
+          : error instanceof Error
+            ? error.message
+            : 'The bundle could not be saved.',
+      },
+    };
+  } finally {
+    stoppers.delete(message.requestId);
+    db?.close();
+  }
+  post(result);
+}
+
 port.on('message', (event) => {
   const message = event.data as ToWorker;
-  if (message.type === 'cancel') {
+  if (message.type === 'read-captions') {
+    void readCaptionFile(message.file).then((result) =>
+      post({ type: 'read-captions', requestId: message.requestId, result }),
+    );
+  } else if (message.type === 'export-kirtans') {
+    void exportKirtans(message);
+  } else if (message.type === 'cancel') {
     cancelled.add(message.runId);
     stoppers.get(message.runId)?.abort();
   } else if (message.type === 'give-way') {

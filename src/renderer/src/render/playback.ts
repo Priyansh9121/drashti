@@ -121,6 +121,11 @@ function tellLength(mediaId: string, seconds: number): void {
 
 export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Playback {
   const { mediaId, attempt, startedAt, onFrame, onError, audible = false, limits = PICTURE_LIMITS } = options;
+  // Caption bands find this Scene's actual element, including slide/box videos and a node's later copy.
+  if ('dataset' in v) {
+    v.dataset['captionMedia'] = mediaId;
+    v.dataset['captionStartedAt'] = String(startedAt);
+  }
   /** How it plays now: a loop between start and end points is done here, not by the element. */
   const clock = () => {
     const t = options.timing?.();
@@ -444,6 +449,10 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     }
   } else v.src = url;
   const stop = () => {
+    if ('dataset' in v) {
+      delete v.dataset['captionMedia'];
+      delete v.dataset['captionStartedAt'];
+    }
     clearInterval(timer);
     if (starting) clearTimeout(starting.timer);
     if (wrap) clearTimeout(wrap);

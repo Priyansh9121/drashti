@@ -1,0 +1,229 @@
+import { expect, test } from '@playwright/test';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { expectNoSeriousA11yIssues } from './a11y';
+import { makeTestImage, makeTestVideo } from './test-media';
+import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
+import type { PageGlobals } from './helpers';
+import { importAndGetIds, outputPage, outputReady, setUpScreen } from './helpers';
+import { launchMain, launchNode, nodesStatus, pairNode } from './nodes';
+
+// Two separate data folders, localhost only; placeholder text. Pairing stays in the existing helper,
+// which creates credentials at run time and never prints them.
+test('an explicitly enabled second computer shares Main’s live and next view; a link drop never changes Main’s screens', async () => {
+  test.setTimeout(180_000);
+  const main = await launchMain();
+  const node = await launchNode({ DRASHTI_TEST_NODE_LINK_HOLD: '1', DRASHTI_TEST_ACCESS_STOP_MS: '10000' });
+  try {
+    await expect(node.page.getByTestId('controller-view')).toHaveCount(0);
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-controller-'));
+    const words = join(dir, 'Placeholder Shared Show.txt');
+    writeFileSync(
+      words,
+      '[Verse]\nPlaceholder shared first\n\n[Chorus]\nPlaceholder shared second\n\n[Bridge]\nPlaceholder shared third\n',
+    );
+    const [id = ''] = await importAndGetIds(main.win, [words]);
+    await setUpScreen(main.win, 'Placeholder Hall', 1);
+    const output = await outputPage(main.app);
+    await outputReady(output);
+    await main.win.evaluate(
+      (pid) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'goLive',
+          presentationId: pid,
+          slideIndex: 0,
+        }),
+      id,
+    );
+    await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder shared first');
+    const nodeId = await pairNode(main, node);
+    await main.win.getByRole('button', { name: 'Screens', exact: true }).click();
+    // There is exactly one paired computer; scope the permission control to its card.
+    const permission = main.win
+      .locator(`[data-testid="node-card"][data-node="${nodeId}"]`)
+      .getByRole('checkbox', { name: 'Shared show view' });
+    await expect(permission).not.toBeChecked();
+    await permission.check();
+    const view = node.page.getByTestId('controller-view');
+    await expect(view).toBeVisible();
+    await expect(view.getByTestId('controller-status')).toHaveText('Connected to Main');
+    await expect(view.getByTestId('controller-live')).toContainText('Placeholder shared first');
+    await expect(view.getByTestId('controller-next')).toContainText('Placeholder shared second');
+    await expect(view.getByRole('button')).toHaveCount(0);
+    // The controller may also drive assigned displays: those must keep the show through a link loss too.
+    await expect
+      .poll(() =>
+        main.win.evaluate(
+          async (nid) =>
+            (await (globalThis as PageGlobals).drashti.screens.get()).nodes.find((n) => n.id === nid)
+              ?.displays.length ?? 0,
+          nodeId,
+        ),
+      )
+      .toBeGreaterThanOrEqual(2);
+    await main.win.evaluate(async (nid) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const screens = await d.screens.get();
+      const groupId = screens.groups.find((g) => g.name === 'Placeholder Hall')?.id ?? '';
+      const displayId = screens.nodes.find((n) => n.id === nid)?.displays[1]?.id ?? -1;
+      const r = await d.screens.assignNodeDisplay(groupId, nid, displayId);
+      if (!r.ok) throw new Error(r.message);
+    }, nodeId);
+    const nodeOutput = await outputPage(node.app);
+    await outputReady(nodeOutput);
+    await expect(nodeOutput.locator('[data-layer="slide"]')).toContainText('Placeholder shared first');
+    await node.page.setViewportSize({ width: 1024, height: 645 });
+    await expectNoSeriousA11yIssues(node.page, 'the controller shared show view');
+    await expect(view.getByTestId('controller-next')).toBeInViewport();
+    const before = await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
+    // Drop just the node socket: Main and its output remain running.
+    await node.app.evaluate(() => {
+      const link = (globalThis as { drashtiNode?: { pauseLink(): void } }).drashtiNode;
+      if (!link) throw new Error('The test link control is missing.');
+      link.pauseLink();
+    });
+    await expect(view.getByTestId('controller-status')).toHaveText('Not connected');
+    await expect(view.getByTestId('controller-live')).toContainText('Placeholder shared first');
+    const after = await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
+    expect(after.rev).toBe(before.rev);
+    expect(after.state).toEqual(before.state);
+    await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder shared first');
+    await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'next' }));
+    await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder shared second');
+    // Wait past the deliberately shortened ordinary-node grace while the socket remains disconnected.
+    await expect
+      .poll(() =>
+        node.app.evaluate(() => {
+          const n = (globalThis as { drashtiNode?: { view(): { link: { since: number } } } }).drashtiNode;
+          return n ? Date.now() - n.view().link.since : 0;
+        }),
+      )
+      .toBeGreaterThan(10_000);
+    expect(
+      await node.page.evaluate(async () => (await (globalThis as PageGlobals).drashti.node.view()).stopped),
+    ).toBeNull();
+    await expect(nodeOutput.locator('[data-layer="slide"]')).toContainText('Placeholder shared first');
+    await expect(nodeOutput.locator('[data-stopped]')).toHaveCount(0);
+    await expect(view.getByTestId('controller-live')).toContainText('Placeholder shared first');
+    await expect(view.getByTestId('controller-live').locator('[data-stopped]')).toHaveCount(0);
+    expect(
+      await node.page.evaluate(
+        async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.stopped ?? null,
+      ),
+    ).toBeNull();
+    await node.app.evaluate(() => {
+      const link = (globalThis as { drashtiNode?: { resumeLink(): void } }).drashtiNode;
+      if (!link) throw new Error('The test link control is missing.');
+      link.resumeLink();
+    });
+    await expect(view.getByTestId('controller-status')).toHaveText('Connected to Main');
+    await expect(view.getByTestId('controller-live')).toContainText('Placeholder shared second');
+    await expect(nodeOutput.locator('[data-layer="slide"]')).toContainText('Placeholder shared second');
+    await expect(view.getByTestId('controller-next')).toContainText('Placeholder shared third');
+    const rev = await main.win.evaluate(
+      async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev,
+    );
+    await expect(view).toHaveAttribute('data-rev', String(rev));
+    // Switching it off removes the shared view without clearing Main or its output.
+    await permission.uncheck();
+    await expect(view).toHaveCount(0);
+    await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder shared second');
+    expect((await nodesStatus(main.win)).nodes[0]?.controller).toBe(false);
+    // Main alone owns this permission, and Simple Mode refuses changing it.
+    await main.win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+    expect(
+      await main.win.evaluate(
+        (nid) => (globalThis as PageGlobals).drashti.nodes.setController(nid, true),
+        nodeId,
+      ),
+    ).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  } finally {
+    await node.app.close();
+    await main.app.close();
+  }
+});
+
+test('shared picture and video previews use local copies, keep a video still locally, and make no sound', async () => {
+  test.setTimeout(180_000);
+  const main = await launchMain();
+  const node = await launchNode();
+  try {
+    const nodeId = await pairNode(main, node);
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-controller-pictures-'));
+    const picture = await makeTestImage(main.win, join(dir, 'Placeholder shared picture.png'), {
+      width: 640,
+      height: 360,
+      color: '#305070',
+    });
+    const video = await makeTestVideo(main.win, join(dir, 'Placeholder shared clip.webm'), {
+      seconds: 4,
+      hue: 40,
+      tone: 330,
+    });
+    await importAndGetIds(main.win, [picture, video]);
+    const items = await main.win.evaluate(async (nid) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const media = await d.library.listMedia();
+      const pictureId = media.find((m) => m.name.startsWith('Placeholder shared picture'))?.id ?? '';
+      const videoId = media.find((m) => m.name.startsWith('Placeholder shared clip'))?.id ?? '';
+      const made = await d.playlists.create('Placeholder shared media', null, false);
+      if (!made.ok) throw new Error(made.message);
+      const playlistId = made.ids[0] ?? '';
+      const added = await d.playlists.addItems(playlistId, null, [
+        { kind: 'media', mediaId: pictureId },
+        { kind: 'media', mediaId: videoId },
+      ]);
+      if (!added.ok) throw new Error(added.message);
+      const enabled = await d.nodes.setController(nid, true);
+      if (!enabled.ok) throw new Error(enabled.message);
+      return { playlistId, firstId: added.ids[0] ?? '' };
+    }, nodeId);
+    await main.win.evaluate(
+      ({ playlistId, firstId }) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'playItem',
+          playlistId,
+          itemId: firstId,
+        }),
+      items,
+    );
+    const view = node.page.getByTestId('controller-view');
+    await expect(view.getByTestId('controller-status')).toHaveText('Connected to Main');
+    const livePicture = view.getByTestId('controller-live').locator('img').first();
+    await expect
+      .poll(() =>
+        livePicture.evaluate(
+          (el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0,
+        ),
+      )
+      .toBe(true);
+    await expect(view.getByTestId('controller-next')).toContainText('Placeholder shared clip');
+    const nextStill = view.getByTestId('controller-next').locator('img').first();
+    await expect
+      .poll(() =>
+        nextStill.evaluate(
+          (el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0,
+        ),
+      )
+      .toBe(true);
+    const sha256 = createHash('sha256').update(readFileSync(video)).digest('hex');
+    expect(existsSync(join(node.userData, 'Media cache', 'stills', `${sha256}.jpg`))).toBe(true);
+    // The video up on Main is drawn here in step, with its sound still owned by Main.
+    await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'next' }));
+    const liveVideo = view.getByTestId('controller-live').locator('video').first();
+    await expect
+      .poll(() =>
+        liveVideo.evaluate(
+          (el) => (el as HTMLVideoElement).readyState >= 2 && (el as HTMLVideoElement).currentTime > 0,
+        ),
+      )
+      .toBe(true);
+    expect(await liveVideo.evaluate((el) => (el as HTMLVideoElement).muted)).toBe(true);
+    expect(await node.page.evaluate(() => document.querySelectorAll('audio').length)).toBe(0);
+  } finally {
+    await node.app.close();
+    await main.app.close();
+  }
+});
