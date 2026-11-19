@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { KIRTAN_BUNDLE_LIMIT } from '../../../shared/kirtan-bundles';
 import { Button, IconButton } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { TextInput } from '../ui/Field';
 import { Notice } from '../ui/Notice';
 import { Checkbox } from '../ui/Toggle';
 import { Download } from '../ui/icons';
@@ -160,12 +161,12 @@ function KirtanBundleForm() {
       <div className="flex min-w-0 flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm font-medium">
           Find kirtans
-          <input
+          <TextInput
             type="search"
             value={query}
             disabled={busy}
             onChange={(e) => setQuery(e.target.value)}
-            className="min-w-0 rounded-md border border-field bg-field px-3 py-2 font-normal text-fg"
+            className="h-10 px-3 font-normal"
           />
         </label>
         <div

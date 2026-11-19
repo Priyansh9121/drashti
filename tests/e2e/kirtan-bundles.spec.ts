@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import {
   type PageGlobals,
   dropFiles,
@@ -15,6 +16,8 @@ import {
 } from './helpers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
+
+const KIRTAN = 'Placeholder shared kirtan';
 
 /** Generated silent audio and placeholder words only; no internet or real library is used. */
 function silentWav(): Buffer {
@@ -44,7 +47,7 @@ async function saveBundle(app: ElectronApplication, win: Page, output: string) {
   await expect(dialog).toBeVisible();
   await expectFits(dialog, 'Kirtan bundle export dialog');
   await expectNoSeriousA11yIssues(win, 'Kirtan bundle export dialog');
-  await dialog.getByRole('checkbox', { name: 'Sample kirtan (placeholder)', exact: true }).check();
+  await dialog.getByRole('checkbox', { name: KIRTAN, exact: true }).check();
   await dialog.getByRole('checkbox', { name: 'Include media files', exact: true }).check();
   await dialog.getByRole('button', { name: 'Save bundle…', exact: true }).click();
   await expect(dialog).toHaveCount(0);
@@ -90,25 +93,63 @@ test('a chosen kirtan exports from one library and imports into a fresh library 
   const wav = silentWav();
   const sound = join(folder, 'Placeholder silent.wav');
   writeFileSync(sound, wav);
+  const kirtan = join(folder, `${KIRTAN}.pro6`);
+  const verse = (words: string) => ({ text: [{ rtf: cocoaRtf([[words, 80, [255, 255, 255]]]) }] });
+  writeFileSync(
+    kirtan,
+    pp6Presentation({
+      uuid: 'E2E-BUNDLE-PLACEHOLDER',
+      ccliAuthor: 'Placeholder poet',
+      groups: [
+        { name: 'Placeholder verse', uuid: 'BUNDLE-VERSE', slides: [verse('Placeholder verse')] },
+        { name: 'Placeholder chorus', uuid: 'BUNDLE-CHORUS', slides: [verse('Placeholder chorus')] },
+      ],
+      arrangements: [
+        { name: 'Placeholder order', groups: ['BUNDLE-VERSE', 'BUNDLE-CHORUS', 'BUNDLE-VERSE'] },
+      ],
+      selectedArrangement: 0,
+    }),
+  );
   const source = await launchApp();
   const win = await operatorPage(source.app);
   await operatorReady(win);
   const [audioId] = await importAndGetIds(win, [sound]);
-  const id = await win.evaluate(async (mediaId) => {
-    const d = (globalThis as PageGlobals).drashti;
-    const p = (await d.library.listPresentations()).find((p) => p.name === 'Sample kirtan (placeholder)');
-    if (!p || !mediaId) throw new Error('Missing placeholder seed');
-    const saved = await d.kirtans.setDetails(p.id, {
-      category: 'Kirtan',
-      kavi: 'Placeholder poet',
-      raag: 'Placeholder raag',
-      occasions: ['Placeholder occasion'],
-      audioMediaId: mediaId,
-    });
-    if (!saved.ok) throw new Error(saved.message);
-    return p.id;
-  }, audioId ?? '');
+  const [presentationId] = await importAndGetIds(win, [kirtan]);
+  const id = await win.evaluate(
+    async ({ mediaId, presentationId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const p = await d.library.getPresentation(presentationId);
+      if (!p || !mediaId) throw new Error('Missing placeholder seed');
+      const saved = await d.kirtans.setDetails(p.id, {
+        category: 'Kirtan',
+        kavi: 'Placeholder poet',
+        raag: 'Placeholder raag',
+        occasions: ['Placeholder occasion'],
+        audioMediaId: mediaId,
+      });
+      if (!saved.ok) throw new Error(saved.message);
+      const tracks = await d.kirtans.tracks(p.id);
+      if (!tracks.ok) throw new Error(tracks.message);
+      const written = await d.kirtans.saveTracks(
+        p.id,
+        tracks.slides.flatMap((slide, index) => [
+          { slideId: slide.slideId, lang: 'gu' as const, lines: ['નમૂના'] },
+          { slideId: slide.slideId, lang: 'hi' as const, lines: ['नमूना'] },
+          { slideId: slide.slideId, lang: 'en' as const, lines: [`Placeholder line ${index + 1}`] },
+          { slideId: slide.slideId, lang: 'translit' as const, lines: ['Namūnā'] },
+        ]),
+      );
+      if (!written.ok) throw new Error(written.message);
+      return p.id;
+    },
+    { mediaId: audioId ?? '', presentationId: presentationId ?? '' },
+  );
   const expected = await snapshot(win, id);
+  expect(expected.arrangements).toEqual([
+    { name: 'Placeholder order', groups: ['Placeholder verse', 'Placeholder chorus', 'Placeholder verse'] },
+  ]);
+  expect(expected.selected).toBe('Placeholder order');
+  expect(expected.details?.tracks).toEqual(expect.arrayContaining(['gu', 'hi', 'en', 'translit']));
   await saveBundle(source.app, win, firstBundle);
   await win.evaluate(async (pid) => {
     const d = (globalThis as PageGlobals).drashti;
