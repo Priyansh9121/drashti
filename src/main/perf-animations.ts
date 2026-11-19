@@ -234,6 +234,8 @@ export const FOUR_THREE_BLOCK_MS = SHORT_RUNS * DECK_FOUR_THREE_ROUND_MS;
 
 /** How long a screen opened for a case may take to be ready: its page loaded, its fonts in, its warm-up done. */
 const SCREEN_LIMIT_MS = 20_000;
+/** The Stream panel clicked mid-show (X21): the stream's page let go, the click, its preview's picture, a second. */
+const PANEL_MS = 35_000;
 
 const KINDS: readonly TransitionKind[] = [
   'cut',
@@ -666,6 +668,23 @@ const WATCH_STREAM = `(async () => {
   await globalThis.drashti.stream.watchPreview(true);
   return true;
 })()`;
+/** DK-2's own look at the stream's picture let go (the stream's page closes when nothing else needs it). */
+const UNWATCH_STREAM = `(async () => {
+  await globalThis.drashti.stream.watchPreview(false);
+  return true;
+})()`;
+/** The Stream button in the top bar, clicked as an operator does (Session 60, X21's second part). */
+const CLICK_STREAM = `(() => {
+  const button = document.querySelector('[data-testid="open-stream"]');
+  button?.click();
+  return button !== null;
+})()`;
+/** The Stream panel closed by its own button. */
+const CLOSE_STREAM_PANEL = `(() => {
+  const button = document.querySelector('[data-testid="stream-panel"] [aria-label="Close stream"]');
+  button?.click();
+  return button !== null;
+})()`;
 
 /** An output's page as SCREEN_STATE reads it. */
 interface ScreenState {
@@ -697,6 +716,24 @@ interface WindowsOpen {
   /** Why one was not. */
   why: string[];
 }
+
+/**
+ * The Stream panel clicked mid-show, as an operator opens it (Session 60, X21's second part): its own first drawing in
+ * the operator window, which its warm-up now makes ahead (operator/PanelWarmUp.tsx), and the stream's page it opens.
+ */
+interface PanelOpened {
+  /** The stream's page was open already (the streaming check streams from its start). */
+  streamOpenBefore: boolean;
+  /** From the click to its preview showing a picture (ms), null when it never did. */
+  previewMs: number | null;
+  /** The first hall screen's longest frame from the click to a second after that picture (ms), null when unread. */
+  hallLongest: number | null;
+  /** Why one was not. */
+  why: string[];
+}
+
+const panelLine = (p: PanelOpened) =>
+  `${p.streamOpenBefore ? 'the stream’s page open already' : 'the stream’s page opened by it'}; its preview showed a picture after ${p.previewMs === null ? 'never' : `${String(p.previewMs)} ms`}; the hall screen’s longest frame meanwhile: ${p.hallLongest === null ? 'not read' : `${p.hallLongest.toFixed(1)} ms`}${p.why.length > 0 ? ` (${p.why.join('; ')})` : ''}`;
 
 const windowsLine = (w: WindowsOpen) => {
   const names: [keyof Omit<WindowsOpen, 'why' | 'readyMs'>, string][] = [
@@ -1346,6 +1383,13 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
           await press(`deck click, ${DK2_WINDOWS}`, 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
         });
       }
+      // The Stream panel clicked mid-show, the operator's way (Session 60, X21's second part): the hall's frames meanwhile.
+      let panel: PanelOpened | null = null;
+      if (leftovers && timeFor(PANEL_MS, 'Stream panel clicked mid-show')) {
+        closeCase();
+        panel = await clickStreamPanel(streaming);
+        progress(`the Stream panel clicked mid-show: ${panelLine(panel)}`);
+      }
       const trips = [...roundTrips].sort((a, b) => a - b);
       progress(
         `pressed ${String(pressed.length)} times; the operator window answered in median ${String(trips[Math.floor((trips.length - 1) / 2)] ?? '-')} ms, slowest ${String(trips.at(-1) ?? '-')} ms${skipped.size > 0 ? `; out of time, not all pressed: ${[...skipped].join(', ')}` : ''}`,
@@ -1376,6 +1420,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
         table,
         nativeJump,
         windows,
+        panel,
         secondRuns,
         // What could stop the cases (their budget, or Drashti up 22 minutes), and whether the leftovers were pressed.
         stops: until.by,
@@ -1398,7 +1443,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
                 : `${plural(rows.length, 'case')}, ${plural(measured.runs.length + secondRuns.length, 'run')}`,
           },
         ],
-        summary: `scenario animations: frame period ${measured.period.toFixed(2)} ms (${String(measured.frames)} frames)${wallpaper ? '' : ', the Wallpaper black (no picture could be chosen)'}${fromMain > 0 ? `, ${String(fromMain)} pressed from the main process` : ''}; ${stillLine(measured.still)}; late: ${late.join(', ') || 'none'}; uneven: ${uneven.join(', ') || 'none'}; ${rows.map(caseLine).join(' | ')}${nativeJump ? `; ${jumpLine(nativeJump.figures)}` : ''}${windows ? `; the deck with the ${DK2_WINDOWS}, ${windowsLine(windows)}` : ''}${pointedMemory.length > 0 ? `; memory a deck slide's clip pointed at added (MB): ${memoryLine(pointedMemory)}` : ''}${notes.length > 0 ? `; notes: ${notes.join('; ')}` : ''}`,
+        summary: `scenario animations: frame period ${measured.period.toFixed(2)} ms (${String(measured.frames)} frames)${wallpaper ? '' : ', the Wallpaper black (no picture could be chosen)'}${fromMain > 0 ? `, ${String(fromMain)} pressed from the main process` : ''}; ${stillLine(measured.still)}; late: ${late.join(', ') || 'none'}; uneven: ${uneven.join(', ') || 'none'}; ${rows.map(caseLine).join(' | ')}${nativeJump ? `; ${jumpLine(nativeJump.figures)}` : ''}${windows ? `; the deck with the ${DK2_WINDOWS}, ${windowsLine(windows)}` : ''}${panel ? `; the Stream panel clicked mid-show: ${panelLine(panel)}` : ''}${pointedMemory.length > 0 ? `; memory a deck slide's clip pointed at added (MB): ${memoryLine(pointedMemory)}` : ''}${notes.length > 0 ? `; notes: ${notes.join('; ')}` : ''}`,
       };
     },
   };
@@ -1409,6 +1454,40 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
    * screen's card, a stage screen, and the stream's picture (its page as the Stream panel's preview asks for it: never
    * streaming anywhere; the streaming check's own stream to FFmpeg on this computer has it open already).
    */
+  /**
+   * The Stream panel clicked mid-show (Session 60, X21's second part), DK-2's own look at the stream's picture let go
+   * first, so the panel opens the stream's page as an operator's click does (in the streaming check it stays open, on
+   * air); the first hall screen's longest frame from the click to a second after the panel's preview shows a picture.
+   */
+  async function clickStreamPanel(streaming: boolean): Promise<PanelOpened> {
+    const why: string[] = [];
+    const streamOpen = () => (deps.program?.() ?? null) !== null;
+    await ask<boolean, boolean>(operator(), UNWATCH_STREAM, false);
+    const closing = Date.now() + 10_000;
+    while (!streaming && streamOpen() && Date.now() < closing) await sleep(100);
+    await sleep(1000);
+    const streamOpenBefore = streamOpen();
+    const from = Date.now();
+    const clicked = await ask<boolean, boolean>(operator(), CLICK_STREAM, false);
+    if (!clicked) why.push('the Stream button was not found');
+    let previewMs: number | null = null;
+    const until = Date.now() + SCREEN_LIMIT_MS;
+    while (clicked && previewMs === null && Date.now() < until) {
+      if (await ask<boolean, boolean>(operator(), SHOWS('[data-testid="stream-preview"]'), false))
+        previewMs = Date.now() - from;
+      else await sleep(100);
+    }
+    if (clicked && previewMs === null)
+      why.push(`its preview showed no picture within ${String(SCREEN_LIMIT_MS / 1000)} s`);
+    await sleep(1000);
+    const record = await readProbe(deps.outputs()[0], from, Date.now());
+    const frames = record?.frames ?? [];
+    const hallLongest =
+      frames.length > 1 ? Math.max(...frames.slice(1).map((t, i) => t - (frames[i] ?? t))) : null;
+    if (!(await ask<boolean, boolean>(operator(), CLOSE_STREAM_PANEL, false))) why.push('it did not close');
+    return { streamOpenBefore, previewMs, hallLongest, why };
+  }
+
   async function openWindowsWithoutPreloader(display: number | undefined): Promise<WindowsOpen> {
     const why: string[] = [];
     const op = operator();

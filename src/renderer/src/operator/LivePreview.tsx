@@ -27,6 +27,7 @@ import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { PipDragHandle, PipLiveStrip } from './PipLive';
 import { PlayingBars } from '../markers/PlayingBars';
+import { PanelWarmUp } from './PanelWarmUp';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
 
 /**
@@ -157,6 +158,8 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
               onStopped={warmUpStopped}
             />
           )}
+          {/* The Stream panel's own drawing, warmed with it, unseen (Session 60, X21: operator/PanelWarmUp.tsx). */}
+          {warming && <PanelWarmUp />}
           {state && showing && (
             <Scene
               state={state}
