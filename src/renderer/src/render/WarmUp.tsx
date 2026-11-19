@@ -286,8 +286,8 @@ export const WARM_LOWER_THIRDS = [
 /**
  * The native Cover's shaded AA/analytic-clip pipeline, drawn with a canvas resource (X12 wide, traced). An image
  * or a filtered Scene did not make that combined kind. A generated RGBA canvas, rotated under a fixed rounded
- * clip and shaded by the Cover's own filter, does. Its notched companion primes multisampled drawing too; the
- * unclipped pair primes the 4:3 path. Separate cells stay visible to the GPU without adding their light together.
+ * clip and shaded by the Cover's own filter, does. Plain and notched companions draw both clipped and unclipped
+ * quads, in separate cells so the GPU sees each without adding their light together.
  * All drawing is synchronous at mount, under the existing black cover; no clock or frame loop is added.
  */
 function CoverShadeCanvas({
@@ -304,8 +304,34 @@ function CoverShadeCanvas({
   available: Size;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
   const shade = deckTransitionFrame(warmDeckTransition('cover', MAX_TRANSITION_MS), PART).in.filter;
   const scale = Math.min(1, available.width / 960, available.height / 640);
+  // These pieces use page pixels. A 320 x 180 clip shrunk with a fitted slide made a different quad
+  // (traced at 1024 x 576: only counter-scaling made the native shaded AA/analytic-clip pipeline).
+  useLayoutEffect(() => {
+    const el = grid.current;
+    if (!el) return;
+    const tree = el.getRootNode();
+    if (!(tree instanceof ShadowRoot)) return;
+    const host = tree.host;
+    const update = () => {
+      const box = host.getBoundingClientRect();
+      if (box.width <= 0 || box.height <= 0 || host.clientWidth <= 0 || host.clientHeight <= 0) return;
+      const transform = `scale(${String((scale * host.clientWidth) / box.width)}, ${String((scale * host.clientHeight) / box.height)})`;
+      if (el.style.transform !== transform) el.style.transform = transform;
+    };
+    update();
+    const resized = new ResizeObserver(update);
+    resized.observe(host);
+    const changed = new MutationObserver(update);
+    for (let parent = host.parentElement; parent; parent = parent.parentElement)
+      changed.observe(parent, { attributes: true, attributeFilter: ['style'] });
+    return () => {
+      resized.disconnect();
+      changed.disconnect();
+    };
+  }, [scale]);
   useLayoutEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
@@ -324,6 +350,7 @@ function CoverShadeCanvas({
   }, []);
   return (
     <div
+      ref={grid}
       style={{
         position: 'absolute',
         left: 0,
