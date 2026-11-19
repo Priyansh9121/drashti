@@ -339,8 +339,20 @@ export interface Band {
  * alignment" render surface), so such a screen draws no clip at its picture's edges and covers the window outside its
  * picture with black instead (output/PictureFrame.tsx).
  */
-export function warpKeepsAxes(_g: ScreenGeometry | null | undefined, _box: Size): boolean {
-  return true;
+export function warpKeepsAxes(g: ScreenGeometry | null | undefined, box: Size): boolean {
+  const m = g ? warpMatrix(g, box) : null;
+  if (!m) return true;
+  // The window's four corners warped: still a rectangle square to the window (a zoom and a move), or not.
+  const [tl, tr, br, bl] = (
+    [
+      [0, 0],
+      [box.width, 0],
+      [box.width, box.height],
+      [0, box.height],
+    ] as const
+  ).map(([x, y]) => applyMatrix(m, { x, y }));
+  const same = (a: number | undefined, b: number | undefined) => Math.abs((a ?? 0) - (b ?? 0)) < 1e-6;
+  return same(tl?.y, tr?.y) && same(bl?.y, br?.y) && same(tl?.x, bl?.x) && same(tr?.x, br?.x);
 }
 
 /**
@@ -349,18 +361,39 @@ export function warpKeepsAxes(_g: ScreenGeometry | null | undefined, _box: Size)
  * right, bottom left. Null when nothing is warped.
  */
 export function shownQuad(
-  _canvas: Size,
-  _box: Size,
-  _mode: ScalingMode,
-  _g: ScreenGeometry | null | undefined,
+  canvas: Size,
+  box: Size,
+  mode: ScalingMode,
+  g: ScreenGeometry | null | undefined,
 ): Corners | null {
-  return null;
+  const m = g ? warpMatrix(g, box) : null;
+  if (!g || !m) return null;
+  const p = placePart(canvas, g.part, box, mode);
+  const left = p.x + (g.part?.x ?? 0) * p.scaleX;
+  const x0 = Math.max(0, left);
+  const x1 = Math.min(box.width, left + (g.part?.width ?? canvas.width) * p.scaleX);
+  const y0 = Math.max(0, p.y);
+  const y1 = Math.min(box.height, p.y + canvas.height * p.scaleY);
+  const at = (x: number, y: number) => applyMatrix(m, { x, y });
+  return [at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1)];
 }
 
 /**
  * The window outside a shown quad, as four bands along its edges (top, right, bottom, left; whole pixels, each just
  * covering the quad's edge on its side): together they hold every pixel of the window outside the quad.
  */
-export function frameBands(_quad: Corners, _box: Size): Band[] {
-  return [];
+export function frameBands(quad: Corners, box: Size): Band[] {
+  const [tl, tr, br, bl] = quad;
+  const within = (v: number, most: number) => Math.min(most, Math.max(0, v));
+  const top = within(Math.ceil(Math.max(tl.y, tr.y)), box.height);
+  const right = within(Math.floor(Math.min(tr.x, br.x)), box.width);
+  const bottom = within(Math.floor(Math.min(bl.y, br.y)), box.height);
+  const left = within(Math.ceil(Math.max(tl.x, bl.x)), box.width);
+  const bands: Band[] = [
+    { x: 0, y: 0, width: box.width, height: top },
+    { x: right, y: 0, width: box.width - right, height: box.height },
+    { x: 0, y: bottom, width: box.width, height: box.height - bottom },
+    { x: 0, y: 0, width: left, height: box.height },
+  ];
+  return bands.filter((b) => b.width > 0 && b.height > 0);
 }
