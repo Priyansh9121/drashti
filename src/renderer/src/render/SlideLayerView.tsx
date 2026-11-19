@@ -221,6 +221,12 @@ export interface Paint {
    * without a graphics chip moves a deck's own Push, Cover and Uncover in whole ones (X11).
    */
   devicePerCanvas?: number;
+  /**
+   * The opaque colour each slide is backed with while it is a layer of its own without a graphics chip (X11), when it
+   * is known to draw no see-through pixel anywhere in its place (render/slide-backing.ts); left out: never backed.
+   */
+  backingIn?: string;
+  backingOut?: string;
 }
 
 /** Each line, or word, of the two slides' words as a reveal has it at `p` (Session 27, render/reveal.ts). */
