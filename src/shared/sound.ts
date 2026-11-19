@@ -115,22 +115,22 @@ export const FULL_LEVELS: SoundLevels = {
 
 /** A level as it is kept and sent: 0 to 1 in whole percent; anything that is not a number is 100 %. */
 export function cleanLevel(level: unknown): number {
-  void level;
-  return 1;
+  if (typeof level !== 'number' || !Number.isFinite(level)) return 1;
+  return Math.round(Math.min(1, Math.max(0, level)) * 100) / 100;
 }
 
 /** How loud a kind of sound plays now, as the engine's state says: its level, 0 while muted, 1 when it says none. */
 export function kindLevel(state: Pick<EngineState, 'sound'> | null | undefined, kind: SoundKind): number {
-  void state;
-  void kind;
-  return 1;
+  const said = state?.sound?.levels?.[kind];
+  if (!said) return 1;
+  return said.muted ? 0 : cleanLevel(said.level);
 }
 
 /** What soundGain needs of a sound: its file's even gain, whether it is the music, and its kind. */
 export interface GainOf {
   gain?: number;
   aside?: true;
-  kind?: SoundKind;
+  kind: SoundKind;
 }
 
 /**
@@ -142,8 +142,7 @@ export function soundGain(
   musicLevel: number,
   state: Pick<EngineState, 'sound'> | null | undefined,
 ): number {
-  void state;
-  return (sound.gain ?? 1) * (sound.aside ? musicLevel : 1);
+  return (sound.gain ?? 1) * (sound.aside ? musicLevel : 1) * kindLevel(state, sound.kind);
 }
 
 /** What changing a level or a mute answers: the levels now, or why it could not. */

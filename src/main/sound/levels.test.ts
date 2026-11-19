@@ -102,7 +102,7 @@ describe('the operator’s levels and mutes, as Main keeps them (X33)', () => {
       ['audio', 'yes'],
       ['video', 1],
     ] as const)
-      expect(keeper.setMuted(kind, muted), `${String(kind)} ${String(muted)}`).toMatchObject({ ok: false });
+      expect(keeper.setMuted(kind, muted), `${kind} ${String(muted)}`).toMatchObject({ ok: false });
     expect(keeper.levels()).toEqual(FULL_LEVELS);
     expect(lib.writes).toEqual([]);
   });
