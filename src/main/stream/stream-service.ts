@@ -67,9 +67,11 @@ export interface StreamServiceDeps {
   clockStyle?(): ClockStyle;
   /**
    * Whether the stream's page skips its warm-up (Session 58, WU-1): `{ noGpu: true }` where Chromium draws without a
-   * graphics chip, as Main decides for the outputs (outputs/warm-up-choice.ts); nothing otherwise, or left out.
+   * graphics chip, as Main decides for the outputs (outputs/warm-up-choice.ts); `{ warmedHere: true }` once a hall
+   * screen here has drawn its warm-up whole at this start, the opening over (Session 60, X21: stream/stream-warm.ts);
+   * nothing otherwise, or left out. `picture`: whether the page draws a picture now (its warm-up begins only then).
    */
-  warmUpFact?(page: BrowserWindow): { noGpu?: true };
+  warmUpFact?(page: BrowserWindow, picture: boolean): { noGpu?: true; warmedHere?: true };
   profiles: StreamProfileRepo;
   keys: StreamKeyStore;
   settings: SettingsRepo;
@@ -449,6 +451,8 @@ export class StreamService {
   context(): ProgramContext {
     const profile = this.activeProfile();
     const preset = STREAM_PRESETS[profile.preset];
+    const picture = this.pictureWanted();
+    const page = this.program && !this.program.isDestroyed() ? this.program : null;
     return {
       layout: this.layout,
       // The stream group: its languages are in the live Look (every language until it is made: ensureStreamGroup).
@@ -462,12 +466,12 @@ export class StreamService {
       sound: this.systemBlocked.microphone || this.mediaRequests.has('microphone') ? null : profile.sound,
       soundDelayMs: profile.soundDelayMs,
       mixOwnSound: this.pictureWanted() && profile.mixOwnSound,
-      picture: this.pictureWanted(),
+      picture,
       capturing: this.videoInUse(),
       preview: this.watchers.size > 0,
       ...(this.deps.clockStyle ? { clockStyle: this.deps.clockStyle() } : {}),
       // No warm-up where Chromium draws without a graphics chip (Session 58, WU-1): its picture is black meanwhile.
-      ...(this.program && !this.program.isDestroyed() ? (this.deps.warmUpFact?.(this.program) ?? {}) : {}),
+      ...(page ? (this.deps.warmUpFact?.(page, picture) ?? {}) : {}),
     };
   }
 

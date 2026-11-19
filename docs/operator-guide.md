@@ -428,3 +428,11 @@ Simple Mode is this window with only what a small sabha with one projector needs
 In Pro Mode, choose **View › Show Books, Templates and Kirtan Details** if the **Books** tab is hidden. Open **Library › Books**. Enter a reference in **Reference** and press **Show**, or type words from the passage into **Search the words…** and choose a result. The passage opens in the middle for you to check. Click one of its slides to put it on the screens, or choose **Add to playlist** to use it later.
 
 ![The Books tab with a placeholder passage selected](screenshots/shastra-tab.png)
+
+## 12. Sharing kirtans
+
+In **Library**, press **Export kirtan bundle…**. Tick the kirtans to share, and **Include media files** if the other computer needs their pictures, videos or recordings too. Press **Save bundle…** and choose where to save the file. Copies wait while the stream is on air or recording. You can close the box and keep running the show while the file is saved.
+
+Send the saved `.drashti-kirtans` file privately, or put it in a folder the mandirs already share. On the receiving computer, open **Library** and use **Import… > Files…**, or drop the file onto that open sheet. The kirtans come into the library with their language tracks, details, notes, arrangements and any media included. Importing leaves what is on the screens playing as it was.
+
+Importing the same kirtan again updates its earlier copy in that library. If someone has edited that copy, their changes stay and a notice says **Local edits kept**. A changed name counts as an edit too. A kirtan deleted here stays deleted. If a media file was left out, a notice names it: find the file through **Media**, or ask the sender for a bundle that includes it.

@@ -629,3 +629,13 @@ The download leaves about 2 GB free on the drive. It pauses when the stream or a
 - A message about the engine or macOS means this copy or computer cannot start it. Put that right before trying again; there is no need to turn captions on to run the show.
 
 **What stays private.** Drashti works out captions on this computer. The words are kept out of logs. They can appear in the video picture and in the timed draft saved beside a sound recording. Turn **Live captions on this computer** off to stop listening.
+
+## 26. Kirtan bundles between mandirs
+
+**Library > Export kirtan bundle…** (Pro Mode) saves the chosen kirtans in one `.drashti-kirtans` file. **Include media files** adds the pictures, videos and recordings they use; leave it unticked to share the words and slides alone. Drashti sends nothing by itself. Share the file privately through an existing message, email or shared folder, then import it through the other computer's Library. No new account or paid service is needed. Keep real content out of source repositories and CI.
+
+Each kirtan keeps its identity even if the bundle is renamed or moved. An unchanged copy is skipped; a changed one updates the same kirtan. A local change to words, details, notes, design, name or arrangements is kept, with **Local edits kept** in the notice and saved import details. A locally deleted kirtan is left deleted. Nothing missing from a later bundle is deleted from the library.
+
+Without media bytes, Drashti uses the same file already in the receiving library when it can, or keeps a named missing file and says so. Existing media keeps its local points and picture look. New media takes the sender's points and look. Export refuses missing media when it was asked to include it: find the file, or export without media. The private opening pack and computer settings are outside a kirtan bundle.
+
+At most 1,000 kirtans go in one bundle. The whole file is at most 2 GB, and each media file at most 512 MB. Both computers keep 2 GB free for the show. A damaged file or unsafe path is refused before anything from it enters the library. Saving finishes under a temporary name before taking the chosen name; a failed save keeps the earlier file. Copies wait while on air or recording. [The bundle format](kirtan-bundle-format.md) gives the exact checks and limits.
