@@ -8,6 +8,7 @@ import type { ImportIssue } from '../../shared/import';
 import type { ImportSource } from '../../shared/library';
 import type { MediaInfo } from '../convert/plan';
 import { atImport, describeMedia, describePicture } from '../convert/plan';
+import type { HevcKinds } from '../convert/plays-hevc';
 import { copyFinder } from '../convert/relink';
 import type { Db } from '../db/database';
 import type { MediaKind } from './scan';
@@ -44,6 +45,11 @@ export interface MediaStoreOptions {
    * Where it cannot, HEVC is converted by itself as any file Drashti cannot play; where it can, it plays as it is.
    */
   playsHevc?: boolean | null;
+  /**
+   * HEVC's other kinds this computer plays (Session 60, x36: Main 10, and 4:2:2, 4:4:4 or 12-bit), as Chromium said
+   * with that answer; null or left out while not known (then every kind is as playsHevc says).
+   */
+  hevcKinds?: HevcKinds | null;
 }
 
 export type MediaImportResult =
