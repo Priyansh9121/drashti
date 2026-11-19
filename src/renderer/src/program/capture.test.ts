@@ -75,8 +75,12 @@ class GeneratedTrack extends EventTarget {
   }
 
   frame(byte: number): void {
+    this.enqueue(new GeneratedFrame(this.width, this.height, byte).asVideoFrame());
+  }
+
+  enqueue(frame: VideoFrame): void {
     if (!this.controller || this.readerFinished) throw new Error('No generated frame reader.');
-    this.controller.enqueue(new GeneratedFrame(this.width, this.height, byte).asVideoFrame());
+    this.controller.enqueue(frame);
   }
 
   finishReader(): void {
@@ -133,6 +137,11 @@ afterEach(async () => {
     vi.resetModules();
   }
 });
+
+/** Video out is off (x30: absent before). */
+const stopVideoOut = (capture: unknown) => {
+  (capture as { stopVideoOut?: () => void }).stopVideoOut?.();
+};
 
 /** The page's show on screen (Session 58: the encoder takes the page's frames from then; absent before). */
 const showOnScreen = (capture: unknown) => {
@@ -203,11 +212,11 @@ async function platform(tracks: GeneratedTrack[], { onScreen = true }: { onScree
     () => null,
   );
   if (onScreen) showOnScreen(capture);
-  const deliver = (port: EncoderPort) => {
+  const deliver = (port: EncoderPort, role: 'encoder' | 'video-out' = 'encoder') => {
     const event = new Event('message');
     Object.defineProperties(event, {
       source: { value: page },
-      data: { value: { drashtiStreamPort: 'encoder' } },
+      data: { value: { drashtiStreamPort: role } },
       ports: { value: [port] },
     });
     page.dispatchEvent(event);
@@ -221,6 +230,7 @@ async function platform(tracks: GeneratedTrack[], { onScreen = true }: { onScree
       .toBe(getDisplayMedia.mock.calls.length);
     capture.stopEncoder();
     capture.stopPreview();
+    stopVideoOut(capture);
     for (const track of tracks) track.finishReader();
     await expect
       .poll(
@@ -396,5 +406,113 @@ describe('the stream starts from the first frame that shows the show (Session 58
     const second = new EncoderPort();
     p.deliver(second);
     await expect.poll(() => videoBytes(second)).toEqual([Array<number>(32).fill(40)]);
+  });
+});
+
+/** A frame whose clones' bytes are copied only once `gate` opens (a slow copy for video out); its own at once. */
+class GatedFrame extends GeneratedFrame {
+  constructor(
+    width: number,
+    height: number,
+    private readonly value: number,
+    private readonly gate: Promise<void>,
+    private readonly gated = false,
+  ) {
+    super(width, height, value);
+  }
+
+  override clone(): VideoFrame {
+    return new GatedFrame(this.codedWidth, this.codedHeight, this.value, this.gate, true).asVideoFrame();
+  }
+
+  override async copyTo(destination: ArrayBuffer): Promise<PlaneLayout[]> {
+    if (this.gated) await this.gate;
+    return super.copyTo(destination);
+  }
+}
+
+describe('video out takes the same capture’s frames, never holding it (x30)', () => {
+  it('gives video out’s port each frame raw, its format first, beside the encoder’s, which are as before', async () => {
+    const track = new GeneratedTrack(4, 2);
+    const unexpected = new GeneratedTrack(4, 2);
+    const p = await platform([track, unexpected]);
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const encoder = new EncoderPort();
+    const out = new EncoderPort();
+    p.deliver(encoder);
+    await expect.poll(() => track.processorStarted).toBe(true);
+    // Video out's port comes to a capture already running (two at once would each ask for the picture).
+    p.deliver(out, 'video-out');
+    track.frame(21);
+    track.frame(22);
+    await expect
+      .poll(() => videoBytes(out))
+      .toEqual([Array<number>(32).fill(21), Array<number>(32).fill(22)]);
+    expect(out.messages[0]).toEqual({ kind: 'format', width: 4, height: 2, format: 'RGBA' });
+    expect(videoBytes(encoder)).toEqual([Array<number>(32).fill(21), Array<number>(32).fill(22)]);
+    expect(encoder.messages[0]).toEqual({ kind: 'format', width: 4, height: 2, format: 'RGBA' });
+    expect(p.getDisplayMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets go of a frame that comes while the one before is still on its way to video out; the encoder gets every one', async () => {
+    const track = new GeneratedTrack(4, 2);
+    const unexpected = new GeneratedTrack(4, 2);
+    const p = await platform([track, unexpected]);
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const encoder = new EncoderPort();
+    const out = new EncoderPort();
+    p.deliver(encoder);
+    await expect.poll(() => track.processorStarted).toBe(true);
+    p.deliver(out, 'video-out');
+    let open = (): void => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    track.enqueue(new GatedFrame(4, 2, 31, gate).asVideoFrame());
+    track.frame(32);
+    track.frame(33);
+    await expect.poll(() => videoBytes(encoder)).toHaveLength(3);
+    expect(videoBytes(out)).toEqual([]);
+    open();
+    await expect.poll(() => videoBytes(out)).toEqual([Array<number>(32).fill(31)]);
+    track.frame(34);
+    await expect
+      .poll(() => videoBytes(out))
+      .toEqual([Array<number>(32).fill(31), Array<number>(32).fill(34)]);
+    expect(videoBytes(encoder).map((b) => b[0])).toEqual([31, 32, 33, 34]);
+  });
+
+  it('starts the capture for video out alone, and stops it when video out stops and nothing else wants it', async () => {
+    const track = new GeneratedTrack(4, 2);
+    const unexpected = new GeneratedTrack(4, 2);
+    const p = await platform([track, unexpected]);
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const out = new EncoderPort();
+    p.deliver(out, 'video-out');
+    await expect.poll(() => track.processorStarted).toBe(true);
+    track.frame(41);
+    await expect.poll(() => videoBytes(out)).toEqual([Array<number>(32).fill(41)]);
+    stopVideoOut(p.capture);
+    expect(out.close).toHaveBeenCalledTimes(1);
+    expect(track.stop).toHaveBeenCalledTimes(1);
+    track.finishReader();
+    await expect.poll(() => p.ended(1, 1)).toBe(true);
+    expect(p.body.dataset['capture']).toBe('off');
+  });
+
+  it('waits, as the encoder does, for the page’s show to be on screen, then takes the first frame after', async () => {
+    const track = new GeneratedTrack(4, 2);
+    const unexpected = new GeneratedTrack(4, 2);
+    const p = await platform([track, unexpected], { onScreen: false });
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const out = new EncoderPort();
+    p.deliver(out, 'video-out');
+    await expect.poll(() => track.processorStarted).toBe(true);
+    track.frame(3);
+    await expect.poll(() => p.body.dataset['frames']).toBe('1');
+    expect(videoBytes(out)).toEqual([]);
+    showOnScreen(p.capture);
+    track.frame(50);
+    await expect.poll(() => videoBytes(out)).toEqual([Array<number>(32).fill(50)]);
   });
 });
