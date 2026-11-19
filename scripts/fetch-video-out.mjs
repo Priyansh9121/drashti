@@ -139,17 +139,23 @@ export const SPOUT = {
   },
 };
 
-/** Drashti's own sources for the programs (never anything fetched). */
+/**
+ * Drashti's own sources for the programs (never anything fetched), and this script, which holds how they are built
+ * (x39): a build already in vendor/video-out/ is reused only while each is unchanged, so a changed compiler or linker
+ * option builds the programs again.
+ */
 export const OWN_SOURCES = {
   darwin: [
     'tools/video-out/frame-input.h',
     'tools/video-out/drashti-video-out-mac.m',
     'tools/video-out/drashti-video-out-receiver-mac.m',
+    'scripts/fetch-video-out.mjs',
   ],
   win32: [
     'tools/video-out/frame-input.h',
     'tools/video-out/drashti-video-out-win.cpp',
     'tools/video-out/drashti-video-out-receiver-win.cpp',
+    'scripts/fetch-video-out.mjs',
   ],
 };
 
@@ -159,8 +165,15 @@ export const PROGRAMS = {
   win32: { sender: 'drashti-video-out.exe', receiver: 'drashti-video-out-receiver.exe' },
 };
 
-/** What Windows' linker is given for each program: the system libraries they use. */
+/**
+ * What Windows' linker is given for each program: its manifest INSIDE it (x39), then the system libraries they use.
+ * Spout's sources ask the linker for Common Controls 6 (for their message box, from comctl32's version 6 only). By
+ * default the linker writes that manifest as a file beside the program, and the installer, which takes the sender
+ * alone, left it behind: Windows then stopped the packaged sender before it ran (0xC0000138, an ordinal not found).
+ * Inside, the program is whole by itself.
+ */
 export const WINDOWS_LINK = [
+  '/MANIFEST:EMBED',
   'd3d11.lib',
   'dxgi.lib',
   'winmm.lib',
