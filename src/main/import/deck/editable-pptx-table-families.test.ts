@@ -120,13 +120,15 @@ function linesAt(elements: SlideElement[], x: number, y: number, vertical: boole
   });
 }
 
+/** A line Drashti drew, as the measures are written (its offset from the grid, if any, in px). */
+function drawnLine({ color, width, offset }: Drawn): string {
+  const off = Math.abs(offset) > 0.05 ? `${offset > 0 ? '+' : ''}${offset.toFixed(1)}px` : '';
+  return `${color.slice(1)}@${String(Math.round(width * 100) / 100)}${off}`;
+}
+
 /** A side as PowerPoint drew it ("colour@pt", "=colour@pt" a double line, "-" none) against Drashti's lines there. */
 function sideDiffers(want: string, drawn: Drawn[]): string | null {
-  const said = drawn.length
-    ? drawn
-        .map((d) => `${d.color.slice(1)}@${String(Math.round(d.width * 100) / 100)}${d.offset ? `${d.offset > 0 ? '+' : ''}${d.offset.toFixed(1)}px` : ''}`)
-        .join(' ')
-    : '-';
+  const said = drawn.length ? drawn.map(drawnLine).join(' ') : '-';
   if (want === '-') return drawn.length === 0 ? null : `- vs ${said}`;
   const double = want.startsWith('=');
   const [color = '', points = ''] = want.replace('=', '').split('@');
@@ -161,7 +163,8 @@ function differences(table: PowerPointTable, elements: SlideElement[]): string[]
     for (let c = 0; c < table.columns; c++) {
       const want = fills[r]?.[c] ?? '';
       const seen = shows(elements, x0 + (c + 0.75) * w, y0 + (r + 0.62) * h);
-      if (!near(seen, rgb(`#${want}`))) differs.push(`r${String(r)}c${String(c)} fill ${want} vs ${hexOf(seen)}`);
+      if (!near(seen, rgb(`#${want}`)))
+        differs.push(`r${String(r)}c${String(c)} fill ${want} vs ${hexOf(seen)}`);
       const text = elements.find(
         (el): el is TextElement => el.kind === 'text' && el.tableCell?.row === r && el.tableCell.column === c,
       );
