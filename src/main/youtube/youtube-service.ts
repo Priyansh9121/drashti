@@ -268,7 +268,9 @@ export class YouTubeService {
       await this.deps.openBrowser(address);
     } catch {
       listener.cancel();
-      return this.failed('Drashti could not open this computer’s browser for Google’s sign-in page.');
+      return this.failed(
+        'Drashti could not open this computer’s browser for Google’s sign-in page. Set a default web browser on this computer, then try again.',
+      );
     }
     this.deps.log('info', 'YouTube: Google’s sign-in page was opened in the browser');
     return { ok: true, status: this.status() };
