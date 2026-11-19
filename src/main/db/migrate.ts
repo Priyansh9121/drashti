@@ -63,6 +63,7 @@ import { up as sanskritCaptions } from './migrations/069-sanskrit-captions';
 import { up as trimmedVideos } from './migrations/072-trimmed-videos';
 import { up as soundTrimUndo } from './migrations/082-sound-trim-undo';
 import { up as kirtanBundleReports } from './migrations/083-kirtan-bundle-reports';
+import { up as videoCaptions } from './migrations/084-video-captions';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -149,6 +150,7 @@ export const MIGRATIONS: readonly Migration[] = [
   // so none of them can be added now: the next migration is 083.
   { version: 82, name: 'keep playlist resets through sound trim Undo', up: soundTrimUndo },
   { version: 83, name: 'kirtan bundle import reports', up: kirtanBundleReports, rebuildsTable: true },
+  { version: 84, name: 'video captions', up: videoCaptions },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

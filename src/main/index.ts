@@ -376,10 +376,14 @@ import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
+import { VideoCaptionsRepo } from './db/video-captions';
+import { CaptionFileReader } from './video-captions/reader';
+import { registerVideoCaptionIpc } from './video-captions/ipc';
 import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
+import { OscService } from './osc/service';
 import { captureWithShowAbort } from './network/slide-picture';
 import { PhoneFiles } from './network/phone-files';
 import { AnnouncementService } from './network/announcement-service';
@@ -1661,6 +1665,8 @@ function start(): void {
    * tells the rest of Drashti (set further down).
    */
   let inputRenamed: (from: string, to: string) => () => void = () => () => undefined;
+  const videoCaptionsRepo = new VideoCaptionsRepo(db);
+  let videoCaptionBand = new CaptionSettingsRepo(db).get();
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
@@ -1678,6 +1684,10 @@ function start(): void {
             : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
+      videoCaptionsOf: (mediaId) => {
+        const track = videoCaptionsRepo.chosen(mediaId);
+        return track ? { track, size: videoCaptionBand.size, place: videoCaptionBand.place } : null;
+      },
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
       pictureLook: (mediaId) => pictureLook(mediaId),
       pictureOpaque: (mediaId) => pictureOpaque(mediaId),
@@ -1937,6 +1947,36 @@ function start(): void {
       ? { ...marks, startMs: null, endMs: null }
       : marks;
   };
+  const captionFileReader = new CaptionFileReader(spawnImportWorker);
+  stops.add('video-captions', () => {
+    captionFileReader.close();
+  });
+  registerVideoCaptionIpc({
+    fromOperator,
+    repo: videoCaptionsRepo,
+    reader: captionFileReader,
+    write: sourceWrite(
+      libraryDb,
+      () => importer?.giveWay() ?? { ready: Promise.resolve(), done: () => undefined },
+    ),
+    pick: async (event) => {
+      const parent = BrowserWindow.fromWebContents(event.sender);
+      const options = {
+        title: 'Add a Caption File',
+        buttonLabel: 'Add Caption File',
+        properties: ['openFile'] as 'openFile'[],
+        filters: [{ name: 'Captions (SRT or WebVTT)', extensions: ['srt', 'vtt'] }],
+      };
+      const picked = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options);
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+    changed: (mediaId) => {
+      engine.refreshVideoCaptions();
+      sendToOperator(IPC.videoCaptions.changed, { mediaId, view: videoCaptionsRepo.view(mediaId) });
+    },
+  });
   // Playback markers (Session 14): kept with the file; what plays it follows at once.
   handle(IPC.media.markers, (_e, mediaId) =>
     typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
@@ -3150,6 +3190,8 @@ function start(): void {
     },
     onFinalPhrase: (phrase) => streaming.recordCaption(phrase),
     changed: (view) => {
+      videoCaptionBand = view.settings;
+      engine.refreshVideoCaptions();
       sendToOperator(IPC.captions.changed, view);
     },
     log,
@@ -3671,6 +3713,7 @@ function start(): void {
       // so one whose background it is puts it up from now on (Session 52: while it is missing, the background stays
       // as it was), and the slide up names it as missing no more.
       slides.invalidate();
+      engine.refreshVideoCaptions();
       engine.refreshFiles();
       engine.refreshNext();
       libraryChanged(true);
@@ -3742,6 +3785,9 @@ function start(): void {
     edits.delete(c);
   // The slide editor's picture import joins the same queue.
   edits.delete(IPC.slideEditor.addPicture);
+  // These wait for the write lock themselves, after the file dialog and background reading have ended.
+  edits.delete(IPC.videoCaptions.add);
+  edits.delete(IPC.videoCaptions.select);
   setGiveWay((channel) => {
     if (imports.activeRunId === null || !edits.has(channel)) return null;
     // Usually the lock is free (the import holds it only while it writes a group): go at once.
@@ -5556,6 +5602,28 @@ function start(): void {
   network = net;
   net.resume();
   stops.add('network', () => net.close());
+  const osc = new OscService({
+    settings: { get: (key) => settings.get(key), set: laterSetting },
+    letIn: isLetIn,
+    canConfigure: () => mode === 'pro',
+    run: (action) => net.runShowAction(action).status === 200,
+    changed: (status) => sendToOperator(IPC.osc.changed, status),
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  void osc.resume();
+  stops.add('OSC', () => osc.close());
+  handle(IPC.osc.status, (e) => {
+    if (!fromOperator(e)) throw new Error('Only the operator window can read OSC settings.');
+    return osc.status();
+  });
+  handle(IPC.osc.configure, (e, settings) =>
+    fromOperator(e)
+      ? osc.configure(settings)
+      : { ok: false as const, message: 'Only the operator window can change OSC settings.' },
+  );
   // On air or off, the phones' pieces come slower or at full speed again (Session 54).
   phoneFiles.watch(() => {
     net.uploadsChanged();
@@ -7998,6 +8066,7 @@ function start(): void {
   );
   onAccessChange(() => {
     net.accessChanged();
+    void osc.accessChanged();
   });
   // Each presentation put up, counted for the Access List: never which.
   engine.onChange(showCounter((kind) => behind?.service.count(kind)));
