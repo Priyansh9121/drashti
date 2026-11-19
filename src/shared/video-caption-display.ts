@@ -31,7 +31,7 @@ export function captionBandFor(
   actual: ActualVideoClock | null,
 ): CaptionBand | null {
   const playing = playingNow(state).find(
-    (p) => p.ref.layer !== 'audio' && !p.sound && state.videoCaptions?.[p.mediaId],
+    (p) => p.ref.layer !== 'audio' && !p.sound && !p.clock.seek?.waiting && state.videoCaptions?.[p.mediaId],
   );
   if (playing) {
     if (

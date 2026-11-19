@@ -846,7 +846,7 @@ export class ShowEngine {
     if (!state.blackout && !state.wallpaper && !state.stopped) {
       // One band: background first, then a slide video, then the box. Never send every library track.
       for (const playing of playingNow(state)) {
-        if (playing.ref.layer === 'audio' || playing.sound) continue;
+        if (playing.ref.layer === 'audio' || playing.sound || playing.clock.seek?.waiting) continue;
         const chosen = this.options.videoCaptionsOf(playing.mediaId);
         if (chosen) {
           tracks[playing.mediaId] = chosen;

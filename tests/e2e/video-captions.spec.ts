@@ -126,6 +126,9 @@ test('stored SRT captions follow the hall and stream video clocks through play, 
     });
     await expect(win.getByTestId('video-cc')).toHaveAttribute('aria-pressed', 'false');
     await expect(hall.locator(`video[data-media-id="${mediaId}"]`)).toHaveCount(1);
+    await expect(
+      win.getByTestId('time-bars').locator('[data-playing="background"]').getByTestId('time-bar-pause'),
+    ).toBeEnabled();
     await run(win, { type: 'pausePlaying', playing: PLAYING });
     await run(win, { type: 'moveTo', playing: PLAYING, toMs: 2500 });
     await chooseCC(win, 'English');
