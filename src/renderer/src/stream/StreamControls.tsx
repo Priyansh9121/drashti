@@ -9,6 +9,7 @@ import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { RecordButton } from './RecordButton';
 import { streamAction, useStream } from './stream-store';
+import { YouTubeEndLine, YouTubeGoLiveLine, YouTubeOnAir } from './YouTubeOnAir';
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -87,6 +88,7 @@ function GoLiveConfirm({ status, onDone }: { status: StreamStatus; onDone: () =>
       }}
     >
       <p>Everyone with the stream’s link will see and hear it, from now until you end it.</p>
+      <YouTubeGoLiveLine />
       <p className="text-muted">
         {profile?.name ?? 'Profile'}
         {preset ? ` · ${preset.label} (${preset.height}p)` : ''} · showing{' '}
@@ -109,6 +111,7 @@ function EndConfirm({ onDone }: { onDone: () => void }) {
       }}
     >
       <p>The stream stops for everyone watching. Recording, if it is on, carries on.</p>
+      <YouTubeEndLine />
     </ConfirmDialog>
   );
 }
@@ -181,6 +184,7 @@ export function OnAirControls({ status }: { status: StreamStatus }) {
       {noKey && !on && (
         <p className="text-xs text-warning-fg">Paste the stream key in Stream settings to go live.</p>
       )}
+      <YouTubeOnAir on={on} />
       {!status.ffmpeg.available && (
         <Notice tone="danger">
           Drashti’s copy of FFmpeg is missing, so it cannot stream or record. Install Drashti again.
