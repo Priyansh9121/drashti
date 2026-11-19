@@ -1449,12 +1449,6 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
   };
 
   /**
-   * DK-2's windows that load nothing ahead (DeckStep.tsx: each holds the next click's clip itself), opened as an
-   * operator would: LIVE's picture (always in the operator window), Screens with the projector card and the stage
-   * screen's card, a stage screen, and the stream's picture (its page as the Stream panel's preview asks for it: never
-   * streaming anywhere; the streaming check's own stream to FFmpeg on this computer has it open already).
-   */
-  /**
    * The Stream panel clicked mid-show (Session 60, X21's second part), DK-2's own look at the stream's picture let go
    * first, so the panel opens the stream's page as an operator's click does (in the streaming check it stays open, on
    * air); the first hall screen's longest frame from the click to a second after the panel's preview shows a picture.
@@ -1488,6 +1482,12 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
     return { streamOpenBefore, previewMs, hallLongest, why };
   }
 
+  /**
+   * DK-2's windows that load nothing ahead (DeckStep.tsx: each holds the next click's clip itself), opened as an
+   * operator would: LIVE's picture (always in the operator window), Screens with the projector card and the stage
+   * screen's card, a stage screen, and the stream's picture (its page as the Stream panel's preview asks for it: never
+   * streaming anywhere; the streaming check's own stream to FFmpeg on this computer has it open already).
+   */
   async function openWindowsWithoutPreloader(display: number | undefined): Promise<WindowsOpen> {
     const why: string[] = [];
     const op = operator();

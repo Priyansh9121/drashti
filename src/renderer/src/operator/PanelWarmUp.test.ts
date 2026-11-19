@@ -11,6 +11,8 @@ import { onWholePixels, PanelWarmUp } from './PanelWarmUp';
  */
 
 const markup = () => renderToStaticMarkup(createElement(PanelWarmUp));
+/** The real panel's words, which a test may look for while the warm-up is still drawn. */
+const PANEL_WORDS = ['Go live', 'Window for Zoom', 'Stream settings', 'Close stream', 'Starting the stream'];
 
 /** Each layer of pieces (the root's children), as markup. */
 function layers(html: string): string[] {
@@ -53,8 +55,7 @@ describe('the Stream panel’s pieces, warmed unseen', () => {
     const html = markup();
     expect(html).toMatch(/^<div[^>]*aria-hidden="true"[^>]*inert=""/u);
     expect(html.match(/data-testid=/gu)).toHaveLength(1);
-    for (const words of ['Go live', 'Window for Zoom', 'Stream settings', 'Close stream', 'Starting the stream'])
-      expect(html).not.toContain(words);
+    for (const words of PANEL_WORDS) expect(html).not.toContain(words);
   });
 
   it('starts on a whole device pixel', () => {
