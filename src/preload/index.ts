@@ -154,6 +154,12 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  videoCaptions: {
+    view: (mediaId) => invoke(IPC.videoCaptions.view, mediaId),
+    select: (mediaId, trackId) => invoke(IPC.videoCaptions.select, mediaId, trackId),
+    add: (mediaId) => invoke(IPC.videoCaptions.add, mediaId),
+    onChanged: (listener) => on(IPC.videoCaptions.changed, listener),
+  },
   captions: {
     view: () => invoke(IPC.captions.view),
     setOn: (value) => invoke(IPC.captions.setOn, value),
