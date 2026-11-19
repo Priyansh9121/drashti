@@ -1065,6 +1065,14 @@ export interface DrashtiBridge {
     assignDisplay(groupId: string, displayId: number, options?: CoverOptions): Promise<ScreensResult>;
     updateScreen(screenId: string, patch: ScreenPatch, options?: CoverOptions): Promise<ScreensResult>;
     /**
+     * One wide picture (x27): an audience group's two to four screens side by side, each overlapping the next by
+     * `overlap` canvas pixels, with ramps over the overlaps; Separate pictures undoes it.
+     */
+    widePicture(groupId: string, overlap: number): Promise<ScreensResult>;
+    separatePictures(groupId: string): Promise<ScreensResult>;
+    /** A screen's picture being adjusted, or no longer (x27): a grid over it on its display meanwhile. */
+    adjusting(screenId: string, on: boolean): Promise<ScreensResult>;
+    /**
      * A display's job in one click (Session 55): the audience picture, the stage, or Not used. May answer
      * `confirm: 'covers-operator'`, as assignDisplay does.
      */

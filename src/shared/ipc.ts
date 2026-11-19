@@ -825,6 +825,11 @@ export const IPC = {
     deleteGroup: 'screens:delete-group',
     assignDisplay: 'screens:assign-display',
     updateScreen: 'screens:update-screen',
+    /** One wide picture from an audience group's screens, with ramps over their overlaps (x27), and undone. */
+    widePicture: 'screens:wide-picture',
+    separatePictures: 'screens:separate-pictures',
+    /** A screen's picture being adjusted in Screens, or no longer (x27): a grid over it meanwhile. */
+    adjusting: 'screens:adjusting',
     /** A display's job in one click (Session 55): the audience picture, the stage, or Not used. */
     setJob: 'screens:set-job',
     /** What the screens did by themselves (Session 55), last said: for a window that opened after. */
@@ -1663,6 +1668,9 @@ export interface InvokeContract {
     result: ScreensResult;
   };
   [IPC.screens.removeScreen]: { args: [screenId: string]; result: ScreensResult };
+  [IPC.screens.widePicture]: { args: [groupId: string, overlap: number]; result: ScreensResult };
+  [IPC.screens.separatePictures]: { args: [groupId: string]; result: ScreensResult };
+  [IPC.screens.adjusting]: { args: [screenId: string, on: boolean]; result: ScreensResult };
   [IPC.screens.setJob]: {
     args: [displayId: number, job: DisplayJob, options?: CoverOptions];
     result: ScreensResult;
