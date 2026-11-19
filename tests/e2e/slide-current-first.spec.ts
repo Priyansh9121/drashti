@@ -89,7 +89,11 @@ interface Grab {
   grid: string;
 }
 
-type GrabGlobals = typeof globalThis & { drashtiCurrentFirstFrames?: Partial<Record<Place, Grab[]>> };
+type GrabGlobals = typeof globalThis & {
+  drashtiCurrentFirstFrames?: Partial<Record<Place, Grab[]>>;
+  /** When Main's frame subscription of each window began (Main's wall clock, ms). */
+  drashtiCurrentFirstSubscribed?: Partial<Record<Place, number>>;
+};
 
 const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -241,7 +245,9 @@ async function recordFrames(app: ElectronApplication): Promise<void> {
   await app.evaluate(
     ({ app }, { cols, rows, spots }) => {
       const kept: Partial<Record<'hall' | 'stream', Grab[]>> = {};
+      const subscribed: Partial<Record<'hall' | 'stream', number>> = {};
       (globalThis as GrabGlobals).drashtiCurrentFirstFrames = kept;
+      (globalThis as GrabGlobals).drashtiCurrentFirstSubscribed = subscribed;
       app.on('browser-window-created', (_event, w) => {
         // From its page's first moments: a frame subscription before then gets nothing (warm-up.spec.ts).
         w.webContents.once('dom-ready', () => {
@@ -254,6 +260,7 @@ async function recordFrames(app: ElectronApplication): Promise<void> {
           if (place === null || kept[place]) return;
           const frames: Grab[] = [];
           kept[place] = frames;
+          subscribed[place] = Date.now();
           w.webContents.beginFrameSubscription(false, (image) => {
             const t = Date.now();
             const { width, height } = image.getSize();
@@ -600,6 +607,18 @@ for (const place of ['hall', 'stream'] as const) {
         page = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
       }
       docs.push(await observe(page, place, frames, ids, { what: 'turned on', spot: 0, since, logged: true }));
+      // Main's capture of the new window was on before its page was ready, so before it could draw the live slide.
+      const subscribedAt = await app.evaluate(
+        (_electron, place) => (globalThis as GrabGlobals).drashtiCurrentFirstSubscribed?.[place] ?? null,
+        place,
+      );
+      const openedReady = docs[0]?.readyAt ?? null;
+      expect
+        .soft(
+          subscribedAt !== null && openedReady !== null && subscribedAt <= openedReady,
+          `${place}, turned on: Main's frame subscription began (${String(subscribedAt)}) before the page was ready (${String(openedReady)})`,
+        )
+        .toBe(true);
 
       // (b) Reloaded mid-show, with the decode log; then (c) plain reloads, nothing wrapped, for the raw times.
       // Main's capture has had this window's frames since (a), so it is going before each reload is asked.
@@ -730,9 +749,11 @@ for (const place of ['hall', 'stream'] as const) {
             `${about}: frames losing the live picture after it first showed whole (${said})`,
           )
           .toEqual([]);
+        // Existence only: a live picture already decoded can rightly be whole in this document's very first frame
+        // (x19b, 10:08); the capture was on before it could be drawn (below, and before each reload).
         expect
-          .soft(first, `${about}: frames of this document before the live picture showed (${said})`)
-          .toBeGreaterThan(0);
+          .soft(first, `${about}: a frame of this document with the live picture whole (${said})`)
+          .toBeGreaterThanOrEqual(0);
         expect
           .soft(
             doc.readyAt === null || doc.firstWhole === null ? Infinity : doc.firstWhole - doc.readyAt,
