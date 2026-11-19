@@ -97,7 +97,9 @@ export function controllerTest() {
     engine,
     messages,
     actions,
-    refuse: (message: string | null) => { refusal = message; },
+    refuse: (message: string | null) => {
+      refusal = message;
+    },
     node,
     nodes,
     screens,

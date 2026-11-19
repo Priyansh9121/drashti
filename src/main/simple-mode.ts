@@ -176,9 +176,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.nodes.newIdentity,
   IPC.nodes.everything,
   IPC.nodes.setController,
+  IPC.nodes.setControllerAreas,
   IPC.nodes.reload,
   IPC.screens.assignNodeDisplay,
   // A node's own window has no Simple Mode; listed so no change is ever open by mistake.
+  IPC.node.action,
   IPC.node.pair,
   IPC.node.unpair,
   IPC.node.useAsMain,

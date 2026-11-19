@@ -1,3 +1,4 @@
+import type { ControllerArea, ControllerReply, ControllerRequest } from './controller-actions';
 import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
 import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
@@ -848,6 +849,7 @@ export interface DrashtiBridge {
     everything(nodeId: string, on: boolean): Promise<NodesResult>;
     /** Main's Pro Mode only: enable the paired computer's shared show view, without show actions. */
     setController(nodeId: string, on: boolean): Promise<NodesResult>;
+    setControllerAreas(nodeId: string, areas: ControllerArea[]): Promise<NodesResult>;
     /** Reload one output: on Main (nodeId null) or on a node. */
     reload(nodeId: string | null, screenId: string): Promise<NodesResult>;
     /** A display's number and name on it (null: every display of that computer). */
@@ -858,6 +860,7 @@ export interface DrashtiBridge {
   /** A node's own window (node mode only). */
   node: {
     view(): Promise<NodeView>;
+    action(request: ControllerRequest): Promise<ControllerReply>;
     onChanged(listener: (view: NodeView) => void): () => void;
     pair(address: string, code: string): Promise<NodeViewResult>;
     unpair(): Promise<NodeViewResult>;
