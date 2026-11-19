@@ -6,6 +6,7 @@ import { drawAppearance, type AppearanceRoot } from '../shared/appearance/draw';
 import { IPC } from '../shared/ipc';
 import { summariesOf } from '../shared/library';
 import { bridgeFor, pageOf } from './page-groups';
+import { EngineViewStamp } from './engine-seen';
 
 /** Typed ipcRenderer.invoke over the shared contract. */
 function invoke<C extends InvokeChannel>(channel: C, ...args: InvokeArgs<C>): Promise<InvokeResult<C>> {
@@ -37,6 +38,8 @@ ipcRenderer.on(
     pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
   },
 );
+
+const engineSeen = new EngineViewStamp();
 
 const bridge: DrashtiBridge = {
   app: {
@@ -231,10 +234,22 @@ const bridge: DrashtiBridge = {
     pathFor: (file) => webUtils.getPathForFile(file),
   },
   engine: {
-    onMessage: (listener) => on(IPC.engine.message, listener),
-    subscribe: () => invoke(IPC.engine.subscribe),
-    snapshot: () => invoke(IPC.engine.snapshot),
-    dispatch: (command) => invoke(IPC.engine.command, command),
+    onMessage: (listener) =>
+      on(IPC.engine.message, (message) => {
+        engineSeen.remember(message, true);
+        listener(message);
+      }),
+    subscribe: async () => {
+      const message = await invoke(IPC.engine.subscribe);
+      engineSeen.remember(message);
+      return message;
+    },
+    snapshot: async () => {
+      const message = await invoke(IPC.engine.snapshot);
+      engineSeen.remember(message);
+      return message;
+    },
+    dispatch: (command) => invoke(IPC.engine.command, command, engineSeen.current),
     pointAt: (target) => invoke(IPC.engine.pointAt, target),
   },
   library: {
@@ -457,12 +472,14 @@ const bridge: DrashtiBridge = {
     newIdentity: () => invoke(IPC.nodes.newIdentity),
     everything: (nodeId, on) => invoke(IPC.nodes.everything, nodeId, on),
     setController: (nodeId, on) => invoke(IPC.nodes.setController, nodeId, on),
+    setControllerAreas: (nodeId, areas) => invoke(IPC.nodes.setControllerAreas, nodeId, areas),
     reload: (nodeId, screenId) => invoke(IPC.nodes.reload, nodeId, screenId),
     identify: (nodeId, displayId) => invoke(IPC.nodes.identify, nodeId, displayId),
     watch: (watching) => invoke(IPC.nodes.watch, watching),
   },
   node: {
     view: () => invoke(IPC.node.view),
+    action: (request) => invoke(IPC.node.action, request),
     onChanged: (listener) => on(IPC.node.changed, listener),
     pair: (address, code) => invoke(IPC.node.pair, address, code),
     unpair: () => invoke(IPC.node.unpair),

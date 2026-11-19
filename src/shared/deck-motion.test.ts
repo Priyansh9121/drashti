@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { type DeckEffect, stepCount } from './deck';
 import {
   builtParagraphEffects,
+  deckHardClip,
   deckMotionFrame,
   deckParagraphRuns,
   deckShapeShows,
@@ -335,7 +336,9 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
 
   it('sweeps Wheel’s spokes clockwise from twelve o’clock', () => {
     const wheel: DeckEffect = { ...effect, kind: 'wheel', spokes: 2 };
-    const points = clipAt(75, wheel).slice('polygon('.length, -1).split(', ');
+    // Its hard edge (a page without a graphics chip; with one, its soft edge's mask).
+    const clip = deckHardClip(at(75, [wheel]).wipe, bounds, bounds);
+    const points = clip.slice('polygon('.length, -1).split(', ');
     // Each spoke starts at the centre, then at its own twelve or six o'clock, straight above or below it.
     expect(points.filter((point) => point === '50% 50%')).toHaveLength(2);
     expect(points[0]).toBe('50% 50%');
@@ -344,11 +347,16 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
     expect(at(300, [wheel]).wipe).toBeNull();
   });
 
-  it('shows Random Bars one bar at a time, none at the start and all by the end', () => {
+  it('shows Random Bars bar by bar through a mask, none at the start and all by the end', () => {
     const bars: DeckEffect = { ...effect, kind: 'bars', bars: 'horizontal' };
-    expect(clipAt(75, bars)).toBe('inset(50% 50% 50% 50%)');
-    const half = clipAt(187.5, bars);
-    expect(half.split(', ').length).toBe(4 * 24);
+    expect(clipAt(75, bars)).toBe('');
+    const none = deckWipeMask(at(75, [bars]).wipe, bounds, bounds);
+    expect(none).toBe('linear-gradient(to bottom, rgb(0 0 0 / 0) 0% 100%)');
+    // Without a graphics chip, each bar whole once half in: none at the start, about half of the 133 at the half.
+    expect(deckHardClip(at(75, [bars]).wipe, bounds, bounds)).toBe('inset(50% 50% 50% 50%)');
+    const half = deckHardClip(at(187.5, [bars]).wipe, bounds, bounds).split(', ').length / 4;
+    expect(half).toBeGreaterThan(40);
+    expect(half).toBeLessThan(93);
     expect(at(300, [bars]).wipe).toBeNull();
   });
 

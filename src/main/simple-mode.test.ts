@@ -232,6 +232,7 @@ describe('Simple Mode locks', () => {
       IPC.nodes.remove,
       IPC.nodes.everything,
       IPC.nodes.setController,
+      IPC.nodes.setControllerAreas,
       IPC.nodes.reload,
       IPC.screens.assignNodeDisplay,
     ])

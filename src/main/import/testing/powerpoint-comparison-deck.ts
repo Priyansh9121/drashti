@@ -420,6 +420,58 @@ export const COMPARISON_SHAPES_STANDARD: ComparisonDeck = {
   slides: shapeSlides(),
 };
 
+/**
+ * Run 6 (h-run6, Session 59): Wheel and Random Bars, never compared with PowerPoint (a slide using one keeps
+ * PowerPoint's video wherever one can be made, and plays Drashti's own drawing where none can). Wheel with each of its
+ * spoke counts (PowerPoint's preset 21, its subtype the count: 1, 2, 3, 4 and 8) and Random Bars both ways (preset 14:
+ * subtype 10 for bars across, 5 for bars up and down), coming in and leaving, at 700 ms and at 2 s; then Random Bars
+ * coming in at 2 s once more each way, the same effect again, to see whether PowerPoint's bars fall the same way every
+ * time. On a box 2.5 times the other decks' (160 x 96 of the 320 x 180 grid: 960 x 576 pixels of a 1080-line movie), so
+ * that thin bars are still several pixels; first, Shape's Circle Out coming in at 700 ms (exact since run 4) as the
+ * control of the bigger box. Markers from 20, 4 lighter a slide.
+ */
+const WHEEL_SPOKES = [1, 2, 3, 4, 8] as const;
+const BAR_WAYS = [
+  ['horizontal', 10],
+  ['vertical', 5],
+] as const;
+const wheelAndBars = (length: number): Scene[] =>
+  (['in', 'out'] as const).flatMap((phase) => [
+    ...WHEEL_SPOKES.map((spokes) => {
+      const name = `Wheel ${phase} · ${String(spokes)} spoke${spokes === 1 ? '' : 's'} · ${String(length)} ms`;
+      const motion = effect(name, phase, 21, [], { filter: `wheel(${String(spokes)})`, subtype: spokes });
+      return { name, motion, bg: '292929', length };
+    }),
+    ...BAR_WAYS.map(([way, subtype]) => {
+      const name = `Random Bars ${phase} · ${way} · ${String(length)} ms`;
+      const motion = effect(name, phase, 14, [], { filter: `randombar(${way})`, subtype });
+      return { name, motion, bg: '292929', length };
+    }),
+  ]);
+const barsAgain = (): Scene[] =>
+  wheelAndBars(2000)
+    .filter((scene) => scene.name.startsWith('Random Bars in · '))
+    .map((scene) => {
+      const name = `${scene.name} · again`;
+      return { ...scene, name, ...(scene.motion ? { motion: { ...scene.motion, name } } : {}) };
+    });
+
+const shapeControl = (): Scene => {
+  const motion = {
+    ...byName(RUN2_MOTIONS, 'Shape in · Circle Out'),
+    name: 'Shape in · Circle Out · control',
+  };
+  return { name: motion.name, motion, bg: '292929' };
+};
+
+/** Run 6's wide deck of Wheel and Random Bars. */
+export const COMPARISON_RUN6_MOTION: ComparisonDeck = {
+  ...COMPARISON_WIDE,
+  file: 'Placeholder PowerPoint run6 motion.pptx',
+  box: { x: 80, y: 42, width: 160, height: 96 },
+  slides: timed([shapeControl(), ...wheelAndBars(700), ...wheelAndBars(2000), ...barsAgain()], 20),
+};
+
 function partOf(xml: string): TreeElement {
   const [part] = elementsOf(parseTree(xml));
   if (!part) throw new Error('Missing generated part');
