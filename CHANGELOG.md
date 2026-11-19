@@ -7,6 +7,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 Update after a sabha, and update Main and nodes together.
 
 - The stream, the hall screens and the decks Drashti plays itself: the fixes since alpha.19 (this list is written in full before the release).
+- On a computer without a graphics chip, a PowerPoint Wipe from the left or right in a deck Drashti plays itself now shows the new slide sweeping in on the screens, the stream and LIVE; before, the old slide stayed still for the Wipe’s length and the new one cut in.
 
 ## 1.0.0-alpha.19 (19 Nov 2026)
 
