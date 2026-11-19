@@ -49,10 +49,7 @@ export class GuideFiles {
   /** The pictures the four guides and the manual's chapters show (their names). */
   pictureNames(): Set<string> {
     this.pictures ??= new Set(
-      [
-        ...GUIDES.map((g) => this.read(g.id)),
-        ...MANUAL_CHAPTERS.map((c) => this.readManual(c.id)),
-      ]
+      [...GUIDES.map((g) => this.read(g.id)), ...MANUAL_CHAPTERS.map((c) => this.readManual(c.id))]
         .flatMap((text) => (text === null ? [] : imagesOf(parseMarkdown(text))))
         .map(pictureName)
         .filter((n): n is string => n !== null),

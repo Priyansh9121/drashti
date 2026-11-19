@@ -20,9 +20,9 @@ extraResources:
     to: opening
     filter:
       - default.jpg
-  # The guides inside Drashti (Sessions 31–36): the four guides and only the pictures they show, read by the
-  # main process (src/main/guides.ts) and never served to phones. src/main/guides.test.ts keeps this list
-  # the same as what the guides show.
+  # The guides inside Drashti (Sessions 31–36) and the Drashti Manual's chapters (x37, Session 60, in manual/): the
+  # four guides, the chapters and only the pictures they show, read by the main process (src/main/guides.ts) and never
+  # served to phones. src/main/guides.test.ts keeps this list the same as what the guides and the chapters show.
   - from: docs
     to: guides
     filter:
@@ -30,86 +30,40 @@ extraResources:
       - presenter-guide.md
       - admin-guide.md
       - setup-day.md
+      - manual/start.md
+      - manual/library.md
+      - manual/playlists.md
+      - manual/live.md
+      - manual/audio.md
+      - manual/stage.md
+      - manual/messages.md
+      - manual/tools.md
+      - manual/screens.md
+      - manual/stream.md
+      - manual/phones.md
+      - manual/settings.md
+      - manual/simple.md
+      - manual/keys.md
+      - manual/editor.md
+      - manual/sharing.md
+      - manual/help.md
       - screenshots/access-ends.png
-      - screenshots/access-offline.png
       - screenshots/access-list.png
+      - screenshots/access-offline.png
       - screenshots/access-revoke.png
       - screenshots/access-stopped.png
+      - screenshots/announcements-queue.png
       - screenshots/appearance-window.png
       - screenshots/calendar-dialog.png
       - screenshots/captions-gujarati-trial.png
       - screenshots/captions-off.png
       - screenshots/captions-program.png
       - screenshots/captions-stage.png
+      - screenshots/convert-media-list-done.png
+      - screenshots/convert-media-list.png
       - screenshots/deck-live-click.png
       - screenshots/deck-transitions.png
       - screenshots/dropbox-playlist.png
-      - screenshots/first-start-welcome.png
-      - screenshots/import-link-dropbox.png
-      - screenshots/import-link-report.png
-      - screenshots/import-link-youtube.png
-      - screenshots/keep-changes.png
-      - screenshots/keys-sheet.png
-      - screenshots/live-zoom.png
-      - screenshots/lock-request.png
-      - screenshots/lock-token.png
-      - screenshots/lower-thirds-studio.png
-      - screenshots/lower-thirds.png
-      - screenshots/marker-jumps.png
-      - screenshots/markers-dialog.png
-      - screenshots/music-bar.png
-      - screenshots/music-panel.png
-      - screenshots/node-diagnostics-saved.png
-      - screenshots/node-update-offer.png
-      - screenshots/operator-1920x1080.png
-      - screenshots/output-play-bar.png
-      - screenshots/output-stage-timer.png
-      - screenshots/pdf-animated-approval.png
-      - screenshots/pdf-edit-source.png
-      - screenshots/pdf-insert.png
-      - screenshots/pdf-legacy-link.png
-      - screenshots/pdf-marks-pages.png
-      - screenshots/pdf-mixed-paper.png
-      - screenshots/pdf-save-copy.png
-      - screenshots/phone-add-files.png
-      - screenshots/phone-remote-clears.png
-      - screenshots/phone-remote-notes.png
-      - screenshots/phone-remote-search.png
-      - screenshots/phone-shared.png
-      - screenshots/phone-viewer-zoom.png
-      - screenshots/phones-panel-files.png
-      - screenshots/phones-panel.png
-      - screenshots/picture-editor.png
-      - screenshots/playlist-cards.png
-      - screenshots/playlist-up-down.png
-      - screenshots/practice-show.png
-      - screenshots/quick-bar.png
-      - screenshots/ready.png
-      - screenshots/repeat-slides-1280x720.png
-      - screenshots/scheduled-backups.png
-      - screenshots/screen-stopped-notice.png
-      - screenshots/screens-cards.png
-      - screenshots/screens-dashboard-1280x720.png
-      - screenshots/screens-pair-node.png
-      - screenshots/setup-wizard.png
-      - screenshots/share-with-phones.png
-      - screenshots/shastra-tab.png
-      - screenshots/shastra-texts.png
-      - screenshots/simple-mode-1280x720.png
-      - screenshots/smart-playlist.png
-      - screenshots/stage-panel-timers.png
-      - screenshots/stage-template-dialog.png
-      - screenshots/stage-timer-box.png
-      - screenshots/start-here.png
-      - screenshots/tablet-remote-more.png
-      - screenshots/tablet-remote-sideways.png
-      - screenshots/time-bar.png
-      - screenshots/updates-offer.png
-      - screenshots/video-timeline.png
-      - screenshots/wallpapers.png
-      - screenshots/what-is-this.png
-      - screenshots/window-picker.png
-      - screenshots/zoom-window.png
       - screenshots/editor-arrange-1024x645.png
       - screenshots/editor-arrange-1280x720.png
       - screenshots/editor-design-1024x645.png
@@ -122,10 +76,113 @@ extraResources:
       - screenshots/editor-slides-1280x720.png
       - screenshots/editor-words-1024x645.png
       - screenshots/editor-words-1280x720.png
+      - screenshots/first-start-welcome.png
+      - screenshots/import-link-dropbox.png
+      - screenshots/import-link-report.png
+      - screenshots/import-link-youtube-saved.png
+      - screenshots/import-link-youtube.png
+      - screenshots/keep-changes.png
+      - screenshots/keys-sheet.png
+      - screenshots/live-zoom.png
+      - screenshots/lock-request.png
+      - screenshots/lock-token.png
+      - screenshots/lower-thirds-studio.png
+      - screenshots/lower-thirds.png
+      - screenshots/manual-adjust-picture.png
+      - screenshots/manual-captions.png
+      - screenshots/manual-drop-folder.png
+      - screenshots/manual-events-out.png
+      - screenshots/manual-guides.png
+      - screenshots/manual-kirtan-bundle.png
+      - screenshots/manual-levels.png
+      - screenshots/manual-messages.png
+      - screenshots/manual-more-tools.png
+      - screenshots/manual-opening.png
+      - screenshots/manual-osc.png
+      - screenshots/manual-pip.png
+      - screenshots/manual-qr.png
+      - screenshots/manual-timers.png
+      - screenshots/manual-video-out.png
+      - screenshots/manual-window.png
+      - screenshots/manual-youtube.png
+      - screenshots/marker-jumps.png
+      - screenshots/markers-dialog.png
+      - screenshots/midi-dialog.png
+      - screenshots/music-bar.png
+      - screenshots/music-panel.png
+      - screenshots/new-from-words.png
+      - screenshots/node-diagnostics-saved.png
+      - screenshots/node-update-offer.png
+      - screenshots/node-window.png
+      - screenshots/operator-1280x720.png
+      - screenshots/operator-1920x1080.png
+      - screenshots/output-play-bar.png
+      - screenshots/output-stage-layout.png
+      - screenshots/output-stage-timer.png
+      - screenshots/pdf-animated-approval.png
+      - screenshots/pdf-edit-source.png
+      - screenshots/pdf-insert.png
+      - screenshots/pdf-legacy-link.png
+      - screenshots/pdf-marks-pages.png
+      - screenshots/pdf-mixed-paper.png
+      - screenshots/pdf-save-copy.png
+      - screenshots/phone-add-files.png
+      - screenshots/phone-pair.png
       - screenshots/phone-playlist-rows-375x812.png
+      - screenshots/phone-remote-clears.png
+      - screenshots/phone-remote-notes.png
+      - screenshots/phone-remote-search.png
+      - screenshots/phone-remote.png
       - screenshots/phone-row-menu-375x812.png
+      - screenshots/phone-shared.png
       - screenshots/phone-simple-controls-375x812.png
       - screenshots/phone-simple-row-menu-375x812.png
+      - screenshots/phone-viewer-zoom.png
+      - screenshots/phones-panel-files.png
+      - screenshots/phones-panel.png
+      - screenshots/picture-editor.png
+      - screenshots/playlist-cards.png
+      - screenshots/playlist-up-down.png
+      - screenshots/practice-show.png
+      - screenshots/quick-bar.png
+      - screenshots/ready.png
+      - screenshots/repeat-slides-1280x720.png
+      - screenshots/scheduled-backups.png
+      - screenshots/screen-stopped-notice.png
+      - screenshots/screens-cards-1280x720.png
+      - screenshots/screens-cards.png
+      - screenshots/screens-dashboard-1280x720.png
+      - screenshots/screens-pair-node.png
+      - screenshots/screens-with-node.png
+      - screenshots/screens.png
+      - screenshots/setup-wizard.png
+      - screenshots/share-with-phones.png
+      - screenshots/shastra-tab.png
+      - screenshots/shastra-texts.png
+      - screenshots/simple-mode-1280x720.png
+      - screenshots/simple-mode-music.png
+      - screenshots/simple-mode-put-it-back.png
+      - screenshots/simple-mode-time-bar.png
+      - screenshots/slide-editor-1280x720.png
+      - screenshots/smart-playlist.png
+      - screenshots/stage-layout-editor.png
+      - screenshots/stage-panel-timers.png
+      - screenshots/stage-template-dialog.png
+      - screenshots/stage-timer-box.png
+      - screenshots/start-here.png
+      - screenshots/stream-panel.png
+      - screenshots/stream-settings.png
+      - screenshots/tablet-remote-more.png
+      - screenshots/tablet-remote-sideways.png
+      - screenshots/tablet-stage-display.png
+      - screenshots/templates.png
+      - screenshots/time-bar.png
+      - screenshots/updates-offer.png
+      - screenshots/video-timeline.png
+      - screenshots/wallpapers.png
+      - screenshots/what-is-this.png
+      - screenshots/window-picker.png
+      - screenshots/zoom-window.png
 # Electron's fuses (Sessions 31–36, REL-7): a packaged Drashti never runs as Node (ELECTRON_RUN_AS_NODE),
 # never reads NODE_OPTIONS and never takes --inspect; its pages are file://, so file:// keeps its privileges.
 # Asar integrity is not now. electron-builder flips them right before it signs (ad hoc on a Mac without a

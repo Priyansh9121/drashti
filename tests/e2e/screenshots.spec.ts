@@ -3126,3 +3126,186 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
     await app.close();
   }
 });
+
+/*
+ * The Drashti Manual's own pictures (x37, Session 60; the owner's "A, new Manual"), named manual-*.png, for its chapters
+ * (docs/manual/): the manual itself and the guides from Help, the How loud lines with Video muted, a timer's look for
+ * the audience, a new message's look, More tools opened with Picture in Picture…, QR code… and OSC control…, the File
+ * menu's Opening…, Drop Folder… and Events Out…, and the library's Export kirtan bundle…. Placeholder content only.
+ */
+test('the Drashti Manual’s pictures: the manual, the guides, the levels, a timer’s and a message’s look, More tools and its tools, the File menu’s settings and a kirtan bundle (x37)', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await running(win);
+  const live = win.getByRole('complementary', { name: 'Live' });
+  const toTop = () =>
+    live.evaluate((el) => {
+      el.scrollTop = 0;
+    });
+  await toTop();
+  /** A dialog by its test id, open, its picture taken, then closed with Esc. */
+  const dialogShot = async (testId: string, name: string) => {
+    const dialog = win.getByTestId(testId);
+    await expect(dialog).toBeVisible();
+    await shot(win, name);
+    await win.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+  };
+
+  // Help › Drashti Manual…, at its start, every picture in; then Help › Guides….
+  await chooseMenuItem(app, 'manual');
+  const manual = win.getByTestId('manual');
+  await expect(manual.getByRole('heading', { level: 1 })).toHaveText('Start here');
+  await expect
+    .poll(() =>
+      manual.locator('img').evaluateAll((imgs) => imgs.every((i) => (i as HTMLImageElement).complete)),
+    )
+    .toBe(true);
+  await dialogShot('manual', 'manual-window');
+  await chooseMenuItem(app, 'guides');
+  await expect(win.getByTestId('guides').getByRole('heading', { level: 1 })).toContainText('The operator');
+  await dialogShot('guides', 'manual-guides');
+
+  // How loud: Video muted (red, Muted), then back on.
+  const levels = win.getByTestId('sound-levels');
+  await levels.scrollIntoViewIfNeeded();
+  await win.getByTestId('sound-mute-video').click();
+  await expect(win.getByTestId('sound-mute-video')).toHaveText('Muted');
+  await part(win, 'manual-levels', [levels]);
+  await win.getByTestId('sound-mute-video').click();
+  await expect(win.getByTestId('sound-mute-video')).not.toHaveText('Muted');
+
+  // A timer's look for the audience.
+  const timerRow = win.getByTestId('timers').getByTestId('timer-row').first();
+  await timerRow.scrollIntoViewIfNeeded();
+  await timerRow.getByRole('button', { name: 'How it looks for the audience…' }).click();
+  await dialogShot('timer-look', 'manual-timers');
+
+  // A new message's look, in its form: then Cancel.
+  const messages = win.getByTestId('messages');
+  await messages.scrollIntoViewIfNeeded();
+  await messages.getByRole('button', { name: 'New message' }).click();
+  const form = messages.getByTestId('message-form');
+  await form.getByRole('textbox', { name: 'Message name' }).fill('Placeholder notice');
+  await form.getByRole('textbox', { name: 'Message words' }).fill('Placeholder notice words');
+  await expect(form.getByTestId('message-look')).toBeVisible();
+  await form.scrollIntoViewIfNeeded();
+  await part(win, 'manual-messages', [form]);
+  await form.getByRole('button', { name: 'Cancel' }).click();
+  await expect(form).toHaveCount(0);
+
+  // More tools opened, then three of its tools.
+  await openMoreTools(win);
+  const more = win.getByTestId('more-tools');
+  await more.scrollIntoViewIfNeeded();
+  await part(win, 'manual-more-tools', [more]);
+  await win.getByTestId('pip-open').click();
+  await dialogShot('pip-dialog', 'manual-pip');
+  await win.getByTestId('qr-code-open').click();
+  const qr = win.getByTestId('qr-dialog');
+  await qr.getByRole('textbox', { name: 'Link or words' }).fill('https://example.org/placeholder');
+  await expect(qr.getByTestId('qr-code')).toBeVisible();
+  await dialogShot('qr-dialog', 'manual-qr');
+  await chooseMenuItem(app, 'tools-osc');
+  await dialogShot('osc-dialog', 'manual-osc');
+
+  // The File menu's settings, each as it opens.
+  await chooseMenuItem(app, 'opening');
+  await dialogShot('opening-dialog', 'manual-opening');
+  await chooseMenuItem(app, 'drop-folder');
+  await dialogShot('drop-dialog', 'manual-drop-folder');
+  await chooseMenuItem(app, 'events-out');
+  await dialogShot('events-dialog', 'manual-events-out');
+
+  // The library's Export kirtan bundle….
+  await openLibrary(win);
+  await win.getByTestId('kirtan-bundle-export').click();
+  await dialogShot('kirtan-bundle-export-dialog', 'manual-kirtan-bundle');
+  await closeLibrary(win);
+  await app.close();
+});
+
+/*
+ * More of the manual's pictures (x37): a hall screen's Adjust the picture… with a corner moved and the grid on the
+ * screen; a placeholder video's CC menu beside its time bar, with its two caption languages (SRT files beside it); and
+ * Stream settings' YouTube and Send to other software, nothing signed in and nothing sent.
+ */
+test('the Drashti Manual’s pictures: Adjust the picture…, a video’s captions, and Stream settings’ YouTube and Send to other software (x37)', async () => {
+  test.setTimeout(240_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-manual-'));
+  const { app } = await launchApp({ DRASHTI_TEST_FAKE_DEVICES: '1' });
+  try {
+    const win = await operatorPage(app);
+    await win.setViewportSize({ width: 1280, height: 720 });
+    await operatorReady(win);
+    const screenId = await setUpScreen(win, 'Placeholder hall', 0);
+    const out = await outputPage(app);
+    await outputReady(out);
+
+    // Adjust the picture…: the top left corner moved in, the grid on the screen while it is open.
+    await win.getByRole('button', { name: 'Screens', exact: true }).click();
+    await win.getByTestId('screen-row').first().getByTestId('adjust-picture-open').click();
+    const adjust = win.getByTestId('adjust-picture');
+    await expect(adjust).toBeVisible();
+    await expect(out.getByTestId('geometry-grid')).toHaveCount(1);
+    await adjust.getByTestId('adjust-corner-0-x').fill('40');
+    await adjust.getByTestId('adjust-corner-0-x').press('Enter');
+    await adjust.getByTestId('adjust-corner-0-y').fill('24');
+    await adjust.getByTestId('adjust-corner-0-y').press('Enter');
+    await expect(out.getByTestId('output-root')).toHaveAttribute('data-geometry', /.+/u);
+    await shot(win, 'manual-adjust-picture');
+    await adjust.getByTestId('adjust-reset').click();
+    await adjust.getByTestId('adjust-done').click();
+    await expect(adjust).toHaveCount(0);
+    await win.getByRole('button', { name: 'Close screens' }).click();
+    expect(screenId).not.toBe('');
+
+    // A video with two caption languages beside it, as the background, and its CC menu open.
+    const srt =
+      '1\n00:00:00,000 --> 00:00:09,000\nFirst placeholder\n\n2\n00:00:09,000 --> 00:00:15,000\nSecond placeholder\n';
+    const file = await makeTestVideo(win, join(dir, 'Placeholder captions.webm'), {
+      seconds: 15,
+      width: 320,
+      height: 180,
+    });
+    writeFileSync(join(dir, 'Placeholder captions.en.srt'), srt);
+    writeFileSync(join(dir, 'Placeholder captions.gu.auto.srt'), srt);
+    const [mediaId = ''] = await importAndGetIds(win, [file]);
+    const set = await win.evaluate(
+      (id) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'setBackground',
+          background: { kind: 'media', mediaId: id, media: 'video', fit: 'fit', loop: true },
+        }),
+      mediaId,
+    );
+    expect(set.ok).toBe(true);
+    const bars = win.getByTestId('time-bars');
+    await expect(bars.locator('[data-playing="background"]')).toBeVisible();
+    await win.getByTestId('video-cc').click();
+    const menu = win.getByRole('menu', { name: 'Video captions', exact: true });
+    await expect(menu.getByRole('menuitemradio')).toHaveCount(3);
+    await part(win, 'manual-captions', [bars, menu]);
+    await win.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+
+    // Stream settings: YouTube, nothing signed in, then Send to other software, off.
+    await win.getByTestId('open-stream').click();
+    await win.getByTestId('open-stream-settings').click();
+    const youtube = win.getByTestId('youtube-settings');
+    await youtube.scrollIntoViewIfNeeded();
+    await expect(youtube).toBeVisible();
+    await part(win, 'manual-youtube', [youtube]);
+    const videoOut = win.getByTestId('video-out');
+    await videoOut.scrollIntoViewIfNeeded();
+    await expect(videoOut).toBeVisible();
+    await part(win, 'manual-video-out', [videoOut]);
+    await win.getByRole('button', { name: 'Close stream settings' }).click();
+    await win.getByRole('button', { name: 'Close stream' }).click();
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

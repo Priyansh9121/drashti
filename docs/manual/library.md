@@ -16,7 +16,7 @@ The library holds everything on this computer that can go on the screens: presen
 4. Or drag the row onto the open playlist.
 5. Press **Close** (or **Esc**) to shut the library.
 
-![The library open over the playlists, with placeholder presentations](../screenshots/manual-library.png)
+![The library open over the playlists, a placeholder presentation chosen with Add to playlist](../screenshots/playlist-up-down.png)
 
 ## Finding something
 
@@ -31,7 +31,7 @@ The library holds everything on this computer that can go on the screens: presen
 3. Press Enter, or click the row you want.
 4. Press **Add to playlist**, or click a slide to put it up at once.
 
-![The library's search with a placeholder kirtan found](../screenshots/manual-library.png)
+![The library: its search box over placeholder presentations](../screenshots/playlist-up-down.png)
 
 ## Importing files
 
