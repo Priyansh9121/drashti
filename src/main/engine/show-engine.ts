@@ -251,6 +251,11 @@ export interface EngineOptions {
   /** A picture's look (Session 26e), or null: shown as it is. */
   pictureLook?: (mediaId: string) => PictureLook | null;
   /**
+   * Whether a picture's file is known to draw no see-through pixel (X11, main/media/see-through.ts), as far as read
+   * yet: the screens back a deck's moving slide whose own full-slide picture is one (EngineState.opaquePictures).
+   */
+  pictureOpaque?: (mediaId: string) => boolean;
+  /**
    * A media item's kind while it is in Media to play (not missing or deleted), or null: the picture-in-picture
    * box (Session 50) takes a picture or a video as the library has it, never as a page says.
    */
@@ -1716,19 +1721,42 @@ export class ShowEngine {
   private picturesFor(state: EngineState): Record<string, PictureLook> {
     const look = this.options.pictureLook;
     if (!look) return {};
-    const { now, next } = mediaInState(state);
-    const leaving = leavingMedia(state.pipOff);
     const out: Record<string, PictureLook> = {};
-    for (const id of [...now, ...next, ...(leaving === null ? [] : [leaving])]) {
+    for (const id of this.picturesIn(state)) {
       const found = look(id);
       if (found) out[id] = found;
     }
     return out;
   }
 
-  /** A picture's look changed in the library (the Picture editor, Keep this zoom): the screens follow at once. */
+  /** The media on the screens and coming next, and the box's picture going out (Session 26e). */
+  private picturesIn(state: EngineState): string[] {
+    const { now, next } = mediaInState(state);
+    const leaving = leavingMedia(state.pipOff);
+    return [...now, ...next, ...(leaving === null ? [] : [leaving])];
+  }
+
+  /**
+   * Of those, the pictures whose files can draw no see-through pixel, as far as read yet (X11, main/media/see-through.ts),
+   * each once and in order: the screens back a deck's moving slide whose own full-slide picture is one.
+   */
+  private opaqueFor(state: EngineState): string[] {
+    const opaque = this.options.pictureOpaque;
+    if (!opaque) return [];
+    return [...new Set(this.picturesIn(state))].filter((id) => opaque(id)).sort();
+  }
+
+  /** The pictures' looks and which can draw no see-through pixel, as the screens get them. */
+  private picturesSet(state: EngineState): EngineAction {
+    return { type: 'pictures/set', pictures: this.picturesFor(state), opaque: this.opaqueFor(state) };
+  }
+
+  /**
+   * A picture's look changed in the library (the Picture editor, Keep this zoom), or its file was read (X11): the
+   * screens follow at once.
+   */
   refreshPictures(): CommandResult {
-    return this.atOnce(() => this.apply([{ type: 'pictures/set', pictures: this.picturesFor(this.state) }]));
+    return this.atOnce(() => this.apply([this.picturesSet(this.state)]));
   }
 
   /** The live zoom ends (kept as the picture's look, say): the screens show its kept look. */
@@ -2924,7 +2952,7 @@ export class ShowEngine {
       // The chosen wallpaper's pictures (Session 55, Part 6).
       next.chosenWallpaper !== prev.chosenWallpaper
     )
-      next = reduce(next, { type: 'pictures/set', pictures: this.picturesFor(next) });
+      next = reduce(next, this.picturesSet(next));
     next = this.keepUndo(prev, next, cause);
     next = this.withAutoAdvance(prev, next);
     if (next === prev) return this.unchanged();

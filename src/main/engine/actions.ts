@@ -154,7 +154,7 @@ export type EngineAction =
   /** Repeat Slides going round, or stopped (Session 26d). */
   | { type: 'repeat/set'; repeat: RepeatRun | null }
   /** The looks of the pictures in use, and the live zoom (Session 26e). */
-  | { type: 'pictures/set'; pictures: Record<string, PictureLook> }
+  | { type: 'pictures/set'; pictures: Record<string, PictureLook>; opaque?: readonly string[] }
   | { type: 'zoom/set'; liveZoom: LiveZoom | null }
   /** Each screen group's settings (its languages, and its role's layers and slide style), from the library. */
   | { type: 'look/set'; look: LiveLook }

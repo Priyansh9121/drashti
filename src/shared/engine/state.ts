@@ -733,6 +733,13 @@ export interface EngineState {
    * id: every screen, node, phone and the stream draw them alike. A picture without one is left out.
    */
   pictures: Record<string, PictureLook>;
+  /**
+   * The pictures on the screens and coming next whose files can draw no see-through pixel (X11; main/media/
+   * see-through.ts: a JPEG, a still PNG with no transparency), by media id, once read; left out with none. Without a
+   * graphics chip a deck's own move backs a moving slide whose own full-slide picture is one of them, so the compositor
+   * draws nothing under it (render/slide-backing.ts).
+   */
+  opaquePictures?: readonly string[];
   /** The picture on the screens zoomed and moved from LIVE, for this showing only (Session 26e), or null. */
   liveZoom: LiveZoom | null;
   /**
