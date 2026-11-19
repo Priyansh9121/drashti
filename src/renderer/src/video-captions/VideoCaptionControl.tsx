@@ -48,7 +48,7 @@ export function VideoCaptionMenu({
 }: {
   mediaId: string;
   at: MenuPlace;
-  onClose(): void;
+  onClose: () => void;
 }) {
   const choice = useChoice(mediaId);
   const select = (trackId: string | null) => {

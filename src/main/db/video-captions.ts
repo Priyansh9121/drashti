@@ -122,6 +122,7 @@ export class VideoCaptionsRepo {
         /* A damaged library track never prevents its video playing. */
       }
     }
+    if (this.cached.size >= 8) this.cached.clear();
     this.cached.set(mediaId, { key, track });
     return track;
   }
