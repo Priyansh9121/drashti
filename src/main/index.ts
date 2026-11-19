@@ -4895,12 +4895,12 @@ function start(): void {
     message: 'Only the operator window can import from a link.',
   };
   handle(IPC.links.view, () => links.view());
-  handle(IPC.links.start, (e, text, audio, intoOpenPlaylist) =>
+  handle(IPC.links.start, (e, text, audio, intoOpenPlaylist, options) =>
     fromOperator(e) &&
     typeof text === 'string' &&
     typeof audio === 'boolean' &&
     typeof intoOpenPlaylist === 'boolean'
-      ? links.start(text, audio, intoOpenPlaylist)
+      ? links.start(text, audio, intoOpenPlaylist, options)
       : notLinksOperator,
   );
   handle(IPC.links.look, (e, kind, link) =>

@@ -21,13 +21,25 @@ function setup() {
       let hear = (_message: FromWorker): void => undefined;
       const messages: ToWorker[] = [];
       workers.push({ messages, send: (message) => hear(message) });
-      return { post: (message) => messages.push(message), onMessage: (fn) => { hear = fn; }, onExit: () => undefined, kill: () => undefined };
+      return {
+        post: (message) => messages.push(message),
+        onMessage: (fn) => {
+          hear = fn;
+        },
+        onExit: () => undefined,
+        kill: () => undefined,
+      };
     },
     onAir: () => false,
     freeBytes: () => 100 * 1024 ** 3,
     freeBytesAsync: () => Promise.resolve(100 * 1024 ** 3),
     defaultFolder: join(root, 'Usual'),
-    lastFolder: { get: () => remembered, set: (folder) => { remembered = folder; } },
+    lastFolder: {
+      get: () => remembered,
+      set: (folder) => {
+        remembered = folder;
+      },
+    },
     pickFolder: () => Promise.resolve(chosen),
     importFiles: () => Promise.resolve({ ok: true, runId: 'placeholder-run' }),
     changed: () => undefined,
@@ -64,7 +76,9 @@ describe('the link window', () => {
       worker?.send({ type: 'downloaded', name: 'Server name.mp4', zip: false, bytes: 17 });
       await settled(() => h.service.view().phase === 'done');
       expect(readFileSync(join(h.original, 'Chosen name.mp4'), 'utf8')).toBe('placeholder video');
-    } finally { h.service.close(); }
+    } finally {
+      h.service.close();
+    }
   });
 
   it('keeps a chosen folder as a draft until Download, and Cancel restores the remembered folder', async () => {
@@ -83,7 +97,9 @@ describe('the link window', () => {
       expect(h.service.view().folder).toBe(h.chosen);
       expect(h.remembered()).toBe(h.chosen);
       expect(existsSync(join(h.chosen, 'Changed.mp4'))).toBe(false);
-    } finally { h.service.close(); }
+    } finally {
+      h.service.close();
+    }
   });
 });
 

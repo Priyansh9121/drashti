@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { makeDropboxLikeZip } from '../../src/main/import/testing/zip-writer';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { clearOfShowControls, expectFits } from './fit';
+import { expectFits } from './fit';
 import { dropboxStandIn, folderLink, type StandIn, type StandInFile } from './dropbox-stand-in';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
 import { linkFinished, linkView as view, pasteLink } from './paste-link';
@@ -15,7 +15,7 @@ import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
- * Simple Mode uses the same one-field link import as Pro Mode. These tests use local stand-ins
+ * Simple Mode uses the same link window as Pro Mode. These tests use local stand-ins
  * and generated media at the CI operator size (1024 × 645).
  */
 
@@ -108,10 +108,9 @@ test('YouTube in Simple Mode imports to the open playlist at 1080p and can show 
   await fromALink(win);
   await expect(win.getByTestId('link-text')).toBeInViewport();
   const field = win.getByTestId('link-paste');
-  await expectFits(field, 'the link input at 1024 × 645');
-  await clearOfShowControls(win, field);
+  await expectFits(field, 'the link window at 1024 × 645');
   await expectNoSeriousA11yIssues(win, 'the link input in Simple Mode', '[data-testid="link-paste"]');
-  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(1);
   await pasteLink(win, LINK);
   await linkFinished(win);
   expect(readdirSync(chosen)).toEqual(['Placeholder video.mp4']);
