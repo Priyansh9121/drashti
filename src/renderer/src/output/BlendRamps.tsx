@@ -47,7 +47,19 @@ function Ramp({
       height={1}
       data-testid="blend-ramp"
       data-side={side}
-      style={{ position: 'absolute', left: x, top: 0, width, height, zIndex: RAMP_Z, pointerEvents: 'none' }}
+      // A canvas clips at its own edge (a replaced element's overflow: clip), and under a screen's warp out of square
+      // that clip made Chromium draw the ramp again into a surface of its own every frame (x27's clip finder): its
+      // picture fills its box exactly, so nothing changes by drawing it unclipped.
+      style={{
+        position: 'absolute',
+        left: x,
+        top: 0,
+        width,
+        height,
+        zIndex: RAMP_Z,
+        pointerEvents: 'none',
+        overflow: 'visible',
+      }}
     />
   );
 }
