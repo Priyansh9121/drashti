@@ -62,7 +62,7 @@ export function signInAddress(
 
 /** What the browser brought back to Drashti's listener. */
 export type BrowserAnswer =
-  { ok: true; code: string } | { ok: false; reason: 'denied' | 'failed' | 'timeout' | 'cancelled' };
+  { ok: true; code: string } | { ok: false; reason: 'denied' | 'unread' | 'timeout' | 'cancelled' };
 
 export interface BrowserListener {
   /** Where Google sends the browser back: http://127.0.0.1:<port>. */
@@ -132,12 +132,12 @@ export function listenForBrowser(state: string, waitMs = SIGN_IN_WAIT_MS): Promi
       const code = url.searchParams.get('code');
       if (error !== null) {
         page(res, 200, 'Not signed in', 'Nothing changed. Go back to Drashti to try again.');
-        end({ ok: false, reason: error === 'access_denied' ? 'denied' : 'failed' });
+        end({ ok: false, reason: error === 'access_denied' ? 'denied' : 'unread' });
         return;
       }
       if (code === null || code === '' || code.length > MAX_CODE) {
         page(res, 400, 'Not signed in', 'Google’s answer did not read. Go back to Drashti to try again.');
-        end({ ok: false, reason: 'failed' });
+        end({ ok: false, reason: 'unread' });
         return;
       }
       page(res, 200, 'Signed in to YouTube', 'You can close this tab and go back to Drashti.');
