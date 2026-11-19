@@ -101,6 +101,17 @@ describe('AppearanceService', () => {
     expect(readdirSync(dir).some((f) => f.startsWith('drashti-appearance.unreadable-'))).toBe(true);
   });
 
+  it('cleans one’s own name as Rename… cleans one: nothing visible is no name, a hidden mark is left out (X14)', () => {
+    const service = new AppearanceService({ userData: fresh(), say: () => undefined });
+    service.start(new Computer(false));
+    expect(service.make({ name: '\u200B\u2060\u00AD', base: 'dark', accent: '#5aa2ff' })).toMatchObject({
+      ok: false,
+    });
+    const made = service.make({ name: 'Placeholder\u200E\town', base: 'dark', accent: '#5aa2ff' });
+    expect(made.ok).toBe(true);
+    expect(service.own().map((a) => a.name)).toEqual(['Placeholder own']);
+  });
+
   it('makes one’s own only when every rule is met, chooses it, and deletes it back to the computer’s', () => {
     const dir = fresh();
     const service = new AppearanceService({ userData: dir, say: () => undefined });

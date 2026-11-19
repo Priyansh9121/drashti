@@ -23,9 +23,9 @@ import type { LiveWindowResult, WindowList } from '../../shared/live-window';
 import {
   type CameraAccess,
   VIDEO_INPUT_DEVICE_MAX,
-  VIDEO_INPUT_NAME_MAX,
   type VideoInputResult,
   type VideoInputsView,
+  videoInputNameSchema,
 } from '../../shared/video-inputs';
 import {
   SCREEN_SWITCHES,
@@ -284,7 +284,7 @@ const screenChange = z
   .strict();
 const nothing = z.object({}).strict();
 const fit = z.enum(['fit', 'fill']);
-const inputName = z.string().trim().min(1).max(VIDEO_INPUT_NAME_MAX);
+const inputName = videoInputNameSchema;
 const cameraName = z.string().min(1).max(VIDEO_INPUT_DEVICE_MAX);
 const inputAdd = z.object({ name: inputName, device: cameraName, fit }).strict();
 const inputChange = z

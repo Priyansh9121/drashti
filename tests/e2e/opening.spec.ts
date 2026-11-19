@@ -5,7 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProbeRead } from '../../src/renderer/src/render/motion-probe';
 import { swings } from '../../src/shared/flash';
-import { OPENING_DEFAULT_PHOTO_URL, OPENING_MS, OPENING_SOUND_VOLUME } from '../../src/shared/opening';
+import {
+  OPENING_DEFAULT_PHOTO_URL,
+  OPENING_MS,
+  OPENING_SOUND_VOLUME,
+  OPENING_START_HOLD_MS,
+} from '../../src/shared/opening';
 import { RECOVERY_MAX_AGE_MS } from '../../src/shared/recovery';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
@@ -972,7 +977,8 @@ test('the pack’s sound (a generated tone, any case) plays gently with its phot
     'src',
     OPENING_DEFAULT_PHOTO_URL,
   );
-  await expect(opening(page)).toHaveCount(0, { timeout: 10_000 });
+  // Its black can hold for the window's limit (a slow GPU's warm-up: CI's Mac), then its two seconds.
+  await expect(opening(page)).toHaveCount(0, { timeout: OPENING_START_HOLD_MS + 15_000 });
   expect((await quiet()).filter((n) => n.there)).toEqual([]);
   await expect.poll(() => openingLog(userData)).toContain('Opening: plays (the default photo)');
   // Taken out: no sound, and its copy gone.

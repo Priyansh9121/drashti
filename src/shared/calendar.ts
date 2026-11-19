@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { asClause, issueWords, parsePlain } from './plain-parse';
+import { cleanNameSchema } from './rename-name';
 
 /*
  * Samvat and tithi (Session 12). Drashti computes no tithi: an admin loads a
@@ -95,7 +96,7 @@ const fileSchema = z
   .object({
     format: z.literal(CALENDAR_FORMAT),
     version: z.literal(1),
-    name: z.string().trim().min(1).max(120),
+    name: cleanNameSchema(120),
     description: z.string().trim().max(1000).optional(),
     days: z.array(z.unknown()).min(1, 'The calendar has no days.').max(CALENDAR_MAX_DAYS),
   })

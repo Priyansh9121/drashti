@@ -17,6 +17,7 @@ import {
 } from '../../shared/appearance/derive';
 import { appearanceVars } from '../../shared/appearance/vars';
 import { IPC } from '../../shared/ipc';
+import { cleanRenameName } from '../../shared/rename-name';
 import { sendToPage } from '../windows/send';
 import { readAppearance, writeAppearance, type AppearanceSettings } from './appearance-file';
 
@@ -88,7 +89,8 @@ export class AppearanceService {
    * one's id, or why not.
    */
   make(fields: Omit<OwnAppearance, 'id'>): { ok: true; id: string } | { ok: false; message: string } {
-    const name = fields.name.trim();
+    // Cleaned as Rename… cleans a name (X14): nothing visible is no name; hidden marks and tabs are left out.
+    const name = cleanRenameName(fields.name);
     if (name === '' || name.length > OWN_NAME_MAX)
       return { ok: false, message: `Give it a name of up to ${String(OWN_NAME_MAX)} letters.` };
     if (this.list().some((a) => a.name.toLowerCase() === name.toLowerCase()))
