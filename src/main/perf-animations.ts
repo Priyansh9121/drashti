@@ -614,7 +614,15 @@ function deckOwnSlides(
               ...randomBars('5', 'horizontal'),
               ...randomBars('6', 'vertical'),
             ].sort((a, b) => a.step - b.step),
-            stepsMs: [0, DECK_SPLIT_MS, DECK_SPLIT_MS, DECK_SHAPE_MS, DECK_SHAPE_MS, DECK_BARS_MS, DECK_BARS_MS],
+            stepsMs: [
+              0,
+              DECK_SPLIT_MS,
+              DECK_SPLIT_MS,
+              DECK_SHAPE_MS,
+              DECK_SHAPE_MS,
+              DECK_BARS_MS,
+              DECK_BARS_MS,
+            ],
             approximate: false,
           }
         : { effects: [], stepsMs: [0], approximate: false },
