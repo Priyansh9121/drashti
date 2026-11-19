@@ -228,6 +228,8 @@ export async function importLink(text: string, options?: LinkDownloadOptions): P
 
 /** Checking a pasted link reads metadata only. */
 export async function lookLink(text: string): Promise<void> {
+  const { request, view } = useLinks.getState();
+  if (request || (linkBusy(view) && view?.phase !== 'looking')) return;
   const kind = linkKind(text);
   const check = kind === null ? null : checkLink(kind, text);
   if (!kind || !check?.ok) {

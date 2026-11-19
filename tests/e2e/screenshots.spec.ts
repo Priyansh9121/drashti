@@ -1619,7 +1619,7 @@ test('Import from a Link: the Dropbox paste field, status and failure notices', 
       }, on);
     await onAir(true);
     await pasteLink(win, folderLink('shotAAAAAAAAAAA'));
-    await expect(win.getByTestId('link-status')).toHaveAttribute('data-phase', 'waiting');
+    await expect(win.getByTestId('link-status')).toHaveAttribute('data-phase', 'looking');
     await shot(win, 'import-link-waiting');
     await barAndStatus(win, 'import-link-status');
     await onAir(false);

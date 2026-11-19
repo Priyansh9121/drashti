@@ -190,6 +190,7 @@ export class LinkService {
     null;
   private draftFolder: string | null = null;
   private draftCaptionsFolder: string | null = null;
+  private explicitCaptionsFolder = false;
   private checked: { url: string; shape: LinkShape } | null = null;
   private worker: LinkWorker | null = null;
   private job: 'look' | 'download' | 'unpack' | null = null;
@@ -630,7 +631,7 @@ export class LinkService {
     this.set({
       phase: this.automatic ? 'looking' : 'looked',
       look: { shape: 'video', name: m.details.title, size: null, video: m.details },
-      suggestedName: downloadName(undefined, m.details.title, ''),
+      suggestedName: downloadName(undefined, m.details.title, '.mp4').replace(/\.mp4$/u, ''),
       waitingFor: null,
       message: null,
     });
@@ -963,6 +964,7 @@ export class LinkService {
     this.rememberFolder();
     const downloadCaptions = this.automatic?.options.captions ?? this.state.downloadCaptions ?? true;
     const captionsFolder = this.draftCaptionsFolder ?? this.deps.captionPreferences?.get().folder ?? null;
+    this.explicitCaptionsFolder = captionsFolder !== null;
     this.deps.captionPreferences?.set({ enabled: downloadCaptions, folder: captionsFolder });
     this.draftCaptionsFolder = null;
     this.set({ downloadCaptions, captionsFolder: captionsFolder ?? join(folder, 'Captions') });
@@ -1041,7 +1043,7 @@ export class LinkService {
           failed,
           video: look.video,
           link: this.checked.url,
-          learning: { folder: learning, create: !this.deps.captionPreferences?.get().folder },
+          learning: { folder: learning, create: !this.explicitCaptionsFolder },
           freeBytes: (path) =>
             this.deps.freeBytesAsync?.(path) ?? statfs(path).then((space) => space.bavail * space.bsize),
         }).catch(() => ({
@@ -1081,7 +1083,14 @@ export class LinkService {
       this.worker.post({ type: 'hold', on });
       if (this.job === 'look') {
         // Still looking: only the words change.
-        this.deps.log('info', on ? LOOK_WAITS : 'Links: looking at the YouTube link carries on');
+        this.deps.log(
+          'info',
+          on
+            ? this.state.kind === 'youtube'
+              ? LOOK_WAITS
+              : 'Links: looking at a Dropbox link waits while the stream is on air or recording'
+            : `Links: looking at the ${this.kindWord()} link carries on`,
+        );
         this.set({ waitingFor: on ? WAITING_FOR : null });
       } else if (on) {
         this.deps.log('info', 'Links: the download waits while the stream is on air or recording');
