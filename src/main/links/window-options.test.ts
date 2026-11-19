@@ -110,5 +110,7 @@ describe('the operator’s download name', () => {
     expect(downloadName('', 'Original title.mp4', '.mp4')).toBe('Original title.mp4');
     expect(downloadName('CON', 'Placeholder', '.mp4')).toBe('_CON.mp4');
     expect(downloadName('../New name', 'Placeholder', '.pptx')).toBe('New name.pptx');
+    expect(downloadName('Archive.mp3', 'Placeholder folder', '')).toBe('Archive.mp3');
+    expect(downloadName('.mp4', 'Original title', '.mp4')).toBe('Original title.mp4');
   });
 });
