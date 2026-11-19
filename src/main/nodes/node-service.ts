@@ -9,6 +9,7 @@ import {
   type MediaWant,
   NODE_PAIRING_TTL_MS,
   type NodeHealth,
+  type NodeControllerContext,
   type NodeInfo,
   type NodeOutputStatus,
   type NodeScreen,
@@ -44,7 +45,7 @@ export interface NodeServiceDeps {
   /** How bookkeeping reaches the library: when it is free, never waiting (Session 15). Left out: at once. */
   write?: (key: string, run: () => void) => void;
   screens: ScreenRepo;
-  settings: { get(name: string): unknown };
+  settings: { get(name: string): unknown; set(name: string, value: unknown): void };
   /** What a node joining after the last pointed message should load. */
   pointed(): PointedClip | null;
   spawn(): LinkWorker;
@@ -134,6 +135,8 @@ export class NodeService implements EngineTransport {
   private offer: { code: string; expiresAt: number } | null = null;
   private offerTimer: NodeJS.Timeout | null = null;
   private readonly live = new Map<string, Live>();
+  /** Main's explicit shared-view choices, read once; never a new credential. */
+  private readonly controllers = new Map<string, boolean>();
   /**
    * Whether Main is let in (Session 54, access by Gmail), as the access service last said: told to every node at each
    * change and every 15 s, and to each node as it connects. Until then, and once Drashti has stopped: no.
@@ -314,6 +317,7 @@ export class NodeService implements EngineTransport {
         l.refused = null;
         this.unsaved.set(m.nodeId, { at, address: m.address, version: m.version });
         this.deps.log('info', `Nodes: ${this.label(m.nodeId)} connected`);
+        this.pushController(m.nodeId);
         // Whether Main is let in, at once: a node shows only while it is (Session 54).
         worker.send({ type: 'to-node', nodeId: m.nodeId, message: { type: 'access', letIn: this.letIn } });
         worker.send({
@@ -461,6 +465,7 @@ export class NodeService implements EngineTransport {
 
   private pushScreens(nodeId: string): void {
     this.worker?.send({ type: 'screens', nodeId, screens: this.nodeScreens(nodeId) });
+    this.pushController(nodeId);
   }
 
   /** What Main's own outputs say changed (a font found missing, Sessions 31–36): the windows hear it a moment later. */
@@ -641,6 +646,45 @@ export class NodeService implements EngineTransport {
     return { ok: true, status: this.status() };
   }
 
+  private controllerOn(nodeId: string): boolean {
+    let on = this.controllers.get(nodeId);
+    if (on === undefined) {
+      on = this.deps.settings.get(`nodes.controller.${nodeId}`) === true;
+      this.controllers.set(nodeId, on);
+    }
+    return on;
+  }
+
+  private pushController(nodeId: string): void {
+    let context: NodeControllerContext | null = null;
+    if (this.controllerOn(nodeId)) {
+      const group = this.deps.screens.groups().find((g) => g.role === 'audience');
+      const screen = group?.screens[0];
+      context = {
+        groupId: group?.id ?? null,
+        groupName: group?.name ?? 'Audience',
+        canvasWidth: screen?.canvasWidth ?? 1920,
+        canvasHeight: screen?.canvasHeight ?? 1080,
+        scaling: screen?.scaling ?? 'fit',
+      };
+    }
+    this.worker?.send({ type: 'to-node', nodeId, message: { type: 'controller', context } });
+  }
+
+  /** Main's operator window, Pro Mode only: a shared view, without granting show actions. */
+  setController(rawId: unknown, rawOn: unknown): NodesResult {
+    if (typeof rawOn !== 'boolean') return { ok: false, message: 'On or off?' };
+    const id = idSchema.safeParse(rawId);
+    if (!id.success || !this.deps.nodes.get(id.data))
+      return { ok: false, message: 'That node is no longer paired.' };
+    this.deps.settings.set(`nodes.controller.${id.data}`, rawOn);
+    this.controllers.set(id.data, rawOn);
+    this.pushController(id.data);
+    this.changed();
+    this.deps.log('info', `Nodes: shared show view ${rawOn ? 'on' : 'off'} for ${this.label(id.data)}`);
+    return { ok: true, status: this.status() };
+  }
+
   setEverything(rawId: unknown, rawOn: unknown): NodesResult {
     const id = idSchema.safeParse(rawId);
     if (typeof rawOn !== 'boolean') return { ok: false, message: 'On or off?' };
@@ -734,6 +778,7 @@ export class NodeService implements EngineTransport {
       latencyMs: l?.health?.clock ? Math.round(l.health.clock.rttMs * 10) / 10 : null,
       versionRefused: l?.refused ?? null,
       everything: n.everything,
+      controller: this.controllerOn(n.id),
       behindSince: l?.online && l.behindSince !== null ? new Date(l.behindSince).toISOString() : null,
     };
   }

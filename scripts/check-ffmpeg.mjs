@@ -4,7 +4,9 @@
 // (Session 25c, src/main/links/youtube-selftest.ts): yt-dlp and Deno run
 // (--version only), and Deno, started as yt-dlp starts it, cannot read a
 // file, reach 127.0.0.1 or start a program.
-// In packaged apps the bundled Whisper program must also start (with --help, without a model).
+// In packaged apps the bundled Whisper program must also start (with --help, without a model), and video out's
+// program (x30: Syphon on a Mac, Spout on Windows) must be there and start: its input ended at once, it says "ready"
+// and stops by itself (scripts/fetch-video-out.mjs builds it; tools/video-out/).
 //
 //   node scripts/check-ffmpeg.mjs             the built app in out/ (pnpm build first)
 //   node scripts/check-ffmpeg.mjs --packaged  every app electron-builder left in release/
@@ -24,6 +26,9 @@ const TIMEOUT_MS = 180_000;
 // come on top. Native runs take seconds.
 const EMULATED_TIMEOUT_MS = 480_000;
 
+/** Each packaged app's video out program: [label, command, arguments] (an Intel Mac's under Rosetta). */
+const videoOutPrograms = [];
+
 /** Each packaged app: [label, command, arguments]. */
 function packagedApps() {
   const release = join(app, 'release');
@@ -33,14 +38,29 @@ function packagedApps() {
     const macArm = at('mac-arm64', 'Drashti.app', 'Contents', 'MacOS', 'Drashti');
     const macIntel = at('mac', 'Drashti.app', 'Contents', 'MacOS', 'Drashti');
     const win = at('win-unpacked', 'Drashti.exe');
-    if (existsSync(macArm)) found.push(['macOS arm64', macArm, []]);
-    if (existsSync(macIntel)) {
-      if (process.arch === 'x64') found.push(['macOS x64', macIntel, []]);
-      else if (spawnSync('arch', ['-x86_64', '/usr/bin/true']).status === 0)
-        found.push(['macOS x64 (under Rosetta)', 'arch', ['-x86_64', macIntel]]);
-      else console.log('macOS x64: not run (this Mac has no Rosetta to run Intel apps)');
+    const videoOut = (exe, appExe) => join(dirname(appExe), '..', 'Resources', 'video-out', exe);
+    if (existsSync(macArm)) {
+      found.push(['macOS arm64', macArm, []]);
+      videoOutPrograms.push(['macOS arm64', videoOut('drashti-video-out', macArm), []]);
     }
-    if (existsSync(win)) found.push(['Windows x64', win, []]);
+    if (existsSync(macIntel)) {
+      const program = videoOut('drashti-video-out', macIntel);
+      if (process.arch === 'x64') {
+        found.push(['macOS x64', macIntel, []]);
+        videoOutPrograms.push(['macOS x64', program, []]);
+      } else if (spawnSync('arch', ['-x86_64', '/usr/bin/true']).status === 0) {
+        found.push(['macOS x64 (under Rosetta)', 'arch', ['-x86_64', macIntel]]);
+        videoOutPrograms.push(['macOS x64 (under Rosetta)', 'arch', ['-x86_64', program]]);
+      } else console.log('macOS x64: not run (this Mac has no Rosetta to run Intel apps)');
+    }
+    if (existsSync(win)) {
+      found.push(['Windows x64', win, []]);
+      videoOutPrograms.push([
+        'Windows x64',
+        join(dirname(win), 'resources', 'video-out', 'drashti-video-out.exe'),
+        [],
+      ]);
+    }
   }
   if (found.length === 0)
     throw new Error('No unpacked app in release/: run pnpm package (or package:dir) first.');
@@ -85,9 +105,39 @@ function check(label, command, args) {
   });
 }
 
+/** A packaged app's video out program starts: its input ended at once, it says "ready" and stops by itself. */
+function checkVideoOut(label, command, args) {
+  const program = command === 'arch' ? args[1] : command;
+  if (!existsSync(program)) {
+    console.log(`${label}: video out FAILED: no program at ${program}`);
+    return Promise.resolve(false);
+  }
+  return new Promise((resolve) => {
+    const child = spawn(command, [...args, '--name', 'Drashti packaged check'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    let out = '';
+    child.stdout.on('data', (d) => (out += d.toString()));
+    child.stderr.on('data', (d) => (out += d.toString()));
+    child.stdin.end();
+    const limit = command === 'arch' ? EMULATED_TIMEOUT_MS : 60_000;
+    const timer = setTimeout(() => child.kill('SIGKILL'), limit);
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      const passed = code === 0 && /^ready$/mu.test(out);
+      console.log(
+        `${label}: video out ${passed ? 'OK' : `FAILED (exit ${String(code)})`}\n  ${program}\n  ${out.trim().split(/\r?\n/u).join('\n  ')}`,
+      );
+      resolve(passed);
+    });
+  });
+}
+
 const targets = packaged
   ? packagedApps()
   : [['built app', createRequire(import.meta.url)('electron'), ['.']]];
 let ok = true;
 for (const [label, command, args] of targets) ok = (await check(label, command, args)) && ok;
+for (const [label, command, args] of videoOutPrograms) ok = (await checkVideoOut(label, command, args)) && ok;
 process.exit(ok ? 0 : 1);

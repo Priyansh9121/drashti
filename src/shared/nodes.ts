@@ -148,6 +148,15 @@ export type FromNode =
 
 export type NodeByeReason = 'unauthorized' | 'revoked' | 'version' | 'too-slow' | 'closing' | 'replaced';
 
+/** Main's audience preview for a paired computer explicitly allowed a shared show view. No credentials or settings. */
+export interface NodeControllerContext {
+  groupId: string | null;
+  groupName: string;
+  canvasWidth: number;
+  canvasHeight: number;
+  scaling: ScalingMode;
+}
+
 /** What Main sends a node on the feed. */
 export type ToNode =
   | {
@@ -159,6 +168,8 @@ export type ToNode =
       session: string;
     }
   | { type: 'engine'; message: EngineMessage }
+  /** Main's explicit shared-view permission. Null removes it; no node action is enabled. */
+  | { type: 'controller'; context: NodeControllerContext | null }
   | { type: 'clock'; t0: number; server: number }
   /** The screens the node shows on its displays (all of them, replacing the last). */
   | { type: 'screens'; screens: NodeScreen[] }
@@ -258,6 +269,8 @@ export interface NodeView {
   displays: NodeDisplayView[];
   media: NodeMediaStatus;
   clock: NodeClock | null;
+  /** A shared show view, only when explicitly enabled on Main. A drop keeps the view, marked disconnected. */
+  controller?: (NodeControllerContext & { connected: boolean; clockOffsetMs: number }) | null;
   /** Showing the last picture kept from before: Main has not been reached since this node started. */
   fromSaved: boolean;
   /**
@@ -299,6 +312,8 @@ export interface NodeInfo {
   versionRefused: string | null;
   /** Copy every picture and video in the library, not only the week's ("Get everything ready"). */
   everything: boolean;
+  /** Main enabled a shared live and next view on this paired computer (off by default). */
+  controller?: boolean;
   /** Since when (ISO) it has not caught up with the show (its last report older than Main's changes), or null. */
   behindSince: string | null;
 }

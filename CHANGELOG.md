@@ -15,6 +15,8 @@ Update after a sabha, and update Main and nodes together.
 - How loud: just above Audio under the live picture, in Pro and Simple Mode, set how loud Audio (the playlists and every sound) and Video (the videos’ sound) play, 0 to 100 %, each with a switch to mute it (green Sound on, red Muted); the status bar says what is muted. A change is heard at once and smoothly and never stops what plays, the stream hears what the hall hears, and Drashti keeps the levels but always starts with the sound on.
 - A video’s captions (SRT or WebVTT files beside it, or added through Captions…) can now show on the audience screens and the stream: turn them on for that video with CC beside the time bar, in the language you choose; live captions step aside meanwhile.
 - OSC control, for a lighting or sound console or Companion on the mandir’s own network: in Pro Mode, turn it on in More tools › OSC control… and list the computers allowed to send; Next, Back, Clear, the covers, timers and messages can then be run from them. It is off until turned on.
+- A second computer paired as a node can now show the whole show to a second operator, when Main allows it in Screens (Pro Mode); if its link drops, no screen changes.
+- The stream’s picture can now go to other software on the same computer (Syphon on a Mac, Spout on Windows), for a mixer or a recorder: turn on Send to other software in the stream’s settings. It is off until turned on.
 
 ## 1.0.0-alpha.19 (19 Nov 2026)
 
