@@ -20,6 +20,7 @@ import {
   type PageGlobals,
   setUpScreen,
   testDisplays,
+  windowShowing,
 } from './helpers';
 import { launchMain, launchNode, pairNode } from './nodes';
 import { canvasPixels, near } from './pixels';
@@ -402,19 +403,25 @@ test('a node and the key and fill draw a native click at the same held frame', a
 const PUSH_MS = 800;
 
 /** A generated 4:3 deck: a red slide, then a green one that comes in by PowerPoint's Push from the right. */
-function fourThreePushDeck(): Buffer {
+function fourThreePushDeck(opaque = false): Buffer {
+  // See-through slides (no background) each with a full-slide shape of its colour; or, `opaque`, slides whose own
+  // background is that colour (X11: a slide known opaque, backed while it moves without a graphics chip).
   const whole = (color: string) =>
-    `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Placeholder rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9144000" cy="6858000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>`;
-  const page = (shapes: string, after = '') =>
-    slideXml(shapes)
-      .replace('<p:spTree>', '<p:bg><p:bgPr><a:noFill/><a:effectLst/></p:bgPr></p:bg><p:spTree>')
+    opaque
+      ? ''
+      : `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Placeholder rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9144000" cy="6858000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>`;
+  const fill = (color: string) =>
+    opaque ? `<a:solidFill><a:srgbClr val="${color}"/></a:solidFill>` : '<a:noFill/>';
+  const page = (color: string, after = '') =>
+    slideXml(whole(color))
+      .replace('<p:spTree>', `<p:bg><p:bgPr>${fill(color)}<a:effectLst/></p:bgPr></p:bg><p:spTree>`)
       .replace('</p:sld>', `${after}</p:sld>`);
   const ns =
     'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
   return editablePptxFixture({
     slides: [
-      page(whole('FF0000')),
-      page(whole('00FF00'), `<p:transition dur="${PUSH_MS}"><p:push dir="l"/></p:transition>`),
+      page('FF0000'),
+      page('00FF00', `<p:transition dur="${PUSH_MS}"><p:push dir="l"/></p:transition>`),
     ],
     // The deck's own size: 4:3 (9144000 x 6858000 EMU), where the fixture's is 16:9.
     parts: {
@@ -516,6 +523,104 @@ test('a 4:3 deck’s Push on a 16:9 hall moves its slides by the slide’s width
     await expect(hall.locator('[data-layer="slide"]')).not.toHaveAttribute('data-fading', 'true');
     // Over: no clip left on the layer.
     await expect(hall.locator('[data-layer="slide"]')).toHaveCSS('clip-path', 'none');
+    await holdClock(app, null);
+  } finally {
+    await app.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+test('without a graphics chip a deck’s moving slide known opaque is backed in its own place, the bars staying black; a see-through one never (X11, Q60-6)', async () => {
+  // Told it draws without a graphics chip (as CI's two-core Windows does): each moving slide a layer of its own, and
+  // one whose own background is an opaque colour backed by it in its own place (the stream's page: 1920 x 1080, whole
+  // device pixels), so the compositor draws nothing under it. The bars beside a 4:3 slide stay black; a slide that can
+  // be seen through (no background, a shape of its colour on it) is never backed.
+  const { app } = await launchApp({
+    ...CLOCK,
+    DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software',
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+  });
+  const dir = await mkdtemp(join(tmpdir(), 'drashti-backed-push-'));
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const opaqueFile = join(dir, 'Placeholder backed push.pptx');
+    const seeThroughFile = join(dir, 'Placeholder see-through push.pptx');
+    await writeFile(opaqueFile, fourThreePushDeck(true));
+    await writeFile(seeThroughFile, fourThreePushDeck());
+    const [opaqueId = '', seeThroughId = ''] = await importAndGetIds(win, [opaqueFile, seeThroughFile]);
+    expect(opaqueId).not.toBe('');
+    expect(seeThroughId).not.toBe('');
+    const hall = await outputFor(app, await setUpScreen(win, 'Placeholder Hall', 0));
+    await expect(hall.getByTestId('output-root')).toHaveAttribute('data-chipless', 'true');
+    // The stream's picture, as the Stream panel's preview asks for it.
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.watchPreview(true));
+    const stream = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
+    await expect(stream.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
+      timeout: 30_000,
+    });
+    const box = (page: Page, which: 'in' | 'out') =>
+      page.locator(`[data-layer="slide"] [data-slide-${which}]`);
+    const halfway = async (id: string) => {
+      await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+      await expect.poll(async () => (await current(win))?.slideIndex).toBe(0);
+      await dispatch(win, { type: 'next' });
+      await expect.poll(async () => (await current(win))?.slideIndex).toBe(1);
+      const entered = await current(win);
+      expect(entered?.transition).toMatchObject({
+        deckEffect: 'push',
+        durationMs: PUSH_MS,
+        direction: 'left',
+      });
+      await holdClock(app, (entered?.shownAt ?? 0) + PUSH_MS / 2);
+      return entered?.shownAt ?? 0;
+    };
+    /** Both pages half-way through the Push: the bars black, the red slide going, the green one coming. */
+    const asPowerPoint = async (what: string) => {
+      for (const page of [hall, stream])
+        for (const [x, rgb, where] of [
+          [100, [0, 0, 0], 'the left bar'],
+          [600, [255, 0, 0], 'the red slide going'],
+          [1300, [0, 255, 0], 'the green slide coming'],
+          [1820, [0, 0, 0], 'the right bar'],
+        ] as const) {
+          const want: [number, number, number] = [rgb[0], rgb[1], rgb[2]];
+          await expect
+            .poll(
+              async () => {
+                const [seen] = await canvasPixels(page, [{ x, y: MIDDLE.y }]);
+                return near(seen, want, 40) ? 'as PowerPoint' : (seen ?? []).join(',');
+              },
+              { message: `${what}: ${where} at x ${String(x)} on the ${page === hall ? 'hall' : 'stream'}` },
+            )
+            .toBe('as PowerPoint');
+        }
+    };
+
+    // Slides whose own background is their colour: each moving slide backed by it, its layer the slide's own place
+    // (240 px in, 1440 wide), its drawing moved back by as much, so it is drawn where it was.
+    const shownAt = await halfway(opaqueId);
+    await expect(box(stream, 'out')).toHaveCSS('background-color', 'rgb(255, 0, 0)');
+    await expect(box(stream, 'in')).toHaveCSS('background-color', 'rgb(0, 255, 0)');
+    for (const which of ['in', 'out'] as const) {
+      await expect(box(stream, which)).toHaveCSS('left', '240px');
+      await expect(box(stream, which)).toHaveCSS('width', '1440px');
+      await expect(box(stream, which).locator(':scope > [data-slide-shade]')).toHaveCSS('left', '-240px');
+    }
+    await asPowerPoint('slides known opaque, backed');
+    // Over: nothing of it left.
+    await holdClock(app, shownAt + PUSH_MS);
+    await expect(stream.locator('[data-layer="slide"]')).not.toHaveAttribute('data-fading', 'true');
+    await expect(box(stream, 'in')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(box(stream, 'in')).toHaveCSS('left', '0px');
+    await expect(box(stream, 'in')).toHaveCSS('width', '1920px');
+    await holdClock(app, null);
+
+    // Slides that can be seen through: moved on layers of their own, never backed.
+    await halfway(seeThroughId);
+    for (const page of [hall, stream])
+      for (const which of ['in', 'out'] as const)
+        await expect(box(page, which)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await asPowerPoint('see-through slides, never backed');
     await holdClock(app, null);
   } finally {
     await app.close();
