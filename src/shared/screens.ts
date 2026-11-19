@@ -122,6 +122,8 @@ export interface NodeDisplays {
   name: string;
   online: boolean;
   displays: DisplayInfo[];
+  /** It draws without a graphics chip, as it last said (x27), for Adjust the picture…. */
+  noGpu?: true;
 }
 
 export interface ScreensSnapshot {

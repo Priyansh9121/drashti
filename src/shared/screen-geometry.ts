@@ -1,6 +1,6 @@
 import type { Placement, Size } from './scaling';
 import { placeContent } from './scaling';
-import type { ScalingMode, ScreenConfig } from './screens';
+import type { NodeDisplays, ScalingMode, ScreenConfig } from './screens';
 
 /*
  * A screen's geometry (x27, 19 Nov 2026; PLAN §2's "Edge blend, corner-pin, output scaling"), kept with the screen and
@@ -396,4 +396,17 @@ export function frameBands(quad: Corners, box: Size): Band[] {
     { x: 0, y: 0, width: left, height: box.height },
   ];
   return bands.filter((b) => b.width > 0 && b.height > 0);
+}
+
+/**
+ * Whether a screen draws without a graphics chip (x27, for Adjust the picture…): a screen on a node as its node last
+ * said in its health; one of this computer's as `here` says (the operator window's word, app.noGpu). Never a node gone
+ * from the list.
+ */
+export function drawnWithoutChip(
+  _screen: Pick<ScreenConfig, 'nodeId'>,
+  _nodes: readonly Pick<NodeDisplays, 'id' | 'noGpu'>[],
+  _here: boolean,
+): boolean {
+  return false;
 }

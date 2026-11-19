@@ -6,6 +6,7 @@ import {
   blendLight,
   cornersProblem,
   DEFAULT_CURVE,
+  drawnWithoutChip,
   frameBands,
   DEFAULT_GAMMA,
   NO_GEOMETRY,
@@ -482,5 +483,18 @@ describe("the warp's cost (x27, Q60-20): which warps keep their clips, and the b
         const covered = bands.some((b) => x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height);
         if (!covered) throw new Error(`outside the quad, in no band: ${String(x)}, ${String(y)}`);
       }
+  });
+});
+
+describe('drawnWithoutChip (x27): whether a screen draws without a graphics chip, for Adjust the picture…', () => {
+  const nodes = [{ id: 'placeholder-node-a', noGpu: true as const }, { id: 'placeholder-node-b' }];
+  it("a node's screen as its node says; this computer's as it says itself", () => {
+    expect(drawnWithoutChip({ nodeId: 'placeholder-node-a' }, nodes, false)).toBe(true);
+    expect(drawnWithoutChip({ nodeId: 'placeholder-node-b' }, nodes, true)).toBe(false);
+    expect(drawnWithoutChip({ nodeId: null }, nodes, true)).toBe(true);
+    expect(drawnWithoutChip({ nodeId: null }, nodes, false)).toBe(false);
+  });
+  it('a node not in the list (gone, or not yet heard from) is not taken to draw without one', () => {
+    expect(drawnWithoutChip({ nodeId: 'placeholder-node-gone' }, nodes, true)).toBe(false);
   });
 });
