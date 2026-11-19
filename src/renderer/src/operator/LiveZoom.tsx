@@ -95,7 +95,11 @@ export function ZoomablePreview({ children }: { children: ReactNode }) {
       });
   };
   const now = zoomNow(state);
-  if (!now) return <>{children}</>;
+  // Always a box around the picture, without the zoom's mouse, trackpad and touch while nothing there can be zoomed
+  // (Session 60, x36; Q60-23): a picture that can be zoomed live coming or going (a video put up after a picture, a
+  // slide with a picture) once changed what held the picture, so LIVE's whole picture was drawn afresh, its background
+  // starting empty: black until a late file drew, while the hall kept what it showed.
+  if (!now) return <div ref={box}>{children}</div>;
   const onWheel = (e: WheelEvent<HTMLDivElement>) => {
     const at = pending.current ?? now;
     // A wheel's notch (100) zooms a fifth; a pinch on a trackpad comes as a wheel with Ctrl held: finer steps, as many.

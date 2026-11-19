@@ -1,6 +1,6 @@
 import { WebContentsView } from 'electron';
 import { secureWebPreferences } from '../windows/web-preferences';
-import { askPlaysHevc } from './plays-hevc';
+import { askHevcKinds, askPlaysHevc, type HevcKinds } from './plays-hevc';
 
 /*
  * The HEVC question's own page (question 36 of Session 54). Chromium answers whether it plays HEVC only once the GPU
@@ -16,12 +16,20 @@ import { askPlaysHevc } from './plays-hevc';
 export interface HevcPage {
   /** Whether this computer plays HEVC; null when the page could not say (its process ended, or it was closed). */
   readonly answer: Promise<boolean | null>;
+  /**
+   * HEVC's other kinds (Session 60, x36: Main 10, and the Range Extensions), asked in the same page once its first
+   * answer came, before that answer is given (so an import waiting for it has both); null when not asked or not told.
+   */
+  readonly kinds: Promise<HevcKinds | null>;
   /** Closes the page now (Drashti quits): its answer, if still to come, is null. */
   close(): void;
 }
 
-/** Ask `script` (plays-hevc.ts's playsHevcScript) in a page of its own, which goes once it has answered. */
-export function askInOwnPage(script: string): HevcPage {
+/**
+ * Ask `script` (plays-hevc.ts's playsHevcScript) in a page of its own, which goes once it has answered; and, given
+ * `kindsScript` (hevcKindsScript), HEVC's other kinds in the same page (Session 60, x36).
+ */
+export function askInOwnPage(script: string, kindsScript: string | null = null): HevcPage {
   const webPreferences: Electron.WebPreferences = { ...secureWebPreferences(), backgroundThrottling: false };
   // A blank page that runs one line: no bridge to Drashti.
   delete webPreferences.preload;
@@ -30,8 +38,13 @@ export function askInOwnPage(script: string): HevcPage {
   const answer = new Promise<boolean | null>((resolve) => {
     settle = resolve;
   });
+  let settleKinds: (kinds: HevcKinds | null) => void = () => undefined;
+  const kinds = new Promise<HevcKinds | null>((resolve) => {
+    settleKinds = resolve;
+  });
   let closed = false;
   const close = () => {
+    settleKinds(null);
     settle(null);
     if (closed) return;
     closed = true;
@@ -40,10 +53,17 @@ export function askInOwnPage(script: string): HevcPage {
   contents.once('render-process-gone', close);
   void contents
     .loadURL('about:blank')
-    .then(() => askPlaysHevc((s) => contents.executeJavaScript(s), script))
+    .then(async () => {
+      const run = (s: string) => contents.executeJavaScript(s);
+      const plays = await askPlaysHevc(run, script);
+      // The other kinds before the answer is given, so an import that waited for it has both.
+      settleKinds(kindsScript !== null && plays !== null ? await askHevcKinds(run, kindsScript) : null);
+      return plays;
+    })
     .then(settle, () => {
+      settleKinds(null);
       settle(null);
     })
     .finally(close);
-  return { answer, close };
+  return { answer, kinds, close };
 }

@@ -4,6 +4,7 @@ import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirt
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { SlidePictureResult } from './slide-picture';
 import type { ReadyReport } from './ready';
+import type { ToolsMenuItem } from './setup-tools';
 import type { PdfJob, PdfPage, PdfPageReceipt, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { QuickBarResult, QuickPin } from './quick-bar';
@@ -236,6 +237,8 @@ export interface DrashtiBridge {
     onShowKeys(listener: () => void): () => void;
     /** Help > Guides… was chosen (Sessions 31–36), in either mode. */
     onShowGuides(listener: () => void): () => void;
+    /** An item of the Tools menu was chosen (Session 60, x36; Pro Mode): which. */
+    onShowTool(listener: (tool: ToolsMenuItem) => void): () => void;
   };
   /** The guides inside Drashti (Sessions 31–36): those this mode may read, and a guide's text. */
   guides: {
@@ -685,6 +688,11 @@ export interface DrashtiBridge {
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
+    /**
+     * A video's picture cannot be drawn on this computer (Session 60, x36), found as it loaded in an output or the
+     * operator window: its showing (its file and when it went up).
+     */
+    noPicture(mediaId: string, startedAt: number): Promise<null>;
   };
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside, a file's Even loudness,

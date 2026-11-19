@@ -2134,8 +2134,7 @@ test('Zoom, both ways: the window for Zoom with the stream’s picture, and Show
     await w.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     w.showInactive();
   });
-  const sheet = await openLibrary(win);
-  await sheet.getByTestId('library-tab-media').click();
+  await openMoreTools(win);
   await win.getByTestId('show-a-window').click();
   const picker = win.getByTestId('window-picker');
   const choice = picker.getByTestId('window-choice').filter({ hasText: 'Placeholder meeting' });

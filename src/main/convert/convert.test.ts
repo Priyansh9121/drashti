@@ -80,6 +80,43 @@ it('names the estimated cut and the free space when Trim cannot save', () => {
   expect(service.trimSpaceProblem(source, dir, 4000, 1000)).toBeNull();
 });
 
+it('a video this computer cannot draw is marked as not playing here, and waits to be converted by itself (Session 60, x36)', () => {
+  dir = mkdtempSync(join(tmpdir(), 'drashti-undrawable-'));
+  db = openDatabase(join(dir, 'drashti.sqlite'));
+  const insert = db.prepare('INSERT INTO media (id, kind, name, path, playable) VALUES (?, ?, ?, ?, ?)');
+  insert.run('m-video', 'video', 'Placeholder clip.mov', 'in/clip.mov', null);
+  insert.run('m-sound', 'audio', 'Placeholder tune.mp3', 'in/tune.mp3', 1);
+  let ffmpegThere = false;
+  const changes: string[] = [];
+  service = new ConvertService({
+    db,
+    mediaDir: dir,
+    ffmpegPath: () => (ffmpegThere ? join(dir, 'ffmpeg') : null),
+    busy: () => null,
+    // Something is up: it waits.
+    showBusy: () => true,
+    freeBytes: () => 1e12,
+    changed: () => undefined,
+    libraryChanged: () => changes.push('library'),
+    log: () => undefined,
+  });
+  const playable = () => db?.prepare('SELECT playable FROM media WHERE id = ?').get('m-video');
+  // With no FFmpeg it is marked only: nothing puts it up again as it is.
+  expect(service.convertUndrawable('m-video')).toBe(false);
+  expect(playable()).toEqual({ playable: 0 });
+  expect(changes).toEqual(['library']);
+  // With FFmpeg, it waits to be converted by itself (marked once).
+  ffmpegThere = true;
+  expect(service.convertUndrawable('m-video')).toBe(true);
+  expect(service.list()).toMatchObject([{ mediaId: 'm-video', state: 'waiting', byItself: true }]);
+  expect(service.convertUndrawable('m-video')).toBe(true);
+  expect(service.list()).toHaveLength(1);
+  expect(changes).toEqual(['library']);
+  // Only a video in the library.
+  expect(service.convertUndrawable('m-sound')).toBe(false);
+  expect(service.convertUndrawable('m-none')).toBe(false);
+});
+
 describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
   it('turns each kind into what Drashti plays, keeps the original, and moves what used it', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
