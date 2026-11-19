@@ -268,6 +268,16 @@ test('Audio’s and Video’s levels and mutes, live: each sound plays at its le
   await expect.poll(() => playsAt(talk)).toBeCloseTo(evenTalk * 0.95, 2);
   await expect.poll(() => playsAt(music), { timeout: 5000 }).toBeCloseTo(evenMusic * aside * 0.7, 2);
   await expect.poll(() => levelOf(audio)).toBeGreaterThan(-60);
+  // Video left at 0 %: as silent as muted, though its switch says Sound on, so the status bar says it all the same; with
+  // none of the video heard, the music comes back up. Back to 95 %, nothing to say.
+  await slide(v.slider, 0);
+  await expect(win.getByTestId('sound-muted-status')).toHaveText('Video at 0 %');
+  await expect(v.mute).toHaveText('Sound on');
+  await expect.poll(() => playsAt(talk)).toBe(0);
+  await expect.poll(() => playsAt(music), { timeout: 5000 }).toBeCloseTo(evenMusic * 0.7, 2);
+  await slide(v.slider, 95);
+  await expect(win.getByTestId('sound-muted-status')).toHaveText('');
+  await expect.poll(() => playsAt(talk)).toBeCloseTo(evenTalk * 0.95, 2);
 
   // Throughout: the same two elements, never paused, never moved back, always further on; the hall's video too.
   const now = await keys(audio);

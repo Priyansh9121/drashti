@@ -150,8 +150,17 @@ export function soundGain(
  * every sound can be heard.
  */
 export function silentWords(levels: SoundLevels | undefined): string {
-  void levels;
-  return '';
+  if (!levels) return '';
+  const name: Record<SoundKind, string> = { audio: 'Audio', video: 'Video' };
+  const what = SOUND_KINDS.map((kind) =>
+    levels[kind].muted ? 'muted' : cleanLevel(levels[kind].level) === 0 ? 'at 0 %' : null,
+  );
+  const [audio, video] = what;
+  if (audio && audio === video) return `Audio and Video ${audio}`;
+  return SOUND_KINDS.flatMap((kind, i) => {
+    const said = what[i];
+    return said ? [`${name[kind]} ${said}`] : [];
+  }).join(', ');
 }
 
 /** What changing a level or a mute answers: the levels now, or why it could not. */
