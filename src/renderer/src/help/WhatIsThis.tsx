@@ -1,29 +1,31 @@
 import { useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { passagesHolding } from '../../../shared/guides';
 import { parseMarkdown, passagesOf } from '../../../shared/markdown';
 import type { PanelHelp, PanelHelpId } from '../../../shared/panel-help';
 import { PANEL_HELP } from '../../../shared/panel-help';
 import { useMode } from '../operator/mode-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { showGuides } from './guides-store';
+import { showManual } from './manual-store';
 
 /*
  * "What is this?" (Session 25): a small ? on a panel's heading opens two or three plain sentences
  * under it, in the panel's own space, so it never covers the show controls (and never takes the
- * show's keys: it is a button, a paragraph, Read more and Got it). The words are in shared/panel-help.ts.
- * Read more (Sessions 31–36) opens Help › Guides at the passage they follow, marked; Esc closes the
- * guides, and the show's keys work again at once.
+ * show's keys: it is a button, a paragraph, Open the manual and Got it). The words are in shared/panel-help.ts.
+ * Open the manual (x37, Session 60: the owner's "Yes, A" to Q60-25; Read more, which opened Help › Guides, until
+ * then) opens the Drashti Manual at the panel's chapter, its feature marked; Esc closes the manual, and the show's
+ * keys work again at once.
  */
 
-/** Open the guides at the passage a card follows (or at its guide's start, if the passage is gone). */
-async function readMore(help: PanelHelp): Promise<void> {
-  const read = await window.drashti.guides.read(help.doc);
-  const passage = read.ok
-    ? (passagesHolding(passagesOf(parseMarkdown(read.text)), help.guide)[0]?.id ?? null)
-    : null;
-  showGuides({ guide: help.doc, passage });
+/** Open the manual at the chapter a card names, at its feature (or the chapter's start, if the feature is gone). */
+async function openManual(help: PanelHelp): Promise<void> {
+  const read = await window.drashti.manual.read();
+  const text = read.ok ? read.chapters.find((c) => c.id === help.chapter)?.text : undefined;
+  const passage =
+    text === undefined
+      ? null
+      : (passagesOf(parseMarkdown(text)).find((p) => p.heading && p.text === help.feature)?.id ?? null);
+  showManual({ chapter: help.chapter, passage });
 }
 
 /** The ? for a heading, and the words it opens under it (both null without a topic). */
@@ -84,12 +86,12 @@ export function useWhatIsThis(
         <Button
           size="sm"
           variant="ghost"
-          data-testid="what-is-this-read-more"
+          data-testid="what-is-this-manual"
           onClick={() => {
-            void readMore(help);
+            void openManual(help);
           }}
         >
-          Read more
+          Open the manual
         </Button>
         <Button size="sm" autoFocus aria-describedby={`${id}-text`} onClick={close}>
           Got it

@@ -80,7 +80,7 @@ export function searchGuides(guides: readonly IndexedGuide[], query: string): Gu
 /** A help card's words as its guide prints them, their bold and code marks aside ("**Looks.**" is "Looks."). */
 export const plainWords = (words: string): string => words.replace(/\*\*|`/gu, '');
 
-/** The passages holding these words as written: Read more opens the one ("What is this?", Sessions 31–36). */
+/** The passages holding these words as written (a curated answer's, and a "What is this?" card's: Sessions 31–36). */
 export function passagesHolding(passages: readonly Passage[], words: string): Passage[] {
   const plain = plainWords(words);
   return passages.filter((p) => p.text.includes(plain));
