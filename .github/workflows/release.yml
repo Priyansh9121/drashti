@@ -75,6 +75,13 @@ jobs:
       - name: Fetch the live captions engine for Intel Macs too
         if: runner.os == 'macOS'
         run: node scripts/fetch-whisper.mjs --target darwin-x64
+      # Video out (x30): Syphon on a Mac, Spout on Windows, compiled here from their sources at one pinned commit, each
+      # file checked against its own SHA-256 first (one that does not match fails the release); never from a cache.
+      - name: Build video out (Syphon or Spout)
+        run: node scripts/fetch-video-out.mjs
+      - name: Build video out for Intel Macs too
+        if: runner.os == 'macOS'
+        run: node scripts/fetch-video-out.mjs --target darwin-x64
       - run: pnpm build
       - name: Package (signed when the certificates are given)
         shell: bash
@@ -96,7 +103,7 @@ jobs:
         run: node scripts/package-release.mjs
       - name: Check the signatures (when signed)
         run: node scripts/verify-signing.mjs
-      - name: Each packaged app finds and runs its FFmpeg, yt-dlp, Deno and Whisper
+      - name: Each packaged app finds and runs its FFmpeg, yt-dlp, Deno, Whisper and video out
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Restart after a restore (packaged app)
         run: node scripts/check-relaunch.mjs --packaged
