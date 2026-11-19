@@ -172,6 +172,7 @@ export function readVideoCaptions(source: string): { cues: VideoCaptionCue[]; pr
   events.sort((a, b) => a.at - b.at || Number(a.start) - Number(b.start));
   const active = new Map<number, VideoCaptionCue>();
   const result: VideoCaptionCue[] = [];
+  let timelineChars = 0;
   for (let e = 0; e < events.length;) {
     const at = events[e]?.at ?? 0;
     while (events[e]?.at === at) {
@@ -189,7 +190,16 @@ export function readVideoCaptions(source: string): { cues: VideoCaptionCue[]; pr
     const text = combined([...active.values()]);
     const previous = result.at(-1);
     if (previous?.endMs === at && previous.text === text) previous.endMs = end;
-    else result.push({ startMs: at, endMs: end, text });
+    else {
+      timelineChars += text.length;
+      if (timelineChars > MAX_CAPTION_CHARS / 4)
+        return {
+          cues: [],
+          problem:
+            'The caption file makes too much caption text at once. Choose a smaller SRT or WebVTT file.',
+        };
+      result.push({ startMs: at, endMs: end, text });
+    }
   }
   return { cues: result, problem: damaged ? 'Some damaged captions were left out of this file.' : null };
 }

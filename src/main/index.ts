@@ -3752,6 +3752,9 @@ function start(): void {
     edits.delete(c);
   // The slide editor's picture import joins the same queue.
   edits.delete(IPC.slideEditor.addPicture);
+  // These wait for the write lock themselves, after the file dialog and background reading have ended.
+  edits.delete(IPC.videoCaptions.add);
+  edits.delete(IPC.videoCaptions.select);
   setGiveWay((channel) => {
     if (imports.activeRunId === null || !edits.has(channel)) return null;
     // Usually the lock is free (the import holds it only while it writes a group): go at once.
