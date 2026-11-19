@@ -79,8 +79,10 @@ test('files dropped with no playlist open: a small window makes a new playlist o
   expect(await tree(win)).toEqual([]);
 
   // One video dropped on the empty middle: the window, a new playlist named after it; Enter makes it and opens it.
-  const middle = win.getByTestId('start-here');
+  // The middle with no playlist open: the library's chosen presentation's slides, or the three steps to a sabha.
+  const middle = win.getByRole('main', { name: 'Playlist and slides' });
   await expect(middle).toBeVisible();
+  await expect(win.getByTestId('open-playlist')).toHaveCount(0);
   await dropFiles(win, middle, [clip], { overlay: false });
   const dialog = await asked(win, /Placeholder clip\.webm/u, 'Placeholder clip');
   await expectFits(dialog, 'the drop window in CI’s window');
