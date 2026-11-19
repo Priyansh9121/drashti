@@ -352,6 +352,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     enabled: s.enabled,
     feed: s.feed,
     nodeId: null,
+    // Its geometry as Main sent it (x27), a key's its fill's already.
+    geometry: s.geometry ?? null,
   });
   /** How Main writes the time, from its welcome (Sessions 31–36, I18N-8); null until it says. */
   let mainClock: ClockStyle | null = null;
@@ -390,6 +392,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         outputNames.get(screenId) ?? 'an output',
         s.role,
       ),
+      // Its picture's geometry as Main sent it (x27; a key's its fill's), and the grid while Main's Screens adjusts it.
+      geometry: s.geometry ?? null,
+      ...(s.grid === true ? { grid: true as const } : {}),
     };
   };
   const sendContexts = () => {

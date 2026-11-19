@@ -5,6 +5,7 @@ import { MEDIA_EXT_PATTERN, NODE_NAME_MAX } from './nodes';
 import type { MediaWant, NodeHealth, NodeScreen } from './nodes';
 import type { DisplayInfo, DisplayKey } from './screens';
 import { SCALING_MODES } from './screens';
+import { screenGeometrySchema } from './screens-schema';
 import { hallPictureSchema } from './stage-layouts';
 import { cutText } from './text';
 
@@ -71,6 +72,9 @@ export const nodeScreenSchema: z.ZodType<NodeScreen> = z.object({
   enabled: z.boolean(),
   displayKey: displayKeySchema,
   hall: hallPictureSchema.nullable().optional(),
+  // Its geometry (x27), checked as Main checks it; none in a node's screens saved before.
+  geometry: screenGeometrySchema.nullable().optional(),
+  grid: z.literal(true).optional(),
 });
 
 export const nodeScreenListSchema = z.array(nodeScreenSchema).max(16);

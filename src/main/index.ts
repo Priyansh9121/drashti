@@ -57,6 +57,7 @@ import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext, ScreensSaid } from '../shared/screens';
 import { missingFontsIn } from '../shared/screens';
+import { drawnGeometry } from '../shared/screen-geometry';
 import { type ScreenSwitch, switchFor } from '../shared/screen-switches';
 import type { MessageResult } from '../shared/messages';
 import { keptTemplateSchema, messageTemplateSchema } from '../shared/messages';
@@ -2123,6 +2124,8 @@ function start(): void {
   const hallHere = () => hallPicture(screenRepo.groups(), manager.switches().audience);
   /** The hall as a tablet's stage display was last told it, to tell it again when it changes (Session 51). */
   let hallTold = '';
+  /** Whether a screen's picture is being adjusted in Screens (x27): its grid. The screens service's, once it is made. */
+  let adjustingScreen: (screenId: string) => boolean = () => false;
   const contextFor = (screenId: string): OutputContext | null => {
     const s = screenRepo.screen(screenId);
     if (!s) return null;
@@ -2153,6 +2156,12 @@ function start(): void {
       hall: hallHere(),
       // No warm-up where Chromium draws without a graphics chip (Session 57).
       ...warmUpFact(warmUps, outputWindows.get(screenId), outputNames.get(screenId) ?? 'an output', role),
+      // Its picture's geometry (x27): a key and fill pair's key draws its fill's. The grid while it is adjusted.
+      geometry: drawnGeometry(
+        s,
+        screenRepo.allScreens().filter((x) => x.groupId === s.groupId),
+      ),
+      ...(adjustingScreen(s.id) ? { grid: true as const } : {}),
     };
   };
   // An output open before Chromium said how it draws is sent its context again once it skips its warm-up (Session 57).
@@ -2401,6 +2410,7 @@ function start(): void {
     },
     notUsed,
   );
+  adjustingScreen = (screenId) => screens.adjusting(screenId);
   // ---- Audience and Stage (Session 50; outputs/screen-switches.ts): this computer's screens off and on --------
   // Never saved: both are on at every start.
   const screenSwitches = new ScreenSwitchService({
@@ -5607,6 +5617,8 @@ function start(): void {
     clockStyle: mainClockStyle,
     // A node with no audience screen of its own draws this hall in a stage layout's box (Session 51).
     hall: hallHere,
+    // A node's screen being adjusted in Screens shows its grid too (x27).
+    adjusting: (screenId) => adjustingScreen(screenId),
     // Listening on this computer only (tests, the performance check), this computer is the only address.
     addresses: () =>
       networkLocalOnly || perfTest
@@ -6452,6 +6464,17 @@ function start(): void {
   handle(IPC.screens.setJob, (e, displayId, job, options) =>
     fromOperator(e) ? screenChanges.setJob(displayId, job, options) : notAllowed,
   );
+  // A screen's geometry (x27): One wide picture and Separate pictures, and the grid while it is adjusted; the operator
+  // window's only (a phone never adjusts a picture).
+  handle(IPC.screens.widePicture, (e, groupId, overlap) =>
+    fromOperator(e) ? screens.makeWidePicture(groupId, overlap) : notAllowed,
+  );
+  handle(IPC.screens.separatePictures, (e, groupId) =>
+    fromOperator(e) ? screens.separatePictures(groupId) : notAllowed,
+  );
+  handle(IPC.screens.adjusting, (e, screenId, on) =>
+    fromOperator(e) ? screens.setAdjusting(screenId, on) : notAllowed,
+  );
   // What the screens did by themselves (Session 55), for a window that opened after it was said, until it is closed.
   handle(IPC.screens.lastSaid, (e) => (fromOperator(e) ? lastSaid : null));
   handle(IPC.screens.saidClosed, (e, id) => {
@@ -7099,6 +7122,8 @@ function start(): void {
   // again, or its page stops, the question goes from the outputs too, never left there.
   operatorWindow.webContents.on('did-start-loading', () => {
     switchQuestion.asking(null);
+    // A picture adjusted from the window that is loading again (x27): its grid goes from the screens.
+    screens.stopAdjusting();
   });
   operatorWindow.webContents.on('did-start-navigation', (navigation) => {
     if (loadsOperatorPageAgain(navigation, { devServerUrl: devServerUrl(), rendererDir: rendererDir() }))
@@ -7107,6 +7132,7 @@ function start(): void {
   operatorWindow.webContents.on('render-process-gone', () => {
     importNotices.pause();
     switchQuestion.asking(null);
+    screens.stopAdjusting();
   });
   // Whether this computer plays HEVC video (Session 51), unless a test gave the answer: asked once the operator window
   // has loaded, and again at its next load while it could not be told. Never of the operator window itself (question
