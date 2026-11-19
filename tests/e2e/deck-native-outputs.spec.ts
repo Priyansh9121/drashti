@@ -4,6 +4,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { editablePptxFixture, slideXml } from '../../src/main/import/testing/editable-pptx-fixture';
+import { deckWipeShows } from '../../src/renderer/src/render/transition-frame';
+import type { DeckNativeTransition } from '../../src/shared/deck-transition';
 import type { EngineCommand } from '../../src/shared/engine/commands';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import {
@@ -42,8 +44,11 @@ const target = (root: Page | Locator, shape: number) => root.locator(`[data-deck
 const drawsWithoutChip = async (page: Page): Promise<boolean> =>
   (await page.getByTestId('output-root').getAttribute('data-chipless')) === 'true';
 
-/** Generated shapes with a transparent slide background, so the key can prove the click's changing opacity. */
-function outputDeck(): Buffer {
+/**
+ * Generated shapes with a transparent slide background, so the key can prove the click's changing opacity. Its Wipe goes
+ * up unless said (`l`: from the right, as the Performance check's deck's, Q60-2).
+ */
+function outputDeck(wipe: 'u' | 'l' = 'u'): Buffer {
   const shape = (id: number, color: string, x: number, y: number, width: number, height: number) =>
     `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Placeholder rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${width}" cy="${height}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>`;
   const center = (id: number, color: string) => shape(id, color, 4_114_800, 2_286_000, 4_114_800, 2_286_000);
@@ -58,17 +63,17 @@ function outputDeck(): Buffer {
       page(shape(2, 'FF0000', 914_400, 914_400, 1_828_800, 914_400) + center(3, '0000FF'), fade(3)),
       page(
         shape(4, '304050', 0, 0, 12_192_000, 6_858_000) + center(5, '00FF00'),
-        `<p:transition dur="${WIPE_MS}"><p:wipe dir="u"/></p:transition>${fade(5)}`,
+        `<p:transition dur="${WIPE_MS}"><p:wipe dir="${wipe}"/></p:transition>${fade(5)}`,
       ),
     ],
   });
 }
 
-async function importOutputDeck(win: Page): Promise<string> {
+async function importOutputDeck(win: Page, wipe: 'u' | 'l' = 'u'): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'drashti-native-outputs-'));
   try {
     const file = join(dir, 'Placeholder output clicks.pptx');
-    await writeFile(file, outputDeck());
+    await writeFile(file, outputDeck(wipe));
     const [id = ''] = await importAndGetIds(win, [file]);
     expect(id).not.toBe('');
     return id;
@@ -252,6 +257,68 @@ test('the LIVE picture and Screens card use the moving Wipe band in software', a
       await expect(band).not.toHaveCSS('transform', 'none');
       await expect(incoming).toHaveCSS('mask-image', 'none');
     }
+  } finally {
+    await app.close();
+  }
+});
+
+test('without a graphics chip a deck’s own Wipe across shows its incoming slide through PowerPoint’s band part-way on the hall (Q60-2)', async () => {
+  // Told it draws without a graphics chip (as CI's two-core Windows does, or a PC whose graphics driver is blocked): the
+  // band boxes' way (render/chipless.ts), the band's mask on the incoming slide's band holder, moved. A Wipe across (from
+  // the right, as the Performance check's deck's): the holder's height is the slide's own, never written for it.
+  const { app } = await launchApp({
+    ...CLOCK,
+    DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software',
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+  });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const id = await importOutputDeck(win, 'l');
+    const hallId = await setUpScreen(win, 'Placeholder Hall', 0);
+    const hall = await outputFor(app, hallId);
+    await expect(hall.getByTestId('output-root')).toHaveAttribute('data-chipless', 'true');
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    // Next first reveals slide one's click. The second Next enters the slide with the Wipe.
+    expect(await dispatch(win, { type: 'next' })).toMatchObject({ ok: true });
+    expect(await dispatch(win, { type: 'next' })).toMatchObject({ ok: true });
+    const entered = await current(win);
+    expect(entered).toMatchObject({
+      slideIndex: 1,
+      transition: { kind: 'wipe', deckEffect: 'wipe', direction: 'left', durationMs: WIPE_MS },
+    });
+    const wipe = entered?.transition as DeckNativeTransition;
+    // At three moments of the way, three points across from the slide's right (its own side) along y 900, clear of both
+    // slides' shapes: the incoming slide's full-slide shape (#304050) over the outgoing slide's own nothing (black), as
+    // much as PowerPoint's band shows of it there (deckWipeShows: what every screen draws, with a chip and without).
+    for (const part of [0.3, 0.5, 0.7]) {
+      await holdClock(app, (entered?.shownAt ?? 0) + WIPE_MS * part);
+      for (const across of [0.05, 0.3, 0.55]) {
+        const shows = deckWipeShows(wipe, part, across);
+        const want: [number, number, number] = [0x30 * shows, 0x40 * shows, 0x50 * shows];
+        const x = 1920 * (1 - across);
+        await expect
+          .poll(
+            async () => {
+              const [rgb] = await canvasPixels(hall, [{ x, y: 900 }]);
+              return near(rgb, want, 18) ? 'as PowerPoint' : (rgb ?? []).join(',');
+            },
+            {
+              message: `the hall ${String(part * 100)}% through the Wipe at x ${String(x)}: ${want.map(Math.round).join(',')}`,
+            },
+          )
+          .toBe('as PowerPoint');
+      }
+    }
+    await holdClock(app, (entered?.shownAt ?? 0) + WIPE_MS);
+    await expect(hall.locator('[data-layer="slide"]')).not.toHaveAttribute('data-fading', 'true');
+    await expect
+      .poll(async () => {
+        const [rgb] = await canvasPixels(hall, [{ x: 960, y: 900 }]);
+        return near(rgb, [0x30, 0x40, 0x50], 18) ? 'the slide whole' : (rgb ?? []).join(',');
+      })
+      .toBe('the slide whole');
+    await holdClock(app, null);
   } finally {
     await app.close();
   }
