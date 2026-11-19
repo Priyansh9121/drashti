@@ -6,6 +6,7 @@ import { Button } from '../ui/Button';
 import { WordMark } from '../ui/Mark';
 import { Inbox, LayoutGrid, ListChecks, Monitor, Radio, Smartphone } from '../ui/icons';
 import { NetworkBadge } from '../network/NetworkBadge';
+import { OscBadge } from '../osc/OscControl';
 import { openNetwork, useNetwork } from '../network/network-store';
 import { openAnnouncements, useAnnouncements } from '../network/announcements-store';
 import { OnAirBadges } from '../stream/OnAirBadges';
@@ -110,6 +111,7 @@ export function Header({
           {/* How many announcements wait is on the Announcements button beside it. Crowded and below 1280 px,
               how many devices alone (top-bar.ts). */}
           <NetworkBadge waiting={false} compact={crowded} />
+          <OscBadge />
           {/* Its end is cut, if it must be, rather than drawn over the buttons beside it. */}
           <div className="min-w-0 flex-1 overflow-hidden">
             <LiveStatus />
