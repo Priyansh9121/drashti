@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { expectFits } from './fit';
 import {
   chooseMenuItem,
   holdStill,
@@ -81,9 +82,8 @@ test('YouTube: a paste downloads video at 1080p, or sound from Audio; going on a
   const field = win.getByTestId('link-paste');
   await expectNoSeriousA11yIssues(win, 'the YouTube link input', '[data-testid="link-paste"]');
   await pasteLink(win, 'https://www.youtube.com/playlist?list=PLplaceholder', false);
-  await expect(win.getByTestId('import-notice')).toContainText(
-    'That is a playlist. Drashti downloads one video at a time',
-  );
+  await expect(field.getByText(/That is a playlist. Drashti downloads one video at a time/u)).toBeVisible();
+  await expect(win.getByTestId('link-text')).toHaveAttribute('aria-invalid', 'true');
   await pasteLink(win, LINK);
   await expect(field).toHaveCount(0);
   await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
@@ -197,5 +197,84 @@ test('YouTube: when yt-dlp fails, plain words with what to do next, never its ow
   await expect(notice).not.toContainText('ERROR');
   await expect(notice).not.toContainText('[youtube]');
   await expect(notice.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+  await app.close();
+});
+
+const PLACEHOLDER_CAPTIONS = {
+  language: 'gu',
+  subtitles: { en: [{ ext: 'vtt', url: 'https://captions.invalid/placeholder?lang=en' }] },
+  automaticCaptions: {
+    'gu-orig': [{ ext: 'vtt', url: 'https://captions.invalid/placeholder?lang=gu' }],
+    fr: [{ ext: 'vtt', url: 'https://captions.invalid/placeholder?lang=gu&tlang=fr' }],
+  },
+};
+
+test('YouTube captions: two placeholder SRT files beside video and Audio, with a learning copy and manifest', async () => {
+  const { app, win, chosen, log } = await open({
+    ...PLACEHOLDER_CAPTIONS,
+    heights: [360],
+    steps: 1,
+    stepMs: 5,
+  });
+  await pasteLink(win, LINK, false);
+  await expect(win.getByTestId('link-name')).toHaveValue('Placeholder video');
+  await expect(win.getByTestId('link-captions')).toBeChecked();
+  await expect(win.getByTestId('link-caption-count')).toHaveText('Captions: 2 languages');
+  await expectFits(win.getByTestId('link-paste'), 'the captions window at 1024 × 645');
+  await expectNoSeriousA11yIssues(win, 'the captions choices', '[data-testid="link-paste"]');
+  expect(fakeStarts(log)).toEqual([]);
+  await win.getByTestId('link-download').click();
+  await linkFinished(win);
+  expect(readdirSync(chosen).sort()).toEqual([
+    'Captions',
+    'Placeholder video.en.srt',
+    'Placeholder video.gu.auto.srt',
+    'Placeholder video.mp4',
+  ]);
+  const learning = join(chosen, 'Captions', 'Placeholder video [AAAAAAAAAAA]');
+  for (const name of ['Placeholder video.en.srt', 'Placeholder video.gu.auto.srt']) {
+    const words = readFileSync(join(chosen, name), 'utf8');
+    expect(words).toContain('Placeholder');
+    expect(readFileSync(join(learning, name), 'utf8')).toBe(words);
+  }
+  expect(JSON.parse(readFileSync(join(learning, 'captions.json'), 'utf8'))).toMatchObject({
+    id: 'AAAAAAAAAAA',
+    link: 'https://www.youtube.com/watch?v=AAAAAAAAAAA',
+    title: 'Placeholder video',
+    channel: 'Placeholder channel',
+    files: [
+      { file: 'Placeholder video.en.srt', language: 'en', kind: 'creator' },
+      { file: 'Placeholder video.gu.auto.srt', language: 'gu', kind: 'automatic' },
+    ],
+  });
+  expect((await listMedia(win)).map((media) => media.name)).toEqual(['Placeholder video.mp4']);
+  await win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
+  await pasteLink(win, LINK, false);
+  await expect(win.getByTestId('link-name')).toHaveValue('Placeholder video');
+  await win.getByTestId('link-name').fill('Placeholder sound');
+  await win.getByTestId('link-download').click();
+  await linkFinished(win);
+  expect(existsSync(join(chosen, 'Placeholder sound.mp3'))).toBe(true);
+  expect(existsSync(join(chosen, 'Placeholder sound.en.srt'))).toBe(true);
+  expect(existsSync(join(chosen, 'Placeholder sound.gu.auto.srt'))).toBe(true);
+  expect(existsSync(join(chosen, 'Captions', 'Placeholder sound [AAAAAAAAAAA]', 'captions.json'))).toBe(true);
+  await app.close();
+});
+
+test('YouTube captions: one failed language gives one notice and keeps the video', async () => {
+  const { app, win, chosen } = await open({
+    ...PLACEHOLDER_CAPTIONS,
+    heights: [360],
+    steps: 1,
+    stepMs: 5,
+    captionFailLanguages: ['gu-orig'],
+  });
+  await pasteLink(win, LINK);
+  await linkFinished(win);
+  expect(existsSync(join(chosen, 'Placeholder video.mp4'))).toBe(true);
+  expect(existsSync(join(chosen, 'Placeholder video.en.srt'))).toBe(true);
+  const notice = win.getByTestId('import-notice').filter({ hasText: 'Some captions could not be saved' });
+  await expect(notice).toHaveCount(1);
+  await expect(notice).toContainText('gu (automatic)');
   await app.close();
 });

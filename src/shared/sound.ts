@@ -80,7 +80,91 @@ export interface SoundState {
   gains: Record<string, number>;
   /** Files up now that have no sound of their own (none in the file, or only silence): music never steps aside for them. */
   silent: string[];
+  /**
+   * The operator's two levels and mutes (X33): Audio's and Video's. Left out of an older state, and by an engine with
+   * no library: both at 100 %, sound on.
+   */
+  levels?: SoundLevels;
 }
+
+/*
+ * The operator's levels (X33, the owner's ask of 19 Nov 2026: "a volume button for both audio and video ... including a
+ * mute"): how loud the show's sounds play (Audio: the audio playlists, every sound, a slide's or a deck's own) and how
+ * loud its videos' sound plays (Video: the background video's and the slide's videos', a deck's too), each 0 to 100 %
+ * with a mute. They sit on top of each file's own volume, its even loudness (L) and the music stepping aside (K), never
+ * instead of them. The hall's audio player and the stream's page both play every sound by soundGain, the one sum.
+ */
+
+/** Which of the operator's two levels a sound plays under: a sound's (Audio), or a video's sound (Video). */
+export type SoundKind = 'audio' | 'video';
+export const SOUND_KINDS: readonly SoundKind[] = ['audio', 'video'];
+
+/** One of the operator's levels: how loud (0 to 1, said as 0 to 100 %), and whether it is muted. */
+export interface SoundLevel {
+  level: number;
+  muted: boolean;
+}
+
+export type SoundLevels = Readonly<Record<SoundKind, SoundLevel>>;
+
+/** Both at 100 %, sound on: Drashti's first start, and what a state that says nothing means. */
+export const FULL_LEVELS: SoundLevels = {
+  audio: { level: 1, muted: false },
+  video: { level: 1, muted: false },
+};
+
+/** A level as it is kept and sent: 0 to 1 in whole percent; anything that is not a number is 100 %. */
+export function cleanLevel(level: unknown): number {
+  if (typeof level !== 'number' || !Number.isFinite(level)) return 1;
+  return Math.round(Math.min(1, Math.max(0, level)) * 100) / 100;
+}
+
+/** How loud a kind of sound plays now, as the engine's state says: its level, 0 while muted, 1 when it says none. */
+export function kindLevel(state: Pick<EngineState, 'sound'> | null | undefined, kind: SoundKind): number {
+  const said = state?.sound?.levels?.[kind];
+  if (!said) return 1;
+  return said.muted ? 0 : cleanLevel(said.level);
+}
+
+/** What soundGain needs of a sound: its file's even gain, whether it is the music, and its kind. */
+export interface GainOf {
+  gain?: number;
+  aside?: true;
+  kind: SoundKind;
+}
+
+/**
+ * The gain a sound plays with on top of its own volume and fades: its file's even gain (L), the music's step aside for
+ * the music (K), and its kind's level (0 while muted). The one sum the hall's audio player and the stream's page use.
+ */
+export function soundGain(
+  sound: GainOf,
+  musicLevel: number,
+  state: Pick<EngineState, 'sound'> | null | undefined,
+): number {
+  return (sound.gain ?? 1) * (sound.aside ? musicLevel : 1) * kindLevel(state, sound.kind);
+}
+
+/**
+ * What the status bar says of the levels (X33), so the hall is never silent unseen: each kind muted, or at 0 %; '' when
+ * every sound can be heard.
+ */
+export function silentWords(levels: SoundLevels | undefined): string {
+  if (!levels) return '';
+  const name: Record<SoundKind, string> = { audio: 'Audio', video: 'Video' };
+  const what = SOUND_KINDS.map((kind) =>
+    levels[kind].muted ? 'muted' : cleanLevel(levels[kind].level) === 0 ? 'at 0 %' : null,
+  );
+  const [audio, video] = what;
+  if (audio && audio === video) return `Audio and Video ${audio}`;
+  return SOUND_KINDS.flatMap((kind, i) => {
+    const said = what[i];
+    return said ? [`${name[kind]} ${said}`] : [];
+  }).join(', ');
+}
+
+/** What changing a level or a mute answers: the levels now, or why it could not. */
+export type SoundLevelsResult = { ok: true; levels: SoundLevels } | { ok: false; message: string };
 
 /** The gain a file plays with now (even loudness), 1 when the state says none. */
 export function gainOf(state: Pick<EngineState, 'sound'> | null | undefined, mediaId: string): number {
@@ -148,7 +232,7 @@ function slideVideoHeard(state: EngineState, mediaId: string): boolean {
  * Whether the music steps aside at `now` (the engine's time): Audio's switch on, a sound or an audio playlist's track
  * playing on the audio layer (not a deck's own sound set to play across its slides), and a video with sound playing
  * then: the background video, or a video on the slide up, known to have sound (a file not measured yet counts),
- * started, not paused and short of its end.
+ * started, not paused and short of its end, while the operator's Video is heard (X33: not muted, not at 0 %).
  */
 export function musicAside(state: EngineState | null | undefined, now: number): boolean {
   if (!state || state.stopped || state.sound?.stepsAside === false) return false;
@@ -156,6 +240,8 @@ export function musicAside(state: EngineState | null | undefined, now: number): 
   if (!audio?.mediaId || audio.pausedAtMs !== undefined || audio.across) return false;
   // A slide's own sound or a deck's own soundtrack over it (the owner's answer of 30 Oct), until it ends.
   if (audio.over && overPlaysAt(audio.over, now)) return true;
+  // The operator's Video muted or at 0 % (X33): none of a video's sound is heard, so nothing to step aside for.
+  if (kindLevel(state, 'video') === 0) return false;
   const silent = new Set(state.sound?.silent ?? []);
   const refs: PlayingRef[] = [{ layer: 'background' }];
   const seen = new Set<string>();

@@ -8,7 +8,7 @@ import type { EngineState } from './state';
  * copy following every revision never has a gap to fill with a whole snapshot.
  */
 
-/** The state with no captions (the same object when it has none). */
+/** The state with no live speech (the same object when it has none). Stored video tracks are kept for nodes. */
 export function stateWithoutCaptions(state: EngineState): EngineState {
   return (state.captions ?? null) === null ? state : { ...state, captions: null };
 }

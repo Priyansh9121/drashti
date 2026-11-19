@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { DeckNativeTransition } from '../../../shared/deck-transition';
 import type { SlideLayer } from '../../../shared/engine/state';
 import {
-  type BandBoxes,
   fadeAt,
   firstShowing,
   type Layers,
@@ -12,7 +11,7 @@ import {
   paintWaiting,
 } from './SlideLayerView';
 import { setDrawsWithoutChip } from './chipless';
-import { deckTransitionFrame, wipeBandStyles, wipeSlideMask } from './transition-frame';
+import { deckTransitionFrame, deckWipeShows, wipeSlideClip, wipeSlideMask } from './transition-frame';
 
 const layer = (id: string, shownAt: number, transition?: SlideLayer['transition']): SlideLayer => ({
   presentationId: 'p',
@@ -182,51 +181,37 @@ const layersOf = (coming: HTMLDivElement, going: HTMLDivElement): Layers => ({
   wordsOut: null,
 });
 
+/** A slide's shade box (X11) as the JSX leaves it: around what the slide draws, no filter. */
+const shadeBox = (): HTMLDivElement => ({ style: { filter: '' } }) as unknown as HTMLDivElement;
+
 describe('a deck’s own Wipe drawn on a screen with a graphics chip: PowerPoint’s band as a mask on the slide’s box (Session 58)', () => {
   afterEach(() => {
     setDrawsWithoutChip(false);
   });
 
-  it('the incoming slide’s box takes the band’s mask, a new one each frame; its band boxes stay at rest; none once over', () => {
+  it('the incoming slide’s box takes the band’s mask, a new one each frame; the outgoing slide stays as it is; none once over', () => {
     const bars = { x: 240, y: 0, width: 1440, height: 1080 };
     for (const placeIn of [FULL, bars])
       for (const direction of ['left', 'right', 'up', 'down'] as const) {
         const native: DeckNativeTransition = { kind: 'wipe', deckEffect: 'wipe', durationMs: 700, direction };
         const coming = box();
-        const bandIn = bandBoxes();
-        const els = { ...layersOf(coming, box()), bandIn, bandOut: bandBoxes() };
+        const going = box();
+        const els = { ...layersOf(coming, going), shadeIn: shadeBox(), shadeOut: shadeBox() };
         for (const p of [0, 0.3, 0.5, 0.9]) {
           paintLayers(els, deckPaint(native, placeIn), p);
           const band = deckTransitionFrame(native, p).in.band;
           if (!band) throw new Error('no band');
-          expect(coming.style.maskImage, `${direction} at ${String(p)}`).toBe(
+          const what = `${direction} at ${String(p)}`;
+          expect(coming.style.maskImage, what).toBe(
             wipeSlideMask(band, placeIn, { width: 1920, height: 1080 }),
           );
-          expect([coming.style.clipPath, coming.style.transform]).toEqual(['', '']);
-          expect(bandIn.holder?.style).toEqual(AT_REST);
-          expect(bandIn.slide?.style).toEqual(AT_REST);
+          expect([coming.style.clipPath, coming.style.transform], what).toEqual(['', '']);
+          expect([going.style.transform, going.style.maskImage], what).toEqual(['', '']);
+          expect([els.shadeIn.style.filter, els.shadeOut.style.filter], what).toEqual(['', '']);
         }
         paintLayers(els, deckPaint(native, placeIn), 1);
         expect(coming.style.maskImage, `${direction} over`).toBe('');
       }
-  });
-
-  it('a page told part-way that it draws without a chip goes over to the band’s boxes, leaving nothing of the mask', () => {
-    const native: DeckNativeTransition = {
-      kind: 'wipe',
-      deckEffect: 'wipe',
-      durationMs: 700,
-      direction: 'left',
-    };
-    const coming = box();
-    const bandIn = bandBoxes();
-    const els = { ...layersOf(coming, box()), bandIn, bandOut: bandBoxes() };
-    paintLayers(els, deckPaint(native), 0.3);
-    expect(coming.style.maskImage).not.toBe('');
-    setDrawsWithoutChip(true);
-    paintLayers(els, deckPaint(native), 0.4);
-    expect(coming.style.maskImage).toBe('');
-    expect(bandIn.holder?.style.maskImage).not.toBe('');
   });
 });
 
@@ -339,31 +324,15 @@ describe('Back during a deck’s own transition (TX-1, review-p3tr LOW-1)', () =
   });
 });
 
-/** A slide's two band boxes (Session 58, C2) as the JSX leaves them: filling the slide's box, nothing else. */
-const bandBoxes = (): BandBoxes => ({
-  holder: {
-    style: { inset: '0', width: '', height: '', maskImage: '', transform: '', willChange: '', overflow: '' },
-  } as unknown as HTMLDivElement,
-  slide: {
-    style: { inset: '0', width: '', height: '', maskImage: '', transform: '', willChange: '', overflow: '' },
-  } as unknown as HTMLDivElement,
-});
-const AT_REST = {
-  inset: '0',
-  width: '',
-  height: '',
-  maskImage: '',
-  transform: '',
-  willChange: '',
-  overflow: '',
-};
-
-describe('a deck’s own Wipe drawn on a screen without a graphics chip: PowerPoint’s band on moved boxes (Session 58, C2)', () => {
+describe('a deck’s own Wipe drawn on a screen without a graphics chip: the band’s mask on the slide’s box as with one, the outgoing slide a still layer of its own (X11)', () => {
   afterEach(() => {
     setDrawsWithoutChip(false);
   });
+  /** The outgoing slide a layer of its own that does not move: so only the incoming slide is drawn again each frame. */
+  const STILL = 'translate3d(0px, 0px, 0px)';
+  const CANVAS = { width: 1920, height: 1080 };
 
-  it('the incoming slide’s band boxes are the band, one slide long where the slide is placed, while it runs (no clip or mask on the slide), at rest once over; the outgoing slide’s never move', () => {
+  it('the incoming slide’s box takes the band’s mask, a new one each frame, as with a chip; the outgoing slide is a still layer of its own while it runs; nothing of either once over', () => {
     setDrawsWithoutChip(true);
     // A 16:9 slide filling the screen, and a 4:3 one fitted to it (bars either side).
     for (const placeIn of [FULL, { x: 240, y: 0, width: 1440, height: 1080 }])
@@ -371,62 +340,131 @@ describe('a deck’s own Wipe drawn on a screen without a graphics chip: PowerPo
         const native: DeckNativeTransition = { kind: 'wipe', deckEffect: 'wipe', durationMs: 700, direction };
         const coming = box();
         const going = box();
-        const bandIn = bandBoxes();
-        const bandOut = bandBoxes();
-        const els = { ...layersOf(coming, going), bandIn, bandOut };
+        const els = { ...layersOf(coming, going), shadeIn: shadeBox(), shadeOut: shadeBox() };
         for (const p of [0, 0.3, 0.5, 0.9]) {
           paintLayers(els, deckPaint(native, placeIn), p);
           const band = deckTransitionFrame(native, p).in.band;
           if (!band) throw new Error('no band');
-          const want = wipeBandStyles(band, placeIn, { width: 1920, height: 1080 }, 1);
-          expect(bandIn.holder?.style, `${direction} at ${String(p)}`).toEqual({
-            ...want.holder,
-            willChange: 'transform',
-            overflow: 'hidden',
-          });
-          expect(bandIn.slide?.style, `${direction} at ${String(p)}`).toEqual({
-            ...AT_REST,
-            ...want.slide,
-            willChange: 'transform',
-          });
-          expect([coming.style.clipPath, coming.style.maskImage, coming.style.transform]).toEqual([
+          const what = `${direction} at ${String(p)}`;
+          expect(coming.style.maskImage, what).toBe(wipeSlideMask(band, placeIn, CANVAS));
+          expect([coming.style.clipPath, coming.style.transform], what).toEqual([
+            wipeSlideClip(band, placeIn, CANVAS),
             '',
+          ]);
+          expect([going.style.transform, going.style.maskImage, going.style.clipPath], what).toEqual([
+            STILL,
             '',
             '',
           ]);
-          expect(bandOut.holder?.style).toEqual(AT_REST);
-          expect(bandOut.slide?.style).toEqual(AT_REST);
+          expect([els.shadeIn.style.filter, els.shadeOut.style.filter], what).toEqual(['', '']);
         }
         paintLayers(els, deckPaint(native, placeIn), 1);
-        expect(bandIn.holder?.style, `${direction} over`).toEqual(AT_REST);
-        expect(bandIn.slide?.style, `${direction} over`).toEqual(AT_REST);
-        // Not in a transition: at rest too.
+        expect([coming.style.maskImage, going.style.transform], `${direction} over`).toEqual(['', '']);
+        // Not in a transition: nothing of it.
         paintLayers(els, { ...deckPaint(native), kind: null, native: undefined }, 0);
-        expect(bandIn.holder?.style).toEqual(AT_REST);
+        expect([coming.style.maskImage, going.style.transform]).toEqual(['', '']);
       }
   });
 
-  it('a slide placed anew part-way (the screen’s canvas or its pixels changed) draws its band boxes at the new size (review LOW-3)', () => {
-    setDrawsWithoutChip(true);
+  it('a page told part-way that it draws without a chip keeps the band’s mask on the slide’s box and makes the outgoing slide a still layer', () => {
     const native: DeckNativeTransition = {
       kind: 'wipe',
       deckEffect: 'wipe',
       durationMs: 700,
       direction: 'left',
     };
-    const bandIn = bandBoxes();
-    const els = { ...layersOf(box(), box()), bandIn, bandOut: bandBoxes() };
-    paintLayers(els, deckPaint(native, FULL), 0.3);
-    const bars = { x: 240, y: 0, width: 1440, height: 1080 };
-    paintLayers(els, deckPaint(native, bars), 0.4);
+    const coming = box();
+    const going = box();
+    const els = layersOf(coming, going);
+    paintLayers(els, deckPaint(native), 0.3);
+    expect([coming.style.maskImage === '', going.style.transform]).toEqual([false, '']);
+    setDrawsWithoutChip(true);
+    paintLayers(els, deckPaint(native), 0.4);
     const band = deckTransitionFrame(native, 0.4).in.band;
     if (!band) throw new Error('no band');
-    const want = wipeBandStyles(band, bars, { width: 1920, height: 1080 }, 1);
-    expect(bandIn.holder?.style).toMatchObject(want.holder);
-    expect(bandIn.slide?.style).toMatchObject(want.slide);
+    expect([coming.style.maskImage, going.style.transform]).toEqual([
+      wipeSlideMask(band, FULL, CANVAS),
+      STILL,
+    ]);
   });
 
-  it('Back during it: the slide that was coming in is drawn whole, its band boxes at rest (TX-1)', () => {
+  it('under Drashti’s own transition set over the deck’s, the outgoing slide moves as that transition has it (no still layer)', () => {
+    setDrawsWithoutChip(true);
+    for (const kind of ['slide', 'dissolve'] as const) {
+      const native: DeckNativeTransition = {
+        kind: 'wipe',
+        deckEffect: 'wipe',
+        durationMs: 700,
+        direction: 'left',
+        over: { kind, durationMs: 700 },
+      };
+      const going = box();
+      paintLayers(layersOf(box(), going), deckPaint(native), 0.5);
+      expect(going.style.transform, kind).toBe(deckTransitionFrame(native, 0.5).out.transform);
+    }
+  });
+
+  it('the incoming slide’s box is clipped where its band’s mask shows nothing (past the band’s far end), in whole px; nowhere once the band reaches across', () => {
+    setDrawsWithoutChip(true);
+    const bars = { x: 240, y: 0, width: 1440, height: 1080 };
+    for (const placeIn of [FULL, bars])
+      for (const direction of ['left', 'right', 'up', 'down'] as const) {
+        const native: DeckNativeTransition = { kind: 'wipe', deckEffect: 'wipe', durationMs: 700, direction };
+        const across = direction === 'left' || direction === 'right';
+        // The edge of the layer the band comes from, and the slide's own length along the band.
+        const length = across ? placeIn.width : placeIn.height;
+        const start = across ? placeIn.x : placeIn.y;
+        const screen = across ? 1920 : 1080;
+        const fromEnd = direction === 'left' || direction === 'up';
+        for (const p of [0, 0.2, 0.3, 0.45, 0.5, 0.7, 0.9]) {
+          const coming = box();
+          paintLayers(layersOf(coming, box()), deckPaint(native, placeIn), p);
+          const what = `${String(placeIn.width)} wide, ${direction} at ${String(p)}`;
+          const m = /^inset\((\d+)px (\d+)px (\d+)px (\d+)px\)$/u.exec(coming.style.clipPath);
+          const cuts = m ? m.slice(1).map(Number) : [0, 0, 0, 0];
+          if (!m) expect(coming.style.clipPath, what).toBe('');
+          // Only the far side is cut: left for a Wipe from the right, right from the left, top from the bottom, bottom
+          // from the top.
+          const far = { left: 3, right: 1, up: 0, down: 2 }[direction];
+          cuts.forEach((cut, i) => {
+            if (i !== far) expect(cut, what).toBe(0);
+          });
+          const cut = cuts[far] ?? 0;
+          // Where the cut ends, as a share of the slide from its own side: the band shows nothing from there on, and
+          // no more than a pixel of nothing is left uncut.
+          const edge = fromEnd ? cut : screen - cut;
+          const at = (fromEnd ? start + length - edge : edge - start) / length;
+          if (cut > 0) expect(deckWipeShows(native, p, at), what).toBe(0);
+          const firstNothing = [...Array(2001).keys()]
+            .map((i) => i / 1000 - 0.5)
+            .find((a) => deckWipeShows(native, p, a) === 0);
+          if (
+            firstNothing !== undefined &&
+            firstNothing < (fromEnd ? (start + length) / length : (screen - start) / length) - 2 / length
+          )
+            expect(at - firstNothing, what).toBeLessThanOrEqual(1 / length + 1e-9);
+          else expect(cut, what).toBe(0);
+        }
+      }
+  });
+
+  it('no clip with a graphics chip or under Drashti’s own transition set over the deck’s', () => {
+    const native: DeckNativeTransition = {
+      kind: 'wipe',
+      deckEffect: 'wipe',
+      durationMs: 700,
+      direction: 'left',
+    };
+    const coming = box();
+    paintLayers(layersOf(coming, box()), deckPaint(native), 0.2);
+    expect(coming.style.clipPath).toBe('');
+    setDrawsWithoutChip(true);
+    const over: DeckNativeTransition = { ...native, over: { kind: 'dissolve', durationMs: 700 } };
+    paintLayers(layersOf(coming, box()), deckPaint(over), 0.2);
+    expect(coming.style.clipPath).toBe(deckTransitionFrame(over, 0.2).in.clip ?? '');
+  });
+
+  it('Back during it: the slide that was coming in is drawn whole, no mask and no layer left on it (TX-1)', () => {
     setDrawsWithoutChip(true);
     const native: DeckNativeTransition = {
       kind: 'wipe',
@@ -435,12 +473,277 @@ describe('a deck’s own Wipe drawn on a screen without a graphics chip: PowerPo
       direction: 'up',
     };
     const coming = box();
-    const bandIn = bandBoxes();
-    paintLayers({ ...layersOf(coming, box()), bandIn, bandOut: bandBoxes() }, deckPaint(native), 0.6);
-    expect(bandIn.holder?.style.maskImage).not.toBe('');
-    paintWaiting({ in: box(), out: coming, bandOut: bandIn });
-    expect(bandIn.holder?.style).toEqual(AT_REST);
-    expect(bandIn.slide?.style).toEqual(AT_REST);
+    const going = box();
+    paintLayers(layersOf(coming, going), deckPaint(native), 0.6);
+    expect([coming.style.maskImage === '', going.style.transform]).toEqual([false, STILL]);
+    paintWaiting({ in: box(), out: coming });
+    expect([coming.style.maskImage, coming.style.transform]).toEqual(['', '']);
+  });
+});
+
+describe('a deck’s own Push, Cover and Uncover drawn on a screen without a graphics chip: each moving slide a layer of its own, moved in whole device pixels (X11)', () => {
+  afterEach(() => {
+    setDrawsWithoutChip(false);
+  });
+  /** A 4:3 slide fitted to a 16:9 screen: bars either side. */
+  const BARS = { x: 240, y: 0, width: 1440, height: 1080 };
+  /** Device pixels a canvas pixel: CI's hall screen (1024 wide), the stream's page (1920), the operator's LIVE (342). */
+  const SCALES = [1024 / 1920, 1, 342 / 1920];
+  /** The model's move (phase1 draws it) in canvas px: px of the slide where it is placed, else % of the layer's box. */
+  const modelPx = (transform: string, along: number): number => {
+    const m = /^translate[XY]\((-?[\d.e+-]+)(px|%)\)$/u.exec(transform);
+    if (!m) throw new Error(`not a move: ${transform}`);
+    return m[2] === '%' ? (Number(m[1]) / 100) * along : Number(m[1]);
+  };
+  const LAYER = /^translate3d\((-?[\d.e+-]+)px, (-?[\d.e+-]+)px, 0px\)$/u;
+  const paint = (native: DeckNativeTransition, place: typeof FULL, k: number | undefined, p: number) => {
+    const coming = box();
+    const going = box();
+    const shadeIn = shadeBox();
+    const shadeOut = shadeBox();
+    paintLayers(
+      { ...layersOf(coming, going), shadeIn, shadeOut },
+      { ...deckPaint(native, place), ...(k === undefined ? {} : { devicePerCanvas: k }) },
+      p,
+    );
+    return { coming, going, shadeIn, shadeOut };
+  };
+
+  it('moves each moving slide by a 3D translation in whole device pixels, within half a device pixel of PowerPoint’s move, its shade inside it', () => {
+    setDrawsWithoutChip(true);
+    for (const k of SCALES)
+      for (const deckEffect of ['push', 'cover', 'uncover'] as const)
+        for (const direction of ['left', 'up'] as const)
+          for (const place of [FULL, BARS]) {
+            const native: DeckNativeTransition = { kind: 'slide', deckEffect, durationMs: 700, direction };
+            const along = direction === 'left' ? 1920 : 1080;
+            for (const p of [0.2, 0.5, 0.83]) {
+              const { coming, going, shadeIn, shadeOut } = paint(native, place, k, p);
+              const model = deckTransitionFrame(
+                native,
+                p,
+                'calm',
+                place === FULL ? undefined : { in: place, out: place },
+              );
+              const what = `${deckEffect} ${direction} ${String(place.width)} wide, ${k.toFixed(3)} a px, at ${String(p)}`;
+              for (const [el, f, shade] of [
+                [coming, model.in, shadeIn],
+                [going, model.out, shadeOut],
+              ] as const) {
+                expect(el.style.filter, what).toBe('');
+                expect(shade.style.filter, what).toBe(f.filter ?? '');
+                if (f.transform === '') {
+                  expect(el.style.transform, what).toBe('');
+                  continue;
+                }
+                const m = LAYER.exec(el.style.transform);
+                if (!m) throw new Error(`${what}: not a layer's move: ${el.style.transform}`);
+                const [x, y] = [Number(m[1]), Number(m[2])];
+                const moved = direction === 'left' ? x : y;
+                expect(direction === 'left' ? y : x, what).toBe(0);
+                expect(Math.abs(moved * k - Math.round(moved * k)), what).toBeLessThan(1e-6);
+                expect(Math.abs(moved - modelPx(f.transform, along)), what).toBeLessThanOrEqual(
+                  0.5 / k + 1e-9,
+                );
+              }
+            }
+          }
+  });
+
+  it('draws as before where the move has not begun or is over, with a graphics chip, under Drashti’s own transition set over the deck’s, and where the screen’s pixels are not known', () => {
+    const native: DeckNativeTransition = {
+      kind: 'slide',
+      deckEffect: 'cover',
+      durationMs: 700,
+      direction: 'left',
+    };
+    const asBefore = (
+      drawn: ReturnType<typeof paint>,
+      model: ReturnType<typeof deckTransitionFrame>,
+      what: string,
+    ) => {
+      expect([drawn.coming.style.transform, drawn.going.style.transform], what).toEqual([
+        model.in.transform,
+        model.out.transform,
+      ]);
+      expect([drawn.coming.style.filter, drawn.going.style.filter], what).toEqual([
+        model.in.filter ?? '',
+        model.out.filter ?? '',
+      ]);
+      expect([drawn.shadeIn.style.filter, drawn.shadeOut.style.filter], what).toEqual(['', '']);
+    };
+    setDrawsWithoutChip(true);
+    for (const p of [0, 1])
+      asBefore(paint(native, FULL, 1024 / 1920, p), deckTransitionFrame(native, p), `at ${String(p)}`);
+    asBefore(
+      paint(native, FULL, undefined, 0.5),
+      deckTransitionFrame(native, 0.5),
+      'the screen’s pixels not known',
+    );
+    const over: DeckNativeTransition = { ...native, over: { kind: 'dissolve', durationMs: 700 } };
+    asBefore(paint(over, FULL, 1024 / 1920, 0.5), deckTransitionFrame(over, 0.5), 'under a dissolve');
+    setDrawsWithoutChip(false);
+    asBefore(paint(native, FULL, 1024 / 1920, 0.5), deckTransitionFrame(native, 0.5), 'with a chip');
+  });
+
+  it('Back part-way: the slide that was coming in is drawn whole, no layer’s move and no shade left on it or inside it (TX-1)', () => {
+    setDrawsWithoutChip(true);
+    for (const deckEffect of ['push', 'cover'] as const) {
+      const native: DeckNativeTransition = { kind: 'slide', deckEffect, durationMs: 700, direction: 'left' };
+      const { coming, shadeIn } = paint(native, FULL, 1024 / 1920, 0.4);
+      expect(coming.style.transform, deckEffect).toMatch(LAYER);
+      if (deckEffect === 'cover') expect(shadeIn.style.filter).toBe('brightness(0.986)');
+      paintWaiting({ in: box(), out: coming, shadeOut: shadeIn });
+      expect([coming.style.transform, coming.style.filter, shadeIn.style.filter], deckEffect).toEqual([
+        '',
+        '',
+        '',
+      ]);
+    }
+  });
+});
+
+describe('a deck’s own moving slide backed without a graphics chip when it is known opaque (X11, Q60-6)', () => {
+  afterEach(() => {
+    setDrawsWithoutChip(false);
+  });
+  /** A box as the JSX leaves it (inset 0), with what the backing writes. */
+  const placedBox = (): HTMLDivElement =>
+    ({
+      style: {
+        opacity: '',
+        transform: '',
+        clipPath: '',
+        maskImage: '',
+        filter: '',
+        zIndex: '',
+        backgroundColor: '',
+      },
+    }) as unknown as HTMLDivElement;
+  const BARS = { x: 240, y: 0, width: 1440, height: 1080 };
+  /** CI's hall screen: 1024 device pixels for the 1920 canvas pixels (the 4:3 slide's place lands on whole ones). */
+  const HALL = 1024 / 1920;
+  const paint = (
+    native: DeckNativeTransition,
+    place: typeof FULL,
+    p: number,
+    backing: { in?: string; out?: string },
+    k: number | null = HALL,
+  ) => {
+    const coming = placedBox();
+    const going = placedBox();
+    const shadeIn = shadeBox();
+    const shadeOut = shadeBox();
+    const els = { ...layersOf(coming, going), shadeIn, shadeOut };
+    const how: Paint = {
+      ...deckPaint(native, place),
+      ...(k === null ? {} : { devicePerCanvas: k }),
+      ...(backing.in === undefined ? {} : { backingIn: backing.in }),
+      ...(backing.out === undefined ? {} : { backingOut: backing.out }),
+    };
+    paintLayers(els, how, p);
+    return { coming, going, shadeIn, shadeOut, els, how };
+  };
+  const geometry = (el: HTMLDivElement) => {
+    const s = el.style as unknown as Record<string, string | undefined>;
+    return [s['left'], s['top'], s['width'], s['height']];
+  };
+  const push = (deckEffect: 'push' | 'cover' | 'uncover'): DeckNativeTransition => ({
+    kind: 'slide',
+    deckEffect,
+    durationMs: 700,
+    direction: 'left',
+  });
+
+  it('a slide on a layer of its own is backed by its colour while it moves, in its place only; nothing once over', () => {
+    setDrawsWithoutChip(true);
+    const both = { in: '#102030', out: '#000000' };
+    const mid = paint(push('push'), FULL, 0.5, both);
+    expect([mid.coming.style.backgroundColor, mid.going.style.backgroundColor]).toEqual([
+      '#102030',
+      '#000000',
+    ]);
+    // A slide filling the screen: its box is its place already, left as it is.
+    expect(geometry(mid.coming)).toEqual([undefined, undefined, undefined, undefined]);
+    // Cover moves the incoming slide alone, Uncover the outgoing: only the moving one is a layer, and backed.
+    const cover = paint(push('cover'), FULL, 0.5, both);
+    expect([cover.coming.style.backgroundColor, cover.going.style.backgroundColor]).toEqual(['#102030', '']);
+    const uncover = paint(push('uncover'), FULL, 0.5, both);
+    expect([uncover.coming.style.backgroundColor, uncover.going.style.backgroundColor]).toEqual([
+      '',
+      '#000000',
+    ]);
+    // Over (and before it starts): nothing of it.
+    paintLayers(mid.els, mid.how, 1);
+    expect([mid.coming.style.backgroundColor, mid.going.style.backgroundColor]).toEqual(['', '']);
+  });
+
+  it('a 4:3 slide between bars: its layer is its own place, its drawing kept where it was, so the bars stay as they are', () => {
+    setDrawsWithoutChip(true);
+    const mid = paint(push('push'), BARS, 0.5, { in: '#102030', out: '#000000' });
+    for (const [box, shade] of [
+      [mid.coming, mid.shadeIn],
+      [mid.going, mid.shadeOut],
+    ] as const) {
+      expect(geometry(box)).toEqual(['240px', '0px', '1440px', '1080px']);
+      expect(geometry(shade)).toEqual(['-240px', '0px', '1920px', '1080px']);
+    }
+    // Over: the boxes fill the screen again, as the JSX has them (inset 0).
+    paintLayers(mid.els, mid.how, 1);
+    for (const el of [mid.coming, mid.going, mid.shadeIn, mid.shadeOut])
+      expect(geometry(el)).toEqual(['0px', '0px', '', '']);
+    expect([mid.coming.style.backgroundColor, mid.going.style.backgroundColor]).toEqual(['', '']);
+  });
+
+  it('the Wipe’s outgoing slide, a still layer of its own, is backed; the masked incoming slide never', () => {
+    setDrawsWithoutChip(true);
+    const wipe: DeckNativeTransition = {
+      kind: 'wipe',
+      deckEffect: 'wipe',
+      durationMs: 700,
+      direction: 'left',
+    };
+    for (const place of [FULL, BARS]) {
+      const mid = paint(wipe, place, 0.4, { in: '#102030', out: '#000000' });
+      expect([mid.coming.style.backgroundColor, mid.going.style.backgroundColor]).toEqual(['', '#000000']);
+      expect(geometry(mid.going)).toEqual(
+        place === FULL ? [undefined, undefined, undefined, undefined] : ['240px', '0px', '1440px', '1080px'],
+      );
+    }
+  });
+
+  it('never a slide not known opaque, with a graphics chip, under Drashti’s own transition, or off whole device pixels', () => {
+    const both = { in: '#102030', out: '#000000' };
+    // With a chip.
+    let drawn = paint(push('push'), BARS, 0.5, both);
+    expect([drawn.coming.style.backgroundColor, drawn.going.style.backgroundColor]).toEqual(['', '']);
+    expect(geometry(drawn.coming)).toEqual([undefined, undefined, undefined, undefined]);
+    setDrawsWithoutChip(true);
+    // A see-through slide (no backing known): nothing, whatever moves.
+    drawn = paint(push('push'), BARS, 0.5, {});
+    expect([drawn.coming.style.backgroundColor, drawn.going.style.backgroundColor]).toEqual(['', '']);
+    expect(geometry(drawn.coming)).toEqual([undefined, undefined, undefined, undefined]);
+    // Under Drashti's own transition set over the deck's.
+    const over: DeckNativeTransition = { ...push('push'), over: { kind: 'dissolve', durationMs: 700 } };
+    drawn = paint(over, FULL, 0.5, both);
+    expect([drawn.coming.style.backgroundColor, drawn.going.style.backgroundColor]).toEqual(['', '']);
+    // A screen where the slide's place does not land on whole device pixels (1366 wide: 240 canvas px is 170.75), or
+    // where they are not known: its edge could show the colour, so none.
+    for (const k of [1366 / 1920, null]) {
+      drawn = paint(push('push'), BARS, 0.5, both, k);
+      expect([drawn.coming.style.backgroundColor, drawn.going.style.backgroundColor]).toEqual(['', '']);
+      expect(geometry(drawn.going)).toEqual([undefined, undefined, undefined, undefined]);
+    }
+  });
+
+  it('Back part-way: the slide that was coming in is drawn whole, no backing left on it and its box where it was', () => {
+    setDrawsWithoutChip(true);
+    const mid = paint(push('push'), BARS, 0.4, { in: '#102030', out: '#000000' });
+    expect(mid.coming.style.backgroundColor).toBe('#102030');
+    paintWaiting({ in: placedBox(), out: mid.coming, shadeOut: mid.shadeIn });
+    expect(mid.coming.style.backgroundColor).toBe('');
+    expect(geometry(mid.coming)).toEqual(['0px', '0px', '', '']);
+    expect(geometry(mid.shadeIn)).toEqual(['0px', '0px', '', '']);
   });
 });
 

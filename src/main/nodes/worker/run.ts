@@ -41,6 +41,9 @@ export function runLinkWorker(send: (message: FromLinkWorker) => void): (message
     offline: (nodeId) => {
       send({ type: 'offline', nodeId });
     },
+    controller: (nodeId, request) => {
+      send({ type: 'controller-action', nodeId, request });
+    },
     health: (nodeId, health) => {
       send({ type: 'health', nodeId, health });
     },

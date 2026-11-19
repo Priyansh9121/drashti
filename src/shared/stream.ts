@@ -193,6 +193,8 @@ export interface ProgramContext {
   capturing: boolean;
   /** The operator is watching the preview (a port for it comes separately). */
   preview: boolean;
+  /** Video out is on (x30): its port comes separately, and the page gives it each frame. Left out: off. */
+  videoOut?: true;
   /** How Main writes the time (Sessions 31–36, I18N-8), for its clocks. */
   clockStyle?: ClockStyle;
   /**

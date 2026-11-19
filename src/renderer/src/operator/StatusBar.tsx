@@ -28,6 +28,7 @@ import { BackupWarning } from '../backups/BackupsDialog';
 import { UpdateStatus } from '../updates/UpdatesDialog';
 import { LinkStatus } from '../links/LinkDialog';
 import { showSave, stopSave, useSaves } from '../markers/save-store';
+import { MutedStatus } from '../sound/SoundLevels';
 
 /*
  * The status bar along the very bottom: the screens connected, where the
@@ -301,6 +302,8 @@ export function StatusBar({
         <UpdateStatus />
         <LinkStatus platform={info?.platform ?? 'darwin'} />
         <SoundStatus onOpen={onOpenScreens} />
+        {/* Audio or Video muted (X33): in red while it is, in both modes. */}
+        <MutedStatus />
         <TodayStatus onOpen={onOpenCalendar} />
         {/* Ahead of what comes and goes: an import's long line runs on under the version's words, never under a button. */}
         {help.button}

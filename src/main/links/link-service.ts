@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir, rename, rm, statfs, writeFile } from 'node:fs/promises';
-import { basename, join, relative, sep } from 'node:path';
+import { basename, extname, join, relative, sep } from 'node:path';
+import { cutText } from '../../shared/text';
 import { formatBytes } from '../../shared/format';
 import {
   aboveTheSetting,
@@ -13,6 +14,8 @@ import {
   LINK_KEEP_FREE_BYTES,
   linkKind,
   type LinkHeight,
+  type LinkDownloadOptions,
+  type LinkCaptionPreferences,
   type LinkKind,
   type LinkResult,
   type LinkShape,
@@ -25,9 +28,10 @@ import {
   type YouTubeChoice,
 } from '../../shared/links';
 import { fileProblem } from '../plain-errors';
-import { claimFile, safeName } from './names';
+import { claimFile, downloadName, safeName } from './names';
 import type { FromWorker, ToWorker, WorkerRoute } from './protocol';
 import { choiceWords } from './youtube';
+import { captionSuffix, saveCaptions } from './caption-files';
 import type { YtDlpLaunch } from './youtube-run';
 import { killTree } from './youtube-tools';
 import type { FolderFile } from '../playlists/folder-playlist';
@@ -71,8 +75,9 @@ export interface LinkServiceDeps {
   /** "Drashti downloads" in Movies (Mac) or Videos (Windows). */
   defaultFolder: string;
   lastFolder: { get(): string | null; set(dir: string): void };
+  captionPreferences?: { get(): LinkCaptionPreferences; set(value: LinkCaptionPreferences): void };
   /** The system's folder picker, starting at `current`; null when cancelled. */
-  pickFolder(current: string): Promise<string | null>;
+  pickFolder(current: string, target?: 'downloads' | 'captions'): Promise<string | null>;
   /** The normal import of these files. An optional height cap queues video copies in the library. */
   importFiles(
     paths: string[],
@@ -181,7 +186,11 @@ const RETRYABLE = new Set([
 
 export class LinkService {
   private state: LinkView;
-  private automatic: { audio: boolean; intoOpenPlaylist: boolean } | null = null;
+  private automatic: { audio: boolean; intoOpenPlaylist: boolean; options: LinkDownloadOptions } | null =
+    null;
+  private draftFolder: string | null = null;
+  private draftCaptionsFolder: string | null = null;
+  private explicitCaptionsFolder = false;
   private checked: { url: string; shape: LinkShape } | null = null;
   private worker: LinkWorker | null = null;
   private job: 'look' | 'download' | 'unpack' | null = null;
@@ -207,6 +216,11 @@ export class LinkService {
       link: null,
       look: null,
       folder: deps.lastFolder.get() ?? deps.defaultFolder,
+      downloadCaptions: deps.captionPreferences?.get().enabled ?? true,
+      captionsFolder:
+        deps.captionPreferences?.get().folder ??
+        join(deps.lastFolder.get() ?? deps.defaultFolder, 'Captions'),
+      captions: null,
       progress: null,
       waitingFor: null,
       message: null,
@@ -502,11 +516,30 @@ export class LinkService {
   }
 
   /** The operator pasted a link. Look it up and start with the download defaults. */
-  start(text: string, audio: boolean, intoOpenPlaylist: boolean): LinkResult {
+  start(text: string, audio: boolean, intoOpenPlaylist: boolean, options: unknown = {}): LinkResult {
     if (this.busy) return this.refuse('A download is going on. Wait for it to finish, or stop it first.');
     const kind = linkKind(text);
     if (kind === null) return this.refuse('Paste a share link from YouTube or Dropbox.');
-    return this.beginLook(kind, text, { audio, intoOpenPlaylist });
+    if (typeof options !== 'object' || options === null)
+      return this.refuse('Choose a name for the download.');
+    const values = options as { name?: unknown; captions?: unknown };
+    if (values.name !== undefined && (typeof values.name !== 'string' || values.name.length > 2000))
+      return this.refuse('Use a shorter name for the download.');
+    if (values.captions !== undefined && typeof values.captions !== 'boolean')
+      return this.refuse('Choose whether to download captions.');
+    const check = checkLink(kind, text);
+    if (!check.ok) return this.refuse(check.message);
+    const automatic = { audio, intoOpenPlaylist, options: { name: values.name, captions: values.captions } };
+    // The window already checked this link: keep that result, or its queued check while on air.
+    if (this.checked?.url === check.url && ['looking', 'looked'].includes(this.state.phase)) {
+      this.automatic = automatic;
+      if (this.state.look) {
+        this.set({ phase: 'looking' });
+        void this.downloadAutomatically();
+      }
+      return this.answer();
+    }
+    return this.beginLook(kind, text, automatic);
   }
 
   private beginLook(kind: LinkKind, text: string, automatic: LinkService['automatic']): LinkResult {
@@ -552,12 +585,13 @@ export class LinkService {
       return this.refuse(run.message);
     }
     this.checked = { url: check.url, shape: check.shape };
-    this.held = run !== null && this.deps.onAir();
+    this.held = this.deps.onAir();
     this.set({
       phase: 'looking',
       retryable: false,
-      folder: this.deps.lastFolder.get() ?? this.deps.defaultFolder,
+      folder: this.draftFolder ?? this.deps.lastFolder.get() ?? this.deps.defaultFolder,
       folderFallback: false,
+      captions: null,
       folderFiles: [],
       kind,
       link: check.url,
@@ -573,15 +607,16 @@ export class LinkService {
       waiting: [],
       waitingAdded: null,
       choice: null,
+      suggestedName: undefined,
     });
     const worker = this.startWorker('look');
+    worker.post({ type: 'hold', on: this.held });
     if (run?.ok) {
       this.toolsWork = run.cwd;
       if (this.held) this.deps.log('info', LOOK_WAITS);
-      worker.post({ type: 'hold', on: this.held });
       worker.post({ type: 'yt-look', link: check.url, launch: run.launch, cwd: run.cwd });
-      this.watch();
     } else worker.post({ type: 'look', link: check.url, route: this.deps.route });
+    this.watch();
     return this.answer();
   }
 
@@ -596,6 +631,7 @@ export class LinkService {
     this.set({
       phase: this.automatic ? 'looking' : 'looked',
       look: { shape: 'video', name: m.details.title, size: null, video: m.details },
+      suggestedName: downloadName(undefined, m.details.title, '.mp4').replace(/\.mp4$/u, ''),
       waitingFor: null,
       message: null,
     });
@@ -619,7 +655,15 @@ export class LinkService {
       'info',
       `Links: looked at a ${this.kindWord()} ${checked.shape} link${look.size !== null ? ` (${formatBytes(look.size)})` : ''}`,
     );
-    this.set({ phase: this.automatic ? 'looking' : 'looked', look, message: null });
+    const extension = checked.shape === 'file' ? extname(name) : '';
+    const suggestedName = downloadName(undefined, name, extension);
+    this.set({
+      phase: this.automatic ? 'looking' : 'looked',
+      look,
+      waitingFor: null,
+      message: null,
+      suggestedName: cutText(suggestedName, suggestedName.length - extension.length),
+    });
     void this.downloadAutomatically();
   }
 
@@ -669,8 +713,17 @@ export class LinkService {
     this.endWorker();
     this.checked = null;
     this.automatic = null;
+    this.draftFolder = null;
+    this.draftCaptionsFolder = null;
     this.set({
       phase: 'idle',
+      folder: this.deps.lastFolder.get() ?? this.deps.defaultFolder,
+      suggestedName: undefined,
+      downloadCaptions: this.deps.captionPreferences?.get().enabled ?? true,
+      captionsFolder:
+        this.deps.captionPreferences?.get().folder ??
+        join(this.deps.lastFolder.get() ?? this.deps.defaultFolder, 'Captions'),
+      captions: null,
       link: null,
       look: null,
       progress: null,
@@ -719,14 +772,32 @@ export class LinkService {
 
   // ---- where to save -------------------------------------------------------------
 
-  async pickFolder(): Promise<LinkResult> {
+  async pickFolder(target: unknown = 'downloads'): Promise<LinkResult> {
     if (this.busy) return this.refuse('Choose where to save before the download starts.');
-    const picked = await this.deps.pickFolder(this.state.folder);
-    if (picked) {
-      this.deps.lastFolder.set(picked);
-      this.set({ folder: picked });
+    if (target !== 'downloads' && target !== 'captions')
+      return this.refuse('Choose a downloads or captions folder.');
+    const picked = await this.deps.pickFolder(
+      target === 'captions' ? (this.state.captionsFolder ?? this.state.folder) : this.state.folder,
+      target,
+    );
+    if (picked && target === 'captions') {
+      this.draftCaptionsFolder = picked;
+      this.set({ captionsFolder: picked });
+    } else if (picked) {
+      this.draftFolder = picked;
+      this.set({
+        folder: picked,
+        ...(!this.draftCaptionsFolder && !this.deps.captionPreferences?.get().folder
+          ? { captionsFolder: join(picked, 'Captions') }
+          : {}),
+      });
     }
     return this.answer();
+  }
+
+  private rememberFolder(): void {
+    if (this.draftFolder !== null) this.deps.lastFolder.set(this.draftFolder);
+    this.draftFolder = null;
   }
 
   // ---- downloading ---------------------------------------------------------------
@@ -809,6 +880,7 @@ export class LinkService {
       return this.refuse(
         'That disk has less than 2 GB free, which Drashti keeps free for the show. Free up some space, or choose another folder.',
       );
+    this.rememberFolder();
     this.part = join(folder, `.drashti-download-${randomUUID()}.part`);
     this.remember(this.part);
     this.downloadedBytes = 0;
@@ -889,6 +961,13 @@ export class LinkService {
       );
     const run = this.youtubeRun();
     if (!run.ok) return this.refuse(run.message);
+    this.rememberFolder();
+    const downloadCaptions = this.automatic?.options.captions ?? this.state.downloadCaptions ?? true;
+    const captionsFolder = this.draftCaptionsFolder ?? this.deps.captionPreferences?.get().folder ?? null;
+    this.explicitCaptionsFolder = captionsFolder !== null;
+    this.deps.captionPreferences?.set({ enabled: downloadCaptions, folder: captionsFolder });
+    this.draftCaptionsFolder = null;
+    this.set({ downloadCaptions, captionsFolder: captionsFolder ?? join(folder, 'Captions') });
     // yt-dlp's part-files and its finished file stay under a hidden name until Drashti names the file.
     this.part = join(folder, `.drashti-youtube-${randomUUID()}`);
     this.remember(this.part);
@@ -928,6 +1007,7 @@ export class LinkService {
       workDir: this.part,
       choice,
       keepFree: LINK_KEEP_FREE_BYTES,
+      captions: downloadCaptions ? (video.captions ?? []) : [],
     });
     this.watch();
     return this.answer();
@@ -942,9 +1022,40 @@ export class LinkService {
     const folder = this.state.folder;
     const ext = m.file.toLowerCase().endsWith('.mp3') ? 'mp3' : 'mp4';
     try {
-      const title = look.name.replace(/[\\/]/gu, '-');
-      const target = await claimFile(folder, safeName(`${title}.${ext}`, `YouTube video.${ext}`));
+      const tracks = this.state.downloadCaptions ? (look.video?.captions ?? []) : [];
+      const target = await claimFile(
+        folder,
+        downloadName(this.automatic?.options.name, look.name, `.${ext}`),
+        tracks.map(captionSuffix),
+      );
       await rename(m.file, target);
+      if (tracks.length && look.video && this.checked) {
+        const matches = (a: (typeof tracks)[number], b: (typeof tracks)[number]) =>
+          a.language === b.language && a.source === b.source && a.kind === b.kind;
+        const received = (m.captions ?? []).filter((caption) =>
+          tracks.some((track) => matches(track, caption)),
+        );
+        const failed = tracks.filter((track) => !received.some((caption) => matches(track, caption)));
+        const learning = this.state.captionsFolder ?? join(folder, 'Captions');
+        const captions = await saveCaptions({
+          media: target,
+          tracks: received,
+          failed,
+          video: look.video,
+          link: this.checked.url,
+          learning: { folder: learning, create: !this.explicitCaptionsFolder },
+          freeBytes: (path) =>
+            this.deps.freeBytesAsync?.(path) ?? statfs(path).then((space) => space.bavail * space.bsize),
+        }).catch(() => ({
+          files: [],
+          failed: tracks.map(
+            (track) => `${track.language}${track.kind === 'automatic' ? ' (automatic)' : ''}`,
+          ),
+          learningSkipped: true,
+          learningFolder: null,
+        }));
+        this.set({ captions });
+      }
       await rm(work, { recursive: true, force: true });
       this.temps.delete(work);
       this.part = null;
@@ -972,7 +1083,14 @@ export class LinkService {
       this.worker.post({ type: 'hold', on });
       if (this.job === 'look') {
         // Still looking: only the words change.
-        this.deps.log('info', on ? LOOK_WAITS : 'Links: looking at the YouTube link carries on');
+        this.deps.log(
+          'info',
+          on
+            ? this.state.kind === 'youtube'
+              ? LOOK_WAITS
+              : 'Links: looking at a Dropbox link waits while the stream is on air or recording'
+            : `Links: looking at the ${this.kindWord()} link carries on`,
+        );
         this.set({ waitingFor: on ? WAITING_FOR : null });
       } else if (on) {
         this.deps.log('info', 'Links: the download waits while the stream is on air or recording');
@@ -1004,7 +1122,10 @@ export class LinkService {
         type: 'unpack',
         zip: part,
         parent: folder,
-        name: look.name,
+        name:
+          this.automatic?.options.name === undefined
+            ? look.name
+            : downloadName(this.automatic.options.name, look.name, ''),
         keepFree: LINK_KEEP_FREE_BYTES,
         maxFiles: MAX_ZIP_FILES,
         maxBytes: MAX_ZIP_BYTES,
@@ -1013,7 +1134,11 @@ export class LinkService {
     }
     this.beginSaving();
     try {
-      const target = await claimFile(folder, safeName(m.name ?? look.name, 'Dropbox download'));
+      const original = safeName(m.name ?? look.name, 'Dropbox download');
+      const target = await claimFile(
+        folder,
+        downloadName(this.automatic?.options.name, original, extname(original)),
+      );
       await rename(part, target);
       this.temps.delete(part);
       this.part = null;

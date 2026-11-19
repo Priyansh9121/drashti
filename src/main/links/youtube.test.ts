@@ -319,6 +319,11 @@ describe('reading yt-dlp’s answers', () => {
     const r = parseDetails(details());
     expect(r.ok && r.details).toEqual({
       title: 'Placeholder video',
+      id: 'AAAAAAAAAAA',
+      channel: null,
+      uploadDate: null,
+      language: null,
+      captions: [],
       duration: 100,
       heights: [
         { height: 2160, bytes: 300_000_000 + 1_600_000 },

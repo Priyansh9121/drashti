@@ -75,9 +75,12 @@ import { MessagesPanel } from './MessagesPanel';
 import { StageLayoutEditor } from '../stage/StageLayoutEditor';
 import { undoStage, useStageLayouts } from '../stage/stage-layouts-store';
 import { AudioGroup } from '../music/AudioGroup';
+import { SoundLevels } from '../sound/SoundLevels';
 import { connectSound } from '../sound/sound-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { MidiTool } from '../midi/MidiTool';
+import { OscControl, OscTool } from '../osc/OscControl';
+import { connectOsc } from '../osc/osc-store';
 import { LowerThirdsPanel } from '../lower-thirds/LowerThirdsPanel';
 import { runBack } from './actions';
 import { CalendarDialog } from '../calendar/CalendarDialog';
@@ -124,6 +127,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectLiveWindow();
     connectVideoInputs();
     connectNetwork();
+    connectOsc();
     connectAnnouncements();
     watchLibrary();
     watchImports();
@@ -206,6 +210,7 @@ export function App() {
   return (
     <>
       {mode === 'simple' ? <SimpleApp info={info} /> : <ProApp info={info} />}
+      <OscControl />
       {/* Keep these screens? (Session 50): in either mode, after a change that put an output on a display. */}
       <KeepScreensQuestion platform={info?.platform ?? 'darwin'} />
     </>
@@ -379,6 +384,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
               {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, then More tools folded away
                 (Session 55: Props and Looks went). */}
               <div className="mt-3 divide-y divide-line border-t border-line">
+                {/* The sound's Audio and Video levels and mutes (X33), just above Audio, seen with it folded too. */}
+                <SoundLevels />
                 {/* Audio, one part with Simple Mode's (Session 56). */}
                 <AudioGroup platform={platform} />
                 <StageMessageControl />
@@ -398,6 +405,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
                       A MIDI controller’s pads can work Next, Back, Clear all and Black-out.
                     </PanelNote>
                     <MidiTool />
+                    <OscTool />
                   </div>
                 </PanelGroup>
               </div>

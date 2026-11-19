@@ -64,6 +64,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.setArrangement,
   IPC.library.removePresentations,
   IPC.library.restorePresentations,
+  IPC.kirtans.exportBundle,
   IPC.kirtans.saveTracks,
   IPC.kirtans.setDetails,
   IPC.kirtans.makeTransliteration,
@@ -112,6 +113,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.lowerThirds.hide,
   // The MIDI controller: Simple Mode changes none of it (its pads still work Simple Mode's own actions).
   IPC.midi.set,
+  // OSC setup is Pro Mode only; enabled senders still obey Simple Mode show bounds.
+  IPC.osc.configure,
   IPC.stageLayouts.remove,
   // Session 55: renaming one, putting one back (Undo), and the one every stage screen shows: Pro Mode's setup.
   IPC.stageLayouts.rename,
@@ -142,6 +145,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stream.goLive,
   IPC.stream.end,
   IPC.stream.pickFolder,
+  // Video out (x30): turned on, off or named in Pro Mode only (it keeps sending in Simple Mode).
+  IPC.stream.setVideoOut,
   // Conversions make copies: Pro Mode's (a file's start, end and markers are bounded since Session 56, below).
   IPC.media.convert,
   IPC.media.cancelConversion,
@@ -172,9 +177,12 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.nodes.remove,
   IPC.nodes.newIdentity,
   IPC.nodes.everything,
+  IPC.nodes.setController,
+  IPC.nodes.setControllerAreas,
   IPC.nodes.reload,
   IPC.screens.assignNodeDisplay,
   // A node's own window has no Simple Mode; listed so no change is ever open by mistake.
+  IPC.node.action,
   IPC.node.pair,
   IPC.node.unpair,
   IPC.node.useAsMain,
@@ -356,6 +364,8 @@ const SESSION_56_BOUNDED: readonly [InvokeChannel, SimpleBound][] = [
   [IPC.sound.setStepsAside, ([on]) => typeof on === 'boolean'],
   // A row's Trim, Trim black and silence and Even loudness (Rename… of a file is bounded above, a track's too).
   [IPC.media.setMarkers, ([id], scope) => itsFile(scope, id)],
+  [IPC.videoCaptions.select, ([id], scope) => itsFile(scope, id)],
+  [IPC.videoCaptions.add, ([id], scope) => itsFile(scope, id)],
   [IPC.media.rowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.media.applyRowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.media.resetRowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],

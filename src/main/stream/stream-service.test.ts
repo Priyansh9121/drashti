@@ -213,3 +213,72 @@ describe('the Stream panel’s profiles and keys', () => {
     }
   });
 });
+
+describe('video out on the stream’s page (x30)', () => {
+  it('keeps the page open while on, tells it in its context, gives it video out’s port only while on and ready, and lets it go', async () => {
+    const send = vi.fn<(channel: string, context: ProgramContext) => void>();
+    const webContents = Object.assign(new EventEmitter(), {
+      id: 52,
+      isDestroyed: () => false,
+      postMessage: vi.fn(),
+      send,
+    });
+    const program = Object.assign(new EventEmitter(), {
+      webContents,
+      isDestroyed: () => false,
+      getContentSize: () => [1920, 1080],
+      destroy: vi.fn(),
+    });
+    const profile = { id: 'test-profile', preset: 'good', camera: null, sound: null };
+    const createProgram = vi.fn(() => program as unknown as BrowserWindow);
+    const stream = new StreamService({
+      profiles: { get: () => profile },
+      settings: { get: (key: string) => (key === 'stream.profileId' ? profile.id : undefined) },
+      screens: { streamGroup: () => null },
+      createProgram,
+      sendToOperator: vi.fn(),
+      platform: 'darwin',
+      mediaAccess: () => 'granted',
+      askMediaAccess: () => Promise.resolve(true),
+      fakeDevices: true,
+      ffmpegPath: () => null,
+      now: Date.now,
+      log: vi.fn(),
+    } as unknown as StreamServiceDeps);
+    // Absent before x30: the red test fails here rather than at a type.
+    const video = stream as unknown as {
+      setVideoOut?: (on: boolean) => void;
+      pairVideoOut?: (port: unknown) => boolean;
+    };
+    const port = { a: 'port' };
+    const lastContext = () =>
+      send.mock.calls.filter(([channel]) => channel === IPC.stream.context).at(-1)?.[1];
+    // Off: never paired, nothing opened.
+    expect(video.pairVideoOut?.(port) ?? false).toBe(false);
+    expect(stream.context().videoOut).toBeUndefined();
+    video.setVideoOut?.(true);
+    await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
+    // Opening, not ready: not yet.
+    expect(video.pairVideoOut?.(port)).toBe(false);
+    webContents.emit('did-finish-load');
+    expect(stream.context()).toMatchObject({
+      videoOut: true,
+      picture: true,
+      capturing: false,
+      preview: false,
+    });
+    expect(video.pairVideoOut?.(port)).toBe(true);
+    expect(webContents.postMessage).toHaveBeenCalledWith(IPC.stream.port, { role: 'video-out' }, [port]);
+    // Off while something else keeps the page (the window for Zoom): its context says so, and it stays.
+    stream.hold('window for Zoom', true);
+    video.setVideoOut?.(false);
+    expect(lastContext()).toMatchObject({ picture: true });
+    expect(lastContext()?.videoOut).toBeUndefined();
+    expect(program.destroy).not.toHaveBeenCalled();
+    expect(video.pairVideoOut?.(port)).toBe(false);
+    // Nothing else wants it: the page closes.
+    stream.hold('window for Zoom', false);
+    expect(program.destroy).toHaveBeenCalledOnce();
+    stream.close();
+  });
+});

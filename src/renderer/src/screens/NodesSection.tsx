@@ -7,6 +7,7 @@ import { Button } from '../ui/Button';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Plus, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
+import { Checkbox } from '../ui/Toggle';
 import { SectionTitle } from '../ui/Panel';
 import { DisplayRow } from './DisplayRow';
 import { screensAction, useScreens } from './screens-store';
@@ -125,6 +126,54 @@ function NodeCard({
           Remove
         </Button>
       </div>
+      <div className="space-y-1 border-t border-line pt-2">
+        <Checkbox
+          label="Shared show view"
+          checked={node.controller ?? false}
+          onChange={(event) => {
+            const on = event.target.checked;
+            void nodesAction(() => window.drashti.nodes.setController(node.id, on));
+          }}
+        />
+        <p className="text-xs text-muted">
+          Show LIVE and NEXT on this computer. Its assigned screens keep their last show if the link drops.
+          Choose any controls below. Turning this off also removes its action permissions.
+        </p>
+      </div>
+      {node.controller && (
+        <fieldset className="space-y-2 border-t border-line pt-2">
+          <legend className="text-xs font-bold text-muted">Controls allowed on this computer</legend>
+          {(
+            [
+              {
+                id: 'show',
+                label: 'Show controls',
+                words: 'Next, Back and playlist steps; Clear all, Put it back, Black-out and Wallpaper.',
+              },
+              {
+                id: 'media',
+                label: 'Media playback',
+                words: 'Pause, play on, skip or take off video and sound playing on Main.',
+              },
+            ] as const
+          ).map((area) => (
+            <div key={area.id} className="space-y-1">
+              <Checkbox
+                label={area.label}
+                checked={node.controllerAreas?.includes(area.id) ?? false}
+                onChange={(event) => {
+                  const allowed = new Set(node.controllerAreas ?? []);
+                  if (event.target.checked) allowed.add(area.id);
+                  else allowed.delete(area.id);
+                  void nodesAction(() => window.drashti.nodes.setControllerAreas(node.id, [...allowed]));
+                }}
+              />
+              <p className="text-xs text-muted">{area.words}</p>
+            </div>
+          ))}
+          <p className="text-xs text-muted">Both start off. Main’s current Simple Mode rules still apply.</p>
+        </fieldset>
+      )}
       {node.versionRefused && (
         <Notice tone="danger" compact data-testid="node-version-refused">
           This node runs Drashti {node.versionRefused}, and this computer runs{' '}
