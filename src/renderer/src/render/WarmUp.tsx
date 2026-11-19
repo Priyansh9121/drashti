@@ -21,9 +21,10 @@ import {
 } from '../../../shared/lower-third-styles';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../../shared/lower-thirds';
 import { engineNow, pauseClock } from './clock';
+import { deckTransitionFrame } from './transition-frame';
 import { framesOnTime } from './frames-on-time';
 import { LowerThirdView } from './LowerThirdView';
-import { MediaUrls } from './media-urls';
+import { MediaUrls, useMediaUrl } from './media-urls';
 import { Scene } from './Scene';
 import {
   OFF_GRID,
@@ -280,6 +281,49 @@ export const WARM_LOWER_THIRDS = [
   'letter-pop-band-wipe-steady',
 ];
 
+/**
+ * The shaded RGBA quad itself under a stationary analytic clip (X12 wide, traced at 28adc987). The warm-up made
+ * AA shaded quads without that clip, or non-AA shaded quads; the first wide Cover made the combined kind on air.
+ * The existing generated PNG samples as RGBA, the same HardwareImage + MatrixColorFilter kind as the native
+ * picture-and-words surface. Turn the filtered image itself within a fixed rounded clip so both AA and the clip
+ * apply to that quad. The unclipped copy primes the 4:3 shade; the notched twins prime the multisampled passes.
+ * These small copies draw only below the existing black cover. The on-air renderer is unchanged.
+ */
+function CoverShadeQuad({ analytic }: { analytic: boolean }) {
+  const size = { width: 320, height: 180 };
+  const urlOf = useMediaUrl();
+  const shade = deckTransitionFrame(warmDeckTransition('cover', MAX_TRANSITION_MS), PART).in.filter;
+  return (
+    <div
+      data-warm-cover-quad={analytic ? 'analytic-clip' : 'unclipped'}
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: 384,
+        height: 256,
+        ...(analytic ? { ...size, overflow: 'hidden' as const, borderRadius: 2 } : {}),
+      }}
+    >
+      <img
+        src={urlOf(PICTURE.png)}
+        alt=""
+        draggable={false}
+        style={{
+          position: 'absolute',
+          left: analytic ? 0 : 32,
+          top: analytic ? 0 : 32,
+          ...size,
+          display: 'block',
+          objectFit: 'fill',
+          filter: shade,
+          transform: 'translate(0.5px, 0.5px) rotate(7deg)',
+        }}
+      />
+    </div>
+  );
+}
+
 /** Every scene the warm-up draws (a unit test reads them: render/warm-up.test.ts). */
 export function warmScenes(): WarmScene[] {
   const base = initialEngineState();
@@ -464,7 +508,22 @@ export function warmScenes(): WarmScene[] {
       },
     }),
   };
+  const shadeQuad: WarmScene = {
+    key: 'cover-shaded-quad',
+    look: look('calm'),
+    state: () => base,
+    draw: () => <CoverShadeQuad analytic />,
+  };
+  const unclippedShadeQuad: WarmScene = {
+    ...shadeQuad,
+    key: 'cover-shaded-quad-unclipped',
+    draw: () => <CoverShadeQuad analytic={false} />,
+  };
   return [
+    shadeQuad,
+    { ...shadeQuad, key: 'cover-shaded-quad-notched', clip: NOTCHED },
+    unclippedShadeQuad,
+    { ...unclippedShadeQuad, key: 'cover-shaded-quad-unclipped-notched', clip: NOTCHED },
     wideCover,
     { ...wideCover, key: `${wideCover.key}/clipped`, clip: NOTCHED },
     ...transitions,
