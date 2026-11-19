@@ -580,11 +580,15 @@ describe('Import from a Link: Dropbox', () => {
     expect(h.logs.join('\n')).toMatch(/waits while the stream is on air or recording/u);
   });
 
-  it('looks at a link even while on air (asking Dropbox only its name and size): only the download waits', async () => {
+  it('waits to check Dropbox metadata while on air, then checks after the stream stops', async () => {
     const h = await harness();
     h.air.on = true;
     expect(h.service.look('dropbox', FILE_LINK).ok).toBe(true);
-    expect(h.service.view().waitingFor).toBeNull();
+    expect(h.service.view().waitingFor).toMatch(/on air or recording/u);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(requests).toBe(0);
+    expect(h.service.view().look).toBeNull();
+    h.air.on = false;
     await until(() => h.service.view().phase === 'looked');
     expect(h.service.view().look).toEqual({
       shape: 'file',
@@ -760,9 +764,9 @@ describe('the highest video quality (Session 25c)', () => {
       expect(r.ok ? '' : r.message).toContain('Choose 1080p, 1440p, 2160p (4K) or 4320p (8K)');
     }
     expect(h.stored.maxHeight).toBe(1080);
-    h.air.on = true;
     h.service.look('dropbox', FILE_LINK);
     await until(() => h.service.view().phase === 'looked');
+    h.air.on = true;
     h.service.download();
     expect(h.service.view().phase).toBe('waiting');
     const busy = h.service.setMaxHeight(1440);

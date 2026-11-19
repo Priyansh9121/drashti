@@ -30,11 +30,41 @@ export function linkWorker(
   const stop = new AbortController();
   // YouTube (Session 25c): yt-dlp, run from this process.
   const youtube = youtubeWorker(post, (dir) => deps.freeBytes(dir));
+  let pendingLook: Extract<ToWorker, { type: 'look' }> | null = null;
+  let looking: AbortController | null = null;
+  const startLook = () => {
+    const request = pendingLook;
+    if (!request || held || stop.signal.aborted || looking) return;
+    const controller = new AbortController();
+    looking = controller;
+    const abort = () => controller.abort();
+    stop.signal.addEventListener('abort', abort, { once: true });
+    void lookAt(request.link, deps.get, { ...request.route, signal: controller.signal })
+      .then(
+        (looked) => {
+          if (controller.signal.aborted) return;
+          pendingLook = null;
+          post({ type: 'looked', ...looked });
+        },
+        (error: unknown) => {
+          if (controller.signal.aborted) return;
+          pendingLook = null;
+          post(failure(error));
+        },
+      )
+      .finally(() => {
+        stop.signal.removeEventListener('abort', abort);
+        looking = null;
+        startLook();
+      });
+  };
   return (m) => {
     switch (m.type) {
       case 'hold':
         held = m.on;
         youtube.hold(m.on);
+        if (m.on) looking?.abort();
+        else startLook();
         return;
       case 'stop':
         stop.abort();
@@ -47,14 +77,8 @@ export function linkWorker(
         youtube.download(m);
         return;
       case 'look':
-        lookAt(m.link, deps.get, { ...m.route, signal: stop.signal }).then(
-          (looked) => {
-            post({ type: 'looked', ...looked });
-          },
-          (error: unknown) => {
-            post(failure(error));
-          },
-        );
+        pendingLook = m;
+        startLook();
         return;
       case 'download':
         fetchToFile(m.link, deps.get, {

@@ -177,7 +177,7 @@ test('Audio lists its audio playlists directly, with no Music heading or ? of it
     await expect(empty).toContainText('drop');
   }
   await expectNoSeriousA11yIssues(win, 'Audio with no audio playlists');
-  // From a Link… opens the paste field, for a sound.
+  // From a Link… opens the small window, for a sound.
   await win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
   await expect(win.getByTestId('link-text')).toBeVisible();
   await win.keyboard.press('Escape');

@@ -8,6 +8,8 @@ Everything here is **local only**: requests are refused from addresses outside t
 
 **Not here: the node link.** Output nodes (Session 13: other computers running Drashti as a Node) talk to Main on a port of their own (8741) over TLS with Main's own certificate, which each node pins when it pairs. That link is for Drashti alone and is not part of this API: a script or Companion cannot use it, and it refuses browsers. See README, "Output nodes".
 
+**Import from a Link on the computer.** The operator’s desktop bridge checks a YouTube or Dropbox link for the small window, then Download supplies the edited name and chosen save folder. It saves and imports the media into the open playlist; Audio takes a YouTube video’s MP3. The remembered caption tick saves creator captions and the original automatic language as SRT files beside the media, plus a learning copy and `captions.json` in the chosen captions folder. Checks, downloads and captions wait on air or while recording. These desktop actions are handled by `links.look`, `links.pickFolder` (downloads or captions), `links.start` (name and captions options) and `links.view`; their detailed file contract is in README, “Import from a Link”.
+
 ## Basics
 
 - **Address:** `http://<computer>:8740` (the port is set in the Phones panel). Examples below use
