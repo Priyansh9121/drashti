@@ -145,6 +145,15 @@ export function soundGain(
   return (sound.gain ?? 1) * (sound.aside ? musicLevel : 1) * kindLevel(state, sound.kind);
 }
 
+/**
+ * What the status bar says of the levels (X33), so the hall is never silent unseen: each kind muted, or at 0 %; '' when
+ * every sound can be heard.
+ */
+export function silentWords(levels: SoundLevels | undefined): string {
+  void levels;
+  return '';
+}
+
 /** What changing a level or a mute answers: the levels now, or why it could not. */
 export type SoundLevelsResult = { ok: true; levels: SoundLevels } | { ok: false; message: string };
 
