@@ -28,7 +28,7 @@ import { LiveHere } from '../render/live-here';
 import { useStopFade } from '../render/StopFade';
 import { AUDIENCE_TRACKS, startMotionProbeIfAsked } from '../render/motion-probe';
 import { useElementSize } from '../render/useElementSize';
-import { CanvasClip } from '../render/canvas-clip';
+import { CanvasClip, OwnLayers } from '../render/canvas-clip';
 import { BlendRamps } from './BlendRamps';
 import { GeometryGrid } from './GeometryGrid';
 import { PictureFrame } from './PictureFrame';
@@ -273,6 +273,8 @@ function Output() {
   // window outside the picture is covered with black instead, unwarped (PictureFrame). A zoom and a move keep them.
   const clip = warpKeepsAxes(geometry, windowBox);
   const frame = clip ? null : shownQuad(canvas, windowBox, scaling, geometry);
+  // With a graphics chip its fading pictures are layers of their own there, rastered once (render/canvas-clip.ts).
+  const ownLayers = !clip && !chipless;
   // What this screen shows: its group's settings in the live Look.
   const look = groupLookIn(state?.look, context?.groupId);
   // A key and fill group's screen draws the fill or the key.
@@ -343,11 +345,13 @@ function Output() {
                 className="absolute inset-0"
               >
                 <CanvasClip.Provider value={clip}>
-                  {stage ? (
-                    <StageScreen state={state} look={look} canvas={canvas} hall={context.hall} />
-                  ) : (
-                    <HallScene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
-                  )}
+                  <OwnLayers.Provider value={ownLayers}>
+                    {stage ? (
+                      <StageScreen state={state} look={look} canvas={canvas} hall={context.hall} />
+                    ) : (
+                      <HallScene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
+                    )}
+                  </OwnLayers.Provider>
                 </CanvasClip.Provider>
                 {testThrow && <ThrowForTests />}
                 {/* The edge blend's ramps over everything it shows, and the grid while it is adjusted (x27). */}

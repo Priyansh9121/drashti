@@ -11,7 +11,7 @@ import { hasPicture, lowerThird } from '../../../shared/program';
 import { placeContent, type Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { Placed } from './Placed';
-import { CanvasClip } from './canvas-clip';
+import { CanvasClip, OwnLayers } from './canvas-clip';
 import { type Reveal, type SlideText, SlideView } from './SlideView';
 import type { TimerState } from '../../../shared/timers';
 import { clockHeld, engineNow, onClockJump } from './clock';
@@ -720,6 +720,8 @@ export function SlideLayerView({
   const screen = useContext(ScreenPictures);
   // Whether its screen clips at the canvas's edges (x27): not one warped out of square (render/canvas-clip.ts).
   const canvasClip = useContext(CanvasClip);
+  // Its slides as layers of their own, rastered once (x27): a screen warped out of square with a graphics chip.
+  const ownLayers = useContext(OwnLayers);
   const backings = useMemo(() => {
     const backed = drawsWithoutChip() && slides === 'designed';
     return {
@@ -1005,6 +1007,7 @@ export function SlideLayerView({
               position: 'absolute',
               inset: 0,
               mixBlendMode: adds && incoming ? 'plus-lighter' : undefined,
+              willChange: ownLayers ? 'opacity' : undefined,
             }}
           >
             {/* Its two boxes, as they have been since Session 58 (its Wipe's band boxes then; named for the Wipe alone
