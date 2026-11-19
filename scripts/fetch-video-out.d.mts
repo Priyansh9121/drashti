@@ -12,5 +12,7 @@ export const PROGRAMS: {
   darwin: { sender: string; receiver: string };
   win32: { sender: string; receiver: string };
 };
+export const WINDOWS_LINK: string[];
+export function stampFor(target: string, source: PinnedSource): string;
 export function fetchVideoOut(target: string): Promise<string>;
 export function vcvars(): string;
