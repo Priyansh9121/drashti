@@ -3,14 +3,19 @@
 // page gives (I420, NV12, BGRA, RGBA). Generated frames only, nothing over a network. Each format's picture is a
 // different pair of colours, top half and bottom half, and the receiver must see that pair in its top and bottom
 // quarters; the sender must then stop by itself when its input ends.
+// Then the sender alone, as the installers carry it (electron-builder.yml takes it by itself, never what its build
+// leaves beside it): copied into a new, empty folder, it must start there, say "ready" and stop by itself when its
+// input ends (x39: on Windows it once needed the manifest file its build left beside it). On Windows the log also
+// shows what the build left beside the sender, where its manifest is, the DLLs it loads and what it imports from them
+// by number alone (dumpbin, from the Visual Studio tools the build uses).
 //
 //   node scripts/check-video-out.mjs     (after node scripts/fetch-video-out.mjs; exit 1 with what is wrong)
-import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { copyFileSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROGRAMS } from './fetch-video-out.mjs';
+import { PROGRAMS, vcvars } from './fetch-video-out.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const NAME = 'Drashti video out check';
@@ -86,6 +91,132 @@ function seen(file) {
   }
 }
 
+/** An exit code as the log should say it: Windows' loader stops a program with a status before it runs. */
+function exitText(code) {
+  if (typeof code !== 'number') return String(code);
+  if (code >= 0 && code < 0x10000) return `exit ${String(code)}`;
+  const status = `0x${(code >>> 0).toString(16).toUpperCase().padStart(8, '0')}`;
+  const why = {
+    '0xC0000135': 'a DLL it needs was not found',
+    '0xC0000138': 'a DLL does not have a function it imports by number',
+    '0xC0000139': 'a DLL does not have a function it imports by name',
+  }[status];
+  return `exit ${String(code)} = ${status}${why ? `, ${why}` : ''}`;
+}
+
+/** The dependent assemblies a manifest asks for (name and version), from its text. */
+const assembliesIn = (xml) =>
+  [...xml.matchAll(/<dependentAssembly>\s*<assemblyIdentity\b([^>]*)>/gu)].map(([, attributes]) => {
+    const value = (name) => new RegExp(`\\b${name}=['"]([^'"]*)['"]`, 'u').exec(attributes)?.[1] ?? '?';
+    return `${value('name')} ${value('version')}`;
+  });
+const asking = (xml) => {
+  const wants = assembliesIn(xml);
+  return wants.length > 0 ? `asking for ${wants.join(', ')}` : 'asking for no other assembly';
+};
+
+/**
+ * For the log, never failing the check (Windows): what the build left beside the sender, where the sender's manifest
+ * is (inside the program, or a file beside it that an installer taking the program alone leaves behind), the DLLs it
+ * loads and what it imports from them by number alone (dumpbin /dependents and /imports, in the Visual Studio
+ * environment the build uses).
+ */
+function describeSender(dir, sender) {
+  const program = join(dir, sender);
+  const beside = readdirSync(dir).sort();
+  console.log(`Beside the built sender: ${beside.join(', ')}`);
+  const inside = /<assembly\b[\s\S]*?<\/assembly>/u.exec(readFileSync(program, 'latin1'))?.[0];
+  console.log(`The sender's manifest inside it: ${inside ? asking(inside) : 'none'}`);
+  for (const name of beside.filter((f) => f.toLowerCase().endsWith('.manifest')))
+    console.log(`A manifest file beside it: ${name}, ${asking(readFileSync(join(dir, name), 'utf8'))}`);
+  const work = mkdtempSync(join(tmpdir(), 'drashti-video-out-dumpbin-'));
+  try {
+    const script = join(work, 'dumpbin.cmd');
+    writeFileSync(
+      script,
+      [
+        '@echo off',
+        `call "${vcvars()}" >nul || exit /b 1`,
+        `dumpbin /nologo /dependents "${program}" || exit /b 1`,
+        'echo ---imports---',
+        `dumpbin /nologo /imports "${program}" || exit /b 1`,
+        '',
+      ].join('\r\n'),
+    );
+    const r = spawnSync(process.env['ComSpec'] ?? 'cmd.exe', ['/d', '/c', script], {
+      encoding: 'utf8',
+      windowsHide: true,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    if (r.error) throw r.error;
+    if (r.status !== 0)
+      throw new Error(`dumpbin failed (${String(r.status)}): ${(r.stderr || r.stdout).trim()}`);
+    const [dependents, imports = ''] = r.stdout.split('---imports---');
+    const dll = /^\s+(\S+\.dll)\s*$/iu;
+    const loads = dependents.split(/\r?\n/u).flatMap((line) => dll.exec(line)?.[1] ?? []);
+    console.log(`The sender loads (dumpbin /dependents): ${loads.join(', ') || dependents.trim()}`);
+    const byNumber = [];
+    let from = '?';
+    for (const line of imports.split(/\r?\n/u)) {
+      const name = dll.exec(line)?.[1];
+      if (name) from = name;
+      const ordinal = /^\s+Ordinal\s+(\d+)\s*$/u.exec(line)?.[1];
+      if (ordinal) byNumber.push(`${from} ordinal ${ordinal}`);
+    }
+    console.log(
+      `Imported by number alone (dumpbin /imports): ${byNumber.length > 0 ? byNumber.join(', ') : 'nothing'}`,
+    );
+  } catch (error) {
+    console.log(`dumpbin not run: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The sender alone in a new, empty folder, as the installers carry it: it must start there, say "ready" and stop by
+ * itself when its input ends (as the packaged check, scripts/check-ffmpeg.mjs --packaged, then asks of each app's).
+ * Returns what is wrong, or null.
+ */
+async function aloneAsPackaged(dir, sender) {
+  const alone = mkdtempSync(join(tmpdir(), 'drashti-video-out-alone-'));
+  try {
+    const program = join(alone, sender);
+    copyFileSync(join(dir, sender), program);
+    const child = spawn(program, ['--name', `${NAME} (alone)`], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    let out = '';
+    child.stdout.on('data', (d) => (out += d.toString()));
+    child.stderr.on('data', (d) => (out += d.toString()));
+    child.stdin.on('error', () => {});
+    child.stdin.end();
+    let timer;
+    const code = await new Promise((resolve) => {
+      child.on('error', (error) => resolve(`not started: ${error.message}`));
+      child.on('close', (c) => resolve(c));
+      timer = setTimeout(() => resolve('still running 30 s after its input ended'), 30_000);
+    });
+    clearTimeout(timer);
+    if (typeof code !== 'number') child.kill();
+    const said = out.trim().split(/\r?\n/u).join(' | ') || 'nothing';
+    const ok = code === 0 && /^ready$/mu.test(out);
+    console.log(
+      `Alone in a new folder, as packaged: ${ok ? 'started, said ready and stopped by itself' : `FAILED (${exitText(code)})`}; it said: ${said}`,
+    );
+    return ok
+      ? null
+      : `alone in a new folder, as packaged, the sender did not start, say ready and stop by itself (${exitText(code)})`;
+  } finally {
+    try {
+      rmSync(alone, { recursive: true, force: true });
+    } catch {
+      // Windows can hold a folder a moment after its program ends; the system's temp folder is cleared anyway.
+    }
+  }
+}
+
 async function main() {
   const platform = process.platform;
   const programs = PROGRAMS[platform];
@@ -137,8 +268,13 @@ async function main() {
     receiver.kill();
     rmSync(temp, { recursive: true, force: true });
   }
+  if (platform === 'win32') describeSender(dir, programs.sender);
+  const alone = await aloneAsPackaged(dir, programs.sender);
+  if (alone) problems.push(alone);
   if (problems.length > 0) throw new Error(problems.join('\n'));
-  console.log(`Video out on ${platform}-${process.arch}: every format arrives the right way up.`);
+  console.log(
+    `Video out on ${platform}-${process.arch}: every format arrives the right way up, and the sender runs alone as packaged.`,
+  );
 }
 
 main().catch((error) => {
