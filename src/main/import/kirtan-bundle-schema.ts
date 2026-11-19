@@ -1,3 +1,4 @@
+import { KIRTAN_BUNDLE_LIMIT } from '../../shared/kirtan-bundles';
 import { z } from 'zod';
 import type { ContentRows } from '../db/content';
 import { editDocOf } from '../library/slides';
@@ -23,7 +24,7 @@ export const BUNDLE_LIMITS = {
   documents: 64 * 1024 ** 2,
   manifest: 1024 ** 2,
   entries: 4096,
-  kirtans: 1000,
+  kirtans: KIRTAN_BUNDLE_LIMIT,
   ratio: 200,
   reserve: 2 * 1024 ** 3,
 } as const;
