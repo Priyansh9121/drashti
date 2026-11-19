@@ -168,9 +168,14 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
     const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
     if (!drawing) throw new Error('no warm-up drawing for the black reference');
     // Preserve layout/layer geometry: display:none changes Windows' rounded-border sampling.
-    const before = drawing.style.opacity;
+    const ui = [
+      ...(document.querySelector(scope)?.querySelectorAll<HTMLElement>('[data-warm-ui-drawing]') ?? []),
+    ];
+    const before = { scene: drawing.style.opacity, ui: ui.map((el) => el.style.opacity) };
     drawing.style.opacity = '0';
-    if (getComputedStyle(drawing).opacity !== '0') throw new Error('the reference still draws a scene');
+    for (const el of ui) el.style.opacity = '0';
+    if (getComputedStyle(drawing).opacity !== '0' || ui.some((el) => getComputedStyle(el).opacity !== '0'))
+      throw new Error('the reference still draws a scene');
     return before;
   }, scope);
   let black: ReturnType<typeof decodePng>;
@@ -184,7 +189,14 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
         const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
         const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
         if (!drawing) throw new Error('no warm-up drawing to restore');
-        drawing.style.opacity = opacity;
+        drawing.style.opacity = opacity.scene;
+        const ui = [
+          ...(document.querySelector(scope)?.querySelectorAll<HTMLElement>('[data-warm-ui-drawing]') ?? []),
+        ];
+        if (ui.length !== opacity.ui.length) throw new Error('the same UI warm-up drawing is restored');
+        ui.forEach((el, i) => {
+          el.style.opacity = opacity.ui[i] ?? '';
+        });
       },
       { scope, opacity },
     );

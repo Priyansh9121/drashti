@@ -403,6 +403,102 @@ function CoverShadeCanvas({
   );
 }
 
+interface NativeCoverCopy {
+  box: HTMLDivElement;
+  incoming: HTMLElement;
+  transform: string;
+  moving: boolean;
+  curve: SVGSVGElement | null;
+}
+
+interface NativeCoverCopies {
+  root: HTMLDivElement;
+  width: number;
+  height: number;
+  copies: NativeCoverCopy[];
+}
+
+/**
+ * The LIVE picture's shaded render surfaces (X12 wide, traced on CI's Mac). A filtered picture or canvas was not
+ * enough: the native JPEG and words must compose their RGBA surface outside the warm-up's opacity group, under
+ * that group's black result. A transformed wide copy beside a path makes the clipped MSAA passes; the moving 4:3
+ * copy makes the unclipped ones. Only generated warm-up scenes are copied, never anything from the show.
+ * The existing warm-up pulse calls this; it adds no frame loop or timer and keeps nothing after the warm-up.
+ */
+function primeNativeCovers(
+  tree: ShadowRoot,
+  host: HTMLDivElement,
+  root: HTMLDivElement,
+  previous: NativeCoverCopies | null,
+  frame: number,
+): NativeCoverCopies | null {
+  const bounds = host.getBoundingClientRect();
+  const width = host.clientWidth;
+  const height = host.clientHeight;
+  if (bounds.width <= 0 || bounds.height <= 0 || width <= 0 || height <= 0) return null;
+  const sx = width / bounds.width;
+  const sy = height / bounds.height;
+  let made = previous;
+  if (made?.root !== root || made.width !== width || made.height !== height) {
+    const keys = ['deck-cover-wide/calm/off-grid', 'deck-cover-four-three/calm/off-grid'];
+    const sources = keys.map((key) => tree.querySelector<HTMLElement>(`[data-warm-scene="${key}"]`));
+    // During's native layers paint from the paused clock before their first copy is taken.
+    if (
+      sources.some(
+        (source) =>
+          !source?.querySelector<HTMLElement>('[data-slide-in]')?.style.filter.startsWith('brightness('),
+      )
+    )
+      return null;
+    root.replaceChildren();
+    const copies = sources.map((source, i): NativeCoverCopy => {
+      if (!source) throw new Error('The graphics warm-up could not draw its picture.');
+      const box = document.createElement('div');
+      Object.assign(box.style, { position: 'absolute', inset: '0', visibility: 'hidden' });
+      box.dataset['warmUiCover'] = i === 0 ? 'wide' : 'four-three';
+      const clone = source.cloneNode(true) as HTMLElement;
+      clone.style.mixBlendMode = 'normal';
+      box.append(clone);
+      const incoming = clone.querySelector<HTMLElement>('[data-slide-in]');
+      if (!incoming) throw new Error('The graphics warm-up could not draw its picture.');
+      if (i === 0) incoming.style.willChange = 'transform';
+      let curve: SVGSVGElement | null = null;
+      if (i === 0) {
+        curve = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        curve.setAttribute('viewBox', '0 0 320 180');
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M 12 30 C 70 180 160 -30 308 150');
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', '#224466');
+        path.setAttribute('stroke-width', '3');
+        curve.append(path);
+        box.append(curve);
+      }
+      root.append(box);
+      return { box, incoming, transform: incoming.style.transform, moving: i !== 0, curve };
+    });
+    made = { root, width, height, copies };
+  }
+  // Both surfaces are drawn, two frames at a time: one cannot hide the other's leading edge from the GPU.
+  const shown = Math.floor(frame / 2) % made.copies.length;
+  made.copies.forEach((copy, i) => {
+    copy.box.style.visibility = i === shown ? 'visible' : 'hidden';
+    if (copy.curve)
+      Object.assign(copy.curve.style, {
+        position: 'absolute',
+        left: String(20 * sx) + 'px',
+        top: String(20 * sy) + 'px',
+        width: String(240 * sx) + 'px',
+        height: String(135 * sy) + 'px',
+      });
+    if (i === shown && copy.moving) {
+      copy.incoming.style.transform = copy.transform + ` translateX(${String((frame % 2) * sx)}px)`;
+      copy.incoming.style.filter = frame % 2 ? 'brightness(0.986)' : 'brightness(0.985)';
+    }
+  });
+  return made;
+}
+
 /** Every scene the warm-up draws (a unit test reads them: render/warm-up.test.ts). */
 export function warmScenes(): WarmScene[] {
   const base = initialEngineState();
@@ -955,14 +1051,26 @@ export function WarmUp({
     };
   }, [finish, mark]);
   const [tree, setTree] = useState<ShadowRoot | null>(null);
+  const canvasHost = useRef<HTMLDivElement | null>(null);
+  const [uiParent, setUiParent] = useState<HTMLElement | null>(null);
+  const uiDrawing = useRef<HTMLDivElement | null>(null);
+  const uiCopies = useRef<NativeCoverCopies | null>(null);
+  useLayoutEffect(() => {
+    uiCopies.current = null;
+    return () => {
+      uiCopies.current = null;
+    };
+  }, [tree, step.phase, canvas.width, canvas.height]);
   const host = useCallback(
     (el: HTMLDivElement | null) => {
+      canvasHost.current = el;
       if (!el) return;
       const made = trees.get(el) ?? el.attachShadow({ mode: hold ? 'open' : 'closed' });
       trees.set(el, made);
       setTree(made);
+      if (page === 'live') setUiParent(el.parentElement);
     },
-    [hold],
+    [hold, page],
   );
   const pictures = useMemo<Record<string, string>>(
     () => ({
@@ -1010,6 +1118,15 @@ export function WarmUp({
     const each = (n: number) => {
       drewFrame.current = true;
       if (pulse.current) pulse.current.style.transform = `translateX(${String(n % 2)}px)`;
+      const drawing = uiDrawing.current;
+      const host = canvasHost.current;
+      if (page === 'live' && step.phase === 'during' && tree && drawing && host) {
+        try {
+          uiCopies.current = primeNativeCovers(tree, host, drawing, uiCopies.current, n);
+        } catch {
+          finish('error');
+        }
+      }
     };
     let settleCap: ReturnType<typeof setTimeout> | undefined;
     if (step.phase === 'settle') {
@@ -1045,14 +1162,17 @@ export function WarmUp({
         // The screen's compositor decodes a big picture on its own after its first frames, drawing nothing of
         // it until then (Session 27: the pictures' pipelines came after the warm-up, measured); a picture's
         // decode() is the compositor's, so once they are all done its frames draw every one.
-        const drawn = [...(tree?.querySelectorAll('img') ?? [])];
+        const drawn = [
+          ...(tree?.querySelectorAll('img') ?? []),
+          ...(uiDrawing.current?.querySelectorAll('img') ?? []),
+        ];
         await Promise.all(drawn.map((img) => img.decode().catch(() => undefined)));
         if (!live()) return;
         await steadyFrames();
         // A moment on: every change drawn again in part, as a show's next frame is.
         pauseClock(step.at + 50);
         await steadyFrames();
-        if (live()) finish('drawn');
+        if (live()) finish(page === 'live' && uiParent && !uiCopies.current ? 'error' : 'drawn');
       })();
     }
     return () => {
@@ -1061,7 +1181,7 @@ export function WarmUp({
       clearTimeout(settleCap);
       pauseClock(null);
     };
-  }, [step, tree, finish]);
+  }, [step, tree, finish, page, uiParent]);
   const urlOf = useCallback(
     (id: string, attempt?: number) => pictures[id] ?? mediaUrl(id, attempt),
     [pictures],
@@ -1071,91 +1191,115 @@ export function WarmUp({
     finish('error');
   }, [finish]);
   return (
-    <div
-      ref={host}
-      data-warm-up={step.phase}
-      aria-hidden="true"
-      // The drawing stays opaque to the GPU; the last black layer hides it (see above).
-      style={{
-        position: 'absolute',
-        inset: 0,
-        isolation: 'isolate',
-        // One surface before the page's clip: separately clipped drawing/cover edges leave a light rim.
-        opacity: 0.999,
-        pointerEvents: 'none',
-      }}
-    >
-      {tree &&
+    <>
+      <div
+        ref={host}
+        data-warm-up={step.phase}
+        aria-hidden="true"
+        // The drawing stays opaque to the GPU; the last black layer hides it (see above).
+        style={{
+          position: 'absolute',
+          inset: 0,
+          isolation: 'isolate',
+          // The native UI copies are siblings below this black result, outside its opacity group.
+          zIndex: 1,
+          // One surface before the page's clip: separately clipped drawing/cover edges leave a light rim.
+          opacity: 0.999,
+          pointerEvents: 'none',
+        }}
+      >
+        {tree &&
+          createPortal(
+            <>
+              <div style={{ position: 'absolute', inset: 0, background: '#000000' }} />
+              {step.phase !== 'pictures' && step.phase !== 'settle' && (
+                // Everything it draws, its scenes made inside: one that fails ends the warm-up (Session 57).
+                <WarmUpBoundary onError={failed}>
+                  {/* Contain every scene's layer below the cover: the old filter used to supply this boundary. */}
+                  <div
+                    data-warm-drawing=""
+                    style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}
+                  >
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        width: canvas.width,
+                        height: canvas.height,
+                      }}
+                    >
+                      <PictureStrip jpeg={pictures[PICTURE.b] ?? ''} png={pictures[PICTURE.png] ?? ''} />
+                    </div>
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        width: canvas.width,
+                        height: canvas.height,
+                        clipPath: NOTCHED,
+                      }}
+                    >
+                      <PictureStrip jpeg={pictures[PICTURE.a] ?? ''} png={pictures[PICTURE.png] ?? ''} />
+                    </div>
+                    <MediaUrls.Provider value={urlOf}>
+                      <WarmScenes
+                        page={page}
+                        during={step.phase === 'during'}
+                        at={step.at}
+                        canvas={canvas}
+                        scaling={scaling}
+                        matte={matte}
+                        ticker={ticker}
+                      />
+                    </MediaUrls.Provider>
+                  </div>
+                </WarmUpBoundary>
+              )}
+              {/* Above the drawing, so a moved speck still asks for a frame; below the translucent black cover. */}
+              <div
+                ref={pulse}
+                data-warm-pulse=""
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  width: 2,
+                  height: 2,
+                  background: '#000000',
+                  zIndex: 1,
+                }}
+              />
+              <div
+                data-warm-cover=""
+                // Beyond the drawing's clip: coincident, antialiased edges otherwise leave a light rim when scaled.
+                style={{
+                  position: 'absolute',
+                  inset: '-1%',
+                  background: '#000000',
+                  opacity: 0.999,
+                  zIndex: 2,
+                }}
+              />
+            </>,
+            tree,
+          )}
+      </div>
+      {page === 'live' &&
+        uiParent &&
+        step.phase === 'during' &&
         createPortal(
-          <>
-            <div style={{ position: 'absolute', inset: 0, background: '#000000' }} />
-            {step.phase !== 'pictures' && step.phase !== 'settle' && (
-              // Everything it draws, its scenes made inside: one that fails ends the warm-up (Session 57).
-              <WarmUpBoundary onError={failed}>
-                {/* Contain every scene's layer below the cover: the old filter used to supply this boundary. */}
-                <div
-                  data-warm-drawing=""
-                  style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}
-                >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      top: 0,
-                      width: canvas.width,
-                      height: canvas.height,
-                    }}
-                  >
-                    <PictureStrip jpeg={pictures[PICTURE.b] ?? ''} png={pictures[PICTURE.png] ?? ''} />
-                  </div>
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      top: 0,
-                      width: canvas.width,
-                      height: canvas.height,
-                      clipPath: NOTCHED,
-                    }}
-                  >
-                    <PictureStrip jpeg={pictures[PICTURE.a] ?? ''} png={pictures[PICTURE.png] ?? ''} />
-                  </div>
-                  <MediaUrls.Provider value={urlOf}>
-                    <WarmScenes
-                      page={page}
-                      during={step.phase === 'during'}
-                      at={step.at}
-                      canvas={canvas}
-                      scaling={scaling}
-                      matte={matte}
-                      ticker={ticker}
-                    />
-                  </MediaUrls.Provider>
-                </div>
-              </WarmUpBoundary>
-            )}
-            {/* Above the drawing, so a moved speck still asks for a frame; below the translucent black cover. */}
-            <div
-              ref={pulse}
-              data-warm-pulse=""
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: 2,
-                height: 2,
-                background: '#000000',
-                zIndex: 1,
-              }}
-            />
-            <div
-              data-warm-cover=""
-              // Beyond the drawing's clip: coincident, antialiased edges otherwise leave a light rim when scaled.
-              style={{ position: 'absolute', inset: '-1%', background: '#000000', opacity: 0.999, zIndex: 2 }}
-            />
-          </>,
-          tree,
+          <div
+            key={`${String(canvas.width)}x${String(canvas.height)}`}
+            ref={uiDrawing}
+            data-warm-ui-drawing=""
+            aria-hidden="true"
+            inert
+            style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0, pointerEvents: 'none' }}
+          />,
+          uiParent,
         )}
-    </div>
+    </>
   );
 }
