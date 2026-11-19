@@ -64,6 +64,7 @@
     "prosemirror-state": "^1.4.4",
     "prosemirror-view": "^1.42.6",
     "protobufjs": "^8.8.0",
+    "qr": "0.7.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",
