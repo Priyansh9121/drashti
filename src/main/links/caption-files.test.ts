@@ -12,7 +12,7 @@ const TRACKS = [
 ];
 const SRT = '1\n00:00:00,000 --> 00:00:01,000\nPlaceholder caption\n';
 
-function setup(learning?: string, preferences = true) {
+function setup(learning?: string, preferences = true, learningFree?: number) {
   const root = mkdtempSync(join(tmpdir(), 'drashti-caption-files-'));
   const folder = join(root, 'Saved');
   mkdirSync(folder);
@@ -36,7 +36,8 @@ function setup(learning?: string, preferences = true) {
     },
     onAir: () => false,
     freeBytes: () => 100 * 1024 ** 3,
-    freeBytesAsync: () => Promise.resolve(100 * 1024 ** 3),
+    freeBytesAsync: (folder) =>
+      Promise.resolve(folder === learning && learningFree !== undefined ? learningFree : 100 * 1024 ** 3),
     defaultFolder: folder,
     lastFolder: { get: () => folder, set: () => undefined },
     captionPreferences: preferences
@@ -67,7 +68,7 @@ async function until(check: () => boolean) {
   expect(check()).toBe(true);
 }
 
-async function start(h: ReturnType<typeof setup>, audio = false, captions = true) {
+async function start(h: ReturnType<typeof setup>, audio = false, captions = true, name = 'Chosen') {
   h.service.look('youtube', LINK);
   const details = {
     title: 'Placeholder title',
@@ -80,7 +81,7 @@ async function start(h: ReturnType<typeof setup>, audio = false, captions = true
     captions: TRACKS,
   };
   h.workers[0]?.send({ type: 'yt-looked', details });
-  expect(h.service.start(LINK, audio, false, { name: 'Chosen', captions }).ok).toBe(true);
+  expect(h.service.start(LINK, audio, false, { name, captions }).ok).toBe(true);
   await until(() => h.workers.some((w) => w.messages.some((m) => m.type === 'yt-download')));
   const worker = h.workers.find((w) => w.messages.some((m) => m.type === 'yt-download'));
   const command = worker?.messages.find((m) => m.type === 'yt-download');
@@ -228,6 +229,34 @@ describe('caption files and the learning copy', () => {
       await until(() => h.service.view().phase === 'done');
       expect(existsSync(join(h.root, 'Chosen captions'))).toBe(false);
       expect(h.service.view()).toMatchObject({ captions: { learningSkipped: true } });
+    } finally {
+      h.service.close();
+    }
+  });
+
+  it('keeps the complete saved name and video id in a long learning-folder name', async () => {
+    const h = setup();
+    const name = `Placeholder ${'x'.repeat(180)}`;
+    try {
+      finish(await start(h, false, true, name));
+      await until(() => h.service.view().phase === 'done');
+      const learning = join(h.folder, 'Captions', `${name} [AAAAAAAAAAA]`);
+      expect(existsSync(join(learning, 'captions.json'))).toBe(true);
+      expect(readFileSync(join(learning, `${name}.en.srt`), 'utf8')).toBe(SRT);
+    } finally {
+      h.service.close();
+    }
+  });
+
+  it('counts the manifest as well as SRT copies when keeping 2 GB free on the learning drive', async () => {
+    const learning = mkdtempSync(join(tmpdir(), 'drashti-learning-space-'));
+    const h = setup(learning, true, 2 * 1024 ** 3 + 2 * Buffer.byteLength(SRT));
+    try {
+      finish(await start(h));
+      await until(() => h.service.view().phase === 'done');
+      expect(h.service.view()).toMatchObject({ captions: { learningSkipped: true } });
+      expect(existsSync(join(h.folder, 'Chosen.en.srt'))).toBe(true);
+      expect(readdirSync(learning)).toEqual([]);
     } finally {
       h.service.close();
     }
