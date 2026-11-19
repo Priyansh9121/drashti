@@ -159,7 +159,7 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       const entryAt = entered?.shownAt ?? 0;
       expect(clicked?.stepAt).toBe(entryAt + WIPE_MS);
       const incoming = hall.locator('[data-layer="slide"] [data-slide-in]');
-      const band = incoming.locator('[data-band]');
+      const band = incoming.locator('[data-wipe-band]');
       await holdClock(app, entryAt + WIPE_MS / 2);
       // A deck's Wipe (Session 58): PowerPoint's soft band, no clip. Without a graphics chip a mask on the incoming
       // slide's band box, which moves; with one a mask on the slide's own box.
@@ -252,7 +252,7 @@ test('the LIVE picture and Screens card use the moving Wipe band in software', a
 
     for (const preview of previews) {
       const incoming = preview.locator('[data-layer="slide"] [data-slide-in]');
-      const band = incoming.locator('[data-band]');
+      const band = incoming.locator('[data-wipe-band]');
       await expect(band).toHaveCSS('mask-image', /^linear-gradient\(/u);
       await expect(band).not.toHaveCSS('transform', 'none');
       await expect(incoming).toHaveCSS('mask-image', 'none');
