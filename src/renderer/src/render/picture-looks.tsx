@@ -20,7 +20,7 @@ import { engineNow } from './clock';
 import { useMediaAttempt } from './media-attempts';
 import { PreviewPicture, PreviewsContext } from './previews';
 import { useElementSize } from './useElementSize';
-import { decodeSlideImage, SlideImageDecoding } from './slide-image-decoding';
+import { decodeSlideImage } from './slide-image-decoding';
 
 /*
  * A picture drawn with its look (Session 26e, shared/picture-look.ts): zoomed
@@ -259,12 +259,6 @@ function useBlurredFill(
   return loaded ? { url: loaded, id, size } : null;
 }
 
-/** Only a visible blurred fill needs this hint here; the ordinary picture already reads it in SlidePicture. */
-function BlurredFillImage({ src, style }: { src: string; style: CSSProperties }) {
-  const decoding = useContext(SlideImageDecoding);
-  return <img decoding={decoding} src={src} alt="" draggable={false} style={style} />;
-}
-
 /**
  * A picture with its look. `style`: the box it is drawn in, as the plain picture had it; `showing`: which
  * showing it is on the screens (its live zoom), or null; `children`: the plain picture, given its style and
@@ -276,6 +270,7 @@ export function Looked({
   style,
   box,
   children,
+  imageDecoding,
 }: {
   mediaId: string;
   showing: string | null;
@@ -286,6 +281,7 @@ export function Looked({
    */
   box?: PixelSize;
   children: (style: CSSProperties, copy: SharpCopy | null) => ReactNode;
+  imageDecoding?: 'sync';
 }) {
   const look = usePictureLook(mediaId);
   const copy = useSharpCopy(mediaId, look);
@@ -324,7 +320,7 @@ export function Looked({
   const fillOf = (s: CSSProperties) =>
     fill ? (
       fill.url ? (
-        <BlurredFillImage src={fill.url} style={s} />
+        <img decoding={imageDecoding} src={fill.url} alt="" draggable={false} style={s} />
       ) : (
         <PreviewPicture mediaId={fill.id} style={s} />
       )

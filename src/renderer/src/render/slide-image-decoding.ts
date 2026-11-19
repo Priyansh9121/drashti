@@ -1,8 +1,3 @@
-import { createContext } from 'react';
-
-/** Guard a pictures-first slide if Chromium discards a copy decoded earlier. */
-export const SlideImageDecoding = createContext<'sync' | undefined>(undefined);
-
 // Addresses only, never another retained copy of the pixels. This page's preloaders and slide waits fill it.
 const decoded = new Set<string>();
 

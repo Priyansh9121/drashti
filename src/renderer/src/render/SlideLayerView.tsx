@@ -11,7 +11,7 @@ import { hasPicture, lowerThird } from '../../../shared/program';
 import { placeContent, type Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { Placed } from './Placed';
-import { decodeSlideImage, SlideImageDecoding, slideImageDecoded } from './slide-image-decoding';
+import { decodeSlideImage, slideImageDecoded } from './slide-image-decoding';
 import { type Reveal, type SlideText, SlideView } from './SlideView';
 import type { TimerState } from '../../../shared/timers';
 import { clockHeld, engineNow, onClockJump } from './clock';
@@ -654,28 +654,27 @@ function DrawnSlide({
     if (!hasPicture(layer.slide)) return null;
   }
   return (
-    <SlideImageDecoding.Provider value={picturesFirst ? 'sync' : undefined}>
-      <SlideMovementContext.Provider value={movement}>
-        <SlideTimersContext.Provider value={timers ?? null}>
-          <Placed content={drawn} box={canvas} mode={scaling}>
-            <NativeDeckMotion slide={drawn} timing={native}>
-              <SlideView
-                slide={drawn}
-                media={settled ? 'still' : 'live'}
-                startedAt={layer.shownAt}
-                // Its videos between their files' start and end points, the engine's (Session 52), from where the
-                // time bar left them (Session 54).
-                clips={layer.clips}
-                seeks={layer.seeks}
-                text={text}
-                reveal={reveal}
-                step={step}
-              />
-            </NativeDeckMotion>
-          </Placed>
-        </SlideTimersContext.Provider>
-      </SlideMovementContext.Provider>
-    </SlideImageDecoding.Provider>
+    <SlideMovementContext.Provider value={movement}>
+      <SlideTimersContext.Provider value={timers ?? null}>
+        <Placed content={drawn} box={canvas} mode={scaling}>
+          <NativeDeckMotion slide={drawn} timing={native}>
+            <SlideView
+              slide={drawn}
+              imageDecoding={picturesFirst ? 'sync' : undefined}
+              media={settled ? 'still' : 'live'}
+              startedAt={layer.shownAt}
+              // Its videos between their files' start and end points, the engine's (Session 52), from where the
+              // time bar left them (Session 54).
+              clips={layer.clips}
+              seeks={layer.seeks}
+              text={text}
+              reveal={reveal}
+              step={step}
+            />
+          </NativeDeckMotion>
+        </Placed>
+      </SlideTimersContext.Provider>
+    </SlideMovementContext.Provider>
   );
 }
 
