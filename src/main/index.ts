@@ -1,3 +1,4 @@
+import { isInside } from './media/contained';
 import type { IpcMainInvokeEvent, Rectangle } from 'electron';
 import {
   app,
@@ -217,6 +218,8 @@ import { Revisions } from './library/revisions';
 import { styleNewText, themeLook } from './library/themes';
 import { defaultTransition, registerSlidesIpc } from './library/slides-ipc';
 import { registerWordsIpc } from './library/words-ipc';
+import { KirtanBundleExporter } from './import/kirtan-bundle-export-service';
+import { registerKirtanBundleIpc } from './library/kirtan-bundle-ipc';
 import { registerKirtansIpc } from './library/kirtans-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest, type SelfTestResult } from './selftest';
@@ -313,6 +316,7 @@ import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
+import { StreamPageWarmUp } from './stream/stream-warm';
 import { LiveWindowService } from './live-window/live-window-service';
 import { electronWindowSources } from './live-window/electron-sources';
 import { standInWindowSources } from './live-window/stand-in-sources';
@@ -2956,10 +2960,25 @@ function start(): void {
     safeStorage,
     noSafeStorage,
   );
+  // The stream's page's own warm-up as it opens (Session 60, X21; the owner's answer A to Q60-1): none once a hall screen
+  // here has drawn its warm-up whole at this start and the opening is over (stream/stream-warm.ts).
+  const streamPageWarmUp = new StreamPageWarmUp((line) => {
+    log.info(line);
+  });
+  // What the warm-ups made went with a GPU process that stopped (Sessions 31–36, ROB-5: Chromium starts another).
+  app.on('child-process-gone', (_event, details) => {
+    if (details.type === 'GPU') streamPageWarmUp.gpuGone();
+  });
   stream = new StreamService({
     clockStyle: mainClockStyle,
-    // No warm-up for the stream's page where Chromium draws without a graphics chip, as for the outputs (Session 58).
-    warmUpFact: (page) => warmUpFact(warmUps, page, 'the stream’s page'),
+    // No warm-up for the stream's page where Chromium draws without a graphics chip, as for the outputs (Session 58);
+    // none of its own either once a hall screen here has drawn its warm-up whole at this start, the opening over
+    // (Session 60, X21): what it draws with is made, and its warm-up, drawn mid-show, held the hall's frames.
+    warmUpFact: (page, picture) => {
+      const fact = warmUpFact(warmUps, page, 'the stream’s page');
+      const none = fact.noGpu !== true && streamPageWarmUp.skips(page.webContents.id, picture);
+      return none ? { warmedHere: true } : fact;
+    },
     profiles: new StreamProfileRepo(db, (id) => streamKeys.has(id)),
     keys: streamKeys,
     settings,
@@ -3229,6 +3248,7 @@ function start(): void {
   let drainSourceEdits: () => Promise<void> = () => Promise.resolve();
   let cancelPdfCopies: () => void = () => undefined;
   let drainPdfCopies: () => Promise<void> = () => Promise.resolve();
+  let drainKirtanExports: () => Promise<void> = () => Promise.resolve();
   // Simple Mode's playlist (Session 55, Part 18): the playlist open in Pro Mode when Drashti switched to Simple Mode, or
   // a new one when there was none; since Session 56 whichever its window opens after that (simple-playlist.ts).
   const simplePlaylist = new SimplePlaylist({
@@ -3442,7 +3462,13 @@ function start(): void {
     stop: async () => {
       pdfPictures.stopEditable();
       pdfCopies.stop();
-      await Promise.all([documentReaders.stop(), drainSourceEdits(), pdfGeometry.stop(), drainPdfCopies()]);
+      await Promise.all([
+        documentReaders.stop(),
+        drainSourceEdits(),
+        pdfGeometry.stop(),
+        drainPdfCopies(),
+        drainKirtanExports(),
+      ]);
       // A bounded retainOutput fallback is not confirmation that an owned writer/process stopped.
       return !sourceOutputQuarantined && pdfGeometry.exitConfirmed;
     },
@@ -4459,6 +4485,33 @@ function start(): void {
     contentChanged([id]);
     log.info('Library: a QR-code slide made');
     return { ok: true, id };
+  });
+  const bundleExporter = new KirtanBundleExporter({
+    spawn: spawnImportWorker,
+    dbFile: libraryFile(),
+    mediaDir,
+    schemaVersion: LATEST_VERSION,
+    onAir: () => streaming.inUse() || testOnAir,
+  });
+  drainKirtanExports = () => bundleExporter.stop();
+  stops.add('kirtan bundle exports', () => bundleExporter.stop());
+  registerKirtanBundleIpc({
+    fromOperator,
+    canExport: () => mode === 'pro' && documentQuit?.closing !== true,
+    exporter: bundleExporter,
+    pickOutput: async () => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export kirtan bundle',
+        defaultPath: join(app.getPath('documents'), 'Kirtans.drashti-kirtans'),
+        buttonLabel: 'Save bundle',
+        filters: [{ name: 'Drashti kirtan bundle', extensions: ['drashti-kirtans'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      if (isInside(userDataDir, picked.filePath))
+        throw new Error('Choose a folder outside Drashti’s data folder.');
+      return picked.filePath;
+    },
   });
   registerKirtansIpc({
     presentations,
@@ -5710,6 +5763,8 @@ function start(): void {
     if (screenId && warmUpEnd && warmUpEnds.get(screenId) !== warmUpEnd.at) {
       warmUpEnds.set(screenId, warmUpEnd.at);
       log.info(warmUpEndLine(outputNames.get(screenId) ?? 'an output', warmUpEnd));
+      // One drawn whole: the stream's page opened from now on draws without a warm-up of its own (Session 60, X21).
+      streamPageWarmUp.hallEnded(warmUpEnd.how);
     }
     // Its page's first painted frame, once per page: the start's last phase line (Sessions 31–36, PERF-1).
     const first = r?.firstPaint;
@@ -6730,6 +6785,8 @@ function start(): void {
     sendToOperator(IPC.opening.key, { at: Date.now() });
   });
   const openingOver = () => {
+    // The start has settled: the stream's page may now draw without a warm-up of its own (Session 60, X21).
+    streamPageWarmUp.openingOver();
     openingWaits = false;
     openingKeys.stop();
     if (openingLimit) clearTimeout(openingLimit);
@@ -6738,7 +6795,13 @@ function start(): void {
   handle(IPC.opening.atStart, (e) => {
     if (!fromOperator(e)) return null;
     const plan = opening.atStart({ pageAgain: openingPageAgain, sinceWindow: Date.now() - openingWindowAt });
-    if (!plan) return null;
+    if (!plan) {
+      // No opening at this start: the stream's page may draw without a warm-up of its own (Session 60, X21).
+      streamPageWarmUp.openingOver();
+      return null;
+    }
+    // Until it ends, the stream's page warms itself up as before (Session 60, X21).
+    streamPageWarmUp.openingPlays();
     openingSince = Date.now();
     openingKeys.start();
     // A page that never says it ended (it stopped, say) leaves the keys to the show soon after its two seconds.
@@ -7829,6 +7892,12 @@ function start(): void {
         { what: 'the drop folder', stop: () => dropFolder.stop() },
         { what: 'downloads', stop: () => links.close() },
         { what: 'imports', stop: () => imports.stop() },
+        {
+          what: 'kirtan bundle exports',
+          stop: () => {
+            void bundleExporter.stop();
+          },
+        },
         { what: 'conversions', stop: () => conversions.close() },
       ],
       every: (ms, run) => {
