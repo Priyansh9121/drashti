@@ -18,9 +18,12 @@ import { Loader, Mic, Radio, ScreenShare, Settings, X } from '../ui/icons';
  * panel's pieces in the LIVE picture's black box, black under brightness(0), twice: once beside icons and once with
  * none, each in a layer of its own so its tiles are its own; at their own size and on whole device pixels, as the
  * panel draws them (a box between pixels is drawn another way: its edges smoothed); and, beneath them, unfiltered and
- * black, the preview's picture as the compositor draws it. It goes with the warm-up. Nothing in it can be reached
- * (inert) or read out (aria-hidden), nothing in it is a button (its buttons are drawn as buttons look: the window
- * keeps its one primary), its words are no button's, and nothing in it asks Main for anything.
+ * black, the preview's picture as the compositor draws it. It goes with the warm-up. It and the keeper below are marked
+ * data-chip-warm-up: drawn only where Chromium draws with a graphics chip, the chip's own ways of drawing made ahead or
+ * kept, so the check of what costs a computer without one passes over them and holds them to their own rules
+ * (tests/e2e/appearance-drawing.spec.ts). Nothing in it can be reached (inert) or read out (aria-hidden), nothing in
+ * it is a button (its buttons are drawn as buttons look: the window keeps its one primary), its words are no button's,
+ * and nothing in it asks Main for anything.
  */
 
 /** How far to move a box at (`left`, `top`) CSS px onto a whole device pixel (`ratio` device px a CSS px). */
@@ -185,6 +188,7 @@ export function PanelWarmUp() {
       aria-hidden="true"
       inert
       data-testid="panel-warm-up"
+      data-chip-warm-up=""
       className="pointer-events-none absolute inset-0 overflow-hidden"
     >
       <PreviewPicture />
@@ -252,6 +256,7 @@ export function PanelKindKeeper() {
       aria-hidden="true"
       inert
       data-testid="panel-kind-keeper"
+      data-chip-warm-up=""
       className="pointer-events-none absolute top-1 left-16 block h-4 w-8 will-change-transform"
     >
       {/* Drawn again as its gradient moves a pixel under the cover (nothing on screen changes). */}
