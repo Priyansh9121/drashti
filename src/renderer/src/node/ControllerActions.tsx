@@ -42,7 +42,7 @@ export function ControllerActions({ view, state }: { view: SharedView; state: En
   return (
     <div className="space-y-2 border-t border-line pt-2" data-testid="controller-actions">
       {show && (
-        <div className="flex flex-wrap gap-2" aria-label="Show controls">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Show controls">
           <Button
             size="sm"
             instant
@@ -136,7 +136,7 @@ export function ControllerActions({ view, state }: { view: SharedView; state: En
         </div>
       )}
       {media && (
-        <div className="space-y-2" aria-label="Media playback">
+        <div className="space-y-2" role="group" aria-label="Media playback">
           {playingNow(state).map((playing) => {
             const layer = playing.ref.layer;
             const name =
