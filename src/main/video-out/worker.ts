@@ -1,6 +1,6 @@
 import type { MessagePortMain } from 'electron';
 import type { FromProgram } from '../stream/worker/protocol';
-import { FrameReceiver, type Sender } from './frames';
+import { FrameReceiver, REPEAT_MS, type Sender } from './frames';
 import { ProgramSender } from './program-sender';
 import type { FromVideoOutWorker, ToVideoOutWorker, VideoOutSender } from './protocol';
 import { StandInSender } from './stand-in';
@@ -38,6 +38,11 @@ function senderFor(chosen: VideoOutSender, name: string): Sender {
   // Syphon on a Mac, Spout on Windows: Drashti's own small program (tools/video-out/).
   return new ProgramSender(chosen.program, name, log, programEnded);
 }
+
+// A still picture goes out again (FrameReceiver.repeat): looked at twice as often as it may go.
+setInterval(() => {
+  receiver?.repeat();
+}, REPEAT_MS / 2);
 
 port.on('message', (event) => {
   const message = event.data as ToVideoOutWorker | { type: 'frames' };
