@@ -7,7 +7,8 @@ import { MainAccess } from './main-access';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION, type EngineState, initialEngineState } from '../../shared/engine/state';
 import { IPC } from '../../shared/ipc';
-import { blurMediaId, copyMediaId, MEDIA_SCHEME, mediaUrl } from '../../shared/media';
+import { blurMediaId, copyMediaId, MEDIA_ID_PATTERN, MEDIA_SCHEME, mediaUrl } from '../../shared/media';
+import { saveStill } from '../media/stills';
 import { sharpenStep } from '../../shared/picture-look';
 import { mediaInState } from '../../shared/node-media';
 import { type PointedClip, sameClip } from '../../shared/point-ahead';
@@ -16,13 +17,19 @@ import {
   type LinkState,
   type MediaWant,
   type NodeClock,
+  type NodeControllerContext,
   type NodeHealth,
   type NodeScreen,
   type NodeView,
   type NodeViewResult,
   type ToNode,
 } from '../../shared/nodes';
-import { mediaWantListSchema, nodeNameFrom, nodeScreenListSchema } from '../../shared/nodes-schema';
+import {
+  mediaWantListSchema,
+  nodeNameFrom,
+  nodeScreenListSchema,
+  nodeControllerContextSchema,
+} from '../../shared/nodes-schema';
 import type { DisplayInfo, OutputContext, OutputReport, ScreenConfig } from '../../shared/screens';
 import { missingFontsIn } from '../../shared/screens';
 import { hallPictureOfScreens } from '../../shared/stage-layouts';
@@ -147,6 +154,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
 
   // ---- the show, as Main's feed brings it (or as it was last kept) --------------------------
   const mirror = new EngineMirror();
+  // Public permission from Main, held through a brief link drop. No pairing or certificate data changes.
+  let controller: NodeControllerContext | null = null;
+  let controllerReady = false;
   let clock: NodeClock | null = null;
   let offsetMs = 0;
   let fromSaved = false;
@@ -184,16 +194,19 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     const stop = mainAccess.stop;
     return stop && !state.stopped ? { ...state, stopped: stop } : state;
   };
-  const snapshot = (): EngineSnapshotMessage => ({
+  const snapshot = (outputs = true): EngineSnapshotMessage => ({
     kind: 'snapshot',
     version: ENGINE_STATE_VERSION,
     rev: mirror.rev,
-    state: shown(mirror.state ?? initialEngineState()),
+    state: outputs ? shown(mirror.state ?? initialEngineState()) : (mirror.state ?? initialEngineState()),
     sentAt: engineNow(),
     ...(mirror.session !== undefined ? { session: mirror.session } : {}),
   });
   const transport = new IpcTransport((error, target) => {
     log.warn(`Node: could not send the show to window ${target.id}`, error);
+  });
+  const controllerTransport = new IpcTransport((error, target) => {
+    log.warn(`Node: could not send the shared show view to window ${target.id}`, error);
   });
   const saver = new ShowSaver(store, (m) => {
     log.warn(`Node: ${m}`);
@@ -285,6 +298,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     // A screen that stopped waiting for this file (Main was away, say) loads it now.
     landed: (mediaId) => {
       for (const win of outputWindows.values()) sendToPage(win, IPC.output.mediaReady, { mediaId });
+      if (controller) sendToPage(nodeWindow, IPC.output.mediaReady, { mediaId });
     },
     log: (level, message) => {
       if (level === 'warn') log.warn(`Node: ${message}`);
@@ -313,7 +327,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       mediaDir: cacheDir,
       lookup: (id) => {
         const path = cache.pathFor(id);
-        return path ? { path: path.slice(cacheDir.length + 1), missing: false, sha256: null } : null;
+        return path
+          ? { path: path.slice(cacheDir.length + 1), missing: false, sha256: cache.hashFor(id) }
+          : null;
       },
     });
   });
@@ -552,14 +568,33 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       case 'engine': {
         const result = mirror.apply(message.message);
         if (result === 'applied') {
+          if (message.message.kind === 'snapshot') {
+            controllerReady = true;
+            viewChanged();
+          }
           heartbeat.changed(mirror.rev);
           fromSaved = false;
           // A whole state from Main keeps the black over it while no Main let in is heard (Session 54).
           const m = message.message;
+          controllerTransport.broadcast(m);
           transport.broadcast(m.kind === 'snapshot' ? { ...m, state: shown(m.state) } : m);
           saver.update(snapshot(), offsetMs);
           cache.kick();
-        } else if (result === 'resync') client?.send({ type: 'resync' });
+        } else if (result === 'resync') {
+          controllerReady = false;
+          viewChanged();
+          client?.send({ type: 'resync' });
+        }
+        return;
+      }
+      case 'controller': {
+        const parsed = nodeControllerContextSchema.nullable().safeParse(message.context);
+        if (parsed.success) {
+          controller = parsed.data;
+          mainAccess.setController(controller !== null);
+          nodeWindow?.setTitle(controller ? 'Drashti Controller' : 'Drashti Node');
+          viewChanged();
+        }
         return;
       }
       case 'screens': {
@@ -643,6 +678,18 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   };
 
   // ---- the link ------------------------------------------------------------------------------------
+  const linkChanged = (state: LinkState, why: string | null) => {
+    if (state !== link.state || why !== link.why) {
+      link = { state, why, since: Date.now() };
+      log.info(`Node: link ${state}${why ? ` (${why})` : ''}`);
+    }
+    if (state === 'online') cache.backOnline();
+    else {
+      controllerReady = false;
+      updatePointed(null);
+    }
+    viewChanged();
+  };
   const connect = () => {
     if (!paired) return;
     const pairing = paired;
@@ -652,16 +699,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       pairing.token,
       deps.version,
       {
-        state: (state, why) => {
-          if (state !== link.state || why !== link.why) {
-            link = { state, why, since: Date.now() };
-            log.info(`Node: link ${state}${why ? ` (${why})` : ''}`);
-          }
-          if (state === 'online') cache.backOnline();
-          else updatePointed(null);
-          viewChanged();
-        },
+        state: linkChanged,
         welcome: (main) => {
+          controllerReady = false;
           // How Main writes the time (Sessions 31–36, I18N-8): this node's clocks show Main's.
           const style = validClockStyle(main.clock);
           if (JSON.stringify(style) !== JSON.stringify(mainClock)) {
@@ -692,7 +732,10 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
           clock = c;
           offsetMs = c.offsetMs;
           // The outputs follow Main's clock: told when it moves by more than a millisecond.
-          if (Math.abs(offsetMs - before) > 1) sendContexts();
+          if (Math.abs(offsetMs - before) > 1) {
+            sendContexts();
+            viewChanged();
+          }
         },
         removed: () => {
           log.warn('Node: Main removed this node; its pairing is forgotten');
@@ -712,6 +755,10 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     client?.stop();
     client = null;
     paired = null;
+    controller = null;
+    controllerReady = false;
+    mainAccess.setController(false);
+    nodeWindow?.setTitle('Drashti Node');
     store.forget();
     manager.reconcile();
     link = { state: 'unpaired', why: link.why, since: Date.now() };
@@ -755,6 +802,13 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       media: cache.status(mirror.state ? inUse().filter((id) => !cache.has(id)).length : 0),
       clock,
       fromSaved,
+      controller: controller
+        ? {
+            ...controller,
+            connected: link.state === 'online' && controllerReady && mainAccess.stopped === null,
+            clockOffsetMs: outputOffset(),
+          }
+        : null,
       stopped: mainAccess.stopped,
       mainVersion: link.state === 'refused' ? mainVersion : null,
       update: updates.view(),
@@ -841,10 +895,13 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
 
   // The output page's own requests: the show, its screen, and how it draws.
   handle(IPC.engine.subscribe, (event) => {
-    transport.add(event.sender);
-    return snapshot();
+    const shared = pageAlive(nodeWindow) && event.sender.id === nodeWindow.webContents.id;
+    (shared ? controllerTransport : transport).add(event.sender);
+    return snapshot(!shared);
   });
-  handle(IPC.engine.snapshot, () => snapshot());
+  handle(IPC.engine.snapshot, (event) =>
+    snapshot(!(pageAlive(nodeWindow) && event.sender.id === nodeWindow.webContents.id)),
+  );
   handle(IPC.output.getContext, (event) => {
     const screenId = manager.screenIdFor(event.sender.id);
     return screenId ? contextFor(screenId) : null;
@@ -883,7 +940,25 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     }
     return null;
   });
-  // A node keeps no lengths and no stills (the library is Main's).
+  // The shared view's NEXT thumbnails are made and kept on this computer only, never written on Main.
+  handle(IPC.media.saveStill, (event, rawId, jpeg) => {
+    if (
+      !paired ||
+      !pageAlive(nodeWindow) ||
+      event.sender.id !== nodeWindow.webContents.id ||
+      typeof rawId !== 'string' ||
+      !MEDIA_ID_PATTERN.test(rawId)
+    )
+      return {
+        ok: false as const,
+        message: 'Only this node’s window can keep its still frames.',
+      };
+    const hash = cache.hashFor(rawId);
+    return hash
+      ? saveStill(cacheDir, hash, jpeg)
+      : { ok: false as const, message: 'That file has not been copied here yet.' };
+  });
+  // A node keeps no lengths (the library is Main's).
   handle(IPC.media.reportLength, () => null);
   // Another app's window as the background (Session 48) is on Main's computer: a node's screens never show
   // it, and keep the rest of the show.
@@ -964,6 +1039,15 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     mirror: () => ({ rev: mirror.rev, session: mirror.session }),
     dropLink: () => client?.drop(),
   };
+  if (!packaged() && sw('DRASHTI_TEST_NODE_LINK_HOLD') === '1') {
+    Object.assign((globalThis as { drashtiNode?: unknown }).drashtiNode ?? {}, {
+      pauseLink: () => {
+        client?.stop();
+        linkChanged('offline', 'The connection to Main was lost.');
+      },
+      resumeLink: connect,
+    });
+  }
   if (paired) connect();
   log.info(`Node: started${paired ? ` following Main “${paired.main.name}”` : ' (not paired yet)'}`);
 
