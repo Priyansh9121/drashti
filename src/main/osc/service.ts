@@ -311,7 +311,7 @@ export class OscService {
     }
     // Reserve every action's allowance before any part of a bundle reaches the engine.
     for (const _ of batch) {
-      if (!this.overall.take('all') || !this.perSender.take(sender)) {
+      if (!this.perSender.take(sender) || !this.overall.take('all')) {
         drop();
         return;
       }
@@ -324,7 +324,7 @@ export class OscService {
   /** A scheduled group cannot add another burst on top of actions arriving right now. */
   private runBatch(items: Pending[]): void {
     for (const item of items) {
-      if (!this.executionOverall.take('all') || !this.executionPerSender.take(item.sender)) {
+      if (!this.executionPerSender.take(item.sender) || !this.executionOverall.take('all')) {
         this.dropped++;
         return;
       }
