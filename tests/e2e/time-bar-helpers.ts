@@ -147,8 +147,13 @@ export async function heldAt(copies: Copy[], seconds: number, what: string): Pro
 export const row = (win: Page, playing: string): Locator =>
   win.locator(`[data-testid="time-bar-row"][data-playing="${playing}"]`);
 
-/** Click the bar `fraction` of the way along its width, in the middle of its height. */
+/**
+ * Click the bar `fraction` of the way along its width, in the middle of its height, scrolled into view first as an
+ * operator would (a click at a point reaches what is drawn there: Music's bar sits below the right column's fold in
+ * CI's 1024 x 642 window since Sound levels came above Audio, Session 60, and the click landed on Wallpaper).
+ */
 export async function clickAlong(win: Page, bar: Locator, fraction: number): Promise<void> {
+  await bar.scrollIntoViewIfNeeded();
   const box = await bar.boundingBox();
   if (!box) throw new Error('the bar is not drawn');
   await win.mouse.click(box.x + box.width * fraction, box.y + box.height / 2);
