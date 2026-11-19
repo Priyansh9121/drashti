@@ -54,6 +54,7 @@ export function ProgramView({
   canvas: Size;
   camera: MediaStream | null;
 }) {
+  const captionRoot = useRef<HTMLDivElement>(null);
   const picture = programPicture(state, layout, languages);
   // The Camera layout's full-frame picture draws from the state without what that layout draws itself.
   const hall = useMemo(() => fullFrameState(state), [state]);
@@ -73,6 +74,7 @@ export function ProgramView({
   return (
     <div
       data-testid="program-picture"
+      ref={captionRoot}
       data-kind="camera"
       data-full={picture.full ?? ''}
       style={{
@@ -128,7 +130,7 @@ export function ProgramView({
         />
       )}
       {/* Live captions (Session 55, Part 10): on the stream always, over the camera too. */}
-      <CaptionsView state={state} canvas={canvas} screen="stream" />
+      <CaptionsView state={state} canvas={canvas} screen="stream" videoRoot={captionRoot} />
     </div>
   );
 }

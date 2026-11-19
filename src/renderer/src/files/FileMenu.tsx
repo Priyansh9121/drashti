@@ -13,6 +13,7 @@ import type { MenuPlace } from '../ui/Menu';
 import { isMenuKey, Menu, menuBelow, menuPlace } from '../ui/Menu';
 import type { FileTarget } from './file-menu';
 import { fileMenuEntries } from './file-menu';
+import { VideoCaptionMenu } from '../video-captions/VideoCaptionControl';
 
 /*
  * The one right-click menu (Session 55, Part 14; its entries: file-menu.ts), mounted once in each mode's window:
@@ -183,6 +184,7 @@ function RenameDialog() {
 /** The menu (and Rename's question), once for the window. */
 export function FileMenu({ platform }: { platform: string }) {
   const open = useFileMenu((s) => s.open);
+  const [captionMenu, setCaptionMenu] = useState<{ mediaId: string; at: MenuPlace } | null>(null);
   // Simple Mode's has Rename and Delete (Session 55, Part 18), and Trim, When it ends and Edit slides… (Session 56).
   const simple = useMode((s) => s.mode === 'simple');
   const target = open?.target;
@@ -205,6 +207,15 @@ export function FileMenu({ platform }: { platform: string }) {
   const entries = target
     ? fileMenuEntries(openTrim ? { ...target, trim: openTrim } : target, platform, { simple })
     : [];
+  if (target?.kind === 'video' && target.mediaId && open) {
+    const mediaId = target.mediaId;
+    const at = open.at;
+    const afterTrim = Math.max(
+      0,
+      entries.findIndex((entry) => entry.onSelect === openTrim || entry.onSelect === target.trim) + 1,
+    );
+    entries.splice(afterTrim, 0, { label: 'Captions…', onSelect: () => setCaptionMenu({ mediaId, at }) });
+  }
   if (trim?.canReset && trim.mediaId === target?.mediaId) {
     const afterTrim = entries.findIndex((entry) => entry.onSelect === openTrim) + 1;
     entries.splice(afterTrim, 0, {
@@ -226,6 +237,13 @@ export function FileMenu({ platform }: { platform: string }) {
           onClose={() => {
             useFileMenu.setState({ open: null });
           }}
+        />
+      )}
+      {captionMenu && (
+        <VideoCaptionMenu
+          mediaId={captionMenu.mediaId}
+          at={captionMenu.at}
+          onClose={() => setCaptionMenu(null)}
         />
       )}
       <RenameDialog />
