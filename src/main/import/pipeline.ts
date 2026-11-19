@@ -2099,6 +2099,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       case 'kirtan-bundle':
         commit();
         await importKirtanBundle({
+          options: ctx.options,
           db: ctx.db,
           media: ctx.media,
           path: file.path,

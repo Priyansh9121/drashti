@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { basename } from 'node:path';
-import type { ImportIssue } from '../../shared/import';
+import { basename, dirname } from 'node:path';
+import type { ImportIssue, ImportOptions } from '../../shared/import';
 import { NO_COUNTS } from '../../shared/import';
 import type { Db } from '../db/database';
 import { MediaRepo } from '../db/media';
 import type { NewImportItem } from '../db/imports';
 import { PresentationRepo } from '../db/presentations';
-import type { StagedMedia } from './media-store';
+import { diskFreeBytes, type StagedMedia } from './media-store';
 import type { MediaStore } from './media-store';
 import {
   withKirtanBundle,
@@ -15,7 +15,7 @@ import {
   type OpenKirtanBundle,
 } from './kirtan-bundle';
 import { bundleState, keepBundleState, bundleLocalHash, mapBundleContent } from './kirtan-bundle-state';
-import type { BundleKirtan } from './kirtan-bundle-schema';
+import { BUNDLE_LIMITS, type BundleKirtan } from './kirtan-bundle-schema';
 
 interface NativeBundleImport extends OpenBundleOptions {
   db: Db;
@@ -23,6 +23,7 @@ interface NativeBundleImport extends OpenBundleOptions {
   path: string;
   sourcePath: string;
   isCancelled?: () => boolean;
+  options: ImportOptions;
   /** The pipeline writes each item with its report in its ordinary bounded batch/savepoint. */
   write: (apply: () => NewImportItem, sourcePath: string) => Promise<void>;
 }
@@ -77,6 +78,12 @@ function applyKirtan(
   const receivedHash = incomingHash(bundle, k, descriptor.sha256);
   if (state?.incomingHash === receivedHash) {
     item.message = 'Already in the library, unchanged since it was imported.';
+    return item;
+  }
+  const choice =
+    o.options.decisions?.[sourcePath] ?? o.options.decisions?.[o.sourcePath] ?? o.options.onConflict;
+  if (old && choice === 'skip') {
+    item.message = 'Skipped the incoming change as chosen.';
     return item;
   }
   const mediaRepo = new MediaRepo(o.db);
@@ -196,6 +203,18 @@ function applyKirtan(
 /** ZIP work and media copies run outside the database's write lock. */
 export async function importKirtanBundle(o: NativeBundleImport): Promise<void> {
   await withKirtanBundle(o.path, o, async (bundle) => {
+    // Unpacking and the database may live on different volumes. Include row/index/WAL workspace.
+    const databaseBytes = bundle.manifest.kirtans.reduce((n, k) => n + k.bytes, 0) * 4 + 1024 ** 2;
+    const checkDatabaseSpace = () => {
+      if (
+        o.db.name !== ':memory:' &&
+        (o.freeBytes ?? diskFreeBytes)(dirname(o.db.name)) - databaseBytes < BUNDLE_LIMITS.reserve
+      )
+        throw new Error(
+          'There is not enough free space on the library’s disk for these kirtans while keeping 2 GB free for the show.',
+        );
+    };
+    checkDatabaseSpace();
     const staged = new Map<string, StagedMedia>();
     for (const file of bundle.media) {
       o.signal?.throwIfAborted();
@@ -207,6 +226,7 @@ export async function importKirtanBundle(o: NativeBundleImport): Promise<void> {
         throw new Error('The media does not match its bundle description.');
       staged.set(file.id, { ...stage.staged, name: file.name });
     }
+    checkDatabaseSpace();
     for (const [index, k] of bundle.kirtans.entries()) {
       o.signal?.throwIfAborted();
       if (o.isCancelled?.()) return;
