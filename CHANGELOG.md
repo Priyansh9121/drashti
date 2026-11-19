@@ -8,6 +8,7 @@ Update after a sabha, and update Main and nodes together.
 
 - The stream, the hall screens and the decks Drashti plays itself: the fixes since alpha.19 (this list is written in full before the release).
 - On a computer without a graphics chip, a PowerPoint Wipe from the left or right in a deck Drashti plays itself now shows the new slide sweeping in on the screens, the stream and LIVE; before, the old slide stayed still for the Wipe’s length and the new one cut in.
+- On a computer without a graphics chip, while streaming, a deck’s own Push, Cover and Uncover now stay smooth (a frame dropped now and then, where about one in eight dropped before), and its Wipe drops about one frame in eight where it dropped about one in two; the moves look exactly as before, and with a graphics chip nothing changes.
 - On a computer with a graphics chip, going live, recording or watching the stream while a show plays no longer holds up the hall’s screens for a second or more: once they have warmed up at this start, the stream’s picture draws at once, ready in about a second instead of 6 to 10.
 - Kirtans can now be shared between Drashti libraries: in Library, Export kirtan bundle… saves the chosen kirtans with their language tracks, details, notes, arrangements and, if you like, their media; importing the file on another computer adds them, and a kirtan already there is updated only where nobody has edited it.
 
