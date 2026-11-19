@@ -151,7 +151,7 @@ type DeckWipe =
   | { edge: DeckEffectDirection; fraction: number }
   | DeckSplit
   | DeckShape
-  | { spokes: number; amount: number }
+  | { spokes: number; progress: number; leaving: boolean }
   | { bars: NonNullable<DeckEffect['bars']>; amount: number };
 
 export interface DeckMotionFrame {
@@ -324,7 +324,7 @@ export function deckMotionFrame(
         leaving: !entering,
         progress,
       };
-    if (effect.kind === 'wheel') frame.wipe = { spokes: effect.spokes ?? 1, amount };
+    if (effect.kind === 'wheel') frame.wipe = { spokes: effect.spokes ?? 1, progress, leaving: !entering };
     if (effect.kind === 'bars') frame.wipe = { bars: effect.bars ?? 'horizontal', amount };
     if (effect.kind === 'zoom') {
       const away = effect.zoomAway ? zoomedAway(effect.zoomAway, bounds, slide) : null;
@@ -353,21 +353,34 @@ function polygon(points: readonly Point[], frame: Rect, evenodd = false): string
   return `polygon(${evenodd ? 'evenodd, ' : ''}${list.join(', ')})`;
 }
 
-/** Wheel's spokes, each sweeping clockwise from twelve o'clock (a spoke's own share of the turn). */
-function spokes(count: number, target: Rect, amount: number): Point[] {
+/**
+ * How wide PowerPoint draws Wheel's soft edge, as a share of each spoke's turn in the box's own proportions: its own
+ * movie of run 6 (19 Nov 2026), 1 to 8 spokes at 700 ms and 2 s, 10-90 % across 40-42 degrees of one spoke's whole turn.
+ */
+const WHEEL_SOFTNESS = 0.138;
+
+/**
+ * Wheel's spokes, each sweeping clockwise from twelve o'clock (a spoke's own share of the turn) as PowerPoint's movie
+ * shows them (run 6): evenly in the box's own proportions (a square's sweep, stretched to the box's shape), its edge
+ * drawn hard where PowerPoint's soft edge is half-way, so as much shows. Coming in, a spoke shows what its edge has
+ * passed; leaving, its edge goes round the same way and hides what it passes.
+ */
+function spokes(count: number, target: Rect, progress: number, leaving: boolean): Point[] {
   const cx = target.x + target.width / 2;
   const cy = target.y + target.height / 2;
-  // A little past the corners, so the chords of the arc never cut into the shape.
-  const radius = Math.hypot(target.width, target.height) * 0.55 + 1;
-  const sweep = ((2 * Math.PI) / count) * amount;
-  const segments = Math.max(1, Math.ceil((72 * amount) / count));
+  // A square's half a side and a half again, stretched to the box: past its corners (the square's are 1.41 out), so
+  // the chords of the arc never cut into the shape.
+  const rx = target.width * 0.75 + 1;
+  const ry = target.height * 0.75 + 1;
+  const passed = Math.min(1, Math.max(0, (1 + WHEEL_SOFTNESS) * progress - WHEEL_SOFTNESS / 2));
+  const [from, to] = leaving ? [passed, 1] : [0, passed];
+  const segments = Math.max(1, Math.ceil((72 * (to - from)) / count));
   const points: Point[] = [];
   for (let s = 0; s < count; s++) {
-    const from = -Math.PI / 2 + (s * 2 * Math.PI) / count;
     points.push([cx, cy]);
     for (let i = 0; i <= segments; i++) {
-      const angle = from + (sweep * i) / segments;
-      points.push([cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)]);
+      const angle = ((2 * Math.PI) / count) * (s + from + ((to - from) * i) / segments);
+      points.push([cx + rx * Math.sin(angle), cy - ry * Math.cos(angle)]);
     }
   }
   return points;
@@ -763,7 +776,7 @@ export function deckShapeHardClip(wipe: DeckWipe | null, target: Rect, frame: Re
  */
 export function deckWipeClip(wipe: DeckWipe | null, target: Rect, frame: Rect): string {
   if (!wipe || 'shape' in wipe) return '';
-  if ('spokes' in wipe) return polygon(spokes(wipe.spokes, target, wipe.amount), frame);
+  if ('spokes' in wipe) return polygon(spokes(wipe.spokes, target, wipe.progress, wipe.leaving), frame);
   if ('bars' in wipe) {
     const points = bars(wipe.bars, target, wipe.amount);
     return points.length > 0 ? polygon(points, frame) : 'inset(50% 50% 50% 50%)';
