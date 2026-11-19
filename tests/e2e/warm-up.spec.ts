@@ -161,7 +161,8 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
   const selector = `${scope} [data-warm-up]`;
   const clip = await page.locator(selector).first().boundingBox();
   if (!clip) throw new Error('the warm-up has no visible box');
-  const drawn = decodePng(await page.screenshot({ scale: 'css', clip }));
+  const drawnPng = await page.screenshot({ scale: 'css', clip });
+  const drawn = decodePng(drawnPng);
   const display = await page.evaluate((scope) => {
     const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
     const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
@@ -172,8 +173,10 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
     return before;
   }, scope);
   let black: ReturnType<typeof decodePng>;
+  let blackPng: Buffer;
   try {
-    black = decodePng(await page.screenshot({ scale: 'css', clip }));
+    blackPng = await page.screenshot({ scale: 'css', clip });
+    black = decodePng(blackPng);
   } finally {
     await page.evaluate(
       ({ scope, display }) => {
@@ -189,8 +192,33 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
   const center = (Math.floor(black.height / 2) * black.width + Math.floor(black.width / 2)) * 4;
   expect([...black.rgba.slice(center, center + 4)], 'the reference is opaque black').toEqual([0, 0, 0, 255]);
   let difference = 0;
-  for (let i = 0; i < drawn.rgba.length; i++)
-    difference = Math.max(difference, Math.abs((drawn.rgba[i] ?? 0) - (black.rgba[i] ?? 0)));
+  let at = 0;
+  let channels = 0;
+  for (let i = 0; i < drawn.rgba.length; i++) {
+    const delta = Math.abs((drawn.rgba[i] ?? 0) - (black.rgba[i] ?? 0));
+    if (delta !== 0) channels++;
+    if (delta > difference) {
+      difference = delta;
+      at = i;
+    }
+  }
+  if (difference !== 0) {
+    const pixel = Math.floor(at / 4);
+    const first = pixel * 4;
+    await test.info().attach('warm-up-drawn-pane', { body: drawnPng, contentType: 'image/png' });
+    await test.info().attach('warm-up-black-reference', { body: blackPng, contentType: 'image/png' });
+    await test.info().attach('warm-up-pane-difference', {
+      body: JSON.stringify({
+        difference,
+        channels,
+        x: pixel % drawn.width,
+        y: Math.floor(pixel / drawn.width),
+        drawn: [...drawn.rgba.slice(first, first + 4)],
+        black: [...black.rgba.slice(first, first + 4)],
+      }),
+      contentType: 'application/json',
+    });
+  }
   return difference;
 }
 
@@ -284,6 +312,8 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
       wide: wide !== null && wide !== undefined,
       filters,
       isolation: host ? getComputedStyle(host).isolation : null,
+      groupOpacity: host ? getComputedStyle(host).opacity : null,
+      drawingClip: drawing ? getComputedStyle(drawing).overflow : null,
       drawingZ: drawing ? Number(getComputedStyle(drawing).zIndex) : Number.NaN,
       pulseZ: pulse ? Number(getComputedStyle(pulse).zIndex) : Number.NaN,
       coverZ: cover ? Number(getComputedStyle(cover).zIndex) : Number.NaN,
@@ -305,6 +335,8 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
     `${what}: no outer filter`,
   ).toBe(true);
   expect(hiding.isolation, `${what}: the warm-up blends only with itself`).toBe('isolate');
+  expect(hiding.groupOpacity, `${what}: drawing and cover compose before the page clips them`).toBe('0.999');
+  expect(hiding.drawingClip, `${what}: only the placeholder drawing has the canvas clip`).toBe('hidden');
   expect(hiding.pulseZ, `${what}: the repaint marker is above every scene`).toBeGreaterThan(hiding.drawingZ);
   expect(
     hiding.coverZ,
