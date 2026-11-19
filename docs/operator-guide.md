@@ -444,3 +444,9 @@ In **Library**, press **Export kirtan bundle…**. Tick the kirtans to share, an
 Send the saved `.drashti-kirtans` file privately, or put it in a folder the mandirs already share. On the receiving computer, open **Library** and use **Import… > Files…**, or drop the file onto that open sheet. The kirtans come into the library with their language tracks, details, notes, arrangements and any media included. Importing leaves what is on the screens playing as it was.
 
 Importing the same kirtan again updates its earlier copy in that library. If someone has edited that copy, their changes stay and a notice says **Local edits kept**. A changed name counts as an edit too. A kirtan deleted here stays deleted. If a media file was left out, a notice names it: find the file through **Media**, or ask the sender for a bundle that includes it.
+
+## 13. Following the show on another computer
+
+On Main in Pro Mode, open **Screens** and tick **Shared show view** beside an already paired node. The second computer's window becomes **Drashti Controller**: LIVE, NEXT and the coming playlist rows follow Main. It has no show controls yet; run the show on Main.
+
+**Connected to Main** means it has Main's current show. **Not connected** leaves the last view visible while it tries to reconnect. Main and its audience screens keep running. Any displays assigned to the controller keep their last show too, even through a longer link loss; an explicit stop from Main still applies. Untick **Shared show view** on Main to remove the view; the show stays as it was. Sound stays on Main. Main's video inputs and other app windows are named as being on Main; pictures and videos use the copies on the second computer.

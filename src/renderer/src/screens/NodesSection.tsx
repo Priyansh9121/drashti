@@ -7,6 +7,7 @@ import { Button } from '../ui/Button';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Plus, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
+import { Checkbox } from '../ui/Toggle';
 import { SectionTitle } from '../ui/Panel';
 import { DisplayRow } from './DisplayRow';
 import { screensAction, useScreens } from './screens-store';
@@ -124,6 +125,20 @@ function NodeCard({
         >
           Remove
         </Button>
+      </div>
+      <div className="space-y-1 border-t border-line pt-2">
+        <Checkbox
+          label="Shared show view"
+          checked={node.controller ?? false}
+          onChange={(event) => {
+            const on = event.target.checked;
+            void nodesAction(() => window.drashti.nodes.setController(node.id, on));
+          }}
+        />
+        <p className="text-xs text-muted">
+          Show LIVE and NEXT on this computer. Its assigned screens keep their last show if the link drops.
+          Main runs the show; this adds no show controls.
+        </p>
       </div>
       {node.versionRefused && (
         <Notice tone="danger" compact data-testid="node-version-refused">

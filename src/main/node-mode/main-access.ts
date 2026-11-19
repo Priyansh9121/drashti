@@ -7,6 +7,9 @@
  * so there is nothing for it to keep stopped (Main itself stops for good). The 2 minutes are on the timers' own
  * clock: a changed computer clock moves nothing. They are the node's own, about the local network to its Main, not the
  * internet: Main keeps working up to an hour without the internet (28 Oct 2026), telling its nodes it is let in.
+ *
+ * An explicitly enabled controller that heard Main let in keeps its last show during a link loss, so that loss
+ * changes no screen. Main saying it is not let in still stops it at once. Ordinary nodes retain the two-minute rule.
  */
 
 /** A node goes black when it has heard nothing of a Main let in for this long. */
@@ -23,6 +26,9 @@ export class MainAccess {
   /** When the screens went black, by the engine's time: they fade from then. */
   private at = 0;
   private cancel: (() => void) | null = null;
+  private controller = false;
+  /** Only an actual allowance from Main can start a controller holding its show. */
+  private lastAllowed = false;
 
   constructor(
     private readonly o: {
@@ -40,6 +46,7 @@ export class MainAccess {
 
   /** What Main said. */
   heard(letIn: boolean): void {
+    this.lastAllowed = letIn;
     if (!letIn) {
       this.goBlack('main-stopped');
       return;
@@ -49,6 +56,16 @@ export class MainAccess {
     this.o.log('Node: Main is let in: the screens show its show');
     this.why = null;
     this.o.changed();
+  }
+
+  /** A controller link drop must not change a screen; an explicit stop from Main still applies. */
+  setController(on: boolean): void {
+    if (on === this.controller) return;
+    this.controller = on;
+    if (on && this.lastAllowed) {
+      this.cancel?.();
+      this.cancel = null;
+    } else if (this.why === null) this.wait();
   }
 
   /** Why the screens are black, or null while they show. */
@@ -69,6 +86,8 @@ export class MainAccess {
   /** The 2 minutes from now, until Main is heard again. */
   private wait(): void {
     this.cancel?.();
+    this.cancel = null;
+    if (this.controller && this.lastAllowed) return;
     this.cancel = this.o.setTimer(this.o.graceMs ?? NODE_HEARD_MAIN_WITHIN_MS, () => {
       this.cancel = null;
       this.goBlack('not-heard');
