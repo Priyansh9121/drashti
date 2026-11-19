@@ -144,3 +144,13 @@ describe('an explicitly enabled controller’s screens', () => {
     expect(access.stopped).toBeNull();
   });
 });
+
+it('does not turn a controller grant into access before Main has allowed it', () => {
+  const { access, move } = setup();
+  access.setController(true);
+  move(TWO_MINUTES);
+  expect(access.stopped).toBe('not-heard');
+  access.heard(true);
+  move(TWO_MINUTES * 5);
+  expect(access.stopped).toBeNull();
+});
