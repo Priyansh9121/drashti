@@ -26,7 +26,8 @@ import { ACCESS_LIST_URL } from '../../shared/access-config';
 
 const PAGE_FILE = join(ACCESS_LIST_DIR, 'page', 'index.html');
 const PERSON = 'placeholder.user@example.com';
-const html = () => readFileSync(PAGE_FILE, 'utf8');
+/** The page's text, its line ends as a browser reads them (CR LF and CR become LF before the CSP's hashes count). */
+const html = () => readFileSync(PAGE_FILE, 'utf8').replace(/\r\n?/gu, '\n');
 const inline = (tag: 'script' | 'style') =>
   new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'u').exec(html())?.[1] ?? '';
 const sha256 = (text: string) => `'sha256-${createHash('sha256').update(text, 'utf8').digest('base64')}'`;
@@ -95,7 +96,7 @@ class FakeElement {
   }
 
   setAttribute(k: string, v: string): void {
-    this.attrs.set(k, String(v));
+    this.attrs.set(k, v);
   }
 
   getAttribute(k: string): string | null {
