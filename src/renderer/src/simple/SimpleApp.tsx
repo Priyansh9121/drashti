@@ -17,6 +17,7 @@ import { MarkersDialog } from '../markers/MarkersDialog';
 import { PlayingBars } from '../markers/PlayingBars';
 import { setMidiHandler } from '../midi/midi-store';
 import { AudioGroup } from '../music/AudioGroup';
+import { SoundLevels } from '../sound/SoundLevels';
 import { NetworkBadge } from '../network/NetworkBadge';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { useNodes } from '../nodes/nodes-store';
@@ -365,7 +366,9 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
             </div>
             {/* Audio (Session 56, the owner: "The Audio panel on the right, under LIVE and above Black-out, in the empty
                 space there"): Pro Mode's own, as under its LIVE; the column scrolls when the window is short. */}
-            <div className="mt-3 border-t border-line">
+            <div className="mt-3 divide-y divide-line border-t border-line">
+              {/* The sound's Audio and Video levels and mutes (X33), as in Pro Mode: just above Audio. */}
+              <SoundLevels />
               <AudioGroup platform={platform} />
             </div>
           </aside>
