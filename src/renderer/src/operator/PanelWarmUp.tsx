@@ -211,6 +211,15 @@ export const KIND_KEEP_MS = 20_000;
  * tile is) under a cover of the panel's own colour, a pixel larger all round: the window looks the same. Nothing in it
  * can be reached or read out, and it asks Main for nothing.
  */
+/** STUB (red): the keeper's shift onto whole device pixels. */
+export function keeperShift(
+  _box: { left: number; top: number },
+  _now: { dx: number; dy: number },
+  _ratio: number,
+): { dx: number; dy: number } {
+  return { dx: 0, dy: 0 };
+}
+
 export function PanelKindKeeper() {
   const [odd, setOdd] = useState(false);
   useEffect(() => {
