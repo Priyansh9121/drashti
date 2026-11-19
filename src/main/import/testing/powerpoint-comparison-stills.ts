@@ -1081,7 +1081,12 @@ export const STILLS_RUN6_NOTO: StillsDeck = {
 };
 
 const FONT_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/font';
-const require = createRequire(import.meta.url);
+/**
+ * A package's own file, resolved from the repository's root (no import.meta: the end-to-end tests load this module as
+ * CommonJS): vitest, the comparison harness and Playwright all run from there.
+ */
+const packageFile = (name: string): string =>
+  createRequire(join(process.cwd(), 'package.json')).resolve(name);
 
 /** Write a stills deck into `work` (its base deck beside it); returns its path. */
 export async function writeStillsDeck(work: string, deck: StillsDeck): Promise<string> {
@@ -1165,7 +1170,7 @@ export async function writeStillsDeck(work: string, deck: StillsDeck): Promise<s
   // Run 6: fonts embedded as PowerPoint embeds them (Embedded OpenType parts, named in presentation.xml).
   const fonts = await Promise.all(
     (deck.fonts ?? []).map(async (font, i) => {
-      const sfnt = sfntFromWoff(await readFile(require.resolve(font.woff)));
+      const sfnt = sfntFromWoff(await readFile(packageFile(font.woff)));
       return { ...font, id: `rId${String(4 + i)}`, part: `ppt/fonts/font${String(i + 1)}.fntdata`, sfnt };
     }),
   );
