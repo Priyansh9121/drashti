@@ -99,6 +99,17 @@ export function formWordsPdf(grouped: boolean): Buffer {
   ]);
 }
 
+/** Two drawings in a non-isolated group, with one separate drawing to check the boundary. */
+export function nonIsolatedGroupPdf(): Buffer {
+  return placeholderPdf('0 1 0 rg 170 20 40 40 re f\nq /Form Do Q', ' /XObject << /Form 6 0 R >>', [
+    stream(
+      '1 0 0 rg 20 60 70 60 re f\n0 0 1 rg 60 70 70 40 re f',
+      ' /Type /XObject /Subtype /Form /BBox [0 0 240 160]' +
+        ' /Group << /S /Transparency /CS /DeviceRGB /I false /K false >> /Resources << >>',
+    ),
+  ]);
+}
+
 export function clippedDeckPdf(pageCount: number, complexPage?: number): Buffer {
   const rgb = Array.from({ length: 8 * 4 * 3 }, (_, i) =>
     ((i * 53) % 256).toString(16).padStart(2, '0'),
