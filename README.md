@@ -18,6 +18,8 @@ Stack: Electron 44, React 19, TypeScript 6 (strict), Zustand, Tailwind 4, SQLite
 
 The first four are inside Drashti too, without the internet: **Help › Guides…** (Simple Mode shows the operator's and the presenter's). `src/main/guide.test.ts` keeps this list whole, and keeps the key card and the operator's guide true to the keys both ways.
 
+**The Drashti Manual** (since alpha.20, x37: the owner's "A, new Manual"): **Help › Drashti Manual…**, the first item under Help in both modes, tells every part of the window, a chapter each (`docs/manual/`, the order and titles in `src/shared/manual.ts`), every feature the same way: what it is, when you would use it, and how, in short numbered steps, with a picture. It is searchable, each panel's **?** opens it at that panel's chapter (**Open the manual**), and **Print…** and **Save as PDF…** print the whole manual, each chapter from a new page, from a hidden, sandboxed window that loads nothing but the page and its pictures (`src/main/manual-print.ts`). `src/main/manual.test.ts` keeps every chapter and feature in that shape, every picture one the guides' folder has or the picture run makes (`manual-*.png`), and every panel's chapter there; the keys, words and packing rules cover its chapters as they do the guides.
+
 ## Status
 
 Phase 0 (foundations) is in place:

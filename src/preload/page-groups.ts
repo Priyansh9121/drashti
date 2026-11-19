@@ -91,14 +91,17 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   // The stream's picture.
   stream: ['app', 'engine', 'liveWindow', 'media', 'output', 'stream', 'videoInputs'],
   // A node's own window, including its explicitly enabled shared show view. Main-only changes have no node handlers.
-  node: ['app', 'engine', 'guides', 'liveWindow', 'media', 'node', 'output', 'videoInputs'],
+  // Its code reaches the panels' "What is this?" (ui/Panel's SectionTitle beside it), whose Open the manual asks the
+  // manual (x37; the guides until then), though no panel of its own has a "?".
+  node: ['app', 'engine', 'liveWindow', 'manual', 'media', 'node', 'output', 'videoInputs'],
   // A deck's PDF made into pictures.
   pdf: ['pictures'],
   'pdf-export': ['engine', 'media', 'output', 'pdfExport'],
   // Pictures' sharpened copies.
   sharpen: ['sharpen'],
   // The component gallery (Diagnostics).
-  gallery: ['app', 'guides'],
+  // Its panels' "What is this?" asks the manual (x37; the guides until then).
+  gallery: ['app', 'manual'],
   // The window for Zoom (Session 48): the stream's picture only.
   zoom: ['app', 'zoom'],
   // The lock screen (Session 54), before this computer is let in: nothing of the show.
