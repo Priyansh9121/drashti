@@ -91,7 +91,9 @@ export class NodeStore {
   }
 
   write(state: NodeFile): void {
-    writeWhole(this.file, JSON.stringify(state, null, 2));
+    // Every screen as it draws, but for the adjusting grid (x27): never kept, so a start without Main shows none.
+    const kept = { ...state, screens: state.screens.map(({ grid: _grid, ...screen }) => screen) };
+    writeWhole(this.file, JSON.stringify(kept, null, 2));
   }
 
   /** Unpaired: the Main, the token, the screens and the last picture are forgotten. */

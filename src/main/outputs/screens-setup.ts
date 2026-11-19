@@ -55,6 +55,7 @@ const SCREEN_FIELDS: Record<Exclude<keyof SavedScreen, 'id'>, true> = {
   scaling: true,
   enabled: true,
   feed: true,
+  geometry: true,
   position: true,
 };
 /** A group's settings in a Look. */
@@ -175,6 +176,8 @@ const setupSchema = z.object({
         scaling: z.enum(SCALING_MODES),
         enabled: z.boolean(),
         feed: z.enum(['fill', 'key']).nullable(),
+        // Its geometry as stored (x27); none in a file written before.
+        geometry: z.string().max(20_000).nullable().default(null),
         position: z.number(),
       }),
     )
