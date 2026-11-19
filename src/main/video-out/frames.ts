@@ -42,6 +42,9 @@ export function frameBytes(format: RawFormat, width: number, height: number): nu
 /** How often the process says how it is going (and once at the first frame). */
 export const REPORT_MS = 1000;
 
+/** A still picture goes out again this often, so software that starts receiving later gets it. */
+export const REPEAT_MS = 500;
+
 export class FrameReceiver {
   private format: { format: RawFormat; width: number; height: number } | null = null;
   private frames = 0;

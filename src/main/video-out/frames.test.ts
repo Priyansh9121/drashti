@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FromProgram } from '../stream/worker/protocol';
-import { FrameReceiver, frameBytes, middleColour, type RawFrame, REPORT_MS, type Sender } from './frames';
+import {
+  FrameReceiver,
+  frameBytes,
+  middleColour,
+  type RawFrame,
+  REPEAT_MS,
+  REPORT_MS,
+  type Sender,
+} from './frames';
 import type { VideoOutWorkerStatus } from './protocol';
 
 /*
@@ -180,5 +188,46 @@ describe('the frame copy is never kept beyond its turn (x30)', () => {
     const data = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]).buffer;
     x.r.fromProgram({ kind: 'video', data });
     expect(Array.from(spy.mock.calls[0]?.[0].data ?? [])).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+});
+
+describe('a still picture reaches software that starts receiving later (x30)', () => {
+  /** Absent before x30's repeat: the red test fails here rather than at a type. */
+  const repeat = (r: FrameReceiver) => {
+    (r as unknown as { repeat?: () => void }).repeat?.();
+  };
+
+  it('sends the newest picture again after REPEAT_MS of quiet; never sooner, never with none', () => {
+    const x = receiver();
+    x.at(0);
+    repeat(x.r);
+    expect(x.sender.taken).toHaveLength(0);
+    x.r.fromProgram({ kind: 'format', width: 2, height: 2, format: 'BGRA' });
+    x.r.fromProgram({ kind: 'video', data: new Uint8Array(16).fill(9).buffer });
+    x.at(REPEAT_MS - 1);
+    repeat(x.r);
+    expect(x.sender.taken).toHaveLength(1);
+    x.at(REPEAT_MS);
+    repeat(x.r);
+    expect(x.sender.taken).toHaveLength(2);
+    expect(Array.from(x.sender.taken[1]?.data ?? [])).toEqual(Array<number>(16).fill(9));
+    // Again only REPEAT_MS after that, and not counted as a new frame.
+    x.at(REPEAT_MS * 2 - 1);
+    repeat(x.r);
+    expect(x.sender.taken).toHaveLength(2);
+    expect(x.r.status().frames).toBe(1);
+  });
+
+  it('sends a picture let go while the one before was going out once the sender is free', () => {
+    const x = receiver();
+    x.r.fromProgram({ kind: 'format', width: 2, height: 2, format: 'BGRA' });
+    x.at(0);
+    x.r.fromProgram({ kind: 'video', data: new Uint8Array(16).fill(1).buffer });
+    x.sender.busy = true;
+    x.r.fromProgram({ kind: 'video', data: new Uint8Array(16).fill(2).buffer });
+    x.sender.busy = false;
+    x.at(REPEAT_MS);
+    repeat(x.r);
+    expect(x.sender.taken.map((f) => f.data[0])).toEqual([1, 2]);
   });
 });
