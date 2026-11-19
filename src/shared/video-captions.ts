@@ -54,7 +54,7 @@ export function captionFileInfo(
   if (!stem.toLowerCase().startsWith(`${name.toLowerCase()}.`)) return null;
   let language = stem.slice(name.length + 1);
   const automatic = /\.auto$/iu.test(language);
-  if (automatic) language = language.slice(0, -5);
+  if (automatic) language = language.replace(/\.auto$/iu, '');
   return /^[a-z]{2,3}(?:-[a-z\d]{2,8}){0,3}$/iu.test(language)
     ? { language: language.toLowerCase(), automatic }
     : null;
@@ -89,22 +89,25 @@ function timestamp(value: string): number | null {
 
 function plain(value: string): string {
   const entities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
-  return value
-    .replace(/<!--[^]*?-->/gu, '')
-    .replace(/<(script|style)\b[^>]*>[^]*?<\/\1\s*>/giu, '')
-    .replace(/<br\s*\/?\s*>/giu, '\n')
-    .replace(/<[^>]*>/gu, '')
-    .replace(/\{\\[^}]*\}/gu, '')
-    .replace(/&(#x[\da-f]+|#\d+|[a-z]+);/giu, (whole: string, key: string) => {
-      if (!key.startsWith('#')) return entities[key.toLowerCase()] ?? whole;
-      const n = key[1]?.toLowerCase() === 'x' ? Number.parseInt(key.slice(2), 16) : Number(key.slice(1));
-      return n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : '';
-    })
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, '')
-    .split('\n')
-    .map((line) => line.replace(/\s+/gu, ' ').trim())
-    .filter(Boolean)
-    .join('\n');
+  return (
+    value
+      .replace(/<!--[^]*?-->/gu, '')
+      .replace(/<(script|style)\b[^>]*>[^]*?<\/\1\s*>/giu, '')
+      .replace(/<br\s*\/?\s*>/giu, '\n')
+      .replace(/<[^>]*>/gu, '')
+      .replace(/\{\\[^}]*\}/gu, '')
+      .replace(/&(#x[\da-f]+|#\d+|[a-z]+);/giu, (whole: string, key: string) => {
+        if (!key.startsWith('#')) return entities[key.toLowerCase()] ?? whole;
+        const n = key[1]?.toLowerCase() === 'x' ? Number.parseInt(key.slice(2), 16) : Number(key.slice(1));
+        return n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : '';
+      })
+      // eslint-disable-next-line no-control-regex -- discard nonprinting control bytes from caption files
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, '')
+      .split('\n')
+      .map((line) => line.replace(/\s+/gu, ' ').trim())
+      .filter(Boolean)
+      .join('\n')
+  );
 }
 
 /** Newer rolling lines replace their earlier prefix; repeated lines are drawn once. */

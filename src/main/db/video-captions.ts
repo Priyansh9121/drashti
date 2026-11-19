@@ -7,7 +7,12 @@ import {
   type VideoCaptionTrack,
 } from '../../shared/video-captions';
 
-type TrackRow = { id: string; language: string; automatic: number; name: string };
+interface TrackRow {
+  id: string;
+  language: string;
+  automatic: number;
+  name: string;
+}
 
 /** Only parsed, plain caption words live here. The off switch starts as NULL on every video. */
 export class VideoCaptionsRepo {
