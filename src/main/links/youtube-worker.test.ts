@@ -244,6 +244,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))('yt-dlp in the download process (with the f
       expect(startsIn(t.log).filter((run) => run.kind === 'download')).toHaveLength(1);
     } finally {
       t.worker.stop();
+      await until(() => startsIn(t.log).every((run) => !alive(run.pid) && !alive(run.child)));
     }
   });
 
@@ -280,6 +281,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))('yt-dlp in the download process (with the f
       expect(t.heard.some((message) => message.type === 'failed')).toBe(false);
     } finally {
       t.worker.stop();
+      await until(() => startsIn(t.log).every((run) => !alive(run.pid) && !alive(run.child)));
     }
   });
 });
