@@ -6,14 +6,16 @@ import {
   cornersProblem,
   DEFAULT_CURVE,
   DEFAULT_GAMMA,
+  drawnWithoutChip,
   GEOMETRY_LIMITS,
   NO_GEOMETRY,
   nothingSet,
   pinnedCorners,
   warpMatrix,
 } from '../../../shared/screen-geometry';
-import type { ScalingMode, ScreenConfig } from '../../../shared/screens';
+import type { NodeDisplays, ScalingMode, ScreenConfig } from '../../../shared/screens';
 import { SCALING_MODES, SCALING_WORDS } from '../../../shared/screens';
+import { connectDrawingMode, useDrawingMode } from '../operator/drawing-mode';
 import { isTyping } from '../operator/useKeymap';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
@@ -45,6 +47,9 @@ interface Pixels {
 }
 
 const round = (n: number, places = 0) => Number(n.toFixed(places));
+
+/** No nodes (kept one, so the store's selector gives the same list each time). */
+const NO_NODES: readonly NodeDisplays[] = [];
 
 /** The corners with one of them moved. */
 const withCorner = (c: Corners, i: number, p: Point): Corners => [
@@ -335,6 +340,14 @@ export function AdjustPicture({
   const [grid, setGrid] = useState(true);
   const [problem, setProblem] = useState<string | null>(null);
   const [sender] = useState(() => new GeometrySender(screen.id, setProblem));
+  // Whether this screen draws without a graphics chip (its node's word, or this computer's): a video on a picture
+  // pinned by its corners plays unevenly there, which the dialog says once a corner is moved (the owner's Q60-24 A).
+  useEffect(() => {
+    connectDrawingMode();
+  }, []);
+  const hereChipless = useDrawingMode((s) => s.chipless);
+  const nodes = useScreens((s) => s.snapshot?.nodes ?? NO_NODES);
+  const noChip = drawnWithoutChip(screen, nodes, hereChipless);
   useEffect(
     () => () => {
       sender.finish();
@@ -464,6 +477,12 @@ export function AdjustPicture({
     >
       <div className="space-y-4">
         {problem && <Notice tone="danger">{problem}</Notice>}
+        {noChip && g.corners.some((c) => c.x !== 0 || c.y !== 0) && (
+          <Notice tone="warning" data-testid="adjust-no-chip">
+            This screen’s computer draws without a graphics chip, so a video on a picture pinned by its
+            corners plays unevenly here. Use the projector’s own keystone, or a computer with a graphics chip.
+          </Notice>
+        )}
         <div className="flex flex-wrap items-start gap-4">
           <Preview
             g={g}
