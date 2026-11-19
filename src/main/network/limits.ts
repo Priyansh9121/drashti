@@ -14,14 +14,15 @@ export class RateLimiter {
     private readonly now: () => number = () => Date.now(),
   ) {}
 
-  /** True when this key may go ahead now (and it is counted). */
-  take(key: string): boolean {
+  /** Reserve a whole count or none; existing callers count one request. */
+  take(key: string, count = 1): boolean {
+    if (!Number.isInteger(count) || count < 1 || count > this.burst) return false;
     const t = this.now();
     const b = this.buckets.get(key) ?? { tokens: this.burst, at: t };
     b.tokens = Math.min(this.burst, b.tokens + ((t - b.at) / 1000) * this.rate);
     b.at = t;
-    const ok = b.tokens >= 1;
-    if (ok) b.tokens -= 1;
+    const ok = b.tokens >= count;
+    if (ok) b.tokens -= count;
     this.buckets.set(key, b);
     // Forget keys that have been quiet (full buckets) so the map cannot grow without end.
     if (this.buckets.size > 1000) {

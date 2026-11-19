@@ -154,6 +154,12 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  videoCaptions: {
+    view: (mediaId) => invoke(IPC.videoCaptions.view, mediaId),
+    select: (mediaId, trackId) => invoke(IPC.videoCaptions.select, mediaId, trackId),
+    add: (mediaId) => invoke(IPC.videoCaptions.add, mediaId),
+    onChanged: (listener) => on(IPC.videoCaptions.changed, listener),
+  },
   captions: {
     view: () => invoke(IPC.captions.view),
     setOn: (value) => invoke(IPC.captions.setOn, value),
@@ -399,6 +405,8 @@ const bridge: DrashtiBridge = {
     view: () => invoke(IPC.sound.view),
     file: (mediaId) => invoke(IPC.sound.file, mediaId),
     setStepsAside: (on) => invoke(IPC.sound.setStepsAside, on),
+    setLevel: (kind, level) => invoke(IPC.sound.setLevel, kind, level),
+    setMuted: (kind, muted) => invoke(IPC.sound.setMuted, kind, muted),
     setEven: (mediaId, on) => invoke(IPC.sound.setEven, mediaId, on),
     trimEdges: (mediaId) => invoke(IPC.sound.trimEdges, mediaId),
     onChanged: (listener) => on(IPC.sound.changed, listener),
@@ -596,6 +604,11 @@ const bridge: DrashtiBridge = {
     addPicture: (presentationId, path) => invoke(IPC.slideEditor.addPicture, presentationId, path),
     fontFamilies: () => invoke(IPC.slideEditor.fontFamilies),
     showKey: (key) => invoke(IPC.slideEditor.showKey, key),
+  },
+  osc: {
+    status: () => invoke(IPC.osc.status),
+    configure: (settings) => invoke(IPC.osc.configure, settings),
+    onChanged: (listener) => on(IPC.osc.changed, listener),
   },
   midi: {
     get: () => invoke(IPC.midi.get),
