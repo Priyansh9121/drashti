@@ -27,7 +27,7 @@ import type {
   OpeningView,
 } from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
-import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
+import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
@@ -152,7 +152,15 @@ import type { PendingScreens } from './keep-screens';
 import type { PointAt, PointedClip } from './point-ahead';
 import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
-import type { EvenResult, FileSoundView, SoundView, SoundViewResult, TrimEdgesResult } from './sound';
+import type {
+  EvenResult,
+  FileSoundView,
+  SoundKind,
+  SoundLevelsResult,
+  SoundView,
+  SoundViewResult,
+  TrimEdgesResult,
+} from './sound';
 import type {
   CoverOptions,
   DisplayJob,
@@ -577,6 +585,9 @@ export const IPC = {
     /** A video's or sound's loudness as measured, and its own switch. */
     file: 'sound:file',
     setStepsAside: 'sound:set-steps-aside',
+    /** The operator's Audio or Video level, and its mute (X33): every page that plays sound plays by them. */
+    setLevel: 'sound:set-level',
+    setMuted: 'sound:set-muted',
     setEven: 'sound:set-even',
     trimEdges: 'sound:trim-edges',
     /** main -> operator: Audio's switch or a file's Even loudness changed. */
@@ -1276,9 +1287,12 @@ export interface InvokeContract {
   [IPC.updates.setAutoCheck]: { args: [on: boolean]; result: UpdateResult };
   [IPC.updates.showFile]: { args: []; result: null };
   [IPC.links.view]: { args: []; result: LinkView };
-  [IPC.links.start]: { args: [text: string, audio: boolean, intoOpenPlaylist: boolean]; result: LinkResult };
+  [IPC.links.start]: {
+    args: [text: string, audio: boolean, intoOpenPlaylist: boolean, options?: LinkDownloadOptions];
+    result: LinkResult;
+  };
   [IPC.links.look]: { args: [kind: LinkKind, link: string]; result: LinkResult };
-  [IPC.links.pickFolder]: { args: []; result: LinkResult };
+  [IPC.links.pickFolder]: { args: [target?: 'downloads' | 'captions']; result: LinkResult };
   [IPC.links.download]: { args: [choice?: YouTubeChoice | null]; result: LinkResult };
   [IPC.links.stop]: { args: []; result: LinkResult };
   [IPC.links.reset]: { args: []; result: LinkResult };
@@ -1486,6 +1500,8 @@ export interface InvokeContract {
   [IPC.sound.view]: { args: []; result: SoundView };
   [IPC.sound.file]: { args: [mediaId: string]; result: FileSoundView | null };
   [IPC.sound.setStepsAside]: { args: [on: boolean]; result: SoundViewResult };
+  [IPC.sound.setLevel]: { args: [kind: SoundKind, level: number]; result: SoundLevelsResult };
+  [IPC.sound.setMuted]: { args: [kind: SoundKind, muted: boolean]; result: SoundLevelsResult };
   [IPC.sound.setEven]: { args: [mediaId: string, on: boolean]; result: EvenResult };
   [IPC.sound.trimEdges]: { args: [mediaId: string]; result: TrimEdgesResult };
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };

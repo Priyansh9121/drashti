@@ -4,9 +4,10 @@
  * (main/outputs/warm-up-choice.ts) and tells each page that draws the show (an output's context, the stream page's).
  * Until a page is told, with a chip, as the warm-up assumes.
  *
- * A deck's own Wipe draws PowerPoint's band the way that holds the frames in each (transition-frame.ts): with a chip,
- * a mask on the slide moved every frame (drawn again each frame, which a chip does cheaply: CI's Mac); without one, a
- * mask that never changes on boxes the compositor moves (nothing drawn again: CI's two-core Windows while streaming).
+ * Without one (X11), while it runs alone, a deck's own Push, Cover and Uncover move each slide they move as a layer of
+ * its own in whole device pixels, Cover's and Uncover's shade inside it; its own Wipe draws PowerPoint's band as with a
+ * chip (a mask on the slide's box, new each frame), the outgoing slide a still layer of its own meanwhile
+ * (render/SlideLayerView.tsx): what held the frames best on CI's two-core Windows while streaming.
  */
 
 let without = false;

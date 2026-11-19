@@ -196,9 +196,10 @@ const bridge: DrashtiBridge = {
   },
   links: {
     view: () => invoke(IPC.links.view),
-    start: (text, audio, intoOpenPlaylist) => invoke(IPC.links.start, text, audio, intoOpenPlaylist),
+    start: (text, audio, intoOpenPlaylist, options) =>
+      invoke(IPC.links.start, text, audio, intoOpenPlaylist, options),
     look: (kind, link) => invoke(IPC.links.look, kind, link),
-    pickFolder: () => invoke(IPC.links.pickFolder),
+    pickFolder: (target) => invoke(IPC.links.pickFolder, target),
     download: (choice) => invoke(IPC.links.download, choice ?? null),
     stop: () => invoke(IPC.links.stop),
     reset: () => invoke(IPC.links.reset),
@@ -398,6 +399,8 @@ const bridge: DrashtiBridge = {
     view: () => invoke(IPC.sound.view),
     file: (mediaId) => invoke(IPC.sound.file, mediaId),
     setStepsAside: (on) => invoke(IPC.sound.setStepsAside, on),
+    setLevel: (kind, level) => invoke(IPC.sound.setLevel, kind, level),
+    setMuted: (kind, muted) => invoke(IPC.sound.setMuted, kind, muted),
     setEven: (mediaId, on) => invoke(IPC.sound.setEven, mediaId, on),
     trimEdges: (mediaId) => invoke(IPC.sound.trimEdges, mediaId),
     onChanged: (listener) => on(IPC.sound.changed, listener),
