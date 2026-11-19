@@ -37,6 +37,7 @@ import { useWhatIsThis } from '../help/WhatIsThis';
 import { plural } from '../ui/text';
 import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
 import { droppedPaths, hasFiles } from './drag';
+import { libraryRowsDropped, libraryRowsOver } from './DropNewDialog';
 import { startRepeat, stopRepeat } from './repeat-actions';
 import { PlaylistsUnread } from './PlaylistsUnread';
 import { SharedMark, shareEntries } from './share-with-phones';
@@ -269,6 +270,9 @@ function PlaylistTree({ platform, simple }: { platform: string; simple: boolean 
             aria-label="No playlists yet"
             tabIndex={emptyScrolls ? 0 : undefined}
             className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
+            // The library's rows dropped here with no playlist open: a new playlist or folder (Session 60, x36).
+            onDragOver={libraryRowsOver}
+            onDrop={libraryRowsDropped}
           >
             <EmptyState icon={ListMusic} title="No playlists yet" compact lamp>
               {simple
@@ -301,6 +305,10 @@ function PlaylistTree({ platform, simple }: { platform: string; simple: boolean 
           data-testid={tree.length > 0 ? 'playlist-tree' : undefined}
           hidden={tree.length === 0}
           tabIndex={-1}
+          // Outside a playlist's name (which takes them itself), the library's rows dropped with no playlist open: a
+          // new playlist or folder for them (Session 60, x36).
+          onDragOver={libraryRowsOver}
+          onDrop={libraryRowsDropped}
           onPointerDown={box.onPointerDown}
           onKeyDown={(e) => {
             if (!isSelectAll(e, platform)) return;
