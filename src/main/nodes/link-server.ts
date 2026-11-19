@@ -678,7 +678,7 @@ export class LinkServer {
       case 'controller-action': {
         const request = controllerRequestSchema.safeParse(message.request);
         if (!request.success) return;
-        const now = Date.now();
+        const now = performance.now();
         if (!client.controllerWindow || now - client.controllerWindow.at >= 1000)
           client.controllerWindow = { at: now, count: 0 };
         client.controllerWindow.count += 1;
