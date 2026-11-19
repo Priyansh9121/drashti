@@ -19,6 +19,9 @@ Update after a sabha, and update Main and nodes together.
 - The stream’s picture can now go to other software on the same computer (Syphon on a Mac, Spout on Windows), for a mixer or a recorder: turn on Send to other software in the stream’s settings. It is off until turned on.
 - PowerPoint decks look closer to PowerPoint: every built-in table style is drawn as PowerPoint draws it, banded rows and columns included; each text box’s first line sits where PowerPoint puts it (within a point), and the Wheel and Random Bars effects play as PowerPoint plays them.
 - The access list’s emailed Approve and Reject links now open on any phone or computer, in any browser, signed in to Google or not (the admin updates the list once: access-setup.md, section 11).
+- A video whose picture this computer can’t show (some cameras’ HEVC, ProRes) no longer plays its sound over a black screen: within a second or two it comes off (on a slide or in picture in picture it waits, paused), a notice says so, and Drashti converts it by itself once the show is idle; at import Drashti now also checks which HEVC this computer plays.
+- Files dropped with no playlist open ask, in a small window, for a new playlist or folder; the Library button shows only while the library is shut; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… are now in More tools and a new Tools menu.
+- LIVE no longer goes black for a moment while a slow video starts: it keeps showing what the screens show.
 
 ## 1.0.0-alpha.19 (19 Nov 2026)
 
