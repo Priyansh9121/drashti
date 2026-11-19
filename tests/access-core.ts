@@ -40,6 +40,11 @@ export interface ListProps {
   linkKey: string;
   secretKey: string;
   hasSigningKey: boolean;
+  /**
+   * Where the emailed links go: the link page (access-list/page/index.html). Code.js gives none, so the list's own
+   * (GitHub Pages); the stand-in gives its own copy's address on 127.0.0.1.
+   */
+  linkPage?: string;
 }
 
 export type Cell = string | number | boolean | Date | null;
@@ -333,6 +338,8 @@ export interface TestListOptions {
   keys?: TestKeys;
   approver?: string;
   webAppUrl?: string;
+  /** The link page's address, when not the list's own (the stand-in's copy). */
+  linkPage?: string;
   /** Emails the list may send today (Google's free account: 100). */
   mailQuota?: number;
   start?: number;
@@ -370,6 +377,7 @@ export class TestList {
       linkKey: randomBytes(32).toString('hex'),
       secretKey: randomBytes(32).toString('hex'),
       hasSigningKey: true,
+      ...(o.linkPage === undefined ? {} : { linkPage: o.linkPage }),
     };
     let depth = 0;
     this.env = {
@@ -467,9 +475,37 @@ export class TestList {
   }
 }
 
-/** A link's query as the web app's doGet hands it on (e.parameter). */
+/**
+ * A link's a, r, x and s: after its # (the link page's links, x38), or in its query (a link to the web app itself, as
+ * the list made them before, which doGet still takes as e.parameter).
+ */
 export function linkParams(link: string): Record<string, string> {
-  return Object.fromEntries(new URL(link).searchParams.entries());
+  const u = new URL(link);
+  return Object.fromEntries(
+    (u.hash.length > 1 ? new URLSearchParams(u.hash.slice(1)) : u.searchParams).entries(),
+  );
+}
+
+/** What the list answers the link page (access-list/page/index.html): its words for the page, signed. */
+export interface LinkPageAnswer {
+  v: number;
+  link: 'read' | 'answer';
+  serverTime: number;
+  page: Omit<LinkPage, 'params'>;
+}
+
+/**
+ * One call from the link page, as its browser sends it (JSON text, no Google sign-in): `read` says what the link is
+ * for, changing nothing; `answer` is its one button. The answer's signature is checked with the list's public key.
+ */
+export function linkCall(
+  list: TestList,
+  link: string,
+  call: 'read' | 'answer',
+  fields: Record<string, string> = {},
+): LinkPageAnswer {
+  const answer = list.handle(JSON.stringify({ link: call, ...linkParams(link), ...fields }));
+  return readAnswer(answer, list.keys.publicKey) as unknown as LinkPageAnswer;
 }
 
 export interface AnswerPayload {
