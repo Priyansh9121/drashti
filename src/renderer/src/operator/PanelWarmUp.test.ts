@@ -56,13 +56,27 @@ describe('the Stream panel’s pieces, warmed unseen', () => {
     expect(plain).not.toContain('shadow-primary');
     expect(plain).not.toContain('shadow-card');
     expect(plain).not.toContain('inset');
+    // The sheet's shadow on a square box, small enough to draw its blur whole inside the LIVE box.
+    expect(plain).toMatch(/class="absolute [^"]*bg-panel shadow-\[0_8px_16px_-4px_[^"]*"/u);
   });
 
-  it('can’t be reached or read out, and its words are none of the panel’s buttons’', () => {
+  it('can’t be reached or read out, has no button, and its words are none of the panel’s', () => {
     const html = markup();
     expect(html).toMatch(/^<div[^>]*aria-hidden="true"[^>]*inert=""/u);
     expect(html.match(/data-testid=/gu)).toHaveLength(1);
+    // Nothing in it is a button: the window's one primary stays its own (first-start.spec.ts, next-thing.spec.ts).
+    expect(html).not.toContain('<button');
+    expect(html).not.toContain('data-variant');
     for (const words of PANEL_WORDS) expect(html).not.toContain(words);
+  });
+
+  it('has the preview’s picture beneath, unfiltered: a canvas the graphics chip draws, under rounded corners', () => {
+    // At least 128 x 129 px, so Chromium draws it on the GPU as a layer of its own (smaller, it is drawn in its tile).
+    expect(markup()).toMatch(
+      /^<div[^>]*><span class="absolute [^"]*overflow-hidden rounded-lg[^"]*"><canvas width="320" height="180"/u,
+    );
+    const [withIcons = '', plain = ''] = layers(markup());
+    expect(withIcons + plain).not.toContain('width="320"');
   });
 
   it('starts on a whole device pixel', () => {

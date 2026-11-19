@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Button } from '../ui/Button';
+import { buttonClass } from '../ui/Button';
 import { Loader, Mic, Radio, ScreenShare, Settings, X } from '../ui/icons';
 
 /*
@@ -17,12 +17,14 @@ import { Loader, Mic, Radio, ScreenShare, Settings, X } from '../ui/icons';
  * So while the LIVE picture warms up at the start (render/WarmUp.tsx, which the opening waits for), this draws the
  * panel's pieces in the LIVE picture's black box, black under brightness(0), twice: once beside icons and once with no
  * path at all (no icon, no inset light), each in a layer of its own so its tiles are its own; at their own size and on
- * whole device pixels, as the panel draws them (a box between pixels is drawn another way: its edges smoothed). It
- * goes with the warm-up. Nothing in it can be reached (inert) or read out (aria-hidden), its words are no button's,
- * and nothing in it asks Main for anything.
+ * whole device pixels, as the panel draws them (a box between pixels is drawn another way: its edges smoothed); and,
+ * beneath them, unfiltered and black, the preview's picture as the compositor draws it. It goes with the warm-up.
+ * Nothing in it can be reached (inert) or read out (aria-hidden), nothing in it is a button (its buttons are drawn as
+ * buttons look: the window keeps its one primary), its words are no button's, and nothing in it asks Main for
+ * anything.
  */
 
-/** How far to move a box at (`left`, `top`) CSS px so it starts on a whole device pixel (`ratio` device px a CSS px). */
+/** How far to move a box at (`left`, `top`) CSS px onto a whole device pixel (`ratio` device px a CSS px). */
 export function onWholePixels(left: number, top: number, ratio: number): { dx: number; dy: number } {
   const r = Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
   const by = (v: number) => (Number.isFinite(v) ? (Math.round(v * r) - v * r) / r : 0);
@@ -58,6 +60,27 @@ function ProgramBox({ children }: { children?: ReactNode }) {
   );
 }
 
+/**
+ * The Program box's picture as the compositor draws it (the panel's preview: a canvas the graphics chip draws, a layer
+ * of its own, scaled, under the box's rounded corners). Unfiltered, since a filter over it is drawn into it, another
+ * kind (the trace at f94cd564: the small canvases above are drawn in their tiles, and the compositor drew this kind
+ * new as the panel opened); its pixels black, unseen on the LIVE box's black.
+ */
+function PreviewPicture() {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useLayoutEffect(() => {
+    const c = canvas.current?.getContext('2d');
+    if (!c) return;
+    c.fillStyle = '#000000';
+    c.fillRect(0, 0, 320, 180);
+  }, []);
+  return (
+    <span className="absolute top-[27px] left-12 block h-36 w-64 overflow-hidden rounded-lg bg-black">
+      <canvas ref={canvas} width={320} height={180} className="h-full w-full object-contain" />
+    </span>
+  );
+}
+
 /** A see-through fill under rounded corners (a box's inset light is one, beside its path). */
 const SeeThroughUnderCorners = () => (
   <span className="block h-4 w-12 overflow-hidden rounded-lg">
@@ -69,13 +92,16 @@ const SeeThroughUnderCorners = () => (
 function WithIcons() {
   return (
     <Layer top={8}>
-      {/* The primary button: its oklab gradient under its rounded corners beside its icon, its inset light, ring, glow. */}
-      <Button variant="primary" size="lg" icon={Radio} tabIndex={-1}>
+      {/* The primary button: its oklab gradient under its rounded corners beside its icon, its inset light, ring, glow.
+          Drawn as a button looks, never a button (no test or keyboard finds a second primary: docs/design.md). */}
+      <span className={buttonClass('primary', 'lg')}>
+        <Radio size={18} aria-hidden="true" className="shrink-0" />
         Aa
-      </Button>
-      <Button icon={ScreenShare} tabIndex={-1}>
+      </span>
+      <span className={buttonClass('secondary', 'md')}>
+        <ScreenShare size={16} aria-hidden="true" className="shrink-0" />
         Aa
-      </Button>
+      </span>
       <span className="flex h-8 w-8 items-center justify-center rounded-md">
         <X size={16} aria-hidden="true" />
         <Settings size={16} aria-hidden="true" />
@@ -109,6 +135,9 @@ function WithIcons() {
 /**
  * The pieces with no path at all (no icon; no inset light, which is drawn as a path): every tile of this layer is
  * drawn plainly. The primary button's gradient, ring and glow on a box of its own (the button itself has the light).
+ * Inside the LIVE box's rounded corners only a piece drawn whole inside them is drawn as the panel draws it, with no
+ * clip; and the sheet's shadow on a box this small draws no blur at all (its -18 px spread leaves nothing: the trace at
+ * f94cd564 had every kind but that one): so the sheet's shadow is a small one of its own, whole inside.
  */
 function Plain() {
   return (
@@ -116,15 +145,17 @@ function Plain() {
       <span className="flex h-10 items-center rounded-lg border border-primary-lo bg-linear-to-b from-primary-hi via-primary via-55% to-primary-lo px-4 text-base font-bold text-on-primary shadow-[0_0_0_1px_var(--depth-primary-ring),0_10px_24px_-12px_var(--depth-primary)]">
         Aa
       </span>
-      <Button tabIndex={-1}>Aa</Button>
+      <span className={buttonClass('secondary', 'md')}>Aa</span>
       <span className="block h-8 w-12 rounded-lg border border-line bg-panel-2 shadow-overlay" />
-      <span className="block h-10 w-8 border-l border-line-strong bg-panel shadow-overlay" />
       <span className="block h-4 w-8 bg-black/60" />
       <SeeThroughUnderCorners />
       <span className="relative block h-2.5 w-16 overflow-hidden rounded-full border border-line-strong bg-panel-3">
         <span className="block h-full w-8 bg-success" />
       </span>
       <ProgramBox />
+      {/* The sheet: a square box's blurred shadow, whole inside the LIVE box (one that reaches the box's rounded
+          corners is drawn clipped to them: another kind; the sheet's own, 52 px, has no room here). */}
+      <span className="absolute top-6 right-12 block h-6 w-6 bg-panel shadow-[0_8px_16px_-4px_rgb(0_0_0/0.45)]" />
       <span className="text-2xs font-bold tracking-wider text-heading uppercase">Aa</span>
     </Layer>
   );
@@ -148,6 +179,7 @@ export function PanelWarmUp() {
       data-testid="panel-warm-up"
       className="pointer-events-none absolute inset-0 overflow-hidden"
     >
+      <PreviewPicture />
       <WithIcons />
       <Plain />
     </div>
