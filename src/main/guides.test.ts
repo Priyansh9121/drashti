@@ -77,8 +77,9 @@ describe('the guides inside Drashti', () => {
     expect(files.read('operator')).toContain('# The operator');
     const name = [...files.pictureNames()][0] ?? '';
     expect(files.picture(name)).toBe(join(docs, 'screenshots', name));
-    // A screenshot no guide shows, and anything that is not a picture's name, are refused.
-    expect(files.picture('announcements-queue.png')).toBeNull();
+    // A screenshot no guide shows (nor the manual, x37: its chapters show announcements-queue.png, this test's
+    // until then), and anything that is not a picture's name, are refused.
+    expect(files.picture('component-gallery.png')).toBeNull();
     expect(files.picture('../README.md')).toBeNull();
     expect(
       guidesDir({
