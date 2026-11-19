@@ -145,6 +145,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stream.goLive,
   IPC.stream.end,
   IPC.stream.pickFolder,
+  // Video out (x30): turned on, off or named in Pro Mode only (it keeps sending in Simple Mode).
+  IPC.stream.setVideoOut,
   // Conversions make copies: Pro Mode's (a file's start, end and markers are bounded since Session 56, below).
   IPC.media.convert,
   IPC.media.cancelConversion,
@@ -176,9 +178,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.nodes.newIdentity,
   IPC.nodes.everything,
   IPC.nodes.setController,
+  IPC.nodes.setControllerAreas,
   IPC.nodes.reload,
   IPC.screens.assignNodeDisplay,
   // A node's own window has no Simple Mode; listed so no change is ever open by mistake.
+  IPC.node.action,
   IPC.node.pair,
   IPC.node.unpair,
   IPC.node.useAsMain,

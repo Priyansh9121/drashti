@@ -21,6 +21,7 @@ import {
   startCapture,
   stopEncoder,
   stopPreview,
+  stopVideoOut,
 } from './capture';
 import { useProgram } from './program-store';
 import { ProgramView } from './ProgramView';
@@ -60,6 +61,7 @@ function apply(context: ProgramContext): void {
   setLiveWindowSize({ width: context.width, height: context.height, frameRate: 30 });
   if (!context.preview) stopPreview();
   if (!context.capturing) stopEncoder();
+  if (!context.videoOut) stopVideoOut();
   sound.setDelay(context.soundDelayMs);
   sound.setOwnSound(context.mixOwnSound, useEngine.getState().state);
   inputsInTurn(context);

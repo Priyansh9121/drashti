@@ -11,7 +11,8 @@ before it opens and every 15 seconds while open, whether this computer is still 
 | `core.js`         | Every rule, in plain JavaScript with no Google service in it (Apps Script and Node run it).                     |
 | `Code.js`         | Apps Script's side: doGet, doPost, the Sheet's Drashti menu, the daily check, Google's services for core.js.    |
 | `Setup.html`      | Drashti › Set up…: makes the keys in the owner's browser and shows the one line to send.                        |
-| `Link.html`       | The page an Approve or Reject link opens: what it is for, and one button.                                       |
+| `Link.html`       | The page a link sent before x38 opens (on the web app itself): what it is for, and one button.                  |
+| `page/index.html` | The link page: what each emailed Approve or Reject link opens (GitHub Pages, outside Google). Never pasted.     |
 | `appsscript.json` | The manifest: V8, four scopes (this Sheet, sending email, the Sheet's windows, its own daily trigger), web app. |
 
 ## Who is who
@@ -255,11 +256,35 @@ after a revoke or a newer grant, and runs out 3 days after it is sent. Randomnes
 
 ## Approve and Reject links
 
-`<web app>?a=approve|reject&r=<request id>&x=<expiry, ms>&s=<HMAC-SHA-256(LINK_KEY, "drashti-link\n" + a +
-"\n" + r + "\n" + x), hex>`, made with each request, running out after 7 days. Opening one (doGet) shows a page
-saying what it is for, with ONE button; nothing changes until it is pressed (Link.html calls `answerLink`
-through `google.script.run`, which checks the link again under the lock), so an email scanner opening it does
-nothing. An Approve page also asks how long access lasts (Unlimited chosen, or the length the owner chose
+`https://priyansh9121.github.io/drashti/access/#a=approve|reject&r=<request id>&x=<expiry, ms>&s=<HMAC-SHA-256(LINK_KEY,
+"drashti-link\n" + a + "\n" + r + "\n" + x), hex>`, made with each request, running out after 7 days. Each opens
+**the link page** (`page/index.html`, x38, the owner's words of 19 Nov 2026: the admin may open the email on a phone or
+any browser), which GitHub Pages serves from this public repository, outside Google. Google's own script pages do not
+open in a browser signed in to another Google account, or to several: Google answers "Sorry, unable to open the file at
+this time" before the script runs (Apps Script's Troubleshooting page: "Multi-login, or being logged into multiple
+Google Accounts at once, isn't supported for Apps Script, add-ons, or web apps"). The link's four come after the `#`,
+which no web server is sent. The page has the list's address built in (the same as Drashti's,
+`src/shared/access-config.ts`) and asks it through the web app's `doPost`, as JSON sent as plain text (so no browser
+asks the list first) with no cookie (`credentials: 'omit'`), so no Google sign-in goes with it, whatever accounts the
+browser is signed in to, as with Drashti's own calls; Google's answers may be read from any site. Its two calls:
+
+- `{ "link": "read", "a", "r", "x", "s" }` on opening: what the link is for. Nothing changes, so an email scanner
+  opening the page does nothing.
+- `{ "link": "answer", "a", "r", "x", "s", "length", "mode" }` at its ONE button (an Approve page's length and mode):
+  the link checked again under the lock, and answered once.
+
+Each is answered and signed as any answer, `{ "v": 1, "link", "serverTime", "page": { "kind", "title", "lines",
+"button", "lengths", "modes" } }`: `ready` (with its button, and an Approve page's lengths and modes), `done`, `used`,
+`replaced`, `out-of-date`, `forged`, `not-set-up`, `refused` (the button stays, to choose again) or `error` (Not done:
+try again). A call with `v` or `op` is Drashti's, never the page's. The page puts every word in as plain text, keeps
+nothing in the browser, works only on its own (never inside another page), and its Content-Security-Policy lets it run
+its own script and style alone and talk to Google's two script hosts alone (`src/main/access/link-page.test.ts` keeps
+its hashes and its list address). It is published from the branch `gh-pages`, which holds only `access/index.html` (a
+copy of `page/index.html`) and `.nojekyll`; `docs/access-setup.md`, section 11, says how the owner puts the change in.
+A link sent before x38 opened the web app itself (`<web app>?a=…&r=…&x=…&s=…`): `doGet` still shows its page for those
+(`Link.html`, whose button calls `answerLink` through `google.script.run`) until they run out.
+
+An Approve page also asks how long access lasts (Unlimited chosen, or the length the owner chose
 adding the Gmail), and sends the length chosen with the button (`length`: `unlimited`, or the days as text);
 the list checks it again, and a length it does not give changes nothing. It asks what they may use too
 (Session 55): Simple Mode only (chosen at first) or Pro Mode and Simple Mode (chosen at first when the owner chose
@@ -329,6 +354,7 @@ nothing (Session 55 review).
 ## Tests
 
 `tests/access-core.ts` runs `core.js` with Google's services made in memory; `tests/access-standin.ts` is the
-stand-in list on 127.0.0.1 that every end-to-end test uses; `src/main/access/list-core.test.ts`,
-`list-code.test.ts`, `list-protocol.test.ts` and `standin.test.ts` are the unit tests. Placeholder addresses
-only (`placeholder.user@example.com`, `owner.placeholder@example.com`).
+stand-in list on 127.0.0.1 that every end-to-end test uses, with its own copy of the link page on a second address (a
+site of its own, as GitHub Pages is); `src/main/access/list-core.test.ts`, `list-code.test.ts`, `list-protocol.test.ts`,
+`link-page.test.ts` (the link page's own script, run against `core.js`) and `standin.test.ts` are the unit tests.
+Placeholder addresses only (`placeholder.user@example.com`, `owner.placeholder@example.com`).

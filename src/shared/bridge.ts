@@ -1,3 +1,4 @@
+import type { ControllerArea, ControllerReply, ControllerRequest } from './controller-actions';
 import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
 import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
@@ -103,6 +104,7 @@ import type {
   StreamStatus,
 } from './stream';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { VideoOutResult, VideoOutSettings, VideoOutStatus } from './video-out';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
 import type { AccessLength, AccessMode } from './access-protocol';
@@ -743,6 +745,11 @@ export interface DrashtiBridge {
     dismissResume(): Promise<null>;
     /** Try the stream's page again, stopped after crashing too often (Session 31). */
     tryAgain(): Promise<StreamResult>;
+    /** Video out (x30): the stream's picture to other software, off until it is turned on. */
+    videoOut(): Promise<VideoOutStatus>;
+    /** The operator window, Pro Mode: turn it on or off, or name it. */
+    setVideoOut(settings: VideoOutSettings): Promise<VideoOutResult>;
+    onVideoOut(listener: (status: VideoOutStatus) => void): () => void;
     /** The stream's own page. */
     page: {
       context(): Promise<ProgramContext | null>;
@@ -848,6 +855,7 @@ export interface DrashtiBridge {
     everything(nodeId: string, on: boolean): Promise<NodesResult>;
     /** Main's Pro Mode only: enable the paired computer's shared show view, without show actions. */
     setController(nodeId: string, on: boolean): Promise<NodesResult>;
+    setControllerAreas(nodeId: string, areas: ControllerArea[]): Promise<NodesResult>;
     /** Reload one output: on Main (nodeId null) or on a node. */
     reload(nodeId: string | null, screenId: string): Promise<NodesResult>;
     /** A display's number and name on it (null: every display of that computer). */
@@ -858,6 +866,7 @@ export interface DrashtiBridge {
   /** A node's own window (node mode only). */
   node: {
     view(): Promise<NodeView>;
+    action(request: ControllerRequest): Promise<ControllerReply>;
     onChanged(listener: (view: NodeView) => void): () => void;
     pair(address: string, code: string): Promise<NodeViewResult>;
     unpair(): Promise<NodeViewResult>;

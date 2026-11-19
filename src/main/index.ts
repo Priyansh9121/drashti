@@ -327,6 +327,9 @@ import { PipPlaces } from './pip/pip-places';
 import { VideoInputsService } from './video-inputs/video-inputs-service';
 import { electronCamera } from './video-inputs/electron-camera';
 import { ZoomWindow } from './stream/zoom-window';
+import { videoOutSender } from './video-out/sender';
+import { spawnVideoOutWorker, videoOutChannel } from './video-out/spawn';
+import { VideoOutService } from './video-out/video-out-service';
 import { startAccessList } from './access/access-list-main';
 import { openPlaceholderMeeting, PLACEHOLDER_MEETING } from './live-window/placeholder';
 import { StreamService } from './stream/stream-service';
@@ -2434,6 +2437,8 @@ function start(): void {
   // Show a Window… and the window for Zoom (Session 48): made with the stream, below.
   let liveWindows: LiveWindowService | null = null;
   let zoomWindow: ZoomWindow | null = null;
+  // Video out (x30): the stream's picture to other software, made with the stream, below.
+  let videoOutService: VideoOutService | null = null;
   const screens = new ScreensService(
     screenRepo,
     manager,
@@ -3119,6 +3124,7 @@ function start(): void {
     },
     programChanged: () => {
       zoomWindow?.programChanged();
+      videoOutService?.programChanged();
     },
     log: (level, message) => {
       if (level === 'warn') log.warn(message);
@@ -3266,6 +3272,50 @@ function start(): void {
   zoomWindow = zoom;
   stops.add('window for Zoom', () => {
     zoom.close();
+  });
+
+  // ---- video out (x30): the stream's picture to other software ---------------------
+  // Off until someone turns it on (then kept over a restart). On, the stream's page is kept open and its own capture
+  // gives each frame to the video-out process as well; frames never pass through here (src/main/video-out/).
+  const videoOut = new VideoOutService({
+    readSetting: () => settings.get('videoOut'),
+    writeSetting: (value) => {
+      settings.set('videoOut', value);
+    },
+    sender: () =>
+      videoOutSender({
+        standIn: sw('DRASHTI_TEST_VIDEO_OUT_STAND_IN') ?? null,
+        platform: process.platform,
+        arch: process.arch,
+        packaged: packaged(),
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath(),
+      }),
+    holdProgram: (on) => {
+      streaming.setVideoOut(on);
+    },
+    pairProgram: (port) => streaming.pairVideoOut(port),
+    channel: videoOutChannel,
+    spawnWorker: () =>
+      spawnVideoOutWorker((line) => {
+        log.info(`[video out] ${line}`);
+      }),
+    log: (level, line) => {
+      if (level === 'warn') log.warn(line);
+      else log.info(line);
+    },
+    changed: (status) => {
+      sendToOperator(IPC.stream.videoOutChanged, status);
+    },
+    now: Date.now,
+    later: (run, ms) => {
+      setTimeout(run, ms).unref();
+    },
+  });
+  videoOutService = videoOut;
+  videoOut.start();
+  stops.add('video out', () => {
+    videoOut.close();
   });
   // A passage fits where the live Look shows it: audience and key and fill groups, and the stream's
   // lower third while it is on air or recording in its Camera layout.
@@ -4339,7 +4389,15 @@ function start(): void {
     }),
   );
   handle(IPC.engine.snapshot, () => engine.snapshot());
-  handle(IPC.engine.command, (event, command) => runEngineCommand(engine, command, fromOperator(event)));
+  let controllersHaveActions = () => false;
+  handle(IPC.engine.command, (event, command, seen) =>
+    runEngineCommand(
+      engine,
+      command,
+      fromOperator(event),
+      controllersHaveActions() ? (seen ?? null) : undefined,
+    ),
+  );
   // The deck slide the operator points at (C3, Session 58: Q57-26): its first clip loaded ahead, where a click on its
   // row starts it, by every screen that loads what comes next (each output's Preloader, a node's too), never while
   // this computer is short of memory (main/point-ahead.ts).
@@ -5747,6 +5805,7 @@ function start(): void {
       rev: () => engine.rev,
       session: engine.session,
     },
+    runShowAction: (command, who) => net.runShowAction({ op: 'command', args: command }, who),
     wanted: (state, everything) => wanted.list(state, everything),
     mediaFile: (mediaId) => wanted.source(mediaId, mediaDir),
     onAir: () => streaming.inUse(),
@@ -5833,6 +5892,10 @@ function start(): void {
   handle(IPC.nodes.newIdentity, (e) => (fromOperator(e) ? nodes.newIdentity() : notNodesOperator));
   handle(IPC.nodes.everything, (e, id, on) =>
     fromOperator(e) ? nodes.setEverything(id, on) : notNodesOperator,
+  );
+  controllersHaveActions = () => nodes.hasControllerActions();
+  handle(IPC.nodes.setControllerAreas, (e, id, areas) =>
+    fromOperator(e) ? nodes.setControllerAreas(id, areas) : notNodesOperator,
   );
   handle(IPC.nodes.setController, (e, id, on) =>
     fromOperator(e) ? nodes.setController(id, on) : notNodesOperator,
@@ -6759,6 +6822,12 @@ function start(): void {
     return null;
   });
   handle(IPC.zoom.program, (e) => (zoom.isZoomPage(e.sender) ? zoom.program() : null));
+  handle(IPC.stream.videoOut, () => videoOut.status());
+  handle(IPC.stream.setVideoOut, (e, raw) =>
+    fromOperator(e) && mode === 'pro'
+      ? videoOut.set(raw)
+      : { ok: false as const, message: 'Only the operator window, in Pro Mode, can change video out.' },
+  );
   // The screens' pages only: an output, the stream's page, and the operator window's pictures of them.
   const screenPage = (e: IpcMainInvokeEvent) =>
     fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined || streaming.isProgram(e.sender);

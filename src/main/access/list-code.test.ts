@@ -21,6 +21,7 @@ import {
   PLACEHOLDER_APPROVER,
   placeholderComputer,
   readAnswer,
+  type LinkPageAnswer,
 } from '../../../tests/access-core';
 
 /*
@@ -36,6 +37,8 @@ const signed = (b: Buffer) => [...b].map((x) => (x > 127 ? x - 256 : x));
 const unsigned = (bytes: number[]) => Buffer.from(bytes.map((x) => x & 255));
 const PERSON = 'placeholder.user@example.com';
 const URL = 'https://script.google.com/macros/s/placeholder-web-app-id/exec';
+/** Where the list's emailed links go (x38): the link page, on GitHub Pages, outside Google. */
+const LINK_PAGE = 'https://priyansh9121.github.io/drashti/access/';
 
 class FakeRange {
   constructor(
@@ -372,13 +375,14 @@ describe('the list in Apps Script', () => {
     expect([...g.counts.hmacCharsets]).toEqual(['UTF_8']);
   });
 
-  it('takes an Approve link to its page (one button), then its button, then lets the computer in', () => {
+  it('takes an Approve link sent before x38 (to the web app itself) to its page (one button), then its button, then lets the computer in', () => {
     const g = appsScript({ props: setUpProps() });
     g.fn('prepareSheet_');
     const computer = placeholderComputer('code-link');
     post(g, callBody('request', computer, { gmail: PERSON }).body);
     const approve = /Approve: (\S+)/u.exec(g.mails[0]?.body ?? '')?.[1] ?? '';
-    expect(approve.startsWith(`${URL}?a=approve&`)).toBe(true);
+    // The email's link opens the link page now; one sent before opened the web app, which still takes it (doGet).
+    expect(approve.startsWith(`${LINK_PAGE}#a=approve&`)).toBe(true);
     const page = g.fn('doGet', { parameter: linkParams(approve) }) as { vars: Record<string, unknown> };
     expect(page.vars['file']).toBe('Link');
     expect(page.vars['meta:viewport']).toContain('width=device-width');
@@ -395,6 +399,45 @@ describe('the list in Apps Script', () => {
       status: 'in',
     });
     expect((g.fn('doGet', { parameter: {} }) as { text: string }).text).toContain('access list');
+  });
+
+  it('answers the link page through doPost (x38): its calls as plain text from any browser, read changing nothing, answer once; Code.js unchanged for it', () => {
+    const g = appsScript({ props: setUpProps() });
+    g.fn('prepareSheet_');
+    const computer = placeholderComputer('code-link-page');
+    post(g, callBody('request', computer, { gmail: PERSON }).body);
+    const approve = /Approve: (\S+)/u.exec(g.mails[0]?.body ?? '')?.[1] ?? '';
+    expect(approve.startsWith(`${LINK_PAGE}#a=approve&r=`)).toBe(true);
+    const fromPage = (call: 'read' | 'answer', fields: Record<string, string> = {}) => {
+      const out = g.fn('doPost', {
+        postData: {
+          contents: JSON.stringify({ link: call, ...linkParams(approve), ...fields }),
+          type: 'text/plain',
+        },
+      }) as { text: string; mime: string };
+      expect(out.mime).toBe('JSON');
+      return readAnswer(
+        JSON.parse(out.text) as { payload: string; sig: string },
+        keys.publicKey,
+      ) as unknown as LinkPageAnswer;
+    };
+    expect(fromPage('read')).toMatchObject({
+      v: 1,
+      link: 'read',
+      page: { kind: 'ready', button: 'Approve' },
+    });
+    fromPage('read');
+    expect(g.mails).toHaveLength(1);
+    expect(g.sheets.find((s) => s.name === 'Access List')?.records()[0]).toMatchObject({
+      Status: 'requested',
+    });
+    expect(fromPage('answer', { length: '7', mode: 'simple' }).page).toMatchObject({
+      kind: 'done',
+      title: 'Approved',
+    });
+    expect(fromPage('answer', { length: '7', mode: 'simple' }).page).toMatchObject({ kind: 'used' });
+    expect(g.mails[1]).toMatchObject({ to: PERSON, subject: 'Your Drashti token' });
+    expect(g.mails).toHaveLength(2);
   });
 
   it('reads the script’s settings once, then from the cache', () => {
