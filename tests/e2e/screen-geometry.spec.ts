@@ -65,6 +65,18 @@ const KEYSTONE: ScreenGeometry = {
   ],
 };
 
+/**
+ * Pinned, zoomed and blended, as the Performance check pins its hall screen: the blend's ramp at its right edge is a
+ * layer of its own under the warp (as a video or another canvas is), which a clip there makes Chromium draw again into
+ * a surface of its own each frame (x27's first diagnostic: two such surfaces; with corners alone and only painted
+ * pictures there was none to see).
+ */
+const PINNED_BLENDED: ScreenGeometry = {
+  ...KEYSTONE,
+  zoom: 0.97,
+  blend: { left: 0, right: 288, gamma: 2.2, curve: 2 },
+};
+
 const bridge = (win: Page) => ({
   update: (screenId: string, geometry: ScreenGeometry | null) =>
     win.evaluate(
@@ -328,7 +340,7 @@ test('a pinned picture is drawn straight through its warp: no clip under it make
   // near the canvas's top, as Fit places the canvas.
   const nearTop = [
     { x: 300, y: 40 },
-    { x: 1620, y: 40 },
+    { x: 1500, y: 40 },
   ];
   await expect
     .poll(async () =>
@@ -341,7 +353,7 @@ test('a pinned picture is drawn straight through its warp: no clip under it make
     )
     .toEqual([true, true]);
 
-  expect(await bridge(win).update(screenId, KEYSTONE)).toBe('ok');
+  expect(await bridge(win).update(screenId, PINNED_BLENDED)).toBe('ok');
   await expect(out.getByTestId('output-root')).toHaveAttribute('data-geometry', 'set');
   // Pinned: the picture inside, and black just outside its top and bottom edges, where the background is drawn past
   // the canvas, and at the window's own corners.
@@ -351,7 +363,7 @@ test('a pinned picture is drawn straight through its warp: no clip under it make
     { x: 1920, y: 0 },
     { x: 1920, y: 1080 },
     { x: 0, y: 1080 },
-  ].map((p) => onWindow(HD, null, box, KEYSTONE, p)) as [Point, Point, Point, Point];
+  ].map((p) => onWindow(HD, null, box, PINNED_BLENDED, p)) as [Point, Point, Point, Point];
   const outside: Point[] = [
     edge(tl, tr, -8),
     edge(bl, br, 8),
@@ -361,7 +373,7 @@ test('a pinned picture is drawn straight through its warp: no clip under it make
   await expect
     .poll(async () => {
       const got = await pixels(out, [
-        ...nearTop.map((p) => onWindow(HD, null, box, KEYSTONE, p)),
+        ...nearTop.map((p) => onWindow(HD, null, box, PINNED_BLENDED, p)),
         ...outside,
       ]);
       return got.map((rgba, i) => near(rgba, i < 2 ? (QUARTERS[i] ?? [0, 0, 0]) : [0, 0, 0], 40));
