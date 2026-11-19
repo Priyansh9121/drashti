@@ -262,7 +262,7 @@ function buildMac(target, from, outDir) {
 }
 
 /** Visual Studio's x64 build environment (vcvars64.bat), found by vswhere. */
-function vcvars() {
+export function vcvars() {
   const vswhere = join(
     process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
     'Microsoft Visual Studio',
