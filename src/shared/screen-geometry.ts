@@ -1,6 +1,6 @@
 import type { Placement, Size } from './scaling';
 import { placeContent } from './scaling';
-import type { ScalingMode } from './screens';
+import type { ScalingMode, ScreenConfig } from './screens';
 
 /*
  * A screen's geometry (x27, 19 Nov 2026; PLAN §2's "Edge blend, corner-pin, output scaling"), kept with the screen and
@@ -308,4 +308,9 @@ export function widePicture(
       blend: { left: i > 0 ? overlap : 0, right: i < n - 1 ? overlap : 0, gamma, curve },
     })),
   };
+}
+
+/** The geometry a screen draws: a key and fill pair's key its fill's. Not built yet. */
+export function drawnGeometry(_screen: ScreenConfig, _group: readonly ScreenConfig[]): ScreenGeometry | null {
+  return null;
 }

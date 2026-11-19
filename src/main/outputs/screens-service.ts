@@ -266,6 +266,29 @@ export class ScreensService {
     return this.done();
   }
 
+  /** One wide picture from a group's screens (x27). Not built yet. */
+  makeWidePicture(_rawGroupId: unknown, _rawOverlap: unknown): ScreensResult {
+    return this.fail('Not built yet.');
+  }
+
+  /** Separate pictures again (x27). Not built yet. */
+  separatePictures(_rawGroupId: unknown): ScreensResult {
+    return this.fail('Not built yet.');
+  }
+
+  /** The grid on a screen while it is adjusted (x27). Not built yet. */
+  setAdjusting(_rawScreenId: unknown, _on: unknown): ScreensResult {
+    return this.fail('Not built yet.');
+  }
+
+  adjusting(_screenId: string): boolean {
+    return false;
+  }
+
+  stopAdjusting(): void {
+    return undefined;
+  }
+
   private done(): ScreensResult {
     this.outputs.reconcile();
     return { ok: true, snapshot: this.snapshot() };
