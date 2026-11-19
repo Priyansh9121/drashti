@@ -27,7 +27,16 @@ const sha = (data: Buffer) => createHash('sha256').update(data).digest('hex');
 /** Media ids in every supported slide field, including decks and the editor's master/design. */
 export function bundleMediaIds(rows: ContentRows): string[] {
   const found = new Set<string>();
-  const keys = new Set(['mediaId', 'sourceStillId', 'soundId', 'posterId', 'after']);
+  const keys = new Set([
+    'mediaId',
+    'sourceStillId',
+    'soundId',
+    'posterId',
+    'after',
+    'clipId',
+    'lastId',
+    'holdId',
+  ]);
   const walk = (value: unknown) => {
     if (Array.isArray(value)) {
       for (const item of value) walk(item);

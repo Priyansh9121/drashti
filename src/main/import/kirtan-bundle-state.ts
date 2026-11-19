@@ -68,6 +68,9 @@ const mediaKeys = new Set([
   'soundId',
   'posterId',
   'after',
+  'clipId',
+  'lastId',
+  'holdId',
 ]);
 const jsonKeys = new Set(['props', 'deck', 'editor_design', 'editorMaster']);
 

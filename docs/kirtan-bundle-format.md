@@ -12,6 +12,7 @@ Export copies wait while the stream is on air or recording. The import runs in t
 - Importing the same version again does nothing. A newer copy with the same identity updates the same library item, so playlists keep pointing at it.
 - A local change to words, slide design, notes, details or arrangements is kept. The incoming copy is skipped and the report says **Local edits kept**. It does not make another kirtan. Rename is a local change too. No automatic merge guesses which words are right.
 - An item deleted locally stays deleted when a bundle carrying its identity is imported again. Restore it through the library before updating it.
+- An explicit skip choice skips an incoming change.
 - Leaving a kirtan out of a later bundle never deletes it at the receiving library.
 - Without media bytes, the import uses matching media already present by checksum, or keeps a named missing-media item with a notice. It never follows a path from the sending computer or downloads anything.
 
@@ -63,7 +64,7 @@ The words remain the slides' styled runs; there is no second copy of a language 
 
 ## Bounds and damaged files
 
-Version 1 accepts at most 1,000 kirtans, 4,096 ZIP entries, 3,000 media descriptions, a 1 MiB manifest, 16 MiB per kirtan JSON, 64 MiB of kirtan JSON in all, 512 MiB per media entry and 2 GiB in the archive or unpacked in total. Deflated entries may expand at most 200 times. The ZIP directory is at most 2 MiB. Both export and import keep 2 GiB free on disk.
+Version 1 accepts at most 1,000 kirtans, 4,096 ZIP entries, 3,000 media descriptions, a 1 MiB manifest, 16 MiB per kirtan JSON, 64 MiB of kirtan JSON in all, 512 MiB per media entry and 2 GiB in the archive or unpacked in total. Deflated entries may expand at most 200 times. The ZIP directory is at most 2 MiB. Both export and import keep 2 GiB free on disk. Import checks the unpacking disk and the receiving database disk separately, allowing space for rows, indexes and the write-ahead log as well as the archive and media.
 
 The reader refuses unknown versions, unknown manifest fields, missing or extra entries, repeated identities or paths, links, absolute paths, parent paths, backslashes, drive paths, unsupported compression, invalid references, wrong lengths, CRC errors and checksum errors. It bounds the ZIP directory before reading it and bounds each entry while inflating it. It validates the whole bundle before writing library items. Temporary files are removed after success, failure or cancellation. A finished export takes its chosen name only after the archive is complete.
 
