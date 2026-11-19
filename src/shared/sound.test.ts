@@ -12,6 +12,7 @@ import {
   MUSIC_ASIDE_DB,
   musicAside,
   soundFilesOf,
+  silentWords,
   soundGain,
   type SoundLevels,
   StepAside,
@@ -336,6 +337,22 @@ describe('the operator’s levels and mutes (X33): Audio’s and Video’s, on t
       s.volume * soundGain(s, music, state);
     expect(plays(sound, aside, at(levels(0.5, 1)))).toBeCloseTo(0.8 * 0.5 * aside * 0.5, 6);
     expect(plays(sound, aside, at(levels(0.5, 1, { audio: true })))).toBe(0);
+  });
+
+  it('the status bar says what cannot be heard: a kind muted, or at 0 % (never silent unseen)', () => {
+    expect(silentWords(undefined)).toBe('');
+    expect(silentWords(FULL_LEVELS)).toBe('');
+    expect(silentWords(levels(0.01, 0.5))).toBe('');
+    expect(silentWords(levels(0.5, 1, { audio: true }))).toBe('Audio muted');
+    expect(silentWords(levels(0.5, 1, { video: true }))).toBe('Video muted');
+    expect(silentWords(levels(1, 1, { audio: true, video: true }))).toBe('Audio and Video muted');
+    expect(silentWords(levels(1, 0))).toBe('Video at 0 %');
+    expect(silentWords(levels(0, 1))).toBe('Audio at 0 %');
+    expect(silentWords(levels(0, 0))).toBe('Audio and Video at 0 %');
+    // Muted says muted, whatever its level.
+    expect(silentWords(levels(0, 1, { audio: true }))).toBe('Audio muted');
+    expect(silentWords(levels(1, 0, { audio: true }))).toBe('Audio muted, Video at 0 %');
+    expect(silentWords(levels(0, 1, { video: true }))).toBe('Audio at 0 %, Video muted');
   });
 
   it('a level is kept and sent in whole percent, between 0 and 100 %', () => {
