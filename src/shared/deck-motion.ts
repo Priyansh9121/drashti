@@ -148,11 +148,7 @@ interface DeckShape extends Omit<DeckSplit, 'axis'> {
 }
 
 type DeckWipe =
-  | { edge: DeckEffectDirection; fraction: number }
-  | DeckSplit
-  | DeckShape
-  | DeckSpokes
-  | DeckBars;
+  { edge: DeckEffectDirection; fraction: number } | DeckSplit | DeckShape | DeckSpokes | DeckBars;
 
 /** Wheel at one moment: how many spokes, how far through it is, and whether it is leaving. */
 interface DeckSpokes {
@@ -477,13 +473,13 @@ const BARS_FADE = 0.22;
  * the effect, run 6's 1,536 rows at 2 s).
  */
 const BARS_HALF_IN = [
-  0.095, 0.164, 0.206, 0.253, 0.287, 0.325, 0.35, 0.38, 0.416, 0.449, 0.477, 0.513, 0.555, 0.595, 0.633, 0.668, 0.705,
-  0.741, 0.777, 0.817, 0.911,
+  0.095, 0.164, 0.206, 0.253, 0.287, 0.325, 0.35, 0.38, 0.416, 0.449, 0.477, 0.513, 0.555, 0.595, 0.633,
+  0.668, 0.705, 0.741, 0.777, 0.817, 0.911,
 ];
 /** The same leaving: when each row is half gone. */
 const BARS_HALF_OUT = [
-  0.092, 0.183, 0.223, 0.258, 0.298, 0.332, 0.368, 0.406, 0.446, 0.487, 0.524, 0.552, 0.585, 0.62, 0.65, 0.676, 0.714,
-  0.749, 0.798, 0.839, 0.906,
+  0.092, 0.183, 0.223, 0.258, 0.298, 0.332, 0.368, 0.406, 0.446, 0.487, 0.524, 0.552, 0.585, 0.62, 0.65,
+  0.676, 0.714, 0.749, 0.798, 0.839, 0.906,
 ];
 /** A bar's thickness, slide px (hair-thin), within as few and as many bars as these. */
 const BAR_PX = 3;
