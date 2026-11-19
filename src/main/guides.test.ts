@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GUIDES, guidePictureName, indexGuide, searchGuides } from '../shared/guides';
+import { MANUAL_CHAPTERS } from '../shared/manual';
 import { imagesOf, parseMarkdown, passagesOf } from '../shared/markdown';
 import { GuideFiles, guidesDir } from './guides';
 
@@ -47,7 +48,7 @@ describe('the guides inside Drashti', () => {
     expect(searchGuides(indexed, '   ')).toEqual([]);
   });
 
-  it('packs the four guides and exactly the pictures they show beside the app (electron-builder.yml)', () => {
+  it('packs the four guides, the manual’s chapters (x37) and exactly the pictures they show beside the app (electron-builder.yml)', () => {
     const yml = readFileSync(join(app, 'electron-builder.yml'), 'utf8');
     const entry = /- from: docs\n\s+to: guides\n\s+filter:\n((?:\s+- .+\n)+)/u.exec(yml);
     expect(entry, 'electron-builder.yml packs docs/ as guides/').not.toBeNull();
@@ -56,9 +57,16 @@ describe('the guides inside Drashti', () => {
       .map((l) => l.trim().replace(/^- /u, ''))
       .filter((l) => l !== '')
       .sort();
+    // The manual's chapters write their pictures from docs/manual/ ("../screenshots/<name>.png"): one folder of
+    // pictures beside the app for both.
+    const manual = MANUAL_CHAPTERS.map((c) => `manual/${c.file}`);
     const wanted = [
       ...GUIDES.map((g) => g.file),
-      ...new Set(GUIDES.flatMap((g) => imagesOf(guide(g.file)))),
+      ...manual,
+      ...new Set([
+        ...GUIDES.flatMap((g) => imagesOf(guide(g.file))),
+        ...manual.flatMap((file) => imagesOf(guide(file)).map((src) => src.replace(/^\.\.\//u, ''))),
+      ]),
     ].sort();
     expect(listed).toEqual(wanted);
   });
@@ -69,8 +77,9 @@ describe('the guides inside Drashti', () => {
     expect(files.read('operator')).toContain('# The operator');
     const name = [...files.pictureNames()][0] ?? '';
     expect(files.picture(name)).toBe(join(docs, 'screenshots', name));
-    // A screenshot no guide shows, and anything that is not a picture's name, are refused.
-    expect(files.picture('announcements-queue.png')).toBeNull();
+    // A screenshot no guide shows (nor the manual, x37: its chapters show announcements-queue.png, this test's
+    // until then), and anything that is not a picture's name, are refused.
+    expect(files.picture('component-gallery.png')).toBeNull();
     expect(files.picture('../README.md')).toBeNull();
     expect(
       guidesDir({

@@ -48,6 +48,7 @@ function actions(mode: 'pro' | 'simple', on = { audience: true, stage: true }) {
     opening: nothing,
     checkForUpdates: nothing,
     keyboardShortcuts: nothing,
+    manual: nothing,
     guides: nothing,
     priority: null,
     extras: { shown: false, toggle: nothing },
@@ -402,6 +403,35 @@ describe('Tools (Session 60, x36: the owner’s "A, More tools + menu")', () => 
       });
       expect(item('tools')).toBeUndefined();
       expect((built.at(-1) ?? []).some((m) => m.label === 'Tools')).toBe(false);
+    },
+  );
+});
+
+describe('Help › Drashti Manual… (x37, Session 60: the owner’s "A, new Manual")', () => {
+  it.each(PLATFORMS)(
+    'is the first item under Help in Pro Mode and in Simple Mode, before Guides…, and opens the manual (%s)',
+    (platform) => {
+      for (const mode of ['pro', 'simple'] as const) {
+        let opened = 0;
+        on(platform, () => {
+          const made = actions(mode);
+          installMenu({
+            ...made.a,
+            manual: () => {
+              opened++;
+            },
+          });
+        });
+        const help = (built.at(-1) ?? []).find((m) => m.role === 'help')?.submenu;
+        const list = Array.isArray(help) ? help : [];
+        expect(list[0], `${mode}: the first under Help`).toMatchObject({
+          id: 'manual',
+          label: 'Drashti Manual…',
+        });
+        expect(list[1]?.id).toBe('guides');
+        (item('manual')?.click as (() => void) | undefined)?.();
+        expect(opened).toBe(1);
+      }
     },
   );
 });

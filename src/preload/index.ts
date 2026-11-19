@@ -98,6 +98,10 @@ const bridge: DrashtiBridge = {
       on(IPC.app.showGuides, () => {
         listener();
       }),
+    onShowManual: (listener) =>
+      on(IPC.app.showManual, () => {
+        listener();
+      }),
     onShowTool: (listener) =>
       on(IPC.app.showTool, ({ tool }) => {
         listener(tool);
@@ -106,6 +110,11 @@ const bridge: DrashtiBridge = {
   guides: {
     list: () => invoke(IPC.guides.list),
     read: (id) => invoke(IPC.guides.read, id),
+  },
+  manual: {
+    read: () => invoke(IPC.manual.read),
+    print: () => invoke(IPC.manual.print),
+    pdf: () => invoke(IPC.manual.pdf),
   },
   backups: {
     view: () => invoke(IPC.backups.view),
