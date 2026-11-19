@@ -1,4 +1,10 @@
 import { app, BrowserWindow, dialog, net, protocol, shell } from 'electron';
+import {
+  controllerArea,
+  controllerRequestSchema,
+  controllerReplySchema,
+  type ControllerReply,
+} from '../../shared/controller-actions';
 import type { Installer } from '../update/installer';
 import { UpdateService } from '../update/update-service';
 import { join } from 'node:path';
@@ -157,6 +163,27 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   // Public permission from Main, held through a brief link drop. No pairing or certificate data changes.
   let controller: NodeControllerContext | null = null;
   let controllerReady = false;
+  const pendingActions = new Map<
+    string,
+    {
+      promise: Promise<ControllerReply>;
+      resolve(answer: ControllerReply): void;
+      timer: ReturnType<typeof setTimeout>;
+      request: string;
+    }
+  >();
+  const cancelActions = () => {
+    for (const [id, pending] of pendingActions) {
+      clearTimeout(pending.timer);
+      pending.resolve({
+        id,
+        status: 'refused',
+        rev: Math.max(0, mirror.rev),
+        message: 'The link or permission changed. Check LIVE before pressing again.',
+      });
+    }
+    pendingActions.clear();
+  };
   let clock: NodeClock | null = null;
   let offsetMs = 0;
   let fromSaved = false;
@@ -587,10 +614,22 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         }
         return;
       }
+      case 'controller-answer': {
+        const checked = controllerReplySchema.safeParse(message.answer);
+        if (!checked.success) return;
+        const pending = pendingActions.get(checked.data.id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          pendingActions.delete(checked.data.id);
+          pending.resolve(checked.data);
+        }
+        return;
+      }
       case 'controller': {
         const parsed = nodeControllerContextSchema.nullable().safeParse(message.context);
         if (parsed.success) {
           controller = parsed.data;
+          if (!controller || (controller.areas?.length ?? 0) === 0) cancelActions();
           mainAccess.setController(controller !== null);
           nodeWindow?.setTitle(controller ? 'Drashti Controller' : 'Drashti Node');
           viewChanged();
@@ -685,6 +724,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     }
     if (state === 'online') cache.backOnline();
     else {
+      cancelActions();
       controllerReady = false;
       updatePointed(null);
     }
@@ -755,6 +795,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     client?.stop();
     client = null;
     paired = null;
+    cancelActions();
     controller = null;
     controllerReady = false;
     mainAccess.setController(false);
@@ -818,6 +859,47 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   };
 
   handle(IPC.node.view, () => view());
+  handle(IPC.node.action, (event, raw): Promise<ControllerReply> | ControllerReply => {
+    const parsed = controllerRequestSchema.safeParse(raw);
+    const id = parsed.success ? parsed.data.id : '';
+    const refuse = (message: string): ControllerReply => ({
+      id,
+      status: 'refused',
+      rev: Math.max(0, mirror.rev),
+      message,
+    });
+    if (!pageAlive(nodeWindow) || event.sender.id !== nodeWindow.webContents.id || !parsed.success)
+      return refuse('That press is not offered here.');
+    const request = parsed.data;
+    const area = controllerArea(request.command);
+    if (
+      !paired ||
+      !client ||
+      link.state !== 'online' ||
+      !controllerReady ||
+      !controller ||
+      mainAccess.stopped !== null
+    )
+      return refuse('Not connected to Main. Check LIVE before pressing again.');
+    if (!area || !controller.areas?.includes(area))
+      return refuse('Main has not allowed that action for this computer.');
+    const fingerprint = JSON.stringify(request);
+    const prior = pendingActions.get(id);
+    if (prior)
+      return prior.request === fingerprint ? prior.promise : refuse('Use a new press after checking LIVE.');
+    if (pendingActions.size >= 8) return refuse('Wait for Main’s answer before pressing again.');
+    let finish: (answer: ControllerReply) => void = () => undefined;
+    const promise = new Promise<ControllerReply>((resolve) => {
+      finish = resolve;
+    });
+    const timer = setTimeout(() => {
+      pendingActions.delete(id);
+      finish(refuse('Main has not answered. Check LIVE before pressing again.'));
+    }, 4000);
+    pendingActions.set(id, { promise, resolve: finish, timer, request: fingerprint });
+    client.send({ type: 'controller-action', request });
+    return promise;
+  });
   handle(IPC.node.pair, async (_e, rawAddress, rawCode): Promise<NodeViewResult> => {
     if (typeof rawAddress !== 'string' || typeof rawCode !== 'string')
       return { ok: false, message: 'Type Main’s address and the code it shows.' };

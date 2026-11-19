@@ -1,3 +1,4 @@
+import { controllerRequestSchema, type ControllerRequest } from '../../shared/controller-actions';
 import { RateGate } from '../rate-gate';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, statSync } from 'node:fs';
@@ -89,6 +90,7 @@ export interface LinkHost {
   online(nodeId: string, address: string, version: string): void;
   offline(nodeId: string): void;
   health(nodeId: string, health: NodeHealth): void;
+  controller?(nodeId: string, request: ControllerRequest): void;
   thumb(nodeId: string, screenId: string, jpeg: string): void;
   /** A paired node said hello on another version: refused. */
   refused(nodeId: string, version: string): void;
@@ -158,6 +160,7 @@ interface Client {
   address: string;
   node: LinkNode | null;
   alive: boolean;
+  controllerWindow?: { at: number; count: number };
 }
 
 interface Pairing {
@@ -672,6 +675,28 @@ export class LinkServer {
       case 'resync':
         this.sendSnapshot(client);
         return;
+      case 'controller-action': {
+        const request = controllerRequestSchema.safeParse(message.request);
+        if (!request.success) return;
+        const now = performance.now();
+        if (!client.controllerWindow || now - client.controllerWindow.at >= 1000)
+          client.controllerWindow = { at: now, count: 0 };
+        client.controllerWindow.count += 1;
+        if (client.controllerWindow.count > 20) {
+          this.send(client, {
+            type: 'controller-answer',
+            answer: {
+              id: request.data.id,
+              status: 'refused',
+              rev: Math.max(0, this.mirror.rev),
+              message: 'Please wait a moment and check LIVE.',
+            },
+          });
+          return;
+        }
+        this.host.controller?.(nodeId, request.data);
+        return;
+      }
       case 'health': {
         const health = nodeHealthSchema.safeParse(message.health);
         if (health.success) this.host.health(nodeId, health.data);
