@@ -256,7 +256,8 @@ describe('the blend ramp', () => {
 
   it("adds the two screens' light up to the whole picture's all across the overlap, at any curve", () => {
     for (const curve of [1, 1.5, 2, 4])
-      for (let t = 0; t <= 1; t += 0.05) expect(blendLight(t, curve) + blendLight(1 - t, curve)).toBeCloseTo(1, 12);
+      for (let t = 0; t <= 1; t += 0.05)
+        expect(blendLight(t, curve) + blendLight(1 - t, curve)).toBeCloseTo(1, 12);
   });
 
   it('is smooth at its ends with a curve over 1, and a straight line at 1', () => {
@@ -303,7 +304,9 @@ describe('placePart', () => {
   });
 
   it("clips the canvas to the part, in the canvas's own pixels", () => {
-    expect(partClip({ width: 3584, height: 1080 }, { x: 1664, width: 1920 })).toBe('inset(0px 0px 0px 1664px)');
+    expect(partClip({ width: 3584, height: 1080 }, { x: 1664, width: 1920 })).toBe(
+      'inset(0px 0px 0px 1664px)',
+    );
     expect(partClip({ width: 3584, height: 1080 }, { x: 0, width: 1920 })).toBe('inset(0px 1664px 0px 0px)');
     expect(partClip({ width: 3584, height: 1080 }, null)).toBeUndefined();
   });
@@ -334,7 +337,7 @@ describe('widePicture', () => {
       { x: 1720, width: 1920 },
       { x: 3440, width: 1920 },
     ]);
-    expect(wide.screens.map((s) => [s.blend?.left, s.blend?.right])).toEqual([
+    expect(wide.screens.map((s) => [s.blend.left, s.blend.right])).toEqual([
       [0, 200],
       [200, 200],
       [200, 0],

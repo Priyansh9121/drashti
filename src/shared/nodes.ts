@@ -4,6 +4,7 @@ import type { UpdateView } from './updates';
 import type { DisplayInfo, DisplayKey, ScalingMode, ScreenFeed, ScreenRole } from './screens';
 import type { ClockStyle } from './format';
 import type { HallPicture } from './stage-layouts';
+import type { ScreenGeometry } from './screen-geometry';
 
 /*
  * Output nodes (PLAN.md 4.1, Session 13). The same Drashti app, started as a
@@ -61,6 +62,13 @@ export interface NodeScreen {
    * Left out on other screens.
    */
   hall?: HallPicture | null;
+  /**
+   * Its picture's geometry as it draws it (x27, shared/screen-geometry.ts): a key and fill pair's key its fill's. Left
+   * out, or null: nothing set (and in a node's screens saved before x27).
+   */
+  geometry?: ScreenGeometry | null;
+  /** Its picture is being adjusted in Main's Screens (x27): a grid over it. */
+  grid?: true;
 }
 
 /** A media file a node should have a copy of, in the order to copy them. */

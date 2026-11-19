@@ -72,12 +72,22 @@ function setUp(): { service: ScreensService; repo: ScreenRepo; db: Db; changes: 
       changes++;
     },
   });
-  const service = new ScreensService(repo, outputs, () => [LEFT, RIGHT], () => null, looksOf(db));
+  const service = new ScreensService(
+    repo,
+    outputs,
+    () => [LEFT, RIGHT],
+    () => null,
+    looksOf(db),
+  );
   return { service, repo, db, changes: () => changes };
 }
 
 /** A group with a screen on each projector: its id and the screens' ids, left first. */
-function pair(service: ScreensService, repo: ScreenRepo, name = 'Wide hall'): { groupId: string; ids: string[] } {
+function pair(
+  service: ScreensService,
+  repo: ScreenRepo,
+  name = 'Wide hall',
+): { groupId: string; ids: string[] } {
   expect(service.createGroup(name).ok).toBe(true);
   const groupId = repo.groups().find((g) => g.name === name)?.id ?? '';
   expect(service.assignDisplay(groupId, LEFT.id).ok).toBe(true);
@@ -107,7 +117,8 @@ describe('a screen’s geometry, kept with the screen (x27)', () => {
     expect(set.ok).toBe(true);
     expect(repo.screen(id)?.geometry).toEqual(KEYSTONE);
     // Screens' snapshot carries it, and the other screen keeps nothing set.
-    if (set.ok) expect(set.snapshot.groups[0]?.screens.map((s) => s.geometry ?? null)).toEqual([KEYSTONE, null]);
+    if (set.ok)
+      expect(set.snapshot.groups[0]?.screens.map((s) => s.geometry ?? null)).toEqual([KEYSTONE, null]);
     // Other changes leave it as it is.
     expect(service.updateScreen(id, { scaling: 'fill' }).ok).toBe(true);
     expect(repo.screen(id)?.geometry).toEqual(KEYSTONE);
@@ -122,7 +133,15 @@ describe('a screen’s geometry, kept with the screen (x27)', () => {
       { ...KEYSTONE, zoom: 3 },
       { ...KEYSTONE, zoom: Number.NaN },
       { ...KEYSTONE, offsetY: 0.8 },
-      { ...KEYSTONE, corners: [{ x: 0.45, y: 0.45 }, { x: -0.3, y: 0 }, { x: 0, y: 0 }, { x: 0, y: -0.3 }] },
+      {
+        ...KEYSTONE,
+        corners: [
+          { x: 0.45, y: 0.45 },
+          { x: -0.3, y: 0 },
+          { x: 0, y: 0 },
+          { x: 0, y: -0.3 },
+        ],
+      },
       { ...KEYSTONE, corners: [{ x: 0, y: 0 }] },
       // A part beyond the canvas's right edge (1920 wide).
       { ...NO_GEOMETRY, part: { x: 1000, width: 1920 } },

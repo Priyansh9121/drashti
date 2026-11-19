@@ -113,7 +113,8 @@ export function applyMatrix(m: Matrix3, p: Point): Point {
 /** a × b: b first, then a. */
 export function multiply(a: Matrix3, b: Matrix3): Matrix3 {
   const at = (m: Matrix3, r: number, c: number) => m[r * 3 + c] ?? 0;
-  const cell = (r: number, c: number) => at(a, r, 0) * at(b, 0, c) + at(a, r, 1) * at(b, 1, c) + at(a, r, 2) * at(b, 2, c);
+  const cell = (r: number, c: number) =>
+    at(a, r, 0) * at(b, 0, c) + at(a, r, 1) * at(b, 1, c) + at(a, r, 2) * at(b, 2, c);
   return [
     cell(0, 0),
     cell(0, 1),
@@ -310,7 +311,13 @@ export function widePicture(
   };
 }
 
-/** The geometry a screen draws: a key and fill pair's key its fill's. Not built yet. */
-export function drawnGeometry(_screen: ScreenConfig, _group: readonly ScreenConfig[]): ScreenGeometry | null {
-  return null;
+/**
+ * The geometry a screen draws (x27): its own, but a key and fill pair's key draws its fill's (the group's screen that
+ * sends the fill), so the two halves stay pixel-aligned whatever is set. Null: nothing set.
+ */
+export function drawnGeometry(screen: ScreenConfig, group: readonly ScreenConfig[]): ScreenGeometry | null {
+  const fill =
+    screen.feed === 'key' ? group.find((s) => s.feed === 'fill' && s.groupId === screen.groupId) : undefined;
+  const g = (fill ?? screen).geometry ?? null;
+  return nothingSet(g) ? null : g;
 }
