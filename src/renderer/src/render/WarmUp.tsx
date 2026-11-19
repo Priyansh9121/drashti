@@ -46,8 +46,8 @@ import { WarmUpBoundary } from './WarmUpBoundary';
  * Session 55; Part 6's wallpapers that go round may bring one back), a deck's own Wipe and Cover from a slide whose
  * shapes are part-way through Splits (Session 57: masks and a shade nothing else draws, warm-up-deck.ts), with
  * placeholder words and pictures made here, through the same Scene the show uses, until its frames come on
- * time (the GPU has made what they need); then it lets go. The pipelines are kept by the GPU for every
- * window after.
+ * time (the GPU has made what they need); then it lets go. The GPU reuses those pipelines across
+ * the windows.
  *
  * It draws in a shadow tree of its own, closed, so no page script or test finds its placeholder slides,
  * tickers and lower thirds among the show's (open only when a test keeps it drawn, to look at it).
@@ -245,6 +245,8 @@ export interface WarmScene {
   clip?: string;
   /** Drawn moved by this transform (OFF_GRID: half a pixel off the grid, Session 58). */
   offset?: string;
+  /** Separate canvas cells use normal blending, as the traced on-air quad does. */
+  blend?: 'normal';
   /**
    * Drawn in place of a Scene of its state (Session 58: the moving backgrounds, each a small lower third), as a key
    * and fill pair's page draws (its matte).
@@ -282,46 +284,93 @@ export const WARM_LOWER_THIRDS = [
 ];
 
 /**
- * A small picture-and-words surface, shaded as a group like a native Cover. Filtering an image alone is folded
- * into its paint (traced at 8fefcb8d); it does not prime the filtered RGBA render-pass quad used on air. A stationary
- * fractional rectangle clips the group's transformed quad, combining its AA edge with the analytic clip. The
- * unclipped copy primes the 4:3 path; the notched twins prime the multisampled passes. Nothing here is drawn on air.
+ * The native Cover's shaded AA/analytic-clip pipeline, drawn with a canvas resource (X12 wide, traced). An image
+ * or a filtered Scene did not make that combined kind. A generated RGBA canvas, rotated under a fixed rounded
+ * clip and shaded by the Cover's own filter, does. Its notched companion primes multisampled drawing too; the
+ * unclipped pair primes the 4:3 path. Separate cells stay visible to the GPU without adding their light together.
+ * All drawing is synchronous at mount, under the existing black cover; no clock or frame loop is added.
  */
-function CoverShadeQuad({ analytic }: { analytic: boolean }) {
-  const size = { width: 320, height: 180 };
+function CoverShadeCanvas({
+  analytic,
+  notched,
+  x,
+  y,
+  available,
+}: {
+  analytic: boolean;
+  notched: boolean;
+  x: number;
+  y: number;
+  available: Size;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
   const shade = deckTransitionFrame(warmDeckTransition('cover', MAX_TRANSITION_MS), PART).in.filter;
-  const state = useMemo(() => {
-    const base = initialEngineState();
-    return {
-      ...base,
-      layers: { ...base.layers, slide: layerOf(fullPictureSlide(true), -LONG_AGO) },
-    };
+  const scale = Math.min(1, available.width / 960, available.height / 640);
+  useLayoutEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: false });
+    const source = document.createElement('canvas');
+    source.width = 320;
+    source.height = 180;
+    const g = source.getContext('2d');
+    if (!ctx || !g) throw new Error('The graphics warm-up could not draw its picture.');
+    g.fillStyle = 'rgba(80,48,112,0.7)';
+    g.beginPath();
+    g.ellipse(160, 90, 152, 82, 0, 0, Math.PI * 2);
+    g.fill();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(source, 0, 0);
   }, []);
   return (
     <div
-      data-warm-cover-quad={analytic ? 'analytic-clip' : 'unclipped'}
       style={{
         position: 'absolute',
         left: 0,
         top: 0,
-        width: 384,
-        height: 256,
-        ...(analytic ? { ...size, clipPath: 'inset(0.5px)' } : {}),
+        width: 960,
+        height: 640,
+        transformOrigin: '0 0',
+        transform: scale < 1 ? `scale(${String(scale)})` : undefined,
       }}
     >
-      <div style={{ position: 'absolute', inset: 0, background: '#1b1030' }} />
       <div
         style={{
           position: 'absolute',
-          left: analytic ? 0 : 32,
-          top: analytic ? 0 : 32,
-          ...size,
-          filter: shade,
-          transform: 'translate(0.5px, 0.5px) rotate(7deg)',
-          willChange: 'transform',
+          left: x,
+          top: y,
+          width: 384,
+          height: 256,
+          clipPath: notched ? NOTCHED : undefined,
         }}
       >
-        <Scene state={state} canvas={size} scaling="fit" look={DEFAULT_LIVE_GROUP_LOOK} ticker={false} />
+        <div
+          data-warm-cover-quad={analytic ? 'analytic-clip' : 'unclipped'}
+          style={{
+            position: 'absolute',
+            left: 24.25,
+            top: 24.25,
+            width: 320,
+            height: 180,
+            background: '#1b1030',
+            ...(analytic ? { overflow: 'hidden' as const, borderRadius: 2 } : {}),
+          }}
+        >
+          <canvas
+            ref={ref}
+            width={320}
+            height={180}
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: 320,
+              height: 180,
+              filter: shade,
+              transform: 'translate(80.5px, 0.5px) rotate(7deg)',
+            }}
+          />
+        </div>
       </div>
     </div>
   );
@@ -511,22 +560,26 @@ export function warmScenes(): WarmScene[] {
       },
     }),
   };
-  const shadeQuad: WarmScene = {
-    key: 'cover-shaded-quad',
+  const shadeCanvas = (
+    key: string,
+    analytic: boolean,
+    notched: boolean,
+    x: number,
+    y: number,
+  ): WarmScene => ({
+    key,
     look: look('calm'),
+    blend: 'normal',
     state: () => base,
-    draw: () => <CoverShadeQuad analytic />,
-  };
-  const unclippedShadeQuad: WarmScene = {
-    ...shadeQuad,
-    key: 'cover-shaded-quad-unclipped',
-    draw: () => <CoverShadeQuad analytic={false} />,
-  };
+    draw: (_during, _at, canvas) => (
+      <CoverShadeCanvas analytic={analytic} notched={notched} x={x} y={y} available={canvas} />
+    ),
+  });
   return [
-    shadeQuad,
-    { ...shadeQuad, key: 'cover-shaded-quad-notched', clip: NOTCHED },
-    unclippedShadeQuad,
-    { ...unclippedShadeQuad, key: 'cover-shaded-quad-unclipped-notched', clip: NOTCHED },
+    shadeCanvas('cover-shaded-quad', true, false, 0, 0),
+    shadeCanvas('cover-shaded-quad-notched', true, true, 480, 0),
+    shadeCanvas('cover-shaded-quad-unclipped', false, false, 0, 320),
+    shadeCanvas('cover-shaded-quad-unclipped-notched', false, true, 480, 320),
     wideCover,
     { ...wideCover, key: `${wideCover.key}/clipped`, clip: NOTCHED },
     ...transitions,
@@ -736,11 +789,11 @@ function WarmScenes({
   return (
     <>
       {list.map((s) => (
-        // Each scene added light for light (none of it opaque to the GPU), so none hides another.
+        // Ordinary scenes add light for light. The normal-blended canvas cells occupy separate places.
         <div
           key={s.key}
           data-warm-scene={s.key}
-          style={{ position: 'absolute', inset: 0, mixBlendMode: 'plus-lighter' }}
+          style={{ position: 'absolute', inset: 0, mixBlendMode: s.blend ?? 'plus-lighter' }}
         >
           <div style={{ position: 'absolute', inset: 0, clipPath: s.clip, transform: s.offset }}>
             {s.draw ? (
