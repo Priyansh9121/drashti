@@ -19,7 +19,8 @@ import { mediaUrl } from '../../src/shared/media';
 
 /*
  * X19, L7: loaded is not decoded. Hold Next's preload just before its native decode starts, then press Next once
- * its complete flag is true. No pixels or native decode result are faked. For an image with no decoding hint, ask
+ * its complete flag is true, starting the real decode when the cut is inserted. No pixels or native decode result
+ * are faked. For an image with no decoding hint, ask
  * Chromium to take its permitted asynchronous path; an explicit sync hint is respected. Read actual compositor
  * frames, rather than img.complete (hall-pictures cannot see a complete image painted without its pixels).
  * Generated noise only, no capture of a real display and no encoder or network stream.
@@ -100,7 +101,10 @@ async function captureStream(program: Page): Promise<void> {
   await program.evaluate(async () => {
     const frames: Frame[] = [];
     (globalThis as DecodeGlobals).drashtiDecodeFrames = frames;
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { width: 1920, height: 1080, frameRate: 30 },
+      audio: false,
+    });
     const track = stream.getVideoTracks()[0];
     if (!track) throw new Error('no own-page video track');
     const Processor = (
@@ -144,6 +148,7 @@ async function holdPreload(page: Page, id: string): Promise<void> {
       loadedAtCut: false,
       widthAtCut: 0,
       release() {
+        if (released) return;
         released = true;
         for (const decode of pending) decode();
         HTMLImageElement.prototype.decode = nativeDecode;
@@ -167,6 +172,12 @@ async function holdPreload(page: Page, id: string): Promise<void> {
         if (img.decoding === 'auto') img.decoding = 'async';
         probe.loadedAtCut = img.complete;
         probe.widthAtCut = img.naturalWidth;
+        // Start the real preload decode as the cut is inserted. Next arrived before it decoded, but the decoder
+        // must now be allowed to finish (especially in an offscreen page drawn without a graphics chip).
+        probe.release();
+        // The incoming element remains mounted after Next's preload is removed. Do not await this: the fault is
+        // presenting the complete image before this real decode finishes, not whether Chromium eventually decodes it.
+        void nativeDecode.call(img).catch(() => undefined);
       }
     }).observe(document.body, { childList: true, subtree: true });
   }, id);
@@ -174,6 +185,17 @@ async function holdPreload(page: Page, id: string): Promise<void> {
 
 const matches = (frame: Frame | undefined, rgb: readonly number[]) =>
   frame?.rgb.every((channel, i) => Math.abs(channel - (rgb[i] ?? 0)) < 12) === true;
+
+/** Retain the last actual pixels in a readiness failure, rather than only a false predicate. */
+async function waitCaptured(frames: () => Promise<Frame[]>, rgb: readonly number[]): Promise<void> {
+  await expect
+    .poll(async () => {
+      const all = await frames();
+      const last = all.at(-1);
+      return { ready: matches(last, rgb), last, count: all.length };
+    })
+    .toMatchObject({ ready: true });
+}
 
 for (const place of ['hall', 'stream'] as const) {
   test(`${place}: a loaded but undecoded slide picture never cuts in without its pixels (X19 L7)`, async () => {
@@ -210,7 +232,7 @@ for (const place of ['hall', 'stream'] as const) {
         : page.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames ?? []);
     await holdPreload(page, picture);
     await goLive(win, id, 0);
-    await expect.poll(async () => matches((await frames()).at(-1), OLD)).toBe(true);
+    await waitCaptured(frames, OLD);
     const preload = page.locator(`img[data-preload="${picture}"]`);
     await expect(preload).toHaveAttribute('data-state', 'loading');
     await expect
@@ -223,7 +245,7 @@ for (const place of ['hall', 'stream'] as const) {
       .toBe(true);
     const from = Date.now();
     await goLive(win, id, 1);
-    await expect.poll(async () => matches((await frames()).at(-1), PICTURE)).toBe(true);
+    await waitCaptured(frames, PICTURE);
     const probe = await page.evaluate(() => {
       const probe = (globalThis as DecodeGlobals).drashtiDecodeProbe;
       probe?.release();
@@ -295,39 +317,48 @@ for (const place of ['hall', 'stream'] as const) {
       place === 'hall'
         ? app.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames ?? [])
         : page.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames ?? []);
+    const id = await makeSlides(win, 'Placeholder decode cost scene', [{ background: '#204080' }], {
+      kind: 'cut',
+      durationMs: 0,
+    });
+    await goLive(win, id, 0);
+    await waitCaptured(frames, OLD);
     const rows: { option: string; fullMs: number; longestFrameMs: number; decodeMs: number }[] = [];
     // Alternate order to avoid one option always inheriting the other's first-use work.
     for (const round of [0, 1, 2]) {
       for (const option of round % 2 === 0 ? ['sync', 'decode'] : ['decode', 'sync']) {
         const url = mediaUrl(picture, 100 + round * 2 + (option === 'sync' ? 0 : 1));
-        await page.evaluate(async (url) => {
-          const g = globalThis as CostGlobals;
-          g.drashtiDecodeCost?.surface.remove();
-          const surface = document.createElement('div');
-          Object.assign(surface.style, {
-            position: 'fixed',
-            inset: '0',
-            zIndex: '2147483647',
-            background: '#204080',
-          });
-          const img = new Image();
-          img.decoding = 'async';
-          Object.assign(img.style, {
-            width: '100%',
-            height: '100%',
-            objectFit: 'fill',
-            visibility: 'hidden',
-          });
-          surface.appendChild(img);
-          document.body.appendChild(surface);
-          g.drashtiDecodeCost = { surface, img, ticks: [], raf: 0, began: 0, decodedAfter: 0 };
-          await new Promise<void>((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = () => reject(new Error('generated picture failed to load'));
-            img.src = url;
-          });
-        }, url);
-        await expect.poll(async () => matches((await frames()).at(-1), OLD)).toBe(true);
+        await page.evaluate(
+          async ({ url, option }) => {
+            const g = globalThis as CostGlobals;
+            g.drashtiDecodeCost?.surface.remove();
+            const surface = document.createElement('div');
+            Object.assign(surface.style, {
+              position: 'fixed',
+              inset: '0',
+              zIndex: '2147483647',
+              background: '#204080',
+            });
+            const img = new Image();
+            img.decoding = option === 'sync' ? 'sync' : 'async';
+            Object.assign(img.style, {
+              width: '100%',
+              height: '100%',
+              objectFit: 'fill',
+              visibility: 'hidden',
+            });
+            surface.appendChild(img);
+            document.body.appendChild(surface);
+            g.drashtiDecodeCost = { surface, img, ticks: [], raf: 0, began: 0, decodedAfter: 0 };
+            await new Promise<void>((resolve, reject) => {
+              img.onload = () => resolve();
+              img.onerror = () => reject(new Error('generated picture failed to load'));
+              img.src = url;
+            });
+          },
+          { url, option },
+        );
+        await waitCaptured(frames, OLD);
         const from = await page.evaluate(
           ({ option, width }) => {
             const probe = (globalThis as CostGlobals).drashtiDecodeCost;
@@ -355,7 +386,7 @@ for (const place of ['hall', 'stream'] as const) {
           },
           { option, width: SIZE.width },
         );
-        await expect.poll(async () => matches((await frames()).at(-1), PICTURE)).toBe(true);
+        await waitCaptured(frames, PICTURE);
         const captured = (await frames()).filter((frame) => frame.t >= from);
         const first = captured.find((frame) => matches(frame, PICTURE));
         expect(first, 'captured the full picture').toBeDefined();
