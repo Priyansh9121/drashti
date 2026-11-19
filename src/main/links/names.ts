@@ -51,19 +51,21 @@ export function safeName(raw: string, fallback: string): string {
 
 /** The operator edits the stem only; a typed media extension never changes the file’s real type. */
 export function downloadName(raw: string | undefined, title: string, extension: string): string {
-  const stem = (value: string) => {
+  const stem = (value: string, typed: boolean) => {
     const last = (value.normalize('NFC').split(/[\\/]/u).pop() ?? '').trim();
     const suffix = /\.[^.]+$/u.exec(last)?.[0] ?? '';
     const typedExtension =
       extension !== '' &&
       suffix !== '' &&
       (suffix.toLowerCase() === extension.toLowerCase() ||
-        /^\.(mp[34]|mov|mkv|webm|m4a|aac|wav|flac|ogg|opus|pptx?|pdf|zip|srt)$/iu.test(suffix));
+        (typed && /^\.mp[34]$/iu.test(extension) && /^\.mp[34]$/iu.test(suffix)));
     const name = safeName(typedExtension ? cutText(last, last.length - suffix.length) : last, '');
     return /^[\s._-]*$/u.test(name) ? '' : name;
   };
-  const fallback = stem(title.replace(/[\\/]/gu, '-')) || 'Download';
-  return safeName(`${stem(raw ?? '') || fallback}${extension}`, `Download${extension}`);
+  const fallback = stem(title.replace(/[\\/]/gu, '-'), false) || 'Download';
+  const unchanged = stem(raw ?? '', false);
+  const chosen = unchanged === fallback ? unchanged : stem(raw ?? '', true);
+  return safeName(`${chosen || fallback}${extension}`, `Download${extension}`);
 }
 
 /** "clip.mp4", then "clip (2).mp4", "clip (3).mp4"… */
