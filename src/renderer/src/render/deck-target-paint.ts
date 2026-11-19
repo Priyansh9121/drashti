@@ -50,9 +50,9 @@ const MASK_PAST = 8;
  * its move, turn and size; how much of it shows; its wipe as a clip; and a Split's or a Shape's soft edges as a mask (a
  * CSS gradient on this same element, while it runs: the shape drawn through one more layer the size of its box, on the
  * screen's own drawing, nothing on Main), with a Box's, a Plus's or a Diamond's second mask on the element within it
- * (`inner`). Where this page draws without a graphics chip (render/chipless.ts), a Shape draws its hard edge and Random
- * Bars its bars each whole, a clip (deckHardClip), in place of their masks: there a Shape's dropped frames on a
- * two-core PC while streaming (C1's review, HIGH-2). Only what changed is written.
+ * (`inner`). Where this page draws without a graphics chip (render/chipless.ts), a Shape and Wheel draw their hard
+ * edge and Random Bars its bars whole, a clip (deckHardClip), in place of their masks: there a Shape's dropped frames on
+ * a two-core PC while streaming (C1's review, HIGH-2). Only what changed is written.
  */
 export function paintDeckTarget(
   style: DeckTargetStyle,
@@ -67,7 +67,10 @@ export function paintDeckTarget(
       ? `translate(${String(frame.x)}px, ${String(frame.y)}px) rotate(${String(rotation)}deg) scale(${String(frame.scale)})`
       : '';
   const opacity = frame.opacity === 1 ? '' : String(frame.opacity);
-  const hard = frame.wipe !== null && ('shape' in frame.wipe || 'bars' in frame.wipe) && drawsWithoutChip();
+  const hard =
+    frame.wipe !== null &&
+    ('shape' in frame.wipe || 'bars' in frame.wipe || 'spokes' in frame.wipe) &&
+    drawsWithoutChip();
   const clip = hard ? deckHardClip(frame.wipe, target, element) : deckWipeClip(frame.wipe, target, element);
   // A Split's mask on a tile reaching MASK_PAST px past the shape: its edges where they fall on that tile.
   const past = frame.wipe !== null && 'axis' in frame.wipe ? MASK_PAST : 0;
