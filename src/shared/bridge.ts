@@ -1,4 +1,5 @@
 import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
+import type { YouTubeListResult, YouTubeResult, YouTubeScheduleInput, YouTubeStatus } from './youtube';
 import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { SlidePictureResult } from './slide-picture';
@@ -755,6 +756,25 @@ export interface DrashtiBridge {
       onContext(listener: (context: ProgramContext) => void): () => void;
       reportInputs(inputs: ProgramInputs): Promise<null>;
     };
+  };
+  /**
+   * Scheduling a YouTube stream from Drashti (x31): the operator window, Pro Mode. Never a token or a key comes
+   * back: only who is signed in, each profile's broadcast and the channel's coming broadcasts.
+   */
+  youtube: {
+    status(): Promise<YouTubeStatus>;
+    onChanged(listener: (status: YouTubeStatus) => void): () => void;
+    /** The admin's own Google client, kept in this computer's secure storage and never shown again. */
+    setClient(clientId: string, clientSecret: string): Promise<YouTubeResult>;
+    removeClient(): Promise<YouTubeResult>;
+    /** Opens Google's sign-in page in this computer's own browser; the answer comes by onChanged. */
+    signIn(): Promise<YouTubeResult>;
+    cancelSignIn(): Promise<YouTubeResult>;
+    signOut(): Promise<YouTubeResult>;
+    upcoming(): Promise<YouTubeListResult>;
+    schedule(input: YouTubeScheduleInput): Promise<YouTubeResult>;
+    useBroadcast(profileId: string, broadcastId: string): Promise<YouTubeResult>;
+    endBroadcast(profileId: string): Promise<YouTubeResult>;
   };
   /** Show a Window… (Session 48): another app's window as the hall's background. */
   liveWindow: {

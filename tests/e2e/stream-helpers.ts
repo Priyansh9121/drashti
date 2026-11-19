@@ -43,12 +43,16 @@ export type RtmpReceiverObservation =
   | { kind: 'stderr'; category: 'bind' | 'connection' | 'input' | 'io' | 'other' }
   | { kind: 'exit'; code: number | null; signal: NodeJS.Signals | null };
 
-/** FFmpeg waiting for one stream on rtmp://127.0.0.1:<port>/live2/<key>, saving it as FLV. */
+/**
+ * FFmpeg waiting for one stream on rtmp://127.0.0.1:<port>/live2/<key>, saving it as FLV: the made-up TEST_KEY, or
+ * another made up by the test (a stand-in YouTube's, x31).
+ */
 export function rtmpListener(
   ffmpeg: string,
   port: number,
   file: string,
   observe?: (event: RtmpReceiverObservation) => void,
+  key = TEST_KEY,
 ): ChildProcess {
   const child = spawn(
     ffmpeg,
@@ -59,7 +63,7 @@ export function rtmpListener(
       '-listen',
       '1',
       '-i',
-      `rtmp://127.0.0.1:${port}/live2/${TEST_KEY}`,
+      `rtmp://127.0.0.1:${port}/live2/${key}`,
       '-c',
       'copy',
       '-f',
