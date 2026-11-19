@@ -68,6 +68,8 @@ import { sw } from './switches';
  *   (transforms only: the control), then two shapes of its last slide come in and go out by Split (a mask the size of
  *   each), a click each, and four more by Shape (Session 58: a Circle, a Box, a Diamond and a Plus, PowerPoint's soft
  *   edge as masks the size of each, a Box's, a Diamond's and a Plus's two, one inside the other), a click each;
+ * - in the streaming check only (x30): dissolve 800 and the deck's clicks again with video out on (the stream's picture to
+ *   other apps by Syphon on a Mac, Spout on Windows), then off again;
  * then Session 57's leftovers (h-left2's MS-1, DK-6 and DK-2), left out of the two-core streaming check (after3's ran
  * into its 14-minute stop with them):
  * - a slide of an imported, editable PowerPoint table of 250 cells (each cell a text box that measures itself on the
@@ -1292,6 +1294,45 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
             await press(row, 'nativeDeck', DECK_SHAPE_MS, { type: 'next' }, DECK_SHAPE_MS + SETTLE_MS);
         });
       }
+      // x30 (the lead's ask: the show must stay safe when video out is turned on): dissolve 800 and the deck's clicks
+      // again with video out on (the stream's picture to other apps by Syphon on a Mac, Spout on Windows, Drashti's own
+      // program, sending with no receiver as it does in a hall), in the streaming check only, on two cores too, only
+      // with time for all of it, never marking the check out of time; then off again.
+      const videoOutMs =
+        2 * VIDEO_OUT_LIMIT_MS +
+        RUNS * (DEFAULT_MS + SETTLE_MS) +
+        VIDEO_OUT_DECK_RUNS * (SETTLE_MS + 2 * (CLIP_MS + 800));
+      if (streaming && timeFor(videoOutMs, `dissolve 800 and the deck’s clicks${VIDEO_OUT}`)) {
+        closeCase();
+        const on = await setVideoOut(operator(), true);
+        if (on !== true) note(`video out not on: ${on}`);
+        else {
+          progress(`dissolve 800 and the deck’s clicks${VIDEO_OUT}`);
+          const k = KINDS.indexOf('dissolve');
+          for (let i = 0; i < RUNS; i++)
+            await press(
+              `dissolve 800${VIDEO_OUT}`,
+              'slide',
+              DEFAULT_MS,
+              goLive(slidesId, k * 2 + (i % 2)),
+              DEFAULT_MS + SETTLE_MS,
+            );
+          await rounds(VIDEO_OUT_DECK_RUNS, `the deck’s clicks${VIDEO_OUT}`, async () => {
+            await away();
+            await press(
+              `deck slide in (step 0)${VIDEO_OUT}`,
+              'deck',
+              CLIP_MS,
+              goLive(deckId, 0),
+              CLIP_MS + 800,
+            );
+            await press(`deck click${VIDEO_OUT}`, 'deck', CLIP_MS, { type: 'next' }, CLIP_MS + 800);
+          });
+          closeCase();
+        }
+        const off = await setVideoOut(operator(), false);
+        if (off !== true) note(`video out not off again: ${off}`);
+      }
       // The same four by a 4:3 deck between bars on the hall (Session 58, Q58-36), on two cores too.
       if (timeFor(FOUR_THREE_BLOCK_MS, 'a 4:3 deck Drashti plays itself, between bars')) {
         progress('a 4:3 deck Drashti plays itself between bars: its own Wipe, Cover, Uncover and Push');
@@ -1720,4 +1761,39 @@ function keep(streaming: boolean, what: object): void {
   } catch {
     // The summary has every row anyway.
   }
+}
+
+// ---- x30: video out on (the lead's ask) -----------------------------------------------------------------------------
+
+/** The rows measured with video out on: dissolve 800's and the deck's, named so. */
+export const VIDEO_OUT = ', video out on';
+/** The deck's clicks with video out on: rounds of a slide in and one click. */
+const VIDEO_OUT_DECK_RUNS = 2;
+/** The longest video out may take to be sending (its process, its program, its first frame), or to be off again. */
+const VIDEO_OUT_LIMIT_MS = 20_000;
+/** Video out turned on or off from the operator window's own bridge, as Stream settings does. */
+const SET_VIDEO_OUT = (on: boolean) => `(async () => {
+  const r = await globalThis.drashti.stream.setVideoOut({ on: ${JSON.stringify(on)}, name: 'Drashti performance check' });
+  return r.ok === true;
+})()`;
+/** What video out says it is doing now. */
+const VIDEO_OUT_STATE = `globalThis.drashti.stream.videoOut().then((s) => s.state)`;
+
+/** Video out on (sending) or off, and settled: true, or why not. */
+async function setVideoOut(op: BrowserWindow | null, on: boolean): Promise<true | string> {
+  if (!op) return 'no operator window';
+  if (!(await ask<boolean, boolean>(op, SET_VIDEO_OUT(on), false))) return 'Stream settings did not keep it';
+  const want = on ? 'sending' : 'off';
+  const until = Date.now() + VIDEO_OUT_LIMIT_MS;
+  let state = '';
+  while (Date.now() < until) {
+    state = await ask<string, string>(op, VIDEO_OUT_STATE, '');
+    if (state === want) {
+      await sleep(SETTLE_MS);
+      return true;
+    }
+    if (on && (state === 'unavailable' || state === 'stopped')) return `it is ${state} here`;
+    await sleep(200);
+  }
+  return `not ${want} within ${String(VIDEO_OUT_LIMIT_MS / 1000)} s (${state || 'no answer'})`;
 }
