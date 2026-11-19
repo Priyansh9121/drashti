@@ -197,9 +197,8 @@ test('a pinned picture: each corner where it was pinned, the quarters where the 
   await expect
     .poll(() =>
       stream.evaluate(() => ({
-        warped: [...document.querySelectorAll<HTMLElement>('*')].some((e) =>
-          getComputedStyle(e).transform.startsWith('matrix3d'),
-        ),
+        // A screen's warp is a matrix3d in its picture box's own style (output/main.tsx): none here.
+        warped: document.querySelectorAll('[style*="matrix3d"]').length > 0,
         grids: document.querySelectorAll('[data-testid="geometry-grid"]').length,
         ramps: document.querySelectorAll('[data-testid="blend-ramp"]').length,
       })),
