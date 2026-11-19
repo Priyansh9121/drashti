@@ -10,6 +10,7 @@ import { libraryPresentation, slideRowTarget } from '../files/targets';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { deleteOpenLabel, requestRemovalOfOpen } from '../library/import-store';
 import { leaveItem, selectPresentation, useLibrary } from '../library/library-store';
+import { libraryRowsDropped, libraryRowsOver } from '../playlists/DropNewDialog';
 import { OpenPlaylist } from '../playlists/OpenPlaylist';
 import { usePlaylists } from '../playlists/playlist-store';
 import { presentationRows } from '../playlists/rows';
@@ -34,7 +35,13 @@ import { StartHere } from './StartHere';
 export function Middle({ platform }: { platform: string }) {
   const openId = usePlaylists((s) => s.openId);
   return (
-    <main aria-label="Playlist and slides" className="flex min-h-0 flex-1 flex-col">
+    <main
+      aria-label="Playlist and slides"
+      className="flex min-h-0 flex-1 flex-col"
+      // The library's rows dropped here with no playlist open: a new playlist or folder for them (Session 60, x36).
+      onDragOver={libraryRowsOver}
+      onDrop={libraryRowsDropped}
+    >
       {openId ? (
         <div className="flex min-h-0 flex-1 flex-col bg-panel" data-testid="centre-playlist">
           <OpenPlaylist platform={platform} />
