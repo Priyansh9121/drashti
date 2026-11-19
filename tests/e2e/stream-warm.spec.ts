@@ -2,7 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { launchApp, operatorPage, operatorReady, outputPage, setUpScreen, windowShowing } from './helpers';
+import { launchApp, operatorPage, operatorReady, setUpScreen, windowShowing } from './helpers';
 
 /*
  * The stream's page's own warm-up as it opens (Session 60, X21; C19's finding; the owner's answer A to Q60-1). Opened
@@ -28,9 +28,11 @@ function warmUpLog(userData: string): string[] {
     .map((line) => line.slice(line.indexOf('Warm-up')).trimEnd());
 }
 
-/** How the hall's screen's warm-up ended, as the log says it once (Session 58, WU-2), or '' before it has. */
-const hallEnded = (userData: string) =>
-  warmUpLog(userData).find((line) => line.startsWith('Warm-up of output ')) ?? '';
+/** How each hall screen's warm-up ended, as the log says it once a screen (Session 58, WU-2), in order. */
+const hallEnds = (userData: string) =>
+  warmUpLog(userData).filter((line) => line.startsWith('Warm-up of output '));
+/** A hall screen's warm-up that drew everything: the only end the rule counts. */
+const DREW_WHOLE = ': drew everything in ';
 
 /** The log's lines for the stream's page. */
 const streamLines = (userData: string) =>
@@ -48,20 +50,27 @@ const warmUpMarks = (page: Page) =>
 const streamPage = (app: ElectronApplication) =>
   windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
 
-test('with a graphics chip, the stream’s page opened after the hall’s screen drew its warm-up whole draws the show at once, with no warm-up of its own, and the log says so once', async () => {
+test('with a graphics chip, the stream’s page opened after a hall screen drew its warm-up whole draws the show at once, with no warm-up of its own, and the log says so once', async () => {
   test.setTimeout(150_000);
-  const { app, userData } = await launchApp({ ...WITH_A_CHIP, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const { app, userData } = await launchApp({
+    ...WITH_A_CHIP,
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '1',
+  });
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
-    await setUpScreen(win);
-    const hall = await outputPage(app);
-    await expect(hall.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 60_000 });
-    await expect.poll(() => hallEnded(userData), { timeout: 30_000 }).not.toBe('');
-    // CI's Mac has a graphics chip of its own: its hall's screen draws everything, so the rule's main way is tested
-    // there. A computer pretending to have one (CI's Windows draws in software) may end its warm-up otherwise.
-    if (process.platform === 'darwin') expect(hallEnded(userData)).toContain(': drew everything in ');
-    const drewWhole = hallEnded(userData).includes(': drew everything in ');
+    await setUpScreen(win, 'Main Hall', 0);
+    await expect.poll(() => hallEnds(userData).length, { timeout: 60_000 }).toBeGreaterThanOrEqual(1);
+    // A second hall screen once the first one's warm-up has ended. At a new CI Mac's first start the first one makes
+    // every drawing pipeline as it warms up and can end at its longest (17.2 s: x21-1119-144119-60099); the second
+    // draws with what the first made, and draws everything there (the measuring's second screen: 2.0-3.6 s).
+    await setUpScreen(win, 'Side Hall', 1);
+    await expect.poll(() => hallEnds(userData).length, { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
+    // CI's Mac has a graphics chip of its own: a hall screen there draws everything, so the rule's main way is tested
+    // there. A computer pretending to have one (CI's Windows draws in software) may end its warm-ups otherwise.
+    const drewWhole = hallEnds(userData).some((line) => line.includes(DREW_WHOLE));
+    if (process.platform === 'darwin') expect(drewWhole, hallEnds(userData).join('\n')).toBe(true);
     await win.getByTestId('open-stream').click();
     const program = await streamPage(app);
     const root = program.getByTestId('program-root');
@@ -73,7 +82,8 @@ test('with a graphics chip, the stream’s page opened after the hall’s screen
       expect(marks, 'the stream’s page’s warm-up marks').toEqual([]);
       await expect.poll(() => streamLines(userData).filter((line) => line === NONE)).toEqual([NONE]);
     } else {
-      // The hall's ended otherwise: the stream's page warmed itself up, as before.
+      // No hall screen drew everything (a computer pretending to have a chip): the stream's page warmed itself up, as
+      // before.
       await expect(root).toHaveAttribute('data-warm-up', 'done');
       expect(marks, 'the stream’s page’s warm-up marks').toContain('drashti-warm-up:stream');
       expect(streamLines(userData)).not.toContain(NONE);
