@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { nativeDeckMotion } from '../../../shared/deck';
 import { type DeckNativeTransition, isDeckNativeTransition } from '../../../shared/deck-transition';
@@ -608,7 +608,9 @@ function Zoomed({ layer, children }: { layer: SlideLayer; children: ReactNode })
  * words in a box along the bottom; a slide with no words but a picture or
  * video is drawn as designed either way.
  */
-function DrawnSlide({
+// Removing an outgoing layer keeps the incoming content and its props: avoid rebuilding its placed/native tree.
+// Its children still respond to their own state and context updates.
+const DrawnSlide = memo(function DrawnSlide({
   layer,
   canvas,
   scaling,
@@ -676,7 +678,7 @@ function DrawnSlide({
       </SlideTimersContext.Provider>
     </SlideMovementContext.Provider>
   );
-}
+});
 
 export function SlideLayerView({
   layer,
