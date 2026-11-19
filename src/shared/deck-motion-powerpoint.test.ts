@@ -6,6 +6,7 @@ import {
   deckMotionFrame,
   deckShapeShows,
   deckSplitShows,
+  deckWheelShows,
   deckWipeClip,
   deckWipeMask,
 } from './deck-motion';
@@ -668,7 +669,7 @@ describe('Wheel as PowerPoint’s own movie shows it (run 6)', () => {
   const movie = { width: 1920, height: 1080 };
   /** The clip's spokes: each a run of points about the box's middle, as clockwise angles from twelve o'clock. */
   function spokesAt(one: DeckEffect, ms: number): number[][] {
-    const clip = deckWipeClip(deckMotionFrame([one], 1, ms, wheelBox, movie).wipe, wheelBox, wheelBox);
+    const clip = deckHardClip(deckMotionFrame([one], 1, ms, wheelBox, movie).wipe, wheelBox, wheelBox);
     const points = clip
       .slice('polygon('.length, -1)
       .split(', ')
@@ -704,6 +705,33 @@ describe('Wheel as PowerPoint’s own movie shows it (run 6)', () => {
         expect(apart(at, edges[i] ?? 0), name).toBeLessThanOrEqual(1.5);
       });
     }
+  });
+
+  it('draws its soft edge as PowerPoint does: 0.138 of a spoke’s turn wide, in the box’s proportions, by a mask', () => {
+    // PowerPoint's movie: 10-90 % across 40-42 degrees of one spoke's turn in the square's proportions, half-way where
+    // the sweep has gone (1 + 0.138) x the time less 0.069 of the way.
+    const one = effect('wheel', 'in', { spokes: 1 });
+    const wipe = deckMotionFrame([one], 1, 350, wheelBox, movie).wipe;
+    const along = Array.from({ length: 3600 }, (_, k) => {
+      const turn = ((k + 0.5) / 3600) * 2 * Math.PI;
+      return deckWheelShows(wipe, 0.5 * Math.sin(turn), -0.5 * Math.cos(turn));
+    });
+    const last = (above: number) => along.reduce((found, shows, k) => (shows >= above ? k : found), -1) / 10;
+    expect(last(0.5)).toBeCloseTo((1.138 * 0.5 - 0.069) * 360, 0);
+    expect(last(0.1) - last(0.9)).toBeGreaterThanOrEqual(39);
+    expect(last(0.1) - last(0.9)).toBeLessThanOrEqual(42);
+    // Drawn by one conic gradient about the box's middle where a graphics chip draws, its clip none.
+    expect(deckWipeClip(wipe, wheelBox, wheelBox)).toBe('');
+    expect(deckWipeMask(wipe, wheelBox, wheelBox)).toMatch(/^conic-gradient\(from 0deg at 50% 50%, /u);
+    // Each spoke the same, a turn of its own: 4 spokes, a quarter turn apart.
+    const four = deckMotionFrame([effect('wheel', 'in', { spokes: 4 })], 1, 350, wheelBox, movie).wipe;
+    for (const turn of [0.05, 0.1, 0.15, 0.2])
+      for (let s = 1; s < 4; s++) {
+        const a = 2 * Math.PI * turn;
+        const b = a + (s * Math.PI) / 2;
+        const here = deckWheelShows(four, Math.sin(a), -Math.cos(a));
+        expect(deckWheelShows(four, Math.sin(b), -Math.cos(b))).toBeCloseTo(here, 6);
+      }
   });
 
   it('leaves with its edge going round the same way from twelve o’clock, hiding what it passes', () => {

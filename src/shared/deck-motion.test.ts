@@ -336,7 +336,9 @@ describe('the common PowerPoint effects Drashti draws itself', () => {
 
   it('sweeps Wheel’s spokes clockwise from twelve o’clock', () => {
     const wheel: DeckEffect = { ...effect, kind: 'wheel', spokes: 2 };
-    const points = clipAt(75, wheel).slice('polygon('.length, -1).split(', ');
+    // Its hard edge (a page without a graphics chip; with one, its soft edge's mask).
+    const clip = deckHardClip(at(75, [wheel]).wipe, bounds, bounds);
+    const points = clip.slice('polygon('.length, -1).split(', ');
     // Each spoke starts at the centre, then at its own twelve or six o'clock, straight above or below it.
     expect(points.filter((point) => point === '50% 50%')).toHaveLength(2);
     expect(points[0]).toBe('50% 50%');
