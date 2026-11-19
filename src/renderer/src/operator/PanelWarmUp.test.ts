@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { onWholePixels, PanelWarmUp } from './PanelWarmUp';
+import { KIND_KEEP_MS, keeperShift, onWholePixels, PanelKindKeeper, PanelWarmUp } from './PanelWarmUp';
 
 /*
  * The Stream panel's pieces drawn unseen with the LIVE picture's warm-up (Session 60, X21's second part). A graphics
@@ -85,5 +85,51 @@ describe('the Stream panel’s pieces, warmed unseen', () => {
     // A ratio it cannot read counts as one.
     expect(onWholePixels(10.5, 3, Number.NaN)).toEqual({ dx: 0.5, dy: 0 });
     expect(onWholePixels(Number.NaN, 3, 1)).toEqual({ dx: 0, dy: 0 });
+  });
+});
+
+/*
+ * The primary button's kind kept in use (the owner's "A + keep tracing", Q60-9). The warm-up makes it at the start, but
+ * the GPU's pipeline cache drops a kind left unused for minutes: in the Performance check's step, about seven minutes
+ * in, the Stream panel's Go live made it again (its compile 184 ms on CI's Mac, the hall's frame 183 ms: x21-macos-21's
+ * trace). So the LIVE heading keeps a tiny copy of it, drawn again every KIND_KEEP_MS under a cover of the panel's own
+ * colour: the gradient and its inset light under rounded corners, beside an icon (a tile with a path is multisampled).
+ */
+describe('the primary button’s kind, kept in use', () => {
+  const keeper = () => renderToStaticMarkup(createElement(PanelKindKeeper));
+
+  it('draws the primary’s gradient and inset light under rounded corners beside an icon, a layer of its own', () => {
+    const html = keeper();
+    expect(html).toMatch(/^<span[^>]*aria-hidden="true"[^>]*inert=""/u);
+    expect(html).toContain('will-change-transform');
+    expect(html).toMatch(/rounded-lg[^"]*bg-linear-to-b from-primary-hi via-primary via-55% to-primary-lo/u);
+    expect(html).toContain('shadow-[inset_0_1px_0_var(--depth-primary-top)]');
+    expect(html).toContain('<svg');
+    expect(html).not.toContain('<button');
+  });
+
+  it('is hidden under a cover of the panel’s colour drawn after it, a pixel larger all round', () => {
+    const html = keeper();
+    const cover = html.lastIndexOf('<span class="absolute inset-px bg-panel"');
+    expect(cover).toBeGreaterThan(html.indexOf('from-primary-hi'));
+    expect(html).toMatch(/<span class="absolute inset-\[2px\] [^"]*from-primary-hi/u);
+  });
+
+  it('leaves its layer’s edge uncovered: a tile all of one colour is never drawn (Chromium shows it as that colour)', () => {
+    // The cover is inset a pixel from the layer, so the layer is not one colour: x21-macos-25's trace at 94b70d52,
+    // with the cover filling the layer, still made the primary's kind new at the step.
+    expect(keeper()).not.toContain('class="absolute inset-0 bg-panel"');
+  });
+
+  it('starts on a whole device pixel, wherever the heading falls', () => {
+    // Measured with the shift it has, so a second look keeps a whole pixel.
+    expect(keeperShift({ left: 720.5, top: 63.25 }, { dx: 0, dy: 0 }, 1)).toEqual({ dx: 0.5, dy: -0.25 });
+    expect(keeperShift({ left: 721, top: 63 }, { dx: 0.5, dy: -0.25 }, 1)).toEqual({ dx: 0.5, dy: -0.25 });
+    expect(keeperShift({ left: 720, top: 63 }, { dx: 0, dy: 0 }, 2)).toEqual({ dx: 0, dy: 0 });
+  });
+
+  it('draws it again often enough to stay in the GPU’s cache', () => {
+    expect(KIND_KEEP_MS).toBeGreaterThanOrEqual(5_000);
+    expect(KIND_KEEP_MS).toBeLessThanOrEqual(30_000);
   });
 });
