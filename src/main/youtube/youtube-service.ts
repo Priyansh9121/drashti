@@ -96,6 +96,8 @@ export interface YouTubeServiceDeps {
   random?: RandomBytes;
   /** Timers (unit tests give their own clock). */
   setTimer?: (run: () => void, ms: number) => () => void;
+  /** Tests (DRASHTI_TEST_YOUTUBE_STATE_MS): YouTube's state is asked this often while on air, not 15, 20 and 60 s. */
+  stateMs?: number;
 }
 
 const linkSchema = z.object({
@@ -657,7 +659,7 @@ export class YouTubeService {
     const active = this.deps.stream.profilesView().activeId;
     const link = active === null ? undefined : this.links()[active];
     if (!link) return;
-    this.watch(link.broadcastId, STATE_FIRST_MS);
+    this.watch(link.broadcastId, this.deps.stateMs ?? STATE_FIRST_MS);
   }
 
   private watch(broadcastId: string, inMs: number): void {
@@ -693,7 +695,10 @@ export class YouTubeService {
         return;
       }
     }
-    this.watch(broadcastId, this.known?.state === 'live' ? STATE_LIVE_MS : STATE_UNTIL_LIVE_MS);
+    this.watch(
+      broadcastId,
+      this.deps.stateMs ?? (this.known?.state === 'live' ? STATE_LIVE_MS : STATE_UNTIL_LIVE_MS),
+    );
   }
 
   /**
