@@ -17,7 +17,7 @@ const root = (img: HTMLImageElement) =>
 const image = (src: string, decode: () => Promise<void>) =>
   ({ src, currentSrc: src, complete: true, decode }) as HTMLImageElement;
 function pending() {
-  let finish = () => {
+  let finish: () => void = () => {
     throw new Error('decoder not started');
   };
   const promise = new Promise<void>((resolve) => {
@@ -52,13 +52,11 @@ it('a second element for a successfully decoded address can cut in the same fram
   const ready = slideMediaReady(root(first), engineNow() + 3000, layer, true);
   if (ready !== true) await ready;
   expect(decode).toHaveBeenCalledOnce();
-  const again = image(
-    first.src,
-    vi.fn(() => Promise.resolve()),
-  );
+  const againDecode = vi.fn(() => Promise.resolve());
+  const again = image(first.src, againDecode);
   expect(slideMediaDrawable(root(again), layer, true)).toBe(true);
   expect(slideMediaReady(root(again), engineNow() + 3000, layer, true)).toBe(true);
-  expect(again.decode).not.toHaveBeenCalled();
+  expect(againDecode).not.toHaveBeenCalled();
 });
 
 it('a picture changed during a pending decode does not mark either address ready', async () => {

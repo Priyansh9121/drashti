@@ -341,7 +341,7 @@ The feed's `{"type":"changed","what":"setup"}` says the screens' setup, Keep the
 
 ## The state feed (WebSocket)
 
-**Slide picture readiness.** The hall and the stream may retain the preceding painted slide while the new slide's pictures become drawable (at most 3 seconds); the state feed and its engine times already describe the new slide. Slide images use a synchronous decoding preference when `picturesFirst` is enabled, so an encoded image marked `complete` is not presented without its decoded pixels. The Next preloader still decodes ahead, and key/fill keeps its shared cut timing without this preference. This changes rendering, with no new endpoint or state field.
+**Slide picture readiness.** The hall and the stream may retain the preceding painted slide while the new slide's pictures become drawable (at most 3 seconds); the state feed and its engine times already describe the new slide. When `picturesFirst` is enabled, successfully decoded addresses are recorded in the page by the Next preloader and slide waits; an encoded image marked `complete` still waits if that decode has not finished. A synchronous image preference guards against Chromium discarding an earlier decoded copy. A prepared Next retains its same-frame cut, and key/fill keeps its shared cut timing without the added decode wait or preference. This changes rendering, with no new endpoint or state field.
 
 `ws://<computer>:8740/api/v1/feed` (Remote and Stage devices). The first message must say who the device is, within five seconds:
 

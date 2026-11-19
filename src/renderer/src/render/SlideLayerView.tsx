@@ -11,7 +11,7 @@ import { hasPicture, lowerThird } from '../../../shared/program';
 import { placeContent, type Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { Placed } from './Placed';
-import { SlideImageDecoding } from './slide-image-decoding';
+import { decodeSlideImage, SlideImageDecoding, slideImageDecoded } from './slide-image-decoding';
 import { type Reveal, type SlideText, SlideView } from './SlideView';
 import type { TimerState } from '../../../shared/timers';
 import { clockHeld, engineNow, onClockJump } from './clock';
@@ -417,9 +417,12 @@ export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'bandOut'>): void 
 function notDrawable(
   root: HTMLElement,
   layer: SlideLayer,
+  decodedPictures = false,
 ): { images: HTMLImageElement[]; videos: HTMLVideoElement[]; first: HTMLVideoElement | undefined } {
   const native = nativeDeckMotion(layer.slide.deck) !== undefined;
-  const images = Array.from(root.querySelectorAll('img')).filter((img) => !img.complete);
+  const images = Array.from(root.querySelectorAll('img')).filter(
+    (img) => !img.complete || (decodedPictures && !slideImageDecoded(img)),
+  );
   const all = Array.from(root.querySelectorAll('video'));
   const first = all.find((video) => video.dataset['deckFirstFrame'] !== undefined);
   const videos = all.filter((video) =>
@@ -434,8 +437,8 @@ function notDrawable(
 }
 
 /** Whether every picture and video in `root` can be drawn now (Session 58: asked before a frame is painted). */
-export function slideMediaDrawable(root: HTMLElement, layer: SlideLayer): boolean {
-  const { images, videos } = notDrawable(root, layer);
+export function slideMediaDrawable(root: HTMLElement, layer: SlideLayer, decodedPictures = false): boolean {
+  const { images, videos } = notDrawable(root, layer, decodedPictures);
   return images.length === 0 && videos.length === 0;
 }
 
@@ -447,9 +450,10 @@ export function slideMediaReady(
   root: HTMLElement,
   deadline: number,
   layer: SlideLayer,
+  decodedPictures = false,
 ): true | Promise<void> {
-  const { images, videos, first } = notDrawable(root, layer);
-  const waits: Promise<unknown>[] = images.map((img) => img.decode().catch(() => undefined));
+  const { images, videos, first } = notDrawable(root, layer, decodedPictures);
+  const waits: Promise<unknown>[] = images.map((img) => decodeSlideImage(img).catch(() => undefined));
   for (const video of videos)
     waits.push(
       new Promise<void>((resolve) => {
@@ -646,7 +650,7 @@ export function SlideLayerView({
   useEffect(() => {
     if (!waiting || !on || !inRef.current) return;
     const shownAt = on.shownAt;
-    const ready = slideMediaReady(inRef.current, picturesBy ?? shownAt + MEDIA_WAIT_MS, on);
+    const ready = slideMediaReady(inRef.current, picturesBy ?? shownAt + MEDIA_WAIT_MS, on, picturesFirst);
     const begin = (start: number) => {
       setShowing((s) =>
         s.on && keyOf(s.on) === onKey && s.fade?.start === null ? { ...s, fade: { ...s.fade, start } } : s,
@@ -664,7 +668,7 @@ export function SlideLayerView({
     return () => {
       live = false;
     };
-  }, [waiting, on, onKey, native, picturesBy]);
+  }, [waiting, on, onKey, native, picturesBy, picturesFirst]);
 
   // Run the transition, frame by frame, from the clock every screen shares.
   const start = fade?.start ?? null;
@@ -801,17 +805,18 @@ export function SlideLayerView({
 
   // A cut on the stream's page whose pictures can already be drawn (loaded ahead, as the hall's screens load them) is
   // made before this frame is painted, as every cut is. Its sync decoding preference keeps a loaded picture in that
-  // paint too; complete alone does not say that Chromium still has its decoded pixels (X19 L7).
+  // paint too if Chromium discarded an earlier decoded copy. A cold loaded picture takes the asynchronous decode
+  // wait above, keeping the previous slide moving instead of holding a whole frame while it decodes (X19 L7).
   useLayoutEffect(() => {
     if (!waiting || picturesBy === undefined || !on || !inRef.current) return;
-    if (!slideMediaDrawable(inRef.current, on)) return;
+    if (!slideMediaDrawable(inRef.current, on, picturesFirst)) return;
     const begin = (start: number) => {
       setShowing((s) =>
         s.on && keyOf(s.on) === onKey && s.fade?.start === null ? { ...s, fade: { ...s.fade, start } } : s,
       );
     };
     begin(engineNow() - 1);
-  }, [waiting, picturesBy, on, onKey]);
+  }, [waiting, picturesBy, on, onKey, picturesFirst]);
 
   if (!on && !off) return null;
   // One list, keyed by slide and time, so the slide going away keeps its elements (its videos play on); a timer

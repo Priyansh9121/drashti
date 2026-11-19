@@ -20,7 +20,7 @@ import { engineNow } from './clock';
 import { useMediaAttempt } from './media-attempts';
 import { PreviewPicture, PreviewsContext } from './previews';
 import { useElementSize } from './useElementSize';
-import { SlideImageDecoding } from './slide-image-decoding';
+import { decodeSlideImage, SlideImageDecoding } from './slide-image-decoding';
 
 /*
  * A picture drawn with its look (Session 26e, shared/picture-look.ts): zoomed
@@ -94,7 +94,7 @@ function holdCopy(url: string): () => void {
     held = entry;
     heldCopies.set(url, entry);
     img.src = url;
-    img.decode().then(
+    decodeSlideImage(img).then(
       () => {
         // Its size too: a blurred copy's shape is its picture's (Session 55), so a screen knows when it fills.
         if (heldCopies.get(url) === entry)

@@ -8,6 +8,7 @@ import { deckClip, pointedBeside, usePointedClip } from '../render/clips-ahead';
 import { DeckClipAhead } from '../render/DeckStep';
 import { useMediaAttempt } from '../render/media-attempts';
 import { useSharpCopy } from '../render/picture-looks';
+import { decodeSlideImage } from '../render/slide-image-decoding';
 
 type LoadState = 'loading' | 'ready' | 'failed';
 
@@ -19,7 +20,7 @@ function PreloadImage({ mediaId, attempt }: { mediaId: string; attempt: number }
     const img = ref.current;
     if (!img) return;
     let current = true;
-    img.decode().then(
+    decodeSlideImage(img).then(
       () => {
         if (current) setState('ready');
       },
