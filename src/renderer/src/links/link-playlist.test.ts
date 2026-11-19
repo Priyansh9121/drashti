@@ -11,6 +11,8 @@ import { importLink, lookLink, newPlaylistName, useLinks } from './link-store';
 let tree: PlaylistNode[] = [];
 let itemsOf: Record<string, PlaylistItemInfo[]> = {};
 let refuseAdding = false;
+let refuseStart = false;
+let refuseLook = false;
 const made: string[] = [];
 const downloads: [url: string, audio: boolean, intoOpenPlaylist: boolean][] = [];
 const commands: EngineCommand[] = [];
@@ -57,6 +59,8 @@ beforeEach(() => {
   tree = [];
   itemsOf = {};
   refuseAdding = false;
+  refuseStart = false;
+  refuseLook = false;
   made.length = 0;
   downloads.length = 0;
   lookedUrls.length = 0;
@@ -96,7 +100,7 @@ beforeEach(() => {
       links: {
         look: (_kind: string, url: string) => {
           lookedUrls.push(url);
-          return answer(VIEW);
+          return refuseLook ? Promise.reject(new Error('Placeholder lookup failure')) : answer(VIEW);
         },
         view: () => Promise.resolve(VIEW),
         onChanged: (listener: (view: LinkView) => void) => {
@@ -106,6 +110,7 @@ beforeEach(() => {
         onOpen: () => () => undefined,
         start: (url: string, audio: boolean, intoOpenPlaylist: boolean) => {
           downloads.push([url, audio, intoOpenPlaylist]);
+          if (refuseStart) return Promise.resolve({ ok: false, message: 'Placeholder start refusal.' });
           return answer({ ...VIEW, link: url, phase: 'looking' });
         },
       },
@@ -248,6 +253,22 @@ describe('when a download is in', () => {
 });
 
 describe('downloading a link from the window', () => {
+  it('keeps a start refusal available inside the open link window and clears it on the next check', async () => {
+    refuseStart = true;
+    expect(await importLink('https://youtu.be/AAAAAAAAAAA')).toBe(false);
+    expect(useLinks.getState().open).toBe(true);
+    expect(useLinks.getState().problem).toBe('Placeholder start refusal.');
+    await lookLink('https://youtu.be/AAAAAAAAAAA');
+    expect(useLinks.getState().problem).toBeNull();
+  });
+
+  it('makes a failed lookup available inside the link window without starting media', async () => {
+    refuseLook = true;
+    await lookLink('https://youtu.be/AAAAAAAAAAA');
+    expect(useLinks.getState().problem).toBe('Drashti could not check the link. Paste it again.');
+    expect(downloads).toEqual([]);
+  });
+
   it('does not issue a delayed metadata check after Download has started', async () => {
     await lookLink('https://youtu.be/AAAAAAAAAAA');
     expect(lookedUrls).toHaveLength(1);
