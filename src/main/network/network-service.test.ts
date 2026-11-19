@@ -1345,10 +1345,7 @@ describe('OSC uses the API action layer without a paired phone', () => {
       t.service.runShowAction({ op: 'command', args: { type: 'next' } }, 'the paired controller').status,
     ).toBe(200);
     const asked = logs.filter((line) => /^Network: (OSC sender|the paired controller) /u.test(line));
-    expect(asked.map((line) => line.split(' ').slice(1, 3).join(' '))).toEqual([
-      'OSC sender',
-      'the paired',
-    ]);
+    expect(asked.map((line) => line.split(' ').slice(1, 3).join(' '))).toEqual(['OSC sender', 'the paired']);
     await t.service.close();
   });
 
