@@ -8,7 +8,7 @@ import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
 import { useAccess } from '../access/access-store';
 import { FileMenu } from '../files/FileMenu';
 import { GuidesDialog } from '../help/GuidesDialog';
-import { importPaths } from '../library/import-store';
+import { askWhereFilesGo, DropNewDialog } from '../playlists/DropNewDialog';
 import { useLibrary } from '../library/library-store';
 import { RemoveItemsConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { UndoBar } from '../library/UndoBar';
@@ -157,7 +157,8 @@ function useComingPlaylist(): boolean {
 
 /**
  * Files dropped anywhere on the window (not on a row, or on the wallpapers, which take their own): at the end of the
- * open playlist. A folder (Session 56, the owner's item 5): a smart playlist following it, at once, nothing asked.
+ * open playlist; with none open, the small window for a new playlist or folder (Session 60, x36). A folder (Session
+ * 56, the owner's item 5): a smart playlist following it, at once, nothing asked.
  */
 function useDropsIntoPlaylist(): void {
   useEffect(() => {
@@ -174,11 +175,12 @@ function useDropsIntoPlaylist(): void {
       const paths = Array.from(e.dataTransfer.files)
         .map((f) => window.drashti.files.pathFor(f))
         .filter((p) => p !== '');
-      void dropFolders(paths, (files) =>
-        playlistId !== null
-          ? importIntoPlaylist(playlistId, null, files)
-          : importPaths(files, undefined, null),
-      );
+      // With none open, a small window asks for a new playlist or folder for them (Session 60, x36), as in Pro Mode.
+      void dropFolders(paths, (files) => {
+        if (playlistId !== null) return importIntoPlaylist(playlistId, null, files);
+        askWhereFilesGo(files);
+        return undefined;
+      });
     };
     window.addEventListener('dragover', over);
     window.addEventListener('drop', drop);
@@ -343,8 +345,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
                 // None open (Session 56: its open one deleted, or the last one): empty, never a stale one.
                 <CentredPlace data-testid="no-playlist-open">
                   <EmptyState icon={ListMusic} title="No playlist open">
-                    Open one on the left, or make one with New there. Files dropped then go into it; a folder
-                    dropped becomes a smart playlist.
+                    Open one on the left, or make one with New there. Files dropped here ask for a new
+                    playlist or folder to go into; a folder dropped becomes a smart playlist.
                   </EmptyState>
                 </CentredPlace>
               )}
@@ -378,6 +380,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       />
       <NoticeArea />
       <LinkDialog />
+      {/* Files dropped with no playlist open: a new playlist or folder for them (Session 60, x36). */}
+      <DropNewDialog />
       <LayerBar platform={platform} run={run} simple />
       <StatusBar info={info} onOpenScreens={null} />
       {/* A row's right-click menu, its Delete's question when it is up, and From a Link…. */}

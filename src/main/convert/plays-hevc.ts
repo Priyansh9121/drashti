@@ -35,6 +35,47 @@ export function playsHevcScript(test: HevcTest | null = null): string {
   return `(() => { const until = Date.now() + ${String(Math.max(0, Math.round(test.holdMs)))}; while (Date.now() < until); return ${answer}; })()`;
 }
 
+/**
+ * HEVC beyond its Main profile (Session 60, x36; the owner's "Yes, A": "at import, HEVC's own kind is checked"): Main 10
+ * (10-bit 4:2:0) and the Range Extensions (4:2:2, 4:4:4 or 12-bit, a camera's or an editor's). A computer that plays
+ * HEVC's Main may still not play these: Chromium then plays such a file as sound only, so each is asked of the page too,
+ * and an import converts by itself the kind this computer cannot play.
+ */
+export interface HevcKinds {
+  main10: boolean;
+  rext: boolean;
+}
+
+/** Each kind's question, as the media type Chromium is asked about. */
+export const HEVC_KIND_TYPES = {
+  main10: 'video/mp4; codecs="hvc1.2.4.L93.B0"',
+  rext: 'video/mp4; codecs="hvc1.4.10.L93.B0"',
+} as const;
+
+/** The kinds' question, as a page runs it: Chromium's answer for each, Main 10's then the Range Extensions'. */
+export const HEVC_KINDS_SCRIPT = `[${JSON.stringify(HEVC_KIND_TYPES.main10)}, ${JSON.stringify(HEVC_KIND_TYPES.rext)}].map((t) => document.createElement('video').canPlayType(t))`;
+
+/** The kinds' question as a page runs it: the plain one, or a test's (its answer, given, for every kind). */
+export function hevcKindsScript(test: HevcTest | null = null): string {
+  const given = test?.given ?? null;
+  if (given === null) return HEVC_KINDS_SCRIPT;
+  return JSON.stringify(given ? ['probably', 'probably'] : ['', '']);
+}
+
+/** Ask a window HEVC's other kinds (`run` runs a script in it), or null when it cannot be told. */
+export async function askHevcKinds(
+  run: (script: string) => Promise<unknown>,
+  script: string = HEVC_KINDS_SCRIPT,
+): Promise<HevcKinds | null> {
+  try {
+    const said = await run(script);
+    if (!Array.isArray(said) || said.length !== 2 || !said.every((x) => typeof x === 'string')) return null;
+    return { main10: said[0] !== '', rext: said[1] !== '' };
+  } catch {
+    return null;
+  }
+}
+
 /** Ask a window (`run` runs a script in it): whether it plays HEVC, or null when it cannot be told. */
 export async function askPlaysHevc(
   run: (script: string) => Promise<unknown>,
@@ -67,6 +108,12 @@ export class HevcAnswer {
   get now(): boolean | null {
     return this.answer;
   }
+
+  /**
+   * HEVC's other kinds (Session 60, x36), as the window said with its answer; null while not known (or given by a
+   * test: then every kind is as the answer says).
+   */
+  kinds: HevcKinds | null = null;
 
   /** The window's answer (null: it could not say this time); the imports waiting go on with it. */
   tell(answer: boolean | null): void {

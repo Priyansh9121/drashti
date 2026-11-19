@@ -29,7 +29,7 @@ export const PANEL_HELP = {
   library: {
     title: 'The library',
     doc: 'operator',
-    text: 'Every presentation, picture, video and sound on this computer: type a few letters of a kirtan’s title or words in the search box to find it, then press Add to playlist. Import… brings more in, into the library only, as do files and folders dropped anywhere here (From a Link… takes a pasted YouTube or Dropbox link, into the open playlist too), and a file Drashti can’t play says Converting… until Drashti has converted it by itself, once nothing is up or playing. In Media, one click puts up a video input (Add a Video Input… names a camera or a mixer’s output), Show a Window… another app’s window, and Picture in Picture… something small in a corner; right-click a video input, or drag it, to put it in a playlist instead.',
+    text: 'Every presentation, picture, video and sound on this computer: type a few letters of a kirtan’s title or words in the search box to find it, then press Add to playlist. Import… brings more in, into the library only, as do files and folders dropped anywhere here (From a Link… takes a pasted YouTube or Dropbox link, into the open playlist too), and a file Drashti can’t play says Converting… until Drashti has converted it by itself, once nothing is up or playing. In Media, one click puts up a video input (named with Add a Video Input…, in More tools); right-click it, or drag it, to put it in a playlist instead.',
     guide: 'the **Library**',
   },
   slides: {
@@ -125,7 +125,7 @@ export const PANEL_HELP = {
   tools: {
     title: 'More tools',
     doc: 'operator',
-    text: 'Lower Thirds and the MIDI controller, folded away until you need them. Press More tools to open them or fold them again.',
+    text: 'Lower Thirds, the MIDI controller and OSC, then Show a Window…, Add a Video Input…, Picture in Picture… and QR code…, each with a line saying what it does, folded away until you need them. Press More tools to open them or fold them again; the Tools menu at the top has them too.',
     guide: '**More tools.** Folded away',
   },
 } as const satisfies Record<string, PanelHelp>;

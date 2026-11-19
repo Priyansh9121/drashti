@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ImportOptions, ImportProgress, ImportResult, ImportRunSummary } from '../../shared/import';
 import type { PicturesResult } from '../../shared/pictures';
+import type { HevcKinds } from '../convert/plays-hevc';
 import type { FromWorker, StartMessage, ToWorker } from './protocol';
 
 /*
@@ -30,12 +31,17 @@ export interface WorkerProcess {
 
 export interface ImportServiceDeps {
   spawn(): WorkerProcess;
-  worker: Omit<StartMessage, 'type' | 'job' | 'runId' | 'paths' | 'options' | 'mediaIds' | 'playsHevc'>;
+  worker: Omit<
+    StartMessage,
+    'type' | 'job' | 'runId' | 'paths' | 'options' | 'mediaIds' | 'playsHevc' | 'hevcKinds'
+  >;
   /**
    * Whether this computer plays HEVC video (Session 51), as the operator window says once it has opened: each
    * import waits for it before it starts (Session 51 review), a moment at most (null: not known).
    */
   playsHevc?(): Promise<boolean | null>;
+  /** HEVC's other kinds, as the window said with that answer (Session 60, x36); null while not known. */
+  hevcKinds?(): HevcKinds | null;
   onProgress(progress: ImportProgress): void;
   onWrote(wrote: { presentationId: string; replaced: boolean }): void;
   /**
@@ -342,6 +348,7 @@ export class ImportService {
         ...this.deps.worker,
         ...(this.deps.baker ? { baker: this.deps.baker() } : {}),
         ...(playsHevc === undefined ? {} : { playsHevc }),
+        ...(this.deps.hevcKinds ? { hevcKinds: this.deps.hevcKinds() } : {}),
       });
     };
     // Once it is known whether this computer plays HEVC (Session 51 review: an import in the first moments after

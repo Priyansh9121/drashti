@@ -11,7 +11,7 @@ import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices
 import {
   importAndGetIds,
   launchApp,
-  openLibrary,
+  openMoreTools,
   operatorPage,
   operatorReady,
   outputPage,
@@ -164,9 +164,8 @@ test('the slides in the box from Picture in Picture…: the background alone on 
   await expect.poll(async () => (await drawn(hall)).main).toEqual(['background', 'slide']);
   expect((await drawn(hall)).pip).toBe('none');
 
-  // Picture in Picture…, beside Show a Window… in the library's Media tools: nothing goes up until Show in the box.
-  const sheet = await openLibrary(win);
-  await sheet.getByTestId('library-tab-media').click();
+  // Picture in Picture…, in More tools under Show a Window… (Session 60, x36): nothing goes up until Show in the box.
+  await openMoreTools(win);
   await expect(win.getByTestId('show-a-window')).toBeVisible();
   await win.getByTestId('pip-open').click();
   const dialog = win.getByTestId('pip-dialog');

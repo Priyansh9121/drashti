@@ -239,7 +239,8 @@ test('a folder playlist from before this session opens a folder at a time, and t
   await button.click();
   const sheet = win.getByTestId('library-sheet');
   await expect(sheet).toBeVisible();
-  await expect(button).toHaveAttribute('aria-expanded', 'true');
+  // Gone while the library is open (Session 60, x36): the sheet's own Library header is at the column's top.
+  await expect(button).toHaveCount(0);
   await expect(win.locator('#library-search')).toBeFocused();
   await expect(win.getByTestId('open-playlist')).toBeInViewport({ ratio: 0.9 });
   await expectNoSeriousA11yIssues(win, 'the Library sheet', '[data-testid="library-sheet"]');

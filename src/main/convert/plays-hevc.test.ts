@@ -1,7 +1,16 @@
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { HEVC_TYPE } from '../../shared/convert';
-import { askPlaysHevc, HevcAnswer, PLAYS_HEVC_SCRIPT, playsHevcScript } from './plays-hevc';
+import {
+  askHevcKinds,
+  askPlaysHevc,
+  HEVC_KIND_TYPES,
+  HEVC_KINDS_SCRIPT,
+  HevcAnswer,
+  hevcKindsScript,
+  PLAYS_HEVC_SCRIPT,
+  playsHevcScript,
+} from './plays-hevc';
 
 /*
  * Whether this computer plays HEVC video (Session 51), as the operator window's Chromium says: the import converts
@@ -59,6 +68,58 @@ describe('whether this computer plays HEVC', () => {
     ).toBeNull();
     expect(await askPlaysHevc(() => Promise.resolve(undefined))).toBeNull();
     expect(await askPlaysHevc(() => Promise.resolve(1))).toBeNull();
+  });
+});
+
+describe('HEVC’s other kinds (Session 60, x36; the owner’s "Yes, A")', () => {
+  it('asks Chromium about Main 10 and the Range Extensions (4:2:2, 4:4:4, 12-bit) by their profiles, in that order', () => {
+    // Profile 2 is Main 10 and profile 4 the Range Extensions (ISO/IEC 14496-15's codec strings, as Chromium reads them).
+    expect(HEVC_KIND_TYPES).toEqual({
+      main10: 'video/mp4; codecs="hvc1.2.4.L93.B0"',
+      rext: 'video/mp4; codecs="hvc1.4.10.L93.B0"',
+    });
+    const asked: string[] = [];
+    const said = runInNewContext(HEVC_KINDS_SCRIPT, {
+      document: {
+        createElement: () => ({
+          canPlayType: (type: string) => {
+            asked.push(type);
+            return type === HEVC_KIND_TYPES.main10 ? 'probably' : '';
+          },
+        }),
+      },
+    }) as unknown;
+    expect(asked).toEqual([HEVC_KIND_TYPES.main10, HEVC_KIND_TYPES.rext]);
+    expect(Array.from(said as string[])).toEqual(['probably', '']);
+  });
+
+  it('reads each kind as Chromium said it ("probably" or "maybe": it plays; nothing: it cannot); anything else is not known', async () => {
+    const answer = (said: unknown) => () => Promise.resolve(said);
+    expect(await askHevcKinds(answer(['probably', '']))).toEqual({ main10: true, rext: false });
+    expect(await askHevcKinds(answer(['maybe', 'probably']))).toEqual({ main10: true, rext: true });
+    expect(await askHevcKinds(answer(['', '']))).toEqual({ main10: false, rext: false });
+    for (const said of [undefined, 'probably', ['probably'], ['probably', '', ''], ['probably', 1]])
+      expect(await askHevcKinds(answer(said))).toBeNull();
+    expect(await askHevcKinds(() => Promise.reject(new Error('Placeholder: the page went away')))).toBeNull();
+  });
+
+  it('a test’s question gives its answer for every kind; with none given, Chromium’s own', () => {
+    const run = (script: string): unknown =>
+      runInNewContext(script, {
+        document: { createElement: () => ({ canPlayType: () => 'maybe' }) },
+      }) as unknown;
+    expect(hevcKindsScript()).toBe(HEVC_KINDS_SCRIPT);
+    expect(hevcKindsScript({ holdMs: 0, given: null })).toBe(HEVC_KINDS_SCRIPT);
+    expect(Array.from(run(hevcKindsScript({ holdMs: 0, given: true })) as string[])).toEqual([
+      'probably',
+      'probably',
+    ]);
+    expect(Array.from(run(hevcKindsScript({ holdMs: 0, given: false })) as string[])).toEqual(['', '']);
+  });
+
+  it('not known until the window has said them', () => {
+    expect(new HevcAnswer(null).kinds).toBeNull();
+    expect(new HevcAnswer(true).kinds).toBeNull();
   });
 });
 
