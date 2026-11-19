@@ -312,8 +312,18 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         : { ...state, autoAdvance: action.autoAdvance };
     case 'repeat/set':
       return sameData(state.repeat, action.repeat) ? state : { ...state, repeat: action.repeat };
-    case 'pictures/set':
-      return sameData(state.pictures, action.pictures) ? state : { ...state, pictures: action.pictures };
+    case 'pictures/set': {
+      // Which can draw no see-through pixel (X11): left out of the state while none is known.
+      const opaque = action.opaque ?? [];
+      const samePictures = sameData(state.pictures, action.pictures);
+      const sameOpaque = sameData(state.opaquePictures ?? [], opaque);
+      if (samePictures && sameOpaque) return state;
+      return {
+        ...state,
+        ...(samePictures ? {} : { pictures: action.pictures }),
+        ...(sameOpaque ? {} : { opaquePictures: opaque }),
+      };
+    }
     case 'zoom/set':
       return sameData(state.liveZoom, action.liveZoom) ? state : { ...state, liveZoom: action.liveZoom };
     case 'message/show': {

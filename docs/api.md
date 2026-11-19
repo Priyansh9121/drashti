@@ -8,6 +8,8 @@ Everything here is **local only**: requests are refused from addresses outside t
 
 **Not here: the node link.** Output nodes (Session 13: other computers running Drashti as a Node) talk to Main on a port of their own (8741) over TLS with Main's own certificate, which each node pins when it pairs. That link is for Drashti alone and is not part of this API: a script or Companion cannot use it, and it refuses browsers. See README, "Output nodes".
 
+**Import from a Link on the computer.** The operator’s desktop bridge checks a YouTube or Dropbox link for the small window, then Download supplies the edited name and chosen save folder. It saves and imports the media into the open playlist; Audio takes a YouTube video’s MP3. The remembered caption tick saves creator captions and the original automatic language as SRT files beside the media, plus a learning copy and `captions.json` in the chosen captions folder. Checks, downloads and captions wait on air or while recording. These desktop actions are handled by `links.look`, `links.pickFolder` (downloads or captions), `links.start` (name and captions options) and `links.view`; their detailed file contract is in README, “Import from a Link”.
+
 ## Basics
 
 - **Address:** `http://<computer>:8740` (the port is set in the Phones panel). Examples below use
@@ -427,6 +429,10 @@ A phone or a script may clear a video input and take the box off, and since Sess
 **Session 57** (version 28) also added:
 
 - **Where a background video came from.** `sourceItemId` on a video background (`layers.background` of kind `media`): the playlist row that put it up, or null when it came straight from Media or from a slide's background cue; left out of a show an older Drashti saved. Only the engine sets it. While it names a row, that row's finished Trim cut waits for the video to come off, and its **Reset to original** is refused.
+
+**Since 1.0.0-alpha.20** the state may also carry:
+
+- **Pictures that can draw no see-through pixel.** `opaquePictures`: the media ids, among the pictures on the screens and coming next, whose files cannot be seen through anywhere (a JPEG, or a still PNG with no transparency, read from the file's first bytes once), sorted; left out while none is known. On a computer without a graphics chip, a deck slide moving in its own Push, Cover or Uncover whose own full-slide picture is one of them is backed by black while it moves, so the screens draw nothing under it. Only the engine sets it; a page may leave it alone.
 
 ## Companion (Stream Deck)
 

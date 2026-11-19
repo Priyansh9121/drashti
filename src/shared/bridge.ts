@@ -58,7 +58,7 @@ import type {
 } from './kirtans';
 import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
-import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
+import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
@@ -333,9 +333,14 @@ export interface DrashtiBridge {
   /** Import from a Link (Session 25b, operator window, Pro Mode). */
   links: {
     view(): Promise<LinkView>;
-    start(text: string, audio: boolean, intoOpenPlaylist: boolean): Promise<LinkResult>;
+    start(
+      text: string,
+      audio: boolean,
+      intoOpenPlaylist: boolean,
+      options?: LinkDownloadOptions,
+    ): Promise<LinkResult>;
     look(kind: LinkKind, link: string): Promise<LinkResult>;
-    pickFolder(): Promise<LinkResult>;
+    pickFolder(target?: 'downloads' | 'captions'): Promise<LinkResult>;
     /** Download what was looked at: a YouTube video with its type and quality. */
     download(choice?: YouTubeChoice | null): Promise<LinkResult>;
     stop(): Promise<LinkResult>;

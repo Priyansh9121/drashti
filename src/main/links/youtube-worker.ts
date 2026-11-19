@@ -1,8 +1,9 @@
 import { mkdirSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { YouTubeType } from '../../shared/links';
+import type { LinkCaptionTrack, YouTubeType } from '../../shared/links';
 import type { FromWorker, ToWorker } from './protocol';
 import {
+  captionArgs,
   DOWNLOAD_STEM,
   downloadArgs,
   lookArgs,
@@ -53,6 +54,10 @@ export function youtubeWorker(
   let why: 'hold' | 'space' | null = null;
   /** The most said of the download's progress so far. */
   let said = 0;
+  let media: { file: string; bytes: number } | null = null;
+  let captionIndex = 0;
+  let captions: (LinkCaptionTrack & { file: string })[] = [];
+  let captionFailures: LinkCaptionTrack[] = [];
 
   const fail = (code: Parameters<typeof youtubeProblemMessage>[0]) => {
     post({ type: 'failed', code, message: youtubeProblemMessage(code) });
@@ -77,9 +82,71 @@ export function youtubeWorker(
     }
   };
 
+  const complete = () => {
+    if (!pending || !media || stopped) return;
+    const hasCaptions = (pending.captions?.length ?? 0) > 0;
+    pending = null;
+    post({ type: 'yt-downloaded', ...media, ...(hasCaptions ? { captions, captionFailures } : {}) });
+  };
+
+  const startCaptions = () => {
+    const m = pending;
+    if (!m || held || stopped || current || !media) return;
+    const tracks = m.captions ?? [];
+    const track = tracks[captionIndex];
+    if (!track) {
+      complete();
+      return;
+    }
+    why = null;
+    const r = run(m.launch, captionArgs(m.launch, m.link, track, m.workDir), m.cwd, () => undefined);
+    started(r);
+    space = setInterval(() => {
+      try {
+        if (freeBytes(m.workDir) < m.keepFree) {
+          why = 'space';
+          r.stop();
+        }
+      } catch {
+        /* Stop clears the folder. */
+      }
+    }, SPACE_EVERY_MS);
+    space.unref();
+    void r.done.then(({ code }) => {
+      if (space) clearInterval(space);
+      space = null;
+      ended();
+      if (stopped) return;
+      if (why === 'hold') {
+        startCaptions();
+        return;
+      }
+      if (why === 'space') {
+        captionFailures.push(...tracks.slice(captionIndex));
+        complete();
+        return;
+      }
+      const file = join(m.workDir, `caption-${track.kind}.${track.source}.srt`);
+      let valid = false;
+      try {
+        valid = code === 0 && statSync(file).isFile() && statSync(file).size > 0;
+      } catch {
+        /* Missing/failed caption. */
+      }
+      if (valid) captions.push({ ...track, file });
+      else captionFailures.push(track);
+      captionIndex++;
+      startCaptions();
+    });
+  };
+
   const startDownload = () => {
     const m = pending;
     if (!m || held || stopped || current) return;
+    if (media) {
+      startCaptions();
+      return;
+    }
     try {
       mkdirSync(m.workDir, { recursive: true });
     } catch {
@@ -130,18 +197,20 @@ export function youtubeWorker(
         startDownload();
         return;
       }
-      pending = null;
       if (why === 'space') {
+        pending = null;
         fail('space');
         return;
       }
       const file = code === 0 ? finished(m.workDir, m.choice.type) : null;
       if (file === null) {
+        pending = null;
         const problem = youtubeProblem(errors);
         post({ type: 'failed', code: problem.code, message: problem.message });
         return;
       }
-      post({ type: 'yt-downloaded', file, bytes: statSync(file).size });
+      media = { file, bytes: statSync(file).size };
+      startCaptions();
     });
   };
 
@@ -181,6 +250,10 @@ export function youtubeWorker(
     },
     download: (m) => {
       pending = m;
+      media = null;
+      captionIndex = 0;
+      captions = [];
+      captionFailures = [];
       said = 0;
       startDownload();
     },

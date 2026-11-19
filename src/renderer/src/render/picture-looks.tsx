@@ -40,10 +40,14 @@ import { decodeSlideImage, SlideImageDecoding } from './slide-image-decoding';
  * window's thumbnails they come from the library.
  */
 
-/** What a Scene's state says of its pictures: their looks, and the live zoom. */
+/**
+ * What a Scene's state says of its pictures: their looks, the live zoom, and which can draw no see-through pixel
+ * (X11: a deck's moving slide over one is backed without a graphics chip, render/slide-backing.ts).
+ */
 export const ScreenPictures = createContext<{
   pictures: Record<string, PictureLook>;
   liveZoom: LiveZoom | null;
+  opaque?: readonly string[];
 } | null>(null);
 
 /** The library's looks, for the operator window's thumbnails (connectPictureLooks fills it). */

@@ -174,6 +174,7 @@ import { OpeningKeys } from './opening/opening-start';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
+import { pictureCannotSeeThrough } from './media/see-through';
 import { savedName, savePicture, savesAsJpeg } from './media/save-picture';
 import { installLockedMenu, installMenu, installNodeMenu } from './menu';
 import { choiceGuard, REPEAT_CHOICE_MS } from './shown-keys';
@@ -351,6 +352,7 @@ import {
   warmUpEndLine,
   warmUpEndOf,
   warmUpFact,
+  warmsUp,
 } from './outputs/warm-up-choice';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
@@ -532,9 +534,11 @@ const testCompositing = sw('DRASHTI_TEST_GPU_COMPOSITING');
  * Whether each output warms its graphics chip up (Session 57, outputs/warm-up-choice.ts): not where Chromium draws
  * without one. Its status means nothing until its GPU process has said how it draws, so it is read from then.
  */
+/** Chromium's feature status now (a test switch's in the tests): how it draws, once its GPU process has said. */
+const gpuStatus = (): unknown =>
+  testCompositing === undefined ? app.getGPUFeatureStatus() : { gpu_compositing: testCompositing };
 const warmUps = new WarmUpChoices({
-  status: () =>
-    testCompositing === undefined ? app.getGPUFeatureStatus() : { gpu_compositing: testCompositing },
+  status: gpuStatus,
   log: (line) => {
     log.info(line);
   },
@@ -1616,6 +1620,8 @@ function start(): void {
   let mediaLength: (mediaId: string) => number | null = () => null;
   /** A picture's look (Session 26e; the media repo, made further down). */
   let pictureLook: (mediaId: string) => PictureLook | null = () => null;
+  /** Whether a picture's file is known to draw no see-through pixel (X11; the media repo, made further down). */
+  let pictureOpaque: (mediaId: string) => boolean = () => false;
   /** A video's or sound's start and end points and markers (the media repo, made further down). */
   let mediaMarkers: (mediaId: string, itemId?: string) => MediaMarkers | null = () => null;
   /** A media item's kind while it is there to play (Session 50, the box's; the media repo, made further down). */
@@ -1671,6 +1677,7 @@ function start(): void {
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
       pictureLook: (mediaId) => pictureLook(mediaId),
+      pictureOpaque: (mediaId) => pictureOpaque(mediaId),
       // The picture-in-picture box (Session 50): what it holds, from the main process's own lists.
       mediaKind: (mediaId) => mediaKind(mediaId),
       windows: (id) => liveWindows?.offeredWindow(id) ?? null,
@@ -1899,6 +1906,26 @@ function start(): void {
       }),
     );
   pictureLook = (mediaId) => screenLook(mediaId);
+  // Which pictures can draw no see-through pixel (X11, media/see-through.ts), only where Chromium draws without a
+  // graphics chip (only there do the screens back a moving slide; with one the state stays as it was): each file's first
+  // bytes read once, by its contents, off the main thread's way; the screens hear of one as soon as it is read.
+  const seeThrough = new Map<string, boolean | 'reading'>();
+  pictureOpaque = (mediaId) => {
+    if (warmsUp(gpuStatus())) return false;
+    const found = media.kindAndFile(mediaId);
+    const sha256 = media.file(mediaId)?.sha256 ?? null;
+    if (found?.kind !== 'image' || found.missing || found.path === '' || sha256 === null) return false;
+    const known = seeThrough.get(sha256);
+    if (known === undefined) {
+      seeThrough.set(sha256, 'reading');
+      const file = isAbsolute(found.path) ? found.path : join(mediaDir, found.path);
+      void pictureCannotSeeThrough(file).then((opaque) => {
+        seeThrough.set(sha256, opaque);
+        if (opaque) engine.refreshPictures();
+      });
+    }
+    return known === true;
+  };
   mediaMarkers = (mediaId, itemId) => {
     const marks = media.markersOf(mediaId);
     return marks && itemId && trimmedVideos.playsFull(itemId, mediaId, marks)
@@ -4796,10 +4823,23 @@ function start(): void {
         settings.set('links.folder', folder);
       },
     },
-    pickFolder: async (current) => {
+    captionPreferences: {
+      get: () => {
+        const folder = settings.get('links.captionsFolder');
+        return {
+          enabled: settings.get('links.captions') !== false,
+          folder: typeof folder === 'string' && isAbsolute(folder) ? folder : null,
+        };
+      },
+      set: (value) => {
+        settings.set('links.captions', value.enabled);
+        settings.set('links.captionsFolder', value.folder);
+      },
+    },
+    pickFolder: async (current, target) => {
       if (!operatorWindow) return null;
       const picked = await dialog.showOpenDialog(operatorWindow, {
-        title: 'Save Downloads In',
+        title: target === 'captions' ? 'Captions for Learning' : 'Save Downloads In',
         message: 'Choose where the downloaded files are saved. Drashti never moves or deletes them.',
         defaultPath: current,
         buttonLabel: 'Choose',
@@ -4895,12 +4935,12 @@ function start(): void {
     message: 'Only the operator window can import from a link.',
   };
   handle(IPC.links.view, () => links.view());
-  handle(IPC.links.start, (e, text, audio, intoOpenPlaylist) =>
+  handle(IPC.links.start, (e, text, audio, intoOpenPlaylist, options) =>
     fromOperator(e) &&
     typeof text === 'string' &&
     typeof audio === 'boolean' &&
     typeof intoOpenPlaylist === 'boolean'
-      ? links.start(text, audio, intoOpenPlaylist)
+      ? links.start(text, audio, intoOpenPlaylist, options)
       : notLinksOperator,
   );
   handle(IPC.links.look, (e, kind, link) =>
@@ -4908,7 +4948,9 @@ function start(): void {
       ? links.look(kind, link)
       : notLinksOperator,
   );
-  handle(IPC.links.pickFolder, (e) => (fromOperator(e) ? links.pickFolder() : notLinksOperator));
+  handle(IPC.links.pickFolder, (e, target) =>
+    fromOperator(e) ? links.pickFolder(target) : notLinksOperator,
+  );
   handle(IPC.links.download, (e, choice) => (fromOperator(e) ? links.download(choice) : notLinksOperator));
   handle(IPC.links.stop, (e) => (fromOperator(e) ? links.stop() : notLinksOperator));
   handle(IPC.links.reset, (e) => (fromOperator(e) ? links.reset() : notLinksOperator));

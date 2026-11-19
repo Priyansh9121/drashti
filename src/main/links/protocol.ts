@@ -1,4 +1,4 @@
-import type { VideoDetails, YouTubeType } from '../../shared/links';
+import type { LinkCaptionTrack, VideoDetails, YouTubeType } from '../../shared/links';
 import type { LinkErrorCode } from './http';
 import type { YoutubeProblemCode } from './youtube';
 import type { YtDlpLaunch } from './youtube-run';
@@ -39,6 +39,7 @@ export type ToWorker =
       workDir: string;
       choice: { type: YouTubeType; height: number | null };
       keepFree: number;
+      captions?: LinkCaptionTrack[];
     }
   /** The stream went on air (or off): wait (or go on). A YouTube download stops, and starts again. */
   | { type: 'hold'; on: boolean }
@@ -56,7 +57,13 @@ export type FromWorker =
   /** YouTube: yt-dlp is running as this process (null: it ended), for the main process to stop at a quit. */
   | { type: 'tool'; pid: number | null }
   /** YouTube: downloaded, as this file in the work folder. */
-  | { type: 'yt-downloaded'; file: string; bytes: number }
+  | {
+      type: 'yt-downloaded';
+      file: string;
+      bytes: number;
+      captions?: (LinkCaptionTrack & { file: string })[];
+      captionFailures?: LinkCaptionTrack[];
+    }
   | {
       type: 'failed';
       code: LinkErrorCode | 'start' | 'unpack' | YoutubeProblemCode;
