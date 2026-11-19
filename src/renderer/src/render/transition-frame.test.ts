@@ -12,7 +12,6 @@ import {
   takesTime,
   transitionFrame,
   wordsFrame,
-  wipeBandStyles,
   wipeSlideMask,
   wordsMove,
   zoomAt,
@@ -406,121 +405,9 @@ describe('a deck’s own Wipe, PowerPoint’s soft band (Session 58, C2)', () =>
         expect(f.out, `${direction} at ${String(p)}`).toEqual({ opacity: 1, transform: '' });
       }
   });
-
-  /** A length in a band's style, in px ('0', '12px' or '-12.5px'). */
-  const lengthOf = (value: string): number => {
-    if (value === '0') return 0;
-    const m = /^(-?[\d.e+-]+)px$/u.exec(value);
-    if (!m) throw new Error(`not a length in px: ${value}`);
-    return Number(m[1]);
-  };
-  /** A translateX or translateY in px. */
-  const moveOf = (transform: string): { axis: 'X' | 'Y'; px: number } => {
-    const m = /^translate([XY])\((-?[\d.e+-]+)px\)$/u.exec(transform);
-    if (!m) throw new Error(`not a move: ${transform}`);
-    return { axis: m[1] as 'X' | 'Y', px: Number(m[2]) };
-  };
-  /** A linear gradient's alpha at `t` (0 to 1 along it), straight between its stops. */
-  const alphaAt = (gradient: string, t: number): number => {
-    const stops = [...gradient.matchAll(/rgba\(0, 0, 0, ([\d.]+)\) (-?[\d.]+)%/gu)].map((m) => ({
-      a: Number(m[1]),
-      at: Number(m[2]) / 100,
-    }));
-    const first = stops[0];
-    const last = stops[stops.length - 1];
-    if (!first || !last) throw new Error(`no stops: ${gradient}`);
-    if (t <= first.at) return first.a;
-    if (t >= last.at) return last.a;
-    for (let i = 1; i < stops.length; i++) {
-      const a = stops[i - 1];
-      const b = stops[i];
-      if (a && b && t <= b.at) return b.at === a.at ? b.a : a.a + ((b.a - a.a) * (t - a.at)) / (b.at - a.at);
-    }
-    return last.a;
-  };
-  /** Screens and the slide's place on each (the layer's box, as Placed puts the slide in it). */
-  const PLACES = [
-    {
-      what: 'a 16:9 slide filling a 16:9 screen',
-      canvas: { width: 1920, height: 1080 },
-      slide: { x: 0, y: 0, width: 1920, height: 1080 },
-    },
-    {
-      what: 'a 4:3 slide fitted to a 16:9 screen',
-      canvas: { width: 1920, height: 1080 },
-      slide: { x: 240, y: 0, width: 1440, height: 1080 },
-    },
-    {
-      what: 'a 4:3 slide filling a 16:9 screen',
-      canvas: { width: 1920, height: 1080 },
-      slide: { x: 0, y: -180, width: 1920, height: 1440 },
-    },
-    {
-      what: 'a 16:9 slide fitted to a 4:3 box',
-      canvas: { width: 1440, height: 1080 },
-      slide: { x: 0, y: 135, width: 1440, height: 810 },
-    },
-  ] as const;
-
-  it('is drawn as a mask that never changes on a box two slides long, moved by whole device pixels, the slide moved back inside it: what shows is the band, one slide long wherever the slide is placed', () => {
-    for (const { what, canvas, slide } of PLACES)
-      for (const direction of ['left', 'right', 'up', 'down'] as const) {
-        const across = direction === 'left' || direction === 'right';
-        const masks = new Set<string>();
-        for (const dpr of [1, 1.25, 2])
-          for (let i = 1; i < 20; i++) {
-            const p = i / 20 + 0.0123;
-            const t = deckNative('wipe', direction);
-            const band = deckTransitionFrame(t, p).in.band;
-            const where = `${what}, ${direction}, dpr ${String(dpr)} at ${String(p)}`;
-            expect(band, where).toBeDefined();
-            if (!band) continue;
-            const s = wipeBandStyles(band, slide, canvas, dpr);
-            masks.add(s.holder.maskImage);
-            const holderMove = moveOf(s.holder.transform);
-            const slideMove = moveOf(s.slide.transform);
-            expect(holderMove.axis, where).toBe(across ? 'X' : 'Y');
-            // Whole device pixels, and the slide moved back by exactly as much.
-            expect(Math.abs(holderMove.px * dpr - Math.round(holderMove.px * dpr)), where).toBeLessThan(1e-9);
-            expect(slideMove.px, where).toBe(-holderMove.px);
-            // The box: two slides long along the band, the whole screen across it; the slide's box inside it the
-            // screen's own, where the screen's is.
-            const [top = '', right = '', bottom = '', left = ''] = s.holder.inset.split(' ');
-            expect([across ? top : left, across ? bottom : right], where).toEqual(['0', '0']);
-            expect(across ? right : bottom, where).toBe('auto');
-            const start = lengthOf(across ? left : top);
-            const length = lengthOf(across ? s.holder.width : s.holder.height);
-            const slideLength = across ? slide.width : slide.height;
-            expect(Math.abs(length - 2 * slideLength), where).toBeLessThanOrEqual(1 / dpr);
-            const [sTop = '', sRight = '', sBottom = '', sLeft = ''] = s.slide.inset.split(' ');
-            expect([across ? sTop : sLeft, across ? sBottom : sRight], where).toEqual(['0', '0']);
-            const inside = lengthOf(across ? sLeft : sTop);
-            expect(lengthOf(across ? s.slide.width : s.slide.height), where).toBe(
-              across ? canvas.width : canvas.height,
-            );
-            // The slide stays exactly where it is.
-            expect(Math.abs(start + holderMove.px + inside + slideMove.px), where).toBeLessThan(1e-9);
-            // What shows at each point of the slide is the band's, the slide's own length long.
-            const toward = /^linear-gradient\(to (left|right|top|bottom), /u.exec(s.holder.maskImage)?.[1];
-            const slideStart = across ? slide.x : slide.y;
-            for (let k = 0; k <= 48; k++) {
-              const x = slideStart + (k / 48) * slideLength;
-              const inBox = (x - (start + holderMove.px)) / length;
-              const along = toward === 'right' || toward === 'bottom' ? inBox : 1 - inBox;
-              const at = direction === 'left' || direction === 'up' ? 1 - k / 48 : k / 48;
-              expect(
-                Math.abs(alphaAt(s.holder.maskImage, along) - deckWipeShows(t, p, at)),
-                `${where}, ${at.toFixed(3)} across`,
-              ).toBeLessThanOrEqual(0.003);
-            }
-          }
-        // One mask the whole Wipe long, whatever the screen.
-        expect(masks.size, `${what}, ${direction}`).toBe(1);
-      }
-  });
 });
 
-describe('a deck’s own Wipe where the page draws with a graphics chip: the band as a mask on the slide’s box (Session 58)', () => {
+describe('a deck’s own Wipe: the band as a mask on the slide’s box, with a graphics chip and without (Session 58, X11)', () => {
   /** A linear gradient's alpha `d` px along it, straight between its stops (in px). */
   const alphaAtPx = (gradient: string, d: number): number => {
     const stops = [...gradient.matchAll(/rgba\(0, 0, 0, ([\d.]+)\) (-?[\d.]+)px/gu)].map((m) => ({
