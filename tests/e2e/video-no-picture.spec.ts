@@ -1,7 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
@@ -9,6 +9,7 @@ import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, o
 import { decodePng } from './png-decode';
 import { testFfmpeg } from './stream-helpers';
 import { makeTestImage } from './test-media';
+import { mediaUrl } from '../../src/shared/media';
 
 /*
  * A video whose picture this computer cannot draw (Session 60, x36; the owner, 19 Nov 2026, on alpha.19: "when playing
@@ -43,8 +44,8 @@ function seenOf(rgba: number[]): Seen {
   return 'OTHER';
 }
 
-/** A generated video of `seconds` with a tone: FFV1 in a .mov, or HEVC in an .mp4. */
-function makeVideo(path: string, codec: 'ffv1' | 'hevc', seconds: number): string {
+/** A generated video of `seconds` with a tone: FFV1 in a .mov, or HEVC (8-bit 4:2:0 unless another kind is asked). */
+function makeVideo(path: string, codec: 'ffv1' | 'hevc', seconds: number, pixFmt = 'yuv420p'): string {
   const picture = ['-f', 'lavfi', '-i', `color=c=0xd9480f:s=320x180:r=30:d=${String(seconds)}`];
   const tone = ['-f', 'lavfi', '-i', `sine=f=440:r=48000:d=${String(seconds)}`];
   const video =
@@ -56,7 +57,7 @@ function makeVideo(path: string, codec: 'ffv1' | 'hevc', seconds: number): strin
           '-preset',
           'ultrafast',
           '-pix_fmt',
-          'yuv420p',
+          pixFmt,
           '-tag:v',
           'hvc1',
           '-x265-params',
@@ -336,6 +337,62 @@ test('HEVC taken as playable: where this computer decodes it (CI’s Mac) it pla
     } else {
       // It decodes it: its picture plays, as before.
       await expect.poll(() => shown(win, '[data-testid="live-preview"]')).toBe('VIDEO');
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+/** Whether this computer's own video element draws a library file as it is: its picture, not its sound alone. */
+const drawsHere = (win: Page, mediaId: string): Promise<boolean> =>
+  win.evaluate(async (url) => {
+    const v = document.createElement('video');
+    v.muted = true;
+    v.preload = 'auto';
+    const loaded = await new Promise<boolean>((resolve) => {
+      v.addEventListener('loadeddata', () => resolve(true), { once: true });
+      v.addEventListener('error', () => resolve(false), { once: true });
+      v.src = url;
+    });
+    const drawn = loaded && v.videoWidth > 0 && v.videoHeight > 0;
+    v.removeAttribute('src');
+    v.load();
+    return drawn;
+  }, mediaUrl(mediaId));
+
+test('HEVC’s other kinds as this computer names them are true, and the import follows them: a kind it says it plays goes in as it is and its picture draws here; one it says it cannot is converted by itself at import, and its picture would not draw here (CI’s Mac draws them all, CI’s Windows none)', async () => {
+  test.setTimeout(240_000);
+  expect(ffmpeg, 'the bundled FFmpeg').not.toBeNull();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-hevc-kinds-'));
+  const files = {
+    main10: makeVideo(join(dir, 'Placeholder ten bit.mp4'), 'hevc', 4, 'yuv420p10le'),
+    rext: makeVideo(join(dir, 'Placeholder camera.mov'), 'hevc', 4, 'yuv422p10le'),
+  };
+  // This computer's own answers: none given.
+  const { app, userData } = await launchApp();
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const logOf = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    const KINDS =
+      /The other kinds of HEVC on this computer: Main 10 (plays|cannot play); 4:2:2, 4:4:4 and 12-bit (play|cannot play)/u;
+    await expect
+      .poll(logOf, { timeout: 60_000, message: 'the window said whether it plays HEVC' })
+      .toMatch(/This computer (plays|cannot play) HEVC video/u);
+    await expect.poll(logOf, { message: 'and its other kinds' }).toMatch(KINDS);
+    const said = KINDS.exec(logOf());
+    const playsHevc = logOf().includes('This computer plays HEVC video');
+    const kinds = { main10: playsHevc && said?.[1] === 'plays', rext: playsHevc && said?.[2] === 'play' };
+    for (const kind of ['main10', 'rext'] as const) {
+      const [id = ''] = await importAndGetIds(win, [files[kind]]);
+      expect(id).not.toBe('');
+      const media = await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
+      // As it is where this computer plays the kind, converted by itself where it cannot.
+      expect(media.find((m) => m.id === id)?.unplayable ?? null, `${kind}: taken as it is`).toEqual(
+        kinds[kind] ? null : expect.any(String),
+      );
+      // And what this computer said is so: its own video element draws the file as it is exactly where it said so.
+      expect(await drawsHere(win, id), `${kind}: its picture draws here`).toBe(kinds[kind]);
     }
   } finally {
     await app.close();
