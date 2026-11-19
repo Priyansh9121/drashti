@@ -48,6 +48,32 @@ describe('YouTube caption selection', () => {
     });
   });
 
+  it('leaves out live-chat replay and translations made from a creator track', () => {
+    expect(
+      read({
+        language: 'gu',
+        subtitles: {
+          gu: track('gu'),
+          live_chat: [
+            {
+              ext: 'json',
+              protocol: 'youtube_live_chat_replay',
+              url: 'https://captions.invalid/placeholder',
+            },
+          ],
+        },
+        automatic_captions: { 'gu-gu': track('gu'), 'en-gu': track('en', true) },
+      }),
+    ).toMatchObject({ captions: [{ language: 'gu', source: 'gu', kind: 'creator' }] });
+    expect(
+      read({
+        automatic_captions: {
+          yue: [{ ext: 'vtt', url: 'https://captions.invalid/placeholder?kind=asr&lang=yue' }],
+        },
+      }),
+    ).toMatchObject({ captions: [{ language: 'yue', source: 'yue', kind: 'automatic' }] });
+  });
+
   it('leaves out empty tracks and unsafe language codes', () => {
     expect(
       read({
