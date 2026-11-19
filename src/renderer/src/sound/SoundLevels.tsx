@@ -1,5 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { FULL_LEVELS, SOUND_KINDS, type SoundKind, type SoundLevel } from '../../../shared/sound';
+import {
+  FULL_LEVELS,
+  silentWords,
+  SOUND_KINDS,
+  type SoundKind,
+  type SoundLevel,
+} from '../../../shared/sound';
 import { useEngine } from '../engine/engine-store';
 import { useNotice } from '../operator/actions';
 import { cx } from '../ui/cx';
@@ -122,11 +128,13 @@ function MuteSwitch({ kind, muted, nameId }: { kind: SoundKind; muted: boolean; 
   );
 }
 
-/** What is muted, said in the status bar in red while it is (X33), so the hall is never silent unseen. */
+/**
+ * What cannot be heard, said in the status bar in red while it is (X33), so the hall is never silent unseen: a kind
+ * muted, or left at 0 % (shared/sound.ts silentWords).
+ */
 export function MutedStatus() {
   const levels = useEngine((s) => s.state?.sound?.levels);
-  const muted = SOUND_KINDS.filter((kind) => levels?.[kind].muted === true).map((kind) => NAMES[kind]);
-  const words = muted.length > 0 ? `${muted.join(' and ')} muted` : '';
+  const words = silentWords(levels);
   return (
     <span
       role="status"

@@ -30,7 +30,7 @@ Colours are named for their **job**, never their hue (`bg-panel`, `text-muted`, 
 | `live`                                                | On the screens now: always with a label                                                  |
 | `warning`, `warning-bg`, `warning-fg`                 | Missing, can't play, needs a look                                                        |
 | `success`, `success-bg`, `success-fg`                 | Connected, showing; a sound switch's Sound on (X33)                                      |
-| `danger`, `danger-strong`, `danger-bg`, `danger-fg`   | Removing and deleting; something failed; Muted (X33: the switch and the status bar)      |
+| `danger`, `danger-strong`, `danger-bg`, `danger-fg`   | Removing and deleting; something failed; Muted or at 0 % (X33: the switch, status bar)   |
 | `onair`, `rec`                                        | The stream is public now; it is recording                                                |
 | `guide`, `selection`                                  | The slide editor's snapping guides and what is chosen (never text)                       |
 | `--depth-*`                                           | The shadows' tints, which follow the appearance (§5)                                     |
