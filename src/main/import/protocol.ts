@@ -1,7 +1,19 @@
+import type { KirtanBundleExportResult } from '../../shared/kirtan-bundles';
 import type { ImportOptions, ImportProgress, ImportRunSummary, ImportTimings } from '../../shared/import';
 import type { PicturesResult } from '../../shared/pictures';
 
 /* Messages between the main process and the import worker (a utility process). */
+
+export interface ExportKirtansMessage {
+  type: 'export-kirtans';
+  requestId: string;
+  dbFile: string;
+  mediaDir: string;
+  schemaVersion: number;
+  presentationIds: string[];
+  output: string;
+  includeMedia: boolean;
+}
 
 export interface StartMessage {
   type: 'start';
@@ -82,9 +94,16 @@ export interface GoOnMessage {
 }
 
 export type ToWorker =
-  StartMessage | CancelMessage | DrawnMessage | GiveWayMessage | GoOnMessage | OnAirMessage;
+  | ExportKirtansMessage
+  | StartMessage
+  | CancelMessage
+  | DrawnMessage
+  | GiveWayMessage
+  | GoOnMessage
+  | OnAirMessage;
 
 export type FromWorker =
+  | { type: 'exported-kirtans'; requestId: string; result: KirtanBundleExportResult }
   | { type: 'progress'; progress: ImportProgress }
   /** Draw this PDF's pages as pictures into `outDir` (Session 15); the answer comes as 'drawn'. */
   | { type: 'draw-pdf'; requestId: string; pdf: string; outDir: string; readPageText?: boolean }

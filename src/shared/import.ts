@@ -28,6 +28,7 @@ export interface ImportOptions {
 /** How Drashti read a file. */
 export type ImportFormat =
   | 'text'
+  | 'kirtan-bundle'
   | 'media'
   | 'pp6'
   | 'pp7'
