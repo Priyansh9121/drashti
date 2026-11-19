@@ -404,9 +404,10 @@ export function frameBands(quad: Corners, box: Size): Band[] {
  * from the list.
  */
 export function drawnWithoutChip(
-  _screen: Pick<ScreenConfig, 'nodeId'>,
-  _nodes: readonly Pick<NodeDisplays, 'id' | 'noGpu'>[],
-  _here: boolean,
+  screen: Pick<ScreenConfig, 'nodeId'>,
+  nodes: readonly Pick<NodeDisplays, 'id' | 'noGpu'>[],
+  here: boolean,
 ): boolean {
-  return false;
+  if (screen.nodeId === null) return here;
+  return nodes.find((n) => n.id === screen.nodeId)?.noGpu === true;
 }

@@ -175,7 +175,14 @@ export class WarmUpChoices {
    * picture…): only once Chromium has said how it draws, by its status then. Nothing is logged.
    */
   drawsWithoutChip(): boolean {
-    return false;
+    if (!this.said) return false;
+    let status: unknown;
+    try {
+      status = this.deps.status();
+    } catch {
+      status = undefined;
+    }
+    return !warmsUp(status);
   }
 }
 
