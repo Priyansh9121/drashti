@@ -66,3 +66,15 @@ describe('one caption band for video and live speech', () => {
     expect(captionBandFor(base, 'stream', null)?.source).toBe('live');
   });
 });
+
+it('keeps live speech while a selected video is waiting for its deck click', () => {
+  const base = state();
+  const waiting = {
+    ...base,
+    layers: {
+      ...base.layers,
+      background: { ...base.layers.background, seek: { at: 1, toMs: 1500, paused: true, waiting: true } },
+    },
+  };
+  expect(captionBandFor(waiting, 'stream', { mediaId: 'video', sourceMs: 1500 })?.source).toBe('live');
+});
