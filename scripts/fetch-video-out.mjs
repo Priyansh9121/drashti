@@ -159,6 +159,22 @@ export const PROGRAMS = {
   win32: { sender: 'drashti-video-out.exe', receiver: 'drashti-video-out-receiver.exe' },
 };
 
+/** What Windows' linker is given for each program: the system libraries they use. */
+export const WINDOWS_LINK = [
+  'd3d11.lib',
+  'dxgi.lib',
+  'winmm.lib',
+  'psapi.lib',
+  'shell32.lib',
+  'advapi32.lib',
+  'version.lib',
+  'comctl32.lib',
+  'user32.lib',
+  'gdi32.lib',
+  'ole32.lib',
+  'opengl32.lib',
+];
+
 const TARGETS = { 'darwin-arm64': 'arm64', 'darwin-x64': 'x86_64', 'win32-x64': 'x64' };
 
 const sha256Of = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
@@ -202,7 +218,7 @@ async function fetchPinned(source) {
 }
 
 /** What the folder's SOURCE.txt records: every pinned file and own source by its SHA-256 (then the folder's digest). */
-function stampFor(target, source) {
+export function stampFor(target, source) {
   const own = OWN_SOURCES[target.split('-')[0]].map((f) => `${f} ${sha256Of(join(root, f))}`);
   return [
     `Drashti's video out programs for ${target}, built here`,
@@ -312,12 +328,10 @@ function buildWindows(target, from, outDir) {
     '/D_CRT_SECURE_NO_WARNINGS',
     ...includes.map((i) => `/I"${i}"`),
   ].join(' ');
-  const libs =
-    'd3d11.lib dxgi.lib winmm.lib psapi.lib shell32.lib advapi32.lib version.lib comctl32.lib user32.lib gdi32.lib ole32.lib opengl32.lib';
   const spout = SPOUT.sources.map((f) => `"${join(from, ...f.split('/'))}"`).join(' ');
   const { sender, receiver } = PROGRAMS.win32;
   const program = (name, own) =>
-    `${cl} /Fo"${work}\\\\" ${spout} "${join(root, 'tools', 'video-out', own)}" /Fe"${join(outDir, name)}" /link ${libs} || exit /b 1`;
+    `${cl} /Fo"${work}\\\\" ${spout} "${join(root, 'tools', 'video-out', own)}" /Fe"${join(outDir, name)}" /link ${WINDOWS_LINK.join(' ')} || exit /b 1`;
   const script = join(work, 'build.cmd');
   writeFileSync(
     script,
