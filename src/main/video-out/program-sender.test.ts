@@ -102,19 +102,21 @@ describe('Drashti’s small program for this computer’s way (x30)', () => {
     expect(r.logs).toEqual(['info ready', 'warn Stopping after 3 frames']);
   });
 
-  it('a program that ends: said once, as the sender’s trouble, and no frame taken after', () => {
+  it('a program that ends: said once, as the sender’s trouble in plain words, how it ended logged', () => {
     const r = rig();
     r.program.emit('exit', 3, null);
     r.program.emit('error', new Error('again'));
-    expect(r.endings).toEqual([`${PROGRAM_ENDED} (exit 3)`]);
-    expect(r.sender.error()).toBe(`${PROGRAM_ENDED} (exit 3)`);
+    expect(r.endings).toEqual([PROGRAM_ENDED]);
+    expect(r.sender.error()).toBe(PROGRAM_ENDED);
+    expect(r.logs).toContain('warn The program ended (exit 3)');
     expect(r.sender.frame(frame())).toBe(false);
   });
 
-  it('a program that cannot start: said in plain words', () => {
+  it('a program that cannot start: said in plain words, why logged', () => {
     const r = rig();
     r.program.emit('error', new Error('spawn ENOENT'));
-    expect(r.endings).toEqual([`${PROGRAM_ENDED} (spawn ENOENT)`]);
+    expect(r.endings).toEqual([PROGRAM_ENDED]);
+    expect(r.logs).toContain('warn The program could not start or stopped: spawn ENOENT');
   });
 
   it('stopped: its input ends (it stops by itself), and its ending then is not trouble', async () => {

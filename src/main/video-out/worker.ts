@@ -1,6 +1,7 @@
 import type { MessagePortMain } from 'electron';
 import type { FromProgram } from '../stream/worker/protocol';
 import { FrameReceiver, type Sender } from './frames';
+import { ProgramSender } from './program-sender';
 import type { FromVideoOutWorker, ToVideoOutWorker, VideoOutSender } from './protocol';
 import { StandInSender } from './stand-in';
 
@@ -23,11 +24,19 @@ let sender: Sender | null = null;
 /** The stream's page's port now: a newer one (the page loaded again) replaces it. */
 let frames: MessagePortMain | null = null;
 
-function senderFor(chosen: VideoOutSender, name: string): Sender | null {
+/** The program for this computer's way ended: said, then this process ends too, for main to start it again. */
+function programEnded(message: string): void {
+  log('warn', message);
+  if (receiver) send({ type: 'status', status: receiver.status() });
+  setTimeout(() => {
+    process.exit(3);
+  }, 200);
+}
+
+function senderFor(chosen: VideoOutSender, name: string): Sender {
   if (chosen.way === 'stand-in') return new StandInSender(chosen.file, name);
-  // Drashti's own program for Syphon, Spout or NDI comes with the owner's choice (N/reports/x30-design.md).
-  log('warn', `No sender for ${chosen.way} in this build`);
-  return null;
+  // Syphon on a Mac, Spout on Windows: Drashti's own small program (tools/video-out/).
+  return new ProgramSender(chosen.program, name, log, programEnded);
 }
 
 port.on('message', (event) => {
@@ -36,26 +45,14 @@ port.on('message', (event) => {
     case 'start': {
       sender?.stop();
       sender = senderFor(message.sender, message.name);
-      receiver = sender
-        ? new FrameReceiver(
-            sender,
-            (status) => {
-              send({ type: 'status', status });
-            },
-            Date.now,
-            log,
-          )
-        : null;
-      if (!sender)
-        send({
-          type: 'status',
-          status: {
-            frames: 0,
-            dropped: 0,
-            size: null,
-            error: 'This computer’s Drashti cannot send the picture.',
-          },
-        });
+      receiver = new FrameReceiver(
+        sender,
+        (status) => {
+          send({ type: 'status', status });
+        },
+        Date.now,
+        log,
+      );
       return;
     }
     case 'frames': {
@@ -70,9 +67,12 @@ port.on('message', (event) => {
       return;
     }
     case 'stop':
+      // The program's input ends (it stops by itself); this process a moment later.
       sender?.stop();
       sender = null;
       receiver = null;
-      process.exit(0);
+      setTimeout(() => {
+        process.exit(0);
+      }, 300);
   }
 });
