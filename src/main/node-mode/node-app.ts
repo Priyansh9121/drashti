@@ -7,7 +7,8 @@ import { MainAccess } from './main-access';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION, type EngineState, initialEngineState } from '../../shared/engine/state';
 import { IPC } from '../../shared/ipc';
-import { blurMediaId, copyMediaId, MEDIA_SCHEME, mediaUrl } from '../../shared/media';
+import { blurMediaId, copyMediaId, MEDIA_ID_PATTERN, MEDIA_SCHEME, mediaUrl } from '../../shared/media';
+import { saveStill } from '../media/stills';
 import { sharpenStep } from '../../shared/picture-look';
 import { mediaInState } from '../../shared/node-media';
 import { type PointedClip, sameClip } from '../../shared/point-ahead';
@@ -294,6 +295,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     // A screen that stopped waiting for this file (Main was away, say) loads it now.
     landed: (mediaId) => {
       for (const win of outputWindows.values()) sendToPage(win, IPC.output.mediaReady, { mediaId });
+      if (controller) sendToPage(nodeWindow, IPC.output.mediaReady, { mediaId });
     },
     log: (level, message) => {
       if (level === 'warn') log.warn(`Node: ${message}`);
@@ -322,7 +324,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       mediaDir: cacheDir,
       lookup: (id) => {
         const path = cache.pathFor(id);
-        return path ? { path: path.slice(cacheDir.length + 1), missing: false, sha256: null } : null;
+        return path
+          ? { path: path.slice(cacheDir.length + 1), missing: false, sha256: cache.hashFor(id) }
+          : null;
       },
     });
   });
@@ -572,7 +576,11 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
           transport.broadcast(m.kind === 'snapshot' ? { ...m, state: shown(m.state) } : m);
           saver.update(snapshot(), offsetMs);
           cache.kick();
-        } else if (result === 'resync') client?.send({ type: 'resync' });
+        } else if (result === 'resync') {
+          controllerReady = false;
+          viewChanged();
+          client?.send({ type: 'resync' });
+        }
         return;
       }
       case 'controller': {
@@ -920,7 +928,25 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     }
     return null;
   });
-  // A node keeps no lengths and no stills (the library is Main's).
+  // The shared view's NEXT thumbnails are made and kept on this computer only, never written on Main.
+  handle(IPC.media.saveStill, (event, rawId, jpeg) => {
+    if (
+      !controller ||
+      !pageAlive(nodeWindow) ||
+      event.sender.id !== nodeWindow.webContents.id ||
+      typeof rawId !== 'string' ||
+      !MEDIA_ID_PATTERN.test(rawId)
+    )
+      return {
+        ok: false as const,
+        message: 'Only this computer’s shared show view can keep its still frames.',
+      };
+    const hash = cache.hashFor(rawId);
+    return hash
+      ? saveStill(cacheDir, hash, jpeg)
+      : { ok: false as const, message: 'That file has not been copied here yet.' };
+  });
+  // A node keeps no lengths (the library is Main's).
   handle(IPC.media.reportLength, () => null);
   // Another app's window as the background (Session 48) is on Main's computer: a node's screens never show
   // it, and keep the rest of the show.
