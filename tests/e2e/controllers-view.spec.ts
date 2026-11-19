@@ -52,6 +52,28 @@ test('an explicitly enabled second computer shares Main’s live and next view; 
     await expect(view.getByTestId('controller-live')).toContainText('Placeholder shared first');
     await expect(view.getByTestId('controller-next')).toContainText('Placeholder shared second');
     await expect(view.getByRole('button')).toHaveCount(0);
+    // The controller may also drive assigned displays: those must keep the show through a link loss too.
+    await expect
+      .poll(() =>
+        main.win.evaluate(
+          async (nid) =>
+            (await (globalThis as PageGlobals).drashti.screens.get()).nodes.find((n) => n.id === nid)
+              ?.displays.length ?? 0,
+          nodeId,
+        ),
+      )
+      .toBeGreaterThanOrEqual(2);
+    await main.win.evaluate(async (nid) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const screens = await d.screens.get();
+      const groupId = screens.groups.find((g) => g.name === 'Placeholder Hall')?.id ?? '';
+      const displayId = screens.nodes.find((n) => n.id === nid)?.displays[1]?.id ?? -1;
+      const r = await d.screens.assignNodeDisplay(groupId, nid, displayId);
+      if (!r.ok) throw new Error(r.message);
+    }, nodeId);
+    const nodeOutput = await outputPage(node.app);
+    await outputReady(nodeOutput);
+    await expect(nodeOutput.locator('[data-layer="slide"]')).toContainText('Placeholder shared first');
     await node.page.setViewportSize({ width: 1024, height: 645 });
     await expectNoSeriousA11yIssues(node.page, 'the controller shared show view');
     await expect(view.getByTestId('controller-next')).toBeInViewport();
@@ -70,12 +92,20 @@ test('an explicitly enabled second computer shares Main’s live and next view; 
     await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder shared first');
     await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'next' }));
     await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder shared second');
+    // Wait past the deliberately shortened ordinary-node grace while the socket remains disconnected.
     await expect
       .poll(() =>
-        node.page.evaluate(async () => (await (globalThis as PageGlobals).drashti.node.view()).stopped),
+        node.app.evaluate(() => {
+          const n = (globalThis as { drashtiNode?: { view(): { link: { since: number } } } }).drashtiNode;
+          return n ? Date.now() - n.view().link.since : 0;
+        }),
       )
-      .toBe('not-heard');
-    // Even the node's local output access overlay must not replace the controller's last Main snapshot.
+      .toBeGreaterThan(10_000);
+    expect(
+      await node.page.evaluate(async () => (await (globalThis as PageGlobals).drashti.node.view()).stopped),
+    ).toBeNull();
+    await expect(nodeOutput.locator('[data-layer="slide"]')).toContainText('Placeholder shared first');
+    await expect(nodeOutput.locator('[data-stopped]')).toHaveCount(0);
     await expect(view.getByTestId('controller-live')).toContainText('Placeholder shared first');
     await expect(view.getByTestId('controller-live').locator('[data-stopped]')).toHaveCount(0);
     expect(
@@ -90,6 +120,7 @@ test('an explicitly enabled second computer shares Main’s live and next view; 
     });
     await expect(view.getByTestId('controller-status')).toHaveText('Connected to Main');
     await expect(view.getByTestId('controller-live')).toContainText('Placeholder shared second');
+    await expect(nodeOutput.locator('[data-layer="slide"]')).toContainText('Placeholder shared second');
     await expect(view.getByTestId('controller-next')).toContainText('Placeholder shared third');
     const rev = await main.win.evaluate(
       async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev,

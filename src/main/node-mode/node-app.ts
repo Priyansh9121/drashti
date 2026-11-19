@@ -591,6 +591,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         const parsed = nodeControllerContextSchema.nullable().safeParse(message.context);
         if (parsed.success) {
           controller = parsed.data;
+          mainAccess.setController(controller !== null);
           nodeWindow?.setTitle(controller ? 'Drashti Controller' : 'Drashti Node');
           viewChanged();
         }
@@ -756,6 +757,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     paired = null;
     controller = null;
     controllerReady = false;
+    mainAccess.setController(false);
+    nodeWindow?.setTitle('Drashti Node');
     store.forget();
     manager.reconcile();
     link = { state: 'unpaired', why: link.why, since: Date.now() };
