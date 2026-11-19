@@ -604,6 +604,11 @@ const bridge: DrashtiBridge = {
     fontFamilies: () => invoke(IPC.slideEditor.fontFamilies),
     showKey: (key) => invoke(IPC.slideEditor.showKey, key),
   },
+  osc: {
+    status: () => invoke(IPC.osc.status),
+    configure: (settings) => invoke(IPC.osc.configure, settings),
+    onChanged: (listener) => on(IPC.osc.changed, listener),
+  },
   midi: {
     get: () => invoke(IPC.midi.get),
     set: (settings) => invoke(IPC.midi.set, settings),

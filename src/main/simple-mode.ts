@@ -113,6 +113,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.lowerThirds.hide,
   // The MIDI controller: Simple Mode changes none of it (its pads still work Simple Mode's own actions).
   IPC.midi.set,
+  // OSC setup is Pro Mode only; enabled senders still obey Simple Mode show bounds.
+  IPC.osc.configure,
   IPC.stageLayouts.remove,
   // Session 55: renaming one, putting one back (Undo), and the one every stage screen shows: Pro Mode's setup.
   IPC.stageLayouts.rename,
