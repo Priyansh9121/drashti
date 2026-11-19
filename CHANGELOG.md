@@ -16,6 +16,7 @@ Update after a sabha, and update Main and nodes together.
 - OSC control for a lighting or sound console or Companion on the mandir’s network: in Pro Mode, More tools › OSC control… (off until turned on) lists the computers allowed to send Next, Back, Clear, the covers, timers and messages.
 - A paired node can show the whole show to a second operator when Main allows it in Screens (Pro Mode), and run the show controls or pause and play media if Main chooses; the first press counts. If its link drops, no screen changes.
 - The stream’s picture can go to other software on the same computer (Syphon on a Mac, Spout on Windows): Send to other software in the stream’s settings, off until turned on.
+- Schedule YouTube streams in Pro Mode: Stream settings › YouTube (your own free Google project: youtube-setup.md) makes a broadcast, Unlisted at first, whose new key goes straight into the stream profile; going live never waits on Google.
 - PowerPoint decks look closer to PowerPoint: every built-in table style as PowerPoint draws it, each text box’s first line where PowerPoint puts it, and Wheel and Random Bars as it plays them.
 - On a Mac, a 16:9 deck’s first Cover no longer stutters, as a 4:3 deck’s no longer did in alpha.19.
 - The access list’s emailed Approve and Reject links open on any phone or computer, signed in to Google or not (the admin updates the list once: access-setup.md, section 11).
