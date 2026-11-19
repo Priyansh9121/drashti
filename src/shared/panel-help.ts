@@ -4,9 +4,10 @@ import type { ManualChapterId } from './manual';
 /*
  * "What is this?" on each operator panel (Session 25): two or three plain sentences saying what the
  * panel is for and the one thing to do first. All the words are here, in one place; each names the
- * passage of a guide it comes from (the operator's, docs/operator-guide.md, unless it says another), which
- * its Read more opens in Help › Guides (Sessions 31–36). A unit test checks each passage is still there,
- * just once, and that every panel has its words. Pro Mode only.
+ * passage of a guide it comes from (the operator's, docs/operator-guide.md, unless it says another): a unit test
+ * checks each passage is still there, just once, and that every panel has its words. Each names its chapter of the
+ * Drashti Manual too, and the feature there (x37, Session 60), which its Open the manual opens (Read more opened the
+ * guide's passage until then, Sessions 31–36); src/main/manual.test.ts checks each is there, once. Pro Mode only.
  */
 
 export interface PanelHelp {

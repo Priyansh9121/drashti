@@ -19,7 +19,8 @@
 // opens Drashti.exe with its icon.
 //
 // The guides inside Drashti (Sessions 31–36) must be there too, beside the app (resources/guides): the four
-// guides and exactly the pictures they show, each the same bytes as in docs/.
+// guides, the Drashti Manual's chapters (x37, in manual/) and exactly the pictures they show, each the same bytes as
+// in docs/.
 //
 // Electron's fuses (Sessions 31–36, REL-7), read from the installed app: running as Node
 // (ELECTRON_RUN_AS_NODE), NODE_OPTIONS and --inspect off, file:// pages' privileges kept. And started with
@@ -103,37 +104,60 @@ async function captionsDecode(name, installDir) {
 }
 
 const GUIDES = ['operator-guide.md', 'presenter-guide.md', 'admin-guide.md', 'setup-day.md'];
-/** The pictures the four guides show ("screenshots/<name>.png"), as Drashti's Markdown reader finds them. */
+/** The Drashti Manual's chapters (x37, Session 60), beside the guides in manual/ (src/main/manual.test.ts: exactly these). */
+const MANUAL = readdirSync(join('docs', 'manual'))
+  .filter((f) => f.endsWith('.md'))
+  .sort();
+/**
+ * The pictures the four guides show ("screenshots/<name>.png") and the manual's chapters show
+ * ("../screenshots/<name>.png", from docs/manual/), as Drashti's Markdown reader finds them: one folder for both.
+ */
 const GUIDE_PICTURES = [
-  ...new Set(
-    GUIDES.flatMap((g) =>
+  ...new Set([
+    ...GUIDES.flatMap((g) =>
       [
         ...readFileSync(join('docs', g), 'utf8').matchAll(/!\[[^\]]*\]\(screenshots\/([a-z0-9-]+\.png)\)/gu),
       ].map((m) => m[1]),
     ),
-  ),
+    ...MANUAL.flatMap((c) =>
+      [
+        ...readFileSync(join('docs', 'manual', c), 'utf8').matchAll(
+          /!\[[^\]]*\]\(\.\.\/screenshots\/([a-z0-9-]+\.png)\)/gu,
+        ),
+      ].map((m) => m[1]),
+    ),
+  ]),
 ].sort();
 const sameBytes = (a, b) => existsSync(a) && existsSync(b) && readFileSync(a).equals(readFileSync(b));
 
-/** The guides beside an installed Drashti (Sessions 31–36): the four, and exactly the pictures they show. */
+/**
+ * The guides beside an installed Drashti (Sessions 31–36): the four, the manual's chapters (x37), and exactly the
+ * pictures they show.
+ */
 function checkGuides(name, resources) {
   const dir = join(resources, 'guides');
   const wrong = GUIDES.filter((g) => !sameBytes(join(dir, g), join('docs', g)));
   if (wrong.length > 0)
     return fail(name, `the guides ${wrong.join(', ')} are missing, or not those in docs/`);
+  const chapters = MANUAL.filter((c) => !sameBytes(join(dir, 'manual', c), join('docs', 'manual', c)));
+  if (MANUAL.length === 0 || chapters.length > 0)
+    return fail(
+      name,
+      `the manual's chapters ${chapters.join(', ') || '(none in docs/manual)'} are missing, or not those in docs/manual/`,
+    );
   const pictures = join(dir, 'screenshots');
   const shipped = existsSync(pictures) ? readdirSync(pictures).sort() : [];
   if (shipped.join(' ') !== GUIDE_PICTURES.join(' '))
     return fail(
       name,
-      `the guides' pictures are not exactly those they show (${String(shipped.length)} there, ${String(GUIDE_PICTURES.length)} shown)`,
+      `the guides' and the manual's pictures are not exactly those they show (${String(shipped.length)} there, ${String(GUIDE_PICTURES.length)} shown)`,
     );
   const changed = GUIDE_PICTURES.filter((p) => !sameBytes(join(pictures, p), join('docs', 'screenshots', p)));
   if (changed.length > 0)
     return fail(name, `the guides' pictures ${changed.join(', ')} are not those in docs/`);
   pass(
     name,
-    `holds the four guides and the ${String(GUIDE_PICTURES.length)} pictures they show (resources/guides)`,
+    `holds the four guides, the manual's ${String(MANUAL.length)} chapters and the ${String(GUIDE_PICTURES.length)} pictures they show (resources/guides)`,
   );
 }
 

@@ -6,7 +6,7 @@ import { cx } from '../ui/cx';
 /*
  * A guide drawn from Drashti's own Markdown reader (src/shared/markdown.ts), element by element, never as
  * HTML: its words are text, an address is text, a picture comes only from the guides' own folder
- * (drashti-media://guide/). Each passage carries its number (data-passage), so a search or Read more can
+ * (drashti-media://guide/). Each passage carries its number (data-passage), so a search, an answer or a "?" can
  * bring it into view and mark it (data-current).
  */
 
