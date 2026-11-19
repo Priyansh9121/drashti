@@ -220,13 +220,16 @@ describe('turned on, video out sends the stream’s picture from its own process
     expect(off.channels).toHaveLength(0);
   });
 
-  it('starts afresh under a new name', () => {
+  it('starts afresh under a new name, the stream’s page held all along (never let go and opened again)', () => {
     const r = rig();
     r.service.set({ on: true, name: 'Hall' });
+    const held = r.holds.length;
     r.service.set({ on: true, name: 'Sabha hall' });
     expect(r.workers).toHaveLength(2);
     expect(r.workers[0]?.sent.at(-1)).toEqual({ type: 'stop' });
     expect(r.workers[1]?.sent).toEqual([{ type: 'start', sender: STAND_IN, name: 'Sabha hall' }]);
+    expect(r.holds.slice(held)).not.toContain(false);
+    expect(r.paired).toHaveLength(2);
   });
 
   it('says to the operator window when what it shows changes, not for each frame counted', () => {
