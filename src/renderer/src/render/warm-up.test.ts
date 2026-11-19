@@ -130,14 +130,34 @@ describe('the warm-up', () => {
     for (const during of [false, true]) {
       const slide = slideOf(wide, during, at).slide;
       expect([slide.width, slide.height]).toEqual([1920, 1080]);
+      // The measured deck's picture and native words compose one RGBA surface; a lone JPEG can draw as YUV.
+      expect(nativeDeckMotion(slide.deck)).toEqual({ effects: [], stepsMs: [0], approximate: false });
       expect(slide.elements).toEqual([
         expect.objectContaining({
           kind: 'image',
+          sourceShapeId: '2',
           fit: 'fill',
           frame: { x: 0, y: 0, width: 1920, height: 1080 },
         }),
+        expect.objectContaining({
+          kind: 'text',
+          sourceShapeId: '3',
+          frame: { x: 160, y: 120, width: 1600, height: 200 },
+          style: expect.objectContaining({ fontSize: 80, shrinkToFit: true }),
+        }),
+        expect.objectContaining({
+          kind: 'text',
+          sourceShapeId: '4',
+          frame: { x: 160, y: 360, width: 1600, height: 140 },
+          style: expect.objectContaining({ fontSize: 56, shrinkToFit: true }),
+        }),
       ]);
     }
+    // The same composition under the notched clip primes the multisampled render passes too.
+    const clipped = scene(`${key}/clipped`);
+    expect(clipped.clip).toBe(scene('deck-cover/calm/clipped').clip);
+    expect(clipped.offset).toBe(wide.offset);
+    for (const during of [false, true]) expect(clipped.state(during, at)).toEqual(wide.state(during, at));
   });
 
   it('draws a 4:3 deck’s Cover between bars, half a pixel off the grid (C24, X12)', () => {
