@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type VideoClips, videoClip, type VideoSeeks, videoSeek } from '../../../shared/engine/state';
 import { type PlaybackClip, type PlaybackSeek, stillUrl } from '../../../shared/media';
 import type {
@@ -34,6 +34,7 @@ import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useGpuRestarts, useMediaAttempt } from './media-attempts';
 import { hasWords, revealLines, wordUnits } from './reveal';
 import { useMediaUrl } from './media-urls';
+import { SlideImageDecoding } from './slide-image-decoding';
 import { useMeasureReport } from './measure';
 import { observeTextSizes } from './observe-text-sizes';
 import { missingFontsOf } from './font-probe';
@@ -919,10 +920,12 @@ function SlideVideo({
 
 /** A deck's video's poster (Session 54, C2), from this computer's media or, on a node, its copy. */
 function DeckPoster({ mediaId, style }: { mediaId: string; style: CSSProperties }) {
+  const decoding = useContext(SlideImageDecoding);
   const attempt = useMediaAttempt(mediaId);
   const urlOf = useMediaUrl();
   return (
     <img
+      decoding={decoding}
       key={attempt}
       data-deck-poster={mediaId}
       src={urlOf(mediaId, attempt)}
@@ -944,12 +947,14 @@ export function VideoStill({ mediaId, style }: { mediaId: string; style: CSSProp
 
 /** In Drashti's windows: the still the operator window made and keeps in the media folder. */
 function WindowVideoStill({ mediaId, style }: { mediaId: string; style: CSSProperties }) {
+  const decoding = useContext(SlideImageDecoding);
   const still = useStill(mediaId);
   if (still.failed) {
     return <div data-media-id={mediaId} data-still="none" style={{ ...style, background: '#1f2937' }} />;
   }
   return (
     <img
+      decoding={decoding}
       data-media-id={mediaId}
       data-still={still.version}
       src={stillUrl(mediaId, still.version)}
@@ -1022,6 +1027,7 @@ function SlidePicture({
   attempt: number;
   previews: boolean;
 }) {
+  const decoding = useContext(SlideImageDecoding);
   const urlOf = useMediaUrl();
   const crop = el.crop;
   const width = el.frame.width / (crop?.width ?? 1);
@@ -1045,6 +1051,7 @@ function SlidePicture({
           <PreviewPicture mediaId={copy?.id ?? el.mediaId} style={paint} />
         ) : (
           <img
+            decoding={decoding}
             key={attempt}
             data-element={crop ? undefined : el.id}
             data-media-id={el.mediaId}

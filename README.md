@@ -1217,7 +1217,7 @@ Electron only supports its latest three major versions with security fixes, so g
 
 **The importers have not met the mandir's files yet.** They are checked against synthetic files and against this Mac's small ProPresenter 6 and 7 libraries, where every file imports. The `.probundle` and `.proplaylist` layouts follow the community documentation and are not confirmed with real exports. `migration-samples/` will settle both.
 
-**Images on a slide load when the slide goes live** unless loaded ahead (every screen loads what Next shows), so a large picture could appear a frame or two after the text; since alpha.19 the hall's screens, as the stream's page since alpha.18, keep what is up until a slide's pictures can be drawn, 3 seconds at most, so only a picture slower than that still comes after its words. Audio cues that loop a set number of times, or for a set time, loop until cleared.
+**Images on a slide load when the slide goes live** unless loaded ahead (every screen loads and decodes what Next shows). The hall and the stream keep what is up until the slide's pictures can be drawn, 3 seconds at most, so only a picture slower than that still comes after its words. A loaded picture that still needs decoding is painted with the slide, including on a jump back after Chromium discarded its earlier decoded copy. A key and fill pair keeps cutting together. Audio cues that loop a set number of times, or for a set time, loop until cleared.
 
 **Sound and picture latency.** Sound and pictures follow the same clock, but the sound output (especially over HDMI or Bluetooth) and the displays each add their own delay. On the mandir's mixer this should be checked by eye and ear; an adjustable sound delay can be added if it is noticeable.
 

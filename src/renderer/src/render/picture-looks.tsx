@@ -20,6 +20,7 @@ import { engineNow } from './clock';
 import { useMediaAttempt } from './media-attempts';
 import { PreviewPicture, PreviewsContext } from './previews';
 import { useElementSize } from './useElementSize';
+import { SlideImageDecoding } from './slide-image-decoding';
 
 /*
  * A picture drawn with its look (Session 26e, shared/picture-look.ts): zoomed
@@ -276,6 +277,7 @@ export function Looked({
   box?: PixelSize;
   children: (style: CSSProperties, copy: SharpCopy | null) => ReactNode;
 }) {
+  const decoding = useContext(SlideImageDecoding);
   const look = usePictureLook(mediaId);
   const copy = useSharpCopy(mediaId, look);
   const screen = useContext(ScreenPictures);
@@ -313,7 +315,7 @@ export function Looked({
   const fillOf = (s: CSSProperties) =>
     fill ? (
       fill.url ? (
-        <img src={fill.url} alt="" draggable={false} style={s} />
+        <img decoding={decoding} src={fill.url} alt="" draggable={false} style={s} />
       ) : (
         <PreviewPicture mediaId={fill.id} style={s} />
       )

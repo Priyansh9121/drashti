@@ -36,6 +36,7 @@ import { PlacedInParent } from './Placed';
 import { SlideView } from './SlideView';
 import { useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
+import { SlideImageDecoding } from './slide-image-decoding';
 import { catchUpLeftMs, type PlaybackCatchUp, startPlayback } from './playback';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { SlideMovementContext } from './slide-timers';
@@ -82,10 +83,12 @@ function Still({
   holder: RefObject<HTMLImageElement | null>;
   role: 'under' | 'last';
 }) {
+  const decoding = useContext(SlideImageDecoding);
   const attempt = useMediaAttempt(mediaId);
   const urlOf = useMediaUrl();
   return (
     <img
+      decoding={decoding}
       key={attempt}
       ref={holder}
       data-deck-still={role}
@@ -875,6 +878,7 @@ export function DeckStepStill({
   index: number;
   style: CSSProperties;
 }) {
+  const decoding = useContext(SlideImageDecoding);
   const previews = usePreviewsOnly();
   const attempt = useMediaAttempt(deckStep(deck, index)?.lastId ?? '');
   const urlOf = useMediaUrl();
@@ -886,6 +890,7 @@ export function DeckStepStill({
         <PreviewPicture mediaId={id} style={filling('contain')} />
       ) : (
         <img
+          decoding={decoding}
           key={attempt}
           data-media-id={id}
           src={urlOf(id, attempt)}

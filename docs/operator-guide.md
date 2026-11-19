@@ -87,6 +87,7 @@ Do these about 30 minutes before the sabha starts.
 | A click on a presentation's name         | Its slides fold away, or open again; with nothing up, **Next** then starts it from its first |
 
 - What the next press will bring shows beside **Next** (its small picture), on the stage screen (its **Next**), on a presenter's phone or tablet, and in Simple Mode.
+- A slide comes on with its pictures whole. If a large picture needs a moment to be prepared, the hall and the stream keep the slide before up until it can be drawn, for up to 3 seconds. What Next shows is prepared ahead, so the next press changes at once.
 - Pictures and videos in the playlist go up as the **background**; the words of the next presentation go over them. A video input in the playlist goes up the same way (section 6). A sound plays through the mixer and leaves the picture as it is.
 - **Jump to a row by its number.** With no field chosen, type the number at a row's left: "Row 12 · Enter puts it up · Esc cancels" shows over the middle. Enter puts that row up, as a click does; Backspace takes a digit off; Esc, or any other key, puts the number away (a number with no row says so). It works in Simple Mode too.
 - **A finished video starts again.** A click on the row of a video that has played to its end starts it again from its start point; one still playing carries on (a click never starts it again by mistake), and a paused one stays paused. A finished sound starts again too.

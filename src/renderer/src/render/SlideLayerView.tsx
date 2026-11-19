@@ -11,6 +11,7 @@ import { hasPicture, lowerThird } from '../../../shared/program';
 import { placeContent, type Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { Placed } from './Placed';
+import { SlideImageDecoding } from './slide-image-decoding';
 import { type Reveal, type SlideText, SlideView } from './SlideView';
 import type { TimerState } from '../../../shared/timers';
 import { clockHeld, engineNow, onClockJump } from './clock';
@@ -527,6 +528,7 @@ function DrawnSlide({
   movement,
   timers,
   settled = false,
+  picturesFirst,
 }: {
   layer: SlideLayer;
   canvas: Size;
@@ -542,6 +544,7 @@ function DrawnSlide({
   timers: readonly TimerState[] | undefined;
   /** The previous click's final frame while a new click uses Drashti's own transition. */
   settled?: boolean;
+  picturesFirst: boolean;
 }) {
   const { slide, step: index, stepAt, stepFromMs, shownAt } = layer;
   const { step, native } = useMemo(() => {
@@ -560,26 +563,28 @@ function DrawnSlide({
     if (!hasPicture(layer.slide)) return null;
   }
   return (
-    <SlideMovementContext.Provider value={movement}>
-      <SlideTimersContext.Provider value={timers ?? null}>
-        <Placed content={drawn} box={canvas} mode={scaling}>
-          <NativeDeckMotion slide={drawn} timing={native}>
-            <SlideView
-              slide={drawn}
-              media={settled ? 'still' : 'live'}
-              startedAt={layer.shownAt}
-              // Its videos between their files' start and end points, the engine's (Session 52), from where the
-              // time bar left them (Session 54).
-              clips={layer.clips}
-              seeks={layer.seeks}
-              text={text}
-              reveal={reveal}
-              step={step}
-            />
-          </NativeDeckMotion>
-        </Placed>
-      </SlideTimersContext.Provider>
-    </SlideMovementContext.Provider>
+    <SlideImageDecoding.Provider value={picturesFirst ? 'sync' : undefined}>
+      <SlideMovementContext.Provider value={movement}>
+        <SlideTimersContext.Provider value={timers ?? null}>
+          <Placed content={drawn} box={canvas} mode={scaling}>
+            <NativeDeckMotion slide={drawn} timing={native}>
+              <SlideView
+                slide={drawn}
+                media={settled ? 'still' : 'live'}
+                startedAt={layer.shownAt}
+                // Its videos between their files' start and end points, the engine's (Session 52), from where the
+                // time bar left them (Session 54).
+                clips={layer.clips}
+                seeks={layer.seeks}
+                text={text}
+                reveal={reveal}
+                step={step}
+              />
+            </NativeDeckMotion>
+          </Placed>
+        </SlideTimersContext.Provider>
+      </SlideMovementContext.Provider>
+    </SlideImageDecoding.Provider>
   );
 }
 
@@ -795,7 +800,8 @@ export function SlideLayerView({
   });
 
   // A cut on the stream's page whose pictures can already be drawn (loaded ahead, as the hall's screens load them) is
-  // made before this frame is painted, as every cut is: the wait above only ever holds back a picture still loading.
+  // made before this frame is painted, as every cut is. Its sync decoding preference keeps a loaded picture in that
+  // paint too; complete alone does not say that Chromium still has its decoded pixels (X19 L7).
   useLayoutEffect(() => {
     if (!waiting || picturesBy === undefined || !on || !inRef.current) return;
     if (!slideMediaDrawable(inRef.current, on)) return;
@@ -860,6 +866,7 @@ export function SlideLayerView({
       {underlay && (
         <div aria-hidden="true" style={{ position: 'absolute', inset: 0 }}>
           <DrawnSlide
+            picturesFirst={picturesFirst}
             layer={underlay}
             canvas={canvas}
             scaling={scaling}
@@ -892,6 +899,7 @@ export function SlideLayerView({
               <div ref={incoming ? inBandSlideRef : outBandSlideRef} data-band-slide="" style={BAND_BOX}>
                 <Zoomed layer={l}>
                   <DrawnSlide
+                    picturesFirst={picturesFirst}
                     layer={l}
                     canvas={canvas}
                     scaling={scaling}
@@ -930,6 +938,7 @@ export function SlideLayerView({
                 }}
               >
                 <DrawnSlide
+                  picturesFirst={picturesFirst}
                   layer={l}
                   canvas={canvas}
                   scaling={scaling}
