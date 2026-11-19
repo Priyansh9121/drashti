@@ -953,6 +953,8 @@ export class NodeService implements EngineTransport {
       name: n.name,
       online: this.live.get(n.id)?.online ?? false,
       displays: this.live.get(n.id)?.health?.displays ?? n.displays,
+      // It draws without a graphics chip, as its last health said (x27), for Adjust the picture….
+      ...(this.live.get(n.id)?.health?.noGpu === true ? { noGpu: true as const } : {}),
     }));
   }
 

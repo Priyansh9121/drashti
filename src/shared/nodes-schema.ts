@@ -121,6 +121,8 @@ export const nodeHealthSchema: z.ZodType<NodeHealth> = z.object({
   }),
   clock: z.object({ offsetMs: finite, rttMs: z.number().nonnegative(), at: finite }).nullable(),
   rev: z.number().int(),
+  // It draws without a graphics chip (x27), for Adjust the picture…: said only when it does.
+  noGpu: z.literal(true).optional(),
 });
 
 /** A node's name as the operator gives it: cleaned as Rename… cleans a name (C15, FT-1; shared/rename-name.ts). */
