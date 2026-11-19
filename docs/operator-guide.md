@@ -291,6 +291,19 @@ The phone remote names it (**A window: Zoom Meeting**), and its **Clear** takes 
 
 ![Show a Window: the open windows, each with a small live picture](screenshots/window-picker.png)
 
+**Other apps on this computer (Syphon on a Mac, Spout on Windows).** For software on the same computer that takes a
+picture from other apps (OBS, say), Drashti can send it the stream's picture, as YouTube gets it, without sharing a
+window. It is off until someone turns it on, costs nothing, needs nothing installed for Drashti, and sends nothing over
+the network.
+
+1. In the **Stream** panel, press **Stream settings**. Under **Send to other software**, turn on **Send the stream's
+   picture**. The line below says **Sending** and the picture's size once it goes. The name other apps list it by is
+   **Drashti** unless you change it there (letters, digits and spaces).
+2. In the other app, add Drashti's picture: in OBS on a Mac, a **Syphon Client** source, then **Drashti**; on Windows,
+   OBS needs the free **Spout2** plug-in first, then a **Spout2 Capture** source, then **Drashti**.
+3. It stays on, after a restart too, until it is turned off in the same place (Pro Mode). Drashti sends no sound this
+   way. The hall's screens and the stream are as they were, on or off.
+
 ## 6. Video inputs
 
 A **video input** is a camera or a capture input on this computer: the video mixer's program through its USB output, say. It is named once, for example "Input 1" (**Library**, then **Media**, then **Add a Video Input…**; `docs/admin-guide.md` has the details), and from then on it is one click away.
