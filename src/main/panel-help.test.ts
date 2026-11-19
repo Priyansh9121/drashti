@@ -10,7 +10,7 @@ import { PANEL_HELP } from '../shared/panel-help';
 
 /*
  * "What is this?" on each operator panel (Session 25): every panel has its two or three sentences, each
- * follows one passage of a guide shipped with Drashti, which its Read more opens (Sessions 31–36), and
+ * follows one passage of a guide shipped with Drashti (Read more opened it, Sessions 31–36, until x37's Open the manual), and
  * every text is used by a panel. A key a card names is the keymap's (Session 50).
  */
 
@@ -73,7 +73,7 @@ describe('"What is this?" on the operator panels', () => {
     expect(sources.reduce((n, s) => n + panelTags(s.text).length, 0)).toBeGreaterThanOrEqual(4);
   });
 
-  it('two or three plain sentences each, following exactly one passage of a shipped guide (Read more opens it)', () => {
+  it('two or three plain sentences each, following exactly one passage of a shipped guide', () => {
     for (const [id, help] of Object.entries(PANEL_HELP)) {
       const sentences = help.text.split(/(?<=[.:;])\s+(?=[A-Z“])/u).filter((s) => /[.]$/u.test(s.trim()));
       expect(sentences.length, `${id}: ${help.text}`).toBeGreaterThanOrEqual(2);

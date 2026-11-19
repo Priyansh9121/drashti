@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GUIDES } from '../shared/guides';
+import { MANUAL_CHAPTERS } from '../shared/manual';
 
 /*
  * One name for each action, and the words as they are written (Sessions 31–36, DOC-2): the screens'
@@ -31,8 +32,12 @@ function codeLines(path: string): { line: string; n: number }[] {
     .filter(({ line }) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/u.test(line) && !LOG.test(line));
 }
 
-/** The guides people read (the four inside Drashti, and the parallel run's), line by line. */
-const guideLines = [...GUIDES.map((g) => g.file), 'parallel-run.md'].flatMap((file) =>
+/** The guides people read (the four inside Drashti, the manual's chapters, and the parallel run's), line by line. */
+const guideLines = [
+  ...GUIDES.map((g) => g.file),
+  ...MANUAL_CHAPTERS.map((c) => `manual/${c.file}`),
+  'parallel-run.md',
+].flatMap((file) =>
   readFileSync(join(app, 'docs', file), 'utf8')
     .split('\n')
     .map((line, i) => ({ where: `docs/${file}:${String(i + 1)}`, line })),
