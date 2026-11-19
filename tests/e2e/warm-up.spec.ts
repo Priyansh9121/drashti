@@ -278,8 +278,53 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
   expect(hiding.background, `${what}: a black cover`).toBe('rgb(0, 0, 0)');
   expect(hiding.inset, `${what}: the cover fills the warm-up`).toBe('0px');
   expect(hiding.above, `${what}: the cover follows the drawing`).toBe(true);
-  // The audience sees none of it.
-  expect(await brightest(page, `${scope} [data-warm-up]`), `${what}: black throughout`).toBe(0);
+  // The audience sees none of it. Keep the geometry and the exact frame if the cover ever fails.
+  const light = await brightest(page, `${scope} [data-warm-up]`);
+  if (light !== 0) {
+    const geometry = await page.evaluate((scope) => {
+      const host = document.querySelector(scope)?.querySelector<HTMLElement>('[data-warm-up]');
+      const tree = host?.shadowRoot;
+      const box = (el: HTMLElement | null | undefined) => {
+        if (!el) return null;
+        const css = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return {
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          width: css.width,
+          height: css.height,
+          display: css.display,
+          position: css.position,
+          transform: css.transform,
+          opacity: css.opacity,
+          filter: css.filter,
+          isolation: css.isolation,
+          zIndex: css.zIndex,
+          mixBlendMode: css.mixBlendMode,
+          background: css.backgroundColor,
+        };
+      };
+      return {
+        viewport: { width: innerWidth, height: innerHeight, scale: devicePixelRatio },
+        host: box(host),
+        parent: box(host?.parentElement),
+        drawing: box(tree?.querySelector<HTMLElement>('[data-warm-drawing]')),
+        pulse: box(tree?.querySelector<HTMLElement>('[data-warm-pulse]')),
+        cover: box(tree?.querySelector<HTMLElement>('[data-warm-cover]')),
+        scenes: [...(tree?.querySelectorAll<HTMLElement>('[data-warm-scene]') ?? [])]
+          .slice(0, 4)
+          .map((el) => ({ key: el.dataset['warmScene'], ...box(el) })),
+      };
+    }, scope);
+    await test.info().attach('warm-up-cover-geometry', {
+      body: JSON.stringify({ what, light, geometry }, null, 2),
+      contentType: 'application/json',
+    });
+    await test.info().attach('warm-up-covered-frame', {
+      body: await page.screenshot({ scale: 'css' }),
+      contentType: 'image/png',
+    });
+  }
+  expect(light, `${what}: black throughout`).toBe(0);
 }
 
 async function streamPage(app: ElectronApplication): Promise<Page> {
