@@ -899,9 +899,12 @@ export function SlideLayerView({
             }}
           >
             {/* Its band boxes (Session 58, C2): at rest they only fill its box; a deck's own Wipe draws its band on
-                them. Always there, so a Wipe starting or ending never draws the slide anew. */}
-            <div ref={incoming ? inHolderRef : outHolderRef} data-band="" style={BAND_BOX}>
-              <div ref={incoming ? inBandSlideRef : outBandSlideRef} data-band-slide="" style={BAND_BOX}>
+                them. Always there, so a Wipe starting or ending never draws the slide anew. Named for the Wipe alone
+                (Q60-2): the operator window's header band is data-band, whose rule in app.css (its height, 0 px on
+                the screens) made these 0 px tall, and without a graphics chip the Wipe then showed nothing of its
+                incoming slide until it ended. */}
+            <div ref={incoming ? inHolderRef : outHolderRef} data-wipe-band="" style={BAND_BOX}>
+              <div ref={incoming ? inBandSlideRef : outBandSlideRef} data-wipe-band-slide="" style={BAND_BOX}>
                 <Zoomed layer={l}>
                   <DrawnSlide
                     picturesFirst={picturesFirst}

@@ -688,6 +688,12 @@ interface WindowsOpen {
    * already (the streaming check streams to FFmpeg on this computer from its start).
    */
   readyMs: { stageScreen: number | null; screens: number | null; streamPicture: number | null };
+  /**
+   * The first hall screen's longest frame (ms) while the stream's page opened for its preview, from asking to its page
+   * ready (Session 59, X21; C19's finding: 0.5-2.3 s on CI's Mac while its warm-up made its pipelines); null when it was
+   * open already or the screen's record could not be read.
+   */
+  hallWhileStreamOpened: number | null;
   /** Why one was not. */
   why: string[];
 }
@@ -703,7 +709,7 @@ const windowsLine = (w: WindowsOpen) => {
   const open = names.filter(([k]) => w[k]).map(([, n]) => n);
   const shut = names.filter(([k]) => !w[k]).map(([, n]) => n);
   const ms = (n: number | null) => (n === null ? 'never' : `${String(n)} ms`);
-  const ready = `ready after: a stage screen ${ms(w.readyMs.stageScreen)}, Screens ${ms(w.readyMs.screens)}, the stream’s picture ${ms(w.readyMs.streamPicture)}`;
+  const ready = `ready after: a stage screen ${ms(w.readyMs.stageScreen)}, Screens ${ms(w.readyMs.screens)}, the stream’s picture ${ms(w.readyMs.streamPicture)}; the hall screen’s longest frame while the stream’s page opened: ${w.hallWhileStreamOpened === null ? 'not read' : `${w.hallWhileStreamOpened.toFixed(1)} ms`}`;
   return `open: ${open.join(', ') || 'none'}; not open: ${shut.join(', ') || 'none'}${w.why.length > 0 ? ` (${w.why.join('; ')})` : ''}; ${ready}`;
 };
 
@@ -1473,6 +1479,14 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       if (streamMs === null)
         why.push(`the stream’s page was not ready within ${String(SCREEN_LIMIT_MS / 1000)} s`);
     }
+    // The first hall screen's frames while the stream's page opened (X21): its longest one, from its motion probe.
+    let hallWhileStreamOpened: number | null = null;
+    if (!openBefore && streamPicture) {
+      const record = await readProbe(deps.outputs()[0], streamFrom, Date.now());
+      const frames = record?.frames ?? [];
+      if (frames.length > 1)
+        hallWhileStreamOpened = Math.max(...frames.slice(1).map((t, i) => t - (frames[i] ?? t)));
+    }
     return {
       live,
       projectorCard,
@@ -1480,6 +1494,7 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       stageScreen: typeof stage !== 'string',
       streamPicture,
       readyMs: { stageScreen: stageMs, screens: screensMs, streamPicture: streamMs },
+      hallWhileStreamOpened,
       why,
     };
   }
