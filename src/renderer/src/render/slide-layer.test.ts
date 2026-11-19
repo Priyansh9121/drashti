@@ -11,7 +11,7 @@ import {
   paintWaiting,
 } from './SlideLayerView';
 import { setDrawsWithoutChip } from './chipless';
-import { deckTransitionFrame, wipeSlideMask } from './transition-frame';
+import { deckTransitionFrame, deckWipeShows, wipeSlideMask } from './transition-frame';
 
 const layer = (id: string, shownAt: number, transition?: SlideLayer['transition']): SlideLayer => ({
   presentationId: 'p',
@@ -399,6 +399,66 @@ describe('a deck’s own Wipe drawn on a screen without a graphics chip: the ban
       paintLayers(layersOf(box(), going), deckPaint(native), 0.5);
       expect(going.style.transform, kind).toBe(deckTransitionFrame(native, 0.5).out.transform);
     }
+  });
+
+  it('the incoming slide’s box is clipped where its band’s mask shows nothing (past the band’s far end), in whole px; nowhere once the band reaches across', () => {
+    setDrawsWithoutChip(true);
+    const bars = { x: 240, y: 0, width: 1440, height: 1080 };
+    for (const placeIn of [FULL, bars])
+      for (const direction of ['left', 'right', 'up', 'down'] as const) {
+        const native: DeckNativeTransition = { kind: 'wipe', deckEffect: 'wipe', durationMs: 700, direction };
+        const across = direction === 'left' || direction === 'right';
+        // The edge of the layer the band comes from, and the slide's own length along the band.
+        const length = across ? placeIn.width : placeIn.height;
+        const start = across ? placeIn.x : placeIn.y;
+        const screen = across ? 1920 : 1080;
+        const fromEnd = direction === 'left' || direction === 'up';
+        for (const p of [0, 0.2, 0.3, 0.45, 0.5, 0.7, 0.9]) {
+          const coming = box();
+          paintLayers(layersOf(coming, box()), deckPaint(native, placeIn), p);
+          const what = `${String(placeIn.width)} wide, ${direction} at ${String(p)}`;
+          const m = /^inset\((\d+)px (\d+)px (\d+)px (\d+)px\)$/u.exec(coming.style.clipPath);
+          const cuts = m ? m.slice(1).map(Number) : [0, 0, 0, 0];
+          if (!m) expect(coming.style.clipPath, what).toBe('');
+          // Only the far side is cut: left for a Wipe from the right, right from the left, top from the bottom, bottom
+          // from the top.
+          const far = { left: 3, right: 1, up: 0, down: 2 }[direction];
+          cuts.forEach((cut, i) => {
+            if (i !== far) expect(cut, what).toBe(0);
+          });
+          const cut = cuts[far] ?? 0;
+          // Where the cut ends, as a share of the slide from its own side: the band shows nothing from there on, and
+          // no more than a pixel of nothing is left uncut.
+          const edge = fromEnd ? cut : screen - cut;
+          const at = (fromEnd ? start + length - edge : edge - start) / length;
+          if (cut > 0) expect(deckWipeShows(native, p, at), what).toBe(0);
+          const firstNothing = [...Array(2001).keys()]
+            .map((i) => i / 1000 - 0.5)
+            .find((a) => deckWipeShows(native, p, a) === 0);
+          if (
+            firstNothing !== undefined &&
+            firstNothing < (fromEnd ? (start + length) / length : (screen - start) / length) - 2 / length
+          )
+            expect(at - firstNothing, what).toBeLessThanOrEqual(1 / length + 1e-9);
+          else expect(cut, what).toBe(0);
+        }
+      }
+  });
+
+  it('no clip with a graphics chip or under Drashti’s own transition set over the deck’s', () => {
+    const native: DeckNativeTransition = {
+      kind: 'wipe',
+      deckEffect: 'wipe',
+      durationMs: 700,
+      direction: 'left',
+    };
+    const coming = box();
+    paintLayers(layersOf(coming, box()), deckPaint(native), 0.2);
+    expect(coming.style.clipPath).toBe('');
+    setDrawsWithoutChip(true);
+    const over: DeckNativeTransition = { ...native, over: { kind: 'dissolve', durationMs: 700 } };
+    paintLayers(layersOf(coming, box()), deckPaint(over), 0.2);
+    expect(coming.style.clipPath).toBe(deckTransitionFrame(over, 0.2).in.clip ?? '');
   });
 
   it('Back during it: the slide that was coming in is drawn whole, no mask and no layer left on it (TX-1)', () => {
