@@ -139,17 +139,23 @@ export const SPOUT = {
   },
 };
 
-/** Drashti's own sources for the programs (never anything fetched). */
+/**
+ * Drashti's own sources for the programs (never anything fetched), and this script, which holds how they are built
+ * (x39): a build already in vendor/video-out/ is reused only while each is unchanged, so a changed compiler or linker
+ * option builds the programs again.
+ */
 export const OWN_SOURCES = {
   darwin: [
     'tools/video-out/frame-input.h',
     'tools/video-out/drashti-video-out-mac.m',
     'tools/video-out/drashti-video-out-receiver-mac.m',
+    'scripts/fetch-video-out.mjs',
   ],
   win32: [
     'tools/video-out/frame-input.h',
     'tools/video-out/drashti-video-out-win.cpp',
     'tools/video-out/drashti-video-out-receiver-win.cpp',
+    'scripts/fetch-video-out.mjs',
   ],
 };
 
@@ -158,6 +164,29 @@ export const PROGRAMS = {
   darwin: { sender: 'drashti-video-out', receiver: 'drashti-video-out-receiver' },
   win32: { sender: 'drashti-video-out.exe', receiver: 'drashti-video-out-receiver.exe' },
 };
+
+/**
+ * What Windows' linker is given for each program: its manifest INSIDE it (x39), then the system libraries they use.
+ * Spout's sources ask the linker for Common Controls 6 (for their message box, from comctl32's version 6 only). By
+ * default the linker writes that manifest as a file beside the program, and the installer, which takes the sender
+ * alone, left it behind: Windows then stopped the packaged sender before it ran (0xC0000138, an ordinal not found).
+ * Inside, the program is whole by itself.
+ */
+export const WINDOWS_LINK = [
+  '/MANIFEST:EMBED',
+  'd3d11.lib',
+  'dxgi.lib',
+  'winmm.lib',
+  'psapi.lib',
+  'shell32.lib',
+  'advapi32.lib',
+  'version.lib',
+  'comctl32.lib',
+  'user32.lib',
+  'gdi32.lib',
+  'ole32.lib',
+  'opengl32.lib',
+];
 
 const TARGETS = { 'darwin-arm64': 'arm64', 'darwin-x64': 'x86_64', 'win32-x64': 'x64' };
 
@@ -202,7 +231,7 @@ async function fetchPinned(source) {
 }
 
 /** What the folder's SOURCE.txt records: every pinned file and own source by its SHA-256 (then the folder's digest). */
-function stampFor(target, source) {
+export function stampFor(target, source) {
   const own = OWN_SOURCES[target.split('-')[0]].map((f) => `${f} ${sha256Of(join(root, f))}`);
   return [
     `Drashti's video out programs for ${target}, built here`,
@@ -262,7 +291,7 @@ function buildMac(target, from, outDir) {
 }
 
 /** Visual Studio's x64 build environment (vcvars64.bat), found by vswhere. */
-function vcvars() {
+export function vcvars() {
   const vswhere = join(
     process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
     'Microsoft Visual Studio',
@@ -312,12 +341,10 @@ function buildWindows(target, from, outDir) {
     '/D_CRT_SECURE_NO_WARNINGS',
     ...includes.map((i) => `/I"${i}"`),
   ].join(' ');
-  const libs =
-    'd3d11.lib dxgi.lib winmm.lib psapi.lib shell32.lib advapi32.lib version.lib comctl32.lib user32.lib gdi32.lib ole32.lib opengl32.lib';
   const spout = SPOUT.sources.map((f) => `"${join(from, ...f.split('/'))}"`).join(' ');
   const { sender, receiver } = PROGRAMS.win32;
   const program = (name, own) =>
-    `${cl} /Fo"${work}\\\\" ${spout} "${join(root, 'tools', 'video-out', own)}" /Fe"${join(outDir, name)}" /link ${libs} || exit /b 1`;
+    `${cl} /Fo"${work}\\\\" ${spout} "${join(root, 'tools', 'video-out', own)}" /Fe"${join(outDir, name)}" /link ${WINDOWS_LINK.join(' ')} || exit /b 1`;
   const script = join(work, 'build.cmd');
   writeFileSync(
     script,
