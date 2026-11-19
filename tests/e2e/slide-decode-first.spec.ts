@@ -75,13 +75,15 @@ async function bigPicture(page: Page, file: string): Promise<string> {
 }
 
 /** The hall's actual painted frames, sampled in Main without asking the renderer to decode a screenshot. */
-async function captureHall(app: ElectronApplication, hall: Page): Promise<void> {
+async function captureHall(app: ElectronApplication, hall: Page): Promise<number> {
+  const by = Date.now() + 20_000;
   const w = await app.browserWindow(hall);
-  // DOM/font readiness can precede ready-to-show. Subscribe only after the native window is shown: showing it
-  // gives Chromium its visible capture surface, so an earlier subscription can retain just the initial black frames.
-  const visible = await w.evaluate((window: BrowserWindow) => window.isVisible());
-  console.log(`HALL CAPTURE native window visible before subscribing: ${String(visible)}`);
-  await expect.poll(() => w.evaluate((window: BrowserWindow) => window.isVisible())).toBe(true);
+  // The native surface must exist before the capturer is attached; its first frame is the capture-start ack.
+  await expect
+    .poll(() => w.evaluate((window: BrowserWindow) => window.isVisible()), {
+      timeout: Math.max(1, by - Date.now()),
+    })
+    .toBe(true);
   await w.evaluate((window: BrowserWindow) => {
     const frames: Frame[] = [];
     (globalThis as DecodeGlobals).drashtiDecodeFrames = frames;
@@ -100,10 +102,19 @@ async function captureHall(app: ElectronApplication, hall: Page): Promise<void> 
       frames.push({ t: Date.now(), rgb: sum.map((n) => n / count) });
     });
   });
+  // beginFrameSubscription starts asynchronously. Changing the only still scene before the first delivered frame
+  // races its initial snapshot; a captured black frame cannot acknowledge a later scene that was missed.
+  await expect
+    .poll(() => app.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames?.length ?? 0), {
+      timeout: Math.max(1, by - Date.now()),
+    })
+    .toBeGreaterThan(0);
+  return by;
 }
 
 /** The stream's own captured frames, the same source its encoder uses; no recording or internet destination. */
-async function captureStream(program: Page): Promise<void> {
+async function captureStream(program: Page): Promise<number> {
+  const by = Date.now() + 20_000;
   await program.evaluate(async () => {
     const frames: Frame[] = [];
     (globalThis as DecodeGlobals).drashtiDecodeFrames = frames;
@@ -141,6 +152,12 @@ async function captureStream(program: Page): Promise<void> {
       }
     })();
   });
+  await expect
+    .poll(() => program.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames?.length ?? 0), {
+      timeout: Math.max(1, by - Date.now()),
+    })
+    .toBeGreaterThan(0);
+  return by;
 }
 
 /** Delay only the preload's request for native decoding. Its file loads normally and its complete flag is real. */
@@ -220,17 +237,18 @@ for (const place of ['hall', 'stream'] as const) {
       { kind: 'cut', durationMs: 0 },
     );
     let page: Page;
+    let pixelsBy: number;
     if (place === 'hall') {
       await setUpScreen(win);
       page = await outputPage(app);
       await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
-      await captureHall(app, page);
+      pixelsBy = await captureHall(app, page);
     } else {
       await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
       await win.getByTestId('open-stream').click();
       page = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
       await expect(page.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready');
-      await captureStream(page);
+      pixelsBy = await captureStream(page);
     }
     const frames = () =>
       place === 'hall'
@@ -238,7 +256,7 @@ for (const place of ['hall', 'stream'] as const) {
         : page.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames ?? []);
     await holdPreload(page, picture);
     await goLive(win, id, 0);
-    await waitCaptured(frames, OLD);
+    await waitCaptured(frames, OLD, pixelsBy);
     const preload = page.locator(`img[data-preload="${picture}"]`);
     await expect(preload).toHaveAttribute('data-state', 'loading');
     await expect
@@ -314,17 +332,18 @@ for (const place of ['hall', 'stream'] as const) {
       await bigPicture(win, join(dir, 'Placeholder decode cost.png')),
     ]);
     let page: Page;
+    let pixelsBy: number;
     if (place === 'hall') {
       await setUpScreen(win);
       page = await outputPage(app);
       await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
-      await captureHall(app, page);
+      pixelsBy = await captureHall(app, page);
     } else {
       await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
       await win.getByTestId('open-stream').click();
       page = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
       await expect(page.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready');
-      await captureStream(page);
+      pixelsBy = await captureStream(page);
     }
     const frames = () =>
       place === 'hall'
@@ -335,7 +354,7 @@ for (const place of ['hall', 'stream'] as const) {
       durationMs: 0,
     });
     await goLive(win, id, 0);
-    await waitCaptured(frames, OLD);
+    await waitCaptured(frames, OLD, pixelsBy);
     const rows: { option: string; fullMs: number; longestFrameMs: number; decodeMs: number }[] = [];
     // Alternate order to avoid one option always inheriting the other's first-use work.
     for (const round of [0, 1, 2]) {
