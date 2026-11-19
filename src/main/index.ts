@@ -4487,7 +4487,7 @@ function start(): void {
       if (!operatorWindow || operatorWindow.isDestroyed()) return null;
       const picked = await dialog.showSaveDialog(operatorWindow, {
         title: 'Export kirtan bundle',
-        defaultPath: 'Kirtans.drashti-kirtans',
+        defaultPath: join(app.getPath('documents'), 'Kirtans.drashti-kirtans'),
         buttonLabel: 'Save bundle',
         filters: [{ name: 'Drashti kirtan bundle', extensions: ['drashti-kirtans'] }],
       });
