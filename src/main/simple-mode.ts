@@ -113,6 +113,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.lowerThirds.hide,
   // The MIDI controller: Simple Mode changes none of it (its pads still work Simple Mode's own actions).
   IPC.midi.set,
+  // OSC setup is Pro Mode only; enabled senders still obey Simple Mode show bounds.
+  IPC.osc.configure,
   IPC.stageLayouts.remove,
   // Session 55: renaming one, putting one back (Undo), and the one every stage screen shows: Pro Mode's setup.
   IPC.stageLayouts.rename,
@@ -358,6 +360,8 @@ const SESSION_56_BOUNDED: readonly [InvokeChannel, SimpleBound][] = [
   [IPC.sound.setStepsAside, ([on]) => typeof on === 'boolean'],
   // A row's Trim, Trim black and silence and Even loudness (Rename… of a file is bounded above, a track's too).
   [IPC.media.setMarkers, ([id], scope) => itsFile(scope, id)],
+  [IPC.videoCaptions.select, ([id], scope) => itsFile(scope, id)],
+  [IPC.videoCaptions.add, ([id], scope) => itsFile(scope, id)],
   [IPC.media.rowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.media.applyRowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
   [IPC.media.resetRowTrim, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
