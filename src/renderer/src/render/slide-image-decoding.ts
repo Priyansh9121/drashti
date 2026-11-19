@@ -7,7 +7,11 @@ export const SlideImageDecoding = createContext<'sync' | undefined>(undefined);
 const decoded = new Set<string>();
 
 /** A successful decode in this page; the sync paint guard still covers a copy discarded since then. */
-export const slideImageDecoded = (img: HTMLImageElement): boolean => decoded.has(img.src);
+export const slideImageDecoded = (img: HTMLImageElement): boolean => {
+  // The usual absolute src attribute already is a decoded key; avoid resolving and serializing it on every Next.
+  const address = img.getAttribute('src');
+  return (address !== null && decoded.has(address)) || decoded.has(img.src);
+};
 
 /** Decode away from the paint, recording only the actual address that completed, never a source changed meanwhile. */
 export function decodeSlideImage(img: HTMLImageElement): Promise<void> {
