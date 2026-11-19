@@ -78,7 +78,8 @@ import { AudioGroup } from '../music/AudioGroup';
 import { SoundLevels } from '../sound/SoundLevels';
 import { connectSound } from '../sound/sound-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
-import { MidiTool } from '../midi/MidiTool';
+import { MidiDialogHost, MidiTool } from '../midi/MidiTool';
+import { openTool, SetupTools } from './SetupTools';
 import { OscControl, OscTool } from '../osc/OscControl';
 import { connectOsc } from '../osc/osc-store';
 import { LowerThirdsPanel } from '../lower-thirds/LowerThirdsPanel';
@@ -255,6 +256,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
     [openScreens],
   );
   useKeymap(platform, run);
+  // The menu bar's Tools menu (Session 60, x36): its item's window, here.
+  useEffect(() => window.drashti.app.onShowTool(openTool), []);
   // Pin to the quick bar (Session 55, Part 8) in the one right-click menu, while Pro Mode's window is up.
   useEffect(() => addFileMenuItems(quickMenuItems), []);
   // Files dropped anywhere on the window are imported, as on the presentation list (which takes
@@ -407,6 +410,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
                     <MidiTool />
                     <OscTool />
                   </div>
+                  {/* Show a Window…, Add a Video Input…, Picture in Picture… and QR code… (Session 60, x36: the
+                      owner's "A, More tools + menu"), each with its line; the Tools menu opens them too. */}
+                  <SetupTools />
                 </PanelGroup>
               </div>
             </aside>
@@ -435,6 +441,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <WindowPicker />
       <VideoInputDialog platform={platform} />
       <PipDialog />
+      {/* More tools' MIDI controller, or Tools › MIDI Controller… (Session 60, x36). */}
+      <MidiDialogHost />
       {/* Ready? and New › QR code… (Session 55, Part 8). */}
       <ReadyDialog />
       <QrSlideDialog />
