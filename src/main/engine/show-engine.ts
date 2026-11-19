@@ -74,7 +74,7 @@ import {
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { keepMoves, learnedFiles, resolvePlaying, videoFilesFor } from './playing';
 import { type Playing, type PlayingRef, playingNow, playingOf } from '../../shared/engine/playing';
-import { oneAtATime, putsUp } from './one-at-a-time';
+import { noPictureOff, oneAtATime, putsUp } from './one-at-a-time';
 import {
   clipLeftMs,
   type DeckEntry,
@@ -1314,6 +1314,29 @@ export class ShowEngine {
       { type: 'next/set', next: this.upNext(this.state.live) },
       { type: 'upcoming/set', upcoming: this.upcoming(this.state.live) },
     ]);
+  }
+
+  /**
+   * A video's picture cannot be drawn on this computer (Session 60, x36: the owner's bug of 19 Nov 2026 and his "Yes,
+   * A"): a window found it as the file loaded, Chromium playing it as sound only, so the hall saw black (or the picture
+   * before) while its sound played. The background playing it comes off with its sound; a video of it on the slide up
+   * or in the picture-in-picture box waits where it is, paused (one-at-a-time.ts noPictureOff). Not a change of the
+   * operator's: Back, Oops and Put it back are as they were. Whether any of it was up.
+   */
+  noPicture(mediaId: string): boolean {
+    let took = false;
+    this.atOnce(() => {
+      const actions = noPictureOff(this.state, mediaId, this.now());
+      if (actions.length === 0) return;
+      took = true;
+      this.bookkeeping = true;
+      try {
+        this.apply(actions);
+      } finally {
+        this.bookkeeping = false;
+      }
+    });
+    return took;
   }
 
   /**

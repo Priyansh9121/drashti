@@ -497,3 +497,50 @@ describe('LIVE shows one thing at a time (Session 56): a slide or a picture put 
     expect(covers(engine.current)).toEqual(BLACKOUT);
   });
 });
+
+describe('a video this computer cannot draw (Session 60, x36: the owner’s "Yes, A")', () => {
+  it('as the background, comes off with its sound; Oops and Put it back stay as they were', () => {
+    const { engine, elapse } = setup();
+    engine.dispatch(play('i-clip'));
+    elapse(800);
+    expect(backgroundVideo(engine.current)).toBe('clip');
+    const { canOops, canPutBack } = engine.current;
+    // Another file's word takes nothing off.
+    expect(engine.noPicture('other')).toBe(false);
+    expect(backgroundVideo(engine.current)).toBe('clip');
+    expect(engine.noPicture('clip')).toBe(true);
+    expect(engine.current.layers.background).toBeNull();
+    expect({ canOops: engine.current.canOops, canPutBack: engine.current.canPutBack }).toEqual({
+      canOops,
+      canPutBack,
+    });
+    // Off already: a second window's word changes nothing.
+    expect(engine.noPicture('clip')).toBe(false);
+  });
+
+  it('on the slide up and in the box, waits where it is, paused, the slide and the box staying', () => {
+    const { engine, elapse } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'onslide', slideIndex: 0 });
+    engine.dispatch({
+      type: 'showPip',
+      source: { kind: 'media', mediaId: 'boxed' },
+      place: DEFAULT_PIP_PLACE,
+    });
+    elapse(2000);
+    const at = engine.current.layers.slide?.shownAt ?? 0;
+    expect(engine.noPicture('onslide')).toBe(true);
+    expect(engine.current.layers.slide?.slide.id).toBe('o1');
+    expect(engine.current.layers.slide?.seeks?.['onslide']).toEqual({
+      at: at + 2000,
+      toMs: 2000,
+      paused: true,
+    });
+    // The box's video plays on: only the file that cannot be drawn waits.
+    expect(engine.current.layers.pip?.seeks?.['boxed']?.paused).toBeUndefined();
+    expect(engine.noPicture('boxed')).toBe(true);
+    expect(engine.current.layers.pip?.source).toMatchObject({ kind: 'media', mediaId: 'boxed' });
+    expect(engine.current.layers.pip?.seeks?.['boxed']).toMatchObject({ toMs: 2000, paused: true });
+    // Paused already: nothing more to do.
+    expect(engine.noPicture('onslide')).toBe(false);
+  });
+});

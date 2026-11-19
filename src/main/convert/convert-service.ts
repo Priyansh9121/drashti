@@ -384,6 +384,23 @@ export class ConvertService {
   }
 
   /**
+   * A video this computer cannot draw (Session 60, x36: a window found it plays as sound only, shared/no-picture.ts;
+   * the owner's "Yes, A"): marked as not playing here, so nothing puts it up again as it is (it says Converting…), and
+   * converted by itself once the show and the stream are idle, as an import's are (Session 51's HEVC where it cannot
+   * play); everything that uses it then uses its copy. Whether a conversion of it is now waiting or under way.
+   */
+  convertUndrawable(id: string): boolean {
+    const row = this.row(id);
+    if (!row || row.deleted || row.kind !== 'video') return false;
+    if (row.playable !== 0) {
+      this.deps.db.prepare('UPDATE media SET playable = 0 WHERE id = ?').run(id);
+      this.deps.libraryChanged([]);
+    }
+    if (this.deps.ffmpegPath()) this.enqueue([id], Date.now());
+    return this.jobs.some((j) => j.mediaId === id && (j.state === 'waiting' || j.state === 'converting'));
+  }
+
+  /**
    * Queue conversions an import identified, including smaller copies for tall linked videos. Each starts
    * a moment after the import (AFTER_IMPORT_MS), one at a time, once the show and stream are idle.
    * Returns the number of new jobs.
