@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import type { EngineCommand } from '../../src/shared/engine/commands';
 import type { Size } from '../../src/shared/scaling';
 import type { Point, ScreenGeometry, ScreenPart } from '../../src/shared/screen-geometry';
@@ -221,13 +222,23 @@ test('a pinned picture: each corner where it was pinned, the quarters where the 
   await app.close();
 });
 
-/** The render surfaces Chromium's compositor made in these pages' renderers over a stretch: its own record (cc). */
-async function surfacesWhile(
+/** A screen as the Performance check has it: one hall screen over the computer's own display, its motion probe on. */
+const REAL_SCREEN = { DRASHTI_TEST_MOTION_PROBE: '1', DRASHTI_TEST_FAKE_DEVICES: '1' };
+
+/** cc's events for a frame drawn (the threaded compositor's, or a single-threaded one's). */
+const DRAWS = new Set(['ProxyImpl::ScheduledActionDraw', 'SingleThreadProxy::DoComposite']);
+
+/**
+ * How Chromium's compositor drew these pages over a stretch, by its own record (its 'cc' trace, kept beside the test's
+ * report): the render surfaces it made and why, the frames it drew, and in how many of them it rastered tiles again.
+ */
+async function drawnWhile(
   app: ElectronApplication,
   pids: number[],
-  file: string,
+  name: string,
   during: () => Promise<void>,
-): Promise<{ reasons: string[]; draws: number; rasters: number }> {
+): Promise<{ reasons: string[]; draws: number; rasters: number; rasterFrames: number }> {
+  const file = join(test.info().outputDir, `${name}.json`);
   await app.evaluate(async ({ contentTracing }) => {
     await contentTracing.startRecording({
       included_categories: ['cc'],
@@ -239,10 +250,24 @@ async function surfacesWhile(
   await app.evaluate(async ({ contentTracing }, f) => {
     await contentTracing.stopRecording(f);
   }, file);
-  const parsed = JSON.parse(readFileSync(file, 'utf8')) as {
-    traceEvents?: { name?: string; pid?: number; args?: Record<string, unknown> }[];
+  const raw = readFileSync(file);
+  await test.info().attach(`${name}.json.gz`, { body: gzipSync(raw), contentType: 'application/gzip' });
+  const parsed = JSON.parse(raw.toString('utf8')) as {
+    traceEvents?: { name?: string; pid?: number; ts?: number; args?: Record<string, unknown> }[];
   };
   const mine = (parsed.traceEvents ?? []).filter((e) => e.pid !== undefined && pids.includes(e.pid));
+  const drawn = mine
+    .filter((e) => DRAWS.has(e.name ?? ''))
+    .map((e) => e.ts ?? 0)
+    .sort((a, b) => a - b);
+  const rastered = mine.filter((e) => e.name === 'RasterTask').map((e) => e.ts ?? 0);
+  // The frame each tile went into: the first drawn at or after its raster.
+  const frames = new Set(
+    rastered.map((t) => {
+      const i = drawn.findIndex((d) => d >= t);
+      return i < 0 ? drawn.length : i;
+    }),
+  );
   return {
     // cc says, each frame it draws with more than its root, how many surfaces it made and why.
     reasons: [
@@ -250,18 +275,26 @@ async function surfacesWhile(
         mine.filter((e) => e.name === 'RenderSurfaceReasonCount').flatMap((e) => Object.keys(e.args ?? {})),
       ),
     ].sort(),
-    draws: mine.filter((e) => e.name === 'ProxyImpl::ScheduledActionDraw').length,
-    // Each tile of a layer painted (rastered) again.
-    rasters: mine.filter((e) => e.name === 'RasterTask').length,
+    draws: drawn.length,
+    rasters: rastered.length,
+    rasterFrames: frames.size,
   };
 }
 
+/** The renderers of the output windows. */
+const outputPids = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .filter((w) => (w.webContents.getURL().split('?')[0] ?? '').endsWith('output.html'))
+      .map((w) => w.webContents.getOSProcessId()),
+  );
+
 test('a pinned picture is drawn straight through its warp: no clip under it makes Chromium draw it again each frame, and black stays outside it where the show is larger than the screen', async () => {
   test.setTimeout(150_000);
-  const { app } = await launchApp(ONE_OUTPUT);
+  const { app } = await launchApp(REAL_SCREEN);
   const win = await operatorPage(app);
   await operatorReady(win);
-  const screenId = await setUpScreen(win, 'Placeholder hall', 1);
+  const screenId = await setUpScreen(win, 'Placeholder hall', 0);
   const out = await outputFor(app, screenId);
   await outputReady(out);
   // A 4:3 picture filling the 16:9 canvas as the background (drawn past its top and bottom), under two slides of
@@ -331,12 +364,7 @@ test('a pinned picture is drawn straight through its warp: no clip under it make
 
   // Two dissolves under Chromium's own record of how it drew them: no clip under the warp (the picture box's, the
   // scene's) made it draw the picture into a surface of its own, again each frame, before warping it.
-  const pids = await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()
-      .filter((w) => (w.webContents.getURL().split('?')[0] ?? '').endsWith('output.html'))
-      .map((w) => w.webContents.getOSProcessId()),
-  );
-  const { reasons, draws } = await surfacesWhile(app, pids, join(dir, 'surfaces.json'), async () => {
+  const { reasons, draws } = await drawnWhile(app, await outputPids(app), 'surfaces', async () => {
     await go(1);
     await letTimePass(win, 1300, 'a dissolve, then still');
     await go(0);
@@ -352,10 +380,10 @@ test('a pinned picture is drawn straight through its warp: no clip under it make
 
 test('a pinned picture keeps a dissolve’s frames: with a graphics chip its slides are layers of their own, rastered once, not again at every frame', async () => {
   test.setTimeout(150_000);
-  const { app } = await launchApp({ ...ONE_OUTPUT, DRASHTI_TEST_MOTION_PROBE: '1' });
+  const { app } = await launchApp(REAL_SCREEN);
   const win = await operatorPage(app);
   await operatorReady(win);
-  const screenId = await setUpScreen(win, 'Placeholder hall', 1);
+  const screenId = await setUpScreen(win, 'Placeholder hall', 0);
   const out = await outputFor(app, screenId);
   await outputReady(out);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-geometry-'));
@@ -380,22 +408,34 @@ test('a pinned picture keeps a dissolve’s frames: with a graphics chip its sli
     await go(slide);
     await letTimePass(win, 1300, 'a dissolve, then still');
   }
-  const pids = await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()
-      .filter((w) => (w.webContents.getURL().split('?')[0] ?? '').endsWith('output.html'))
-      .map((w) => w.webContents.getOSProcessId()),
-  );
   const now = () => out.evaluate(() => Date.now());
   let from = 0;
   let until = 0;
-  const { draws, rasters } = await surfacesWhile(app, pids, join(dir, 'rasters.json'), async () => {
-    from = await now();
-    for (const slide of [1, 0, 1, 0]) {
-      await go(slide);
-      await letTimePass(win, 1300, 'a dissolve, then still');
-    }
-    until = await now();
-  });
+  const { draws, rasters, rasterFrames } = await drawnWhile(
+    app,
+    await outputPids(app),
+    'rasters',
+    async () => {
+      from = await now();
+      for (const slide of [1, 0, 1, 0]) {
+        await go(slide);
+        await letTimePass(win, 1300, 'a dissolve, then still');
+      }
+      until = await now();
+    },
+  );
+  // With a graphics chip, Chromium rasters a pinned picture at a whole pixel a canvas pixel at least (3.5 times the
+  // plain picture's on a 1024 x 768 display), so a slide painted afresh at each frame of its dissolve was rastered again
+  // at each: as layers of their own, the slides are rastered once, as each comes, and faded by the chip. Without a chip
+  // (Chromium drawing in software) such layers cost more than the painting: there they are not made
+  // (render/canvas-clip.ts).
+  const chipless = (await out.getByTestId('output-root').getAttribute('data-chipless')) === 'true';
+  expect(draws, 'the hall screen drew its frames while traced').toBeGreaterThan(100);
+  if (!chipless)
+    expect(
+      rasterFrames,
+      `tiles rastered in ${String(rasterFrames)} of ${String(draws)} frames (${String(rasters)} tiles)`,
+    ).toBeLessThan(draws / 4);
   // The frames the screen drew meanwhile (its motion probe: every frame it drew), and how many were late.
   const frames = await out.evaluate(
     ({ from, until }) =>
@@ -410,14 +450,6 @@ test('a pinned picture keeps a dissolve’s frames: with a graphics chip its sli
   expect(late / gaps.length, `${String(late)} of ${String(gaps.length)} frames over 25 ms`).toBeLessThan(
     0.25,
   );
-  // With a graphics chip, Chromium rasters a pinned picture at a whole pixel a canvas pixel at least (3.5 times the
-  // plain picture's on a 1024 x 768 display), so a slide painted afresh each frame of its dissolve was rastered again
-  // each frame: as layers of their own, the slides are rastered once. Without a chip (Chromium draws in software) the
-  // layers would cost more than the painting: there they are not made (render/canvas-clip.ts).
-  const chipless = (await out.getByTestId('output-root').getAttribute('data-chipless')) === 'true';
-  expect(draws, 'the hall screen drew its frames while traced').toBeGreaterThan(100);
-  if (!chipless)
-    expect(rasters, `${String(rasters)} tiles rastered in ${String(draws)} frames`).toBeLessThan(draws / 4);
   await app.close();
 });
 
