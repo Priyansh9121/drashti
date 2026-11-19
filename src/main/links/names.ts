@@ -1,5 +1,7 @@
-import { mkdir, open } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, open, rm } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import { cutText } from '../../shared/text';
 
 /*
  * Names for what Import from a Link saves (Session 25b): safe on a Mac and
@@ -47,6 +49,25 @@ export function safeName(raw: string, fallback: string): string {
   return name;
 }
 
+/** The operator edits the stem only; a typed media extension never changes the file’s real type. */
+export function downloadName(raw: string | undefined, title: string, extension: string): string {
+  const stem = (value: string, typed: boolean) => {
+    const last = (value.normalize('NFC').split(/[\\/]/u).pop() ?? '').trim();
+    const suffix = /\.[^.]+$/u.exec(last)?.[0] ?? '';
+    const typedExtension =
+      extension !== '' &&
+      suffix !== '' &&
+      (suffix.toLowerCase() === extension.toLowerCase() ||
+        (typed && /^\.mp[34]$/iu.test(extension) && /^\.mp[34]$/iu.test(suffix)));
+    const name = safeName(typedExtension ? cutText(last, last.length - suffix.length) : last, '');
+    return /^[\s._-]*$/u.test(name) ? '' : name;
+  };
+  const fallback = stem(title.replace(/[\\/]/gu, '-'), false) || 'Download';
+  const unchanged = stem(raw ?? '', false);
+  const chosen = unchanged === fallback ? unchanged : stem(raw ?? '', true);
+  return safeName(`${chosen || fallback}${extension}`, `Download${extension}`);
+}
+
 /** "clip.mp4", then "clip (2).mp4", "clip (3).mp4"… */
 function nth(name: string, n: number, isFolder: boolean): string {
   if (n === 1) return name;
@@ -61,12 +82,17 @@ const exists = (error: unknown) => (error as NodeJS.ErrnoException).code === 'EE
  * "name (n)". The file is created empty there, so no one else can take it;
  * the caller renames its finished download over it.
  */
-export async function claimFile(dir: string, name: string): Promise<string> {
+export async function claimFile(dir: string, name: string, besideSuffixes: string[] = []): Promise<string> {
   for (let n = 1; n < 10_000; n++) {
     const path = join(dir, nth(name, n, false));
     try {
       const handle = await open(path, 'wx');
       await handle.close();
+      const stem = cutText(path, path.length - extname(path).length);
+      if (besideSuffixes.some((suffix) => existsSync(`${stem}${suffix}`))) {
+        await rm(path);
+        continue;
+      }
       return path;
     } catch (error) {
       if (!exists(error)) throw error;

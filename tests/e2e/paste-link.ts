@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import type { PageGlobals } from './helpers';
 
-/** A paste into the operator's field, without using or changing the Mac's or Windows' clipboard. */
+/** Paste into the link window, then press Download unless only a check was requested. No system clipboard. */
 export async function pasteLink(win: Page, link: string, accepted = true): Promise<void> {
   const input = win.getByTestId('link-text');
   await expect(input).toBeFocused();
@@ -10,7 +10,10 @@ export async function pasteLink(win: Page, link: string, accepted = true): Promi
     clipboardData.setData('text/plain', text);
     field.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
   }, link);
-  if (accepted) await expect(input).toHaveCount(0);
+  if (accepted) {
+    await win.getByTestId('link-download').click();
+    await expect(input).toHaveCount(0);
+  }
 }
 
 export const linkView = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.links.view());
