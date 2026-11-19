@@ -16,7 +16,9 @@
  *   hmacHex(key, text)          HMAC-SHA-256, hex
  *   sign(text)                  RSA-SHA-256 (PKCS#1 v1.5) with the signing key, over UTF-8, base64
  *   formatTime(ms)              a time for an email or a page, in the Sheet's time zone
- *   props()                     { approverEmail, webAppUrl, linkKey, secretKey, hasSigningKey }
+ *   props()                     { approverEmail, webAppUrl, linkKey, secretKey, hasSigningKey }, and linkPage when the
+ *                               emailed links go to another copy of the link page than LINK_PAGE (the tests' stand-in;
+ *                               Code.js gives none)
  *   properties.get(key), properties.set(key, value)   the script's settings, read and written as they are
  *   mail.remaining()            emails the account may still send today
  *   mail.send({ to, subject, body })
@@ -106,6 +108,15 @@ var DrashtiAccess = (function () {
     'mail-failed': 'The list could not send the email; try again later.',
     server: 'Something went wrong in the list; try again in a moment.',
   };
+
+  /**
+   * Where each emailed Approve and Reject link goes (x38, the owner's words of 19 Nov 2026: the admin may open it on a
+   * phone or any browser): the link page, access-list/page/index.html, which GitHub Pages serves from Drashti's public
+   * repository, outside Google. Google's own script pages (doGet's) do not open in a browser signed in to another Google
+   * account, or to several ("Sorry, unable to open the file at this time"); the link page opens anywhere, and asks the
+   * list itself with no Google sign-in (linkCall, below). The link's details go after the #, which no web server is sent.
+   */
+  var LINK_PAGE = 'https://priyansh9121.github.io/drashti/access/';
 
   /** The Sheet: one row per Gmail, and one row per computer let in (each grant). */
   var PEOPLE = 'Access List';
@@ -1085,9 +1096,20 @@ var DrashtiAccess = (function () {
     }
   }
 
+  /**
+   * An Approve or Reject link: the link page, with what the link is for after the #, signed. The page sends the four
+   * back to the list as they are (linkCall); a link sent before x38 opened the web app itself (doGet), which still takes
+   * them.
+   */
   function link(env, props, action, requestId, expires) {
     var sig = env.hmacHex(props.linkKey, 'drashti-link\n' + action + '\n' + requestId + '\n' + expires);
-    return props.webAppUrl + '?a=' + action + '&r=' + requestId + '&x=' + expires + '&s=' + sig;
+    return linkPageOf(props) + '#a=' + action + '&r=' + requestId + '&x=' + expires + '&s=' + sig;
+  }
+
+  /** The link page's address: LINK_PAGE, or the copy the settings name (the tests' stand-in). */
+  function linkPageOf(props) {
+    var page = props.linkPage;
+    return typeof page === 'string' && /^https?:\/\/[^\s?#]+\/$/.test(page) ? page : LINK_PAGE;
   }
 
   function requestMail(env, props, person, added) {
@@ -1747,9 +1769,12 @@ var DrashtiAccess = (function () {
 
   /**
    * One call from Drashti: its JSON text in, { payload, sig } out. The payload is JSON text (ASCII), signed
-   * with the list's key; it echoes the call's op, nonce and computer id, and says the list's time.
+   * with the list's key; it echoes the call's op, nonce and computer id, and says the list's time. A call from the
+   * link page (x38) comes the same way, through the web app's doPost, and is answered by linkCall.
    */
   function handle(env, text) {
+    var fromPage = readLinkCall(text);
+    if (fromPage) return linkCall(env, fromPage);
     var seen = { op: '', nonce: '', computerId: '' };
     var answer;
     try {
@@ -1777,11 +1802,16 @@ var DrashtiAccess = (function () {
     Object.keys(answer).forEach(function (k) {
       body[k] = answer[k];
     });
+    return signedAnswer(env, body);
+  }
+
+  /** An answer's body as JSON text (ASCII), and its signature with the list's key (none before it is set up). */
+  function signedAnswer(env, body) {
     var payload = asciiOnly(JSON.stringify(body));
     var sig = '';
     try {
-      var props2 = env.props();
-      if (props2 && props2.hasSigningKey) sig = env.sign(payload);
+      var props = env.props();
+      if (props && props.hasSigningKey) sig = env.sign(payload);
     } catch (e) {
       // Unsigned: Drashti believes none of it.
       if (env.log) env.log('The list could not sign its answer: ' + String(e && e.message ? e.message : e));
@@ -1980,6 +2010,65 @@ var DrashtiAccess = (function () {
       if (!isRefusal(e)) throw e;
       return page('refused', { title: 'Not done', lines: [e.message] });
     }
+  }
+
+  // ---- the link page's calls (x38) ----
+
+  /** The longest call the link page sends (its four, a length and a mode, with room to spare). */
+  var LINK_CALL_MAX = 4096;
+
+  /**
+   * The link page's call (access-list/page/index.html), or null for any other text: JSON { link: 'read' | 'answer',
+   * a, r, x, s }, with the Approve page's length and mode on an answer. Drashti's own calls always carry v and op, so
+   * none is ever read as one.
+   */
+  function readLinkCall(text) {
+    if (typeof text !== 'string' || text.length > LINK_CALL_MAX || text.indexOf('"link"') < 0) return null;
+    var raw;
+    try {
+      raw = JSON.parse(text);
+    } catch (e) {
+      return null;
+    }
+    if (!isObject(raw) || hasOwn(raw, 'v') || hasOwn(raw, 'op')) return null;
+    return raw.link === 'read' || raw.link === 'answer' ? raw : null;
+  }
+
+  /**
+   * The link page's call answered, signed as every answer is: read says what the link is for (linkPage: nothing
+   * changes, so a mail scanner opening the page does no harm); answer is its one button (answerLink: the link checked
+   * again under the lock, and answered once). The page has the link's four already, so they are never sent back.
+   */
+  function linkCall(env, raw) {
+    var params = { a: raw.a, r: raw.r, x: raw.x, s: raw.s };
+    if (raw.link === 'answer') {
+      params.length = raw.length;
+      params.mode = raw.mode;
+    }
+    var p;
+    try {
+      p = raw.link === 'read' ? linkPage(env, params) : answerLink(env, params);
+    } catch (e) {
+      // Logged without the link: a link lets whoever holds it answer, so it never goes into a log.
+      if (isRefusal(e)) p = page('error', { title: 'Not done', lines: [e.message] });
+      else {
+        if (env.log) env.log('The list failed: ' + String(e && e.stack ? e.stack : e));
+        p = page('error', { title: 'Not done', lines: [MESSAGES.server] });
+      }
+    }
+    return signedAnswer(env, {
+      v: PROTOCOL.version,
+      link: raw.link,
+      serverTime: env.now(),
+      page: {
+        kind: p.kind,
+        title: p.title,
+        lines: p.lines,
+        button: p.button,
+        lengths: p.lengths,
+        modes: p.modes,
+      },
+    });
   }
 
   // ---- the owner's first way in (the Sheet's menu: Drashti › Let me in (the owner)…) ----
