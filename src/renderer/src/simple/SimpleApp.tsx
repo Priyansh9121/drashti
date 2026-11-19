@@ -8,6 +8,7 @@ import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
 import { useAccess } from '../access/access-store';
 import { FileMenu } from '../files/FileMenu';
 import { GuidesDialog } from '../help/GuidesDialog';
+import { ManualDialog } from '../help/ManualDialog';
 import { askWhereFilesGo, DropNewDialog } from '../playlists/DropNewDialog';
 import { useLibrary } from '../library/library-store';
 import { RemoveItemsConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
@@ -392,6 +393,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       {/* Delete… of a playlist or a folder (Session 56), asked first, with Undo. */}
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
       <GuidesDialog />
+      {/* The Drashti Manual (x37, Session 60): Help › Drashti Manual…, as in Pro Mode. */}
+      <ManualDialog />
       {/* Jump by number (Session 55, Part 4): a row's number and Enter, as in Pro Mode. */}
       <JumpBox />
       {dashboardOpen && <ScreensDashboard simple onSetUp={null} />}

@@ -77,8 +77,8 @@ export interface MenuActions {
   checkForUpdates: () => void;
   /** Help > Keyboard Shortcuts… (Session 25, Pro Mode only): the keys sheet. */
   keyboardShortcuts: () => void;
-  /** Help › Drashti Manual… (x37, Session 60): not yet (the red commit's stand-in). */
-  manual?: () => void;
+  /** Help › Drashti Manual… (x37, Session 60; both modes): the manual, first under Help. */
+  manual: () => void;
   /** Help > Guides… (Sessions 31–36, both modes): the guides inside Drashti. */
   guides: () => void;
   /**
@@ -356,6 +356,8 @@ export function installMenu(actions: MenuActions): void {
   template.push({
     role: 'help',
     submenu: [
+      // The Drashti Manual (x37, Session 60; the owner's "A, new Manual"): first, in both modes.
+      { id: 'manual', label: 'Drashti Manual…', click: actions.manual },
       // The guides inside Drashti, in both modes (Simple Mode is given the operator's and presenter's only).
       { id: 'guides', label: 'Guides…', click: actions.guides },
       { type: 'separator' },

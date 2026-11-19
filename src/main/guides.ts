@@ -1,14 +1,19 @@
 import { closeSync, existsSync, openSync, readFileSync, readSync } from 'node:fs';
 import { join } from 'node:path';
 import { GUIDES, type GuideId, guidePictureName } from '../shared/guides';
+import { MANUAL_CHAPTERS, type ManualChapterId, manualPictureName } from '../shared/manual';
 import { imagesOf, parseMarkdown } from '../shared/markdown';
 
 /*
  * The guides' files (Phase B of Sessions 31–36): beside an installed Drashti in resources/guides (electron-
  * builder.yml's extraResources: the four guides and only the pictures they show), and docs/ in the
  * repository. Read by the main process only, for the operator window through the bridge: nothing serves
- * them to phones, and nothing is ever fetched.
+ * them to phones, and nothing is ever fetched. The Drashti Manual's chapters (x37, Session 60) are beside them, in
+ * manual/, their pictures in the same screenshots/ (as a chapter writes them, ../screenshots/<name>.png).
  */
+
+/** A picture's name, as a guide ("screenshots/<name>.png") or a chapter of the manual writes it. */
+const pictureName = (src: string): string | null => guidePictureName(src) ?? manualPictureName(src);
 
 export function guidesDir(p: { packaged: boolean; resourcesPath: string; appPath: string }): string {
   return p.packaged ? join(p.resourcesPath, 'guides') : join(p.appPath, 'docs');
@@ -30,31 +35,43 @@ export class GuideFiles {
     }
   }
 
-  /** The pictures the four guides show (their names). */
+  /** A chapter of the manual's Markdown, or null when its file is missing or cannot be read. */
+  readManual(id: ManualChapterId): string | null {
+    const chapter = MANUAL_CHAPTERS.find((c) => c.id === id);
+    if (!chapter) return null;
+    try {
+      return readFileSync(join(this.dir, 'manual', chapter.file), 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  /** The pictures the four guides and the manual's chapters show (their names). */
   pictureNames(): Set<string> {
     this.pictures ??= new Set(
-      GUIDES.flatMap((g) => {
-        const text = this.read(g.id);
-        return text === null ? [] : imagesOf(parseMarkdown(text));
-      })
-        .map(guidePictureName)
+      [
+        ...GUIDES.map((g) => this.read(g.id)),
+        ...MANUAL_CHAPTERS.map((c) => this.readManual(c.id)),
+      ]
+        .flatMap((text) => (text === null ? [] : imagesOf(parseMarkdown(text))))
+        .map(pictureName)
         .filter((n): n is string => n !== null),
     );
     return this.pictures;
   }
 
-  /** A picture a guide shows: its file, or null for any other name (or one not there). */
+  /** A picture a guide or the manual shows: its file, or null for any other name (or one not there). */
   picture(name: string): string | null {
     if (!this.pictureNames().has(name)) return null;
     const file = join(this.dir, 'screenshots', name);
     return existsSync(file) ? file : null;
   }
 
-  /** The size of each picture a guide's text shows (width, height), from its PNG header. */
+  /** The size of each picture a guide's (or a chapter's) text shows (width, height), from its PNG header. */
   sizesFor(text: string): Record<string, [number, number]> {
     const out: Record<string, [number, number]> = {};
     for (const src of imagesOf(parseMarkdown(text))) {
-      const name = guidePictureName(src);
+      const name = pictureName(src);
       const file = name ? this.picture(name) : null;
       const size = file ? pngSize(file) : null;
       if (name && size) out[name] = size;
