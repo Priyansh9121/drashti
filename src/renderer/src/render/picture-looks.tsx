@@ -19,6 +19,7 @@ import {
 import { engineNow } from './clock';
 import { useMediaAttempt } from './media-attempts';
 import { PreviewPicture, PreviewsContext } from './previews';
+import { CanvasClip } from './canvas-clip';
 import { useElementSize } from './useElementSize';
 
 /*
@@ -295,6 +296,10 @@ export function Looked({
   // Only where it would leave bars: its shape as it shows (turned or cropped: its look's), against its box's.
   const whole = style.inset === 0 && style.width === '100%' && style.height === '100%';
   const known = box ?? (whole ? background : null);
+  // The background's whole box clips nothing on a screen warped out of square (x27: render/canvas-clip.ts): its page
+  // covers the window outside the picture instead. Every other box (a slide's picture) keeps its clip.
+  const canvasClip = useContext(CanvasClip);
+  const edge: CSSProperties['overflow'] = !canvasClip && whole && background !== null ? undefined : 'hidden';
   const shape = look?.size && hasEdit(look) ? shownSize(look, look.size) : (blurredFill?.size ?? null);
   const fill =
     blurredFill && leavesBars(shape, known ?? (measured.width > 0 ? measured : null)) ? blurredFill : null;
@@ -326,7 +331,7 @@ export function Looked({
     return (
       <>
         {fill && (
-          <div key="fill" data-blurred-fill={fill.id} style={{ ...boxOf(style), overflow: 'hidden' }}>
+          <div key="fill" data-blurred-fill={fill.id} style={{ ...boxOf(style), overflow: edge }}>
             {fillOf({ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' })}
           </div>
         )}
@@ -351,7 +356,7 @@ export function Looked({
       ref={known ? undefined : outer}
       data-look=""
       data-media-id={mediaId}
-      style={{ ...boxOf(style), overflow: 'hidden' }}
+      style={{ ...boxOf(style), overflow: edge }}
     >
       {fill && (
         // Behind the picture, never zoomed: the bars it would leave are its own picture, blurred and darker.
