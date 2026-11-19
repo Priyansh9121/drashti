@@ -27,7 +27,7 @@ import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { PipDragHandle, PipLiveStrip } from './PipLive';
 import { PlayingBars } from '../markers/PlayingBars';
-import { PanelWarmUp } from './PanelWarmUp';
+import { PanelKindKeeper, PanelWarmUp } from './PanelWarmUp';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
 
 /**
@@ -179,8 +179,13 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
     <section aria-labelledby="live-preview-title" className="space-y-2 px-3 pt-3">
       <div className="flex h-6 items-center gap-2">
         {/* LIVE (Session 26a: it said "On the screens now", with a Next preview under it). */}
-        <h2 id="live-preview-title" className="flex-1 text-2xs font-bold tracking-wider text-muted uppercase">
+        <h2
+          id="live-preview-title"
+          className="relative flex-1 text-2xs font-bold tracking-wider text-muted uppercase"
+        >
           LIVE
+          {/* The Stream panel's primary kept in the GPU's cache, unseen (Session 60, X21: operator/PanelWarmUp.tsx). */}
+          {!chipless && <PanelKindKeeper />}
         </h2>
         {blackout ? <Badge tone="live">Black-out</Badge> : somethingUp ? <LiveBadge /> : null}
         {help.button}
