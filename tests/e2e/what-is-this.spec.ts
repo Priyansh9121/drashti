@@ -121,8 +121,13 @@ test('Open the manual opens the Drashti Manual at the panel’s chapter, at its 
   await expect(manual).toBeHidden();
   await win.keyboard.press('Space');
   await expect(win.getByTestId('live-text')).toContainText(`${KIRTAN} · slide 3 of 5`);
+  // Got it puts Next and Back's words away (one card open at a time below).
+  await card.getByRole('button', { name: 'Got it' }).click();
+  await expect(card).toHaveCount(0);
   // Another panel's, in another chapter: Messages.
   await win.getByTestId('what-is-this-messages').click();
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText(PANEL_HELP.messages.text);
   await card.getByRole('button', { name: 'Open the manual' }).click();
   await expect(manual.getByRole('heading', { level: 1 })).toHaveText(
     manualChapter(PANEL_HELP.messages.chapter).title,
