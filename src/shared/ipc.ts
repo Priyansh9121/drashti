@@ -138,6 +138,7 @@ import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
 import type { TimerFields, TimerResult } from './timers';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { VideoOutResult, VideoOutSettings, VideoOutStatus } from './video-out';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
 import type { AccessLength, AccessMode } from './access-protocol';
@@ -919,6 +920,12 @@ export const IPC = {
     pageInputs: 'stream:page-inputs',
     /** main -> the stream's page: its context changed. */
     context: 'stream:context',
+    /** Video out (x30): the stream's picture to other software, and how it is going. */
+    videoOut: 'stream:video-out',
+    /** Turn video out on or off, or name it (operator window only; Pro Mode). */
+    setVideoOut: 'stream:set-video-out',
+    /** main -> operator: video out changed. */
+    videoOutChanged: 'stream:video-out-changed',
   },
   /** Show a Window… (Session 48): another app's window as the hall's background. */
   liveWindow: {
@@ -1668,6 +1675,8 @@ export interface InvokeContract {
   [IPC.stream.pickFolder]: { args: []; result: StreamResult };
   [IPC.stream.dismissResume]: { args: []; result: null };
   [IPC.stream.tryAgain]: { args: []; result: StreamResult };
+  [IPC.stream.videoOut]: { args: []; result: VideoOutStatus };
+  [IPC.stream.setVideoOut]: { args: [settings: VideoOutSettings]; result: VideoOutResult };
   [IPC.stream.pageContext]: { args: []; result: ProgramContext | null };
   [IPC.stream.pageInputs]: { args: [inputs: ProgramInputs]; result: null };
   [IPC.liveWindow.list]: { args: []; result: WindowList };
@@ -1823,6 +1832,7 @@ export interface EventContract {
   [IPC.sound.changed]: SoundView;
   [IPC.quickBar.changed]: QuickPin[];
   [IPC.stream.changed]: StreamStatus;
+  [IPC.stream.videoOutChanged]: VideoOutStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];
