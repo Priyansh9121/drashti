@@ -16,6 +16,7 @@ Update after a sabha, and update Main and nodes together.
 - A video’s captions (SRT or WebVTT files beside it, or added through Captions…) can now show on the audience screens and the stream: turn them on for that video with CC beside the time bar, in the language you choose; live captions step aside meanwhile.
 - OSC control, for a lighting or sound console or Companion on the mandir’s own network: in Pro Mode, turn it on in More tools › OSC control… and list the computers allowed to send; Next, Back, Clear, the covers, timers and messages can then be run from them. It is off until turned on.
 - A second computer paired as a node can now show the whole show to a second operator, when Main allows it in Screens (Pro Mode); if its link drops, no screen changes.
+- The stream’s picture can now go to other software on the same computer (Syphon on a Mac, Spout on Windows), for a mixer or a recorder: turn on Send to other software in the stream’s settings. It is off until turned on.
 
 ## 1.0.0-alpha.19 (19 Nov 2026)
 
