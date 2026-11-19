@@ -122,6 +122,12 @@ jobs:
       - name: Fetch FFmpeg
         if: inputs.video_cases_packaged == '' && (inputs.scenario != 'none' || inputs.places != '1')
         run: node scripts/fetch-ffmpeg.mjs
+      # Video out (x30): the animations scenario's streaming check turns it on (Syphon on a Mac, Spout on Windows),
+      # Drashti's own program built here from Syphon's or Spout's sources at one pinned commit, each file checked
+      # against its own SHA-256 (scripts/fetch-video-out.mjs; never in git).
+      - name: Build video out (Syphon or Spout)
+        if: inputs.video_cases_packaged == '' && inputs.scenario == 'animations'
+        run: node scripts/fetch-video-out.mjs
       # The video cases as a volunteer runs them, from a packaged app (scripts/check-video-cases.mjs): never on CI (Session
       # 54's question 8, answered 29 Oct 2026). A packaged Drashti ignores every test switch, so it could be let in only
       # by the real access list, which CI never asks: it says so and stops, before packaging anything.

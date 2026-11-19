@@ -1,3 +1,4 @@
+import type { ControllerArea, ControllerReply, ControllerRequest, EngineSeen } from './controller-actions';
 import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
 import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { SlidePictureResult } from './slide-picture';
@@ -138,6 +139,7 @@ import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
 import type { TimerFields, TimerResult } from './timers';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { VideoOutResult, VideoOutSettings, VideoOutStatus } from './video-out';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
 import type { AccessLength, AccessMode } from './access-protocol';
@@ -919,6 +921,12 @@ export const IPC = {
     pageInputs: 'stream:page-inputs',
     /** main -> the stream's page: its context changed. */
     context: 'stream:context',
+    /** Video out (x30): the stream's picture to other software, and how it is going. */
+    videoOut: 'stream:video-out',
+    /** Turn video out on or off, or name it (operator window only; Pro Mode). */
+    setVideoOut: 'stream:set-video-out',
+    /** main -> operator: video out changed. */
+    videoOutChanged: 'stream:video-out-changed',
   },
   /** Show a Window… (Session 48): another app's window as the hall's background. */
   liveWindow: {
@@ -1048,6 +1056,7 @@ export const IPC = {
     everything: 'nodes:everything',
     /** Main's explicit permission to share the show view (Pro Mode only). */
     setController: 'nodes:set-controller',
+    setControllerAreas: 'nodes:set-controller-areas',
     /** Reload one output window, on Main or on a node. */
     reload: 'nodes:reload',
     /** A display's number and name on it, on Main or on a node (also in Simple Mode). */
@@ -1062,6 +1071,7 @@ export const IPC = {
   /** A node's own window (node mode only). */
   node: {
     view: 'node:view',
+    action: 'node:action',
     /** Pair with Main at an address, with the code it shows. */
     pair: 'node:pair',
     unpair: 'node:unpair',
@@ -1317,7 +1327,7 @@ export interface InvokeContract {
   [IPC.links.setPlaylist]: { args: [playlistId: string]; result: LinkResult };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
-  [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
+  [IPC.engine.command]: { args: [command: EngineCommand, seen?: EngineSeen]; result: CommandResult };
   [IPC.engine.pointAt]: { args: [target: PointAt | null]; result: null };
   [IPC.library.listPresentations]: { args: []; result: PresentationListing[] };
   [IPC.library.listMedia]: { args: []; result: MediaSummary[] };
@@ -1668,6 +1678,8 @@ export interface InvokeContract {
   [IPC.stream.pickFolder]: { args: []; result: StreamResult };
   [IPC.stream.dismissResume]: { args: []; result: null };
   [IPC.stream.tryAgain]: { args: []; result: StreamResult };
+  [IPC.stream.videoOut]: { args: []; result: VideoOutStatus };
+  [IPC.stream.setVideoOut]: { args: [settings: VideoOutSettings]; result: VideoOutResult };
   [IPC.stream.pageContext]: { args: []; result: ProgramContext | null };
   [IPC.stream.pageInputs]: { args: [inputs: ProgramInputs]; result: null };
   [IPC.liveWindow.list]: { args: []; result: WindowList };
@@ -1739,6 +1751,7 @@ export interface InvokeContract {
   [IPC.nodes.newIdentity]: { args: []; result: NodesResult };
   [IPC.nodes.everything]: { args: [nodeId: string, on: boolean]; result: NodesResult };
   [IPC.nodes.setController]: { args: [nodeId: string, on: boolean]; result: NodesResult };
+  [IPC.nodes.setControllerAreas]: { args: [nodeId: string, areas: ControllerArea[]]; result: NodesResult };
   [IPC.nodes.reload]: { args: [nodeId: string | null, screenId: string]; result: NodesResult };
   [IPC.nodes.identify]: { args: [nodeId: string | null, displayId: number | null]; result: null };
   [IPC.nodes.watch]: { args: [on: boolean]; result: null };
@@ -1747,6 +1760,7 @@ export interface InvokeContract {
     result: ScreensResult;
   };
   [IPC.node.view]: { args: []; result: NodeView };
+  [IPC.node.action]: { args: [request: ControllerRequest]; result: ControllerReply };
   [IPC.node.pair]: { args: [address: string, code: string]; result: NodeViewResult };
   [IPC.node.unpair]: { args: []; result: NodeViewResult };
   [IPC.node.useAsMain]: { args: []; result: { ok: boolean } };
@@ -1823,6 +1837,7 @@ export interface EventContract {
   [IPC.sound.changed]: SoundView;
   [IPC.quickBar.changed]: QuickPin[];
   [IPC.stream.changed]: StreamStatus;
+  [IPC.stream.videoOutChanged]: VideoOutStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];
