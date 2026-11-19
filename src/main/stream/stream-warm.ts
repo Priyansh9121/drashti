@@ -49,7 +49,7 @@ export class StreamPageWarmUp {
   }
 
   /** Whether the stream's page `pageId` draws the show without a warm-up of its own; said in the log once a page. */
-  skips(pageId: number): boolean {
+  skips(pageId: number, _picture = true): boolean {
     if (!this.hallDrew || this.opening !== 'over') return false;
     if (!this.told.has(pageId)) {
       this.told.add(pageId);
