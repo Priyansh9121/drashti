@@ -5,7 +5,15 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, outputReady } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  letTimePass,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  outputReady,
+} from './helpers';
 import { decodePng } from './png-decode';
 import { testFfmpeg } from './stream-helpers';
 import { makeTestImage } from './test-media';
@@ -44,25 +52,35 @@ function seenOf(rgba: number[]): Seen {
   return 'OTHER';
 }
 
-/** A generated video of `seconds` with a tone: FFV1 in a .mov, or HEVC (8-bit 4:2:0 unless another kind is asked). */
-function makeVideo(path: string, codec: 'ffv1' | 'hevc', seconds: number, pixFmt = 'yuv420p'): string {
+/**
+ * A generated video of `seconds` with a tone: FFV1 in a .mov, HEVC (8-bit 4:2:0 unless another kind is asked), or
+ * H.264 (which every computer draws).
+ */
+function makeVideo(
+  path: string,
+  codec: 'ffv1' | 'hevc' | 'h264',
+  seconds: number,
+  pixFmt = 'yuv420p',
+): string {
   const picture = ['-f', 'lavfi', '-i', `color=c=0xd9480f:s=320x180:r=30:d=${String(seconds)}`];
   const tone = ['-f', 'lavfi', '-i', `sine=f=440:r=48000:d=${String(seconds)}`];
   const video =
     codec === 'ffv1'
       ? ['-c:v', 'ffv1']
-      : [
-          '-c:v',
-          'libx265',
-          '-preset',
-          'ultrafast',
-          '-pix_fmt',
-          pixFmt,
-          '-tag:v',
-          'hvc1',
-          '-x265-params',
-          'log-level=error',
-        ];
+      : codec === 'h264'
+        ? ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p']
+        : [
+            '-c:v',
+            'libx265',
+            '-preset',
+            'ultrafast',
+            '-pix_fmt',
+            pixFmt,
+            '-tag:v',
+            'hvc1',
+            '-x265-params',
+            'log-level=error',
+          ];
   const r = spawnSync(
     ffmpeg ?? '',
     [
@@ -338,6 +356,57 @@ test('HEVC taken as playable: where this computer decodes it (CI’s Mac) it pla
       // It decodes it: its picture plays, as before.
       await expect.poll(() => shown(win, '[data-testid="live-preview"]')).toBe('VIDEO');
     }
+  } finally {
+    await app.close();
+  }
+});
+
+test('a video only slow to load (served 3 s late, as from a slow disk) is never taken for one this computer cannot draw: the picture before stays until its first frame, then it plays; in the picture-in-picture box it plays on; no notice, nothing converted', async () => {
+  test.setTimeout(150_000);
+  expect(ffmpeg, 'the bundled FFmpeg').not.toBeNull();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-slow-video-'));
+  const clip = makeVideo(join(dir, 'Placeholder slow clip.mp4'), 'h264', 20);
+  const { app } = await launchApp({ DRASHTI_TEST_MEDIA_DELAY_MS: '3000' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const beforeId = await wallpaperAndPicture(win, dir);
+    const [clipId = ''] = await importAndGetIds(win, [clip]);
+    expect(clipId).not.toBe('');
+    await dispatch(win, {
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: beforeId, media: 'image', fit: 'fill', loop: false },
+    });
+    await expect.poll(() => shown(win, '[data-testid="live-preview"]'), { timeout: 20_000 }).toBe('BEFORE');
+    await dispatch(win, {
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: clipId, media: 'video', fit: 'fill', loop: false },
+    });
+    // While its file comes slowly: the picture before; then its own picture. Up all along, never taken off.
+    const looks: string[] = [];
+    const until = Date.now() + 15_000;
+    while (Date.now() < until && looks.at(-1) !== 'VIDEO') {
+      const bg = (await snapshot(win)).layers.background;
+      looks.push(await shown(win, '[data-testid="live-preview"]'));
+      expect(bg?.kind === 'media' && bg.mediaId === clipId, `still up: ${looks.join(', ')}`).toBe(true);
+    }
+    expect(looks.at(-1), `its picture came: ${looks.join(', ')}`).toBe('VIDEO');
+    expect(
+      looks.filter((look) => look !== 'BEFORE' && look !== 'VIDEO'),
+      `only the picture before, then its own: ${looks.join(', ')}`,
+    ).toEqual([]);
+    expect(looks[0], 'the picture before while its file came').toBe('BEFORE');
+    // In the box (a slide's way of drawing a video): it plays on once its file has come, never paused.
+    await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: clipId } });
+    await letTimePass(win, 8000, 'the box’s copy of the file comes 3 s late, and plays');
+    expect((await snapshot(win)).layers.pip?.seeks?.[clipId]?.paused ?? false).toBe(false);
+    const bg = (await snapshot(win)).layers.background;
+    expect(bg?.kind === 'media' && bg.mediaId === clipId, 'the background still plays it').toBe(true);
+    await expect(win.getByTestId('operator-notice').filter({ hasText: NOTICE })).toHaveCount(0);
+    const jobs = await win.evaluate(() => (globalThis as PageGlobals).drashti.media.conversions());
+    expect(jobs.filter((j) => j.mediaId === clipId)).toEqual([]);
+    const media = await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
+    expect(media.find((m) => m.id === clipId)?.unplayable ?? null).toBeNull();
   } finally {
     await app.close();
   }
