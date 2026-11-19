@@ -14,8 +14,21 @@ const root = (img: HTMLImageElement) =>
   ({
     querySelectorAll: (tag: string) => (tag === 'img' ? [img] : []),
   }) as unknown as HTMLElement;
-const image = (src: string, decode: () => Promise<void>) =>
-  ({ src, currentSrc: src, complete: true, decode }) as HTMLImageElement;
+const image = (src: string, decode: () => Promise<void>) => {
+  let attributeSrc = src;
+  return {
+    get src() {
+      return attributeSrc;
+    },
+    set src(value: string) {
+      attributeSrc = value;
+    },
+    currentSrc: src,
+    complete: true,
+    decode,
+    getAttribute: (name: string) => (name === 'src' ? attributeSrc : null),
+  } as HTMLImageElement;
+};
 function pending() {
   let finish: () => void = () => {
     throw new Error('decoder not started');
@@ -54,9 +67,11 @@ it('a second element for a successfully decoded address can cut in the same fram
   expect(decode).toHaveBeenCalledOnce();
   const againDecode = vi.fn(() => Promise.resolve());
   const again = image(first.src, againDecode);
+  const resolveSrc = vi.spyOn(again, 'src', 'get');
   expect(slideMediaDrawable(root(again), layer, true)).toBe(true);
   expect(slideMediaReady(root(again), engineNow() + 3000, layer, true)).toBe(true);
   expect(againDecode).not.toHaveBeenCalled();
+  expect(resolveSrc).not.toHaveBeenCalled();
 });
 
 it('a picture changed during a pending decode does not mark either address ready', async () => {
@@ -69,4 +84,32 @@ it('a picture changed during a pending decode does not mark either address ready
   if (ready !== true) await ready;
   for (const src of ['drashti-media://media/placeholder-before', img.src])
     expect(slideMediaDrawable(root(image(src, () => Promise.resolve())), layer, true)).toBe(false);
+});
+
+it('keeps a relative source on the resolved-address fallback', async () => {
+  const absolute = 'file:///placeholder/relative.png';
+  const relativeImage = (decode: () => Promise<void>) => {
+    const img = image('relative.png', decode);
+    Object.defineProperty(img, 'src', { get: () => absolute });
+    Object.defineProperty(img, 'currentSrc', { value: absolute });
+    return img;
+  };
+  const first = relativeImage(() => Promise.resolve());
+  const ready = slideMediaReady(root(first), engineNow() + 3000, layer, true);
+  if (ready !== true) await ready;
+  const decode = vi.fn(() => Promise.resolve());
+  const again = relativeImage(decode);
+  expect(slideMediaReady(root(again), engineNow() + 3000, layer, true)).toBe(true);
+  expect(decode).not.toHaveBeenCalled();
+});
+
+it('keeps a newly assigned address cold while currentSrc still names the preceding picture', async () => {
+  const before = 'drashti-media://media/placeholder-stale-current';
+  const first = image(before, () => Promise.resolve());
+  const ready = slideMediaReady(root(first), engineNow() + 3000, layer, true);
+  if (ready !== true) await ready;
+  const changed = image(before, () => Promise.resolve());
+  changed.src = 'drashti-media://media/placeholder-new-source';
+  expect(changed.currentSrc).toBe(before);
+  expect(slideMediaDrawable(root(changed), layer, true)).toBe(false);
 });
