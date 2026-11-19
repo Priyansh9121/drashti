@@ -5,9 +5,10 @@ import { onWholePixels, PanelWarmUp } from './PanelWarmUp';
 
 /*
  * The Stream panel's pieces drawn unseen with the LIVE picture's warm-up (Session 60, X21's second part). A graphics
- * chip draws a tile that holds an icon multisampled and one with none plainly, and makes each kind of drawing once for
- * each: so the pieces come twice, once beside icons and once with none, each in a layer of its own; and on whole device
- * pixels, as the panel draws them (a box between pixels is drawn another way, its edges smoothed).
+ * chip draws a tile that holds a path (an icon, or a rounded box's inset light) multisampled and one with none plainly,
+ * and makes each kind of drawing once for each: so the pieces come twice, once beside icons and once with no path at
+ * all, each in a layer of its own; and on whole device pixels, as the panel draws them (a box between pixels is drawn
+ * another way, its edges smoothed).
  */
 
 const markup = () => renderToStaticMarkup(createElement(PanelWarmUp));
@@ -33,22 +34,28 @@ function layers(html: string): string[] {
 }
 
 describe('the Stream panel’s pieces, warmed unseen', () => {
-  it('come twice, each in a layer of its own under brightness(0): one beside icons, one with no icon at all', () => {
+  it('come twice, each in a layer of its own under brightness(0): one beside icons, one with no path at all', () => {
     const [withIcons = '', plain = ''] = layers(markup());
     for (const layer of [withIcons, plain]) {
       expect(layer).toContain('will-change-transform');
       expect(layer).toContain('[filter:brightness(0)]');
-      // The primary button's gradient, a card's and the sheet's shadows, the dim, the meter, the Program box's picture.
+      // The primary button's gradient, the sheet's shadow, the dim, see-through under rounded corners, the meter, the
+      // Program box's picture.
       expect(layer).toContain('from-primary-hi');
-      expect(layer).toContain('shadow-card');
       expect(layer).toContain('shadow-overlay');
-      expect(layer).toContain('bg-black/60');
+      expect(layer.match(/bg-black\/60/gu)?.length).toBeGreaterThanOrEqual(2);
       expect(layer).toContain('rounded-full');
       expect(layer).toContain('<canvas');
     }
     expect(withIcons).toContain('<svg');
     expect(withIcons).toContain('animate-spin');
+    expect(withIcons).toContain('shadow-primary');
+    expect(withIcons).toContain('shadow-card');
+    // No icon, and no inset light (the primary button's and a card's shadows have one, drawn as a path).
     expect(plain).not.toContain('<svg');
+    expect(plain).not.toContain('shadow-primary');
+    expect(plain).not.toContain('shadow-card');
+    expect(plain).not.toContain('inset');
   });
 
   it('can’t be reached or read out, and its words are none of the panel’s buttons’', () => {
