@@ -18,6 +18,7 @@ Update after a sabha, and update Main and nodes together.
 - A second computer paired as a node can now show the whole show to a second operator, when Main allows it in Screens (Pro Mode); if its link drops, no screen changes.
 - The stream’s picture can now go to other software on the same computer (Syphon on a Mac, Spout on Windows), for a mixer or a recorder: turn on Send to other software in the stream’s settings. It is off until turned on.
 - PowerPoint decks look closer to PowerPoint: every built-in table style is drawn as PowerPoint draws it, banded rows and columns included; each text box’s first line sits where PowerPoint puts it (within a point), and the Wheel and Random Bars effects play as PowerPoint plays them.
+- The access list’s emailed Approve and Reject links now open on any phone or computer, in any browser, signed in to Google or not (the admin updates the list once: access-setup.md, section 11).
 
 ## 1.0.0-alpha.19 (19 Nov 2026)
 
