@@ -4,6 +4,7 @@ import {
   callBody,
   COMPUTERS,
   core,
+  linkCall,
   linkParams,
   makeTestKeys,
   NO_ACTIVITY,
@@ -226,10 +227,11 @@ describe('a request', () => {
     expect(mail?.subject).toBe(`Drashti: ${PERSON} asks for access`);
     expect(mail?.body).toContain('Name they typed: Placeholder Person');
     expect(mail?.body).toContain('Computer: Placeholder Mac (Drashti 1.0.0-alpha.13, Mac)');
+    // Each link opens the link page, outside Google (x38): its details after the #.
     expect(mail?.body).toMatch(
-      /Approve: https:\/\/script\.google\.com\/macros\/s\/placeholder-list\/exec\?a=approve&r=[0-9a-f]{32}&x=\d+&s=[0-9a-f]{64}/u,
+      /Approve: https:\/\/priyansh9121\.github\.io\/drashti\/access\/#a=approve&r=[0-9a-f]{32}&x=\d+&s=[0-9a-f]{64}\n/u,
     );
-    expect(mail?.body).toMatch(/Reject: \S+\?a=reject&/u);
+    expect(mail?.body).toMatch(/Reject: https:\/\/priyansh9121\.github\.io\/drashti\/access\/#a=reject&/u);
     expect(list.mailbox).toHaveLength(1);
   });
 
@@ -488,6 +490,210 @@ describe('the Approve and Reject links', () => {
     });
     expect(row(c.list, PERSON)?.['Status']).toBe('requested');
     expect(c.list.sheet.records(COMPUTERS)).toHaveLength(0);
+  });
+});
+
+/*
+ * The link page (x38, the owner's words of 19 Nov 2026: the admin may open the email's link on a phone or any browser,
+ * signed in to Google or not). Google's own script pages do not open in a browser signed in to another Google account,
+ * or to several, so each link opens access-list/page/index.html (GitHub Pages), whose two calls reach the list as JSON
+ * text with no Google sign-in, as Drashti's own do: `read` (what the link is for: nothing changes) and `answer` (its
+ * one button). Every protection is the list's, as before: the signature, one use, 7 days.
+ */
+describe('the link page’s calls', () => {
+  const LINK_PAGE = 'https://priyansh9121.github.io/drashti/access/';
+
+  it('the emailed links open the list’s own link page, with the link’s details after the # (which no web server is sent); a stand-in names its own', () => {
+    const c = mac(15);
+    c.request(PERSON, 'Placeholder Person');
+    const links = c.list.linksFor(PERSON);
+    for (const [link, a] of [
+      [links?.approve ?? '', 'approve'],
+      [links?.reject ?? '', 'reject'],
+    ] as const) {
+      expect(link.startsWith(`${LINK_PAGE}#a=${a}&r=`)).toBe(true);
+      const u = new URL(link);
+      expect(u.search).toBe('');
+      expect([...new URLSearchParams(u.hash.slice(1)).keys()]).toEqual(['a', 'r', 'x', 's']);
+    }
+    const own = new TestList({ keys, linkPage: 'http://127.0.0.1:9/drashti/access/' });
+    new Computer(own, placeholderComputer('mac-stand-in-page')).request(PERSON);
+    expect(own.linksFor(PERSON)?.approve.startsWith('http://127.0.0.1:9/drashti/access/#a=approve&r=')).toBe(
+      true,
+    );
+  });
+
+  it('read: says what the link is for, signed, with the Approve page’s lengths and modes, and changes nothing however often it is read (an email scanner)', () => {
+    const c = mac(16);
+    c.request(PERSON, 'Placeholder Person');
+    const approve = c.list.linksFor(PERSON)?.approve ?? '';
+    const mails = c.list.mailbox.length;
+    const read = linkCall(c.list, approve, 'read');
+    expect(read).toEqual({
+      v: 1,
+      link: 'read',
+      serverTime: c.list.t,
+      page: {
+        kind: 'ready',
+        title: `Approve ${PERSON}?`,
+        lines: expect.arrayContaining(['Name they typed: Placeholder Person']) as unknown,
+        button: 'Approve',
+        lengths: { days: [1, 7, 30, 60, 90, 120, 180, 365], maxDays: 730, chosen: 'unlimited' },
+        modes: { chosen: 'simple' },
+      },
+    });
+    linkCall(c.list, approve, 'read');
+    expect(linkCall(c.list, c.list.linksFor(PERSON)?.reject ?? '', 'read').page).toMatchObject({
+      kind: 'ready',
+      title: `Reject ${PERSON}?`,
+      button: 'Reject',
+      lengths: null,
+      modes: null,
+    });
+    expect(row(c.list, PERSON)?.['Status']).toBe('requested');
+    expect(c.list.tokenFor(PERSON)).toBeNull();
+    expect(c.list.mailbox).toHaveLength(mails);
+  });
+
+  it('answer: approves once, for the length and mode chosen on the page; pressed again, or Reject after it, says it was answered and sends nothing more', () => {
+    const c = mac(17);
+    c.request(PERSON);
+    const links = c.list.linksFor(PERSON);
+    const approve = links?.approve ?? '';
+    const done = linkCall(c.list, approve, 'answer', { length: '30', mode: 'pro' });
+    expect(done).toMatchObject({ v: 1, link: 'answer', serverTime: c.list.t });
+    expect(done.page).toMatchObject({ kind: 'done', title: 'Approved', button: null });
+    expect(done.page.lines).toEqual([
+      expect.stringContaining(`${PERSON} was emailed a one-time token.`) as unknown,
+      expect.stringContaining('Their access lasts until') as unknown,
+      'They may use Pro Mode and Simple Mode.',
+    ]);
+    expect(row(c.list, PERSON)).toMatchObject({
+      Status: 'approved',
+      Mode: 'Pro',
+      'Access ends': new Date(c.list.t + 30 * DAY),
+    });
+    expect(c.list.tokenFor(PERSON)).toMatch(/^[0-9A-Z]{4}(-[0-9A-Z]{4}){6}$/u);
+    const mails = c.list.mailbox.length;
+    expect(linkCall(c.list, approve, 'answer', { length: '30', mode: 'pro' }).page).toMatchObject({
+      kind: 'used',
+    });
+    expect(linkCall(c.list, links?.reject ?? '', 'answer').page).toMatchObject({ kind: 'used' });
+    expect(linkCall(c.list, approve, 'read').page).toMatchObject({ kind: 'used', button: null });
+    expect(c.list.mailbox).toHaveLength(mails);
+    // Reject, by its own page, for another request.
+    c.request(OTHER);
+    expect(linkCall(c.list, c.list.linksFor(OTHER)?.reject ?? '', 'answer').page).toMatchObject({
+      kind: 'done',
+      title: 'Rejected',
+    });
+    expect(row(c.list, OTHER)?.['Status']).toBe('rejected');
+  });
+
+  it('refuses a forged, replaced or out-of-date link, and a length or mode the list does not give, changing nothing', () => {
+    const c = mac(18);
+    c.request(PERSON);
+    const approve = c.list.linksFor(PERSON)?.approve ?? '';
+    const flip = (s: string) => `${s.slice(0, -1)}${s.endsWith('0') ? '1' : '0'}`;
+    const p = linkParams(approve);
+    for (const forged of [
+      { ...p, s: flip(p['s'] ?? '') },
+      { ...p, r: flip(p['r'] ?? '') },
+      { ...p, a: 'reject' },
+      { ...p, x: String(Number(p['x']) + DAY) },
+      { a: 'approve' },
+      {},
+    ])
+      for (const call of ['read', 'answer'])
+        expect(
+          (
+            readAnswer(
+              c.list.handle(JSON.stringify({ link: call, ...forged })),
+              keys.publicKey,
+            ) as unknown as {
+              page: unknown;
+            }
+          ).page,
+        ).toMatchObject({ kind: 'forged', button: null });
+    expect(linkCall(c.list, approve, 'answer', { length: '0' }).page).toMatchObject({
+      kind: 'refused',
+      title: 'Not done',
+      lines: [core.MESSAGES['bad-length']],
+    });
+    expect(linkCall(c.list, approve, 'answer', { mode: 'admin' }).page).toMatchObject({
+      kind: 'refused',
+      title: 'Not done',
+    });
+    expect(row(c.list, PERSON)?.['Status']).toBe('requested');
+    // Asked again: the first email's links were replaced; the newest run out after 7 days.
+    c.request(PERSON);
+    expect(linkCall(c.list, approve, 'read').page).toMatchObject({ kind: 'replaced', button: null });
+    const newest = c.list.linksFor(PERSON)?.approve ?? '';
+    c.list.move(7 * DAY + MINUTE);
+    expect(linkCall(c.list, newest, 'answer').page).toMatchObject({ kind: 'out-of-date' });
+    expect(c.list.tokenFor(PERSON)).toBeNull();
+    expect(row(c.list, PERSON)?.['Status']).toBe('requested');
+  });
+
+  it('answers with nothing secret: no key, no approver address, no link’s signature; a failure inside says Not done and logs it without the link', () => {
+    const c = mac(19);
+    c.request(PERSON);
+    const approve = c.list.linksFor(PERSON)?.approve ?? '';
+    const s = linkParams(approve)['s'] ?? '';
+    for (const call of ['read', 'answer'] as const) {
+      const { payload } = c.list.handle(JSON.stringify({ link: call, ...linkParams(approve) }));
+      for (const secret of [c.list.props.linkKey, c.list.props.secretKey, PLACEHOLDER_APPROVER, s])
+        expect(payload).not.toContain(secret);
+      expect(/^[\x20-\x7e]*$/u.test(payload)).toBe(true);
+    }
+    const broken = mac(20);
+    broken.request(PERSON);
+    const link = broken.list.linksFor(PERSON)?.approve ?? '';
+    broken.list.env.sheet.read = () => {
+      throw new Error('Placeholder Sheet failure');
+    };
+    broken.list.cache.clear();
+    expect(linkCall(broken.list, link, 'read').page).toEqual({
+      kind: 'error',
+      title: 'Not done',
+      lines: [core.MESSAGES['server']],
+      button: null,
+      lengths: null,
+      modes: null,
+    });
+    expect(broken.list.logs.join('\n')).toContain('Placeholder Sheet failure');
+    expect(broken.list.logs.join('\n')).not.toContain(linkParams(link)['s'] ?? '');
+  });
+
+  it('never takes one of Drashti’s own calls for the page’s: they are answered as before, whatever else they carry', () => {
+    const c = mac(21);
+    c.request(PERSON);
+    const approve = c.list.linksFor(PERSON)?.approve ?? '';
+    // A call of Drashti's (it has an op) carrying a link's fields is still Drashti's.
+    const { body, nonce } = callBody('status', c.computer, {
+      gmail: PERSON,
+      link: 'answer',
+      ...linkParams(approve),
+    });
+    expect(readAnswer(c.list.handle(JSON.stringify(body)), keys.publicKey)).toMatchObject({
+      v: 1,
+      op: 'status',
+      nonce,
+      ok: true,
+      status: 'requested',
+    });
+    expect(row(c.list, PERSON)?.['Status']).toBe('requested');
+    // Text that is not the page's call (another word, a version, or too long) is answered as any call that is not one.
+    for (const text of [
+      JSON.stringify({ link: 'approve', ...linkParams(approve) }),
+      JSON.stringify({ v: 1, link: 'read', ...linkParams(approve) }),
+      JSON.stringify({ link: 'read', ...linkParams(approve), pad: 'x'.repeat(5000) }),
+    ])
+      expect(readAnswer(c.list.handle(text), keys.publicKey)).toMatchObject({
+        ok: false,
+        error: 'bad-request',
+      });
+    expect(row(c.list, PERSON)?.['Status']).toBe('requested');
   });
 });
 

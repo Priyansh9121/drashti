@@ -7,10 +7,12 @@ import { ACCESS_FILE, AccessStore, grantOf, storedAccess } from '../../src/main/
 import type { AccessComputer, AccessGrant } from '../../src/shared/access-protocol';
 import {
   callBody,
+  linkParams,
   makeTestKeys,
   placeholderComputer,
   readAnswer,
   type AnswerPayload,
+  type LinkPageAnswer,
   type TestKeys,
 } from '../access-core';
 import { accessStandIn, type AccessStandIn } from '../access-standin';
@@ -328,23 +330,41 @@ export interface LinkSays {
   button: boolean;
 }
 
-const linkSays = (html: string): LinkSays => ({
-  kind: /data-kind="([^"]*)"/u.exec(html)?.[1] ?? '',
-  title: /<h1>([^<]*)<\/h1>/u.exec(html)?.[1] ?? '',
-  button: html.includes('<button'),
+const linkSays = (page: LinkPageAnswer['page']): LinkSays => ({
+  kind: page.kind,
+  title: page.title,
+  button: page.button !== null,
 });
+
+/**
+ * One call of the link page's (x38), as the approver's browser makes it: the page fetched from its own site, the list's
+ * address read from it, and the call sent there as plain text, the redirect followed.
+ */
+async function pageCall(link: string, call: 'read' | 'answer', fields: Record<string, string> = {}) {
+  const html = await (await fetch(link)).text();
+  const list = /data-list="([^"]+)"/u.exec(html)?.[1];
+  if (!list) throw new Error('The link page has no list address');
+  const res = await fetch(list, {
+    method: 'POST',
+    body: JSON.stringify({ link: call, ...linkParams(link), ...fields }),
+  });
+  const answer = (await res.json()) as { payload: string };
+  return (JSON.parse(answer.payload) as LinkPageAnswer).page;
+}
 
 /** An Approve or Reject link opened, as the approver's browser opens it: nothing changes until its button. */
 export async function openLink(link: string): Promise<LinkSays> {
-  return linkSays(await (await fetch(link)).text());
+  return linkSays(await pageCall(link, 'read'));
 }
 
-/** The one button on a link's page pressed (its own page's form, as the approver's browser sends it). */
+/** The one button on a link's page pressed, with the page's own first choices (a length, a mode). */
 export async function pressLink(link: string): Promise<LinkSays> {
-  const u = new URL(link);
-  const form = new URL('/macros/s/stand-in/link', u.origin);
-  const res = await fetch(form, { method: 'POST', body: new URLSearchParams(u.searchParams) });
-  return linkSays(await res.text());
+  const page = await pageCall(link, 'read');
+  const chosen: Record<string, string> = {
+    ...(page.lengths ? { length: String(page.lengths.chosen) } : {}),
+    ...(page.modes ? { mode: page.modes.chosen } : {}),
+  };
+  return linkSays(await pageCall(link, 'answer', chosen));
 }
 
 /** Whether a Drashti has closed (Quit on its lock or stop screen), as Playwright saw it, on Mac and Windows alike. */
