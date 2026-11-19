@@ -48,6 +48,22 @@ export interface SlideFrame {
    * wipeBandStyles (render/SlideLayerView.tsx), never as a mask on the slide itself.
    */
   band?: WipeBand;
+  /**
+   * A deck's own Push, Cover or Uncover only, its own transition alone (X11): how far the slide is moved, the same move
+   * as `transform` as a number, so a page without a graphics chip can move it on a layer of its own in whole device
+   * pixels (render/SlideLayerView.tsx). None where the slide does not move.
+   */
+  shift?: SlideShift;
+}
+
+/**
+ * How far a deck's own Push, Cover or Uncover moves a slide (X11), along `axis`: `by` px of the slide where it is placed
+ * (`of` 'px'), or `by` of the layer's box, the slide's own box, where it fills it (`of` 'box', the transform's % / 100).
+ */
+export interface SlideShift {
+  axis: 'x' | 'y';
+  of: 'px' | 'box';
+  by: number;
 }
 
 /** The way a deck's own Wipe goes: 'left' comes in from the right, 'up' from the bottom (as its clip did before). */

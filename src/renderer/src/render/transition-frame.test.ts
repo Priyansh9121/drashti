@@ -650,6 +650,54 @@ describe('a deck’s own Push, Cover and Uncover on the slide where it is placed
   });
 });
 
+describe('a deck’s own Push, Cover and Uncover say how far each slide moves as a number, the same move as its transform (X11)', () => {
+  const BARS = { x: 240, y: 0, width: 1440, height: 1080 };
+
+  it('px of the slide where it is placed, else a share of the layer’s box (the transform’s %); none where the slide does not move', () => {
+    for (const effect of ['push', 'cover', 'uncover'] as const)
+      for (const direction of ['left', 'right', 'up', 'down'] as const)
+        for (const places of [undefined, { in: BARS, out: BARS }])
+          for (const p of [0, 0.1, 0.2, 0.5, 0.83, 0.97, 1]) {
+            const frame = deckTransitionFrame(deckNative(effect, direction), p, 'calm', places);
+            const axis = direction === 'left' || direction === 'right' ? 'x' : 'y';
+            for (const side of ['in', 'out'] as const) {
+              const f = frame[side];
+              const what = `${effect} ${direction} ${places ? 'placed' : 'filling'} ${side} at ${String(p)}`;
+              if (f.transform === '') {
+                expect(f.shift, what).toBeUndefined();
+                continue;
+              }
+              expect(f.shift, what).toMatchObject({ axis, of: places ? 'px' : 'box' });
+              const by = f.shift?.by ?? Number.NaN;
+              expect(f.transform, what).toBe(
+                `translate${axis.toUpperCase()}(${places ? `${String(by)}px` : `${String(by * 100)}%`})`,
+              );
+            }
+          }
+  });
+
+  it('none for a Wipe, a fade, a zoom or a dissolve, under Drashti’s own transition set over the deck’s, or for Drashti’s own slide', () => {
+    for (const effect of ['wipe', 'dissolve', 'fade-black', 'zoom'] as const)
+      for (const p of [0.2, 0.5, 0.8]) {
+        const frame = deckTransitionFrame(deckNative(effect, 'left'), p);
+        expect([frame.in.shift, frame.out.shift], `${effect} at ${String(p)}`).toEqual([
+          undefined,
+          undefined,
+        ]);
+      }
+    for (const effect of ['push', 'cover', 'uncover'] as const) {
+      const over: DeckNativeTransition = {
+        ...deckNative(effect, 'left'),
+        over: { kind: 'dissolve', durationMs: 700 },
+      };
+      const frame = deckTransitionFrame(over, 0.5);
+      expect([frame.in.shift, frame.out.shift], `${effect} under a dissolve`).toEqual([undefined, undefined]);
+    }
+    const own = transitionFrame('slide', 0.5);
+    expect([own.in.shift, own.out.shift]).toEqual([undefined, undefined]);
+  });
+});
+
 describe('Drashti’s own transitions are not PowerPoint’s', () => {
   it('Drashti’s own Wipe is as it was: its pictures dissolve and its words’ hard diagonal edge crosses, with no mask or filter', () => {
     const size = { width: 1920, height: 1080 };

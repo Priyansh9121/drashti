@@ -221,6 +221,11 @@ export interface Paint {
   placeIn: SlidePlace;
   /** Where the outgoing slide is (a deck's Push and Uncover move it by its own length). */
   placeOut: SlidePlace;
+  /**
+   * Device pixels a canvas pixel where the layer is drawn (the screen's scale times its pixel ratio), when known: a page
+   * without a graphics chip moves a deck's own Push, Cover and Uncover in whole ones (X11).
+   */
+  devicePerCanvas?: number;
 }
 
 /** Each line, or word, of the two slides' words as a reveal has it at `p` (Session 27, render/reveal.ts). */
