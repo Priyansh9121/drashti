@@ -6,6 +6,19 @@ import { RateLimiter, WrongCodeLimiter } from './limits';
 import { apiQuery, listWebFiles, safeRequestPath } from './web-files';
 
 describe('limits on the network', () => {
+  it('reserves a whole action count or none, so a refused bundle can recover its allowance', () => {
+    let t = 0;
+    const limit = new RateLimiter(2, 3, () => t);
+    expect(limit.take('console', 2)).toBe(true);
+    expect(limit.take('console', 2)).toBe(false);
+    expect(limit.take('console')).toBe(true);
+    t += 1000;
+    expect(limit.take('console', 3)).toBe(false);
+    expect(limit.take('console', 2)).toBe(true);
+    for (const count of [0, -1, 0.5, NaN, Infinity, 4]) expect(limit.take('other', count)).toBe(false);
+    expect(limit.take('other', 3)).toBe(true);
+  });
+
   it('lets a device ask so much a second, with a burst', () => {
     let t = 0;
     const limit = new RateLimiter(2, 3, () => t);

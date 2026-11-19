@@ -14,6 +14,7 @@ Update after a sabha, and update Main and nodes together.
 - From a Link… now opens a small window where you choose the folder and the name before the download starts; a YouTube video’s captions, in every language it has, are saved beside the video or sound, with a copy kept in a Captions folder for caption learning. While on air or recording, Drashti waits to look up a link as well as to download it.
 - How loud: just above Audio under the live picture, in Pro and Simple Mode, set how loud Audio (the playlists and every sound) and Video (the videos’ sound) play, 0 to 100 %, each with a switch to mute it (green Sound on, red Muted); the status bar says what is muted. A change is heard at once and smoothly and never stops what plays, the stream hears what the hall hears, and Drashti keeps the levels but always starts with the sound on.
 - A video’s captions (SRT or WebVTT files beside it, or added through Captions…) can now show on the audience screens and the stream: turn them on for that video with CC beside the time bar, in the language you choose; live captions step aside meanwhile.
+- OSC control, for a lighting or sound console or Companion on the mandir’s own network: in Pro Mode, turn it on in More tools › OSC control… and list the computers allowed to send; Next, Back, Clear, the covers, timers and messages can then be run from them. It is off until turned on.
 
 ## 1.0.0-alpha.19 (19 Nov 2026)
 

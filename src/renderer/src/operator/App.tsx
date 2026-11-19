@@ -79,6 +79,8 @@ import { SoundLevels } from '../sound/SoundLevels';
 import { connectSound } from '../sound/sound-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { MidiTool } from '../midi/MidiTool';
+import { OscControl, OscTool } from '../osc/OscControl';
+import { connectOsc } from '../osc/osc-store';
 import { LowerThirdsPanel } from '../lower-thirds/LowerThirdsPanel';
 import { runBack } from './actions';
 import { CalendarDialog } from '../calendar/CalendarDialog';
@@ -125,6 +127,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectLiveWindow();
     connectVideoInputs();
     connectNetwork();
+    connectOsc();
     connectAnnouncements();
     watchLibrary();
     watchImports();
@@ -207,6 +210,7 @@ export function App() {
   return (
     <>
       {mode === 'simple' ? <SimpleApp info={info} /> : <ProApp info={info} />}
+      <OscControl />
       {/* Keep these screens? (Session 50): in either mode, after a change that put an output on a display. */}
       <KeepScreensQuestion platform={info?.platform ?? 'darwin'} />
     </>
@@ -401,6 +405,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
                       A MIDI controller’s pads can work Next, Back, Clear all and Black-out.
                     </PanelNote>
                     <MidiTool />
+                    <OscTool />
                   </div>
                 </PanelGroup>
               </div>

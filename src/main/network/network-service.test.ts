@@ -73,6 +73,8 @@ function setup(
     onAir?: NetworkDeps['onAir'];
     /** This computer's addresses and name on the network as a test gives them (the guides' pictures, Session 55). */
     shown?: { addresses: string[]; localName: string };
+    /** The log's lines, for a test that reads them. */
+    logs?: string[];
   } = {},
 ) {
   const db = openDatabase(':memory:');
@@ -209,7 +211,9 @@ function setup(
     // Simple Mode as a phone's request is weighed (Session 55, the owner's answer of 30 Oct 2026).
     simple: () => (options.locked === true ? ONE : null),
     changed: (s) => statuses.push(s),
-    log: () => undefined,
+    log: (_level, line) => {
+      options.logs?.push(line);
+    },
     now: () => now,
     ...(options.letIn ? { letIn: () => options.letIn?.now ?? false } : {}),
   });
@@ -1274,5 +1278,93 @@ describe('while Drashti is not let in (Session 54, access by Gmail)', () => {
     return Promise.resolve().then(() => {
       expect(sent.filter((m) => m.type === 'answer').at(-1)).toEqual({ type: 'answer', id: 7, answer: null });
     });
+  });
+});
+
+describe('OSC uses the API action layer without a paired phone', () => {
+  it('validates commands, uses the engine, and never accepts an action that changes settings', async () => {
+    const t = setup();
+    expect(t.service.status().on).toBe(false);
+    expect(t.service.runShowAction({ op: 'command', args: { type: 'next' } }).status).toBe(200);
+    expect(t.commands).toEqual([{ type: 'next' }]);
+    expect(
+      t.service.runShowAction({
+        op: 'command',
+        args: { type: 'setStageMessage', text: 'Placeholder stage call' },
+      }).status,
+    ).toBe(200);
+    expect(
+      t.service.runShowAction({
+        op: 'command',
+        args: { type: 'setBackground', background: { kind: 'color', color: '#000000' } },
+      }).status,
+    ).toBe(403);
+    expect(
+      t.service.runShowAction({
+        op: 'command',
+        args: { type: 'goLive', presentationId: 'p001', slideIndex: -1 },
+      }).status,
+    ).toBe(400);
+    await t.service.close();
+  });
+
+  it('retains the access gate and Simple Mode bounds, including the permitted playlist', async () => {
+    const letIn = { now: false };
+    const t = setup({ letIn });
+    expect(t.service.runShowAction({ op: 'command', args: { type: 'next' } }).status).toBe(503);
+    expect(t.commands).toHaveLength(0);
+    letIn.now = true;
+    expect(t.service.runShowAction({ op: 'command', args: { type: 'next' } }).status).toBe(200);
+    await t.service.close();
+    const u = setup({ locked: true });
+    expect(
+      u.service.runShowAction({ op: 'command', args: { type: 'setStageMessage', text: 'Placeholder' } })
+        .status,
+    ).toBe(403);
+    expect(
+      u.service.runShowAction({
+        op: 'command',
+        args: { type: 'goLive', presentationId: 'outside-all-playlists', slideIndex: 0 },
+      }).status,
+    ).toBe(403);
+    expect(
+      u.service.runShowAction({
+        op: 'command',
+        args: { type: 'goLive', presentationId: 'p001', slideIndex: 0 },
+      }).status,
+    ).toBe(200);
+    expect(u.commands).toEqual([{ type: 'goLive', presentationId: 'p001', slideIndex: 0 }]);
+    await u.service.close();
+  });
+
+  it('names who asked in the log: the OSC sender, or the caller the action layer is given (x28: a paired controller)', async () => {
+    const logs: string[] = [];
+    const t = setup({ logs });
+    expect(t.service.runShowAction({ op: 'command', args: { type: 'next' } }).status).toBe(200);
+    expect(
+      t.service.runShowAction({ op: 'command', args: { type: 'next' } }, 'the paired controller').status,
+    ).toBe(200);
+    const asked = logs.filter((line) => /^Network: (OSC sender|the paired controller) /u.test(line));
+    expect(asked.map((line) => line.split(' ').slice(1, 3).join(' '))).toEqual(['OSC sender', 'the paired']);
+    await t.service.close();
+  });
+
+  it('uses API message template filling and the existing hide id, never raw showMessage content', async () => {
+    const t = setup();
+    expect(
+      t.service.runShowAction({ op: 'message.show', args: { templateId: 'missing', values: {} } }).status,
+    ).toBe(404);
+    expect(t.commands).toHaveLength(0);
+    expect(
+      t.service.runShowAction({ op: 'message.hide', args: { templateId: 'placeholder-template' } }).status,
+    ).toBe(200);
+    expect(t.commands).toEqual([{ type: 'hideMessage', messageId: messageItemId('placeholder-template') }]);
+    expect(
+      t.service.runShowAction({
+        op: 'command',
+        args: { type: 'showMessage', message: { id: 'raw', text: 'Placeholder' } },
+      }).status,
+    ).toBe(403);
+    await t.service.close();
   });
 });
