@@ -7,21 +7,20 @@ import { Loader, Mic, Radio, ScreenShare, Settings, X } from '../ui/icons';
  * The Stream panel's own drawing, warmed unseen with the LIVE picture's warm-up (Session 60, X21's second part; the
  * lead's ask after the owner's question Q60-4). Opened mid-show, the panel's first drawing in the operator window made
  * kinds of drawing this window had not drawn at that start (traced on CI's Mac, x21-1119-152307-74195 and -74205, and
- * the red x21-1119-155149-81097): in tiles that also hold a path (an icon, or a rounded box's inset light), which the
- * graphics chip draws multisampled, a see-through fill under rounded corners and the primary button's gradient
- * (Tailwind's three stops, mixed in oklab) under its rounded corners; in tiles with no path, a see-through fill, one
- * under rounded corners, and a shadow with and without rounded corners. A graphics chip makes each kind of drawing the
- * first time it is asked for it, and every window waits meanwhile: on a new CI Mac the gradient's first use held the
- * GPU, and the hall's screens with it, 357-461 ms.
+ * the red x21-1119-155149-81097): in tiles that also hold a path (an icon), which the graphics chip draws
+ * multisampled, a see-through fill under rounded corners and the primary button's gradient (Tailwind's three stops,
+ * mixed in oklab) under its rounded corners; in tiles with no path, a see-through fill, one under rounded corners, and
+ * a shadow with and without rounded corners to keep out; and the compositor its preview under rounded corners. A
+ * graphics chip makes each kind of drawing the first time it is asked for it, and every window waits meanwhile: on a
+ * new CI Mac the gradient's first use held the GPU, and the hall's screens with it, 357-461 ms.
  *
  * So while the LIVE picture warms up at the start (render/WarmUp.tsx, which the opening waits for), this draws the
- * panel's pieces in the LIVE picture's black box, black under brightness(0), twice: once beside icons and once with no
- * path at all (no icon, no inset light), each in a layer of its own so its tiles are its own; at their own size and on
- * whole device pixels, as the panel draws them (a box between pixels is drawn another way: its edges smoothed); and,
- * beneath them, unfiltered and black, the preview's picture as the compositor draws it. It goes with the warm-up.
- * Nothing in it can be reached (inert) or read out (aria-hidden), nothing in it is a button (its buttons are drawn as
- * buttons look: the window keeps its one primary), its words are no button's, and nothing in it asks Main for
- * anything.
+ * panel's pieces in the LIVE picture's black box, black under brightness(0), twice: once beside icons and once with
+ * none, each in a layer of its own so its tiles are its own; at their own size and on whole device pixels, as the
+ * panel draws them (a box between pixels is drawn another way: its edges smoothed); and, beneath them, unfiltered and
+ * black, the preview's picture as the compositor draws it. It goes with the warm-up. Nothing in it can be reached
+ * (inert) or read out (aria-hidden), nothing in it is a button (its buttons are drawn as buttons look: the window
+ * keeps its one primary), its words are no button's, and nothing in it asks Main for anything.
  */
 
 /** How far to move a box at (`left`, `top`) CSS px onto a whole device pixel (`ratio` device px a CSS px). */
@@ -81,10 +80,24 @@ function PreviewPicture() {
   );
 }
 
-/** A see-through fill under rounded corners (a box's inset light is one, beside its path). */
+/**
+ * A see-through fill under rounded corners, narrower than their radius, as a quiet sound meter's bar or a box's inset
+ * light draws (a wider one merges with the corners into one rounded box: another kind).
+ */
 const SeeThroughUnderCorners = () => (
   <span className="block h-4 w-12 overflow-hidden rounded-lg">
-    <span className="block h-full w-8 bg-black/60" />
+    <span className="block h-full w-1 bg-black/60" />
+  </span>
+);
+
+/**
+ * The sheet's shadow where its box is not: the panel's sheet is as tall as the window, so the tail of its shadow below
+ * it is drawn in a tile of its own, with nothing of the box to keep out (another kind than a shadow beside its box).
+ * Here the box sits just above a clip and only its shadow's tail is drawn, inside it.
+ */
+const ShadowTail = () => (
+  <span className="relative block h-6 w-16 overflow-hidden">
+    <span className="absolute -top-10 left-2 block h-10 w-12 border-l border-line-strong bg-panel shadow-overlay" />
   </span>
 );
 
@@ -116,10 +129,11 @@ function WithIcons() {
         <X size={12} aria-hidden="true" />
       </span>
       <SeeThroughUnderCorners />
+      <ShadowTail />
       <span className="flex items-center gap-2">
         <Mic size={14} aria-hidden="true" className="shrink-0 text-muted" />
         <span className="relative block h-2.5 w-16 overflow-hidden rounded-full border border-line-strong bg-panel-3">
-          <span className="block h-full w-8 bg-success" />
+          <span className="block h-full w-1 bg-success" />
         </span>
       </span>
       <ProgramBox>
@@ -133,29 +147,23 @@ function WithIcons() {
 }
 
 /**
- * The pieces with no path at all (no icon; no inset light, which is drawn as a path): every tile of this layer is
- * drawn plainly. The primary button's gradient, ring and glow on a box of its own (the button itself has the light).
- * Inside the LIVE box's rounded corners only a piece drawn whole inside them is drawn as the panel draws it, with no
- * clip; and the sheet's shadow on a box this small draws no blur at all (its -18 px spread leaves nothing: the trace at
- * f94cd564 had every kind but that one): so the sheet's shadow is a small one of its own, whole inside.
+ * The same pieces with no icon (no path: a box's inset light is a fill under its rounded corners, not a path; the trace
+ * at 8b1df234 drew this layer plainly with them): every tile of this layer is drawn plainly.
  */
 function Plain() {
   return (
     <Layer top={100}>
-      <span className="flex h-10 items-center rounded-lg border border-primary-lo bg-linear-to-b from-primary-hi via-primary via-55% to-primary-lo px-4 text-base font-bold text-on-primary shadow-[0_0_0_1px_var(--depth-primary-ring),0_10px_24px_-12px_var(--depth-primary)]">
-        Aa
-      </span>
+      <span className={buttonClass('primary', 'lg')}>Aa</span>
       <span className={buttonClass('secondary', 'md')}>Aa</span>
-      <span className="block h-8 w-12 rounded-lg border border-line bg-panel-2 shadow-overlay" />
+      <span className="block h-8 w-12 rounded-lg border border-line bg-panel-2 shadow-card" />
+      <span className="block h-10 w-8 border-l border-line-strong bg-panel shadow-overlay" />
       <span className="block h-4 w-8 bg-black/60" />
       <SeeThroughUnderCorners />
+      <ShadowTail />
       <span className="relative block h-2.5 w-16 overflow-hidden rounded-full border border-line-strong bg-panel-3">
-        <span className="block h-full w-8 bg-success" />
+        <span className="block h-full w-1 bg-success" />
       </span>
       <ProgramBox />
-      {/* The sheet: a square box's blurred shadow, whole inside the LIVE box (one that reaches the box's rounded
-          corners is drawn clipped to them: another kind; the sheet's own, 52 px, has no room here). */}
-      <span className="absolute top-6 right-12 block h-6 w-6 bg-panel shadow-[0_8px_16px_-4px_rgb(0_0_0/0.45)]" />
       <span className="text-2xs font-bold tracking-wider text-heading uppercase">Aa</span>
     </Layer>
   );

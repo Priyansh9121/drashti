@@ -5,10 +5,9 @@ import { onWholePixels, PanelWarmUp } from './PanelWarmUp';
 
 /*
  * The Stream panel's pieces drawn unseen with the LIVE picture's warm-up (Session 60, X21's second part). A graphics
- * chip draws a tile that holds a path (an icon, or a rounded box's inset light) multisampled and one with none plainly,
- * and makes each kind of drawing once for each: so the pieces come twice, once beside icons and once with no path at
- * all, each in a layer of its own; and on whole device pixels, as the panel draws them (a box between pixels is drawn
- * another way, its edges smoothed).
+ * chip draws a tile that holds a path (an icon) multisampled and one with none plainly, and makes each kind of drawing
+ * once for each: so the pieces come twice, once beside icons and once with none, each in a layer of its own; and on
+ * whole device pixels, as the panel draws them (a box between pixels is drawn another way, its edges smoothed).
  */
 
 const markup = () => renderToStaticMarkup(createElement(PanelWarmUp));
@@ -34,30 +33,29 @@ function layers(html: string): string[] {
 }
 
 describe('the Stream panel’s pieces, warmed unseen', () => {
-  it('come twice, each in a layer of its own under brightness(0): one beside icons, one with no path at all', () => {
+  it('come twice, each in a layer of its own under brightness(0): one beside icons, one with none', () => {
     const [withIcons = '', plain = ''] = layers(markup());
     for (const layer of [withIcons, plain]) {
       expect(layer).toContain('will-change-transform');
       expect(layer).toContain('[filter:brightness(0)]');
-      // The primary button's gradient, the sheet's shadow, the dim, see-through under rounded corners, the meter, the
+      // The primary button (its gradient, inset light, ring and glow), a card's and the sheet's shadows, the dim, the
       // Program box's picture.
       expect(layer).toContain('from-primary-hi');
+      expect(layer).toContain('shadow-primary');
+      expect(layer).toContain('shadow-card');
       expect(layer).toContain('shadow-overlay');
-      expect(layer.match(/bg-black\/60/gu)?.length).toBeGreaterThanOrEqual(2);
-      expect(layer).toContain('rounded-full');
+      expect(layer).toContain('bg-black/60');
       expect(layer).toContain('<canvas');
+      // A see-through fill under rounded corners narrower than their radius (rounded-lg, 8 px: a 4 px bar), and the
+      // meter's quiet bar the same.
+      expect(layer).toMatch(/overflow-hidden rounded-lg"><span class="block h-full w-1 bg-black\/60"/u);
+      expect(layer).toMatch(/rounded-full[^"]*"><span class="block h-full w-1 bg-success"/u);
+      // The sheet's shadow where its box is not: the box just above a clip, its shadow's tail inside it.
+      expect(layer).toMatch(/overflow-hidden"><span class="absolute -top-10 [^"]*shadow-overlay"/u);
     }
     expect(withIcons).toContain('<svg');
     expect(withIcons).toContain('animate-spin');
-    expect(withIcons).toContain('shadow-primary');
-    expect(withIcons).toContain('shadow-card');
-    // No icon, and no inset light (the primary button's and a card's shadows have one, drawn as a path).
     expect(plain).not.toContain('<svg');
-    expect(plain).not.toContain('shadow-primary');
-    expect(plain).not.toContain('shadow-card');
-    expect(plain).not.toContain('inset');
-    // The sheet's shadow on a square box, small enough to draw its blur whole inside the LIVE box.
-    expect(plain).toMatch(/class="absolute [^"]*bg-panel shadow-\[0_8px_16px_-4px_[^"]*"/u);
   });
 
   it('can’t be reached or read out, has no button, and its words are none of the panel’s', () => {
