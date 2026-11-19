@@ -62,7 +62,7 @@ export interface Theme {
 
 export type ThemeFields = Omit<Theme, 'id'>;
 
-/** A theme saved, with what it misses of the theme contract (shared/theme-contract.ts), if anything: it warns, never refuses. */
+/** A theme saved, with what it misses of the theme contract (docs/design.md §37), if anything: it warns, never refuses. */
 export type ThemeResult = { ok: true; id: string; warnings?: string[] } | { ok: false; message: string };
 
 export type ApplyThemeResult =
