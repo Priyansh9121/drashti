@@ -1,3 +1,4 @@
+import type { OscAction } from '../osc/mapping';
 import { nativeDeckMotion, stepCount } from '../../shared/deck';
 import { deckSlideAt } from '../../shared/deck-show';
 import {
@@ -1074,6 +1075,37 @@ export class NetworkService implements EngineTransport {
     } finally {
       clearTimeout(timer);
       this.savingSlide = false;
+    }
+  }
+
+  /**
+   * An explicitly allowed OSC sender uses these same show actions, independent of Phones being on; so may another
+   * caller of Main's own (x28: a paired controller), named in the log as `who`.
+   */
+  runShowAction(action: OscAction, who = 'OSC sender'): DeviceAnswer {
+    if (!this.letIn()) return deny(503, STOPPED_REFUSAL);
+    const args = action.args as Record<string, unknown>;
+    if (this.deps.refused(IPC.engine.command, [args]))
+      return deny(403, this.deps.refusal?.() ?? SIMPLE_MODE_REFUSAL);
+    const simple = this.deps.simple?.() ?? null;
+    if (simple && !phoneMayInSimpleMode(action.op, args, simple)) return deny(403, simple.refusal());
+    switch (action.op) {
+      case 'command':
+        return this.command(args, who);
+      case 'message.show':
+        return this.showMessage(args, who);
+      case 'message.hide': {
+        const parsed = hideSchema.safeParse(args);
+        return parsed.success
+          ? this.run(
+              { type: 'hideMessage', messageId: messageItemId(parsed.data.templateId) },
+              who,
+              'took a message off',
+            )
+          : deny(400, 'Which message?');
+      }
+      default:
+        return deny(403, 'OSC cannot do that.');
     }
   }
 
