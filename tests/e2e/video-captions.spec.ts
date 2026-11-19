@@ -99,7 +99,8 @@ test('stored SRT captions follow the hall and stream video clocks through play, 
     expect(view.selected).toBeNull();
     expect(view.tracks).toHaveLength(2);
     const { hall, stage } = await outputs(win, app);
-    await win.getByTestId('open-stream').click();
+    // Keep the Program running without opening the modal Stream drawer over LIVE’s CC controls.
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.watchPreview(true));
     const program = await streamPage(app);
     await expect(program.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
       timeout: 20_000,
