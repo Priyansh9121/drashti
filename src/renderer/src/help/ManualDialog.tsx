@@ -3,16 +3,20 @@ import {
   indexChapter,
   type IndexedChapter,
   MANUAL_CHAPTERS,
+  MANUAL_PRINT_WAITS,
   type ManualChapterId,
   type ManualPrinted,
   manualChapter,
   manualPictureName,
   manualPictureUrl,
+  manualPrintWaits,
   savedWhere,
   searchManual,
 } from '../../../shared/manual';
 import { type Block, parseMarkdown, passagesOf } from '../../../shared/markdown';
 import { cutText } from '../../../shared/text';
+import { useEngine } from '../engine/engine-store';
+import { useStream } from '../stream/stream-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
@@ -69,6 +73,11 @@ function ManualWindow() {
   const [busy, setBusy] = useState<'print' | 'pdf' | null>(null);
   const [said, setSaid] = useState<{ text: string; problem: boolean } | null>(null);
   const content = useRef<HTMLDivElement>(null);
+  // Print… and Save as PDF… wait while the show is live: anything up, or the stream on air or recording (the lead's
+  // call of 20 Nov 2026; the main process refuses then too).
+  const layers = useEngine((st) => st.state?.layers ?? null);
+  const stream = useStream((st) => st.status);
+  const waits = manualPrintWaits(layers, stream);
   // Every chapter, read once as the window opens (they are small, and the search looks in them all).
   useEffect(() => {
     let live = true;
@@ -146,11 +155,17 @@ function ManualWindow() {
         >
           {said?.text ?? ''}
         </p>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 items-center gap-2">
+          {waits && (
+            <p data-testid="manual-waits" id="manual-waits" className="text-sm text-muted">
+              {MANUAL_PRINT_WAITS}
+            </p>
+          )}
           <Button
             size="sm"
             variant="secondary"
-            disabled={busy !== null || doc === null}
+            disabled={waits || busy !== null || doc === null}
+            aria-describedby={waits ? 'manual-waits' : undefined}
             onClick={() => {
               run('print');
             }}
@@ -160,7 +175,8 @@ function ManualWindow() {
           <Button
             size="sm"
             variant="secondary"
-            disabled={busy !== null || doc === null}
+            disabled={waits || busy !== null || doc === null}
+            aria-describedby={waits ? 'manual-waits' : undefined}
             onClick={() => {
               run('pdf');
             }}

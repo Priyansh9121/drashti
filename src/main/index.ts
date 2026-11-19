@@ -3708,6 +3708,9 @@ function start(): void {
   );
   const manualPrinter = new ManualPrinter({
     files: guideFiles,
+    // Never while the show is live (the lead's call of 20 Nov 2026): anything up, or the stream on air or recording,
+    // as Trim's and the conversions' background work waits (a test can say the stream is on air).
+    live: () => streaming.inUse() || testOnAir || !nothingUp(engine.current.layers),
     version: () => app.getVersion(),
     tempDir: () => app.getPath('temp'),
     suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),

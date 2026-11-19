@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Passage } from './markdown';
-import type { Layers } from './engine/state';
+import { type Layers, nothingUp } from './engine/state';
 import type { OperatorMode } from './mode';
 import { matchesAll, searchWords } from './search';
 import type { StreamStatus } from './stream';
@@ -138,14 +138,26 @@ export type ManualRead =
     }
   | { ok: false; message: string };
 
-/** The red commit's stand-ins (x37, the lead's call of 20 Nov): not yet. */
-export const MANUAL_PRINT_WAITS = '';
-export const MANUAL_PRINT_REFUSED = '';
+/** The line beside Print… and Save as PDF… while they wait. */
+export const MANUAL_PRINT_WAITS = 'Print or save the manual when nothing is up, on air or recording.';
+
+/** The main process's answer to a request that came while the show is live all the same. */
+export const MANUAL_PRINT_REFUSED =
+  'Print or save the manual when nothing is up, on air or recording: clear what is up, and end the stream and the recording first.';
+
+/**
+ * Whether Print… and Save as PDF… wait (the lead's call of 20 Nov 2026, under the owner's word that nothing in the
+ * manual's window may touch the show): while anything is up on the screens, or the stream is on air (or getting there,
+ * or ending) or recording, as the work that waits for an idle show does (conversions, Trim, a PDF's reading: nothing
+ * up, and the stream not in use). Not known yet (the window has not had the show's state): the safe side, waiting.
+ * The main process asks the same of its own state before it prints (index.ts), whatever the window shows.
+ */
 export function manualPrintWaits(
   layers: Layers | null,
   stream: Pick<StreamStatus, 'live' | 'recording'> | null,
 ): boolean {
-  return Array.of<unknown>(layers, stream).length > 2;
+  if (layers === null || !nothingUp(layers)) return true;
+  return stream !== null && (stream.live.state !== 'off' || stream.recording.state !== 'off');
 }
 
 /** Where a PDF went, as the manual says it: its name, in its folder's ("Drashti Manual.pdf, in Documents"). */
