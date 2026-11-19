@@ -216,7 +216,7 @@ export class MediaStore {
     if (kind === 'image' || !this.options.readInfo) return { probe };
     const info = await this.options.readInfo(file).catch(() => null);
     if (!info || info.timedOut) return { probe };
-    const verdict = atImport(kind, info, this.options.playsHevc ?? null);
+    const verdict = atImport(kind, info, this.options.playsHevc ?? null, this.options.hevcKinds ?? null);
     if (verdict === 'unread') return { probe };
     const video = info.video;
     const moving = kind === 'video' && video !== null && !video.still;
