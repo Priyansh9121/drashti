@@ -389,6 +389,7 @@ export const Scene = memo(function Scene({
    */
   picturesFirst?: boolean;
 }) {
+  const captionRoot = useRef<HTMLDivElement>(null);
   const { layers } = state;
   const shown = (layer: GroupLayer) => look.layers.includes(layer);
   const band = ticker && shown('ticker') && layers.ticker ? layers.ticker : null;
@@ -473,6 +474,7 @@ export const Scene = memo(function Scene({
   return (
     <ScreenPictures.Provider value={pictures}>
       <div
+        ref={captionRoot}
         data-testid="scene"
         data-canvas={`${canvas.width}x${canvas.height}`}
         data-look-layers={look.layers.join(',')}
@@ -588,6 +590,7 @@ export const Scene = memo(function Scene({
                     canvas={canvas}
                     screen={matte === null ? place : 'stream'}
                     lift={bandHeight}
+                    videoRoot={captionRoot}
                   />
                 )}
                 {band && <TickerBand ticker={band} canvas={canvas} movement={look.movement} />}
