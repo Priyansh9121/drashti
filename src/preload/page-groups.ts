@@ -55,6 +55,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'nodes',
     // The opening as Drashti starts, and File › Opening… (Session 55).
     'opening',
+    'osc',
     'output',
     'pip',
     'playlists',
