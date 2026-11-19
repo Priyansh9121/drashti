@@ -77,6 +77,8 @@ export interface MenuActions {
   checkForUpdates: () => void;
   /** Help > Keyboard Shortcuts… (Session 25, Pro Mode only): the keys sheet. */
   keyboardShortcuts: () => void;
+  /** Help › Drashti Manual… (x37, Session 60): not yet (the red commit's stand-in). */
+  manual?: () => void;
   /** Help > Guides… (Sessions 31–36, both modes): the guides inside Drashti. */
   guides: () => void;
   /**
