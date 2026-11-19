@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckEffect } from './deck';
-import { deckMotionFrame, deckShapeShows, deckSplitShows, deckWipeClip } from './deck-motion';
+import {
+  deckBarsShows,
+  deckHardClip,
+  deckMotionFrame,
+  deckShapeShows,
+  deckSplitShows,
+  deckWipeClip,
+  deckWipeMask,
+} from './deck-motion';
 
 /*
  * PowerPoint's own movie of the comparison deck, measured frame by frame (Session 57, 13 Nov 2026: the lead's run 1,
@@ -706,6 +714,129 @@ describe('Wheel as PowerPoint’s own movie shows it (run 6)', () => {
       const coming = spokesAt(effect('wheel', 'in', { spokes: 1 }), ms)[0]?.at(-1) ?? 0;
       expect(apart(spoke[0] ?? 0, coming), `${String(ms)} ms: shows from the edge`).toBeLessThanOrEqual(0.5);
       expect(apart(spoke.at(-1) ?? 0, 0), `${String(ms)} ms: to twelve o'clock`).toBeLessThanOrEqual(0.5);
+    }
+  });
+});
+
+/*
+ * Random Bars (h-run6, Session 59; Q60-15, the owner's "Yes, all": A): real PowerPoint's movie of run 6 (19 Nov 2026),
+ * across and up and down, coming in and leaving, at 700 ms and 2 s, on a 960 x 576 box of the 1920 x 1080 movie: the
+ * shape's rows of pixels each fade in (or out) in a fixed order of PowerPoint's own, which can't be had. Drashti draws
+ * hair-thin bars in a fixed random order of its own, each fading, half-way at the same moments as PowerPoint's rows, so
+ * as much of the shape shows at every frame (within 0.02 of the box).
+ */
+describe('Random Bars as PowerPoint’s own movie shows it (run 6)', () => {
+  const barsBox = { x: 480, y: 252, width: 960, height: 576 };
+  const movie = { width: 1920, height: 1080 };
+  const wipeAt = (one: DeckEffect, ms: number) => deckMotionFrame([one], 1, ms, barsBox, movie).wipe;
+  /** How much of each of `count` places along the bars' way shows. */
+  const levelsAt = (one: DeckEffect, ms: number, count: number) => {
+    const wipe = wipeAt(one, ms);
+    return Array.from({ length: count }, (_, k) => deckBarsShows(wipe, (k + 0.5) / count));
+  };
+  /** How much of the box shows: a thousand places along its bars' way. */
+  const shows = (one: DeckEffect, ms: number) =>
+    levelsAt(one, ms, 1000).reduce((sum, level) => sum + level, 0) / 1000;
+  /** PowerPoint's, frame by frame: ms after the click, then the share of the box showing (its whole box reads 0.994). */
+  const runs: [string, DeckEffect, number[]][] = [
+    [
+      'across, coming in, 700 ms',
+      effect('bars', 'in', { bars: 'horizontal' }),
+      [
+        30, 0, 63.3, 0.008, 95, 0.035, 128.3, 0.079, 161.7, 0.132, 195, 0.19, 228.3, 0.268, 260, 0.337, 293.3,
+        0.408, 326.7, 0.477, 360, 0.542, 393.3, 0.6, 425, 0.655, 458.3, 0.712, 491.7, 0.781, 525, 0.848,
+        558.3, 0.909, 590, 0.953, 623.3, 0.982, 656.7, 0.993, 690, 0.994,
+      ],
+    ],
+    [
+      'up and down, coming in, 700 ms',
+      effect('bars', 'in', { bars: 'vertical' }),
+      [
+        28.3, 0, 61.7, 0.009, 95, 0.038, 128.3, 0.086, 160, 0.137, 193.3, 0.189, 226.7, 0.26, 260, 0.335,
+        293.3, 0.407, 325, 0.475, 358.3, 0.54, 391.7, 0.6, 425, 0.66, 458.3, 0.726, 490, 0.786, 523.3, 0.845,
+        556.7, 0.906, 590, 0.955, 623.3, 0.981, 655, 0.991, 688.3, 0.994,
+      ],
+    ],
+    [
+      'across, leaving, 700 ms',
+      effect('bars', 'out', { bars: 'horizontal' }),
+      [
+        30, 0.993, 61.7, 0.989, 95, 0.968, 128.3, 0.93, 161.7, 0.877, 195, 0.811, 226.7, 0.742, 260, 0.68,
+        293.3, 0.626, 326.7, 0.57, 360, 0.508, 391.7, 0.439, 425, 0.372, 458.3, 0.303, 491.7, 0.232, 525,
+        0.163, 556.7, 0.103, 590, 0.054, 623.3, 0.02, 656.7, 0.001, 690, 0,
+      ],
+    ],
+    [
+      'up and down, leaving, 700 ms',
+      effect('bars', 'out', { bars: 'vertical' }),
+      [
+        28, 0.994, 62, 0.987, 95, 0.969, 127, 0.931, 160, 0.873, 193, 0.812, 227, 0.753, 260, 0.69, 292,
+        0.626, 325, 0.568, 358, 0.507, 392, 0.439, 425, 0.368, 457, 0.295, 490, 0.223, 523, 0.163, 557, 0.11,
+        590, 0.06, 622, 0.021, 655, 0.003, 688, 0,
+      ],
+    ],
+    [
+      'up and down, coming in, 2 s',
+      effect('bars', 'in', { bars: 'vertical', durationMs: 2000 }),
+      [
+        28, 0, 127, 0.003, 227, 0.022, 325, 0.065, 425, 0.119, 523, 0.175, 622, 0.241, 722, 0.318, 820, 0.396,
+        920, 0.468, 1018, 0.537, 1117, 0.598, 1217, 0.662, 1315, 0.731, 1415, 0.793, 1513, 0.856, 1612, 0.918,
+        1712, 0.965, 1810, 0.985, 1910, 0.993,
+      ],
+    ],
+    [
+      'across, leaving, 2 s',
+      effect('bars', 'out', { bars: 'horizontal', durationMs: 2000 }),
+      [
+        30, 0.994, 128, 0.993, 227, 0.98, 327, 0.95, 425, 0.9, 525, 0.835, 623, 0.764, 722, 0.693, 822, 0.636,
+        920, 0.578, 1020, 0.514, 1118, 0.442, 1217, 0.372, 1317, 0.298, 1415, 0.224, 1515, 0.152, 1613, 0.091,
+        1712, 0.042, 1812, 0.012, 1910, 0,
+      ],
+    ],
+  ];
+  /** Each run's frames: its name, its effect, the frame's ms and PowerPoint's share showing there (of its whole box). */
+  const frames = runs.flatMap(([name, one, list]) =>
+    list.flatMap((ms, k) => (k % 2 === 0 ? [{ name, one, ms, share: (list[k + 1] ?? 0) / 0.994 }] : [])),
+  );
+
+  it('shows as much of the shape as PowerPoint at every frame, both ways, coming in and leaving', () => {
+    for (const { name, one, ms, share } of frames) {
+      const off = Math.abs(shows(one, ms) - share);
+      expect(off, `${name} at ${String(ms)} ms`).toBeLessThanOrEqual(0.02);
+    }
+  });
+
+  it('draws hair-thin bars, each fading in its own turn, in a fixed order, the same every time', () => {
+    const one = effect('bars', 'in', { bars: 'horizontal' });
+    // Bars of 3 px at most across the 576 px box, many part way in at the half.
+    const levels = levelsAt(one, 350, 192);
+    expect(new Set(levels.map((level) => Math.round(level * 100))).size).toBeGreaterThan(10);
+    expect(levels.filter((level) => level > 0 && level < 1).length).toBeGreaterThan(30);
+    // Neighbours are not in together: no ten bars in a row all in, or all still out, at the half.
+    const longest = (want: (level: number) => boolean) =>
+      Math.max(...levels.map((_, k) => levels.slice(k, k + 10).filter(want).length));
+    expect(longest((level) => level >= 1)).toBeLessThan(10);
+    expect(longest((level) => level <= 0)).toBeLessThan(10);
+    // The same in every play.
+    expect(levelsAt(one, 350, 192)).toEqual(levels);
+    // Drawn by a mask down the box, its clip none; at the start it hides everything, and once in it is gone.
+    const half = wipeAt(one, 350);
+    expect(deckWipeClip(half, barsBox, barsBox)).toBe('');
+    expect(deckWipeMask(half, barsBox, barsBox)).toMatch(/^linear-gradient\(to bottom, rgb\(0 0 0 \/ /u);
+    const none = deckWipeMask(wipeAt(one, 0), barsBox, barsBox);
+    expect(none).toBe('linear-gradient(to bottom, rgb(0 0 0 / 0) 0% 100%)');
+    expect(wipeAt(one, 700)).toBeNull();
+  });
+
+  it('without a graphics chip, shows as many bars whole as the fading ones show in all, in their turn', () => {
+    for (const { name, one, ms } of frames) {
+      const wipe = wipeAt(one, ms);
+      const count = wipe && 'bars' in wipe ? wipe.count : 0;
+      const clip = deckHardClip(wipe, barsBox, barsBox);
+      const label = `${name} at ${String(ms)} ms`;
+      const whole = clip === '' ? 1 : clip.startsWith('inset(') ? 0 : clip.split(', ').length / 4 / count;
+      if (whole > 0 && whole < 1) expect(clip, label).toMatch(/^polygon\(/u);
+      expect(Math.abs(whole - shows(one, ms)), label).toBeLessThanOrEqual(0.01);
     }
   });
 });
