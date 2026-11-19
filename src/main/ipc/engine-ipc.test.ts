@@ -31,11 +31,13 @@ describe('runEngineCommand', () => {
     engine.dispatch({ type: 'toggleWallpaper' });
     expect(runEngineCommand(engine, { type: 'toggleBlackout' }, true, seen)).toMatchObject({ ok: false });
     expect(engine.current.blackout).toBe(false);
-    expect(runEngineCommand(engine, { type: 'toggleBlackout' }, true, { session: 'old-run', rev: engine.rev })).toMatchObject({ ok: false });
+    expect(
+      runEngineCommand(engine, { type: 'toggleBlackout' }, true, { session: 'old-run', rev: engine.rev }),
+    ).toMatchObject({ ok: false });
     expect(engine.current.blackout).toBe(false);
   });
 
-  it('rejects malformed input' , () => {
+  it('rejects malformed input', () => {
     const engine = setup();
     expect(runEngineCommand(engine, { type: 'goLive', presentationId: 'p1' }, true)).toMatchObject({
       ok: false,

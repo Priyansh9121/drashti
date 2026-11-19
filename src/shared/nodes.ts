@@ -1,3 +1,4 @@
+import type { ControllerArea, ControllerReply, ControllerRequest } from './controller-actions';
 import type { EngineMessage } from './engine/protocol';
 import type { PointedClip } from './point-ahead';
 import type { UpdateView } from './updates';
@@ -135,6 +136,7 @@ export type FromNode =
   /** Its copy fell behind (a revision went missing): the whole state again. */
   | { type: 'resync' }
   | { type: 'health'; health: NodeHealth }
+  | { type: 'controller-action'; request: ControllerRequest }
   /** A small picture of what a screen shows (while the dashboard is open): a JPEG, base64. */
   | { type: 'thumb'; screenId: string; jpeg: string };
 
@@ -142,6 +144,7 @@ export type NodeByeReason = 'unauthorized' | 'revoked' | 'version' | 'too-slow' 
 
 /** Main's audience preview for a paired computer explicitly allowed a shared show view. No credentials or settings. */
 export interface NodeControllerContext {
+  areas?: ControllerArea[];
   groupId: string | null;
   groupName: string;
   canvasWidth: number;
@@ -162,6 +165,7 @@ export type ToNode =
   | { type: 'engine'; message: EngineMessage }
   /** Main's explicit shared-view permission. Null removes it; no node action is enabled. */
   | { type: 'controller'; context: NodeControllerContext | null }
+  | { type: 'controller-answer'; answer: ControllerReply }
   | { type: 'clock'; t0: number; server: number }
   /** The screens the node shows on its displays (all of them, replacing the last). */
   | { type: 'screens'; screens: NodeScreen[] }
@@ -306,6 +310,7 @@ export interface NodeInfo {
   everything: boolean;
   /** Main enabled a shared live and next view on this paired computer (off by default). */
   controller?: boolean;
+  controllerAreas?: ControllerArea[];
   /** Since when (ISO) it has not caught up with the show (its last report older than Main's changes), or null. */
   behindSince: string | null;
 }

@@ -16,12 +16,23 @@ test('Main chooses controller actions; presses apply once, stale ones are refuse
   try {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-controller-actions-'));
     const file = join(dir, 'Placeholder shared actions.txt');
-    writeFileSync(file, '[Verse]\nPlaceholder action first\n\n[Chorus]\nPlaceholder action second\n\n[Bridge]\nPlaceholder action third\n');
+    writeFileSync(
+      file,
+      '[Verse]\nPlaceholder action first\n\n[Chorus]\nPlaceholder action second\n\n[Bridge]\nPlaceholder action third\n',
+    );
     const [id = ''] = await importAndGetIds(main.win, [file]);
     await setUpScreen(main.win, 'Placeholder Hall', 1);
     const output = await outputPage(main.app);
     await outputReady(output);
-    await main.win.evaluate((pid) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', presentationId: pid, slideIndex: 0 }), id);
+    await main.win.evaluate(
+      (pid) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'goLive',
+          presentationId: pid,
+          slideIndex: 0,
+        }),
+      id,
+    );
     await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder action first');
     const nodeId = await pairNode(main, node);
     await main.win.getByRole('button', { name: 'Screens', exact: true }).click();
@@ -33,25 +44,47 @@ test('Main chooses controller actions; presses apply once, stale ones are refuse
     await card.getByRole('checkbox', { name: 'Show controls', exact: true }).check();
     const next = view.getByRole('button', { name: 'Next', exact: true });
     await expect(next).toBeEnabled();
-    const firstRev = await main.win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev);
+    const firstRev = await main.win.evaluate(
+      async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev,
+    );
     await next.click();
     await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder action second');
     await expect(view.getByTestId('controller-live')).toContainText('Placeholder action second');
     await expect(view.getByTestId('controller-action-result')).toHaveText('Applied on Main.');
-    expect(await main.win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev)).toBe(firstRev + 1);
+    expect(
+      await main.win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev),
+    ).toBe(firstRev + 1);
     // A request made from an older view cannot overwrite Main's newer change.
     const old = await node.page.evaluate(async () => {
       const s = await (globalThis as PageGlobals).drashti.engine.snapshot();
-      return { id: 'placeholder-stale', session: s.session, rev: s.rev, command: { type: 'toggleBlackout' as const } };
+      return {
+        id: 'placeholder-stale',
+        session: s.session ?? '',
+        rev: s.rev,
+        command: { type: 'toggleBlackout' as const },
+      };
     });
-    await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'toggleWallpaper' }));
-    expect(await node.page.evaluate((press) => (globalThis as PageGlobals).drashti.node.action(press), old)).toMatchObject({ status: 'stale' });
-    expect(await main.win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.blackout)).toBe(false);
+    await main.win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'toggleWallpaper' }),
+    );
+    expect(
+      await node.page.evaluate((press) => (globalThis as PageGlobals).drashti.node.action(press), old),
+    ).toMatchObject({ status: 'stale' });
+    expect(
+      await main.win.evaluate(
+        async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.blackout,
+      ),
+    ).toBe(false);
     // A duplicate identifier returns the first result; it never toggles twice.
     const duplicate = await node.page.evaluate(async () => {
       const d = (globalThis as PageGlobals).drashti;
       const s = await d.engine.snapshot();
-      const press = { id: 'placeholder-duplicate', session: s.session, rev: s.rev, command: { type: 'toggleBlackout' as const } };
+      const press = {
+        id: 'placeholder-duplicate',
+        session: s.session ?? '',
+        rev: s.rev,
+        command: { type: 'toggleBlackout' as const },
+      };
       const answers = await Promise.all([d.node.action(press), d.node.action(press)]);
       return { answers, rev: s.rev };
     });
@@ -65,12 +98,21 @@ test('Main chooses controller actions; presses apply once, stale ones are refuse
     });
     await expect(view.getByTestId('controller-status')).toHaveText('Not connected');
     await expect(next).toBeDisabled();
-    expect(await node.page.evaluate(async () => {
-      const d = (globalThis as PageGlobals).drashti;
-      const s = await d.engine.snapshot();
-      return d.node.action({ id: 'placeholder-offline', session: s.session, rev: s.rev, command: { type: 'next' } });
-    })).toMatchObject({ status: 'refused' });
-    expect((await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot())).rev).toBe(beforeDrop.rev);
+    expect(
+      await node.page.evaluate(async () => {
+        const d = (globalThis as PageGlobals).drashti;
+        const s = await d.engine.snapshot();
+        return d.node.action({
+          id: 'placeholder-offline',
+          session: s.session ?? '',
+          rev: s.rev,
+          command: { type: 'next' },
+        });
+      }),
+    ).toMatchObject({ status: 'refused' });
+    expect((await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot())).rev).toBe(
+      beforeDrop.rev,
+    );
     await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'next' }));
     const afterMain = await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
     await node.app.evaluate(() => {
@@ -80,18 +122,32 @@ test('Main chooses controller actions; presses apply once, stale ones are refuse
     });
     await expect(view.getByTestId('controller-status')).toHaveText('Connected to Main');
     await expect(view).toHaveAttribute('data-rev', String(afterMain.rev));
-    expect((await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot())).rev).toBe(afterMain.rev);
+    expect((await main.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot())).rev).toBe(
+      afterMain.rev,
+    );
     await node.page.setViewportSize({ width: 1024, height: 645 });
     await expectNoSeriousA11yIssues(node.page, 'controller show actions');
     await card.getByRole('checkbox', { name: 'Show controls', exact: true }).uncheck();
     await expect(next).toHaveCount(0);
-    expect(await node.page.evaluate(async () => {
-      const d = (globalThis as PageGlobals).drashti;
-      const s = await d.engine.snapshot();
-      return d.node.action({ id: 'placeholder-revoked', session: s.session, rev: s.rev, command: { type: 'next' } });
-    })).toMatchObject({ status: 'refused' });
+    expect(
+      await node.page.evaluate(async () => {
+        const d = (globalThis as PageGlobals).drashti;
+        const s = await d.engine.snapshot();
+        return d.node.action({
+          id: 'placeholder-revoked',
+          session: s.session ?? '',
+          rev: s.rev,
+          command: { type: 'next' },
+        });
+      }),
+    ).toMatchObject({ status: 'refused' });
     await main.win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
-    expect(await main.win.evaluate((nid) => (globalThis as PageGlobals).drashti.nodes.setControllerAreas(nid, ['show']), nodeId)).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(
+      await main.win.evaluate(
+        (nid) => (globalThis as PageGlobals).drashti.nodes.setControllerAreas(nid, ['show']),
+        nodeId,
+      ),
+    ).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   } finally {
     await node.app.close();
     await main.app.close();
@@ -104,13 +160,21 @@ test('media playback is a separate grant and still runs on Main without sound on
   const node = await launchNode();
   try {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-controller-playback-'));
-    const file = await makeTestVideo(main.win, join(dir, 'Placeholder controlled clip.webm'), { seconds: 4, hue: 70, tone: 330 });
+    const file = await makeTestVideo(main.win, join(dir, 'Placeholder controlled clip.webm'), {
+      seconds: 4,
+      hue: 70,
+      tone: 330,
+    });
     await importAndGetIds(main.win, [file]);
     const nodeId = await pairNode(main, node);
     await main.win.evaluate(async (nid) => {
       const d = (globalThis as PageGlobals).drashti;
-      const mediaId = (await d.library.listMedia()).find((m) => m.name.startsWith('Placeholder controlled clip'))?.id ?? '';
-      await d.engine.dispatch({ type: 'setBackground', background: { kind: 'media', mediaId, media: 'video', fit: 'fit', loop: true } });
+      const mediaId =
+        (await d.library.listMedia()).find((m) => m.name.startsWith('Placeholder controlled clip'))?.id ?? '';
+      await d.engine.dispatch({
+        type: 'setBackground',
+        background: { kind: 'media', mediaId, media: 'video', fit: 'fit', loop: true },
+      });
       await d.nodes.setController(nid, true);
       await d.nodes.setControllerAreas(nid, ['media']);
     }, nodeId);
@@ -118,17 +182,29 @@ test('media playback is a separate grant and still runs on Main without sound on
     await expect(view.getByTestId('controller-status')).toHaveText('Connected to Main');
     await expect(view.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
     await view.getByTestId('controller-pause-background').click();
-    await expect.poll(() => main.win.evaluate(async () => {
-      const bg = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background;
-      return bg?.kind === 'media' ? bg.seek?.paused ?? false : false;
-    })).toBe(true);
+    await expect
+      .poll(() =>
+        main.win.evaluate(async () => {
+          const bg = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background;
+          return bg?.kind === 'media' ? (bg.seek?.paused ?? false) : false;
+        }),
+      )
+      .toBe(true);
     await view.getByTestId('controller-resume-background').click();
-    await expect.poll(() => main.win.evaluate(async () => {
-      const bg = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background;
-      return bg?.kind === 'media' ? bg.seek?.paused ?? false : true;
-    })).toBe(false);
+    await expect
+      .poll(() =>
+        main.win.evaluate(async () => {
+          const bg = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background;
+          return bg?.kind === 'media' ? (bg.seek?.paused ?? false) : true;
+        }),
+      )
+      .toBe(false);
     const video = view.getByTestId('controller-live').locator('video').first();
-    await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).readyState >= 2 && (el as HTMLVideoElement).muted)).toBe(true);
+    await expect
+      .poll(() =>
+        video.evaluate((el) => (el as HTMLVideoElement).readyState >= 2 && (el as HTMLVideoElement).muted),
+      )
+      .toBe(true);
     expect(await node.page.evaluate(() => document.querySelectorAll('audio').length)).toBe(0);
   } finally {
     await node.app.close();

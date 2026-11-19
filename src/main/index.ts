@@ -4339,7 +4339,15 @@ function start(): void {
     }),
   );
   handle(IPC.engine.snapshot, () => engine.snapshot());
-  handle(IPC.engine.command, (event, command) => runEngineCommand(engine, command, fromOperator(event)));
+  let controllersHaveActions = () => false;
+  handle(IPC.engine.command, (event, command, seen) =>
+    runEngineCommand(
+      engine,
+      command,
+      fromOperator(event),
+      controllersHaveActions() ? (seen ?? null) : undefined,
+    ),
+  );
   // The deck slide the operator points at (C3, Session 58: Q57-26): its first clip loaded ahead, where a click on its
   // row starts it, by every screen that loads what comes next (each output's Preloader, a node's too), never while
   // this computer is short of memory (main/point-ahead.ts).
@@ -5747,6 +5755,7 @@ function start(): void {
       rev: () => engine.rev,
       session: engine.session,
     },
+    runShowAction: (command) => net.runShowAction({ op: 'command', args: command }),
     wanted: (state, everything) => wanted.list(state, everything),
     mediaFile: (mediaId) => wanted.source(mediaId, mediaDir),
     onAir: () => streaming.inUse(),
@@ -5833,6 +5842,10 @@ function start(): void {
   handle(IPC.nodes.newIdentity, (e) => (fromOperator(e) ? nodes.newIdentity() : notNodesOperator));
   handle(IPC.nodes.everything, (e, id, on) =>
     fromOperator(e) ? nodes.setEverything(id, on) : notNodesOperator,
+  );
+  controllersHaveActions = () => nodes.hasControllerActions();
+  handle(IPC.nodes.setControllerAreas, (e, id, areas) =>
+    fromOperator(e) ? nodes.setControllerAreas(id, areas) : notNodesOperator,
   );
   handle(IPC.nodes.setController, (e, id, on) =>
     fromOperator(e) ? nodes.setController(id, on) : notNodesOperator,
