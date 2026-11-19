@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { deckFirstLineShift, type FontHeights, type LineLook } from '../../../shared/first-line';
+import {
+  chromiumFirstBaseline,
+  deckFirstLineShift,
+  type FontHeights,
+  type LineLook,
+} from '../../../shared/first-line';
 import type { TextElement, TextRun } from '../../../shared/model';
-import { cutLineHeight, sourceLineCut, sourceRunScale } from '../../../shared/source-fit';
+import { cutLineHeight, sourceFitScale, sourceLineCut, sourceRunScale } from '../../../shared/source-fit';
 import { type DrawnLine, drawnLines } from '../../../shared/text-lists';
 import { fontFamilyFor } from './fonts';
 
@@ -20,11 +25,12 @@ function drawnSize(px: number, el: TextElement): number {
   return share === 1 ? px : Math.round(px * share * 10_000) / 10_000;
 }
 
-/** A drawn line as CSS lays it out: its first words' font, the line's size and its height (unfitted slide px). */
+/** A drawn line as CSS lays it out: its first words' font, the line's size and its height (slide px at `fit`). */
 function lineLook(
   line: DrawnLine,
   el: TextElement,
   heightsOf: (family: string) => FontHeights | null,
+  fit: number,
 ): LineLook | null {
   const first: Omit<TextRun, 'text'> = line.pieces[0]?.run ?? line.end ?? {};
   // As ListedRuns sizes the line: its largest run's size where every run on it has one, else the box's.
@@ -37,7 +43,7 @@ function lineLook(
   const height = paragraph?.lineHeightPx ?? multiple * size;
   const font = heightsOf(fontFamilyFor(first.font ?? el.style.fontFamily, first.lang ?? el.lang));
   if (!font || !(size > 0) || !(height > 0)) return null;
-  return { font, size, line: height };
+  return { font, size: size * fit, line: height * fit };
 }
 
 /**
@@ -62,10 +68,14 @@ export function deckWordsShift(
   const firstLine = lines[0];
   const lastLine = lines.at(-1);
   if (!firstLine || !lastLine) return undefined;
-  const first = lineLook(firstLine, el, heightsOf);
-  const last = lineLook(lastLine, el, heightsOf);
+  // Worked out at the size the box is drawn (Chromium rounds a font's heights to whole pixels there): PowerPoint's own
+  // shrink where the box fits at it (render/shrink-to-fit.ts starts from it), else its full size; then given back
+  // unfitted, as the box's fit (--fit) scales it.
+  const fit = el.style.shrinkToFit === true ? (sourceFitScale(el) ?? 1) : 1;
+  const first = lineLook(firstLine, el, heightsOf, fit);
+  const last = lineLook(lastLine, el, heightsOf, fit);
   if (!first || !last) return undefined;
-  const shift = deckFirstLineShift(el.style.verticalAlign, first, last);
+  const shift = deckFirstLineShift(el.style.verticalAlign, first, last, chromiumFirstBaseline) / fit;
   return Number.isFinite(shift) ? Math.round(shift * 1000) / 1000 : undefined;
 }
 
