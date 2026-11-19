@@ -563,6 +563,16 @@ test('without a graphics chip a deck’s moving slide known opaque is backed in 
     const halfway = async (id: string) => {
       await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
       await expect.poll(async () => (await current(win))?.slideIndex).toBe(0);
+      // Main can answer both commands before a page has painted the first slide. Its outgoing layer needs that
+      // first render; wait for both pages, not just Main's snapshot, before asking for the moving slide.
+      const first = await current(win);
+      if (!first) throw new Error('The first slide was not put up.');
+      for (const page of [hall, stream])
+        await expect(page.locator('[data-layer="slide"] [data-slide-in] [data-slide]')).toHaveAttribute(
+          'data-slide',
+          first.slide.id,
+        );
+
       await dispatch(win, { type: 'next' });
       await expect.poll(async () => (await current(win))?.slideIndex).toBe(1);
       const entered = await current(win);
