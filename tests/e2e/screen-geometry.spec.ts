@@ -13,6 +13,7 @@ import {
   placePart,
   warpMatrix,
 } from '../../src/shared/screen-geometry';
+import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
@@ -465,6 +466,7 @@ test('Screens: Adjust the picture… moves a corner by its numbers, the keys and
   await expect(dialog).toBeVisible();
   // The grid over the show while it is open.
   await expect(out.getByTestId('geometry-grid')).toHaveCount(1);
+  await expectNoSeriousA11yIssues(win, 'Adjust the picture…', '[data-testid="adjust-picture"]');
   // The top left corner moved by its numbers.
   const across = Math.round(px.width * 0.05);
   const down = Math.round(px.height * 0.04);
@@ -530,6 +532,7 @@ test('Screens: Adjust the picture… moves a corner by its numbers, the keys and
   const card = win.locator(`#screen-group-${groupId}`);
   await card.getByTestId('wide-picture-open').click();
   const wide = win.getByTestId('wide-picture');
+  await expectNoSeriousA11yIssues(win, 'One wide picture…', '[data-testid="wide-picture"]');
   await wide.getByTestId('wide-overlap').fill('300');
   await wide.getByTestId('wide-make').click();
   await expect(wide).toHaveCount(0);
