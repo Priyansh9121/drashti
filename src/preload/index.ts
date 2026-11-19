@@ -702,6 +702,9 @@ const bridge: DrashtiBridge = {
     assignDisplay: (groupId, displayId, options) =>
       invoke(IPC.screens.assignDisplay, groupId, displayId, options),
     updateScreen: (screenId, patch, options) => invoke(IPC.screens.updateScreen, screenId, patch, options),
+    widePicture: (groupId, overlap) => invoke(IPC.screens.widePicture, groupId, overlap),
+    separatePictures: (groupId) => invoke(IPC.screens.separatePictures, groupId),
+    adjusting: (screenId, on) => invoke(IPC.screens.adjusting, screenId, on),
     setJob: (displayId, job, options) => invoke(IPC.screens.setJob, displayId, job, options),
     lastSaid: () => invoke(IPC.screens.lastSaid),
     saidClosed: (id) => invoke(IPC.screens.saidClosed, id),
