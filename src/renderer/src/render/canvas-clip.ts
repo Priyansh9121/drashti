@@ -8,3 +8,13 @@ import { createContext } from 'react';
  * picture with black instead (output/PictureFrame.tsx).
  */
 export const CanvasClip = createContext(true);
+
+/**
+ * Whether the pictures that fade or move on this screen (a slide's two, a background's two) are drawn as layers of
+ * their own (x27, the owner's Q60-20): on a screen warped out of square that draws with a graphics chip. Chromium
+ * rasters anything under a perspective at a whole pixel a canvas pixel at least (3.5 times the plain picture's pixels on
+ * a 1024 x 768 display), and a picture painted afresh at each frame of its dissolve was rastered again at each: as a
+ * layer of its own it is rastered once and faded by the graphics chip. Without a chip (Chromium drawing in software) such
+ * layers cost more than the painting, so none are made there.
+ */
+export const OwnLayers = createContext(false);
