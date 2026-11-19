@@ -1,0 +1,153 @@
+# Playlists and wallpapers
+
+The left column holds the playlists, in folders, and under them the wallpapers. A playlist is the running order for one sabha: its rows go on the screens one after another.
+
+## Playlists and folders
+
+**What it is.** The list of playlists on the left. **+ New** makes a playlist, a folder (to keep playlists together), a smart playlist or a Repeat Slides playlist. The chosen one shows **Rename** and **Delete** at its end.
+
+**When you would use it.** Each week, to make or open the night's playlist.
+
+**How:**
+
+1. Press **+ New**, then **New playlist**.
+2. Type its name (for example "Placeholder Ravi Sabha") and press Enter.
+3. Click a playlist to open it in the middle.
+4. Drag a playlist onto a folder to put it there.
+
+![The operator window: the playlists on the left, one open in the middle](../screenshots/operator-1280x720.png)
+
+## The open playlist
+
+**What it is.** The middle of the window. A presentation, a PDF or a deck is a row with its name, and a row under it for each slide. A picture, a video, a sound and a video input are a row each. **One click on any row puts it on the screens at once.**
+
+**When you would use it.** All through the sabha.
+
+**How:**
+
+1. Click a row: it goes up at once.
+2. Click a presentation's name to fold its slides away, or open them again.
+3. **Cmd**-click (Ctrl-click on Windows) a row to choose it without putting it up.
+4. Right-click a row for its menu.
+
+![The open playlist: its rows, a header, and a deck's slides as rows](../screenshots/playlist-cards.png)
+
+## Changing a playlist
+
+**What it is.** Adding to a playlist, moving its rows and taking them out, each with **Undo**.
+
+**When you would use it.** While preparing, or when the running order changes during the sabha.
+
+**How:**
+
+1. To add: choose a row in the **Library** and press **Add to playlist**, or drag it onto the playlist.
+2. To bring in new files: press **Add files…** above the playlist, or drop files on it.
+3. To move a row: drag it, or choose it and press **Alt+↑** or **Alt+↓**.
+4. To take a row out: right-click it, then **Remove from playlist**.
+5. Press **Cmd+Z** (Ctrl+Z) to undo the last change.
+
+![Up and Down under the chosen row, and Add to playlist under the library's chosen presentation](../screenshots/playlist-up-down.png)
+
+## Smart playlists
+
+**What it is.** A playlist that follows a folder on the computer: whatever is put in that folder joins it by itself.
+
+**When you would use it.** When someone fills a shared folder with the week's pictures and videos.
+
+**How:**
+
+1. Press **+ New**, then **Smart Playlist from a Folder…**, and choose the folder.
+2. Or drop the folder anywhere on the window.
+3. Its line says which folder it follows and what is coming in.
+4. A row whose file left the folder says **Not in the folder**: **Remove the missing** takes those out.
+
+![A smart playlist following a placeholder folder](../screenshots/smart-playlist.png)
+
+## Repeat Slides
+
+**What it is.** A playlist whose pictures and slides go round by themselves, the last back to the first.
+
+**When you would use it.** For the lobby, or before the sabha starts.
+
+**How:**
+
+1. Press **+ New**, then **Repeat Slides**.
+2. Put pictures, decks and presentations in it.
+3. Set **Seconds each** and the **Transition** under its name.
+4. Press **Start**. LIVE says **Repeating**.
+5. Press **Stop (Esc)** to end it: the slide on the screens stays up.
+
+![Repeat Slides going round: LIVE says so, with Stop (Esc)](../screenshots/repeat-slides-1280x720.png)
+
+## When a video ends
+
+**What it is.** What a video row does at its end, kept for that row: **Wallpaper**, **Next item**, **Loop** or **Freeze**.
+
+**When you would use it.** For a video that should go round, or lead straight into the next row.
+
+**How:**
+
+1. Right-click the video's row in the playlist.
+2. Choose **When it ends**, then **Wallpaper**, **Next item**, **Loop** or **Freeze**.
+3. **Undo** takes the change back.
+
+![The open playlist with a placeholder video's row](../screenshots/playlist-cards.png)
+
+## Trimming a playlist's video
+
+**What it is.** A new video of just the part you want, for one row. The original file never changes.
+
+**When you would use it.** When only a few minutes of a long video are needed tonight.
+
+**How:**
+
+1. Right-click the video's row and choose **Trim (start, end and markers)…**.
+2. Set **Start** and **End** on its timeline.
+3. Press **Save**. The row says **Preparing** until the new video is ready.
+4. **Reset to original** puts the whole video back in that row.
+
+![The timeline of a placeholder video, with its start and end](../screenshots/markers-dialog.png)
+
+## Practise this playlist
+
+**What it is.** The whole playlist run in this window only, row by row, with a banner saying nothing goes to the screens, the phones or the stream.
+
+**When you would use it.** To rehearse before the sabha, or to train a volunteer.
+
+**How:**
+
+1. Open the playlist's menu (**⋯** in the middle, or right-click it on the left).
+2. Choose **Practise this playlist**.
+3. Use **Next**, **Back** and the keys as in a sabha.
+4. Press **Stop practising** when done.
+
+![The practice show: placeholder slides on this screen only, with its banner](../screenshots/practice-show.png)
+
+## Duplicate
+
+**What it is.** A copy of a playlist, every row in its order, named "… copy", just after it.
+
+**When you would use it.** To start this week's playlist from last week's.
+
+**How:**
+
+1. Open the playlist's menu (**⋯** in the middle, or right-click it on the left).
+2. Choose **Duplicate**.
+3. Rename the copy. **Undo** deletes it again.
+
+![A playlist's menu](../screenshots/share-with-phones.png)
+
+## Wallpapers
+
+**What it is.** The pictures the hall sees whenever nothing is up, under the playlists. Several pictures dropped on one wallpaper go round, each fading into the next.
+
+**When you would use it.** Before the sabha, and between items.
+
+**How:**
+
+1. Drop pictures on **Wallpapers**, or press **Import…** beside its heading.
+2. Click a wallpaper to use it. Click it again to use none (black).
+3. Right-click it for **Edit wallpaper…** (order, **Seconds each**, **Fade**), **Rename…** and **Delete…**.
+4. **F12** (or **Wallpaper** along the bottom) puts it over whatever is up.
+
+![The Wallpapers under the playlists: three placeholder wallpapers, the second chosen](../screenshots/wallpapers.png)
