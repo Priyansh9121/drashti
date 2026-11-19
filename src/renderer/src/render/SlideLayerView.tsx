@@ -25,7 +25,9 @@ import {
   deckTransitionFrame,
   takesTime,
   transitionFrame,
+  type SlideFrame,
   type SlidePlace,
+  type SlideShift,
   type WipeBand,
   type WipeBandStyles,
   wipeBandStyles,
@@ -297,8 +299,20 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
     el.style.transform = transform;
     el.style.clipPath = clip;
   };
-  set(els.in, frame ? String(frame.in.opacity) : '', frame?.in.transform ?? '', frame?.in.clip);
-  set(els.out, frame ? String(frame.out.opacity) : '', frame?.out.transform ?? '', frame?.out.clip);
+  const chipless = drawsWithoutChip();
+  // Without a graphics chip, a deck's own Push, Cover or Uncover alone (X11): each slide it moves is a layer of its own
+  // while it moves, by a 3D translation in whole device pixels, so nothing is painted or rastered again as it crosses
+  // (drawn again each frame, a moving slide cost the hall's screen, the stream's page and LIVE most of two cores while
+  // streaming); its shade inside it, on its band holder, drawn into the layer once. With a chip, under Drashti's own
+  // transition set over the deck's, before it starts and once it is over: as before.
+  const k = how.devicePerCanvas;
+  /** Device pixels a canvas pixel while it moves a slide on a layer of its own, or null when it draws as before. */
+  const whole =
+    chipless && native !== undefined && !native.over && k !== undefined && k > 0 && p > 0 && p < 1 ? k : null;
+  const moveOf = (f: SlideFrame | undefined): string =>
+    !f ? '' : whole !== null && f.shift ? wholePixelMove(f.shift, how, whole) : f.transform;
+  set(els.in, frame ? String(frame.in.opacity) : '', moveOf(frame?.in), frame?.in.clip);
+  set(els.out, frame ? String(frame.out.opacity) : '', moveOf(frame?.out), frame?.out.clip);
   // A deck's own transition only (13 Nov 2026): PowerPoint's Wipe band (a mask) and the shade of the slide its Cover or
   // Uncover moves (a filter). Written only when set or to clear them, so nothing else ever touches them.
   const deckOnly = (el: HTMLDivElement | null, mask = '', filter = '') => {
@@ -308,11 +322,17 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
   };
   // PowerPoint's Wipe band (Session 58), as this page draws best (render/chipless.ts): with a graphics chip a mask on
   // the slide's box, a new one each frame; without one on the slide's band boxes, only moved. At rest when none.
-  const chipless = drawsWithoutChip();
   const slideMask = (band: WipeBand | undefined) =>
     band && !chipless ? wipeSlideMask(band, how.placeIn, how) : undefined;
-  deckOnly(els.in, frame?.in.mask ?? slideMask(frame?.in.band), frame?.in.filter);
-  deckOnly(els.out, frame?.out.mask ?? slideMask(frame?.out.band), frame?.out.filter);
+  const inside = (f: SlideFrame | undefined) => whole !== null && f?.shift !== undefined;
+  deckOnly(els.in, frame?.in.mask ?? slideMask(frame?.in.band), inside(frame?.in) ? '' : frame?.in.filter);
+  deckOnly(
+    els.out,
+    frame?.out.mask ?? slideMask(frame?.out.band),
+    inside(frame?.out) ? '' : frame?.out.filter,
+  );
+  shadeInside(els.bandIn, inside(frame?.in) ? (frame?.in.filter ?? '') : '');
+  shadeInside(els.bandOut, inside(frame?.out) ? (frame?.out.filter ?? '') : '');
   const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1;
   const bandOf = (band: WipeBand | undefined) =>
     band && chipless ? wipeBandStyles(band, how.placeIn, how, dpr) : null;
@@ -330,6 +350,37 @@ export function paintLayers(els: Layers, how: Paint, p: number): void {
     set(els.wordsOut, String(words.out.opacity), words.out.transform, words.out.clip);
     if (move === 'lines' || move === 'words') paintUnits(els, how, p);
   }
+}
+
+/**
+ * A deck's own move (X11) by a 3D translation in whole device pixels, `k` device pixels a canvas pixel: its own layer,
+ * drawn once at the screen's own scale and only moved (a 2D move would be painted again each frame without a chip;
+ * will-change would draw it at the canvas's scale and shrink it each frame on a smaller screen). Within half a device
+ * pixel of PowerPoint's move.
+ */
+function wholePixelMove(shift: SlideShift, how: Pick<Paint, 'width' | 'height'>, k: number): string {
+  const css = shift.of === 'box' ? shift.by * (shift.axis === 'x' ? how.width : how.height) : shift.by;
+  const whole = Math.round(css * k) / k;
+  return shift.axis === 'x'
+    ? `translate3d(${String(whole)}px, 0px, 0px)`
+    : `translate3d(0px, ${String(whole)}px, 0px)`;
+}
+
+/** The shade of a deck's own Cover or Uncover inside its moving slide's layer (X11): on its band holder, or none. */
+function shadeInside(boxes: BandBoxes | undefined, filter: string): void {
+  const holder = boxes?.holder;
+  if (holder && (holder.style.filter || '') !== filter) holder.style.filter = filter;
+}
+
+/**
+ * Device pixels a canvas pixel where the slide layer `root` (the canvas's size) is drawn: its scale on the screen times
+ * the pixel ratio; undefined until it has a size.
+ */
+function devicePerCanvas(root: HTMLElement | null, canvasWidth: number): number | undefined {
+  if (!root || !(canvasWidth > 0)) return undefined;
+  const shown = root.getBoundingClientRect().width;
+  const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1;
+  return shown > 0 ? (shown / canvasWidth) * dpr : undefined;
 }
 
 /** A slide's band boxes at rest, as its JSX draws them: filling the slide's box. */
@@ -415,6 +466,7 @@ export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'bandOut'>): void 
   if (before.style.filter !== '') before.style.filter = '';
   before.style.zIndex = '';
   paintBand(els.bandOut, null);
+  shadeInside(els.bandOut, '');
 }
 
 /** The pictures and videos in `root` that cannot be drawn yet, and the deck's first clip among them, if any. */
@@ -698,6 +750,11 @@ export function SlideLayerView({
   useEffect(() => {
     if (start === null) return;
     let frame = 0;
+    // Without a graphics chip, where a deck's own move lands on whole device pixels (X11): read once as it starts.
+    const k =
+      drawsWithoutChip() && native !== undefined && !native.over
+        ? devicePerCanvas(rootRef.current, width)
+        : undefined;
     const tick = () => {
       const now = engineNow();
       const p = fadeAt({ ms, start }, now);
@@ -722,6 +779,7 @@ export function SlideLayerView({
           scaleOut,
           placeIn: { x: inX, y: inY, width: inWidth, height: inHeight },
           placeOut: { x: outX, y: outY, width: outWidth, height: outHeight },
+          ...(k === undefined ? {} : { devicePerCanvas: k }),
         },
         p,
       );
@@ -773,6 +831,10 @@ export function SlideLayerView({
       });
       return;
     }
+    const k =
+      fading && drawsWithoutChip() && native !== undefined && !native.over
+        ? devicePerCanvas(rootRef.current, width)
+        : undefined;
     paintLayers(
       {
         in: inRef.current,
@@ -794,6 +856,7 @@ export function SlideLayerView({
         scaleOut,
         placeIn: { x: inX, y: inY, width: inWidth, height: inHeight },
         placeOut: { x: outX, y: outY, width: outWidth, height: outHeight },
+        ...(k === undefined ? {} : { devicePerCanvas: k }),
       },
       start !== null ? fadeAt({ ms, start }, engineNow()) : 0,
     );
