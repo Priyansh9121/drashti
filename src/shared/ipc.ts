@@ -1,3 +1,4 @@
+import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
 import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { SlidePictureResult } from './slide-picture';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
@@ -309,6 +310,12 @@ export const IPC = {
    * Live captions (Session 55, Part 10, shared/captions.ts): in Pro Mode only. A window is never sent a word heard:
    * only how captions stand, and the lines to draw through the engine's state.
    */
+  videoCaptions: {
+    view: 'video-captions:view',
+    select: 'video-captions:select',
+    add: 'video-captions:add',
+    changed: 'video-captions:changed',
+  },
   captions: {
     view: 'captions:view',
     /** Turn captions on or off on this computer (the model downloads once when first turned on). */
@@ -1165,6 +1172,9 @@ export const IPC = {
 
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
+  [IPC.videoCaptions.view]: { args: [mediaId: string]; result: VideoCaptionChoice };
+  [IPC.videoCaptions.select]: { args: [mediaId: string, trackId: string | null]; result: VideoCaptionResult };
+  [IPC.videoCaptions.add]: { args: [mediaId: string]; result: VideoCaptionResult };
   [IPC.ready.check]: { args: [openPlaylistId: string | null]; result: ReadyReport | null };
   [IPC.quickBar.view]: { args: []; result: QuickPin[] };
   [IPC.quickBar.set]: { args: [pins: QuickPin[]]; result: QuickBarResult };
@@ -1751,6 +1761,7 @@ export interface EventContract {
   [IPC.opening.key]: { at: number };
   [IPC.opening.screens]: { at: number };
   [IPC.opening.open]: { at: number };
+  [IPC.videoCaptions.changed]: { mediaId: string; view: VideoCaptionChoice };
   [IPC.captions.changed]: CaptionsStatus;
   [IPC.captions.open]: { at: number };
   [IPC.updates.changed]: UpdateView;

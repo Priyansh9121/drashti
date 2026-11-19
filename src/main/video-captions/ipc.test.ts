@@ -27,11 +27,10 @@ function setup() {
     return true;
   });
   const put = vi.fn(() => true);
-  const pick = vi.fn(async () => '/placeholder/Sample.en.srt' as string | null);
-  const read = vi.fn(async () => ({
-    track: TRACK as VideoCaptionTrack | null,
-    problem: null as string | null,
-  }));
+  const pick = vi.fn((): Promise<string | null> => Promise.resolve('/placeholder/Sample.en.srt'));
+  const read = vi.fn((): Promise<{ track: VideoCaptionTrack | null; problem: string | null }> =>
+    Promise.resolve({ track: TRACK, problem: null }),
+  );
   const changed = vi.fn();
   registerVideoCaptionIpc({
     fromOperator: () => allowed,
@@ -39,7 +38,7 @@ function setup() {
     pick,
     reader: { read },
     changed,
-    write: async (_guard, run) => run(),
+    write: (_guard, run) => Promise.resolve(run()),
   });
   return {
     call: (name: string, ...args: unknown[]) => handlers.get(`video-captions:${name}`)?.({}, ...args),
@@ -90,9 +89,9 @@ describe('operator video caption requests', () => {
     t.pick.mockResolvedValueOnce(null);
     expect(await t.call('add', 'video')).toMatchObject({ ok: true });
     expect(t.read).not.toHaveBeenCalled();
-    t.read.mockImplementationOnce(async () => {
+    t.read.mockImplementationOnce(() => {
       t.revoke();
-      return { track: TRACK, problem: null };
+      return Promise.resolve({ track: TRACK, problem: null });
     });
     expect(await t.call('add', 'video')).toMatchObject({ ok: false });
     expect(t.put).not.toHaveBeenCalled();
