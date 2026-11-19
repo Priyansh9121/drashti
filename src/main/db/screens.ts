@@ -32,6 +32,8 @@ export interface SavedScreen {
   scaling: ScalingMode;
   enabled: boolean;
   feed: ScreenFeed | null;
+  /** Its geometry as stored (JSON, x27), or null for nothing set. */
+  geometry: string | null;
   position: number;
 }
 
@@ -321,6 +323,7 @@ export class ScreenRepo {
         scaling: r.scaling,
         enabled: r.enabled === 1,
         feed: r.feed,
+        geometry: null,
         position: r.position,
       })),
     };
