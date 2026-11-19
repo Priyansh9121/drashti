@@ -306,15 +306,21 @@ test('Audio’s and Video’s levels and mutes, live: each sound plays at its le
 
   // Simple Mode has the same two lines under LIVE: Video muted there too, and said.
   await win2.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
-  const simple = win2.getByTestId('sound-levels');
+  const simpleMode = win2.getByTestId('simple-mode');
+  await expect(simpleMode).toBeVisible();
+  // Its own, in Simple Mode's right column (Pro Mode's is gone).
+  const simple = simpleMode.getByTestId('sound-levels');
   await expect(simple).toHaveCount(1);
   await simple.scrollIntoViewIfNeeded();
   await expect(simple).toBeVisible();
-  await controls(win2, 'video').mute.click();
-  await expect(controls(win2, 'video').mute).toHaveText('Muted');
+  const videoMute = simple.getByTestId('sound-mute-video');
+  await expect(simple.getByTestId('sound-level-video-slider')).toHaveValue('95');
+  await videoMute.click();
+  await expect(videoMute).toHaveText('Muted');
   await expect(win2.getByTestId('sound-muted-status')).toHaveText('Video muted');
   expect((await snapshot(win2)).sound?.levels?.video).toEqual({ level: 0.95, muted: true });
-  await controls(win2, 'video').mute.click();
+  await videoMute.click();
+  await expect(videoMute).toHaveText('Sound on');
   await expect(win2.getByTestId('sound-muted-status')).toHaveText('');
   await expectNoSeriousA11yIssues(win2, 'Simple Mode’s sound levels', '[data-testid="sound-levels"]');
   await again.app.close();
