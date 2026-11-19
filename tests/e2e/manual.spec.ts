@@ -143,11 +143,12 @@ test('Help › Drashti Manual…: first under Help, every chapter offline, a pic
   await app.close();
 });
 
-test('Save as PDF… writes the whole manual where you choose, a chapter from a new page; Print… prints the same pages', async () => {
+test('Print… and Save as PDF… wait while anything is up, saying so; with nothing up, Save as PDF… writes the whole manual where you choose, a chapter from a new page, and Print… prints the same pages; on air, a request is refused in words', async () => {
   test.setTimeout(120_000);
   const folder = mkdtempSync(join(tmpdir(), 'drashti-manual-'));
   const pdf = join(folder, 'Placeholder manual.pdf');
-  const { app } = await launchApp();
+  // A test can say the stream is on air (DRASHTI_TEST_ON_AIR_HOOK), as the conversions' tests do.
+  const { app } = await launchApp({ DRASHTI_TEST_ON_AIR_HOOK: '1' });
   // The system's save dialog answers with the file above (and says where it offered first); the system's print
   // dialog is never shown: what Print… sends is written down instead, from the page it prints.
   await app.evaluate(({ app: electronApp, dialog }, path) => {
@@ -178,11 +179,32 @@ test('Save as PDF… writes the whole manual where you choose, a chapter from a 
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  // Something up: Print… and Save as PDF… wait, with one plain line beside them (the lead's call, 20 Nov 2026, under
+  // the owner's word that nothing in the manual's window may touch the show), until nothing is up, on air or recording.
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const first = (await d.library.listPresentations())[0];
+    if (!first) throw new Error('No presentation to put up');
+    await d.engine.dispatch({ type: 'goLive', presentationId: first.id, slideIndex: 0 });
+  });
+  await expect(win.getByTestId('live-text')).toContainText('Live:');
   await chooseMenuItem(app, 'manual');
   const manual = win.getByTestId('manual');
   await expect(manual).toBeVisible();
+  const print = manual.getByRole('button', { name: 'Print…' });
+  const save = manual.getByRole('button', { name: 'Save as PDF…' });
+  const waits = manual.getByTestId('manual-waits');
+  await expect(waits).toHaveText('Print or save the manual when nothing is up, on air or recording.');
+  await expect(print).toBeDisabled();
+  await expect(save).toBeDisabled();
+  await expectNoSeriousA11yIssues(win, 'the manual while something is up');
+  // Nothing up (Clear all): both as before.
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' }));
+  await expect(waits).toHaveCount(0);
+  await expect(print).toBeEnabled();
+  await expect(save).toBeEnabled();
 
-  await manual.getByRole('button', { name: 'Save as PDF…' }).click();
+  await save.click();
   await expect(manual.getByRole('status')).toContainText('Saved the manual as a PDF', { timeout: 60_000 });
   const offered = await app.evaluate(
     () => (globalThis as { drashtiOffered?: string[] }).drashtiOffered ?? [],
@@ -208,6 +230,20 @@ test('Save as PDF… writes the whole manual where you choose, a chapter from a 
     .toEqual([{ title: 'Drashti Manual', chapters: CHAPTERS.length }]);
   // Neither touched the show: the manual is still open where it was.
   await expect(manual.getByRole('heading', { level: 1 })).toHaveText('Start here');
+  // On air (as the main process sees it): a request is refused in words, nothing asked and nothing made.
+  await app.evaluate(() => {
+    (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true);
+  });
+  await save.click();
+  await expect(manual.getByRole('status')).toHaveText(
+    'Print or save the manual when nothing is up, on air or recording: clear what is up, and end the stream and the recording first.',
+  );
+  expect(
+    await app.evaluate(() => (globalThis as { drashtiOffered?: string[] }).drashtiOffered ?? []),
+  ).toHaveLength(1);
+  await app.evaluate(() => {
+    (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false);
+  });
   await win.keyboard.press('Escape');
   await expect(manual).toBeHidden();
   await app.close();
