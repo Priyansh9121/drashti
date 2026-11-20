@@ -6,6 +6,8 @@ Under the live picture are two levels, **Audio** and **Video**, and under them *
 
 **What it is.** Lists of sounds that play one after another, with short fades, whatever goes on the screens.
 
+The new timing, Find and M3U controls are in Pro Mode.
+
 **When you would use it.** For music before the sabha, or between its parts.
 
 **How:**
