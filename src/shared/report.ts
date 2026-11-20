@@ -357,3 +357,16 @@ export function reportStateWords(s: ReportStateView): string {
       }
   }
 }
+
+// ---- a node's report, handed to Main (the owner's Q60-42, 2) ----
+
+/** What a node hands its Main: the report as made on the node, its files' data, and the node's own version. */
+export interface NodeReportBody {
+  v: 1;
+  node: { version: string; platform: string };
+  report: ReportCallReport;
+  data: Record<string, string>;
+}
+
+/** Main's answer to a node's report: taken (it goes from Main by itself), or why not. */
+export type NodeReportAnswer = { ok: true; reference: string } | { ok: false; message: string };

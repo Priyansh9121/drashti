@@ -1,4 +1,5 @@
 import { controllerRequestSchema, type ControllerRequest } from '../../shared/controller-actions';
+import type { NodeReportAnswer } from '../../shared/report';
 import { RateGate } from '../rate-gate';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, statSync } from 'node:fs';
@@ -97,6 +98,8 @@ export interface LinkHost {
   /** This copy of the engine state fell behind: send a fresh snapshot. */
   resync(): void;
   log(level: 'info' | 'warn', message: string): void;
+  /** A paired node's report (x49), for Main to send on: Main's answer, or null with none. */
+  report?(nodeId: string, body: Uint8Array): Promise<NodeReportAnswer | null>;
 }
 
 export type LinkStartResult = { ok: true; port: number } | { ok: false; message: string };

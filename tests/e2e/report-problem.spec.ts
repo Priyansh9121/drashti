@@ -6,7 +6,7 @@ import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fix
 import type { SentMail } from '../access-core';
 import type { AccessStandIn } from '../access-standin';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { PLACEHOLDER_PERSON, answerAgain } from './access';
+import { PLACEHOLDER_PERSON, answerAgain, standInOf } from './access';
 import {
   chooseMenuItem,
   holdStill,
@@ -15,6 +15,7 @@ import {
   operatorPage,
   operatorReady,
 } from './helpers';
+import { launchMain, launchNode, pairNode } from './nodes';
 
 /*
  * Help › Report a Problem… (x49, the owner's Q60-38 and his "Yes, all A" to Q60-42): any person let in tells the admin
@@ -240,4 +241,42 @@ test('kept while the access list cannot be reached, and while the stream is on a
   // Each report emailed once, however often it was tried.
   await holdStill(() => access.list.mailbox.length === before + 4, 3000, 'no report is emailed twice');
   await app.close();
+});
+
+test('a node’s Report a Problem… goes through the Main it is paired with (Q60-42, 2): handed over, then emailed by Main, naming the node', async () => {
+  test.setTimeout(240_000);
+  const main = await launchMain();
+  const node = await launchNode();
+  await pairNode(main, node);
+  const access = standInOf(main.userData);
+  const before = access.list.mailbox.length;
+
+  await chooseMenuItem(node.app, 'report-problem');
+  const dialog = node.page.getByRole('dialog', { name: 'Report a Problem' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/^It goes to the admin through Main/u)).toBeVisible();
+  await chooseFeature(dialog, 'second computer', 'A second computer (the node)');
+  await dialog
+    .getByLabel('What went wrong with A second computer (the node)?')
+    .fill('Placeholder: the node’s screen lags.');
+  await dialog.getByRole('checkbox', { name: /^Diagnostics/u }).click();
+  await dialog.getByRole('button', { name: 'Review…' }).click();
+  await expect(dialog.getByTestId('report-review-text')).toContainText(
+    'Placeholder: the node’s screen lags.',
+  );
+  await dialog.getByRole('button', { name: 'Send' }).click();
+  await expect(dialog.getByText(/^Handed to Main/u)).toBeVisible();
+
+  const [admin, note] = await mailsSince(access, before, 2);
+  expect(admin?.body).toContain('Computer: the node ');
+  expect(admin?.body).toContain(', through Main ');
+  expect(admin?.body).toContain('Placeholder: the node’s screen lags.');
+  const files = admin?.attachments ?? [];
+  expect(files.map((f) => f.type)).toEqual(['text/plain']);
+  expect(Buffer.from(files[0]?.base64 ?? '', 'base64').toString('utf8')).toContain(
+    '== Drashti diagnostics (node) ==',
+  );
+  expect(note?.to).toBe(PLACEHOLDER_PERSON);
+  await node.app.close();
+  await main.app.close();
 });
