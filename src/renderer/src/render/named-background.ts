@@ -3,7 +3,8 @@ import { type LiveGroupLook, shows } from '../../../shared/looks';
 import { pipName, pipShownFor } from './pip';
 
 /*
- * A live background a page names instead of drawing (Session 48: another app's window; Session 50: a video input):
+ * A live background a page names instead of drawing (Session 48: another app's window; Session 50: a video input;
+ * alpha.20, slice 8: a stream link):
  * it is on Main's computer only. A phone's remote names it, with Clear (web/remote), and can never choose one. A
  * stage layout's audience picture box names it in the same words where it cannot be drawn (Session 51: a tablet's
  * stage display, a node's stage screen), with the picture-in-picture box's, so the performers are not left with
@@ -11,7 +12,7 @@ import { pipName, pipShownFor } from './pip';
  */
 
 export interface NamedBackground {
-  kind: 'window' | 'input';
+  kind: 'window' | 'input' | 'link';
   /** The words before its name ("Video input:"). */
   label: string;
   name: string;
@@ -20,6 +21,7 @@ export interface NamedBackground {
 export function namedBackground(background: BackgroundLayer | null | undefined): NamedBackground | null {
   if (background?.kind === 'window') return { kind: 'window', label: 'A window:', name: background.name };
   if (background?.kind === 'input') return { kind: 'input', label: 'Video input:', name: background.name };
+  if (background?.kind === 'link') return { kind: 'link', label: 'A stream link:', name: background.name };
   return null;
 }
 

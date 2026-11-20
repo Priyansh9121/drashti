@@ -153,7 +153,8 @@ export function ControllerView({ view }: { view: SharedView }) {
                           : 'No slide up'}
                 </p>
                 {(state.layers.background?.kind === 'input' ||
-                  state.layers.background?.kind === 'window') && (
+                  state.layers.background?.kind === 'window' ||
+                  state.layers.background?.kind === 'link') && (
                   <p className="text-xs text-muted">{state.layers.background.name} is on Main.</p>
                 )}
               </div>

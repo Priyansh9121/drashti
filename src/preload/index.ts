@@ -601,6 +601,14 @@ const bridge: DrashtiBridge = {
     useBroadcast: (profileId, broadcastId) => invoke(IPC.youtube.useBroadcast, profileId, broadcastId),
     endBroadcast: (profileId) => invoke(IPC.youtube.endBroadcast, profileId),
   },
+  liveLink: {
+    show: (link) => invoke(IPC.liveLink.show, link),
+    stop: () => invoke(IPC.liveLink.stop),
+    status: () => invoke(IPC.liveLink.status),
+    last: () => invoke(IPC.liveLink.last),
+    join: (linkId) => invoke(IPC.liveLink.join, linkId),
+    onChanged: (listener) => on(IPC.liveLink.changed, listener),
+  },
   liveWindow: {
     list: () => invoke(IPC.liveWindow.list),
     show: (id) => invoke(IPC.liveWindow.show, id),
