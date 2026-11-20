@@ -44,7 +44,18 @@ export interface MediaInfo {
    */
   container?: string | null;
   durationMs: number | null;
-  video: { codec: string; pixFmt: string; width: number; height: number; still: boolean } | null;
+  /**
+   * Its first picture. `interlaced` (alpha.20, x47): FFmpeg says its fields come one after the other ("top first",
+   * "bottom first"); left out for a progressive picture, or one FFmpeg says nothing of.
+   */
+  video: {
+    codec: string;
+    pixFmt: string;
+    width: number;
+    height: number;
+    still: boolean;
+    interlaced?: true;
+  } | null;
   audio: { codec: string } | null;
 }
 
@@ -74,12 +85,24 @@ export function parseFfmpegInfo(text: string): MediaInfo {
       };
       continue;
     }
-    const v = /Stream #\S+: Video: (\w+)[^,]*, (\w+)(?:\([^)]*\))?, (\d+)x(\d+)/u.exec(line);
+    // Its pixels' brackets may hold one more pair: "yuv420p(tv, top coded first (swapped))".
+    const v = /Stream #\S+: Video: (\w+)[^,]*, (\w+)(?:\(((?:[^()]|\([^()]*\))*)\))?, (\d+)x(\d+)/u.exec(
+      line,
+    );
     if (v && !video) {
       // A picture is one frame: no frame rate, or a cover picture ("attached pic").
       const still =
         line.includes('attached pic') || !/fps|tbr/u.test(line) || line.includes('Main Still Picture');
-      video = { codec: v[1] ?? '', pixFmt: v[2] ?? '', width: Number(v[3]), height: Number(v[4]), still };
+      // Interlaced (alpha.20): its fields in turn, the top's or the bottom's first.
+      const interlaced = /(^|, )(top|bottom)\b/u.test(v[3] ?? '');
+      video = {
+        codec: v[1] ?? '',
+        pixFmt: v[2] ?? '',
+        width: Number(v[4]),
+        height: Number(v[5]),
+        still,
+        ...(interlaced ? { interlaced: true as const } : {}),
+      };
       continue;
     }
     const a = /Stream #\S+: Audio: (\w+)/u.exec(line);
@@ -100,6 +123,13 @@ export const PLAYER = {
   video: new Set(['h264', 'vp8', 'vp9', 'av1']),
   /** The H.264 Chromium decodes: 8-bit 4:2:0 (10-bit or 4:2:2 H.264 plays black). */
   h264PixelFormats: new Set(['yuv420p', 'yuvj420p']),
+  /**
+   * The largest H.264 picture it draws everywhere (alpha.20, x47; x46's probe x46-1120-112649-63694: an 8K one went up
+   * and was never drawn on Windows): 4096 × 2304's pixels (level 5.2's largest), and no side over 4096. A larger one is
+   * converted by itself to a copy no taller than `fitHeight` (the lead's call: 2160p).
+   */
+  h264Largest: { pixels: 4096 * 2304, side: 4096 },
+  fitHeight: 2160,
   /**
    * HEVC plays where the computer decodes it: Chromium says (convert/plays-hevc.ts, asked in a page of its own), and
    * since Session 51 the import is told, which converts it by itself where it cannot.
@@ -142,11 +172,28 @@ export type AtImport =
 const pictureOf = (kind: 'video' | 'audio', info: MediaInfo): MediaInfo['video'] =>
   kind === 'video' && info.video && !info.video.still ? info.video : null;
 
-/** Whether the player shows this picture: yes, no, or only where the computer decodes HEVC. */
+/**
+ * An H.264 picture larger than Drashti's player draws everywhere (alpha.20, x47): more pixels than 4096 × 2304, or a
+ * side over 4096 (an 8K video). A 4K one, a phone's upright 4K one and DCI 4K play as they are.
+ */
+export function tooLarge(video: { codec: string; width: number; height: number }): boolean {
+  return (
+    video.codec === 'h264' &&
+    (video.width * video.height > PLAYER.h264Largest.pixels ||
+      Math.max(video.width, video.height) > PLAYER.h264Largest.side)
+  );
+}
+
+/**
+ * Whether the player shows this picture: yes, no, or only where the computer decodes HEVC. An interlaced picture
+ * (alpha.20, the owner's "Yes, all A", P6 (b)) is made into a smooth progressive copy by itself, whatever its codec.
+ */
 function pictureVerdict(video: NonNullable<MediaInfo['video']>): 'plays' | 'no' | 'hevc' {
+  if (video.interlaced) return 'no';
   if (video.codec === PLAYER.hevc) return 'hevc';
   if (!PLAYER.video.has(video.codec)) return 'no';
-  return video.codec !== 'h264' || PLAYER.h264PixelFormats.has(video.pixFmt) ? 'plays' : 'no';
+  if (video.codec !== 'h264') return 'plays';
+  return PLAYER.h264PixelFormats.has(video.pixFmt) && !tooLarge(video) ? 'plays' : 'no';
 }
 
 /**
@@ -354,10 +401,13 @@ export function describeMedia(kind: 'video' | 'audio', info: MediaInfo, ext: str
   const sound = info.audio;
   if (picture) {
     const named = PICTURE_NAMES[picture.codec] ?? picture.codec;
-    const shown =
-      picture.codec === 'h264' && !PLAYER.h264PixelFormats.has(picture.pixFmt)
-        ? `${named} (${picture.pixFmt})`
-        : named;
+    // What makes it one Drashti converts (alpha.20: its size, and interlacing): "H.264 (7680 × 4320) video".
+    const why = [
+      ...(picture.codec === 'h264' && !PLAYER.h264PixelFormats.has(picture.pixFmt) ? [picture.pixFmt] : []),
+      ...(tooLarge(picture) ? [`${String(picture.width)} × ${String(picture.height)}`] : []),
+      ...(picture.interlaced ? ['interlaced'] : []),
+    ];
+    const shown = why.length > 0 ? `${named} (${why.join(', ')})` : named;
     const heard = sound ? ` with ${soundName(sound.codec)} sound` : '';
     return own(picture.codec) ? `${shown} video${heard}` : `${shown} video${heard} (${where})`;
   }
@@ -418,10 +468,13 @@ export function convertArgs(
     '-i',
     input,
   ];
+  // A picture larger than the player draws (alpha.20) is made no taller than 2160, whoever asked for the copy.
+  const fit = options.maxHeight ?? (info.video && tooLarge(info.video) ? PLAYER.fitHeight : undefined);
   const even =
-    options.maxHeight === undefined
-      ? 'scale=trunc(iw/2)*2:trunc(ih/2)*2'
-      : `scale=-2:'trunc(min(ih,${String(options.maxHeight)})/2)*2'`;
+    fit === undefined ? 'scale=trunc(iw/2)*2:trunc(ih/2)*2' : `scale=-2:'trunc(min(ih,${String(fit)})/2)*2'`;
+  // An interlaced picture (alpha.20, P6 (b)) is made progressive first: each frame from its two fields, at its own
+  // frame rate (bwdif, FFmpeg's own).
+  const smooth = info.video?.interlaced ? 'bwdif=mode=send_frame:deint=interlaced,' : '';
   switch (target) {
     case 'mp4':
       // A picture that plays is copied as it is (Session 50): only the container or the sound was wrong.
@@ -443,7 +496,7 @@ export function convertArgs(
         '0:v:0',
         ...(info.audio ? ['-map', '0:a:0'] : []),
         '-vf',
-        `${even},format=yuv420p`,
+        `${smooth}${even},format=yuv420p`,
         '-c:v',
         'libx264',
         '-preset',
@@ -462,7 +515,7 @@ export function convertArgs(
         '0:v:0',
         ...(info.audio ? ['-map', '0:a:0'] : []),
         '-vf',
-        `${even},format=yuva420p`,
+        `${smooth}${even},format=yuva420p`,
         '-c:v',
         'libvpx-vp9',
         '-pix_fmt',
@@ -490,6 +543,3 @@ export function convertArgs(
       return [...head, '-vn', '-map', '0:a:0', '-c:a', 'aac', '-b:a', '192k', output];
   }
 }
-
-/** Red (x47, slice 2): still to be written. */
-export const tooLarge = (_video: { codec: string; width: number; height: number }): boolean => false;
