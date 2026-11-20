@@ -1,3 +1,4 @@
+import { videoOverlapMs } from '../../shared/video-crossfade';
 import { type SavedVideoCue, restoredVideoCue } from '../recovery/video-cue';
 import {
   type CuedVideo,
@@ -751,7 +752,7 @@ export class ShowEngine {
     const span = playbackSpanMs(points, length);
     const outgoing = playbackSpanMs(bg.clip, bg.durationMs);
     // At most half each span: adjacent overlaps can never require a third decoder.
-    const durationMs = Math.min(ms, (span.end - span.start) / 2, (outgoing.end - outgoing.start) / 2);
+    const durationMs = videoOverlapMs(ms, span.end - span.start, outgoing.end - outgoing.start);
     if (durationMs <= 0) return null;
     const at = this.now() + playbackLeftMs(bg, bg.durationMs, this.now()) - durationMs;
     const from = `${bg.mediaId}@${bg.startedAt}`;
@@ -2956,6 +2957,8 @@ export class ShowEngine {
   }
 
   private resolve(command: EngineCommand): Resolved {
+    if (command.type === 'playItem' || command.type === 'setBackground' || command.type === 'moveTo')
+      this.canceledAutoFrom = null;
     switch (command.type) {
       case 'cueVideo':
         return this.prepareVideoCue(command.mediaId, command.playlist ?? null);

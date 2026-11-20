@@ -1,3 +1,4 @@
+import { videoOverlapMs } from './video-crossfade';
 import { mediaMarkersSchema } from './markers';
 import { playbackLeftMs, playbackSpanMs } from './media';
 import type { AudioLayer } from './engine/state';
@@ -35,10 +36,35 @@ export function orderedPlaylistItems<T extends { id: string }>(
   return out;
 }
 
+/** Only consecutive playable video rows with Next item overlap; an intervening picture or sound stops it. */
+function overlap(
+  first: PlaylistItemInfo | undefined,
+  second: PlaylistItemInfo | undefined,
+  ms: number,
+): number {
+  if (
+    first?.kind !== 'media' ||
+    first.media !== 'video' ||
+    first.whenEnds !== 'next' ||
+    second?.kind !== 'media' ||
+    second.media !== 'video' ||
+    first.missing ||
+    second.missing ||
+    first.unplayable !== null ||
+    second.unplayable !== null
+  )
+    return 0;
+  return videoOverlapMs(
+    ms,
+    first.playingMs ?? first.durationMs ?? 0,
+    second.playingMs ?? second.durationMs ?? 0,
+  );
+}
+
 /** Timed media in this playlist, between their own start and end points. */
 export function playlistTotals(
   items: readonly PlaylistItemInfo[],
-  _playback?: PlaylistPlayback,
+  playback?: PlaylistPlayback,
 ): {
   rows: number;
   durationMs: number;
@@ -52,6 +78,18 @@ export function playlistTotals(
     if (length == null) unknown++;
     else durationMs += length;
   }
+  const ms = playback?.crossfadeMs ?? 0;
+  if (ms > 0) {
+    const order = orderedPlaylistItems(items, playback?.playOrder ?? []).filter(
+      (i) =>
+        i.kind !== 'header' &&
+        i.kind !== 'placeholder' &&
+        !(i.kind === 'media' && (i.missing || i.unplayable !== null)),
+    );
+    for (let index = 1; index < order.length; index++)
+      durationMs -= overlap(order[index - 1], order[index], ms);
+    if (playback?.repeatAll) durationMs -= overlap(order.at(-1), order[0], ms);
+  }
   return { rows: items.length, durationMs, unknown };
 }
 
@@ -62,7 +100,7 @@ export function playlistLeftMs(
   liveId: string,
   leftMs: number,
   repeatAll: boolean,
-  _crossfadeMs = 0,
+  crossfadeMs = 0,
 ): number | null {
   if (repeatAll || !Number.isFinite(leftMs)) return null;
   const sorted = orderedPlaylistItems(items, order);
@@ -81,7 +119,7 @@ export function playlistLeftMs(
     if (item.kind !== 'media' || item.media === 'image' || item.whenEnds === 'loop') return null;
     const length = item.playingMs ?? item.durationMs;
     if (length == null) return null;
-    left += length;
+    left += length - overlap(previous, item, crossfadeMs);
     previous = item;
   }
   return left;

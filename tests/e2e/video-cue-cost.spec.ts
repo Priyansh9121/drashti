@@ -69,17 +69,17 @@ function toneAmplitudes(pcm: Buffer): { a: number; b: number }[] {
 test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades while a loopback stream encodes, three rotating rounds', async (_fixtures, info) => {
   test.setTimeout(180_000);
   let previousAffinity: string | null = null;
-  if (process.platform === 'win32') {
-    previousAffinity = powershell(
-      `$p=Get-Process -Id ${String(process.pid)}; $old=$p.ProcessorAffinity.ToInt64(); $p.ProcessorAffinity=3; $old`,
-    );
-    expect(previousAffinity).toMatch(/^\d+$/);
-  }
   const ffmpeg = testFfmpeg();
   if (!ffmpeg) throw new Error('The bundled encoder is required for S5 measuring');
   let running: Awaited<ReturnType<typeof setupVideoCue>> | null = null;
   let receiver: ReturnType<typeof rtmpListener> | null = null;
   try {
+    if (process.platform === 'win32') {
+      previousAffinity = powershell(
+        `$p=Get-Process -Id ${String(process.pid)}; $old=$p.ProcessorAffinity.ToInt64(); $p.ProcessorAffinity=3; $old`,
+      );
+      expect(previousAffinity).toMatch(/^\d+$/);
+    }
     const setup = await setupVideoCue(true);
     running = setup;
     const { app, win, hall, stream, ids, dir } = setup;
@@ -115,7 +115,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     });
     const status = () => win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status());
     await expect.poll(async () => (await status()).live.state, { timeout: 45_000 }).toBe('live');
-    if (process.platform === 'win32') expect((await status()).encoder).toMatch(/software/u);
+    const encoder = (await status()).encoder;
+    if (process.platform === 'win32') expect(encoder).toMatch(/software/u);
     const playlist = await win.evaluate(async (ids) => {
       const d = (globalThis as PageGlobals).drashti;
       const made = await d.playlists.create('Placeholder cost', null, false);
@@ -147,6 +148,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           type: 'setBackground',
           background: { kind: 'media', mediaId: ids[0], media: 'video', fit: 'fit', loop: true },
         });
+        await dispatch(win, { type: 'moveTo', playing: { layer: 'background' }, toMs: 0 });
         await expect(hall.locator(`video[data-media-id="${ids[0] ?? ''}"]`).first()).toHaveAttribute(
           'data-state',
           'ready',
@@ -236,7 +238,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           ? 'two-core Windows, software drawing and decode'
           : 'Mac, software drawing and decode',
       features,
-      encoder: (await status()).encoder,
+      encoder,
       samples,
       encodedFrames: media.videoFrames,
       blackFrames: black,

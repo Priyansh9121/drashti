@@ -21,3 +21,9 @@ export function keepCrossfadeMs(settings: string | null, crossfadeMs: number): s
   }
   return JSON.stringify({ ...before, crossfadeMs });
 }
+
+/** Consecutive overlaps share two decoders; their sum cannot consume an intervening video. */
+export function videoOverlapMs(requested: number, firstMs: number, secondMs: number): number {
+  if (![requested, firstMs, secondMs].every(Number.isFinite)) return 0;
+  return Math.max(0, Math.min(requested, firstMs / 2, secondMs / 2));
+}

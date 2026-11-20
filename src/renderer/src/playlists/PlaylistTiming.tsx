@@ -18,7 +18,7 @@ export function PlaylistTiming({
 }) {
   const now = useNow(1000);
   const state = useEngine((s) => s.state);
-  const totals = playlistTotals(items);
+  const totals = playlistTotals(items, playback);
   const cursor = state?.live.playlist;
   const item = cursor?.playlistId === playlistId ? items.find((i) => i.id === cursor.itemId) : null;
   const bg = state?.layers.background;
@@ -42,7 +42,14 @@ export function PlaylistTiming({
       : null;
   const chain =
     item && left !== null
-      ? playlistLeftMs(items, playback?.playOrder ?? [], item.id, left, playback?.repeatAll ?? false)
+      ? playlistLeftMs(
+          items,
+          playback?.playOrder ?? [],
+          item.id,
+          left,
+          playback?.repeatAll ?? false,
+          playback?.crossfadeMs ?? 0,
+        )
       : null;
   const endsAt = chain !== null && chain > 0 ? now + chain : null;
   return (

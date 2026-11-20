@@ -423,7 +423,13 @@ function BackgroundPlayer({
     else dispatch({ type: 'layer', layer, joined: seen === undefined });
   }
   const [seenCue, setSeenCue] = useState<VideoCue | null | undefined>(undefined);
-  if (seenCue !== cue) {
+  if (
+    seenCue !== cue ||
+    (cue &&
+      !slots.leaving &&
+      slots.incoming?.key !== slotKey(cue.background) &&
+      slots.shown?.key !== slotKey(cue.background))
+  ) {
     setSeenCue(cue);
     dispatch({ type: 'cue', cue: cue ?? null });
   }
