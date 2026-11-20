@@ -46,6 +46,6 @@ describe('a stream link’s sound', () => {
 
   it('is never in Drashti’s own stream’s mix, and none at all once Drashti has stopped', () => {
     expect(soundsOf(withLink()).some((s) => s.key.startsWith('link:'))).toBe(false);
-    expect(hallSoundsOf(withLink({ stopped: true }))).toEqual([]);
+    expect(hallSoundsOf(withLink({ stopped: { at: 1 } }))).toEqual([]);
   });
 });

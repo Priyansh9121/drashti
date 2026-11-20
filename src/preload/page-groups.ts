@@ -91,8 +91,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   // The hall's screens (a video input up now, Session 50: whether this computer has it, and how it stands).
   // A stream link up (alpha.20): each screen joins it (render/live-playback.ts).
   output: ['app', 'engine', 'liveLink', 'liveWindow', 'media', 'output', 'videoInputs'],
-  // The audio player.
-  audio: ['audio', 'engine', 'media'],
+  // The audio player (a stream link's sound joins as its pictures do, alpha.20).
+  audio: ['audio', 'engine', 'liveLink', 'media'],
   // The stream's picture.
   stream: ['app', 'engine', 'liveLink', 'liveWindow', 'media', 'output', 'stream', 'videoInputs'],
   // A node's own window, including its explicitly enabled shared show view. Main-only changes have no node handlers.
