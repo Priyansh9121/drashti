@@ -113,6 +113,13 @@ test('a long video taken off part-way: "Resume at 6:00" the next time, every scr
     const [id = ''] = await importAndGetIds(win, [longVideo(join(dir, 'Placeholder katha.mp4'), 630)]);
     expect(id).not.toBe('');
     await upAsBackground(win, id);
+    // Paused, then moved to 6:00 (a move while paused waits there), then taken off: kept exactly at 6:00. (Playing, it
+    // would be kept where it had played on to as it was taken off: the sound's test below.)
+    await moveTo(win, 'background', 300_000);
+    expect(
+      (await dispatch(win, { type: 'pausePlaying', playing: { layer: 'background' } })).ok,
+      'paused',
+    ).toBe(true);
     await moveTo(win, 'background', 360_000);
     await dispatch(win, { type: 'clearLayer', layer: 'background' });
     await expect.poll(async () => (await snapshot(win)).layers.background).toBeNull();

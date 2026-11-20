@@ -309,12 +309,17 @@ test('from a phone, as from the operator window: media with its skips, the stage
     // plays on from that track, as the window's Play does.
     await expect.poll(async () => (await layers(win)).audio).toBeNull();
     await tunes.getByRole('button', { name: 'Play Placeholder tunes' }).click();
+    // Seen from its first moment on its second track: started on the first (of 4 s), it would only come to the
+    // second by itself, later.
+    const seen: (number | undefined)[] = [];
     await expect
       .poll(async () => {
         const audio = (await layers(win)).audio;
-        return { playlist: audio?.music?.playlistId, index: audio?.music?.index };
+        if (audio?.music?.playlistId === music) seen.push(audio.music.index);
+        return seen.length;
       })
-      .toEqual({ playlist: music, index: 1 });
+      .toBeGreaterThan(0);
+    expect(seen[0], 'the track it starts on').toBe(1);
     await dispatch(win, { type: 'clearLayer', layer: 'audio' });
 
     // Next in words beside its picture, as the window's caption says it (D5 review): until then a phone showed only
