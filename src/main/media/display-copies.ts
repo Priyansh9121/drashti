@@ -130,7 +130,7 @@ export class DisplayCopies {
       const largest = this.latest.get(candidate.sha256);
       if (!largest || file.width * file.height >= largest.width * largest.height)
         this.latest.set(candidate.sha256, file);
-      if (!previous || previous.hash !== file.hash) this.deps.changed();
+      if (previous?.hash !== file.hash) this.deps.changed();
       return file;
     } catch {
       return null;
