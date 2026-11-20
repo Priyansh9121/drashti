@@ -288,6 +288,8 @@ export interface DrashtiBridge {
     remove(id: string): Promise<EventsOutResult>;
     rotate(id: string): Promise<EventsOutResult>;
     test(id: string): Promise<{ ok: boolean; message: string }>;
+    /** The new secret's Copy, by the main process (alpha.20); false when it could not be copied. */
+    copySecret(secret: string): Promise<boolean>;
     onChanged(listener: (view: EventsOutView) => void): () => void;
     /** File > Events Out… was chosen. */
     onOpen(listener: () => void): () => void;

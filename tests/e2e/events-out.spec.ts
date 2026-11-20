@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { type ElectronApplication, expect, test, type Page } from '@playwright/test';
 import { createHmac } from 'node:crypto';
 import { createServer, type IncomingHttpHeaders, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -415,5 +415,54 @@ test('a deck’s slide Drashti plays itself sends only the words on the screens,
     await app.close().catch(() => undefined);
     await r.close();
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * In Main: whether the clipboard holds exactly the secret the operator window shows. Only true or false leaves Main,
+ * so the secret (made by Drashti as the test runs) is never in the test's output, its report or CI's log.
+ */
+const clipboardHoldsTheSecret = (app: ElectronApplication) =>
+  app.evaluate(async ({ BrowserWindow, clipboard }) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      const shown: unknown = await w.webContents
+        .executeJavaScript(
+          `document.querySelector('[data-testid="events-secret-value"]')?.textContent ?? null`,
+        )
+        .catch(() => null);
+      if (typeof shown === 'string' && shown !== '') return (await clipboard.readText()) === shown;
+    }
+    return false;
+  });
+
+test('the new secret’s Copy puts it on the clipboard, checked in Main and never printed (alpha.20: a page’s own clipboard is refused)', async () => {
+  test.setTimeout(90_000);
+  const r = await receiver();
+  const { app } = await launchApp();
+  try {
+    const win = await operatorPage(app);
+    await win.setViewportSize({ width: 1280, height: 860 });
+    await operatorReady(win);
+    await chooseMenuItem(app, 'events-out');
+    const dialog = win.getByTestId('events-dialog');
+    await expect(dialog).toBeVisible();
+    // An address on this computer, with nothing ticked: nothing is sent to it.
+    await dialog.getByTestId('events-url').fill(r.url);
+    await dialog.getByTestId('events-add').click();
+    await expect(dialog.getByTestId('events-secret-value')).toBeVisible();
+    await dialog.getByTestId('events-secret-copy').click();
+    await expect
+      .poll(() => clipboardHoldsTheSecret(app), {
+        message: 'the clipboard holds the secret the window shows',
+      })
+      .toBe(true);
+    await expect(dialog.getByTestId('events-secret-copy')).toHaveText('Copied');
+  } finally {
+    // The secret never stays on the computer's clipboard.
+    await app.evaluate(({ clipboard }) => {
+      clipboard.clear();
+    });
+    await app.close().catch(() => undefined);
+    await r.close();
   }
 });
