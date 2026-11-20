@@ -7,8 +7,10 @@ import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
 import {
   audienceScreen,
+  dispatch,
   makeClip,
   notices,
+  openNewPlaylist,
   openPlaylist,
   OUT,
   row,
@@ -16,6 +18,7 @@ import {
   shown,
   wallpaperAndPicture,
 } from './hall-looks';
+import { makeTestTone } from './test-media';
 import {
   askWindow,
   poisonKills,
@@ -175,6 +178,92 @@ test('the sound player going down each time it loads with nothing to blame: afte
     await expect(simple).toHaveCount(0, { timeout: 10_000 });
     await letTimePass(win, 1000, 'it stays');
     expect(await playerNow(app)).toBe('follows');
+  } finally {
+    await app.close();
+  }
+});
+
+// Q60-52 A (the owner's, x53's question): a sound file (the music, not a video) that brings the sound player down each
+// time it loads: after the second time it comes off as Clear audio takes it, said by its name; the player back at once.
+test('the music that brings the sound player down each time it loads: after the second time it comes off as Clear audio takes it, with a notice naming it; the sound player back at once and a video heard; never given up', async () => {
+  test.setTimeout(240_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-sound-music-fails-'));
+  const tone = makeTestTone(join(dir, 'Placeholder music brings it down.wav'), { seconds: 60, hz: 523 });
+  const clip = makeClip(join(dir, 'Placeholder video after the music.mp4'), 'h264', 120, 659);
+  const { app } = await launchApp(SCREENS);
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const hall = await audienceScreen(app, win);
+    const screenId = (await hall.page.getByTestId('output-root').getAttribute('data-screen')) ?? '';
+    await wallpaperAndPicture(win, dir);
+    const [toneId = '', videoId = ''] = await importAndGetIds(win, [tone, clip]);
+    await dispatch(win, {
+      type: 'playAudio',
+      audio: { id: 'placeholder-music', title: 'Placeholder music', mediaId: toneId, volume: 1, loop: true },
+    });
+    await expect
+      .poll(() => soundOf(app, toneId), { timeout: 20_000, message: 'the music plays' })
+      .toBe('plays');
+
+    const t0 = Date.now();
+    await poisonWindow(app, SOUND, `audio[data-media-id="${toneId}"]`);
+    const musicUp = () =>
+      win.evaluate(
+        async () =>
+          (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.audio?.mediaId ?? null,
+      );
+    const offAfter = await expect
+      .poll(musicUp, { timeout: 15_000 })
+      .toBeNull()
+      .then(
+        () => Date.now() - t0,
+        () => -1,
+      );
+    const backAfter = await expect
+      .poll(() => playerNow(app), { timeout: 15_000 })
+      .toBe('follows')
+      .then(
+        () => Date.now() - t0,
+        () => -1,
+      );
+    await letTimePass(win, 2000, 'the sound player stays up');
+    const told = await notices(win);
+    // A video put up now is heard (the poison stays on, for the music only).
+    const { item } = await openNewPlaylist(win, 'Placeholder after the music', videoId);
+    await row(win, item).click();
+    await expect.poll(() => shown(hall.page, OUT), { timeout: 30_000 }).toBe('VIDEO');
+    const heardAfter = await expect
+      .poll(() => soundOf(app, videoId), { timeout: 20_000 })
+      .toBe('plays')
+      .then(
+        () => Date.now() - t0,
+        () => -1,
+      );
+    const events = (await watchdogEvents(app)).filter((e) => e.includes('audio player'));
+    await poisonOff(app, SOUND);
+    const result = {
+      kills: await poisonKills(app, SOUND),
+      musicOffAfterMs: offAfter,
+      playerBackAfterMs: backAfter,
+      videoHeardAfterMs: heardAfter,
+      hallLook: await screenLook(app, screenId),
+      told,
+      watchdog: events,
+    };
+    console.log(`X53 ${process.platform} (music) ${JSON.stringify(result)}`);
+    expect(
+      offAfter,
+      `the music comes off once the sound player keeps going down on it: ${JSON.stringify(result)}`,
+    ).toBeGreaterThan(0);
+    expect(told).toContainEqual(expect.stringMatching(/Placeholder music brings it down[\s\S]*came off/u));
+    expect(backAfter, 'the sound player back at once').toBeGreaterThan(0);
+    expect(heardAfter, 'a video put up after is heard').toBeGreaterThan(0);
+    expect(result.kills, 'down twice, then never again').toBeLessThanOrEqual(3);
+    expect(
+      events.some((e) => e.includes(' gave-up ')),
+      'never given up',
+    ).toBe(false);
   } finally {
     await app.close();
   }
