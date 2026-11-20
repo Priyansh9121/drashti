@@ -9,8 +9,8 @@ import { hasAlpha, type MediaInfo } from './plan';
 
 /** Shared worker hooks are supplied by x63's foundation; this service never starts a subprocess itself. */
 export type EditCopyOptions = CopyOptions & {
-  inspect(info: MediaInfo): void | string;
-  validate(info: MediaInfo): void | string;
+  inspect(info: MediaInfo): undefined | string;
+  validate(info: MediaInfo): undefined | string;
   strictPriority: true;
   preparePublish(temporary: string, signal: AbortSignal): Promise<void>;
 };
@@ -53,7 +53,7 @@ export class EditService {
     if (this.closed) return;
     if (this.active) {
       const current = this.deps.repo.read(this.active.sourceId);
-      if (!current || current.revision !== this.active.revision || current.state !== 'preparing')
+      if (current?.revision !== this.active.revision || current.state !== 'preparing')
         this.deps.conversions.cancelFile(this.active.job);
       return;
     }
@@ -97,6 +97,7 @@ export class EditService {
             ? error.message
             : 'The source video could not be prepared. Check its edits, then Save again.';
         }
+        return undefined;
       },
       args: (temporary) => {
         if (!plan) throw new Error('The video has not been read by the idle worker.');
@@ -112,6 +113,7 @@ export class EditService {
         )
           return 'The edited video did not have the expected picture, length or transparency. Check its source and Save again.';
         checked = read;
+        return undefined;
       },
       preparePublish: async (temporary, signal) => {
         if (!checked || !current() || !this.deps.idle())

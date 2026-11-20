@@ -251,6 +251,8 @@ export interface LookSource {
 }
 
 export interface EngineOptions {
+  /** Logical library identity for an immutable prepared playing file. */
+  sourceMediaId?: (mediaId: string) => string;
   /** Check new showings once; historic/recovered showings keep their immutable files. */
   prepareVideoEdits?: (previous: EngineState, next: EngineState, historic: boolean) => VideoEditPreparation;
   /** Drashti's own default transition, for presentations without one (a setting; a cut when left out). */

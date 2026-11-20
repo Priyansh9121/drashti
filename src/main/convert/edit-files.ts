@@ -48,7 +48,7 @@ export async function registerEditedFile(options: {
     combined.throwIfAborted();
     await rename(part, destination);
     const store = new MediaStore(options.db, { dir: mediaDir });
-    return await options.write({ signal: combined, allowed: options.idle }, () => {
+    return await options.write({ signal: combined, allowed: () => options.idle() }, () => {
       guard();
       combined.throwIfAborted();
       return store.addStaged(
