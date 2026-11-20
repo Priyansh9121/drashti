@@ -1,11 +1,12 @@
 import type { EngineState, VideoClips, VideoSeeks } from '../../shared/engine/state';
-import type { VideoEditSnapshot, VideoEditRecipe } from '../../shared/video-edit';
+import { PLAIN_VIDEO_EDIT, type VideoEditSnapshot, type VideoEditRecipe } from '../../shared/video-edit';
 import { playingNow } from '../../shared/engine/playing';
 import { videoEditTimes } from '../../shared/video-edit-time';
 
 export type VideoEditPreparation =
   { state: EngineState; message?: never } | { state?: never; message: string };
 export interface VideoEditResolution {
+  sourceId?(mediaId: string): string;
   renditionOf(mediaId: string): { sourceId: string; recipe: VideoEditRecipe } | null;
   lengthOf(mediaId: string): number | null;
   available?(mediaId: string): boolean;
@@ -20,13 +21,40 @@ export function prepareVideoEdits(
   resolution?: VideoEditResolution,
 ): VideoEditPreparation {
   if (restoring) return { state: next };
-  const key = (p: ReturnType<typeof playingNow>[number], state: EngineState) =>
-    `${p.ref.layer}/${p.mediaId}/${String(p.clock.startedAt)}/${p.ref.layer === 'slide' ? (state.layers.slide?.slide.id ?? '') : ''}`;
-  const before = new Set(playingNow(previous).map((p) => key(p, previous)));
+  const key = (p: ReturnType<typeof playingNow>[number], state: EngineState, mediaId = p.mediaId) =>
+    `${p.ref.layer}/${mediaId}/${String(p.clock.startedAt)}/${p.ref.layer === 'slide' ? (state.layers.slide?.slide.id ?? '') : ''}`;
+  const wasPlaying = playingNow(previous);
+  const before = new Set(wasPlaying.map((p) => key(p, previous)));
+  let shownBySource: Map<string, ReturnType<typeof playingNow>[number]> | undefined;
+  const mapKey = (layer: string, id: string) => `${layer}/${id}`;
+  const sourceId = (id: string) => resolution?.sourceId?.(id) ?? resolution?.renditionOf(id)?.sourceId ?? id;
   const edits = new Map<string, { id: string; times: ReturnType<typeof videoEditTimes> }>();
   try {
     for (const p of playingNow(next)) {
-      if (before.has(key(p, next)) || resolution?.renditionOf(p.mediaId)) continue;
+      if (before.has(key(p, next))) continue;
+      if (resolution) {
+        shownBySource ??= new Map(
+          wasPlaying.map((old) => [key(old, previous, sourceId(old.mediaId)), old] as const),
+        );
+        const logicalId = sourceId(p.mediaId);
+        const held = shownBySource.get(key(p, next, logicalId));
+        if (held && held.mediaId !== p.mediaId) {
+          const recipe = resolution.renditionOf(held.mediaId)?.recipe ?? PLAIN_VIDEO_EDIT;
+          const length = resolution.lengthOf(logicalId);
+          if (length === null)
+            return {
+              message:
+                'The shown video’s source length is unavailable. Keep the current showing and try again.',
+            };
+          const times = videoEditTimes(recipe, length);
+          edits.set(mapKey(p.ref.layer, p.mediaId), {
+            id: held.mediaId,
+            times: { ...times, durationMs: held.durationMs ?? times.durationMs },
+          });
+          continue;
+        }
+        if (resolution.renditionOf(p.mediaId)) continue;
+      }
       const edit = read(p.mediaId);
       if (!edit) continue;
       if (edit.state !== 'ready' || !edit.readyMediaId)
@@ -46,23 +74,26 @@ export function prepareVideoEdits(
       const length = resolution.lengthOf(edit.mediaId);
       if (length === null)
         return { message: 'The source video’s length is unavailable. Open Edit Video… and save it again.' };
-      edits.set(p.mediaId, { id: edit.readyMediaId, times: videoEditTimes(edit.recipe, length) });
+      edits.set(mapKey(p.ref.layer, p.mediaId), {
+        id: edit.readyMediaId,
+        times: videoEditTimes(edit.recipe, length),
+      });
     }
     if (edits.size === 0) return { state: next };
-    const clips = (values: VideoClips | undefined): VideoClips | undefined =>
+    const clips = (values: VideoClips | undefined, layer: string): VideoClips | undefined =>
       values
         ? Object.fromEntries(
             Object.entries(values).map(([id, value]): [string, VideoClips[string]] => {
-              const e = edits.get(id);
+              const e = edits.get(mapKey(layer, id));
               return e ? [e.id, e.times.clip(value) ?? value] : [id, value];
             }),
           )
         : undefined;
-    const seeks = (values: VideoSeeks | undefined): VideoSeeks | undefined =>
+    const seeks = (values: VideoSeeks | undefined, layer: string): VideoSeeks | undefined =>
       values
         ? Object.fromEntries(
             Object.entries(values).map(([id, value]): [string, VideoSeeks[string]] => {
-              const e = edits.get(id);
+              const e = edits.get(mapKey(layer, id));
               return e ? [e.id, e.times.seek(value) ?? value] : [id, value];
             }),
           )
@@ -70,7 +101,7 @@ export function prepareVideoEdits(
     const layers = { ...next.layers };
     const bg = layers.background;
     if (bg?.kind === 'media' && bg.media === 'video') {
-      const e = edits.get(bg.mediaId);
+      const e = edits.get(mapKey('background', bg.mediaId));
       if (e)
         layers.background = {
           ...bg,
@@ -82,7 +113,7 @@ export function prepareVideoEdits(
         };
     }
     const audio = layers.audio;
-    const sound = audio?.mediaId ? edits.get(audio.mediaId) : null;
+    const sound = audio?.mediaId ? edits.get(mapKey('audio', audio.mediaId)) : null;
     if (audio && sound)
       layers.audio = {
         ...audio,
@@ -95,8 +126,8 @@ export function prepareVideoEdits(
     const slide = layers.slide;
     if (slide) {
       const elements = slide.slide.elements.map((el) =>
-        el.kind === 'video' && edits.has(el.mediaId)
-          ? { ...el, mediaId: edits.get(el.mediaId)?.id ?? el.mediaId }
+        el.kind === 'video' && edits.has(mapKey('slide', el.mediaId))
+          ? { ...el, mediaId: edits.get(mapKey('slide', el.mediaId))?.id ?? el.mediaId }
           : el,
       );
       const deck = slide.slide.deck;
@@ -104,7 +135,7 @@ export function prepareVideoEdits(
         ? {
             ...deck,
             media: deck.media.map((media) => {
-              const edit = edits.get(media.mediaId);
+              const edit = edits.get(mapKey('slide', media.mediaId));
               return edit
                 ? { ...media, mediaId: edit.id, ...(media.clip ? { clip: edit.times.clip(media.clip) } : {}) }
                 : media;
@@ -114,19 +145,19 @@ export function prepareVideoEdits(
       layers.slide = {
         ...slide,
         slide: { ...slide.slide, elements, ...(preparedDeck ? { deck: preparedDeck } : {}) },
-        ...(slide.clips ? { clips: clips(slide.clips) } : {}),
-        ...(slide.seeks ? { seeks: seeks(slide.seeks) } : {}),
+        ...(slide.clips ? { clips: clips(slide.clips, 'slide') } : {}),
+        ...(slide.seeks ? { seeks: seeks(slide.seeks, 'slide') } : {}),
       };
     }
     const pip = layers.pip;
     if (pip?.source.kind === 'media' && pip.source.media === 'video') {
-      const e = edits.get(pip.source.mediaId);
+      const e = edits.get(mapKey('pip', pip.source.mediaId));
       if (e)
         layers.pip = {
           ...pip,
           source: { ...pip.source, mediaId: e.id },
-          ...(pip.clips ? { clips: clips(pip.clips) } : {}),
-          ...(pip.seeks ? { seeks: seeks(pip.seeks) } : {}),
+          ...(pip.clips ? { clips: clips(pip.clips, 'pip') } : {}),
+          ...(pip.seeks ? { seeks: seeks(pip.seeks, 'pip') } : {}),
         };
     }
     return { state: { ...next, layers } };
