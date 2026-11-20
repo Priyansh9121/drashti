@@ -25,6 +25,7 @@ Update after a sabha, and update Main and nodes together.
 - Files dropped with no playlist open ask for a new playlist or folder; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… moved to More tools and a new Tools menu.
 - LIVE no longer goes black for a moment while a slow video starts: it keeps showing what the screens show.
 - An H.264 video larger than 4K (an 8K one) is converted to a 2160p copy, and an interlaced one to progressive; older library files are checked once at quiet moments.
+- Playlists: Shuffle and Repeat all, the total time and when it ends, Find, and M3U import and export.
 - Media information… (right-click a video or a sound, both modes): its container, length, size, picture and sound tracks, with Copy.
 - QR code…: Download… saves the code as a PNG and an SVG; a logo can sit in its middle.
 - Help › Drashti Manual…: every feature, searchable and printable.
