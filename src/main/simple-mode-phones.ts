@@ -213,6 +213,10 @@ export const COMMANDS_IN_SIMPLE_MODE: Readonly<Record<EngineCommandType, Command
   moveTo: 'simple',
   pausePlaying: 'simple',
   resumePlaying: 'simple',
+  // The time bar's ⋯ (alpha.20) is Pro Mode's; stopping an A-B repeat set there is allowed everywhere.
+  repeatAb: 'pro',
+  stopAb: 'simple',
+  stepFrame: 'pro',
   showTimer: 'pro',
   showAudienceTimer: 'pro',
   hideAudienceTimer: 'down',

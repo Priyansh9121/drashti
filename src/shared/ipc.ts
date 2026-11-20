@@ -48,6 +48,8 @@ import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } 
 import type { MarkersResult, MediaMarkers } from './markers';
 import type { MediaDetailsResult } from './media-details';
 import type { ResumePoint } from './play-history';
+import type { PlayingRef } from './engine/playing';
+import type { SnapshotResult } from './snapshot';
 import type { PictureAssetKind, SharpenJobView } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
 import type {
@@ -606,6 +608,8 @@ export const IPC = {
     copyDetails: 'media:copy-details',
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when (operator window). */
     resumePoint: 'media:resume-point',
+    /** Snapshot (alpha.20, the time bar's ⋯): the frame on the screens, a PNG in Media (operator window, Pro Mode). */
+    snapshot: 'media:snapshot',
     /**
      * A picture's look (Session 26e): read one, every one (the thumbnails), keep one (the Picture editor),
      * and keep the live zoom as the picture's (Keep this zoom).
@@ -743,6 +747,10 @@ export const IPC = {
     remove: 'appearance:remove',
     /** Interface motion (Session 40): calm, lively or off. */
     setMotion: 'appearance:set-motion',
+    /** Moving: On or Off (Session 60): whether a live appearance's touch moves at all. */
+    setMoving: 'appearance:set-moving',
+    /** Star or unstar an appearance (Session 60). */
+    setFavourite: 'appearance:set-favourite',
     /** main -> operator: View › Appearance… was chosen. */
     open: 'appearance:open',
   },
@@ -1340,6 +1348,11 @@ export interface InvokeContract {
     args: [motion: InterfaceMotion];
     result: { ok: true } | { ok: false; message: string };
   };
+  [IPC.appearance.setMoving]: { args: [on: boolean]; result: { ok: true } | { ok: false; message: string } };
+  [IPC.appearance.setFavourite]: {
+    args: [id: string, on: boolean];
+    result: { ok: true } | { ok: false; message: string };
+  };
   [IPC.pictures.job]: { args: []; result: PdfJob | null };
   [IPC.pictures.page]: { args: [page: PdfPage]; result: PdfPageReceipt };
   [IPC.pictures.done]: { args: [done: PdfDone]; result: null };
@@ -1652,6 +1665,7 @@ export interface InvokeContract {
   [IPC.media.details]: { args: [mediaId: string]; result: MediaDetailsResult };
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
   [IPC.media.resumePoint]: { args: [mediaId: string]; result: ResumePoint | null };
+  [IPC.media.snapshot]: { args: [playing: PlayingRef]; result: SnapshotResult };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
   [IPC.media.remove]: { args: [mediaIds: string[]]; result: MediaRemovalResult };
