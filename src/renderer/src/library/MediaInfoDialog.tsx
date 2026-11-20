@@ -89,16 +89,16 @@ function InfoWindow({
   );
   const copy = () => {
     if (!details) return;
-    void navigator.clipboard.writeText(detailsText(details, sections)).then(
-      () => {
-        setCopied(true);
-      },
-      () => {
-        useNotice.setState({
-          text: 'Drashti could not copy the information: choose its words and copy them by hand.',
-        });
-      },
-    );
+    // By the main process: Drashti refuses every page its own clipboard (windows/security.ts).
+    const failed = () => {
+      useNotice.setState({
+        text: 'Drashti could not copy the information: choose its words and copy them by hand.',
+      });
+    };
+    void window.drashti.media.copyDetails(detailsText(details, sections)).then((done) => {
+      if (done) setCopied(true);
+      else failed();
+    }, failed);
   };
   return (
     <Dialog
