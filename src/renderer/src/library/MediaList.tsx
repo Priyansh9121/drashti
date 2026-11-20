@@ -1,3 +1,4 @@
+import { VideoHover } from '../video-analysis/VideoHover';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { openMarkers } from '../markers/MarkersDialog';
 import type { MediaSummary } from '../../../shared/playlists';
@@ -187,16 +188,25 @@ const MediaRow = memo(function MediaRow({
   platform: string;
   job: ConversionJob | undefined;
 }) {
+  const [hovered, setHovered] = useState(false);
   const KindIcon = mediaKindIcon[m.kind];
   const pick = pickMedia(m.id);
   const remove = () => void requestMediaRemoval(m.id);
   // A picture's zoom and enhancements (Session 26e).
   const pictureTool = m.kind === 'image' && !m.missing && m.unplayable === null;
   return (
-    <div className={`${rowClass({ marked })} group relative flex h-full flex-col`} data-testid="media-row">
+    <div
+      className={`${rowClass({ marked })} group relative flex h-full flex-col`}
+      data-testid="media-row"
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+    >
       {/* Room at the end for the Picture editor and the trash buttons (below, after Add to playlist in the
           Tab order). */}
       <div className={`flex min-h-0 flex-1 items-center gap-1.5 ${pictureTool ? 'pr-[4.5rem]' : 'pr-10'}`}>
+        {m.kind === 'video' && !m.missing && m.unplayable === null && (
+          <VideoHover mediaId={m.id} name={m.name} active={hovered} />
+        )}
         <button
           type="button"
           draggable

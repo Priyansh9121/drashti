@@ -142,3 +142,25 @@ it('can finish an idle inspection without making a file and reads native WebM al
   expect(existsSync(dest)).toBe(false);
   expect(maximum()).toBe(1);
 });
+
+it('finishes twenty short header reads without a parent priority race or a second decoder', async () => {
+  const { source, maximum } = start();
+  const original = await sha256File(source);
+  for (let index = 0; index < 20; index++) {
+    const dest = join(dir, `placeholder header ${String(index)}.mp4`);
+    const job = service.saveCopy(source, dest, unknownInfo, {
+      waitForShow: true,
+      strictPriority: true,
+      estimatedBytes: 1024,
+      lengthMs: 0,
+      inspect: () => false as const,
+      args: () => {
+        throw new Error('An inspection must not encode a video.');
+      },
+    });
+    expect(await job.done).toEqual({ ok: true, copy: null });
+    expect(existsSync(dest)).toBe(false);
+  }
+  expect(maximum()).toBe(1);
+  expect((await sha256File(source)).sha256).toBe(original.sha256);
+}, 20_000);

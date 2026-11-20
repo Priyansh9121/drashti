@@ -1,6 +1,17 @@
+import { editPlan } from './convert/edit-plan';
+import { editedClipSource } from './convert/clip-edited-source';
+import { withSceneMarkers } from './convert/scene-marker-save';
 import { VideoEditsRepo } from './db/video-edits';
 import { prepareVideoEdits } from './engine/video-edit-ready';
+import { prepareVideoProxies } from './convert/proxy-showing';
 import { registerEditVideoIpc } from './convert/edit-video-ipc';
+
+import { registerVideoCopies } from './convert/video-copies-ipc';
+import { VideoAnalysisService } from './convert/video-analysis';
+import { EditService } from './convert/edit-service';
+import { registerEditedFile } from './convert/edit-files';
+import { videoEditTimes } from '../shared/video-edit-time';
+import { soundForEditedVideo } from '../shared/video-edit-sound';
 import { type PlaybackSettings, playbackSettingsSchema, toneOf } from '../shared/playback-settings';
 import { shapeOverride } from '../shared/video-shape';
 import { fileProblem } from './plain-errors';
@@ -194,6 +205,8 @@ import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
 import { MediaDetailsService } from './media/media-details';
 import { PlayHistory } from './media/play-history';
+import { editedPlayHistory } from './media/edit-play-history';
+import { editedSoundSettings } from './media/edit-sound-settings';
 import { takeSnapshot } from './media/snapshot';
 import { playingSchema } from '../shared/engine/playing';
 import { saveStill } from './media/stills';
@@ -1752,11 +1765,13 @@ function start(): void {
   const soundRepo = new SoundRepo(db);
   const soundKnown = new Map<string, { gain: number; silent: boolean } | null>();
   const soundOf = (mediaId: string): { gain: number; silent: boolean } | null => {
+    const recipe = editedPlaying.renditionOf(mediaId)?.recipe ?? null;
+    mediaId = editedPlaying.sourceId(mediaId);
     if (!soundKnown.has(mediaId)) {
       const s = soundRepo.soundOf(mediaId);
       soundKnown.set(mediaId, s ? { gain: s.gain, silent: s.silent } : null);
     }
-    return soundKnown.get(mediaId) ?? null;
+    return soundForEditedVideo(soundKnown.get(mediaId) ?? null, recipe);
   };
   /** Music steps aside under a video with sound (Session 55, Part 7, K): Audio's switch, kept with the library; on by default. */
   let stepsAside = settings.get('music.stepsAside') !== false;
@@ -1784,10 +1799,21 @@ function start(): void {
   const videoCaptionsRepo = new VideoCaptionsRepo(db);
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
   // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
-  const videoEdits = new VideoEditsRepo(db);
+  let proxySourceOf: (id: string) => string = (id) => id;
+  let proxyReadyFor: (id: string) => { mediaId: string | null; message: string | null } = (id) => ({
+    mediaId: id,
+    message: null,
+  });
+  const videoEdits = new VideoEditsRepo(db, (id) => proxySourceOf(id));
+  // Every playback metadata consumer follows the repo's shared identity callback (S4 supplies proxy parents).
+  const editedPlaying = {
+    sourceId: (id: string) => videoEdits.sourceId(id),
+    renditionOf: (id: string) => videoEdits.renditionOf(id),
+  };
   const playbackRepo = new MediaRepo(db);
   const ownPlayback = new Map<string, PlaybackSettings>();
   const playbackOfFile = (mediaId: string): PlaybackSettings => {
+    mediaId = editedPlaying.sourceId(mediaId);
     let kept = ownPlayback.get(mediaId);
     if (!kept) {
       kept = playbackRepo.playbackOf(mediaId);
@@ -1843,13 +1869,32 @@ function start(): void {
         return ids;
       },
 
-      sourceMediaId: (mediaId) => videoEdits.sourceId(mediaId),
-      prepareVideoEdits: (previous, next, historic) =>
-        prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic),
+      sourceMediaId: (id) => editedPlaying.sourceId(id),
+      prepareVideoEdits: (previous, next, historic) => {
+        const edited = prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic, {
+          sourceId: (id) => editedPlaying.sourceId(id),
+          renditionOf: (id) => editedPlaying.renditionOf(id),
+          lengthOf: (id) => mediaLength(id),
+          available: (id) => {
+            const row = playbackRepo.kindAndFile(id);
+            return !!row && !row.missing && existsSync(join(mediaDir, row.path));
+          },
+        });
+        return edited.state ? prepareVideoProxies(previous, edited.state, proxyReadyFor, historic) : edited;
+      },
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
-        const track = videoCaptionsRepo.chosen(mediaId);
+        const sourceId = editedPlaying.sourceId(mediaId);
+        const original = videoCaptionsRepo.chosen(sourceId);
+        const rendition = editedPlaying.renditionOf(mediaId);
+        const length = mediaLength(sourceId);
+        const track =
+          original && rendition
+            ? length === null
+              ? null
+              : videoEditTimes(rendition.recipe, length).captions(original)
+            : original;
         // Sound and picture… (alpha.20): the captions' own delay against the picture.
         const delayMs = playbackOfFile(mediaId).captionDelayMs;
         return track
@@ -1997,6 +2042,8 @@ function start(): void {
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
   registerEditVideoIpc({
+    appendScenes: (id, times, save) => withSceneMarkers(libraryDb, media, id, times, save),
+    markersChanged: () => libraryChanged(true),
     repo: videoEdits,
     fromOperator: (event) => fromOperator(event) && !simpleNow(),
     available: (id) => {
@@ -2140,9 +2187,16 @@ function start(): void {
     return known === true;
   };
   mediaMarkers = (mediaId, itemId) => {
-    const marks = media.markersOf(mediaId);
-    return marks && itemId && trimmedVideos.playsFull(itemId, mediaId, marks)
-      ? { ...marks, startMs: null, endMs: null }
+    const sourceId = editedPlaying.sourceId(mediaId);
+    const original = media.markersOf(sourceId);
+    const marks =
+      original && itemId && trimmedVideos.playsFull(itemId, sourceId, original)
+        ? { ...original, startMs: null, endMs: null }
+        : original;
+    const rendition = editedPlaying.renditionOf(mediaId);
+    const length = media.lengthOf(sourceId);
+    return marks && rendition && length !== null
+      ? videoEditTimes(rendition.recipe, length).markers(marks)
       : marks;
   };
   const captionFileReader = new CaptionFileReader(spawnImportWorker);
@@ -2151,7 +2205,11 @@ function start(): void {
   });
   registerVideoCaptionIpc({
     fromOperator,
-    repo: videoCaptionsRepo,
+    repo: {
+      view: (id) => videoCaptionsRepo.view(editedPlaying.sourceId(id)),
+      select: (id, track) => videoCaptionsRepo.select(editedPlaying.sourceId(id), track),
+      put: (id, tracks) => videoCaptionsRepo.put(editedPlaying.sourceId(id), tracks),
+    },
     reader: captionFileReader,
     write: sourceWrite(
       libraryDb,
@@ -2172,7 +2230,10 @@ function start(): void {
     },
     changed: (mediaId) => {
       engine.refreshVideoCaptions();
-      sendToOperator(IPC.videoCaptions.changed, { mediaId, view: videoCaptionsRepo.view(mediaId) });
+      sendToOperator(IPC.videoCaptions.changed, {
+        mediaId,
+        view: videoCaptionsRepo.view(editedPlaying.sourceId(mediaId)),
+      });
     },
   });
   // Playback markers (Session 14): kept with the file; what plays it follows at once.
@@ -4273,6 +4334,87 @@ function start(): void {
       },
     },
   });
+  const videoAnalysis = new VideoAnalysisService({ mediaDir, row: (id) => media.about(id), conversions });
+  const analysisResume = setTimeout(() => videoAnalysis.resume(), AFTER_START_MS);
+  stops.add('video analysis', () => {
+    clearTimeout(analysisResume);
+    videoAnalysis.close();
+  });
+  handle(IPC.media.videoAnalysis, (e, mediaId, audioStream, retry) =>
+    fromOperator(e) &&
+    typeof mediaId === 'string' &&
+    MEDIA_ID_PATTERN.test(mediaId) &&
+    (typeof audioStream === 'number' || audioStream === null) &&
+    typeof retry === 'boolean'
+      ? videoAnalysis.get(mediaId, audioStream, retry)
+      : { ok: false as const, message: 'Open the video in the operator window, then try again.' },
+  );
+  const videoCopies = registerVideoCopies({
+    editedExport: (request) =>
+      editedClipSource(request, {
+        mediaDir,
+        sourceId: (id) => videoEdits.sourceId(id),
+        row: (id) => media.about(id),
+        read: (id) => videoEdits.read(id),
+        plan: editPlan,
+      }),
+    sourceId: (id) => videoEdits.sourceId(id),
+    db: libraryDb,
+    media,
+    mediaDir,
+    conversions,
+    fromOperator,
+    proMode: () => mode === 'pro',
+    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    gpuStatus,
+    freeBytes: diskFreeBytes,
+    pickDest: async (name, container) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export video clip',
+        defaultPath: name,
+        buttonLabel: 'Export',
+        filters: [{ name: container === 'mp4' ? 'MP4 video' : 'WebM video', extensions: [container] }],
+      });
+      return picked.canceled ? null : picked.filePath;
+    },
+    showFile: (path) => shell.showItemInFolder(path),
+    libraryChanged: () => libraryChanged(true),
+  });
+  proxySourceOf = (id) => videoCopies.proxies.sourceOf(id);
+  proxyReadyFor = (id) => videoCopies.proxies.readyFor(id);
+  stops.add('video copies', () => videoCopies.close());
+  const editedCopies = new EditService({
+    repo: videoEdits,
+    mediaDir,
+    source: (id) => {
+      const row = media.kindAndFile(id);
+      const named = media.kindAndName(id);
+      return row?.kind === 'video' && !row.missing && named
+        ? { path: join(mediaDir, row.path), name: named.name }
+        : null;
+    },
+    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    conversions,
+    register: (file, info, name, signal) =>
+      registerEditedFile({
+        db: libraryDb,
+        mediaDir,
+        file,
+        info,
+        name,
+        signal,
+        idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+        freeBytes: diskFreeBytes,
+        write: sourceWrite(libraryDb, () => imports.giveWay()),
+      }),
+    changed: (edit) => {
+      sendToOperator(IPC.media.videoEditChanged, edit);
+      libraryChanged(true);
+    },
+    write: sourceWrite(libraryDb, () => imports.giveWay()),
+  });
+  stops.add('video edits', () => editedCopies.close());
   conversionActivityChanged = () => conversions.activityChanged();
   const offConversionActivity = engine.onChange((state) => {
     if (!nothingUp(state.layers)) conversions.activityChanged();
@@ -4335,8 +4477,9 @@ function start(): void {
   soundPass.startLibrary();
   handle(IPC.sound.view, () => soundView());
   /** A video's or sound's loudness as measured, and its own switch (the Even loudness notice, the tests). */
+  const loudnessSettings = editedSoundSettings(soundRepo, (id) => editedPlaying.sourceId(id));
   const fileSound = (mediaId: string) => {
-    const known = soundRepo.soundOf(mediaId);
+    const known = loudnessSettings.read(mediaId);
     if (!known) return null;
     const loudness = known.loudness;
     return {
@@ -4409,9 +4552,10 @@ function start(): void {
       typeof on !== 'boolean'
     )
       return { ok: false as const, message: 'Only the operator window can change a file’s loudness.' };
-    if (!soundRepo.setEven(mediaId, on))
+    const changed = loudnessSettings.set(mediaId, on);
+    if (!changed.ok)
       return { ok: false as const, message: 'Even loudness is for a video or a sound in the library.' };
-    soundKnown.delete(mediaId);
+    soundKnown.delete(changed.sourceId);
     engine.refreshSound();
     sendToOperator(IPC.sound.changed, soundView());
     log.info(`Sound: a file plays ${on ? 'at the even loudness' : 'as it is'}`);
@@ -7205,8 +7349,12 @@ function start(): void {
   // Resume where it stopped, last played and play counts (alpha.20, the owner's Q60-34 item 3 and his "Yes, all A" to
   // Q60-39): Main follows the engine's state; each write waits while the library is busy. An audio playlist stopped
   // part-way plays on from its track. What plays at a quit keeps where it is.
+  const historyMedia = editedPlayHistory(media, {
+    sourceId: (id) => editedPlaying.sourceId(id),
+    renditionOf: (id) => editedPlaying.renditionOf(id),
+  });
   const history = new PlayHistory(
-    { later: (key, run) => later.write(key, run), media, now: () => Date.now() },
+    { later: (key, run) => later.write(key, run), media: historyMedia, now: () => Date.now() },
     engine.current,
   );
   engine.onChange((state) => {
@@ -7219,7 +7367,7 @@ function start(): void {
   });
   handle(IPC.media.resumePoint, (e, mediaId) =>
     fromOperator(e) && typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
-      ? media.resumeOf(mediaId)
+      ? historyMedia.resumeOf(mediaId)
       : null,
   );
   // Snapshot (alpha.20, the time bar's ⋯; the owner's "Yes, all A" to Q60-39 P6 (d) A): the frame on the screens, made
@@ -7271,12 +7419,13 @@ function start(): void {
         ok: false as const,
         message: 'Those settings could not be kept: open Sound and picture… again and set them once more.',
       };
-    if (!media.setPlayback(mediaId, parsed.data))
+    const sourceId = editedPlaying.sourceId(mediaId);
+    if (!media.setPlayback(sourceId, parsed.data))
       return {
         ok: false as const,
         message: 'Only a video or a sound has these settings: choose one in Media.',
       };
-    ownPlayback.set(mediaId, parsed.data);
+    ownPlayback.set(sourceId, parsed.data);
     engine.refreshSound();
     engine.refreshVideoCaptions();
     engine.refreshVideoShapes();
@@ -8268,6 +8417,7 @@ function start(): void {
       // conversions, then at the first quiet moment (nothing up, no stream on air or recording).
       setTimeout(() => {
         playlistTrims.resumeWhenQuiet();
+        editedCopies.resume();
       }, AFTER_START_MS).unref();
     });
   operatorWindow.webContents.once('did-finish-load', () => {

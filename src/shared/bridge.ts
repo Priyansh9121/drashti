@@ -1,4 +1,7 @@
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
+
+import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
+import type { VideoAnalysisResult } from './video-analysis';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
@@ -704,6 +707,18 @@ export interface DrashtiBridge {
     startCountdown(time: string): Promise<TimerResult>;
   };
   media: {
+    proxyStatus(mediaId: string, retry?: boolean): Promise<VideoProxyResult>;
+    stopProxy(mediaId: string): Promise<boolean>;
+    clipExport(request: ClipExportRequest): Promise<ClipExportResult>;
+    clipExports(): Promise<ClipExportJob[]>;
+    stopClipExport(jobId: string): Promise<boolean>;
+    showClipExport(jobId: string): Promise<null>;
+    /** Cached source-time analysis; queues only through the idle conversion worker. Audio uses 0:a:N. */
+    videoAnalysis(
+      mediaId: string,
+      audioStream?: number | null,
+      retry?: boolean,
+    ): Promise<VideoAnalysisResult>;
     /**
      * Keep a still frame (a JPEG drawn from the file) for a media item's
      * thumbnails, so it is made only once (operator window only).
