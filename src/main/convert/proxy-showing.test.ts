@@ -38,7 +38,7 @@ it('refuses a new showing whose required copy is not ready', () => {
 });
 it('keeps current and restored showings unchanged through later copy readiness', () => {
   const before = showing();
-  const after = { ...before, revision: before.revision + 1 };
+  const after = { ...before, blackout: !before.blackout };
   const ready = vi.fn(() => ({ mediaId: 'new-proxy', message: null }));
   expect(prepareVideoProxies(before, after, ready)).toEqual({ state: after });
   expect(prepareVideoProxies(initialEngineState(), before, ready, true)).toEqual({ state: before });

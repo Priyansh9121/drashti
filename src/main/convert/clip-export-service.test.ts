@@ -156,3 +156,28 @@ it('keeps a queued request across a close and resumes it only when idle; Stop re
   expect(clips.list().at(-1)?.state).toBe('stopped');
   expect(existsSync(stopped)).toBe(false);
 }, 15_000);
+
+it('keeps real WebM transparency in the exported file without replacing the source', async () => {
+  fixture = await copyFixture({ alpha: true });
+  cleanup.push(() => fixture.cleanup());
+  service(join(fixture.dir, 'transparent clip.webm'));
+  await clips.start({ ...request, startMs: 80, endMs: 320, container: 'webm' });
+  const job = await done();
+  const rgba = copyFf([
+    '-c:V:0',
+    'libvpx-vp9',
+    '-i',
+    job.path ?? '',
+    '-frames:v',
+    '1',
+    '-vf',
+    'scale=2:2,format=rgba',
+    '-f',
+    'rawvideo',
+    'pipe:1',
+  ]);
+  expect(rgba).toHaveLength(16);
+  for (const at of [3, 7, 11, 15]) expect(rgba[at]).toBeGreaterThan(110);
+  for (const at of [3, 7, 11, 15]) expect(rgba[at]).toBeLessThan(145);
+  expect((await sha256File(fixture.source)).sha256).toBe(fixture.sha);
+}, 15_000);

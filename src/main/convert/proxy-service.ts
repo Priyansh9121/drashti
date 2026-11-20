@@ -196,6 +196,7 @@ export class ProxyService {
   }
   /** A showing captures this ID once. Unknown-size sources keep their existing route until an idle check. */
   readyFor(mediaId: string): { mediaId: string | null; message: string | null } {
+    if (this.sourceOf(mediaId) !== mediaId) return { mediaId, message: null };
     const result = this.get(mediaId);
     if (!result.ok) return { mediaId, message: null };
     const proxy = result.proxy;
