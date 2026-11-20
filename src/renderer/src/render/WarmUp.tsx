@@ -946,6 +946,22 @@ function WarmScenes({
  */
 export type WarmUpEnd = 'drawn' | 'cap' | 'unseen' | 'error' | 'cut';
 
+/** Hand the drawing's resources back before the parent draws the show, using the existing empty settling step. */
+export function handOverWarmUp({
+  how,
+  drewFrame,
+  retire,
+  ready,
+}: {
+  how: WarmUpEnd;
+  drewFrame: boolean;
+  retire: (ready: () => void) => void;
+  ready: () => void;
+}): void {
+  if (how === 'drawn' || how === 'unseen' || !drewFrame) ready();
+  else retire(ready);
+}
+
 /** This computer's clock for a length of time, how long a warm-up took (for the log: it times nothing drawn). */
 // eslint-disable-next-line no-restricted-properties -- a length of time for the log, never a time anything is drawn at
 const lengthClock = (): number => performance.now();
@@ -1018,11 +1034,15 @@ export function WarmUp({
       ended.current?.(how, lengthClock() - began.current);
       const then = how === 'cut' ? () => stopped.current?.() : () => done.current();
       // Drawn to its end on time, not seen (no frames come), or no frame of it drawn: nothing to let go of.
-      if (how === 'drawn' || how === 'unseen' || !drewFrame.current) then();
-      else {
-        afterSettle.current = then;
-        setStep((s) => ({ phase: 'settle', at: s.at }));
-      }
+      handOverWarmUp({
+        how,
+        drewFrame: drewFrame.current,
+        ready: then,
+        retire: (ready) => {
+          afterSettle.current = ready;
+          setStep((s) => ({ phase: 'settle', at: s.at }));
+        },
+      });
     },
     [hold, mark],
   );
