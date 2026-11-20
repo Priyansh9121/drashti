@@ -291,7 +291,7 @@ import { createPdfCopyWindow } from './library/pdf-copy-window';
 import { openGalleryWindow } from './windows/gallery-window';
 import { AppearanceService } from './appearance/appearance-service';
 import { ownSchema } from './appearance/appearance-file';
-import { FOLLOW } from '../shared/appearance/appearances';
+import { familyOf, FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList, stopTimes } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
@@ -8092,7 +8092,7 @@ function start(): void {
     appearance: {
       choices: [
         { id: FOLLOW, label: 'Follow the Computer' },
-        ...appearance.list().map((a) => ({ id: a.id, label: a.name })),
+        ...appearance.list().map((a) => ({ id: a.id, label: a.name, family: familyOf(a) })),
       ],
       chosen: appearance.choice,
       choose: (id) => {
