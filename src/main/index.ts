@@ -181,6 +181,7 @@ import { openingPhotoPlace, openingPhotoThere } from './opening/opening-photo';
 import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
 import { MediaDetailsService } from './media/media-details';
+import { PlayHistory } from './media/play-history';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
@@ -5024,7 +5025,8 @@ function start(): void {
     fromOperator(e) ? music.restoreTrack(id, at) : notMusicOperator,
   );
   handle(IPC.music.play, (e, playlistId, trackIndex) => {
-    const parsed = musicPlaySchema.safeParse({ playlistId, index: trackIndex ?? 0 });
+    // No track asked (alpha.20): the one it was stopped on part-way, else its first (music-service.ts).
+    const parsed = musicPlaySchema.safeParse({ playlistId, index: trackIndex });
     if (!fromOperator(e) || !parsed.success) return notMusicOperator;
     return music.play(parsed.data.playlistId, parsed.data.index);
   });
@@ -6929,6 +6931,26 @@ function start(): void {
     fromOperator(e) && typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
       ? mediaDetails.details(mediaId)
       : { ok: false as const, message: 'Only the operator window can read a file’s information.' },
+  );
+  // Resume where it stopped, last played and play counts (alpha.20, the owner's Q60-34 item 3 and his "Yes, all A" to
+  // Q60-39): Main follows the engine's state; each write waits while the library is busy. An audio playlist stopped
+  // part-way plays on from its track. What plays at a quit keeps where it is.
+  const history = new PlayHistory(
+    { later: (key, run) => later.write(key, run), media, now: () => Date.now() },
+    engine.current,
+  );
+  engine.onChange((state) => {
+    history.changed(state);
+    music.follow(state);
+  });
+  stops.add('play history', () => {
+    history.quitting();
+    music.quitting();
+  });
+  handle(IPC.media.resumePoint, (e, mediaId) =>
+    fromOperator(e) && typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
+      ? media.resumeOf(mediaId)
+      : null,
   );
   // Its Copy: the window's words on the clipboard, by the main process (copyWords).
   handle(IPC.media.copyDetails, (e, text) => copyWords(e, text));
