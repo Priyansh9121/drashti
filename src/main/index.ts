@@ -6809,7 +6809,7 @@ function start(): void {
     // stream's page alone only logs it (shared/no-picture.ts).
     if (code === NO_FIRST_FRAME && screenId === undefined) {
       log.info(
-        `A video had ${kind} on ${whereWords([where])}: ${mediaId}; left up (only a screen's takes it off)`,
+        `A video had ${kind} on ${whereWords([where])}: ${mediaId}; left up (only a screen’s takes it off)`,
       );
       return null;
     }
