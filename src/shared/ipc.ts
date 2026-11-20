@@ -1,3 +1,4 @@
+import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
 import type { VideoAnalysisResult } from './video-analysis';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
@@ -607,6 +608,12 @@ export const IPC = {
      */
     details: 'media:details',
     videoAnalysis: 'media:video-analysis',
+    proxyStatus: 'media:proxy-status',
+    stopProxy: 'media:stop-proxy',
+    clipExport: 'media:clip-export',
+    clipExports: 'media:clip-clips',
+    stopClipExport: 'media:stop-clip-export',
+    showClipExport: 'media:show-clip-export',
     /** Media information's Copy: its words on the clipboard (operator window only; a page's own clipboard is refused). */
     copyDetails: 'media:copy-details',
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when (operator window). */
@@ -1665,6 +1672,12 @@ export interface InvokeContract {
     result: null;
   };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
+  [IPC.media.proxyStatus]: { args: [mediaId: string, retry: boolean]; result: VideoProxyResult };
+  [IPC.media.stopProxy]: { args: [mediaId: string]; result: boolean };
+  [IPC.media.clipExport]: { args: [request: ClipExportRequest]; result: ClipExportResult };
+  [IPC.media.clipExports]: { args: []; result: ClipExportJob[] };
+  [IPC.media.stopClipExport]: { args: [jobId: string]; result: boolean };
+  [IPC.media.showClipExport]: { args: [jobId: string]; result: null };
   [IPC.media.videoAnalysis]: {
     args: [mediaId: string, audioStream: number | null, retry: boolean];
     result: VideoAnalysisResult;

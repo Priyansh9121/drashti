@@ -1,3 +1,4 @@
+import { ProxyInfo } from '../video-analysis/ProxyInfo';
 import { useEffect, useId, useMemo, useState } from 'react';
 import type { DetailExtras, DetailSection, MediaDetailsResult } from '../../../shared/media-details';
 import { detailSections, detailsText, detailsTitle } from '../../../shared/media-details';
@@ -135,6 +136,7 @@ function InfoWindow({
           {sections.map((section) => (
             <Part key={section.heading} section={section} />
           ))}
+          {details?.kind === 'video' && <ProxyInfo mediaId={media.id} controls={false} />}
         </div>
       )}
     </Dialog>

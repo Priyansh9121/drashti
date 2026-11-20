@@ -426,6 +426,12 @@ const bridge: DrashtiBridge = {
     startCountdown: (time) => invoke(IPC.timers.startCountdown, time),
   },
   media: {
+    proxyStatus: (id, retry = false) => invoke(IPC.media.proxyStatus, id, retry),
+    stopProxy: (id) => invoke(IPC.media.stopProxy, id),
+    clipExport: (request) => invoke(IPC.media.clipExport, request),
+    clipExports: () => invoke(IPC.media.clipExports),
+    stopClipExport: (id) => invoke(IPC.media.stopClipExport, id),
+    showClipExport: (id) => invoke(IPC.media.showClipExport, id),
     videoAnalysis: (mediaId, audioStream = 0, retry = false) =>
       invoke(IPC.media.videoAnalysis, mediaId, audioStream, retry),
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
