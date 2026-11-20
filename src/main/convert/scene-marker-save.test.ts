@@ -33,10 +33,10 @@ it('appends selected scenes with the recipe and retains current named markers an
   expect(result).toEqual({ ok: true, revision: 2 });
   const points = media.markersOf('m');
   expect(points).toMatchObject({ startMs: 100, endMs: 9000 });
-  expect(points.markers).toHaveLength(2);
-  expect(points.markers[0]).toEqual({ id: 'own', name: 'Placeholder point', atMs: 200 });
-  expect(points.markers[1]).toMatchObject({ name: 'Scene 0:02.5', atMs: 2500 });
-  expect(points.markers[1]?.id).not.toBe('own');
+  expect(points?.markers).toHaveLength(2);
+  expect(points?.markers[0]).toEqual({ id: 'own', name: 'Placeholder point', atMs: 200 });
+  expect(points?.markers[1]).toMatchObject({ name: 'Scene 0:02.5', atMs: 2500 });
+  expect(points?.markers[1]?.id).not.toBe('own');
 });
 it('rolls back both stores when recipe Save refuses', () => {
   const result = withSceneMarkers(db, media, 'm', [2500], () => {
@@ -45,7 +45,7 @@ it('rolls back both stores when recipe Save refuses', () => {
   });
   expect(result.ok).toBe(false);
   expect(db.prepare("SELECT value FROM app_meta WHERE key='placeholder-recipe'").get()).toBeUndefined();
-  expect(media.markersOf('m').markers).toHaveLength(1);
+  expect(media.markersOf('m')?.markers).toHaveLength(1);
 });
 it('refuses before recipe Save when all 50 marker places are occupied', () => {
   media.setMarkers('m', {
@@ -56,5 +56,5 @@ it('refuses before recipe Save when all 50 marker places are occupied', () => {
   const save = vi.fn(() => ({ ok: true as const }));
   expect(withSceneMarkers(db, media, 'm', [2500], save).ok).toBe(false);
   expect(save).not.toHaveBeenCalled();
-  expect(media.markersOf('m').markers).toHaveLength(50);
+  expect(media.markersOf('m')?.markers).toHaveLength(50);
 });
