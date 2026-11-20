@@ -476,6 +476,25 @@ describe('every page joining a stream link at the same frame at the same moment'
     expect(await t.service.playlistFor('00000000-0000-4000-8000-000000000099', 0)).toBeNull();
   });
 
+  it('a page still joins long after the anchor’s segment has gone from the disk (CI x54-1120-195548-69004: none could)', async () => {
+    const t = setUp();
+    await showUp(t);
+    const bg = t.engine.get().layers.background;
+    if (bg?.kind !== 'link') throw new Error('a link expected');
+    const first = t.service.join(bg.linkId);
+    // Twenty segments on, a second each: the anchor's own entry long gone from the local playlist.
+    for (let n = 3; n <= 22; n++) {
+      t.progress.newest = n;
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    const later = t.service.join(bg.linkId);
+    expect(later).not.toBeNull();
+    expect((later?.segment ?? 0) - (first?.segment ?? 0)).toBeGreaterThanOrEqual(18);
+    expect((later?.startAt ?? 0) - (first?.startAt ?? 0)).toBe(
+      ((later?.segment ?? 0) - (first?.segment ?? 0)) * 1000,
+    );
+  });
+
   it('no page joins while its Wallpaper is up, nor a link not up', async () => {
     const t = setUp();
     await showUp(t);
