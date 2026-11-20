@@ -32,6 +32,7 @@ function setup(bytes = png(6144, 3456), free = 10 * 1024 ** 3, existing?: string
   const path = `aa/${SHA}.png`;
   writeFileSync(join(dir, path), bytes);
   const windows = { opened: 0, destroyed: 0 };
+  const changed = vi.fn<() => void>();
   const copies = new DisplayCopies({
     mediaDir: dir,
     targets: () => [{ width: 1920, height: 1080 }],
@@ -44,12 +45,12 @@ function setup(bytes = png(6144, 3456), free = 10 * 1024 ** 3, existing?: string
         },
       };
     },
-    changed: () => undefined,
+    changed,
     log: () => undefined,
     freeBytes: () => free,
   });
   services.push(copies);
-  return { dir, copies, windows, candidate: { path, sha256: SHA } };
+  return { dir, copies, windows, changed, candidate: { path, sha256: SHA } };
 }
 
 describe('original-preserving display copies', () => {
@@ -86,6 +87,7 @@ describe('original-preserving display copies', () => {
     const again = setup(png(6144, 3456), 10 * 1024 ** 3, t.dir);
     expect(await again.copies.prepare(again.candidate)).toEqual(made);
     expect(again.windows.opened).toBe(0);
+    expect(again.changed).toHaveBeenCalledOnce();
   });
   it('keeps small pictures and animation as their originals, with no copy job', async () => {
     for (const bytes of [png(640, 360), png(6144, 3456, true)]) {
