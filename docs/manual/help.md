@@ -158,6 +158,6 @@
 1. Start Drashti again.
 2. Read the note at the top: what it put back.
 3. Check **LIVE**, then carry on.
-4. After the sabha, **Save Diagnostics…** for whoever looks after Drashti.
+4. After the sabha, **Help › Report a Problem…** to tell whoever looks after Drashti (or **Save Diagnostics…** when it can't be sent).
 
 ![The operator window with a placeholder sabha running](../screenshots/operator-1920x1080.png)
