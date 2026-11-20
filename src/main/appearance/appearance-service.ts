@@ -6,6 +6,7 @@ import type {
   InterfaceMotion,
 } from '../../shared/appearance/appearances';
 import { randomBytes } from 'node:crypto';
+import { availableParallelism } from 'node:os';
 import { BUILT_IN, FOLLOW, followed, INTERFACE_MOTIONS } from '../../shared/appearance/appearances';
 import {
   checkAccent,
@@ -15,11 +16,12 @@ import {
   OWN_PREFIX,
   type OwnAppearance,
 } from '../../shared/appearance/derive';
+import { isSlow } from '../../shared/appearance/moving';
 import { appearanceVars } from '../../shared/appearance/vars';
 import { IPC } from '../../shared/ipc';
 import { cleanRenameName } from '../../shared/rename-name';
 import { sendToPage } from '../windows/send';
-import { readAppearance, writeAppearance, type AppearanceSettings } from './appearance-file';
+import { FAVOURITES_MAX, readAppearance, writeAppearance, type AppearanceSettings } from './appearance-file';
 
 /*
  * The appearance this computer shows (Sessions 39–40): Follow the computer (Black or White, as macOS or Windows
@@ -49,6 +51,10 @@ export interface AppearanceDeps {
   say: (line: string) => void;
   /** Tests only (DRASHTI_TEST_APPEARANCE, never packaged): start in this appearance, kept or not (the guides' pictures in Black). */
   startIn?: string;
+  /** This computer's logical cores (os.availableParallelism; a test may say). */
+  cores?: number;
+  /** Whether Chromium draws with a graphics chip: unknown until its GPU process has said (Main's warm-up choices). */
+  chip?: () => 'unknown' | 'yes' | 'no';
 }
 
 export class AppearanceService {
@@ -151,7 +157,16 @@ export class AppearanceService {
   /** What a page draws in now. */
   now(): AppearanceNow {
     const shown = this.shown();
-    return { id: shown.id, base: shown.base, vars: appearanceVars(shown), motion: this.settings.motion };
+    return {
+      id: shown.id,
+      base: shown.base,
+      vars: appearanceVars(shown),
+      motion: this.settings.motion,
+      moving: this.settings.moving,
+      look: shown.moving?.kinds ?? [],
+      slow: isSlow(this.deps.cores ?? availableParallelism()),
+      chip: this.deps.chip?.() ?? 'unknown',
+    };
   }
 
   view(): AppearanceView {
@@ -161,7 +176,51 @@ export class AppearanceService {
       list: this.list(),
       own: this.settings.own,
       motion: this.settings.motion,
+      moving: this.settings.moving,
+      // Only the ones there are: one's own deleted, or a built-in one taken out, is simply not starred.
+      favourites: this.settings.favourites.filter((id) => this.list().some((a) => a.id === id)),
     };
+  }
+
+  /**
+   * Moving: On or Off (Session 60, the owner's safety rule): whether a live appearance's touch moves at all, in every
+   * one of Drashti's own windows at once. On until turned Off.
+   */
+  setMoving(on: boolean): boolean {
+    this.settings = { ...this.settings, moving: on };
+    this.keep();
+    this.tell();
+    this.deps.say(`Appearance: moving ${on ? 'on' : 'off'}`);
+    return true;
+  }
+
+  private toldChip: 'unknown' | 'yes' | 'no' = 'unknown';
+
+  /**
+   * Chromium's GPU process may have said how it draws (Session 60): every window is told once the answer changes, so a
+   * live look starts only once a graphics chip is known to be there, and never on a computer without one.
+   */
+  chipMayHaveChanged(): void {
+    const chip = this.deps.chip?.() ?? 'unknown';
+    if (chip === this.toldChip) return;
+    this.toldChip = chip;
+    this.tell();
+  }
+
+  /** Star or unstar an appearance there is (Session 60): kept on this computer, in the order starred. */
+  setFavourite(id: string, on: boolean): boolean {
+    if (!this.list().some((a) => a.id === id)) return false;
+    const now = this.settings.favourites;
+    // Starred again, it keeps its place.
+    const favourites = on
+      ? now.includes(id)
+        ? now
+        : [...now, id].slice(-FAVOURITES_MAX)
+      : now.filter((f) => f !== id);
+    const changed = favourites.join(' ') !== this.settings.favourites.join(' ');
+    this.settings = { ...this.settings, favourites };
+    if (changed) this.keep();
+    return true;
   }
 
   /** The colour a window of Drashti's own opens on: its appearance's window colour. */

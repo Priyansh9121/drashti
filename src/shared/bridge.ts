@@ -670,6 +670,10 @@ export interface DrashtiBridge {
     remove(id: string): Promise<{ ok: true } | { ok: false; message: string }>;
     /** Interface motion: Calm, Lively or Off (Session 40). */
     setMotion(motion: InterfaceMotion): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Moving: On or Off (Session 60). */
+    setMoving(on: boolean): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Star or unstar an appearance (Session 60). */
+    setFavourite(id: string, on: boolean): Promise<{ ok: true } | { ok: false; message: string }>;
     /** View › Appearance… was chosen. */
     onOpen(listener: () => void): () => void;
     /** The appearance or the motion changed (every window draws it by itself; the Appearance window shows it). */
