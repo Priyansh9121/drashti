@@ -32,11 +32,19 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
       await video(page, id).evaluate((v: HTMLVideoElement) => {
         v.dataset['prepared'] = 'yes';
         const initial = v.currentTime;
-        const tick = () => {
-          if (v.currentTime > initial + 0.001) v.dataset['firstMotionAt'] = String(Date.now());
-          else requestAnimationFrame(tick);
+        const presented: VideoFrameRequestCallback = (_now, frame) => {
+          if (frame.mediaTime > initial + 0.001) {
+            v.dataset['firstMotionAt'] = String(Date.now() + frame.expectedDisplayTime - performance.now());
+            v.dataset['firstMotionCallbackAt'] = String(Date.now());
+          } else v.requestVideoFrameCallback(presented);
         };
-        requestAnimationFrame(tick);
+        v.requestVideoFrameCallback(presented);
+        // Retain the old observer beside the native frame timestamp, to prove any polling delay.
+        const polled = () => {
+          if (v.currentTime > initial + 0.001) v.dataset['polledMotionAt'] = String(Date.now());
+          else requestAnimationFrame(polled);
+        };
+        requestAnimationFrame(polled);
       });
     }
     const sound = audio.locator(`audio[data-media-id="${id}"]`);
@@ -44,12 +52,24 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
     await win.getByRole('button', { name: 'Go cued video', exact: true }).click();
     const bg = (await snapshot(win)).layers.background;
     if (bg?.kind !== 'media' || !bg.seek) throw new Error('No scheduled Go');
-    for (const page of [hall, win, stream]) {
+    const motion: { page: string; at: number; callbackAt: number; polledAt: number }[] = [];
+    for (const [index, page] of [hall, win, stream].entries()) {
       await expect(video(page, id)).toHaveAttribute('data-first-motion-at', /[1-9]/);
-      const at = Number(await video(page, id).getAttribute('data-first-motion-at'));
+      motion.push({
+        page: ['hall', 'LIVE', 'stream'][index] ?? '',
+        at: Number(await video(page, id).getAttribute('data-first-motion-at')),
+        callbackAt: Number(await video(page, id).getAttribute('data-first-motion-callback-at')),
+        polledAt: Number(await video(page, id).getAttribute('data-polled-motion-at')),
+      });
+      await expect(video(page, id)).toHaveAttribute('data-prepared', 'yes');
+    }
+    await test.info().attach('s5-motion-observers.json', {
+      body: Buffer.from(JSON.stringify({ goAt: bg.seek.at, motion })),
+      contentType: 'application/json',
+    });
+    for (const { at } of motion) {
       expect(at - bg.seek.at).toBeGreaterThanOrEqual(0);
       expect(at - bg.seek.at, 'first motion within one 30 fps frame').toBeLessThanOrEqual(1000 / 30);
-      await expect(video(page, id)).toHaveAttribute('data-prepared', 'yes');
     }
     await expect(sound).toHaveJSProperty('paused', false);
   } finally {
@@ -82,24 +102,43 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
     await dispatch(win, { type: 'playItem', playlistId: made.id, itemId: made.items[0] });
     await cueReady(win);
     const pages = [hall, win, stream];
-    // Observe real moving frames; holding a test clock cannot prove smooth playback or sound.
+    // Observe real moving updates; holding a test clock cannot prove smooth playback or sound.
     for (const page of [...pages, audio])
       await page.evaluate(() => {
-        const trace: { t: number; gains: number[] }[] = [];
-        (globalThis as { s5Fade?: typeof trace }).s5Fade = trace;
+        const trace: { t: number; gains: number[] }[] = [],
+          polledTrace: typeof trace = [];
+        const observed = globalThis as { s5Fade?: typeof trace; s5FadePolled?: typeof trace };
+        observed.s5Fade = trace;
+        observed.s5FadePolled = polledTrace;
         const until = performance.now() + 4000;
-        const tick = () => {
+        const read = () => {
           const root = document.querySelector('[data-video-crossfade]');
           const elements = root
             ? root.querySelectorAll<HTMLElement>('[data-bg-fade]')
             : document.querySelectorAll<HTMLElement>('audio[data-crossfade-gain]');
-          const gains = [...elements].map((el) =>
-            Number(el.dataset['videoGain'] ?? el.dataset['crossfadeGain']),
-          );
-          if (gains.length === 2 && gains.every(Number.isFinite)) trace.push({ t: Date.now(), gains });
-          if (performance.now() < until) requestAnimationFrame(tick);
+          return [...elements].map((el) => Number(el.dataset['videoGain'] ?? el.dataset['crossfadeGain']));
         };
-        requestAnimationFrame(tick);
+        const polled = () => {
+          const gains = read();
+          if (gains.length === 2 && gains.every(Number.isFinite)) polledTrace.push({ t: Date.now(), gains });
+          if (performance.now() < until) requestAnimationFrame(polled);
+        };
+        requestAnimationFrame(polled);
+        // Observe the writer's completed updates. A rAF reader registered before the fade
+        // otherwise reads the previous frame before the fade's rAF callback has run.
+        const observer = new MutationObserver(() => {
+          if (performance.now() >= until) {
+            observer.disconnect();
+            return;
+          }
+          const gains = read();
+          if (gains.length === 2 && gains.every(Number.isFinite)) trace.push({ t: Date.now(), gains });
+        });
+        observer.observe(document.body, {
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['data-video-gain', 'data-crossfade-gain'],
+        });
       });
     await dispatch(win, { type: 'next' });
     const fade = (await snapshot(win)).videoCrossfade;
@@ -107,7 +146,7 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
     expect(fade.durationMs).toBe(2000);
     // Capture actual blended pixels halfway through the engine interval, before its second half completes.
     await expect
-      .poll(() => hall.locator('[data-bg-fade="in"]').getAttribute('data-video-gain'))
+      .poll(() => hall.locator('[data-bg-fade="in"]').getAttribute('data-video-gain'), { intervals: [16] })
       .toMatch(/^0\.[34]/);
     const before = Date.now();
     const image = decodePng(await hall.screenshot());
@@ -121,6 +160,21 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
     expect(blue).toBeGreaterThanOrEqual(36 + 107 * expected(before) - 12);
     expect(blue).toBeLessThanOrEqual(36 + 107 * expected(after) + 12);
     await expect.poll(async () => (await snapshot(win)).videoCrossfade ?? null).toBeNull();
+    const observers = await Promise.all(
+      [...pages, audio].map((page) =>
+        page.evaluate(() => {
+          const observed = globalThis as {
+            s5Fade?: { t: number; gains: number[] }[];
+            s5FadePolled?: { t: number; gains: number[] }[];
+          };
+          return { updated: observed.s5Fade ?? [], polled: observed.s5FadePolled ?? [] };
+        }),
+      ),
+    );
+    await test.info().attach('s5-gain-observers.json', {
+      body: Buffer.from(JSON.stringify({ fade, observers })),
+      contentType: 'application/json',
+    });
     for (const page of [...pages, audio]) {
       const trace = await page.evaluate(
         () => (globalThis as { s5Fade?: { t: number; gains: number[] }[] }).s5Fade ?? [],

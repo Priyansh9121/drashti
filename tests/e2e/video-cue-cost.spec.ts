@@ -166,6 +166,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       await d.playlists.setPlayOptions(id, { shuffle: false, repeatAll: false, crossfadeMs: 2000 });
       return { id, first: rows.ids[0] ?? '' };
     }, ids);
+    const streamAt = Date.now();
+    const actions: { at: number; round: number; mode: string; action: string; engineAt?: number }[] = [];
     const samples: {
       round: number;
       mode: string;
@@ -178,6 +180,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     for (let round = 0; round < 3; round++) {
       for (let n = 0; n < 3; n++) {
         const mode = modes[(round + n) % 3] ?? 'plain';
+        actions.push({ at: Date.now(), round, mode, action: 'reset to red' });
         await dispatch(win, { type: 'cancelVideoCue' });
         await dispatch(win, {
           type: 'setBackground',
@@ -215,8 +218,14 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           const cue = (await snapshot(win)).videoCue;
           if (!cue) throw new Error('No prepared cue for the streaming Go measurement');
           expect((await dispatch(win, { type: 'goVideoCue', cueId: cue.id })).ok).toBe(true);
+          const armed = (await snapshot(win)).videoStart;
+          actions.push({ at: Date.now(), round, mode, action: 'Go', engineAt: armed?.at });
         }
-        if (mode === 'crossfade') await dispatch(win, { type: 'next' });
+        if (mode === 'crossfade') {
+          await dispatch(win, { type: 'next' });
+          const fade = (await snapshot(win)).videoCrossfade;
+          actions.push({ at: Date.now(), round, mode, action: 'crossfade', engineAt: fade?.at });
+        }
         const pages = await sampling,
           state = await status();
         samples.push({
@@ -258,15 +267,17 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     expect(pixels.status).toBe(0);
     let begun = false,
       black = 0;
+    const blackFrameIndices: number[] = [];
     for (let at = 0; at + 2 < pixels.stdout.length; at += 3) {
       const red = pixels.stdout[at] ?? 0,
         green = pixels.stdout[at + 1] ?? 0,
         blue = pixels.stdout[at + 2] ?? 0;
       if (Math.max(red, blue) > green + 35) begun = true;
-      if (begun && red + green + blue < 30) black++;
+      if (begun && red + green + blue < 30) {
+        black++;
+        blackFrameIndices.push(at / 3);
+      }
     }
-    expect(begun, 'the actual encoded stream received the videos').toBe(true);
-    expect(black, 'the encoded video has no black frame after its first video').toBe(0);
     const decoded = spawnSync(
       ffmpeg,
       ['-v', 'error', '-i', received, '-vn', '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1'],
@@ -276,8 +287,6 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     const amplitudes = toneAmplitudes(decoded.stdout),
       maxA = Math.max(...amplitudes.map((x) => x.a)),
       maxB = Math.max(...amplitudes.map((x) => x.b));
-    expect(maxA).toBeGreaterThan(0.01);
-    expect(maxB).toBeGreaterThan(0.01);
     let length = 0,
       longest = 0;
     for (const sample of amplitudes) {
@@ -288,10 +297,6 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         longest = Math.max(longest, length);
       } else length = 0;
     }
-    expect(
-      longest,
-      'both generated tones overlap continuously through the sound crossfade',
-    ).toBeGreaterThanOrEqual(12);
     const report = {
       system:
         process.platform === 'win32'
@@ -300,15 +305,30 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       features,
       encoder,
       samples,
+      streamAt,
+      actions,
       encodedFrames: media.videoFrames,
       blackFrames: black,
+      blackFrameIndices,
       toneOverlapMs: longest * 100,
+      toneMaxima: { a: maxA, b: maxB },
+      toneWindows: amplitudes,
     };
     await info.attach('s5-cost.json', {
       body: Buffer.from(JSON.stringify(report, null, 2)),
       contentType: 'application/json',
     });
-    console.log('S5_COST ' + JSON.stringify(report));
+    await info.attach('s5-received.flv', { path: received, contentType: 'video/x-flv' });
+    const { toneWindows: _toneWindows, ...summary } = report;
+    console.log('S5_COST ' + JSON.stringify(summary));
+    expect(begun, 'the actual encoded stream received the videos').toBe(true);
+    expect(black, 'the encoded video has no black frame after its first video').toBe(0);
+    expect(maxA).toBeGreaterThan(0.01);
+    expect(maxB).toBeGreaterThan(0.01);
+    expect(
+      longest,
+      'both generated tones overlap continuously through the sound crossfade',
+    ).toBeGreaterThanOrEqual(12);
   } finally {
     receiver?.kill('SIGKILL');
     await running?.app.close();
