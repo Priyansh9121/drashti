@@ -125,7 +125,7 @@ export class VideoEditsRepo {
   complete(mediaId: string, revision: number, copyId: string): boolean {
     return this.db.transaction(() => {
       const source = this.read(mediaId);
-      if (!source || source.revision !== revision || source.state === 'ready') return false;
+      if (source?.revision !== revision || source.state === 'ready') return false;
       const copy = this.db
         .prepare("SELECT id FROM media WHERE id=? AND kind='video' AND missing=0 AND deleted_at IS NULL")
         .get(copyId);
