@@ -1,4 +1,6 @@
-import { ACCESS_REPORT } from './access-protocol';
+import { ACCESS_REPORT, ACCESS_TOKEN_ALPHABET } from './access-protocol';
+import { formatBytes } from './format';
+import { cutText } from './text';
 
 /*
  * Help › Report a Problem… (x49, the owner's Q60-38 and his "Yes, all A" to Q60-42 on 20 Nov 2026): what a report is,
@@ -78,36 +80,123 @@ export const REPORT_RECEIVED_LATER = 'when it arrives';
 /** The limits of a report's words and files (the list's: src/shared/access-protocol.ts). */
 export const REPORT_LIMITS = ACCESS_REPORT;
 
-export function reportReference(_id: string): string {
-  return '';
+/** Crockford's base32 letters, as the access list's tokens and references use them. */
+const LETTERS32 = ACCESS_TOKEN_ALPHABET;
+
+/** A report's reference, from its id: "R-" and the id's first 40 bits in Crockford's base32 letters, in two fours. */
+export function reportReference(id: string): string {
+  // The first ten hex digits (40 bits, exact in a number), as eight letters of five bits each, in two fours.
+  let n = 0;
+  for (let i = 0; i < 10; i++) n = n * 16 + (parseInt(id.charAt(i) || '0', 16) || 0);
+  let first = '';
+  let second = '';
+  for (let k = 0; k < 8; k++) {
+    const letter = LETTERS32.charAt(Math.floor(n / 2 ** (35 - 5 * k)) % 32);
+    if (k < 4) first += letter;
+    else second += letter;
+  }
+  return `R-${first}-${second}`;
 }
 
-export function reportCleanLines(_value: unknown): string {
-  return '';
+/** Characters that hide or reorder text: never in words the list emails (as the list's own `hidden`). */
+function hidden(c: number): boolean {
+  return (
+    c === 0x200b ||
+    c === 0x200e ||
+    c === 0x200f ||
+    (c >= 0x202a && c <= 0x202e) ||
+    (c >= 0x2060 && c <= 0x2064) ||
+    (c >= 0x2066 && c <= 0x206f) ||
+    c === 0xfeff
+  );
 }
 
-export function reportLetters(_text: string): number {
-  return 0;
+/** Words a person typed for a report, made safe to email, as the list makes them: their line breaks kept. */
+export function reportCleanLines(value: unknown): string {
+  let s = typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
+  s = s.replace(/\r\n?/gu, '\n');
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 0x0a) out += '\n';
+    else if (c < 0x20 || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029) out += ' ';
+    else if (!hidden(c)) out += s.charAt(i);
+  }
+  return out
+    .split('\n')
+    .map((line) => line.replace(/\s+/gu, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/gu, '\n\n')
+    .replace(/^\n+|\n+$/gu, '');
 }
 
-export function reportSubject(_names: readonly string[], _reference: string): string {
-  return '';
+const SEGMENTER =
+  typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+
+/** Letters as people see them (a conjunct, a letter with its vowel sign, an emoji: one each), as the list counts. */
+export function reportLetters(text: string): number {
+  return SEGMENTER ? [...SEGMENTER.segment(text)].length : Array.from(text).length;
 }
 
+/** The subject: the first features (up to three, then how many more) and the reference, 160 characters at most. */
+export function reportSubject(names: readonly string[], reference: string): string {
+  const head = 'Drashti problem: ';
+  const tail = ` (${reference})`;
+  for (let k = Math.min(3, names.length); k >= 1; k--) {
+    const text = `${names.slice(0, k).join(', ')}${names.length > k ? ` and ${String(names.length - k)} more` : ''}`;
+    if ((head + text + tail).length <= 160) return head + text + tail;
+  }
+  const more = names.length > 1 ? ` and ${String(names.length - 1)} more` : '';
+  return `${head}${cutText(names[0] ?? '', 160 - head.length - tail.length - more.length - 1)}…${more}${tail}`;
+}
+
+const SYSTEMS: Record<string, string> = { darwin: 'Mac', win32: 'Windows' };
+
+/** A computer as the email names it: "Sabha Mac (Drashti 1.0.0-alpha.20, Mac)". */
+const computerLine = (c: ReportComputer) =>
+  `${c.name} (Drashti ${c.version}, ${SYSTEMS[c.platform] ?? (c.platform || 'unknown')})`;
+
+/** Where the report was written, as the email says it: the computer and its mode, or the node through its Main. */
 export function reportComputerLine(
-  _sender: ReportComputer,
-  _from: ReportFrom,
-  _node: ReportComputer | null,
+  sender: ReportComputer,
+  from: ReportFrom,
+  node: ReportComputer | null,
 ): string {
-  return '';
+  if (from === 'node' && node) return `the node ${computerLine(node)}, through Main ${computerLine(sender)}`;
+  return `${computerLine(sender)}, in ${from === 'simple' ? 'Simple Mode' : 'Pro Mode'}`;
 }
 
-export function reportMailText(_parts: ReportMailParts): string {
-  return '';
+/** The admin's email text, as the access list makes it (access-list/core.js's reportMailText). */
+export function reportMailText(parts: ReportMailParts): string {
+  const lines = [`Drashti problem ${parts.reference}`, ''];
+  lines.push(`From: ${parts.gmail} (the Gmail let in on that computer)`);
+  lines.push(`Computer: ${parts.computer}`);
+  lines.push(`Written: ${parts.written} (by that computer’s clock); received ${parts.received}`);
+  lines.push('');
+  parts.features.forEach((f, i) => {
+    lines.push(`${String(i + 1)}. ${f.name}${f.chapter ? ` (${f.chapter})` : ''}`);
+    lines.push('What went wrong:');
+    lines.push(f.what);
+    if (f.expected) lines.push('What they expected:', f.expected);
+    lines.push('');
+  });
+  if (parts.notice) lines.push(`The notice Drashti showed: “${parts.notice}”`, '');
+  const errors = parts.errors ?? [];
+  if (errors.length > 0) lines.push('Recent errors in its log:', ...errors.map((e) => `  ${e}`), '');
+  const fileLine = (f: { name: string; bytes: number }) => `${f.name} (${formatBytes(f.bytes)})`;
+  const kept = parts.kept ?? [];
+  if (parts.files.length > 0) lines.push(`Attached: ${parts.files.map(fileLine).join('; ')}`);
+  if (kept.length > 0)
+    lines.push(`Kept on their computer (too large to send): ${kept.map(fileLine).join('; ')}`);
+  if (parts.files.length > 0 || kept.length > 0) lines.push('');
+  if (!parts.owner) lines.push('Reply to this email to answer them.');
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines.join('\n');
 }
 
-export function reportFileName(_kind: 'diagnostics' | 'picture', _stamp: string): string {
-  return '';
+/** The diagnostics file's and the picture's names, by when they were made (fileStamp), as Save Diagnostics names its. */
+export function reportFileName(kind: 'diagnostics' | 'picture', stamp: string): string {
+  return kind === 'diagnostics' ? `Drashti diagnostics ${stamp}.txt` : `Drashti window ${stamp}.png`;
 }
 
 /** What the person has written, as the window holds it. */
@@ -115,6 +204,18 @@ export interface ReportDraftWords {
   features: { name: string; what: string; expected: string }[];
 }
 
-export function draftProblem(_draft: ReportDraftWords): string | null {
+/** Why the window cannot go to Review yet (Q60-42's limits), or null when it can. */
+export function draftProblem(draft: ReportDraftWords): string | null {
+  if (draft.features.length === 0) return 'Choose where the problem is.';
+  if (draft.features.length > REPORT_LIMITS.features)
+    return `At most ${String(REPORT_LIMITS.features)} features in one report: send another for the rest.`;
+  for (const f of draft.features) {
+    const what = reportLetters(reportCleanLines(f.what));
+    if (what === 0) return `Say what went wrong with ${f.name}.`;
+    if (what > REPORT_LIMITS.whatLetters)
+      return `${f.name}: at most ${REPORT_LIMITS.whatLetters.toLocaleString('en')} letters for what went wrong.`;
+    if (reportLetters(reportCleanLines(f.expected)) > REPORT_LIMITS.expectedLetters)
+      return `${f.name}: at most ${REPORT_LIMITS.expectedLetters.toLocaleString('en')} letters for what you expected.`;
+  }
   return null;
 }

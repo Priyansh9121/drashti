@@ -70,10 +70,14 @@ export interface AccessReply {
 export interface AccessRequest {
   method: 'GET' | 'POST';
   url: string;
-  /** JSON text for a POST; null for a GET. */
-  body: string | null;
+  /** JSON text for a POST (a report's as bytes: megabytes, never made one text on Main's thread); null for a GET. */
+  body: string | Uint8Array | null;
   signal: AbortSignal;
 }
+
+/** A request's body as text (the tests' stand-ins read it so). */
+export const bodyText = (body: string | Uint8Array | null): string =>
+  body === null ? '' : typeof body === 'string' ? body : Buffer.from(body).toString('utf8');
 
 /** One request that never follows a redirect. Drashti uses Electron's (electron-transport.ts). */
 export type AccessTransport = (request: AccessRequest) => Promise<AccessReply>;
@@ -261,6 +265,12 @@ const rejectedSchema = z.object({ status: z.literal('rejected'), mailed: z.boole
 const revokedSchema = z.object({ status: z.literal('revoked') });
 const modeSchema = z.object({ status: z.string(), mode: z.enum(ACCESS_MODES) });
 const notedSchema = z.object({});
+/** A report received (x49): its reference, and whether it had been received before (then not emailed again). */
+const reportedSchema = z.object({
+  received: z.literal(true),
+  reference: z.string().regex(/^R-[0-9A-Z]{4}-[0-9A-Z]{4}$/u),
+  again: z.boolean(),
+});
 
 export interface AccessClientOptions {
   /** The list's address: access-config.ts's, or the stand-in's (accessTarget). */
@@ -422,14 +432,45 @@ export class AccessClient {
     return this.call('revoke', { target }, revokedSchema, grant);
   }
 
-  /** A report (x49): not yet. */
-  report(
-    _grant: AccessGrant,
-    _report: ReportCallReport,
-    _data: Uint8Array,
-    _stop?: AbortSignal,
-  ): Promise<AccessResult<{ received: true; reference: string; again: boolean }>> {
-    return Promise.resolve(noAnswer('unexpected', 'Not yet.'));
+  /**
+   * A report (x49, Help › Report a Problem…; the owner's Q60-38 and Q60-42): signed as a check is, over the call without
+   * its files' data, which follows it as the bytes the report worker wrote (data.json: each file's base64 by its
+   * SHA-256, which the call names), so the mac is made over a few kilobytes whatever the files weigh. Its own time limit
+   * (megabytes on a slow line); `stop` gives it up (the stream starting: the owner's Q60-42, 3).
+   */
+  async report(
+    grant: AccessGrant,
+    report: ReportCallReport,
+    data: Uint8Array,
+    stop?: AbortSignal,
+  ): Promise<AccessResult<z.infer<typeof reportedSchema>>> {
+    const nonce = randomBytes(16).toString('hex');
+    const head: Record<string, unknown> = {
+      v: ACCESS_VERSION,
+      op: 'report',
+      nonce,
+      computer: this.o.computer,
+      gmail: grant.gmail,
+      grantId: grant.grantId,
+      at: this.nextAt(),
+      report,
+    };
+    head['mac'] = accessMac(grant.secret, head);
+    // The call's JSON with its data added last: its closing brace (one byte) replaced by the data and a brace.
+    const json = Buffer.from(JSON.stringify(head), 'utf8');
+    const body = Buffer.concat([
+      json.subarray(0, json.length - 1),
+      Buffer.from(',"data":', 'utf8'),
+      data,
+      Buffer.from('}', 'utf8'),
+    ]);
+    const sent = await this.send(body, stop, ACCESS_REPORT_TIMEOUT_MS);
+    return typeof sent === 'string' ? this.believe(sent, 'report', nonce, reportedSchema) : sent;
+  }
+
+  /** This computer, as each call names it (a report's Review shows it). */
+  computer(): AccessComputer {
+    return this.o.computer;
   }
 
   /** The owner's: the row's note. */
@@ -483,12 +524,16 @@ export class AccessClient {
   }
 
   /** The call sent, and Google's redirect followed: the answer's text, or why there is none. */
-  private async send(body: string, stop?: AbortSignal): Promise<string | AccessResult<never>> {
-    const limit = AbortSignal.timeout(this.timeoutMs);
+  private async send(
+    body: string | Uint8Array,
+    stop?: AbortSignal,
+    timeoutMs = this.timeoutMs,
+  ): Promise<string | AccessResult<never>> {
+    const limit = AbortSignal.timeout(timeoutMs);
     const signal = stop ? AbortSignal.any([limit, stop]) : limit;
     let url = this.o.url;
     let method: 'GET' | 'POST' = 'POST';
-    let payload: string | null = body;
+    let payload: string | Uint8Array | null = body;
     try {
       for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
         if (!this.allowed(url, hop === 0))
@@ -517,7 +562,7 @@ export class AccessClient {
       return noAnswer('redirect', 'Sent on too many times.');
     } catch (error) {
       if (stop?.aborted) return noAnswer('network', GIVEN_UP);
-      if (signal.aborted) return noAnswer('timeout', `No answer within ${String(this.timeoutMs / 1000)} s.`);
+      if (signal.aborted) return noAnswer('timeout', `No answer within ${String(timeoutMs / 1000)} s.`);
       return noAnswer('network', error instanceof Error ? error.message : String(error));
     }
   }
