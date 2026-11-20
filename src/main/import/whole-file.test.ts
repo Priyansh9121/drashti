@@ -283,3 +283,87 @@ describe('a file whole or cut, every kind that says where it ends (Q60-31)', () 
     );
   });
 });
+
+/** What keeps a verdict right on real files' odd turns. */
+describe('a file whole or cut: the odd turns of real files (Q60-31)', () => {
+  it('an MP4 with a top-level meta box is still a movie: cut until its movie box is there (only a HEIF or AVIF picture, by its brands, is whole by its meta box)', async () => {
+    const mp4 = Buffer.concat([ftyp(), box('meta', 100), box('mdat', 3000)]);
+    expect(await wholeFile(await at('meta.mp4', mp4))).toBe('cut');
+    expect(await wholeFile(await at('meta-moov.mp4', Buffer.concat([mp4, box('moov', 300)])))).toBe('whole');
+  });
+
+  it('an MP3 cut part-way through its ID3 tag (a large cover picture) is cut', async () => {
+    // A tag of 5000 bytes (syncsafe 0x00 0x00 0x27 0x08), only 1000 of it there.
+    const tag = Buffer.alloc(1000);
+    tag.set([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0x27, 0x08]);
+    expect(await wholeFile(await at('cover.mp3', tag))).toBe('cut');
+  });
+
+  it('an Ogg page’s four letters inside its last page’s data do not mislead', async () => {
+    const page = (last: boolean, body: Buffer) => {
+      const p = Buffer.alloc(27 + 1);
+      p.write('OggS', 0, 'latin1');
+      p[5] = last ? 0x04 : 0x00;
+      p[26] = 1;
+      p[27] = body.length;
+      return Buffer.concat([p, body]);
+    };
+    const data = Buffer.alloc(120, 9);
+    data.write('OggS', 40, 'latin1');
+    const ogg = Buffer.concat([page(false, Buffer.alloc(200, 4)), page(true, data)]);
+    expect(await wholeFile(await at('letters.ogg', ogg))).toBe('whole');
+  });
+
+  it('an AVI past 1 GB (a second RIFF chunk, AVIX): cut when that one runs past its end', async () => {
+    const riff = (form: string, body: number) => {
+      const b = Buffer.alloc(8 + body, 1);
+      b.write('RIFF', 0, 'latin1');
+      b.writeUInt32LE(body, 4);
+      b.write(form, 8, 'latin1');
+      return b;
+    };
+    const avi = Buffer.concat([riff('AVI ', 2000), riff('AVIX', 3000)]);
+    expect(await wholeFile(await at('long.avi', avi))).toBe('whole');
+    expect(await wholeFile(await at('long-cut.avi', avi.subarray(0, 3500)))).toBe('cut');
+  });
+
+  it('a JPEG 2000 whose codestream runs to the file’s end (its size 0), and one with a box after its codestream', async () => {
+    const signature = Buffer.from([0, 0, 0, 0x0c, 0x6a, 0x50, 0x20, 0x20, 0x0d, 0x0a, 0x87, 0x0a]);
+    const codestream = Buffer.concat([
+      Buffer.from([0xff, 0x4f, 0xff, 0x51]),
+      Buffer.alloc(2000, 5),
+      Buffer.from([0xff, 0xd9]),
+    ]);
+    const toTheEnd = Buffer.concat([
+      signature,
+      box('ftyp', Buffer.from('jp2 \0\0\0\0jp2 ', 'latin1')),
+      Buffer.from([0, 0, 0, 0]),
+      Buffer.from('jp2c', 'latin1'),
+      codestream,
+    ]);
+    expect(await wholeFile(await at('to-end.jp2', toTheEnd))).toBe('whole');
+    expect(await wholeFile(await at('to-end-cut.jp2', toTheEnd.subarray(0, 1200)))).toBe('cut');
+    const after = Buffer.concat([
+      signature,
+      box('ftyp', Buffer.from('jp2 \0\0\0\0jp2 ', 'latin1')),
+      box('jp2c', codestream),
+      box('xml ', 50),
+    ]);
+    expect(await wholeFile(await at('after.jp2', after))).toBe('whole');
+    expect(await wholeFile(await at('bare.j2k', codestream))).toBe('whole');
+    expect(await wholeFile(await at('bare-cut.j2k', codestream.subarray(0, 900)))).toBe('cut');
+  });
+
+  it('a transport stream (AVCHD .mts, .m2ts, .ts): cut when it ends part-way through a packet; of whole packets it cannot tell', async () => {
+    const stream = (packet: number, sync: number, count: number) => {
+      const b = Buffer.alloc(packet * count, 0x10);
+      for (let i = 0; i < count; i++) b[i * packet + sync] = 0x47;
+      return b;
+    };
+    const ts = stream(188, 0, 30);
+    expect(await wholeFile(await at('cut.ts', ts.subarray(0, 188 * 20 + 100)))).toBe('cut');
+    const m2ts = stream(192, 4, 30);
+    expect(await wholeFile(await at('whole.m2ts', m2ts))).toBe('unknown');
+    expect(await wholeFile(await at('cut.mts', m2ts.subarray(0, 192 * 20 + 64)))).toBe('cut');
+  });
+});
