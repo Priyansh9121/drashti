@@ -203,7 +203,7 @@ test('a stream link’s sound plays in the hall at the Video level, and none of 
     // Said with the hall's sound player as it was: its join, clock, events and how it failed, if it did.
     const player = await sound.evaluate((el: HTMLAudioElement) =>
       JSON.stringify({
-        ...el.dataset,
+        ...Object.fromEntries(Object.entries(el.dataset)),
         t: el.currentTime.toFixed(2),
         paused: el.paused,
         readyState: el.readyState,

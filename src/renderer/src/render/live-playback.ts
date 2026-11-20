@@ -117,9 +117,12 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     }
     const offset = el.currentTime - expected;
     const kind = options.audible ? 'sound' : 'picture';
-    // Ahead (a clock moved, or its own ran fast): it waits there until the engine's time comes to it.
+    // Ahead (a clock moved, or it loaded late and so started later in the stream): it waits there until the engine's
+    // time comes to it, once it has played (a frame or two): one never played plays at once all the same, as above
+    // (CI x54-1121-004746-1596: the hall's sound, loaded after its moment and ahead, held, then failed as it began).
     if (offset > AHEAD_S[kind]) {
-      if (!el.paused) el.pause();
+      if (playedAt === null) play();
+      else if (!el.paused && el.currentTime > playedFrom) el.pause();
       later(offset * 1000, check);
       return;
     }
