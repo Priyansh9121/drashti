@@ -10,10 +10,11 @@ import type { EngineState } from '../shared/engine/state';
  * main/media/cannot-play.ts): a page that fails again within a minute with a video up that was up at its last failure
  * too takes that video off (the newest of them, the likeliest cause), with its sound and a notice naming it and where,
  * and loads again at once without it. A video on a slide is only paused there by that take-off (Q60-21), so the page
- * still loads it: failing again with it paused there, its slide comes off as Clear slide takes it; and the music (or a
- * deck's own sound) that keeps bringing the sound player down comes off as Clear audio takes it (Q60-52 A); Back or
- * Oops can bring either back. With nothing to blame, the page is given up on as before (a screen Stopped and said, the
- * sound player's red notice) and tried again by itself in a few minutes. Its one place: change it here.
+ * still loads it: failing again with it paused there, its slide comes off as Clear slide takes it, as does a slide
+ * whose deck's own sound keeps bringing the sound player down; and the music that keeps bringing the sound player down
+ * comes off as Clear audio takes it (Q60-52 A); Back or Oops can bring either back. With nothing to blame, the page is
+ * given up on as before (a screen Stopped and said, the sound player's red notice) and tried again by itself in a few
+ * minutes. Its one place: change it here.
  */
 
 /** A video up when a page failed: its file, and when it went up. */
