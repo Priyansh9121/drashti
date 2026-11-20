@@ -24,6 +24,11 @@ export interface AudioOutputStatus {
   state: AudioOutputState;
   /** False until the audio player has looked for outputs. */
   checked: boolean;
+  /**
+   * The sound player kept failing with nothing to blame and was given up on (x53, the owner's Q60-50 (2) A): nothing is
+   * heard until it is tried again, by Try again or by itself in a few minutes. Only there while so.
+   */
+  playerStopped?: true;
 }
 
 /**

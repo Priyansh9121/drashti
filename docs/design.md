@@ -748,6 +748,30 @@ hunt (CI x46-1120-112649-63694) found three things Drashti did on every computer
   2 minutes (its copy stopped, or it is damaged) is still never taken by itself, and is not read again until it changes:
   the line says so, and the drop folder lists it under **Not taken** and says it once (Import… brings it in as it is).
 
+## 55. A page that keeps failing, and a display with no name (alpha.20, Q60-31)
+
+x52's hunt (CI x52-1120-161434-29576, both systems) found four ways the show stopped with nobody told; x53 fixed them
+(the owner's Q60-50 A, 20 Nov 2026):
+
+- **A page that keeps failing on a video** (`main/keeps-failing.ts`, its one place): a hall screen whose picture failed
+  each time it drew (black for good after one reload, counted as showing, nobody told), or whose renderer went down
+  each time it loaded a video (black, then Stopped); LIVE going down each time it loaded one (given up on, the controls
+  gone, View › Reload Operator Window bringing it down again); the sound player going down each time it loaded a
+  video's sound (given up on: every sound gone for 2 minutes, the next video silent). Now a page that fails again within
+  a minute (`AGAIN_MS`) with a video up that was up at its last failure too takes that video off, the newest of them,
+  as §54 takes off a video that fails (`ShowEngine.cannotPlay`), says so by its name and where (the operator window's
+  own word waits for its page to open), and loads again at once without it (`RendererWatchdog.tookOff`). A picture
+  that fails again after its reload with nothing to blame is given up on as a crash loop is: Stopped and said, tried
+  again 2 and then 10 minutes on, and back by itself once it paints a change after its last failure
+  (`RendererWatchdog.drawsAgain`; every error now reaches the watchdog, not only those its 10 s log line says). The sound
+  player given up on with nothing to blame says so in a red notice in both modes, with Try again
+  (`operator/SoundPlayerStopped.tsx`, `audio:try-again`).
+- **A display that gives no name and no serial number** (some cheap projectors, HDMI converters, extenders) changing
+  its resolution matched no screen: its window hidden, a new screen made for it, the operator's own (its name, Stretch)
+  left missing, and about 0.7 s with no Drashti window there; two projectors of one model with one name changing mode
+  at once both lost theirs, the second given the Stage. Now a screen keeps its display by the same id and the same
+  name, an empty one too, at any size (`shared/display-match.ts`, after the place and size, before the name alone).
+
 ## Shared show view on a paired computer
 
 Main's Screens adds **Shared show view** to each node card, off by default and changed only from Main's operator window in Pro Mode. The choice is public metadata on Main, separate from the unchanged node pairing and pinned certificate. Its feed carries an audience preview's geometry and the chosen public action areas in addition to the existing ordered engine feed. Action areas start empty; the view alone never grants an action.
