@@ -58,3 +58,11 @@ it('refuses before recipe Save when all 50 marker places are occupied', () => {
   expect(save).not.toHaveBeenCalled();
   expect(media.markersOf('m')?.markers).toHaveLength(50);
 });
+
+it('keeps a first suggested marker on a video that has never had marker settings', () => {
+  media.setMarkers('m', null);
+  const save = vi.fn(() => ({ ok: true as const }));
+  expect(withSceneMarkers(db, media, 'm', [2500], save)).toEqual({ ok: true });
+  expect(save).toHaveBeenCalledOnce();
+  expect(media.markersOf('m')).toMatchObject({ startMs: null, endMs: null, markers: [{ atMs: 2500 }] });
+});
