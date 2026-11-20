@@ -36,6 +36,15 @@ export class MusicService {
 
   constructor(private readonly deps: MusicDeps) {}
 
+  /* Red (x47, slice 3): playing on from the track it stopped on, still to be written. */
+  follow(_state: EngineState): void {
+    // Red.
+  }
+
+  quitting(): void {
+    // Red.
+  }
+
   view(): MusicView {
     const playlists = this.deps.repo.list();
     this.last ??= this.deps.settings.get(LAST) ?? null;

@@ -39,6 +39,8 @@ const row = (more: Partial<DetailsRow> = {}): DetailsRow => ({
   importedFrom: '/Placeholder folder/Placeholder clip.mkv',
   convertedTo: null,
   copyOf: null,
+  playCount: 0,
+  lastPlayedAt: null,
   ...more,
 });
 
