@@ -848,8 +848,11 @@ export class ShowEngine {
           cancel: this.wait(Math.max(0, start.at - this.now()), () => {
             this.startWait = null;
             this.atOnce(() => {
-              if (this.state.videoStart?.id === start.id)
-                this.apply([{ type: 'videoStart/set', start: null }]);
+              const current = this.state.videoStart;
+              if (current?.id === start.id) {
+                if (this.now() >= current.at) this.apply([{ type: 'videoStart/set', start: null }]);
+                else this.scheduleVideoCue();
+              }
             });
           }),
         };
@@ -864,11 +867,11 @@ export class ShowEngine {
           key: fadeKey,
           cancel: this.wait(Math.max(0, fade.at + fade.durationMs - this.now()), () => {
             this.fadeWait = null;
-            if (
-              this.state.videoCrossfade?.id === fade.id &&
-              videoFadeProgress(this.state.videoCrossfade, this.clock()) >= 1
-            )
+            const current = this.state.videoCrossfade;
+            if (current?.id !== fade.id) return;
+            if (videoFadeProgress(current, this.clock()) >= 1)
               this.atOnce(() => this.apply([{ type: 'videoCrossfade/set', fade: null }]));
+            else this.scheduleVideoCue();
           }),
         };
     }
