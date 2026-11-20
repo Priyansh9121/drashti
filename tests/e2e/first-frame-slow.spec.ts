@@ -31,10 +31,12 @@ const ffmpeg = testFfmpeg();
 test.skip(!ffmpeg && !process.env['CI'], 'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs');
 
 /**
- * Ten seconds at 1920 × 1080 whose first frame is noise of a few MB and every frame after it the same (a few bytes
- * each): H.264 High 8-bit 4:2:0, which every player here decodes, so its first frame comes late at a slow pace and
- * nothing else stops it. (A lossless frame is High 4:4:4 Predictive, which this computer's player cannot draw: it came
- * off at once as a file that cannot play, so the first CI runs never reached the start watch: x47-1120-194410-66097.)
+ * Ten seconds at 1920 × 1080 whose first frame is noise of a few MB around the test video's orange in its middle (where
+ * a look reads the screen: hall-looks.ts `shown`), and every frame after it the same (a few bytes each): H.264 High
+ * 8-bit 4:2:0, which every player here decodes, so its first frame comes late at a slow pace and nothing else stops it.
+ * (A lossless frame is High 4:4:4 Predictive, which this computer's player cannot draw: it came off at once as a file
+ * that cannot play, so the first CI runs never reached the start watch: x47-1120-194410-66097. Noise alone in its
+ * middle never read as the video's picture.)
  */
 function bigFirstFrame(file: string): string {
   const r = spawnSync(
@@ -45,7 +47,7 @@ function bigFirstFrame(file: string): string {
         '-f',
         'lavfi',
         '-i',
-        'nullsrc=s=1920x1080:r=25,geq=lum=random(1)*255:cb=128:cr=128,trim=end_frame=1,loop=loop=249:size=1:start=0,setpts=N/25/TB',
+        'nullsrc=s=1920x1080:r=25,geq=lum=random(1)*255:cb=128:cr=128,drawbox=x=760:y=336:w=400:h=300:color=0xd9480f:t=fill,trim=end_frame=1,loop=loop=249:size=1:start=0,setpts=N/25/TB',
       ],
       ...[
         '-frames:v',
@@ -97,11 +99,16 @@ async function start(env: Record<string, string>) {
   return { app, win, hall, mainSaid };
 }
 
-/** Put the video up as the background: taken, and up, before any time is counted. */
+/**
+ * Put the video up as the background: taken, and up, before any time is counted. It goes round, so its own end never
+ * takes it off: by the show's time a 10 s video ends at 10 s, loaded or not, and with a wallpaper chosen it goes then
+ * (When it ends, the Wallpaper: the default), which was all that took it off in every earlier run (x54-1121-023104-76071:
+ * Main logged no video that could not play, on either system).
+ */
 async function upAsBackground(win: Page, mediaId: string): Promise<void> {
   const result = await dispatch(win, {
     type: 'setBackground',
-    background: { kind: 'media', mediaId, media: 'video', fit: 'fill', loop: false },
+    background: { kind: 'media', mediaId, media: 'video', fit: 'fill', loop: true },
   });
   expect(result.ok, 'the background is taken').toBe(true);
   expect(await backgroundUp(win), 'the video is up').toBe(mediaId);

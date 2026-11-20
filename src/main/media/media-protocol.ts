@@ -71,6 +71,11 @@ export interface MediaProtocolDeps {
   openingSound?: (sha256: string) => string | null;
   /** Told about refusals that point at a broken or tampered library. */
   warn?: (message: string) => void;
+  /**
+   * Told how many bytes of a library file are read for a page as they are (Q60-51: a video whose file still comes in
+   * is loading, even where its page can tell nothing else).
+   */
+  sent?: (mediaId: string, bytes: number) => void;
 }
 
 /**
@@ -370,5 +375,14 @@ export async function handleMediaRequest(request: Request, deps: MediaProtocolDe
   const status = range ? 206 : 200;
   if (request.method === 'HEAD' || length === 0) return new Response(null, { status, headers });
   const stream = createReadStream(file.path, { start, end, highWaterMark: 256 * 1024 });
-  return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, { status, headers });
+  const body = Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+  // Each piece read for the page, counted beside the body (never wrapping it: Q60-51).
+  const sent = deps.sent;
+  if (asked?.what === 'media' && sent) {
+    const { mediaId } = asked;
+    stream.on('data', (chunk: Buffer | string) => {
+      sent(mediaId, chunk.length);
+    });
+  }
+  return new Response(body, { status, headers });
 }
