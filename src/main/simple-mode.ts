@@ -64,6 +64,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.appearance.make,
   IPC.appearance.remove,
   IPC.appearance.setMotion,
+  // Session 60: Moving: On / Off and the favourites, the Appearance window's too.
+  IPC.appearance.setMoving,
+  IPC.appearance.setFavourite,
   IPC.library.relinkMedia,
   IPC.library.setArrangement,
   IPC.library.removePresentations,
