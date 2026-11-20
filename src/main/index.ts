@@ -189,6 +189,8 @@ import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
 import { MediaDetailsService } from './media/media-details';
 import { PlayHistory } from './media/play-history';
+import { takeSnapshot } from './media/snapshot';
+import { playingSchema } from '../shared/engine/playing';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
@@ -304,7 +306,7 @@ import { createPdfCopyWindow } from './library/pdf-copy-window';
 import { openGalleryWindow } from './windows/gallery-window';
 import { AppearanceService } from './appearance/appearance-service';
 import { ownSchema } from './appearance/appearance-file';
-import { FOLLOW } from '../shared/appearance/appearances';
+import { familyOf, FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList, stopTimes } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
@@ -601,12 +603,16 @@ const warmUps = new WarmUpChoices({
  */
 const gpuSaidLate = !packaged() && sw('DRASHTI_TEST_GPU_SAID') === 'late';
 app.on('gpu-info-update', () => {
-  if (!gpuSaidLate) warmUps.gpuSaid();
+  if (gpuSaidLate) return;
+  warmUps.gpuSaid();
+  // A live appearance's touch waits for this word (Session 60).
+  appearance.chipMayHaveChanged();
 });
 if (gpuSaidLate)
   (globalThis as { drashtiTestGpuSaid?: () => void }).drashtiTestGpuSaid = () => {
     setImmediate(() => {
       warmUps.gpuSaid();
+      appearance.chipMayHaveChanged();
     });
   };
 
@@ -757,7 +763,13 @@ const ownFieldsSchema = ownSchema.omit({ id: true }).extend({
 });
 const appearance = new AppearanceService({
   userData: app.getPath('userData'),
+  // Whether Chromium draws with a graphics chip, once its GPU process has said (Session 60: a live look waits for it).
+  chip: () => (warmUps.hasSaid ? (warmUps.drawsWithoutChip() ? 'no' : 'yes') : 'unknown'),
   startIn: sw('DRASHTI_TEST_APPEARANCE'),
+  // Tests only (never a packaged Drashti): how many logical cores this computer has, for the moving looks' pause.
+  ...(!packaged() && /^[0-9]{1,3}$/u.test(sw('DRASHTI_TEST_CORES') ?? '')
+    ? { cores: Number(sw('DRASHTI_TEST_CORES')) }
+    : {}),
   say: (line) => {
     log.info(line);
   },
@@ -7079,6 +7091,39 @@ function start(): void {
       ? media.resumeOf(mediaId)
       : null,
   );
+  // Snapshot (alpha.20, the time bar's ⋯; the owner's "Yes, all A" to Q60-39 P6 (d) A): the frame on the screens, made
+  // from the video's own file (media/snapshot.ts), a PNG in Media through the import, never put up. Pro Mode's.
+  handle(IPC.media.snapshot, (e, playing) => {
+    const ref = playingSchema.safeParse(playing);
+    if (!fromOperator(e) || !ref.success)
+      return { ok: false as const, message: 'Only the operator window can make a snapshot.' };
+    return takeSnapshot(
+      {
+        state: () => engine.current,
+        now: () => Date.now(),
+        file: (id) => {
+          const row = media.about(id);
+          return row && !row.missing && !row.deleted && row.path !== ''
+            ? { path: join(mediaDir, row.path), name: row.name }
+            : null;
+        },
+        ffmpeg: pictureFfmpeg,
+        importFile: async (path) => {
+          const done = await imports.start([path], {});
+          if (!done.ok) return { ok: false as const, message: done.message };
+          const item = importRepo.report(done.run.id)?.items[0];
+          if (item?.target?.kind === 'media') return { ok: true as const, mediaId: item.target.id };
+          return {
+            ok: false as const,
+            message:
+              item?.issues.find((problem) => problem.severity === 'error')?.message ??
+              'Drashti could not add the snapshot to Media. Try again.',
+          };
+        },
+      },
+      ref.data,
+    );
+  });
   // Its Copy: the window's words on the clipboard, by the main process (copyWords).
   handle(IPC.media.copyDetails, (e, text) => copyWords(e, text));
   handle(IPC.audio.getOutput, () => audioOutput.status);
@@ -8512,6 +8557,21 @@ function start(): void {
       ? { ok: true as const }
       : { ok: false as const, message: 'Choose Calm, Lively or Off.' };
   });
+  // Moving: On or Off (Session 60, the owner's safety rule), this computer's, as the appearance is.
+  handle(IPC.appearance.setMoving, (e, on) => {
+    if (!fromOperator(e) || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can turn moving on or off.' };
+    appearance.setMoving(on);
+    return { ok: true as const };
+  });
+  // Favourites (Session 60): an appearance starred or unstarred in the Appearance window.
+  handle(IPC.appearance.setFavourite, (e, id, on) => {
+    if (!fromOperator(e) || typeof id !== 'string' || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can star an appearance.' };
+    return appearance.setFavourite(id, on)
+      ? { ok: true as const }
+      : { ok: false as const, message: 'That appearance is no longer here.' };
+  });
   // The menu's ticks follow the appearance shown (Follow the computer's changes too).
   appearance.onChanged(() => {
     rebuildMenu();
@@ -8659,7 +8719,7 @@ function start(): void {
     appearance: {
       choices: [
         { id: FOLLOW, label: 'Follow the Computer' },
-        ...appearance.list().map((a) => ({ id: a.id, label: a.name })),
+        ...appearance.list().map((a) => ({ id: a.id, label: a.name, family: familyOf(a) })),
       ],
       chosen: appearance.choice,
       choose: (id) => {
