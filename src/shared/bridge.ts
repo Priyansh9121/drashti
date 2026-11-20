@@ -144,6 +144,8 @@ import type { PipPlace } from './engine/state';
 import type { SavePictureResult, SaveStillResult } from './media';
 import type { MediaDetailsResult } from './media-details';
 import type { ResumePoint } from './play-history';
+import type { SnapshotResult } from './snapshot';
+import type { PlayingRef } from './engine/playing';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
@@ -762,6 +764,8 @@ export interface DrashtiBridge {
     copyDetails(text: string): Promise<boolean>;
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when; null for none. */
     resumePoint(mediaId: string): Promise<ResumePoint | null>;
+    /** Snapshot (alpha.20): the frame of a video on the screens now, a PNG in Media; or why not. */
+    snapshot(playing: PlayingRef): Promise<SnapshotResult>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
