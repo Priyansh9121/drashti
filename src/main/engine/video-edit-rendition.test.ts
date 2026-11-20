@@ -151,3 +151,79 @@ it('keeps a deck video’s trigger, loop and volume with its prepared ID and sou
   });
   expect(source).toEqual(before);
 });
+
+it('keeps the currently shown file and clock when a library refresh reintroduces its logical ID', () => {
+  const previous = showing('copy-1');
+  const bg = previous.layers.background;
+  if (bg?.kind !== 'media') throw new Error('No video');
+  previous.layers.background = {
+    ...bg,
+    durationMs: 3000,
+    clip: { startMs: 1000, endMs: 2500 },
+    seek: { at: 1000, toMs: 2000, paused: true },
+    marks: [{ id: 'marker', name: 'Placeholder', atMs: 1500 }],
+  };
+  const refreshed = showing('source');
+  const newer: VideoEditSnapshot = {
+    ...ready,
+    revision: 2,
+    recipe: { ...recipe, speed: 0.5 },
+    readyMediaId: 'copy-2',
+  };
+  const result = prepareVideoEdits(previous, refreshed, () => newer, false, resolution);
+  expect(result.state?.layers.background).toEqual(previous.layers.background);
+  const fresh = showing('source');
+  const freshBg = fresh.layers.background;
+  if (freshBg?.kind !== 'media') throw new Error('No video');
+  fresh.layers.background = { ...freshBg, startedAt: 2000 };
+  expect(
+    prepareVideoEdits(previous, fresh, () => newer, false, resolution).state?.layers.background,
+  ).toMatchObject({ mediaId: 'copy-2', durationMs: 12000 });
+});
+
+it('keeps a slide’s prepared file through a source refresh while allowing its text to update', () => {
+  const previous = initialEngineState();
+  const slide = textSlide('same-slide', 'Placeholder before');
+  slide.elements.push({
+    id: 'video',
+    kind: 'video',
+    mediaId: 'copy-1',
+    fit: 'fit',
+    frame: { x: 0, y: 0, width: 100, height: 100 },
+  });
+  previous.layers.slide = {
+    presentationId: 'p',
+    slideIndex: 0,
+    notes: '',
+    shownAt: 1000,
+    slide,
+    clips: { 'copy-1': { startMs: 1000, endMs: 2500 } },
+    seeks: { 'copy-1': { at: 1000, toMs: 2000, paused: true } },
+  };
+  const refreshed = structuredClone(previous);
+  const nextSlide = refreshed.layers.slide;
+  if (!nextSlide) throw new Error('No slide');
+  nextSlide.slide.elements = nextSlide.slide.elements.map((el) =>
+    el.kind === 'video'
+      ? { ...el, mediaId: 'source' }
+      : el.kind === 'text'
+        ? { ...el, text: 'Placeholder after' }
+        : el,
+  );
+  nextSlide.clips = { source: { startMs: 4000, endMs: 7000 } };
+  const newer: VideoEditSnapshot = {
+    ...ready,
+    revision: 2,
+    recipe: { ...recipe, speed: 0.5 },
+    readyMediaId: 'copy-2',
+  };
+  const result = prepareVideoEdits(previous, refreshed, () => newer, false, resolution);
+  expect(result.state?.layers.slide?.slide.elements.find((el) => el.kind === 'video')).toMatchObject({
+    mediaId: 'copy-1',
+  });
+  expect(result.state?.layers.slide?.slide.elements.find((el) => el.kind === 'text')).toMatchObject({
+    text: 'Placeholder after',
+  });
+  expect(result.state?.layers.slide?.clips).toEqual(previous.layers.slide.clips);
+  expect(result.state?.layers.slide?.seeks).toEqual(previous.layers.slide.seeks);
+});
