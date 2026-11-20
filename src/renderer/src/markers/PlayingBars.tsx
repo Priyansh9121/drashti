@@ -1,20 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useEngine } from '../engine/engine-store';
-import { dispatch } from '../operator/actions';
+import { useMedia } from '../library/library-store';
+import { openMediaInfo } from '../library/media-info';
+import { pushRemoval } from '../library/undo';
+import { dispatch, useNotice } from '../operator/actions';
 import { useMode } from '../operator/mode-store';
 import { usePractice } from '../practice/practice-store';
 import { engineNow } from '../render/clock';
 import { useNow } from '../render/useNow';
 import { Badge } from '../ui/Badge';
 import { IconButton } from '../ui/Button';
-import { Pause, Play } from '../ui/icons';
+import { Camera, Info, MoreHorizontal, Pause, Play, Repeat, StepBack, StepForward } from '../ui/icons';
+import { MenuButton, type MenuEntry } from '../ui/Menu';
 import { cx } from '../ui/cx';
 import { TimeBar } from '../ui/TimeBar';
 import { VideoCaptionButton } from '../video-captions/VideoCaptionControl';
+import type { PlayingRef } from '../../../shared/engine/playing';
+import type { EngineState } from '../../../shared/engine/state';
 import { playbackAtMs, playbackLeftMs } from '../../../shared/media';
 import { inLastSeconds } from '../../../shared/wallpapers';
 import { barNow, moveCommand, pauseCommand, playCommand, type PlayingRow, playingRows } from './playing-rows';
 import { Scrub } from './scrub';
+import { useFrameMs } from './frame-length';
 
 /*
  * The time bar under LIVE (Session 54): one row for each thing playing, the background video, each video on the slide
@@ -41,18 +48,47 @@ export function PlayingBars({ className }: { className?: string } = {}) {
   return (
     <div className={cx('space-y-0.5', className)} data-testid="time-bars">
       {rows.map((row) => (
-        <Row key={row.key} row={row} pro={pro} />
+        <Row key={row.key} row={row} pro={pro} repeating={repeatingOf(state, row.playing.ref)} />
       ))}
     </div>
   );
 }
 
-function Row({ row, pro }: { row: PlayingRow; pro: boolean }) {
+/** Whether the background video or the sound goes round from A to B now (alpha.20, the time bar's ⋯). */
+function repeatingOf(state: EngineState | null, ref: PlayingRef): boolean {
+  if (ref.layer === 'background') {
+    const bg = state?.layers.background;
+    return bg?.kind === 'media' && bg.ab !== undefined;
+  }
+  return ref.layer === 'audio' && state?.layers.audio?.ab !== undefined;
+}
+
+/** Snapshot (alpha.20): the frame on the screens into Media, with Undo; why not, in the window's notice. */
+async function snapshot(ref: PlayingRef): Promise<void> {
+  const made = await window.drashti.media.snapshot(ref);
+  if (!made.ok) {
+    useNotice.setState({ text: made.message });
+    return;
+  }
+  pushRemoval({
+    text: `Snapshot “${made.name}” in Media`,
+    restore: async () => {
+      await window.drashti.media.remove([made.mediaId]);
+    },
+  });
+}
+
+function Row({ row, pro, repeating }: { row: PlayingRow; pro: boolean; repeating: boolean }) {
   // Where it is, from the engine's time, a few times a second.
   const now = useNow(250);
   const { playing } = row;
   const bar = barNow(playing, now);
   const known = bar.durationMs !== null;
+  // The time bar's ⋯ (alpha.20, Pro Mode): A waits here for B, for this showing (the row's key) only.
+  const [markA, setMarkA] = useState<number | null>(null);
+  const video = playing.ref.layer !== 'audio' && playing.sound !== true;
+  const frameMs = useFrameMs(pro && video ? playing.mediaId : null);
+  const fileName = useMedia((s) => s.media.find((m) => m.id === playing.mediaId)?.name ?? null);
   // The picture following a drag (Session 56, scrub.ts), let go of with the row (another file, another showing).
   const [scrub] = useState(
     () =>
@@ -78,6 +114,88 @@ function Row({ row, pro }: { row: PlayingRow; pro: boolean }) {
   const [before, setBefore] = useState<{ paused: boolean; stopped: boolean } | null>(null);
   const paused = before ? before.paused : playing.paused;
   const stopped = before ? before.stopped : playing.paused || bar.ended;
+  const stepFrame = (by: 1 | -1) => {
+    if (frameMs !== null && playing.paused)
+      void dispatch({ type: 'stepFrame', playing: playing.ref, by, frameMs });
+  };
+  const abHere = playing.ref.layer === 'background' || playing.ref.layer === 'audio';
+  const more: MenuEntry[] = [
+    ...(abHere
+      ? [
+          {
+            label: 'Repeat from here (A)',
+            icon: Repeat,
+            disabled: !known,
+            onSelect: () => {
+              setMarkA(Math.round(bar.atMs));
+            },
+          },
+          {
+            label: '…to here (B)',
+            disabled: markA === null || !known,
+            onSelect: () => {
+              if (markA === null) return;
+              void dispatch({
+                type: 'repeatAb',
+                playing: playing.ref,
+                fromMs: markA,
+                toMs: Math.round(bar.atMs),
+              });
+              setMarkA(null);
+            },
+          },
+          ...(repeating
+            ? [
+                {
+                  label: 'Stop repeating A-B',
+                  onSelect: () => {
+                    void dispatch({ type: 'stopAb', playing: playing.ref });
+                  },
+                },
+              ]
+            : []),
+        ]
+      : []),
+    ...(video
+      ? [
+          {
+            label: 'One frame back',
+            icon: StepBack,
+            separatorBefore: abHere,
+            disabled: !playing.paused || frameMs === null,
+            onSelect: () => {
+              stepFrame(-1);
+            },
+          },
+          {
+            label: 'One frame on',
+            icon: StepForward,
+            disabled: !playing.paused || frameMs === null,
+            onSelect: () => {
+              stepFrame(1);
+            },
+          },
+          {
+            label: 'Snapshot',
+            icon: Camera,
+            disabled: !known,
+            onSelect: () => {
+              void snapshot(playing.ref);
+            },
+          },
+        ]
+      : []),
+    {
+      label: 'Media information…',
+      icon: Info,
+      separatorBefore: true,
+      onSelect: () => {
+        openMediaInfo({ id: playing.mediaId, name: fileName ?? row.short });
+      },
+    },
+  ];
+  // A waiting for B, a tick on the bar.
+  const marks = markA === null ? playing.marks : [...playing.marks, { id: 'ab-a', name: 'A', atMs: markA }];
   // The background video's last 10 seconds (Session 55, Part 6, E): its time in amber.
   const ending =
     row.which === 'background' &&
@@ -149,6 +267,7 @@ function Row({ row, pro }: { row: PlayingRow; pro: boolean }) {
         {row.short}
       </span>
       {paused && <Badge data-testid="time-bar-paused">Paused</Badge>}
+      {repeating && <Badge data-testid="time-bar-ab">A-B</Badge>}
       {playing.ref.layer !== 'audio' && !playing.sound && <VideoCaptionButton mediaId={playing.mediaId} />}
       <TimeBar
         className="min-w-0 flex-1"
@@ -157,12 +276,21 @@ function Row({ row, pro }: { row: PlayingRow; pro: boolean }) {
         durationMs={bar.durationMs}
         startMs={bar.startMs}
         endMs={bar.endMs}
-        markers={playing.marks}
+        markers={marks}
         elapsed={pro}
         warning={ending}
         onMove={onMove}
         {...(follows ? { onScrub } : {})}
+        {...(pro && video ? { onFrame: stepFrame } : {})}
       />
+      {pro && (
+        <MenuButton
+          label={`More for ${row.short}`}
+          icon={MoreHorizontal}
+          entries={more}
+          testId="time-bar-more"
+        />
+      )}
     </div>
   );
 }

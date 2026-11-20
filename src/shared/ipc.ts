@@ -45,6 +45,8 @@ import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
 import type { MediaDetailsResult } from './media-details';
+import type { PlayingRef } from './engine/playing';
+import type { SnapshotResult } from './snapshot';
 import type { PictureAssetKind, SharpenJobView } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
 import type {
@@ -581,6 +583,8 @@ export const IPC = {
     details: 'media:details',
     /** Media information's Copy: its words on the clipboard (operator window only; a page's own clipboard is refused). */
     copyDetails: 'media:copy-details',
+    /** Snapshot (alpha.20, the time bar's ⋯): the frame on the screens, a PNG in Media (operator window, Pro Mode). */
+    snapshot: 'media:snapshot',
     /**
      * A picture's look (Session 26e): read one, every one (the thumbnails), keep one (the Picture editor),
      * and keep the live zoom as the picture's (Keep this zoom).
@@ -1581,6 +1585,7 @@ export interface InvokeContract {
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.details]: { args: [mediaId: string]; result: MediaDetailsResult };
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
+  [IPC.media.snapshot]: { args: [playing: PlayingRef]; result: SnapshotResult };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
   [IPC.media.remove]: { args: [mediaIds: string[]]; result: MediaRemovalResult };
