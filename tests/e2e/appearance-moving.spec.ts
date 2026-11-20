@@ -37,7 +37,7 @@ const animations = (win: Page) =>
       const props = new Set<string>();
       for (const frame of effect?.getKeyframes() ?? []) for (const p of Object.keys(frame)) props.add(p);
       return {
-        inLook: target?.closest('[data-look-motion]') !== null && target !== null,
+        inLook: target?.closest('[data-touch-layer]') !== null && target !== null,
         onShow: target?.closest('[data-show-control], [data-header-states]') !== null && target !== null,
         props: [...props],
       };
@@ -100,7 +100,7 @@ test('a live look moves in the header and the band only, behind every word, by t
       const box = await part.boundingBox();
       if (!box) throw new Error('the header’s name and buttons are drawn');
       const under = await win.evaluate(
-        ([x, y]) => document.elementFromPoint(x ?? 0, y ?? 0)?.closest('[data-look-motion]') !== null,
+        ([x, y]) => document.elementFromPoint(x ?? 0, y ?? 0)?.closest('[data-touch-layer]') !== null,
         [box.x + box.width / 2, box.y + box.height / 2],
       );
       expect(under).toBe(false);

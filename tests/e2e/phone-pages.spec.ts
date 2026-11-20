@@ -43,8 +43,13 @@ const tooSmall = (page: Page) =>
 const rgb = (hex: string) =>
   `rgb(${[1, 3, 5].map((at) => String(parseInt(hex.slice(at, at + 2), 16))).join(', ')})`;
 
-/** Black's colours and its shadows' tints, as app.css's body.web must set them. */
-const BLACK_VARS = appearanceVars(BLACK);
+/**
+ * Black's colours and its shadows' tints, as app.css's body.web must set them. A live look's touch colours
+ * (--look-*, Session 60) are the operator window's own: the phones draw no touch, and body.web leaves them out.
+ */
+const BLACK_VARS = Object.fromEntries(
+  Object.entries(appearanceVars(BLACK)).filter(([name]) => !name.startsWith('--look-')),
+);
 
 /** A colour as written in the built CSS ("#fff", "#000c") in full ("#ffffff", "#000000cc"). */
 const full = (hex: string) =>
