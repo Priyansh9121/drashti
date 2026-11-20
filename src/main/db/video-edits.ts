@@ -25,10 +25,8 @@ interface EditRow {
 export class VideoEditsRepo {
   constructor(
     private readonly db: Db,
-    originalFileId: (id: string) => string = (id) => id,
-  ) {
-    void originalFileId;
-  }
+    private readonly originalFileId: (id: string) => string = (id) => id,
+  ) {}
 
   /** Resolve a prepared immutable file back to its source when its editor is opened from a playlist. */
   sourceId(mediaId: string): string {
