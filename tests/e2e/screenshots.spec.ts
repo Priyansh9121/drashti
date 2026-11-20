@@ -3218,10 +3218,10 @@ test('the Drashti Manual’s pictures: the manual, the guides, the levels, a tim
   });
   // Answer only this open-file question with the generated swatch; no private logo is read.
   await app.evaluate(({ dialog }, file) => {
-    const original = dialog.showOpenDialog;
-    dialog.showOpenDialog = async () => {
+    const original = dialog.showOpenDialog.bind(dialog);
+    dialog.showOpenDialog = () => {
       dialog.showOpenDialog = original;
-      return { canceled: false, filePaths: [file] };
+      return Promise.resolve({ canceled: false, filePaths: [file] });
     };
   }, logo);
   await qr.getByRole('button', { name: 'Choose a Picture…' }).click();
