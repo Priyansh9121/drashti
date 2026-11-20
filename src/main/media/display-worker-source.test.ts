@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -111,11 +111,14 @@ it('returns the native file response itself without reading or locking its body'
   expect(Buffer.from(await result.arrayBuffer())).toEqual(t.bytes);
   expect(sameResponse).toBe(true);
   expect(sameBody).toBe(true);
-  expect(fetchFile).toHaveBeenCalledExactlyOnceWith(pathToFileURL(join(t.mediaDir, t.path)).href, {
-    method: 'GET',
-    cache: 'no-store',
-    credentials: 'omit',
-  });
+  expect(fetchFile).toHaveBeenCalledExactlyOnceWith(
+    pathToFileURL(realpathSync.native(join(t.mediaDir, t.path))).href,
+    {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'omit',
+    },
+  );
   expect(result.headers.get('content-type')).toBe('image/png');
   expect(result.headers.get('content-length')).toBe(String(t.bytes.length));
   expect(result.headers.get('cache-control')).toBe('no-store');

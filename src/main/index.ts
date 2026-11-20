@@ -2000,6 +2000,7 @@ function start(): void {
     handleDisplaySourceRequest(request, {
       mediaDir,
       lookup: (key) => displayCopies.workerSource(displayWorkerId, key),
+      fetchFile: (url, init) => displaySession.fetch(url, init),
     }),
   );
   const refreshDisplayCopies = () =>
