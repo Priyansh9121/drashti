@@ -1,3 +1,4 @@
+import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import {
   existsSync,
@@ -7,11 +8,13 @@ import {
   readFileSync,
   statSync,
   truncateSync,
+  writeFileSync,
   writeSync,
   closeSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
 import {
   audienceScreen,
@@ -246,6 +249,185 @@ test('a video whose first frame does not come within 10 s (each read of its file
     await expect
       .poll(() => logOf(userData), { timeout: 10_000, message: 'the log says no picture within 10 s' })
       .toMatch(new RegExp(`could not play on the screen “${hall.name}” \\(no picture within 10 s\\)`, 'u'));
+  } finally {
+    await app.close();
+  }
+});
+
+/** A presentation of one slide holding the video over it all: a slide's own video, with its sound. */
+async function slideWithVideo(win: Page, dir: string, mediaId: string, name: string): Promise<string> {
+  const words = join(dir, `${name}.txt`);
+  writeFileSync(words, '[Verse]\nPlaceholder words over a video\n');
+  const [presentationId = ''] = await importAndGetIds(win, [words]);
+  await win.evaluate(
+    async ({ presentationId, mediaId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const opened = await d.library.slidesForEdit(presentationId);
+      if (!opened.ok) throw new Error(opened.message);
+      const slide = opened.doc.groups[0]?.slides[0];
+      if (!slide) throw new Error('The presentation has no slide.');
+      slide.elements = [
+        {
+          id: 'placeholder-slide-video',
+          kind: 'video',
+          mediaId,
+          frame: { x: 0, y: 0, width: 1920, height: 1080 },
+          fit: 'fill',
+          loop: true,
+        },
+      ];
+      const saved = await d.library.saveSlides(presentationId, opened.doc, opened.stamp);
+      if (!saved.ok) throw new Error(saved.message);
+    },
+    { presentationId, mediaId },
+  );
+  return presentationId;
+}
+
+/** The engine's word on that file on the slide and in the box: paused on the slide, the box up. */
+async function slideAndBox(win: Page, mediaId: string): Promise<{ slidePaused: boolean; box: boolean }> {
+  const s = (await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot())).state;
+  return {
+    slidePaused: s.layers.slide?.seeks?.[mediaId]?.paused === true,
+    box: s.layers.pip !== null,
+  };
+}
+
+/** Whether that file's sound plays in the audio player now. */
+async function itsSound(app: ElectronApplication, mediaId: string): Promise<boolean> {
+  const audio = app.windows().find((w) => w.url().includes('audio.html'));
+  if (!audio) return false;
+  return audio.evaluate(
+    (id) =>
+      [...document.querySelectorAll<HTMLMediaElement>(`audio[data-media-id="${id}"]`)].some(
+        (e) => !e.paused && e.currentTime > 0.05,
+      ),
+    mediaId,
+  );
+}
+
+const PLACE = {
+  corner: 'top-right',
+  x: 0,
+  y: 0,
+  size: 'large',
+  border: false,
+  rounded: false,
+  motion: 'fade',
+};
+
+test('a slide’s video and the picture-in-picture box’s video that cannot play (its decoder raising an error; a cut file): the slide’s waits paused where it is with its sound, the slide staying; the box comes off; a notice names each and the screen', async () => {
+  test.setTimeout(300_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-slide-box-error-'));
+  const onSlide = makeClip(join(dir, 'Placeholder slide video.mp4'), 'h264', 30, 300);
+  const inBox = makeClip(join(dir, 'Placeholder box video.mp4'), 'h264', 30, 360);
+  const cutSlide = makeClip(join(dir, 'Placeholder cut slide video.mp4'), 'h264-moov-at-end', 12, 420);
+  truncateSync(cutSlide, Math.floor(statSync(cutSlide).size * 0.6));
+  const cutBox = makeClip(join(dir, 'Placeholder cut box video.mp4'), 'h264-moov-at-end', 12, 480);
+  truncateSync(cutBox, Math.floor(statSync(cutBox).size * 0.6));
+  const { app } = await launchApp(SCREENS);
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const hall = await audienceScreen(app, win);
+    const [onSlideId = '', inBoxId = '', cutSlideId = '', cutBoxId = ''] = await importAndGetIds(win, [
+      onSlide,
+      inBox,
+      cutSlide,
+      cutBox,
+    ]);
+    const SLIDE = (id: string) => `[data-layer="slide"] video[data-media-id="${id}"]`;
+    const BOX = (id: string) => `[data-pip-picture="media"] video[data-media-id="${id}"]`;
+    const raise = (selector: string) =>
+      hall.page.evaluate((sel) => {
+        const v = document.querySelector<HTMLVideoElement>(sel);
+        if (!v) return false;
+        v.dispatchEvent(new Event('error'));
+        return true;
+      }, selector);
+    const told = (name: string) =>
+      expect
+        .poll(() => notices(win), { timeout: 15_000, message: `${name}: a notice names it and the screen` })
+        .toContainEqual(expect.stringMatching(new RegExp(`${name}[\\s\\S]*${hall.name}`, 'u')));
+
+    // 1. A slide's video playing, its sound with it: its element fails on the hall.
+    const p1 = await slideWithVideo(win, dir, onSlideId, 'Placeholder slide one');
+    await dispatch(win, { type: 'goLive', presentationId: p1, slideIndex: 0 });
+    await expect
+      .poll(
+        () =>
+          hall.page.evaluate(
+            (sel) => !(document.querySelector<HTMLVideoElement>(sel)?.paused ?? true),
+            SLIDE(onSlideId),
+          ),
+        {
+          timeout: 30_000,
+          message: 'the slide’s video plays on the hall',
+        },
+      )
+      .toBe(true);
+    await expect
+      .poll(() => itsSound(app, onSlideId), { timeout: 15_000, message: 'its sound plays' })
+      .toBe(true);
+    expect(await raise(SLIDE(onSlideId)), 'the slide’s video element').toBe(true);
+    await expect
+      .poll(async () => (await slideAndBox(win, onSlideId)).slidePaused, {
+        timeout: 10_000,
+        message: 'paused on the slide',
+      })
+      .toBe(true);
+    await expect
+      .poll(() => itsSound(app, onSlideId), { timeout: 5_000, message: 'its sound stopped' })
+      .toBe(false);
+    await told('Placeholder slide video');
+
+    // 2. A slide's video whose file is cut (no movie box): never plays; said, and paused.
+    await dispatch(win, { type: 'clearAll' });
+    const p2 = await slideWithVideo(win, dir, cutSlideId, 'Placeholder slide two');
+    await dispatch(win, { type: 'goLive', presentationId: p2, slideIndex: 0 });
+    await expect
+      .poll(async () => (await slideAndBox(win, cutSlideId)).slidePaused, {
+        timeout: 15_000,
+        message: 'the cut one paused on the slide',
+      })
+      .toBe(true);
+    await told('Placeholder cut slide video');
+
+    // 3. The box's video playing: its element fails on the hall. The box comes off.
+    await dispatch(win, { type: 'clearAll' });
+    await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: inBoxId }, place: PLACE });
+    await expect
+      .poll(
+        () =>
+          hall.page.evaluate(
+            (sel) => !(document.querySelector<HTMLVideoElement>(sel)?.paused ?? true),
+            BOX(inBoxId),
+          ),
+        {
+          timeout: 30_000,
+          message: 'the box’s video plays on the hall',
+        },
+      )
+      .toBe(true);
+    expect(await raise(BOX(inBoxId)), 'the box’s video element').toBe(true);
+    await expect
+      .poll(async () => (await slideAndBox(win, inBoxId)).box, {
+        timeout: 10_000,
+        message: 'the box came off',
+      })
+      .toBe(false);
+    await told('Placeholder box video');
+
+    // 4. The box's video whose file is cut: the box comes off.
+    await dispatch(win, { type: 'clearAll' });
+    await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: cutBoxId }, place: PLACE });
+    await expect
+      .poll(async () => (await slideAndBox(win, cutBoxId)).box, {
+        timeout: 15_000,
+        message: 'the cut one’s box came off',
+      })
+      .toBe(false);
+    await told('Placeholder cut box video');
   } finally {
     await app.close();
   }
