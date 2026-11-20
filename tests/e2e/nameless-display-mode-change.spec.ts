@@ -160,7 +160,8 @@ test('a display with no name and no serial changing its resolution mid-video kee
       everHidden: windowsSeen.some((w) => w.includes(':false')),
       windows: [...new Set(windowsSeen.map((w) => w.split(' ')[1] ?? ''))],
       samePage: (await origin(hall)) === page,
-      look: await shown(hall, OUT),
+      // Its window may be closed by now (the bug: its screen lost the display): said, never thrown.
+      look: await shown(hall, OUT).catch(() => 'window closed'),
       display: snap.displays
         .filter((d) => d.id === PRETEND)
         .map((d) => `${String(d.pixelWidth)}x${String(d.pixelHeight)}`),
@@ -242,7 +243,10 @@ test('two projectors of one model with one name and no serial, both on the audie
       before,
       after: await screensOf(),
       jobs: await jobs(win),
-      looks: [await shown(pageA, OUT), await shown(pageB, OUT)],
+      looks: [
+        await shown(pageA, OUT).catch(() => 'window closed'),
+        await shown(pageB, OUT).catch(() => 'window closed'),
+      ],
     };
     console.log(`X53 ${process.platform} (pair) ${JSON.stringify(result)}`);
     expect(result.jobs, `each keeps its job: ${JSON.stringify(result)}`).toEqual([
