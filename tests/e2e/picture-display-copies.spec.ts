@@ -87,29 +87,26 @@ test('an oversized imported still is ready with its display source, while the or
     expect(looks[smallId]?.display).toBeUndefined();
     const source = displayUrl(id, copy.key);
     const drawn = await win.evaluate(async (url) => {
-      const image = new Image();
-      image.src = url;
-      await image.decode();
-      const canvas = new OffscreenCanvas(image.naturalWidth, image.naturalHeight);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('The display file could not be read.');
+      const blob = await response.blob();
+      const hash = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+      // The same encoded bytes in an origin-clean bitmap: custom-scheme Image elements taint a test canvas.
+      const image = await createImageBitmap(blob);
+      const canvas = new OffscreenCanvas(image.width, image.height);
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) throw new Error('No CPU canvas.');
       ctx.drawImage(image, 0, 0);
-      return {
-        width: image.naturalWidth,
-        height: image.naturalHeight,
-        opaque: ctx.getImageData(
-          Math.floor(image.naturalWidth / 4),
-          Math.floor(image.naturalHeight / 2),
-          1,
-          1,
-        ).data[3],
-        alpha: ctx.getImageData(
-          Math.floor((image.naturalWidth * 3) / 4),
-          Math.floor(image.naturalHeight / 2),
-          1,
-          1,
-        ).data[3],
+      const drawn = {
+        width: image.width,
+        height: image.height,
+        hash: Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join(''),
+        opaque: ctx.getImageData(Math.floor(image.width / 4), Math.floor(image.height / 2), 1, 1).data[3],
+        alpha: ctx.getImageData(Math.floor((image.width * 3) / 4), Math.floor(image.height / 2), 1, 1)
+          .data[3],
       };
+      image.close();
+      return drawn;
     }, source);
     expect(drawn).toMatchObject({ width: 1920, height: 1080, opaque: 255 });
     expect(Math.abs((drawn.alpha ?? 0) - 96)).toBeLessThanOrEqual(1);

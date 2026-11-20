@@ -431,13 +431,28 @@ for (const place of ['hall', 'stream'] as const) {
         await sayFirstRevealState(app, page);
         throw error;
       }
+      // The original fixture remains 6144 wide. Check the exact source the app selected, including its ready
+      // display rendition; on the old implementation (no descriptor) this is still the original width.
+      const selectedWidth = await win.evaluate(
+        async ({ picture, originalWidth }) => {
+          const look = (await (globalThis as PageGlobals).drashti.media.looks())[picture];
+          const display: unknown = Reflect.get(look ?? {}, 'display');
+          return display &&
+            typeof display === 'object' &&
+            'width' in display &&
+            typeof display.width === 'number'
+            ? display.width
+            : originalWidth;
+        },
+        { picture, originalWidth: SIZE.width },
+      );
       const preload = page.locator(`img[data-preload="${picture}"]`);
       await expect(preload).toHaveAttribute('data-state', 'loading');
       await expect
         .poll(() =>
           preload.evaluate(
             (img: HTMLImageElement, width) => img.complete && img.naturalWidth === width,
-            SIZE.width,
+            selectedWidth,
           ),
         )
         .toBe(true);
@@ -458,7 +473,7 @@ for (const place of ['hall', 'stream'] as const) {
       await waitCaptured(frames, PICTURE, from + 20_000);
       expect(probe, 'the cut exercised a genuinely loaded picture, before its preload decoded it').toEqual({
         loadedAtCut: true,
-        widthAtCut: SIZE.width,
+        widthAtCut: selectedWidth,
       });
       const cut = (await frames()).filter((frame) => frame.t >= from);
       const bad = cut.filter((frame) => !matches(frame, OLD) && !matches(frame, PICTURE));
