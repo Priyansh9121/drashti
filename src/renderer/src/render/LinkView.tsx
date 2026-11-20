@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { LinkBackground } from '../../../shared/engine/state';
-import { PICTURE_LIMITS } from '../../../shared/media';
 import { startLivePlayback } from './live-playback';
 import { useLiveHere } from './live-here';
 import { usePreviewsOnly } from './previews';
@@ -96,7 +95,6 @@ class LinkPlayers {
     player.stop = startLivePlayback(el, {
       linkId: this.linkId,
       audible: false,
-      limits: PICTURE_LIMITS,
       onFrame: () => {
         if (this.off || this.incoming !== player) return;
         el.style.zIndex = '2';

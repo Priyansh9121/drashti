@@ -283,13 +283,22 @@ function play(state: EngineState | null): void {
     // A stream link's sound (alpha.20): its player joined with its pictures, kept on the engine's time by speed alone.
     if (sound.link !== undefined) {
       const linkId = sound.link;
-      let stopLive = startLivePlayback(el, { linkId, audible: true, limits: SOUND_LIMITS });
+      // Behind its pictures (its sound card's clock ran slow: it can play at normal speed only), it joins again.
+      const live = (): (() => void) =>
+        startLivePlayback(el, {
+          linkId,
+          audible: true,
+          onBehind: () => {
+            player.resync();
+          },
+        });
+      let stopLive = live();
       player.stop = () => {
         stopLive();
       };
       player.resync = () => {
         stopLive();
-        stopLive = startLivePlayback(el, { linkId, audible: true, limits: SOUND_LIMITS });
+        stopLive = live();
       };
       players.set(sound.key, player);
       continue;
