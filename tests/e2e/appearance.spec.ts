@@ -2,7 +2,14 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { BUILT_IN, FOLLOW, WHITE, type Appearance } from '../../src/shared/appearance/appearances';
+import {
+  APPEARANCE_FAMILIES,
+  BUILT_IN,
+  familyOf,
+  FOLLOW,
+  WHITE,
+  type Appearance,
+} from '../../src/shared/appearance/appearances';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
@@ -172,59 +179,73 @@ test('Simple Mode shows the chosen appearance, with no switch, and refuses a cha
   await app.close();
 });
 
-for (const id of BUILT_IN.map((a) => a.id)) {
-  test(`${id}: axe passes in a show, a dialog, the Appearance window and Simple Mode; forced colours still work`, async () => {
-    test.setTimeout(120_000);
+/*
+ * Every appearance (Session 60: 64, in families): axe in a show, a dialog, the Appearance window and Simple Mode, and
+ * forced colours, as before, one family to a launch so the suite's time grows by the appearances and not by a start
+ * of Drashti for each (every check is the same, for every appearance).
+ */
+for (const family of APPEARANCE_FAMILIES) {
+  const ids = BUILT_IN.filter((a) => familyOf(a) === family).map((a) => a.id);
+  test(`${family} (${ids.join(', ')}): axe passes in a show, a dialog, the Appearance window and Simple Mode; forced colours still work`, async () => {
+    test.setTimeout(120_000 * ids.length);
     const { app } = await launchApp();
     const win = await operatorPage(app);
     await win.setViewportSize({ width: 1280, height: 720 });
     await operatorReady(win);
-    await chooseMenuItem(app, `appearance-${id}`);
-    await expect(win.locator('html')).toHaveAttribute('data-appearance', id);
     await setUpPlaceholderShow(win);
     await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
     // Its slides are rows under its name (Session 55).
     await slidesOf(win, KIRTAN).nth(1).click();
     await expect(slidesOf(win, KIRTAN).nth(1)).toHaveAttribute('aria-current', 'true');
-    await expectNoSeriousA11yIssues(win, `${id}: Pro Mode in a show`);
-    await chooseMenuItem(app, 'keyboard-shortcuts');
-    await expect(win.getByTestId('keys-sheet')).toBeVisible();
-    await expectNoSeriousA11yIssues(win, `${id}: a dialog (the keys sheet)`);
-    await win.keyboard.press('Escape');
-    await expect(win.getByTestId('keys-sheet')).toHaveCount(0);
-    await chooseMenuItem(app, 'appearance-window');
-    await expect(win.getByTestId('appearance-dialog')).toBeVisible();
-    await expectNoSeriousA11yIssues(win, `${id}: the Appearance window`);
-    // Forced colours (a Windows contrast theme): the choice is still told by more than colour, and axe passes.
-    await win.emulateMedia({ forcedColors: 'active' });
-    // Drawn again in the system's colours before anything is measured.
-    await win.evaluate(
-      () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
-    );
-    await expect
-      .poll(() => win.evaluate(() => getComputedStyle(document.body).color))
-      .not.toBe(getComputedStyleFg(id));
-    await expect(win.locator('[data-testid="appearance-choice"][aria-checked="true"]')).toHaveCount(1);
-    await expect(win.locator('[data-testid="appearance-choice"][aria-checked="true"]')).toContainText(
-      'Chosen',
-    );
-    // The system's theme sets the colours here: contrast is its own (a11y.ts says why axe's is left out).
-    await expectNoSeriousA11yIssues(win, `${id}: the Appearance window in forced colours`, undefined, [
-      'color-contrast',
-    ]);
-    // The keyboard's place: an outline, which forced colours keep.
-    await win.locator('[data-testid="appearance-choice"][aria-checked="true"]').focus();
-    await win.keyboard.press('Shift+Tab');
-    await win.keyboard.press('Tab');
-    await expect(win.locator('[data-testid="appearance-choice"][aria-checked="true"]')).toBeFocused();
-    expect(
-      await win.evaluate(() => getComputedStyle(document.activeElement ?? document.body).outlineStyle),
-    ).not.toBe('none');
-    await win.emulateMedia({ forcedColors: 'none' });
-    await win.keyboard.press('Escape');
-    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
-    await expect(win.getByTestId('simple-mode')).toBeVisible();
-    await expectNoSeriousA11yIssues(win, `${id}: Simple Mode`);
+    for (const id of ids)
+      await test.step(id, async () => {
+        // Back to Pro Mode from the last one's Simple Mode: only Pro Mode chooses an appearance.
+        if (await win.getByTestId('simple-mode').isVisible()) {
+          await chooseMenuItem(app, 'switch-mode');
+          await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+        }
+        await chooseMenuItem(app, `appearance-${id}`);
+        await expect(win.locator('html')).toHaveAttribute('data-appearance', id);
+        await expectNoSeriousA11yIssues(win, `${id}: Pro Mode in a show`);
+        await chooseMenuItem(app, 'keyboard-shortcuts');
+        await expect(win.getByTestId('keys-sheet')).toBeVisible();
+        await expectNoSeriousA11yIssues(win, `${id}: a dialog (the keys sheet)`);
+        await win.keyboard.press('Escape');
+        await expect(win.getByTestId('keys-sheet')).toHaveCount(0);
+        await chooseMenuItem(app, 'appearance-window');
+        await expect(win.getByTestId('appearance-dialog')).toBeVisible();
+        await expectNoSeriousA11yIssues(win, `${id}: the Appearance window`);
+        // Forced colours (a Windows contrast theme): the choice is still told by more than colour, and axe passes.
+        await win.emulateMedia({ forcedColors: 'active' });
+        // Drawn again in the system's colours before anything is measured.
+        await win.evaluate(
+          () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+        );
+        await expect
+          .poll(() => win.evaluate(() => getComputedStyle(document.body).color))
+          .not.toBe(getComputedStyleFg(id));
+        await expect(win.locator('[data-testid="appearance-choice"][aria-checked="true"]')).toHaveCount(1);
+        await expect(win.locator('[data-testid="appearance-choice"][aria-checked="true"]')).toContainText(
+          'Chosen',
+        );
+        // The system's theme sets the colours here: contrast is its own (a11y.ts says why axe's is left out).
+        await expectNoSeriousA11yIssues(win, `${id}: the Appearance window in forced colours`, undefined, [
+          'color-contrast',
+        ]);
+        // The keyboard's place: an outline, which forced colours keep.
+        await win.locator('[data-testid="appearance-choice"][aria-checked="true"]').focus();
+        await win.keyboard.press('Shift+Tab');
+        await win.keyboard.press('Tab');
+        await expect(win.locator('[data-testid="appearance-choice"][aria-checked="true"]')).toBeFocused();
+        expect(
+          await win.evaluate(() => getComputedStyle(document.activeElement ?? document.body).outlineStyle),
+        ).not.toBe('none');
+        await win.emulateMedia({ forcedColors: 'none' });
+        await win.keyboard.press('Escape');
+        await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
+        await expect(win.getByTestId('simple-mode')).toBeVisible();
+        await expectNoSeriousA11yIssues(win, `${id}: Simple Mode`);
+      });
     await app.close();
   });
 }
@@ -270,7 +291,8 @@ async function bitmap(app: ElectronApplication, page: Page): Promise<string> {
 }
 
 test('the audience screens draw exactly the same in every appearance: the hallâ€™s screen and the stage screen', async () => {
-  test.setTimeout(180_000);
+  // Sixty-four appearances since Session 60, each compared on both screens.
+  test.setTimeout(480_000);
   const { app } = await launchApp({
     DRASHTI_WINDOWED_OUTPUTS: '1',
     DRASHTI_EXTRA_DISPLAYS: '1',
@@ -332,8 +354,11 @@ test('the audience screens draw exactly the same in every appearance: the hallâ€
     await chooseMenuItem(app, `appearance-${a.id}`);
     await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
     // The screens were never told: their pages have no appearance at all.
-    for (const out of outputPages(app))
+    for (const out of outputPages(app)) {
       expect(await out.evaluate(() => document.documentElement.dataset['appearance'] ?? null)).toBeNull();
+      // Nor a live look's touch (Session 60): it is only ever in the operator window's header and band.
+      expect(await out.locator('[data-look-motion]').count()).toBe(0);
+    }
     const now = await pictures();
     for (const role of ['audience', 'stage'])
       expect(now[role] === first[role], `${a.name}: the ${role} screen`).toBe(true);
