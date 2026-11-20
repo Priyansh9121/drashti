@@ -1182,7 +1182,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
         )}
       </div>
       {!isTemplate && <PlaylistTiming playlistId={openId} items={items} playback={node?.playback} />}
-      {!isTemplate && (Boolean(node?.playback?.shuffle) || Boolean(node?.playback?.repeatAll)) && (
+      {!isTemplate && node?.playback && (node.playback.shuffle || node.playback.repeatAll) && (
         <p className="shrink-0 px-3 py-1 text-xs text-muted" data-testid="playlist-play-options">
           {[node.playback.shuffle ? 'Shuffled' : '', node.playback.repeatAll ? 'Repeat all' : '']
             .filter(Boolean)

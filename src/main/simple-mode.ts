@@ -81,6 +81,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.playlists.newFromTemplate,
   // Session 55 (Parts 4 and 14): Duplicate is Pro Mode's (the one right-click menu's Rename is bounded since Part 18).
   IPC.playlists.duplicate,
+  IPC.playlists.setPlayOptions,
   IPC.playlists.addSlot,
   IPC.messages.create,
   IPC.messages.update,
@@ -415,6 +416,8 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   // Bringing things in: Add files… and files dropped. The main process gives Simple Mode's import its own limits.
   [IPC.library.importPaths, anything],
   [IPC.library.pickImportPaths, anything],
+  // A native picker, then today’s local-file import into a new playlist (x50).
+  [IPC.playlists.importM3u, anything],
   // Main checks that this is a failed automatic conversion that can be tried again.
   [IPC.media.retryConversion, ([id]) => isId(id)],
   // Main only stops the background conversion of a linked video.
