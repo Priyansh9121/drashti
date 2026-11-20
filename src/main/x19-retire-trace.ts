@@ -11,6 +11,7 @@ interface Scope {
   setMs: number;
   waitMs: number;
   streaming: boolean;
+  primaryHallId?: number;
 }
 interface Press {
   at: number;
@@ -26,31 +27,13 @@ const now = () => performance.timeOrigin + performance.now();
 
 const requested = [
   'toplevel',
-  'toplevel.flow',
-  'ipc',
-  'mojom',
   'cc',
-  'cc.debug',
-  'disabled-by-default-cc.debug',
-  'disabled-by-default-cc.debug.scheduler',
-  'disabled-by-default-cc.debug.tile',
-  'viz',
   'gpu',
-  'gpu.dawn',
   'disabled-by-default-gpu.dawn',
   'disabled-by-default-gpu.graphite.dawn',
-  'disabled-by-default-gpu.service',
-  'disabled-by-default-gpu.device',
-  'skia',
-  'skia.shaders',
   'disabled-by-default-skia.shaders',
   'disabled-by-default-skia.gpu.cache',
-  'disabled-by-default-memory-infra',
   'blink.user_timing',
-  'devtools.timeline',
-  'disabled-by-default-devtools.timeline',
-  'renderer.scheduler',
-  'disabled-by-default-v8.gc',
 ];
 
 function metrics() {
