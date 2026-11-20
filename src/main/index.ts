@@ -164,7 +164,7 @@ import { AudioOutput } from './audio/audio-output';
 import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogJournal } from './crash-journal';
 import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
-import { type CrashFilesChoice, saveDiagnostics } from './diagnostics';
+import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
 import { noPictureNotice } from '../shared/no-picture';
 import { phaseLine, windowStartLine } from './start-phases';
@@ -353,7 +353,9 @@ import {
   quickPinsSchema,
   readQuickBar,
 } from '../shared/quick-bar';
-import { QR_TEXT_MAX, qrPng, qrSlideName, qrSlidePresentation, qrWords } from './library/qr-slide';
+import { QR_TEXT_MAX, qrSlideName, qrSlidePresentation, qrWords } from './library/qr-slide';
+import { QrService } from './library/qr-service';
+import { runQrJob } from './library/qr-worker-run';
 import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
@@ -599,6 +601,30 @@ async function chooseCrashFiles(): Promise<CrashFilesChoice | null> {
   });
   if (answer.response !== 0) return null;
   return { files, included: answer.checkboxChecked, kept: crashFilesKept };
+}
+
+/**
+ * The graphics for Save Diagnostics (Session 60, the owner's Q60-37): how each feature draws, and Chromium's GPU
+ * details if it gives them within 3 s (Save Diagnostics is asked for by hand, never mid-drawing; a slow answer is said).
+ */
+async function readGraphics(): Promise<GraphicsInfo> {
+  const featureStatus = app.getGPUFeatureStatus() as unknown as Record<string, string>;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const info = await Promise.race([
+      app.getGPUInfo('complete'),
+      new Promise<never>((_, refuse) => {
+        timer = setTimeout(() => {
+          refuse(new Error('not answered within 3 s'));
+        }, 3000);
+      }),
+    ]);
+    return { featureStatus, info };
+  } catch (error) {
+    return { featureStatus, info: null, problem: error instanceof Error ? error.message : String(error) };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** What the notice says once Diagnostics is saved. */
@@ -4718,19 +4744,70 @@ function start(): void {
   };
   drainSourceEdits = () => slideEdits.drainSourcePreparation();
   stops.add('editor source generations', cancelSourceEdits);
-  // New › QR code… (Session 55, Part 8, G): the code made here, offline (main/library/qr-slide.ts), kept as a picture in
-  // the library through an import as any picture is, and one slide holding it large with the words under it.
-  handle(IPC.library.newQrSlide, async (e, text): Promise<NewFromWordsResult> => {
+  // The QR code… window's logo and Download… (Q60-28): Choose a Picture… and Download… are the system's own dialogs,
+  // and every picture of a code is made, and read back, in the QR worker, off Main's thread (library/qr-service.ts).
+  const qr = new QrService({
+    settings,
+    mediaDir,
+    make: (job) => runQrJob(job),
+    pickPicture: async () => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: 'Choose a picture for the middle of the code',
+        buttonLabel: 'Choose',
+        properties: ['openFile'],
+        filters: [{ name: 'Pictures (PNG or JPEG)', extensions: ['png', 'jpg', 'jpeg'] }],
+      });
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+    pickSave: async (defaultPath) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Download the QR code',
+        defaultPath,
+        buttonLabel: 'Save',
+        filters: [{ name: 'PNG picture (an SVG is saved beside it)', extensions: ['png'] }],
+      });
+      return picked.canceled || !picked.filePath ? null : picked.filePath;
+    },
+    downloads: () => testDownloadsDir ?? app.getPath('downloads'),
+  });
+  const qrNotOperator = { ok: false as const, message: 'Only the operator window can do that.' };
+  handle(IPC.library.qrChoices, (e) =>
+    fromOperator(e) ? qr.choices() : { logo: null, useLogo: false, wordsUnder: true },
+  );
+  handle(IPC.library.pickQrLogo, (e) => (fromOperator(e) ? qr.pickLogo() : qrNotOperator));
+  handle(IPC.library.keepQrLogo, async (e, name, png) => {
+    if (!fromOperator(e)) return qrNotOperator;
+    const kept = await qr.keepLogo(name, png);
+    if (kept.ok) log.info('QR code: a logo was kept for the middle of the code');
+    return kept;
+  });
+  handle(IPC.library.setQrChoices, (e, change) => (fromOperator(e) ? qr.setChoices(change) : qrNotOperator));
+  handle(IPC.library.downloadQr, async (e, text, options) => {
+    if (!fromOperator(e)) return qrNotOperator;
+    const done = await qr.download(text, options);
+    if (done.ok) log.info('QR code: a code was saved where the operator chose');
+    return done;
+  });
+  // New › QR code… (Session 55, Part 8, G): the code made offline, since alpha.20 in the QR worker and read back first
+  // (with the logo in the middle when the window asks, Q60-28), kept as a picture in the library through an import as
+  // any picture is, and one slide holding it large, with the words under it unless the window leaves them off.
+  handle(IPC.library.newQrSlide, async (e, text, options): Promise<NewFromWordsResult> => {
     if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can make a slide.' };
     const words = typeof text === 'string' ? nfc(text) : '';
     if (words.trim() === '') return { ok: false, message: 'Paste a link or type the words first.' };
-    if (qrWords(words) === null)
+    const code = qrWords(words);
+    if (code === null)
       return {
         ok: false,
         message: `That is too long for a code a phone can read across the hall: ${String(QR_TEXT_MAX)} letters at most.`,
       };
-    const png = qrPng(words);
-    if (!png) return { ok: false, message: 'Those words cannot be made into a QR code.' };
+    const asked: { logo?: unknown; words?: unknown } =
+      typeof options === 'object' && options !== null ? options : {};
+    const made = await qr.slidePicture(code, asked.logo === true);
+    if (!made.ok) return { ok: false, message: made.message };
+    const png = made.png;
     const dir = await fsPromises.mkdtemp(join(tmpdir(), 'drashti-qr-'));
     const mediaId = await (async (): Promise<string | null> => {
       try {
@@ -4756,6 +4833,7 @@ function start(): void {
         words,
         mediaId,
         look,
+        asked.words !== false,
       ),
     );
     contentChanged([id]);
@@ -8067,6 +8145,7 @@ function start(): void {
             crashFiles: crash,
             logFiles: logFiles(),
             now: new Date(),
+            graphics: await readGraphics(),
           });
           log.info(`Diagnostics saved to the Desktop${crash.included ? ', with the crash files' : ''}`);
           sendToOperator(IPC.app.notice, { text: savedDiagnosticsText(file, crash) });
