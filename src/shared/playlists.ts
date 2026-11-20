@@ -1,3 +1,4 @@
+import type { PlaylistPlayback } from './playlist-playback';
 import { idSchema } from './model-schema';
 import { cleanNameSchema } from './rename-name';
 import type { RepeatSettings } from './repeat';
@@ -68,6 +69,8 @@ export interface PlaylistNode {
   isFolder: boolean;
   /** Its kind (a folder is always 'normal'). */
   kind: PlaylistKind;
+  /** Playlist playback choices; absent means in order, stopping at the end. */
+  playback?: PlaylistPlayback;
   /** A Repeat Slides playlist's settings (Session 26d); left out for any other kind. */
   repeat?: RepeatSettings;
   parentId: string | null;
@@ -138,6 +141,7 @@ export type PlaylistItemInfo =
       presentationId: string;
       /** Null when the presentation has been removed from the library. */
       presentationName: string | null;
+      fileName?: string;
       order: ItemOrder;
       /** The named arrangement's name, when the order names one. */
       arrangementName: string | null;
@@ -170,6 +174,10 @@ export type PlaylistItemInfo =
       timers: TimerCue[];
       /** A video's or sound's length, once Drashti has played it (Session 26a: on its card). */
       durationMs?: number | null;
+      /** Playing length between its points; null while the file’s length is unknown. */
+      playingMs?: number | null;
+      /** Original file name, for Find (no folder path is sent to the page). */
+      fileName?: string;
       /** In a smart playlist: its file is gone from the folder (Session 26c). */
       gone?: boolean;
       /** Added from a phone (Session 54): the device's name. */

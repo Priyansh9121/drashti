@@ -21,6 +21,8 @@ The left column holds the playlists, in folders, and under them the wallpapers. 
 
 **What it is.** The middle of the window. A presentation, a PDF or a deck is a row with its name, and a row under it for each slide. A picture, a video, a sound and a video input are a row each. **One click on any row puts it on the screens at once.**
 
+The new timing, Find and M3U controls are in Pro Mode.
+
 **When you would use it.** All through the sabha.
 
 **How:**
@@ -29,6 +31,12 @@ The left column holds the playlists, in folders, and under them the wallpapers. 
 2. Click a presentation's name to fold its slides away, or open them again.
 3. **Cmd**-click (Ctrl-click on Windows) a row to choose it without putting it up.
 4. Right-click a row for its menu.
+
+Under the name, the row count and the length of its videos and sounds include their start and end points. **Ends at** appears while a video or sound from this playlist plays, when the end can be known. It follows videos set to **When it ends › Next item**, and does not appear with **Repeat all**, a loop, a pause, an unknown length or a row that waits for a person.
+
+Press the search button **Find in playlist** to find a row by its name, original file name or a presentation’s words. **Enter** moves to the next match; **Shift+Enter** moves back; **Esc** closes Find. The count says which match is marked. Find scrolls to a match and never chooses a row or puts anything up. **Cmd+F** (Ctrl+F on Windows) still opens the Library’s search.
+
+In Pro Mode, the open playlist’s **⋯** has **Shuffle** and **Repeat all**, both off to begin with. Shuffle draws the order once and keeps it through a restart. Next, Back, **When it ends › Next item**, Next’s picture and **Practise this playlist** follow that order. A presentation’s slides keep their own order. The numbered rows stay in their places: typing a row’s number still puts that row up. Added rows join the end of the draw; removed rows drop out. Repeat all goes from the last row to the first, and Back can go round the other way. Untick Shuffle to follow the numbered order again.
 
 ![The open playlist: its rows, a header, and a deck's slides as rows](../screenshots/playlist-cards.png)
 
@@ -45,6 +53,8 @@ The left column holds the playlists, in folders, and under them the wallpapers. 
 3. To move a row: drag it, or choose it and press **Alt+↑** or **Alt+↓**.
 4. To take a row out: right-click it, then **Remove from playlist**.
 5. Press **Cmd+Z** (Ctrl+Z) to undo the last change.
+
+To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…**. Its local files come through the usual import into a new playlist named after the file, in its file order. A file can name at most 2,000 entries and be at most 1 MB. Anything not taken is listed; web addresses are never fetched. Files that need a playable copy wait for the show to be idle, as with any import. Choose the open playlist’s **⋯ › Export as M3U…** to save a UTF-8 `.m3u8` with the library files’ full paths, row labels and playing lengths; presentations are named in comments. The files stay in Drashti’s library, so the exported list works where those files can be reached.
 
 ![Up and Down under the chosen row, and Add to playlist under the library's chosen presentation](../screenshots/playlist-up-down.png)
 

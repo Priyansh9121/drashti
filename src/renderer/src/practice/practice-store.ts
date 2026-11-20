@@ -1,3 +1,4 @@
+import { orderedPlaylistItems } from '../../../shared/playlist-playback';
 import { create } from 'zustand';
 import type { EngineState } from '../../../shared/engine/state';
 import type { OperatorAction } from '../../../shared/keymap';
@@ -133,7 +134,10 @@ export async function practisePlaylist(playlistId: string): Promise<void> {
   ];
   const read = await Promise.all(ids.map((id) => d.library.getPresentation(id).catch(() => null)));
   const docs = new Map(ids.map((id, i) => [id, read[i] ?? null]));
-  const rows = practiceRows(items, docs);
+  const rows = practiceRows(
+    orderedPlaylistItems(items, tree.find((p) => p.id === playlistId)?.playback?.playOrder ?? []),
+    docs,
+  );
   if (rows.slides.length === 0) {
     useNotice.setState({
       text: 'That playlist has nothing to practise yet: add a presentation, a picture or a video.',
