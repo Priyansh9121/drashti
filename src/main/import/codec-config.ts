@@ -218,3 +218,7 @@ export async function readCodecLevel(path: string): Promise<CodecLevel | null> {
     await fh?.close().catch(() => undefined);
   }
 }
+
+/** Red (x47, slice 2): still to be written. */
+export type MovieVideo = CodecLevel & { width: number; height: number };
+export const movieVideo = (_moov: Buffer): MovieVideo | null => null;

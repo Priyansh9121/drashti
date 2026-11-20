@@ -24,6 +24,7 @@ import {
 } from './plan';
 import { PROBE_MS, readInfo } from './read-info';
 import { copyFinder, moveBack, moveMedia, type Moved, presentationsMoved } from './relink';
+import type { RereadDeps } from './reread';
 import { freeFileName } from './trim';
 
 /*
@@ -122,6 +123,8 @@ export interface ConvertDeps {
     started(pid: number | undefined, partFile?: string): void;
     ended(pid: number | undefined): void;
   };
+  /** Red (x47, slice 2): the idle sweep, still to be written. */
+  reread?: boolean | { read?: RereadDeps['read']; everyMs?: number };
 }
 
 interface MediaRow {
