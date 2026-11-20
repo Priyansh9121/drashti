@@ -1017,8 +1017,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       typeof cueId !== 'string' ||
       typeof ready !== 'boolean' ||
       !screenId ||
-      !cue ||
-      cue.id !== cueId
+      cue?.id !== cueId
     )
       return null;
     if (!cache.has(cue.background.mediaId)) return null;

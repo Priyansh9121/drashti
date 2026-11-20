@@ -12,7 +12,7 @@ export const savedVideoCueSchema = z.object({
     mediaId: idSchema,
     fit: z.enum(['fit', 'fill', 'stretch']),
     loop: z.boolean(),
-    startedAt: z.number().finite(),
+    startedAt: z.number(),
     sourceItemId: idSchema.nullable().optional(),
     durationMs: z.number().positive().optional(),
     clip: z.object({ startMs: z.number().min(0), endMs: z.number().min(0).nullable() }).optional(),

@@ -33,7 +33,11 @@ function setup(crossfadeMs = 2000) {
     makeSource(),
     new RecordingTransport(),
     () => now,
-    { items: (id) => lists.items(id), repeatAll: (id) => lists.repeatAll(id), crossfadeMs: () => crossfadeMs },
+    {
+      items: (id) => lists.items(id),
+      repeatAll: (id) => lists.repeatAll(id),
+      crossfadeMs: () => crossfadeMs,
+    },
     {
       mediaKind: () => 'video',
       mediaLength: () => 10_000,

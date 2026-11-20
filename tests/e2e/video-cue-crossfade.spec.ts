@@ -1,45 +1,14 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import {
-  importAndGetIds,
-  launchApp,
-  operatorPage,
-  operatorReady,
-  outputPage,
-  outputReady,
-  setUpScreen,
-  windowShowing,
-} from './helpers';
-import { audioPage, dispatch, snapshot } from './time-bar-helpers';
-import { makeTestVideo } from './test-media';
-import { holdClock } from './placeholder-slides';
+import { dispatch, snapshot } from './time-bar-helpers';
+import { setupVideoCue, cueReady } from './video-cue-helpers';
 import { decodePng } from './png-decode';
-
-async function setup() {
-  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
-  const win = await operatorPage(app);
-  await operatorReady(win);
-  const dir = mkdtempSync(join(tmpdir(), 'drashti-s5-'));
-  const a = await makeTestVideo(win, join(dir, 'Placeholder red.webm'), { seconds: 8, hue: 0, tone: 440 });
-  const b = await makeTestVideo(win, join(dir, 'Placeholder blue.webm'), { seconds: 8, hue: 240, tone: 880 });
-  const ids = await importAndGetIds(win, [a, b]);
-  await setUpScreen(win, 'Main Hall', 0);
-  const hall = await outputPage(app);
-  await outputReady(hall);
-  await win.getByTestId('open-stream').click();
-  const stream = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
-  await expect(stream.getByTestId('program-root')).toBeVisible();
-  return { app, win, hall, stream, audio: await audioPage(app), ids };
-}
 
 const video = (page: Page, id: string) => page.locator(`video[data-media-id="${id}"]`).first();
 
 test('Cue holds the first trimmed frame privately, then Go uses its loaded frame at one shared engine moment', async () => {
-  const { app, win, hall, stream, audio, ids } = await setup();
+  const { app, win, hall, stream, audio, ids } = await setupVideoCue();
   try {
     const id = ids[1] ?? '';
     await win.evaluate(
@@ -49,11 +18,7 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
     );
     await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#205020' } });
     expect((await dispatch(win, { type: 'cueVideo', mediaId: id })).ok).toBe(true);
-    await expect
-      .poll(async () => (await snapshot(win)).videoCue?.ready.length ?? -1, {
-        message: 'Cue publishes matching first-frame acknowledgements',
-      })
-      .toBeGreaterThanOrEqual(4);
+    await cueReady(win);
     const cue = (await snapshot(win)).videoCue;
     if (!cue) throw new Error('No video cue');
     expect((await snapshot(win)).layers.background).toEqual({ kind: 'color', color: '#205020' });
@@ -89,7 +54,7 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
 });
 
 test('Crossfade in the playlist blends both pictures and sounds without black on hall, LIVE and stream', async () => {
-  const { app, win, hall, stream, audio, ids } = await setup();
+  const { app, win, hall, stream, audio, ids } = await setupVideoCue();
   try {
     const made = await win.evaluate(async (ids) => {
       const d = (globalThis as PageGlobals).drashti;
@@ -111,46 +76,70 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
     await win.getByLabel('Crossfade seconds', { exact: true }).fill('2');
     await win.getByRole('button', { name: 'Save crossfade', exact: true }).click();
     await dispatch(win, { type: 'playItem', playlistId: made.id, itemId: made.items[0] });
-    await expect
-      .poll(async () => (await snapshot(win)).videoCue?.ready.length ?? -1)
-      .toBeGreaterThanOrEqual(4);
-    await dispatch(win, { type: 'moveTo', playing: { layer: 'background' }, toMs: 5500 });
-    await expect.poll(async () => (await snapshot(win)).videoCrossfade?.durationMs ?? 0).toBe(2000);
+    await cueReady(win);
+    const pages = [hall, win, stream];
+    // Observe real moving frames; holding a test clock cannot prove smooth playback or sound.
+    for (const page of [...pages, audio])
+      await page.evaluate(() => {
+        const trace: { t: number; gains: number[] }[] = [];
+        (globalThis as { s5Fade?: typeof trace }).s5Fade = trace;
+        const until = performance.now() + 4000;
+        const tick = () => {
+          const root = document.querySelector('[data-video-crossfade]');
+          const elements = root
+            ? root.querySelectorAll<HTMLElement>('[data-bg-fade]')
+            : document.querySelectorAll<HTMLElement>('audio[data-crossfade-gain]');
+          const gains = [...elements].map((el) =>
+            Number(el.dataset['videoGain'] ?? el.dataset['crossfadeGain']),
+          );
+          if (gains.length === 2 && gains.every(Number.isFinite)) trace.push({ t: Date.now(), gains });
+          if (performance.now() < until) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+    await dispatch(win, { type: 'next' });
     const fade = (await snapshot(win)).videoCrossfade;
     if (!fade) throw new Error('No engine crossfade');
-    for (const fraction of [0.1, 0.5, 0.9]) {
-      await holdClock(app, fade.at + fade.durationMs * fraction);
-      for (const page of [hall, win, stream]) {
-        const root = page.locator('[data-video-crossfade]').first();
-        await expect(root).toHaveAttribute('data-video-crossfade', fade.id);
-        await expect
-          .poll(() =>
-            root
-              .locator('[data-video-gain]')
-              .evaluateAll((ns) => ns.map((n) => Number((n as HTMLElement).dataset['videoGain']))),
-          )
-          .toEqual([1 - fraction, fraction]);
-      }
-      await expect
-        .poll(() =>
-          audio
-            .locator('audio[data-crossfade-gain]')
-            .evaluateAll((ns) => ns.map((n) => Number((n as HTMLElement).dataset['crossfadeGain']))),
-        )
-        .toEqual([1 - fraction, fraction]);
-      const image = decodePng(await hall.screenshot());
-      const p = (Math.floor(image.height / 2) * image.width + Math.floor(image.width / 2)) * 4;
-      expect(
-        (image.rgba[p] ?? 0) + (image.rgba[p + 2] ?? 0),
-        'actual picture never dips through black',
-      ).toBeGreaterThan(80);
-    }
-    await holdClock(app, null);
+    expect(fade.durationMs).toBe(2000);
+    // Capture actual blended pixels halfway through the engine interval, before its second half completes.
+    await expect
+      .poll(() => hall.locator('[data-bg-fade="in"]').getAttribute('data-video-gain'))
+      .toMatch(/^0\.[34]/);
+    const before = Date.now();
+    const image = decodePng(await hall.screenshot());
+    const after = Date.now();
+    const p = (Math.floor(image.height / 2) * image.width + Math.floor(image.width / 2)) * 4;
+    const red = image.rgba[p] ?? 0,
+      blue = image.rgba[p + 2] ?? 0;
+    expect(red + blue, 'actual picture stays lit while red blends directly into blue').toBeGreaterThan(140);
+    const expected = (now: number) => Math.max(0, Math.min(1, (now - fade.at) / fade.durationMs));
+    // Generated backgrounds are approximately red=(143,36,36), blue=(36,36,143).
+    expect(blue).toBeGreaterThanOrEqual(36 + 107 * expected(before) - 12);
+    expect(blue).toBeLessThanOrEqual(36 + 107 * expected(after) + 12);
     await expect.poll(async () => (await snapshot(win)).videoCrossfade ?? null).toBeNull();
+    for (const page of [...pages, audio]) {
+      const trace = await page.evaluate(
+        () => (globalThis as { s5Fade?: { t: number; gains: number[] }[] }).s5Fade ?? [],
+      );
+      expect(
+        trace.length,
+        'moving picture and sound gains were observed throughout the overlap',
+      ).toBeGreaterThan(20);
+      expect(trace.some((f) => (f.gains[1] ?? 0) > 0.75)).toBe(true);
+      let previous = -1;
+      for (const frame of trace) {
+        const incoming = frame.gains[1] ?? -1;
+        expect((frame.gains[0] ?? -1) + incoming).toBeCloseTo(1, 2);
+        expect(incoming).toBeGreaterThanOrEqual(previous - 0.001);
+        // Sound's diagnostics update every 50 ms; the audio thread executes the uninterrupted scheduled ramp.
+        const tolerance = page === audio ? 0.04 : 0.02;
+        expect(Math.abs(incoming - expected(frame.t))).toBeLessThanOrEqual(tolerance);
+        previous = incoming;
+      }
+    }
     await expect(video(hall, ids[0] ?? '')).toHaveCount(0);
     await expect(video(hall, ids[1] ?? '')).toHaveJSProperty('paused', false);
   } finally {
-    await holdClock(app, null);
     await app.close();
   }
 });
