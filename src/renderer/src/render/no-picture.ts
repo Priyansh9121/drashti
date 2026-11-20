@@ -1,5 +1,5 @@
 import type { DrashtiBridge } from '../../../shared/bridge';
-import { NO_FIRST_FRAME } from '../../../shared/no-picture';
+import { FIRST_FRAME_MS, NO_FIRST_FRAME } from '../../../shared/no-picture';
 import type { PlaybackError } from './playback';
 
 /*
@@ -47,4 +47,31 @@ export function tellCannotPlay(
   if (!bridge?.media?.cannotPlay || failedTold.has(key)) return;
   failedTold.add(key);
   void bridge.media.cannotPlay(mediaId, startedAt, error.code, error.message).catch(() => undefined);
+}
+
+/**
+ * A video on a slide, a prop or in the picture-in-picture box (render/SlideView.tsx SlideVideo; x46's item 4 of
+ * Q60-31): with no first frame within FIRST_FRAME_MS (Q60-44), said to Main as a background's is (its element's error
+ * is said by its onError, tellCannotPlay). Only said: the element keeps loading. The watch, to stop as it goes.
+ */
+export function watchFirstFrame(
+  v: HTMLVideoElement,
+  mediaId: string,
+  startedAt: number,
+  attempt: number,
+): () => void {
+  if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return () => undefined;
+  const listening = new AbortController();
+  // eslint-disable-next-line no-restricted-syntax -- decides no frame: only whether a video that never drew is said to fail
+  const timer = setTimeout(() => {
+    listening.abort();
+    tellCannotPlay(mediaId, startedAt, attempt, { code: NO_FIRST_FRAME, message: '' });
+  }, FIRST_FRAME_MS);
+  const stop = () => {
+    clearTimeout(timer);
+    listening.abort();
+  };
+  v.addEventListener('loadeddata', stop, { signal: listening.signal });
+  v.addEventListener('error', stop, { signal: listening.signal });
+  return stop;
 }

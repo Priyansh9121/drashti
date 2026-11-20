@@ -17,10 +17,25 @@ export function noPictureNotice(name: string, converting: boolean): string {
 
 /**
  * What the operator window says when a video could not play on one of this computer's pictures (Q60-31): its element
- * failed there (that computer's decoder, a cut or damaged file). `where`: "the screen “…”", "LIVE" or "the stream".
+ * failed there (that computer's decoder, a cut or damaged file), or its first frame never came (Q60-44). `where`: "the
+ * screen “…”", "LIVE" or "the stream"; `took`: what came off (the background, by default), or, on the slide, what
+ * waits paused, or the picture-in-picture box (x46's item 4).
  */
-export function cannotPlayNotice(name: string, where: string): string {
-  return `“${name}” could not play on ${where}, so it came off the screens with its sound. If it happens again, the file may be damaged: tell whoever looks after Drashti.`;
+export function cannotPlayNotice(
+  name: string,
+  where: string,
+  took: { background: boolean; slide: boolean; box: boolean } = {
+    background: true,
+    slide: false,
+    box: false,
+  },
+): string {
+  const what = took.background
+    ? 'so it came off the screens with its sound'
+    : took.slide
+      ? 'so it stopped where it was on the slide, with its sound'
+      : 'so the picture-in-picture box came off';
+  return `“${name}” could not play on ${where}, ${what}. If it happens again, the file may be damaged: tell whoever looks after Drashti.`;
 }
 
 /**

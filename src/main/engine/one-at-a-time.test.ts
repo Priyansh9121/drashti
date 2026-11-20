@@ -544,3 +544,43 @@ describe('a video this computer cannot draw (Session 60, x36: the owner’s "Yes
     expect(engine.noPicture('onslide')).toBe(false);
   });
 });
+
+describe('a video that cannot play on a page (Q60-31, x46’s item 4: its element failed, or no first frame within 10 s)', () => {
+  it('as the background, comes off with its sound, and says so; another file’s word takes nothing off', () => {
+    const { engine, elapse } = setup();
+    engine.dispatch(play('i-clip'));
+    elapse(800);
+    expect(engine.cannotPlay('other')).toBeNull();
+    expect(engine.cannotPlay('clip')).toEqual({ background: true, slide: false, box: false });
+    expect(engine.current.layers.background).toBeNull();
+    // Off already: a second window's word changes nothing.
+    expect(engine.cannotPlay('clip')).toBeNull();
+  });
+
+  it('on the slide up, waits where it is, paused with its sound, the slide staying; in the box, the box comes off', () => {
+    const { engine, elapse } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'onslide', slideIndex: 0 });
+    engine.dispatch({
+      type: 'showPip',
+      source: { kind: 'media', mediaId: 'boxed' },
+      place: DEFAULT_PIP_PLACE,
+    });
+    elapse(2000);
+    const at = engine.current.layers.slide?.shownAt ?? 0;
+    expect(engine.cannotPlay('onslide')).toEqual({ background: false, slide: true, box: false });
+    expect(engine.current.layers.slide?.slide.id).toBe('o1');
+    expect(engine.current.layers.slide?.seeks?.['onslide']).toEqual({
+      at: at + 2000,
+      toMs: 2000,
+      paused: true,
+    });
+    // The box's video plays on until its own word.
+    expect(engine.current.layers.pip?.source).toMatchObject({ kind: 'media', mediaId: 'boxed' });
+    expect(engine.cannotPlay('boxed')).toEqual({ background: false, slide: false, box: true });
+    expect(engine.current.layers.pip).toBeNull();
+    expect(engine.current.pipOff?.layer.source).toMatchObject({ kind: 'media', mediaId: 'boxed' });
+    // Paused already, the box off: nothing more to do.
+    expect(engine.cannotPlay('onslide')).toBeNull();
+    expect(engine.cannotPlay('boxed')).toBeNull();
+  });
+});
