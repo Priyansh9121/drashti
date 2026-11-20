@@ -328,7 +328,12 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (c.seek?.paused) {
       if (wrap) clearTimeout(wrap);
       wrap = null;
-      holdAt(at);
+      // A jump while paused (the time bar's move, or one frame back or on, alpha.20) lands exactly where it was sent,
+      // however near: one frame of a 60 a second video is 1/60 s, the hold's own margin.
+      if (moved) {
+        if (!v.paused) v.pause();
+        if (v.currentTime !== at) v.currentTime = at;
+      } else holdAt(at);
       return;
     }
     const { start, end } = playbackBounds(c.clip, v.duration);
