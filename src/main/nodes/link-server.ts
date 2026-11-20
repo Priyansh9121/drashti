@@ -505,7 +505,12 @@ export class LinkServer {
       parts.push(chunk);
     }
     const answer = this.host.report ? await this.host.report(node.id, Buffer.concat(parts)) : null;
-    return answer ?? { ok: false, message: 'Main could not take the report just now.' };
+    return (
+      answer ?? {
+        ok: false,
+        message: 'Main could not take the report just now: it waits here and goes by itself later.',
+      }
+    );
   }
 
   private authenticate(req: IncomingMessage): LinkNode | null {

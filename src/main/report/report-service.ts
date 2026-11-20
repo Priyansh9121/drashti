@@ -360,7 +360,12 @@ export class ReportService {
   async fromNode(node: { id: string; name: string }, body: Uint8Array): Promise<NodeReportAnswer> {
     if (!this.d.letIn()) return { ok: false, message: 'Main is not let in: the report waits on the node.' };
     const read = readNodeReportBody(body);
-    if (read?.report.from !== 'node') return { ok: false, message: 'Main could not read that report.' };
+    if (read?.report.from !== 'node')
+      return {
+        ok: false,
+        message:
+          'Main could not read that report: run the same Drashti on both computers, then send it again.',
+      };
     const { report, data } = read;
     const reference = reportReference(report.id);
     // Handed over again (the node tried again): taken already.
@@ -370,7 +375,11 @@ export class ReportService {
     const wanted = new Set(report.files.map((f) => f.sha256));
     const keys = Object.keys(data);
     if (keys.length !== wanted.size || keys.some((k) => !wanted.has(k)))
-      return { ok: false, message: 'Main could not read that report.' };
+      return {
+        ok: false,
+        message:
+          'Main could not read that report: run the same Drashti on both computers, then send it again.',
+      };
     let total = 0;
     const files: { name: string; bytes: Buffer }[] = [];
     for (const f of report.files) {
@@ -381,11 +390,16 @@ export class ReportService {
         bytes.length !== f.bytes ||
         createHash('sha256').update(bytes).digest('hex') !== f.sha256
       )
-        return { ok: false, message: 'Main could not read that report.' };
+        return {
+          ok: false,
+          message:
+            'Main could not read that report: run the same Drashti on both computers, then send it again.',
+        };
       total += bytes.length;
       files.push({ name: f.name, bytes });
     }
-    if (total > REPORT_LIMITS.filesBytes) return { ok: false, message: 'The report is too large.' };
+    if (total > REPORT_LIMITS.filesBytes)
+      return { ok: false, message: 'The report is too large: send it again without the crash files.' };
     const dir = join(this.d.dir, report.id);
     mkdirSync(join(dir, 'files'), { recursive: true });
     for (const f of files) writeFileSync(join(dir, 'files', f.name), f.bytes);
