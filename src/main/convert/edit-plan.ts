@@ -181,6 +181,8 @@ export function editPlan(input: EditPlanInput): EditPlan {
       'rotate=0',
       '-metadata',
       `drashti_edit_id=${input.identity}`,
+      '-enc_time_base:v',
+      'filter',
       '-fps_mode:v',
       'passthrough',
       '-f',
