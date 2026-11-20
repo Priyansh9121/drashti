@@ -525,7 +525,12 @@ function notDrawable(
 }
 
 /** Whether every picture and video in `root` can be drawn now (Session 58: asked before a frame is painted). */
-export function slideMediaDrawable(root: HTMLElement, layer: SlideLayer, decodedPictures = false): boolean {
+export function slideMediaDrawable(
+  root: HTMLElement,
+  layer: SlideLayer,
+  decodedPictures = false,
+  _ownImages = false,
+): boolean {
   const { images, videos } = notDrawable(root, layer, decodedPictures);
   return images.length === 0 && videos.length === 0;
 }
@@ -539,6 +544,7 @@ export function slideMediaReady(
   deadline: number,
   layer: SlideLayer,
   decodedPictures = false,
+  _ownImages = false,
 ): true | Promise<void> {
   const { images, videos, first } = notDrawable(root, layer, decodedPictures);
   const waits: Promise<unknown>[] = images.map((img) => decodeSlideImage(img).catch(() => undefined));

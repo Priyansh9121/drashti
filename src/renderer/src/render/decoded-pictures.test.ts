@@ -113,3 +113,40 @@ it('keeps a newly assigned address cold while currentSrc still names the precedi
   expect(changed.currentSrc).toBe(before);
   expect(slideMediaDrawable(root(changed), layer, true)).toBe(false);
 });
+
+it('the first scene decodes its own image even when the initial preloader already prepared its address', async () => {
+  const src = 'drashti-media://media/placeholder-first-scene-own-image';
+  const preloaded = image(src, () => Promise.resolve());
+  const prepared = slideMediaReady(root(preloaded), engineNow() + 3000, layer, true);
+  if (prepared !== true) await prepared;
+  const decoder = pending();
+  const own = image(src, decoder.decode);
+  // A later prepared Next keeps its same-frame path, but the new scene has not prepared its own element yet.
+  expect(slideMediaDrawable(root(own), layer, true)).toBe(true);
+  expect(slideMediaDrawable(root(own), layer, true, true)).toBe(false);
+  const ready = slideMediaReady(root(own), engineNow() + 3000, layer, true, true);
+  expect(ready).not.toBe(true);
+  expect(decoder.decode).toHaveBeenCalledOnce();
+  decoder.finish();
+  if (ready !== true) await ready;
+});
+
+it('the first scene keeps the same three-second deadline if its own native decode never finishes', async () => {
+  const src = 'drashti-media://media/placeholder-first-scene-deadline';
+  const preloaded = image(src, () => Promise.resolve());
+  const prepared = slideMediaReady(root(preloaded), engineNow() + 3000, layer, true);
+  if (prepared !== true) await prepared;
+  const decoder = pending();
+  const own = image(src, decoder.decode);
+  const ready = slideMediaReady(root(own), engineNow() + 3000, layer, true, true);
+  expect(ready).not.toBe(true);
+  let settled = false;
+  if (ready !== true)
+    void ready.then(() => {
+      settled = true;
+    });
+  await vi.advanceTimersByTimeAsync(2999);
+  expect(settled).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(settled).toBe(true);
+});
