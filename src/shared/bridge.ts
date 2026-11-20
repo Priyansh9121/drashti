@@ -23,6 +23,14 @@ import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
 import type { ManualPrinted, ManualRead } from './manual';
 import type {
+  ReportCopied,
+  ReportDraft,
+  ReportOpened,
+  ReportPrepared,
+  ReportRow,
+  ReportStateView,
+} from './report';
+import type {
   PassageInfo,
   PassageResult,
   ShastraHit,
@@ -249,6 +257,8 @@ export interface DrashtiBridge {
     onShowGuides(listener: () => void): () => void;
     /** Help › Drashti Manual… was chosen (x37, Session 60), in either mode. */
     onShowManual(listener: () => void): () => void;
+    /** Help › Report a Problem… was chosen (x49), in either mode. */
+    onShowReport(listener: () => void): () => void;
     /** An item of the Tools menu was chosen (Session 60, x36; Pro Mode): which. */
     onShowTool(listener: (tool: ToolsMenuItem) => void): () => void;
   };
@@ -265,6 +275,23 @@ export interface DrashtiBridge {
     read(): Promise<ManualRead>;
     print(): Promise<ManualPrinted>;
     pdf(): Promise<ManualPrinted>;
+  };
+  /**
+   * Help › Report a Problem… (x49, the owner's Q60-38 and Q60-42), in either mode, while this computer is let in: open
+   * (the window's picture is taken first, kept in memory only), Review (exactly what goes), Send (the outbox sends it by
+   * itself through the access list), the reports kept here, Forget, Save a Copy…, a file shown in the computer's app.
+   */
+  report: {
+    open(): Promise<ReportOpened>;
+    close(): Promise<boolean>;
+    prepare(draft: ReportDraft): Promise<ReportPrepared>;
+    discard(id: string): Promise<boolean>;
+    send(id: string): Promise<ReportStateView | null>;
+    list(): Promise<ReportRow[]>;
+    forget(id: string): Promise<boolean>;
+    copy(id: string): Promise<ReportCopied>;
+    showFile(id: string, name: string): Promise<boolean>;
+    onChanged(listener: () => void): () => void;
   };
   /** Scheduled backups (Session 14, operator window). */
   backups: {

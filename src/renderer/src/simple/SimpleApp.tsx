@@ -9,6 +9,7 @@ import { useAccess } from '../access/access-store';
 import { FileMenu } from '../files/FileMenu';
 import { GuidesDialog } from '../help/GuidesDialog';
 import { ManualDialog } from '../help/ManualDialog';
+import { ReportDialog } from '../help/ReportDialog';
 import { askWhereFilesGo, DropNewDialog } from '../playlists/DropNewDialog';
 import { useLibrary } from '../library/library-store';
 import { RemoveItemsConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
@@ -395,6 +396,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <GuidesDialog />
       {/* The Drashti Manual (x37, Session 60): Help › Drashti Manual…, as in Pro Mode. */}
       <ManualDialog />
+      <ReportDialog />
       {/* Jump by number (Session 55, Part 4): a row's number and Enter, as in Pro Mode. */}
       <JumpBox />
       {dashboardOpen && <ScreensDashboard simple onSetUp={null} />}
