@@ -497,6 +497,7 @@ const bridge: DrashtiBridge = {
       on(IPC.audio.testTone, (payload) => {
         listener(payload.deviceId);
       }),
+    tryAgain: () => invoke(IPC.audio.tryAgain),
   },
   network: {
     status: () => invoke(IPC.network.status),
@@ -795,6 +796,10 @@ const bridge: DrashtiBridge = {
     onTestThrow: (listener) =>
       on(IPC.output.testThrow, () => {
         listener();
+      }),
+    onTestThrowWhile: (listener) =>
+      on(IPC.output.testThrowWhile, ({ mediaId }) => {
+        listener(mediaId);
       }),
     onTestClock: (listener) =>
       on(IPC.output.testClock, ({ at }) => {

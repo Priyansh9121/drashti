@@ -158,7 +158,9 @@ export function runFfmpeg(
     child.on('error', () => {
       done(null);
     });
-    child.on('exit', (code) => {
+    // Once it has exited and all it wrote has been read: its exit alone can be told first, and a busy computer then
+    // had read only part of the movie's frames, or none (x58).
+    child.on('close', (code) => {
       done(code);
     });
   });

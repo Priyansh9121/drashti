@@ -320,7 +320,9 @@ import {
   watchdogLine,
   whyText,
   type WatchdogEvent,
+  type WatchTarget,
 } from './watchdog';
+import { filesUp, KeepsFailing, keptFailingNotice, stillUpOn } from './keeps-failing';
 import { allowHangStacks, applySessionSecurity, secureWebContents } from './windows/security';
 import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
@@ -898,6 +900,8 @@ protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...M
 
 /** What the show does with an output's watchdog events (set once the outputs exist: Session 23). */
 let outputWatchdogEvent: ((e: WatchdogEvent) => void) | null = null;
+/** The watchdog's name for the sound player, the hidden window that plays every sound (audio-window.ts). */
+const SOUND_PLAYER = 'audio player';
 /** The watchdog's recent events, for diagnostics. */
 const watchdogHistory: { at: string; window: string; kind: string; reason: string | null }[] = [];
 /** The watchdog's problems into the crash journal: a hung window's restart adds Drashti's wait to its hang (Session 38). */
@@ -1558,6 +1562,11 @@ function start(): void {
   const restored = pendingRestore();
   /** The operator window has read the start notice: later news goes as an ordinary notice. */
   let startNoticeTaken = false;
+  /**
+   * The operator window's page has read its start notice since it last began to load (x53): news reaches it at once.
+   * While it is down or loading again (a video that brought it down just taken off), news waits in the start notice.
+   */
+  let operatorAsked = false;
   let startNotice = restored.restored
     ? `Library restored from “${restored.from}”. The library from before is kept in Drashti’s data folder, in Backups/${restored.keptIn}.`
     : restored.message;
@@ -2428,12 +2437,82 @@ function start(): void {
     sendToOperator(IPC.app.notice, { text });
   };
   outputWatchdogEvent = (e) => {
+    // A window that went down, on Main's next turn once the watchdog has done its part: the video it keeps going down
+    // on comes off, and it loads again at once without it (x53, below).
+    if (e.kind === 'crashed')
+      setImmediate(() => {
+        wentDown(e.window);
+      });
+    // The sound player given up on, or tried again (x53, the owner's Q60-50 (2) A): the red notice says so, or goes.
+    if (e.window === SOUND_PLAYER && (e.kind === 'gave-up' || e.kind === 'retried'))
+      audioOutput.setPlayerStopped(e.kind === 'gave-up');
     const screenId = screenOfOutput(e.window);
     if (screenId === undefined) return;
     // A page loaded again gets its grace before it is judged.
     if (e.kind === 'reloaded' || e.kind === 'retried') heartbeat.opened(screenId);
     // Given up on: Stopped (the status line and Screens say so) until it draws again.
     if (e.kind === 'gave-up') stopOutput(screenId);
+  };
+  /*
+   * A page that keeps failing on a video up (x53; the owner's Q60-31 bug hunt, x52's show-stoppers; his Q60-50 A): a
+   * hall screen whose picture fails each time it draws or whose renderer goes down each time it loads it, LIVE (the
+   * operator window) going down each time it loads it, the sound player going down each time it loads its sound. Failing
+   * again within a minute with a video up that was up the time before, the newest such comes off as a video that fails
+   * does (x46's take-off: its sound with it, on the slide paused, the box off), said by its name and where, and the page
+   * loads again at once without it (main/keeps-failing.ts). With nothing to blame, the watchdog gives up on it as before.
+   */
+  const keepsFailing = new KeepsFailing();
+  /** The engine's revision when each screen's picture last failed as it drew (x53): drawn past it, it draws again. */
+  const pictureFailedAt = new Map<string, number>();
+  /** Where a window the watchdog names is, in the notice's words, and its page: a hall screen, LIVE, the sound player. */
+  const failingPage = (window: string): { where: string; page: WatchTarget } | null => {
+    if (window === 'operator')
+      return pageAlive(operatorWindow) ? { where: 'LIVE', page: operatorWindow.webContents } : null;
+    if (window === SOUND_PLAYER)
+      return pageAlive(audioWindow)
+        ? { where: 'Drashti’s sound player', page: audioWindow.webContents }
+        : null;
+    const screenId = screenOfOutput(window);
+    const win = screenId === undefined ? undefined : outputWindows.get(screenId);
+    if (screenId === undefined || !win || win.isDestroyed()) return null;
+    const name = screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId;
+    return { where: whereWords([{ screen: name }]), page: win.webContents };
+  };
+  /** A page failed (`how`): the file it keeps failing on taken off, said and logged. Whether one was. */
+  const takeOffWhatFails = (window: string, where: string, how: string): boolean => {
+    const mediaId = keepsFailing.failed(window, Date.now(), filesUp(engine.current, window === SOUND_PLAYER));
+    if (mediaId === null) return false;
+    const name = media.kindAndName(mediaId)?.name ?? 'A file';
+    const took = engine.cannotPlay(mediaId);
+    if (took) {
+      const off = [
+        took.background ? 'the background' : '',
+        took.slide ? 'paused on the slide' : '',
+        took.box ? 'the box' : '',
+      ]
+        .filter((w) => w !== '')
+        .join(', ');
+      log.warn(
+        `${window} kept failing (${how}) with a video up, twice within a minute: ${mediaId}; taken off (${off})`,
+      );
+      tellOperator(cannotPlayNotice(name, where, took));
+      return true;
+    }
+    // Still up though x46's take-off left it so (paused on the slide), or the music (Q60-52 A): off as Clear slide or
+    // Clear audio takes it, so Back or Oops can bring it back.
+    const layer = stillUpOn(engine.current, mediaId);
+    if (layer === null || !engine.dispatch({ type: 'clearLayer', layer }).ok) return false;
+    log.warn(
+      `${window} kept failing (${how}) with a file up, again within a minute: ${mediaId}; its ${layer} cleared`,
+    );
+    tellOperator(keptFailingNotice(name, where, layer));
+    return true;
+  };
+  /** A window went down (any of them): if it keeps going down on a video, that comes off and it loads again at once. */
+  const wentDown = (window: string) => {
+    const failing = failingPage(window);
+    if (failing && takeOffWhatFails(window, failing.where, 'it went down'))
+      watchdog.tookOff(failing.page, window, 'without the video it kept going down on');
   };
   // Tests only (never a packaged Drashti): mark an output as given up on, as a crash loop would,
   // to see Stopped and Try again (Session 23; Playwright cannot follow a renderer that crashes). On Main's next turn,
@@ -4626,8 +4705,15 @@ function start(): void {
     const text = [startNotice, interruptedTrim].filter(Boolean).join(' ') || null;
     startNotice = null;
     startNoticeTaken = true;
+    operatorAsked = true;
     return text;
   });
+  /** Tell the operator: at once, or as the operator window's page opens while it is down or loading again (x53). */
+  const tellOperator = (text: string) => {
+    if (operatorAsked && pageAlive(operatorWindow) && !operatorWindow.webContents.isCrashed())
+      sendToOperator(IPC.app.notice, { text });
+    else startNotice = startNotice ? `${startNotice}\n\n${text}` : text;
+  };
   handle(IPC.app.dismissRecovery, (e) => {
     if (fromOperator(e)) recovery = null;
     return null;
@@ -6368,15 +6454,40 @@ function start(): void {
       heartbeat.report(screenId, r.paintedRev, r.warming === true);
       // Reporting from a page loaded since it was given up on: it draws again.
       if (loadedSinceStopped.has(screenId)) manager.setStopped(screenId, false);
+      // A page whose picture failed, having painted a change since its last failure (its boundary draws the scene
+      // again at each change; a failure would have been said before this report): it draws again (x53). Given up on
+      // for it, it is back by itself, no reload.
+      const failedAt = pictureFailedAt.get(screenId);
+      const win = outputWindows.get(screenId);
+      if (failedAt !== undefined && r.paintedRev > failedAt && win && !win.isDestroyed()) {
+        pictureFailedAt.delete(screenId);
+        watchdog.drawsAgain(win.webContents, outputNames.get(screenId) ?? 'an output');
+        manager.setStopped(screenId, false);
+      }
     }
     return null;
   });
-  // Render errors in any window (Session 23): logged; an output draws black and is reloaded once.
+  // Render errors in any window (Session 23): logged; an output draws black and is reloaded once, or given up on if it
+  // fails again (x53), unless the video it keeps failing on comes off (keepsFailing, above).
   hearRenderErrors({
     log: (line) => {
       log.warn(line);
     },
     watchdog,
+    failed: (name) => {
+      const screenId = screenOfOutput(name);
+      const failing = failingPage(name);
+      if (screenId === undefined || !failing) return false;
+      // A failure from a draw of what was just taken off is not a new one (keeps-failing.ts): nothing more is done.
+      if (
+        keepsFailing.stillDrawingWhatWentOff(name, Date.now(), localReports.get(screenId)?.paintedRev ?? null)
+      )
+        return true;
+      pictureFailedAt.set(screenId, engine.rev);
+      const tookOff = takeOffWhatFails(name, failing.where, 'its picture failed as it drew');
+      if (tookOff) keepsFailing.tookOff(name, engine.rev, Date.now());
+      return tookOff;
+    },
     windowOf: (sender) => {
       const screenId = manager.screenIdFor(sender.id);
       const output = screenId ? outputWindows.get(screenId) : undefined;
@@ -6427,13 +6538,16 @@ function start(): void {
       });
     };
   if (testRenderErrors)
-    (globalThis as { drashtiTestRenderError?: (screenId?: string) => number }).drashtiTestRenderError = (
-      screenId,
-    ) => {
+    (
+      globalThis as { drashtiTestRenderError?: (screenId?: string, whileUp?: string | null) => number }
+    ).drashtiTestRenderError = (screenId, whileUp) => {
       let sent = 0;
       for (const [id, win] of outputWindows)
         if (screenId === undefined || id === screenId) {
-          sendToPage(win, IPC.output.testThrow, {});
+          // A file named (null: none): the scene fails each time it draws while that file is up (x53), and the page
+          // keeps the word until it loads again; else it fails at once, whatever is up, until it loads again.
+          if (whileUp === undefined) sendToPage(win, IPC.output.testThrow, {});
+          else sendToPage(win, IPC.output.testThrowWhile, { mediaId: whileUp });
           sent++;
         }
       return sent;
@@ -7142,6 +7256,17 @@ function start(): void {
     return { ok: true as const };
   });
   handle(IPC.audio.getOutput, () => audioOutput.status);
+  // The sound player's red notice's Try again (x53, the owner's Q60-50 (2) A), in either mode: tried again now, its
+  // count afresh; the notice goes as it is tried, and comes again if it is given up on again.
+  handle(IPC.audio.tryAgain, (e) => {
+    if (!fromOperator(e))
+      return { ok: false as const, message: 'Only the operator window can try the sound again.' };
+    if (!pageAlive(audioWindow))
+      return { ok: false as const, message: 'Drashti’s sound player is not running.' };
+    log.info('Trying the sound player again, as the operator asked');
+    watchdog.retryNow(audioWindow.webContents, 'Try again');
+    return { ok: true as const };
+  });
   handle(IPC.audio.setOutput, (e, device) =>
     fromOperator(e) ? audioOutput.choose(device) : audioOutput.status,
   );
@@ -7862,7 +7987,8 @@ function start(): void {
         state: st.state,
         checked: st.checked,
         chosen: st.chosen?.label ?? null,
-        playerRunning: pageAlive(audioWindow),
+        // Down and given up on (x53) is not running: Ready? says so.
+        playerRunning: pageAlive(audioWindow) && !audioWindow.webContents.isCrashed(),
       };
     },
     videoInput: () => {
@@ -8044,6 +8170,8 @@ function start(): void {
     switchQuestion.asking(null);
     // A picture adjusted from the window that is loading again (x27): its grid goes from the screens.
     screens.stopAdjusting();
+    // News waits for its page to open (x53: tellOperator).
+    operatorAsked = false;
   });
   operatorWindow.webContents.on('did-start-navigation', (navigation) => {
     if (loadsOperatorPageAgain(navigation, { devServerUrl: devServerUrl(), rendererDir: rendererDir() }))
@@ -8053,6 +8181,7 @@ function start(): void {
     importNotices.pause();
     switchQuestion.asking(null);
     screens.stopAdjusting();
+    operatorAsked = false;
   });
   // Whether this computer plays HEVC video (Session 51), unless a test gave the answer: asked once the operator window
   // has loaded, and again at its next load while it could not be told. Never of the operator window itself (question
@@ -8098,7 +8227,7 @@ function start(): void {
     if (audioStarted || quitStarted) return;
     audioStarted = true;
     audioWindow = createAudioWindow();
-    watchdog.watch(audioWindow.webContents, 'audio player');
+    watchdog.watch(audioWindow.webContents, SOUND_PLAYER);
   };
   operatorWindow.webContents.once('did-finish-load', startAudioPlayer);
   operatorWindow.webContents.once('did-finish-load', resumeStream);
