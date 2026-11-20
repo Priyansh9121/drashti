@@ -75,6 +75,8 @@ export interface StartSample {
   decoded: number;
   /** Times the element said it loaded more ('progress'). */
   progressEvents: number;
+  /** Bytes of the file Main has sent the page so far (0 where the page cannot ask). */
+  served: number;
 }
 
 /** A video's start as watched: from when it waits, when it last moved on, and its last look. */

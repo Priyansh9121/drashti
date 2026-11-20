@@ -21,6 +21,7 @@ const sample = (at: number, loadedMs: number, more: Partial<StartSample> = {}): 
   readyState: 1,
   decoded: 0,
   progressEvents: 0,
+  served: 0,
   ...more,
 });
 
@@ -48,6 +49,17 @@ describe('a video’s start, as a page watches it', () => {
       expect(startVerdict(v, 17_999), JSON.stringify(more)).toBe('wait');
       expect(startVerdict(v, 18_000), JSON.stringify(more)).toBe('stalled');
     }
+  });
+
+  it('bytes Main still sends are progress too: on CI’s Mac a slow file told the page nothing else (x47-1120-205802-554)', () => {
+    let w = startWatched(startWatch(0), sample(0, 0));
+    for (let at = 1000; at <= 29_000; at += 1000) {
+      w = startWatched(w, sample(at, 0, { served: at * 100 }));
+      expect(startVerdict(w, at), `at ${String(at)} ms`).toBe('wait');
+    }
+    expect(
+      startVerdict(startWatched(w, sample(SLOW_START_MS, 0, { served: 3_000_000 })), SLOW_START_MS),
+    ).toBe('slow');
   });
 
   it('says a slow start in words: not in time, never damaged', () => {
