@@ -44,6 +44,14 @@ import type {
   ImportRunSummary,
 } from './import';
 import type {
+  QrChoices,
+  QrChoicesChange,
+  QrChoicesResult,
+  QrDownloadResult,
+  QrPicked,
+  QrSlideOptions,
+} from './qr-picture';
+import type {
   LibraryChange,
   NewFromWordsResult,
   PresentationDoc,
@@ -124,6 +132,7 @@ import type { PendingScreens } from './keep-screens';
 import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
 import type { SavePictureResult, SaveStillResult } from './media';
+import type { MediaDetailsResult } from './media-details';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
@@ -426,8 +435,21 @@ export interface DrashtiBridge {
     saveWords(presentationId: string, text: string): Promise<SaveWordsResult>;
     /** A new presentation from pasted words, in the default look. */
     newFromWords(name: string, text: string): Promise<NewFromWordsResult>;
-    /** New › QR code… (Session 55, Part 8): one slide, a large code of the link or words and the words under it. */
-    newQrSlide(text: string): Promise<NewFromWordsResult>;
+    /**
+     * New › QR code… (Session 55, Part 8): one slide, a large code of the link or words and the words under it; since
+     * alpha.20 (Q60-28) with the logo in the middle and without the words, as the window asks.
+     */
+    newQrSlide(text: string, options?: QrSlideOptions): Promise<NewFromWordsResult>;
+    /** The QR code… window's choices (Q60-28): the logo kept for the middle, Logo in the middle, the words under it. */
+    qrChoices(): Promise<QrChoices>;
+    /** Logo in the middle: Choose a Picture…, the system's open dialog: the picture's own bytes, or why not. */
+    pickQrLogo(): Promise<QrPicked>;
+    /** The window's copy of that picture (a PNG at most 1024 pixels a side), kept and remembered, the logo on. */
+    keepQrLogo(name: string, png: Uint8Array): Promise<QrChoicesResult>;
+    /** Logo in the middle on or off, and the words under the code: remembered. */
+    setQrChoices(change: QrChoicesChange): Promise<QrChoicesResult>;
+    /** Download…: the system's save dialog, then the code as a PNG of about 2048 pixels and an SVG there. */
+    downloadQr(text: string, options: { logo: boolean }): Promise<QrDownloadResult>;
     /** Undo a change to a presentation's content: write back the copy kept before it. */
     restoreRevision(revisionId: string): Promise<RevisionResult>;
     /** Presentations with slide text in legacy fonts, which search cannot read yet. */
@@ -698,6 +720,10 @@ export interface DrashtiBridge {
     reveal(mediaId: string): Promise<RevealResult>;
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers(mediaId: string): Promise<MediaMarkers>;
+    /** Media information… (alpha.20, Q60-34 item 1): what a video's or a sound's file holds, as FFmpeg reads it. */
+    details(mediaId: string): Promise<MediaDetailsResult>;
+    /** Media information's Copy: its words on the clipboard, by the main process; false when they could not be. */
+    copyDetails(text: string): Promise<boolean>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
