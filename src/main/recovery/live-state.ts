@@ -291,6 +291,15 @@ function stillBox(box: PipLayer | null): PipLayer | null {
   return still;
 }
 
+/**
+ * A file going round from A to B (alpha.20, the time bar's ⋯) is saved as its own: after a crash it plays on from where
+ * it was, once only or going round as it did before the repeat, between its own points (the library's, as ever).
+ */
+function ownPlaying<T extends { loop: boolean; ab?: { loop: boolean } }>(layer: T): T {
+  // Red (x47, slice 4).
+  return layer;
+}
+
 export function savedFrom(state: EngineState, session: string, now = new Date()): SavedLive {
   const slide = state.layers.slide;
   // A timer shown alone (Session 50): the slide the show was at under it, and the timer, put back over it.
@@ -323,10 +332,13 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
           }
         : null,
     playlist: state.live.playlist,
-    background: state.layers.background,
+    background:
+      state.layers.background?.kind === 'media'
+        ? ownPlaying(state.layers.background)
+        : state.layers.background,
     blackout: state.blackout,
     wallpaper: state.wallpaper,
-    audio: state.layers.audio,
+    audio: state.layers.audio ? ownPlaying(state.layers.audio) : null,
     messages: state.layers.messages,
     ticker: state.layers.ticker,
     stageMessage: state.stageMessage,
