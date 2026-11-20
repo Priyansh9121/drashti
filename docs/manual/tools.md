@@ -65,19 +65,22 @@
 
 ## Show a Stream Link
 
-**What it is.** A live stream from the internet or the mandir's own network (an HLS link, or a YouTube live stream's link) shown on the hall's screens as the background, with its sound in the hall. Drashti only receives it. Drashti's own stream shows the Wallpaper while it is up.
+**What it is.** A live stream from an HLS link or a YouTube live stream's link, received on this computer's hall screens as the background, with its sound in the hall. Drashti's own stream shows the Wallpaper while it is up.
 
 **When you would use it.** When the hall should watch another mandir's webcast live.
 
 **How:**
 
-1. In **More tools**, press **Show a Stream Link…**.
-2. Paste the link: one that ends in .m3u8, or a YouTube live stream's **Share** link.
-3. Press **Show on the screens**. It goes up once its pictures come.
-4. If it drops, the screens keep its last picture while Drashti connects again by itself. After 20 seconds the Wallpaper goes up; it comes back by itself, unless something else went up.
-5. **F3**, **Clear all** or **Take it off** on its notice takes it off.
+1. In **More tools**, press **Show a Stream Link…**, or choose it from the **Tools** menu. This is Pro Mode's.
+2. Paste the HLS link ending in **.m3u8**, or the YouTube live stream's **Share** link. A YouTube link can be checked only while Drashti is off air and not recording.
+3. Press **Show on the screens**. The earlier picture stays until the link's pictures come.
+4. If it drops, the last picture stays while Drashti reconnects. After 20 seconds the Wallpaper goes up. The link returns by itself, unless something else went up.
+5. **F3**, **Clear all**, or **Take it off** on its notice removes it. These clear controls still work in Simple Mode.
+6. After Drashti stops unexpectedly, open this tool and show the link again; it is not put back by itself.
 
-![More tools opened, with Show a Stream Link… among its tools](../screenshots/manual-more-tools.png)
+Output nodes show the rest of the show without this link; stage screens name it, and a phone can name and clear it. The last link is offered again during this run only. It may contain a private way in, so Drashti never writes it down. See **Stream › The Stream panel** for sending Drashti's own show.
+
+![Show a Stream Link with an unsubmitted placeholder link](../screenshots/manual-stream-link.png)
 
 ## Video inputs
 

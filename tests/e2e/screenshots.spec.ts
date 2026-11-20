@@ -3131,7 +3131,7 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
  */
 test('the Drashti Manual’s pictures: the manual, the guides, the levels, a timer’s and a message’s look, More tools and its tools, the File menu’s settings and a kirtan bundle (x37)', async () => {
   test.setTimeout(240_000);
-  const { app } = await launchApp();
+  const { app, userData } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await running(win);
@@ -3197,12 +3197,38 @@ test('the Drashti Manual’s pictures: the manual, the guides, the levels, a tim
   const more = win.getByTestId('more-tools');
   await more.scrollIntoViewIfNeeded();
   await part(win, 'manual-more-tools', [more]);
+
+  // The new received-link tool: an unsubmitted placeholder only, no connection or stream.
+  await win.getByTestId('show-a-stream-link').click();
+  const streamLink = win.getByTestId('stream-link-dialog');
+  await streamLink.getByTestId('stream-link-text').fill('https://example.org/placeholder.m3u8');
+  await expect(streamLink.getByTestId('stream-link-show')).toBeEnabled();
+  await dialogShot('stream-link-dialog', 'manual-stream-link');
+
   await win.getByTestId('pip-open').click();
   await dialogShot('pip-dialog', 'manual-pip');
   await win.getByTestId('qr-code-open').click();
   const qr = win.getByTestId('qr-dialog');
   await qr.getByRole('textbox', { name: 'Link or words' }).fill('https://example.org/placeholder');
   await expect(qr.getByTestId('qr-code')).toBeVisible();
+  const logo = await makeTestImage(win, join(userData, 'Placeholder logo.png'), {
+    width: 96,
+    height: 96,
+    color: '#2a64d8',
+  });
+  // Answer only this open-file question with the generated swatch; no private logo is read.
+  await app.evaluate(({ dialog }, file) => {
+    const original = dialog.showOpenDialog;
+    dialog.showOpenDialog = async () => {
+      dialog.showOpenDialog = original;
+      return { canceled: false, filePaths: [file] };
+    };
+  }, logo);
+  await qr.getByRole('button', { name: 'Choose a Picture…' }).click();
+  await expect(qr.getByTestId('qr-logo')).toContainText('Placeholder logo.png');
+  await expect(qr.getByTestId('qr-code')).toHaveAttribute('data-logo', 'true');
+  await qr.getByRole('checkbox', { name: 'Words under the code' }).uncheck();
+  await expect(qr.getByRole('button', { name: 'Download…', exact: true })).toBeVisible();
   await dialogShot('qr-dialog', 'manual-qr');
   await chooseMenuItem(app, 'tools-osc');
   await dialogShot('osc-dialog', 'manual-osc');
@@ -3230,6 +3256,15 @@ test('the Drashti Manual’s pictures: the manual, the guides, the levels, a tim
   await report
     .getByLabel('What went wrong with The time bar?')
     .fill('Placeholder: the time bar stops at a marker.');
+  await report.getByLabel('Find a feature').fill('markers');
+  await report.getByRole('checkbox', { name: 'Markers', exact: true }).click();
+  await report.getByLabel('What went wrong with Markers?').fill('Placeholder: a marker is missing.');
+  await report.getByRole('checkbox', { name: /^Diagnostics/u }).check();
+  await report.getByRole('button', { name: 'Review…', exact: true }).click();
+  await expect(report.getByTestId('report-review-text')).toContainText('The time bar');
+  await expect(report.getByTestId('report-review-text')).toContainText('Markers');
+  await expect(report.getByTestId('report-review-file')).toHaveCount(1);
+  // Review only: no Send press, attachment picture or real identity.
   await dialogShot('report-problem', 'manual-report-problem');
   await app.close();
 });
@@ -3311,6 +3346,135 @@ test('the Drashti Manual’s pictures: Adjust the picture…, a video’s captio
     await part(win, 'manual-video-out', [videoOut]);
     await win.getByRole('button', { name: 'Close stream settings' }).click();
     await win.getByRole('button', { name: 'Close stream' }).click();
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/*
+ * The Manual's new video pictures (x66): generated red/blue scenes and a synthetic tone only. Nothing is put on
+ * the screens, streamed or exported. Preparation can finish while idle, and source playback stays private and muted.
+ * The lead takes these locally with the rest of this file; x66 does not run the picture spec.
+ */
+test('the Drashti Manual’s pictures: Edit Video, its Picture and export choices, Media information and Sound and picture with Shape (x66)', async () => {
+  test.setTimeout(240_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-video-'));
+  const { app } = await launchApp();
+  try {
+    const win = await operatorPage(app);
+    await win.setViewportSize({ width: 1280, height: 1000 });
+    await operatorReady(win);
+    const file = join(dir, 'Placeholder video editing.mp4');
+    // The same small red/blue cut used by video-analysis.spec.ts, encoded by the already bundled FFmpeg.
+    const made = spawnSync(testFfmpeg() ?? '', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-nostdin',
+      '-y',
+      '-threads',
+      '1',
+      '-filter_complex_threads',
+      '1',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=red:s=320x180:r=25:d=4',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=blue:s=320x180:r=25:d=4',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=f=120:r=8000:d=8',
+      '-filter_complex',
+      '[0:v][1:v]concat=n=2:v=1:a=0[v]',
+      '-map',
+      '[v]',
+      '-map',
+      '2:a',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
+      '-threads',
+      '1',
+      file,
+    ]);
+    expect(made.status, 'the bundled FFmpeg made the placeholder video').toBe(0);
+    const [mediaId = ''] = await importAndGetIds(win, [file]);
+    expect(mediaId).not.toBe('');
+    await openLibrary(win);
+    await win.getByTestId('library-tab-media').click();
+    const row = win.getByTestId('media-item').filter({ hasText: 'Placeholder video editing' });
+    const openFileTool = async (name: string) => {
+      await row.click({ button: 'right' });
+      await win.getByRole('menuitem', { name, exact: true }).click();
+    };
+    /** One open dialog, pictured with its title and buttons, then closed as x37's captures do. */
+    const dialogShot = async (testId: string, name: string) => {
+      const dialog = win.getByTestId(testId);
+      await expect(dialog).toBeVisible();
+      await part(win, name, [dialog]);
+      await win.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+    };
+
+    await openFileTool('Edit Video…');
+    const editor = win.getByTestId('edit-video');
+    await expect(editor.getByTestId('timeline-waveform')).toBeVisible();
+    await expect(editor.getByRole('button', { name: /Keep scene at 0:04/u })).toBeVisible();
+    await editor.getByLabel('Go to time').fill('0:02');
+    await editor.getByRole('button', { name: 'Jump', exact: true }).click();
+    await expect
+      .poll(() => editor.getByTestId('edit-video-preview').evaluate((v: HTMLVideoElement) => v.currentTime))
+      .toBeCloseTo(2, 1);
+    await editor.getByRole('button', { name: 'Trim', exact: true }).click();
+    await part(win, 'manual-edit-video', [editor]);
+
+    // Default Original shape, crop/colour and blurred fill. No draft edits or saved recipe are invented.
+    await editor.getByRole('button', { name: 'Picture', exact: true }).click();
+    await expect(editor.getByLabel('Frame shape')).toHaveValue('source');
+    await editor.getByRole('region', { name: 'Picture', exact: true }).scrollIntoViewIfNeeded();
+    await part(win, 'manual-edit-video-picture', [editor]);
+
+    await editor.getByRole('button', { name: 'Preparation and export', exact: true }).click();
+    const clip = editor.getByTestId('video-clip-export');
+    await clip.getByLabel('Picture and sound').selectOption('original');
+    await clip.getByLabel('Clip shape').selectOption('vertical');
+    await clip.getByRole('checkbox', { name: 'Also add the clip to Media' }).check();
+    await clip.scrollIntoViewIfNeeded();
+    await expect(clip.getByRole('button', { name: 'Export clip…', exact: true })).toBeEnabled();
+    await part(win, 'manual-edit-video-export', [clip]);
+    // Export choices are private UI state; never press Export or open a system Save as dialog here.
+    await win.keyboard.press('Escape');
+    await expect(editor).toBeHidden();
+
+    await openFileTool('Media information…');
+    const info = win.getByTestId('media-info');
+    await expect(info.getByRole('button', { name: 'Copy', exact: true })).toBeEnabled();
+    await info.getByTestId('video-proxy-info').scrollIntoViewIfNeeded();
+    await expect(info.getByTestId('video-proxy-info')).toContainText('Next showing uses the original video');
+    await dialogShot('media-info', 'manual-media-information');
+
+    await openFileTool('Sound and picture…');
+    const sound = win.getByTestId('sound-picture');
+    await expect(sound.getByLabel('Shape')).toBeEnabled();
+    await sound.getByLabel('Shape').selectOption('16:9');
+    await expect
+      .poll(
+        async () =>
+          (await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.playback(id), mediaId))
+            ?.shape,
+      )
+      .toBe('16:9');
+    await dialogShot('sound-picture', 'manual-sound-picture');
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });

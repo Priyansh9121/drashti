@@ -193,7 +193,7 @@ This is offered in Simple Mode too. For an audio playlist that carries on from i
 
 ## When a video cannot play
 
-**What it is.** The picture before a video, or the Wallpaper or cover, stays until its first frame is ready. If the video fails, or no first frame comes within 10 seconds, a notice names the file and the screen. A background video comes off with its sound; a video on a slide pauses there with its sound stopped; a video in the picture-in-picture box closes the box.
+**What it is.** The picture before a video, or the Wallpaper or cover, stays until the video is ready to show, under the picture-in-picture box too. If a video fails, a notice names the file and where it could not play. A background video comes off with its sound; a video on a slide pauses there with its sound stopped; a video in the picture-in-picture box closes the box.
 
 **When you would use it.** When a video has sound but no picture, stops, or has a notice naming it.
 
@@ -203,6 +203,10 @@ This is offered in Simple Mode too. For an audio playlist that carries on from i
 2. Put up the next suitable row, or choose another file.
 3. If it names a paired computer, check that computer's screen: it keeps its earlier picture while the video plays on elsewhere.
 4. After the sabha, use **Help › Report a Problem…**. See **Help and when something goes wrong › Report a Problem…** for the optional files and review.
+
+A video making no progress for 10 seconds comes off; one still loading gets up to 30 seconds. If it still has no picture then, the notice says it **could not start in time**. That does not mean the file is damaged: try it again when less is playing.
+
+If the same video brings a screen, **LIVE** or the sound player down twice within a minute, Drashti takes it off and brings that screen, the controls or the sound back without it. A slide video is paused first; if it still causes failures, its slide comes off as **Clear slide** takes it. Music repeatedly bringing the sound player down comes off as **Clear audio** takes it. **Back** or **Oops** can bring that slide or music back; use another file if it fails again.
 
 A video this computer cannot show is converted once the show is quiet: see **Bringing things in and sharing › Files Drashti converts**. A damaged file may need replacing. When a video ends or comes off, its picture stays until the chosen Wallpaper is ready, rather than showing black between them.
 

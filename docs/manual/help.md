@@ -129,8 +129,10 @@ It works in both modes and on a node. A node hands its report to the Main it is 
 
 1. Open the screens dashboard (click the screens' line in the status bar).
 2. Press **Reload** on that screen.
-3. Or press **Try again** on the red notice.
+3. Or press **Try again** on the red notice. Drashti also tries a stopped screen after 2 minutes, then every 10 minutes.
 4. If the status bar says **Audience off**, press **Turn on**.
+
+A picture that repeatedly fails to draw stops that screen the same way; it comes back as soon as it draws again. If a notice names a video taken off after repeated failures, see **LIVE, Back and Next › When a video cannot play**.
 
 ![A stopped screen's notice at the top of the window](../screenshots/screen-stopped-notice.png)
 
@@ -146,7 +148,7 @@ It works in both modes and on a node. A node hands its report to the Main it is 
 2. Press the red **Muted** switch above **Audio** to have the sound back.
 3. In **Screens**, check **Sound output** is the mixer's.
 4. Check the mixer's channel for this computer.
-5. If a red notice says **Drashti’s sound has stopped**, press **Try again** on it.
+5. If a red notice says **Drashti’s sound has stopped**, press **Try again**. Drashti also tries after 2 minutes, then every 10. If it stops again, report the problem after the sabha.
 
 ![How loud: the Audio and Video lines, Video muted](../screenshots/manual-levels.png)
 
