@@ -77,6 +77,12 @@ function setup(crossfadeMs = 2000) {
     play,
     ready,
     advance,
+    wakeEarly: () => {
+      const job = waits.filter((j) => !j.canceled && j.at > now).sort((a, b) => a.at - b.at)[0];
+      if (!job) throw new Error('No completion timer to wake early');
+      job.canceled = true;
+      job.run();
+    },
     addPage: () => {
       participants = [...participants, 'new-page'];
       engine.videoCuePageJoined('new-page');
@@ -228,4 +234,31 @@ it('Go on an automatic crossfade cue keeps the playlist blend instead of cutting
   if (!cue) throw new Error('No automatic cue');
   x.engine.dispatch({ type: 'goVideoCue', cueId: cue.id });
   expect(x.engine.current.videoCrossfade).toMatchObject({ at: 11_120, durationMs: 2000 });
+});
+
+it('rearms a completion timer that wakes early instead of leaving an ended pair in the engine', () => {
+  const x = setup();
+  x.play();
+  x.ready();
+  x.advance(17_499);
+  expect(x.engine.current.videoCrossfade).toBeTruthy();
+  x.wakeEarly();
+  expect(x.engine.current.videoCrossfade, 'it must not finish before the shared end').toBeTruthy();
+  x.advance(17_500);
+  expect(
+    x.engine.current.videoCrossfade,
+    'it must release at the end even after an early callback',
+  ).toBeNull();
+});
+
+it('keeps the future Go marker until its engine moment when the start timer wakes early', () => {
+  const x = setup();
+  x.play();
+  x.ready();
+  x.advance(15_499);
+  expect(x.engine.current.videoStart?.at).toBe(15_500);
+  x.wakeEarly();
+  expect(x.engine.current.videoStart?.at, 'a timer cannot clear the old-scene hold before Go').toBe(15_500);
+  x.advance(15_500);
+  expect(x.engine.current.videoStart).toBeNull();
 });
