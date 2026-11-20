@@ -278,6 +278,24 @@
    */
   --dur-sweep: 320ms;
   --stagger-sweep: 40ms;
+  /*
+   * Live appearances (Session 60, the owner's Q60-36 (3)): slow, gentle loops in the header and the band only, on
+   * a sine curve (the motion skills' table: subtle loops, sine in and out), the drift a full turn in 40 s.
+   */
+  --dur-look-fade: 1200ms; /* a touch fading in as it starts */
+  --dur-look-drift: 40000ms; /* the header's colours, one turn */
+  --dur-look-shimmer: 9600ms; /* the band's light: a quarter sweeping, the rest resting */
+  --dur-look-glint: 14000ms;
+  --dur-look-sparkle: 2400ms;
+  --dur-look-glow: 4800ms; /* a breath */
+  --dur-look-petal: 12000ms;
+  --dur-look-puff: 16000ms;
+  --dur-look-rain: 1600ms;
+  --dur-look-kite: 30000ms;
+  --dur-look-cloud: 72000ms;
+  --stagger-look: 2400ms; /* between one touch and the next */
+  --ease-look: cubic-bezier(0.37, 0, 0.63, 1);
+  --ease-look-steady: linear;
 }
 
 /*
@@ -684,6 +702,120 @@ body.web {
  */
 [data-header] {
   background-image: var(--header-image);
+  /* Session 60: a live look's touch draws behind everything in it (appearance/LookMotion.tsx). */
+  position: relative;
+  isolation: isolate;
+}
+
+/*
+ * A live appearance's moving touch (Session 60, appearance/LookMotion.tsx): decoration only, behind the header's
+ * words and controls, or over the band; transform and opacity are all that move. Each touch starts unseen and the
+ * layer is only there while the look moves.
+ */
+.look-layer {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.look-band-place {
+  position: relative;
+  height: 0;
+}
+.look-band-place > .look-layer {
+  inset: auto 0 0 0;
+  height: var(--band-height);
+  z-index: 1;
+}
+.look-layer > * {
+  position: absolute;
+  opacity: 0;
+}
+.look-drift {
+  inset-block: 0;
+  left: 0;
+  width: 300%;
+  background-image: linear-gradient(
+    90deg,
+    var(--color-header) 0%,
+    var(--look-touch) 16.667%,
+    var(--color-header) 33.333%,
+    var(--look-touch) 50%,
+    var(--color-header) 66.667%,
+    var(--look-touch) 83.333%,
+    var(--color-header) 100%
+  );
+}
+.look-shimmer,
+.look-glint {
+  inset-block: 0;
+  left: 0;
+  width: 14%;
+  background-image: linear-gradient(90deg, transparent, var(--look-light) 50%, transparent);
+}
+.look-glint {
+  width: 6%;
+}
+.look-sparkle {
+  top: 50%;
+  left: calc(18% + var(--n) * 30%);
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  background-image: radial-gradient(circle, var(--look-light) 0 30%, transparent 70%);
+}
+.look-glow {
+  top: 50%;
+  right: 18%;
+  width: 180px;
+  height: 180px;
+  margin-top: -90px;
+  background-image: radial-gradient(circle, var(--look-touch) 0%, transparent 65%);
+}
+.look-petals {
+  top: 0;
+  left: calc(8% + var(--n) * 19%);
+  width: 9px;
+  height: 13px;
+  border-radius: 60% 0;
+  background-color: var(--look-touch);
+}
+.look-puffs {
+  top: calc(var(--n) * 7px - 8px);
+  left: calc(var(--n) * 24%);
+  width: 64px;
+  height: 64px;
+  background-image: radial-gradient(circle, var(--look-touch) 0%, transparent 70%);
+}
+.look-rain {
+  top: 0;
+  left: calc(4% + var(--n) * 8%);
+  width: 1px;
+  height: 14px;
+  background-color: var(--look-touch);
+  rotate: 12deg;
+}
+.look-kites {
+  top: calc(8px + var(--n) * 9px);
+  left: 0;
+  width: 11px;
+  height: 11px;
+  background-color: var(--look-touch);
+  rotate: 45deg;
+  opacity: 0.9;
+}
+.look-clouds {
+  top: calc(var(--n) * 10px - 6px);
+  left: 0;
+  width: 120px;
+  height: 36px;
+  background-image: radial-gradient(ellipse, var(--look-touch) 0%, transparent 70%);
+}
+@media (forced-colors: active), (prefers-reduced-motion: reduce) {
+  .look-layer {
+    display: none;
+  }
 }
 [data-strip] {
   background-image: var(--strip-image);
