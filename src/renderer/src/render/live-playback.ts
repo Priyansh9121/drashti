@@ -63,6 +63,9 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
       return;
     }
     joined = got;
+    // For the tests and Save Diagnostics: where this player joined, and when its first frame is shown.
+    el.dataset['segment'] = String(got.segment);
+    el.dataset['startAt'] = String(got.startAt);
     el.src = streamLinkUrl(options.linkId, got.segment);
     el.load();
   };
@@ -70,6 +73,8 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     const j = joined;
     if (!on || !j || el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
     const expected = (engineNow() - j.startAt) / 1000;
+    // For the tests and Save Diagnostics: where it is against where the engine's time has it.
+    el.dataset['offset'] = (el.currentTime - expected).toFixed(3);
     // Its moment still to come: its first frame held until then.
     if (expected < 0) {
       if (!el.paused) el.pause();

@@ -127,25 +127,44 @@ export async function liveStandIn(): Promise<LiveStandIn> {
   };
 }
 
-/** What a page shows of the stream link now: the frame number in its top strip, and how bright the rest is. */
+/**
+ * What a page shows of the stream link now: the frame number in its top strip, and how bright the rest is; and, to say
+ * why when a test fails, each of its players' join and clock (render/live-playback.ts) and media state.
+ */
 export interface LinkLook {
   state: string | null;
   frame: number | null;
   luma: number | null;
+  players: string;
 }
 
-/** Read the stream link a page shows (its player shown: the one fully on), from its picture. */
-export function linkLook(page: Page): Promise<LinkLook> {
-  return page.evaluate(() => {
-    const box = document.querySelector('[data-kind="link"]');
+/**
+ * Read the stream link a page shows (its player shown: the one fully on), from its picture: an output's, or in the
+ * operator window LIVE's (`within`: the element it is drawn in), never another small picture of the screens.
+ */
+export function linkLook(page: Page, within: string | null = null): Promise<LinkLook> {
+  return page.evaluate((scope) => {
+    const root = scope === null ? document : document.querySelector(scope);
+    const box = root?.querySelector('[data-kind="link"]');
     const state = box?.getAttribute('data-link-state') ?? null;
-    const video = [...(box?.querySelectorAll('video') ?? [])].find((v) => v.style.opacity === '1');
-    if (!video || video.videoWidth === 0) return { state, frame: null, luma: null };
+    const all = [...(box?.querySelectorAll('video') ?? [])];
+    const players = all
+      .map(
+        (v) =>
+          `[shown ${v.style.opacity} seg ${v.dataset['segment'] ?? '-'} startAt-now ${
+            v.dataset['startAt'] ? String(Number(v.dataset['startAt']) - Date.now()) : '-'
+          } offset ${v.dataset['offset'] ?? '-'} t ${v.currentTime.toFixed(2)} paused ${String(v.paused)} rs ${String(
+            v.readyState,
+          )} rate ${String(v.playbackRate)} w ${String(v.videoWidth)} err ${v.error ? String(v.error.code) : '-'}]`,
+      )
+      .join(' ');
+    const video = all.find((v) => v.style.opacity === '1');
+    if (!video || video.videoWidth === 0) return { state, frame: null, luma: null, players };
     const c = document.createElement('canvas');
     c.width = 640;
     c.height = 360;
     const g = c.getContext('2d', { willReadFrequently: true });
-    if (!g) return { state, frame: null, luma: null };
+    if (!g) return { state, frame: null, luma: null, players };
     g.drawImage(video, 0, 0, 640, 360);
     const strip = g.getImageData(0, 0, 640, 40).data;
     let frame = 0;
@@ -154,6 +173,6 @@ export function linkLook(page: Page): Promise<LinkLook> {
     let sum = 0;
     for (let i = 0; i < body.length; i += 16)
       sum += ((body[i] ?? 0) + (body[i + 1] ?? 0) + (body[i + 2] ?? 0)) / 3;
-    return { state, frame, luma: Math.round(sum / (body.length / 16)) };
-  });
+    return { state, frame, luma: Math.round(sum / (body.length / 16)), players };
+  }, within);
 }
