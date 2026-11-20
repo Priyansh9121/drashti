@@ -11,6 +11,7 @@ import {
 import type { BackgroundLayer, MediaFit } from '../../../shared/engine/state';
 import {
   drawnKeyOf,
+  drawnOver,
   type InputSlot,
   isDrawn,
   isInputSlot,
@@ -59,6 +60,9 @@ function style(fit: MediaFit, visible: boolean) {
  * to the main process the same way, with the error's kind, the picture before (or its own last frame) staying drawn
  * until the show takes it off.
  */
+/** How long a video drawn over the picture before waits for its first presented frame before it is taken as ready. */
+const PRESENT_WAIT_MS = 300;
+
 function VideoSlot({
   slot,
   visible,
@@ -99,7 +103,8 @@ function VideoSlot({
           tellNoPicture(mediaId, startedAt);
           return;
         }
-        dispatch({ type: 'ready', key, at: engineNow() });
+        // Its data is in: drawn over the picture before, which stays until it has been presented (below).
+        dispatch({ type: 'loaded', key });
       },
       onError: (error) => {
         settled = true;
@@ -129,6 +134,29 @@ function VideoSlot({
   useEffect(() => {
     playback.current?.resync();
   }, [seekAt, clipKey]);
+  // Drawn over the picture before with its data in (alpha.20): ready once Chromium has presented a frame of it on the
+  // screen, so the picture before goes only then, never leaving the hall a black frame between (CI
+  // x54-1121-023510-80364: shown the moment its data was in, it was not yet presented). A frame callback that does not
+  // come (a paused video presents no new frame) is not waited on long.
+  const presenting = slot.state === 'loaded' && visible;
+  useEffect(() => {
+    const v = ref.current;
+    if (!presenting || !v) return;
+    let done = false;
+    const presented = () => {
+      if (done) return;
+      done = true;
+      dispatch({ type: 'ready', key, at: engineNow() });
+    };
+    const callback = v.requestVideoFrameCallback(presented);
+    // eslint-disable-next-line no-restricted-syntax -- only stops waiting for a frame callback: what shows is decided by the slots
+    const fallback = setTimeout(presented, PRESENT_WAIT_MS);
+    return () => {
+      done = true;
+      v.cancelVideoFrameCallback(callback);
+      clearTimeout(fallback);
+    };
+  }, [presenting, key, dispatch]);
 
   return (
     <video
@@ -414,7 +442,8 @@ function BackgroundPlayer({
       style={{ position: 'absolute', inset: 0, isolation: fading ? 'isolate' : undefined }}
     >
       {list.map((slot) => {
-        const visible = (slot === slots.shown || slot === slots.leaving) && isDrawn(slot);
+        const visible =
+          ((slot === slots.shown || slot === slots.leaving) && isDrawn(slot)) || drawnOver(slots, slot);
         const element = isMediaSlot(slot) ? (
           slot.layer.media === 'video' ? (
             <VideoSlot slot={slot} visible={visible} dispatch={dispatch} />
