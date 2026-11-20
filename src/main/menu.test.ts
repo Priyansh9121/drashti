@@ -350,6 +350,7 @@ describe('Books (alpha.15): no menu says Shastra', () => {
         installNodeMenu({
           priority: null,
           saveDiagnostics: nothing,
+          reportProblem: nothing,
           diagnostics: { runSelfTest: nothing, crashWindow: nothing, crashOutputs: nothing },
         });
       });

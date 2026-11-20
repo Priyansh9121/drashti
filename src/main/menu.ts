@@ -411,6 +411,8 @@ export interface NodeMenuActions {
   priority: PriorityItem | null;
   /** Help > Save Diagnostics…: one file on the Desktop, as on Main (without the library). */
   saveDiagnostics: () => void;
+  /** Help › Report a Problem… (x49): handed to the Main the node follows. */
+  reportProblem: () => void;
   /** Only when DRASHTI_DIAGNOSTICS=1: the node's watchdog self-test and the manual crash buttons. */
   diagnostics: {
     runSelfTest: () => void;
@@ -435,7 +437,10 @@ export function installNodeMenu(actions: NodeMenuActions): void {
     { role: 'windowMenu' },
     {
       role: 'help',
-      submenu: [{ id: 'save-diagnostics', label: 'Save Diagnostics…', click: actions.saveDiagnostics }],
+      submenu: [
+        { id: 'report-problem', label: 'Report a Problem…', click: actions.reportProblem },
+        { id: 'save-diagnostics', label: 'Save Diagnostics…', click: actions.saveDiagnostics },
+      ],
     },
   ];
   if (actions.diagnostics) {

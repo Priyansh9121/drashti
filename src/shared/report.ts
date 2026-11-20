@@ -154,7 +154,7 @@ export function reportSubject(names: readonly string[], reference: string): stri
 const SYSTEMS: Record<string, string> = { darwin: 'Mac', win32: 'Windows' };
 
 /** A computer as the email names it: "Sabha Mac (Drashti 1.0.0-alpha.20, Mac)". */
-const computerLine = (c: ReportComputer) =>
+export const reportComputerOf = (c: ReportComputer): string =>
   `${c.name} (Drashti ${c.version}, ${SYSTEMS[c.platform] ?? (c.platform || 'unknown')})`;
 
 /** Where the report was written, as the email says it: the computer and its mode, or the node through its Main. */
@@ -163,8 +163,9 @@ export function reportComputerLine(
   from: ReportFrom,
   node: ReportComputer | null,
 ): string {
-  if (from === 'node' && node) return `the node ${computerLine(node)}, through Main ${computerLine(sender)}`;
-  return `${computerLine(sender)}, in ${from === 'simple' ? 'Simple Mode' : 'Pro Mode'}`;
+  if (from === 'node' && node)
+    return `the node ${reportComputerOf(node)}, through Main ${reportComputerOf(sender)}`;
+  return `${reportComputerOf(sender)}, in ${from === 'simple' ? 'Simple Mode' : 'Pro Mode'}`;
 }
 
 /** The admin's email text, as the access list makes it (access-list/core.js's reportMailText). */
@@ -287,6 +288,8 @@ export type ReportOpened =
       crash: { count: number; bytes: number } | null;
       /** The window as it was when Report a Problem opened (a small copy), or null. */
       picture: { thumb: string; width: number; height: number } | null;
+      /** On a node (x49): the Main it is paired with, through which its reports go; null on Main. */
+      via: string | null;
       waiting: number;
       sentToday: number;
       /** So many reports wait already that no more can be made until some go or are forgotten. */
@@ -370,3 +373,82 @@ export interface NodeReportBody {
 
 /** Main's answer to a node's report: taken (it goes from Main by itself), or why not. */
 export type NodeReportAnswer = { ok: true; reference: string } | { ok: false; message: string };
+
+/** Each kind's file name, as the list takes it (access-list/core.js's REPORT_KINDS). */
+export const REPORT_FILE_NAMES: Record<ReportFileKind, RegExp> = {
+  diagnostics: /^Drashti diagnostics [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}-[0-9]{2}\.txt$/u,
+  picture: /^Drashti window [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}-[0-9]{2}\.png$/u,
+  crash: /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.dmp$/u,
+};
+
+const computerSchema = z.object({
+  name: z.string().max(200),
+  version: z.string().max(60),
+  platform: z.string().max(20),
+});
+
+const fileSchema = z
+  .object({
+    kind: z.enum(['diagnostics', 'picture', 'crash']),
+    name: z.string().max(120),
+    type: z.string().max(60),
+    bytes: z.number().int().min(0).max(ACCESS_REPORT.filesBytes),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  })
+  .refine((f) => REPORT_FILE_NAMES[f.kind].test(f.name) && REPORT_FILE_TYPES[f.kind] === f.type);
+
+const callReportSchema = z.object({
+  id: z.string().regex(/^[0-9a-f]{32}$/u),
+  written: z.number().int().min(0),
+  from: z.enum(['pro', 'simple', 'node']),
+  node: computerSchema.optional(),
+  features: z
+    .array(
+      z.object({
+        chapter: z.string().max(200),
+        name: z.string().min(1).max(200),
+        what: z
+          .string()
+          .min(1)
+          .max(ACCESS_REPORT.whatLetters * 4),
+        expected: z
+          .string()
+          .max(ACCESS_REPORT.expectedLetters * 4)
+          .optional(),
+      }),
+    )
+    .min(1)
+    .max(ACCESS_REPORT.features),
+  notice: z
+    .string()
+    .max(ACCESS_REPORT.noticeLetters * 4)
+    .optional(),
+  errors: z
+    .array(z.string().max(ACCESS_REPORT.errorLetters * 4))
+    .max(ACCESS_REPORT.errorLines)
+    .optional(),
+  files: z.array(fileSchema).max(2 + ACCESS_REPORT.crashFiles),
+  kept: z
+    .array(z.object({ name: z.string().regex(REPORT_FILE_NAMES.crash), bytes: z.number().int().min(0) }))
+    .max(ACCESS_REPORT.crashFiles)
+    .optional(),
+});
+
+const nodeBodySchema = z.object({
+  v: z.literal(1),
+  node: z.object({ version: z.string().max(60), platform: z.string().max(20) }),
+  report: callReportSchema,
+  data: z.record(z.string(), z.string()),
+});
+
+/** A node's report as Main is handed it (x49), or null when it is not one. */
+export function readNodeReportBody(bytes: Uint8Array): NodeReportBody | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+  const read = nodeBodySchema.safeParse(raw);
+  return read.success ? read.data : null;
+}

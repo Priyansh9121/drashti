@@ -13,7 +13,14 @@ import {
 } from '../../shared/report';
 import { cutText } from '../../shared/text';
 import type { Db } from '../db/database';
-import { type DiagnosticsInput, diagnosticsText, libraryNames, redactNames } from '../diagnostics';
+import {
+  type DiagnosticsInput,
+  diagnosticsText,
+  libraryNames,
+  type NodeDiagnosticsInput,
+  nodeDiagnosticsText,
+  redactNames,
+} from '../diagnostics';
 import { scrub } from '../log';
 import { pngOf } from '../network/png';
 
@@ -37,6 +44,8 @@ export interface ReportFilesJob {
   stamp: string;
   /** Ticked: Save Diagnostics' input, and the library's file (read only, for its counts and names). */
   diagnostics: { input: ReportDiagnosticsInput; dbFile: string } | null;
+  /** Ticked on a node (x49, Q60-42 2): the node's own Save Diagnostics input (it has no library). */
+  nodeDiagnostics?: NodeDiagnosticsInput | null;
   /** Ticked: the window's pixels, as captured. */
   picture: CapturedPicture | null;
   /** Ticked: the crash files kept, newest first. */
@@ -106,7 +115,16 @@ export async function makeReportFiles(job: ReportFilesJob, deps: ReportFilesDeps
   mkdirSync(filesDir, { recursive: true });
   const made: { kind: ReportFileKind; name: string; bytes: Buffer }[] = [];
   let errors: string[] = [];
-  if (job.diagnostics) {
+  if (job.nodeDiagnostics) {
+    // As a node's Save Diagnostics writes its own file.
+    const text = fitDiagnostics(scrub(nodeDiagnosticsText(job.nodeDiagnostics)), REPORT_DIAGNOSTICS_BYTES);
+    errors = recentErrors(text, job.nodeDiagnostics.now.getTime());
+    made.push({
+      kind: 'diagnostics',
+      name: reportFileName('diagnostics', job.stamp),
+      bytes: Buffer.from(text, 'utf8'),
+    });
+  } else if (job.diagnostics) {
     const db = deps.openDb(job.diagnostics.dbFile);
     let text: string;
     try {

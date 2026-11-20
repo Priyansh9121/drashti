@@ -95,7 +95,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   // A node's own window, including its explicitly enabled shared show view. Main-only changes have no node handlers.
   // Its code reaches the panels' "What is this?" (ui/Panel's SectionTitle beside it), whose Open the manual asks the
   // manual (x37; the guides until then), though no panel of its own has a "?".
-  node: ['app', 'engine', 'liveWindow', 'manual', 'media', 'node', 'output', 'videoInputs'],
+  node: ['app', 'engine', 'liveWindow', 'manual', 'media', 'node', 'output', 'report', 'videoInputs'],
   // A deck's PDF made into pictures.
   pdf: ['pictures'],
   'pdf-export': ['engine', 'media', 'output', 'pdfExport'],
