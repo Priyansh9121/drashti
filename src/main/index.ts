@@ -189,6 +189,8 @@ import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
 import { MediaDetailsService } from './media/media-details';
 import { PlayHistory } from './media/play-history';
+import { takeSnapshot } from './media/snapshot';
+import { playingSchema } from '../shared/engine/playing';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
@@ -6983,6 +6985,39 @@ function start(): void {
       ? media.resumeOf(mediaId)
       : null,
   );
+  // Snapshot (alpha.20, the time bar's ⋯; the owner's "Yes, all A" to Q60-39 P6 (d) A): the frame on the screens, made
+  // from the video's own file (media/snapshot.ts), a PNG in Media through the import, never put up. Pro Mode's.
+  handle(IPC.media.snapshot, (e, playing) => {
+    const ref = playingSchema.safeParse(playing);
+    if (!fromOperator(e) || !ref.success)
+      return { ok: false as const, message: 'Only the operator window can make a snapshot.' };
+    return takeSnapshot(
+      {
+        state: () => engine.current,
+        now: () => Date.now(),
+        file: (id) => {
+          const row = media.about(id);
+          return row && !row.missing && !row.deleted && row.path !== ''
+            ? { path: join(mediaDir, row.path), name: row.name }
+            : null;
+        },
+        ffmpeg: pictureFfmpeg,
+        importFile: async (path) => {
+          const done = await imports.start([path], {});
+          if (!done.ok) return { ok: false as const, message: done.message };
+          const item = importRepo.report(done.run.id)?.items[0];
+          if (item?.target?.kind === 'media') return { ok: true as const, mediaId: item.target.id };
+          return {
+            ok: false as const,
+            message:
+              item?.issues.find((problem) => problem.severity === 'error')?.message ??
+              'Drashti could not add the snapshot to Media. Try again.',
+          };
+        },
+      },
+      ref.data,
+    );
+  });
   // Its Copy: the window's words on the clipboard, by the main process (copyWords).
   handle(IPC.media.copyDetails, (e, text) => copyWords(e, text));
   handle(IPC.audio.getOutput, () => audioOutput.status);

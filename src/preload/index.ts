@@ -466,6 +466,7 @@ const bridge: DrashtiBridge = {
     details: (mediaId) => invoke(IPC.media.details, mediaId),
     copyDetails: (text) => invoke(IPC.media.copyDetails, text),
     resumePoint: (mediaId) => invoke(IPC.media.resumePoint, mediaId),
+    snapshot: (playing) => invoke(IPC.media.snapshot, playing),
     setMarkers: (mediaId, markers) => invoke(IPC.media.setMarkers, mediaId, markers),
   },
   sound: {
