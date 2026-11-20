@@ -440,6 +440,13 @@ test('before a screen first draws the show it draws every kind in both Movements
   await win.getByTestId('open-stream').click();
   const program = await streamPage(app);
   // The stream draws no ticker.
+  await expect(program.locator('[data-testid="program-root"] [data-warm-up="during"]')).toHaveCount(1, {
+    timeout: 30_000,
+  });
+  // Keep looking before the black-reference helper changes the drawing’s opacity: a rastered tile containing the
+  // repaint marker can differ from the other, solid-colour tiles. Every sampled pixel must still be black.
+  for (let frame = 0; frame < 24; frame++)
+    expect(await brightest(program), `the stream’s page: black in frame ${String(frame)}`).toBe(0);
   await expectWarmUp(program, '[data-testid="program-root"]', 'the stream’s page', false);
   expect(Object.keys(await studioFonts(program)), 'the stream’s page’s start: the studio’s fonts').toEqual([
     'unloaded',
