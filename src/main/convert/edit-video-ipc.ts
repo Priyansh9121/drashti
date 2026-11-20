@@ -28,6 +28,17 @@ export function registerEditVideoIpc(deps: Deps): void {
       const source = deps.repo.sourceId(id);
       if (!deps.available(source)) return refused;
       const edit = deps.repo.read(source);
+      if (edit?.readyMediaId && edit.readyMediaId !== source && !deps.available(edit.readyMediaId))
+        return {
+          ok: true,
+          edit: {
+            ...edit,
+            state: 'failed',
+            readyMediaId: null,
+            message:
+              'The prepared video’s file is missing. Press Save to prepare the saved edits again; the original is kept.',
+          },
+        };
       return edit ? { ok: true, edit } : refused;
     } catch {
       return {

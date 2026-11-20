@@ -590,6 +590,8 @@ A request is coalesced by SHA-256, audio ordinal and analysis format version. It
 
 `media.clipExports()`, `media.stopClipExport(jobId)` and `media.showClipExport(jobId)` read progress, stop a pending export or reveal a completed file. A cancelled Save as… returns `{ok:true,job:null}`. Accepted requests persist across editor close and restart; resume checks captured source and recipe identities. One worker covers header reads, encoding, validation and abortable hashing/copy registration. All jobs require idle show/stream/recording gates and verified below-normal OS priority; activity removes partials and restarts from the beginning. An existing destination is preserved by choosing a free name. Completed optional imports become listed only after validation and file publication. These calls add no HTTP command or live-engine action.
 
+Edit Video’s prepared IDs retain immutable recipe history. Main resolves source-owned tone, captions, resume points and play counts through that history; source times are mapped once for the prepared file. The pure `editPlan` accepts a source-time export interval inside the recipe trim and an optional frame/fit override, always reading the source rather than a proxy.
+
 ## Idle video preparation worker
 
 `ConvertService.saveCopy` also prepares video-edit assets through the existing single worker. These callers set `waitForShow: true` and `strictPriority: true`. An active show, stream or recording prevents launch and aborts a running decoder or registration callback; its partial file is removed and the accepted job restarts while idle. A failed priority change or verification refuses preparation.
