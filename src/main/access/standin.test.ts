@@ -1,3 +1,4 @@
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   callBody,
@@ -8,6 +9,7 @@ import {
   type LinkPageAnswer,
 } from '../../../tests/access-core';
 import { accessStandIn, type AccessStandIn } from '../../../tests/access-standin';
+import { canonicalJson } from '../../shared/access-protocol';
 
 /*
  * The stand-in list on 127.0.0.1 that every end-to-end test lets Drashti in through (Session 54, E1,
@@ -199,6 +201,53 @@ describe('the stand-in list', () => {
         owner: isOwner,
       });
     }
+  });
+
+  it('takes a report of megabytes over HTTP as Google’s web app does (x49): answered, its files in the mailbox as they were sent', async () => {
+    const s = (standIn = await accessStandIn());
+    const computer = placeholderComputer('stand-in-report');
+    const grant = s.grant(PERSON, computer);
+    // Megabytes of a file, and words past ASCII, so a letter's bytes fall across the parts of the upload.
+    const crash = Buffer.concat([Buffer.from('MDMP'), randomBytes(3 * 1024 * 1024)]);
+    const sha = createHash('sha256').update(crash).digest('hex');
+    const body: Record<string, unknown> = {
+      v: 1,
+      op: 'report',
+      nonce: randomBytes(16).toString('hex'),
+      computer,
+      gmail: grant.gmail,
+      grantId: grant.grantId,
+      at: s.list.t,
+      report: {
+        id: randomBytes(16).toString('hex'),
+        written: s.list.t,
+        from: 'pro',
+        features: [{ chapter: 'Stream', name: 'Going live', what: 'પ્લેસહોલ્ડર '.repeat(150).trim() }],
+        files: [
+          {
+            kind: 'crash',
+            name: '0f1e2d3c-placeholder.dmp',
+            type: 'application/octet-stream',
+            bytes: crash.length,
+            sha256: sha,
+          },
+        ],
+      },
+    };
+    body['mac'] = createHmac('sha256', Buffer.from(grant.secret, 'utf8'))
+      .update(`drashti-access-v1\n${canonicalJson(body)}`, 'utf8')
+      .digest('hex');
+    body['data'] = { [sha]: crash.toString('base64') };
+    const before = s.list.mailbox.length;
+    expect(readAnswer(await post(s, JSON.stringify(body)), s.publicKey)).toMatchObject({
+      ok: true,
+      received: true,
+    });
+    expect(s.calls.at(-1)).toBe('report');
+    const admin = s.list.mailbox[before];
+    expect(admin?.to).toBe(PLACEHOLDER_APPROVER);
+    expect(admin?.body).toContain('પ્લેસહોલ્ડર પ્લેસહોલ્ડર');
+    expect(admin?.attachments?.[0]?.base64).toBe(crash.toString('base64'));
   });
 
   it('can say nothing, answer an error, leave answers unsigned, or answer at once without the redirect', async () => {

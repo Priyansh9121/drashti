@@ -58,8 +58,10 @@ function sampleAt(pixel: number, size: number, sourceSize: number) {
 export async function pngOf(
   { width: sourceWidth, height: sourceHeight, pixels, order }: CapturedPicture,
   pace: () => Promise<void> = () => Promise.resolve(),
+  /** Its longest side at most (a report's picture of the window, x49, may ask for less to weigh less). */
+  longSide = PNG_LONG_SIDE,
 ): Promise<Buffer> {
-  const scale = Math.min(1, PNG_LONG_SIDE / Math.max(sourceWidth, sourceHeight));
+  const scale = Math.min(1, longSide / Math.max(sourceWidth, sourceHeight));
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));
   const columns = scale < 1 ? Array.from({ length: width }, (_, x) => sampleAt(x, width, sourceWidth)) : [];

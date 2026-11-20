@@ -364,6 +364,9 @@ import { runQrJob } from './library/qr-worker-run';
 import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
+import { isReportId, readReportDraft } from '../shared/report';
+import { type HeldPicture, ReportService } from './report/report-service';
+import { runReportIntake, runReportJob } from './report/report-worker-run';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
 import {
@@ -1025,12 +1028,24 @@ function pendingRestore(): ReturnType<typeof applyPendingRestore> {
       restored: false,
       code: 'copy-failed',
       message:
-        'The library was not restored: copying the backup stopped part way. The library is as it was: restore again, and if it stops again, choose Help, then Save Diagnostics…, and tell the admin.',
+        'The library was not restored: copying the backup stopped part way. The library is as it was: restore again; if it stops again, choose Help › Report a Problem… (or Save Diagnostics… when it can’t be sent).',
     };
   }
 }
 
 const fromOperator = (event: IpcMainInvokeEvent) => event.sender.id === operatorWindow?.webContents.id;
+/**
+ * Words on the clipboard, by the main process (alpha.20): Drashti's permission rules refuse a page its own clipboard
+ * (windows/security.ts), so the operator window's Copy buttons ask here (Media information's words, Events out's new
+ * secret). Words only, at most 64 KB, from the operator window; never logged. False when they could not be copied.
+ */
+const copyWords = async (event: IpcMainInvokeEvent, text: unknown): Promise<boolean> => {
+  if (!fromOperator(event) || typeof text !== 'string' || text.length > 64 * 1024) return false;
+  return clipboard.writeText(text).then(
+    () => true,
+    () => false,
+  );
+};
 const idListSchema = z.array(idSchema).min(1).max(10_000);
 /** A slide's row the operator's pointer is on (C3, Session 58), or null. */
 const pointAtSchema = z
@@ -1299,6 +1314,7 @@ function startNodeMode(): void {
     isOperator: () => false,
   });
   allowHangStacks(session.defaultSession);
+  const nodeReportRetry = packaged() ? undefined : swMs('DRASHTI_TEST_REPORT_RETRY_MS');
   const node = startNode({
     appearance,
     userData: app.getPath('userData'),
@@ -1327,6 +1343,15 @@ function startNodeMode(): void {
       savedText: savedDiagnosticsText,
       logFiles,
       desktop: () => app.getPath('desktop'),
+    },
+    // Help › Report a Problem… on a node (x49): handed to its Main.
+    reports: {
+      crashFiles: () => crashFiles(crashFilesDir),
+      makeFiles: (job) => runReportJob(job),
+      guides: new GuideFiles(
+        guidesDir({ packaged: packaged(), resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
+      ),
+      ...(nodeReportRetry ? { retryMs: [nodeReportRetry] } : {}),
     },
     restartAsMain: () => {
       writeRole(app.getPath('userData'), 'main');
@@ -1363,6 +1388,7 @@ function startNodeMode(): void {
     installNodeMenu({
       priority: priorityItem(() => nodeMenu()),
       saveDiagnostics: node.saveDiagnostics,
+      reportProblem: node.reportProblem,
       diagnostics: diagnostics
         ? {
             runSelfTest: () => {
@@ -5056,6 +5082,8 @@ function start(): void {
   handle(IPC.events.remove, (e, id) => (fromOperator(e) ? eventsOut.remove(id) : notEventsOperator));
   handle(IPC.events.rotate, (e, id) => (fromOperator(e) ? eventsOut.rotate(id) : notEventsOperator));
   handle(IPC.events.test, (e, id) => (fromOperator(e) ? eventsOut.test(id) : notEventsOperator));
+  // The new secret's Copy (alpha.20), by the main process as Media information's is (copyWords): never kept or logged.
+  handle(IPC.events.copySecret, (e, secret) => copyWords(e, secret));
   handle(IPC.backups.pickFolder, async (e) => {
     if (!fromOperator(e) || !operatorWindow) return notBackupsOperator;
     const picked = await dialog.showOpenDialog(operatorWindow, {
@@ -5938,6 +5966,8 @@ function start(): void {
     string,
     { droppedFrames: number; paintedRev: number; missingFonts: string[] }
   >();
+  // A paired node's report (x49) is kept by Main's reports, made further on: until then, the node keeps it.
+  let reportsForNodes: ReportService | null = null;
   const nodes = new NodeService({
     nodes: nodeRepo,
     write: (key, run) => {
@@ -6001,6 +6031,10 @@ function start(): void {
     runShowAction: (command, who) => net.runShowAction({ op: 'command', args: command }, who),
     wanted: (state, everything) => wanted.list(state, everything),
     mediaFile: (mediaId) => wanted.source(mediaId, mediaDir),
+    nodeReport: (node, body) =>
+      reportsForNodes
+        ? reportsForNodes.fromNode(node, body)
+        : Promise.resolve({ ok: false as const, message: 'Main is starting: the report goes in a moment.' }),
     onAir: () => streaming.inUse(),
     changed: (status) => {
       sendToOperator(IPC.nodes.changed, status);
@@ -6896,15 +6930,8 @@ function start(): void {
       ? mediaDetails.details(mediaId)
       : { ok: false as const, message: 'Only the operator window can read a file’s information.' },
   );
-  // Its Copy: the window's words on the clipboard, by the main process (a page's own clipboard is refused to every
-  // page: windows/security.ts). Words only, at most 64 KB, from the operator window.
-  handle(IPC.media.copyDetails, async (e, text) => {
-    if (!fromOperator(e) || typeof text !== 'string' || text.length > 64 * 1024) return false;
-    return clipboard.writeText(text).then(
-      () => true,
-      () => false,
-    );
-  });
+  // Its Copy: the window's words on the clipboard, by the main process (copyWords).
+  handle(IPC.media.copyDetails, (e, text) => copyWords(e, text));
   handle(IPC.audio.getOutput, () => audioOutput.status);
   handle(IPC.audio.setOutput, (e, device) =>
     fromOperator(e) ? audioOutput.choose(device) : audioOutput.status,
@@ -8026,6 +8053,153 @@ function start(): void {
   stops.add('Access List', () => {
     accessList.close();
   });
+  // ---- Help › Report a Problem… (x49, the owner's Q60-38 and his "Yes, all A" to Q60-42) ----------------
+  // In either mode, while let in: the window's picture taken as it opens (kept in memory only), the files made by the
+  // report worker off Main's thread, and each report sent by itself through the access list, never while the stream
+  // or a recording is on.
+  const reportRetry = packaged() ? undefined : swMs('DRASHTI_TEST_REPORT_RETRY_MS');
+  const reportShowFiles = !packaged() && sw('DRASHTI_TEST_REPORT_SHOW') === 'log';
+  const reports = new ReportService({
+    dir: join(userDataDir, 'reports'),
+    dbFile: libraryFile(),
+    client: () => Promise.resolve(behind?.client ?? null),
+    grant: () => behind?.service.grant() ?? null,
+    letIn: isLetIn,
+    gmail: () => accessState().gmail,
+    owner: () => isLetIn() && accessState().owner,
+    from: () => (simpleNow() ? 'simple' : 'pro'),
+    onAir: () => streaming.inUse() || testOnAir,
+    crashFiles: () => crashFiles(crashFilesDir),
+    diagnostics: async (crashIncluded) => ({
+      app: appInfo(),
+      displays: listDisplays(),
+      screens: screens.snapshot(),
+      sound: audioOutput.status,
+      watchdog: watchdogHistory,
+      crashJournal: crashJournal.entries(),
+      crashFiles: { files: crashFiles(crashFilesDir), included: crashIncluded, kept: crashFilesKept },
+      logFiles: logFiles(),
+      now: new Date(),
+      graphics: await readGraphics(),
+    }),
+    makeFiles: (job) => runReportJob(job),
+    // A paired node's report (x49): read, checked and written by a report worker, off Main's thread.
+    intake: (job) => runReportIntake(job),
+    now: () => Date.now(),
+    setTimer: (ms, run) => {
+      const t = setTimeout(run, ms);
+      return () => {
+        clearTimeout(t);
+      };
+    },
+    notice: (text) => {
+      sendToOperator(IPC.app.notice, { text });
+    },
+    changed: () => {
+      sendToOperator(IPC.report.changed, { at: Date.now() });
+    },
+    log: (line) => {
+      log.info(line);
+    },
+    ...(reportRetry ? { retryMs: [reportRetry], startDelayMs: reportRetry } : {}),
+  });
+  reportsForNodes = reports;
+  stops.add('reports', () => {
+    reportsForNodes = null;
+    reports.dispose();
+  });
+  // Let in again (an answer after none, or a start), what waits is tried at once.
+  let reportsLetIn = isLetIn();
+  onAccessChange(() => {
+    if (isLetIn() && !reportsLetIn) reports.wake();
+    reportsLetIn = isLetIn();
+  });
+  /** The operator window as it is now, before Report a Problem draws: its pixels and a small copy. */
+  const captureOperator = async (): Promise<HeldPicture | null> => {
+    const win = operatorWindow;
+    if (!win || win.isDestroyed()) return null;
+    try {
+      const image = await win.webContents.capturePage();
+      if (image.isEmpty()) return null;
+      // A Retina window's picture is at twice its size in points: its pixels at the scale they were taken.
+      for (const scaleFactor of [...image.getScaleFactors(), 1]) {
+        const { width, height } = image.getSize(scaleFactor);
+        const pixels = image.toBitmap({ scaleFactor });
+        if (width > 0 && height > 0 && pixels.length === width * height * 4)
+          return {
+            picture: {
+              width,
+              height,
+              pixels: new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.length),
+              order: capturedPixelOrder(),
+            },
+            thumb: `data:image/jpeg;base64,${image.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64')}`,
+          };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+  const notLetIn = { ok: false as const, message: 'Report a Problem works once this computer is let in.' };
+  handle(IPC.report.open, async (e) =>
+    fromOperator(e) && isLetIn() ? reports.opened(await captureOperator()) : notLetIn,
+  );
+  handle(IPC.report.close, (e) => {
+    if (fromOperator(e)) reports.closed();
+    return true;
+  });
+  handle(IPC.report.prepare, (e, raw) => {
+    const draft = readReportDraft(raw);
+    return fromOperator(e) && draft ? reports.prepare(draft) : Promise.resolve(notLetIn);
+  });
+  handle(IPC.report.discard, (e, id) => {
+    if (fromOperator(e) && isReportId(id)) reports.discard(id);
+    return true;
+  });
+  handle(IPC.report.send, (e, id) =>
+    fromOperator(e) && isReportId(id) ? reports.send(id) : Promise.resolve(null),
+  );
+  handle(IPC.report.list, (e) => (fromOperator(e) ? reports.list() : []));
+  handle(IPC.report.forget, (e, id) => fromOperator(e) && isReportId(id) && reports.forget(id));
+  handle(IPC.report.copy, async (e, id) => {
+    if (!fromOperator(e) || !isReportId(id))
+      return { ok: false as const, cancelled: false as const, message: notLetIn.message };
+    const options = {
+      title: 'Save a Copy of the Report',
+      defaultPath: app.getPath('desktop'),
+      buttonLabel: 'Save Here',
+      properties: ['openDirectory' as const, 'createDirectory' as const],
+    };
+    const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null;
+    const picked = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options);
+    const into = picked.filePaths[0];
+    if (picked.canceled || !into) return { ok: false as const, cancelled: true as const };
+    try {
+      const folder = reports.copy(id, into);
+      return folder
+        ? { ok: true as const, folder }
+        : { ok: false as const, cancelled: false as const, message: 'That report is no longer kept here.' };
+    } catch (error) {
+      return { ok: false as const, cancelled: false as const, message: fileProblem(error, 'write') };
+    }
+  });
+  handle(IPC.report.showFile, async (e, id, name) => {
+    const file =
+      fromOperator(e) && isReportId(id) && typeof name === 'string' && name.length <= 200
+        ? reports.filePath(id, name)
+        : null;
+    if (!file) return false;
+    // Tests: said in the log, never opened in another app.
+    if (reportShowFiles) {
+      log.info(`Report: would show ${basename(file)}`);
+      return true;
+    }
+    return (await shell.openPath(file)) === '';
+  });
+  reports.start();
   rebuildMenu = () => {
     // Not let in (a self-test, or stopped, Session 54): Quit and the editing keys only.
     if (!isLetIn()) {
@@ -8198,6 +8372,10 @@ function start(): void {
     // Help › Drashti Manual… (x37, Session 60), in either mode.
     manual: () => {
       sendToOperator(IPC.app.showManual, { at: Date.now() });
+    },
+    // Help › Report a Problem… (x49): the window asks for its picture and opens.
+    reportProblem: () => {
+      sendToOperator(IPC.app.showReport, { at: Date.now() });
     },
     // The Tools menu (Session 60, x36): Pro Mode's, each item opening its window in the operator window.
     tools: (tool) => {

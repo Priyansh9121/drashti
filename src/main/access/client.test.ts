@@ -8,6 +8,7 @@ import { switchesFor } from '../switches';
 import {
   AccessClient,
   accessTarget,
+  bodyText,
   GIVEN_UP,
   nodeTransport,
   type AccessReply,
@@ -60,7 +61,7 @@ function watched(): { transport: AccessTransport; bodies: Record<string, unknown
   return {
     bodies,
     transport: (request) => {
-      if (request.body !== null) bodies.push(JSON.parse(request.body) as Record<string, unknown>);
+      if (request.body !== null) bodies.push(JSON.parse(bodyText(request.body)) as Record<string, unknown>);
       return nodeTransport(request);
     },
   };
@@ -379,7 +380,7 @@ function google(
   const transport: AccessTransport = ({ method, url, body }) => {
     asked.push(`${method} ${url}`);
     if (method === 'POST') {
-      answer = JSON.stringify(list.handle(body ?? ''));
+      answer = JSON.stringify(list.handle(bodyText(body)));
       return Promise.resolve(reply(302, redirectTo));
     }
     return Promise.resolve(reply(200, null, answer));

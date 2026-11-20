@@ -280,7 +280,7 @@ Captions start **Off** for each video. In its **Captions…** menu, choose a lan
 
 1. **The stream and recording**: if streaming, press **End the stream…**, then **End the stream**, and end the broadcast in YouTube Studio. If recording, press **Stop sound recording** or **Stop video recording**.
 2. **F1** (Clear all), so nothing is left up.
-3. If anything went wrong, **Help**, then **Save Diagnostics…**: a file appears on the Desktop. Send it to whoever looks after Drashti with the time and what you saw. It holds no kirtan words, names or file paths. If Drashti asks about crash files, leave **Include crash files** unticked unless whoever looks after Drashti asks for them: they can hold words from slides.
+3. If anything went wrong, **Help**, then **Report a Problem…**: tick where it was (a feature of the Drashti Manual, found by its name or its chapter; several if need be), say what went wrong with each, press **Review…** to see exactly what goes, then **Send**. It reaches whoever looks after Drashti by email, and a short email tells you it arrived; without the internet, or while the stream or a recording is on, it waits and goes by itself later. A notice that says something went wrong has its own **Report this…**. Or **Help**, then **Save Diagnostics…**: a file appears on the Desktop. Send it to whoever looks after Drashti with the time and what you saw. It holds no kirtan words, names or file paths. If Drashti asks about crash files, leave **Include crash files** unticked unless whoever looks after Drashti asks for them: they can hold words from slides.
 4. Quit Drashti, or switch to Simple Mode for the next volunteer (**View**, then **Switch to Simple Mode**).
 
 ## 5. Zoom
