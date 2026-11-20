@@ -1,3 +1,4 @@
+import { outputReady } from './helpers';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import type { PageGlobals } from './helpers';
@@ -18,6 +19,9 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
     );
     await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#205020' } });
     expect((await dispatch(win, { type: 'cueVideo', mediaId: id })).ok).toBe(true);
+    await cueReady(win);
+    await hall.reload();
+    await outputReady(hall);
     await cueReady(win);
     const cue = (await snapshot(win)).videoCue;
     if (!cue) throw new Error('No video cue');

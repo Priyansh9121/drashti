@@ -198,3 +198,23 @@ it('recovery brings a manual cue back paused with new participant identities and
   expect(cue?.background.seek).toEqual({ at: 20_000, toMs: 500, paused: true });
   expect(next.engine.current.layers.background).toBeNull();
 });
+
+it('takes a failed outgoing showing off with its sound while the playable incoming video carries on', () => {
+  const x = setup();
+  x.play();
+  x.ready();
+  x.advance(16_000);
+  expect(x.engine.cannotPlay('first')).toEqual({ background: true, slide: false, box: false });
+  expect(x.engine.current.videoCrossfade).toBeNull();
+  expect(x.engine.current.layers.background).toMatchObject({ mediaId: 'second' });
+});
+
+it('takes an outgoing video with no picture off without removing the incoming showing', () => {
+  const x = setup();
+  x.play();
+  x.ready();
+  x.advance(16_000);
+  expect(x.engine.noPicture('first')).toBe(true);
+  expect(x.engine.current.videoCrossfade).toBeNull();
+  expect(x.engine.current.layers.background).toMatchObject({ mediaId: 'second' });
+});
