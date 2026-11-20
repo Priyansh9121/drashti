@@ -139,6 +139,13 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
   const moved = () => {
     if (!framed && playedAt !== null && !el.paused && el.currentTime > playedFrom + MOVED_S) frameIn();
   };
+  // For the tests and Save Diagnostics: what happened to it, in order (the last few).
+  const note = (event: Event) => {
+    const was = (el.dataset['events'] ?? '').split(' ').filter((e) => e !== '');
+    el.dataset['events'] = [...was, event.type].slice(-8).join(' ');
+  };
+  for (const name of ['loadeddata', 'playing', 'waiting', 'stalled', 'pause', 'ended', 'error', 'emptied'])
+    el.addEventListener(name, note);
   el.addEventListener('loadeddata', check);
   el.addEventListener('timeupdate', moved);
   el.addEventListener('error', failed);
@@ -149,6 +156,8 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     on = false;
     clearInterval(timer);
     if (wait) clearTimeout(wait);
+    for (const name of ['loadeddata', 'playing', 'waiting', 'stalled', 'pause', 'ended', 'error', 'emptied'])
+      el.removeEventListener(name, note);
     el.removeEventListener('loadeddata', check);
     el.removeEventListener('timeupdate', moved);
     el.removeEventListener('error', failed);
