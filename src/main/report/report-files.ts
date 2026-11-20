@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CapturedPicture } from '../../shared/pdf-copy';
 import {
+  readNodeReportBody,
   REPORT_DIAGNOSTICS_BYTES,
   REPORT_FILE_TYPES,
   REPORT_LIMITS,
   REPORT_PICTURE_BYTES,
   reportFileName,
+  type ReportCallReport,
   type ReportFileKind,
   type ReportFileMeta,
 } from '../../shared/report';
@@ -186,4 +188,56 @@ export async function makeReportFiles(job: ReportFilesJob, deps: ReportFilesDeps
   }
   writeFileSync(join(job.dir, 'data.json'), JSON.stringify(data), 'utf8');
   return { ok: true, files, kept, errors };
+}
+
+// ---- a node's report, handed to Main (x49, the owner's Q60-42, 2) ----
+
+/** A node's report as Main is handed it, to read into the reports' folder. */
+export interface NodeIntakeJob {
+  dir: string;
+  body: Uint8Array;
+}
+
+export type NodeIntake =
+  | { ok: true; report: ReportCallReport; node: { version: string; platform: string } }
+  | { ok: false; message: string };
+
+const NOT_READ =
+  'Main could not read that report: run the same Drashti on both computers, then send it again.';
+
+/**
+ * A node's report read and checked (each file against its data: the same bytes, size and SHA-256), and its files and
+ * data.json written into its own folder in the reports' folder; once there, handed over again, it is not written again.
+ * In the report worker, off Main's thread.
+ */
+export function intakeNodeReport(job: NodeIntakeJob): NodeIntake {
+  const read = readNodeReportBody(job.body);
+  if (read?.report.from !== 'node') return { ok: false, message: NOT_READ };
+  const { report, data } = read;
+  const folder = join(job.dir, report.id);
+  if (existsSync(join(folder, 'report.json'))) return { ok: true, report, node: read.node };
+  const wanted = new Set(report.files.map((f) => f.sha256));
+  const keys = Object.keys(data);
+  if (keys.length !== wanted.size || keys.some((k) => !wanted.has(k)))
+    return { ok: false, message: NOT_READ };
+  let total = 0;
+  const files: { name: string; bytes: Buffer }[] = [];
+  for (const f of report.files) {
+    const base64 = data[f.sha256] ?? '';
+    const bytes = Buffer.from(base64, 'base64');
+    if (
+      bytes.toString('base64') !== base64 ||
+      bytes.length !== f.bytes ||
+      createHash('sha256').update(bytes).digest('hex') !== f.sha256
+    )
+      return { ok: false, message: NOT_READ };
+    total += bytes.length;
+    files.push({ name: f.name, bytes });
+  }
+  if (total > REPORT_LIMITS.filesBytes)
+    return { ok: false, message: 'The report is too large: send it again without the crash files.' };
+  mkdirSync(join(folder, 'files'), { recursive: true });
+  for (const f of files) writeFileSync(join(folder, 'files', f.name), f.bytes);
+  writeFileSync(join(folder, 'data.json'), JSON.stringify(data), 'utf8');
+  return { ok: true, report, node: read.node };
 }

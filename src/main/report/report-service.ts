@@ -1,5 +1,5 @@
-import { createHash, randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AccessGrant } from '../../shared/access-protocol';
 import { fileStamp } from '../../shared/format';
@@ -12,7 +12,6 @@ import {
   reportCleanLines,
   reportComputerLine,
   reportMailText,
-  readNodeReportBody,
   reportComputerOf,
   reportReference,
   reportSubject,
@@ -32,7 +31,14 @@ import type { AccessClient } from '../access/client';
 import type { CrashFile } from '../crash-files';
 import type { NodeDiagnosticsInput } from '../diagnostics';
 import { REPORTS_KEPT_WAITING, ReportOutbox, type ReportState, type StoredReport } from './outbox';
-import type { ReportDiagnosticsInput, ReportFilesJob, ReportFilesMade } from './report-files';
+import {
+  intakeNodeReport,
+  type NodeIntake,
+  type NodeIntakeJob,
+  type ReportDiagnosticsInput,
+  type ReportFilesJob,
+  type ReportFilesMade,
+} from './report-files';
 
 /*
  * Help › Report a Problem… in the main process (x49, the owner's Q60-38 and his "Yes, all A" to Q60-42): the window's
@@ -62,6 +68,8 @@ export interface ReportServiceDeps {
   diagnostics(crashIncluded: boolean): Promise<ReportDiagnosticsInput>;
   /** The report worker: the files made in the report's folder. */
   makeFiles(job: ReportFilesJob): Promise<ReportFilesMade>;
+  /** The report worker: a node's report read, checked and written into the reports' folder (x49; tests: here). */
+  intake?(job: NodeIntakeJob): Promise<NodeIntake>;
   now(): number;
   setTimer(ms: number, run: () => void): () => void;
   /** A line in the operator window's notice. */
@@ -359,55 +367,20 @@ export class ReportService {
    */
   async fromNode(node: { id: string; name: string }, body: Uint8Array): Promise<NodeReportAnswer> {
     if (!this.d.letIn()) return { ok: false, message: 'Main is not let in: the report waits on the node.' };
-    const read = readNodeReportBody(body);
-    if (read?.report.from !== 'node')
-      return {
-        ok: false,
-        message:
-          'Main could not read that report: run the same Drashti on both computers, then send it again.',
-      };
-    const { report, data } = read;
+    if (this.outbox.waiting() >= REPORTS_KEPT_WAITING)
+      return { ok: false, message: 'Main has 20 reports waiting already: the report waits on the node.' };
+    // Read, checked and written by the report worker, off Main's thread (the show's): Main keeps only the result.
+    const job = { dir: this.d.dir, body };
+    const taken = await (this.d.intake ? this.d.intake(job) : Promise.resolve(intakeNodeReport(job)));
+    if (!taken.ok) return { ok: false, message: taken.message };
+    const { report } = taken;
     const reference = reportReference(report.id);
     // Handed over again (the node tried again): taken already.
     if (this.outbox.get(report.id)) return { ok: true, reference };
-    if (this.outbox.waiting() >= REPORTS_KEPT_WAITING)
-      return { ok: false, message: 'Main has 20 reports waiting already: the report waits on the node.' };
-    const wanted = new Set(report.files.map((f) => f.sha256));
-    const keys = Object.keys(data);
-    if (keys.length !== wanted.size || keys.some((k) => !wanted.has(k)))
-      return {
-        ok: false,
-        message:
-          'Main could not read that report: run the same Drashti on both computers, then send it again.',
-      };
-    let total = 0;
-    const files: { name: string; bytes: Buffer }[] = [];
-    for (const f of report.files) {
-      const base64 = data[f.sha256] ?? '';
-      const bytes = Buffer.from(base64, 'base64');
-      if (
-        bytes.toString('base64') !== base64 ||
-        bytes.length !== f.bytes ||
-        createHash('sha256').update(bytes).digest('hex') !== f.sha256
-      )
-        return {
-          ok: false,
-          message:
-            'Main could not read that report: run the same Drashti on both computers, then send it again.',
-        };
-      total += bytes.length;
-      files.push({ name: f.name, bytes });
-    }
-    if (total > REPORT_LIMITS.filesBytes)
-      return { ok: false, message: 'The report is too large: send it again without the crash files.' };
-    const dir = join(this.d.dir, report.id);
-    mkdirSync(join(dir, 'files'), { recursive: true });
-    for (const f of files) writeFileSync(join(dir, 'files', f.name), f.bytes);
-    writeFileSync(join(dir, 'data.json'), JSON.stringify(data), 'utf8');
     const call: ReportCallReport = {
       ...report,
       from: 'node',
-      node: { name: node.name, version: read.node.version, platform: read.node.platform },
+      node: { name: node.name, version: taken.node.version, platform: taken.node.platform },
     };
     const client = await this.d.client();
     const subject = reportSubject(
