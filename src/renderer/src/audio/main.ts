@@ -1,5 +1,5 @@
 import { applyVideoEnvelope } from './video-envelope';
-import { reportVideoCue } from '../render/video-cue-report';
+import { reportVideoCue, reportLoadedVideoCue } from '../render/video-cue-report';
 import { videoSoundGain } from './sounds';
 import { bandsText, type ToneChain, toneThrough } from './tone-chain';
 import type { AudioDevice } from '../../../shared/audio';
@@ -237,6 +237,7 @@ function play(state: EngineState | null): void {
       // A jump, or new start or end points: it lands there at once, with its picture (Session 52).
       const moved = soundMoved(current.sound, sound);
       current.sound = sound;
+      if (sound.prepared) reportLoadedVideoCue(sound.cueId, 'sound', current.el);
       if (moved) current.resync();
       // Its tone (alpha.20), eased there while it plays.
       if (context && current.source && current.level)

@@ -32,7 +32,12 @@ function CuedFrame({ id }: { id: string }) {
         frame = requestAnimationFrame(draw);
         return;
       }
-      canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const scale = Math.min(canvas.width / video.videoWidth, canvas.height / video.videoHeight);
+      const width = video.videoWidth * scale,
+        height = video.videoHeight * scale;
+      canvas
+        .getContext('2d')
+        ?.drawImage(video, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
     };
     draw();
     return () => cancelAnimationFrame(frame);

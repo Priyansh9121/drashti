@@ -1,5 +1,5 @@
 import { videoFadeProgress, type VideoCue, type VideoCrossfade } from '../../../shared/video-cue';
-import { reportVideoCue } from './video-cue-report';
+import { reportVideoCue, reportLoadedVideoCue } from './video-cue-report';
 import {
   type Dispatch,
   useCallback,
@@ -140,6 +140,10 @@ function VideoSlot({
       p();
     };
   }, [key, mediaId, attempt, startedAt, layer.cueId, dispatch]);
+  useEffect(() => {
+    if (slot.cued && slot.state === 'ready' && ref.current)
+      reportLoadedVideoCue(layer.cueId, 'picture', ref.current);
+  }, [slot, layer.cueId]);
   const seekAt = layer.seek?.at;
   const clipKey = `${String(layer.clip?.startMs)}/${String(layer.clip?.endMs)}`;
   useEffect(() => {

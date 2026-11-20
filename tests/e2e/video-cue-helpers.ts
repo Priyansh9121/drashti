@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -55,7 +56,7 @@ export async function setupVideoCue(software = false) {
   }
 }
 
-export async function cueReady(win: import('@playwright/test').Page) {
+export async function cueReady(win: Page) {
   await expect
     .poll(
       async () => {

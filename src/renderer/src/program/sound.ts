@@ -1,5 +1,5 @@
 import { applyVideoEnvelope } from '../audio/video-envelope';
-import { reportVideoCue } from '../render/video-cue-report';
+import { reportVideoCue, reportLoadedVideoCue } from '../render/video-cue-report';
 import { videoSoundGain } from '../audio/sounds';
 import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
 import type { EngineState } from '../../../shared/engine/state';
@@ -176,6 +176,7 @@ export class StreamSound {
         // A jump, or new start or end points: it lands there at once, as the audio player's does (Session 52).
         const moved = soundMoved(current.sound, sound);
         current.sound = sound;
+        if (sound.prepared) reportLoadedVideoCue(sound.cueId, 'sound', current.el);
         if (moved) current.resync();
         current.el.loop = sound.loop && !sound.clip;
         // Its tone (alpha.20), as the hall hears it, eased there while it plays.
