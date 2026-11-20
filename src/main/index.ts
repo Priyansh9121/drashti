@@ -4,6 +4,7 @@ import { registerEditVideoIpc } from './convert/edit-video-ipc';
 import { EditService } from './convert/edit-service';
 import { registerEditedFile } from './convert/edit-files';
 import { videoEditTimes } from '../shared/video-edit-time';
+import { soundForEditedVideo } from '../shared/video-edit-sound';
 import { type PlaybackSettings, playbackSettingsSchema, toneOf } from '../shared/playback-settings';
 import { shapeOverride } from '../shared/video-shape';
 import { fileProblem } from './plain-errors';
@@ -1756,12 +1757,13 @@ function start(): void {
   const soundRepo = new SoundRepo(db);
   const soundKnown = new Map<string, { gain: number; silent: boolean } | null>();
   const soundOf = (mediaId: string): { gain: number; silent: boolean } | null => {
+    const recipe = editedPlaying.renditionOf(mediaId)?.recipe ?? null;
     mediaId = editedPlaying.sourceId(mediaId);
     if (!soundKnown.has(mediaId)) {
       const s = soundRepo.soundOf(mediaId);
       soundKnown.set(mediaId, s ? { gain: s.gain, silent: s.silent } : null);
     }
-    return soundKnown.get(mediaId) ?? null;
+    return soundForEditedVideo(soundKnown.get(mediaId) ?? null, recipe);
   };
   /** Music steps aside under a video with sound (Session 55, Part 7, K): Audio's switch, kept with the library; on by default. */
   let stepsAside = settings.get('music.stepsAside') !== false;

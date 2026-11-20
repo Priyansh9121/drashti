@@ -7,7 +7,9 @@ export interface EditedFileSound {
 /** A source-track measurement must not mute a different selected track. */
 export function soundForEditedVideo(
   sound: EditedFileSound | null,
-  _recipe: Pick<VideoEditRecipe, 'audioTrack'> | null,
+  recipe: Pick<VideoEditRecipe, 'audioTrack'> | null,
 ): EditedFileSound | null {
-  return sound;
+  return sound && recipe?.audioTrack !== null && recipe?.audioTrack !== undefined && recipe.audioTrack > 0
+    ? { ...sound, silent: false }
+    : sound;
 }
