@@ -55,6 +55,11 @@ export class MemoryPlaylistSource implements PlaylistSource {
     this.lists.set(playlistId, items);
   }
 
+  repeatAll(playlistId: string): boolean {
+    void playlistId;
+    return false;
+  }
+
   items(playlistId: string): readonly PlayItem[] | null {
     return this.lists.get(playlistId) ?? null;
   }

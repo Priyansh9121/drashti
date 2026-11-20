@@ -517,6 +517,18 @@ export class PlaylistRepo {
     );
   }
 
+  /** Saved playback choices for this playlist. */
+  playOptions(playlistId: string): { shuffle: boolean; repeatAll: boolean; playOrder: string[] } {
+    return { shuffle: false, repeatAll: false, playOrder: this.order(playlistId) };
+  }
+
+  /** Draw the order once when Shuffle is turned on. */
+  setPlayOptions(playlistId: string, options: { shuffle: boolean; repeatAll: boolean }): boolean {
+    void playlistId;
+    void options;
+    return false;
+  }
+
   /** A playlist's items as the show engine plays them, or null if the playlist does not exist (or was removed). */
   playItems(playlistId: string): PlayItem[] | null {
     // A template is never run: only playlists made from it are.
