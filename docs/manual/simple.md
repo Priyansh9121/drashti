@@ -56,7 +56,7 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 1. In **Audio**, press **Create playlist** or **Import sounds…**, or drop sounds on it.
 2. Press **Play**. It steps aside under a video with sound.
-3. Drag the **Audio** or **Video** level, or press its switch to mute it.
+3. Drag the **Audio** or **Video** level, or press its switch to mute it. See **Audio and the levels › Muting**; Drashti starts with the sound on.
 
 ![Simple Mode with music playing](../screenshots/simple-mode-music.png)
 

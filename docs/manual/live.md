@@ -111,7 +111,7 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 
 **How:**
 
-1. Set the markers first, in **Media** (**Start, end and markers…**, in the Library chapter).
+1. Set the markers first, in **Media**: see **Library › Start, end and markers**.
 2. Put the video or sound up.
 3. Press a marker's button under the live picture to jump there.
 
@@ -119,7 +119,7 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 
 ## Resume where it stopped
 
-**What it is.** A button, **Resume at 6:00**, under the time bars when a video or sound of 10 minutes or more goes up again after it was taken off part-way.
+**What it is.** A button, **Resume at 6:00**, under the time bars when a background video or sound of 10 minutes or more goes up again after it was taken off part-way. A video set to loop, or a file taken off in its last 30 seconds, has no offer.
 
 **When you would use it.** For a long talk or katha stopped part-way, to carry on from there next time.
 
@@ -129,11 +129,13 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 2. Within 30 seconds, press **Resume at …** to go where it was taken off, on every screen and the sound together.
 3. Leave it, and the button goes after 30 seconds.
 
+This is offered in Simple Mode too. For an audio playlist that carries on from its track, see **Audio and the levels › Audio playlists**. **Library › Media information** says how often a file has played and when it last did.
+
 ![The time bars under Back and Next: a background video and the music](../screenshots/time-bar.png)
 
 ## A-B repeat
 
-**What it is.** A part of the background video or the sound going round, from A to B, on every screen and in the hall together.
+**What it is.** In Pro Mode, a part of the background video or the sound going round, from A to B, on every screen and in the hall together.
 
 **When you would use it.** For a verse to play again and again while people learn it, or a short loop behind a talk.
 
@@ -147,7 +149,7 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 
 ## One frame back and on, and Snapshot
 
-**What it is.** While a video is paused: the frame before or after it on every screen, and **Snapshot**, which keeps the frame on the screens as a picture in **Media**.
+**What it is.** In Pro Mode, while a video is paused: the frame before or after it on every screen, and **Snapshot**, which keeps that frame as a picture in **Media**.
 
 **When you would use it.** To stop on exactly the right picture, or to keep it for a slide later.
 
@@ -188,6 +190,23 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 4. Choose **Off** to take them off again.
 
 ![CC beside a placeholder video's time bar, its languages listed](../screenshots/manual-captions.png)
+
+## When a video cannot play
+
+**What it is.** The picture before a video, or the Wallpaper or cover, stays until its first frame is ready. If the video fails, or no first frame comes within 10 seconds, a notice names the file and the screen. A background video comes off with its sound; a video on a slide pauses there with its sound stopped; a video in the picture-in-picture box closes the box.
+
+**When you would use it.** When a video has sound but no picture, stops, or has a notice naming it.
+
+**How:**
+
+1. Read the notice: it names the file and where it could not play.
+2. Put up the next suitable row, or choose another file.
+3. If it names a paired computer, check that computer's screen: it keeps its earlier picture while the video plays on elsewhere.
+4. After the sabha, use **Help › Report a Problem…**. See **Help and when something goes wrong › Report a Problem…** for the optional files and review.
+
+A video this computer cannot show is converted once the show is quiet: see **Bringing things in and sharing › Files Drashti converts**. A damaged file may need replacing. When a video ends or comes off, its picture stays until the chosen Wallpaper is ready, rather than showing black between them.
+
+![LIVE and its time bars in the operator window](../screenshots/operator-1280x720.png)
 
 ## The quick bar
 
