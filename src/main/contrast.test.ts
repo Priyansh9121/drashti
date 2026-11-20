@@ -1,17 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { deltaE00, deltaE00Lab } from '../shared/contrast';
+import { contrastRatio, deltaE00, deltaE00Lab, luminance } from '../shared/contrast';
 import type { Appearance, Colours } from '../shared/appearance/appearances';
 import {
   BLACK,
   BUILT_IN,
   builtIn,
   COLOUR_TOKENS,
+  COMFORT_DARK_STATES,
+  DARK_STATES,
   DECORATION_TOKENS,
+  APPEARANCE_FAMILIES,
+  familyOf,
   plainDecoration,
   WHITE,
-  ZONE_TINTS,
 } from '../shared/appearance/appearances';
 import {
   appearanceProblems,
@@ -21,9 +24,12 @@ import {
   hueApart,
   hueCount,
   HUES,
+  lookApart,
+  LOOKS_APART,
   measureContrast,
   measureDistances,
   places,
+  WORDS_AIM,
   type Measured,
 } from '../shared/appearance/rules';
 import { hexToOklch } from '../shared/appearance/oklch';
@@ -42,7 +48,12 @@ import { ZONE_TOKENS, ZONES, zonesOf } from '../shared/appearance/zones';
  * Session 42, more colourful appearances: the decoration's rules too (the header's words at 4.5:1, its focus ring
  * and controls at 3:1, headings at 4.5:1, the second colour at 3:1 as drawn and apart from the states), and every
  * appearance but Black and White more than one colour (rules.ts, decorationLacks): a header colour of its own, a
- * band, coloured headings and surfaces that carry its hue. Black and White draw exactly as before.
+ * band, coloured headings and surfaces that carry its hue.
+ *
+ * Session 60 (the owner's Q60-30 and Q60-36): every appearance but Black comfortable (dark panels a deep tint,
+ * 3–6 % luminance, light ones soft paper, 75–85 %, the words at 10–13:1 on every panel), Black kept exactly as it
+ * was and White softened to paper; LIVE's frame and lit dots lighter on the comfortable dark ones; every two of a
+ * base at least LOOKS_APART apart (rules.ts, lookApart); and each in a family.
  */
 
 const renderer = join(__dirname, '..', 'renderer', 'src');
@@ -151,7 +162,28 @@ const ALPHA_8 = [
 ];
 
 describe('more colourful appearances (Session 42): more places for colour', () => {
-  it('Black and White draw exactly as before: their panel for a header, no band, the focus ring’s colour to mark', () => {
+  it('Black is kept exactly as it was (Q60-36, Q2 A): its colours, its panel for a header, no band, the focus ring’s colour to mark', () => {
+    expect(BLACK.colours).toEqual({
+      ink: '#09090b',
+      panel: '#121215',
+      'panel-2': '#1b1b1f',
+      'panel-3': '#26262b',
+      line: '#2c2c32',
+      'line-strong': '#42424a',
+      field: '#82828d',
+      fg: '#f5f5f7',
+      muted: '#c8c8cf',
+      faint: '#a1a1ab',
+      accent: '#8ab4f8',
+      'primary-hi': '#ffffff',
+      primary: '#ededf0',
+      'primary-lo': '#d6d6dc',
+      'on-primary': '#0b0b0e',
+      'primary-edge': '#c9c9d1',
+      ...DARK_STATES,
+    });
+    // LIVE's frame is LIVE's own red in Black: it reads 3.7:1 on Black's panels.
+    expect(BLACK.colours['live-edge']).toBe(BLACK.colours.live);
     expect(BLACK.decoration).toEqual({
       header: '#121215',
       'on-header': '#f5f5f7',
@@ -168,21 +200,19 @@ describe('more colourful appearances (Session 42): more places for colour', () =
       'layer-edge': '#2c2c32',
       band: [],
     });
-    expect(WHITE.decoration).toEqual({
-      header: '#f8f8fa',
-      'on-header': '#111216',
-      'on-header-muted': '#43464e',
-      'header-ring': '#1d4ed8',
-      'header-field': '#6f737c',
-      second: '#1d4ed8',
-      heading: '#43464e',
-      'header-2': '#f8f8fa',
-      strip: '#f8f8fa',
-      'strip-2': '#f8f8fa',
-      layer: '#ffffff',
-      'layer-edge': '#d4d6dc',
-      band: [],
-    });
+  });
+
+  it('White is softened to paper (Q60-36, Q2 A) and stays plain: its panel for a header, no band, the focus ring’s colour to mark', () => {
+    expect(WHITE.decoration).toEqual(plainDecoration(WHITE.colours));
+    expect(luminance(WHITE.colours.panel)).toBeGreaterThan(0.78);
+    expect(luminance(WHITE.colours.panel)).toBeLessThan(0.82);
+    expect(luminance(WHITE.colours['panel-2'])).toBeLessThan(0.87);
+    expect(contrastRatio(WHITE.colours.fg, WHITE.colours.panel)).toBeGreaterThan(12);
+    expect(contrastRatio(WHITE.colours.fg, WHITE.colours.panel)).toBeLessThan(WORDS_AIM.most);
+    expect(hexToOklch(WHITE.colours.panel).c).toBeLessThan(0.01);
+  });
+
+  it('Black and White draw no gradient and no band, and every zone their own surfaces', () => {
     for (const a of [BLACK, WHITE]) {
       const vars = appearanceVars(a);
       expect(vars['--band-height']).toBe('0px');
@@ -214,36 +244,72 @@ describe('more colourful appearances (Session 42): more places for colour', () =
     },
   );
 
-  it('twenty-six built-in appearances, in the menu’s order, each clearly different: two of its window, header and next thing to do at least 10 from every other’s', () => {
+  it('the built-in appearances, in the menu’s order, each clearly different: two of its window, header and next thing to do at least 10 from every other’s', () => {
     expect(BUILT_IN.map((a) => a.name)).toEqual([
       'Black',
       'White',
-      // Session 43 (Priyansh's answer to Session 42): the two with a meaning first, after White.
       'Dhaja',
       'Tiranga',
-      'Saffron',
-      'Peacock',
-      'Midnight Blue',
-      'Sandalwood',
-      'Lotus',
-      'Marble',
-      'Tulsi',
+      'Sandhya',
+      'Dusk Slate',
+      'Dusk Rose',
+      'Dusk Sage',
+      'Dusk Indigo',
+      'Dusk Amber',
+      'Dusk Teal',
       'Diwali',
       'Holi',
       'Aarti',
-      // Session 44: twelve more.
-      'Monsoon',
-      'Sandhya',
-      'Forest',
       'Navratri',
-      'Neel',
-      'Ratna',
+      'Uttarayan',
+      'Janmashtami',
+      'Sharad Purnima',
+      'Dev Diwali',
+      'Vasant Panchami',
+      'Annakut',
+      'Raksha Bandhan',
+      'Ganesh Chaturthi',
+      'Guru Purnima',
+      'Peacock',
+      'Midnight Blue',
+      'Lotus',
+      'Tulsi',
+      'Monsoon',
+      'Forest',
       'Prabhat',
+      'Himalaya',
+      'Mogra',
+      'Gulmohar',
+      'Kesuda',
+      'Champa',
+      'Sagar',
+      'Akash',
+      'Chandni',
+      'Ratna',
+      'Manek',
+      'Panna',
+      'Neelam',
+      'Moti',
+      'Pukhraj',
+      'Heera',
+      'Neel',
       'Mehndi',
       'Haldi',
-      'Himalaya',
-      'Uttarayan',
-      'Mogra',
+      'Bandhani',
+      'Patola',
+      'Ajrakh',
+      'Kalamkari',
+      'Madhubani',
+      'Warli',
+      'Saffron',
+      'Sandalwood',
+      'Marble',
+      'Sandstone',
+      'Teak',
+      'Pittal',
+      'Tamra',
+      'Gold Leaf',
+      'Kesar',
     ]);
     const alike: string[] = [];
     for (const [i, a] of BUILT_IN.entries())
@@ -323,7 +389,7 @@ describe('real colour (Session 44): four hues at least, in every place', () => {
     },
   );
 
-  it('twenty-four colourful appearances: alpha.8’s twelve, reworked, and twelve more, after Black and White', () => {
+  it('the colourful appearances: alpha.8’s twelve and Session 44’s twelve, re-tuned, and more, after Black and White', () => {
     expect(BUILT_IN.slice(0, 2)).toEqual([BLACK, WHITE]);
     expect(COLOURFUL.length).toBeGreaterThanOrEqual(24);
     for (const id of ALPHA_8)
@@ -351,9 +417,9 @@ describe('real colour (Session 44): four hues at least, in every place', () => {
   it.each(BUILT_IN.map((a) => [a.name, a] as const))(
     '%s: its zones are its own surfaces in their hues, as zones.ts works them out (Black and White: its own)',
     (_name, a) => {
-      const tints = ZONE_TINTS[a.id] ?? { left: null, middle: null, right: null, bar: null };
+      const tints = a.tints ?? { left: null, middle: null, right: null, bar: null };
       expect(a.zones).toEqual(zonesOf(a.colours, a.base === 'dark', tints));
-      expect(PLAIN.has(a.id), 'tinted zones but Black and White').toBe(ZONE_TINTS[a.id] === undefined);
+      expect(PLAIN.has(a.id), 'tinted zones but Black and White').toBe(a.tints === undefined);
     },
   );
 });
@@ -430,5 +496,59 @@ describe('colour difference (CIEDE2000)', () => {
     expect(deltaE00Lab([50, 2.6772, -79.7751], [50, 0, -82.7485])).toBeCloseTo(2.0425, 4);
     expect(deltaE00Lab([50, 2.5, 0], [73, 25, -18])).toBeCloseTo(27.1492, 4);
     expect(deltaE00('#123456', '#123456')).toBe(0);
+  });
+});
+
+describe('comfortable appearances (Session 60, the owner’s Q60-30 and Q60-36)', () => {
+  it.each(BUILT_IN.filter((a) => a.id !== BLACK.id).map((a) => [a.name, a] as const))(
+    '%s: every panel a deep tint or soft paper, and the words on it at 10–13:1',
+    (_name, a) => {
+      const panels = [a.colours.panel, ...ZONES.map((z) => a.zones[z].panel)];
+      const [lo, hi] = a.base === 'dark' ? [0.03, 0.06] : [0.75, 0.85];
+      for (const p of panels) {
+        expect(luminance(p), `${a.name} panel ${p}`).toBeGreaterThanOrEqual(lo);
+        expect(luminance(p), `${a.name} panel ${p}`).toBeLessThanOrEqual(hi);
+        const words = contrastRatio(a.colours.fg, p);
+        expect(words, `${a.name} words on ${p}`).toBeGreaterThanOrEqual(WORDS_AIM.least);
+        expect(words, `${a.name} words on ${p}`).toBeLessThanOrEqual(WORDS_AIM.most);
+      }
+    },
+  );
+
+  it('LIVE’s frame and lit dots: the lighter red on every comfortable dark appearance, LIVE’s own on Black and the light ones; the LIVE label always LIVE’s own red', () => {
+    for (const a of BUILT_IN) {
+      expect(a.colours.live, a.name).toBe('#d42a31');
+      const lighter = a.base === 'dark' && a.id !== BLACK.id;
+      expect(a.colours['live-edge'], a.name).toBe(
+        lighter ? COMFORT_DARK_STATES['live-edge'] : a.colours.live,
+      );
+    }
+    expect(COMFORT_DARK_STATES['live-edge']).toBe('#ff5a60');
+  });
+
+  it(`no two alike: every two appearances of a base at least ${String(LOOKS_APART)} apart (OKLab, fourteen places)`, () => {
+    const close: string[] = [];
+    let least = { apart: Infinity, pair: '' };
+    for (const [i, a] of BUILT_IN.entries())
+      for (const b of BUILT_IN.slice(i + 1)) {
+        if (a.base !== b.base) continue;
+        const apart = lookApart(a, b);
+        if (apart < least.apart) least = { apart, pair: `${a.name} and ${b.name}` };
+        if (apart < LOOKS_APART) close.push(`${a.name} and ${b.name}: ${truncate(apart, 1)}`);
+      }
+    console.info(`The closest two: ${least.pair}, ${truncate(least.apart, 2)} apart`);
+    expect(close).toEqual([]);
+    // Would see a failure: an appearance under another name is 0 apart from it.
+    const twin = BUILT_IN[2] ?? BLACK;
+    expect(lookApart(twin, { ...twin, id: 'twin', name: 'Twin' })).toBe(0);
+  });
+
+  it('every built-in appearance is in a family, the families together and in the window’s order', () => {
+    const order = BUILT_IN.map(familyOf);
+    const seen = order.filter((f, i) => order.indexOf(f) === i);
+    expect(seen).toEqual([...APPEARANCE_FAMILIES]);
+    for (const [i, f] of order.entries())
+      expect(order.indexOf(f), `${String(i)} ${f}`).toBe(order.indexOf(f));
+    expect(order.every((f, i) => i === 0 || seen.indexOf(f) >= seen.indexOf(order[i - 1] ?? f))).toBe(true);
   });
 });

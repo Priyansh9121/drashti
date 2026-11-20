@@ -1,3 +1,4 @@
+import type { Tone } from '../../shared/playback-settings';
 import { followingItems } from './playlist-source';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { randomUUID } from 'node:crypto';
@@ -312,6 +313,11 @@ export interface EngineOptions {
   levels?: () => SoundLevels;
   /** Parsed captions for a library video, with the admin’s band size and place. */
   videoCaptionsOf?: (mediaId: string) => VideoCaptionsShown | null;
+  /**
+   * Sound and picture… (alpha.20, main/index.ts from the library): a file's tone (none: as it is) and how much later
+   * its sound comes than its picture (ms); null for none.
+   */
+  playbackOf?: (mediaId: string) => { tone: Tone | null; soundDelayMs: number } | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -955,7 +961,13 @@ export class ShowEngine {
       Object.keys(old).length === Object.keys(tracks).length &&
       Object.entries(tracks).every(([id, next]) => {
         const prev = old[id];
-        return prev?.track === next.track && prev.size === next.size && prev.place === next.place;
+        return (
+          prev?.track === next.track &&
+          prev.size === next.size &&
+          prev.place === next.place &&
+          // Sound and picture… (alpha.20): a caption delay changed is a change.
+          prev.delayMs === next.delayMs
+        );
       })
     )
       return old;
@@ -979,8 +991,8 @@ export class ShowEngine {
    * an engine with no library to ask (then the state never says, and every page plays each file as it is).
    */
   private soundFor(state: EngineState): SoundState | undefined {
-    const { soundOf, stepsAside, levels } = this.options;
-    if (!soundOf && !stepsAside && !levels) return undefined;
+    const { soundOf, stepsAside, levels, playbackOf } = this.options;
+    if (!soundOf && !stepsAside && !levels && !playbackOf) return undefined;
     const gains: Record<string, number> = {};
     const silent: string[] = [];
     for (const mediaId of soundFilesOf(state)) {
@@ -990,7 +1002,33 @@ export class ShowEngine {
       if (known.silent) silent.push(mediaId);
     }
     // The operator's Audio and Video levels and mutes (X33), as Main has them now.
-    return { stepsAside: stepsAside?.() ?? true, gains, silent, ...(levels ? { levels: levels() } : {}) };
+    return {
+      stepsAside: stepsAside?.() ?? true,
+      gains,
+      silent,
+      ...(levels ? { levels: levels() } : {}),
+      ...this.ownPlaybackFor(state),
+    };
+  }
+
+  /**
+   * Sound and picture… (alpha.20): the tone and the sound's delay of each file sounding now that has them, by media id,
+   * stamped as the even gains are, so the hall's audio player and the stream's own sound play them alike.
+   */
+  private ownPlaybackFor(state: EngineState): Pick<SoundState, 'tones' | 'delays'> {
+    const { playbackOf } = this.options;
+    if (!playbackOf) return {};
+    const tones: Record<string, Tone> = {};
+    const delays: Record<string, number> = {};
+    for (const mediaId of soundFilesOf(state)) {
+      const own = playbackOf(mediaId);
+      if (own?.tone) tones[mediaId] = own.tone;
+      if (own?.soundDelayMs) delays[mediaId] = own.soundDelayMs;
+    }
+    return {
+      ...(Object.keys(tones).length > 0 ? { tones } : {}),
+      ...(Object.keys(delays).length > 0 ? { delays } : {}),
+    };
   }
 
   refreshFiles(): CommandResult {

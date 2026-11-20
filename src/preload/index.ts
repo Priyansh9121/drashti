@@ -401,6 +401,8 @@ const bridge: DrashtiBridge = {
     make: (fields) => invoke(IPC.appearance.make, fields),
     remove: (id) => invoke(IPC.appearance.remove, id),
     setMotion: (motion) => invoke(IPC.appearance.setMotion, motion),
+    setMoving: (on) => invoke(IPC.appearance.setMoving, on),
+    setFavourite: (id, on) => invoke(IPC.appearance.setFavourite, id, on),
     onOpen: (listener) =>
       on(IPC.appearance.open, () => {
         listener();
@@ -467,6 +469,8 @@ const bridge: DrashtiBridge = {
     copyDetails: (text) => invoke(IPC.media.copyDetails, text),
     resumePoint: (mediaId) => invoke(IPC.media.resumePoint, mediaId),
     snapshot: (playing) => invoke(IPC.media.snapshot, playing),
+    playback: (mediaId) => invoke(IPC.media.playback, mediaId),
+    setPlayback: (mediaId, settings) => invoke(IPC.media.setPlayback, mediaId, settings),
     setMarkers: (mediaId, markers) => invoke(IPC.media.setMarkers, mediaId, markers),
   },
   sound: {
