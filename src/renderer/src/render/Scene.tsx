@@ -1,5 +1,15 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { Fragment, memo, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { CalendarDay, CalendarLang } from '../../../shared/calendar';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import type {
@@ -275,6 +285,14 @@ export function TickerBand({
 }
 
 const FULL = { position: 'absolute', inset: 0 } as const;
+/** The Wallpaper's picture coming, after a clear: drawn already, out of sight until it has come (Q60-31 (3)). */
+const FULL_UNSEEN = { position: 'absolute', inset: 0, visibility: 'hidden' } as const;
+
+/**
+ * How long what the background drew may stay after it was cleared, while the Wallpaper's picture comes over it
+ * (Q60-31 (3), the lead's "at most 1 s"): past it, the Wallpaper shows as it is.
+ */
+const HOLD_FOR_WALLPAPER_MS = 1000;
 
 /**
  * The background layer as a screen draws it: a colour, a picture or a video, or another app's window (Session
@@ -455,6 +473,38 @@ export const Scene = memo(function Scene({
   const nothingUp =
     (background === null || nothingDrawnYet) && (layers.slide === null || !shown('slide')) && up === null;
   const nothingUpNow = nothingUp ? nothingUpShows(state) : null;
+  // Back to the Wallpaper (Clear background, a video's end, one that could not play coming off; Q60-31 (3), the
+  // lead's): the Wallpaper's picture is read again as it comes back, and the screen showed black meanwhile. Now what the
+  // background drew stays, the Wallpaper out of sight over it, until its picture has come (NothingUp's onDrawn), at
+  // most HOLD_FOR_WALLPAPER_MS: never black between. Only when something was drawn, and a wallpaper is chosen.
+  const [back, setBack] = useState<{
+    was: BackgroundLayer | null;
+    keep: BackgroundLayer | null;
+    n: number;
+    done: boolean;
+  }>(() => ({ was: background, keep: null, n: 0, done: true }));
+  if (back.was !== background) {
+    const keep = background === null && back.was !== null && drawnKey !== null ? back.was : null;
+    setBack({ was: background, keep, n: back.n + 1, done: keep === null });
+  }
+  const holding = !back.done && back.keep !== null && nothingUpNow === 'wallpaper';
+  const endHold = useCallback((n: number) => {
+    setBack((b) => (b.n === n && !b.done ? { ...b, done: true } : b));
+  }, []);
+  const holdN = back.n;
+  useEffect(() => {
+    if (!holding) return;
+    // eslint-disable-next-line no-restricted-syntax -- decides no frame: only how long what was up may wait under the Wallpaper
+    const cap = setTimeout(() => {
+      endHold(holdN);
+    }, HOLD_FOR_WALLPAPER_MS);
+    return () => {
+      clearTimeout(cap);
+    };
+  }, [holding, holdN, endHold]);
+  const wallpaperDrawn = useCallback(() => {
+    endHold(holdN);
+  }, [endHold, holdN]);
   const content: CSSProperties = matte === 'key' ? { ...FULL, filter: 'brightness(0) invert(1)' } : FULL;
   // The pictures' looks and the live zoom, as the state carries them (Session 26e): every screen alike.
   // Which can draw no see-through pixel too (X11): a deck's moving slide over one is backed without a chip.
@@ -535,7 +585,7 @@ export const Scene = memo(function Scene({
                   {/* The canvas, for a turned or cropped picture placed from the first frame (Session 55, Part 5). */}
                   <BackgroundBox.Provider value={canvas}>
                     <BackgroundPicture
-                      background={background}
+                      background={holding ? back.keep : background}
                       annotate={annotate}
                       movement={look.movement}
                       onDrawn={setDrawnKey}
@@ -555,7 +605,14 @@ export const Scene = memo(function Scene({
                     />
                   )}
                 </MainSlot>
-                {nothingUpNow && <NothingUp shows={nothingUpNow} state={state} canvas={canvas} />}
+                {nothingUpNow && (
+                  <div
+                    data-wallpaper-coming={holding ? 'true' : undefined}
+                    style={holding ? FULL_UNSEEN : FULL}
+                  >
+                    <NothingUp shows={nothingUpNow} state={state} canvas={canvas} onDrawn={wallpaperDrawn} />
+                  </div>
+                )}
                 <MainSlot slot={slotOf('slide')} swap={swap}>
                   <SlideLayerView
                     layer={shown('slide') ? layers.slide : null}
