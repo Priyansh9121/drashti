@@ -38,9 +38,12 @@ export class EditService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private active: { sourceId: string; revision: number; job: string } | null = null;
   private closed = false;
+  private readonly lifetime = new AbortController();
+  private readonly failing = new Set<string>();
   private readonly work: string;
   constructor(private readonly deps: EditServiceDeps) {
     this.work = join(deps.mediaDir, 'video-edit-work');
+    rmSync(this.work, { recursive: true, force: true });
     mkdirSync(this.work, { recursive: true });
   }
   resume(): void {
@@ -59,7 +62,7 @@ export class EditService {
     }
     if (!this.deps.idle()) return;
     const pending = this.deps.repo.waiting()[0];
-    if (!pending) return;
+    if (!pending || this.failing.has(`${pending.mediaId}/${String(pending.revision)}`)) return;
     const source = this.deps.source(pending.mediaId);
     if (!source || !existsSync(source.path)) {
       this.fail(
@@ -74,8 +77,13 @@ export class EditService {
     let checked: MediaInfo | null = null;
     let copyId: string | null = null;
     const current = () => {
-      const edit = this.deps.repo.read(pending.mediaId);
-      return !this.closed && edit?.revision === pending.revision && edit.state === 'preparing';
+      if (this.closed) return false;
+      try {
+        const edit = this.deps.repo.read(pending.mediaId);
+        return edit?.revision === pending.revision && edit.state === 'preparing';
+      } catch {
+        return false;
+      }
     };
     const options: EditCopyOptions = {
       lengthMs: 0,
@@ -151,7 +159,7 @@ export class EditService {
         if (!this.deps.idle()) return;
         const id = copyId;
         const completed = await this.deps.write(
-          { signal: new AbortController().signal, allowed: () => current() && this.deps.idle() },
+          { signal: this.lifetime.signal, allowed: () => current() && this.deps.idle() },
           () => this.deps.repo.complete(pending.mediaId, pending.revision, id),
         );
         if (completed) this.tell(pending.mediaId);
@@ -174,11 +182,19 @@ export class EditService {
     if (edit) this.deps.changed(edit);
   }
   private fail(id: string, revision: number, message: string): void {
-    this.deps.repo.failed(id, revision, message);
-    this.tell(id);
+    const key = `${id}/${String(revision)}`;
+    this.failing.add(key);
+    void this.deps
+      .write({ signal: this.lifetime.signal, allowed: () => !this.closed && this.deps.idle() }, () =>
+        this.deps.repo.failed(id, revision, message),
+      )
+      .then(() => this.tell(id))
+      .catch(() => undefined)
+      .finally(() => this.failing.delete(key));
   }
   close(): void {
     this.closed = true;
+    this.lifetime.abort();
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     if (this.active) this.deps.conversions.cancelFile(this.active.job);
