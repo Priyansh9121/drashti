@@ -21,6 +21,11 @@ export interface Slot {
   /** How many times it has been tried again (a node's copy that landed late); left out the first time. */
   attempt?: number;
   /**
+   * Its file's landings and the GPU processes started when it failed, as its page counted them (Q60-31): it is tried
+   * again only for one after that. Left out: as many as its tries (a landing or a restart before it is not told apart).
+   */
+  failedAt?: number;
+  /**
    * It had its first frame here and failed while it played (Q60-31): drawn as it was, never black, until the show
    * takes it off (the page has told Main) or the next background has its first frame.
    */
@@ -93,7 +98,7 @@ export const slotKey = (layer: SlotLayer): string =>
  */
 export function retryAfterLanding(slots: Slots, landed: number): string | null {
   const failed = failedFile(slots);
-  return failed !== null && landed > (failed.attempt ?? 0) ? failed.key : null;
+  return failed !== null && landed > (failed.failedAt ?? failed.attempt ?? 0) ? failed.key : null;
 }
 
 /**
@@ -185,8 +190,10 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
       // A file that cannot play as it loads (Q60-31): the picture before stays drawn, never black; the page tells
       // Main, which takes the file off (BackgroundMedia.tsx). A video input that cannot start shows nothing, as before.
       const incoming = slots.incoming;
+      const at = event.landed === undefined ? {} : { failedAt: event.landed };
       if (incoming?.key === event.key) {
-        if (incoming.layer.kind === 'media') return { ...slots, incoming: { ...incoming, state: 'failed' } };
+        if (incoming.layer.kind === 'media')
+          return { ...slots, incoming: { ...incoming, state: 'failed', ...at } };
         return { shown: { ...incoming, state: 'failed' }, incoming: null, leaving: null, fade: null };
       }
       // One that fails while it plays stays drawn as it was until it is taken off (never black meanwhile).
@@ -197,6 +204,7 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
           shown: {
             ...shown,
             state: 'failed',
+            ...at,
             ...(shown.state === 'ready' && shown.layer.kind === 'media' ? { drawn: true as const } : {}),
           },
         };

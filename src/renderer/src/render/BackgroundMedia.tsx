@@ -71,6 +71,12 @@ function VideoSlot({
   const ref = useRef<HTMLVideoElement>(null);
   const { key, layer, attempt } = slot;
   const { mediaId, startedAt } = layer;
+  // Its file's landings and the GPU processes started, as it fails: only later ones try it again (Q60-31).
+  const landedNow = useMediaAttempt(mediaId) + useGpuRestarts();
+  const landed = useRef(landedNow);
+  useLayoutEffect(() => {
+    landed.current = landedNow;
+  });
   // Start and end points and a jump to a marker (Session 14) are read as they change, without a reload.
   const timing = useRef(layer);
   useLayoutEffect(() => {
@@ -98,7 +104,7 @@ function VideoSlot({
       onError: (error) => {
         settled = true;
         tellCannotPlay(mediaId, startedAt, attempt ?? 0, error);
-        dispatch({ type: 'failed', key });
+        dispatch({ type: 'failed', key, landed: landed.current });
       },
     });
     // No first frame within FIRST_FRAME_MS (Q60-44, the owner's answer A): said to Main, which takes it off from a
