@@ -54,6 +54,8 @@ Press **Find in playlist**, or **Find in audio playlist** above Audio’s tracks
 
 **When the screens open.** Let the picture finish drawing before judging it. The screens start without waiting for the Lower Thirds studio’s fonts; after a restart or reconnect, words restored in one of those fonts may appear a moment after their band. There is no setting to change for this.
 
+**After an update or a larger projector is added.** Start Drashti once before the sabha and leave nothing up while it prepares the library's older large pictures. Keep the stream and recording off during that quiet moment. New large pictures finish their preparation before the import says ready; check that before putting one on the screens. Their original files stay as they were.
+
 Do these about 30 minutes before the sabha starts.
 
 1. **Switch on and start Drashti.** It opens in Pro Mode, with nothing to type. If the access list let this computer in within the last 15 days, it opens at once, with the internet or without it, and checks again in the background; otherwise it needs the internet as it starts, and says **Checking this computer’s access…** meanwhile (if it shows a lock screen instead, see section 3). If the screen shows Simple Mode (as when Drashti stopped unexpectedly in it), double-click **Pro Mode** at the top right (section 9). If it says **Simple Mode only on this computer** there instead, this computer's access is for Simple Mode only: ask whoever approves access for Pro access (section 3). If it opens with two seconds of a photo (the opening), perhaps with a quiet sound, any key, click or tap ends it at once, and that key does nothing else.
