@@ -16,6 +16,7 @@ import {
   type PageGlobals,
 } from './helpers';
 import { goLive, makeSlides } from './placeholder-slides';
+import { readPictureRole } from './picture-role-read';
 
 const CRC = Uint32Array.from({ length: 256 }, (_, n) => {
   let value = n;
@@ -86,28 +87,28 @@ test('an oversized imported still is ready with its display source, while the or
     if (!copy) throw new Error('The imported picture was announced ready without its display rendition.');
     expect(looks[smallId]?.display).toBeUndefined();
     const source = displayUrl(id, copy.key);
-    const drawn = await win.evaluate(async (url) => {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('The display file could not be read.');
-      const blob = await response.blob();
-      const hash = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
-      // The same encoded bytes in an origin-clean bitmap: custom-scheme Image elements taint a test canvas.
-      const image = await createImageBitmap(blob);
+    const encoded = await readPictureRole(app, source);
+    // Main reads the same registered role URL. The operator's deliberate connect-src rule stays in force.
+    const pixels = await win.evaluate(async (encoded) => {
+      const bytes = Uint8Array.from(atob(encoded), (byte) => byte.charCodeAt(0));
+      const image = await createImageBitmap(new Blob([bytes]));
       const canvas = new OffscreenCanvas(image.width, image.height);
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) throw new Error('No CPU canvas.');
-      ctx.drawImage(image, 0, 0);
-      const drawn = {
-        width: image.width,
-        height: image.height,
-        hash: Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join(''),
-        opaque: ctx.getImageData(Math.floor(image.width / 4), Math.floor(image.height / 2), 1, 1).data[3],
-        alpha: ctx.getImageData(Math.floor((image.width * 3) / 4), Math.floor(image.height / 2), 1, 1)
-          .data[3],
-      };
-      image.close();
-      return drawn;
-    }, source);
+      try {
+        ctx.drawImage(image, 0, 0);
+        return {
+          width: image.width,
+          height: image.height,
+          opaque: ctx.getImageData(Math.floor(image.width / 4), Math.floor(image.height / 2), 1, 1).data[3],
+          alpha: ctx.getImageData(Math.floor((image.width * 3) / 4), Math.floor(image.height / 2), 1, 1)
+            .data[3],
+        };
+      } finally {
+        image.close();
+      }
+    }, encoded.toString('base64'));
+    const drawn = { ...pixels, hash: createHash('sha256').update(encoded).digest('hex') };
     expect(drawn).toMatchObject({ width: 1920, height: 1080, opaque: 255 });
     expect(Math.abs((drawn.alpha ?? 0) - 96)).toBeLessThanOrEqual(1);
     const original = join(
@@ -117,12 +118,9 @@ test('an oversized imported still is ready with its display source, while the or
       `${large.hash}.png`,
     );
     expect(createHash('sha256').update(readFileSync(original)).digest('hex')).toBe(large.hash);
-    const originalRoleHash = await win.evaluate(async (url) => {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('The original picture role could not be read.');
-      const hash = await crypto.subtle.digest('SHA-256', await response.arrayBuffer());
-      return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('');
-    }, mediaUrl(id));
+    const originalRoleHash = createHash('sha256')
+      .update(await readPictureRole(app, mediaUrl(id)))
+      .digest('hex');
     expect(originalRoleHash).toBe(large.hash);
     expect(await importAndGetIds(win, [large.file])).toEqual([id]);
     await setUpScreen(win);
