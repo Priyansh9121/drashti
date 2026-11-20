@@ -29,6 +29,7 @@ Update after a sabha, and update Main and nodes together.
 - Media information… (right-click a video or a sound, both modes): its container, length, size, picture and sound tracks, with Copy.
 - QR code…: Download… saves the code as a PNG and an SVG; a logo can sit in its middle.
 - Events out’s Copy puts a new secret on the clipboard again.
+- Help › Report a Problem… (both modes and nodes) sends the admin what went wrong, by feature, through the access list (its admin pastes the new script once).
 - Help › Drashti Manual…: every feature, searchable and printable.
 - Help › Save Diagnostics… now holds the graphics: each GPU and its driver, how each part draws, the video decoding offered.
 
