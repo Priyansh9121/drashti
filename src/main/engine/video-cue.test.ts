@@ -78,7 +78,9 @@ describe('S5 video cue in the show engine', () => {
     expect(engine.current.videoCue?.ready).toEqual([]);
     expect(engine.dispatch({ type: 'goVideoCue', cueId: cue.id }).ok).toBe(false);
     ready(engine, cue.id);
-    expect(videoCueReady(engine.current.videoCue!)).toBe(true);
+    const prepared = engine.current.videoCue;
+    if (!prepared) throw new Error('No cue after readiness');
+    expect(videoCueReady(prepared)).toBe(true);
   });
 
   it('Go reuses the prepared showing with one future engine moment', () => {

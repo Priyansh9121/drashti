@@ -1,3 +1,4 @@
+import type { NodeVideoCueReport } from './nodes';
 import { z } from 'zod';
 import { controllerAreasSchema } from './controller-actions';
 import { cleanNameSchema, cleanRenameName } from './rename-name';
@@ -155,5 +156,13 @@ export const nodeCannotPlaySchema: z.ZodType<NodeCannotPlayReport> = z
     startedAt: finite,
     code: z.number().int().min(-10).max(10),
     words: z.string().max(1000),
+  })
+  .strict();
+
+export const nodeVideoCueSchema: z.ZodType<NodeVideoCueReport> = z
+  .object({
+    cueId: z.string().min(1).max(128),
+    screenId: z.string().min(1).max(128),
+    state: z.enum(['ready', 'loading', 'failed']),
   })
   .strict();

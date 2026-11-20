@@ -1,3 +1,4 @@
+import { applyVideoEnvelope } from '../audio/video-envelope';
 import { reportVideoCue } from '../render/video-cue-report';
 import { videoSoundGain } from '../audio/sounds';
 import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
@@ -34,6 +35,7 @@ interface OwnSound {
   el: HTMLAudioElement;
   source: MediaElementAudioSourceNode;
   gain: GainNode;
+  videoGain: GainNode;
   /** What it plays now (its start and end points and a jump, as the audio player follows them). */
   sound: Sound;
   /** Its tone's filters once its file has had a tone (alpha.20): as the hall hears it. */
@@ -163,6 +165,7 @@ export class StreamSound {
       if (wanted.has(key)) continue;
       own.stop();
       own.source.disconnect();
+      own.videoGain.disconnect();
       own.tone?.disconnect();
       own.el.remove();
       this.own.delete(key);
@@ -191,10 +194,21 @@ export class StreamSound {
       const source = this.ctx.createMediaElementSource(el);
       const gain = this.ctx.createGain();
       gain.gain.value = this.levelOf(sound);
-      source.connect(gain).connect(this.mix);
+      const videoGain = this.ctx.createGain();
+      applyVideoEnvelope(videoGain, sound, engineNow());
+      source.connect(gain).connect(videoGain).connect(this.mix);
       // Its file's tone (alpha.20), as the hall hears it: only Drashti's own sounds, never the sound input.
       const tone = toneThrough(this.ctx, source, gain, null, sound.tone ?? null);
-      const own: OwnSound = { el, source, gain, sound, tone, stop: () => undefined, resync: () => undefined };
+      const own: OwnSound = {
+        el,
+        source,
+        gain,
+        videoGain,
+        sound,
+        tone,
+        stop: () => undefined,
+        resync: () => undefined,
+      };
       const playback = startPlayback(el, {
         mediaId: sound.mediaId,
         startedAt: sound.startedAt,
@@ -225,7 +239,7 @@ export class StreamSound {
    * kind's level, 0 while muted (X33).
    */
   private levelOf(sound: Sound, musicLevel = this.musicLevel()): number {
-    return sound.volume * soundGain(sound, musicLevel, this.state) * videoSoundGain(sound, engineNow());
+    return sound.volume * soundGain(sound, musicLevel, this.state);
   }
 
   /** The music's level now (Part 7, K), by the engine's time. */
@@ -238,6 +252,7 @@ export class StreamSound {
   private applyLevels(): void {
     const musicLevel = this.musicLevel();
     for (const own of this.own.values()) {
+      applyVideoEnvelope(own.videoGain, own.sound, engineNow());
       if (own.sound.envelope)
         own.el.dataset['crossfadeGain'] = String(
           Math.round(videoSoundGain(own.sound, engineNow()) * 1e6) / 1e6,

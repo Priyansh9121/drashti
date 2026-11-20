@@ -61,6 +61,7 @@ export type SlotEvent =
   | { type: 'cue'; cue: VideoCue | null }
   | { type: 'activate'; key: string; at: number; fade?: VideoCrossfade | null }
   | { type: 'pairDone' }
+  | { type: 'joinPair'; layer: MediaLayer; fade: VideoCrossfade }
   /** `joined`: the first the window hears of the layer (it has just opened or reloaded). */
   | { type: 'layer'; layer: BackgroundLayer | null; joined?: boolean }
   /** `at`: when it became ready, to time its dissolve. */
@@ -127,6 +128,13 @@ function arrive(slots: Slots, ready: Slot, at: number | undefined): Slots {
 
 export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
   switch (event.type) {
+    case 'joinPair':
+      return {
+        shown: { key: slotKey(event.layer), layer: event.layer, state: 'loading' },
+        incoming: null,
+        leaving: { key: slotKey(event.fade.from), layer: event.fade.from, state: 'loading' },
+        fade: { start: event.fade.at, ms: event.fade.durationMs },
+      };
     case 'pairDone':
       return slots.leaving?.layer.kind === 'media' &&
         slots.shown?.layer.kind === 'media' &&
@@ -146,7 +154,7 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
     }
     case 'activate': {
       const coming = slots.incoming;
-      if (!coming || coming.key !== event.key || coming.cued || coming.state !== 'ready') return slots;
+      if (coming?.key !== event.key || coming.cued || coming.state !== 'ready') return slots;
       if (event.fade)
         return {
           shown: coming,
@@ -187,6 +195,10 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
       };
     }
     case 'ready': {
+      if (slots.shown?.key === event.key && slots.shown.state === 'loading')
+        return { ...slots, shown: { ...slots.shown, state: 'ready' } };
+      if (slots.leaving?.key === event.key && slots.leaving.state === 'loading')
+        return { ...slots, leaving: { ...slots.leaving, state: 'ready' } };
       // A video input that could not start has started (Session 50: plugged in again): on at once, as nothing
       // was on screen for it meanwhile. A file that could not play stays so (a node's copy landing retries it).
       const failed = slots.shown;

@@ -1,3 +1,4 @@
+import { applyVideoEnvelope } from './video-envelope';
 import { reportVideoCue } from '../render/video-cue-report';
 import { videoSoundGain } from './sounds';
 import { bandsText, type ToneChain, toneThrough } from './tone-chain';
@@ -39,6 +40,7 @@ interface Player {
   resync: () => void;
   /** Its gain (Part 7): even loudness, and the music stepping aside; null where Web Audio could not be had. */
   level: GainNode | null;
+  videoLevel: GainNode | null;
   /** Its element's way into Web Audio, and its tone's filters once its file has had a tone (alpha.20). */
   source: MediaElementAudioSourceNode | null;
   tone: ToneChain | null;
@@ -110,9 +112,12 @@ const meterSpectrum = new Float32Array(1024);
 function setLevel(player: Player, musicLevel: number): void {
   const state = useEngine.getState().state;
   const envelope = videoSoundGain(player.sound, engineNow());
-  if (player.sound.envelope) player.el.dataset['crossfadeGain'] = String(Math.round(envelope * 1e6) / 1e6);
-  else delete player.el.dataset['crossfadeGain'];
-  const value = Math.round(soundGain(player.sound, musicLevel, state) * envelope * 1000) / 1000;
+  if (player.sound.envelope) {
+    player.el.dataset['crossfadeGain'] = String(Math.round(envelope * 1e6) / 1e6);
+    player.el.dataset['crossfadeAt'] = String(engineNow());
+  } else delete player.el.dataset['crossfadeGain'];
+  if (player.videoLevel) applyVideoEnvelope(player.videoLevel, player.sound, engineNow());
+  const value = Math.round(soundGain(player.sound, musicLevel, state) * 1000) / 1000;
   // Where Web Audio could not be had, the file plays as it is (as before Part 7), and silent while its kind is muted
   // or at 0 %: a mute always holds.
   if (!player.level) {
@@ -211,6 +216,7 @@ function play(state: EngineState | null): void {
       fadingOut.delete(player);
       player.stop();
       player.level?.disconnect();
+      player.videoLevel?.disconnect();
       player.tone?.disconnect();
       player.el.remove();
     };
@@ -251,17 +257,20 @@ function play(state: EngineState | null): void {
     // Through its own gain to the chosen output (Part 7); straight out where Web Audio could not be had.
     const c = audioContext();
     let level: GainNode | null = null;
+    let videoLevel: GainNode | null = null;
     let source: MediaElementAudioSourceNode | null = null;
     let tone: ToneChain | null = null;
     if (c && master) {
       try {
         level = c.createGain();
         source = c.createMediaElementSource(el);
-        source.connect(level).connect(master);
+        videoLevel = c.createGain();
+        source.connect(level).connect(videoLevel).connect(master);
         // Its file's tone (alpha.20): filters between its source and its gain, only for a file that has one.
         tone = toneThrough(c, source, level, null, sound.tone ?? null);
       } catch {
         level = null;
+        videoLevel = null;
         source = null;
       }
     }
@@ -276,6 +285,7 @@ function play(state: EngineState | null): void {
       stop: () => undefined,
       resync: () => undefined,
       level,
+      videoLevel,
       levelSet: -1,
       source,
       tone,

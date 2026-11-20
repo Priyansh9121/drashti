@@ -1816,7 +1816,16 @@ function start(): void {
         for (const entry of manager.windows())
           if (audience.has(entry.screenId) && !entry.window.isDestroyed())
             ids.push(`picture:${entry.window.webContentsId}`);
-        const program = streaming?.programContents();
+        const remote = new Set(
+          nodeService
+            ?.screenStatus()
+            .filter((s) => s.state === 'showing')
+            .map((s) => s.screenId) ?? [],
+        );
+        for (const screen of screenRepo.screens())
+          if (screen.nodeId && screen.enabled && audience.has(screen.id) && remote.has(screen.id))
+            ids.push(`node:${screen.nodeId}:${screen.id}`);
+        const program = streaming.programContents();
         if (program && !program.isDestroyed()) ids.push(`picture:${program.id}`, `sound:${program.id}`);
         return ids;
       },
@@ -2499,6 +2508,7 @@ function start(): void {
     // Audience or Stage (Session 50), by the screen's group.
     switchOf: (s) => switchFor(screenRepo.groupRole(s.groupId) ?? 'audience'),
     onChange: () => {
+      engine.videoCuePageJoined('');
       // A hall screen stopped, or back (events out: Session 28).
       const screensNow = manager.status().map((st): ScreenState => ({
         screenId: st.screenId,
@@ -6136,6 +6146,7 @@ function start(): void {
         : Promise.resolve({ ok: false as const, message: 'Main is starting: the report goes in a moment.' }),
     onAir: () => streaming.inUse(),
     changed: (status) => {
+      engine.videoCuePageJoined('');
       sendToOperator(IPC.nodes.changed, status);
     },
     screensChanged: () => {
@@ -6149,6 +6160,16 @@ function start(): void {
     },
     // A paired computer's screen could not play a video (Q60-44, the owner's answer A): it keeps what it showed; the
     // video plays on everywhere else, and the operator is told, once for each node and showing (media/cannot-play.ts).
+    videoCue: (nodeId, report) => {
+      if (
+        screenRepo.screen(report.screenId)?.nodeId !== nodeId ||
+        engine.current.videoCue?.id !== report.cueId
+      )
+        return;
+      const participant = `node:${nodeId}:${report.screenId}`;
+      if (report.state === 'loading') engine.videoCuePageJoined(participant);
+      else engine.reportVideoCue(report.cueId, participant, report.state === 'ready');
+    },
     cannotPlay: (node, report) => {
       const file = media.kindAndName(report.mediaId);
       if (file?.kind !== 'video') return;

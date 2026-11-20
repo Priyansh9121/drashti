@@ -1,3 +1,4 @@
+import { type SavedVideoCue, restoredVideoCue } from '../recovery/video-cue';
 import {
   type CuedVideo,
   type VideoCue,
@@ -337,6 +338,7 @@ export interface EngineOptions {
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
 export interface RestoreRequest {
+  videoCue?: SavedVideoCue | null;
   /**
    * The slide, and when it went up (Session 51; left out by files saved before): it keeps that time, so its videos
    * and their sound carry on, and it draws settled, with no entrance again.
@@ -568,7 +570,7 @@ export class ShowEngine {
   /** A first-frame result from a trusted page; stale showing identities do nothing. */
   reportVideoCue(cueId: string, participant: string, ready: boolean): CommandResult {
     const cue = this.state.videoCue;
-    if (!cue || cue.id !== cueId || !cue.required.includes(participant) || this.state.stopped)
+    if (cue?.id !== cueId || !cue.required.includes(participant) || this.state.stopped)
       return this.unchanged();
     return this.atOnce(() =>
       this.apply([
@@ -591,16 +593,11 @@ export class ShowEngine {
   /** A page reloaded: its previous decoded frame no longer exists. */
   videoCuePageJoined(participant: string): void {
     const cue = this.state.videoCue;
-    if (cue?.ready.includes(participant))
-      this.apply([
-        {
-          type: 'videoCue/set',
-          cue: {
-            ...cue,
-            ready: cue.ready.filter((p) => p !== participant),
-          },
-        },
-      ]);
+    if (!cue) return;
+    const required = [...new Set(this.options.videoCueParticipants?.() ?? cue.required)];
+    const ready = cue.ready.filter((p) => p !== participant && required.includes(p));
+    if (!sameData(required, cue.required) || !sameData(ready, cue.ready))
+      this.apply([{ type: 'videoCue/set', cue: { ...cue, required, ready } }]);
   }
 
   private prepareVideoCue(
@@ -638,7 +635,7 @@ export class ShowEngine {
       },
       undefined,
       true,
-      playlist?.itemId ?? null,
+      playlist?.itemId,
     );
     if (layer.kind !== 'media') return NO_CHANGE;
     const startedAt = Math.max(this.now(), this.cueStamp + 1);
@@ -671,7 +668,7 @@ export class ShowEngine {
 
   private goVideoCue(id: string, automatic = false, early = false): Resolved {
     const cue = this.state.videoCue;
-    if (!cue || cue.id !== id)
+    if (cue?.id !== id)
       return { ok: false, error: 'not-playable', message: 'No video is cued: cue a video first.' };
     const required = [...new Set(this.options.videoCueParticipants?.() ?? cue.required)];
     if (!videoCueReady({ ...cue, required }))
@@ -816,14 +813,15 @@ export class ShowEngine {
       !this.state.layers.background.seek?.paused
         ? cue
         : null;
-    const key = want ? `${want.id}@${want.automatic!.at}` : null;
+    const automatic = want?.automatic;
+    const key = want && automatic ? `${want.id}@${automatic.at}` : null;
     if (key === this.cueWait?.key) return;
     this.cueWait?.cancel();
     this.cueWait = null;
-    if (want && key)
+    if (want && automatic && key)
       this.cueWait = {
         key,
-        cancel: this.wait(Math.max(0, want.automatic!.at - VIDEO_GO_LEAD_MS - this.now()), () => {
+        cancel: this.wait(Math.max(0, automatic.at - VIDEO_GO_LEAD_MS - this.now()), () => {
           this.cueWait = null;
           this.atOnce(() => {
             const shown = this.goVideoCue(want.id, true);
@@ -996,6 +994,12 @@ export class ShowEngine {
         ...(above ? { over: above } : {}),
       };
       actions.push({ type: 'audio/set', audio });
+    }
+    if (request.videoCue) {
+      const cue = restoredVideoCue(request.videoCue, this.options.videoCueParticipants?.() ?? [], this.now());
+      if (this.options.mediaKind && this.options.mediaKind(cue.background.mediaId) !== 'video')
+        cue.error = 'The cued file is not ready: find it in Media and cue it again.';
+      actions.push({ type: 'videoCue/set', cue });
     }
     // A message up for a set time comes back for the rest of it (Session 55); one whose time is up by now does not.
     const back = (request.messages ?? []).filter((m) => m.until === undefined || m.until > this.now());

@@ -139,7 +139,7 @@ function VideoSlot({
       playback.current = null;
       p();
     };
-  }, [key, mediaId, attempt, startedAt, dispatch]);
+  }, [key, mediaId, attempt, startedAt, layer.cueId, dispatch]);
   const seekAt = layer.seek?.at;
   const clipKey = `${String(layer.clip?.startMs)}/${String(layer.clip?.endMs)}`;
   useEffect(() => {
@@ -418,7 +418,9 @@ function BackgroundPlayer({
   if (seen !== layer) {
     setSeen(layer);
     // The first time: this window has just opened, perhaps part-way through a dissolve (Session 23).
-    dispatch({ type: 'layer', layer, joined: seen === undefined });
+    if (seen === undefined && crossfade && layer?.kind === 'media')
+      dispatch({ type: 'joinPair', layer, fade: crossfade });
+    else dispatch({ type: 'layer', layer, joined: seen === undefined });
   }
   const [seenCue, setSeenCue] = useState<VideoCue | null | undefined>(undefined);
   if (seenCue !== cue) {

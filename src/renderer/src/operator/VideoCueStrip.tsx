@@ -14,7 +14,7 @@ function cueMenu(target: FileTarget) {
   return [
     {
       label: 'Cue',
-      onSelect: () => dispatch({ type: 'cueVideo', mediaId, ...(playlist ? { playlist } : {}) }),
+      onSelect: () => void dispatch({ type: 'cueVideo', mediaId, ...(playlist ? { playlist } : {}) }),
     },
   ];
 }
@@ -73,11 +73,15 @@ export function VideoCueStrip() {
         variant="primary"
         aria-label="Go cued video"
         disabled={!ready}
-        onClick={() => dispatch({ type: 'goVideoCue', cueId: cue.id })}
+        onClick={() => void dispatch({ type: 'goVideoCue', cueId: cue.id })}
       >
         Go
       </Button>
-      <Button size="sm" aria-label="Cancel video cue" onClick={() => dispatch({ type: 'cancelVideoCue' })}>
+      <Button
+        size="sm"
+        aria-label="Cancel video cue"
+        onClick={() => void dispatch({ type: 'cancelVideoCue' })}
+      >
         Cancel
       </Button>
     </div>
