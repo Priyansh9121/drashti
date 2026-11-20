@@ -1,10 +1,10 @@
 # Help and when something goes wrong
 
-**Help**, in the menu bar, has this manual, the guides, the keys, diagnostics and updates. Below them, what to do when something goes wrong during a sabha: stay calm, the hall's screens keep their picture.
+**Help**, in the menu bar, has this manual, the guides, the keys, Report a Problem…, diagnostics and updates. Below them, what to do when something goes wrong during a sabha: stay calm, the hall's screens keep their picture.
 
 ## The Help menu
 
-**What it is.** **Drashti Manual…** (this manual), **Guides…** (the operator's, the presenter's, the admin's and the setup day's guides), **Keyboard Shortcuts…**, **Save Diagnostics…** and **Check for Updates…**.
+**What it is.** **Drashti Manual…** (this manual), **Guides…** (the operator's, the presenter's, the admin's and the setup day's guides), **Keyboard Shortcuts…**, **Report a Problem…**, **Save Diagnostics…** and **Check for Updates…**.
 
 **When you would use it.** Whenever you need help, or after a problem.
 
@@ -43,6 +43,22 @@
 3. Answers to questions such as "When a screen is black or frozen, what do I do?" come first.
 
 ![Help › Guides…: the guides, searchable](../screenshots/manual-guides.png)
+
+## Report a Problem…
+
+**What it is.** **Help › Report a Problem…** tells the admin where a problem is and what it is. You tick the features it is in (from this manual's chapters, or found by a search), say what went wrong with each, and send it: it goes to the admin's email through the access list, and a short email tells you it arrived. The diagnostics, the crash files and a picture of this window go with it only when you tick them, and **Review…** shows exactly what goes before **Send**.
+
+**When you would use it.** When something in Drashti does not work as it should, or a notice says something went wrong: the notice's **Report this…** fills in its words and its feature.
+
+**How:**
+
+1. Choose **Help**, then **Report a Problem…**.
+2. Tick the feature the problem is in, in its chapter or by typing its name in **Find a feature**. Tick more if it is in several.
+3. Say what went wrong with each, and what you expected if you like.
+4. Tick **Diagnostics**, **Crash files** or **A picture of this window** if they would help.
+5. Press **Review…**, read what goes, then **Send**. Without the internet, or while the stream or a recording is on, it waits on this computer and goes by itself later.
+
+![Report a Problem…](../screenshots/manual-report-problem.png)
 
 ## Save Diagnostics…
 

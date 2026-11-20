@@ -107,7 +107,7 @@ export const GUIDE_ANSWERS: readonly GuideAnswer[] = [
   {
     question: 'When anything went wrong in the sabha, what do I do?',
     doc: 'operator',
-    words: 'If anything went wrong, **Help**, then **Save Diagnostics…**',
+    words: 'If anything went wrong, **Help**, then **Report a Problem…**',
   },
   {
     question: 'When the phone says “Not connected”, what do I do?',
