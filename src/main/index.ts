@@ -163,7 +163,7 @@ import { AudioOutput } from './audio/audio-output';
 import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogJournal } from './crash-journal';
 import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
-import { type CrashFilesChoice, saveDiagnostics } from './diagnostics';
+import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
 import { noPictureNotice } from '../shared/no-picture';
 import { phaseLine, windowStartLine } from './start-phases';
@@ -597,6 +597,30 @@ async function chooseCrashFiles(): Promise<CrashFilesChoice | null> {
   });
   if (answer.response !== 0) return null;
   return { files, included: answer.checkboxChecked, kept: crashFilesKept };
+}
+
+/**
+ * The graphics for Save Diagnostics (Session 60, the owner's Q60-37): how each feature draws, and Chromium's GPU
+ * details if it gives them within 3 s (Save Diagnostics is asked for by hand, never mid-drawing; a slow answer is said).
+ */
+async function readGraphics(): Promise<GraphicsInfo> {
+  const featureStatus = app.getGPUFeatureStatus() as unknown as Record<string, string>;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const info = await Promise.race([
+      app.getGPUInfo('complete'),
+      new Promise<never>((_, refuse) => {
+        timer = setTimeout(() => {
+          refuse(new Error('not answered within 3 s'));
+        }, 3000);
+      }),
+    ]);
+    return { featureStatus, info };
+  } catch (error) {
+    return { featureStatus, info: null, problem: error instanceof Error ? error.message : String(error) };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** What the notice says once Diagnostics is saved. */
@@ -8038,6 +8062,7 @@ function start(): void {
             crashFiles: crash,
             logFiles: logFiles(),
             now: new Date(),
+            graphics: await readGraphics(),
           });
           log.info(`Diagnostics saved to the Desktop${crash.included ? ', with the crash files' : ''}`);
           sendToOperator(IPC.app.notice, { text: savedDiagnosticsText(file, crash) });
