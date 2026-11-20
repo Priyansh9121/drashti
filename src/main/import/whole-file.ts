@@ -362,10 +362,12 @@ export async function wholeFile(path: string): Promise<Wholeness> {
     if (head.subarray(0, 16).equals(ASF_HEADER)) return await asfWhole(fh, size);
     // JPEG 2000: its boxes (a signature box first) with its codestream among them; or a bare codestream. Either
     // codestream ends with its end marker.
-    if (ascii(4, 8) === 'jP  ')
-      return await boxesWhole(fh, size, CODESTREAM, (found) =>
-        found ? endsWithEoi(fh, size) : Promise.resolve('cut'),
+    if (ascii(4, 8) === 'jP  ') {
+      const jp2 = fh;
+      return await boxesWhole(jp2, size, CODESTREAM, (found) =>
+        found ? endsWithEoi(jp2, size) : Promise.resolve('cut'),
       );
+    }
     if (head.readUInt32BE(0) === 0xff4fff51) return await endsWithEoi(fh, size);
     // An MPEG transport stream (a camcorder's AVCHD .mts, a .m2ts, a TV recording's .ts): no size nor end mark, but
     // whole packets of 188 bytes (192 in an M2TS, each with its time first). One ending part-way through a packet is
