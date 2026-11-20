@@ -470,6 +470,11 @@ const bridge: DrashtiBridge = {
     copyDetails: (text) => invoke(IPC.media.copyDetails, text),
     resumePoint: (mediaId) => invoke(IPC.media.resumePoint, mediaId),
     snapshot: (playing) => invoke(IPC.media.snapshot, playing),
+    videoEdit: (mediaId) => invoke(IPC.media.videoEdit, mediaId),
+    setVideoEdit: (request) => invoke(IPC.media.setVideoEdit, request),
+    onVideoEdit: (listener) => on(IPC.media.videoEditChanged, listener),
+    playback: (mediaId) => invoke(IPC.media.playback, mediaId),
+    setPlayback: (mediaId, settings) => invoke(IPC.media.setPlayback, mediaId, settings),
     setMarkers: (mediaId, markers) => invoke(IPC.media.setMarkers, mediaId, markers),
   },
   sound: {
@@ -495,6 +500,7 @@ const bridge: DrashtiBridge = {
       on(IPC.audio.testTone, (payload) => {
         listener(payload.deviceId);
       }),
+    tryAgain: () => invoke(IPC.audio.tryAgain),
   },
   network: {
     status: () => invoke(IPC.network.status),
@@ -793,6 +799,10 @@ const bridge: DrashtiBridge = {
     onTestThrow: (listener) =>
       on(IPC.output.testThrow, () => {
         listener();
+      }),
+    onTestThrowWhile: (listener) =>
+      on(IPC.output.testThrowWhile, ({ mediaId }) => {
+        listener(mediaId);
       }),
     onTestClock: (listener) =>
       on(IPC.output.testClock, ({ at }) => {

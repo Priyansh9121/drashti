@@ -35,7 +35,7 @@ The library holds everything on this computer that can go on the screens: presen
 
 ## Importing files
 
-**What it is.** **Import…** brings files and folders into the library: presentations, PDFs, PowerPoint and Keynote decks, pictures, videos and sounds. A file the screens can't play as it is says **Converting…** until Drashti has made a copy that plays.
+**What it is.** **Import…** brings files and folders into the library: presentations, PDFs, PowerPoint and Keynote decks, pictures, videos and sounds. A file the screens can't play as it is says **Converting…** until Drashti has made a copy that plays: see **Bringing things in and sharing › Files Drashti converts**.
 
 **When you would use it.** Before the sabha, for anything new you will show.
 
@@ -97,7 +97,7 @@ The library holds everything on this computer that can go on the screens: presen
 
 **What it is.** Every row, file, video, sound and picture has one menu, wherever it shows. **Delete…** is always last, with **Undo**.
 
-**When you would use it.** To rename, trim, check or remove something.
+**When you would use it.** To rename, trim, check or remove something, or to set a video's or sound's own **Sound and picture…** (Bass, Treble, its delays, a video's shape).
 
 **How:**
 
@@ -121,7 +121,26 @@ The library holds everything on this computer that can go on the screens: presen
 3. Press **Copy** to put its words in a message or a problem report.
 4. Press **Esc** to close it.
 
-![A playlist's right-click menu](../screenshots/share-with-phones.png)
+For the button that offers a long file's saved place, see **LIVE, Back and Next › Resume where it stopped**. For the time bar's repeat, frame steps and Snapshot, see that chapter too.
+
+![Media: right-click a video or sound for Media information…](../screenshots/convert-media-list-done.png)
+
+## Edit Video
+
+**What it is.** **Edit Video…** in a ready local video's right-click menu, in Pro Mode: one window with a private source preview, trim timeline, and Picture, Sound and Playback sections. The recipe belongs to the library video; a playlist row keeps its own trim points and markers.
+
+**When you would use it.** To prepare a video's picture, sound or timing for its next showing, or to choose the frame used for its library thumbnail.
+
+**How:**
+
+1. In **Media** or a playlist, right-click the video and choose **Edit Video…**.
+2. Type a source time such as **1:23.500** in **Go to time** and press **Jump**, or move the trim timeline. The preview is private and silent. **Use this frame as library thumbnail** keeps the chosen frame with the next Save.
+3. Set the start and end, picture, sound and playback choices. **Frame shape** offers Original shape, 16:9, 4:3, square and vertical 9:16; Original shape is the default. The source preview is labelled so it is clear which file it shows.
+4. Press **Save**. **Ready for next showing** means the saved revision is ready; **Preparing** waits while a show, stream or recording is active. A video already on the screens keeps its earlier revision. If saving fails, keep the window open, read the reason and retry Save.
+
+**Reset edits** changes the draft; press Save to keep that reset. **Cancel**, or closing the window, lets you discard an unsaved draft or keep editing. Originals, the default thumbnail, existing row trims, and Sound and picture's tone and delays are kept. A newer save in another editor is reported instead of being overwritten.
+
+![Media: right-click a video to open its editing tools](../screenshots/convert-media-list-done.png)
 
 ## The Picture editor
 

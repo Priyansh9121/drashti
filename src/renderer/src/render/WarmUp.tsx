@@ -22,7 +22,7 @@ import {
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../../shared/lower-thirds';
 import { engineNow, pauseClock } from './clock';
 import { deckTransitionFrame } from './transition-frame';
-import { framesOnTime } from './frames-on-time';
+import { drawBeforeFrames, framesOnTime } from './frames-on-time';
 import { LowerThirdView } from './LowerThirdView';
 import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
@@ -52,8 +52,9 @@ import { WarmUpBoundary } from './WarmUpBoundary';
  * It draws in a shadow tree of its own, closed, so no page script or test finds its placeholder slides,
  * tickers and lower thirds among the show's (open only when a test keeps it drawn, to look at it).
  *
- * All of it under a black layer at opacity 0.999, over black: the compositor still draws the scenes underneath,
- * but less than half an 8-bit colour level reaches the screen, so the audience sees black throughout (e2e checked).
+ * All of it under a black layer at opacity 0.999, over black, then another outside that opacity group. The
+ * compositor still draws the opaque scenes underneath. A rastered tile can round the first result to level 1
+ * (CI's Mac, the repaint marker's tile); the separate final cover attenuates that result to exact black too.
  * Unlike the old outer brightness(0), this leaves a Cover's own shade on its RGBA surface, as on air (X12 wide:
  * the filter flattened that pass, leaving its antialiased, analytically clipped pipeline for the first live Cover).
  * Drawing the scenes themselves at opacity 0 or 0.001 was skipped as unseen (Session 27); a cover leaves them opaque.
@@ -1089,7 +1090,7 @@ export function WarmUp({
       return img;
     });
     void Promise.all(images.map((img) => img.decode().catch(() => undefined))).then(() => {
-      if (!live) return;
+      if (!live || finished.current) return;
       // For a trace (the Performance check's): what the GPU made while it warmed up.
       performance.mark(mark);
       setStep({ phase: 'before', at: engineNow() });
@@ -1111,6 +1112,8 @@ export function WarmUp({
     // False once this step is left (read through a function: the checker cannot follow the cleanup).
     const run = { live: true };
     const live = () => run.live;
+    // Finish is synchronous; passive cleanup may follow a queued frame or decode continuation.
+    const warming = () => live() && !finished.current;
     const keep = (request: number) => {
       frame = request;
     };
@@ -1143,22 +1146,40 @@ export function WarmUp({
       settleCap = setTimeout(end, SETTLE_MS);
       void framesOnTime({ maxMs: SETTLE_MS, each, live, keep }).then(end);
     } else if (step.phase === 'before') {
-      let left = BEFORE_FRAMES;
-      const tick = () => {
-        drewFrame.current = true;
-        left -= 1;
-        if (left > 0) frame = requestAnimationFrame(tick);
-        else setStep({ phase: 'during', at: engineNow() });
-      };
-      frame = requestAnimationFrame(tick);
+      drawBeforeFrames({
+        count: BEFORE_FRAMES,
+        each: () => {
+          drewFrame.current = true;
+        },
+        live: warming,
+        keep,
+        ready: () => {
+          setStep({ phase: 'during', at: engineNow() });
+        },
+        // Tests only: a frame already queued by the browser can be delivered after the cut. A packaged page never holds.
+        ...(hold
+          ? {
+              frame: (tick: FrameRequestCallback) => {
+                const request = new CustomEvent('drashti-test-warm-up-before-frame', {
+                  bubbles: true,
+                  cancelable: true,
+                  detail: { tick, drew: drewFrame.current },
+                });
+                if (canvasHost.current?.dispatchEvent(request) === false) return 0;
+                return requestAnimationFrame(tick);
+              },
+            }
+          : {}),
+      });
     } else {
       /**
        * Frames until they come on time (or MAX_MS): on time, all of it has been drawn (frames-on-time.ts).
        */
-      const steadyFrames = () => framesOnTime({ maxMs: MAX_MS, each, live, keep });
+      const steadyFrames = () => framesOnTime({ maxMs: MAX_MS, each, live: warming, keep });
       void (async () => {
         pauseClock(step.at);
         await steadyFrames();
+        if (!warming()) return;
         // The screen's compositor decodes a big picture on its own after its first frames, drawing nothing of
         // it until then (Session 27: the pictures' pipelines came after the warm-up, measured); a picture's
         // decode() is the compositor's, so once they are all done its frames draw every one.
@@ -1167,12 +1188,13 @@ export function WarmUp({
           ...(uiDrawing.current?.querySelectorAll('img') ?? []),
         ];
         await Promise.all(drawn.map((img) => img.decode().catch(() => undefined)));
-        if (!live()) return;
+        if (!warming()) return;
         await steadyFrames();
+        if (!warming()) return;
         // A moment on: every change drawn again in part, as a show's next frame is.
         pauseClock(step.at + 50);
         await steadyFrames();
-        if (live()) finish(page === 'live' && uiParent && !uiCopies.current ? 'error' : 'drawn');
+        if (warming()) finish(page === 'live' && uiParent && !uiCopies.current ? 'error' : 'drawn');
       })();
     }
     return () => {
@@ -1181,7 +1203,7 @@ export function WarmUp({
       clearTimeout(settleCap);
       pauseClock(null);
     };
-  }, [step, tree, finish, page, uiParent]);
+  }, [step, tree, finish, page, uiParent, hold]);
   const urlOf = useCallback(
     (id: string, attempt?: number) => pictures[id] ?? mediaUrl(id, attempt),
     [pictures],
@@ -1286,6 +1308,19 @@ export function WarmUp({
             tree,
           )}
       </div>
+      {/* Compose this cover after the group's result: two covers within that group still leak on CI's Mac. */}
+      <div
+        data-warm-final-cover=""
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: '-1%',
+          background: '#000000',
+          opacity: 0.999,
+          zIndex: 2,
+          pointerEvents: 'none',
+        }}
+      />
       {page === 'live' &&
         uiParent &&
         step.phase === 'during' &&

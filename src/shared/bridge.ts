@@ -1,3 +1,5 @@
+import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
+import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
 import type { ControllerArea, ControllerReply, ControllerRequest } from './controller-actions';
@@ -770,6 +772,16 @@ export interface DrashtiBridge {
     resumePoint(mediaId: string): Promise<ResumePoint | null>;
     /** Snapshot (alpha.20): the frame of a video on the screens now, a PNG in Media; or why not. */
     snapshot(playing: PlayingRef): Promise<SnapshotResult>;
+    /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays; null for anything else. */
+    videoEdit(mediaId: string): Promise<VideoEditResult>;
+    setVideoEdit(request: SaveVideoEdit): Promise<VideoEditResult>;
+    onVideoEdit(listener: (edit: VideoEditSnapshot) => void): () => void;
+    playback(mediaId: string): Promise<PlaybackSettings | null>;
+    /** Keep them (heard at once wherever it plays). */
+    setPlayback(
+      mediaId: string,
+      settings: PlaybackSettings,
+    ): Promise<{ ok: true } | { ok: false; message: string }>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
@@ -818,6 +830,8 @@ export interface DrashtiBridge {
     onChosen(listener: (device: AudioDevice | null) => void): () => void;
     /** Audio player only: play a short test tone on this output ('' for the system default). */
     onTestTone(listener: (deviceId: string) => void): () => void;
+    /** The sound player given up on, tried again now (x53: its red notice's Try again). */
+    tryAgain(): Promise<{ ok: true } | { ok: false; message: string }>;
   };
   /** Built-in streaming (PLAN.md 4.2). Going live and ending need the operator's confirmation. */
   stream: {
@@ -1223,6 +1237,8 @@ export interface DrashtiBridge {
     onPointed(listener: (clip: PointedClip | null) => void): () => void;
     /** Tests only (a packaged Drashti never sends it): draw an element that throws (Session 23). */
     onTestThrow(listener: () => void): () => void;
+    /** Tests only (a packaged Drashti never sends it): the scene fails as it draws while this file is up (x53). */
+    onTestThrowWhile(listener: (mediaId: string | null) => void): () => void;
     /** Tests only (a packaged Drashti never sends it): hold the clock at a moment, or let it go (Session 26d). */
     onTestClock(listener: (at: number | null) => void): () => void;
     /** Keep these screens? (Session 50) on this output, when it covers the controls (null: answered). */

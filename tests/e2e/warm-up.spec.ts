@@ -20,7 +20,7 @@ import { decodePng } from './png-decode';
 /*
  * Warming the GPU, unseen (Session 27, render/WarmUp.tsx): before a screen first draws the show, it draws
  * every transition kind in both Movements part-way, with a lower third, messages and the ticker's band (the
- * idle rotation went in Session 55), under a black cover at opacity 0.999, so the GPU has made what they need before the first
+ * idle rotation went in Session 55), under translucent black covers in separate groups, so the GPU has made what they need before the first
  * Bold transition of a show; the audience sees black throughout. A test switch keeps it drawn, to look at.
  * Where Chromium draws without a graphics chip there is nothing to warm, and an output draws the show without
  * one (Session 57): a test switch says how Chromium draws, so both kinds of computer are tried on every system.
@@ -316,6 +316,7 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
     const tree = host?.shadowRoot;
     const wide = tree?.querySelector<HTMLElement>('[data-warm-scene="deck-cover-wide/calm/off-grid"]');
     const cover = tree?.querySelector<HTMLElement>('[data-warm-cover]');
+    const final = host?.parentElement?.querySelector<HTMLElement>('[data-warm-final-cover]');
     const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
     const pulse = tree?.querySelector<HTMLElement>('[data-warm-pulse]');
     const filters: string[] = [];
@@ -332,6 +333,11 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
       coverZ: cover ? Number(getComputedStyle(cover).zIndex) : Number.NaN,
       opacity: cover ? getComputedStyle(cover).opacity : null,
       background: cover ? getComputedStyle(cover).backgroundColor : null,
+      finalOpacity: final ? getComputedStyle(final).opacity : null,
+      finalBackground: final ? getComputedStyle(final).backgroundColor : null,
+      finalOutside: !!host && !!final && final.parentElement === host.parentElement,
+      finalAbove:
+        !!host && !!final && Number(getComputedStyle(final).zIndex) > Number(getComputedStyle(host).zIndex),
       coversEdges:
         !!host &&
         !!cover &&
@@ -359,6 +365,12 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
   expect(hiding.background, `${what}: a black cover`).toBe('rgb(0, 0, 0)');
   expect(hiding.coversEdges, `${what}: the cover extends beyond every clipped edge`).toBe(true);
   expect(hiding.above, `${what}: the cover follows the drawing`).toBe(true);
+  expect(hiding.finalOutside, `${what}: the final cover composes outside the drawing’s opacity group`).toBe(
+    true,
+  );
+  expect(hiding.finalAbove, `${what}: the final cover is above that group`).toBe(true);
+  expect(hiding.finalOpacity, `${what}: the final cover also keeps the GPU drawing underneath`).toBe('0.999');
+  expect(hiding.finalBackground, `${what}: the final cover is black`).toBe('rgb(0, 0, 0)');
   // The audience sees none of it. Keep the geometry and the exact frame if the cover ever fails.
   const light = await differenceFromBlack(page, scope);
   if (light !== 0) {
@@ -440,6 +452,13 @@ test('before a screen first draws the show it draws every kind in both Movements
   await win.getByTestId('open-stream').click();
   const program = await streamPage(app);
   // The stream draws no ticker.
+  await expect(program.locator('[data-testid="program-root"] [data-warm-up="during"]')).toHaveCount(1, {
+    timeout: 30_000,
+  });
+  // Keep looking before the black-reference helper changes the drawing’s opacity: a rastered tile containing the
+  // repaint marker can differ from the other, solid-colour tiles. Every sampled pixel must still be black.
+  for (let frame = 0; frame < 24; frame++)
+    expect(await brightest(program), `the stream’s page: black in frame ${String(frame)}`).toBe(0);
   await expectWarmUp(program, '[data-testid="program-root"]', 'the stream’s page', false);
   expect(Object.keys(await studioFonts(program)), 'the stream’s page’s start: the studio’s fonts').toEqual([
     'unloaded',
@@ -572,9 +591,22 @@ test('where Chromium draws without a graphics chip the LIVE picture draws the sh
   const win = await operatorPage(app);
   await operatorReady(win);
   // Never warmed up to its end: not begun, or cut short as soon as Chromium said how it draws (a moment after the start).
-  await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0, {
-    timeout: 30_000,
-  });
+  try {
+    await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0, {
+      timeout: 30_000,
+    });
+  } catch (error) {
+    // Keep the phase before another IPC read: a late GPU choice, a stuck hand-over and a pixel failure differ.
+    const phases = await win
+      .locator('[data-testid="live-preview"] [data-warm-up]')
+      .evaluateAll((hosts) => hosts.map((host) => ({ phase: host.getAttribute('data-warm-up') })));
+    const noGpu = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.noGpu());
+    await test.info().attach('live-warm-up-still-mounted', {
+      body: JSON.stringify({ phases, noGpu, marks: await warmUpMarks(win), lines: warmUpLines(userData) }),
+      contentType: 'application/json',
+    });
+    throw error;
+  }
   await expect
     .poll(() => warmUpLines(userData).filter((line) => line.endsWith('for the LIVE picture')))
     .toEqual([LIVE_SKIPPED]);
@@ -582,6 +614,66 @@ test('where Chromium draws without a graphics chip the LIVE picture draws the sh
     'drashti-warm-up:live-end',
   );
   await app.close();
+});
+
+test('a LIVE warm-up cut between its before frames cannot be restarted by a frame the browser had already queued', async () => {
+  const { app, userData } = await launchApp({ ...SAID_LATE, ...WITHOUT_A_CHIP });
+  try {
+    await app.context().addInitScript(() => {
+      let queued: FrameRequestCallback | null = null;
+      let delivered = false;
+      document.addEventListener('drashti-test-warm-up-before-frame', (event) => {
+        const request = event as CustomEvent<{ tick: FrameRequestCallback; drew: boolean }>;
+        const host = event.target;
+        if (
+          queued ||
+          !request.detail.drew ||
+          !(host instanceof HTMLElement) ||
+          !host.closest('[data-testid="live-preview"]')
+        )
+          return;
+        queued = request.detail.tick;
+        event.preventDefault();
+        document.documentElement.dataset['testBeforeQueued'] = 'yes';
+      });
+      new MutationObserver(() => {
+        if (!queued || delivered) return;
+        const host = document.querySelector('[data-testid="live-preview"] [data-warm-up]');
+        if (host?.getAttribute('data-warm-up') !== 'settle') return;
+        // Deliver in the gap between the cut's commit and passive cleanup, as an already-dequeued frame can be.
+        delivered = true;
+        queued(performance.now());
+        document.documentElement.dataset['testBeforeDelivered'] = 'yes';
+      }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-warm-up'] });
+    });
+    const win = await operatorPage(app);
+    // The listener must be installed before this document's warm-up begins; no condition is retried by this reload.
+    await win.reload();
+    await operatorReady(win);
+    await expect(win.locator('html')).toHaveAttribute('data-test-before-queued', 'yes', { timeout: 30_000 });
+    await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveAttribute(
+      'data-warm-up',
+      'before',
+    );
+    await app.evaluate(() => {
+      const say = (globalThis as MainGlobals).drashtiTestGpuSaid;
+      if (!say) throw new Error('Main has no late-GPU test hook');
+      say();
+    });
+    await expect(win.locator('html')).toHaveAttribute('data-test-before-delivered', 'yes');
+    await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0, {
+      timeout: 30_000,
+    });
+    await expect(win.locator('[data-testid="live-preview"] [data-testid="scene"]')).toHaveCount(1);
+    await expect
+      .poll(() => warmUpLines(userData).filter((line) => line.endsWith('for the LIVE picture')))
+      .toEqual([LIVE_SKIPPED]);
+    const marks = await warmUpMarks(win);
+    expect(marks).toContain('drashti-warm-up:live-cut');
+    expect(marks).not.toContain('drashti-warm-up:live-end');
+  } finally {
+    await app.close();
+  }
 });
 
 test('where Chromium draws without a graphics chip the stream’s page draws the show without a warm-up, as the outputs do, and the log says so once (WU-1)', async () => {

@@ -1,3 +1,4 @@
+import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
 import type { EngineState } from '../../../shared/engine/state';
 import { SOUND_LIMITS } from '../../../shared/media';
 import { musicAside, soundGain, StepAside } from '../../../shared/sound';
@@ -33,6 +34,8 @@ interface OwnSound {
   gain: GainNode;
   /** What it plays now (its start and end points and a jump, as the audio player follows them). */
   sound: Sound;
+  /** Its tone's filters once its file has had a tone (alpha.20): as the hall hears it. */
+  tone: ToneChain | null;
   stop: () => void;
   resync: () => void;
 }
@@ -48,6 +51,8 @@ export class StreamSound {
   private own = new Map<string, OwnSound>();
   private ownOn = false;
   private readonly samples = new Float32Array(2048);
+  /** The meter's spectrum, for its two bands (alpha.20, the tests' data-bands). */
+  private readonly spectrum = new Float32Array(1024);
   /** The music's own level as it steps aside and comes back (Part 7, K), and the show it follows. */
   private readonly aside = new StepAside();
   private state: EngineState | null = null;
@@ -153,6 +158,7 @@ export class StreamSound {
       if (wanted.has(key)) continue;
       own.stop();
       own.source.disconnect();
+      own.tone?.disconnect();
       own.el.remove();
       this.own.delete(key);
     }
@@ -164,6 +170,8 @@ export class StreamSound {
         current.sound = sound;
         if (moved) current.resync();
         current.el.loop = sound.loop && !sound.clip;
+        // Its tone (alpha.20), as the hall hears it, eased there while it plays.
+        current.tone = toneThrough(this.ctx, current.source, current.gain, current.tone, sound.tone ?? null);
         continue;
       }
       const el = document.createElement('audio');
@@ -179,7 +187,9 @@ export class StreamSound {
       const gain = this.ctx.createGain();
       gain.gain.value = this.levelOf(sound);
       source.connect(gain).connect(this.mix);
-      const own: OwnSound = { el, source, gain, sound, stop: () => undefined, resync: () => undefined };
+      // Its file's tone (alpha.20), as the hall hears it: only Drashti's own sounds, never the sound input.
+      const tone = toneThrough(this.ctx, source, gain, null, sound.tone ?? null);
+      const own: OwnSound = { el, source, gain, sound, tone, stop: () => undefined, resync: () => undefined };
       const playback = startPlayback(el, {
         mediaId: sound.mediaId,
         startedAt: sound.startedAt,
@@ -222,6 +232,8 @@ export class StreamSound {
     const musicLevel = this.musicLevel();
     for (const own of this.own.values())
       own.gain.gain.setTargetAtTime(this.levelOf(own.sound, musicLevel), this.ctx.currentTime, 0.015);
+    // How loud the stream is low down and high up (alpha.20, the tests' meter of Sound and picture…'s tones).
+    document.body.dataset['bands'] = bandsText(this.meter, this.spectrum);
   }
 
   /** Whether Drashti's own sound is going in. */
