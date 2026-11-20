@@ -1,8 +1,19 @@
 import { inflateSync } from 'node:zlib';
 import { encode } from 'uqr';
 import { describe, expect, it } from 'vitest';
+import { QR_SLIDE_PIXELS, qrPlan } from '../../shared/qr-picture';
 import type { NewSlideLook } from './words';
-import { QR_TEXT_MAX, qrPng, qrSlideName, qrSlidePresentation } from './qr-slide';
+import { makeQr } from './qr-maker';
+import { readQr } from './qr-read';
+import { QR_TEXT_MAX, qrSlideName, qrSlidePresentation, qrWords } from './qr-slide';
+
+/** The slide's picture of a link or words without a logo, as the QR worker makes it (null when none is made). */
+function qrPng(text: string): Uint8Array | null {
+  const words = qrWords(text);
+  if (words === null) return null;
+  const made = makeQr({ words, logo: null, about: QR_SLIDE_PIXELS, svg: false }, readQr);
+  return made.ok ? made.png : null;
+}
 
 /*
  * The QR-code slide (Session 55, Part 8, the owner's idea G): a link or words pasted become a slide with a large code
@@ -82,6 +93,7 @@ describe('the QR-code slide', () => {
     expect(qrPng('   ')).toBeNull();
     expect(qrPng('x'.repeat(QR_TEXT_MAX))).not.toBeNull();
     expect(qrPng('x'.repeat(QR_TEXT_MAX + 1))).toBeNull();
+    expect(qrPlan('x'.repeat(QR_TEXT_MAX + 1), true)).toBeNull();
   });
 
   it('makes one slide: the code large in the middle, the words under it in the look of a new slide', () => {
@@ -106,6 +118,19 @@ describe('the QR-code slide', () => {
     expect(words.style.align).toBe('center');
     expect(words.style.shrinkToFit).toBe(true);
     expect(slides[0]?.background).toBe('#101820');
+  });
+
+  it('without its words (Q60-28: the window’s choice), the code alone, larger, in the middle', () => {
+    const made = qrSlidePresentation('library-1', 'QR code: placeholder', LINK, 'media-qr', look, false);
+    const elements = made.groups[0]?.slides[0]?.elements ?? [];
+    expect(elements.map((e) => e.kind)).toEqual(['image']);
+    const picture = elements[0];
+    if (picture?.kind !== 'image') throw new Error('no picture');
+    expect(picture.mediaId).toBe('media-qr');
+    expect(picture.frame.width).toBe(picture.frame.height);
+    expect(picture.frame.height).toBeGreaterThan(720);
+    expect(picture.frame.x + picture.frame.width / 2).toBe(made.width / 2);
+    expect(picture.frame.y + picture.frame.height / 2).toBe(made.height / 2);
   });
 
   it('is named after its words, cut on a letter', () => {
