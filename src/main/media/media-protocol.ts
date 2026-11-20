@@ -68,7 +68,11 @@ export interface MediaProtocolDeps {
    * it; null for any other.
    */
   openingSound?: (sha256: string) => string | null;
-  /** Red (x54, slice 8): a stream link's local stream, not served yet. */
+  /**
+   * A stream link's local stream (alpha.20, slice 8: src/main/live-link/): its folder while that link is connecting or
+   * up, or null for any other link (its numbered segments are served from it); and its playlist as a player joined at
+   * a segment is given it (live-link-service.ts playlistFor), or null. Nothing of it is ever kept by a page.
+   */
   liveFolder?: (linkId: string) => string | null;
   livePlaylist?: (linkId: string, segment: number) => Promise<string | null>;
   /** Told about refusals that point at a broken or tampered library. */
@@ -133,6 +137,8 @@ const CONTENT_TYPES: Record<string, string> = {
   ogv: 'video/ogg',
   ts: 'video/mp2t',
   m2t: 'video/mp2t',
+  // A stream link's local playlist (alpha.20, slice 8), with its .ts segments.
+  m3u8: 'application/vnd.apple.mpegurl',
   vob: 'video/mpeg',
   mxf: 'application/mxf',
   dv: 'video/x-dv',
@@ -191,7 +197,9 @@ export type MediaRequest =
   /** Drashti's default opening photo (the owner's decision of 5 Nov 2026). */
   | { what: 'opening-default' }
   /** The opening pack's sound, as Drashti keeps it (alpha.16): by its sha256. */
-  | { what: 'opening-sound'; sha256: string };
+  | { what: 'opening-sound'; sha256: string }
+  /** A stream link's local stream (alpha.20, slice 8), as a player joined at `segment` asks: its playlist or a segment. */
+  | { what: 'live'; linkId: string; segment: number; name: string };
 
 /** A file's sha256, as Drashti names its copies by it. */
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -218,6 +226,13 @@ export function mediaRequestOf(url: string): MediaRequest | null {
     return /^[a-z0-9-]{1,80}\.png$/u.test(name) ? { what, name } : null;
   }
   if (what === 'opening-default') return parsed.pathname === '/photo' ? { what } : null;
+  if (what === 'live') {
+    const m =
+      /^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(\d{1,9})\/(index\.m3u8|seg-\d{6}\.ts)$/u.exec(
+        parsed.pathname,
+      );
+    return m?.[1] && m[2] && m[3] ? { what, linkId: m[1], segment: Number(m[2]), name: m[3] } : null;
+  }
   if (what === 'opening-sound') {
     const sha256 = parsed.pathname.slice(1);
     return SHA256.test(sha256) ? { what, sha256 } : null;
@@ -289,6 +304,10 @@ async function fileFor(
     const path = deps.openingSound?.(asked.sha256) ?? null;
     return path ? inMediaFolder(deps, path, 'The opening’s sound') : null;
   }
+  if (asked.what === 'live') {
+    const dir = deps.liveFolder?.(asked.linkId) ?? null;
+    return dir && asked.name !== 'index.m3u8' ? fileInside(dir, join(dir, asked.name)) : null;
+  }
   const { mediaId } = asked;
   const found = deps.lookup(mediaId);
   if (!found || found.missing) return null;
@@ -336,6 +355,20 @@ async function inMediaFolder(
 export async function handleMediaRequest(request: Request, deps: MediaProtocolDeps): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') return refused(405);
   const asked = mediaRequestOf(request.url);
+  // A stream link's playlist (alpha.20, slice 8): made for the player as it joined, never a file as it is.
+  if (asked?.what === 'live' && asked.name === 'index.m3u8') {
+    const text = (await deps.livePlaylist?.(asked.linkId, asked.segment)) ?? null;
+    if (text === null) return refused(404);
+    return new Response(request.method === 'HEAD' ? null : text, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.apple.mpegurl',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  }
   const file = asked === null ? null : await fileFor(asked, deps);
   if (!file) return refused(404);
 
@@ -346,6 +379,8 @@ export async function handleMediaRequest(request: Request, deps: MediaProtocolDe
     // Readable by Drashti's own pages (the only ones that can load the scheme), for making stills.
     'Access-Control-Allow-Origin': '*',
   });
+  // A stream link's playlist changes every second, and its segments go: never kept (alpha.20, slice 8).
+  if (asked?.what === 'live') headers.set('Cache-Control', 'no-store');
   const range = parseRange(request.headers.get('Range'), file.size);
   if (range === 'unsatisfiable') {
     headers.set('Content-Range', `bytes */${file.size}`);

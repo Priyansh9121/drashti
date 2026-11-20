@@ -26,6 +26,7 @@ export function backgroundWords(background: EngineState['layers']['background'])
     return `${background.media === 'image' ? 'Picture' : 'Video'} on the screens`;
   if (background?.kind === 'window') return 'Window on the screens';
   if (background?.kind === 'input') return 'Video input on the screens';
+  if (background?.kind === 'link') return 'Stream link on the screens';
   return 'Nothing on the screens';
 }
 

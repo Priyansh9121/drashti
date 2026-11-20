@@ -1,3 +1,4 @@
+import { checkLink, linkKind } from './links';
 import { MEDIA_SCHEME } from './media';
 
 /*
@@ -18,6 +19,9 @@ export type StreamLinkKind = 'hls' | 'youtube';
 export type StreamLinkCheck =
   { ok: true; kind: StreamLinkKind; url: string; host: string } | { ok: false; message: string };
 
+/** A pasted link longer than this is not one someone copied. */
+const MAX_LINK = 2000;
+
 /** What the window says a link must be. */
 export const STREAM_LINK_KINDS =
   'Paste an HLS link (one that ends in .m3u8) or a YouTube live stream’s link. Drashti only receives it: nothing is ever sent there.';
@@ -28,13 +32,43 @@ export const STREAM_LINK_KINDS =
  * the link, or another kind of address (rtmp, a file) is refused, in plain words. The link checked is the one Drashti
  * uses: whatever else a YouTube link names is left out.
  */
-export function checkStreamLink(_raw: string): StreamLinkCheck {
-  // Red (x54): not built yet.
-  return { ok: false, message: '' };
+export function checkStreamLink(raw: string): StreamLinkCheck {
+  const text = raw.trim();
+  if (text === '') return { ok: false, message: 'Paste a link first.' };
+  if (text.length > MAX_LINK) return { ok: false, message: 'That link is too long to be a stream’s link.' };
+  if (linkKind(text) === 'youtube') {
+    const checked = checkLink('youtube', text);
+    if (!checked.ok) return { ok: false, message: checked.message };
+    return { ok: true, kind: 'youtube', url: checked.url, host: 'youtube.com' };
+  }
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return { ok: false, message: `That is not a link. ${STREAM_LINK_KINDS}` };
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:')
+    return {
+      ok: false,
+      message: `Drashti plays a stream link that starts with https:// or http://. ${STREAM_LINK_KINDS}`,
+    };
+  if (url.username !== '' || url.password !== '')
+    return {
+      ok: false,
+      message: 'That link has a name and password in it. Ask for a link that plays without signing in.',
+    };
+  if (!url.pathname.toLowerCase().endsWith('.m3u8'))
+    return {
+      ok: false,
+      message: `That link is not an HLS stream’s (its address does not end in .m3u8). ${STREAM_LINK_KINDS}`,
+    };
+  url.hash = '';
+  return { ok: true, kind: 'hls', url: url.toString(), host: url.hostname.toLowerCase() };
 }
 
 /** What a stream link is called on the operator's notices, a stage screen and a phone: where it comes from. */
-export const streamLinkName = (_check: { kind: StreamLinkKind; host: string }): string => '';
+export const streamLinkName = (check: { kind: StreamLinkKind; host: string }): string =>
+  check.kind === 'youtube' ? 'YouTube live' : check.host;
 
 /**
  * How the stream link stands, for the operator: off (none up, none coming); connecting (asked for, not up yet);
