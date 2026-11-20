@@ -9,8 +9,9 @@ import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
  * More colourful appearances (Session 42): Dhaja and Tiranga draw their header and their band in their own
  * colours, with LIVE and the other states on a panel of their own in the header; the band is decoration only
  * (hidden from screen readers, no words) and goes in forced colours with the rest of the decoration; axe passes,
- * in Pro Mode and Simple Mode. Black and White draw exactly as at 9ed5d00 (the values below were read from that
- * build), whatever the colourful ones now draw. Placeholder content only.
+ * in Pro Mode and Simple Mode. Black draws exactly as at 9ed5d00 (the values below were read from that build),
+ * whatever the colourful ones now draw; White, softened to paper in Session 60 (the owner's Q60-36, Q2 A), draws its
+ * own new colours where White always drew everything. Placeholder content only.
  */
 
 /** "#rrggbb" as getComputedStyle writes it. */
@@ -211,20 +212,59 @@ async function fingerprint(win: Page) {
   }, panelHeading);
 }
 
-for (const a of [BLACK, WHITE]) {
-  test(`${a.name} draws exactly as at 9ed5d00: header, chosen tab and row, headings, and where everything sits`, async () => {
-    const { app } = await launchApp();
-    const win = await operatorPage(app);
-    await operatorReady(win);
-    await chooseMenuItem(app, `appearance-${a.id}`);
-    await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
-    await inAShow(win);
-    const now = await fingerprint(win);
-    console.info(`${a.name}: ${JSON.stringify(now)}`);
-    expect(now).toEqual(AT_9ED5D00[a.id]);
-    await app.close();
+test('Black draws exactly as at 9ed5d00: header, chosen tab and row, headings, and where everything sits', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await chooseMenuItem(app, `appearance-${BLACK.id}`);
+  await expect(win.locator('html')).toHaveAttribute('data-appearance', BLACK.id);
+  await inAShow(win);
+  const now = await fingerprint(win);
+  console.info(`Black: ${JSON.stringify(now)}`);
+  expect(now).toEqual(AT_9ED5D00['black']);
+  await app.close();
+});
+
+/** A token's colour as the page draws it, from an element with these classes (the chosen row's edge's own). */
+const drawnAs = (win: Page, className: string) =>
+  win.evaluate((c) => {
+    const probe = document.createElement('div');
+    probe.className = c;
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).borderTopColor;
+    probe.remove();
+    return colour;
+  }, className);
+
+test('White, softened to paper (Session 60, Q60-36 Q2 A), draws its new colours where White always drew everything', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await chooseMenuItem(app, `appearance-${WHITE.id}`);
+  await expect(win.locator('html')).toHaveAttribute('data-appearance', WHITE.id);
+  await inAShow(win);
+  const now = await fingerprint(win);
+  console.info(`White: ${JSON.stringify(now)}`);
+  const c = WHITE.colours;
+  const was = AT_9ED5D00['white'] as Record<string, unknown[]>;
+  // Where everything sits: as at 9ed5d00 (the last item of each, or the whole of `under`).
+  const at = (key: string) => (was[key] ?? []).at(-1);
+  expect(now).toEqual({
+    header: [rgb(c.panel), rgb(c.fg), rgb(c.line), at('header')],
+    name: [rgb(c.fg), at('name')],
+    stream: [rgb(c.muted), 'rgba(0, 0, 0, 0)', at('stream')],
+    screens: [rgb(c.fg), rgb(c.field), rgb(c['panel-2']), at('screens')],
+    live: [rgb(c.fg), at('live')],
+    underline: [rgb(c.accent)],
+    row: [await drawnAs(win, 'border border-second/70'), rgb(c['panel-3'])],
+    heading: [rgb(c.muted)],
+    under: was['under'],
+    headingText: 'Stage screen',
   });
-}
+  // Soft paper, not near-white (Q60-30 (b)): its panel at about 80 % of white's light.
+  expect(c.panel).not.toBe('#f8f8fa');
+  await app.close();
+});
 
 /*
  * Real colour (Session 44): each zone in its own colours (the left column, the middle, the right column, the layer
@@ -276,7 +316,8 @@ for (const id of ['saffron', 'holi', 'black', 'white']) {
       bar: rgb(a.zones.bar.panel),
       header: plain ? 'none' : gradient(d.header, d['header-2']),
       strip: plain ? 'none' : gradient(d.strip, d['strip-2']),
-      lit: [rgb(d.layer), rgb(a.colours.live)],
+      // A lit layer button's edge in LIVE's frame colour (Session 60: lighter on the comfortable dark appearances).
+      lit: [rgb(d.layer), rgb(a.colours['live-edge'])],
       unlit: rgb(d['layer-edge']),
     });
     if (plain) {

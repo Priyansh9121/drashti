@@ -68,7 +68,7 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 
 1. Press **+ New**, then **Smart Playlist from a Folder…**, and choose the folder.
 2. Or drop the folder anywhere on the window.
-3. Its line says which folder it follows and what is coming in.
+3. Its line says which folder it follows and what is coming in. A file still being copied joins once it is whole; if it has not changed for 2 minutes, the line says its copy may have stopped, or it is damaged.
 4. A row whose file left the folder says **Not in the folder**: **Remove the missing** takes those out.
 
 ![A smart playlist following a placeholder folder](../screenshots/smart-playlist.png)

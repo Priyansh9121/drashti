@@ -272,7 +272,7 @@ export const SlideRow = memo(function SlideRow({
           // Live at once, with no fade (Session 26g): the border and the red edge in one frame.
           'group flex min-h-12 w-full items-center gap-2 overflow-hidden rounded-md border-2 py-1 pr-2 text-left',
           live
-            ? 'border-live bg-panel-3 shadow-live-thumb'
+            ? 'border-live-edge bg-panel-3 shadow-live-thumb'
             : found
               ? 'border-accent bg-panel-2'
               : 'border-transparent hover:border-field hover:bg-panel-2',

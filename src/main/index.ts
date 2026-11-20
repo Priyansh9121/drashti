@@ -172,7 +172,14 @@ import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
-import { noPictureNotice } from '../shared/no-picture';
+import { cannotPlayNotice, NO_FIRST_FRAME, noPictureNotice } from '../shared/no-picture';
+import {
+  CannotPlay,
+  type CannotPlayWhere,
+  errorKindWords,
+  NodeCannotPlay,
+  whereWords,
+} from './media/cannot-play';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -183,6 +190,8 @@ import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
 import { MediaDetailsService } from './media/media-details';
 import { PlayHistory } from './media/play-history';
+import { takeSnapshot } from './media/snapshot';
+import { playingSchema } from '../shared/engine/playing';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
@@ -298,7 +307,7 @@ import { createPdfCopyWindow } from './library/pdf-copy-window';
 import { openGalleryWindow } from './windows/gallery-window';
 import { AppearanceService } from './appearance/appearance-service';
 import { ownSchema } from './appearance/appearance-file';
-import { FOLLOW } from '../shared/appearance/appearances';
+import { familyOf, FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList, stopTimes } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
@@ -542,6 +551,18 @@ app.on('child-process-gone', (_event, details) => {
 
 /** The GPU process's stops (Sessions 31–36, ROB-5): a second within 10 minutes is said. */
 const gpuStops = new GpuStops();
+/**
+ * A video whose element failed on a page that draws the show (Q60-31): taken off after a short wait, unless a GPU
+ * process stopped then (its videos load again by themselves). main/media/cannot-play.ts.
+ */
+/** A paired computer's screen that could not play a video (Q60-44): told once for each node and showing. */
+const nodeCannotPlay = new NodeCannotPlay();
+const cannotPlay = new CannotPlay({
+  now: () => Date.now(),
+  later: (ms, run) => {
+    setTimeout(run, ms);
+  },
+});
 /** Said to the operator (Main) once the GPU process has stopped twice within 10 minutes. */
 let gpuStoppedTwice: ((text: string) => void) | null = null;
 // The GPU process stopped (Sessions 31–36, ROB-5): Chromium starts another by itself, but the videos it was
@@ -549,6 +570,7 @@ let gpuStoppedTwice: ((text: string) => void) | null = null;
 // engine's time. A second stop within 10 minutes is told to the operator, once.
 app.on('child-process-gone', (_event, details) => {
   if (details.type !== 'GPU' || quitting) return;
+  cannotPlay.gpuGone();
   log.warn(
     `The GPU process stopped (${details.reason}); its features now: ${JSON.stringify(app.getGPUFeatureStatus())}`,
   );
@@ -580,12 +602,16 @@ const warmUps = new WarmUpChoices({
  */
 const gpuSaidLate = !packaged() && sw('DRASHTI_TEST_GPU_SAID') === 'late';
 app.on('gpu-info-update', () => {
-  if (!gpuSaidLate) warmUps.gpuSaid();
+  if (gpuSaidLate) return;
+  warmUps.gpuSaid();
+  // A live appearance's touch waits for this word (Session 60).
+  appearance.chipMayHaveChanged();
 });
 if (gpuSaidLate)
   (globalThis as { drashtiTestGpuSaid?: () => void }).drashtiTestGpuSaid = () => {
     setImmediate(() => {
       warmUps.gpuSaid();
+      appearance.chipMayHaveChanged();
     });
   };
 
@@ -736,7 +762,13 @@ const ownFieldsSchema = ownSchema.omit({ id: true }).extend({
 });
 const appearance = new AppearanceService({
   userData: app.getPath('userData'),
+  // Whether Chromium draws with a graphics chip, once its GPU process has said (Session 60: a live look waits for it).
+  chip: () => (warmUps.hasSaid ? (warmUps.drawsWithoutChip() ? 'no' : 'yes') : 'unknown'),
   startIn: sw('DRASHTI_TEST_APPEARANCE'),
+  // Tests only (never a packaged Drashti): how many logical cores this computer has, for the moving looks' pause.
+  ...(!packaged() && /^[0-9]{1,3}$/u.test(sw('DRASHTI_TEST_CORES') ?? '')
+    ? { cores: Number(sw('DRASHTI_TEST_CORES')) }
+    : {}),
   say: (line) => {
     log.info(line);
   },
@@ -6076,6 +6108,17 @@ function start(): void {
     thumbs: (thumbs) => {
       sendToOperator(IPC.nodes.thumbs, thumbs);
     },
+    // A paired computer's screen could not play a video (Q60-44, the owner's answer A): it keeps what it showed; the
+    // video plays on everywhere else, and the operator is told, once for each node and showing (media/cannot-play.ts).
+    cannotPlay: (node, report) => {
+      const file = media.kindAndName(report.mediaId);
+      if (file?.kind !== 'video') return;
+      const screen = screenRepo.screens().find((s) => s.id === report.screenId)?.name ?? report.screenId;
+      const told = nodeCannotPlay.heard(node, screen, file, report);
+      if (!told) return;
+      log.warn(told.log);
+      sendToOperator(IPC.app.notice, { text: told.notice });
+    },
     localOutputs: () =>
       manager.status().flatMap((st): NodeOutputStatus[] =>
         st.state === 'showing' || st.state === 'missing-display' || st.state === 'disabled'
@@ -6978,6 +7021,39 @@ function start(): void {
       ? media.resumeOf(mediaId)
       : null,
   );
+  // Snapshot (alpha.20, the time bar's ⋯; the owner's "Yes, all A" to Q60-39 P6 (d) A): the frame on the screens, made
+  // from the video's own file (media/snapshot.ts), a PNG in Media through the import, never put up. Pro Mode's.
+  handle(IPC.media.snapshot, (e, playing) => {
+    const ref = playingSchema.safeParse(playing);
+    if (!fromOperator(e) || !ref.success)
+      return { ok: false as const, message: 'Only the operator window can make a snapshot.' };
+    return takeSnapshot(
+      {
+        state: () => engine.current,
+        now: () => Date.now(),
+        file: (id) => {
+          const row = media.about(id);
+          return row && !row.missing && !row.deleted && row.path !== ''
+            ? { path: join(mediaDir, row.path), name: row.name }
+            : null;
+        },
+        ffmpeg: pictureFfmpeg,
+        importFile: async (path) => {
+          const done = await imports.start([path], {});
+          if (!done.ok) return { ok: false as const, message: done.message };
+          const item = importRepo.report(done.run.id)?.items[0];
+          if (item?.target?.kind === 'media') return { ok: true as const, mediaId: item.target.id };
+          return {
+            ok: false as const,
+            message:
+              item?.issues.find((problem) => problem.severity === 'error')?.message ??
+              'Drashti could not add the snapshot to Media. Try again.',
+          };
+        },
+      },
+      ref.data,
+    );
+  });
   // Its Copy: the window's words on the clipboard, by the main process (copyWords).
   handle(IPC.media.copyDetails, (e, text) => copyWords(e, text));
   // Sound and picture… (alpha.20; the owner's "Yes, all A" to Q60-39 P2 A and P6 (a) A): a video's or a sound's own
@@ -7025,8 +7101,8 @@ function start(): void {
     return null;
   });
   // A video's picture cannot be drawn on this computer (Session 60, x36: the owner's bug, his "Yes, A"): an output or
-  // the operator window found it plays as sound only. What of it is up comes off (the background, with its sound) or
-  // waits paused (on the slide, in the box); the operator window says so, once a file; and it is converted by itself
+  // the operator window found it plays as sound only. What of it is up comes off (the background, with its sound; the
+  // box, Q60-46) or waits paused (on the slide); the operator window says so, once a file; and it is converted by itself
   // once the show is idle. Only for a video that was up, so a page's word never takes off anything else; the other
   // windows that found the same showing find it off already, and say nothing more.
   handle(IPC.media.noPicture, (e, mediaId, startedAt) => {
@@ -7038,6 +7114,61 @@ function start(): void {
     log.warn(`A video's picture cannot be drawn here (sound only): ${mediaId}; taken off`);
     const converting = conversions.convertUndrawable(mediaId);
     sendToOperator(IPC.app.notice, { text: noPictureNotice(file.name, converting) });
+    return null;
+  });
+  // A video whose element failed on a page that draws the show (Q60-31, the owner's own bug: the hall went black while
+  // its sound played on, never taken off, nobody told): taken off as one whose picture cannot be drawn (its sound with
+  // it; on the slide, paused; the box off), said by its name and where it failed, and logged with the error's kind,
+  // after a short wait; unless a GPU process stopped then, whose videos load again by themselves.
+  handle(IPC.media.cannotPlay, (e, mediaId, startedAt, code, words) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    const where: CannotPlayWhere | null =
+      screenId !== undefined
+        ? { screen: screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId }
+        : fromOperator(e)
+          ? 'live'
+          : streaming.isProgram(e.sender)
+            ? 'stream'
+            : null;
+    if (where === null || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    if (typeof code !== 'number' || typeof words !== 'string') return null;
+    const file = media.kindAndName(mediaId);
+    if (file?.kind !== 'video') return null;
+    // The error's kind and Chromium's words, for the log only (the notice names the file and where).
+    const kind = errorKindWords(code);
+    const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;
+    // No first frame within FIRST_FRAME_MS (Q60-44): heeded from Main's own screens, what the hall sees; LIVE's or the
+    // stream's page alone only logs it (shared/no-picture.ts).
+    if (code === NO_FIRST_FRAME && screenId === undefined) {
+      log.info(
+        `A video had ${kind} on ${whereWords([where])}: ${mediaId}; left up (only a screen’s takes it off)`,
+      );
+      return null;
+    }
+    // Every page that says so within the wait is named, the screens first (cannot-play.ts whereWords).
+    cannotPlay.heard(
+      `${mediaId}@${String(startedAt)}`,
+      where,
+      (named) => {
+        const took = engine.cannotPlay(mediaId);
+        if (!took) return;
+        const off = [
+          took.background ? 'the background' : '',
+          took.slide ? 'paused on the slide' : '',
+          took.box ? 'the box' : '',
+        ]
+          .filter((w) => w !== '')
+          .join(', ');
+        log.warn(`A video could not play on ${named} (${kind}${detail}): ${mediaId}; taken off (${off})`);
+        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, named, took) });
+      },
+      (named) => {
+        log.info(
+          `A video could not play on ${named} (${kind}${detail}) as the GPU process stopped: ${mediaId}; it loads again`,
+        );
+      },
+    );
     return null;
   });
   handle(IPC.audio.reportDevices, (e, devices, state) => {
@@ -8365,6 +8496,21 @@ function start(): void {
       ? { ok: true as const }
       : { ok: false as const, message: 'Choose Calm, Lively or Off.' };
   });
+  // Moving: On or Off (Session 60, the owner's safety rule), this computer's, as the appearance is.
+  handle(IPC.appearance.setMoving, (e, on) => {
+    if (!fromOperator(e) || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can turn moving on or off.' };
+    appearance.setMoving(on);
+    return { ok: true as const };
+  });
+  // Favourites (Session 60): an appearance starred or unstarred in the Appearance window.
+  handle(IPC.appearance.setFavourite, (e, id, on) => {
+    if (!fromOperator(e) || typeof id !== 'string' || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can star an appearance.' };
+    return appearance.setFavourite(id, on)
+      ? { ok: true as const }
+      : { ok: false as const, message: 'That appearance is no longer here.' };
+  });
   // The menu's ticks follow the appearance shown (Follow the computer's changes too).
   appearance.onChanged(() => {
     rebuildMenu();
@@ -8512,7 +8658,7 @@ function start(): void {
     appearance: {
       choices: [
         { id: FOLLOW, label: 'Follow the Computer' },
-        ...appearance.list().map((a) => ({ id: a.id, label: a.name })),
+        ...appearance.list().map((a) => ({ id: a.id, label: a.name, family: familyOf(a) })),
       ],
       chosen: appearance.choice,
       choose: (id) => {

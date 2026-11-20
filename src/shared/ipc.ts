@@ -49,6 +49,8 @@ import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } 
 import type { MarkersResult, MediaMarkers } from './markers';
 import type { MediaDetailsResult } from './media-details';
 import type { ResumePoint } from './play-history';
+import type { PlayingRef } from './engine/playing';
+import type { SnapshotResult } from './snapshot';
 import type { PictureAssetKind, SharpenJobView } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
 import type {
@@ -591,6 +593,11 @@ export const IPC = {
      * Chromium plays such a file as sound only. The show takes it off, says so, and converts it by itself.
      */
     noPicture: 'media:no-picture',
+    /**
+     * An output, the operator window or the stream's page found a video's element failed (Q60-31): the show takes it
+     * off with its sound, says so by its name and where, and logs the error's kind (unless a GPU process stopped then).
+     */
+    cannotPlay: 'media:cannot-play',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -602,6 +609,8 @@ export const IPC = {
     copyDetails: 'media:copy-details',
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when (operator window). */
     resumePoint: 'media:resume-point',
+    /** Snapshot (alpha.20, the time bar's ⋯): the frame on the screens, a PNG in Media (operator window, Pro Mode). */
+    snapshot: 'media:snapshot',
     /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays, read and kept (operator window). */
     playback: 'media:playback',
     setPlayback: 'media:set-playback',
@@ -742,6 +751,10 @@ export const IPC = {
     remove: 'appearance:remove',
     /** Interface motion (Session 40): calm, lively or off. */
     setMotion: 'appearance:set-motion',
+    /** Moving: On or Off (Session 60): whether a live appearance's touch moves at all. */
+    setMoving: 'appearance:set-moving',
+    /** Star or unstar an appearance (Session 60). */
+    setFavourite: 'appearance:set-favourite',
     /** main -> operator: View › Appearance… was chosen. */
     open: 'appearance:open',
   },
@@ -1338,6 +1351,11 @@ export interface InvokeContract {
     args: [motion: InterfaceMotion];
     result: { ok: true } | { ok: false; message: string };
   };
+  [IPC.appearance.setMoving]: { args: [on: boolean]; result: { ok: true } | { ok: false; message: string } };
+  [IPC.appearance.setFavourite]: {
+    args: [id: string, on: boolean];
+    result: { ok: true } | { ok: false; message: string };
+  };
   [IPC.pictures.job]: { args: []; result: PdfJob | null };
   [IPC.pictures.page]: { args: [page: PdfPage]; result: PdfPageReceipt };
   [IPC.pictures.done]: { args: [done: PdfDone]; result: null };
@@ -1640,10 +1658,15 @@ export interface InvokeContract {
   [IPC.media.playsHevc]: { args: []; result: boolean | null };
   [IPC.media.reportLength]: { args: [mediaId: string, durationMs: number]; result: null };
   [IPC.media.noPicture]: { args: [mediaId: string, startedAt: number]; result: null };
+  [IPC.media.cannotPlay]: {
+    args: [mediaId: string, startedAt: number, code: number, words: string];
+    result: null;
+  };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.details]: { args: [mediaId: string]; result: MediaDetailsResult };
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
   [IPC.media.resumePoint]: { args: [mediaId: string]; result: ResumePoint | null };
+  [IPC.media.snapshot]: { args: [playing: PlayingRef]; result: SnapshotResult };
   [IPC.media.playback]: { args: [mediaId: string]; result: PlaybackSettings | null };
   [IPC.media.setPlayback]: {
     args: [mediaId: string, settings: PlaybackSettings];
