@@ -6,7 +6,6 @@ import {
   parseVideoEditTime,
   videoEditRecipeSchema,
   videoEditTime,
-  type VideoEditRecipe,
   type VideoEditSnapshot,
   type VideoEditFrame,
 } from '../../../shared/video-edit';

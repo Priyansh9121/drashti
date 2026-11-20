@@ -136,7 +136,7 @@ For the button that offers a long file's saved place, see **LIVE, Back and Next 
 1. In **Media** or a playlist, right-click the video and choose **Edit Video…**.
 2. Type a source time such as **1:23.500** in **Go to time** and press **Jump**, or move the trim timeline. The preview is private and silent. **Use this frame as library thumbnail** keeps the chosen frame with the next Save.
 3. Set the start and end, picture, sound and playback choices. **Frame shape** offers Original shape, 16:9, 4:3, square and vertical 9:16; Original shape is the default. The source preview is labelled so it is clear which file it shows.
-4. Press **Save**. **Ready for next showing** means the saved revision is ready; **Preparing** waits while a show, stream or recording is active. A video already on the screens keeps its earlier revision. If saving fails, keep the window open, read the reason and try Save again.
+4. Press **Save**. **Ready for next showing** means the saved revision is ready; **Preparing** waits while a show, stream or recording is active. A video already on the screens keeps its earlier revision. If saving fails, keep the window open, read the reason and retry Save.
 
 **Reset edits** changes the draft; press Save to keep that reset. **Cancel**, or closing the window, lets you discard an unsaved draft or keep editing. Originals, the default thumbnail, existing row trims, and Sound and picture's tone and delays are kept. A newer save in another editor is reported instead of being overwritten.
 
