@@ -36,7 +36,10 @@ export function orderedPlaylistItems<T extends { id: string }>(
 }
 
 /** Timed media in this playlist, between their own start and end points. */
-export function playlistTotals(items: readonly PlaylistItemInfo[]): {
+export function playlistTotals(
+  items: readonly PlaylistItemInfo[],
+  _playback?: PlaylistPlayback,
+): {
   rows: number;
   durationMs: number;
   unknown: number;
@@ -59,6 +62,7 @@ export function playlistLeftMs(
   liveId: string,
   leftMs: number,
   repeatAll: boolean,
+  _crossfadeMs = 0,
 ): number | null {
   if (repeatAll || !Number.isFinite(leftMs)) return null;
   const sorted = orderedPlaylistItems(items, order);

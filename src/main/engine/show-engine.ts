@@ -638,7 +638,7 @@ export class ShowEngine {
       playlist?.itemId,
     );
     if (layer.kind !== 'media') return NO_CHANGE;
-    const startedAt = Math.max(this.now(), this.cueStamp + 1);
+    const startedAt = Math.max(this.now(), this.cueStamp + 1, layer.startedAt + 1);
     this.cueStamp = startedAt;
     const background: CuedVideo = {
       ...structuredClone(layer),
