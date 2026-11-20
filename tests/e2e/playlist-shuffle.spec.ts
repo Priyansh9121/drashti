@@ -46,6 +46,13 @@ test('Shuffle keeps one order after restart; Repeat all and automatic Next follo
     await win.getByRole('button', { name: 'Playlist actions' }).click();
     await win.getByRole('menuitemcheckbox', { name: 'Repeat all', exact: true }).click();
     await expect(win.getByTestId('playlist-play-options')).toHaveText('Shuffled · Repeat all');
+    const draw = await win.evaluate(
+      async (id) =>
+        (await (globalThis as PageGlobals).drashti.playlists.tree()).find((p) => p.id === id)?.playback
+          ?.playOrder ?? [],
+      made.id,
+    );
+    expect(new Set(draw)).toEqual(new Set(made.items));
     const order: string[] = [];
     // Starting a row still means its numbered place on screen; the following rows use the saved draw.
     await win.getByTestId('playlist-item').first().click();
@@ -63,6 +70,10 @@ test('Shuffle keeps one order after restart; Repeat all and automatic Next follo
       expect(next?.kind).toBe('media');
       if (next?.kind !== 'media') throw new Error('Next has no media picture');
       await expect(win.getByTestId('next-up')).toHaveAccessibleName(`Next up: ${next.label}`);
+      await expect(win.getByTestId('next-up').locator('[data-media-id]')).toHaveAttribute(
+        'data-media-id',
+        next.mediaId,
+      );
       await win.getByTestId('show-next').click();
       await expect.poll(async () => (await state(win)).live.playlist?.itemId).toBe(next.itemId);
       await win.evaluate(() =>
@@ -72,6 +83,8 @@ test('Shuffle keeps one order after restart; Repeat all and automatic Next follo
         }),
       );
     }
+    const from = draw.indexOf(made.items[0] ?? '');
+    expect(order).toEqual([...draw.slice(from), ...draw.slice(0, from)]);
     expect(new Set(order).size).toBe(3);
     expect(new Set(order)).toEqual(new Set(made.items));
     expect((await state(win)).live.playlist?.itemId).toBe(order[0]);
@@ -81,6 +94,14 @@ test('Shuffle keeps one order after restart; Repeat all and automatic Next follo
     app = again.app;
     win = await operatorPage(app);
     await operatorReady(win);
+    expect(
+      await win.evaluate(
+        async (id) =>
+          (await (globalThis as PageGlobals).drashti.playlists.tree()).find((p) => p.id === id)?.playback
+            ?.playOrder ?? [],
+        made.id,
+      ),
+    ).toEqual(draw);
     await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder shuffle' }).click();
     await expect(win.getByTestId('playlist-play-options')).toHaveText('Shuffled · Repeat all');
     await win.getByTestId('playlist-item').first().click();
