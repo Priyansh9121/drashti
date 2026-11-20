@@ -38,6 +38,29 @@ function pending() {
   });
   return { finish, decode: vi.fn(() => promise) };
 }
+/** A request whose encoded file has not loaded yet; native decode may reject before load/error arrives. */
+function loadingImage(src: string, decode: () => Promise<void>) {
+  const img = image(src, decode);
+  const events = new EventTarget();
+  let complete = false;
+  let width = 0;
+  Object.defineProperty(img, 'complete', { get: () => complete });
+  Object.defineProperty(img, 'naturalWidth', { get: () => width });
+  img.addEventListener = events.addEventListener.bind(events);
+  img.removeEventListener = events.removeEventListener.bind(events);
+  return {
+    img,
+    loaded() {
+      complete = true;
+      width = 6144;
+      events.dispatchEvent(new Event('load'));
+    },
+    failed() {
+      complete = true;
+      events.dispatchEvent(new Event('error'));
+    },
+  };
+}
 beforeEach(() => {
   vi.useFakeTimers();
 });
@@ -149,4 +172,56 @@ it('the first scene keeps the same three-second deadline if its own native decod
   expect(settled).toBe(false);
   await vi.advanceTimersByTimeAsync(1);
   expect(settled).toBe(true);
+});
+
+it('a rejected decode cannot reveal the slide while its file is still loading', async () => {
+  const decode = vi.fn(() => Promise.reject(new Error('placeholder decode rejected')));
+  const own = loadingImage('drashti-media://media/placeholder-rejected-before-load', decode);
+  const ready = slideMediaReady(root(own.img), engineNow() + 3000, layer, true, true);
+  let settled = false;
+  if (ready !== true)
+    void ready.then(() => {
+      settled = true;
+    });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(settled).toBe(false);
+  own.loaded();
+  if (ready !== true) await ready;
+  expect(settled).toBe(true);
+  expect(decode).toHaveBeenCalledTimes(2);
+});
+
+it('a rejected decode whose file never finishes keeps the original three-second bound and no late retry', async () => {
+  const decode = vi.fn(() => Promise.reject(new Error('placeholder decode rejected')));
+  const own = loadingImage('drashti-media://media/placeholder-rejected-never-loads', decode);
+  const ready = slideMediaReady(root(own.img), engineNow() + 3000, layer, true, true);
+  let settled = false;
+  if (ready !== true)
+    void ready.then(() => {
+      settled = true;
+    });
+  await vi.advanceTimersByTimeAsync(2999);
+  expect(settled).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(settled).toBe(true);
+  own.loaded();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(decode).toHaveBeenCalledOnce();
+});
+
+it('a file error after decode rejected releases the slide without waiting forever', async () => {
+  const decode = vi.fn(() => Promise.reject(new Error('placeholder decode rejected')));
+  const own = loadingImage('drashti-media://media/placeholder-rejected-file-error', decode);
+  const ready = slideMediaReady(root(own.img), engineNow() + 3000, layer, true, true);
+  let settled = false;
+  if (ready !== true)
+    void ready.then(() => {
+      settled = true;
+    });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(settled).toBe(false);
+  own.failed();
+  if (ready !== true) await ready;
+  expect(settled).toBe(true);
+  expect(decode).toHaveBeenCalledOnce();
 });
