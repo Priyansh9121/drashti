@@ -122,7 +122,13 @@ describe.runIf(available)('one prepared video, original untouched', () => {
   });
 
   it('uses source-time trim, requested speed and the chosen audio without changing its pitch', () => {
-    const recipe = { ...PLAIN_VIDEO_EDIT, trim: { startMs: 1000, endMs: 3000 }, speed: 2, audioTrack: 1 };
+    const recipe = {
+      ...PLAIN_VIDEO_EDIT,
+      trim: { startMs: 1000, endMs: 3000 },
+      speed: 2,
+      audioTrack: 1,
+      noiseReduction: true,
+    };
     const { plan, output } = render(recipe, 'speed-track');
     expect(plan.durationMs).toBe(1000);
     expect(plan.sourceStartMs).toBe(1000);
@@ -166,6 +172,139 @@ describe.runIf(available)('one prepared video, original untouched', () => {
       return Math.sqrt(power / Math.max(1, n));
     };
     expect(rms(31000, 31800)).toBeLessThan(rms(12000, 12800) * 0.3);
+  });
+  it('keeps a moving blurred fill behind the chosen frame instead of freezing a still', () => {
+    const moving = join(dir, 'Moving placeholder.mp4');
+    ff([
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:s=160x90:r=25:d=4',
+      '-vf',
+      "drawbox=color=blue:t=fill:enable='gte(t,2)'",
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-threads:v',
+      '1',
+      moving,
+    ]);
+    const original = hash(moving);
+    const recipe: VideoEditRecipe = {
+      ...PLAIN_VIDEO_EDIT,
+      picture: { ...PLAIN_VIDEO_EDIT.picture, frame: '1:1', fill: true },
+    };
+    const plan = editPlan({ file: moving, recipe, info: { ...INFO, audio: null }, identity: 'moving-fill' });
+    const output = join(dir, 'moving-fill.mp4');
+    ff(plan.args(output));
+    const corner = (seconds: number) => [
+      ...ff([
+        '-loglevel',
+        'error',
+        '-ss',
+        String(seconds),
+        '-i',
+        output,
+        '-frames:v',
+        '1',
+        '-vf',
+        'crop=4:4:4:4,scale=1:1',
+        '-pix_fmt',
+        'rgb24',
+        '-f',
+        'rawvideo',
+        'pipe:1',
+      ]).stdout.subarray(0, 3),
+    ];
+    expect(parseFfmpegInfo(ff(['-i', output, '-f', 'null', '-']).stderr.toString()).video).toMatchObject({
+      width: 160,
+      height: 160,
+    });
+    const first = corner(1);
+    const last = corner(3);
+    expect(first[0]).toBeGreaterThan(90);
+    expect(first[2]).toBeLessThan(30);
+    expect(last[2]).toBeGreaterThan(90);
+    expect(last[0]).toBeLessThan(30);
+    expect(hash(moving)).toBe(original);
+  });
+  it('applies a flip before crop, and renders colour choices into the file', () => {
+    const recipe: VideoEditRecipe = {
+      ...PLAIN_VIDEO_EDIT,
+      picture: {
+        ...PLAIN_VIDEO_EDIT.picture,
+        flipX: true,
+        crop: { x: 0, y: 0, w: 0.5, h: 1 },
+        brightness: 0.2,
+        contrast: 0.1,
+        colour: -1,
+      },
+    };
+    const { output } = render(recipe, 'flip-colour');
+    const rgb = pixel(output, 1);
+    expect(Math.max(...rgb) - Math.min(...rgb)).toBeLessThan(8);
+    expect(rgb[0]).toBeGreaterThan(10);
+    const blue = render(
+      {
+        ...PLAIN_VIDEO_EDIT,
+        picture: { ...PLAIN_VIDEO_EDIT.picture, flipX: true, crop: { x: 0, y: 0, w: 0.5, h: 1 } },
+      },
+      'flip-blue',
+    );
+    expect(pixel(blue.output, 1)[2]).toBeGreaterThan(180);
+  });
+  it('keeps generated transparency through a prepared WebM', () => {
+    const input = join(dir, 'Transparent placeholder.mov');
+    ff([
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red@0.5:s=64x48:r=10:d=1,format=argb',
+      '-c:v',
+      'qtrle',
+      input,
+    ]);
+    const info: MediaInfo = {
+      durationMs: 1000,
+      video: { codec: 'qtrle', pixFmt: 'argb', width: 64, height: 48, still: false },
+      audio: null,
+    };
+    const plan = editPlan({
+      file: input,
+      recipe: { ...PLAIN_VIDEO_EDIT, picture: { ...PLAIN_VIDEO_EDIT.picture, flipY: true } },
+      info,
+      identity: 'alpha',
+    });
+    expect(plan.target).toBe('webm');
+    const output = join(dir, 'alpha.webm');
+    ff(plan.args(output));
+    const rgba = ff([
+      '-loglevel',
+      'error',
+      '-c:V:0',
+      'libvpx-vp9',
+      '-i',
+      output,
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=1:1',
+      '-pix_fmt',
+      'rgba',
+      '-f',
+      'rawvideo',
+      'pipe:1',
+    ]).stdout;
+    expect(rgba[0]).toBeGreaterThan(180);
+    expect(rgba[3]).toBeGreaterThan(110);
+    expect(rgba[3]).toBeLessThan(145);
   });
 });
 
