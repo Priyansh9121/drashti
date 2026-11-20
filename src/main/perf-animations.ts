@@ -46,6 +46,7 @@ import {
   type WindowsMemory,
 } from './perf-pointed';
 import { sw } from './switches';
+import { startRetireTrace } from './x19-retire-trace';
 
 /*
  * The Performance check's animations scenario (Session 57, item 6; DRASHTI_PERF_SCENARIO=animations, the Performance
@@ -1004,67 +1005,89 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       firstEffectMs?: number;
     } = {},
   ): Promise<void> => {
-    // After three presses in a row the operator window never answered, from the main process.
-    const op = unanswered >= 3 ? null : operator();
-    let at = Date.now();
-    let rev = -1;
-    let from: Pressed['from'] = 'main';
-    if (op) {
-      const asked = Date.now();
-      const r = await within(
-        op.webContents.executeJavaScript(PRESS(command), true) as Promise<{ at: number; rev: number }>,
-        PAGE_LIMIT_MS,
-        null,
-      );
-      roundTrips.push(Date.now() - asked);
-      if (r === null) {
-        // Never answered: counted from when it was asked, never pressed again from here (it may land late).
-        unanswered += 1;
-        progress(`the operator window did not answer a press within ${String(PAGE_LIMIT_MS)} ms (${name})`);
-        at = asked;
-        from = 'operator';
-      } else if (r.rev >= 0) {
-        unanswered = 0;
-        ({ at, rev } = r);
-        from = 'operator';
+    // SCRATCH only: all existing repetitions and their original nominal waits remain intact.
+    const stopRetireTrace = [
+      'dissolve 800',
+      'zoom 800',
+      'lower third letters-blur-glass-sparkles in',
+      'lower third letters-blur-glass-sparkles out',
+    ].includes(name)
+      ? await startRetireTrace({
+          name,
+          track,
+          setMs,
+          waitMs,
+          streaming: (sw('DRASHTI_PERF_STREAM') ?? '') !== '',
+        })
+      : undefined;
+    let retirePress: { at: number; rev: number; from: string; until: number } | undefined;
+    try {
+      // After three presses in a row the operator window never answered, from the main process.
+      const op = unanswered >= 3 ? null : operator();
+      let at = Date.now();
+      let rev = -1;
+      let from: Pressed['from'] = 'main';
+      if (op) {
+        const asked = Date.now();
+        const r = await within(
+          op.webContents.executeJavaScript(PRESS(command), true) as Promise<{ at: number; rev: number }>,
+          PAGE_LIMIT_MS,
+          null,
+        );
+        roundTrips.push(Date.now() - asked);
+        if (r === null) {
+          // Never answered: counted from when it was asked, never pressed again from here (it may land late).
+          unanswered += 1;
+          progress(`the operator window did not answer a press within ${String(PAGE_LIMIT_MS)} ms (${name})`);
+          at = asked;
+          from = 'operator';
+        } else if (r.rev >= 0) {
+          unanswered = 0;
+          ({ at, rev } = r);
+          from = 'operator';
+        }
       }
+      // Refused there (or no operator window): from the main process instead, and said so.
+      if (from === 'main') {
+        at = Date.now();
+        const r = deps.engine.dispatch(command);
+        rev = r.ok ? r.rev : -1;
+      }
+      // The engine's own record of what went up: a step's clock, as every screen times its effects by it.
+      let engine: Pressed['engine'];
+      if (more.firstEffectMs !== undefined) {
+        const layer = deps.engine.snapshot?.().state.layers.slide ?? null;
+        const timing = layer ? nativeStepTiming(layer) : null;
+        if (layer && timing)
+          engine = { shownAt: layer.shownAt, effectAt: timing.clipAt + more.firstEffectMs };
+      }
+      for (const before of lastPress) before.until = at;
+      const own: Pressed = {
+        name,
+        track,
+        setMs,
+        at,
+        rev,
+        from,
+        until: at + waitMs,
+        ...(engine ? { engine } : {}),
+      };
+      lastPress = [
+        own,
+        ...(more.also ?? []).map((a): Pressed => ({
+          ...own,
+          name: a.name,
+          track: a.track,
+          setMs: a.setMs,
+          also: true,
+        })),
+      ];
+      pressed.push(...lastPress);
+      retirePress = { ...own };
+      await sleep(waitMs);
+    } finally {
+      if (stopRetireTrace) await stopRetireTrace(retirePress);
     }
-    // Refused there (or no operator window): from the main process instead, and said so.
-    if (from === 'main') {
-      at = Date.now();
-      const r = deps.engine.dispatch(command);
-      rev = r.ok ? r.rev : -1;
-    }
-    // The engine's own record of what went up: a step's clock, as every screen times its effects by it.
-    let engine: Pressed['engine'];
-    if (more.firstEffectMs !== undefined) {
-      const layer = deps.engine.snapshot?.().state.layers.slide ?? null;
-      const timing = layer ? nativeStepTiming(layer) : null;
-      if (layer && timing) engine = { shownAt: layer.shownAt, effectAt: timing.clipAt + more.firstEffectMs };
-    }
-    for (const before of lastPress) before.until = at;
-    const own: Pressed = {
-      name,
-      track,
-      setMs,
-      at,
-      rev,
-      from,
-      until: at + waitMs,
-      ...(engine ? { engine } : {}),
-    };
-    lastPress = [
-      own,
-      ...(more.also ?? []).map((a): Pressed => ({
-        ...own,
-        name: a.name,
-        track: a.track,
-        setMs: a.setMs,
-        also: true,
-      })),
-    ];
-    pressed.push(...lastPress);
-    await sleep(waitMs);
   };
   /** The case so far is over: what comes next (a screen opening) is no part of its frames. */
   const closeCase = () => {
