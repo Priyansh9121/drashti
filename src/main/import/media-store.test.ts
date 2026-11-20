@@ -376,6 +376,69 @@ describe('every video and sound read with FFmpeg at import (Session 50)', () => 
     }
   });
 
+  it('keeps whether FFmpeg read each video and sound (alpha.20, migration 86): read, nothing read, or never asked', async () => {
+    const t = checking({ reads: { ...READS, avi: '' } });
+    await t.take('Placeholder clip.mp4', 'placeholder mp4');
+    await t.take('Placeholder old.avi', 'placeholder avi');
+    await t.take(
+      'Placeholder darshan.png',
+      Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]),
+    );
+    const slow = checking({
+      readInfo: () => Promise.resolve({ ...parseFfmpegInfo(READS['mkv'] ?? ''), timedOut: true as const }),
+    });
+    await slow.take('Placeholder slow.mkv', 'placeholder slow mkv');
+    const readBy = (db: ReturnType<typeof setup>['db']) =>
+      db.prepare('SELECT name, read_by FROM media ORDER BY name').all();
+    expect(readBy(t.db)).toEqual([
+      { name: 'Placeholder clip.mp4', read_by: 'ffmpeg' },
+      { name: 'Placeholder darshan.png', read_by: null },
+      { name: 'Placeholder old.avi', read_by: 'nothing' },
+    ]);
+    expect(readBy(slow.db)).toEqual([{ name: 'Placeholder slow.mkv', read_by: 'nothing' }]);
+    // No FFmpeg to ask (a computer without it): never asked, so the idle sweep reads it later.
+    const none = setup();
+    const path = join(none.mediaDir, '..', 'source', 'Placeholder none.mp4');
+    writeFileSync(path, 'placeholder none mp4');
+    await none.store.importFile(path, { kind: 'media', path });
+    expect(readBy(none.db)).toEqual([{ name: 'Placeholder none.mp4', read_by: null }]);
+    // The same bytes again with FFmpeg there: read now.
+    const again = checking();
+    const before = new MediaStore(again.db, { dir: again.mediaDir, freeBytes: () => 100 * GiB });
+    const first = join(again.mediaDir, '..', 'source', 'Placeholder clip.mp4');
+    writeFileSync(first, 'placeholder Placeholder clip.mp4');
+    await before.importFile(first, { kind: 'media', path: first });
+    await again.take('Placeholder clip.mp4', 'placeholder Placeholder clip.mp4');
+    expect(readBy(again.db)).toEqual([{ name: 'Placeholder clip.mp4', read_by: 'ffmpeg' }]);
+  });
+
+  it('an 8K H.264 and an interlaced picture are converted by itself, said by their size and interlacing (alpha.20)', async () => {
+    const reads = {
+      mp4: [
+        "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/x.mp4':",
+        '  Duration: 00:00:02.00, start: 0.000000, bitrate: 96824 kb/s',
+        '  Stream #0:0[0x1](und): Video: h264 (Constrained Baseline) (avc1 / 0x31637661), yuv420p(progressive), 7680x4320 [SAR 1:1 DAR 16:9], 96745 kb/s, 10 fps, 10 tbr, 10240 tbn (default)',
+        '  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, mono, fltp, 69 kb/s (default)',
+      ].join('\n'),
+      mov: [
+        "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/x.mov':",
+        '  Duration: 00:00:02.00, start: 0.000000, bitrate: 1219 kb/s',
+        '  Stream #0:0[0x1](und): Video: h264 (Main) (avc1 / 0x31637661), yuv420p(top first), 640x360 [SAR 1:1 DAR 16:9], 1147 kb/s, 10 fps, 10 tbr, 10240 tbn (default)',
+      ].join('\n'),
+    };
+    const t = checking({ reads });
+    expect(await t.take('Placeholder 8K.mp4', 'placeholder 8k')).toMatchObject({
+      outcome: 'imported',
+      convert: true,
+      probe: { playable: false, format: 'H.264 (7680 × 4320) video with AAC sound (MP4)', kind: 'video' },
+    });
+    expect(await t.take('Placeholder 1080i.mov', 'placeholder 1080i')).toMatchObject({
+      outcome: 'imported',
+      convert: true,
+      probe: { playable: false, format: 'H.264 (interlaced) video (QuickTime)', kind: 'video' },
+    });
+  });
+
   it('marks a file imported before by what FFmpeg reads now, when the same bytes come again', async () => {
     const t = checking();
     // Imported before Session 50 (no FFmpeg): an MKV its header could not judge, a FLAC it could.

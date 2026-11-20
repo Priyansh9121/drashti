@@ -78,6 +78,45 @@ describe('recognising media Drashti cannot play', () => {
     expect((await probe('old.mov', box('wide'), movie(trak('vide', 'apch')))).playable).toBe(false);
   });
 
+  it('an H.264 larger than the player draws (alpha.20, x47): cannot play as it is, said by its size; a 4K one and a High 10 one as before', async () => {
+    // A visual sample entry's own fields (78 bytes: its width and height at 24 and 26), then its avcC record.
+    const avc1 = (width: number, height: number, profile: number, level: number) => {
+      const fields = Buffer.alloc(78);
+      fields.writeUInt16BE(width, 24);
+      fields.writeUInt16BE(height, 26);
+      return box('avc1', fields, box('avcC', Buffer.from([1, profile, 0, level, 0xff, 0xe1, 0])));
+    };
+    const video = (entry: Buffer) =>
+      box(
+        'trak',
+        box(
+          'mdia',
+          box('hdlr', u32(0), u32(0), Buffer.from('vide', 'latin1'), Buffer.alloc(12)),
+          box('minf', box('stbl', box('stsd', u32(0), u32(1), entry))),
+        ),
+      );
+    expect(await probe('8k.mp4', ftyp('isom', 'mp41'), movie(video(avc1(7680, 4320, 66, 62))))).toEqual({
+      playable: false,
+      format: 'H.264 (7680 × 4320) video (MP4)',
+      kind: 'video',
+    });
+    // Its movie box at its end, as FFmpeg writes it.
+    const mdat = box('mdat', Buffer.alloc(300_000));
+    expect(
+      (await probe('8k-end.mov', ftyp('qt  ', 'qt  '), mdat, movie(video(avc1(7680, 4320, 100, 62)))))
+        .playable,
+    ).toBe(false);
+    // x46's probe drew these on both systems: as before.
+    expect(await probe('4k.mp4', ftyp('isom', 'mp41'), movie(video(avc1(3840, 2160, 100, 51))))).toEqual({
+      playable: true,
+      format: 'H.264 video (MP4)',
+      kind: 'video',
+    });
+    expect((await probe('high10.mp4', ftyp('isom'), movie(video(avc1(1920, 1080, 110, 40))))).playable).toBe(
+      true,
+    );
+  });
+
   it('reads the sound of M4A files, and knows HEIC from AVIF', async () => {
     expect(await probe('aac.m4a', ftyp('M4A '), movie(trak('soun', 'mp4a')))).toEqual({
       playable: true,
