@@ -6392,8 +6392,15 @@ function start(): void {
       const screenId = screenOfOutput(name);
       const failing = failingPage(name);
       if (screenId === undefined || !failing) return false;
+      // A failure from a draw of what was just taken off is not a new one (keeps-failing.ts): nothing more is done.
+      if (
+        keepsFailing.stillDrawingWhatWentOff(name, Date.now(), localReports.get(screenId)?.paintedRev ?? null)
+      )
+        return true;
       pictureFailedAt.set(screenId, engine.rev);
-      return takeOffWhatFails(name, failing.where, 'its picture failed as it drew');
+      const tookOff = takeOffWhatFails(name, failing.where, 'its picture failed as it drew');
+      if (tookOff) keepsFailing.tookOff(name, engine.rev, Date.now());
+      return tookOff;
     },
     windowOf: (sender) => {
       const screenId = manager.screenIdFor(sender.id);

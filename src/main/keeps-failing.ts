@@ -66,6 +66,8 @@ export const DRAWING_OFF_MS = 3000;
 /** Each page's last failure, and the video to take off when it fails again on one. */
 export class KeepsFailing {
   private readonly last = new Map<string, { at: number; up: readonly UpThen[] }>();
+  /** Each page's last take-off: the show's revision without what came off, and when. */
+  private readonly off = new Map<string, { rev: number; at: number }>();
 
   constructor(private readonly againMs = AGAIN_MS) {}
 
@@ -84,20 +86,29 @@ export class KeepsFailing {
   }
 
   /** What `page` kept failing on was taken off at `at`, the show then at revision `rev`. */
-  tookOff(_page: string, _rev: number, _at: number): void {
-    // Red (the lead, for x53): not kept yet.
+  tookOff(page: string, rev: number, at: number): void {
+    this.off.set(page, { rev, at });
   }
 
   /**
    * Whether a failure of `page` at `at` may still come from a draw of what was taken off: within DRAWING_OFF_MS of the
-   * take-off, while the page has not said it painted the show without it (`paintedRev`, null with no word yet).
+   * take-off, while the page has not said it painted the show without it (`paintedRev`, null with no word yet). Such a
+   * failure is not its failing again, as an error its old page says before a reload is not (watchdog.ts): on CI's Mac
+   * one came a moment after the video came off and Stopped the screen, its Wallpaper up (20 Nov).
    */
-  stillDrawingWhatWentOff(_page: string, _at: number, _paintedRev: number | null): boolean {
-    return false;
+  stillDrawingWhatWentOff(page: string, at: number, paintedRev: number | null): boolean {
+    const off = this.off.get(page);
+    if (!off) return false;
+    if (at - off.at >= DRAWING_OFF_MS || (paintedRev !== null && paintedRev >= off.rev)) {
+      this.off.delete(page);
+      return false;
+    }
+    return true;
   }
 
   /** A page closed for good: its failures forgotten. */
   forget(page: string): void {
     this.last.delete(page);
+    this.off.delete(page);
   }
 }
