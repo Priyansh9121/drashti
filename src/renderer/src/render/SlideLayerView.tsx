@@ -75,6 +75,8 @@ interface Showing {
      * the engine's clock. It is made in the very frame its pictures can be drawn in.
      */
     picturesBy?: number;
+    /** A new scene prepares its own DOM images, even when the initial preloader decoded their addresses. */
+    initial?: true;
   } | null;
 }
 
@@ -173,7 +175,7 @@ export function firstShowing(layer: SlideLayer | null, now: number, picturesFirs
     return {
       on: layer,
       off: null,
-      fade: { kind: 'cut', ms: 1, start: null, picturesBy: now + MEDIA_WAIT_MS },
+      fade: { kind: 'cut', ms: 1, start: null, picturesBy: now + MEDIA_WAIT_MS, initial: true },
     };
   return { on: layer, off: null, fade: null };
 }
@@ -506,10 +508,11 @@ function notDrawable(
   root: HTMLElement,
   layer: SlideLayer,
   decodedPictures = false,
+  ownImages = false,
 ): { images: HTMLImageElement[]; videos: HTMLVideoElement[]; first: HTMLVideoElement | undefined } {
   const native = nativeDeckMotion(layer.slide.deck) !== undefined;
   const images = Array.from(root.querySelectorAll('img')).filter(
-    (img) => !img.complete || (decodedPictures && !slideImageDecoded(img)),
+    (img) => !img.complete || (decodedPictures && (ownImages || !slideImageDecoded(img))),
   );
   const all = Array.from(root.querySelectorAll('video'));
   const first = all.find((video) => video.dataset['deckFirstFrame'] !== undefined);
@@ -529,9 +532,9 @@ export function slideMediaDrawable(
   root: HTMLElement,
   layer: SlideLayer,
   decodedPictures = false,
-  _ownImages = false,
+  ownImages = false,
 ): boolean {
-  const { images, videos } = notDrawable(root, layer, decodedPictures);
+  const { images, videos } = notDrawable(root, layer, decodedPictures, ownImages);
   return images.length === 0 && videos.length === 0;
 }
 
@@ -544,9 +547,9 @@ export function slideMediaReady(
   deadline: number,
   layer: SlideLayer,
   decodedPictures = false,
-  _ownImages = false,
+  ownImages = false,
 ): true | Promise<void> {
-  const { images, videos, first } = notDrawable(root, layer, decodedPictures);
+  const { images, videos, first } = notDrawable(root, layer, decodedPictures, ownImages);
   const waits: Promise<unknown>[] = images.map((img) => decodeSlideImage(img).catch(() => undefined));
   for (const video of videos)
     waits.push(
@@ -753,11 +756,18 @@ export function SlideLayerView({
   // A cut waiting for its pictures (the stream's page and the hall's screens): the latest it waits to, and it is
   // made whole at once.
   const picturesBy = fade?.picturesBy;
+  const initialPictures = fade?.initial === true;
   const onKey = on ? keyOf(on) : null;
   useEffect(() => {
     if (!waiting || !on || !inRef.current) return;
     const shownAt = on.shownAt;
-    const ready = slideMediaReady(inRef.current, picturesBy ?? shownAt + MEDIA_WAIT_MS, on, picturesFirst);
+    const ready = slideMediaReady(
+      inRef.current,
+      picturesBy ?? shownAt + MEDIA_WAIT_MS,
+      on,
+      picturesFirst,
+      initialPictures,
+    );
     const begin = (start: number) => {
       setShowing((s) =>
         s.on && keyOf(s.on) === onKey && s.fade?.start === null ? { ...s, fade: { ...s.fade, start } } : s,
@@ -775,7 +785,7 @@ export function SlideLayerView({
     return () => {
       live = false;
     };
-  }, [waiting, on, onKey, native, picturesBy, picturesFirst]);
+  }, [waiting, on, onKey, native, picturesBy, picturesFirst, initialPictures]);
 
   // Run the transition, frame by frame, from the clock every screen shares.
   const start = fade?.start ?? null;
@@ -937,14 +947,14 @@ export function SlideLayerView({
   // wait above, keeping the previous slide moving instead of holding a whole frame while it decodes (X19 L7).
   useLayoutEffect(() => {
     if (!waiting || picturesBy === undefined || !on || !inRef.current) return;
-    if (!slideMediaDrawable(inRef.current, on, picturesFirst)) return;
+    if (!slideMediaDrawable(inRef.current, on, picturesFirst, initialPictures)) return;
     const begin = (start: number) => {
       setShowing((s) =>
         s.on && keyOf(s.on) === onKey && s.fade?.start === null ? { ...s, fade: { ...s.fade, start } } : s,
       );
     };
     begin(engineNow() - 1);
-  }, [waiting, picturesBy, on, onKey, picturesFirst]);
+  }, [waiting, picturesBy, on, onKey, picturesFirst, initialPictures]);
 
   if (!on && !off) return null;
   // One list, keyed by slide and time, so the slide going away keeps its elements (its videos play on); a timer
