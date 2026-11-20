@@ -157,8 +157,10 @@ export class VideoAnalysisService {
         const removable = [...this.entries].find(
           ([, value]) => value.state === 'ready' || value.state === 'failed',
         );
-        if (removable) this.entries.delete(removable[0]);
-        else
+        if (removable) {
+          this.entries.delete(removable[0]);
+          this.requested.delete(removable[0]);
+        } else
           return {
             ok: false,
             message: 'Many videos are waiting to prepare. Let some finish, then try again.',
