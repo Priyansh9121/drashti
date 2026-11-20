@@ -73,7 +73,9 @@ import type { ShapeOverride } from '../video-shape';
 // 26 adds private live captions; 27 reserves the offline helpers’ version. Each additive predecessor reads whole.
 // 28 carries PowerPoint's editable click effects and native transitions to every screen.
 // 29 carries a video’s stored caption track to screens and nodes; live speech stays private.
-export const ENGINE_STATE_VERSION = 29;
+// 30 (alpha.20, x55, slice 6b): a video's own shape on the screens (`videoShapes`); an older page or node would draw it as
+// its file says, so it says 'incompatible'. A state 29 saved is read whole (30 only adds to it).
+export const ENGINE_STATE_VERSION = 30;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -85,6 +87,7 @@ export const ENGINE_STATE_VERSION = 29;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
+    version === 29 ||
     version === 28 ||
     version === 27 ||
     version === 26 ||

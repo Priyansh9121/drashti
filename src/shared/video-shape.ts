@@ -45,9 +45,16 @@ export interface ShapedBox {
  * inside it (fitted) or the smallest that covers it (filling: the box clips the rest), the picture stretched to it.
  */
 export function shapedFrame(
-  _aspect: number,
+  aspect: number,
   box: { width: number; height: number },
-  _fit: 'fit' | 'fill',
+  fit: 'fit' | 'fill',
 ): ShapedBox {
-  return { x: 0, y: 0, width: box.width, height: box.height };
+  const { width: bw, height: bh } = box;
+  if (!(aspect > 0) || !(bw > 0) || !(bh > 0)) return { x: 0, y: 0, width: bw, height: bh };
+  // A shape wider than the box: fitted, as wide as the box; filling, as tall. A narrower one the other way round.
+  const wider = aspect > bw / bh;
+  const asWide = fit === 'fit' ? wider : !wider;
+  const width = asWide ? bw : bh * aspect;
+  const height = asWide ? bw / aspect : bh;
+  return { x: (bw - width) / 2, y: (bh - height) / 2, width, height };
 }
