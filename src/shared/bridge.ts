@@ -1,3 +1,4 @@
+import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
 import type { ControllerArea, ControllerReply, ControllerRequest } from './controller-actions';
@@ -762,6 +763,13 @@ export interface DrashtiBridge {
     copyDetails(text: string): Promise<boolean>;
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when; null for none. */
     resumePoint(mediaId: string): Promise<ResumePoint | null>;
+    /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays; null for anything else. */
+    playback(mediaId: string): Promise<PlaybackSettings | null>;
+    /** Keep them (heard at once wherever it plays). */
+    setPlayback(
+      mediaId: string,
+      settings: PlaybackSettings,
+    ): Promise<{ ok: true } | { ok: false; message: string }>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;

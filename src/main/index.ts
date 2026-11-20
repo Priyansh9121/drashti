@@ -1,3 +1,4 @@
+import { type PlaybackSettings, playbackSettingsSchema, toneOf } from '../shared/playback-settings';
 import { fileProblem } from './plain-errors';
 import { importM3u, M3uError, writeM3u, type M3uExportRow } from './playlists/m3u';
 import { playlistPlayOptionsSchema } from '../shared/playlist-playback';
@@ -1737,6 +1738,17 @@ function start(): void {
   let inputRenamed: (from: string, to: string) => () => void = () => () => undefined;
   const videoCaptionsRepo = new VideoCaptionsRepo(db);
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
+  // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
+  const playbackRepo = new MediaRepo(db);
+  const ownPlayback = new Map<string, PlaybackSettings>();
+  const playbackOfFile = (mediaId: string): PlaybackSettings => {
+    let kept = ownPlayback.get(mediaId);
+    if (!kept) {
+      kept = playbackRepo.playbackOf(mediaId);
+      ownPlayback.set(mediaId, kept);
+    }
+    return kept;
+  };
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
@@ -1756,7 +1768,16 @@ function start(): void {
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
         const track = videoCaptionsRepo.chosen(mediaId);
-        return track ? { track, size: videoCaptionBand.size, place: videoCaptionBand.place } : null;
+        // Sound and picture… (alpha.20): the captions' own delay against the picture.
+        const delayMs = playbackOfFile(mediaId).captionDelayMs;
+        return track
+          ? {
+              track,
+              size: videoCaptionBand.size,
+              place: videoCaptionBand.place,
+              ...(delayMs === 0 ? {} : { delayMs }),
+            }
+          : null;
       },
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
       pictureLook: (mediaId) => pictureLook(mediaId),
@@ -1777,6 +1798,11 @@ function start(): void {
       stepsAside: () => stepsAside,
       // The operator's Audio and Video levels and mutes (X33).
       levels: () => soundLevels.levels(),
+      // Sound and picture… (alpha.20): each file's own tone and its sound's delay.
+      playbackOf: (mediaId) => {
+        const own = playbackOfFile(mediaId);
+        return { tone: toneOf(own), soundDelayMs: own.soundDelayMs };
+      },
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
@@ -6954,6 +6980,30 @@ function start(): void {
   );
   // Its Copy: the window's words on the clipboard, by the main process (copyWords).
   handle(IPC.media.copyDetails, (e, text) => copyWords(e, text));
+  // Sound and picture… (alpha.20; the owner's "Yes, all A" to Q60-39 P2 A and P6 (a) A): a video's or a sound's own
+  // tone and delays, kept with it; the engine stamps them again at once, so the hall and the stream follow. Pro Mode's.
+  handle(IPC.media.playback, (e, mediaId) =>
+    fromOperator(e) && typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
+      ? playbackOfFile(mediaId)
+      : null,
+  );
+  handle(IPC.media.setPlayback, (e, mediaId, settings) => {
+    const parsed = playbackSettingsSchema.safeParse(settings);
+    if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId) || !parsed.success)
+      return {
+        ok: false as const,
+        message: 'Those settings could not be kept: open Sound and picture… again and set them once more.',
+      };
+    if (!media.setPlayback(mediaId, parsed.data))
+      return {
+        ok: false as const,
+        message: 'Only a video or a sound has these settings: choose one in Media.',
+      };
+    ownPlayback.set(mediaId, parsed.data);
+    engine.refreshSound();
+    engine.refreshVideoCaptions();
+    return { ok: true as const };
+  });
   handle(IPC.audio.getOutput, () => audioOutput.status);
   handle(IPC.audio.setOutput, (e, device) =>
     fromOperator(e) ? audioOutput.choose(device) : audioOutput.status,

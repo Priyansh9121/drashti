@@ -232,6 +232,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.captions.retry,
   // A file deleted from the library and put back (the audio playlists' own changes are bounded since Session 56, below).
   IPC.media.remove,
+  // Sound and picture… (alpha.20) is Pro Mode's (the owner's "Yes, all A" to Q60-39 P6 (j) A).
+  IPC.media.setPlayback,
   IPC.media.restore,
   // Updates (Session 14): Simple Mode never sees them.
   IPC.updates.check,
