@@ -96,12 +96,13 @@ export function musicLeftMs(audio: AudioLayer, playlist: MusicPlaylist, now: num
   const run = audio.music;
   if (run?.playlistId !== playlist.id || run.loop || audio.pausedAtMs !== undefined || audio.seek?.paused)
     return null;
-  const current = playlist.tracks.find((t) => t.mediaId === audio.mediaId);
+  const byMedia = new Map(playlist.tracks.map((track) => [track.mediaId, track]));
+  const current = audio.mediaId ? byMedia.get(audio.mediaId) : undefined;
   const duration = audio.durationMs ?? current?.durationMs;
   if (duration == null) return null;
   let left = playbackLeftMs(audio, duration, now);
   for (const track of run.tracks.slice(run.index + 1)) {
-    const info = playlist.tracks.find((t) => t.mediaId === track.mediaId);
+    const info = byMedia.get(track.mediaId);
     const length = info?.playingMs ?? info?.durationMs;
     if (length == null) return null;
     left += length;

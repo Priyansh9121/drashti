@@ -29,6 +29,7 @@ const windowsPath = (file: string) => /^[a-z]:[\\/]/iu.test(file) || file.starts
 
 /** Resolve another computer’s path with that platform’s rules, never as a web request. */
 function localPath(entry: string, file: string): string | null {
+  if (entry.startsWith('\\\\') || entry.startsWith('//')) return null;
   if (windowsPath(entry)) return win32.normalize(entry);
   if (/^file:/iu.test(entry)) {
     try {
@@ -45,7 +46,9 @@ function localPath(entry: string, file: string): string | null {
   // A drive-relative Windows path is not absolute; it must never silently name a file in Main’s cwd.
   if (/^[a-z]:/iu.test(entry)) return null;
   const paths = windowsPath(file) ? win32 : posix;
-  return paths.resolve(paths.dirname(file), entry);
+  const relative = paths === posix ? entry.split('\\').join('/') : entry;
+  const resolved = paths.resolve(paths.dirname(file), relative);
+  return resolved.startsWith('\\\\') ? null : resolved;
 }
 
 /** Reads local entries only. The parser has no network operation of any kind. */
