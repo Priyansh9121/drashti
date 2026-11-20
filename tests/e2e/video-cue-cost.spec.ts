@@ -170,6 +170,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       mode: string;
       pages: Awaited<ReturnType<typeof frames>>[];
       encoderFps: number | null;
+      readyAfterMs?: number;
       dropped: number;
     }[] = [];
     const modes = ['plain', 'cue', 'crossfade'];
@@ -190,10 +191,26 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           await dispatch(win, { type: 'playItem', playlistId: playlist.id, itemId: playlist.first });
           await cueReady(win);
         }
-        const sampling = Promise.all([hall, win, stream].map((p) => frames(p, 2300)));
         if (mode === 'cue') {
+          const began = Date.now();
+          const preparation = Promise.all([hall, win, stream].map((p) => frames(p, 2300)));
           await dispatch(win, { type: 'cueVideo', mediaId: ids[1] });
           await cueReady(win);
+          const readyAfterMs = Date.now() - began;
+          const pages = await preparation,
+            state = await status();
+          samples.push({
+            round,
+            mode: 'cue preparing',
+            pages,
+            readyAfterMs,
+            encoderFps: state.live.fps,
+            dropped: state.live.droppedFrames,
+          });
+        }
+        // Start a fresh window after readiness, so slow preparation cannot consume the Go measurement.
+        const sampling = Promise.all([hall, win, stream].map((p) => frames(p, 2300)));
+        if (mode === 'cue') {
           const cue = (await snapshot(win)).videoCue;
           if (!cue) throw new Error('No prepared cue for the streaming Go measurement');
           expect((await dispatch(win, { type: 'goVideoCue', cueId: cue.id })).ok).toBe(true);
@@ -201,7 +218,13 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         if (mode === 'crossfade') await dispatch(win, { type: 'next' });
         const pages = await sampling,
           state = await status();
-        samples.push({ round, mode, pages, encoderFps: state.live.fps, dropped: state.live.droppedFrames });
+        samples.push({
+          round,
+          mode: mode === 'cue' ? 'cue Go' : mode,
+          pages,
+          encoderFps: state.live.fps,
+          dropped: state.live.droppedFrames,
+        });
       }
     }
     const ended = await win.evaluate(() =>
