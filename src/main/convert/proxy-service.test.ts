@@ -71,4 +71,28 @@ it('automatically prepares one aspect-correct 1080p playing copy while idle and 
     proxy: { state: 'ready', readyMediaId: ready.proxy.readyMediaId },
   });
   expect(queued).toHaveBeenCalledTimes(1);
+  proxies.close();
+  let publicationAttempted = false;
+  proxies = new ProxyService({
+    ...deps,
+    kept: {
+      load: () => null,
+      save: (value: unknown) => {
+        const saved = value as { readyId: string | null }[];
+        if (saved.some((item) => item.readyId && item.readyId !== 'source')) {
+          publicationAttempted = true;
+          throw new Error('Placeholder manifest is held.');
+        }
+      },
+    },
+  });
+  await vi.waitFor(
+    () => {
+      proxies.get('source');
+      expect(publicationAttempted).toBe(true);
+    },
+    { timeout: 10_000 },
+  );
+  expect(proxies.get('source')).toMatchObject({ ok: true, proxy: { state: 'failed', readyMediaId: null } });
+  expect(proxies.readyFor('source').mediaId).toBeNull();
 }, 15_000);
