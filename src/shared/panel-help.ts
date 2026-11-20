@@ -167,7 +167,7 @@ export const PANEL_HELP = {
     chapter: 'tools',
     feature: 'More tools and the Tools menu',
     doc: 'operator',
-    text: 'Lower Thirds, the MIDI controller and OSC, then Show a Window…, Add a Video Input…, Picture in Picture… and QR code…, each with a line saying what it does, folded away until you need them. Press More tools to open them or fold them again; the Tools menu at the top has them too.',
+    text: 'Lower Thirds, the MIDI controller and OSC, then Show a Window…, Show a Stream Link…, Add a Video Input…, Picture in Picture… and QR code…, each with a line saying what it does, folded away until you need them. Press More tools to open them or fold them again; the Tools menu at the top has them too.',
     guide: '**More tools.** Folded away',
   },
 } as const satisfies Record<string, PanelHelp>;
