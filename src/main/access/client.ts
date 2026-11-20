@@ -28,6 +28,7 @@ import {
   type AccessPerson,
   type AccessRequestStatus,
 } from '../../shared/access-protocol';
+import type { ReportCallReport } from '../../shared/report';
 import { sw, type SwitchName, type Switches } from '../switches';
 
 /*
@@ -47,6 +48,8 @@ import { sw, type SwitchName, type Switches } from '../switches';
 
 /** Every call ends within this, its redirect and answer included. */
 export const ACCESS_CALL_TIMEOUT_MS = 20_000;
+/** A report (x49) ends within this: its files may be megabytes on a slow line. */
+export const ACCESS_REPORT_TIMEOUT_MS = 5 * 60_000;
 /** An answer is read only up to this size (the owner's list of 200 people is about 100 KB). */
 const MAX_ANSWER_CHARS = 4 * 1024 * 1024;
 /** Apps Script answers a POST with one redirect; a few more are allowed, never to anywhere but Google. */
@@ -417,6 +420,16 @@ export class AccessClient {
   /** The owner's: every computer of that Gmail stops at its next check. */
   revoke(grant: AccessGrant, target: string): Promise<AccessResult<{ status: 'revoked' }>> {
     return this.call('revoke', { target }, revokedSchema, grant);
+  }
+
+  /** A report (x49): not yet. */
+  report(
+    _grant: AccessGrant,
+    _report: ReportCallReport,
+    _data: Uint8Array,
+    _stop?: AbortSignal,
+  ): Promise<AccessResult<{ received: true; reference: string; again: boolean }>> {
+    return Promise.resolve(noAnswer('unexpected', 'Not yet.'));
   }
 
   /** The owner's: the row's note. */

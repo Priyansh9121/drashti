@@ -2096,12 +2096,10 @@ var DrashtiAccess = (function () {
     );
   }
 
-  /** Where the report was written, as the email says it. */
-  function reportFromLine(call) {
-    var r = call.report;
-    if (r.from === 'node')
-      return 'the node ' + computerLine(r.node) + ', through Main ' + computerLine(call.sender);
-    return computerLine(call.sender) + ', in ' + (r.from === 'simple' ? 'Simple Mode' : 'Pro Mode');
+  /** Where the report was written, as the email says it: the computer and its mode, or the node through its Main. */
+  function reportComputerLine(sender, from, node) {
+    if (from === 'node') return 'the node ' + computerLine(node) + ', through Main ' + computerLine(sender);
+    return computerLine(sender) + ', in ' + (from === 'simple' ? 'Simple Mode' : 'Pro Mode');
   }
 
   /**
@@ -2214,7 +2212,7 @@ var DrashtiAccess = (function () {
       body: reportMailText({
         reference: reference,
         gmail: person.gmail,
-        computer: reportFromLine(call),
+        computer: reportComputerLine(call.sender, r.from, r.node),
         written: env.formatTime(r.written),
         received: env.formatTime(now),
         features: r.features,
@@ -2709,6 +2707,8 @@ var DrashtiAccess = (function () {
     reportReference: reportReference,
     cleanLines: cleanLines,
     reportMailText: reportMailText,
+    reportSubject: reportSubject,
+    reportComputerLine: reportComputerLine,
     sizeText: sizeText,
   };
 })();
