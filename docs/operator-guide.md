@@ -22,7 +22,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows 
 
 Under its name are its row count and the total time of its videos and sounds between their points. **Ends at** follows the remaining automatic Next item chain while it plays; no end is promised with Repeat all, a loop, a pause, a length not known yet or a row that needs a person. Audio playlists show their own **Ends at**, or **Goes round** with Repeat on.
 
-Press **Find in playlist**, or **Find in audio playlist** above Audio’s tracks, to search by name or original file name; a presentation’s words are found too. **Enter** moves to the next match, **Shift+Enter** to the one before, **Esc** closes it. Find scrolls and marks only: it never chooses a row or puts anything up. **Cmd+F** (Ctrl+F) remains the Library search.
+Press **Find in playlist**, or **Find in audio playlist** above Audio’s tracks, to search by name or original file name; a presentation’s words are found too. **Enter** moves to the next match, **Shift+Enter** to the one before, **Esc** closes it. Find scrolls and marks only: it never chooses a row or puts anything up. **Cmd+F** (Ctrl+F) still opens Library search.
 
 **+ New › Import a Playlist File (M3U)…** makes a new playlist in the file’s order through the usual import. Audio’s **+ › Import** accepts M3U files too. A file can name at most 2,000 entries and be at most 1 MB; web addresses are listed as not taken and never fetched. **⋯ › Export as M3U…**, or right-click an audio playlist, writes a UTF-8 `.m3u8` with the library paths, names and lengths, and presentations in comments. Files that need a playable copy wait for an idle show as usual.
 
