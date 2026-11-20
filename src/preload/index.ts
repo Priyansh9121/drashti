@@ -401,6 +401,8 @@ const bridge: DrashtiBridge = {
     make: (fields) => invoke(IPC.appearance.make, fields),
     remove: (id) => invoke(IPC.appearance.remove, id),
     setMotion: (motion) => invoke(IPC.appearance.setMotion, motion),
+    setMoving: (on) => invoke(IPC.appearance.setMoving, on),
+    setFavourite: (id, on) => invoke(IPC.appearance.setFavourite, id, on),
     onOpen: (listener) =>
       on(IPC.appearance.open, () => {
         listener();
