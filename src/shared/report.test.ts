@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { core } from '../../tests/access-core';
 import { formatBytes } from './format';
@@ -76,7 +75,9 @@ describe('Drashti’s Review and the access list’s email', () => {
 
   it('give the same reference, subject, sizes and computer line', () => {
     for (let i = 0; i < 20; i++) {
-      const id = randomBytes(16).toString('hex');
+      const id = Array.from({ length: 32 }, () =>
+        '0123456789abcdef'.charAt(Math.floor(Math.random() * 16)),
+      ).join('');
       expect(reportReference(id)).toBe(core.reportReference(id));
     }
     expect(reportReference('f'.repeat(32))).toBe('R-ZZZZ-ZZZZ');
@@ -96,9 +97,9 @@ describe('Drashti’s Review and the access list’s email', () => {
 
   it('clean the words the same way, their line breaks kept, and count their letters as people see them', () => {
     for (const sample of [
-      '  Placeholder\u0007 words\r\n\r\n\r\n\r\nsecond​ line\t\there  \n',
-      ' a\u0000b \r\nc d ',
-      'ક્ષ‮ Placeholder 😀',
+      '  Placeholder\u0007 words\r\n\r\n\r\n\r\nsecond\u200b line\t\there  \n',
+      ' a\u0000b \r\nc\u2028d ',
+      'ક્ષ\u202e Placeholder 😀',
       '',
       '\n\n\n',
     ])
