@@ -32,7 +32,8 @@ export class MediaRepo {
     return (
       this.db
         .prepare(
-          `SELECT m.id, m.name, m.kind, m.missing, m.playable, m.format, m.dropped_at, m.from_device,
+          `SELECT m.id, m.name, m.kind, m.missing, m.playable, m.format, m.dropped_at, m.from_device, m.play_count,
+                  m.last_played_at,
                   (SELECT c.name FROM media_conversions mc JOIN media c ON c.id = mc.converted_id
                     WHERE mc.original_id = m.id AND mc.undone_at IS NULL AND c.deleted_at IS NULL
                     ORDER BY mc.created_at DESC LIMIT 1) AS converted_to
@@ -47,6 +48,8 @@ export class MediaRepo {
         format: string | null;
         dropped_at: string | null;
         from_device: string | null;
+        play_count: number;
+        last_played_at: string | null;
         converted_to: string | null;
       }[]
     ).map((r) => ({
@@ -60,6 +63,9 @@ export class MediaRepo {
       ...(r.dropped_at === null ? {} : { fromDrop: true as const }),
       // Added from a phone (Session 54): the device's name.
       ...(r.from_device === null ? {} : { fromDevice: r.from_device }),
+      // Its plays (alpha.20, migration 87): how many, and when it last went up.
+      ...(r.play_count > 0 ? { playCount: r.play_count } : {}),
+      ...(r.last_played_at === null ? {} : { lastPlayedAt: r.last_played_at }),
     }));
   }
 
@@ -234,6 +240,7 @@ export class MediaRepo {
       .prepare(
         `SELECT m.name, m.kind, m.path, m.sha256, m.bytes, m.missing, m.deleted_at IS NOT NULL AS deleted, m.playable,
                 m.format, m.duration_ms, COALESCE(m.source_imported_at, m.created_at) AS imported_at, m.source_path,
+                m.play_count, m.last_played_at,
                 (SELECT c.name FROM media_conversions mc JOIN media c ON c.id = mc.converted_id
                   WHERE mc.original_id = m.id AND mc.undone_at IS NULL AND c.deleted_at IS NULL
                   ORDER BY mc.created_at DESC LIMIT 1) AS converted_to,
@@ -254,6 +261,8 @@ export class MediaRepo {
           duration_ms: number | null;
           imported_at: string | null;
           source_path: string | null;
+          play_count: number;
+          last_played_at: string | null;
           converted_to: string | null;
           copy_of: string | null;
         }
@@ -274,25 +283,38 @@ export class MediaRepo {
       importedFrom: row.source_path,
       convertedTo: row.converted_to,
       copyOf: row.copy_of,
-      playCount: 0,
-      lastPlayedAt: null,
+      playCount: row.play_count,
+      lastPlayedAt: row.last_played_at,
     };
   }
 
-  /* Red (x47, slice 3): the history's writes and reads, still to be written. */
-  countPlay(_mediaId: string, _at: string): void {
-    // Red.
+  /** A file gone up once more (alpha.20, migration 87): counted, with when. */
+  countPlay(mediaId: string, at: string): void {
+    this.db
+      .prepare('UPDATE media SET play_count = play_count + 1, last_played_at = ? WHERE id = ?')
+      .run(at, mediaId);
   }
 
-  keepResume(_mediaId: string, _atMs: number, _at: string): void {
-    // Red.
+  /** Where a long file was taken off before its end, and when (alpha.20). */
+  keepResume(mediaId: string, atMs: number, at: string): void {
+    this.db
+      .prepare('UPDATE media SET resume_ms = ?, resume_at = ? WHERE id = ?')
+      .run(Math.max(0, Math.round(atMs)), at, mediaId);
   }
 
-  forgetResume(_mediaId: string): void {
-    // Red.
+  /** Played to its end (alpha.20): nothing to resume. */
+  forgetResume(mediaId: string): void {
+    this.db
+      .prepare('UPDATE media SET resume_ms = NULL, resume_at = NULL WHERE id = ? AND resume_ms IS NOT NULL')
+      .run(mediaId);
   }
 
-  resumeOf(_mediaId: string): ResumePoint | null {
-    return null;
+  /** Where a file was taken off before its end, when it was; null when nothing is kept. */
+  resumeOf(mediaId: string): ResumePoint | null {
+    const row = this.db.prepare('SELECT resume_ms, resume_at FROM media WHERE id = ?').get(mediaId) as
+      { resume_ms: number | null; resume_at: string | null } | undefined;
+    return row?.resume_ms != null && row.resume_at !== null
+      ? { atMs: row.resume_ms, at: row.resume_at }
+      : null;
   }
 }
