@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, stat, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, stat, writeFile, rm } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import type { PictureLook, PixelSize } from '../../shared/picture-look';
 import { displayPictureSize, originalForOlderPictureWithoutDisplayCopy } from '../../shared/picture-display';
@@ -342,6 +342,14 @@ export class DisplayCopies {
     const relative = `${DISPLAY_DIR}/${nameOf(job.candidate.sha256, job.size, job.header.type)}`;
     let partial = '';
     try {
+      const free = this.deps.freeBytes?.() ?? diskFreeBytes(this.deps.mediaDir);
+      if (free < RESERVE_BYTES + bytes.length) {
+        this.complete(
+          job,
+          failure('Not enough disk space to keep the display copy and 2 GiB free for the show.'),
+        );
+        return true;
+      }
       await mkdir(dir, { recursive: true });
       if (!(await realPlaceAsync(this.deps.mediaDir, dir))?.inside) throw new Error('outside media');
       partial = `${join(this.deps.mediaDir, relative)}.part-${randomUUID()}`;
@@ -431,5 +439,17 @@ export class DisplayCopies {
     this.win?.destroy();
     this.win = null;
     this.settle();
+  }
+}
+
+/** Regenerable files go with their original; only exact, regular cache files inside Media are removed. */
+export async function removeDisplayCopiesOf(mediaDir: string, sha256: string): Promise<void> {
+  if (!SHA.test(sha256)) return;
+  const dir = await realPlaceAsync(mediaDir, join(mediaDir, DISPLAY_DIR));
+  if (!dir?.inside) return;
+  const pattern = new RegExp(`^v1-${sha256}-[1-9][0-9]*x[1-9][0-9]*\\.(?:jpg|png)$`, 'u');
+  for (const entry of await readdir(dir.path, { withFileTypes: true }).catch(() => [])) {
+    if (entry.isFile() && pattern.test(entry.name))
+      await rm(join(dir.path, entry.name), { force: true }).catch(() => undefined);
   }
 }
