@@ -45,8 +45,11 @@ export const ACCESS_LIMITS = {
   cacheMs: 10_000,
 } as const;
 
-/** Any Drashti may make these. */
-export const ACCESS_PUBLIC_OPS = ['request', 'status', 'redeem', 'check'] as const;
+/**
+ * Any Drashti may make these. `check` and `report` are signed with the computer's way in; a report (Help › Report a
+ * Problem…, x49) is taken only from a computer let in now.
+ */
+export const ACCESS_PUBLIC_OPS = ['request', 'status', 'redeem', 'check', 'report'] as const;
 /** Only the owner's computer (its Gmail is the approver's), signed as a check is. */
 export const ACCESS_OWNER_OPS = [
   'list',
@@ -89,6 +92,8 @@ export const ACCESS_ERRORS = [
   'bad-length',
   'mail-limit',
   'mail-failed',
+  'not-in',
+  'too-large',
   'server',
 ] as const;
 export type AccessErrorCode = (typeof ACCESS_ERRORS)[number];
@@ -112,8 +117,43 @@ export const ACCESS_ERROR_TEXT: Record<AccessErrorCode, string> = {
   'bad-length': 'That is not a length of access the list gives: 1 to 730 whole days, or Unlimited.',
   'mail-limit': 'The access list has sent all the emails it may send today. Try again tomorrow.',
   'mail-failed': 'The access list could not send the email. Try again later.',
+  'not-in': 'Only a computer let in can send a report. Ask the person who approves access.',
+  'too-large':
+    'The report is too large to send. Send it without the crash files, or use Save a Copy… and send it another way.',
   server: 'The access list could not answer just now. Try again in a moment.',
 };
+
+/**
+ * Help › Report a Problem… (x49, the owner's Q60-38 and his "Yes, all A" to Q60-42 on 20 Nov 2026): what one report may
+ * hold, and how many the list takes. access-list/core.js keeps the same numbers (PROTOCOL.report).
+ */
+export const ACCESS_REPORT = {
+  /** Reports taken a day from one computer, and in all (a day by the list's clock, in UTC). */
+  perComputerPerDay: 5,
+  perDay: 20,
+  /**
+   * None is taken once fewer than this many of the day's emails (Google's free account: 100) would be left after it, so
+   * tokens and approvals always have room. A report emails two: the admin, and the person's "received" note.
+   */
+  mailReserve: 30,
+  /** Features in one report (each with its own words), and the letters of its words. */
+  features: 8,
+  whatLetters: 2000,
+  expectedLetters: 1000,
+  /** The notice's words (Report this…), one line. */
+  noticeLetters: 500,
+  /** The log's recent error lines that go in the email's text, and each one's letters. */
+  errorLines: 30,
+  errorLetters: 300,
+  /** Its files in all, in bytes: one diagnostics file, one picture, and up to five crash files. */
+  filesBytes: 7 * 1024 * 1024,
+  crashFiles: 5,
+  /** The call's text at most (its files as base64, and its words): longer is refused unread. */
+  textChars: 10 * 1024 * 1024,
+  /** A report's id is remembered this long, the newest this many: the same report again is never emailed again. */
+  seenMs: 2 * 24 * 60 * 60_000,
+  seenMax: 60,
+} as const;
 
 /**
  * How long access lasts (the owner's decision of 28 Oct 2026): one of these days, a whole number of days up to
