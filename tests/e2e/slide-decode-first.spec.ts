@@ -106,6 +106,39 @@ async function paintUntilCapture(page: Page): Promise<() => Promise<void>> {
   };
 }
 
+/**
+ * Subscribe from the hall window's first document, before its fonts/readiness can finish. A late subscription on
+ * chipless Windows can acknowledge two old black frames and then stop delivering, even though capturePage of the
+ * same window is grey (91346, both attempts). This is the lifecycle already used by slide-current-first.spec.ts.
+ */
+async function recordHall(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ app }) => {
+    app.on('browser-window-created', (_event, w) => {
+      w.webContents.once('dom-ready', () => {
+        const url = w.webContents.getURL();
+        if (!url.includes('/output.html') || url.includes('identify=')) return;
+        const frames: Frame[] = [];
+        (globalThis as DecodeGlobals).drashtiDecodeFrames = frames;
+        (globalThis as DecodeGlobals).drashtiDecodeWindowId = w.id;
+        w.webContents.beginFrameSubscription(false, (image) => {
+          const bytes = image.resize({ width: 32, height: 18 }).toBitmap();
+          const sum = [0, 0, 0];
+          let count = 0;
+          for (let y = 4; y < 14; y++)
+            for (let x = 8; x < 24; x++) {
+              const i = (y * 32 + x) * 4;
+              sum[0] = (sum[0] ?? 0) + (bytes[i + 2] ?? 0);
+              sum[1] = (sum[1] ?? 0) + (bytes[i + 1] ?? 0);
+              sum[2] = (sum[2] ?? 0) + (bytes[i] ?? 0);
+              count++;
+            }
+          frames.push({ t: Date.now(), rgb: sum.map((n) => n / count) });
+        });
+      });
+    });
+  });
+}
+
 /** The hall's actual painted frames, sampled in Main without asking the renderer to decode a screenshot. */
 async function captureHall(app: ElectronApplication, hall: Page): Promise<number> {
   const by = Date.now() + 20_000;
@@ -118,25 +151,6 @@ async function captureHall(app: ElectronApplication, hall: Page): Promise<number
     .toBe(true);
   const stopPainting = await paintUntilCapture(hall);
   try {
-    await w.evaluate((window: BrowserWindow) => {
-      const frames: Frame[] = [];
-      (globalThis as DecodeGlobals).drashtiDecodeFrames = frames;
-      (globalThis as DecodeGlobals).drashtiDecodeWindowId = window.id;
-      window.webContents.beginFrameSubscription(false, (image) => {
-        const bytes = image.resize({ width: 32, height: 18 }).toBitmap();
-        const sum = [0, 0, 0];
-        let count = 0;
-        for (let y = 4; y < 14; y++)
-          for (let x = 8; x < 24; x++) {
-            const i = (y * 32 + x) * 4;
-            sum[0] = (sum[0] ?? 0) + (bytes[i + 2] ?? 0);
-            sum[1] = (sum[1] ?? 0) + (bytes[i + 1] ?? 0);
-            sum[2] = (sum[2] ?? 0) + (bytes[i] ?? 0);
-            count++;
-          }
-        frames.push({ t: Date.now(), rgb: sum.map((n) => n / count) });
-      });
-    });
     // beginFrameSubscription starts asynchronously. Changing the only still scene before the first delivered frame
     // races its initial snapshot; a captured black frame cannot acknowledge a later scene that was missed.
     await expect
@@ -393,6 +407,7 @@ for (const place of ['hall', 'stream'] as const) {
       let page: Page;
       let pixelsBy: number;
       if (place === 'hall') {
+        await recordHall(app);
         await setUpScreen(win);
         page = await outputPage(app);
         await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
@@ -496,6 +511,7 @@ for (const place of ['hall', 'stream'] as const) {
     let page: Page;
     let pixelsBy: number;
     if (place === 'hall') {
+      await recordHall(app);
       await setUpScreen(win);
       page = await outputPage(app);
       await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
