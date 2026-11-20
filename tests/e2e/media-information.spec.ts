@@ -6,7 +6,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
+import {
+  closeLibrary,
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+} from './helpers';
 import { testFfmpeg } from './stream-helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -193,19 +200,13 @@ test('Media: a video’s container, length, size, its picture and both its sound
 test('a playlist’s row and an audio playlist’s track: pixels shaped 16:9, an interlaced file’s own scan, an MP3 with its cover; Simple Mode’s rows too', async () => {
   test.setTimeout(180_000);
   const { win, dir } = await start();
-  const [videoId = '', soundId = '', interlacedId = ''] = await importAndGetIds(win, [
+  const [videoId = '', soundId = ''] = await importAndGetIds(win, [
     widePixels(join(dir, 'Placeholder wide pixels.mp4')),
     withCover(join(dir, 'Placeholder cover.mp3')),
     interlaced(join(dir, 'Placeholder interlaced.mp4')),
   ]);
   expect(videoId).not.toBe('');
   expect(soundId).not.toBe('');
-  // An interlaced file's own information says so (it is converted by itself to a progressive copy since alpha.20).
-  const scan = await win.evaluate(async (id) => {
-    const result = await (globalThis as PageGlobals).drashti.media.details(id);
-    return result.ok ? (result.details.read?.pictures[0]?.scan ?? null) : null;
-  }, interlacedId);
-  expect(scan).toBe('top first');
   const made = await win.evaluate(
     async ({ videoId, soundId }) => {
       const d = (globalThis as PageGlobals).drashti;
@@ -246,6 +247,22 @@ test('a playlist’s row and an audio playlist’s track: pixels shaped 16:9, an
   await expect(dialog.getByRole('region', { name: 'Picture', exact: true })).toHaveCount(0);
   await win.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
+
+  // An interlaced file's own window says so: its original in Media, which keeps a row of its own (saying what it
+  // became) once it is converted by itself to a progressive copy of the same name (alpha.20, "Plays anything").
+  await openLibrary(win);
+  await win.getByTestId('library-tab-media').click();
+  const original = win
+    .getByTestId('media-row')
+    .filter({ hasText: 'Placeholder interlaced' })
+    .filter({ has: win.getByTestId('media-note').filter({ hasText: 'Converted to .mp4' }) });
+  await expect(original).toHaveCount(1, { timeout: 60_000 });
+  dialog = await openFrom(win, original.getByTestId('media-item'));
+  await expect(line(dialog, 'Picture', 'Scan')).toHaveText('Interlaced, top field first');
+  await expect(line(dialog, 'Picture', 'Size')).toHaveText('720 × 576, shown as 16:9');
+  await win.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await closeLibrary(win);
 
   // Simple Mode's rows have it too (Q60-39, P6 (j): "Yes, all A").
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
