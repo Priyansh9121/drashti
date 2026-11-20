@@ -1,6 +1,8 @@
+import type { AudioLayer } from './engine/state';
+import type { MusicPlaylist } from './music';
 import { describe, expect, it } from 'vitest';
 import type { PlaylistItemInfo } from './playlists';
-import { playlistLeftMs, playlistTotals } from './playlist-playback';
+import { mediaLengthBetweenPoints, musicLeftMs, playlistLeftMs, playlistTotals } from './playlist-playback';
 
 const video = (
   id: string,
@@ -45,4 +47,46 @@ describe('playlist timing', () => {
     const picture: PlaylistItemInfo = { ...video('b', 0), media: 'image' };
     expect(playlistLeftMs([video('a', 10000, 'next'), picture], ['a', 'b'], 'a', 5000, false)).toBeNull();
   });
+});
+
+it('Music ends in its running shuffle order, using the live points and each following track’s own length', () => {
+  const playlist: MusicPlaylist = {
+    id: 'list',
+    name: 'Placeholder list',
+    loop: false,
+    shuffle: true,
+    tracks: [
+      { id: 'a', mediaId: 'a', name: 'Placeholder a', durationMs: 30000, playingMs: 10000, playable: true },
+      { id: 'b', mediaId: 'b', name: 'Placeholder b', durationMs: 30000, playingMs: 10000, playable: true },
+    ],
+  };
+  const run = {
+    playlistId: 'list',
+    name: playlist.name,
+    loop: false,
+    shuffle: true,
+    index: 0,
+    tracks: [
+      { mediaId: 'b', title: 'Placeholder b' },
+      { mediaId: 'a', title: 'Placeholder a' },
+    ],
+  };
+  const audio: AudioLayer = {
+    id: 'audio',
+    title: 'Placeholder b',
+    mediaId: 'b',
+    volume: 1,
+    loop: false,
+    startedAt: 1000,
+    durationMs: 30000,
+    clip: { startMs: 2000, endMs: 12000 },
+    music: run,
+  };
+  expect(musicLeftMs(audio, playlist, 6000)).toBe(15000);
+  expect(musicLeftMs({ ...audio, pausedAtMs: 5000 }, playlist, 6000)).toBeNull();
+  expect(musicLeftMs({ ...audio, music: { ...run, loop: true } }, playlist, 6000)).toBeNull();
+  expect(mediaLengthBetweenPoints(30000, JSON.stringify({ startMs: 2000, endMs: 12000, markers: [] }))).toBe(
+    10000,
+  );
+  expect(playlistTotals([{ ...video('points', 30000), playingMs: 10000 }]).durationMs).toBe(10000);
 });

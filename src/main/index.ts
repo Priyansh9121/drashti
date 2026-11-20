@@ -6529,13 +6529,25 @@ function start(): void {
               ];
             });
       const text = writeM3u(rows);
-      const picked = await dialog.showSaveDialog(BrowserWindow.fromWebContents(e.sender) ?? operatorWindow!, {
+      const picked = await dialog.showSaveDialog(parent, {
         title: 'Export as M3U',
         defaultPath: `${list.name.replace(/[\\/:*?"<>|]/gu, '_')}.m3u8`,
         filters: [{ name: 'UTF-8 M3U playlist', extensions: ['m3u8'] }],
       });
       if (picked.canceled || !picked.filePath) return { ok: true, id: null, notTaken: [] };
       const file = /\.m3u8$/iu.test(picked.filePath) ? picked.filePath : `${picked.filePath}.m3u8`;
+      if (file !== picked.filePath && existsSync(file)) {
+        const replace = await dialog.showMessageBox(parent, {
+          type: 'question',
+          buttons: ['Replace', 'Cancel'],
+          defaultId: 1,
+          cancelId: 1,
+          message: `Replace “${basename(file)}”?`,
+          detail: 'A file with this name already exists.',
+          noLink: true,
+        });
+        if (replace.response !== 0) return { ok: true, id: null, notTaken: [] };
+      }
       await fsPromises.writeFile(file, text, 'utf8');
       return { ok: true, id: null, notTaken: [] };
     } catch (error) {
