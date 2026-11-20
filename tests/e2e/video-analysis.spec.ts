@@ -162,3 +162,70 @@ test('idle analysis prepares a waveform, one cached strip and suggested cuts wit
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('waveform and scene choices stay in the editor draft until Save, preserving the file’s own points', async () => {
+  const { app } = await launchApp();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-scene-editor-'));
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+    const file = join(dir, 'Placeholder scenes.mp4');
+    makeVideo(file);
+    const original = digest(file);
+    const [id] = await importAndGetIds(win, [file]);
+    if (!id) throw new Error('The generated video was not imported.');
+    const points = {
+      startMs: 500,
+      endMs: 7000,
+      markers: [{ id: 'own-marker', name: 'Placeholder point', atMs: 2200 }],
+    };
+    expect(
+      await win.evaluate(
+        ({ id, points }) => (globalThis as PageGlobals).drashti.media.setMarkers(id, points),
+        { id, points },
+      ),
+    ).toMatchObject({ ok: true });
+    const open = async () => {
+      await openLibrary(win);
+      await win.getByTestId('library-tab-media').click();
+      await win
+        .getByTestId('media-item')
+        .filter({ hasText: 'Placeholder scenes' })
+        .click({ button: 'right' });
+      await win.getByRole('menuitem', { name: 'Edit Video…', exact: true }).click();
+      const dialog = win.getByTestId('edit-video');
+      await expect(dialog.getByTestId('timeline-waveform')).toBeVisible();
+      await expect(dialog.getByRole('button', { name: /Keep scene at 0:04/u })).toBeVisible();
+      return dialog;
+    };
+    let dialog = await open();
+    await dialog.getByRole('button', { name: /Keep scene at 0:04/u }).click();
+    await expect(dialog.getByText('1 scene marker will be added on Save.')).toBeVisible();
+    expect(await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.markers(id), id)).toEqual(
+      points,
+    );
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await win.getByRole('button', { name: 'Discard changes', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    expect(await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.markers(id), id)).toEqual(
+      points,
+    );
+    dialog = await open();
+    await dialog.getByRole('button', { name: /Keep scene at 0:04/u }).click();
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+    const saved = await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.markers(id), id);
+    expect(saved).toMatchObject({ startMs: 500, endMs: 7000 });
+    expect(saved?.markers).toHaveLength(2);
+    expect(saved?.markers.find((marker) => marker.id === 'own-marker')).toEqual(points.markers[0]);
+    expect(
+      saved?.markers.some((marker) => Math.abs(marker.atMs - 4000) <= 80 && marker.id !== 'own-marker'),
+    ).toBe(true);
+    expect(digest(file)).toBe(original);
+    await expectNoSeriousA11yIssues(win, 'video waveform and saved scene suggestions');
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
