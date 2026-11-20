@@ -68,6 +68,9 @@ export interface MediaProtocolDeps {
    * it; null for any other.
    */
   openingSound?: (sha256: string) => string | null;
+  /** Red (x54, slice 8): a stream link's local stream, not served yet. */
+  liveFolder?: (linkId: string) => string | null;
+  livePlaylist?: (linkId: string, segment: number) => Promise<string | null>;
   /** Told about refusals that point at a broken or tampered library. */
   warn?: (message: string) => void;
 }

@@ -34,6 +34,7 @@ import {
   type UpNext,
   type VideoClips,
   type VideoSeeks,
+  type LinkBackground,
   type WindowBackground,
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
@@ -387,6 +388,8 @@ export interface Restored {
   window: string | null;
   /** Another app's window that was in the picture-in-picture box (Session 50), by name: the same. */
   pipWindow: string | null;
+  /** A stream link that was the background (alpha.20, slice 8), by its name: never put back, only said. */
+  link?: string;
   /** The video input put back as the background (Session 50), by name (not counted in `background`), or null. */
   input: string | null;
   /** A video input that was the background but is no longer in this computer's list, by name: only said. */
@@ -815,6 +818,23 @@ export class ShowEngine {
         true,
       ),
     );
+  }
+
+  /** Red (x54, slice 8): a stream link as the background, not built yet. */
+  showLink(_link: Pick<LinkBackground, 'linkId' | 'name'>): CommandResult {
+    return this.unchanged();
+  }
+
+  restartLink(_linkId: string): CommandResult {
+    return this.unchanged();
+  }
+
+  linkDropped(_linkId: string): CommandResult {
+    return this.unchanged();
+  }
+
+  clearLink(_linkId: string): CommandResult {
+    return this.unchanged();
   }
 
   /**

@@ -156,6 +156,7 @@ import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
 import type { TimerFields, TimerResult } from './timers';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { StreamLinkJoin, StreamLinkResult, StreamLinkStatus } from './live-link';
 import type { VideoOutResult, VideoOutSettings, VideoOutStatus } from './video-out';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
@@ -1028,6 +1029,21 @@ export const IPC = {
     /** main -> operator: YouTube's state here changed. */
     changed: 'youtube:changed',
   },
+  /** Show a Stream Link… (alpha.20, the playback set's slice 8): an HLS or YouTube live link on the hall's screens. */
+  liveLink: {
+    /** Show a link the operator typed: up once its pictures come, or why not (operator window only; Pro Mode). */
+    show: 'livelink:show',
+    /** Stop the link connecting, or take the one up off (operator window only). */
+    stop: 'livelink:stop',
+    /** How the stream link stands (operator window). */
+    status: 'livelink:status',
+    /** The last link shown, for the window to offer again (operator window only; Pro Mode). */
+    last: 'livelink:last',
+    /** A screen's page or the audio player joins the link up: where its player starts, and when (any of Drashti's pages). */
+    join: 'livelink:join',
+    /** main -> operator: it changed (connecting, playing, reconnecting, the Wallpaper, ended, off). */
+    changed: 'livelink:changed',
+  },
   /** Show a Window… (Session 48): another app's window as the hall's background. */
   liveWindow: {
     /** The other apps' open windows the picker offers (operator window only; Pro Mode). */
@@ -1856,6 +1872,11 @@ export interface InvokeContract {
   [IPC.youtube.schedule]: { args: [input: YouTubeScheduleInput]; result: YouTubeResult };
   [IPC.youtube.useBroadcast]: { args: [profileId: string, broadcastId: string]; result: YouTubeResult };
   [IPC.youtube.endBroadcast]: { args: [profileId: string]; result: YouTubeResult };
+  [IPC.liveLink.show]: { args: [link: string]; result: StreamLinkResult };
+  [IPC.liveLink.stop]: { args: []; result: null };
+  [IPC.liveLink.status]: { args: []; result: StreamLinkStatus };
+  [IPC.liveLink.last]: { args: []; result: string | null };
+  [IPC.liveLink.join]: { args: [linkId: string]; result: StreamLinkJoin | null };
   [IPC.liveWindow.list]: { args: []; result: WindowList };
   [IPC.liveWindow.show]: { args: [id: string]; result: LiveWindowResult };
   [IPC.liveWindow.access]: { args: []; result: null };
@@ -2024,6 +2045,7 @@ export interface EventContract {
   [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: { role: 'preview' | 'encoder' | 'speech' };
   [IPC.stream.context]: ProgramContext;
+  [IPC.liveLink.changed]: StreamLinkStatus;
   [IPC.liveWindow.changed]: LiveWindowStatus;
   [IPC.videoInputs.changed]: VideoInputsView;
   [IPC.videoInputs.statusChanged]: VideoInputStatus;
