@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { ChosenWallpaper } from '../../../shared/wallpapers';
 import { wallpaperFrame } from '../../../shared/wallpapers';
 import { engineNow } from './clock';
@@ -18,15 +18,6 @@ import { useNow } from './useNow';
  */
 
 const FULL: CSSProperties = { position: 'absolute', inset: 0 };
-
-/**
- * Tests only: the picture drawn this many ms after it is put on the page, as from a slow disk (Q60-31 (3); Main adds it
- * under DRASHTI_TEST_WALLPAPER_LATE_MS, main/windows/renderer.ts, never when packaged); 0 everywhere else.
- */
-const LATE_MS =
-  typeof location === 'undefined'
-    ? 0
-    : Number(new URLSearchParams(location.search).get('wallpaperLate') ?? 0) || 0;
 const PICTURE: CSSProperties = { ...FULL, width: '100%', height: '100%', objectFit: 'contain' };
 
 function Picture({
@@ -46,17 +37,6 @@ function Picture({
   useEffect(() => {
     if (previews) onDrawn?.();
   }, [previews, onDrawn]);
-  const [due, setDue] = useState(LATE_MS === 0);
-  useEffect(() => {
-    if (due) return;
-    // eslint-disable-next-line no-restricted-syntax -- tests only: the picture comes late, as from a slow disk
-    const late = setTimeout(() => {
-      setDue(true);
-    }, LATE_MS);
-    return () => {
-      clearTimeout(late);
-    };
-  }, [due]);
   return (
     <div
       // Its opacity is the fade's, set frame by frame (WallpaperView); the next one starts unseen.
@@ -73,23 +53,21 @@ function Picture({
         <PreviewPicture mediaId={mediaId} style={PICTURE} />
       ) : (
         <Looked mediaId={mediaId} showing={null} style={PICTURE}>
-          {(s, copy) =>
-            due && (
-              <img
-                key={attempt}
-                src={copy?.url ?? urlOf(mediaId, attempt)}
-                alt=""
-                draggable={false}
-                style={s}
-                onLoad={
-                  onDrawn &&
-                  ((e) => {
-                    void e.currentTarget.decode().then(onDrawn, onDrawn);
-                  })
-                }
-              />
-            )
-          }
+          {(s, copy) => (
+            <img
+              key={attempt}
+              src={copy?.url ?? urlOf(mediaId, attempt)}
+              alt=""
+              draggable={false}
+              style={s}
+              onLoad={
+                onDrawn &&
+                ((e) => {
+                  void e.currentTarget.decode().then(onDrawn, onDrawn);
+                })
+              }
+            />
+          )}
         </Looked>
       )}
     </div>
