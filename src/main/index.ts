@@ -1756,7 +1756,7 @@ function start(): void {
   const soundRepo = new SoundRepo(db);
   const soundKnown = new Map<string, { gain: number; silent: boolean } | null>();
   const soundOf = (mediaId: string): { gain: number; silent: boolean } | null => {
-    mediaId = videoEdits.sourceId(mediaId);
+    mediaId = editedPlaying.sourceId(mediaId);
     if (!soundKnown.has(mediaId)) {
       const s = soundRepo.soundOf(mediaId);
       soundKnown.set(mediaId, s ? { gain: s.gain, silent: s.silent } : null);
@@ -1790,10 +1790,15 @@ function start(): void {
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
   // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
   const videoEdits = new VideoEditsRepo(db);
+  // S4 can wrap these two functions once with a proxy's parent lookup; every metadata consumer follows it.
+  const editedPlaying = {
+    sourceId: (id: string) => videoEdits.sourceId(id),
+    renditionOf: (id: string) => videoEdits.renditionOf(id),
+  };
   const playbackRepo = new MediaRepo(db);
   const ownPlayback = new Map<string, PlaybackSettings>();
   const playbackOfFile = (mediaId: string): PlaybackSettings => {
-    mediaId = videoEdits.sourceId(mediaId);
+    mediaId = editedPlaying.sourceId(mediaId);
     let kept = ownPlayback.get(mediaId);
     if (!kept) {
       kept = playbackRepo.playbackOf(mediaId);
@@ -1816,10 +1821,10 @@ function start(): void {
           : simpleNow() && simpleModeRefuses(command, state)
             ? simpleRefusalText(simpleAccess())
             : null,
-      sourceMediaId: (id) => videoEdits.sourceId(id),
+      sourceMediaId: (id) => editedPlaying.sourceId(id),
       prepareVideoEdits: (previous, next, historic) =>
         prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic, {
-          renditionOf: (id) => videoEdits.renditionOf(id),
+          renditionOf: (id) => editedPlaying.renditionOf(id),
           lengthOf: (id) => mediaLength(id),
           available: (id) => {
             const row = playbackRepo.kindAndFile(id);
@@ -1829,9 +1834,9 @@ function start(): void {
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
-        const sourceId = videoEdits.sourceId(mediaId);
+        const sourceId = editedPlaying.sourceId(mediaId);
         const original = videoCaptionsRepo.chosen(sourceId);
-        const rendition = videoEdits.renditionOf(mediaId);
+        const rendition = editedPlaying.renditionOf(mediaId);
         const length = mediaLength(sourceId);
         const track =
           original && rendition
@@ -2124,13 +2129,13 @@ function start(): void {
     return known === true;
   };
   mediaMarkers = (mediaId, itemId) => {
-    const sourceId = videoEdits.sourceId(mediaId);
+    const sourceId = editedPlaying.sourceId(mediaId);
     const original = media.markersOf(sourceId);
     const marks =
       original && itemId && trimmedVideos.playsFull(itemId, sourceId, original)
         ? { ...original, startMs: null, endMs: null }
         : original;
-    const rendition = videoEdits.renditionOf(mediaId);
+    const rendition = editedPlaying.renditionOf(mediaId);
     const length = media.lengthOf(sourceId);
     return marks && rendition && length !== null
       ? videoEditTimes(rendition.recipe, length).markers(marks)
@@ -2143,9 +2148,9 @@ function start(): void {
   registerVideoCaptionIpc({
     fromOperator,
     repo: {
-      view: (id) => videoCaptionsRepo.view(videoEdits.sourceId(id)),
-      select: (id, track) => videoCaptionsRepo.select(videoEdits.sourceId(id), track),
-      put: (id, tracks) => videoCaptionsRepo.put(videoEdits.sourceId(id), tracks),
+      view: (id) => videoCaptionsRepo.view(editedPlaying.sourceId(id)),
+      select: (id, track) => videoCaptionsRepo.select(editedPlaying.sourceId(id), track),
+      put: (id, tracks) => videoCaptionsRepo.put(editedPlaying.sourceId(id), tracks),
     },
     reader: captionFileReader,
     write: sourceWrite(
@@ -2169,7 +2174,7 @@ function start(): void {
       engine.refreshVideoCaptions();
       sendToOperator(IPC.videoCaptions.changed, {
         mediaId,
-        view: videoCaptionsRepo.view(videoEdits.sourceId(mediaId)),
+        view: videoCaptionsRepo.view(editedPlaying.sourceId(mediaId)),
       });
     },
   });
@@ -7209,7 +7214,10 @@ function start(): void {
   // Resume where it stopped, last played and play counts (alpha.20, the owner's Q60-34 item 3 and his "Yes, all A" to
   // Q60-39): Main follows the engine's state; each write waits while the library is busy. An audio playlist stopped
   // part-way plays on from its track. What plays at a quit keeps where it is.
-  const historyMedia = editedPlayHistory(media, videoEdits);
+  const historyMedia = editedPlayHistory(media, {
+    sourceId: (id) => editedPlaying.sourceId(id),
+    renditionOf: (id) => editedPlaying.renditionOf(id),
+  });
   const history = new PlayHistory(
     { later: (key, run) => later.write(key, run), media: historyMedia, now: () => Date.now() },
     engine.current,
@@ -7276,7 +7284,7 @@ function start(): void {
         ok: false as const,
         message: 'Those settings could not be kept: open Sound and picture… again and set them once more.',
       };
-    const sourceId = videoEdits.sourceId(mediaId);
+    const sourceId = editedPlaying.sourceId(mediaId);
     if (!media.setPlayback(sourceId, parsed.data))
       return {
         ok: false as const,
