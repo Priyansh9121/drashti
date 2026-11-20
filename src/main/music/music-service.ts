@@ -1,5 +1,7 @@
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
+import { playingOf } from '../../shared/engine/playing';
 import type { EngineState } from '../../shared/engine/state';
+import { playbackAtMs, playbackSpanMs } from '../../shared/media';
 import { idSchema } from '../../shared/model-schema';
 import type { MusicPlaylist, MusicResult, MusicView } from '../../shared/music';
 import { musicNameSchema, musicOptionsSchema } from '../../shared/music';
@@ -14,6 +16,23 @@ import type { AudioPlaylistRepo } from '../db/audio-playlists';
  */
 
 const LAST = 'musicPlaylistId';
+/** The track an audio playlist was stopped on part-way (alpha.20): its playlist and the track's file. */
+const STOPPED = 'musicStoppedAt';
+
+/** Where the music stopped part-way: Play with no track asked plays on from there. */
+interface Stopped {
+  playlistId: string;
+  mediaId: string;
+}
+
+const isStopped = (v: unknown): v is Stopped =>
+  typeof v === 'object' &&
+  v !== null &&
+  typeof (v as Stopped).playlistId === 'string' &&
+  typeof (v as Stopped).mediaId === 'string';
+
+/** Within this of a track's end point, the track was played to its end (ms). */
+const AT_ITS_END_MS = 1500;
 
 export interface MusicDeps {
   repo: AudioPlaylistRepo;
@@ -33,8 +52,69 @@ export class MusicService {
    * library is free (Session 15: never in the way of the show). Undefined until first read.
    */
   private last: unknown;
+  /**
+   * The music playing now, as last seen (alpha.20): its playlist, the track and whether it is the last one; then, once
+   * it is gone part-way, where it stopped (kept with the library's settings, through a quit).
+   */
+  private following: { playlistId: string; mediaId: string; last: boolean; state: EngineState } | null = null;
+  private stopped: Stopped | null | undefined;
 
   constructor(private readonly deps: MusicDeps) {}
+
+  /** Where the music last stopped part-way, as known here (read from the library's settings once). */
+  private stoppedAt(): Stopped | null {
+    if (this.stopped === undefined) {
+      const kept = this.deps.settings.get(STOPPED);
+      this.stopped = isStopped(kept) ? kept : null;
+    }
+    return this.stopped;
+  }
+
+  private keepStopped(stopped: Stopped | null): void {
+    this.stopped = stopped;
+    this.deps.settings.set(STOPPED, stopped);
+  }
+
+  /**
+   * The engine's state changed (alpha.20): an audio playlist that goes away part-way (Clear audio, another sound in its
+   * place) keeps the track it stopped on; one played to the end of its last track keeps nothing.
+   */
+  follow(state: EngineState): void {
+    const run = state.layers.audio?.music;
+    const track = run?.tracks[run.index];
+    if (run && track) {
+      this.following = {
+        playlistId: run.playlistId,
+        mediaId: track.mediaId,
+        last: run.index >= run.tracks.length - 1 && !run.loop,
+        state,
+      };
+      return;
+    }
+    const was = this.following;
+    this.following = null;
+    if (!was) return;
+    if (was.last && this.atItsEnd(was.state)) {
+      if (this.stoppedAt()?.playlistId === was.playlistId) this.keepStopped(null);
+      return;
+    }
+    this.keepStopped({ playlistId: was.playlistId, mediaId: was.mediaId });
+  }
+
+  /** Drashti quitting while an audio playlist plays: it plays on from this track next time. */
+  quitting(): void {
+    const was = this.following;
+    if (was) this.keepStopped({ playlistId: was.playlistId, mediaId: was.mediaId });
+  }
+
+  /** Whether the track playing in this state is at (or past) its end point now. */
+  private atItsEnd(state: EngineState): boolean {
+    const playing = playingOf(state, { layer: 'audio' });
+    const length = playing?.durationMs;
+    if (!playing || length === undefined) return false;
+    const { end } = playbackSpanMs(playing.clock.clip, length);
+    return playbackAtMs(playing.clock, length, Date.now()) >= end - AT_ITS_END_MS;
+  }
 
   view(): MusicView {
     const playlists = this.deps.repo.list();
@@ -128,9 +208,10 @@ export class MusicService {
   /**
    * Play: an audio playlist from one of its tracks (its playable ones, in
    * order or shuffled); with no playlist, the one paused plays on, or the
-   * one played last starts (Simple Mode's Play, the remote, the API).
+   * one played last starts (Simple Mode's Play, the remote, the API). With no track asked (alpha.20), the track it was
+   * stopped on part-way, else its first.
    */
-  play(playlistId: string | null, trackIndex = 0): MusicResult {
+  play(playlistId: string | null, asked?: number): MusicResult {
     const audio = this.deps.engine.state().layers.audio;
     if (playlistId === null && audio?.music) {
       if (audio.pausedAtMs !== undefined) this.deps.engine.dispatch({ type: 'resumeMusic' });
@@ -141,6 +222,12 @@ export class MusicService {
       view.playlists.find((x) => x.id === (playlistId ?? view.lastId)) ??
       (playlistId === null ? view.playlists[0] : undefined);
     if (!p) return playlistId === null ? { ok: false, message: 'There is no audio playlist yet.' } : gone;
+    const stopped = this.stoppedAt();
+    const onFrom =
+      asked === undefined && stopped?.playlistId === p.id
+        ? p.tracks.findIndex((t) => t.mediaId === stopped.mediaId)
+        : -1;
+    const trackIndex = asked ?? Math.max(0, onFrom);
     const { tracks, index } = this.playOrder(p, trackIndex);
     if (tracks.length === 0) return { ok: false, message: `“${p.name}” has no sound that can play.` };
     const started = this.deps.engine.dispatch({
@@ -155,6 +242,8 @@ export class MusicService {
       index,
     });
     if (!started.ok) return { ok: false, message: started.message };
+    // Played again from somewhere: where it stopped is used, or no longer wanted.
+    if (stopped?.playlistId === p.id) this.keepStopped(null);
     this.last = p.id;
     this.deps.settings.set(LAST, p.id);
     this.deps.log(`Music: playing an audio playlist (${String(tracks.length)} track(s))`);
