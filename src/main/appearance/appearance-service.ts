@@ -165,7 +165,7 @@ export class AppearanceService {
       moving: this.settings.moving,
       look: shown.moving?.kinds ?? [],
       slow: isSlow(this.deps.cores ?? availableParallelism()),
-      chip: 'unknown',
+      chip: this.deps.chip?.() ?? 'unknown',
     };
   }
 
@@ -194,9 +194,17 @@ export class AppearanceService {
     return true;
   }
 
-  /** Chromium may have said how it draws (Session 60). Not yet. */
+  private toldChip: 'unknown' | 'yes' | 'no' = 'unknown';
+
+  /**
+   * Chromium's GPU process may have said how it draws (Session 60): every window is told once the answer changes, so a
+   * live look starts only once a graphics chip is known to be there, and never on a computer without one.
+   */
   chipMayHaveChanged(): void {
-    return;
+    const chip = this.deps.chip?.() ?? 'unknown';
+    if (chip === this.toldChip) return;
+    this.toldChip = chip;
+    this.tell();
   }
 
   /** Star or unstar an appearance there is (Session 60): kept on this computer, in the order starred. */

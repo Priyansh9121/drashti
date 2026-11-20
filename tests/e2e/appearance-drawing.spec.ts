@@ -330,8 +330,10 @@ for (const { family, list } of FAMILY_IDS)
  * and a still look draws none.
  */
 async function lookTouches(page: Page, a: Appearance): Promise<void> {
-  const { chipless, layers } = await page.evaluate(async () => ({
-    chipless: await (globalThis as PageGlobals).drashti.app.noGpu(),
+  // Once Chromium has said whether it draws with a graphics chip (data-chip: unknown until then).
+  await expect(page.locator('html')).toHaveAttribute('data-chip', /^(yes|no)$/u);
+  const { chipless, layers } = await page.evaluate(() => ({
+    chipless: document.documentElement.dataset['chip'] === 'no',
     layers: [...document.querySelectorAll('[data-look-motion]')].map((el) => ({
       where: el.getAttribute('data-look-motion'),
       inHeader: el.parentElement?.matches('[data-header]') === true,
