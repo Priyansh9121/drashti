@@ -103,7 +103,7 @@ test('a background dissolve cut short by another background never leaves the pic
   const third = backgrounds[2];
   if (!third) throw new Error('The third placeholder background is missing');
   await out.evaluate((mediaId) => {
-    const decode = HTMLImageElement.prototype.decode;
+    const decode = Reflect.get(HTMLImageElement.prototype, 'decode');
     let allow: () => void = () => undefined;
     const held = new Promise<void>((resolve) => {
       allow = resolve;
