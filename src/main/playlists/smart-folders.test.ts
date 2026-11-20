@@ -40,6 +40,29 @@ const put = async (relative: string, content: string) => {
 
 const gone = (relative: string) => rm(join(root, 'Sabha', ...relative.split('/')));
 
+const putBytes = async (relative: string, bytes: Buffer) => {
+  const path = join(root, 'Sabha', ...relative.split('/'));
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, bytes);
+};
+
+/** An MP4 as an editor exports one (its movie box at the end), made byte by byte: whole, or its first `cut` bytes. */
+function exportedMp4(cut?: number): Buffer {
+  const box = (type: string, bytes: number) => {
+    const b = Buffer.alloc(8 + bytes, 1);
+    b.writeUInt32BE(8 + bytes, 0);
+    b.write(type, 4, 'latin1');
+    return b;
+  };
+  const ftyp = Buffer.concat([
+    box('ftyp', 0).subarray(0, 8),
+    Buffer.from('isom\0\0\x02\0isomavc1', 'latin1'),
+  ]);
+  ftyp.writeUInt32BE(ftyp.length, 0);
+  const whole = Buffer.concat([ftyp, box('free', 0), box('mdat', 6000), box('moov', 400)]);
+  return cut === undefined ? whole : whole.subarray(0, cut);
+}
+
 function setup(db: Db = openDatabase(':memory:'), maxFiles?: number, air = { on: false }) {
   const playlists = new PlaylistRepo(db);
   const presentations = new PresentationRepo(db);
@@ -199,6 +222,25 @@ describe('a smart playlist following a folder', () => {
       'Talk.mp3',
     ]);
     expect(view(id)).toMatchObject({ adding: 0 });
+  });
+
+  it('takes a video only once it is whole: one still being copied (its own boxes run past its end) waits, named as still being copied, then joins (Q60-31)', async () => {
+    // A copy that stalled past the settle time: the first 3,000 bytes, its media data's box saying 6,008.
+    await putBytes('Talk.mp4', exportedMp4(3000));
+    const { service, settle, imports, view } = setup();
+    const made = await service.create(folder());
+    const id = made.ok ? made.id : '';
+    await settle(id);
+    expect(imports).toEqual([]);
+    expect(view(id)).toMatchObject({ state: 'following', copying: ['Talk.mp4'] });
+    // Held still for longer: still not whole, still waiting.
+    await settle(id);
+    expect(imports).toEqual([]);
+    // Whole now: taken.
+    await putBytes('Talk.mp4', exportedMp4());
+    await settle(id);
+    expect(imports).toHaveLength(1);
+    expect(view(id)).toMatchObject({ copying: [] });
   });
 
   it('waits while the stream is on air or recording, then adds what held still (Session 28)', async () => {
