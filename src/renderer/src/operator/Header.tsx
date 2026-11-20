@@ -1,6 +1,7 @@
 import { useWhatIsThis } from '../help/WhatIsThis';
 import type { ReactNode } from 'react';
 import { shortcutText } from '../../../shared/keymap';
+import { LookMotion } from '../appearance/LookMotion';
 import { Band, HeaderStates } from '../ui/Decoration';
 import { Button } from '../ui/Button';
 import { WordMark } from '../ui/Mark';
@@ -103,6 +104,7 @@ export function Header({
         data-header=""
         data-testid="app-header"
       >
+        <LookMotion where="header" />
         <h1 className="shrink-0 text-base font-bold tracking-wide">
           <WordMark />
         </h1>
@@ -194,6 +196,7 @@ export function Header({
         </div>
       </header>
       <Band />
+      <LookMotion where="band" />
       {cards.length > 0 && <div className="shrink-0 pt-2">{cards}</div>}
     </>
   );

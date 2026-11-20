@@ -10,7 +10,9 @@ import {
 } from 'react';
 import type { BackgroundLayer, MediaFit } from '../../../shared/engine/state';
 import {
+  drawnKeyOf,
   type InputSlot,
+  isDrawn,
   isInputSlot,
   isMediaSlot,
   type MediaSlot,
@@ -19,6 +21,7 @@ import {
   type Slot,
   type SlotEvent,
   type Slots,
+  slotKey,
   slotsReducer,
 } from './background-slots';
 import { OBJECT_FIT } from './media-style';
@@ -34,7 +37,8 @@ import { useGpuRestarts, useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
 import { KeptVideo } from './KeptVideo';
 import { useInputReport, useVideoInput } from './video-input';
-import { hasNoPicture, tellNoPicture } from './no-picture';
+import { hasNoPicture, tellCannotPlay, tellNoPicture } from './no-picture';
+import { FIRST_FRAME_MS, NO_FIRST_FRAME } from '../../../shared/no-picture';
 import { SHAPED_PLACE, shapedVideoStyle, shapeFor, useVideoShapes } from './video-shape';
 
 function style(fit: MediaFit, visible: boolean) {
@@ -51,9 +55,12 @@ function style(fit: MediaFit, visible: boolean) {
 /**
  * A background video: it says it is ready once its first frame (at the right point) is decoded. One whose picture this
  * computer cannot draw (Session 60, x36: Chromium plays it as sound only, at 0 × 0) is never ready, so the picture
- * before it stays, and is said to the main process, which takes it off with its sound (render/no-picture.ts). One with
- * a Shape of its own (Sound and picture…, alpha.20) is drawn in a box of that shape, stretched to it (`shape`: its
- * width over its height; its place, the slot's wrap, is then the box's container: BackgroundPlayer).
+ * before it stays, and is said to the main process, which takes it off with its sound (render/no-picture.ts). One whose
+ * element fails (Q60-31: this computer's decoder raising an error, a cut or damaged file, its copy unreadable) is said
+ * to the main process the same way, with the error's kind, the picture before (or its own last frame) staying drawn
+ * until the show takes it off. One with a Shape of its own (Sound and picture…, alpha.20) is drawn in a box of that
+ * shape, stretched to it (`shape`: its width over its height; its place, the slot's wrap, is then the box's container:
+ * BackgroundPlayer).
  */
 function VideoSlot({
   slot,
@@ -69,6 +76,12 @@ function VideoSlot({
   const ref = useRef<HTMLVideoElement>(null);
   const { key, layer, attempt } = slot;
   const { mediaId, startedAt } = layer;
+  // Its file's landings and the GPU processes started, as it fails: only later ones try it again (Q60-31).
+  const landedNow = useMediaAttempt(mediaId) + useGpuRestarts();
+  const landed = useRef(landedNow);
+  useLayoutEffect(() => {
+    landed.current = landedNow;
+  });
   // Start and end points and a jump to a marker (Session 14) are read as they change, without a reload.
   const timing = useRef(layer);
   useLayoutEffect(() => {
@@ -78,24 +91,40 @@ function VideoSlot({
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
+    // Its first frame came, or it failed: no more waiting for it.
+    let settled = false;
     const p = startPlayback(v, {
       mediaId,
       attempt,
       startedAt,
       timing: () => ({ loop: timing.current.loop, clip: timing.current.clip, seek: timing.current.seek }),
       onFrame: () => {
+        settled = true;
         if (hasNoPicture(v)) {
           tellNoPicture(mediaId, startedAt);
           return;
         }
         dispatch({ type: 'ready', key, at: engineNow() });
       },
-      onError: () => {
-        dispatch({ type: 'failed', key });
+      onError: (error) => {
+        settled = true;
+        tellCannotPlay(mediaId, startedAt, attempt ?? 0, error);
+        dispatch({ type: 'failed', key, landed: landed.current });
       },
     });
+    // No first frame within FIRST_FRAME_MS (Q60-44, the owner's answer A): said to Main, which takes it off from a
+    // screen's word (shared/no-picture.ts). Only said: it still loads here, what was drawn before staying meanwhile
+    // (background-slots.ts, Scene.tsx), so a page whose word Main only logs (LIVE, the stream, a paired computer) shows
+    // it if its first frame comes after all.
+    // eslint-disable-next-line no-restricted-syntax -- decides no frame: only whether a video that never drew is said to fail
+    const noFirstFrame = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      tellCannotPlay(mediaId, startedAt, attempt ?? 0, { code: NO_FIRST_FRAME, message: '' });
+    }, FIRST_FRAME_MS);
     playback.current = p;
     return () => {
+      clearTimeout(noFirstFrame);
       playback.current = null;
       p();
     };
@@ -293,10 +322,29 @@ export function BackgroundMedia(props: {
   annotate?: boolean;
   /** How this screen's group moves (Session 27): its dissolve's curve. */
   movement?: Movement;
+  /**
+   * Told which background is drawn now, by its key (background-slots.ts slotKey; null: none), as it changes, before
+   * the screen is painted (Q60-31): render/Scene.tsx keeps what was there until a new one's first frame.
+   */
+  onDrawn?: (key: string | null) => void;
 }) {
   const previews = usePreviewsOnly();
   if (!previews) return <BackgroundPlayer {...props} />;
-  const layer = props.layer;
+  return <BackgroundPreview {...props} />;
+}
+
+/** On a phone or tablet: the background's still preview, drawn at once (never waited on). */
+function BackgroundPreview({
+  layer,
+  onDrawn,
+}: {
+  layer: BackgroundLayer | null;
+  onDrawn?: (key: string | null) => void;
+}) {
+  const key = layer?.kind === 'media' || layer?.kind === 'input' ? slotKey(layer) : null;
+  useLayoutEffect(() => {
+    onDrawn?.(key);
+  }, [onDrawn, key]);
   if (layer?.kind !== 'media') return null;
   // A picture with its look and, once ready, a preview of its sharpened copy (Session 26f), as a slide's
   // picture is drawn on a phone; a video's still preview as it is.
@@ -321,10 +369,12 @@ function BackgroundPlayer({
   layer,
   annotate = false,
   movement = 'calm',
+  onDrawn,
 }: {
   layer: BackgroundLayer | null;
   annotate?: boolean;
   movement?: Movement;
+  onDrawn?: (key: string | null) => void;
 }) {
   const [slots, dispatch] = useReducer(slotsReducer, NO_SLOTS);
   // Its pictures as layers of their own, rastered once (x27): a screen warped out of square with a graphics chip.
@@ -343,12 +393,24 @@ function BackgroundPlayer({
   // On a node: a background that failed because its copy had not arrived loads again when it lands,
   // once for each landing (a try that fails again waits for the next one). A video that failed with a GPU
   // process that stopped loads again once another has started (Sessions 31–36, ROB-5), the same way.
-  const shown = slots.shown;
-  const landed = useMediaAttempt(shown?.layer.kind === 'media' ? shown.layer.mediaId : '') + useGpuRestarts();
+  // A file that failed: as it loaded (coming in, the picture before still drawn), or while it played (Q60-31).
+  const failedFile =
+    slots.incoming?.state === 'failed'
+      ? slots.incoming
+      : slots.shown?.state === 'failed'
+        ? slots.shown
+        : null;
+  const landed =
+    useMediaAttempt(failedFile?.layer.kind === 'media' ? failedFile.layer.mediaId : '') + useGpuRestarts();
   useEffect(() => {
-    const key = retryAfterLanding(shown, landed);
+    const key = retryAfterLanding(slots, landed);
     if (key !== null) dispatch({ type: 'retry', key });
-  }, [shown, landed]);
+  }, [slots, landed]);
+  // Which background is drawn now, told before the screen is painted (render/Scene.tsx keeps what was there till then).
+  const drawn = drawnKeyOf(slots);
+  useLayoutEffect(() => {
+    onDrawn?.(drawn);
+  }, [onDrawn, drawn]);
   const list = [slots.leaving, slots.shown, slots.incoming].filter((s): s is Slot => s !== null);
   if (list.length === 0) return null;
   const fading = slots.fade !== null;
@@ -363,7 +425,7 @@ function BackgroundPlayer({
       style={{ position: 'absolute', inset: 0, isolation: fading ? 'isolate' : undefined }}
     >
       {list.map((slot) => {
-        const visible = (slot === slots.shown || slot === slots.leaving) && slot.state === 'ready';
+        const visible = (slot === slots.shown || slot === slots.leaving) && isDrawn(slot);
         const shape =
           isMediaSlot(slot) && slot.layer.media === 'video'
             ? shapeFor(shapes, slot.layer.mediaId, slot.layer.fit)
@@ -395,7 +457,7 @@ function BackgroundPlayer({
           </div>
         );
       })}
-      {annotate && slots.shown?.state === 'failed' && (
+      {annotate && failedFile !== null && (
         <div
           data-testid="background-failed"
           style={{
@@ -409,7 +471,7 @@ function BackgroundPlayer({
             borderRadius: 8,
           }}
         >
-          {slots.shown.layer.kind === 'input' ? 'Video input has no picture' : 'Background cannot play'}
+          {failedFile.layer.kind === 'input' ? 'Video input has no picture' : 'Background cannot play'}
         </div>
       )}
     </div>

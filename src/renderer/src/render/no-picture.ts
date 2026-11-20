@@ -1,4 +1,6 @@
 import type { DrashtiBridge } from '../../../shared/bridge';
+import { FIRST_FRAME_MS, NO_FIRST_FRAME } from '../../../shared/no-picture';
+import type { PlaybackError } from './playback';
 
 /*
  * A video whose picture this computer cannot draw (Session 60, x36; shared/no-picture.ts): Chromium plays such a file as
@@ -22,4 +24,54 @@ export function tellNoPicture(mediaId: string, startedAt: number): void {
   if (!bridge?.media?.noPicture || told.has(key)) return;
   told.add(key);
   void bridge.media.noPicture(mediaId, startedAt).catch(() => undefined);
+}
+
+/** The showings (and tries of each) this page has said could not play. */
+const failedTold = new Set<string>();
+
+/**
+ * Say that this showing of a video (its file, when it went up, and which try at loading it) could not play here
+ * (Q60-31: its element failed, as this computer's decoder raises an error, or a cut or damaged file does), with the
+ * element's error (its MediaError code and Chromium's words, for Main's log): Main takes it off with its sound, unless a GPU process stopped then (its videos load again by
+ * themselves), and says so by its name and where. Once a showing and try; phones' pages have no bridge.
+ */
+export function tellCannotPlay(
+  mediaId: string,
+  startedAt: number,
+  attempt: number,
+  error: PlaybackError,
+): void {
+  const bridge = (globalThis as { drashti?: Partial<DrashtiBridge> }).drashti;
+  // A first frame that never came is said once, and an error after it still is (Q60-44).
+  const key = `${mediaId}@${String(startedAt)}#${String(attempt)}${error.code === NO_FIRST_FRAME ? '/no-frame' : ''}`;
+  if (!bridge?.media?.cannotPlay || failedTold.has(key)) return;
+  failedTold.add(key);
+  void bridge.media.cannotPlay(mediaId, startedAt, error.code, error.message).catch(() => undefined);
+}
+
+/**
+ * A video on a slide, a prop or in the picture-in-picture box (render/SlideView.tsx SlideVideo; x46's item 4 of
+ * Q60-31): with no first frame within FIRST_FRAME_MS (Q60-44), said to Main as a background's is (its element's error
+ * is said by its onError, tellCannotPlay). Only said: the element keeps loading. The watch, to stop as it goes.
+ */
+export function watchFirstFrame(
+  v: HTMLVideoElement,
+  mediaId: string,
+  startedAt: number,
+  attempt: number,
+): () => void {
+  if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return () => undefined;
+  const listening = new AbortController();
+  // eslint-disable-next-line no-restricted-syntax -- decides no frame: only whether a video that never drew is said to fail
+  const timer = setTimeout(() => {
+    listening.abort();
+    tellCannotPlay(mediaId, startedAt, attempt, { code: NO_FIRST_FRAME, message: '' });
+  }, FIRST_FRAME_MS);
+  const stop = () => {
+    clearTimeout(timer);
+    listening.abort();
+  };
+  v.addEventListener('loadeddata', stop, { signal: listening.signal });
+  v.addEventListener('error', stop, { signal: listening.signal });
+  return stop;
 }

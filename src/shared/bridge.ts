@@ -145,6 +145,8 @@ import type { PipPlace } from './engine/state';
 import type { SavePictureResult, SaveStillResult } from './media';
 import type { MediaDetailsResult } from './media-details';
 import type { ResumePoint } from './play-history';
+import type { SnapshotResult } from './snapshot';
+import type { PlayingRef } from './engine/playing';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
@@ -669,6 +671,10 @@ export interface DrashtiBridge {
     remove(id: string): Promise<{ ok: true } | { ok: false; message: string }>;
     /** Interface motion: Calm, Lively or Off (Session 40). */
     setMotion(motion: InterfaceMotion): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Moving: On or Off (Session 60). */
+    setMoving(on: boolean): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Star or unstar an appearance (Session 60). */
+    setFavourite(id: string, on: boolean): Promise<{ ok: true } | { ok: false; message: string }>;
     /** View › Appearance… was chosen. */
     onOpen(listener: () => void): () => void;
     /** The appearance or the motion changed (every window draws it by itself; the Appearance window shows it). */
@@ -763,6 +769,8 @@ export interface DrashtiBridge {
     copyDetails(text: string): Promise<boolean>;
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when; null for none. */
     resumePoint(mediaId: string): Promise<ResumePoint | null>;
+    /** Snapshot (alpha.20): the frame of a video on the screens now, a PNG in Media; or why not. */
+    snapshot(playing: PlayingRef): Promise<SnapshotResult>;
     /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays; null for anything else. */
     playback(mediaId: string): Promise<PlaybackSettings | null>;
     /** Keep them (heard at once wherever it plays). */
@@ -778,6 +786,12 @@ export interface DrashtiBridge {
      * operator window: its showing (its file and when it went up).
      */
     noPicture(mediaId: string, startedAt: number): Promise<null>;
+    /**
+     * A video's element failed on a page that draws the show (Q60-31: this computer's decoder raising an error, a cut
+     * or damaged file, its copy unreadable): its showing (its file and when it went up), and its MediaError's code (1 to
+     * 4; 0: none) and Chromium's words for Main's log.
+     */
+    cannotPlay(mediaId: string, startedAt: number, code: number, words: string): Promise<null>;
   };
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside, a file's Even loudness,

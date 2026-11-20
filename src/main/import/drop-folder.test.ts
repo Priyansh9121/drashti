@@ -371,6 +371,78 @@ describe('the drop folder', () => {
     expect(h.imports).toEqual([{ names: ['Big.mp4'], bytes: [whole] }]);
   });
 
+  it('a video whose copy stalled (its own boxes say it is longer than its bytes) waits however long, then is taken once whole (Q60-31)', async () => {
+    const box = (type: string, bytes: number) => {
+      const b = Buffer.alloc(8 + bytes, 1);
+      b.writeUInt32BE(8 + bytes, 0);
+      b.write(type, 4, 'latin1');
+      return b;
+    };
+    const ftyp = Buffer.concat([Buffer.alloc(8), Buffer.from('isom\0\0\x02\0isomavc1', 'latin1')]);
+    ftyp.writeUInt32BE(ftyp.length, 0);
+    ftyp.write('ftyp', 4, 'latin1');
+    const exported = Buffer.concat([ftyp, box('free', 0), box('mdat', 6000), box('moov', 400)]);
+    const h = setup();
+    await h.service.setFolder(folder);
+    await writeFile(join(folder, 'Stalled.mp4'), exported.subarray(0, 3000));
+    await h.settle();
+    h.clock.now += 60_000;
+    await h.service.scan();
+    expect(h.imports).toEqual([]);
+    await writeFile(join(folder, 'Stalled.mp4'), exported);
+    await h.settle();
+    expect(h.imports).toEqual([{ names: ['Stalled.mp4'], bytes: [exported.length] }]);
+  });
+
+  it('a video that stays not whole, unchanged for 2 minutes (its copy stopped, or it is damaged): listed as not taken and said once, never taken by itself; whole later, it is taken (Q60-31)', async () => {
+    const box = (type: string, bytes: number) => {
+      const b = Buffer.alloc(8 + bytes, 1);
+      b.writeUInt32BE(8 + bytes, 0);
+      b.write(type, 4, 'latin1');
+      return b;
+    };
+    const ftyp = Buffer.concat([Buffer.alloc(8), Buffer.from('isom\0\0\x02\0isomavc1', 'latin1')]);
+    ftyp.writeUInt32BE(ftyp.length, 0);
+    ftyp.write('ftyp', 4, 'latin1');
+    const exported = Buffer.concat([ftyp, box('free', 0), box('mdat', 6000), box('moov', 400)]);
+    const h = setup();
+    await h.service.setFolder(folder);
+    await writeFile(join(folder, 'Stopped.mp4'), exported.subarray(0, 3000));
+    await h.settle();
+    expect(h.service.view().notTaken).toEqual([]);
+    h.clock.now += 2 * 60_000;
+    await h.service.scan();
+    expect(h.imports).toEqual([]);
+    expect(h.service.view().notTaken).toEqual([
+      {
+        name: 'Stopped.mp4',
+        reason:
+          'Not whole, and unchanged for 2 minutes: its copy may have stopped, or it is damaged. It is taken once whole.',
+        tooLarge: false,
+      },
+    ]);
+    expect(h.importNotice).toHaveBeenCalledTimes(1);
+    expect(h.importNotice).toHaveBeenLastCalledWith({
+      refused: [
+        {
+          name: 'Stopped.mp4',
+          reason:
+            'Not whole, and unchanged for 2 minutes: its copy may have stopped, or it is damaged. Use Import… to bring it in as it is.',
+        },
+      ],
+    });
+    // Looked at again, unchanged: said once, and not waited on (nothing scheduled for it).
+    h.clock.now += 60_000;
+    await h.service.scan();
+    expect(h.importNotice).toHaveBeenCalledTimes(1);
+    expect(h.service.view().waiting).toBe(0);
+    // Its copy carries on: whole now, it is taken.
+    await writeFile(join(folder, 'Stopped.mp4'), exported);
+    await h.settle();
+    expect(h.imports).toEqual([{ names: ['Stopped.mp4'], bytes: [exported.length] }]);
+    expect(h.service.view().notTaken).toEqual([]);
+  });
+
   it('a file another program still has open waits (Windows’ check), then is taken', async () => {
     const h = setup();
     await put('Held.png', 'picture');
