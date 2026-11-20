@@ -284,7 +284,7 @@ import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
 import { createPicturesWindow } from './pictures/pictures-window';
-import { createSharpenWindow } from './pictures/sharpen-window';
+import { createSharpenWindow, pictureWorkerPriority } from './pictures/sharpen-window';
 import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
 import { sourceReader } from './documents/source-reader';
 import { SourceReaderQueue } from './documents/source-reader-queue';
@@ -1946,7 +1946,17 @@ function start(): void {
   const refreshDisplayCopies = () => db === null ? Promise.resolve() : displayCopies.refresh(media.displayCandidates());
   displayWorkerBusy = () => displayCopies.working;
   stops.add('display copies', () => displayCopies.close());
-  handle(IPC.displayCopies.next, (e) => displayCopies.next(e.sender.id));
+  handle(IPC.displayCopies.next, (e) => {
+    if (!displayCopies.ownsWorker(e.sender.id)) return null;
+    try {
+      const priority = pictureWorkerPriority(e.sender.getOSProcessId());
+      log.info(`Display copy worker priority: ${String(priority)} (${process.platform})`);
+    } catch {
+      displayCopies.failWorker(e.sender.id);
+      return null;
+    }
+    return displayCopies.next(e.sender.id);
+  });
   handle(IPC.displayCopies.made, (e, key, bytes) => displayCopies.made(e.sender.id, key, bytes));
 
   // ---- pictures' blurred copies (Session 55, Part 5, D): made once each, drawn behind a photo that does not fill ----
@@ -3931,7 +3941,7 @@ function start(): void {
       standInHold: packaged() ? null : (sw('DRASHTI_TEST_DECK_BAKER_HOLD') ?? null),
     },
     drawPdf: (pdf, outDir, signal, readPageText) => pdfPictures.draw(pdf, outDir, signal, readPageText),
-    prepareDisplay: (candidate, signal) => displayCopies.prepare(candidate, signal, true),
+    prepareDisplay: (candidate, signal) => displayCopies.prepare(candidate, signal),
     // A deck with its animations where this computer's setting says so (Session 54, C2 and its review). Tests only
     // (never a packaged Drashti): a stand-in makes its movie, or (with the stand-ins or no converter above) no
     // deck's movie is made, as on a computer with no app for it.

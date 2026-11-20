@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron';
-import { constants, setPriority } from 'node:os';
+import { constants, setPriority, getPriority } from 'node:os';
 import { loadPage } from '../windows/renderer';
 import { secureWebPreferences } from '../windows/web-preferences';
 
@@ -31,4 +31,14 @@ export function createSharpenWindow(gone: () => void, display = false): BrowserW
   });
   void loadPage(win, 'sharpen', display ? { purpose: 'display' } : {});
   return win;
+}
+
+
+/** Set the actual worker process below normal and check the OS answer before giving it image bytes. */
+export function pictureWorkerPriority(pid: number): number {
+  if (pid <= 0) throw new Error('The picture worker has no process.');
+  setPriority(pid, constants.priority.PRIORITY_LOW);
+  const actual = getPriority(pid);
+  if (actual <= constants.priority.PRIORITY_NORMAL) throw new Error('The picture worker priority was not lowered.');
+  return actual;
 }

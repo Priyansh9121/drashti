@@ -256,6 +256,13 @@ export class DisplayCopies {
     }).catch(() => undefined);
     return this.sweeping;
   }
+  ownsWorker(sender: number): boolean { return this.win?.id === sender; }
+  failWorker(sender: number): void {
+    if (this.win?.id !== sender) return;
+    const win = this.win; this.win = null;
+    for (const job of [...this.pending.values()]) this.complete(job, failure('The picture worker could not run below normal priority.'));
+    win.destroy(); this.settle();
+  }
   get working(): boolean { return this.current !== null || (this.win !== null && !this.finishing); }
   activityChanged(): void { this.start(); }
   async idle(): Promise<void> { await this.sweeping; if (this.pending.size > 0 || this.win) await new Promise<void>((done) => this.idleWaiters.push(done)); }
