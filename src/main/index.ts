@@ -1,3 +1,7 @@
+import { importM3u, writeM3u, type M3uExportRow } from './playlists/m3u';
+import { playlistPlayOptionsSchema } from '../shared/playlist-playback';
+import type { M3uResult, M3uNotTaken } from '../shared/m3u';
+import { itemsMadeBy } from '../shared/import-items';
 import { isInside } from './media/contained';
 import type { IpcMainInvokeEvent, Rectangle } from 'electron';
 import {
@@ -1707,7 +1711,7 @@ function start(): void {
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
     Date.now,
-    { items: (id) => playlists.playItems(id) },
+    { items: (id) => playlists.playItems(id), repeatAll: (id) => playlists.playOptions(id).repeatAll },
     {
       defaultTransition: () => defaultTransition(settings),
       looks: { start: () => lookService?.start() ?? NO_LOOK },
@@ -3955,6 +3959,7 @@ function start(): void {
     IPC.stream.startRecording,
     IPC.stream.stopRecording,
   ]);
+  edits.add(IPC.playlists.setPlayOptions);
   for (const c of [IPC.library.importPaths, IPC.library.pickImportPaths, IPC.library.relinkMedia])
     edits.delete(c);
   // The slide editor's picture import joins the same queue.
@@ -6370,6 +6375,174 @@ function start(): void {
   // A video input added, renamed or removed in Media (Session 51): the items naming one are read again, here and
   // on the phones, marked as on this computer or not, and Next goes to it or past it.
   inputsChanged = playlistsChanged;
+  // Playlist playback and M3U (x50): only the operator chooses files; the import remains today’s queued import.
+  const playlistFileWrite = sourceWrite(libraryDb, () => imports.giveWay());
+  handle(IPC.playlists.setPlayOptions, (e, playlistId, raw) => {
+    const id = idSchema.safeParse(playlistId);
+    const options = playlistPlayOptionsSchema.safeParse(raw);
+    if (!fromOperator(e) || simpleNow() || !id.success || !options.success)
+      return { ok: false, message: 'Only the operator window in Pro Mode can change playlist playback.' };
+    if (!playlists.setPlayOptions(id.data, options.data))
+      return { ok: false, message: 'That playlist no longer exists.' };
+    playlistsChanged();
+    return { ok: true, ids: [id.data] };
+  });
+  const playlistFileFailure = (message: string): M3uResult => ({ ok: false, message });
+  handle(IPC.playlists.importM3u, async (e, audio, targetId): Promise<M3uResult> => {
+    if (
+      !fromOperator(e) ||
+      typeof audio !== 'boolean' ||
+      (targetId !== null && !idSchema.safeParse(targetId).success)
+    )
+      return playlistFileFailure('Only the operator window can import a playlist file.');
+    const parent = BrowserWindow.fromWebContents(e.sender);
+    if (!parent) return playlistFileFailure('The operator window is no longer open.');
+    const picked = await dialog.showOpenDialog(parent, {
+      title: audio ? 'Import Sounds or a Playlist File' : 'Import a Playlist File (M3U)',
+      properties: audio ? ['openFile', 'multiSelections'] : ['openFile'],
+      filters: audio
+        ? [{ name: 'Sounds or M3U playlists', extensions: [...SOUND_EXTENSIONS, 'm3u', 'm3u8'] }]
+        : [{ name: 'M3U playlists', extensions: ['m3u', 'm3u8'] }],
+    });
+    if (picked.canceled) return { ok: true, id: null, notTaken: [] };
+    try {
+      let id: string | null = null;
+      const notTaken: M3uNotTaken[] = [];
+      const guard = {
+        signal: new AbortController().signal,
+        allowed: () => !e.sender.isDestroyed() && fromOperator(e) && !accessShut(),
+      };
+      const importFiles = async (paths: string[]) => {
+        const result = await imports.start(paths, mode === 'simple' ? SIMPLE_IMPORT : {});
+        if (!result.ok) throw new Error(result.message);
+        return importRepo.report(result.run.id)?.items ?? [];
+      };
+      for (const file of picked.filePaths.filter((path) => /\.m3u8?$/iu.test(path))) {
+        const result = await importM3u(file, audio, {
+          importFiles,
+          isAudio: (mediaId) => media.kindAndName(mediaId)?.kind === 'audio',
+          make: (name, rows, sounds) =>
+            playlistFileWrite(guard, () => {
+              if (sounds) {
+                const made = audioPlaylists.create(cutText(name, 120));
+                audioPlaylists.addTracks(
+                  made,
+                  rows.flatMap((r) => (r.item.kind === 'media' ? [r.item.mediaId] : [])),
+                  null,
+                );
+                sendToOperator(IPC.music.changed, music.view());
+                net.hint('music');
+                return made;
+              }
+              const made = playlists.create(freeName(playlists, cutText(name, 180)), null, false);
+              if (!made) throw new Error('The playlist could not be made.');
+              const added = playlists.addItems(
+                made,
+                null,
+                rows.map((r) => r.item),
+              );
+              added.forEach((item, index) => {
+                const title = rows[index]?.title;
+                if (title) playlists.setItemLabel(item, title);
+              });
+              return made;
+            }),
+        });
+        id = result.id ?? id;
+        notTaken.push(...result.notTaken);
+      }
+      const sounds = audio ? picked.filePaths.filter((path) => !/\.m3u8?$/iu.test(path)) : [];
+      if (sounds.length) {
+        const report = await importFiles(sounds);
+        const items = itemsMadeBy(report, sounds);
+        id = await playlistFileWrite(guard, () => {
+          const made =
+            typeof targetId === 'string' && audioPlaylists.get(targetId)
+              ? targetId
+              : audioPlaylists.create('Audio playlist');
+          audioPlaylists.addTracks(
+            made,
+            items.flatMap((i) =>
+              i.kind === 'media' && media.kindAndName(i.mediaId)?.kind === 'audio' ? [i.mediaId] : [],
+            ),
+            null,
+          );
+          sendToOperator(IPC.music.changed, music.view());
+          net.hint('music');
+          return made;
+        });
+      }
+      playlistsChanged();
+      return { ok: true, id, notTaken };
+    } catch (error) {
+      return playlistFileFailure(
+        error instanceof Error ? error.message : 'The playlist file could not be imported.',
+      );
+    }
+  });
+  handle(IPC.playlists.exportM3u, async (e, playlistId, audio): Promise<M3uResult> => {
+    const parsed = idSchema.safeParse(playlistId);
+    if (!fromOperator(e) || !parsed.success || typeof audio !== 'boolean')
+      return playlistFileFailure('Only the operator window can export a playlist file.');
+    const list = audio
+      ? audioPlaylists.get(parsed.data)
+      : playlists.tree().find((p) => p.id === parsed.data && !p.isFolder && !p.template);
+    if (!list) return playlistFileFailure('That playlist no longer exists.');
+    const parent = BrowserWindow.fromWebContents(e.sender);
+    if (!parent) return playlistFileFailure('The operator window is no longer open.');
+    try {
+      const rows: M3uExportRow[] =
+        audio && 'tracks' in list
+          ? list.tracks.flatMap((t) => {
+              const file = media.file(t.mediaId);
+              return file
+                ? [
+                    {
+                      label: t.name,
+                      durationMs: t.playingMs ?? t.durationMs,
+                      path: join(mediaDir, file.path),
+                    },
+                  ]
+                : [];
+            })
+          : playlists.itemsOf(parsed.data).flatMap((item): M3uExportRow[] => {
+              if (item.kind === 'media') {
+                const file = media.file(item.mediaId);
+                return file && !file.deleted
+                  ? [
+                      {
+                        label: item.label,
+                        durationMs: item.playingMs ?? item.durationMs,
+                        path: join(mediaDir, file.path),
+                      },
+                    ]
+                  : [];
+              }
+              return [
+                {
+                  label: item.label,
+                  comment:
+                    item.kind === 'presentation' ? 'Presentation' : item.kind === 'header' ? 'Header' : 'Row',
+                },
+              ];
+            });
+      const text = writeM3u(rows);
+      const picked = await dialog.showSaveDialog(BrowserWindow.fromWebContents(e.sender) ?? operatorWindow!, {
+        title: 'Export as M3U',
+        defaultPath: `${list.name.replace(/[\\/:*?"<>|]/gu, '_')}.m3u8`,
+        filters: [{ name: 'UTF-8 M3U playlist', extensions: ['m3u8'] }],
+      });
+      if (picked.canceled || !picked.filePath) return { ok: true, id: null, notTaken: [] };
+      const file = /\.m3u8$/iu.test(picked.filePath) ? picked.filePath : `${picked.filePath}.m3u8`;
+      await fsPromises.writeFile(file, text, 'utf8');
+      return { ok: true, id: null, notTaken: [] };
+    } catch (error) {
+      return playlistFileFailure(
+        error instanceof Error ? error.message : 'The playlist file could not be exported.',
+      );
+    }
+  });
+
   // Renamed (Session 52): the library's playlist items and slides that named it take its new name in one write, and
   // only that write can refuse the rename. What it returns runs once the library has the new name, the rename
   // standing whatever happens there (a failure is only logged), and before the list's change is told
