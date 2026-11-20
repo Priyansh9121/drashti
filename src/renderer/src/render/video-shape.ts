@@ -2,6 +2,7 @@ import { useContext } from 'react';
 import type { CSSProperties } from 'react';
 import type { MediaFit } from '../../../shared/engine/state';
 import type { MediaElement } from '../../../shared/model';
+import { shapePath } from '../../../shared/shape-path';
 import { shapeAspect, type ShapedBox, type ShapeOverride } from '../../../shared/video-shape';
 import { ScreenPictures } from './picture-looks';
 
@@ -56,6 +57,16 @@ export function shapedVideoStyle(aspect: number, fit: 'fit' | 'fill'): CSSProper
   };
 }
 
+/** A number as a clip writes it: to a thousandth of a pixel (a hair off 0 reads 0). */
+const num = (v: number) => String(Math.round(v * 1000) / 1000 + 0);
+const px = (v: number) => `${num(v)}px`;
+
+/** A symbol's outline (shared/shape-path.ts: every number a point's x and y in turn) moved by dx, dy. */
+function movedPath(path: string, dx: number, dy: number): string {
+  let i = 0;
+  return path.replace(/-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/giu, (v) => num(Number(v) + (i++ % 2 === 0 ? dx : dy)));
+}
+
 /**
  * A slide's video in a shape of its own: its clip in its shape's box (`box`, in its frame's pixels, so the frame starts
  * at −box.x, −box.y in the box's own), keeping what showed of it on the slide: the frame's own shape (an ellipse,
@@ -63,9 +74,17 @@ export function shapedVideoStyle(aspect: number, fit: 'fit' | 'fill'): CSSProper
  * (a fitted video whose frame has no shape of its own).
  */
 export function shapedClip(
-  _frame: { width: number; height: number },
-  _box: ShapedBox,
-  _clip: MediaElement['pictureClip'],
+  frame: { width: number; height: number },
+  box: ShapedBox,
+  clip: MediaElement['pictureClip'],
 ): string | undefined {
-  return undefined;
+  const { width: fw, height: fh } = frame;
+  if (clip?.shape === 'ellipse') return `ellipse(${px(fw / 2)} ${px(fh / 2)} at 50% 50%)`;
+  const path = clip ? shapePath(clip.shape, fw, fh) : null;
+  if (path) return `path("${movedPath(path, -box.x, -box.y)}")`;
+  // The frame's edges, from the box's top and bottom (−box.y) and its sides (−box.x): past the box where it is smaller.
+  const edges = `${px(-box.y)} ${px(-box.x)}`;
+  const radius = clip ? Math.min(clip.cornerRadius ?? 0, fw / 2, fh / 2) : 0;
+  if (radius > 0) return `inset(${edges} round ${px(radius)})`;
+  return box.x < 0 || box.y < 0 ? `inset(${edges})` : undefined;
 }
