@@ -124,6 +124,7 @@ export function watchStart(v: HTMLVideoElement, said: (verdict: 'stalled' | 'slo
       readyState: v.readyState,
       decoded: decodedFrames(v),
       progressEvents,
+      served: 0,
     });
     const verdict = startVerdict(watch, at);
     if (verdict === 'wait') return;
