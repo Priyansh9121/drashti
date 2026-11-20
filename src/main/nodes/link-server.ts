@@ -18,6 +18,7 @@ import {
   NODE_PATHS,
   NODE_PROTOCOL,
   type NodeByeReason,
+  type NodeCannotPlayReport,
   type NodeHealth,
   type NodeScreen,
   type PairFinishAnswer,
@@ -25,7 +26,13 @@ import {
   type ToNode,
   versionMismatch,
 } from '../../shared/nodes';
-import { nodeHealthSchema, nodeNameFrom, pairFinishSchema, pairStartSchema } from '../../shared/nodes-schema';
+import {
+  nodeCannotPlaySchema,
+  nodeHealthSchema,
+  nodeNameFrom,
+  pairFinishSchema,
+  pairStartSchema,
+} from '../../shared/nodes-schema';
 import { isLocalAddress, isLoopback, plainAddress } from '../network/addresses';
 import { RateLimiter, WrongCodeLimiter } from '../network/limits';
 import { hashToken, newToken } from '../network/tokens';
@@ -94,6 +101,8 @@ export interface LinkHost {
   health(nodeId: string, health: NodeHealth): void;
   controller?(nodeId: string, request: ControllerRequest): void;
   thumb(nodeId: string, screenId: string, jpeg: string): void;
+  /** A showing one of a node's screens could not play (Q60-44): Main tells the operator (media/cannot-play.ts). */
+  cannotPlay?(nodeId: string, report: NodeCannotPlayReport): void;
   /** A paired node said hello on another version: refused. */
   refused(nodeId: string, version: string): void;
   /** This copy of the engine state fell behind: send a fresh snapshot. */
@@ -747,6 +756,11 @@ export class LinkServer {
         )
           this.host.thumb(nodeId, message.screenId, message.jpeg);
         return;
+      case 'cannot-play': {
+        const report = nodeCannotPlaySchema.safeParse(message.report);
+        if (report.success) this.host.cannotPlay?.(nodeId, report.data);
+        return;
+      }
       case 'hello':
         return;
     }
