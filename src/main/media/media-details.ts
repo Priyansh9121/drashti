@@ -43,7 +43,7 @@ export interface DetailsRow {
   convertedTo: string | null;
   /** The original it is a copy of, when Drashti made it: its name. */
   copyOf: string | null;
-  /** How many times it has gone up, and when it last did (alpha.20, migration 87); 0 and null until then. */
+  /** How many times it has gone up, and when it last did (alpha.20, migration 88); 0 and null until then. */
   playCount: number;
   lastPlayedAt: string | null;
 }
