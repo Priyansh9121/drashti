@@ -1,6 +1,8 @@
 import { open } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import type { ImportIssue } from '../../shared/import';
+import { tooLarge } from '../convert/plan';
+import { movieVideo } from './codec-config';
 
 /*
  * What a media file really is, from its bytes (not its name), and whether
@@ -204,6 +206,15 @@ async function probeIsoMedia(fh: FileHandle, size: number, head: Buffer): Promis
   const v = video.map((c): [string, boolean | null] => VIDEO_CODECS[c] ?? [`${c.trim()} video`, null]);
   const a = audio.map((c): [string, boolean | null] => AUDIO_CODECS[c] ?? [`${c.trim()} sound`, null]);
   if (v.length > 0) {
+    // An H.264 picture larger than the player draws (alpha.20, x47: an 8K one, judged by its header alone as a
+    // library from before Session 50 judged it, went up and was never drawn): cannot play as it is, said by its size.
+    const own = video[0] === 'avc1' || video[0] === 'avc3' ? movieVideo(moov) : null;
+    if (own && tooLarge({ codec: 'h264', width: own.width, height: own.height }))
+      return {
+        playable: false,
+        format: `H.264 (${String(own.width)} × ${String(own.height)}) video (${container})`,
+        kind: 'video',
+      };
     const [name, playable]: [string, boolean | null] = v[0] ?? ['video', null];
     const badSound = a.find(([, p]) => p === false);
     return {
