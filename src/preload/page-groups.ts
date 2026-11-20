@@ -49,6 +49,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'lowerThirds',
     // The Drashti Manual (x37, Session 60).
     'manual',
+    // Help › Report a Problem… (x49).
+    'report',
     'media',
     'messages',
     'midi',

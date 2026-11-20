@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { ACCESS_REPORT, ACCESS_TOKEN_ALPHABET } from './access-protocol';
 import { formatBytes } from './format';
 import { cutText } from './text';
@@ -218,4 +219,141 @@ export function draftProblem(draft: ReportDraftWords): string | null {
       return `${f.name}: at most ${REPORT_LIMITS.expectedLetters.toLocaleString('en')} letters for what you expected.`;
   }
   return null;
+}
+
+// ---- the window's side (Help › Report a Problem…) ----
+
+/** To whom, as Review says it: Drashti never knows the admin's address (it is in the list's own settings). */
+export const REPORT_TO = 'the admin of Drashti’s access list';
+
+/** A time as Review says it, by this computer's clock: "20 Nov 2026, 19:42". */
+export function reportWhen(ms: number): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(ms));
+}
+
+/** What the person chose, wrote and ticked: the window's draft, as the main process takes it for Review. */
+export interface ReportDraft {
+  features: { id: string; chapter: string; name: string; what: string; expected: string }[];
+  /** The notice's words (Report this…), or null. */
+  notice: string | null;
+  diagnostics: boolean;
+  crashFiles: boolean;
+  picture: boolean;
+}
+
+/** A draft as the window sends it, read by the main process (anything else is refused). */
+const draftSchema = z.object({
+  features: z
+    .array(
+      z.object({
+        id: z.string().max(200),
+        chapter: z.string().max(200),
+        name: z.string().min(1).max(200),
+        what: z.string().max(ACCESS_REPORT.whatLetters * 8),
+        expected: z.string().max(ACCESS_REPORT.expectedLetters * 8),
+      }),
+    )
+    .max(ACCESS_REPORT.features * 2),
+  notice: z.string().max(4000).nullable(),
+  diagnostics: z.boolean(),
+  crashFiles: z.boolean(),
+  picture: z.boolean(),
+});
+
+/** The window's draft, or null when it is not one. */
+export function readReportDraft(raw: unknown): ReportDraft | null {
+  const read = draftSchema.safeParse(raw);
+  return read.success ? read.data : null;
+}
+
+/** A report's id as the window names it. */
+export const isReportId = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{32}$/u.test(v);
+
+/** As Report a Problem opens: who sends it, from which computer, and what may go with it. */
+export type ReportOpened =
+  | {
+      ok: true;
+      gmail: string;
+      owner: boolean;
+      computer: string;
+      /** The crash files kept on this computer (null: none). */
+      crash: { count: number; bytes: number } | null;
+      /** The window as it was when Report a Problem opened (a small copy), or null. */
+      picture: { thumb: string; width: number; height: number } | null;
+      waiting: number;
+      sentToday: number;
+      /** So many reports wait already that no more can be made until some go or are forgotten. */
+      full: boolean;
+    }
+  | { ok: false; message: string };
+
+/** Review: exactly what goes, made and kept (not sent); or why it could not be made. */
+export type ReportPrepared =
+  | {
+      ok: true;
+      id: string;
+      reference: string;
+      to: string;
+      subject: string;
+      text: string;
+      files: { kind: ReportFileKind; name: string; bytes: number }[];
+      kept: { name: string; bytes: number }[];
+      /** The picture that goes, to show large (a data: address), or null. */
+      picture: string | null;
+    }
+  | { ok: false; message: string };
+
+export type ReportWaitWhy = 'unreachable' | 'on-air' | 'tomorrow' | 'list';
+
+/** Where a report stands, as the window shows it. */
+export type ReportStateView =
+  | { kind: 'sent'; reference: string }
+  | { kind: 'sending'; reference: string }
+  | { kind: 'waiting'; why: ReportWaitWhy; reference: string }
+  | { kind: 'refused'; why: string; reference: string };
+
+/** One of Your reports. */
+export interface ReportRow {
+  id: string;
+  reference: string;
+  /** When Send was pressed. */
+  when: number;
+  features: string[];
+  state: ReportStateView;
+}
+
+/** Save a Copy…: where its folder went, or why not. */
+export type ReportCopied =
+  | { ok: true; folder: string }
+  | { ok: false; cancelled: true }
+  | { ok: false; cancelled: false; message: string };
+
+/** What the window says of where a report stands. */
+export function reportStateWords(s: ReportStateView): string {
+  switch (s.kind) {
+    case 'sent':
+      return 'Sent: the admin has it.';
+    case 'sending':
+      return 'Sending… It goes on by itself if you close this window.';
+    case 'refused':
+      return 'Not sent: the report is too large. Use Save a Copy… and send it another way, or send it again without the crash files.';
+    case 'waiting':
+      switch (s.why) {
+        case 'on-air':
+          return 'Kept on this computer: it goes by itself once the stream and the recording have ended.';
+        case 'tomorrow':
+          return 'Kept on this computer: no more reports go today; it goes by itself tomorrow.';
+        case 'list':
+          return 'Kept on this computer: it goes by itself once the admin’s access list takes reports.';
+        default:
+          return 'Kept on this computer: it goes by itself once the access list can be reached.';
+      }
+  }
 }
