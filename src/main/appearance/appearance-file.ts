@@ -24,9 +24,19 @@ export interface AppearanceSettings {
   motion: InterfaceMotion;
   /** The ones a person made on this computer (Session 40), each kept as its base and accent. */
   own: OwnAppearance[];
+  /** Moving: On or Off (Session 60). */
+  moving: boolean;
+  /** The appearances starred on this computer (Session 60). */
+  favourites: string[];
 }
 
-export const DEFAULT_APPEARANCE: AppearanceSettings = { choice: FOLLOW, motion: 'calm', own: [] };
+export const DEFAULT_APPEARANCE: AppearanceSettings = {
+  choice: FOLLOW,
+  motion: 'calm',
+  own: [],
+  moving: false,
+  favourites: [],
+};
 
 export const ownSchema = z
   .object({
@@ -57,6 +67,8 @@ export function readAppearance(userData: string, say: (line: string) => void): A
     return {
       choice,
       motion,
+      moving: false,
+      favourites: [],
       own: own.map((o) => {
         const second = seconds[o.id];
         return second === undefined ? o : { ...o, second };
@@ -70,7 +82,7 @@ export function readAppearance(userData: string, say: (line: string) => void): A
       `Appearance: ${APPEARANCE_FILE} could not be read (${read.reason}), so this computer follows its own light or dark setting${aside ? `; the file was set aside as ${aside}` : ''}`,
     );
   }
-  return { ...DEFAULT_APPEARANCE, own: [] };
+  return { ...DEFAULT_APPEARANCE, own: [], favourites: [] };
 }
 
 /** Keep the choice (written whole, then put in place). */

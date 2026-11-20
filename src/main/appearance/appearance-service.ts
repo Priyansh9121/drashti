@@ -49,6 +49,8 @@ export interface AppearanceDeps {
   say: (line: string) => void;
   /** Tests only (DRASHTI_TEST_APPEARANCE, never packaged): start in this appearance, kept or not (the guides' pictures in Black). */
   startIn?: string;
+  /** This computer's logical cores (os.availableParallelism; a test may say). */
+  cores?: number;
 }
 
 export class AppearanceService {
@@ -151,7 +153,15 @@ export class AppearanceService {
   /** What a page draws in now. */
   now(): AppearanceNow {
     const shown = this.shown();
-    return { id: shown.id, base: shown.base, vars: appearanceVars(shown), motion: this.settings.motion };
+    return {
+      id: shown.id,
+      base: shown.base,
+      vars: appearanceVars(shown),
+      motion: this.settings.motion,
+      moving: false,
+      look: [],
+      slow: false,
+    };
   }
 
   view(): AppearanceView {
@@ -161,7 +171,19 @@ export class AppearanceService {
       list: this.list(),
       own: this.settings.own,
       motion: this.settings.motion,
+      moving: false,
+      favourites: [],
     };
+  }
+
+  /** Moving: On or Off (Session 60). Not yet. */
+  setMoving(_on: boolean): boolean {
+    return false;
+  }
+
+  /** Star or unstar an appearance (Session 60). Not yet. */
+  setFavourite(_id: string, _on: boolean): boolean {
+    return false;
   }
 
   /** The colour a window of Drashti's own opens on: its appearance's window colour. */

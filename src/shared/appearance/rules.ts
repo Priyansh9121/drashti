@@ -575,3 +575,8 @@ export function lookApart(a: Appearance, b: Appearance): number {
   }
   return sum / LOOK_PLACES.length;
 }
+
+/** A live look's touch over the header, measured as the header is (Session 60). Not yet: the red tests say how. */
+export function measureMoving(_a: Appearance): Measured[] {
+  return [];
+}

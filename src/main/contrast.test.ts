@@ -11,11 +11,10 @@ import {
   COMFORT_DARK_STATES,
   DARK_STATES,
   DECORATION_TOKENS,
-  FAMILIES,
-  MOVING,
+  APPEARANCE_FAMILIES,
+  familyOf,
   plainDecoration,
   WHITE,
-  ZONE_TINTS,
 } from '../shared/appearance/appearances';
 import {
   appearanceProblems,
@@ -251,58 +250,18 @@ describe('more colourful appearances (Session 42): more places for colour', () =
       'White',
       'Dhaja',
       'Tiranga',
-      'Saffron',
-      'Peacock',
-      'Midnight Blue',
-      'Sandalwood',
-      'Lotus',
-      'Marble',
-      'Tulsi',
-      'Diwali',
-      'Holi',
-      'Aarti',
-      'Monsoon',
       'Sandhya',
-      'Forest',
-      'Navratri',
-      'Neel',
-      'Ratna',
-      'Prabhat',
-      'Mehndi',
-      'Haldi',
-      'Himalaya',
-      'Uttarayan',
-      'Mogra',
       'Dusk Slate',
       'Dusk Rose',
       'Dusk Sage',
       'Dusk Indigo',
       'Dusk Amber',
       'Dusk Teal',
-      'Manek',
-      'Panna',
-      'Neelam',
-      'Moti',
-      'Pukhraj',
-      'Heera',
-      'Gulmohar',
-      'Kesuda',
-      'Champa',
-      'Sagar',
-      'Akash',
-      'Chandni',
-      'Bandhani',
-      'Patola',
-      'Ajrakh',
-      'Kalamkari',
-      'Madhubani',
-      'Warli',
-      'Sandstone',
-      'Teak',
-      'Pittal',
-      'Tamra',
-      'Gold Leaf',
-      'Kesar',
+      'Diwali',
+      'Holi',
+      'Aarti',
+      'Navratri',
+      'Uttarayan',
       'Janmashtami',
       'Sharad Purnima',
       'Dev Diwali',
@@ -311,6 +270,46 @@ describe('more colourful appearances (Session 42): more places for colour', () =
       'Raksha Bandhan',
       'Ganesh Chaturthi',
       'Guru Purnima',
+      'Peacock',
+      'Midnight Blue',
+      'Lotus',
+      'Tulsi',
+      'Monsoon',
+      'Forest',
+      'Prabhat',
+      'Himalaya',
+      'Mogra',
+      'Gulmohar',
+      'Kesuda',
+      'Champa',
+      'Sagar',
+      'Akash',
+      'Chandni',
+      'Ratna',
+      'Manek',
+      'Panna',
+      'Neelam',
+      'Moti',
+      'Pukhraj',
+      'Heera',
+      'Neel',
+      'Mehndi',
+      'Haldi',
+      'Bandhani',
+      'Patola',
+      'Ajrakh',
+      'Kalamkari',
+      'Madhubani',
+      'Warli',
+      'Saffron',
+      'Sandalwood',
+      'Marble',
+      'Sandstone',
+      'Teak',
+      'Pittal',
+      'Tamra',
+      'Gold Leaf',
+      'Kesar',
     ]);
     const alike: string[] = [];
     for (const [i, a] of BUILT_IN.entries())
@@ -418,9 +417,9 @@ describe('real colour (Session 44): four hues at least, in every place', () => {
   it.each(BUILT_IN.map((a) => [a.name, a] as const))(
     '%s: its zones are its own surfaces in their hues, as zones.ts works them out (Black and White: its own)',
     (_name, a) => {
-      const tints = ZONE_TINTS[a.id] ?? { left: null, middle: null, right: null, bar: null };
+      const tints = a.tints ?? { left: null, middle: null, right: null, bar: null };
       expect(a.zones).toEqual(zonesOf(a.colours, a.base === 'dark', tints));
-      expect(PLAIN.has(a.id), 'tinted zones but Black and White').toBe(ZONE_TINTS[a.id] === undefined);
+      expect(PLAIN.has(a.id), 'tinted zones but Black and White').toBe(a.tints === undefined);
     },
   );
 });
@@ -544,9 +543,12 @@ describe('comfortable appearances (Session 60, the owner’s Q60-30 and Q60-36)'
     expect(lookApart(twin, { ...twin, id: 'twin', name: 'Twin' })).toBe(0);
   });
 
-  it('every built-in appearance is in a family, and every moving one is a built-in one', () => {
-    const ids = new Set(BUILT_IN.map((a) => a.id));
-    expect(Object.keys(FAMILIES).sort()).toEqual([...ids].sort());
-    for (const id of Object.keys(MOVING)) expect(ids.has(id), id).toBe(true);
+  it('every built-in appearance is in a family, the families together and in the window’s order', () => {
+    const order = BUILT_IN.map(familyOf);
+    const seen = order.filter((f, i) => order.indexOf(f) === i);
+    expect(seen).toEqual([...APPEARANCE_FAMILIES]);
+    for (const [i, f] of order.entries())
+      expect(order.indexOf(f), `${String(i)} ${f}`).toBe(order.indexOf(f));
+    expect(order.every((f, i) => i === 0 || seen.indexOf(f) >= seen.indexOf(order[i - 1] ?? f))).toBe(true);
   });
 });
