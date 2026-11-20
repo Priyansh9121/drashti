@@ -81,14 +81,19 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
       ({ BrowserWindow }, { url, box }) => {
         const w = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL() === url);
         if (!w) throw new Error('No native hall for Cue pixel evidence');
-        const rows: { at: number; center: number | null; rgb: number[] }[] = [];
+        const rows: {
+          at: number;
+          center: number | null;
+          rgb: number[];
+          size: { width: number; height: number };
+        }[] = [];
         const stop = () => {
           if (!w.isDestroyed()) w.webContents.endFrameSubscription();
         };
         (
           globalThis as { s5CuePixels?: { box: typeof box; rows: typeof rows; stop: () => void } }
         ).s5CuePixels = { box, rows, stop };
-        w.webContents.beginFrameSubscription(true, (image) => {
+        w.webContents.beginFrameSubscription(false, (image) => {
           const size = image.getSize(),
             data = image.toBitmap();
           const sx = size.width / box.innerWidth,
@@ -108,6 +113,7 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
           const p = (y * size.width + Math.floor((begin + end) / 2)) * 4;
           rows.push({
             at: Date.now(),
+            size,
             center:
               left === null || right === null
                 ? null
