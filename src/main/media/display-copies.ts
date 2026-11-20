@@ -125,8 +125,12 @@ export class DisplayCopies {
         return null;
       const { sha256: hash, bytes } = await sha256File(place.path);
       const file = { key, ...size, path: relative, hash, bytes, ext: header.type };
+      const previous = this.files.get(`${candidate.sha256}/${key}`);
       this.files.set(`${candidate.sha256}/${key}`, file);
-      this.latest.set(candidate.sha256, file);
+      const largest = this.latest.get(candidate.sha256);
+      if (!largest || file.width * file.height >= largest.width * largest.height)
+        this.latest.set(candidate.sha256, file);
+      if (!previous || previous.hash !== file.hash) this.deps.changed();
       return file;
     } catch {
       return null;
@@ -343,7 +347,9 @@ export class DisplayCopies {
         ext: job.header.type,
       };
       this.files.set(`${job.candidate.sha256}/${job.key}`, file);
-      this.latest.set(job.candidate.sha256, file);
+      const largest = this.latest.get(job.candidate.sha256);
+      if (!largest || file.width * file.height >= largest.width * largest.height)
+        this.latest.set(job.candidate.sha256, file);
       this.complete(job, { ok: true, copy: file });
       this.deps.changed();
     } catch {
