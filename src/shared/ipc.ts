@@ -1,3 +1,5 @@
+import type { PlaylistPlayOptions } from './playlist-playback';
+import type { M3uResult } from './m3u';
 import type { ControllerArea, ControllerReply, ControllerRequest, EngineSeen } from './controller-actions';
 import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
 import type { YouTubeListResult, YouTubeResult, YouTubeScheduleInput, YouTubeStatus } from './youtube';
@@ -289,6 +291,11 @@ export const IPC = {
     rotate: 'events:rotate',
     /** Send a test event now. */
     test: 'events:test',
+    /**
+     * The new secret's Copy (alpha.20): on the clipboard by the main process (operator window only; a page's own
+     * clipboard is refused). Never kept or logged.
+     */
+    copySecret: 'events:copy-secret',
     /** main -> operator: how the addresses stand changed. */
     changed: 'events:changed',
     /** main -> operator: File > Events Out… was chosen. */
@@ -675,6 +682,9 @@ export const IPC = {
     setTimers: 'playlists:set-timers',
     /** A video row's When it ends (Session 55, Part 6). */
     setWhenEnds: 'playlists:set-when-ends',
+    setPlayOptions: 'playlists:set-play-options',
+    importM3u: 'playlists:import-playlist-file',
+    exportM3u: 'playlists:export-playlist-file',
     /** Duplicate a playlist (Session 55, Part 4): "<name> copy", beside it, with its rows in their order. */
     duplicate: 'playlists:duplicate',
     /** A slide's row dragged out of its deck into an item of its own (Session 55, Part 4b), and its Undo. */
@@ -1356,6 +1366,7 @@ export interface InvokeContract {
   [IPC.events.remove]: { args: [id: string]; result: EventsOutResult };
   [IPC.events.rotate]: { args: [id: string]; result: EventsOutResult };
   [IPC.events.test]: { args: [id: string]; result: { ok: boolean; message: string } };
+  [IPC.events.copySecret]: { args: [secret: string]; result: boolean };
   [IPC.drop.view]: { args: []; result: DropFolderView };
   [IPC.drop.pickFolder]: { args: []; result: DropFolderResult | null };
   [IPC.drop.setOn]: { args: [on: boolean]; result: DropFolderResult };
@@ -1477,6 +1488,12 @@ export interface InvokeContract {
     result: PlaylistResult;
   };
   [IPC.playlists.setTimers]: { args: [itemId: string, cues: TimerCue[]]; result: PlaylistResult };
+  [IPC.playlists.setPlayOptions]: {
+    args: [playlistId: string, options: PlaylistPlayOptions];
+    result: PlaylistResult;
+  };
+  [IPC.playlists.importM3u]: { args: [audio: boolean, targetId: string | null]; result: M3uResult };
+  [IPC.playlists.exportM3u]: { args: [playlistId: string, audio: boolean]; result: M3uResult };
   [IPC.playlists.setWhenEnds]: { args: [itemId: string, whenEnds: WhenEnds]; result: PlaylistResult };
   [IPC.playlists.duplicate]: { args: [playlistId: string]; result: PlaylistResult };
   [IPC.playlists.splitItem]: {

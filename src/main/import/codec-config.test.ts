@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
-import { fromAvcC, fromHvcC, h264Level, hevcLevel, readCodecLevel } from './codec-config';
+import { fromAvcC, fromHvcC, h264Level, hevcLevel, movieVideo, readCodecLevel } from './codec-config';
 
 /*
  * A video's level from its own codec record (alpha.20, Media information…; Q60-34): FFmpeg names an H.264's or an
@@ -62,6 +62,49 @@ describe('a codec record’s bytes', () => {
     record[12] = 0;
     expect(fromHvcC(record)).toBeNull();
     expect(fromHvcC(record.subarray(0, 13))).toBeNull();
+  });
+});
+
+describe('a movie box’s first picture (alpha.20, "Plays anything")', () => {
+  const u32 = (n: number) => {
+    const b = Buffer.alloc(4);
+    b.writeUInt32BE(n);
+    return b;
+  };
+  const box = (type: string, ...parts: Buffer[]) => {
+    const body = Buffer.concat(parts);
+    return Buffer.concat([u32(body.length + 8), Buffer.from(type, 'latin1'), body]);
+  };
+  const moov = (entry: Buffer) => {
+    const whole = box(
+      'moov',
+      box(
+        'trak',
+        box(
+          'mdia',
+          box('hdlr', u32(0), u32(0), Buffer.from('vide', 'latin1'), Buffer.alloc(12)),
+          box('minf', box('stbl', box('stsd', u32(0), u32(1), entry))),
+        ),
+      ),
+    );
+    return whole.subarray(8);
+  };
+  const fields = (width: number, height: number) => {
+    const f = Buffer.alloc(78);
+    f.writeUInt16BE(width, 24);
+    f.writeUInt16BE(height, 26);
+    return f;
+  };
+
+  it('its size from its sample entry, with its record', () => {
+    expect(
+      movieVideo(
+        moov(box('avc1', fields(7680, 4320), box('avcC', Buffer.from([1, 66, 0, 62, 0xff, 0xe1, 0])))),
+      ),
+    ).toEqual({ codec: 'h264', profileIdc: 66, level: '6.2', width: 7680, height: 4320 });
+    // No record (a sample entry cut short, or another codec's): nothing said.
+    expect(movieVideo(moov(box('avc1', Buffer.alloc(16))))).toBeNull();
+    expect(movieVideo(moov(box('apcn', fields(1920, 1080))))).toBeNull();
   });
 });
 

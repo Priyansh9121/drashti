@@ -187,6 +187,7 @@ describe('Simple Mode locks', () => {
     expect(answers.get(IPC.wallpapers.pickFiles)?.()).toEqual([]);
     expect(answers.get(IPC.playlists.addItems)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     expect(answers.get(IPC.audio.setOutput)?.()).toBe(status);
+    expect(answers.get(IPC.events.copySecret)?.()).toBe(false);
     expect(answers.size).toBe(SIMPLE_MODE_LOCKED.length + SIMPLE_MODE_BOUNDED.size);
   });
 
