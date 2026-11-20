@@ -1,10 +1,10 @@
 # More tools
 
-**More tools**, folded away at the end of the right column, holds the tools a sabha needs now and then: Lower Thirds, the MIDI controller, OSC control, Show a Window…, Add a Video Input…, Picture in Picture… and QR code…. They are Pro Mode's.
+**More tools**, folded away at the end of the right column, holds the tools a sabha needs now and then: Lower Thirds, the MIDI controller, OSC control, Show a Window…, Show a Stream Link…, Add a Video Input…, Picture in Picture… and QR code…. They are Pro Mode's.
 
 ## More tools and the Tools menu
 
-**What it is.** The folded group at the end of the right column, each tool with a line saying what it does. **Tools** in the menu bar has the same: Show a Window…, Add a Video Input…, Picture in Picture…, QR code…, then Lower Thirds Studio…, MIDI Controller… and OSC Control….
+**What it is.** The folded group at the end of the right column, each tool with a line saying what it does. **Tools** in the menu bar has the same: Show a Window…, Show a Stream Link…, Add a Video Input…, Picture in Picture…, QR code…, then Lower Thirds Studio…, MIDI Controller… and OSC Control….
 
 **When you would use it.** Whenever you need one of these tools.
 
@@ -62,6 +62,22 @@
 4. Press **Show on the screens**. **F3** or **Clear all** takes it off.
 
 ![Show a Window: the open windows, each with a small live picture](../screenshots/window-picker.png)
+
+## Show a Stream Link
+
+**What it is.** A live stream from the internet or the mandir's own network (an HLS link, or a YouTube live stream's link) shown on the hall's screens as the background, with its sound in the hall. Drashti only receives it. Drashti's own stream shows the Wallpaper while it is up.
+
+**When you would use it.** When the hall should watch another mandir's webcast live.
+
+**How:**
+
+1. In **More tools**, press **Show a Stream Link…**.
+2. Paste the link: one that ends in .m3u8, or a YouTube live stream's **Share** link.
+3. Press **Show on the screens**. It goes up once its pictures come.
+4. If it drops, the screens keep its last picture while Drashti connects again by itself. After 20 seconds the Wallpaper goes up; it comes back by itself, unless something else went up.
+5. **F3**, **Clear all** or **Take it off** on its notice takes it off.
+
+![More tools opened, with Show a Stream Link… among its tools](../screenshots/manual-more-tools.png)
 
 ## Video inputs
 

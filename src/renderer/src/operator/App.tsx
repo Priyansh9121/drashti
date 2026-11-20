@@ -55,6 +55,9 @@ import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
 import { SoundPlayerStopped } from './SoundPlayerStopped';
 import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
+import { StreamLinkNotice } from '../live-link/StreamLinkNotice';
+import { StreamLinkDialog } from '../live-link/StreamLinkDialog';
+import { connectStreamLink } from '../live-link/live-link-store';
 import { WindowPicker } from '../live-window/WindowPicker';
 import { ReadyDialog } from './ReadyDialog';
 import { QrSlideDialog } from '../library/QrSlideDialog';
@@ -136,6 +139,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectKeepScreens();
     connectStream();
     connectLiveWindow();
+    connectStreamLink();
     connectVideoInputs();
     connectNetwork();
     connectOsc();
@@ -378,6 +382,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {/* Drashti's sound stopped: its sound player kept failing (x53): in the flow too. */}
       <SoundPlayerStopped />
       <LiveWindowNotice />
+      <StreamLinkNotice />
       <VideoInputNotice platform={platform} />
       <RecoveryBanner />
       {practising ? (
@@ -469,6 +474,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <Welcome />
       <AppearanceDialog />
       <WindowPicker />
+      <StreamLinkDialog />
       <VideoInputDialog platform={platform} />
       <PipDialog />
       {/* More tools' MIDI controller, or Tools › MIDI Controller… (Session 60, x36). */}

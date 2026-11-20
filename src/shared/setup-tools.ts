@@ -8,8 +8,12 @@
  * input or window still shows in Media as one click to put it up: only the buttons that set them up moved.
  */
 
-/** The four setup tools, as More tools and the Tools menu name them. */
-export type SetupTool = 'show-a-window' | 'add-video-input' | 'picture-in-picture' | 'qr-code';
+/**
+ * The setup tools, as More tools and the Tools menu name them: the four of Session 60, and Show a Stream Link… (alpha.20,
+ * the playback set's slice 8) after Show a Window….
+ */
+export type SetupTool =
+  'show-a-window' | 'show-a-stream-link' | 'add-video-input' | 'picture-in-picture' | 'qr-code';
 
 /** What the Tools menu opens: the four setup tools, then More tools' other tools. */
 export type ToolsMenuItem = SetupTool | 'lower-thirds-studio' | 'midi' | 'osc';
@@ -28,6 +32,11 @@ export const SETUP_TOOLS: readonly SetupToolWords[] = [
     id: 'show-a-window',
     label: 'Show a Window…',
     line: 'Another app’s window (a Zoom meeting, say), live on the screens as the background.',
+  },
+  {
+    id: 'show-a-stream-link',
+    label: 'Show a Stream Link…',
+    line: 'A live stream’s link (an HLS link, or a YouTube live stream’s), live on the screens as the background, its sound in the hall.',
   },
   {
     id: 'add-video-input',
