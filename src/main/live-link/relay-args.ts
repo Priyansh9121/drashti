@@ -8,7 +8,7 @@ import { join } from 'node:path';
  * MPEG-TS segments on both systems and fragmented MP4 segments on the Mac only, so the copy is always MPEG-TS.
  *
  * What it may open is the web only (http, https and what they run on): never a file, a pipe or a device, whatever a
- * playlist names. It starts near live (a few segments from a live playlist's end), keeps about six segments on disk
+ * playlist names. It starts near live (a few segments from a live playlist's end), keeps about eight segments on disk
  * (deleting older ones), and, started again after a drop, carries the same local playlist on (its numbering, and a
  * discontinuity where the gap was), so the screens' players carry on too.
  */
@@ -52,7 +52,7 @@ export function relayArgs(input: RelayInput): string[] {
     ...['-map', p === null ? '0:a:0?' : `0:p:${String(p)}:a:0?`],
     // Copied as it comes: no picture or sound is decoded or encoded.
     ...['-c', 'copy'],
-    ...['-f', 'hls', '-hls_time', '1', '-hls_list_size', '6', '-hls_delete_threshold', '2'],
+    ...['-f', 'hls', '-hls_time', '1', '-hls_list_size', '8', '-hls_delete_threshold', '2'],
     ...[
       '-hls_flags',
       `delete_segments+independent_segments+omit_endlist+temp_file${input.again ? '+append_list+discont_start' : ''}`,

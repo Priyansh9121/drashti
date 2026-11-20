@@ -31,13 +31,16 @@ export interface LivePlaybackOptions {
   /** The hall's sound (the audio player): every other page plays it muted. */
   audible: boolean;
   limits: CorrectionLimits;
-  /** Its first frame is in (held or playing). */
+  /** Its first frame is in, playing (presented, for a picture). */
   onFrame?: () => void;
   /** Far behind with pictures to play: the caller joins it again (a new element, the old one kept until then). */
   onBehind?: () => void;
   /** Its player gave up (an error). */
   onError?: () => void;
 }
+
+/** How long a player plays before it may be found far behind (a start that came late catches up first). */
+const SETTLE_MS = 3000;
 
 /** Play a stream link in `el` (see above). Returns its stop, which lets go of the stream and the decoder. */
 export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOptions): () => void {
@@ -46,6 +49,8 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
   let joined: StreamLinkJoin | null = null;
   let framed = false;
   let behind = false;
+  /** When it was first played (the engine's time), or null while its first frame is held. */
+  let playedAt: number | null = null;
   let wait: ReturnType<typeof setTimeout> | null = null;
   el.muted = !options.audible;
   el.autoplay = false;
@@ -69,10 +74,27 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     el.src = streamLinkUrl(options.linkId, got.segment);
     el.load();
   };
+  /**
+   * Its first frame is in, playing: told once, as a picture is presented (a player never played may draw nothing,
+   * x54-1120-195548-69004), or as sound plays.
+   */
+  const frameIn = () => {
+    if (framed || !on) return;
+    framed = true;
+    options.onFrame?.();
+  };
+  const play = () => {
+    void el.play().catch(() => undefined);
+    if (playedAt !== null) return;
+    playedAt = engineNow();
+    if (el instanceof HTMLVideoElement) el.requestVideoFrameCallback(frameIn);
+    else el.addEventListener('playing', frameIn, { once: true });
+  };
   const check = () => {
     const j = joined;
     if (!on || !j || el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-    const expected = (engineNow() - j.startAt) / 1000;
+    const now = engineNow();
+    const expected = (now - j.startAt) / 1000;
     // For the tests and Save Diagnostics: where it is against where the engine's time has it.
     el.dataset['offset'] = (el.currentTime - expected).toFixed(3);
     // Its moment still to come: its first frame held until then.
@@ -88,34 +110,29 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
       later(offset * 1000, check);
       return;
     }
-    // Stopped for want of pictures (the link itself stopped): left as it is, its last frame shown.
-    if (el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA && !el.paused) return;
-    if (offset < -REJOIN_BEHIND_S && el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
-      if (!behind) {
-        behind = true;
-        options.onBehind?.();
-      }
-      return;
-    }
     const change = Math.max(
       -options.limits.maxRateChange,
       Math.min(options.limits.maxRateChange, -offset * 2),
     );
     const rate = Math.abs(offset) < IN_STEP_S ? 1 : 1 + change;
     if (el.playbackRate !== rate) el.playbackRate = rate;
-    if (el.paused) void el.play().catch(() => undefined);
-  };
-  const loaded = () => {
-    if (!framed) {
-      framed = true;
-      options.onFrame?.();
+    // Its moment has come (late or not: it catches up by speed): it plays.
+    if (el.paused) {
+      play();
+      return;
     }
-    check();
+    // Stopped for want of pictures (the link itself stopped): left as it is, its last frame shown.
+    if (el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
+    // Playing a while and still far behind, with pictures to play (it stalled alone): it joins again.
+    if (offset < -REJOIN_BEHIND_S && playedAt !== null && now - playedAt >= SETTLE_MS && !behind) {
+      behind = true;
+      options.onBehind?.();
+    }
   };
   const failed = () => {
     options.onError?.();
   };
-  el.addEventListener('loadeddata', loaded);
+  el.addEventListener('loadeddata', check);
   el.addEventListener('error', failed);
   // eslint-disable-next-line no-restricted-syntax -- checks every 250 ms that it is where the engine's time says (check)
   const timer = setInterval(check, CHECK_MS);
@@ -124,8 +141,9 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     on = false;
     clearInterval(timer);
     if (wait) clearTimeout(wait);
-    el.removeEventListener('loadeddata', loaded);
+    el.removeEventListener('loadeddata', check);
     el.removeEventListener('error', failed);
+    el.removeEventListener('playing', frameIn);
     el.pause();
     el.removeAttribute('src');
     el.load();
