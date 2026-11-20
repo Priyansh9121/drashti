@@ -3984,6 +3984,9 @@ function start(): void {
   const conversions = new ConvertService({
     db: libraryDb,
     mediaDir,
+    // Every video and sound FFmpeg never read, read once at idle moments (alpha.20, "Plays anything"); not in a test
+    // that judges files by their headers alone, as before Session 50.
+    reread: !noConvertAtImport,
     children: {
       started: (pid, partFile) => void leftovers.started(pid, 'conversion', { partFile }),
       ended: (pid) => {
