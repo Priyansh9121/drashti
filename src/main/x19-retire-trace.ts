@@ -135,8 +135,22 @@ export async function startRetireTrace(
   const label = `x19-retire-${scope.streaming ? 'streaming' : 'plain'}-${String(sequence).padStart(3, '0')}-${safe}-${String(repetition)}`;
   const folder = join(root, label);
   mkdirSync(folder, { recursive: true });
+  // Startup keeps native pipeline history without the large per-frame cc snapshots.
+  const traceCategories =
+    scope.track === 'startup'
+      ? requested.filter((category) =>
+          [
+            'toplevel',
+            'gpu',
+            'disabled-by-default-gpu.dawn',
+            'disabled-by-default-gpu.graphite.dawn',
+            'disabled-by-default-skia.shaders',
+            'blink.user_timing',
+          ].includes(category),
+        )
+      : requested;
   const config: TraceConfig & { record_mode: 'record-until-full' } = {
-    included_categories: requested,
+    included_categories: traceCategories,
     excluded_categories: ['*'],
     recording_mode: 'record-until-full',
     record_mode: 'record-until-full',
@@ -157,7 +171,7 @@ export async function startRetireTrace(
     scope,
     config,
     available,
-    missingRequested: requested.filter((category) => !available.includes(category)),
+    missingRequested: traceCategories.filter((category) => !available.includes(category)),
     observerBeganAt,
     traceStartedAt,
     readyForOriginalPressAt,
@@ -197,4 +211,15 @@ export async function startRetireTrace(
       }),
     );
   };
+}
+
+/** SCRATCH only: the same run's warm-up history, ending before the original measured import. */
+export function startRetireStartup() {
+  return startRetireTrace({
+    name: 'initial warm-up',
+    track: 'startup',
+    setMs: 0,
+    waitMs: 0,
+    streaming: (sw('DRASHTI_PERF_STREAM') ?? '') !== '',
+  });
 }
