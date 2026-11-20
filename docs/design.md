@@ -740,9 +740,11 @@ hunt (CI x46-1120-112649-63694) found three things Drashti did on every computer
   brands), RIFF and AIFF sizes, a Matroska Segment, JPEG's end marker after its picture data, PNG's IEND, GIF's
   trailer, a BMP's size, JPEG 2000's boxes and end marker, a PDF's startxref and %%EOF, a zip's end-of-central-directory
   record (.pptx, .key), an MP3's Xing, Info or VBRI byte count, an Ogg file's last page marked as the end, ASF's file
-  size, and a transport stream ending part-way through a packet. A kind with no such mark is taken by its size alone, as
-  before: an MPEG program stream, a transport stream of whole packets, an MP3 with no Xing header, raw AAC, AC-3 or DTS,
-  FLAC, and rarer kinds. A smart playlist's line names one still being copied. One found not whole and unchanged for
+  size, and a transport stream ending part-way through a packet; and on a longer read (Q60-46, the owner's A,
+  `import/whole-more.ts`): FLAC (its last frame against the samples it counts, its own CRC-16), TIFF, PSD, Targa, ICO,
+  FLV, MXF, RealMedia, CAF, AU, APE, WavPack, DV cut part-way through a frame, and the Office 97-2003 compound file. A
+  kind with no such mark is taken by its size alone, as before: an MPEG program stream, a transport stream or DV of
+  whole packets or frames, an MP3 with no Xing header, raw AAC, AC-3, E-AC-3, DTS, MP2 or AMR. A smart playlist's line names one still being copied. One found not whole and unchanged for
   2 minutes (its copy stopped, or it is damaged) is still never taken by itself, and is not read again until it changes:
   the line says so, and the drop folder lists it under **Not taken** and says it once (Import… brings it in as it is).
 
