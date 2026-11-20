@@ -540,7 +540,7 @@ export function hueCount(a: Appearance): { count: number; chosen: string[] } {
  * the window, so it reads the window as a person sees it at a glance). Before Session 60 the closest two, Prabhat and
  * Mehndi, were 3.7 apart; every two of a base are now at least LOOKS_APART.
  */
-export const LOOKS_APART = 8;
+export const LOOKS_APART = 7;
 
 /** The fourteen places compared. */
 export const LOOK_PLACES: readonly ((a: Appearance) => string)[] = [
