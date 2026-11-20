@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, stat, writeFile, rm } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import type { PictureLook, PixelSize } from '../../shared/picture-look';
-import { displayPictureSize } from '../../shared/picture-display';
+import { displayPictureSize, originalForOlderPictureWithoutDisplayCopy } from '../../shared/picture-display';
 import type { SharpenJobView } from '../../shared/pictures';
 import { diskFreeBytes, sha256File } from '../import/media-store';
 import { realPlaceAsync } from './contained';
@@ -57,11 +57,6 @@ const keyOf = (sha: string, size: PixelSize) =>
   `p1-${/^[a-f0-9]{32}/u.exec(sha)?.[0] ?? ''}-${String(size.width)}x${String(size.height)}`;
 const nameOf = (sha: string, size: PixelSize, ext: string) =>
   `v1-${sha}-${String(size.width)}x${String(size.height)}.${ext}`;
-
-/** Q60-48, owner "Yes, A": an older picture without a ready copy retains its original source. */
-function originalForOlderPictureWithoutDisplayCopy(): null {
-  return null;
-}
 
 /**
  * Private, regenerable still-picture renditions. The original is read only; new imports await prepare(), while
@@ -361,13 +356,17 @@ export class DisplayCopies {
 
   ready(sha: string, look: PictureLook | null = null): DisplayFile | null {
     const header = this.sources.get(sha);
-    if (!header || header.animated) return originalForOlderPictureWithoutDisplayCopy();
+    if (!header || header.animated)
+      return originalForOlderPictureWithoutDisplayCopy<DisplayFile>(null, { original: true, display: false });
     const size = displayPictureSize(header.size, this.deps.targets(), look);
     if (!size) return null;
     const exact = this.files.get(`${sha}/${keyOf(sha, size)}`);
     if (exact) return exact;
     // A larger screen is being prepared: retain a checked older rendition until it is ready.
-    return this.latest.get(sha) ?? originalForOlderPictureWithoutDisplayCopy();
+    return (
+      this.latest.get(sha) ??
+      originalForOlderPictureWithoutDisplayCopy<DisplayFile>(null, { original: true, display: false })
+    );
   }
   relativePath(sha: string, key: string): string | null {
     return this.files.get(`${sha}/${key}`)?.path ?? null;

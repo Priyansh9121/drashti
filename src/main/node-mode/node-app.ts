@@ -17,12 +17,14 @@ import {
   blurMediaId,
   copyMediaId,
   displayMediaId,
+  displayOfId,
   MEDIA_ID_PATTERN,
   MEDIA_SCHEME,
   mediaUrl,
 } from '../../shared/media';
 import { saveStill } from '../media/stills';
 import { sharpenStep } from '../../shared/picture-look';
+import { picturesWithLocalDisplayCopies } from '../../shared/picture-display';
 import { mediaInState } from '../../shared/node-media';
 import { NO_PICTURE } from '../../shared/no-picture';
 import { type PointedClip, sameClip } from '../../shared/point-ahead';
@@ -245,15 +247,23 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     ...testGrace(),
   });
   /** Main's state as this node's screens draw it: black over it while no Main let in is heard. */
-  const shown = (state: EngineState): EngineState => {
+  let displayFilePresent: (mediaId: string) => boolean = () => false;
+  const shown = (state: EngineState, localCopies = true): EngineState => {
+    const pictures = localCopies
+      ? picturesWithLocalDisplayCopies(state.pictures, displayFilePresent)
+      : state.pictures;
+    let drawing = pictures === state.pictures ? state : { ...state, pictures };
     const stop = mainAccess.stop;
-    return stop && !state.stopped ? { ...state, stopped: stop } : state;
+    if (stop && !drawing.stopped) drawing = { ...drawing, stopped: stop };
+    return drawing;
   };
-  const snapshot = (outputs = true): EngineSnapshotMessage => ({
+  const snapshot = (outputs = true, localCopies = true): EngineSnapshotMessage => ({
     kind: 'snapshot',
     version: ENGINE_STATE_VERSION,
     rev: mirror.rev,
-    state: outputs ? shown(mirror.state ?? initialEngineState()) : (mirror.state ?? initialEngineState()),
+    state: outputs
+      ? shown(mirror.state ?? initialEngineState(), localCopies)
+      : (mirror.state ?? initialEngineState()),
     sentAt: engineNow(),
     ...(mirror.session !== undefined ? { session: mirror.session } : {}),
   });
@@ -360,12 +370,14 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     landed: (mediaId) => {
       for (const win of outputWindows.values()) sendToPage(win, IPC.output.mediaReady, { mediaId });
       if (controller) sendToPage(nodeWindow, IPC.output.mediaReady, { mediaId });
+      if (displayOfId(mediaId) || mirror.state?.pictures[mediaId]?.display) transport.broadcast(snapshot());
     },
     log: (level, message) => {
       if (level === 'warn') log.warn(`Node: ${message}`);
       else log.info(`Node: ${message}`);
     },
   });
+  displayFilePresent = (id) => cache.has(id);
   protocol.handle(MEDIA_SCHEME, async (request) => {
     let asked = mediaRequestOf(request.url);
     if (asked?.what === 'display') {
@@ -650,8 +662,26 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
           // A whole state from Main keeps the black over it while no Main let in is heard (Session 54).
           const m = message.message;
           controllerTransport.broadcast(m);
-          transport.broadcast(m.kind === 'snapshot' ? { ...m, state: shown(m.state) } : m);
-          saver.update(snapshot(), offsetMs);
+          transport.broadcast(
+            m.kind === 'snapshot'
+              ? { ...m, state: shown(m.state) }
+              : {
+                  ...m,
+                  ops: m.ops.map((op) =>
+                    op.path.length === 1 && op.path[0] === 'pictures'
+                      ? {
+                          ...op,
+                          value: picturesWithLocalDisplayCopies(
+                            mirror.state?.pictures ?? {},
+                            displayFilePresent,
+                          ),
+                        }
+                      : op,
+                  ),
+                },
+          );
+          // Keep Main's full copy metadata for restart and download priority, including this node's access stop.
+          saver.update(snapshot(true, false), offsetMs);
           cache.kick();
         } else if (result === 'resync') {
           controllerReady = false;

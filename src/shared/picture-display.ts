@@ -1,5 +1,6 @@
 import type { PictureLook, PixelSize } from './picture-look';
 import { shownSize, ZOOM } from './picture-look';
+import { displayMediaId } from './media';
 
 /** A stream still has a finite display demand when no audience output is configured. */
 export const DEFAULT_DISPLAY_SIZE: Readonly<PixelSize> = { width: 1920, height: 1080 };
@@ -45,10 +46,30 @@ export function displayPictureSize(
   return size.width === picture.width && size.height === picture.height ? null : size;
 }
 
+/** Q60-48, owner "Yes, A": an older picture keeps its original until its copy is available. */
+export function originalForOlderPictureWithoutDisplayCopy<T>(
+  copy: T | null,
+  available: { original: boolean; display: boolean },
+): T | null {
+  return available.original && !available.display ? null : copy;
+}
+
 /** A node keeps an already cached original while its display file is still arriving. */
 export function picturesWithLocalDisplayCopies(
   pictures: Record<string, PictureLook>,
-  _has: (mediaId: string) => boolean,
+  has: (mediaId: string) => boolean,
 ): Record<string, PictureLook> {
-  return pictures;
+  let shown = pictures;
+  for (const [id, look] of Object.entries(pictures)) {
+    if (!look.display) continue;
+    const copy = originalForOlderPictureWithoutDisplayCopy(look.display, {
+      original: has(id),
+      display: has(displayMediaId(id, look.display.key)),
+    });
+    if (copy) continue;
+    const { display: _display, ...original } = look;
+    if (shown === pictures) shown = { ...pictures };
+    shown[id] = original;
+  }
+  return shown;
 }
