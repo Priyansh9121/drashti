@@ -246,9 +246,15 @@ test('a video whose first frame does not come within 10 s (each read of its file
     await expect
       .poll(() => notices(win), { timeout: 10_000, message: 'a notice names the file and the screen' })
       .toContainEqual(expect.stringMatching(new RegExp(`Placeholder never draws[\\s\\S]*${hall.name}`, 'u')));
+    // The kind, then what the start watch saw (6fb24720): nothing decoded, so no progress at all.
     await expect
       .poll(() => logOf(userData), { timeout: 10_000, message: 'the log says no picture within 10 s' })
-      .toMatch(new RegExp(`could not play on the screen “${hall.name}” \\(no picture within 10 s\\)`, 'u'));
+      .toMatch(
+        new RegExp(
+          `could not play on the screen “${hall.name}” \\(no picture within 10 s: \\d+ looks over [\\d.]+ s, the last progress [\\d.]+ s ago; [^\\n]*, 0 decoded,`,
+          'u',
+        ),
+      );
   } finally {
     await app.close();
   }
