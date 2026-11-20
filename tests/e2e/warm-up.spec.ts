@@ -20,7 +20,7 @@ import { decodePng } from './png-decode';
 /*
  * Warming the GPU, unseen (Session 27, render/WarmUp.tsx): before a screen first draws the show, it draws
  * every transition kind in both Movements part-way, with a lower third, messages and the ticker's band (the
- * idle rotation went in Session 55), under a black cover at opacity 0.999, so the GPU has made what they need before the first
+ * idle rotation went in Session 55), under translucent black covers in separate groups, so the GPU has made what they need before the first
  * Bold transition of a show; the audience sees black throughout. A test switch keeps it drawn, to look at.
  * Where Chromium draws without a graphics chip there is nothing to warm, and an output draws the show without
  * one (Session 57): a test switch says how Chromium draws, so both kinds of computer are tried on every system.
@@ -316,6 +316,7 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
     const tree = host?.shadowRoot;
     const wide = tree?.querySelector<HTMLElement>('[data-warm-scene="deck-cover-wide/calm/off-grid"]');
     const cover = tree?.querySelector<HTMLElement>('[data-warm-cover]');
+    const final = host?.parentElement?.querySelector<HTMLElement>('[data-warm-final-cover]');
     const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
     const pulse = tree?.querySelector<HTMLElement>('[data-warm-pulse]');
     const filters: string[] = [];
@@ -332,6 +333,11 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
       coverZ: cover ? Number(getComputedStyle(cover).zIndex) : Number.NaN,
       opacity: cover ? getComputedStyle(cover).opacity : null,
       background: cover ? getComputedStyle(cover).backgroundColor : null,
+      finalOpacity: final ? getComputedStyle(final).opacity : null,
+      finalBackground: final ? getComputedStyle(final).backgroundColor : null,
+      finalOutside: !!host && !!final && final.parentElement === host.parentElement,
+      finalAbove:
+        !!host && !!final && Number(getComputedStyle(final).zIndex) > Number(getComputedStyle(host).zIndex),
       coversEdges:
         !!host &&
         !!cover &&
@@ -359,6 +365,12 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
   expect(hiding.background, `${what}: a black cover`).toBe('rgb(0, 0, 0)');
   expect(hiding.coversEdges, `${what}: the cover extends beyond every clipped edge`).toBe(true);
   expect(hiding.above, `${what}: the cover follows the drawing`).toBe(true);
+  expect(hiding.finalOutside, `${what}: the final cover composes outside the drawing’s opacity group`).toBe(
+    true,
+  );
+  expect(hiding.finalAbove, `${what}: the final cover is above that group`).toBe(true);
+  expect(hiding.finalOpacity, `${what}: the final cover also keeps the GPU drawing underneath`).toBe('0.999');
+  expect(hiding.finalBackground, `${what}: the final cover is black`).toBe('rgb(0, 0, 0)');
   // The audience sees none of it. Keep the geometry and the exact frame if the cover ever fails.
   const light = await differenceFromBlack(page, scope);
   if (light !== 0) {
