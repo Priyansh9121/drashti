@@ -135,6 +135,14 @@ describe.runIf(available)('one prepared video, original untouched', () => {
     const read = ff(['-i', output, '-map', '0:v:0', '-f', 'null', '-']).stderr.toString();
     expect(parseFfmpegInfo(read).durationMs).toBeGreaterThanOrEqual(950);
     expect(parseFfmpegInfo(read).durationMs).toBeLessThanOrEqual(1100);
+    const timestamps = [
+      ...ff(['-i', output, '-vf', 'showinfo', '-an', '-f', 'null', '-'])
+        .stderr.toString()
+        .matchAll(/pts_time:([0-9.]+)/gu),
+    ].map((match) => Number(match[1]));
+    expect(timestamps).toHaveLength(50);
+    for (let i = 1; i < timestamps.length; i++)
+      expect((timestamps[i] ?? 0) - (timestamps[i - 1] ?? 0)).toBeCloseTo(0.02, 3);
     const samples = audio(output);
     expect(band(samples, 880)).toBeGreaterThan(band(samples, 440) * 20);
     expect(band(samples, 880)).toBeGreaterThan(band(samples, 1760) * 20);
