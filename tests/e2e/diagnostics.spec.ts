@@ -55,6 +55,11 @@ test('the diagnostics file holds the setup and the log, and no library text', as
   expect(text).toContain('== Drashti diagnostics ==');
   expect(text).toContain('Electron');
   expect(text).toContain('== Displays ==');
+  // The graphics as Chromium reports them here (Session 60, the owner's Q60-37): how each feature draws, then each GPU
+  // with its driver, or why its details could not be read.
+  expect(text).toContain('== Graphics ==');
+  expect(text).toMatch(/^gpu_compositing: \S+$/mu);
+  expect(text).toMatch(/^(GPU 1( \(in use\))?: vendor |GPU details: could not be read \()/mu);
   expect(text).toContain('== Sound ==');
   expect(text).toMatch(/Presentations: \d+/u);
   expect(text).toContain('== Recent imports (counts and issue codes only) ==');
