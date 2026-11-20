@@ -9,7 +9,7 @@ before it opens and every 15 seconds while open, whether this computer is still 
 | File              | What it is                                                                                                      |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
 | `core.js`         | Every rule, in plain JavaScript with no Google service in it (Apps Script and Node run it).                     |
-| `Code.js`         | Apps Script's side: doGet, doPost, the Sheet's Drashti menu, the daily check, Google's services for core.js.    |
+| `Code.js`         | Apps Script's side: doGet, doPost, the Sheet's menu, the daily check, Google's services (a report's files too). |
 | `Setup.html`      | Drashti › Set up…: makes the keys in the owner's browser and shows the one line to send.                        |
 | `Link.html`       | The page a link sent before x38 opens (on the web app itself): what it is for, and one button.                  |
 | `page/index.html` | The link page: what each emailed Approve or Reject link opens (GitHub Pages, outside Google). Never pasted.     |
@@ -165,11 +165,62 @@ one last given (or chosen adding the Gmail), or null; `endsAt`: the end, or null
 past its end by the list's clock (or its end cannot be read: `endsUnreadable`). The answer's `serverTime` is the
 list's clock, for how long is left.
 
+### A report (Help › Report a Problem…, x49)
+
+The owner's words of 20 Nov 2026 (Q60-38): "Any issue any user faces he can log it in, i receive a mail that this is the
+issue", and his "Yes, all A" to Q60-42. Any computer let in may send one, signed as `check` is; the list emails it to
+the approver Gmail.
+
+```json
+{ "v": 1, "op": "report", "nonce", "computer", "gmail", "grantId", "at",
+  "report": { "id": "<32 hex, the same on every try>", "written": 1793000000000, "from": "pro | simple | node",
+              "node": { "name", "version", "platform" },
+              "features": [ { "chapter", "name", "what", "expected" } ],
+              "notice": "…", "errors": [ "…" ],
+              "files": [ { "kind": "diagnostics | picture | crash", "name", "type", "bytes", "sha256" } ],
+              "kept": [ { "name", "bytes" } ] },
+  "data": { "<sha256>": "<the file's base64>" },
+  "mac": "<64 hex>" }
+```
+
+- **Signed** as `check`: `mac` is over the call's canonical JSON without `mac` **and without `data`**; each file is bound by
+  its `sha256`, and the list checks every `data` entry against it (the same keys, the bytes' SHA-256 and size). So the
+  mac is made over a few kilobytes whatever the files weigh.
+- **Taken only from a computer let in now**: the grant used, this computer's, this Gmail's, its mac right, not ended or
+  due, and the row's status `in` by the list's own rules. Anything else: `not-in`, and nothing is emailed or counted.
+- **Read on its own**: only a report may be long (its files go in it). A text over `PROTOCOL.report.textChars` (10 MB) is
+  refused `too-large` unread; every other call is read by `readCall` as before (at most 16,384 characters).
+- **Checked**: 1 to 8 features, each with `what` (1 to 2,000 letters) and `expected` (up to 1,000), a `name` and a
+  `chapter` (empty for Something else); words cleaned as the list cleans what people type, their line breaks kept;
+  `notice` (500 letters) and `errors` (30 lines of 300); `from` `node` with its `node`, never else; files of three
+  kinds, each with its own type and name: one diagnostics file (`text/plain`, `Drashti diagnostics <date> <time>.txt`),
+  one picture (`image/png`, `Drashti window <date> <time>.png`), up to five crash files (`application/octet-stream`,
+  `<name>.dmp`), at most 7 MB in all (`too-large`); `kept`: crash files left out, named. Anything else: `bad-request`.
+- **Never emailed twice**: the report's id is remembered for 2 days (`REPORTS_SEEN`, the newest 60): the same report
+  again is answered `received` with `again: true`, and nothing is emailed or counted.
+- **The day's limits** (`REPORTS_TODAY`, a day by the list's clock, in UTC, counted under the script's lock as requests
+  are): 5 reports from one computer, 20 in all (`too-many`); none once fewer than 30 of the day's emails would be left
+  after it (`mail-limit`), so tokens and approvals always have room. A refused report is never counted; a report whose
+  email fails stays counted (so a stuck Drashti cannot loop the admin's mail) and may go at its next try.
+- **The email**, to the approver Gmail (`APPROVER_EMAIL`), from the script's own account, named **Drashti**, plain text,
+  Reply-To the reporter (not when the reporter is the owner): subject `Drashti problem: <up to three features, then "and
+N more"> (<reference>)`, at most 160 characters; the text: the reference, the reporter's Gmail as the list has it,
+  the computer and how it was used (Pro Mode, Simple Mode, or the node through its Main), when it was written and
+  received, each feature with its own words, the notice, the recent errors, the files attached and any crash file kept
+  back, and (not to the owner's own) "Reply to this email to answer them." Drashti shows the same text before Send
+  (`src/shared/report.ts`; `src/shared/report.test.ts` keeps the two equal).
+- **The note** to the reporter (none to the owner): `Your Drashti report <reference>`, saying it reached the admin.
+- **Answered**, signed: `{ received: true, reference: "R-XXXX-XXXX", again }`. The reference is "R-" and the id's first 40
+  bits in Crockford's base32 letters, in two fours.
+- `Code.js` makes each attachment a blob of its own bytes (`Utilities.newBlob(Utilities.base64Decode(…), type, name)`):
+  MailApp's own scope, so Google asks nothing new.
+
 ### Refusals
 
 `bad-request` (not a call of this version), `bad-gmail`, `too-many`, `busy` (the script's lock was not had in
 10 seconds), `not-set-up`, `already-approved`, `bad-token`, `not-owner`, `owner-row`, `not-found`,
-`wrong-status`, `bad-length` (not Unlimited, nor 1 to 730 whole days), `mail-limit`, `mail-failed`, `server`. Drashti shows its own words for each
+`wrong-status`, `bad-length` (not Unlimited, nor 1 to 730 whole days), `mail-limit`, `mail-failed`, `not-in` (a report from a
+computer not let in now), `too-large` (a report over 7 MB of files, or 10 MB of text), `server`. Drashti shows its own words for each
 (`ACCESS_ERROR_TEXT`).
 
 ### Canonical JSON
@@ -191,6 +242,9 @@ lower-case hex.
 | One computer's counted checks     | one every 5 seconds    |
 | A computer's last seen and totals | written once a minute  |
 | The Sheet as read for checks      | at most 10 seconds old |
+| Reports from one computer         | 5 a day                |
+| Reports in all                    | 20 a day               |
+| A report's files                  | 7 MB in all            |
 
 The day's requests are counted in the script's settings (`REQUESTS_TODAY`: a day by the list's clock, in
 UTC; in all, and for each Gmail and computer by a short hash), under the script's lock; a request refused is
@@ -335,6 +389,8 @@ computers (`expired`) without ending them, until it is put right. A second row f
 | `SETUP_TICKET`     | Set up…, for its window only (30 minutes)   | the only way the window's two calls are taken  |
 | `REQUESTS_TODAY`   | the list, at each request                   | the day's requests counted (see Limits)        |
 | `MODE_COLUMN_MADE` | the list or Set up…, once                   | the Mode column was made (see The Sheet)       |
+| `REPORTS_TODAY`    | the list, at each report (x49)              | the day's reports counted (see A report)       |
+| `REPORTS_SEEN`     | the list, at each report (x49)              | the reports received in 2 days, by id          |
 
 Set up… never replaces a key (every Drashti would stop): opened again, it shows the same line. Before it keeps
 them, its window has Google sign, HMAC and hash a test text and checks each against the browser's own. The

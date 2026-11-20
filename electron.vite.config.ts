@@ -67,6 +67,9 @@ export default defineConfig({
           // The QR worker (Q60-28): a QR code's pictures, drawn and read back off Main's thread, one code at a time
           // (src/main/library/qr-worker.ts).
           'qr-worker': resolve('src/main/library/qr-worker.ts'),
+          // The report worker (x49, Help › Report a Problem…): a report's files, made off Main's thread, below normal
+          // priority (src/main/report/report-worker.ts).
+          'report-worker': resolve('src/main/report/report-worker.ts'),
           // The performance check's devices and nodes (Sessions 31–36, REL-7): utility processes, as a packaged
           // Drashti's RunAsNode fuse is off (src/main/network/perf-devices-worker.ts, src/main/nodes/perf-nodes-worker.ts).
           'perf-devices-worker': resolve('src/main/network/perf-devices-worker.ts'),

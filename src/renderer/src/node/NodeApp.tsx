@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { ReportDialog } from '../help/ReportDialog';
+import { showReport } from '../help/report-store';
 import { formatBytes } from '../../../shared/format';
 import { type LinkState, type NodeView, shortFingerprint } from '../../../shared/nodes';
 import { Badge } from '../ui/Badge';
@@ -458,7 +460,14 @@ export function NodeApp() {
   useEffect(() => {
     const off = window.drashti.node.onChanged(setView);
     void window.drashti.node.view().then(setView);
-    return off;
+    // Help › Report a Problem… (x49): handed to the Main this node follows.
+    const offReport = window.drashti.app.onShowReport(() => {
+      void showReport();
+    });
+    return () => {
+      off();
+      offReport();
+    };
   }, []);
   if (!view) return <Loading label="Starting…" />;
   return (
@@ -488,6 +497,7 @@ export function NodeApp() {
       <MatchMain view={view} />
       <Displays view={view} />
       <Media view={view} />
+      <ReportDialog />
     </main>
   );
 }

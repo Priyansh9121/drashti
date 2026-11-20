@@ -47,7 +47,8 @@ export function PlaylistsUnread({
         </Button>
       }
     >
-      If Try again doesn’t bring {what === 'playlists' ? 'them' : 'its items'} back, tell the admin.
+      If Try again doesn’t bring {what === 'playlists' ? 'them' : 'its items'} back, choose Help › Report a
+      Problem….
     </Notice>
   );
 }

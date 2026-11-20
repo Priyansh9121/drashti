@@ -13,6 +13,7 @@ import {
   ACCESS_MODES,
   ACCESS_OWNER_OPS,
   ACCESS_PUBLIC_OPS,
+  ACCESS_REPORT,
   ACCESS_REQUEST_STATUSES,
   ACCESS_STATUSES,
   ACCESS_STOP_AFTER_MS,
@@ -62,6 +63,21 @@ describe('the access list’s copy of the protocol', () => {
     expect(p.tokenAlphabet).toBe(ACCESS_TOKEN_ALPHABET);
     expect(p.tokenLength).toBe(ACCESS_TOKEN_LENGTH);
     expect(p.macPrefix).toBe(ACCESS_MAC_PREFIX);
+  });
+
+  it('keeps Drashti’s numbers for a report (x49, the owner’s Q60-42): 5 a computer a day, 20 in all, 30 emails kept, 8 features, 2,000 and 1,000 letters, 7 MB of files', () => {
+    expect(core.PROTOCOL.report).toEqual(ACCESS_REPORT);
+    expect(ACCESS_REPORT).toMatchObject({
+      perComputerPerDay: 5,
+      perDay: 20,
+      mailReserve: 30,
+      features: 8,
+      whatLetters: 2000,
+      expectedLetters: 1000,
+      filesBytes: 7 * 1024 * 1024,
+    });
+    expect(core.PROTOCOL.publicOps).toContain('report');
+    expect(core.PROTOCOL.errors).toEqual(expect.arrayContaining(['not-in', 'too-large']));
   });
 
   it('gives the same lengths of access Drashti offers: 1 day, 7 to 365 days, up to 730 typed, and Unlimited', () => {

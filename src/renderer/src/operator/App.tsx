@@ -63,6 +63,8 @@ import { connectVideoInputs } from '../video-inputs/video-inputs-store';
 import { GuidesDialog } from '../help/GuidesDialog';
 import { showGuides } from '../help/guides-store';
 import { ManualDialog } from '../help/ManualDialog';
+import { ReportDialog } from '../help/ReportDialog';
+import { showReport } from '../help/report-store';
 import { showManual } from '../help/manual-store';
 import { LivePreview } from './LivePreview';
 import { LibraryButton, LibrarySheet } from './LibrarySheet';
@@ -182,6 +184,10 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     const offManual = window.drashti.app.onShowManual(() => {
       showManual();
     });
+    // Help › Report a Problem… (both modes, x49).
+    const offReport = window.drashti.app.onShowReport(() => {
+      void showReport();
+    });
     // How a restore went, told once as the page opens.
     void window.drashti.app.startNotice().then((text) => {
       if (text) useNotice.setState({ text });
@@ -198,6 +204,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
       offUndo();
       offEditorSaves();
       offNotice();
+      offReport();
       offProgress();
       offKeys();
       offGuides();
@@ -484,6 +491,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <ScreenSwitchAsk platform={platform} />
       <GuidesDialog />
       <ManualDialog />
+      <ReportDialog />
       <MarkersDialog />
       <PictureEditor />
       {/* Media information… (alpha.20, Q60-34 item 1): a video's or a sound's file, as FFmpeg reads it. */}
