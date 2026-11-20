@@ -4,6 +4,8 @@ From version 1.0.0-alpha.20 Drashti can schedule a stream on your YouTube channe
 time, and who can watch) and save that broadcast's stream key into a stream profile by itself, so nobody copies a key
 by hand. Going live is Drashti's own **Go live…**, as before: YouTube starts the broadcast when the stream arrives.
 
+For the weekly controls after this one-time setup, see the [Manual's Scheduling on YouTube](manual/stream.md#scheduling-on-youtube) and the [admin's guide, section 27](admin-guide.md#27-scheduling-on-youtube).
+
 To do this, Drashti signs in to YouTube with **your own Google project**: a free project in Google Cloud that only you
 control. This guide makes it. It takes about 15 minutes, once, and costs nothing: add no billing account, and nothing
 here asks for one.

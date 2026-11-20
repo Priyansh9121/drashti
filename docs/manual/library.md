@@ -35,7 +35,7 @@ The library holds everything on this computer that can go on the screens: presen
 
 ## Importing files
 
-**What it is.** **Import…** brings files and folders into the library: presentations, PDFs, PowerPoint and Keynote decks, pictures, videos and sounds. A file the screens can't play as it is says **Converting…** until Drashti has made a copy that plays.
+**What it is.** **Import…** brings files and folders into the library: presentations, PDFs, PowerPoint and Keynote decks, pictures, videos and sounds. A file the screens can't play as it is says **Converting…** until Drashti has made a copy that plays: see **Bringing things in and sharing › Files Drashti converts**.
 
 **When you would use it.** Before the sabha, for anything new you will show.
 
@@ -121,7 +121,9 @@ The library holds everything on this computer that can go on the screens: presen
 3. Press **Copy** to put its words in a message or a problem report.
 4. Press **Esc** to close it.
 
-![A playlist's right-click menu](../screenshots/share-with-phones.png)
+For the button that offers a long file's saved place, see **LIVE, Back and Next › Resume where it stopped**. For the time bar's repeat, frame steps and Snapshot, see that chapter too.
+
+![Media: right-click a video or sound for Media information…](../screenshots/convert-media-list-done.png)
 
 ## The Picture editor
 
