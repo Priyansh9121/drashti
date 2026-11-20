@@ -1801,7 +1801,7 @@ export class ShowEngine {
     // The same video played to its end starts again from its start point (Session 55): one still playing carries on,
     // and a paused one stays paused, as before.
     const up = this.state.layers.background;
-    const again = up?.kind === 'media' && up.mediaId === item.mediaId && playedToEnd(up, now);
+    const again = up?.kind === 'media' && this.sameMedia(up.mediaId, item.mediaId) && playedToEnd(up, now);
     const background = this.backgroundLayer(
       {
         kind: 'media',
@@ -2335,6 +2335,14 @@ export class ShowEngine {
    * The background layer for a choice. The file already on the layer keeps
    * its start time, so it carries on playing instead of restarting.
    */
+  private sameMedia(first: string, second: string): boolean {
+    return (
+      first === second ||
+      (!!this.options.sourceMediaId &&
+        this.options.sourceMediaId(first) === this.options.sourceMediaId(second))
+    );
+  }
+
   private backgroundLayer(
     choice: BackgroundChoice,
     fade?: { at: number; durationMs: number },
@@ -2344,10 +2352,15 @@ export class ShowEngine {
   ): BackgroundLayer {
     if (choice.kind === 'color') return choice;
     const current = this.state.layers.background;
-    const length = this.lengthOf(choice.mediaId);
-    const same = !again && current?.kind === 'media' && current.mediaId === choice.mediaId;
-    const clip = this.pointsFor(choice.mediaId, 'background', same ? current.startedAt : undefined, itemId);
-    const media = { ...choice, ...(choice.media === 'video' ? { sourceItemId: itemId ?? null } : {}) };
+    const same = !again && current?.kind === 'media' && this.sameMedia(current.mediaId, choice.mediaId);
+    const mediaId = same ? current.mediaId : choice.mediaId;
+    const length = this.lengthOf(mediaId);
+    const clip = this.pointsFor(mediaId, 'background', same ? current.startedAt : undefined, itemId);
+    const media = {
+      ...choice,
+      mediaId,
+      ...(choice.media === 'video' ? { sourceItemId: itemId ?? null } : {}),
+    };
     if (same)
       return {
         ...media,
