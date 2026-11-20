@@ -27,10 +27,11 @@ export function displayPictureSize(
   const scale = Math.min(
     1,
     Math.max(
-      ...boxes.map((box) =>
-        (fit === 'cover'
-          ? Math.max(box.width / visible.width, box.height / visible.height)
-          : Math.min(box.width / visible.width, box.height / visible.height)) * zoom,
+      ...boxes.map(
+        (box) =>
+          (fit === 'cover'
+            ? Math.max(box.width / visible.width, box.height / visible.height)
+            : Math.min(box.width / visible.width, box.height / visible.height)) * zoom,
       ),
     ),
   );

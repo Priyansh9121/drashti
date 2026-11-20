@@ -30,9 +30,10 @@ describe('pictures sized for their displays', () => {
   });
 
   it('takes every differently shaped target into account, not only the largest area', () => {
-    expect(
-      displayPictureSize({ width: 6000, height: 8000 }, [hd, { width: 2160, height: 3840 }]),
-    ).toEqual({ width: 2880, height: 3840 });
+    expect(displayPictureSize({ width: 6000, height: 8000 }, [hd, { width: 2160, height: 3840 }])).toEqual({
+      width: 2880,
+      height: 3840,
+    });
   });
 
   it('retains the source density a saved zoom needs', () => {
@@ -50,9 +51,10 @@ describe('pictures sized for their displays', () => {
   });
 
   it('accounts for a quarter turn before fitting the visible part', () => {
-    expect(
-      displayPictureSize({ width: 6000, height: 8000 }, [hd], { ...PLAIN, turn: 90 }),
-    ).toEqual({ width: 1440, height: 1920 });
+    expect(displayPictureSize({ width: 6000, height: 8000 }, [hd], { ...PLAIN, turn: 90 })).toEqual({
+      width: 1440,
+      height: 1920,
+    });
   });
 
   it('never guesses from invalid geometry', () => {
