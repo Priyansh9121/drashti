@@ -272,6 +272,24 @@ describe('AppearanceService', () => {
     expect(fast.now().slow).toBe(false);
   });
 
+  it('says whether Chromium draws with a graphics chip: unknown until it has said, and every window told when it does', () => {
+    const dir = fresh();
+    let chip: 'unknown' | 'yes' | 'no' = 'unknown';
+    const service = new AppearanceService({ userData: dir, say: () => undefined, chip: () => chip });
+    service.start(new Computer(true));
+    const { win, sent } = aWindow();
+    service.track(win as never);
+    expect(service.now().chip).toBe('unknown');
+    chip = 'no';
+    service.chipMayHaveChanged();
+    expect(service.now().chip).toBe('no');
+    expect((sent.at(-1) as { chip: string }).chip).toBe('no');
+    // Told once: a second word that changes nothing tells no window again.
+    const told = sent.length;
+    service.chipMayHaveChanged();
+    expect(sent.length).toBe(told);
+  });
+
   it('starts in the appearance a test names (never kept unless chosen)', () => {
     const dir = fresh();
     const service = new AppearanceService({ userData: dir, say: () => undefined, startIn: 'black' });

@@ -53,6 +53,8 @@ export interface AppearanceDeps {
   startIn?: string;
   /** This computer's logical cores (os.availableParallelism; a test may say). */
   cores?: number;
+  /** Whether Chromium draws with a graphics chip: unknown until its GPU process has said (Main's warm-up choices). */
+  chip?: () => 'unknown' | 'yes' | 'no';
 }
 
 export class AppearanceService {
@@ -163,6 +165,7 @@ export class AppearanceService {
       moving: this.settings.moving,
       look: shown.moving?.kinds ?? [],
       slow: isSlow(this.deps.cores ?? availableParallelism()),
+      chip: 'unknown',
     };
   }
 
@@ -189,6 +192,11 @@ export class AppearanceService {
     this.tell();
     this.deps.say(`Appearance: moving ${on ? 'on' : 'off'}`);
     return true;
+  }
+
+  /** Chromium may have said how it draws (Session 60). Not yet. */
+  chipMayHaveChanged(): void {
+    return;
   }
 
   /** Star or unstar an appearance there is (Session 60): kept on this computer, in the order starred. */
