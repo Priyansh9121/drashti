@@ -34,9 +34,12 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   choice: FOLLOW,
   motion: 'calm',
   own: [],
-  moving: false,
+  moving: true,
   favourites: [],
 };
+
+/** How many appearances a computer may star (Session 60): all the built-in ones and its own. */
+export const FAVOURITES_MAX = 200;
 
 export const ownSchema = z
   .object({
@@ -55,6 +58,12 @@ const fileSchema = z.object({
   own: z.array(ownSchema).max(OWN_MAX).default([]),
   // Session 42: one's own second colours, by id; absent in a file written before it.
   seconds: z.record(z.string(), z.string().regex(/^#[0-9a-f]{6}$/u)).default({}),
+  // Session 60: Moving: On or Off, and the appearances starred; absent in a file written before it (Moving On).
+  moving: z.boolean().default(true),
+  favourites: z
+    .array(z.string().regex(/^[a-z0-9-]{1,80}$/u))
+    .max(FAVOURITES_MAX)
+    .default([]),
 });
 
 /** What the file says, or the default (Follow the computer, Calm), saying why when it could not be read. */
@@ -63,12 +72,12 @@ export function readAppearance(userData: string, say: (line: string) => void): A
   const read = readStateTwice(file, (raw) => {
     const parsed = fileSchema.safeParse(raw);
     if (!parsed.success) return null;
-    const { choice, motion, own, seconds } = parsed.data;
+    const { choice, motion, own, seconds, moving, favourites } = parsed.data;
     return {
       choice,
       motion,
-      moving: false,
-      favourites: [],
+      moving,
+      favourites: [...new Set(favourites)],
       own: own.map((o) => {
         const second = seconds[o.id];
         return second === undefined ? o : { ...o, second };
@@ -94,7 +103,19 @@ export function writeAppearance(userData: string, settings: AppearanceSettings):
   );
   writeFileSync(
     `${file}.writing`,
-    JSON.stringify({ version: 1, choice: settings.choice, motion: settings.motion, own, seconds }, null, 2),
+    JSON.stringify(
+      {
+        version: 1,
+        choice: settings.choice,
+        motion: settings.motion,
+        own,
+        seconds,
+        moving: settings.moving,
+        favourites: settings.favourites,
+      },
+      null,
+      2,
+    ),
   );
   renameSync(`${file}.writing`, file);
 }
