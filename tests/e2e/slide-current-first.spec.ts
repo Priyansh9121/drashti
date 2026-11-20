@@ -434,8 +434,120 @@ const shownBox = (page: Page, place: Place, mediaId: string) =>
     { root: rootOf(place), mediaId },
   );
 
+/** Evidence only after a bad native frame or an already failed readiness check; this never prepares a passing image. */
+async function sayStartupFailure(app: ElectronApplication, page: Page, what: string): Promise<void> {
+  const bounded = async <T>(label: string, promise: Promise<T>) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<{ timedOut: string }>((resolve) => {
+          timer = setTimeout(() => resolve({ timedOut: label }), 1000);
+        }),
+      ]);
+    } catch (error) {
+      return { failed: label, error: String(error) };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const dom = await bounded(
+    'failed output DOM',
+    page.evaluate(() => {
+      const describe = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return {
+          tag: el.tagName,
+          attributes: Object.fromEntries(
+            [...el.attributes].filter((a) => a.name !== 'src').map((a) => [a.name, a.value]),
+          ),
+          rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+          opacity: s.opacity,
+          display: s.display,
+          visibility: s.visibility,
+          background: s.backgroundColor,
+          transform: s.transform,
+          willChange: s.willChange,
+          contentVisibility: s.contentVisibility,
+          contain: s.contain,
+          filter: s.filter,
+          isolation: s.isolation,
+          blend: s.mixBlendMode,
+        };
+      };
+      const root = document.querySelector('[data-testid="output-root"], [data-testid="program-root"]');
+      const globals = globalThis as typeof globalThis & {
+        drashtiCurrentFirstProbe?: unknown;
+        drashtiStartupBound?: { calls: unknown[]; releasedAt: number | null };
+      };
+      return {
+        at: performance.timeOrigin + performance.now(),
+        url: location.href,
+        visibility: document.visibilityState,
+        viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
+        root: root ? describe(root) : null,
+        layers: [...document.querySelectorAll('[data-layer], [data-slide-in], [data-slide]')]
+          .slice(0, 20)
+          .map(describe),
+        images: [...document.images].slice(0, 16).map((img) => {
+          const ancestors: ReturnType<typeof describe>[] = [];
+          for (let el = img.parentElement, n = 0; el && n < 10; el = el.parentElement, n++)
+            ancestors.push(describe(el));
+          return {
+            ...describe(img),
+            src: img.src,
+            currentSrc: img.currentSrc,
+            complete: img.complete,
+            naturalWidth: img.naturalWidth,
+            naturalHeight: img.naturalHeight,
+            decoding: img.decoding,
+            ancestors,
+          };
+        }),
+        readiness: globals.drashtiCurrentFirstProbe ?? null,
+        bound: globals.drashtiStartupBound
+          ? { calls: globals.drashtiStartupBound.calls, releasedAt: globals.drashtiStartupBound.releasedAt }
+          : null,
+      };
+    }),
+  );
+  const windows = await bounded(
+    'failed output windows',
+    app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().map((w) => ({
+        id: w.id,
+        url: w.webContents.getURL(),
+        visible: w.isVisible(),
+        minimized: w.isMinimized(),
+        focused: w.isFocused(),
+        bounds: w.getBounds(),
+        contentBounds: w.getContentBounds(),
+      })),
+    ),
+  );
+  console.log(`STARTUP FAILURE STATE ${JSON.stringify({ what, dom, windows })}`);
+  // A native readback can request painting. Do it ONLY after the original failure is recorded; it cannot erase it.
+  const readback = await bounded(
+    'post-failure native image',
+    app.evaluate(async ({ BrowserWindow }, url) => {
+      const w = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === url);
+      if (!w) return { missingWindow: true };
+      const image = await w.webContents.capturePage();
+      return {
+        at: Date.now(),
+        id: w.id,
+        size: image.getSize(),
+        grid: image.resize({ width: 32, height: 18, quality: 'good' }).toBitmap().toString('base64'),
+      };
+    }, page.url()),
+  );
+  console.log(`STARTUP FAILURE READBACK ${JSON.stringify({ what, readback })}`);
+}
+
 /** Watch one document come up and show the live slide, reading its decode log (if kept), readiness and frames. */
 async function observe(
+  app: ElectronApplication,
   page: Page,
   place: Place,
   frames: (since: number) => Promise<Grab[]>,
@@ -449,10 +561,32 @@ async function observe(
   if (!box) problems.push('the page did not show the live slide within 20 s of being ready');
   const cells = box ? cellsIn(box) : [];
   const live = grey(LIVE.grey);
-  const whole = async () =>
-    (await frames(doc.since)).some(
-      (f) => f.spot === doc.spot && lookAt(f, cells, live, LIVE_BACKGROUND).shown === 'whole',
+  const diagnostic = { done: false };
+  const diagnoseBad = async (all: Grab[]) => {
+    if (diagnostic.done) return;
+    const bad = all.filter((f) => {
+      if (f.spot !== doc.spot) return false;
+      const seen = lookAt(f, cells, live, LIVE_BACKGROUND);
+      return seen.shown === 'part' || seen.bare;
+    });
+    if (bad.length === 0) return;
+    diagnostic.done = true;
+    console.log(
+      'STARTUP BAD FRAMES ' +
+        JSON.stringify({
+          place,
+          what: doc.what,
+          box,
+          frames: bad.map((f) => ({ t: f.t, ...lookAt(f, cells, live, LIVE_BACKGROUND) })),
+        }),
     );
+    await sayStartupFailure(app, page, place + ' ' + doc.what + ' after first recorded bad frame');
+  };
+  const whole = async () => {
+    const all = await frames(doc.since);
+    await diagnoseBad(all);
+    return all.some((f) => f.spot === doc.spot && lookAt(f, cells, live, LIVE_BACKGROUND).shown === 'whole');
+  };
   if (!(await until(async () => (await frames(0)).length > 0, BUDGET_MS)))
     problems.push('Main’s frame subscription gave no frame of this window at all');
   else if (cells.length > 0 && !(await until(whole, BUDGET_MS)))
@@ -475,6 +609,11 @@ async function observe(
   else if (probe.spot !== doc.spot)
     problems.push(`the page's mark is spot ${String(probe.spot)}, not ${String(doc.spot)}`);
   const all = await frames(doc.since);
+  await diagnoseBad(all);
+  if (!diagnostic.done && problems.length > 0) {
+    diagnostic.done = true;
+    await sayStartupFailure(app, page, place + ' ' + doc.what + ' after failed readiness');
+  }
   const mine = all.filter((f) => f.spot === doc.spot);
   if (mine.length === 0)
     problems.push(`no frame with this document's mark (${String(all.length)} frames without it)`);
@@ -606,7 +745,9 @@ for (const place of ['hall', 'stream'] as const) {
         await win.getByTestId('open-stream').click();
         page = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
       }
-      docs.push(await observe(page, place, frames, ids, { what: 'turned on', spot: 0, since, logged: true }));
+      docs.push(
+        await observe(app, page, place, frames, ids, { what: 'turned on', spot: 0, since, logged: true }),
+      );
       // Main's capture of the new window was on before its page was ready, so before it could draw the live slide.
       const subscribedAt = await app.evaluate(
         (_electron, place) => (globalThis as GrabGlobals).drashtiCurrentFirstSubscribed?.[place] ?? null,
@@ -635,7 +776,7 @@ for (const place of ['hall', 'stream'] as const) {
         since = Date.now();
         await page.reload();
         docs.push(
-          await observe(page, place, frames, ids, {
+          await observe(app, page, place, frames, ids, {
             what: spot === 1 ? 'reloaded (decode log)' : `plain reload ${String(spot - 1)}`,
             spot,
             since,
