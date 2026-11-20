@@ -1,8 +1,15 @@
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { elementVideos, type Playing, type PlayingRef, playingOf } from '../../shared/engine/playing';
-import type { AudioLayer, EngineState, Layers, VideoFile, VideoSeeks } from '../../shared/engine/state';
+import type {
+  AbRepeat,
+  AudioLayer,
+  EngineState,
+  Layers,
+  VideoFile,
+  VideoSeeks,
+} from '../../shared/engine/state';
 import type { PlaybackMarker } from '../../shared/markers';
-import { type PlaybackSeek, playbackAtMs, playbackSpanMs } from '../../shared/media';
+import { type PlaybackClip, type PlaybackSeek, playbackAtMs, playbackSpanMs } from '../../shared/media';
 import type { EngineAction } from './actions';
 import { sameData } from './reducer';
 
@@ -19,7 +26,13 @@ import { sameData } from './reducer';
 
 type Refused = Extract<CommandResult, { ok: false }>;
 export type PlayingResolved = { ok: true; actions: EngineAction[] } | Refused;
-export type PlayingCommand = Extract<EngineCommand, { type: 'moveTo' | 'pausePlaying' | 'resumePlaying' }>;
+export type PlayingCommand = Extract<
+  EngineCommand,
+  { type: 'moveTo' | 'pausePlaying' | 'resumePlaying' | 'repeatAb' | 'stopAb' | 'stepFrame' }
+>;
+
+/** An A-B repeat's shortest span (ms, alpha.20): shorter, it would only stutter. */
+export const AB_SHORTEST_MS = 500;
 
 /** What the engine gives the time bar (show-engine.ts). */
 export interface PlayingHooks {
@@ -123,6 +136,11 @@ export function resolvePlaying(
   };
   const paused = clock.seek?.paused === true;
   switch (command.type) {
+    // Red (x47, slice 4): the time bar's ⋯, still to be written.
+    case 'repeatAb':
+    case 'stopAb':
+    case 'stepFrame':
+      return NO_CHANGE;
     case 'moveTo': {
       const toMs = Math.min(span.end, Math.max(span.start, command.toMs));
       const track = state.layers.audio;
@@ -182,6 +200,32 @@ export function learnedFiles(
   if (!elementVideos(state).includes(mediaId)) return null;
   const was = state.videoFiles?.[mediaId];
   return was?.durationMs === durationMs ? null : { ...state.videoFiles, [mediaId]: { ...was, durationMs } };
+}
+
+/** A file's start and end points and markers, as the library has them (show-engine.ts withPoints). */
+interface Points {
+  clip?: PlaybackClip;
+  marks?: PlaybackMarker[];
+}
+
+/**
+ * Going round from A to B (alpha.20): the library's points as they are now wait aside, with the loop, for Stop to put
+ * back, and its markers show at once; A and B stay.
+ */
+export function pointsAside<T extends Points>(layer: T, _points: Points): T {
+  // Red (x47, slice 4).
+  return layer;
+}
+
+/**
+ * A file that plays on as it did (the same file, from the same start) keeps its A-B repeat as it is now (alpha.20):
+ * Back and Put it back move the slides, never what goes round, as they keep its jumps. Only where either has one.
+ */
+export function keepRepeat<
+  T extends { mediaId: string | null; startedAt: number; clip?: PlaybackClip; loop: boolean; ab?: AbRepeat },
+>(was: T, _is: T | null): T {
+  // Red (x47, slice 4).
+  return was;
 }
 
 /** A layer with these moves (none: left out). */

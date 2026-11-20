@@ -102,6 +102,10 @@ export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
   // LIVE's one press for the chosen video input (Session 55), as showInput.
   'toggleInput',
   'skip',
+  // The time bar's ⋯ (alpha.20) is Pro Mode's (the owner's "Yes, all A" to Q60-39 P6 (j) A); stopping an A-B repeat
+  // stays allowed everywhere, so one set in Pro Mode is never left going round.
+  'repeatAb',
+  'stepFrame',
 ];
 
 /**
