@@ -45,7 +45,7 @@ export async function setupVideoCue(software = false) {
     await setUpScreen(win, 'Main Hall', 0);
     const hall = await outputPage(app);
     await outputReady(hall);
-    await win.getByTestId('open-stream').click();
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.watchPreview(true));
     const stream = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
     await expect(stream.getByTestId('program-root')).toBeVisible();
     await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
