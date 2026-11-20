@@ -1,5 +1,12 @@
 import type { NodeCannotPlayReport } from '../../shared/nodes';
-import { cannotPlayOnNodeNotice, FIRST_FRAME_MS, NO_FIRST_FRAME, NO_PICTURE } from '../../shared/no-picture';
+import {
+  cannotPlayOnNodeNotice,
+  FIRST_FRAME_MS,
+  NO_FIRST_FRAME,
+  NO_PICTURE,
+  NO_START_IN_TIME,
+  SLOW_START_MS,
+} from '../../shared/no-picture';
 import { cutText } from '../../shared/text';
 
 /*
@@ -22,6 +29,8 @@ import { cutText } from '../../shared/text';
 export function errorKindWords(code: number): string {
   const kinds: Record<number, string> = {
     [NO_FIRST_FRAME]: `no picture within ${String(FIRST_FRAME_MS / 1000)} s`,
+    // Q60-51: it still loaded or decoded, but slowly.
+    [NO_START_IN_TIME]: `no picture within ${String(SLOW_START_MS / 1000)} s while it still loaded`,
     [NO_PICTURE]: 'its picture cannot be drawn there (sound only)',
     1: 'stopped',
     2: 'a network or file error',

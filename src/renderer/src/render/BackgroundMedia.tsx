@@ -37,8 +37,8 @@ import { useGpuRestarts, useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
 import { KeptVideo } from './KeptVideo';
 import { useInputReport, useVideoInput } from './video-input';
-import { hasNoPicture, tellCannotPlay, tellNoPicture } from './no-picture';
-import { FIRST_FRAME_MS, NO_FIRST_FRAME } from '../../../shared/no-picture';
+import { hasNoPicture, tellCannotPlay, tellNoPicture, watchStart } from './no-picture';
+import { NO_FIRST_FRAME, NO_START_IN_TIME } from '../../../shared/no-picture';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -107,19 +107,22 @@ function VideoSlot({
         dispatch({ type: 'failed', key, landed: landed.current });
       },
     });
-    // No first frame within FIRST_FRAME_MS (Q60-44, the owner's answer A): said to Main, which takes it off from a
-    // screen's word (shared/no-picture.ts). Only said: it still loads here, what was drawn before staying meanwhile
-    // (background-slots.ts, Scene.tsx), so a page whose word Main only logs (LIVE, the stream, a paired computer) shows
-    // it if its first frame comes after all.
-    // eslint-disable-next-line no-restricted-syntax -- decides no frame: only whether a video that never drew is said to fail
-    const noFirstFrame = setTimeout(() => {
+    // No first frame (Q60-44, refined by Q60-51, the owner's "Yes, A"): said to Main, which takes it off from a screen's
+    // word (shared/no-picture.ts): after FIRST_FRAME_MS with no progress at all, or, while it still loads or decodes,
+    // after SLOW_START_MS as not started in time (never "damaged"). Only said: it still loads here, what was drawn
+    // before staying meanwhile (background-slots.ts, Scene.tsx), so a page whose word Main only logs (LIVE, the stream,
+    // a paired computer) shows it if its first frame comes after all.
+    const stopWatch = watchStart(v, (verdict) => {
       if (settled) return;
       settled = true;
-      tellCannotPlay(mediaId, startedAt, attempt ?? 0, { code: NO_FIRST_FRAME, message: '' });
-    }, FIRST_FRAME_MS);
+      tellCannotPlay(mediaId, startedAt, attempt ?? 0, {
+        code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
+        message: '',
+      });
+    });
     playback.current = p;
     return () => {
-      clearTimeout(noFirstFrame);
+      stopWatch();
       playback.current = null;
       p();
     };

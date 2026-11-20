@@ -102,8 +102,9 @@ export function startWatched(watch: StartWatch, sample: StartSample): StartWatch
  * At `now`, for a video whose first frame has not come: wait on; 'stalled' (no progress for FIRST_FRAME_MS: it cannot
  * play, as before); or 'slow' (it still loads or decodes, but SLOW_START_MS has gone by since it went up).
  */
-export function startVerdict(_watch: StartWatch, _now: number): 'wait' | 'stalled' | 'slow' {
-  // Red (x47, Q60-51): still to be written.
+export function startVerdict(watch: StartWatch, now: number): 'wait' | 'stalled' | 'slow' {
+  if (now - watch.lastProgress >= FIRST_FRAME_MS) return 'stalled';
+  if (now - watch.since >= SLOW_START_MS) return 'slow';
   return 'wait';
 }
 
@@ -112,16 +113,20 @@ export function startVerdict(_watch: StartWatch, _now: number): 'wait' | 'stalle
  * damaged. `where` and `took` as for cannotPlayNotice.
  */
 export function cannotStartInTimeNotice(
-  _name: string,
-  _where: string,
-  _took: { background: boolean; slide: boolean; box: boolean } = {
+  name: string,
+  where: string,
+  took: { background: boolean; slide: boolean; box: boolean } = {
     background: true,
     slide: false,
     box: false,
   },
 ): string {
-  // Red (x47, Q60-51): still to be written.
-  return '';
+  const what = took.background
+    ? 'so it came off the screens with its sound'
+    : took.slide
+      ? 'so it stopped where it was on the slide, with its sound'
+      : 'so the picture-in-picture box came off';
+  return `“${name}” could not start in time on ${where}, ${what}: this computer was too busy to start it in ${String(SLOW_START_MS / 1000)} seconds. Put it up again when less is playing.`;
 }
 
 /**

@@ -171,7 +171,13 @@ import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
-import { cannotPlayNotice, NO_FIRST_FRAME, noPictureNotice } from '../shared/no-picture';
+import {
+  cannotPlayNotice,
+  cannotStartInTimeNotice,
+  NO_FIRST_FRAME,
+  NO_START_IN_TIME,
+  noPictureNotice,
+} from '../shared/no-picture';
 import {
   CannotPlay,
   type CannotPlayWhere,
@@ -7121,7 +7127,7 @@ function start(): void {
     const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;
     // No first frame within FIRST_FRAME_MS (Q60-44): heeded from Main's own screens, what the hall sees; LIVE's or the
     // stream's page alone only logs it (shared/no-picture.ts).
-    if (code === NO_FIRST_FRAME && screenId === undefined) {
+    if ((code === NO_FIRST_FRAME || code === NO_START_IN_TIME) && screenId === undefined) {
       log.info(
         `A video had ${kind} on ${whereWords([where])}: ${mediaId}; left up (only a screen’s takes it off)`,
       );
@@ -7142,7 +7148,13 @@ function start(): void {
           .filter((w) => w !== '')
           .join(', ');
         log.warn(`A video could not play on ${named} (${kind}${detail}): ${mediaId}; taken off (${off})`);
-        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, named, took) });
+        // Q60-51: a video that still loaded but could not start in time is said to be that, never damaged.
+        sendToOperator(IPC.app.notice, {
+          text:
+            code === NO_START_IN_TIME
+              ? cannotStartInTimeNotice(file.name, named, took)
+              : cannotPlayNotice(file.name, named, took),
+        });
       },
       (named) => {
         log.info(
