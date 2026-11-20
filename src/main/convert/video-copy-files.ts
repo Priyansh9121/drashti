@@ -104,8 +104,10 @@ export async function registerProxyFile(options: {
                     kind: 'video',
                     playable: true,
                     format: hasAlpha(info)
-                      ? 'VP9 video with transparency (WebM), lighter playing copy'
-                      : 'H.264 video (MP4), lighter playing copy',
+                      ? 'VP9 video with transparency (WebM)'
+                      : info.video?.codec === 'vp9'
+                        ? 'VP9 video (WebM)'
+                        : 'H.264 video (MP4)',
                   },
                   readBy: 'ffmpeg',
                 },
