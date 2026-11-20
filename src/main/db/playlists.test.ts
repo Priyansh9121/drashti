@@ -160,6 +160,7 @@ describe('playlists the operator edits', () => {
         unplayable: 'ProRes 422 video (QuickTime)',
         timers: [],
         durationMs: null,
+        playingMs: null,
       },
     ]);
   });
@@ -527,8 +528,11 @@ describe('playlist playback order (x50)', () => {
       expect(playlists.setPlayOptions(id, { shuffle: true, repeatAll: true })).toBe(true);
       const order = playlists.playItems(id)?.map((i) => i.id);
       expect(order).toEqual([...ids.slice(1), ids[0]]);
+      const changes = () => db.prepare('SELECT total_changes() AS count').get() as { count: number };
+      const beforeRead = changes();
       expect(playlists.playItems(id)?.map((i) => i.id)).toEqual(order);
       expect(new PlaylistRepo(db).playItems(id)?.map((i) => i.id)).toEqual(order);
+      expect(changes()).toEqual(beforeRead);
       expect(playlists.itemsOf(id).map((i) => i.id)).toEqual(ids);
       expect(playlists.playOptions(id)).toEqual({ shuffle: true, repeatAll: true, playOrder: order });
       expect(playlists.setPlayOptions(id, { shuffle: true, repeatAll: false })).toBe(true);

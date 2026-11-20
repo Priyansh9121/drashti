@@ -1,3 +1,4 @@
+import { importPlaylistFile, M3uReport } from './m3u-actions';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import type { PlaylistNode } from '../../../shared/playlists';
@@ -240,6 +241,7 @@ function PlaylistTree({ platform, simple }: { platform: string; simple: boolean 
               note: WHAT_EACH_IS.folder.note,
               onSelect: () => void createNode(true),
             },
+            { label: 'Import a Playlist File (M3U)…', onSelect: () => void importPlaylistFile() },
             {
               label: 'Smart Playlist from a Folder…',
               icon: FolderSync,
@@ -678,6 +680,7 @@ export function PlaylistPanel({ platform, simple = false }: { platform: string; 
   return (
     // In the left column's "Playlists" landmark (operator/Layout.tsx, Session 44), with the Library button.
     <div data-testid="playlists" className="flex min-h-0 flex-1 flex-col">
+      <M3uReport />
       {view === 'templates' && !simple ? (
         <TemplateList />
       ) : (

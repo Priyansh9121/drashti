@@ -1,4 +1,33 @@
+import { mediaMarkersSchema } from './markers';
+import { playbackLeftMs, playbackSpanMs } from './media';
+import type { AudioLayer } from './engine/state';
+import type { MusicPlaylist } from './music';
+import { z } from 'zod';
 import type { PlaylistItemInfo } from './playlists';
+
+export const playlistPlayOptionsSchema = z.object({ shuffle: z.boolean(), repeatAll: z.boolean() }).strict();
+export type PlaylistPlayOptions = z.infer<typeof playlistPlayOptionsSchema>;
+export interface PlaylistPlayback extends PlaylistPlayOptions {
+  playOrder: string[];
+}
+
+/** Use the saved draw without changing the rows’ numbered places. New ids go at its end. */
+export function orderedPlaylistItems<T extends { id: string }>(
+  items: readonly T[],
+  order: readonly string[],
+): T[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const out: T[] = [];
+  for (const id of order) {
+    const item = byId.get(id);
+    if (item) {
+      out.push(item);
+      byId.delete(id);
+    }
+  }
+  for (const item of items) if (byId.delete(item.id)) out.push(item);
+  return out;
+}
 
 /** Timed media in this playlist, between their own start and end points. */
 export function playlistTotals(items: readonly PlaylistItemInfo[]): {
@@ -6,8 +35,15 @@ export function playlistTotals(items: readonly PlaylistItemInfo[]): {
   durationMs: number;
   unknown: number;
 } {
-  void items;
-  return { rows: 0, durationMs: 0, unknown: 0 };
+  let durationMs = 0;
+  let unknown = 0;
+  for (const item of items) {
+    if (item.kind !== 'media' || item.media === 'image') continue;
+    const length = item.playingMs ?? item.durationMs;
+    if (length == null) unknown++;
+    else durationMs += length;
+  }
+  return { rows: items.length, durationMs, unknown };
 }
 
 /** Time left along automatic Next item links; null when its end cannot be known. */
@@ -18,10 +54,57 @@ export function playlistLeftMs(
   leftMs: number,
   repeatAll: boolean,
 ): number | null {
-  void items;
-  void order;
-  void liveId;
-  void leftMs;
-  void repeatAll;
-  return null;
+  if (repeatAll || !Number.isFinite(leftMs)) return null;
+  const sorted = orderedPlaylistItems(items, order);
+  const index = sorted.findIndex((i) => i.id === liveId);
+  const current = sorted[index];
+  if (current?.kind !== 'media' || current.media === 'image' || current.whenEnds === 'loop') return null;
+  let left = Math.max(0, leftMs);
+  let previous = current;
+  for (const item of sorted.slice(index + 1)) {
+    // A sound item ends on its own; it does not move the show’s cursor to the next item.
+    if (previous.media !== 'video' || previous.whenEnds !== 'next') break;
+    if (item.kind === 'header' || item.kind === 'placeholder') continue;
+    if (item.kind === 'media' && (item.missing || item.unplayable !== null)) continue;
+    if (item.kind === 'presentation' && item.presentationName === null) continue;
+    if ((item.kind === 'input' || item.kind === 'shastra') && item.missing) continue;
+    if (item.kind !== 'media' || item.media === 'image' || item.whenEnds === 'loop') return null;
+    const length = item.playingMs ?? item.durationMs;
+    if (length == null) return null;
+    left += length;
+    previous = item;
+  }
+  return left;
+}
+
+/** The file’s length between its saved points, without trusting an unreadable record. */
+export function mediaLengthBetweenPoints(durationMs: number | null, markers: string | null): number | null {
+  if (durationMs === null || durationMs <= 0) return null;
+  let clip: { startMs: number; endMs: number | null } | undefined;
+  try {
+    const parsed = mediaMarkersSchema.safeParse(JSON.parse(markers ?? 'null'));
+    if (parsed.success) clip = { startMs: parsed.data.startMs ?? 0, endMs: parsed.data.endMs };
+  } catch {
+    /* No readable points: play the whole file. */
+  }
+  const span = playbackSpanMs(clip, durationMs);
+  return span.end - span.start;
+}
+
+/** The running audio order, including a saved shuffle, is the authority for its finish time. */
+export function musicLeftMs(audio: AudioLayer, playlist: MusicPlaylist, now: number): number | null {
+  const run = audio.music;
+  if (run?.playlistId !== playlist.id || run.loop || audio.pausedAtMs !== undefined || audio.seek?.paused)
+    return null;
+  const current = playlist.tracks.find((t) => t.mediaId === audio.mediaId);
+  const duration = audio.durationMs ?? current?.durationMs;
+  if (duration == null) return null;
+  let left = playbackLeftMs(audio, duration, now);
+  for (const track of run.tracks.slice(run.index + 1)) {
+    const info = playlist.tracks.find((t) => t.mediaId === track.mediaId);
+    const length = info?.playingMs ?? info?.durationMs;
+    if (length == null) return null;
+    left += length;
+  }
+  return left;
 }
