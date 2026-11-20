@@ -117,12 +117,12 @@ function VideoSlot({
     // after SLOW_START_MS as not started in time (never "damaged"). Only said: it still loads here, what was drawn
     // before staying meanwhile (background-slots.ts, Scene.tsx), so a page whose word Main only logs (LIVE, the stream,
     // a paired computer) shows it if its first frame comes after all.
-    const stopWatch = watchStart(v, mediaId, (verdict) => {
+    const stopWatch = watchStart(v, mediaId, (verdict, seen) => {
       if (settled) return;
       settled = true;
       tellCannotPlay(mediaId, startedAt, attempt ?? 0, {
         code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
-        message: '',
+        message: seen,
       });
     });
     playback.current = p;
