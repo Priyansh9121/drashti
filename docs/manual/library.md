@@ -97,7 +97,7 @@ The library holds everything on this computer that can go on the screens: presen
 
 **What it is.** Every row, file, video, sound and picture has one menu, wherever it shows. **Delete…** is always last, with **Undo**.
 
-**When you would use it.** To rename, trim, check or remove something, or to set a video's or sound's own **Sound and picture…** (Bass, Treble, its delays).
+**When you would use it.** To rename, trim, check or remove something, or to set a video's or sound's own **Sound and picture…** (Bass, Treble, its delays, a video's shape).
 
 **How:**
 

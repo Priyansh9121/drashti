@@ -35,6 +35,7 @@ import { useMediaUrl } from './media-urls';
 import { KeptVideo } from './KeptVideo';
 import { useInputReport, useVideoInput } from './video-input';
 import { hasNoPicture, tellNoPicture } from './no-picture';
+import { SHAPED_PLACE, shapedVideoStyle, shapeFor, useVideoShapes } from './video-shape';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -50,15 +51,19 @@ function style(fit: MediaFit, visible: boolean) {
 /**
  * A background video: it says it is ready once its first frame (at the right point) is decoded. One whose picture this
  * computer cannot draw (Session 60, x36: Chromium plays it as sound only, at 0 × 0) is never ready, so the picture
- * before it stays, and is said to the main process, which takes it off with its sound (render/no-picture.ts).
+ * before it stays, and is said to the main process, which takes it off with its sound (render/no-picture.ts). One with
+ * a Shape of its own (Sound and picture…, alpha.20) is drawn in a box of that shape, stretched to it (`shape`: its
+ * width over its height; its place, the slot's wrap, is then the box's container: BackgroundPlayer).
  */
 function VideoSlot({
   slot,
   visible,
+  shape,
   dispatch,
 }: {
   slot: MediaSlot;
   visible: boolean;
+  shape: number | null;
   dispatch: Dispatch<SlotEvent>;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -112,7 +117,11 @@ function VideoSlot({
       disablePictureInPicture
       preload="auto"
       loop={layer.loop && !layer.clip}
-      style={style(layer.fit, visible)}
+      style={
+        shape === null
+          ? style(layer.fit, visible)
+          : { ...shapedVideoStyle(shape, layer.fit === 'fill' ? 'fill' : 'fit'), opacity: visible ? 1 : 0 }
+      }
     />
   );
 }
@@ -320,6 +329,8 @@ function BackgroundPlayer({
   const [slots, dispatch] = useReducer(slotsReducer, NO_SLOTS);
   // Its pictures as layers of their own, rastered once (x27): a screen warped out of square with a graphics chip.
   const ownLayers = useContext(OwnLayers);
+  // Sound and picture…'s Shape (alpha.20, x55): a video drawn in a shape of its own.
+  const shapes = useVideoShapes();
   // Follow the engine during render, so a new background starts loading in the same commit.
   const [seen, setSeen] = useState<BackgroundLayer | null | undefined>(undefined);
   if (seen !== layer) {
@@ -353,9 +364,13 @@ function BackgroundPlayer({
     >
       {list.map((slot) => {
         const visible = (slot === slots.shown || slot === slots.leaving) && slot.state === 'ready';
+        const shape =
+          isMediaSlot(slot) && slot.layer.media === 'video'
+            ? shapeFor(shapes, slot.layer.mediaId, slot.layer.fit)
+            : null;
         const element = isMediaSlot(slot) ? (
           slot.layer.media === 'video' ? (
-            <VideoSlot slot={slot} visible={visible} dispatch={dispatch} />
+            <VideoSlot slot={slot} visible={visible} shape={shape} dispatch={dispatch} />
           ) : (
             <ImageSlot slot={slot} visible={visible} dispatch={dispatch} />
           )
@@ -372,6 +387,8 @@ function BackgroundPlayer({
               inset: 0,
               mixBlendMode: fading && slot === slots.shown && slots.leaving ? 'plus-lighter' : undefined,
               willChange: ownLayers ? 'opacity' : undefined,
+              // A video in a shape of its own: its box laid out in this place, and clipped to it (filling).
+              ...(shape === null ? {} : SHAPED_PLACE),
             }}
           >
             {element}
