@@ -24,9 +24,9 @@ function showing(at: number): EngineState {
 
 describe('video edit preparation at a show change', () => {
   it('refuses a new showing until the desired revision is ready; never substitutes the original', () => {
-    expect(prepareVideoEdits(initialEngineState(), showing(1000), () => pending)).toMatchObject({
-      message: expect.stringContaining('preparing'),
-    });
+    const result = prepareVideoEdits(initialEngineState(), showing(1000), () => pending);
+    expect(result.message).toContain('preparing');
+    expect(result.state).toBeUndefined();
   });
   it('keeps an existing showing through Save and ordinary state changes', () => {
     const before = showing(1000);
