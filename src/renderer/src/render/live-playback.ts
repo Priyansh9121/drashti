@@ -1,6 +1,5 @@
 import type { DrashtiBridge } from '../../../shared/bridge';
 import { type StreamLinkJoin, streamLinkUrl } from '../../../shared/live-link';
-import type { CorrectionLimits } from '../../../shared/media';
 import { engineNow } from './clock';
 
 /*
@@ -10,27 +9,28 @@ import { engineNow } from './clock';
  * that loaded a moment apart would show the stream up to a segment apart: the hall's sound off the speakers' lips, two
  * screens side by side apart. So each page joins it as the main process says (src/main/live-link/: the segment its
  * player starts at, given a playlist that starts there, and the moment, by the engine's time, that segment's first
- * frame is shown), holds that first frame until then, and from then on is kept on the engine's time by speed alone, as
- * a file is between jumps (shared/media.ts's limits). Every page joined at one showing starts at the same moment on the
- * same frame. One far behind with pictures to play (it loaded late, or stalled alone) asks to join again; while the
- * link itself has stopped, nothing is changed: its last frame stays, and the main process starts every page again
- * together when it comes back.
+ * frame is shown), holds that first frame until then, and plays from then at normal speed: Chromium's player for a live
+ * stream gives up at any other speed (CI x54-1120-210932-7783: every player set to play 5% faster failed, "source not
+ * supported", and none at normal speed did). Every page joined at one showing starts at the same moment on the same
+ * frame, and the pages run on one clock. One ahead (a clock moved) waits a moment, paused, until the engine's time comes
+ * to it; one far behind with pictures to play (it loaded late, or stalled alone) asks to join again; while the link
+ * itself has stopped, nothing is changed: its last frame stays, and the main process starts every page again together
+ * when it comes back.
  */
 
 /** How often it is looked at against the engine's time. */
 const CHECK_MS = 250;
-/** Behind by more than this, with pictures to play: it joins again. */
-const REJOIN_BEHIND_S = 1.5;
+/** Ahead by more than this, it waits there (a picture's, the hall's sound's: a sound's wait is heard sooner). */
+const AHEAD_S = { picture: 0.1, sound: 0.08 } as const;
+/** Behind by more than this, playing a while with pictures to play: it joins again. */
+const BEHIND_S = { picture: 0.5, sound: 0.4 } as const;
 /** How soon a page asks again to join a link that is not up yet (its local stream starting, or starting again). */
 const ASK_AGAIN_MS = 1000;
-/** Closer than this to its place, it plays at normal speed. */
-const IN_STEP_S = 0.012;
 
 export interface LivePlaybackOptions {
   linkId: string;
   /** The hall's sound (the audio player): every other page plays it muted. */
   audible: boolean;
-  limits: CorrectionLimits;
   /** Its first frame is in, playing (presented, for a picture). */
   onFrame?: () => void;
   /** Far behind with pictures to play: the caller joins it again (a new element, the old one kept until then). */
@@ -112,27 +112,22 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
       return;
     }
     const offset = el.currentTime - expected;
-    // Ahead (a clock moved): it waits there until the engine's time comes to it.
-    if (offset > options.limits.jumpOver) {
+    const kind = options.audible ? 'sound' : 'picture';
+    // Ahead (a clock moved, or its own ran fast): it waits there until the engine's time comes to it.
+    if (offset > AHEAD_S[kind]) {
       if (!el.paused) el.pause();
       later(offset * 1000, check);
       return;
     }
-    const change = Math.max(
-      -options.limits.maxRateChange,
-      Math.min(options.limits.maxRateChange, -offset * 2),
-    );
-    const rate = Math.abs(offset) < IN_STEP_S ? 1 : 1 + change;
-    if (el.playbackRate !== rate) el.playbackRate = rate;
-    // Its moment has come (late or not: it catches up by speed): it plays.
+    // Its moment has come (late or not): it plays, at normal speed always (see above).
     if (el.paused) {
       play();
       return;
     }
     // Stopped for want of pictures (the link itself stopped): left as it is, its last frame shown.
     if (el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
-    // Playing a while and still far behind, with pictures to play (it stalled alone): it joins again.
-    if (offset < -REJOIN_BEHIND_S && playedAt !== null && now - playedAt >= SETTLE_MS && !behind) {
+    // Playing a while and still behind, with pictures to play (it loaded late, or stalled alone): it joins again.
+    if (offset < -BEHIND_S[kind] && playedAt !== null && now - playedAt >= SETTLE_MS && !behind) {
       behind = true;
       options.onBehind?.();
     }
