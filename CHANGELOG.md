@@ -6,23 +6,23 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 Update after a sabha, and update Main and nodes together.
 
-- Without a graphics chip, a deck’s own Wipe from the left or right now sweeps in on the screens, the stream and LIVE, where the old slide stood still and the new one cut in.
-- Without a graphics chip, while streaming, a deck’s own Push, Cover and Uncover stay smooth (a frame dropped now and then, not one in eight), and its Wipe drops about one frame in eight, not one in two.
-- With a graphics chip, going live, recording, watching the stream or opening the Stream panel mid-show no longer holds up the hall’s screens; the stream’s picture is ready in about a second, not 6 to 10.
-- Kirtans can be shared between libraries: Library › Export kirtan bundle… saves the chosen kirtans (and, if you like, their media); importing adds them, and updates one already there only where nobody edited it.
-- From a Link… asks for the folder and name before downloading, and saves a YouTube video’s captions in every language beside it (a copy in a Captions folder for caption learning); while on air or recording, Drashti waits to look a link up.
-- How loud, above Audio under the live picture (both modes): Audio (playlists, sounds) and Video (videos’ sound), 0 to 100 %, each with a mute switch; the status bar says what is muted, the stream hears what the hall hears, and Drashti always starts with the sound on.
-- A video’s captions (SRT or WebVTT beside it, or added through Captions…) can show on the audience screens and the stream: CC beside the time bar, in the language you choose; live captions step aside meanwhile.
-- OSC control for a lighting or sound console or Companion on the mandir’s network: in Pro Mode, More tools › OSC control… (off until turned on) lists the computers allowed to send Next, Back, Clear, the covers, timers and messages.
-- A paired node can show the whole show to a second operator when Main allows it in Screens (Pro Mode), and run the show controls or pause and play media if Main chooses; the first press counts. If its link drops, no screen changes.
+- Without a graphics chip, a deck’s own Wipe from the left or right now sweeps in, where the new slide used to cut in.
+- Without a graphics chip, while streaming, a deck’s own Push, Cover, Uncover and Wipe drop far fewer frames.
+- With a graphics chip, going live, recording or opening the stream mid-show no longer holds up the hall’s screens; the stream’s picture is ready in about a second, not 6 to 10.
+- Library › Export kirtan bundle… shares chosen kirtans (and their media) with another library; importing never overwrites an edited kirtan.
+- From a Link… asks for the folder and name first and saves a YouTube video’s captions beside it; on air, Drashti waits to look a link up.
+- How loud, under the live picture: Audio and Video volume, each with a mute switch; the status bar says what is muted, and Drashti always starts with the sound on.
+- A video’s captions (SRT or WebVTT) can show on the screens and the stream: CC beside the time bar, in the language you choose.
+- More tools › OSC control… (Pro Mode, off until turned on) lets a console or Companion on the mandir’s network send Next, Back, Clear, covers, timers and messages.
+- A paired node can show the whole show to a second operator, and run it if Main allows (Screens, Pro Mode); if its link drops, no screen changes.
 - The stream’s picture can go to other software on the same computer (Syphon on a Mac, Spout on Windows): Send to other software in the stream’s settings, off until turned on.
 - Schedule YouTube streams in Pro Mode: Stream settings › YouTube (your own free Google project: youtube-setup.md) makes a broadcast, Unlisted at first, whose new key goes straight into the stream profile; going live never waits on Google.
 - PowerPoint decks look closer to PowerPoint: every built-in table style as PowerPoint draws it, each text box’s first line where PowerPoint puts it, and Wheel and Random Bars as it plays them.
 - On a Mac, a 16:9 deck’s first Cover no longer stutters, as a 4:3 deck’s no longer did in alpha.19.
 - Screens: Adjust the picture… zooms, moves and pins a screen’s corners to square a projector’s picture, and One wide picture… blends two to four projectors into one; the stream is never changed.
 - The access list’s emailed Approve and Reject links open on any phone or computer, signed in to Google or not (the admin updates the list once: access-setup.md, section 11).
-- A video whose picture this computer can’t show (some cameras’ HEVC, ProRes) no longer plays its sound over black: within a second or two it comes off (on a slide or in picture in picture it waits, paused) with a notice, and Drashti converts it once the show is idle; import also checks which HEVC this computer plays.
-- Files dropped with no playlist open ask for a new playlist or folder; the Library button shows only while the library is shut; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… moved to More tools and a new Tools menu.
+- A video whose picture this computer can’t show (some HEVC, ProRes) no longer plays its sound over black: it comes off with a notice, and Drashti converts it once the show is idle.
+- Files dropped with no playlist open ask for a new playlist or folder; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… moved to More tools and a new Tools menu.
 - LIVE no longer goes black for a moment while a slow video starts: it keeps showing what the screens show.
 - Help › Drashti Manual…: every feature, searchable and printable.
 - Help › Save Diagnostics… now holds the graphics: each GPU and its driver, how each part draws, the video decoding offered.
