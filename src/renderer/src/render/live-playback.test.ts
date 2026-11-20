@@ -102,7 +102,11 @@ describe('a stream link’s player on a page', () => {
     joinAt = { segment: 5, startAt: Date.now() + 500 };
     const el = new FakeLive(2.3, 1500);
     const failed = vi.fn();
-    const stop = startLivePlayback(el as unknown as HTMLMediaElement, { linkId: LINK, audible: true, onError: failed });
+    const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
+      linkId: LINK,
+      audible: true,
+      onError: failed,
+    });
     try {
       await vi.advanceTimersByTimeAsync(1600);
       // Loaded 1 s after its moment, 1.3 s ahead of it: it played at once, and is held there.
@@ -125,7 +129,11 @@ describe('a stream link’s player on a page', () => {
     joinAt = { segment: 5, startAt: Date.now() + 2500 };
     const el = new FakeLive(0, 500);
     const failed = vi.fn();
-    const stop = startLivePlayback(el as unknown as HTMLMediaElement, { linkId: LINK, audible: false, onError: failed });
+    const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
+      linkId: LINK,
+      audible: false,
+      onError: failed,
+    });
     try {
       await vi.advanceTimersByTimeAsync(600);
       expect(el.played).toBe(1);
