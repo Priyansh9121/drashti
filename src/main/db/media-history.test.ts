@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { openDatabase } from './database';
 import { MediaRepo } from './media';
 
-/* A file's plays in the library (alpha.20, migration 87): counted, the day, where to resume. Placeholder names. */
+/* A file's plays in the library (alpha.20, migration 88): counted, the day, where to resume. Placeholder names. */
 
 describe('a file’s plays in the library', () => {
   it('counts each play with its day, keeps and forgets where to resume, and says them in Media and its notes', () => {
