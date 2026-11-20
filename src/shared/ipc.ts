@@ -36,6 +36,7 @@ import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
+import type { MediaDetailsResult } from './media-details';
 import type { PictureAssetKind, SharpenJobView } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
 import type {
@@ -555,6 +556,11 @@ export const IPC = {
     noPicture: 'media:no-picture',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
+    /**
+     * Media information… (alpha.20, Q60-34 item 1): what a video's or a sound's file holds, read by the bundled FFmpeg
+     * at low priority, with the library's notes on it (the operator window's, Simple Mode's too; it changes nothing).
+     */
+    details: 'media:details',
     /**
      * A picture's look (Session 26e): read one, every one (the thumbnails), keep one (the Picture editor),
      * and keep the live zoom as the picture's (Keep this zoom).
@@ -1548,6 +1554,7 @@ export interface InvokeContract {
   [IPC.media.reportLength]: { args: [mediaId: string, durationMs: number]; result: null };
   [IPC.media.noPicture]: { args: [mediaId: string, startedAt: number]; result: null };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
+  [IPC.media.details]: { args: [mediaId: string]; result: MediaDetailsResult };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
   [IPC.media.remove]: { args: [mediaIds: string[]]; result: MediaRemovalResult };

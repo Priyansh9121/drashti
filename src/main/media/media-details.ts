@@ -1,5 +1,11 @@
-import type { MediaDetailsResult } from '../../shared/media-details';
-import type { CodecLevel } from '../import/codec-config';
+import { spawn } from 'node:child_process';
+import { constants, setPriority } from 'node:os';
+import { extname, join } from 'node:path';
+import type { FileRead, InDrashti, MediaDetails, MediaDetailsResult } from '../../shared/media-details';
+import { cutText } from '../../shared/text';
+import { parseMediaDetails } from '../convert/media-details-parse';
+import { type CodecLevel, readCodecLevel } from '../import/codec-config';
+import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
 
 /*
  * Media information… (alpha.20: the owner's Q60-34 item 1, his "Yes, all A" to Q60-39), in the main process: a video's
@@ -11,6 +17,10 @@ import type { CodecLevel } from '../import/codec-config';
 
 /** The longest FFmpeg may take to read a file for its information. */
 export const DETAILS_READ_MS = 15_000;
+/** The most of FFmpeg's text kept (a file with thousands of chapters or streams says a great deal). */
+const MOST_TEXT = 512 * 1024;
+/** How many files' readings are kept. */
+const KEPT = 200;
 
 /** What the library says of a media item, for its information (db/media.ts about()). */
 export interface DetailsRow {
@@ -51,12 +61,57 @@ export interface MediaDetailsDeps {
   level?: (file: string) => Promise<CodecLevel | null>;
 }
 
-/** Red (x47): still to be written. */
-export const readWithFfmpeg = (
-  _ffmpeg: string,
-  _file: string,
-  _timeoutMs = DETAILS_READ_MS,
-): Promise<Reading> => Promise.resolve(null);
+/**
+ * Run the bundled FFmpeg on a file as Media information reads it: its header and index only (no output), the stream's
+ * clean environment, only files opened, below normal priority, killed after `timeoutMs`.
+ */
+export function readWithFfmpeg(ffmpeg: string, file: string, timeoutMs = DETAILS_READ_MS): Promise<Reading> {
+  return new Promise((resolve) => {
+    const child = spawn(ffmpeg, ['-hide_banner', '-nostdin', '-protocol_whitelist', 'file', '-i', file], {
+      windowsHide: true,
+      env: ffmpegEnv(),
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    try {
+      if (child.pid !== undefined) setPriority(child.pid, constants.priority.PRIORITY_LOW);
+    } catch {
+      // Some systems let it run only at normal priority.
+    }
+    let text = '';
+    let timedOut = false;
+    let done = false;
+    const finish = (reading: Reading) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(reading);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
+    child.stderr.on('data', (chunk: Buffer) => {
+      if (text.length < MOST_TEXT) text += chunk.toString();
+    });
+    child.on('error', () => {
+      finish(null);
+    });
+    child.on('close', () => {
+      finish({ text: cutText(text, MOST_TEXT), timedOut });
+    });
+  });
+}
+
+/** How Drashti plays it, from its library row. */
+function inDrashti(row: DetailsRow, converting: boolean): InDrashti {
+  if (row.missing || row.deleted) return { state: 'missing' };
+  if (row.convertedTo !== null) return { state: 'converted', copy: row.convertedTo };
+  if (converting) return { state: 'converting' };
+  if (row.copyOf !== null) return { state: 'copy', of: row.copyOf };
+  if (row.playable === false)
+    return { state: 'cannot', format: row.format ?? 'a kind of file Drashti cannot play' };
+  return row.playable === null ? { state: 'maybe' } : { state: 'plays' };
+}
 
 /** Why a file was not read, in words. */
 export const NOT_READ = {
@@ -68,9 +123,87 @@ export const NOT_READ = {
 } as const;
 
 export class MediaDetailsService {
+  /** Readings by the file's sha256, the newest last. */
+  private readonly kept = new Map<string, FileRead>();
+  /** A reading under way, by sha256: a second ask for the same file waits for it. */
+  private readonly going = new Map<string, Promise<FileRead | keyof typeof NOT_READ>>();
+  /** One file at a time. */
+  private turn: Promise<unknown> = Promise.resolve();
+
   constructor(private readonly deps: MediaDetailsDeps) {}
 
-  details(_mediaId: string): Promise<MediaDetailsResult> {
-    return Promise.resolve({ ok: false, message: `Not yet (${this.deps.mediaDir}).` });
+  /** A video's or a sound's information; refused in words for anything else. */
+  async details(mediaId: string): Promise<MediaDetailsResult> {
+    const row = this.deps.row(mediaId);
+    if (!row) return { ok: false, message: 'That file is no longer in the library.' };
+    if (row.kind === 'image') return { ok: false, message: 'Media information is for videos and sounds.' };
+    const base: MediaDetails = {
+      mediaId,
+      name: row.name,
+      kind: row.kind,
+      bytes: row.missing ? null : row.bytes,
+      libraryDurationMs: row.durationMs,
+      importedAt: row.importedAt,
+      importedFrom: row.importedFrom,
+      inDrashti: inDrashti(row, this.deps.converting(mediaId)),
+      read: null,
+      problem: null,
+    };
+    if (row.missing || row.deleted || !row.sha256 || row.path === '')
+      return { ok: true, details: { ...base, problem: NOT_READ.missing } };
+    const read = await this.readingOf(row.sha256, join(this.deps.mediaDir, row.path));
+    return {
+      ok: true,
+      details: typeof read === 'string' ? { ...base, problem: NOT_READ[read] } : { ...base, read },
+    };
+  }
+
+  /** What FFmpeg reads in this file: kept, under way, or read now in its turn. */
+  private readingOf(sha256: string, file: string): Promise<FileRead | keyof typeof NOT_READ> {
+    const kept = this.kept.get(sha256);
+    if (kept) return Promise.resolve(kept);
+    const going = this.going.get(sha256);
+    if (going) return going;
+    const now = this.turn.then(() => this.readNow(file));
+    this.turn = now.catch(() => undefined);
+    const tracked = now.then(
+      (read) => {
+        this.going.delete(sha256);
+        if (typeof read !== 'string') this.keep(sha256, read);
+        return read;
+      },
+      () => {
+        this.going.delete(sha256);
+        return 'unread' as const;
+      },
+    );
+    this.going.set(sha256, tracked);
+    return tracked;
+  }
+
+  private async readNow(file: string): Promise<FileRead | keyof typeof NOT_READ> {
+    const ffmpeg = this.deps.ffmpeg();
+    if (!ffmpeg) return 'noFfmpeg';
+    const reading = await (this.deps.read ?? readWithFfmpeg)(ffmpeg, file);
+    if (reading?.timedOut) return 'timedOut';
+    if (!reading || !/^Input #0, /mu.test(reading.text)) return 'unread';
+    const read = parseMediaDetails(reading.text, extname(file).slice(1));
+    const first = read.pictures[0];
+    if (first && (first.codec === 'h264' || first.codec === 'hevc')) {
+      const level = await (this.deps.level ?? readCodecLevel)(file).catch(() => null);
+      if (level?.codec === first.codec) first.level = level.level;
+    }
+    return read;
+  }
+
+  /** Keep a reading, letting go of the oldest past KEPT. */
+  private keep(sha256: string, read: FileRead): void {
+    this.kept.delete(sha256);
+    this.kept.set(sha256, read);
+    while (this.kept.size > KEPT) {
+      const oldest = this.kept.keys().next().value;
+      if (oldest === undefined) break;
+      this.kept.delete(oldest);
+    }
   }
 }

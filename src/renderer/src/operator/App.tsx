@@ -9,6 +9,7 @@ import { connectSmart } from '../playlists/smart-store';
 import { connectSaves } from '../markers/save-store';
 import { connectPictureLooks } from '../render/picture-looks';
 import { PictureEditor } from '../pictures/PictureEditor';
+import { MediaInfoDialog } from '../library/MediaInfoDialog';
 import { RemoveConfirm, RemoveItemsConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { MediaRemoveConfirm } from '../library/media-removal';
 import { UndoBar } from '../library/UndoBar';
@@ -482,6 +483,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <ManualDialog />
       <MarkersDialog />
       <PictureEditor />
+      {/* Media information… (alpha.20, Q60-34 item 1): a video's or a sound's file, as FFmpeg reads it. */}
+      <MediaInfoDialog platform={platform} />
       {dashboardOpen && (
         <ScreensDashboard
           simple={false}
