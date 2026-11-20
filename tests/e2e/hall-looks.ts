@@ -179,8 +179,9 @@ export async function installLooks(page: Page, root: string): Promise<void> {
       }
       if (nothing === 'black') return 'BLACK-NOTHING-UP';
       const slots = Array.from(scene.querySelectorAll<HTMLElement>('[data-bg-slot]'));
+      // Seen: ready, or failed while it played and still drawn as it was (Q60-31 (e): its last frame, not black).
       const seen = slots.filter(
-        (e) => e.dataset['state'] === 'ready' && Number(getComputedStyle(e).opacity) > 0.01,
+        (e) => e.dataset['state'] !== 'loading' && Number(getComputedStyle(e).opacity) > 0.01,
       );
       const video = seen.find((e) => e instanceof HTMLVideoElement);
       if (video instanceof HTMLVideoElement) return video.videoWidth === 0 ? 'VIDEO-0x0' : 'VIDEO';
