@@ -142,10 +142,14 @@ export function useLookMoving(): { now: MovingNow; look: readonly MotionKind[] }
   return { now, look: root.look };
 }
 
-/** Each kind's animations, started on its touches (WAAPI, transform and opacity only). */
 type Waapi = typeof waapiType;
 type Running = ReturnType<Waapi['animate']>;
 
+/*
+ * Each kind's animations, started on its touches. Only `transform` and `opacity`, each given whole (never Anime's
+ * per-axis shorthands, which it animates through registered custom properties the compositor cannot take), so the
+ * graphics chip moves them without the page drawing again.
+ */
 function animateKind(waapi: Waapi, kind: MotionKind, touches: HTMLElement[]): Running[] {
   const fade = duration('dur-look-fade');
   const calm = easing('ease-look');
@@ -161,7 +165,7 @@ function animateKind(waapi: Waapi, kind: MotionKind, touches: HTMLElement[]): Ru
       each((el) => waapi.animate(el, { opacity: [0, 1], duration: fade, ease: calm }));
       each((el) =>
         waapi.animate(el, {
-          translateX: ['0%', '-33.333%'],
+          transform: ['translateX(0%)', 'translateX(-33.333%)'],
           duration: duration('dur-look-drift'),
           ease: steady,
           loop: true,
@@ -173,7 +177,13 @@ function animateKind(waapi: Waapi, kind: MotionKind, touches: HTMLElement[]): Ru
       // A light passes along the band, then rests: the first quarter of each turn sweeps, the rest waits.
       each((el) =>
         waapi.animate(el, {
-          translateX: ['-100%', '700%', '700%', '700%', '700%'],
+          transform: [
+            'translateX(-100%)',
+            'translateX(700%)',
+            'translateX(700%)',
+            'translateX(700%)',
+            'translateX(700%)',
+          ],
           opacity: [0, 1, 0, 0, 0],
           duration: duration(kind === 'shimmer' ? 'dur-look-shimmer' : 'dur-look-glint'),
           ease: calm,
@@ -185,7 +195,7 @@ function animateKind(waapi: Waapi, kind: MotionKind, touches: HTMLElement[]): Ru
       each((el, i) =>
         waapi.animate(el, {
           opacity: [0, 1, 0, 0],
-          scale: [0.6, 1, 0.6, 0.6],
+          transform: ['scale(0.6)', 'scale(1)', 'scale(0.6)', 'scale(0.6)'],
           duration: duration('dur-look-sparkle'),
           delay: i * stagger,
           ease: calm,
@@ -206,9 +216,7 @@ function animateKind(waapi: Waapi, kind: MotionKind, touches: HTMLElement[]): Ru
     case 'petals':
       each((el, i) =>
         waapi.animate(el, {
-          translateY: ['-24px', '64px'],
-          translateX: ['0px', '48px'],
-          rotate: ['0deg', '160deg'],
+          transform: ['translate(0px, -24px) rotate(0deg)', 'translate(48px, 64px) rotate(160deg)'],
           opacity: [0, 0.9, 0.9, 0],
           duration: duration('dur-look-petal'),
           delay: i * stagger,
@@ -220,9 +228,8 @@ function animateKind(waapi: Waapi, kind: MotionKind, touches: HTMLElement[]): Ru
     case 'puffs':
       each((el, i) =>
         waapi.animate(el, {
-          translateX: ['-10vw', '30vw'],
+          transform: ['translateX(-10vw) scale(0.7)', 'translateX(30vw) scale(1.1)'],
           opacity: [0, 0.8, 0],
-          scale: [0.7, 1.1],
           duration: duration('dur-look-puff'),
           delay: i * stagger,
           ease: calm,
@@ -233,7 +240,7 @@ function animateKind(waapi: Waapi, kind: MotionKind, touches: HTMLElement[]): Ru
     case 'rain':
       each((el, i) =>
         waapi.animate(el, {
-          translateY: ['-24px', '64px'],
+          transform: ['translateY(-24px)', 'translateY(64px)'],
           opacity: [0, 0.7, 0],
           duration: duration('dur-look-rain'),
           delay: (i * stagger) / 6,
@@ -245,8 +252,13 @@ function animateKind(waapi: Waapi, kind: MotionKind, touches: HTMLElement[]): Ru
     case 'kites':
       each((el, i) =>
         waapi.animate(el, {
-          translateX: ['-8vw', '108vw'],
-          translateY: ['0px', '-5px', '0px', '5px', '0px'],
+          transform: [
+            'translate(-8vw, 0px)',
+            'translate(21vw, -5px)',
+            'translate(50vw, 0px)',
+            'translate(79vw, 5px)',
+            'translate(108vw, 0px)',
+          ],
           duration: duration('dur-look-kite'),
           delay: i * stagger * 3,
           ease: steady,
@@ -257,7 +269,7 @@ function animateKind(waapi: Waapi, kind: MotionKind, touches: HTMLElement[]): Ru
     case 'clouds':
       each((el, i) =>
         waapi.animate(el, {
-          translateX: ['-20vw', '110vw'],
+          transform: ['translateX(-20vw)', 'translateX(110vw)'],
           opacity: [0, 0.85, 0.85, 0],
           duration: duration('dur-look-cloud'),
           delay: i * stagger * 6,
