@@ -1,6 +1,9 @@
 import { VideoEditsRepo } from './db/video-edits';
 import { prepareVideoEdits } from './engine/video-edit-ready';
 import { registerEditVideoIpc } from './convert/edit-video-ipc';
+import { EditService } from './convert/edit-service';
+import { registerEditedFile } from './convert/edit-files';
+import { videoEditTimes } from '../shared/video-edit-time';
 import { type PlaybackSettings, playbackSettingsSchema, toneOf } from '../shared/playback-settings';
 import { shapeOverride } from '../shared/video-shape';
 import { fileProblem } from './plain-errors';
@@ -1752,6 +1755,7 @@ function start(): void {
   const soundRepo = new SoundRepo(db);
   const soundKnown = new Map<string, { gain: number; silent: boolean } | null>();
   const soundOf = (mediaId: string): { gain: number; silent: boolean } | null => {
+    mediaId = videoEdits.sourceId(mediaId);
     if (!soundKnown.has(mediaId)) {
       const s = soundRepo.soundOf(mediaId);
       soundKnown.set(mediaId, s ? { gain: s.gain, silent: s.silent } : null);
@@ -1788,6 +1792,7 @@ function start(): void {
   const playbackRepo = new MediaRepo(db);
   const ownPlayback = new Map<string, PlaybackSettings>();
   const playbackOfFile = (mediaId: string): PlaybackSettings => {
+    mediaId = videoEdits.sourceId(mediaId);
     let kept = ownPlayback.get(mediaId);
     if (!kept) {
       kept = playbackRepo.playbackOf(mediaId);
@@ -1810,12 +1815,29 @@ function start(): void {
           : simpleNow() && simpleModeRefuses(command, state)
             ? simpleRefusalText(simpleAccess())
             : null,
+      sourceMediaId: (id) => videoEdits.sourceId(id),
       prepareVideoEdits: (previous, next, historic) =>
-        prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic),
+        prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic, {
+          renditionOf: (id) => videoEdits.renditionOf(id),
+          lengthOf: (id) => mediaLength(id),
+          available: (id) => {
+            const row = playbackRepo.kindAndFile(id);
+            return !!row && !row.missing && existsSync(join(mediaDir, row.path));
+          },
+        }),
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
-        const track = videoCaptionsRepo.chosen(mediaId);
+        const sourceId = videoEdits.sourceId(mediaId);
+        const original = videoCaptionsRepo.chosen(sourceId);
+        const rendition = videoEdits.renditionOf(mediaId);
+        const length = mediaLength(sourceId);
+        const track =
+          original && rendition
+            ? length === null
+              ? null
+              : videoEditTimes(rendition.recipe, length).captions(original)
+            : original;
         // Sound and picture… (alpha.20): the captions' own delay against the picture.
         const delayMs = playbackOfFile(mediaId).captionDelayMs;
         return track
@@ -2101,9 +2123,16 @@ function start(): void {
     return known === true;
   };
   mediaMarkers = (mediaId, itemId) => {
-    const marks = media.markersOf(mediaId);
-    return marks && itemId && trimmedVideos.playsFull(itemId, mediaId, marks)
-      ? { ...marks, startMs: null, endMs: null }
+    const sourceId = videoEdits.sourceId(mediaId);
+    const original = media.markersOf(sourceId);
+    const marks =
+      original && itemId && trimmedVideos.playsFull(itemId, sourceId, original)
+        ? { ...original, startMs: null, endMs: null }
+        : original;
+    const rendition = videoEdits.renditionOf(mediaId);
+    const length = media.lengthOf(sourceId);
+    return marks && rendition && length !== null
+      ? videoEditTimes(rendition.recipe, length).markers(marks)
       : marks;
   };
   const captionFileReader = new CaptionFileReader(spawnImportWorker);
@@ -2112,7 +2141,11 @@ function start(): void {
   });
   registerVideoCaptionIpc({
     fromOperator,
-    repo: videoCaptionsRepo,
+    repo: {
+      view: (id) => videoCaptionsRepo.view(videoEdits.sourceId(id)),
+      select: (id, track) => videoCaptionsRepo.select(videoEdits.sourceId(id), track),
+      put: (id, tracks) => videoCaptionsRepo.put(videoEdits.sourceId(id), tracks),
+    },
     reader: captionFileReader,
     write: sourceWrite(
       libraryDb,
@@ -2133,7 +2166,10 @@ function start(): void {
     },
     changed: (mediaId) => {
       engine.refreshVideoCaptions();
-      sendToOperator(IPC.videoCaptions.changed, { mediaId, view: videoCaptionsRepo.view(mediaId) });
+      sendToOperator(IPC.videoCaptions.changed, {
+        mediaId,
+        view: videoCaptionsRepo.view(videoEdits.sourceId(mediaId)),
+      });
     },
   });
   // Playback markers (Session 14): kept with the file; what plays it follows at once.
@@ -4233,6 +4269,37 @@ function start(): void {
       },
     },
   });
+  const editedCopies = new EditService({
+    repo: videoEdits,
+    mediaDir,
+    source: (id) => {
+      const row = media.kindAndFile(id);
+      const named = media.kindAndName(id);
+      return row?.kind === 'video' && !row.missing && named
+        ? { path: join(mediaDir, row.path), name: named.name }
+        : null;
+    },
+    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    conversions,
+    register: (file, info, name, signal) =>
+      registerEditedFile({
+        db: libraryDb,
+        mediaDir,
+        file,
+        info,
+        name,
+        signal,
+        idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+        freeBytes: diskFreeBytes,
+        write: sourceWrite(libraryDb, () => imports.giveWay()),
+      }),
+    changed: (edit) => {
+      sendToOperator(IPC.media.videoEditChanged, edit);
+      libraryChanged(true);
+    },
+    write: sourceWrite(libraryDb, () => imports.giveWay()),
+  });
+  stops.add('video edits', () => editedCopies.close());
   conversionActivityChanged = () => conversions.activityChanged();
   const offConversionActivity = engine.onChange((state) => {
     if (!nothingUp(state.layers)) conversions.activityChanged();
@@ -7207,6 +7274,7 @@ function start(): void {
         ok: false as const,
         message: 'Those settings could not be kept: open Sound and picture… again and set them once more.',
       };
+    mediaId = videoEdits.sourceId(mediaId);
     if (!media.setPlayback(mediaId, parsed.data))
       return {
         ok: false as const,
@@ -8204,6 +8272,7 @@ function start(): void {
       // conversions, then at the first quiet moment (nothing up, no stream on air or recording).
       setTimeout(() => {
         playlistTrims.resumeWhenQuiet();
+        editedCopies.resume();
       }, AFTER_START_MS).unref();
     });
   operatorWindow.webContents.once('did-finish-load', () => {
