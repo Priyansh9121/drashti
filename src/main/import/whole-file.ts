@@ -1,5 +1,22 @@
 import type { FileHandle } from 'node:fs/promises';
 import { open } from 'node:fs/promises';
+import { extname } from 'node:path';
+import {
+  apeWhole,
+  auWhole,
+  cafWhole,
+  compoundWhole,
+  dvWhole,
+  flacWhole,
+  flvWhole,
+  icoWhole,
+  mxfWhole,
+  psdWhole,
+  rmWhole,
+  tgaWhole,
+  tiffWhole,
+  wavpackWhole,
+} from './whole-more';
 
 /*
  * Whether a file is whole (Q60-31 (m2), the owner's own bug: his video came from a Dropbox folder dropped on Drashti).
@@ -17,15 +34,19 @@ import { open } from 'node:fs/promises';
  *   record;
  * - MP3 with a Xing, Info or VBRI header: its byte count; Ogg (Vorbis, Opus, Theora): its last page marked as the end;
  *   WMA and WMV (ASF): the file size its header gives;
- * - an MPEG transport stream (AVCHD .mts, .m2ts, .ts): cut when it ends part-way through a packet.
+ * - an MPEG transport stream (AVCHD .mts, .m2ts, .ts): cut when it ends part-way through a packet;
+ * - on a longer read (Q60-46, import/whole-more.ts): FLAC (its last frame against the samples it counts), TIFF (its
+ *   strips), PSD (its sections and picture data), Targa and icons (by their extension), FLV (its last tag), MXF (its
+ *   random index pack, or a footer past its end), RealMedia (its chunks), CAF and AU (their sizes), APE (its
+ *   descriptor), WavPack (its last block), DV (cut part-way through a frame), an Office 97-2003 compound file (.ppt,
+ *   .doc: the last sector its table uses).
  *
  * One that says it is longer than its bytes (or a movie with no movie box yet, an Ogg file whose last page is not its
  * end) is cut: the folders wait for it as for a file whose size has not held still (playlists/smart-folders.ts,
  * import/drop-folder.ts). What has no such mark cannot be told, and is taken by its size holding still alone, as
- * before: an MPEG program stream (.mpg, .vob), a transport stream of whole packets, an MP3 with no Xing header, a raw
- * AAC, AC-3 or DTS sound, FLAC, and the rarer kinds (TIFF, PSD, Targa, ICO, FLV, MXF, DV, CAF, AU, AMR, APE, WavPack,
- * RealMedia, a .ppt). Only what decides is read: box and chunk headers, a file's last bytes; a whole JPEG or GIF of up
- * to 64 MB.
+ * before: an MPEG program stream (.mpg, .vob), a transport stream or DV of whole packets or frames, an MP3 with no Xing
+ * header, a raw AAC, AC-3, E-AC-3, DTS or MP2 sound, AMR. Only what decides is read: box and chunk headers, tables, a
+ * file's last bytes; a whole JPEG, GIF or run-length Targa of up to 64 MB.
  */
 
 /** whole: its own bytes say it is all there; cut: they say it is longer than its bytes; unknown: they cannot tell. */
@@ -345,6 +366,10 @@ async function oggWhole(fh: FileHandle, size: number): Promise<Wholeness> {
 }
 
 const ASF_HEADER = Buffer.from('3026b2758e66cf11a6d900aa0062ce6c', 'hex');
+/** An MXF header partition pack's key, up to its kind (the 14th byte, 02 for a header partition). */
+const MXF_HEADER = Buffer.from('060e2b34020501010d01020101', 'hex');
+/** An Office 97-2003 compound file's signature. */
+const COMPOUND_FILE = Buffer.from('d0cf11e0a1b11ae1', 'hex');
 const ASF_FILE_PROPERTIES = Buffer.from('a1dcab8c47a9cf118ee400c00c205365', 'hex');
 
 /** A WMA or WMV (ASF): the file size its File Properties object gives (0, a broadcast's, cannot tell). */
@@ -403,6 +428,29 @@ export async function wholeFile(path: string): Promise<Wholeness> {
       );
     }
     if (head.readUInt32BE(0) === 0xff4fff51) return await endsWithEoi(fh, size);
+    // Told on a longer read (Q60-46, import/whole-more.ts).
+    const ext = extname(path).slice(1).toLowerCase();
+    if (ascii(0, 4) === 'fLaC') return await flacWhole(fh, size);
+    if (ascii(0, 4) === 'II*\0' || ascii(0, 4) === 'MM\0*')
+      return await tiffWhole(fh, size, head[0] === 0x49);
+    if (ascii(0, 4) === '8BPS') return await psdWhole(fh, size);
+    if (ext === 'tga') return await tgaWhole(fh, size);
+    if (
+      (ext === 'ico' || ext === 'cur') &&
+      head.readUInt16LE(0) === 0 &&
+      head[2] !== undefined &&
+      head[2] <= 2
+    )
+      return await icoWhole(fh, size);
+    if (ascii(0, 3) === 'FLV' && head[3] === 1) return await flvWhole(fh, size);
+    if (head.subarray(0, 13).equals(MXF_HEADER) && head[13] === 0x02) return await mxfWhole(fh, size, head);
+    if (ascii(0, 4) === '.RMF') return await rmWhole(fh, size);
+    if (ascii(0, 4) === 'caff') return await cafWhole(fh, size);
+    if (ascii(0, 4) === '.snd') return auWhole(head, size);
+    if (ascii(0, 4) === 'MAC ') return apeWhole(head, size);
+    if (ascii(0, 4) === 'wvpk') return await wavpackWhole(fh, size, head);
+    if (head[0] === 0x1f && head[1] === 0x07 && head[2] === 0x00) return dvWhole(head, size);
+    if (head.subarray(0, 8).equals(COMPOUND_FILE)) return await compoundWhole(fh, size);
     // An MPEG transport stream (a camcorder's AVCHD .mts, a .m2ts, a TV recording's .ts): no size nor end mark, but
     // whole packets of 188 bytes (192 in an M2TS, each with its time first). One ending part-way through a packet is
     // cut; one of whole packets cannot tell.

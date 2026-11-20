@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 import { compoundFile } from './testing/compound-file';
-import { makeOldWordDoc } from './testing/make-docx';
 import { makeZip } from './testing/zip-writer';
 import { wholeFile } from './whole-file';
 
@@ -517,6 +516,6 @@ describe('a file whole or cut, the kinds no FFmpeg here writes (Q60-46)', () => 
 
   it('an old PowerPoint or Word file (an Office compound file): the last sector its table uses', async () => {
     await wholeThenCut('deck.ppt', compoundFile('PowerPoint Document'));
-    await wholeThenCut('notes.doc', makeOldWordDoc());
+    await wholeThenCut('notes.doc', compoundFile('WordDocument'));
   });
 });
