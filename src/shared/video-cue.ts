@@ -34,3 +34,11 @@ export function videoCueReady(_cue: VideoCue): boolean {
 }
 
 export const VIDEO_GO_LEAD_MS = 120;
+
+/** Files retained through the shared future Go moment. */
+export interface VideoStart {
+  id: string;
+  at: number;
+  mediaIds: string[];
+  soundIds: string[];
+}

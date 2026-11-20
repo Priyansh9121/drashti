@@ -1,4 +1,4 @@
-import type { VideoCue, VideoCrossfade } from '../video-cue';
+import type { VideoCue, VideoCrossfade, VideoStart } from '../video-cue';
 import type { CalendarDay, CalendarLang } from '../calendar';
 import type { Quote } from '../idle';
 import type { LiveLook } from '../looks';
@@ -729,6 +729,8 @@ export interface EngineState {
   videoCue?: VideoCue | null;
   /** The outgoing video while the background is the incoming showing. */
   videoCrossfade?: VideoCrossfade | null;
+  /** Files that remain in use until a prepared video’s Go moment. */
+  videoStart?: VideoStart | null;
   /** Today's entry in the loaded calendars (Samvat date, tithi, festivals), or null when none gives today. */
   calendar: CalendarDay | null;
   /** The quote of the day (one per date, for a stage layout's Quote box), or null when there are no quotes. */
