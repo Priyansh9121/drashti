@@ -1,0 +1,90 @@
+import { useContext } from 'react';
+import type { CSSProperties } from 'react';
+import type { MediaFit } from '../../../shared/engine/state';
+import type { MediaElement } from '../../../shared/model';
+import { shapePath } from '../../../shared/shape-path';
+import { shapeAspect, type ShapedBox, type ShapeOverride } from '../../../shared/video-shape';
+import { ScreenPictures } from './picture-looks';
+
+/*
+ * Sound and picture…'s Shape on a screen (alpha.20, x55, slice 6b; shared/video-shape.ts): a video whose shape the
+ * state names (EngineState.videoShapes) is drawn in a box of that shape, fitted or filling its place as its layer says,
+ * the picture stretched to the box (object-fit: fill). CSS alone: the box is laid out with the page, never measured,
+ * and no frame costs more than today's fit (the same one video layer, clipped as a filling video always is).
+ */
+
+/** This screen's videos' shapes, as its state carries them; none off a screen (a thumbnail, the slide editor). */
+export function useVideoShapes(): Readonly<Record<string, ShapeOverride>> | undefined {
+  return useContext(ScreenPictures)?.videoShapes;
+}
+
+/**
+ * The shape (width over height) a video is drawn in: its own in the state, while fitted or filling its place; null as
+ * its file says, and when stretched to its place (a stretched video takes its place's shape whatever it says).
+ */
+export function shapeFor(
+  shapes: Readonly<Record<string, ShapeOverride>> | undefined,
+  mediaId: string,
+  fit: MediaFit,
+): number | null {
+  return fit === 'stretch' ? null : shapeAspect(shapes?.[mediaId]);
+}
+
+/** A number as CSS writes it here: to a ten-thousandth (a thousandth of a pixel on a 4K screen). */
+const css = (v: number) => String(Math.round(v * 10_000) / 10_000);
+
+/** A background video's place while it has a shape: the container its box is laid out in, clipping a filling one. */
+export const SHAPED_PLACE: CSSProperties = { containerType: 'size', overflow: 'hidden' };
+
+/**
+ * A background video's box in its shape (`aspect`), inside its place (SHAPED_PLACE: the screen's whole picture, or the
+ * picture-in-picture box's): the largest of that shape inside it (fit) or the smallest over it (fill), centred, in
+ * the place's own query units, so it is right from the first frame however large the place is drawn.
+ */
+export function shapedVideoStyle(aspect: number, fit: 'fit' | 'fill'): CSSProperties {
+  const pick = fit === 'fit' ? 'min' : 'max';
+  // As wide as its place, or as tall times the shape, whichever is smaller (fitted) or larger (filling); its height
+  // the same way, so the two always make the shape.
+  const width = `${pick}(100cqw, ${css(aspect * 100)}cqh)`;
+  const height = `${pick}(100cqh, ${css(100 / aspect)}cqw)`;
+  return {
+    position: 'absolute',
+    left: `calc((100cqw - ${width}) / 2)`,
+    top: `calc((100cqh - ${height}) / 2)`,
+    width,
+    height,
+    objectFit: 'fill',
+  };
+}
+
+/** A number as a clip writes it: to a thousandth of a pixel (a hair off 0 reads 0). */
+const num = (v: number) => String(Math.round(v * 1000) / 1000 + 0);
+const px = (v: number) => `${num(v)}px`;
+
+/** A symbol's outline (shared/shape-path.ts: every number a point's x and y in turn) moved by dx, dy. */
+function movedPath(path: string, dx: number, dy: number): string {
+  let i = 0;
+  return path.replace(/-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/giu, (v) => num(Number(v) + (i++ % 2 === 0 ? dx : dy)));
+}
+
+/**
+ * A slide's video in a shape of its own: its clip in its shape's box (`box`, in its frame's pixels, so the frame starts
+ * at −box.x, −box.y in the box's own), keeping what showed of it on the slide: the frame's own shape (an ellipse,
+ * rounded corners, a symbol's outline) where it was, and the frame's edge for a video filling it. Undefined: no clip
+ * (a fitted video whose frame has no shape of its own).
+ */
+export function shapedClip(
+  frame: { width: number; height: number },
+  box: ShapedBox,
+  clip: MediaElement['pictureClip'],
+): string | undefined {
+  const { width: fw, height: fh } = frame;
+  if (clip?.shape === 'ellipse') return `ellipse(${px(fw / 2)} ${px(fh / 2)} at 50% 50%)`;
+  const path = clip ? shapePath(clip.shape, fw, fh) : null;
+  if (path) return `path("${movedPath(path, -box.x, -box.y)}")`;
+  // The frame's edges, from the box's top and bottom (−box.y) and its sides (−box.x): past the box where it is smaller.
+  const edges = `${px(-box.y)} ${px(-box.x)}`;
+  const radius = clip ? Math.min(clip.cornerRadius ?? 0, fw / 2, fh / 2) : 0;
+  if (radius > 0) return `inset(${edges} round ${px(radius)})`;
+  return box.x < 0 || box.y < 0 ? `inset(${edges})` : undefined;
+}
