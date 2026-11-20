@@ -1,3 +1,5 @@
+import { retainCueSounds } from '../audio/cue-start-sounds';
+import { CuedStartKeeper } from '../render/cued-start';
 import { applyVideoEnvelope } from '../audio/video-envelope';
 import { reportVideoCue, reportLoadedVideoCue } from '../render/video-cue-report';
 import { videoSoundGain } from '../audio/sounds';
@@ -60,6 +62,8 @@ export class StreamSound {
   /** The music's own level as it steps aside and comes back (Part 7, K), and the show it follows. */
   private readonly aside = new StepAside();
   private state: EngineState | null = null;
+  private readonly cueState = new CuedStartKeeper();
+  private cueStop: ReturnType<typeof setTimeout> | null = null;
   private levels: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
@@ -157,10 +161,29 @@ export class StreamSound {
   setOwnSound(on: boolean, state: EngineState | null): void {
     this.ownOn = on;
     this.state = state;
+    this.cueState.at(state, engineNow());
+    if (this.cueStop) clearTimeout(this.cueStop);
+    this.cueStop = null;
     // A stream page prepares the cue's silent sound even when its own mix is switched off.
     const wanted = new Map(
       (state ? soundsOf(state).filter((s) => on || s.prepared) : []).map((s) => [s.key, s]),
     );
+    const release = on
+      ? retainCueSounds(
+          wanted,
+          [...this.own.values()].map((p) => p.sound),
+          state,
+          engineNow(),
+        )
+      : null;
+    if (release !== null)
+      this.cueStop = setTimeout(
+        () => {
+          this.cueStop = null;
+          this.setOwnSound(this.ownOn, this.state);
+        },
+        Math.max(0, release - engineNow()),
+      );
     for (const [key, own] of this.own) {
       if (wanted.has(key)) continue;
       own.stop();
@@ -244,7 +267,7 @@ export class StreamSound {
   /** The music's level now (Part 7, K), by the engine's time. */
   private musicLevel(): number {
     const now = engineNow();
-    return this.aside.levelAt(musicAside(this.state, now), now);
+    return this.aside.levelAt(musicAside(this.cueState.at(this.state, now), now), now);
   }
 
   /** Every own sound's gain, as the show has it now, eased there so no change clicks. */

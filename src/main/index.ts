@@ -7296,7 +7296,7 @@ function start(): void {
     if (!drawsShow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
     if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
     const file = media.kindAndName(mediaId);
-    if (file?.kind !== 'video' || !engine.noPicture(mediaId)) return null;
+    if (file?.kind !== 'video' || !engine.noPicture(mediaId, startedAt)) return null;
     log.warn(`A video's picture cannot be drawn here (sound only): ${mediaId}; taken off`);
     const converting = conversions.convertUndrawable(mediaId);
     sendToOperator(IPC.app.notice, { text: noPictureNotice(file.name, converting) });
@@ -7337,7 +7337,7 @@ function start(): void {
       `${mediaId}@${String(startedAt)}`,
       where,
       (named) => {
-        const took = engine.cannotPlay(mediaId);
+        const took = engine.cannotPlay(mediaId, startedAt);
         if (!took) return;
         const off = [
           took.background ? 'the background' : '',

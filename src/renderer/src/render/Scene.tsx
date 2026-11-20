@@ -1,3 +1,4 @@
+import { useCuedStart } from './useCuedStart';
 import type { VideoCue, VideoCrossfade } from '../../../shared/video-cue';
 import type { CSSProperties, ReactNode } from 'react';
 import {
@@ -401,7 +402,7 @@ function MainSlot({
  * render/NothingUp.tsx says what shows (Part 6's chosen wallpaper; black with none chosen).
  */
 export const Scene = memo(function Scene({
-  state,
+  state: rawState,
   canvas,
   scaling,
   annotate = false,
@@ -440,6 +441,7 @@ export const Scene = memo(function Scene({
    */
   picturesFirst?: boolean;
 }) {
+  const state = useCuedStart(rawState);
   const captionRoot = useRef<HTMLDivElement>(null);
   // Clipped at the canvas's edges, but on a screen warped out of square (x27: render/canvas-clip.ts).
   const canvasClip = useContext(CanvasClip);

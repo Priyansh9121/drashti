@@ -55,6 +55,8 @@ function upsert<T extends { id: string }>(items: T[], item: T): T[] | null {
  */
 export function reduce(state: EngineState, action: EngineAction): EngineState {
   switch (action.type) {
+    case 'videoStart/set':
+      return sameData(state.videoStart, action.start) ? state : { ...state, videoStart: action.start };
     case 'videoCue/set':
       return sameData(state.videoCue, action.cue) ? state : { ...state, videoCue: action.cue };
     case 'videoCrossfade/set':

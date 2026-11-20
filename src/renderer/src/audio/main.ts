@@ -1,3 +1,5 @@
+import { retainCueSounds } from './cue-start-sounds';
+import { CuedStartKeeper } from '../render/cued-start';
 import { applyVideoEnvelope } from './video-envelope';
 import { reportVideoCue, reportLoadedVideoCue } from '../render/video-cue-report';
 import { videoSoundGain } from './sounds';
@@ -100,6 +102,8 @@ async function playOn(id: string): Promise<void> {
 
 /** The music's own level as it steps aside and comes back (Part 7, K). */
 const aside = new StepAside();
+const cueState = new CuedStartKeeper();
+let cueStop: ReturnType<typeof setTimeout> | null = null;
 let levels: ReturnType<typeof setInterval> | null = null;
 const meterSamples = new Float32Array(2048);
 /** The meter's spectrum, for its two bands (alpha.20, the tests' data-bands). */
@@ -145,7 +149,7 @@ function setLevel(player: Player, musicLevel: number): void {
 /** The music's level now, and every player's gain to go with it (each LEVEL_MS while anything plays). */
 function applyLevels(): void {
   const now = engineNow();
-  const musicLevel = aside.levelAt(musicAside(useEngine.getState().state, now), now);
+  const musicLevel = aside.levelAt(musicAside(cueState.at(useEngine.getState().state, now), now), now);
   for (const player of [...players.values(), ...fadingOut]) setLevel(player, musicLevel);
   document.body.dataset['aside'] = String(musicLevel < 1);
   if (meter) {
@@ -213,7 +217,24 @@ let sinkId = '';
 let chosen: AudioDevice | null = null;
 
 function play(state: EngineState | null): void {
+  cueState.at(state, engineNow());
+  if (cueStop) clearTimeout(cueStop);
+  cueStop = null;
   const wanted = new Map((state ? soundsOf(state) : []).map((s) => [s.key, s]));
+  const release = retainCueSounds(
+    wanted,
+    [...players.values()].map((p) => p.sound),
+    state,
+    engineNow(),
+  );
+  if (release !== null)
+    cueStop = setTimeout(
+      () => {
+        cueStop = null;
+        play(useEngine.getState().state);
+      },
+      Math.max(0, release - engineNow()),
+    );
   for (const [key, player] of players) {
     if (wanted.has(key)) continue;
     players.delete(key);
@@ -295,7 +316,7 @@ function play(state: EngineState | null): void {
     };
     // Its level before it makes a sound: the music already aside under a video playing, a file at its even loudness.
     const now = engineNow();
-    setLevel(player, aside.levelAt(musicAside(useEngine.getState().state, now), now));
+    setLevel(player, aside.levelAt(musicAside(cueState.at(useEngine.getState().state, now), now), now));
     const playback = startPlayback(el, {
       mediaId: sound.mediaId,
       startedAt: sound.startedAt,

@@ -185,8 +185,11 @@ export function gainOf(state: Pick<EngineState, 'sound'> | null | undefined, med
  * The files that may be sounding now: the audio layer's, the background video's, the slide's videos, its deck's own
  * sounds and its deck's transition sound. Each once.
  */
-export function soundFilesOf(state: Pick<EngineState, 'layers' | 'videoCue' | 'videoCrossfade'>): string[] {
+export function soundFilesOf(
+  state: Pick<EngineState, 'layers' | 'videoCue' | 'videoCrossfade' | 'videoStart'>,
+): string[] {
   const ids = new Set<string>();
+  for (const id of state.videoStart?.soundIds ?? []) ids.add(id);
   if (state.videoCue) ids.add(state.videoCue.background.mediaId);
   if (state.videoCrossfade) ids.add(state.videoCrossfade.from.mediaId);
   const { audio, background, slide } = state.layers;

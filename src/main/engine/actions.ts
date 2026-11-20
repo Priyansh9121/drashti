@@ -1,4 +1,4 @@
-import type { VideoCue, VideoCrossfade } from '../../shared/video-cue';
+import type { VideoCue, VideoCrossfade, VideoStart } from '../../shared/video-cue';
 import type { CalendarDay } from '../../shared/calendar';
 import type { CaptionsShown } from '../../shared/captions';
 import type { Quote } from '../../shared/idle';
@@ -40,6 +40,7 @@ import type {
  * stay a pure function.
  */
 export type EngineAction =
+  | { type: 'videoStart/set'; start: VideoStart | null }
   | { type: 'videoCue/set'; cue: VideoCue | null }
   | { type: 'videoCrossfade/set'; fade: VideoCrossfade | null }
   | {

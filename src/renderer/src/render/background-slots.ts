@@ -80,7 +80,9 @@ export const isDrawn = (slot: Slot): boolean => slot.state === 'ready' || slot.d
 
 /** The background drawn on screen now, by its key (null: none, the screen's nothing-up showing instead). */
 export const drawnKeyOf = (slots: Slots): string | null =>
-  slots.shown && isDrawn(slots.shown) ? slots.shown.key : null;
+  slots.shown && isDrawn(slots.shown) && !(slots.fade && slots.leaving && !isDrawn(slots.leaving))
+    ? slots.shown.key
+    : null;
 
 /**
  * A file that failed (as it loaded: the one coming in; or while it played: the one on screen), if one did; none while
@@ -148,6 +150,7 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
       if (slots.shown?.key === key || slots.leaving?.key === key) return slots;
       if (slots.incoming?.key === key)
         return { ...slots, incoming: { ...slots.incoming, layer: cue.background, cued: true } };
+      if (slots.incoming && !slots.incoming.cued) return slots;
       // An active dissolve owns both decoders: a third one is never prepared over it.
       if (slots.leaving) return slots;
       return { ...slots, incoming: { key, layer: cue.background, state: 'loading', cued: true } };

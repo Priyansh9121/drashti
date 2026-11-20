@@ -431,6 +431,7 @@ function BackgroundPlayer({
     seenCue !== cue ||
     (cue &&
       !slots.leaving &&
+      (!slots.incoming || slots.incoming.cued) &&
       slots.incoming?.key !== slotKey(cue.background) &&
       slots.shown?.key !== slotKey(cue.background))
   ) {

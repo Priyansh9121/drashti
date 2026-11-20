@@ -513,6 +513,7 @@ export class ShowEngine {
   /** The last zero that came: it is not waited for again (a slide with nowhere to go holds at 0:00). */
   private zeroDone: string | null = null;
   /** The background video waited for to end (Session 55, Part 6): its key, and how to cancel the wait. */
+  private startWait: { key: string; cancel: () => void } | null = null;
   private cueWait: { key: string; cancel: () => void } | null = null;
   private fadeWait: { key: string; cancel: () => void } | null = null;
   private cueStamp = 0;
@@ -606,11 +607,11 @@ export class ShowEngine {
     playlist: PlaylistCursor | null,
     automatic?: VideoCue['automatic'],
   ): Resolved {
-    if (this.state.videoCrossfade)
+    if (this.state.videoCrossfade || this.state.videoStart)
       return {
         ok: false,
         error: 'not-playable',
-        message: 'A crossfade is playing: wait until it finishes, then cue the video.',
+        message: 'A video is starting or crossfading: wait until it finishes, then cue the video.',
       };
     if (this.options.mediaKind && this.options.mediaKind(mediaId) !== 'video')
       return {
@@ -702,6 +703,15 @@ export class ShowEngine {
     return {
       ok: true,
       actions: [
+        {
+          type: 'videoStart/set',
+          start: {
+            id: cue.id,
+            at,
+            mediaIds: [...new Set([...mediaInState(this.state).now, ...soundFilesOf(this.state)])],
+            soundIds: soundFilesOf(this.state),
+          },
+        },
         { type: 'videoCue/set', cue: null },
         { type: 'videoCrossfade/set', fade },
         ...(cue.playlist ? [{ type: 'live/item' as const, playlist: cue.playlist }] : []),
@@ -718,6 +728,7 @@ export class ShowEngine {
     const cursor = state.live.playlist;
     if (
       !cursor ||
+      state.videoStart ||
       state.videoCrossfade ||
       state.blackout ||
       state.wallpaper ||
@@ -777,6 +788,23 @@ export class ShowEngine {
   }
 
   private scheduleVideoCue(): void {
+    const start = this.state.videoStart;
+    const startKey = start ? `${start.id}@${start.at}` : null;
+    if (startKey !== this.startWait?.key) {
+      this.startWait?.cancel();
+      this.startWait = null;
+      if (start && startKey)
+        this.startWait = {
+          key: startKey,
+          cancel: this.wait(Math.max(0, start.at - this.now()), () => {
+            this.startWait = null;
+            this.atOnce(() => {
+              if (this.state.videoStart?.id === start.id)
+                this.apply([{ type: 'videoStart/set', start: null }]);
+            });
+          }),
+        };
+    }
     const fade = this.state.videoCrossfade;
     const fadeKey = fade && fade.pausedAt === undefined ? `${fade.id}@${fade.at}` : null;
     if (fadeKey !== this.fadeWait?.key) {
@@ -1661,7 +1689,43 @@ export class ShowEngine {
    * waits where it is, paused; the picture-in-picture box playing it comes off (Q60-46: one-at-a-time.ts noPictureOff).
    * Not a change of the operator's: Back, Oops and Put it back are as they were. Whether any of it was up.
    */
-  noPicture(mediaId: string): boolean {
+  private dropOutgoingVideo(mediaId: string, startedAt?: number): boolean {
+    const pair = this.state.videoCrossfade;
+    const bg = this.state.layers.background;
+    if (
+      pair?.from.mediaId !== mediaId ||
+      (startedAt !== undefined && pair.from.startedAt !== startedAt) ||
+      (bg?.kind === 'media' &&
+        bg.mediaId === mediaId &&
+        (startedAt === undefined || bg.startedAt === startedAt))
+    )
+      return false;
+    this.bookkeeping = true;
+    try {
+      const start = this.state.videoStart;
+      this.apply([
+        { type: 'videoCrossfade/set', fade: null },
+        ...(start
+          ? [
+              {
+                type: 'videoStart/set' as const,
+                start: {
+                  ...start,
+                  mediaIds: start.mediaIds.filter((id) => id !== mediaId),
+                  soundIds: start.soundIds.filter((id) => id !== mediaId),
+                },
+              },
+            ]
+          : []),
+      ]);
+    } finally {
+      this.bookkeeping = false;
+    }
+    return true;
+  }
+
+  noPicture(mediaId: string, startedAt?: number): boolean {
+    if (this.dropOutgoingVideo(mediaId, startedAt)) return true;
     let took = false;
     this.atOnce(() => {
       const actions = noPictureOff(this.state, mediaId, this.now());
@@ -1684,7 +1748,8 @@ export class ShowEngine {
    * playing it comes off (one-at-a-time.ts cannotPlayOff). Not a change of the operator's: Back, Oops and Put it back
    * are as they were. What it took, or null when none of it was up.
    */
-  cannotPlay(mediaId: string): CannotPlayTook | null {
+  cannotPlay(mediaId: string, startedAt?: number): CannotPlayTook | null {
+    if (this.dropOutgoingVideo(mediaId, startedAt)) return { background: true, slide: false, box: false };
     let took: CannotPlayTook | null = null;
     this.atOnce(() => {
       const off = cannotPlayOff(this.state, mediaId, this.now());
@@ -2963,7 +3028,7 @@ export class ShowEngine {
       case 'cueVideo':
         return this.prepareVideoCue(command.mediaId, command.playlist ?? null);
       case 'goVideoCue':
-        return this.goVideoCue(command.cueId);
+        return this.goVideoCue(command.cueId, this.state.videoCue?.automatic !== undefined, true);
       case 'cancelVideoCue':
         this.canceledAutoFrom = this.state.videoCue?.automatic?.from ?? null;
         return { ok: true, actions: [{ type: 'videoCue/set', cue: null }] };
@@ -3421,10 +3486,22 @@ export class ShowEngine {
       if (target?.mediaId !== zoomed.mediaId || target.showing !== zoomed.showing)
         next = reduce(next, { type: 'zoom/set', liveZoom: null });
     }
-    if (cause === 'clearAll' || cause === 'clearLayer' || next.blackout || next.wallpaper || next.stopped) {
+    if (
+      cause === 'clearAll' ||
+      cause === 'clearLayer' ||
+      (next.blackout && !prev.blackout) ||
+      (next.wallpaper && !prev.wallpaper) ||
+      next.stopped
+    ) {
       if (next.videoCue) next = reduce(next, { type: 'videoCue/set', cue: null });
       if (next.videoCrossfade) next = reduce(next, { type: 'videoCrossfade/set', fade: null });
+      if (next.videoStart) next = reduce(next, { type: 'videoStart/set', start: null });
     }
+    if (
+      next.videoStart &&
+      (next.layers.background?.kind !== 'media' || next.layers.background.cueId !== next.videoStart.id)
+    )
+      next = reduce(next, { type: 'videoStart/set', start: null });
     if (
       next.videoCrossfade &&
       (next.layers.background?.kind !== 'media' || next.layers.background.cueId !== next.videoCrossfade.id)
@@ -3967,6 +4044,8 @@ export class ShowEngine {
 
   /** Stop waiting (the engine is going away: tests, and quitting). */
   dispose(): void {
+    this.startWait?.cancel();
+    this.startWait = null;
     this.cueWait?.cancel();
     this.cueWait = null;
     this.fadeWait?.cancel();
