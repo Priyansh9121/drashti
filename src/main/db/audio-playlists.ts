@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { posix, win32 } from 'node:path';
+import { mediaLengthBetweenPoints } from '../../shared/playlist-playback';
 import type { MusicPlaylist, MusicTrackInfo } from '../../shared/music';
 import { copyFinder } from '../convert/relink';
 import type { Db } from './database';
@@ -27,6 +29,8 @@ interface TrackRow {
   media_id: string;
   name: string;
   duration_ms: number | null;
+  markers: string | null;
+  source_path: string | null;
   missing: number;
   playable: number | null;
 }
@@ -41,7 +45,7 @@ export class AudioPlaylistRepo {
     if (ids.length === 0) return out;
     const rows = this.db
       .prepare(
-        `SELECT t.id, t.playlist_id, t.media_id, m.name, m.duration_ms, m.missing, m.playable
+        `SELECT t.id, t.playlist_id, t.media_id, m.name, m.duration_ms, m.markers, m.source_path, m.missing, m.playable
            FROM audio_playlist_tracks t JOIN media m ON m.id = t.media_id
           WHERE t.playlist_id IN (${ids.map(() => '?').join(', ')})
             AND t.deleted_at IS NULL AND m.deleted_at IS NULL
@@ -55,6 +59,8 @@ export class AudioPlaylistRepo {
         mediaId: r.media_id,
         name: r.name,
         durationMs: r.duration_ms !== null && r.duration_ms > 0 ? r.duration_ms : null,
+        playingMs: mediaLengthBetweenPoints(r.duration_ms, r.markers),
+        ...(r.source_path ? { fileName: win32.basename(posix.basename(r.source_path)) } : {}),
         playable: r.missing === 0 && r.playable !== 0,
       });
       out.set(r.playlist_id, list);

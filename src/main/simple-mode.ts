@@ -81,6 +81,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.playlists.newFromTemplate,
   // Session 55 (Parts 4 and 14): Duplicate is Pro Mode's (the one right-click menu's Rename is bounded since Part 18).
   IPC.playlists.duplicate,
+  IPC.playlists.setPlayOptions,
+  IPC.playlists.importM3u,
+  IPC.playlists.exportM3u,
   IPC.playlists.addSlot,
   IPC.messages.create,
   IPC.messages.update,

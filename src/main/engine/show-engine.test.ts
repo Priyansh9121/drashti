@@ -673,6 +673,31 @@ describe('ShowEngine', () => {
     };
     const at = (engine: ShowEngine) => engine.current.live.playlist?.itemId ?? null;
 
+    it('follows the drawn order for Next, Back and upcoming, and Repeat all wraps its truthful Next picture', () => {
+      const { engine, playlists } = sabha();
+      playlists.repeatAll = () => true;
+      playlists.set('sunday', [
+        { id: 'i-pic', kind: 'media', mediaId: 'pic', media: 'image', label: 'Placeholder picture' },
+        {
+          id: 'i-song',
+          kind: 'presentation',
+          presentationId: 'song',
+          arrangementId: undefined,
+          label: 'Placeholder song',
+        },
+        { id: 'i-dhun', kind: 'media', mediaId: 'dhun', media: 'audio', label: 'Placeholder sound' },
+      ]);
+      engine.dispatch({ type: 'playItem', playlistId: 'sunday', itemId: 'i-dhun' });
+      expect(engine.current.next).toMatchObject({ kind: 'media', itemId: 'i-pic', mediaId: 'pic' });
+      expect(engine.current.upcoming.map((i) => i.id)).toEqual(['i-pic', 'i-song']);
+      engine.dispatch({ type: 'next' });
+      expect(at(engine)).toBe('i-pic');
+      engine.dispatch({ type: 'previous' });
+      expect(at(engine)).toBe('i-dhun');
+      engine.dispatch({ type: 'previous' });
+      expect(engine.current.live).toMatchObject({ playlist: { itemId: 'i-song' }, slideIndex: 3 });
+    });
+
     it('plays the items in order: the arrangement, then on past headers and placeholders, pictures and sounds', () => {
       const { engine } = sabha();
       expect(engine.dispatch({ type: 'playItem', playlistId: 'sunday', itemId: 'i-song' })).toMatchObject({

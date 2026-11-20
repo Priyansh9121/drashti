@@ -1,4 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { posix, win32 } from 'node:path';
+import {
+  mediaLengthBetweenPoints,
+  orderedPlaylistItems,
+  type PlaylistPlayback,
+  type PlaylistPlayOptions,
+} from '../../shared/playlist-playback';
 import type { Statement } from 'better-sqlite3';
 import { z } from 'zod';
 import { ownOrderId } from '../../shared/order';
@@ -62,6 +69,9 @@ interface ItemRow {
   presentation_slides: number | null;
   presentation_source: string | null;
   media_duration: number | null;
+  media_markers: string | null;
+  media_source: string | null;
+  presentation_path: string | null;
   /** In a smart playlist, 1 when its file is gone from the folder (Session 26c). */
   smart_gone: number;
   /** Added from a phone (Session 54, migration 48): the device's name. */
@@ -127,6 +137,11 @@ const storedOrder = (order: ItemOrder): string | null =>
           : { slideIds: order.slideIds, known: order.known },
       );
 
+/** The name only, for Find: either platform’s source path, without exposing its folders. */
+function sourceName(file: string | null): { fileName?: string } {
+  return file ? { fileName: win32.basename(posix.basename(file)) } : {};
+}
+
 function itemInfo(
   r: ItemRow,
   passageThere: (key: PassageKey) => boolean,
@@ -169,6 +184,7 @@ function itemInfo(
         kind: 'presentation',
         label: r.label,
         presentationId: r.presentation_id ?? '',
+        ...sourceName(r.presentation_path),
         presentationName: r.presentation_deleted === null ? r.presentation_name : null,
         order,
         arrangementName: order.mode === 'arrangement' ? r.arrangement_name : null,
@@ -186,6 +202,8 @@ function itemInfo(
         kind: 'media',
         label: r.label,
         mediaId: r.media_id ?? '',
+        ...sourceName(r.media_source),
+        playingMs: mediaLengthBetweenPoints(r.media_duration, r.media_markers),
         ...(r.media_name === null ? {} : { mediaName: r.media_name }),
         media: r.media_kind ?? 'video',
         missing: r.media_missing === 1,
@@ -443,7 +461,7 @@ export class PlaylistRepo {
     // with no hint (Session 55: a playlist from a template counted its slots as missing).
     const rows = this.db
       .prepare(
-        `SELECT p.id, p.name, p.is_folder, p.parent_id, p.source_kind, p.kind, p.settings, p.shared_at,
+        `SELECT p.id, p.name, p.is_folder, p.parent_id, p.source_kind, p.kind, p.settings, p.shared_at, p.shuffle, p.repeat_all,
                 (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id AND i.deleted_at IS NULL) AS item_count,
                 (SELECT COUNT(*) FROM playlist_items i
                   WHERE i.playlist_id = p.id AND i.deleted_at IS NULL AND i.kind = 'placeholder'
@@ -459,6 +477,8 @@ export class PlaylistRepo {
       kind: PlaylistKind;
       settings: string | null;
       shared_at: string | null;
+      shuffle: number;
+      repeat_all: number;
       item_count: number;
       placeholders: number;
     }[];
@@ -472,6 +492,9 @@ export class PlaylistRepo {
           name: r.name,
           isFolder: r.is_folder === 1,
           kind: r.kind,
+          ...(!templates && r.is_folder === 0 && (r.shuffle === 1 || r.repeat_all === 1)
+            ? { playback: this.playOptions(r.id) }
+            : {}),
           ...(r.kind === 'repeat' ? { repeat: repeatSettingsOf(r.settings) } : {}),
           parentId: r.parent_id,
           itemCount: r.item_count,
@@ -497,7 +520,7 @@ export class PlaylistRepo {
                   i.own_order, i.passage, i.timers, i.input_name, i.when_ends,
                   p.name AS presentation_name, p.deleted_at AS presentation_deleted, a.name AS arrangement_name,
                   m.name AS media_name, m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format,
-                  p.slide_count AS presentation_slides, p.source_kind AS presentation_source, m.duration_ms AS media_duration,
+                  p.slide_count AS presentation_slides, p.source_kind AS presentation_source, m.duration_ms AS media_duration, m.markers AS media_markers, m.source_path AS media_source, p.source_path AS presentation_path,
                   m.from_device AS media_device, p.from_device AS presentation_device,
                   EXISTS (SELECT 1 FROM smart_files sf WHERE sf.item_id = i.id AND sf.state = 'missing') AS smart_gone
              FROM playlist_items i
@@ -517,92 +540,154 @@ export class PlaylistRepo {
     );
   }
 
+  /** An imported M3U’s own label, kept on its row rather than renaming the library file. */
+  setItemLabel(itemId: string, label: string): void {
+    this.db
+      .prepare('UPDATE playlist_items SET label = ? WHERE id = ? AND deleted_at IS NULL')
+      .run(cutText(label, 200), itemId);
+  }
+
+  /** Saved playback choices. Reconcile only when the rows changed; a draw is never made while reading. */
+  playOptions(playlistId: string): PlaylistPlayback {
+    const row = this.db
+      .prepare('SELECT shuffle, repeat_all, play_order FROM playlists WHERE id = ?')
+      .get(playlistId) as { shuffle: number; repeat_all: number; play_order: string | null } | undefined;
+    const current = this.order(playlistId);
+    let saved: string[] = [];
+    try {
+      const value: unknown = JSON.parse(row?.play_order ?? '[]');
+      if (Array.isArray(value) && value.every((id): id is string => typeof id === 'string')) saved = value;
+    } catch {
+      /* Keep the visible order when a saved record does not read. */
+    }
+    const playOrder =
+      row?.shuffle === 1
+        ? orderedPlaylistItems(
+            current.map((id) => ({ id })),
+            saved,
+          ).map((i) => i.id)
+        : current;
+    return { shuffle: row?.shuffle === 1, repeatAll: row?.repeat_all === 1, playOrder };
+  }
+
+  /** Reconcile during the edit that adds or removes rows, never during a show read. */
+  private keepPlayOrder(playlistId: string): void {
+    const options = this.playOptions(playlistId);
+    if (options.shuffle)
+      this.db
+        .prepare('UPDATE playlists SET play_order = ? WHERE id = ?')
+        .run(JSON.stringify(options.playOrder), playlistId);
+  }
+
+  /** Draw the order only on the off-to-on change; changing Repeat all never redraws it. */
+  setPlayOptions(playlistId: string, options: PlaylistPlayOptions): boolean {
+    if (!this.activePlaylist(playlistId) || this.kindOf(playlistId) !== 'playlist') return false;
+    return this.db.transaction(() => {
+      const before = this.playOptions(playlistId);
+      const order = before.playOrder.slice();
+      if (options.shuffle && !before.shuffle) {
+        for (let i = order.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [order[i], order[j]] = [order[j] ?? '', order[i] ?? ''];
+        }
+      }
+      return (
+        this.db
+          .prepare('UPDATE playlists SET shuffle = ?, repeat_all = ?, play_order = ? WHERE id = ?')
+          .run(options.shuffle ? 1 : 0, options.repeatAll ? 1 : 0, JSON.stringify(order), playlistId)
+          .changes === 1
+      );
+    })();
+  }
+
   /** A playlist's items as the show engine plays them, or null if the playlist does not exist (or was removed). */
   playItems(playlistId: string): PlayItem[] | null {
     // A template is never run: only playlists made from it are.
     if (!this.activePlaylist(playlistId)) return null;
-    return this.itemsOf(playlistId).map((item): PlayItem => {
-      switch (item.kind) {
-        case 'presentation':
-          if (item.presentationName === null)
-            return { id: item.id, kind: 'skip', why: `“${item.label}” is no longer in the library` };
-          return {
-            id: item.id,
-            kind: 'presentation',
-            presentationId: item.presentationId,
-            label: item.label,
-            timers: item.timers,
-            // Its own order of slides (Session 55, Part 4b) as "item:<id>", which the engine's slide source reads.
-            arrangementId:
-              item.order.mode === 'presentation'
-                ? undefined
-                : item.order.mode === 'all'
-                  ? null
-                  : item.order.mode === 'slides'
-                    ? ownOrderId(item.id)
-                    : item.order.arrangementId,
-          };
-        case 'media':
-          if (item.missing)
-            return { id: item.id, kind: 'skip', why: `The file for “${item.label}” is missing` };
-          if (item.unplayable !== null)
+    return orderedPlaylistItems(this.itemsOf(playlistId), this.playOptions(playlistId).playOrder).map(
+      (item): PlayItem => {
+        switch (item.kind) {
+          case 'presentation':
+            if (item.presentationName === null)
+              return { id: item.id, kind: 'skip', why: `“${item.label}” is no longer in the library` };
             return {
               id: item.id,
-              kind: 'skip',
-              why: `Drashti cannot play “${item.label}” (${item.unplayable})`,
+              kind: 'presentation',
+              presentationId: item.presentationId,
+              label: item.label,
+              timers: item.timers,
+              // Its own order of slides (Session 55, Part 4b) as "item:<id>", which the engine's slide source reads.
+              arrangementId:
+                item.order.mode === 'presentation'
+                  ? undefined
+                  : item.order.mode === 'all'
+                    ? null
+                    : item.order.mode === 'slides'
+                      ? ownOrderId(item.id)
+                      : item.order.arrangementId,
             };
-          return {
-            id: item.id,
-            kind: 'media',
-            mediaId: item.mediaId,
-            media: item.media,
-            label: item.label,
-            timers: item.timers,
-            // What a video does when it ends (Session 55, Part 6): left out, the default.
-            ...(item.media === 'video' && item.whenEnds ? { whenEnds: item.whenEnds } : {}),
-          };
-        case 'header':
-          return {
-            id: item.id,
-            kind: 'skip',
-            why: 'A header has nothing to show',
-            label: item.label,
-            header: true,
-          };
-        case 'placeholder':
-          return {
-            id: item.id,
-            kind: 'skip',
-            why:
-              item.hint === null
-                ? `“${item.label}” is not filled in yet`
-                : `“${item.label}” was not found at import`,
-          };
-        case 'input': {
-          // This computer's input of its name (Session 51), found again as the show reads the playlist.
-          const found = this.input(item.name);
-          if (!found)
-            return {
-              id: item.id,
-              kind: 'skip',
-              why: `The video input “${item.name}” is not on this computer`,
-            };
-          return { id: item.id, kind: 'input', inputId: found.id, label: item.label, timers: item.timers };
-        }
-        case 'shastra':
-          // A passage plays like a presentation (shared/shastra.ts), while its text is loaded.
-          return item.missing
-            ? { id: item.id, kind: 'skip', why: `“${item.label}”: its book is not loaded` }
-            : {
+          case 'media':
+            if (item.missing)
+              return { id: item.id, kind: 'skip', why: `The file for “${item.label}” is missing` };
+            if (item.unplayable !== null)
+              return {
                 id: item.id,
-                kind: 'presentation',
-                presentationId: item.passageId,
-                label: item.label,
-                arrangementId: null,
-                timers: item.timers,
+                kind: 'skip',
+                why: `Drashti cannot play “${item.label}” (${item.unplayable})`,
               };
-      }
-    });
+            return {
+              id: item.id,
+              kind: 'media',
+              mediaId: item.mediaId,
+              media: item.media,
+              label: item.label,
+              timers: item.timers,
+              // What a video does when it ends (Session 55, Part 6): left out, the default.
+              ...(item.media === 'video' && item.whenEnds ? { whenEnds: item.whenEnds } : {}),
+            };
+          case 'header':
+            return {
+              id: item.id,
+              kind: 'skip',
+              why: 'A header has nothing to show',
+              label: item.label,
+              header: true,
+            };
+          case 'placeholder':
+            return {
+              id: item.id,
+              kind: 'skip',
+              why:
+                item.hint === null
+                  ? `“${item.label}” is not filled in yet`
+                  : `“${item.label}” was not found at import`,
+            };
+          case 'input': {
+            // This computer's input of its name (Session 51), found again as the show reads the playlist.
+            const found = this.input(item.name);
+            if (!found)
+              return {
+                id: item.id,
+                kind: 'skip',
+                why: `The video input “${item.name}” is not on this computer`,
+              };
+            return { id: item.id, kind: 'input', inputId: found.id, label: item.label, timers: item.timers };
+          }
+          case 'shastra':
+            // A passage plays like a presentation (shared/shastra.ts), while its text is loaded.
+            return item.missing
+              ? { id: item.id, kind: 'skip', why: `“${item.label}”: its book is not loaded` }
+              : {
+                  id: item.id,
+                  kind: 'presentation',
+                  presentationId: item.passageId,
+                  label: item.label,
+                  arrangementId: null,
+                  timers: item.timers,
+                };
+        }
+      },
+    );
   }
 
   /**
@@ -1254,6 +1339,8 @@ export class PlaylistRepo {
   private renumber(ids: readonly string[]): void {
     const stmt = this.db.prepare('UPDATE playlist_items SET position = ? WHERE id = ?');
     ids.forEach((id, i) => stmt.run(i, id));
+    const playlistId = ids[0] ? this.playlistOf(ids[0]) : null;
+    if (playlistId) this.keepPlayOrder(playlistId);
   }
 
   /**
@@ -1339,14 +1426,24 @@ export class PlaylistRepo {
     const stmt = this.db.prepare(
       `UPDATE playlist_items SET deleted_at = ${NOW} WHERE id = ? AND deleted_at IS NULL`,
     );
-    return this.db.transaction(() => ids.filter((id) => stmt.run(id).changes === 1))();
+    return this.db.transaction(() => {
+      const changed = ids.filter((id) => stmt.run(id).changes === 1);
+      for (const playlistId of new Set(changed.map((id) => this.playlistOf(id))))
+        if (playlistId) this.keepPlayOrder(playlistId);
+      return changed;
+    })();
   }
 
   restoreItems(ids: readonly string[]): string[] {
     const stmt = this.db.prepare(
       'UPDATE playlist_items SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL',
     );
-    return this.db.transaction(() => ids.filter((id) => stmt.run(id).changes === 1))();
+    return this.db.transaction(() => {
+      const changed = ids.filter((id) => stmt.run(id).changes === 1);
+      for (const playlistId of new Set(changed.map((id) => this.playlistOf(id))))
+        if (playlistId) this.keepPlayOrder(playlistId);
+      return changed;
+    })();
   }
 
   /** The playlist an item is in (removed items too), or null. */
