@@ -1,3 +1,4 @@
+import { useMode } from '../operator/mode-store';
 import { useMemo } from 'react';
 import { musicLeftMs } from '../../../shared/playlist-playback';
 import { useNow } from '../render/useNow';
@@ -95,6 +96,7 @@ function CannotPlay({ mediaId }: { mediaId: string }) {
 
 /** The audio playlists, straight under Audio (Session 55, Part 13: no heading of their own). */
 export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) {
+  const pro = useMode((s) => s.mode === 'pro');
   const view = useMusic((s) => s.view);
   const shownId = useMusic((s) => s.shownId);
   const playing = useMusicPlaying();
@@ -110,7 +112,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
   const skips = useEngine((s) => skipsOf(s.state, 'music'));
   return (
     <div className="space-y-2 px-3 pb-3" data-testid="music-panel">
-      <M3uReport audio />
+      {pro && <M3uReport audio />}
       {playing && (
         <p className="flex items-center gap-1.5 text-xs" role="status" data-testid="music-now">
           {paused ? <Pause size={12} aria-hidden="true" /> : <Play size={12} aria-hidden="true" />}
@@ -212,10 +214,10 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
               <OptionToggle playlist={shown} option="shuffle" />
             </span>
           </div>
-          {isShownPlaying && playing && <MusicEndsAt playlist={shown} playing={playing} />}
+          {pro && isShownPlaying && playing && <MusicEndsAt playlist={shown} playing={playing} />}
           <AudioDrop playlistId={shown.id}>
             <Tracks
-              key={shown.id}
+              key={`${shown.id}-${pro ? 'pro' : 'simple'}`}
               platform={platform}
               playlist={shown}
               playingIndex={isShownPlaying ? (playing?.music?.index ?? null) : null}
@@ -268,6 +270,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
 
 /** Audio's + (Session 44): exactly two choices, a new audio playlist or sounds from the computer. */
 export function AudioAddMenu() {
+  const pro = useMode((s) => s.mode === 'pro');
   return (
     <MenuButton
       label="Add to Audio"
@@ -281,7 +284,8 @@ export function AudioAddMenu() {
           icon: Import,
           onSelect: () => {
             const { view, shownId } = useMusic.getState();
-            void importPlaylistFile(true, shownMusic(view, shownId, null)?.id ?? null);
+            const id = shownMusic(view, shownId, null)?.id ?? null;
+            void (pro ? importPlaylistFile(true, id) : importSounds(id));
           },
         },
       ]}
@@ -343,6 +347,7 @@ function AudioPlaylists({
   /** Ask about deleting these. */
   onDelete: (ids: string[]) => void;
 }) {
+  const pro = useMode((s) => s.mode === 'pro');
   const renamingId = useMusic((s) => s.renamingId);
   const [menu, setMenu] = useState<{ playlist: MusicPlaylist; at: MenuPlace } | null>(null);
   const marked = useMusic((s) => s.markedLists);
@@ -453,11 +458,12 @@ function AudioPlaylists({
                     useMusic.setState({ shownId: p.id, markedLists: [p.id], listAnchor: p.id });
                   }}
                   onContextMenu={(e) => {
+                    if (!pro) return;
                     e.preventDefault();
                     setMenu({ playlist: p, at: menuPlace(e) });
                   }}
                   onKeyDown={(e) => {
-                    if (isMenuKey(e)) {
+                    if (pro && isMenuKey(e)) {
                       e.preventDefault();
                       setMenu({ playlist: p, at: menuBelow(e.currentTarget) });
                       return;
@@ -557,6 +563,7 @@ function Tracks({
   playlist: MusicPlaylist;
   playingIndex: number | null;
 }) {
+  const pro = useMode((s) => s.mode === 'pro');
   const playing = useMusicPlaying();
   const listRef = useRef<HTMLOListElement>(null);
   const findRows = useMemo(
@@ -609,7 +616,7 @@ function Tracks({
     );
   return (
     <>
-      <PlaylistFind label="Find in audio playlist" countTestId="music-find-count" find={find} />
+      {pro && <PlaylistFind label="Find in audio playlist" countTestId="music-find-count" find={find} />}
       <ChosenBar
         count={marked.length}
         noun="sounds"
