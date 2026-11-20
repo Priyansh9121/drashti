@@ -140,6 +140,8 @@ For the button that offers a long file's saved place, see **LIVE, Back and Next 
 
 **Reset edits** changes the draft; press Save to keep that reset. **Cancel**, or closing the window, lets you discard an unsaved draft or keep editing. Originals, the default thumbnail, existing row trims, and Sound and picture's tone and delays are kept. A newer save in another editor is reported instead of being overwritten.
 
+![Media: right-click a video to open its editing tools](../screenshots/convert-media-list-done.png)
+
 ## The Picture editor
 
 **What it is.** A picture's own editor: **Rotate**, **Flip across**, **Flip up and down**, **Crop**, and the blurred fill behind a photo that does not fill the screen. The picture file itself never changes.
