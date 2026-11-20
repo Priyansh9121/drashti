@@ -1,3 +1,4 @@
+import { bandsText, type ToneChain, toneThrough } from './tone-chain';
 import type { AudioDevice } from '../../../shared/audio';
 import { resolveOutput } from '../../../shared/audio';
 import type { EngineState } from '../../../shared/engine/state';
@@ -36,6 +37,9 @@ interface Player {
   resync: () => void;
   /** Its gain (Part 7): even loudness, and the music stepping aside; null where Web Audio could not be had. */
   level: GainNode | null;
+  /** Its element's way into Web Audio, and its tone's filters once its file has had a tone (alpha.20). */
+  source: MediaElementAudioSourceNode | null;
+  tone: ToneChain | null;
   /** What its gain was last given (-1: nothing yet). */
   levelSet: number;
 }
@@ -94,6 +98,8 @@ async function playOn(id: string): Promise<void> {
 const aside = new StepAside();
 let levels: ReturnType<typeof setInterval> | null = null;
 const meterSamples = new Float32Array(2048);
+/** The meter's spectrum, for its two bands (alpha.20, the tests' data-bands). */
+const meterSpectrum = new Float32Array(1024);
 
 /**
  * Give a player's gain its level: its file's even gain, times the music's step aside for the music, times its kind's
@@ -133,6 +139,8 @@ function applyLevels(): void {
     document.body.dataset['level'] = String(
       rms > 0 ? Math.max(-100, Math.round(20 * Math.log10(rms))) : -100,
     );
+    // And how loud it is low down and high up (alpha.20, Sound and picture…'s tones): "low,high" in dB.
+    document.body.dataset['bands'] = bandsText(meter, meterSpectrum);
   }
   if (players.size === 0 && fadingOut.size === 0 && levels) {
     clearInterval(levels);
@@ -195,6 +203,7 @@ function play(state: EngineState | null): void {
       fadingOut.delete(player);
       player.stop();
       player.level?.disconnect();
+      player.tone?.disconnect();
       player.el.remove();
     };
     // An audio playlist's track fades out (it was paused, moved on, or cleared); other sounds stop at once.
@@ -210,6 +219,9 @@ function play(state: EngineState | null): void {
       const moved = soundMoved(current.sound, sound);
       current.sound = sound;
       if (moved) current.resync();
+      // Its tone (alpha.20), eased there while it plays.
+      if (context && current.source && current.level)
+        current.tone = toneThrough(context, current.source, current.level, current.tone, sound.tone ?? null);
       current.el.loop = sound.loop && !sound.clip;
       if (current.volume !== sound.volume) {
         current.volume = sound.volume;
@@ -231,12 +243,18 @@ function play(state: EngineState | null): void {
     // Through its own gain to the chosen output (Part 7); straight out where Web Audio could not be had.
     const c = audioContext();
     let level: GainNode | null = null;
+    let source: MediaElementAudioSourceNode | null = null;
+    let tone: ToneChain | null = null;
     if (c && master) {
       try {
         level = c.createGain();
-        c.createMediaElementSource(el).connect(level).connect(master);
+        source = c.createMediaElementSource(el);
+        source.connect(level).connect(master);
+        // Its file's tone (alpha.20): filters between its source and its gain, only for a file that has one.
+        tone = toneThrough(c, source, level, null, sound.tone ?? null);
       } catch {
         level = null;
+        source = null;
       }
     }
     if (!level) void el.setSinkId(sinkId).catch(() => undefined);
@@ -251,6 +269,8 @@ function play(state: EngineState | null): void {
       resync: () => undefined,
       level,
       levelSet: -1,
+      source,
+      tone,
     };
     // Its level before it makes a sound: the music already aside under a video playing, a file at its even loudness.
     const now = engineNow();

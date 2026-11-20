@@ -32,14 +32,27 @@ export const NO_PLAYBACK_SETTINGS: PlaybackSettings = {
   captionDelayMs: 0,
 };
 
-// Red (x47, slice 6a): the settings' rules, their tone and their words, still to be written.
-export const playbackSettingsSchema = z.any();
+const db = z.number().int().min(TONE_DB.min).max(TONE_DB.max);
+const delay = z.number().int().min(DELAY_MS.min).max(DELAY_MS.max).multipleOf(DELAY_MS.step);
 
-export function readPlaybackSettings(_kept: string | null | undefined): PlaybackSettings {
-  return NO_PLAYBACK_SETTINGS;
+export const playbackSettingsSchema = z
+  .object({ bassDb: db, trebleDb: db, voice: z.boolean(), soundDelayMs: delay, captionDelayMs: delay })
+  .strict();
+
+/** What the library keeps (JSON text, or null for none), read back as settings: anything else is none. */
+export function readPlaybackSettings(kept: string | null | undefined): PlaybackSettings {
+  if (!kept) return NO_PLAYBACK_SETTINGS;
+  try {
+    const parsed = playbackSettingsSchema.safeParse(JSON.parse(kept));
+    return parsed.success ? parsed.data : NO_PLAYBACK_SETTINGS;
+  } catch {
+    return NO_PLAYBACK_SETTINGS;
+  }
 }
 
-export const isPlainPlayback = (_s: PlaybackSettings): boolean => true;
+/** Whether a file's settings change nothing (kept as none). */
+export const isPlainPlayback = (s: PlaybackSettings): boolean =>
+  s.bassDb === 0 && s.trebleDb === 0 && !s.voice && s.soundDelayMs === 0 && s.captionDelayMs === 0;
 
 /** A file's tone: what its sound's filters do; none when its settings leave its sound as it is. */
 export interface Tone {
@@ -48,8 +61,10 @@ export interface Tone {
   voice: boolean;
 }
 
-export function toneOf(_s: PlaybackSettings): Tone | null {
-  return null;
+export function toneOf(s: PlaybackSettings): Tone | null {
+  return s.bassDb === 0 && s.trebleDb === 0 && !s.voice
+    ? null
+    : { bassDb: s.bassDb, trebleDb: s.trebleDb, voice: s.voice };
 }
 
 /** One filter of a tone, as Web Audio's BiquadFilterNode takes it. */
@@ -60,12 +75,40 @@ export interface ToneFilter {
   q: number;
 }
 
+/** How long a tone's change takes to ease in (setTargetAtTime's time constant, s): within a tenth of a second. */
 export const TONE_EASE_S = 0.03;
 
-export function toneFilters(_tone: Tone | null): ToneFilter[] {
-  return [];
+/** Where Voice boost's high-pass sits while it is off: below anything heard, so the filter changes nothing. */
+const HIGH_PASS_OFF_HZ = 10;
+
+/**
+ * The four filters of a tone, in the order a sound goes through them: the low shelf (Bass), the high shelf (Treble),
+ * then Voice boost's high-pass and its presence peak. A tone of none is every filter flat: a sound that had one goes
+ * back to as it is, smoothly (a sound that never had one gets no filters at all: audio/tone-chain.ts).
+ */
+export function toneFilters(tone: Tone | null): ToneFilter[] {
+  const t = tone ?? { bassDb: 0, trebleDb: 0, voice: false };
+  return [
+    { type: 'lowshelf', frequency: 120, gain: t.bassDb, q: 0 },
+    { type: 'highshelf', frequency: 6000, gain: t.trebleDb, q: 0 },
+    { type: 'highpass', frequency: t.voice ? 100 : HIGH_PASS_OFF_HZ, gain: 0, q: Math.SQRT1_2 },
+    { type: 'peaking', frequency: 3000, gain: t.voice ? 5 : 0, q: 0.9 },
+  ];
 }
 
-export function delayWords(_ms: number, _what: 'sound' | 'captions'): string {
-  return '';
+/** A delay as the window says it: "+0.25 s: the sound comes a quarter of a second later than the picture". */
+export function delayWords(ms: number, what: 'sound' | 'captions'): string {
+  const subject = what === 'sound' ? 'the sound comes' : 'the captions come';
+  if (ms === 0) return `0 s: ${subject} with the picture`;
+  const abs = Math.abs(ms);
+  const amount =
+    abs === 250
+      ? 'a quarter of a second'
+      : abs === 500
+        ? 'half a second'
+        : abs === 1000
+          ? 'a second'
+          : `${(abs / 1000).toFixed(2)} s`;
+  const sign = ms > 0 ? '+' : '−';
+  return `${sign}${(abs / 1000).toFixed(2)} s: ${subject} ${amount} ${ms > 0 ? 'later' : 'earlier'} than the picture`;
 }

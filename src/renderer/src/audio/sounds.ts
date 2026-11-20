@@ -208,7 +208,17 @@ export function soundsOf(state: EngineState): Sound[] {
  * jump of its own (a start still to come waits paused at its point), so the hall and the stream hear it alike; its key
  * stays, so a change while it plays is one aimed jump, never a new start. The pictures never move.
  */
-export function withPlayback(_state: EngineState, sound: Sound): Sound {
-  // Red (x47, slice 6a): still to be written.
-  return sound;
+export function withPlayback(state: EngineState, sound: Sound): Sound {
+  const tones = state.sound?.tones;
+  const delays = state.sound?.delays;
+  const tone = tones && Object.hasOwn(tones, sound.mediaId) ? tones[sound.mediaId] : undefined;
+  const delay = delays && Object.hasOwn(delays, sound.mediaId) ? (delays[sound.mediaId] ?? 0) : 0;
+  let out = tone ? { ...sound, tone } : sound;
+  if (delay !== 0 && Number.isFinite(delay)) {
+    const seek = out.seek
+      ? { ...out.seek, at: out.seek.at + delay }
+      : { at: out.startedAt + delay, toMs: out.clip?.startMs ?? 0 };
+    out = { ...out, seek };
+  }
+  return out;
 }

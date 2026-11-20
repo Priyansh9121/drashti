@@ -226,8 +226,7 @@ export function captionAt(
     (clip?.endMs != null && sourceMs >= clip.endMs)
   )
     return null;
-  // Red (x47, slice 6a): the delay not read yet.
-  const at = sourceMs + 0 * (Number.isFinite(delayMs) ? delayMs : 0);
+  const at = sourceMs - (Number.isFinite(delayMs) ? delayMs : 0);
   let lo = 0;
   let hi = cues.length;
   while (lo < hi) {

@@ -888,7 +888,13 @@ export class ShowEngine {
       Object.keys(old).length === Object.keys(tracks).length &&
       Object.entries(tracks).every(([id, next]) => {
         const prev = old[id];
-        return prev?.track === next.track && prev.size === next.size && prev.place === next.place;
+        return (
+          prev?.track === next.track &&
+          prev.size === next.size &&
+          prev.place === next.place &&
+          // Sound and picture… (alpha.20): a caption delay changed is a change.
+          prev.delayMs === next.delayMs
+        );
       })
     )
       return old;
@@ -936,9 +942,20 @@ export class ShowEngine {
    * Sound and picture… (alpha.20): the tone and the sound's delay of each file sounding now that has them, by media id,
    * stamped as the even gains are, so the hall's audio player and the stream's own sound play them alike.
    */
-  private ownPlaybackFor(_state: EngineState): Pick<SoundState, 'tones' | 'delays'> {
-    // Red (x47, slice 6a): still to be written.
-    return {};
+  private ownPlaybackFor(state: EngineState): Pick<SoundState, 'tones' | 'delays'> {
+    const { playbackOf } = this.options;
+    if (!playbackOf) return {};
+    const tones: Record<string, Tone> = {};
+    const delays: Record<string, number> = {};
+    for (const mediaId of soundFilesOf(state)) {
+      const own = playbackOf(mediaId);
+      if (own?.tone) tones[mediaId] = own.tone;
+      if (own?.soundDelayMs) delays[mediaId] = own.soundDelayMs;
+    }
+    return {
+      ...(Object.keys(tones).length > 0 ? { tones } : {}),
+      ...(Object.keys(delays).length > 0 ? { delays } : {}),
+    };
   }
 
   refreshFiles(): CommandResult {
