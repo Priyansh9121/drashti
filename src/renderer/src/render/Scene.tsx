@@ -428,8 +428,10 @@ export const Scene = memo(function Scene({
       pictures: state.pictures,
       liveZoom: state.liveZoom,
       ...(state.opaquePictures ? { opaque: state.opaquePictures } : {}),
+      // Sound and picture…'s Shape (alpha.20, x55): the videos drawn in a shape of their own.
+      ...(state.videoShapes ? { videoShapes: state.videoShapes } : {}),
     }),
-    [state.pictures, state.liveZoom, state.opaquePictures],
+    [state.pictures, state.liveZoom, state.opaquePictures, state.videoShapes],
   );
   // The box as drawn: the one up, or the one going out (Take off) over the main picture, already whole again.
   const boxRun = run.layer !== null && boxHere(run.layer) ? run : null;

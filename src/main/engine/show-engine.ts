@@ -1899,7 +1899,23 @@ export class ShowEngine {
 
   /** A video's Shape changed in Sound and picture… (alpha.20, x55): the screens draw it so at once. */
   refreshVideoShapes(): CommandResult {
-    return this.unchanged();
+    return this.apply(this.videoShapesSet(this.state));
+  }
+
+  /**
+   * Sound and picture…'s Shape (alpha.20, x55): the shapes of the videos on the screens and coming next, and of the
+   * box's going out, by media id, as their pictures carry their looks (picturesIn), so every screen, node and the stream
+   * draw them alike; a video as its file says is left out. Nothing for an engine with no library to ask.
+   */
+  private videoShapesSet(state: EngineState): EngineAction[] {
+    const shapeOf = this.options.videoShape;
+    if (!shapeOf) return [];
+    const shapes: Record<string, ShapeOverride> = {};
+    for (const id of this.picturesIn(state)) {
+      const shape = shapeOf(id);
+      if (shape) shapes[id] = shape;
+    }
+    return [{ type: 'videoShapes/set', shapes }];
   }
 
   /** The live zoom ends (kept as the picture's look, say): the screens show its kept look. */
@@ -3099,6 +3115,9 @@ export class ShowEngine {
       next.chosenWallpaper !== prev.chosenWallpaper
     )
       next = reduce(next, this.picturesSet(next));
+    // Sound and picture…'s Shape (alpha.20, x55): the videos up and coming next carry their shapes too.
+    if (next.layers !== prev.layers || next.next !== prev.next || next.pipOff !== prev.pipOff)
+      next = this.videoShapesSet(next).reduce(reduce, next);
     next = this.keepUndo(prev, next, cause);
     next = this.withAutoAdvance(prev, next);
     if (next === prev) return this.unchanged();
