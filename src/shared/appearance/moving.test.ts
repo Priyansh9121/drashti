@@ -91,9 +91,9 @@ describe('the live appearances (Q60-45: the 28 marked live move)', () => {
   });
 
   it('would see a failure: a touch as light as the header’s words', () => {
-    const diwali = BUILT_IN.find((a) => a.id === 'diwali') as Appearance;
-    const moving = diwali.moving;
-    if (!moving) throw new Error('Diwali moves');
+    const diwali = BUILT_IN.find((a) => a.id === 'diwali');
+    const moving = diwali?.moving;
+    if (!diwali || !moving) throw new Error('Diwali moves');
     const bright: Appearance = { ...diwali, moving: { ...moving, touch: diwali.decoration['on-header'] } };
     expect(measureMoving(bright).some((m) => !m.ok && m.what.startsWith('words on the header’s touch'))).toBe(
       true,
