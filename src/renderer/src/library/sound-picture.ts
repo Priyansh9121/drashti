@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { addFileMenuItems, type FileTarget } from '../files/file-menu';
 import { SlidersHorizontal } from '../ui/icons';
 import type { MenuEntry } from '../ui/Menu';
+import type { PlaybackSettings } from '../../../shared/playback-settings';
 
 /*
  * Sound and picture… (alpha.20: the owner's Q60-34, his "Yes, all A" to Q60-39 P2 A and P6 (a) A): one item in the one
@@ -53,4 +54,47 @@ export function addSoundPictureToMenu(): void {
   if (added) return;
   added = true;
   addFileMenuItems((target) => soundPictureItems(target));
+}
+
+/** How long after the last change a file's settings are kept (a slider dragged sends one keep, not a hundred). */
+export const KEEP_AFTER_MS = 150;
+
+/**
+ * Keeps a file's settings a moment after the last change (`send`: Main's media:set-playback); what Main says goes to
+ * `said` (null: kept). Closed with the window.
+ */
+export function playbackKeeper(
+  id: string,
+  send: (mediaId: string, next: PlaybackSettings) => Promise<{ ok: true } | { ok: false; message: string }>,
+  said: (problem: string | null) => void,
+) {
+  let waiting: { timer: ReturnType<typeof setTimeout>; next: PlaybackSettings } | null = null;
+  const sendNow = (next: PlaybackSettings) => {
+    void send(id, next).then(
+      (r) => {
+        said(r.ok ? null : r.message);
+      },
+      () => undefined,
+    );
+  };
+  return {
+    keep(next: PlaybackSettings): void {
+      if (waiting) clearTimeout(waiting.timer);
+      waiting = {
+        next,
+        timer: setTimeout(() => {
+          waiting = null;
+          sendNow(next);
+        }, KEEP_AFTER_MS),
+      };
+    },
+    /** The window closing: a change still waiting is kept at once, never dropped. */
+    close(): void {
+      if (!waiting) return;
+      clearTimeout(waiting.timer);
+      const { next } = waiting;
+      waiting = null;
+      sendNow(next);
+    },
+  };
 }

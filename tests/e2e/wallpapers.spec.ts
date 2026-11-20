@@ -427,6 +427,8 @@ test('When it ends, in each video’s menu: Wallpaper (the default), Next item, 
   await expect
     .poll(async () => (await state(win)).layers.background)
     .toMatchObject({ mediaId: videoId, loop: true });
+  // Drawn on the hall (Q60-31 (d): nothing-up stays until a video's first frame), then held through its end.
+  await expect.poll(() => nothingUp(hall), { message: 'the looping video drawn on the hall' }).toBeNull();
   await holdStill(
     async () => {
       const bg = (await state(win)).layers.background;

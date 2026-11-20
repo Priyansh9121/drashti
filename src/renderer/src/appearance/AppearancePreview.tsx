@@ -96,7 +96,7 @@ export function AppearancePreview({ appearance, className }: { appearance: Appea
               <span
                 key={i}
                 className="block aspect-video rounded-[2px] border"
-                style={{ background: '#000000', borderColor: i === 1 ? c.live : z.middle.line }}
+                style={{ background: '#000000', borderColor: i === 1 ? c['live-edge'] : z.middle.line }}
               />
             ))}
           </div>
@@ -114,7 +114,7 @@ export function AppearancePreview({ appearance, className }: { appearance: Appea
           </span>
           <span
             className="block aspect-video rounded-[2px] border"
-            style={{ background: '#000000', borderColor: c.live }}
+            style={{ background: '#000000', borderColor: c['live-edge'] }}
           />
           <div className="mt-auto flex gap-[6%]">
             <span
@@ -137,7 +137,7 @@ export function AppearancePreview({ appearance, className }: { appearance: Appea
       >
         <span
           className="block h-[60%] w-[10%] rounded-[2px] border"
-          style={{ background: d.layer, borderColor: c.live }}
+          style={{ background: d.layer, borderColor: c['live-edge'] }}
         />
         <span
           className="block h-[60%] w-[10%] rounded-[2px] border"

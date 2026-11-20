@@ -474,7 +474,7 @@ function AudioPlaylists({
                   }}
                 >
                   {playingId === p.id ? (
-                    <Play size={13} aria-hidden="true" className="shrink-0 text-live" />
+                    <Play size={13} aria-hidden="true" className="shrink-0 text-live-edge" />
                   ) : (
                     <ListMusic size={13} aria-hidden="true" className="shrink-0 text-muted" />
                   )}
@@ -699,7 +699,7 @@ function Tracks({
                 }}
               >
                 {isPlaying ? (
-                  <Play size={12} aria-hidden="true" className="shrink-0 text-live" />
+                  <Play size={12} aria-hidden="true" className="shrink-0 text-live-edge" />
                 ) : (
                   <span className="w-3 shrink-0 text-right text-xs text-muted tabular-nums">{i + 1}</span>
                 )}
