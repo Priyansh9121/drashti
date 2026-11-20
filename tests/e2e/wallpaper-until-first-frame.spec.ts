@@ -139,9 +139,7 @@ test('back to the Wallpaper (Clear background over a picture and over a video, a
   const dir = mkdtempSync(join(tmpdir(), 'drashti-back-to-the-wall-'));
   const clip = makeClip(join(dir, 'Placeholder back to the wall.mp4'), 'h264', 30, 410);
   const short = makeClip(join(dir, 'Placeholder ends by itself.mp4'), 'h264', 6, 450);
-  // The Wallpaper's picture drawn 600 ms after it is put on a page, each time, as from a slow disk (within the 1 s that
-  // what was up may stay): a page keeps a picture it showed, so no read of its file is ever slowed again.
-  const { app } = await launchApp({ ...SCREENS, DRASHTI_TEST_WALLPAPER_LATE_MS: '600' });
+  const { app } = await launchApp(SCREENS);
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
