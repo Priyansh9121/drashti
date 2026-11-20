@@ -777,11 +777,14 @@ x52's hunt (CI x52-1120-161434-29576, both systems) found four ways the show sto
   video's sound (given up on: every sound gone for 2 minutes, the next video silent). Now a page that fails again within
   a minute (`AGAIN_MS`) with a video up that was up at its last failure too takes that video off, the newest of them,
   as §54 takes off a video that fails (`ShowEngine.cannotPlay`), says so by its name and where (the operator window's
-  own word waits for its page to open), and loads again at once without it (`RendererWatchdog.tookOff`). A picture
-  that fails again after its reload with nothing to blame is given up on as a crash loop is: Stopped and said, tried
-  again 2 and then 10 minutes on, and back by itself once it paints a change after its last failure
-  (`RendererWatchdog.drawsAgain`; every error now reaches the watchdog, not only those its 10 s log line says). The sound
-  player given up on with nothing to blame says so in a red notice in both modes, with Try again
+  own word waits for its page to open), and loads again at once without it (`RendererWatchdog.tookOff`). A video on a
+  slide is only paused there by that take-off (Q60-21), so the page still loads it: failing again with it paused there,
+  its slide comes off as Clear slide takes it (a deck's own sound on it too); the music, or the sound over it, that
+  keeps bringing the sound player down comes off as Clear audio takes it (Q60-52 A, the owner's answer of 20 Nov; Back
+  or Oops brings either back). A picture that fails again after its reload with nothing to blame is given up on as a
+  crash loop is: Stopped and said, tried again 2 and then 10 minutes on, and back by itself once it paints a change after
+  its last failure (`RendererWatchdog.drawsAgain`; every error now reaches the watchdog, not only those its 10 s log line
+  says). The sound player given up on with nothing to blame says so in a red notice in both modes, with Try again
   (`operator/SoundPlayerStopped.tsx`, `audio:try-again`).
 - **A display that gives no name and no serial number** (some cheap projectors, HDMI converters, extenders) changing
   its resolution matched no screen: its window hidden, a new screen made for it, the operator's own (its name, Stretch)

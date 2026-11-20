@@ -320,7 +320,7 @@ import {
   type WatchdogEvent,
   type WatchTarget,
 } from './watchdog';
-import { KeepsFailing, videosUp } from './keeps-failing';
+import { filesUp, KeepsFailing, keptFailingNotice, stillUpOn } from './keeps-failing';
 import { allowHangStacks, applySessionSecurity, secureWebContents } from './windows/security';
 import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
@@ -2417,23 +2417,34 @@ function start(): void {
     const name = screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId;
     return { where: whereWords([{ screen: name }]), page: win.webContents };
   };
-  /** A page failed (`how`): the video it keeps failing on taken off, said and logged. Whether one was. */
+  /** A page failed (`how`): the file it keeps failing on taken off, said and logged. Whether one was. */
   const takeOffWhatFails = (window: string, where: string, how: string): boolean => {
-    const mediaId = keepsFailing.failed(window, Date.now(), videosUp(engine.current));
+    const mediaId = keepsFailing.failed(window, Date.now(), filesUp(engine.current, window === SOUND_PLAYER));
     if (mediaId === null) return false;
+    const name = media.kindAndName(mediaId)?.name ?? 'A file';
     const took = engine.cannotPlay(mediaId);
-    if (!took) return false;
-    const off = [
-      took.background ? 'the background' : '',
-      took.slide ? 'paused on the slide' : '',
-      took.box ? 'the box' : '',
-    ]
-      .filter((w) => w !== '')
-      .join(', ');
+    if (took) {
+      const off = [
+        took.background ? 'the background' : '',
+        took.slide ? 'paused on the slide' : '',
+        took.box ? 'the box' : '',
+      ]
+        .filter((w) => w !== '')
+        .join(', ');
+      log.warn(
+        `${window} kept failing (${how}) with a video up, twice within a minute: ${mediaId}; taken off (${off})`,
+      );
+      tellOperator(cannotPlayNotice(name, where, took));
+      return true;
+    }
+    // Still up though x46's take-off left it so (paused on the slide), or the music (Q60-52 A): off as Clear slide or
+    // Clear audio takes it, so Back or Oops can bring it back.
+    const layer = stillUpOn(engine.current, mediaId);
+    if (layer === null || !engine.dispatch({ type: 'clearLayer', layer }).ok) return false;
     log.warn(
-      `${window} kept failing (${how}) with a video up, twice within a minute: ${mediaId}; taken off (${off})`,
+      `${window} kept failing (${how}) with a file up, again within a minute: ${mediaId}; its ${layer} cleared`,
     );
-    tellOperator(cannotPlayNotice(media.kindAndName(mediaId)?.name ?? 'A video', where, took));
+    tellOperator(keptFailingNotice(name, where, layer));
     return true;
   };
   /** A window went down (any of them): if it keeps going down on a video, that comes off and it loads again at once. */
