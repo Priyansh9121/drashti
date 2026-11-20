@@ -289,6 +289,11 @@ export const IPC = {
     rotate: 'events:rotate',
     /** Send a test event now. */
     test: 'events:test',
+    /**
+     * The new secret's Copy (alpha.20): on the clipboard by the main process (operator window only; a page's own
+     * clipboard is refused). Never kept or logged.
+     */
+    copySecret: 'events:copy-secret',
     /** main -> operator: how the addresses stand changed. */
     changed: 'events:changed',
     /** main -> operator: File > Events Out… was chosen. */
@@ -1347,6 +1352,7 @@ export interface InvokeContract {
   [IPC.events.remove]: { args: [id: string]; result: EventsOutResult };
   [IPC.events.rotate]: { args: [id: string]; result: EventsOutResult };
   [IPC.events.test]: { args: [id: string]; result: { ok: boolean; message: string } };
+  [IPC.events.copySecret]: { args: [secret: string]; result: boolean };
   [IPC.drop.view]: { args: []; result: DropFolderView };
   [IPC.drop.pickFolder]: { args: []; result: DropFolderResult | null };
   [IPC.drop.setOn]: { args: [on: boolean]; result: DropFolderResult };
