@@ -80,7 +80,7 @@ The library holds everything on this computer that can go on the screens: presen
 
 ## Media
 
-**What it is.** The **Media** tab: every picture, video and sound you imported, each with its length and a small picture. Above them, **Video inputs** lists this computer's cameras once one is named.
+**What it is.** The **Media** tab: every picture, video and sound you imported, each with its length and a small picture, and the day a video or sound last played. Above them, **Video inputs** lists this computer's cameras once one is named.
 
 **When you would use it.** To put a picture, video or camera straight up, or to change a file's settings.
 
@@ -110,7 +110,7 @@ The library holds everything on this computer that can go on the screens: presen
 
 ## Media information
 
-**What it is.** A small window that says what a video or a sound file holds: its container, length and size, its picture's codec, profile, bit depth, size and frame rate, each sound track with its language, and how Drashti plays it.
+**What it is.** A small window that says what a video or a sound file holds: its container, length and size, its picture's codec, profile, bit depth, size and frame rate, each sound track with its language, how Drashti plays it, and how often it has played.
 
 **When you would use it.** When a file does not play as you expect, or someone asks what kind of file it is.
 

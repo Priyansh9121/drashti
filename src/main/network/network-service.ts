@@ -170,12 +170,13 @@ export interface NetworkDeps {
   mirror: MirrorReads;
   /**
    * Play the audio playlist (music-service.ts): the one a phone chose (Session 54, D5), or on from a pause, or the
-   * one played last.
+   * one played last; from the track asked, or with none asked (a phone's Play, alpha.20) on from the track it was
+   * stopped on part-way.
    */
   playMusic(
     who: string,
     playlistId: string | null,
-    index: number,
+    index: number | undefined,
   ): { ok: true } | { ok: false; message: string };
   /** Audio under LIVE, backed by the same music service as the operator window. */
   audio?: AudioActs;
@@ -1159,8 +1160,14 @@ export class NetworkService implements EngineTransport {
         const playlistId = args['playlistId'] ?? null;
         const play = musicPlaySchema.safeParse({ playlistId, index: args['index'] });
         if (!play.success) return deny(400, 'Which audio playlist?');
-        // A phone names its track, or plays from the first, as before alpha.20's play-on.
-        const played = this.deps.playMusic(who, play.data.playlistId, play.data.index ?? 0);
+        // A phone's own Play says playOn (alpha.20): no track asked, so a playlist stopped part-way plays on from its
+        // track, as the window's Play does. Without it, the API as api.md says: from the track named, or the first.
+        const playOn = args['playOn'] === true;
+        const played = this.deps.playMusic(
+          who,
+          play.data.playlistId,
+          play.data.index ?? (playOn ? undefined : 0),
+        );
         return played.ok ? ok({ playing: true }) : deny(409, played.message);
       }
       case 'music.audio':
