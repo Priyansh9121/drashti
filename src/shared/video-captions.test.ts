@@ -141,3 +141,23 @@ it('bounds the normalized timeline when many long cues overlap, before it travel
   expect(read.cues).toEqual([]);
   expect(read.problem).toBeTruthy();
 });
+
+describe('a video’s captions with a delay (alpha.20, Sound and picture…)', () => {
+  const cues = [
+    { startMs: 1000, endMs: 2000, text: 'Placeholder one' },
+    { startMs: 2000, endMs: 3000, text: 'Placeholder two' },
+  ];
+
+  it('shows each line that much later (or earlier), while the video is between its points', () => {
+    expect(captionAt(cues, 1200)?.text).toBe('Placeholder one');
+    // +500 ms: at 1.2 s nothing yet; at 1.6 s the first line; at 2.2 s still the first.
+    expect(captionAt(cues, 1200, undefined, 500)).toBeNull();
+    expect(captionAt(cues, 1600, undefined, 500)?.text).toBe('Placeholder one');
+    expect(captionAt(cues, 2200, undefined, 500)?.text).toBe('Placeholder one');
+    expect(captionAt(cues, 2600, undefined, 500)?.text).toBe('Placeholder two');
+    // −500 ms: the second line from 1.5 s.
+    expect(captionAt(cues, 1600, undefined, -500)?.text).toBe('Placeholder two');
+    // Outside the video's own points: none, whatever the delay.
+    expect(captionAt(cues, 1600, { startMs: 1700, endMs: null }, 500)).toBeNull();
+  });
+});

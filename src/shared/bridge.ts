@@ -1,3 +1,4 @@
+import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
 import type { ControllerArea, ControllerReply, ControllerRequest } from './controller-actions';
@@ -770,6 +771,13 @@ export interface DrashtiBridge {
     resumePoint(mediaId: string): Promise<ResumePoint | null>;
     /** Snapshot (alpha.20): the frame of a video on the screens now, a PNG in Media; or why not. */
     snapshot(playing: PlayingRef): Promise<SnapshotResult>;
+    /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays; null for anything else. */
+    playback(mediaId: string): Promise<PlaybackSettings | null>;
+    /** Keep them (heard at once wherever it plays). */
+    setPlayback(
+      mediaId: string,
+      settings: PlaybackSettings,
+    ): Promise<{ ok: true } | { ok: false; message: string }>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
