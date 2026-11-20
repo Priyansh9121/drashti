@@ -117,6 +117,34 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 
 ![Markers under the live picture](../screenshots/marker-jumps.png)
 
+## A-B repeat
+
+**What it is.** A part of the background video or the sound going round, from A to B, on every screen and in the hall together.
+
+**When you would use it.** For a verse to play again and again while people learn it, or a short loop behind a talk.
+
+**How:**
+
+1. Play it to where the part starts, then press **⋯** at the end of its time bar, and **Repeat from here (A)**.
+2. Play it on to where the part ends, then **⋯**, **…to here (B)**.
+3. **⋯**, **Stop repeating A-B** plays on from where it is.
+
+![The time bars under Back and Next: a background video and the music](../screenshots/time-bar.png)
+
+## One frame back and on, and Snapshot
+
+**What it is.** While a video is paused: the frame before or after it on every screen, and **Snapshot**, which keeps the frame on the screens as a picture in **Media**.
+
+**When you would use it.** To stop on exactly the right picture, or to keep it for a slide later.
+
+**How:**
+
+1. Pause the video with its time bar's **Pause**.
+2. Press **⋯** at the end of its bar, then **One frame back** or **One frame on**, or press **Alt** with **←** or **→** on the bar.
+3. **⋯**, **Snapshot** puts that frame in **Media**; **Undo** takes it away.
+
+![The time bars under Back and Next: a background video and the music](../screenshots/time-bar.png)
+
 ## Zooming a picture
 
 **What it is.** A picture on the screens zoomed and moved from **LIVE**. Every screen follows smoothly, together.
