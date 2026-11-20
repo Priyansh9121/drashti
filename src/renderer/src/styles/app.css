@@ -46,6 +46,7 @@
   /* A strong secondary's edge (Clear all): 3:1 wherever controls sit. */
   --color-primary-edge: #c9c9d1;
   --color-live: #d42a31; /* on the screens now: always with a LIVE label (white text 5:1) */
+  --color-live-edge: #d42a31; /* LIVE's frame and lit dots (3:1): lighter on the comfortable dark appearances */
   --color-warning: #f2b23e; /* missing, can't play, needs a look */
   --color-warning-bg: #3b2a0a;
   --color-warning-fg: #ffd88f;
@@ -322,6 +323,7 @@ body.output {
   --color-on-primary: #ffffff;
   --color-primary-edge: #b0448c;
   --color-live: #d42a31;
+  --color-live-edge: #d42a31;
   --color-warning: #f2b23e;
   --color-warning-bg: #3b2a0a;
   --color-warning-fg: #ffd88f;
@@ -381,6 +383,7 @@ body.web {
   --color-on-primary: #0b0b0e;
   --color-primary-edge: #c9c9d1;
   --color-live: #d42a31;
+  --color-live-edge: #d42a31;
   --color-warning: #f2b23e;
   --color-warning-bg: #3b2a0a;
   --color-warning-fg: #ffd88f;
