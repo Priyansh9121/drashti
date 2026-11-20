@@ -1,3 +1,4 @@
+import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
 import type { ControllerArea, ControllerReply, ControllerRequest } from './controller-actions';
@@ -671,6 +672,10 @@ export interface DrashtiBridge {
     remove(id: string): Promise<{ ok: true } | { ok: false; message: string }>;
     /** Interface motion: Calm, Lively or Off (Session 40). */
     setMotion(motion: InterfaceMotion): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Moving: On or Off (Session 60). */
+    setMoving(on: boolean): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Star or unstar an appearance (Session 60). */
+    setFavourite(id: string, on: boolean): Promise<{ ok: true } | { ok: false; message: string }>;
     /** View › Appearance… was chosen. */
     onOpen(listener: () => void): () => void;
     /** The appearance or the motion changed (every window draws it by itself; the Appearance window shows it). */
@@ -767,6 +772,13 @@ export interface DrashtiBridge {
     resumePoint(mediaId: string): Promise<ResumePoint | null>;
     /** Snapshot (alpha.20): the frame of a video on the screens now, a PNG in Media; or why not. */
     snapshot(playing: PlayingRef): Promise<SnapshotResult>;
+    /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays; null for anything else. */
+    playback(mediaId: string): Promise<PlaybackSettings | null>;
+    /** Keep them (heard at once wherever it plays). */
+    setPlayback(
+      mediaId: string,
+      settings: PlaybackSettings,
+    ): Promise<{ ok: true } | { ok: false; message: string }>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;

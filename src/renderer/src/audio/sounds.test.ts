@@ -524,3 +524,68 @@ describe('which of the operator’s two levels each sound plays under (X33)', ()
     ]);
   });
 });
+
+describe('Sound and picture… (alpha.20): a file’s tone and its sound’s delay', () => {
+  const bg = (sound: EngineState['sound']): EngineState => ({
+    ...state({
+      background: { kind: 'media', mediaId: 'v', media: 'video', fit: 'fit', loop: false, startedAt: 1000 },
+    }),
+    ...(sound ? { sound } : {}),
+  });
+
+  it('plays a file with neither exactly as before', () => {
+    const [plain] = soundsOf(bg(undefined));
+    expect(plain).not.toHaveProperty('tone');
+    expect(plain).not.toHaveProperty('seek');
+    expect(plain?.startedAt).toBe(1000);
+  });
+
+  it('carries its tone, and moves its sound by its delay with a jump of its own, its key and start kept', () => {
+    const tone = { bassDb: 6, trebleDb: -3, voice: true };
+    const [later] = soundsOf(
+      bg({ stepsAside: true, gains: {}, silent: [], tones: { v: tone }, delays: { v: 200 } }),
+    );
+    expect(later).toMatchObject({
+      key: 'background:v@1000',
+      startedAt: 1000,
+      tone,
+      seek: { at: 1200, toMs: 0 },
+    });
+    // Earlier than the picture, from a jump already made: the jump moved by the delay.
+    const moved = state({
+      background: {
+        kind: 'media',
+        mediaId: 'v',
+        media: 'video',
+        fit: 'fit',
+        loop: false,
+        startedAt: 1000,
+        clip: { startMs: 5000, endMs: null },
+        seek: { at: 4000, toMs: 9000 },
+      },
+    });
+    const [earlier] = soundsOf({
+      ...moved,
+      sound: { stepsAside: true, gains: {}, silent: [], delays: { v: -150 } },
+    });
+    expect(earlier?.seek).toEqual({ at: 3850, toMs: 9000 });
+    // No jump yet, but start and end points: from its start point.
+    const [clipped] = soundsOf({
+      ...moved,
+      layers: {
+        ...moved.layers,
+        background: { ...(moved.layers.background as object), seek: undefined },
+      } as EngineState['layers'],
+      sound: { stepsAside: true, gains: {}, silent: [], delays: { v: 300 } },
+    });
+    expect(clipped?.seek).toEqual({ at: 1300, toMs: 5000 });
+  });
+
+  it('a delay changed while it plays is a move the players follow (the one aimed jump)', () => {
+    const [was] = soundsOf(bg({ stepsAside: true, gains: {}, silent: [], delays: { v: 100 } }));
+    const [now] = soundsOf(bg({ stepsAside: true, gains: {}, silent: [], delays: { v: 300 } }));
+    expect(was && now ? soundMoved(was, now) : null).toBe(true);
+    const [same] = soundsOf(bg({ stepsAside: true, gains: {}, silent: [], delays: { v: 300 } }));
+    expect(now && same ? soundMoved(now, same) : null).toBe(false);
+  });
+});

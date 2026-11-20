@@ -1,3 +1,4 @@
+import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
 import type { ControllerArea, ControllerReply, ControllerRequest, EngineSeen } from './controller-actions';
@@ -611,6 +612,9 @@ export const IPC = {
     resumePoint: 'media:resume-point',
     /** Snapshot (alpha.20, the time bar's ⋯): the frame on the screens, a PNG in Media (operator window, Pro Mode). */
     snapshot: 'media:snapshot',
+    /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays, read and kept (operator window). */
+    playback: 'media:playback',
+    setPlayback: 'media:set-playback',
     /**
      * A picture's look (Session 26e): read one, every one (the thumbnails), keep one (the Picture editor),
      * and keep the live zoom as the picture's (Keep this zoom).
@@ -748,6 +752,10 @@ export const IPC = {
     remove: 'appearance:remove',
     /** Interface motion (Session 40): calm, lively or off. */
     setMotion: 'appearance:set-motion',
+    /** Moving: On or Off (Session 60): whether a live appearance's touch moves at all. */
+    setMoving: 'appearance:set-moving',
+    /** Star or unstar an appearance (Session 60). */
+    setFavourite: 'appearance:set-favourite',
     /** main -> operator: View › Appearance… was chosen. */
     open: 'appearance:open',
   },
@@ -1359,6 +1367,11 @@ export interface InvokeContract {
     args: [motion: InterfaceMotion];
     result: { ok: true } | { ok: false; message: string };
   };
+  [IPC.appearance.setMoving]: { args: [on: boolean]; result: { ok: true } | { ok: false; message: string } };
+  [IPC.appearance.setFavourite]: {
+    args: [id: string, on: boolean];
+    result: { ok: true } | { ok: false; message: string };
+  };
   [IPC.pictures.job]: { args: []; result: PdfJob | null };
   [IPC.pictures.page]: { args: [page: PdfPage]; result: PdfPageReceipt };
   [IPC.pictures.done]: { args: [done: PdfDone]; result: null };
@@ -1670,6 +1683,11 @@ export interface InvokeContract {
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
   [IPC.media.resumePoint]: { args: [mediaId: string]; result: ResumePoint | null };
   [IPC.media.snapshot]: { args: [playing: PlayingRef]; result: SnapshotResult };
+  [IPC.media.playback]: { args: [mediaId: string]; result: PlaybackSettings | null };
+  [IPC.media.setPlayback]: {
+    args: [mediaId: string, settings: PlaybackSettings];
+    result: { ok: true } | { ok: false; message: string };
+  };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
   [IPC.media.remove]: { args: [mediaIds: string[]]; result: MediaRemovalResult };

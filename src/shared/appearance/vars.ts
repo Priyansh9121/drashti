@@ -48,6 +48,9 @@ export function appearanceVars(a: Appearance): Record<string, string> {
     for (const name of ZONE_TOKENS) vars[`--zone-${zone}-${name}`] = a.zones[zone][name];
   vars['--header-image'] = headerImage(a);
   vars['--strip-image'] = stripImage(a);
+  // Session 60: a live look's touch colour (measured with the header's words, rules.ts) and the band's light.
+  vars['--look-touch'] = a.moving?.touch ?? 'transparent';
+  vars['--look-light'] = tint('#ffffff', a.base === 'dark' ? 0.5 : 0.75);
   const d = DEPTH[a.base];
   const white = (alpha: number) => tint('#ffffff', alpha);
   Object.assign(vars, {

@@ -165,6 +165,11 @@ export class WarmUpChoices {
     return skip;
   }
 
+  /** Whether Chromium's GPU process has said how it draws (Session 60: a live appearance waits for it). */
+  get hasSaid(): boolean {
+    return this.said;
+  }
+
   /** An output window closed. */
   forget(id: number): void {
     this.given.delete(id);

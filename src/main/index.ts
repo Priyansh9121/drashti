@@ -1,3 +1,4 @@
+import { type PlaybackSettings, playbackSettingsSchema, toneOf } from '../shared/playback-settings';
 import { fileProblem } from './plain-errors';
 import { importM3u, M3uError, writeM3u, type M3uExportRow } from './playlists/m3u';
 import { playlistPlayOptionsSchema } from '../shared/playlist-playback';
@@ -307,7 +308,7 @@ import { createPdfCopyWindow } from './library/pdf-copy-window';
 import { openGalleryWindow } from './windows/gallery-window';
 import { AppearanceService } from './appearance/appearance-service';
 import { ownSchema } from './appearance/appearance-file';
-import { FOLLOW } from '../shared/appearance/appearances';
+import { familyOf, FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList, stopTimes } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
@@ -606,12 +607,16 @@ const warmUps = new WarmUpChoices({
  */
 const gpuSaidLate = !packaged() && sw('DRASHTI_TEST_GPU_SAID') === 'late';
 app.on('gpu-info-update', () => {
-  if (!gpuSaidLate) warmUps.gpuSaid();
+  if (gpuSaidLate) return;
+  warmUps.gpuSaid();
+  // A live appearance's touch waits for this word (Session 60).
+  appearance.chipMayHaveChanged();
 });
 if (gpuSaidLate)
   (globalThis as { drashtiTestGpuSaid?: () => void }).drashtiTestGpuSaid = () => {
     setImmediate(() => {
       warmUps.gpuSaid();
+      appearance.chipMayHaveChanged();
     });
   };
 
@@ -762,7 +767,13 @@ const ownFieldsSchema = ownSchema.omit({ id: true }).extend({
 });
 const appearance = new AppearanceService({
   userData: app.getPath('userData'),
+  // Whether Chromium draws with a graphics chip, once its GPU process has said (Session 60: a live look waits for it).
+  chip: () => (warmUps.hasSaid ? (warmUps.drawsWithoutChip() ? 'no' : 'yes') : 'unknown'),
   startIn: sw('DRASHTI_TEST_APPEARANCE'),
+  // Tests only (never a packaged Drashti): how many logical cores this computer has, for the moving looks' pause.
+  ...(!packaged() && /^[0-9]{1,3}$/u.test(sw('DRASHTI_TEST_CORES') ?? '')
+    ? { cores: Number(sw('DRASHTI_TEST_CORES')) }
+    : {}),
   say: (line) => {
     log.info(line);
   },
@@ -1764,6 +1775,17 @@ function start(): void {
   let inputRenamed: (from: string, to: string) => () => void = () => () => undefined;
   const videoCaptionsRepo = new VideoCaptionsRepo(db);
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
+  // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
+  const playbackRepo = new MediaRepo(db);
+  const ownPlayback = new Map<string, PlaybackSettings>();
+  const playbackOfFile = (mediaId: string): PlaybackSettings => {
+    let kept = ownPlayback.get(mediaId);
+    if (!kept) {
+      kept = playbackRepo.playbackOf(mediaId);
+      ownPlayback.set(mediaId, kept);
+    }
+    return kept;
+  };
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
@@ -1783,7 +1805,16 @@ function start(): void {
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
         const track = videoCaptionsRepo.chosen(mediaId);
-        return track ? { track, size: videoCaptionBand.size, place: videoCaptionBand.place } : null;
+        // Sound and picture… (alpha.20): the captions' own delay against the picture.
+        const delayMs = playbackOfFile(mediaId).captionDelayMs;
+        return track
+          ? {
+              track,
+              size: videoCaptionBand.size,
+              place: videoCaptionBand.place,
+              ...(delayMs === 0 ? {} : { delayMs }),
+            }
+          : null;
       },
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
       pictureLook: (mediaId) => pictureLook(mediaId),
@@ -1804,6 +1835,11 @@ function start(): void {
       stepsAside: () => stepsAside,
       // The operator's Audio and Video levels and mutes (X33).
       levels: () => soundLevels.levels(),
+      // Sound and picture… (alpha.20): each file's own tone and its sound's delay.
+      playbackOf: (mediaId) => {
+        const own = playbackOfFile(mediaId);
+        return { tone: toneOf(own), soundDelayMs: own.soundDelayMs };
+      },
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
@@ -7142,6 +7178,30 @@ function start(): void {
   });
   // Its Copy: the window's words on the clipboard, by the main process (copyWords).
   handle(IPC.media.copyDetails, (e, text) => copyWords(e, text));
+  // Sound and picture… (alpha.20; the owner's "Yes, all A" to Q60-39 P2 A and P6 (a) A): a video's or a sound's own
+  // tone and delays, kept with it; the engine stamps them again at once, so the hall and the stream follow. Pro Mode's.
+  handle(IPC.media.playback, (e, mediaId) =>
+    fromOperator(e) && typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
+      ? playbackOfFile(mediaId)
+      : null,
+  );
+  handle(IPC.media.setPlayback, (e, mediaId, settings) => {
+    const parsed = playbackSettingsSchema.safeParse(settings);
+    if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId) || !parsed.success)
+      return {
+        ok: false as const,
+        message: 'Those settings could not be kept: open Sound and picture… again and set them once more.',
+      };
+    if (!media.setPlayback(mediaId, parsed.data))
+      return {
+        ok: false as const,
+        message: 'Only a video or a sound has these settings: choose one in Media.',
+      };
+    ownPlayback.set(mediaId, parsed.data);
+    engine.refreshSound();
+    engine.refreshVideoCaptions();
+    return { ok: true as const };
+  });
   handle(IPC.audio.getOutput, () => audioOutput.status);
   handle(IPC.audio.setOutput, (e, device) =>
     fromOperator(e) ? audioOutput.choose(device) : audioOutput.status,
@@ -8558,6 +8618,21 @@ function start(): void {
       ? { ok: true as const }
       : { ok: false as const, message: 'Choose Calm, Lively or Off.' };
   });
+  // Moving: On or Off (Session 60, the owner's safety rule), this computer's, as the appearance is.
+  handle(IPC.appearance.setMoving, (e, on) => {
+    if (!fromOperator(e) || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can turn moving on or off.' };
+    appearance.setMoving(on);
+    return { ok: true as const };
+  });
+  // Favourites (Session 60): an appearance starred or unstarred in the Appearance window.
+  handle(IPC.appearance.setFavourite, (e, id, on) => {
+    if (!fromOperator(e) || typeof id !== 'string' || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can star an appearance.' };
+    return appearance.setFavourite(id, on)
+      ? { ok: true as const }
+      : { ok: false as const, message: 'That appearance is no longer here.' };
+  });
   // The menu's ticks follow the appearance shown (Follow the computer's changes too).
   appearance.onChanged(() => {
     rebuildMenu();
@@ -8705,7 +8780,7 @@ function start(): void {
     appearance: {
       choices: [
         { id: FOLLOW, label: 'Follow the Computer' },
-        ...appearance.list().map((a) => ({ id: a.id, label: a.name })),
+        ...appearance.list().map((a) => ({ id: a.id, label: a.name, family: familyOf(a) })),
       ],
       chosen: appearance.choice,
       choose: (id) => {
