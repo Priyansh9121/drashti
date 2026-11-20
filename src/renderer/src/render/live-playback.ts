@@ -105,10 +105,14 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     const expected = (now - j.startAt) / 1000;
     // For the tests and Save Diagnostics: where it is against where the engine's time has it.
     el.dataset['offset'] = (el.currentTime - expected).toFixed(3);
-    // Its moment still to come: its first frame held until then.
+    // Its moment still to come: it plays at once all the same (a player held paused before it ever played failed as it
+    // began, code 4, CI x54-1120-223559-2185), and is held there, paused, once it has played (a frame or two).
     if (expected < 0) {
-      if (!el.paused) el.pause();
-      later(-expected * 1000, check);
+      if (playedAt === null) play();
+      else {
+        if (!el.paused && el.currentTime > playedFrom) el.pause();
+        later(-expected * 1000, check);
+      }
       return;
     }
     const offset = el.currentTime - expected;
@@ -133,9 +137,10 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     }
   };
   const failed = () => {
-    // For the tests and Save Diagnostics: how it failed, in Chromium's own words, and where it was.
-    el.dataset['error'] =
-      `${String(el.error?.code ?? 0)} ${el.error?.message ?? ''} at ${el.currentTime.toFixed(2)} s`;
+    // For the tests and Save Diagnostics only, never shown to anyone: how it failed (its code, and Chromium's own words
+    // apart) and where it was.
+    el.dataset['errorCode'] = `${String(el.error?.code ?? 0)} at ${el.currentTime.toFixed(2)} s`;
+    el.dataset['errorWords'] = el.error?.message ?? '';
     options.onError?.();
   };
   // Its time moving on, played: its first frame is in (see frameIn).

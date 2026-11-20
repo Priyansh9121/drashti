@@ -117,7 +117,8 @@ class LinkPlayers {
         if (this.off) return;
         // For the tests and Save Diagnostics: the last player that gave up, and how.
         this.root.dataset['linkError'] =
-          `${player === this.shown ? 'shown' : 'joining'}: ${el.dataset['error'] ?? ''}`;
+          `${player === this.shown ? 'shown' : 'joining'}: ${el.dataset['errorCode'] ?? ''}`;
+        this.root.dataset['linkErrorWords'] = el.dataset['errorWords'] ?? '';
         if (this.shown === player) {
           // Its last picture on the canvas, and the player that gave up out of sight over it.
           this.keep();
