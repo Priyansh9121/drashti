@@ -56,3 +56,24 @@ export class CannotPlay {
     });
   }
 }
+
+/** What a paired computer says of a showing its screen could not play (Q60-44). */
+export interface NodeCannotPlayReport {
+  screenId: string;
+  mediaId: string;
+  startedAt: number;
+  code: number;
+  words: string;
+}
+
+/** A paired computer's screen that could not play a video (Q60-44): what to tell, once for each showing. */
+export class NodeCannotPlay {
+  heard(
+    _node: { id: string; name: string },
+    _screen: string,
+    _file: { name: string },
+    _report: NodeCannotPlayReport,
+  ): { notice: string; log: string } | null {
+    return null;
+  }
+}
