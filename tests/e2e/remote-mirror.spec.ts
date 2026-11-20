@@ -305,6 +305,17 @@ test('from a phone, as from the operator window: media with its skips, the stage
     await p.getByTestId('remote-music').getByRole('button', { name: 'Pause music' }).click();
     await expect.poll(async () => (await layers(win)).audio?.pausedAtMs).not.toBeUndefined();
     await dispatch(win, { type: 'clearLayer', layer: 'audio' });
+    // Cleared part-way through its second track (alpha.20, the owner's "Yes, all A" to Q60-39 P1): the phone's Play
+    // plays on from that track, as the window's Play does.
+    await expect.poll(async () => (await layers(win)).audio).toBeNull();
+    await tunes.getByRole('button', { name: 'Play Placeholder tunes' }).click();
+    await expect
+      .poll(async () => {
+        const audio = (await layers(win)).audio;
+        return { playlist: audio?.music?.playlistId, index: audio?.music?.index };
+      })
+      .toEqual({ playlist: music, index: 1 });
+    await dispatch(win, { type: 'clearLayer', layer: 'audio' });
 
     // Next in words beside its picture, as the window's caption says it (D5 review): until then a phone showed only
     // the next slide's picture, hidden from screen readers.
