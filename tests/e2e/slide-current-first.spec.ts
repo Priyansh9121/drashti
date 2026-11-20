@@ -216,7 +216,8 @@ function decodeLog({ live, next }: { live: string; next: string[] }): void {
   // eslint-disable-next-line @typescript-eslint/unbound-method -- called below with the image as its receiver
   const native = HTMLImageElement.prototype.decode;
   HTMLImageElement.prototype.decode = function (this: HTMLImageElement) {
-    const mediaId = /^drashti-media:\/\/(?:media|display|sharp)\/([^?#/]+)/iu.exec(this.src || this.currentSrc)?.[1] ?? '';
+    const mediaId =
+      /^drashti-media:\/\/(?:media|display|sharp)\/([^?#/]+)/iu.exec(this.src || this.currentSrc)?.[1] ?? '';
     const entry: Decode = {
       mediaId,
       role: mediaId === live ? 'live' : next.includes(mediaId) ? 'next' : 'other',

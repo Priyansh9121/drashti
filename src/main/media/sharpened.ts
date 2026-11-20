@@ -323,13 +323,20 @@ export class SharpenedCopies {
     }
   }
 
-  get working(): boolean { return this.reading || this.current !== null || (this.win !== null && !this.finishing); }
-  activityChanged(): void { if (this.queue.length > 0) this.start(); }
+  get working(): boolean {
+    return this.reading || this.current !== null || (this.win !== null && !this.finishing);
+  }
+  activityChanged(): void {
+    if (this.queue.length > 0) this.start();
+  }
 
   private start(): void {
     if (this.closed) return;
     if (this.deps.canWork?.() === false) {
-      this.retryStart ??= setTimeout(() => { this.retryStart = null; this.start(); }, 1000);
+      this.retryStart ??= setTimeout(() => {
+        this.retryStart = null;
+        this.start();
+      }, 1000);
       return;
     }
     if (this.win && !this.finishing) return;

@@ -492,14 +492,35 @@ describe('keeping playback in step', () => {
 });
 
 it('serves the exact display rendition and leaves the original role unchanged, including ranges and containment', async () => {
-  const key = `p1-${SHA.slice(0,32)}-1920x1080`;
-  const local = { ...deps, display: (sha: string, asked: string) => sha === SHA && asked === key ? `sharpened/${SHA}-50.png` : null };
-  expect(mediaRequestOf(displayUrl('image',key))).toEqual({what:'display',mediaId:'image',key});
-  expect(displayOfId(displayMediaId('image',key))).toEqual({mediaId:'image',key});
-  expect(new Uint8Array(await (await handleMediaRequest(new Request(displayUrl('image',key)),local)).arrayBuffer())).toEqual(COPY);
-  expect(new Uint8Array(await (await handleMediaRequest(new Request(mediaUrl('image')),local)).arrayBuffer())).toEqual(BYTES);
-  const range = await handleMediaRequest(new Request(displayUrl('image',key),{headers:{Range:'bytes=1-3'}}),local);
-  expect(range.status).toBe(206);expect(new Uint8Array(await range.arrayBuffer())).toEqual(COPY.subarray(1,4));
-  expect((await handleMediaRequest(new Request(displayUrl('image',key+'wrong')),local)).status).toBe(404);
-  expect((await handleMediaRequest(new Request(displayUrl('image',key)),{...local,display:()=> '../outside/secret.txt'})).status).toBe(404);
+  const key = `p1-${SHA.slice(0, 32)}-1920x1080`;
+  const local = {
+    ...deps,
+    display: (sha: string, asked: string) =>
+      sha === SHA && asked === key ? `sharpened/${SHA}-50.png` : null,
+  };
+  expect(mediaRequestOf(displayUrl('image', key))).toEqual({ what: 'display', mediaId: 'image', key });
+  expect(displayOfId(displayMediaId('image', key))).toEqual({ mediaId: 'image', key });
+  expect(
+    new Uint8Array(
+      await (await handleMediaRequest(new Request(displayUrl('image', key)), local)).arrayBuffer(),
+    ),
+  ).toEqual(COPY);
+  expect(
+    new Uint8Array(await (await handleMediaRequest(new Request(mediaUrl('image')), local)).arrayBuffer()),
+  ).toEqual(BYTES);
+  const range = await handleMediaRequest(
+    new Request(displayUrl('image', key), { headers: { Range: 'bytes=1-3' } }),
+    local,
+  );
+  expect(range.status).toBe(206);
+  expect(new Uint8Array(await range.arrayBuffer())).toEqual(COPY.subarray(1, 4));
+  expect((await handleMediaRequest(new Request(displayUrl('image', key + 'wrong')), local)).status).toBe(404);
+  expect(
+    (
+      await handleMediaRequest(new Request(displayUrl('image', key)), {
+        ...local,
+        display: () => '../outside/secret.txt',
+      })
+    ).status,
+  ).toBe(404);
 });

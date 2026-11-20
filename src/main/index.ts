@@ -1938,12 +1938,22 @@ function start(): void {
     canWork: () => nothingUp(engine.current.layers) && !displayOnAir(),
     open: (gone) => {
       const win = createSharpenWindow(gone, true);
-      return { id: win.webContents.id, destroy: () => { if (!win.isDestroyed()) win.destroy(); } };
+      return {
+        id: win.webContents.id,
+        destroy: () => {
+          if (!win.isDestroyed()) win.destroy();
+        },
+      };
     },
-    changed: () => { looksChanged(); wantedMedia?.invalidate(); nodeService?.libraryChanged(); },
+    changed: () => {
+      looksChanged();
+      wantedMedia?.invalidate();
+      nodeService?.libraryChanged();
+    },
     log: (message) => log.info(message),
   });
-  const refreshDisplayCopies = () => db === null ? Promise.resolve() : displayCopies.refresh(media.displayCandidates());
+  const refreshDisplayCopies = () =>
+    db === null ? Promise.resolve() : displayCopies.refresh(media.displayCandidates());
   displayWorkerBusy = () => displayCopies.working;
   stops.add('display copies', () => displayCopies.close());
   handle(IPC.displayCopies.next, (e) => {
@@ -2007,7 +2017,9 @@ function start(): void {
   const shownLook = (mediaId: string, look: PictureLook | null): PictureLook | null => {
     const sha = media.file(mediaId)?.sha256 ?? null;
     const file = sha ? displayCopies.ready(sha, look) : null;
-    const shown = file ? { ...(look ?? PLAIN), display: { key: file.key, width: file.width, height: file.height } } : look;
+    const shown = file
+      ? { ...(look ?? PLAIN), display: { key: file.key, width: file.width, height: file.height } }
+      : look;
     const step = look ? sharpenStep(look.sharpness) : 0;
     const ready = sharpened.readyStep(sha);
     return step > 0 && ready === step ? { ...(shown ?? PLAIN), copy: step } : shown;
@@ -2026,12 +2038,15 @@ function start(): void {
   const shownLooks = (): Record<string, PictureLook> => {
     const looks = media.looks();
     for (const candidate of media.displayCandidates()) {
-      if (!(candidate.mediaId in looks) && displayCopies.ready(candidate.sha256, candidate.look)) looks[candidate.mediaId] = candidate.look ?? PLAIN;
+      if (!(candidate.mediaId in looks) && displayCopies.ready(candidate.sha256, candidate.look))
+        looks[candidate.mediaId] = candidate.look ?? PLAIN;
     }
-    return Object.fromEntries(Object.entries(looks).flatMap(([id, look]) => {
-      const shown = shownLook(id, look);
-      return shown ? [[id, shown]] : [];
-    }));
+    return Object.fromEntries(
+      Object.entries(looks).flatMap(([id, look]) => {
+        const shown = shownLook(id, look);
+        return shown ? [[id, shown]] : [];
+      }),
+    );
   };
   pictureLook = (mediaId) => screenLook(mediaId);
   // Which pictures can draw no see-through pixel (X11, media/see-through.ts), only where Chromium draws without a
@@ -2529,7 +2544,11 @@ function start(): void {
   };
   audienceScreenSize = () => {
     const all = audienceDisplaySizes();
-    return all.reduce<PixelSize | null>((largest, size) => !largest || size.width * size.height > largest.width * largest.height ? size : largest, null);
+    return all.reduce<PixelSize | null>(
+      (largest, size) =>
+        !largest || size.width * size.height > largest.width * largest.height ? size : largest,
+      null,
+    );
   };
   stops.add('outputs', () => {
     manager.closeAll();
@@ -3328,7 +3347,10 @@ function start(): void {
   // No blurred copy is made while on air or recording (Session 55, D; Session 50's rule).
   blurOnAir = () => streaming.inUse() || testOnAir;
   displayOnAir = () => streaming.inUse() || testOnAir;
-  streamDisplaySize = () => { const { width, height } = streaming.context(); return { width, height }; };
+  streamDisplaySize = () => {
+    const { width, height } = streaming.context();
+    return { width, height };
+  };
   void refreshDisplayCopies();
 
   // ---- live captions (Session 55, Part 10) ------------------------------------
@@ -5994,8 +6016,11 @@ function start(): void {
     {
       display: (mediaId) => {
         const found = media.file(mediaId);
-        const copy = found?.sha256 && !found.missing ? displayCopies.ready(found.sha256, media.look(mediaId)) : null;
-        return copy ? { id: displayMediaId(mediaId, copy.key), sha256: copy.hash, bytes: copy.bytes, ext: copy.ext } : null;
+        const copy =
+          found?.sha256 && !found.missing ? displayCopies.ready(found.sha256, media.look(mediaId)) : null;
+        return copy
+          ? { id: displayMediaId(mediaId, copy.key), sha256: copy.hash, bytes: copy.bytes, ext: copy.ext }
+          : null;
       },
       want: (mediaId) => {
         const look = media.look(mediaId);
@@ -6017,8 +6042,11 @@ function start(): void {
         const display = displayOfId(copyId);
         if (display) {
           const found = media.file(display.mediaId);
-          const file = found?.sha256 && !found.missing ? displayCopies.fileOf(found.sha256, display.key) : null;
-          return file ? { path: join(mediaDir, file.path), sha256: file.hash, bytes: file.bytes, ext: file.ext } : null;
+          const file =
+            found?.sha256 && !found.missing ? displayCopies.fileOf(found.sha256, display.key) : null;
+          return file
+            ? { path: join(mediaDir, file.path), sha256: file.hash, bytes: file.bytes, ext: file.ext }
+            : null;
         }
         const blurOf = blurOfId(copyId);
         if (blurOf) {

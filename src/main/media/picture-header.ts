@@ -64,11 +64,10 @@ function jpegHeader(b: Buffer): PictureHeader | null {
 }
 
 function avifHeader(b: Buffer): PictureHeader | null {
-  let still = false;
-  let animated = false;
+  const brands = new Set<string>();
   let width = 0;
   let height = 0;
-  let turned = false;
+  const rotation = { turned: false };
   const walk = (start: number, end: number, depth: number) => {
     if (depth > 6) return;
     for (let p = start, n = 0; p + 8 <= end && n < 256; n++) {
@@ -88,8 +87,7 @@ function avifHeader(b: Buffer): PictureHeader | null {
         for (let q = at; q + 4 <= p + size; q += 4) {
           if (q === at + 4) continue;
           const brand = b.toString('ascii', q, q + 4);
-          still ||= brand === 'avif';
-          animated ||= brand === 'avis';
+          brands.add(brand);
         }
       } else if (type === 'ispe' && at + 12 <= p + size) {
         const w = b.readUInt32BE(at + 4);
@@ -98,15 +96,17 @@ function avifHeader(b: Buffer): PictureHeader | null {
           width = w;
           height = h;
         }
-      } else if (type === 'irot' && at < p + size) turned = ((b[at] ?? 0) & 1) === 1;
+      } else if (type === 'irot' && at < p + size) rotation.turned = ((b[at] ?? 0) & 1) === 1;
       else if (['meta', 'iprp', 'ipco'].includes(type))
         walk(at + (type === 'meta' ? 4 : 0), p + size, depth + 1);
       p += size;
     }
   };
   walk(0, b.length, 0);
-  if (!still && !animated) return null;
-  return turned ? result(height, width, 'png', animated) : result(width, height, 'png', animated);
+  if (!brands.has('avif') && !brands.has('avis')) return null;
+  return rotation.turned
+    ? result(height, width, 'png', brands.has('avis'))
+    : result(width, height, 'png', brands.has('avis'));
 }
 
 /** Read still dimensions/animation from bounded header bytes; malformed or incomplete metadata is unknown. */
@@ -150,8 +150,10 @@ export function pictureHeader(bytes: Uint8Array): PictureHeader | null {
       let width = 0;
       let height = 0;
       for (let p = 6, n = 0; n < count && p + 16 <= b.length; n++, p += 16) {
-        width = Math.max(width, b[p] || 256);
-        height = Math.max(height, b[p + 1] || 256);
+        const w = b[p] ?? 0;
+        width = Math.max(width, w === 0 ? 256 : w);
+        const h = b[p + 1] ?? 0;
+        height = Math.max(height, h === 0 ? 256 : h);
       }
       return result(width, height, 'png');
     }

@@ -154,5 +154,18 @@ describe("the sharpened copy's size", () => {
 it('retains every physical aspect for display renditions, including equally large portrait and landscape canvases', () => {
   const a = screen('landscape');
   const b = screen('portrait', { canvasWidth: 1080, canvasHeight: 1920 });
-  expect(audienceScreenSizes({ local: [{ screen: a, window: { width: 1920, height: 1080 } }, { screen: b, window: { width: 1080, height: 1920 } }], screens: [a,b], roleOf, nodes: [] })).toEqual([{ width: 1920, height: 1080 }, { width: 1080, height: 1920 }]);
+  expect(
+    audienceScreenSizes({
+      local: [
+        { screen: a, window: { width: 1920, height: 1080 } },
+        { screen: b, window: { width: 1080, height: 1920 } },
+      ],
+      screens: [a, b],
+      roleOf,
+      nodes: [],
+    }),
+  ).toEqual([
+    { width: 1920, height: 1080 },
+    { width: 1080, height: 1920 },
+  ]);
 });

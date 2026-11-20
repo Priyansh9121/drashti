@@ -37,11 +37,19 @@ describe('MediaStore', () => {
   it('waits for Main to prepare a new picture before it is staged as ready', async () => {
     const t = setup();
     let finish!: (result: { ok: false; message: string }) => void;
-    const prepareDisplay = vi.fn(() => new Promise<{ ok: false; message: string }>((done) => { finish = done; }));
+    const prepareDisplay = vi.fn(
+      () =>
+        new Promise<{ ok: false; message: string }>((done) => {
+          finish = done;
+        }),
+    );
     const store = new MediaStore(t.db, { dir: t.mediaDir, prepareDisplay });
     const path = t.file('Placeholder new.png', 'placeholder picture bytes');
     let settled = false;
-    const staged = store.stage(path).then((result) => { settled = true; return result; });
+    const staged = store.stage(path).then((result) => {
+      settled = true;
+      return result;
+    });
     await vi.waitFor(() => expect(prepareDisplay).toHaveBeenCalledOnce());
     expect(settled).toBe(false);
     finish({ ok: false, message: 'Could not prepare the display copy.' });

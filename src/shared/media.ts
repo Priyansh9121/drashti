@@ -204,9 +204,12 @@ export const displayUrl = (mediaId: string, key: string, attempt = 0): string =>
   `${MEDIA_SCHEME}://display/${mediaId}/${key}${attempt > 0 ? `?try=${String(attempt)}` : ''}`;
 export const displayMediaId = (mediaId: string, key: string): string => `${mediaId}_d${key}`;
 export function displayOfId(id: string): { mediaId: string; key: string } | null {
-  const at = id.lastIndexOf('_d');
-  const mediaId = id.slice(0, at); const key = id.slice(at + 2);
-  return at > 0 && MEDIA_ID_PATTERN.test(mediaId) && DISPLAY_KEY_PATTERN.test(key) ? { mediaId, key } : null;
+  const match = /^(.*)_d(p1-[a-f0-9]{32}-[1-9]\d{0,5}x[1-9]\d{0,5})$/u.exec(id);
+  const mediaId = match?.[1];
+  const key = match?.[2];
+  return mediaId && key && MEDIA_ID_PATTERN.test(mediaId) && DISPLAY_KEY_PATTERN.test(key)
+    ? { mediaId, key }
+    : null;
 }
 
 /**

@@ -284,10 +284,14 @@ export class ImportService {
           else this.deps.onMarked?.(m.mediaIds);
           break;
         case 'prepare-display': {
-          const prepared = this.deps.prepareDisplay?.(m.candidate, active.drawing.signal) ?? Promise.resolve<DisplayResult>({ ok: true, copy: null });
-          void prepared.catch((): DisplayResult => ({ ok: false, message: 'The picture could not be prepared.' })).then((result) => {
-            if (!settled) worker.postMessage({ type: 'display-prepared', requestId: m.requestId, result });
-          });
+          const prepared =
+            this.deps.prepareDisplay?.(m.candidate, active.drawing.signal) ??
+            Promise.resolve<DisplayResult>({ ok: true, copy: null });
+          void prepared
+            .catch((): DisplayResult => ({ ok: false, message: 'The picture could not be prepared.' }))
+            .then((result) => {
+              if (!settled) worker.postMessage({ type: 'display-prepared', requestId: m.requestId, result });
+            });
           break;
         }
         case 'draw-pdf': {

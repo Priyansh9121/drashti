@@ -109,12 +109,20 @@ describe('a slide image decoding hint passed through the existing render tree', 
   });
 });
 
-
 it('selects a prepared display rendition in its very first image, before any loading effect runs', () => {
   const key = `p1-${'ab'.repeat(16)}-1920x1080`;
-  const rendered = renderToStaticMarkup(createElement(ScreenPictures.Provider, {
-    value: { pictures: { [picture.mediaId]: { ...PLAIN, display: { key, width: 1920, height: 1080 } } }, liveZoom: null },
-  }, createElement(ElementView, { el: picture, imageDecoding: 'sync' })));
+  const rendered = renderToStaticMarkup(
+    createElement(
+      ScreenPictures.Provider,
+      {
+        value: {
+          pictures: { [picture.mediaId]: { ...PLAIN, display: { key, width: 1920, height: 1080 } } },
+          liveZoom: null,
+        },
+      },
+      createElement(ElementView, { el: picture, imageDecoding: 'sync' }),
+    ),
+  );
   expect(images(rendered)).toHaveLength(1);
   expect(rendered).toContain(displayUrl(picture.mediaId, key));
   expect(rendered).not.toContain(`drashti-media://media/${picture.mediaId}`);

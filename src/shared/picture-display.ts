@@ -23,7 +23,8 @@ export function displayPictureSize(
   if (!validSize(visible)) return null;
   const boxes = targets.filter(validSize);
   if (boxes.length === 0) boxes.push(DEFAULT_DISPLAY_SIZE);
-  const zoom = Math.min(ZOOM.max, Math.max(ZOOM.min, Number.isFinite(look?.zoom) ? look!.zoom : 1));
+  const requestedZoom = look?.zoom ?? 1;
+  const zoom = Math.min(ZOOM.max, Math.max(ZOOM.min, Number.isFinite(requestedZoom) ? requestedZoom : 1));
   const scale = Math.min(
     1,
     Math.max(

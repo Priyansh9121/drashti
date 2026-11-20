@@ -208,8 +208,11 @@ export function mediaRequestOf(url: string): MediaRequest | null {
   if (parsed.protocol !== `${MEDIA_SCHEME}:`) return null;
   if (what === 'display') {
     const parts = parsed.pathname.split('/');
-    const mediaId = parts[1] ?? ''; const key = parts[2] ?? '';
-    return parts.length === 3 && MEDIA_ID_PATTERN.test(mediaId) && DISPLAY_KEY_PATTERN.test(key) ? { what, mediaId, key } : null;
+    const mediaId = parts[1] ?? '';
+    const key = parts[2] ?? '';
+    return parts.length === 3 && MEDIA_ID_PATTERN.test(mediaId) && DISPLAY_KEY_PATTERN.test(key)
+      ? { what, mediaId, key }
+      : null;
   }
   if (what === 'sharp') {
     const m = /^\/([^/]+)\/(\d{1,3})$/u.exec(parsed.pathname);

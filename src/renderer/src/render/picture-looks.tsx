@@ -1,7 +1,15 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { create } from 'zustand';
-import { blurMediaId, blurredUrl, copyMediaId, sharpenedUrl, displayMediaId, displayUrl, mediaUrl } from '../../../shared/media';
+import {
+  blurMediaId,
+  blurredUrl,
+  copyMediaId,
+  sharpenedUrl,
+  displayMediaId,
+  displayUrl,
+  mediaUrl,
+} from '../../../shared/media';
 import type { EditLayout, LiveZoom, PictureLook, PixelSize } from '../../../shared/picture-look';
 import {
   copyStep,
@@ -168,7 +176,9 @@ export function useDisplayCopy(mediaId: string, look: PictureLook | null): Sharp
   const descriptor = look?.display;
   const id = descriptor ? displayMediaId(mediaId, descriptor.key) : mediaId;
   const attempt = useMediaAttempt(id);
-  const desired = descriptor ? { id, url: displayUrl(mediaId, descriptor.key, attempt) } : { id: mediaId, url: mediaUrl(mediaId, attempt) };
+  const desired = descriptor
+    ? { id, url: displayUrl(mediaId, descriptor.key, attempt) }
+    : { id: mediaId, url: mediaUrl(mediaId, attempt) };
   const [selection, setSelection] = useState(() => ({ mediaId, source: desired }));
   const current = selection.mediaId === mediaId ? selection.source : desired;
   if (selection.mediaId !== mediaId) setSelection({ mediaId, source: desired });

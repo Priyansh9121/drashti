@@ -38,7 +38,10 @@ async function sharpen(job: SharpenJobView): Promise<Uint8Array> {
 }
 
 async function run(): Promise<void> {
-  const service = new URLSearchParams(location.search).get('purpose') === 'display' ? window.drashti.displayCopies : window.drashti.sharpen;
+  const service =
+    new URLSearchParams(location.search).get('purpose') === 'display'
+      ? window.drashti.displayCopies
+      : window.drashti.sharpen;
   for (let job = await service.next(); job; job = await service.next()) {
     let made: Uint8Array | null;
     try {

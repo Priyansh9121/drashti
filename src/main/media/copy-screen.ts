@@ -41,7 +41,9 @@ export function audienceScreenSizes(input: {
   nodes: readonly NodeDisplays[];
 }): PixelSize[] {
   const sizes: PixelSize[] = [];
-  const consider = (drawn: PixelSize) => { sizes.push(drawn); };
+  const consider = (drawn: PixelSize) => {
+    sizes.push(drawn);
+  };
   for (const { screen, window } of input.local) {
     if (input.roleOf(screen.groupId) !== 'audience') continue;
     consider(drawnScreen(screen, window));
@@ -62,7 +64,6 @@ export function audienceScreenSizes(input: {
   }
   return sizes;
 }
-
 
 /** The existing sharpening policy still chooses the largest audience canvas by area. */
 export function largestAudienceScreen(input: Parameters<typeof audienceScreenSizes>[0]): PixelSize | null {
