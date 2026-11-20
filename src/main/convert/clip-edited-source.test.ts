@@ -3,10 +3,11 @@ import { PLAIN_VIDEO_EDIT, type VideoEditSnapshot } from '../../shared/video-edi
 import type { ClipExportRequest } from '../../shared/video-copies';
 import { copyFixture } from './video-copy-fixtures';
 import { editedClipSource, type EditedClipPlanner } from './clip-edited-source';
-let fixture: Awaited<ReturnType<typeof copyFixture>>;
-afterEach(() => fixture?.cleanup());
+let close: () => void = () => undefined;
+afterEach(() => close());
 it('captures the saved recipe and full-quality source, then uses the supplied S2 planner exactly once', async () => {
-  fixture = await copyFixture();
+  const fixture = await copyFixture();
+  close = () => fixture.cleanup();
   const edit: VideoEditSnapshot = {
     mediaId: 'source',
     revision: 2,
@@ -69,4 +70,15 @@ it('captures the saved recipe and full-quality source, then uses the supplied S2
   expect(args?.[args.indexOf('-filter_complex') + 1]).toContain('scale=1080:1920');
   expect(args?.slice(-2)).toEqual(['webm', 'placeholder output.webm']);
   expect(result.source.identity.length).toBeLessThanOrEqual(512);
+  const unknownDuration = editedClipSource(request, {
+    mediaDir: fixture.dir,
+    sourceId: () => 'source',
+    read: () => edit,
+    plan,
+    row: (id) => {
+      const row = fixture.media.about(id);
+      return row ? { ...row, durationMs: null } : null;
+    },
+  });
+  expect(unknownDuration).toMatchObject({ ok: true, source: { durationMs: null } });
 });

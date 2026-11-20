@@ -168,7 +168,8 @@ export class ProxyService {
       if (this.entries.size >= 10_000)
         return {
           ok: false,
-          message: 'Many videos have been checked. Restart Drashti before preparing more lighter copies.',
+          message:
+            'Many videos have been checked. Ask the administrator to review unused media, then restart Drashti before preparing another lighter copy.',
         };
       entry = this.newEntry(mediaId, row.sha256 ?? '');
       this.entries.set(mediaId, entry);
@@ -235,7 +236,7 @@ export class ProxyService {
       let found = [...this.entries.values()].find(
         (e) => e.snapshot.state === 'checking' || e.snapshot.state === 'waiting',
       );
-      if (!found) {
+      if (!found && this.entries.size < 10_000) {
         const derived = new Set(
           [...this.entries.values()].flatMap((e) =>
             e.snapshot.required && e.snapshot.readyMediaId ? [e.snapshot.readyMediaId] : [],

@@ -1788,7 +1788,8 @@ function start(): void {
   const videoCaptionsRepo = new VideoCaptionsRepo(db);
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
   // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
-  const videoEdits = new VideoEditsRepo(db);
+  let proxySourceOf: (id: string) => string = (id) => id;
+  const videoEdits = new VideoEditsRepo(db, (id) => proxySourceOf(id));
   const playbackRepo = new MediaRepo(db);
   const ownPlayback = new Map<string, PlaybackSettings>();
   const playbackOfFile = (mediaId: string): PlaybackSettings => {
@@ -4255,6 +4256,7 @@ function start(): void {
       : { ok: false as const, message: 'Open the video in the operator window, then try again.' },
   );
   const videoCopies = registerVideoCopies({
+    sourceId: (id) => videoEdits.sourceId(id),
     db: libraryDb,
     media,
     mediaDir,
@@ -4277,6 +4279,7 @@ function start(): void {
     showFile: (path) => shell.showItemInFolder(path),
     libraryChanged: () => libraryChanged(true),
   });
+  proxySourceOf = (id) => videoCopies.proxies.sourceOf(id);
   stops.add('video copies', () => videoCopies.close());
   conversionActivityChanged = () => conversions.activityChanged();
   const offConversionActivity = engine.onChange((state) => {
