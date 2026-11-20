@@ -29,8 +29,8 @@ function ff(args: string[]): string {
 }
 
 /**
- * 4 s of H.264 (High, level 3.1) at 320 × 180, 25 a second, with two sound tracks: AAC stereo at 48 kHz in English,
- * then AAC mono in Gujarati, named "Placeholder commentary".
+ * 4 s of H.264 (High, level 3.1) at 320 × 180, 25 a second, in Matroska (which keeps a track's own name), with two
+ * sound tracks: AAC stereo at 48 kHz in English, then AAC mono in Gujarati, named "Placeholder commentary".
  */
 const twoTracks = (file: string) =>
   ff([
@@ -38,11 +38,12 @@ const twoTracks = (file: string) =>
     ...['-f', 'lavfi', '-i', 'sine=f=440:r=48000:d=4'],
     ...['-f', 'lavfi', '-i', 'sine=f=880:r=48000:d=4'],
     ...['-map', '0:v', '-map', '1:a', '-map', '2:a'],
+    // veryfast keeps what makes it High (ultrafast would leave it Constrained Baseline).
     ...[
       '-c:v',
       'libx264',
       '-preset',
-      'ultrafast',
+      'veryfast',
       '-profile:v',
       'high',
       '-level',
@@ -63,14 +64,15 @@ const interlaced = (file: string) =>
     ...['-flags', '+ildct+ilme', '-x264-params', 'tff=1', file],
   ]);
 
-/** 3 s of an MP3 (44.1 kHz, mono) with a 32 × 32 JPEG cover picture. */
-const withCover = (file: string) =>
-  ff([
-    ...['-f', 'lavfi', '-i', 'sine=f=660:r=44100:d=3'],
-    ...['-f', 'lavfi', '-i', 'color=c=0x3a6ea5:s=32x32:d=1'],
-    ...['-map', '0:a', '-map', '1:v', '-frames:v', '1', '-c:a', 'libmp3lame', '-b:a', '64k', '-ac', '1'],
-    ...['-c:v', 'mjpeg', '-disposition:v', 'attached_pic', '-id3v2_version', '3', file],
+/** 3 s of an MP3 (44.1 kHz, mono) with a 32 × 32 JPEG cover picture (the picture made first, then put in whole). */
+function withCover(file: string): string {
+  const cover = ff(['-f', 'lavfi', '-i', 'color=c=0x3a6ea5:s=32x32:d=1', '-frames:v', '1', `${file}.jpg`]);
+  return ff([
+    ...['-f', 'lavfi', '-i', 'sine=f=660:r=44100:d=3', '-i', cover],
+    ...['-map', '0:a', '-map', '1:v', '-c:a', 'libmp3lame', '-b:a', '64k', '-ac', '1'],
+    ...['-c:v', 'copy', '-disposition:v', 'attached_pic', '-id3v2_version', '3', file],
   ]);
+}
 
 async function start(): Promise<{ app: ElectronApplication; win: Page; dir: string }> {
   const { app } = await launchApp();
@@ -115,7 +117,7 @@ const background = (win: Page) =>
 test('Media: a video’s container, length, size, its picture and both its sound tracks, Copy; what is up carries on', async () => {
   test.setTimeout(180_000);
   const { app, win, dir } = await start();
-  const [id = ''] = await importAndGetIds(win, [twoTracks(join(dir, 'Placeholder two tracks.mp4'))]);
+  const [id = ''] = await importAndGetIds(win, [twoTracks(join(dir, 'Placeholder two tracks.mkv'))]);
   expect(id).not.toBe('');
   // Up as the background while its information is read: nothing about it may change.
   const put = await dispatch(win, {
@@ -133,11 +135,11 @@ test('Media: a video’s container, length, size, its picture and both its sound
     win.getByTestId('media-item').filter({ hasText: 'Placeholder two tracks' }),
   );
   await expect(dialog.getByRole('heading', { level: 2 })).toHaveText(
-    'Media information: Placeholder two tracks.mp4',
+    'Media information: Placeholder two tracks.mkv',
   );
   // The file.
   await expect(line(dialog, 'The file', 'What it is')).toHaveText('Video');
-  await expect(line(dialog, 'The file', 'Container')).toHaveText('MP4');
+  await expect(line(dialog, 'The file', 'Container')).toHaveText('Matroska');
   await expect(line(dialog, 'The file', 'Length')).toHaveText('0:04');
   await expect(line(dialog, 'The file', 'Size')).toHaveText(/^\d+(\.\d)? (KB|MB)$/u);
   // Its picture.
@@ -168,7 +170,7 @@ test('Media: a video’s container, length, size, its picture and both its sound
   await dialog.getByRole('button', { name: 'Copy' }).click();
   await expect(dialog.getByRole('button', { name: 'Copied' })).toBeVisible();
   const copied = await app.evaluate(({ clipboard }) => clipboard.readText());
-  expect(copied).toContain('Media information: Placeholder two tracks.mp4');
+  expect(copied).toContain('Media information: Placeholder two tracks.mkv');
   expect(copied).toContain('Codec: H.264');
   expect(copied).toContain('Language: Gujarati');
 
