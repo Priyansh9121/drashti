@@ -1,3 +1,8 @@
+import { fileProblem } from './plain-errors';
+import { importM3u, M3uError, writeM3u, type M3uExportRow } from './playlists/m3u';
+import { playlistPlayOptionsSchema } from '../shared/playlist-playback';
+import type { M3uResult, M3uNotTaken } from '../shared/m3u';
+import { itemsMadeBy } from '../shared/import-items';
 import { isInside } from './media/contained';
 import type { IpcMainInvokeEvent, Rectangle } from 'electron';
 import {
@@ -1028,6 +1033,18 @@ function pendingRestore(): ReturnType<typeof applyPendingRestore> {
 }
 
 const fromOperator = (event: IpcMainInvokeEvent) => event.sender.id === operatorWindow?.webContents.id;
+/**
+ * Words on the clipboard, by the main process (alpha.20): Drashti's permission rules refuse a page its own clipboard
+ * (windows/security.ts), so the operator window's Copy buttons ask here (Media information's words, Events out's new
+ * secret). Words only, at most 64 KB, from the operator window; never logged. False when they could not be copied.
+ */
+const copyWords = async (event: IpcMainInvokeEvent, text: unknown): Promise<boolean> => {
+  if (!fromOperator(event) || typeof text !== 'string' || text.length > 64 * 1024) return false;
+  return clipboard.writeText(text).then(
+    () => true,
+    () => false,
+  );
+};
 const idListSchema = z.array(idSchema).min(1).max(10_000);
 /** A slide's row the operator's pointer is on (C3, Session 58), or null. */
 const pointAtSchema = z
@@ -1711,7 +1728,7 @@ function start(): void {
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
     Date.now,
-    { items: (id) => playlists.playItems(id) },
+    { items: (id) => playlists.playItems(id), repeatAll: (id) => playlists.playOptions(id).repeatAll },
     {
       defaultTransition: () => defaultTransition(settings),
       looks: { start: () => lookService?.start() ?? NO_LOOK },
@@ -3959,10 +3976,15 @@ function start(): void {
     IPC.stream.startRecording,
     IPC.stream.stopRecording,
   ]);
+  edits.add(IPC.playlists.setPlayOptions);
   for (const c of [IPC.library.importPaths, IPC.library.pickImportPaths, IPC.library.relinkMedia])
     edits.delete(c);
   // The slide editor's picture import joins the same queue.
   edits.delete(IPC.slideEditor.addPicture);
+  // Its file reads and queued import finish before playlistFileWrite takes the library’s write lock.
+  edits.delete(IPC.playlists.importM3u);
+  // Export reads the library and writes only the chosen file; no library write lock spans its dialog.
+  edits.delete(IPC.playlists.exportM3u);
   // These wait for the write lock themselves, after the file dialog and background reading have ended.
   edits.delete(IPC.videoCaptions.add);
   edits.delete(IPC.videoCaptions.select);
@@ -3986,6 +4008,9 @@ function start(): void {
   const conversions = new ConvertService({
     db: libraryDb,
     mediaDir,
+    // Every video and sound FFmpeg never read, read once at idle moments (alpha.20, "Plays anything"); not in a test
+    // that judges files by their headers alone, as before Session 50.
+    reread: !noConvertAtImport,
     children: {
       started: (pid, partFile) => void leftovers.started(pid, 'conversion', { partFile }),
       ended: (pid) => {
@@ -5045,6 +5070,8 @@ function start(): void {
   handle(IPC.events.remove, (e, id) => (fromOperator(e) ? eventsOut.remove(id) : notEventsOperator));
   handle(IPC.events.rotate, (e, id) => (fromOperator(e) ? eventsOut.rotate(id) : notEventsOperator));
   handle(IPC.events.test, (e, id) => (fromOperator(e) ? eventsOut.test(id) : notEventsOperator));
+  // The new secret's Copy (alpha.20), by the main process as Media information's is (copyWords): never kept or logged.
+  handle(IPC.events.copySecret, (e, secret) => copyWords(e, secret));
   handle(IPC.backups.pickFolder, async (e) => {
     if (!fromOperator(e) || !operatorWindow) return notBackupsOperator;
     const picked = await dialog.showOpenDialog(operatorWindow, {
@@ -6374,6 +6401,182 @@ function start(): void {
   // A video input added, renamed or removed in Media (Session 51): the items naming one are read again, here and
   // on the phones, marked as on this computer or not, and Next goes to it or past it.
   inputsChanged = playlistsChanged;
+  // Playlist playback and M3U (x50): only the operator chooses files; the import remains today’s queued import.
+  const playlistFileWrite = sourceWrite(libraryDb, () => imports.giveWay());
+  handle(IPC.playlists.setPlayOptions, (e, playlistId, raw) => {
+    const id = idSchema.safeParse(playlistId);
+    const options = playlistPlayOptionsSchema.safeParse(raw);
+    if (!fromOperator(e) || simpleNow() || !id.success || !options.success)
+      return { ok: false, message: 'Only the operator window in Pro Mode can change playlist playback.' };
+    if (!playlists.setPlayOptions(id.data, options.data))
+      return { ok: false, message: 'That playlist no longer exists.' };
+    playlistsChanged();
+    return { ok: true, ids: [id.data] };
+  });
+  const playlistFileFailure = (message: string): M3uResult => ({ ok: false, message });
+  handle(IPC.playlists.importM3u, async (e, audio, targetId): Promise<M3uResult> => {
+    if (
+      !fromOperator(e) ||
+      typeof audio !== 'boolean' ||
+      (targetId !== null && !idSchema.safeParse(targetId).success)
+    )
+      return playlistFileFailure('Only the operator window can import a playlist file.');
+    const parent = BrowserWindow.fromWebContents(e.sender);
+    if (!parent) return playlistFileFailure('The operator window is no longer open.');
+    const picked = await dialog.showOpenDialog(parent, {
+      title: audio ? 'Import Sounds or a Playlist File' : 'Import a Playlist File (M3U)',
+      properties: audio ? ['openFile', 'multiSelections'] : ['openFile'],
+      filters: audio
+        ? [{ name: 'Sounds or M3U playlists', extensions: [...SOUND_EXTENSIONS, 'm3u', 'm3u8'] }]
+        : [{ name: 'M3U playlists', extensions: ['m3u', 'm3u8'] }],
+    });
+    if (picked.canceled) return { ok: true, id: null, notTaken: [] };
+    try {
+      let id: string | null = null;
+      const notTaken: M3uNotTaken[] = [];
+      const guard = {
+        signal: new AbortController().signal,
+        allowed: () => !e.sender.isDestroyed() && fromOperator(e) && !accessShut(),
+      };
+      const importFiles = async (paths: string[]) => {
+        const result = await imports.start(paths, mode === 'simple' ? SIMPLE_IMPORT : {});
+        if (!result.ok) throw new M3uError(result.message);
+        return importRepo.report(result.run.id)?.items ?? [];
+      };
+      for (const file of picked.filePaths.filter((path) => /\.m3u8?$/iu.test(path))) {
+        const result = await importM3u(file, audio, {
+          importFiles,
+          isAudio: (mediaId) => media.kindAndName(mediaId)?.kind === 'audio',
+          make: (name, rows, sounds) =>
+            playlistFileWrite(guard, () => {
+              if (sounds) {
+                const made = audioPlaylists.create(cutText(name, 120));
+                audioPlaylists.addTracks(
+                  made,
+                  rows.flatMap((r) => (r.item.kind === 'media' ? [r.item.mediaId] : [])),
+                  null,
+                );
+                sendToOperator(IPC.music.changed, music.view());
+                net.hint('music');
+                return made;
+              }
+              const made = playlists.create(freeName(playlists, cutText(name, 180)), null, false);
+              if (!made) throw new M3uError('The playlist could not be made: try importing the file again.');
+              const added = playlists.addItems(
+                made,
+                null,
+                rows.map((r) => r.item),
+              );
+              added.forEach((item, index) => {
+                const title = rows[index]?.title;
+                if (title) playlists.setItemLabel(item, title);
+              });
+              return made;
+            }),
+        });
+        id = result.id ?? id;
+        notTaken.push(...result.notTaken);
+      }
+      const sounds = audio ? picked.filePaths.filter((path) => !/\.m3u8?$/iu.test(path)) : [];
+      if (sounds.length) {
+        const report = await importFiles(sounds);
+        const items = itemsMadeBy(report, sounds);
+        id = await playlistFileWrite(guard, () => {
+          const made =
+            typeof targetId === 'string' && audioPlaylists.get(targetId)
+              ? targetId
+              : audioPlaylists.create('Audio playlist');
+          audioPlaylists.addTracks(
+            made,
+            items.flatMap((i) =>
+              i.kind === 'media' && media.kindAndName(i.mediaId)?.kind === 'audio' ? [i.mediaId] : [],
+            ),
+            null,
+          );
+          sendToOperator(IPC.music.changed, music.view());
+          net.hint('music');
+          return made;
+        });
+      }
+      playlistsChanged();
+      return { ok: true, id, notTaken };
+    } catch (error) {
+      return playlistFileFailure(error instanceof M3uError ? error.message : fileProblem(error, 'read'));
+    }
+  });
+  handle(IPC.playlists.exportM3u, async (e, playlistId, audio): Promise<M3uResult> => {
+    const parsed = idSchema.safeParse(playlistId);
+    if (!fromOperator(e) || !parsed.success || typeof audio !== 'boolean')
+      return playlistFileFailure('Only the operator window can export a playlist file.');
+    const list = audio
+      ? audioPlaylists.get(parsed.data)
+      : playlists.tree().find((p) => p.id === parsed.data && !p.isFolder && !p.template);
+    if (!list) return playlistFileFailure('That playlist no longer exists.');
+    const parent = BrowserWindow.fromWebContents(e.sender);
+    if (!parent) return playlistFileFailure('The operator window is no longer open.');
+    try {
+      const rows: M3uExportRow[] =
+        audio && 'tracks' in list
+          ? list.tracks.flatMap((t) => {
+              const file = media.file(t.mediaId);
+              return file
+                ? [
+                    {
+                      label: t.name,
+                      durationMs: t.playingMs ?? t.durationMs,
+                      path: join(mediaDir, file.path),
+                    },
+                  ]
+                : [];
+            })
+          : playlists.itemsOf(parsed.data).flatMap((item): M3uExportRow[] => {
+              if (item.kind === 'media') {
+                const file = media.file(item.mediaId);
+                return file && !file.deleted
+                  ? [
+                      {
+                        label: item.label,
+                        durationMs: item.playingMs ?? item.durationMs,
+                        path: join(mediaDir, file.path),
+                      },
+                    ]
+                  : [];
+              }
+              return [
+                {
+                  label: item.label,
+                  comment:
+                    item.kind === 'presentation' ? 'Presentation' : item.kind === 'header' ? 'Header' : 'Row',
+                },
+              ];
+            });
+      const text = writeM3u(rows);
+      const picked = await dialog.showSaveDialog(parent, {
+        title: 'Export as M3U',
+        defaultPath: `${list.name.replace(/[\\/:*?"<>|]/gu, '_')}.m3u8`,
+        filters: [{ name: 'UTF-8 M3U playlist', extensions: ['m3u8'] }],
+      });
+      if (picked.canceled || !picked.filePath) return { ok: true, id: null, notTaken: [] };
+      const file = /\.m3u8$/iu.test(picked.filePath) ? picked.filePath : `${picked.filePath}.m3u8`;
+      if (file !== picked.filePath && existsSync(file)) {
+        const replace = await dialog.showMessageBox(parent, {
+          type: 'question',
+          buttons: ['Replace', 'Cancel'],
+          defaultId: 1,
+          cancelId: 1,
+          message: `Replace “${basename(file)}”?`,
+          detail: 'A file with this name already exists.',
+          noLink: true,
+        });
+        if (replace.response !== 0) return { ok: true, id: null, notTaken: [] };
+      }
+      await fsPromises.writeFile(file, text, 'utf8');
+      return { ok: true, id: null, notTaken: [] };
+    } catch (error) {
+      return playlistFileFailure(error instanceof M3uError ? error.message : fileProblem(error, 'write'));
+    }
+  });
+
   // Renamed (Session 52): the library's playlist items and slides that named it take its new name in one write, and
   // only that write can refuse the rename. What it returns runs once the library has the new name, the rename
   // standing whatever happens there (a failure is only logged), and before the list's change is told
@@ -6742,15 +6945,8 @@ function start(): void {
       ref.data,
     );
   });
-  // Its Copy: the window's words on the clipboard, by the main process (a page's own clipboard is refused to every
-  // page: windows/security.ts). Words only, at most 64 KB, from the operator window.
-  handle(IPC.media.copyDetails, async (e, text) => {
-    if (!fromOperator(e) || typeof text !== 'string' || text.length > 64 * 1024) return false;
-    return clipboard.writeText(text).then(
-      () => true,
-      () => false,
-    );
-  });
+  // Its Copy: the window's words on the clipboard, by the main process (copyWords).
+  handle(IPC.media.copyDetails, (e, text) => copyWords(e, text));
   handle(IPC.audio.getOutput, () => audioOutput.status);
   handle(IPC.audio.setOutput, (e, device) =>
     fromOperator(e) ? audioOutput.choose(device) : audioOutput.status,
