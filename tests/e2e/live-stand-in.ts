@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -87,7 +87,17 @@ export async function liveStandIn(): Promise<LiveStandIn> {
   });
   return {
     url: `http://127.0.0.1:${String(port)}/live.m3u8`,
-    ready: () => existsSync(join(dir, 'live-00002.ts')),
+    // Its playlist lists three segments or more (each is deleted a few seconds after it leaves the list, so never one
+    // segment's file: a start slower than that found it gone, CI's Mac, x54-1120-191041-45603).
+    ready: () => {
+      const file = join(dir, 'live.m3u8');
+      if (!existsSync(file)) return false;
+      return (
+        readFileSync(file, 'utf8')
+          .split('\n')
+          .filter((l) => l.trim().endsWith('.ts')).length >= 3
+      );
+    },
     drop: () => {
       down = true;
       child?.kill();
