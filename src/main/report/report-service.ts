@@ -15,6 +15,7 @@ import {
   reportReference,
   reportSubject,
   reportWhen,
+  type NodeReportAnswer,
   type ReportCallReport,
   type ReportDraft,
   type ReportFrom,
@@ -296,6 +297,11 @@ export class ReportService {
         features: r.call.features.map((f) => f.name),
         state: view(r),
       }));
+  }
+
+  /** A node's report, handed to Main to send on (x49, Q60-42 2): not yet. */
+  fromNode(_node: { id: string; name: string }, _body: Uint8Array): Promise<NodeReportAnswer> {
+    return Promise.resolve({ ok: false, message: 'Not yet.' });
   }
 
   /** Forget a report on this computer (one waiting is then never sent). */
