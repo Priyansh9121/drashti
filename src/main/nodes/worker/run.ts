@@ -50,6 +50,9 @@ export function runLinkWorker(send: (message: FromLinkWorker) => void): (message
     thumb: (nodeId, screenId, jpeg) => {
       send({ type: 'thumb', nodeId, screenId, jpeg });
     },
+    cannotPlay: (nodeId, report) => {
+      send({ type: 'cannot-play', nodeId, report });
+    },
     refused: (nodeId, version) => {
       send({ type: 'refused', nodeId, version });
     },

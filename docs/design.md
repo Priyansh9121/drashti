@@ -713,6 +713,15 @@ hunt (CI x46-1120-112649-63694) found three things Drashti did on every computer
   name and where, and logs the kind and where; a failure within 3 s of a GPU process stopping is that stop's and loads
   again by itself (`main/media/cannot-play.ts`). Meanwhile a file that fails as it loads leaves the picture before, and
   one that fails while it plays stays drawn as it was (`render/background-slots.ts`: `drawn`, `isDrawn`).
+- **No first frame** (Q60-44, the owner's answer A, 20 Nov 2026): a video with no first frame 10 s after a page began
+  to load it (`FIRST_FRAME_MS`, `shared/no-picture.ts`, its one place) is said to fail as an element that failed is;
+  Main heeds it from its own screens (LIVE's or the stream's page alone only logs it: a page out of sight may wait
+  longer, and the hall is what the audience sees), the Wallpaper or the cover staying until then, never black.
+- **A paired computer's screen** that cannot play (its element failed, no first frame, or a picture it cannot draw;
+  ledger G-A14) keeps what it showed, never black; the node tells Main once its copy of the file is there
+  (`node-mode/node-app.ts`, the feed's `cannot-play`), and Main tells the operator by the node's and the file's names,
+  once for each node and showing, and logs it; the video plays on everywhere else (`NodeCannotPlay`,
+  `main/media/cannot-play.ts`, its one place).
 - **The first frame**: the Wallpaper went the moment the engine had a background, and a cover the engine took off as a
   video went up showed the picture it hid, until the video's first frame (31-446 ms on CI; longer on a slow computer).
   Now each scene keeps nothing-up while nothing of the new background is drawn, and such a cover until that

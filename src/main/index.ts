@@ -165,8 +165,8 @@ import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
-import { cannotPlayNotice, noPictureNotice } from '../shared/no-picture';
-import { CannotPlay, errorKindWords } from './media/cannot-play';
+import { cannotPlayNotice, NO_FIRST_FRAME, noPictureNotice } from '../shared/no-picture';
+import { CannotPlay, errorKindWords, NodeCannotPlay } from './media/cannot-play';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -535,6 +535,8 @@ const gpuStops = new GpuStops();
  * A video whose element failed on a page that draws the show (Q60-31): taken off after a short wait, unless a GPU
  * process stopped then (its videos load again by themselves). main/media/cannot-play.ts.
  */
+/** A paired computer's screen that could not play a video (Q60-44): told once for each node and showing. */
+const nodeCannotPlay = new NodeCannotPlay();
 const cannotPlay = new CannotPlay({
   now: () => Date.now(),
   later: (ms, run) => {
@@ -6011,6 +6013,17 @@ function start(): void {
     thumbs: (thumbs) => {
       sendToOperator(IPC.nodes.thumbs, thumbs);
     },
+    // A paired computer's screen could not play a video (Q60-44, the owner's answer A): it keeps what it showed; the
+    // video plays on everywhere else, and the operator is told, once for each node and showing (media/cannot-play.ts).
+    cannotPlay: (node, report) => {
+      const file = media.kindAndName(report.mediaId);
+      if (file?.kind !== 'video') return;
+      const screen = screenRepo.screens().find((s) => s.id === report.screenId)?.name ?? report.screenId;
+      const told = nodeCannotPlay.heard(node, screen, file, report);
+      if (!told) return;
+      log.warn(told.log);
+      sendToOperator(IPC.app.notice, { text: told.notice });
+    },
     localOutputs: () =>
       manager.status().flatMap((st): NodeOutputStatus[] =>
         st.state === 'showing' || st.state === 'missing-display' || st.state === 'disabled'
@@ -6760,6 +6773,12 @@ function start(): void {
     // The error's kind and Chromium's words, for the log only (the notice names the file and where).
     const kind = errorKindWords(code);
     const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;
+    // No first frame within FIRST_FRAME_MS (Q60-44): heeded from Main's own screens, what the hall sees; LIVE's or the
+    // stream's page alone only logs it (shared/no-picture.ts).
+    if (code === NO_FIRST_FRAME && screenId === undefined) {
+      log.info(`A video had ${kind} on ${where}: ${mediaId}; left up (only a screen's takes it off)`);
+      return null;
+    }
     cannotPlay.heard(
       () => {
         if (!engine.noPicture(mediaId)) return;

@@ -3,7 +3,7 @@ import { controllerAreasSchema } from './controller-actions';
 import { cleanNameSchema, cleanRenameName } from './rename-name';
 import { MEDIA_ID_PATTERN } from './media';
 import { MEDIA_EXT_PATTERN, NODE_NAME_MAX } from './nodes';
-import type { MediaWant, NodeControllerContext, NodeHealth, NodeScreen } from './nodes';
+import type { MediaWant, NodeCannotPlayReport, NodeControllerContext, NodeHealth, NodeScreen } from './nodes';
 import type { DisplayInfo, DisplayKey } from './screens';
 import { SCALING_MODES } from './screens';
 import { screenGeometrySchema } from './screens-schema';
@@ -146,3 +146,14 @@ export function nodeNameFrom(given: string): string {
   const name = cutText(cleanRenameName(given.replace(/\.local$/iu, '')), NODE_NAME_MAX);
   return name === '' ? 'Node' : name;
 }
+
+/** A node's word on a showing its screen could not play (Q60-44): checked as it comes, words cut to 1,000. */
+export const nodeCannotPlaySchema: z.ZodType<NodeCannotPlayReport> = z
+  .object({
+    screenId: z.string().min(1).max(128),
+    mediaId: z.string().regex(MEDIA_ID_PATTERN),
+    startedAt: finite,
+    code: z.number().int().min(-10).max(10),
+    words: z.string().max(1000),
+  })
+  .strict();

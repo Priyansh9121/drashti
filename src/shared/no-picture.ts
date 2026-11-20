@@ -27,9 +27,25 @@ export function cannotPlayNotice(name: string, where: string): string {
  * How long a page that draws the show waits for a video's first frame (Q60-44, the owner's answer A of 20 Nov 2026,
  * through the lead): with none by then, it says the video cannot play, as an element that failed does, and the show
  * takes it off with its sound, the Wallpaper or the cover over the picture staying up until then (render/Scene.tsx),
- * never black. Its one place: change it here.
+ * never black. Main heeds it from its own screens; LIVE's or the stream's page alone only logs it (a page out of sight
+ * may wait longer, and the hall is what the audience sees); a paired computer's tells Main, as its errors do
+ * (main/media/cannot-play.ts, NodeCannotPlay). Its one place: change it here.
  */
 export const FIRST_FRAME_MS = 10_000;
 
 /** The code a page sends for a video with no first frame within FIRST_FRAME_MS (MediaError's own codes are 1 to 4). */
 export const NO_FIRST_FRAME = -1;
+
+/**
+ * The code a node sends Main for a video whose picture it cannot draw (x36's sound only, as on Main; ledger G-A14): on a
+ * node it keeps what it showed, and Main is told, as for any other showing a node's screen could not play.
+ */
+export const NO_PICTURE = -2;
+
+/**
+ * What the operator window says when a paired computer's screen could not play a video (Q60-44, the owner's answer A
+ * of 20 Nov 2026): that computer keeps what it showed, never black, and the video plays on everywhere else.
+ */
+export function cannotPlayOnNodeNotice(name: string, node: string): string {
+  return `“${name}” could not play on the paired computer “${node}”: its screen keeps what it showed, and the video plays on everywhere else. If it happens again, that computer may not play this kind of video: tell whoever looks after Drashti.`;
+}
