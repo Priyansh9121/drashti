@@ -149,11 +149,25 @@ export interface SaveVideoEdit {
   mediaId: string;
   revision: number;
   recipe: VideoEditRecipe;
+  thumbnailJpeg?: Uint8Array;
 }
 export const saveVideoEditSchema: z.ZodType<SaveVideoEdit> = z
   .object({
     mediaId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u),
     revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     recipe: videoEditRecipeSchema,
+    thumbnailJpeg: z
+      .instanceof(Uint8Array)
+      .refine(
+        (b) =>
+          b.length >= 4 &&
+          b.length <= 1024 * 1024 &&
+          b[0] === 255 &&
+          b[1] === 216 &&
+          b[2] === 255 &&
+          b[b.length - 2] === 255 &&
+          b[b.length - 1] === 217,
+      )
+      .optional(),
   })
   .strict();

@@ -5,6 +5,7 @@ ALTER TABLE media ADD COLUMN video_edit_revision INTEGER NOT NULL DEFAULT 0 CHEC
 ALTER TABLE media ADD COLUMN video_edit_ready_revision INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE media ADD COLUMN video_edit_copy_id TEXT REFERENCES media(id);
 ALTER TABLE media ADD COLUMN video_edit_error TEXT;
+ALTER TABLE media ADD COLUMN video_edit_thumbnail BLOB;
 CREATE TABLE video_edit_copies (
   source_id TEXT NOT NULL REFERENCES media(id),
   revision INTEGER NOT NULL,
