@@ -224,6 +224,9 @@ export interface MediaSummary {
   fromDrop?: true;
   /** Added from a phone (Session 54): the device's name, on its row. */
   fromDevice?: string;
+  /** How many times it has gone up (alpha.20), and when it last did (ISO-8601); left out until it first has. */
+  playCount?: number;
+  lastPlayedAt?: string;
 }
 
 export type PlaylistResult = { ok: true; ids: string[] } | { ok: false; message: string };
