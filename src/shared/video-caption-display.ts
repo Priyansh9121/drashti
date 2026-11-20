@@ -44,7 +44,8 @@ export function captionBandFor(
       return null;
     const chosen = state.videoCaptions?.[playing.mediaId];
     if (!chosen) return null;
-    const cue = captionAt(chosen.track.cues, actual.sourceMs, actual.clip);
+    // Sound and picture… (alpha.20): the captions' own delay against the picture.
+    const cue = captionAt(chosen.track.cues, actual.sourceMs, actual.clip, chosen.delayMs ?? 0);
     if (!cue) return null;
     const lines = captionLines(cue.text.split(/\s+/u), CAPTION_LINE_CHARS[chosen.size]);
     return {

@@ -1,3 +1,4 @@
+import type { Tone } from './playback-settings';
 import { deckMediaOf } from './deck-show';
 import { type Playing, playingOf, type PlayingRef } from './engine/playing';
 import type { AudioLayer, EngineState } from './engine/state';
@@ -85,6 +86,13 @@ export interface SoundState {
    * no library: both at 100 %, sound on.
    */
   levels?: SoundLevels;
+  /**
+   * Sound and picture… (alpha.20): the tone of each file sounding now that has one (Bass, Treble, Voice boost), by media
+   * id; heard alike in the hall and on the stream. Left out: none has one.
+   */
+  tones?: Record<string, Tone>;
+  /** Sound and picture… (alpha.20): how much later each file's sound comes than its picture (ms, − earlier). */
+  delays?: Record<string, number>;
 }
 
 /*

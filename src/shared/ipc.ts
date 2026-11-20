@@ -1,3 +1,4 @@
+import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
 import type { ControllerArea, ControllerReply, ControllerRequest, EngineSeen } from './controller-actions';
@@ -610,6 +611,9 @@ export const IPC = {
     resumePoint: 'media:resume-point',
     /** Snapshot (alpha.20, the time bar's ⋯): the frame on the screens, a PNG in Media (operator window, Pro Mode). */
     snapshot: 'media:snapshot',
+    /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays, read and kept (operator window). */
+    playback: 'media:playback',
+    setPlayback: 'media:set-playback',
     /**
      * A picture's look (Session 26e): read one, every one (the thumbnails), keep one (the Picture editor),
      * and keep the live zoom as the picture's (Keep this zoom).
@@ -1663,6 +1667,11 @@ export interface InvokeContract {
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
   [IPC.media.resumePoint]: { args: [mediaId: string]; result: ResumePoint | null };
   [IPC.media.snapshot]: { args: [playing: PlayingRef]; result: SnapshotResult };
+  [IPC.media.playback]: { args: [mediaId: string]; result: PlaybackSettings | null };
+  [IPC.media.setPlayback]: {
+    args: [mediaId: string, settings: PlaybackSettings];
+    result: { ok: true } | { ok: false; message: string };
+  };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
   [IPC.media.remove]: { args: [mediaIds: string[]]; result: MediaRemovalResult };
