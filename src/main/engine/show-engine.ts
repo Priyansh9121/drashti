@@ -1320,8 +1320,8 @@ export class ShowEngine {
    * A video's picture cannot be drawn on this computer (Session 60, x36: the owner's bug of 19 Nov 2026 and his "Yes,
    * A"): a window found it as the file loaded, Chromium playing it as sound only, so the hall saw black (or the picture
    * before) while its sound played. The background playing it comes off with its sound; a video of it on the slide up
-   * or in the picture-in-picture box waits where it is, paused (one-at-a-time.ts noPictureOff). Not a change of the
-   * operator's: Back, Oops and Put it back are as they were. Whether any of it was up.
+   * waits where it is, paused; the picture-in-picture box playing it comes off (Q60-46: one-at-a-time.ts noPictureOff).
+   * Not a change of the operator's: Back, Oops and Put it back are as they were. Whether any of it was up.
    */
   noPicture(mediaId: string): boolean {
     let took = false;

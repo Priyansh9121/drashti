@@ -155,8 +155,9 @@ export function oneAtATime(
 /**
  * What takes a video this computer cannot draw off what the audience sees (Session 60, x36; the owner's "Yes, A": a
  * window found it plays as sound only, shared/no-picture.ts): the background playing it comes off, as Clear background
- * takes it (its sound with it); a video of it on the slide up or in the picture-in-picture box waits where it is,
- * paused, as under a cover (its slide or its box stays). None when nothing of it is up and playing.
+ * takes it (its sound with it); a video of it on the slide up waits where it is, paused, as under a cover (its slide
+ * stays); the picture-in-picture box playing it comes off, as Hide takes it (Q60-46: never a black box). None when
+ * nothing of it is up and playing.
  */
 export function noPictureOff(state: EngineState, mediaId: string, now: number): EngineAction[] {
   const actions: EngineAction[] = [];
@@ -171,13 +172,8 @@ export function noPictureOff(state: EngineState, mediaId: string, now: number): 
     for (const p of onSlide) seeks[p.mediaId] = pausedHere(p, now);
     actions.push({ type: 'slide/put', layer: { ...slide, seeks } });
   }
-  const box = state.layers.pip;
-  const inBox = playing.find((p) => p.ref.layer === 'pip');
-  if (box && inBox)
-    actions.push({
-      type: 'pip/set',
-      layer: { ...box, seeks: { ...box.seeks, [inBox.mediaId]: pausedHere(inBox, now) } },
-    });
+  if (state.layers.pip && playing.some((p) => p.ref.layer === 'pip'))
+    actions.push({ type: 'pip/hide', at: now });
   return actions;
 }
 
@@ -205,8 +201,5 @@ export function cannotPlayOff(
   const background = bg?.kind === 'media' && bg.media === 'video' && bg.mediaId === mediaId;
   const slide = state.layers.slide !== null && playing.some((p) => p.ref.layer === 'slide');
   const box = state.layers.pip !== null && playing.some((p) => p.ref.layer === 'pip');
-  // The background and the slide as x36's noPictureOff takes them; the box off instead of paused.
-  const actions = noPictureOff(state, mediaId, now).filter((a) => a.type !== 'pip/set');
-  if (box) actions.push({ type: 'pip/hide', at: now });
-  return { actions, took: { background, slide, box } };
+  return { actions: noPictureOff(state, mediaId, now), took: { background, slide, box } };
 }
