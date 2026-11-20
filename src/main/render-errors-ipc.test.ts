@@ -37,7 +37,7 @@ const WARM_UP = report(
 );
 const CAUGHT = report('caught', 'Error: A test asked this output to fail as it drew', 'ThrowForTests');
 
-function setUp() {
+function setUp(failed?: (name: string) => boolean) {
   handlers.clear();
   const lines: string[] = [];
   const reloads: string[] = [];
@@ -52,6 +52,7 @@ function setUp() {
     watchdog,
     windowOf: (sender) =>
       sender.id === OUTPUT ? { name: HALL, output } : { name: 'operator', output: null },
+    ...(failed ? { failed } : {}),
   });
   const send = (id: number, raw: unknown) =>
     handlers.get(IPC.app.renderError)?.({ sender: { id } } as unknown as IpcMainInvokeEvent, raw);
@@ -101,6 +102,29 @@ describe('render errors as Main hears them', () => {
       `Render error in ${HALL} (caught): Error: A test asked this output to fail as it drew (in ThrowForTests)`,
     ]);
     expect(reloads).toEqual([`${HALL}: Error: A test asked this output to fail as it drew`]);
+  });
+
+  // x53 (x52's D6a): the line's 10 s hid a page failing again after its reload, so it was never given up on.
+  it('every error in an output’s show reaches the watchdog, not only those its line says; one line in 10 s still', () => {
+    const { lines, reloads, send } = setUp();
+    send(OUTPUT, CAUGHT);
+    vi.setSystemTime(Date.now() + 3000);
+    send(OUTPUT, CAUGHT);
+    expect(lines).toHaveLength(1);
+    expect(reloads).toHaveLength(2);
+  });
+
+  it('an output whose failing video was taken off for it: nothing more for the watchdog; the operator’s window never asked', () => {
+    const asked: string[] = [];
+    const { lines, reloads, send } = setUp((name) => {
+      asked.push(name);
+      return true;
+    });
+    send(OUTPUT, CAUGHT);
+    send(OPERATOR, CAUGHT);
+    expect(asked).toEqual([HALL]);
+    expect(reloads).toEqual([]);
+    expect(lines).toHaveLength(2);
   });
 
   it('a report that is not one is dropped, as before', () => {
