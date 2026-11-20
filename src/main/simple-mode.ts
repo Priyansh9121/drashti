@@ -64,6 +64,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.appearance.make,
   IPC.appearance.remove,
   IPC.appearance.setMotion,
+  // Session 60: Moving: On / Off and the favourites, the Appearance window's too.
+  IPC.appearance.setMoving,
+  IPC.appearance.setFavourite,
   IPC.library.relinkMedia,
   IPC.library.setArrangement,
   IPC.library.removePresentations,
@@ -232,6 +235,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.captions.retry,
   // A file deleted from the library and put back (the audio playlists' own changes are bounded since Session 56, below).
   IPC.media.remove,
+  // Snapshot (alpha.20, the time bar's ⋯) is Pro Mode's (the owner's "Yes, all A" to Q60-39 P6 (j) A).
+  IPC.media.snapshot,
   // Sound and picture… (alpha.20) is Pro Mode's (the owner's "Yes, all A" to Q60-39 P6 (j) A).
   IPC.media.setPlayback,
   IPC.media.restore,

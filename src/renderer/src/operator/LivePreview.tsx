@@ -198,7 +198,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
         className={cx(
           // The live border and its red underglow come and go in the same frame as the screens: no fade.
           'relative overflow-hidden rounded-lg border-2 bg-black',
-          somethingUp && !blackout ? 'border-live shadow-live' : 'border-line-strong shadow-card',
+          somethingUp && !blackout ? 'border-live-edge shadow-live' : 'border-line-strong shadow-card',
         )}
         data-testid="live-preview"
         data-show-control

@@ -1,5 +1,15 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { Fragment, memo, useContext, useLayoutEffect, useMemo, useRef } from 'react';
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { CalendarDay, CalendarLang } from '../../../shared/calendar';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import type {
@@ -15,6 +25,7 @@ import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { BackgroundMedia } from './BackgroundMedia';
+import { slotKey } from './background-slots';
 import { CanvasClip } from './canvas-clip';
 import { LiveWindowView } from './LiveWindowView';
 import { useEntrance } from './entrance';
@@ -274,6 +285,14 @@ export function TickerBand({
 }
 
 const FULL = { position: 'absolute', inset: 0 } as const;
+/** The Wallpaper's picture coming, after a clear: drawn already, out of sight until it has come (Q60-31 (3)). */
+const FULL_UNSEEN = { position: 'absolute', inset: 0, visibility: 'hidden' } as const;
+
+/**
+ * How long what the background drew may stay after it was cleared, while the Wallpaper's picture comes over it
+ * (Q60-31 (3), the lead's "at most 1 s"): past it, the Wallpaper shows as it is.
+ */
+const HOLD_FOR_WALLPAPER_MS = 1000;
 
 /**
  * The background layer as a screen draws it: a colour, a picture or a video, or another app's window (Session
@@ -284,10 +303,13 @@ function BackgroundPicture({
   background,
   annotate,
   movement,
+  onDrawn,
 }: {
   background: BackgroundLayer | null;
   annotate: boolean;
   movement: Movement;
+  /** Told which background is drawn now (the main picture's alone: render/BackgroundMedia.tsx). */
+  onDrawn?: (key: string | null) => void;
 }) {
   return (
     <>
@@ -297,7 +319,7 @@ function BackgroundPicture({
           style={{ position: 'absolute', inset: 0, background: background.color }}
         />
       )}
-      <BackgroundMedia layer={background} annotate={annotate} movement={movement} />
+      <BackgroundMedia layer={background} annotate={annotate} movement={movement} onDrawn={onDrawn} />
       {background?.kind === 'window' && <LiveWindowView layer={background} />}
     </>
   );
@@ -404,6 +426,36 @@ export const Scene = memo(function Scene({
   // Key and fill: black-out and the Wallpaper take the graphics off; the key draws every colour white, by its opacity.
   const keyed = matte !== null;
   const off = keyed && (state.blackout || state.wallpaper);
+  // What the background draws now, as BackgroundMedia tells it before each painting (Q60-31, the owner's video bug): a
+  // new picture or video is waited on until its first frame, what the hall saw staying until then (below).
+  const [drawnKey, setDrawnKey] = useState<string | null>(null);
+  const wantedKey = background?.kind === 'media' || background?.kind === 'input' ? slotKey(background) : null;
+  // Nothing of the background drawn yet (none before it): the screen shows what it shows with nothing up meanwhile.
+  const nothingDrawnYet = wantedKey !== null && drawnKey === null;
+  // Black-out or the Wallpaper that the engine took off as a new background went up stays until that background's
+  // first frame: never the picture it hid, never black. A key and fill pair draws no cover.
+  const coverNow: 'blackout' | 'wallpaper' | null = keyed
+    ? null
+    : state.blackout
+      ? 'blackout'
+      : state.wallpaper
+        ? 'wallpaper'
+        : null;
+  const [covers, setCovers] = useState<{
+    was: 'blackout' | 'wallpaper' | null;
+    key: string | null;
+    held: { cover: 'blackout' | 'wallpaper'; until: string } | null;
+  }>(() => ({ was: coverNow, key: wantedKey, held: null }));
+  if (covers.was !== coverNow || covers.key !== wantedKey) {
+    let held = coverNow === null && covers.held?.until === wantedKey ? covers.held : null;
+    if (covers.was !== null && coverNow === null && wantedKey !== null && wantedKey !== covers.key)
+      held = { cover: covers.was, until: wantedKey };
+    setCovers({ was: coverNow, key: wantedKey, held });
+  }
+  const heldCover =
+    covers.held !== null && covers.held.until === wantedKey && drawnKey !== wantedKey
+      ? covers.held.cover
+      : null;
   // The picture-in-picture box (Session 50, render/pip.ts): where this group's role shows it (else drawn as if
   // there were none), a video input or a window only on this computer's own pages, and the slides in it only
   // while a slide is up and the group shows the slides.
@@ -418,8 +470,44 @@ export const Scene = memo(function Scene({
   const up = boxHere(layers.pip) ? layers.pip : null;
   // Nothing up on these screens (the box counts): what shows then (Session 55, render/NothingUp.tsx: Part 6's
   // chosen wallpaper; black with none chosen).
-  const nothingUp = background === null && (layers.slide === null || !shown('slide')) && up === null;
+  const nothingUp =
+    (background === null || nothingDrawnYet) && (layers.slide === null || !shown('slide')) && up === null;
   const nothingUpNow = nothingUp ? nothingUpShows(state) : null;
+  // Back to the Wallpaper (Clear background, a video's end, one that could not play coming off; Q60-31 (3), the
+  // lead's): the Wallpaper's picture is read again as it comes back, and the screen showed black meanwhile. Now what the
+  // background drew stays, the Wallpaper out of sight over it, until its picture has come (NothingUp's onDrawn), at
+  // most HOLD_FOR_WALLPAPER_MS: never black between. Only when something was drawn, and a wallpaper is chosen.
+  // Followed by what it holds, not by the object (a page's copy of the state may give the same background anew).
+  const backgroundNow = background === null ? null : JSON.stringify(background);
+  const [back, setBack] = useState<{
+    was: BackgroundLayer | null;
+    wasNow: string | null;
+    keep: BackgroundLayer | null;
+    n: number;
+    done: boolean;
+  }>(() => ({ was: background, wasNow: backgroundNow, keep: null, n: 0, done: true }));
+  if (back.wasNow !== backgroundNow) {
+    const keep = background === null && back.was !== null && drawnKey !== null ? back.was : null;
+    setBack({ was: background, wasNow: backgroundNow, keep, n: back.n + 1, done: keep === null });
+  }
+  const holding = !back.done && back.keep !== null && nothingUpNow === 'wallpaper';
+  const endHold = useCallback((n: number) => {
+    setBack((b) => (b.n === n && !b.done ? { ...b, done: true } : b));
+  }, []);
+  const holdN = back.n;
+  useEffect(() => {
+    if (!holding) return;
+    // eslint-disable-next-line no-restricted-syntax -- decides no frame: only how long what was up may wait under the Wallpaper
+    const cap = setTimeout(() => {
+      endHold(holdN);
+    }, HOLD_FOR_WALLPAPER_MS);
+    return () => {
+      clearTimeout(cap);
+    };
+  }, [holding, holdN, endHold]);
+  const wallpaperDrawn = useCallback(() => {
+    endHold(holdN);
+  }, [endHold, holdN]);
   const content: CSSProperties = matte === 'key' ? { ...FULL, filter: 'brightness(0) invert(1)' } : FULL;
   // The pictures' looks and the live zoom, as the state carries them (Session 26e): every screen alike.
   // Which can draw no see-through pixel too (X11): a deck's moving slide over one is backed without a chip.
@@ -499,7 +587,12 @@ export const Scene = memo(function Scene({
                 <MainSlot slot={slotOf('background')} swap={swap}>
                   {/* The canvas, for a turned or cropped picture placed from the first frame (Session 55, Part 5). */}
                   <BackgroundBox.Provider value={canvas}>
-                    <BackgroundPicture background={background} annotate={annotate} movement={look.movement} />
+                    <BackgroundPicture
+                      background={holding ? back.keep : background}
+                      annotate={annotate}
+                      movement={look.movement}
+                      onDrawn={setDrawnKey}
+                    />
                   </BackgroundBox.Provider>
                 </MainSlot>
                 {/* The box's own picture in the background's place, once swapped (Session 50), a video between its
@@ -515,7 +608,14 @@ export const Scene = memo(function Scene({
                     />
                   )}
                 </MainSlot>
-                {nothingUpNow && <NothingUp shows={nothingUpNow} state={state} canvas={canvas} />}
+                {nothingUpNow && (
+                  <div
+                    data-wallpaper-coming={holding ? 'true' : undefined}
+                    style={holding ? FULL_UNSEEN : FULL}
+                  >
+                    <NothingUp shows={nothingUpNow} state={state} canvas={canvas} onDrawn={wallpaperDrawn} />
+                  </div>
+                )}
                 <MainSlot slot={slotOf('slide')} swap={swap}>
                   <SlideLayerView
                     layer={shown('slide') ? layers.slide : null}
@@ -598,7 +698,7 @@ export const Scene = memo(function Scene({
                 )}
                 {band && <TickerBand ticker={band} canvas={canvas} movement={look.movement} />}
               </div>
-              {state.wallpaper && !keyed && (
+              {(state.wallpaper || heldCover === 'wallpaper') && !keyed && (
                 // The Wallpaper instead of the picture (Session 55, Part 13, in the Logo's place): drawn over the
                 // layers, which carry on underneath, so taking it off brings back exactly what was there. Black-out
                 // covers it in turn.
@@ -607,7 +707,7 @@ export const Scene = memo(function Scene({
             </>
           )}
         </div>
-        {state.blackout && !keyed && (
+        {(state.blackout || heldCover === 'blackout') && !keyed && (
           <div
             data-layer="blackout"
             data-testid="blackout"

@@ -212,6 +212,84 @@ describe('AppearanceService', () => {
     expect(kept(dir)).toMatchObject({ motion: 'lively' });
   });
 
+  it('Moving is On until turned Off (Session 60, his safety rule), kept for the next start, and every window told', () => {
+    const dir = fresh();
+    const service = new AppearanceService({ userData: dir, say: () => undefined });
+    service.start(new Computer(true));
+    const { win, sent } = aWindow();
+    service.track(win as never);
+    expect(service.now().moving).toBe(true);
+    expect(service.view().moving).toBe(true);
+    expect(service.setMoving(false)).toBe(true);
+    expect(service.now().moving).toBe(false);
+    expect((sent.at(-1) as { moving: boolean }).moving).toBe(false);
+    expect(kept(dir)).toMatchObject({ moving: false });
+    expect(new AppearanceService({ userData: dir, say: () => undefined }).now().moving).toBe(false);
+  });
+
+  it('a file from before Session 60 reads as Moving On with no favourites, keeping what it chose', () => {
+    const dir = fresh();
+    writeFileSync(
+      join(dir, APPEARANCE_FILE),
+      JSON.stringify({ version: 1, choice: 'diwali', motion: 'calm', own: [], seconds: {} }),
+    );
+    const service = new AppearanceService({ userData: dir, say: () => undefined });
+    service.start(new Computer(true));
+    expect(service.choice).toBe('diwali');
+    expect(service.now().moving).toBe(true);
+    expect(service.view().favourites).toEqual([]);
+  });
+
+  it('favourites (Session 60): starred and unstarred, kept in the order starred, one there is not refused', () => {
+    const dir = fresh();
+    const service = new AppearanceService({ userData: dir, say: () => undefined });
+    service.start(new Computer(true));
+    expect(service.setFavourite('diwali', true)).toBe(true);
+    expect(service.setFavourite('dhaja', true)).toBe(true);
+    expect(service.setFavourite('diwali', true)).toBe(true);
+    expect(service.view().favourites).toEqual(['diwali', 'dhaja']);
+    expect(service.setFavourite('diwali', false)).toBe(true);
+    expect(service.setFavourite('nothing-at-all', true)).toBe(false);
+    expect(service.view().favourites).toEqual(['dhaja']);
+    expect(kept(dir)).toMatchObject({ favourites: ['dhaja'] });
+    expect(new AppearanceService({ userData: dir, say: () => undefined }).view().favourites).toEqual([
+      'dhaja',
+    ]);
+  });
+
+  it('says what the shown appearance moves and whether this computer is slow (four logical cores or fewer)', () => {
+    const dir = fresh();
+    const slow = new AppearanceService({ userData: dir, say: () => undefined, cores: 4 });
+    slow.start(new Computer(true));
+    expect(slow.now().look).toEqual([]);
+    expect(slow.now().slow).toBe(true);
+    slow.choose('diwali');
+    expect(slow.now().look).toEqual(['glow', 'shimmer']);
+    slow.choose('dhaja');
+    expect(slow.now().look).toEqual([]);
+    const fast = new AppearanceService({ userData: dir, say: () => undefined, cores: 8 });
+    fast.start(new Computer(true));
+    expect(fast.now().slow).toBe(false);
+  });
+
+  it('says whether Chromium draws with a graphics chip: unknown until it has said, and every window told when it does', () => {
+    const dir = fresh();
+    let chip: 'unknown' | 'yes' | 'no' = 'unknown';
+    const service = new AppearanceService({ userData: dir, say: () => undefined, chip: () => chip });
+    service.start(new Computer(true));
+    const { win, sent } = aWindow();
+    service.track(win as never);
+    expect(service.now().chip).toBe('unknown');
+    chip = 'no';
+    service.chipMayHaveChanged();
+    expect(service.now().chip).toBe('no');
+    expect((sent.at(-1) as { chip: string }).chip).toBe('no');
+    // Told once: a second word that changes nothing tells no window again.
+    const told = sent.length;
+    service.chipMayHaveChanged();
+    expect(sent.length).toBe(told);
+  });
+
   it('starts in the appearance a test names (never kept unless chosen)', () => {
     const dir = fresh();
     const service = new AppearanceService({ userData: dir, say: () => undefined, startIn: 'black' });

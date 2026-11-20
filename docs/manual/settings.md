@@ -4,15 +4,16 @@ How Drashti looks on this computer, how it opens, and what it does by itself: ba
 
 ## Appearance
 
-**What it is.** **View › Appearance**: Drashti's own colours on this computer, such as **Follow the computer**, **Black**, **White**, **Dhaja**, **Tiranga** or **Saffron**. The hall's screens, the stream and the phones never change with it.
+**What it is.** **View › Appearance**: Drashti's own colours on this computer. There are sixty-four, in families: **Plain** (**Black** and **White**), **Flags** (**Dhaja** and **Tiranga**), **Dusk**, **Festivals**, **Nature**, **Jewels**, **Crafts and textiles** and **Mandir materials**, besides **Follow the computer** (Black or White, as the computer is set). Every one is easy on the eyes: the dark ones are deep colours rather than black, and the light ones soft paper rather than bright white, with words that read clearly without glaring. The hall's screens, the stream and the phones never change with it.
 
 **When you would use it.** To make the window easier on the eyes, or to suit the occasion.
 
 **How:**
 
 1. Choose **View**, then **Appearance**, then one of them. It changes at once.
-2. Or choose **Appearance…** there to see each as a small picture of this window.
-3. It stays chosen when Drashti starts again.
+2. Or choose **Appearance…** there to see each as a small picture of this window, in its family. Type a word of its name or its family in **Find an appearance** to see only those.
+3. Press **Favourite** to keep the one chosen at the top, under **Favourites**. Press it again to take it off.
+4. It stays chosen when Drashti starts again.
 
 ![The Appearance window: every appearance as a small picture of the operator window](../screenshots/appearance-window.png)
 
@@ -28,6 +29,20 @@ How Drashti looks on this computer, how it opens, and what it does by itself: ba
 2. Choose one, then **Make a copy of …**.
 3. Give it a name, choose **Dark** or **Light** and the colour.
 4. Press **Save and use it**. It shows under **Your own**.
+
+![The Appearance window: every appearance as a small picture of the operator window](../screenshots/appearance-window.png)
+
+## Moving appearances
+
+**What it is.** Some appearances move gently: the top bar's colours drift, the thin band under it shimmers, or a touch of the occasion passes across the top bar (a diya's glow, petals, kites, rain or clouds). The Appearance window says what the chosen one moves. Only the top bar and the band move, behind their words; LIVE, Next, Back, the clears, the slides and the hall's screens never do.
+
+**When you would use it.** For a festival's look, or turn **Moving** off to keep the window still.
+
+**How:**
+
+1. Choose **View**, **Appearance**, then **Appearance…**.
+2. Turn **Moving** on or off. It stays as you leave it.
+3. Drashti keeps it still by itself on a computer without a graphics chip, while streaming or recording on a computer with four cores or fewer, and when the computer is set to reduce motion.
 
 ![The Appearance window: every appearance as a small picture of the operator window](../screenshots/appearance-window.png)
 

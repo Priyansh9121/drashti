@@ -88,7 +88,8 @@ test('Black-out, the slide clear and the live border change in the same frame, i
   await thumb.click();
   await expect.poll(() => seen(win)).not.toBeNull();
   expect(await seen(win)).toEqual({
-    colour: await tokenColour(win, 'border-2 border-live', 'borderTopColor'),
+    // LIVE's frame (Session 60: live-edge, LIVE's own red in Black and White).
+    colour: await tokenColour(win, 'border-2 border-live-edge', 'borderTopColor'),
     running: 0,
   });
   const slideClear = win.getByRole('button', { name: 'Clear slide (on screen)' });
