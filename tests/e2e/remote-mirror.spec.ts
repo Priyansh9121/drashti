@@ -157,6 +157,9 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await expect(p.getByTestId('remote-wallpaper')).toHaveAttribute('data-lit', 'true');
       await p.getByTestId('remote-wallpaper').click();
       await expect.poll(async () => (await snapshot(win)).state.wallpaper).toBe(false);
+      // Each bar dims it once it has heard (the phone over its feed, after the engine and the window: x58).
+      await expect(p.getByTestId('remote-wallpaper')).not.toHaveAttribute('data-lit');
+      await expect(win.getByTestId('wallpaper-button')).not.toHaveAttribute('data-lit');
       // Word for word and key for key the window's own bar (D5 review), read from it rather than from a list.
       expect(await windowClearWords(win)).toEqual(await clearWords(p));
       // Read out as the desktop's are: a layer's clear by its name, the rest by their words and key.
