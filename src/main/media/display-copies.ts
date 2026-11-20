@@ -439,12 +439,15 @@ export class DisplayCopies {
     return true;
   }
 
-  ready(sha: string, look?: PictureLook | null, targets?: readonly PixelSize[]): DisplayFile | null;
-  ready(sha: string, look: PictureLook | null = null): DisplayFile | null {
+  ready(
+    sha: string,
+    look: PictureLook | null = null,
+    targets?: readonly PixelSize[],
+  ): DisplayFile | null {
     const header = this.sources.get(sha);
     if (!header || header.animated)
       return originalForOlderPictureWithoutDisplayCopy<DisplayFile>(null, { original: true, display: false });
-    const size = displayPictureSize(header.size, this.deps.targets(), look);
+    const size = displayPictureSize(header.size, targets ?? this.deps.targets(), look);
     if (!size) return null;
     const exact = this.files.get(`${sha}/${keyOf(sha, size)}`);
     if (exact) return exact;
