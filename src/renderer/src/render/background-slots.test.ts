@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { InputBackground } from '../../../shared/engine/state';
 import type { MediaLayer, Slots } from './background-slots';
-import { drawnKeyOf, NO_SLOTS, retryAfterLanding, slotKey, slotsReducer } from './background-slots';
+import {
+  drawnKeyOf,
+  drawnOver,
+  NO_SLOTS,
+  retryAfterLanding,
+  slotKey,
+  slotsReducer,
+} from './background-slots';
 
 const video = (mediaId: string, startedAt: number, extra: Partial<MediaLayer> = {}): MediaLayer => ({
   kind: 'media',
@@ -35,6 +42,42 @@ describe('background slots', () => {
     s = slotsReducer(s, { type: 'ready', key: slotKey(b) });
     expect(onScreen(s)).toBe(slotKey(b));
     expect(s.incoming).toBeNull();
+  });
+
+  it('a video whose data is in is drawn over the one before, which stays until the video has been presented on the screen (alpha.20; CI x54-1121-023510-80364: shown on its data alone, the hall saw a black frame)', () => {
+    let s = run({ type: 'layer', layer: a }, { type: 'ready', key: slotKey(a) }, { type: 'layer', layer: b });
+    expect(s.incoming && drawnOver(s, s.incoming)).toBe(false);
+    s = slotsReducer(s, { type: 'loaded', key: slotKey(b) });
+    // Its data in: drawn over the one before, which is still on screen.
+    expect(onScreen(s)).toBe(slotKey(a));
+    expect(s.incoming).toMatchObject({ key: slotKey(b), state: 'loaded' });
+    expect(s.incoming && drawnOver(s, s.incoming)).toBe(true);
+    expect(drawnKeyOf(s)).toBe(slotKey(a));
+    // Presented: on screen, the one before gone.
+    s = slotsReducer(s, { type: 'ready', key: slotKey(b) });
+    expect(onScreen(s)).toBe(slotKey(b));
+    expect(s.incoming).toBeNull();
+    // Its data in again, or one no longer coming: nothing changes.
+    expect(slotsReducer(s, { type: 'loaded', key: slotKey(b) })).toBe(s);
+    expect(slotsReducer(s, { type: 'loaded', key: slotKey(c) })).toBe(s);
+  });
+
+  it('a video whose data is in while a dissolve is on screen is not drawn over it: it follows the dissolve', () => {
+    let s = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'layer', layer: { ...b, fade: { at: 1000, durationMs: 800 } } },
+      { type: 'ready', key: slotKey(b), at: 1100 },
+    );
+    expect(s.fade).not.toBeNull();
+    s = slotsReducer(s, { type: 'layer', layer: c });
+    s = slotsReducer(s, { type: 'loaded', key: slotKey(c) });
+    expect(s.incoming).toMatchObject({ key: slotKey(c), state: 'loaded' });
+    expect(s.incoming && drawnOver(s, s.incoming)).toBe(false);
+    // The dissolve over: drawn over what is on screen, until it is presented.
+    s = slotsReducer(s, { type: 'faded', start: s.fade?.start ?? 0 });
+    expect(onScreen(s)).toBe(slotKey(b));
+    expect(s.incoming && drawnOver(s, s.incoming)).toBe(true);
   });
 
   it('drops a background that was still loading when another replaced it', () => {
