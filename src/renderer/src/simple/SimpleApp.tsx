@@ -59,6 +59,7 @@ import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { OnAirBadges } from '../stream/OnAirBadges';
 import { RecordButton } from '../stream/RecordButton';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
+import { SoundPlayerStopped } from '../operator/SoundPlayerStopped';
 import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -316,6 +317,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <ScreensSaidNotice onChange={null} />
       <NoSoundNotice />
       <StreamPageStopped />
+      {/* Drashti's sound stopped: its sound player kept failing (x53): said here too. */}
+      <SoundPlayerStopped />
       <LiveWindowNotice />
       <VideoInputNotice platform={platform} />
       <SimpleFirstRun platform={platform} />
