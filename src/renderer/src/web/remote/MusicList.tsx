@@ -147,7 +147,8 @@ export function MusicList() {
                   disabled={busy || (action === 'play' && !p.tracks.some((track) => track.playable))}
                   onClick={() => {
                     const path = MUSIC + (action === 'pause' ? '/pause' : '/play');
-                    void tap(post(path, action === 'play' ? { playlistId: p.id } : undefined));
+                    // Play asks no track (alpha.20): one stopped part-way plays on from the track it stopped on.
+                    void tap(post(path, action === 'play' ? { playlistId: p.id, playOn: true } : undefined));
                   }}
                 >
                   {action === 'pause' ? 'Pause' : 'Play'}

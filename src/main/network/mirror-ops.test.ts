@@ -72,7 +72,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     lastId: null,
   };
   const audioCalls: unknown[][] = [];
-  const playIndexes: number[] = [];
+  const playIndexes: (number | undefined)[] = [];
   let clock = 1_000_000;
   let stepsAside = true;
   const recordAudio =
@@ -447,6 +447,18 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
       body: { ok: false, message: 'Which audio playlist?' },
     });
     expect(played).toEqual(['music-1', null, null]);
+  });
+
+  it('plays an audio playlist on from the track it stopped on at a phone’s Play (playOn, alpha.20); the API as documented without it', () => {
+    const { ask, remote, played, playIndexes } = setup();
+    // A phone's Play, of a playlist or Play music: no track asked, so the music service plays on (music-service.ts).
+    expect(ask(remote, 'music.play', { playlistId: 'music-1', playOn: true }).status).toBe(200);
+    expect(ask(remote, 'music.play', { playOn: true }).status).toBe(200);
+    // The API without it, as api.md says: a playlist from its first track, or the track named.
+    expect(ask(remote, 'music.play', { playlistId: 'music-1' }).status).toBe(200);
+    expect(ask(remote, 'music.play', { playlistId: 'music-1', index: 2, playOn: true }).status).toBe(200);
+    expect(played).toEqual(['music-1', null, 'music-1', 'music-1']);
+    expect(playIndexes).toEqual([undefined, undefined, 0, 2]);
   });
 
   it('filters audio before paging, leaving the unfiltered list alone', () => {
