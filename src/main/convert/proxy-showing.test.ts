@@ -66,9 +66,20 @@ it('does not change an existing background when the same source is newly put in 
 it('keeps the privately cued file on Go when a lighter copy becomes ready after Cue', () => {
   const empty = initialEngineState();
   const background = showing().layers.background;
-  if (background?.kind !== 'media') throw new Error('The placeholder video is missing.');
-  const held = { ...background, cueId: 'placeholder-cue' };
-  const previous = { ...empty, videoCue: { id: 'placeholder-cue', background: held } };
+  if (background?.kind !== 'media' || background.media !== 'video')
+    throw new Error('The placeholder video is missing.');
+  const held = { ...background, media: 'video' as const, cueId: 'placeholder-cue' };
+  const previous = {
+    ...empty,
+    videoCue: {
+      id: 'placeholder-cue',
+      label: 'Placeholder',
+      background: held,
+      playlist: null,
+      required: ['placeholder-page'],
+      ready: ['placeholder-page'],
+    },
+  };
   const next = {
     ...empty,
     layers: { ...empty.layers, background: { ...held, seek: { at: 2000, toMs: 350 } } },
