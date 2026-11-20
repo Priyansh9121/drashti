@@ -124,6 +124,7 @@ import type { PendingScreens } from './keep-screens';
 import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
 import type { SavePictureResult, SaveStillResult } from './media';
+import type { MediaDetailsResult } from './media-details';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
@@ -698,6 +699,8 @@ export interface DrashtiBridge {
     reveal(mediaId: string): Promise<RevealResult>;
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers(mediaId: string): Promise<MediaMarkers>;
+    /** Media information… (alpha.20, Q60-34 item 1): what a video's or a sound's file holds, as FFmpeg reads it. */
+    details(mediaId: string): Promise<MediaDetailsResult>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
