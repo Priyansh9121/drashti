@@ -65,7 +65,12 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
   vi.useRealTimers();
 });
-function queued(options: Partial<CopyOptions> = {}) {
+function queued(
+  options: Partial<CopyOptions> & {
+    background?: boolean;
+    preparePublish?: (file: string, signal: AbortSignal) => Promise<void>;
+  } = {},
+) {
   return service.saveCopy(
     join(dir, 'source.mp4'),
     join(dir, 'complete.json'),
@@ -160,4 +165,49 @@ describe('one idle worker for analysis', () => {
     expect(existsSync(children[0]?.tmp ?? '')).toBe(false);
     expect(existsSync(join(dir, 'complete.json'))).toBe(false);
   });
+});
+
+it('holds registration inside the one worker and aborts it on show activity before restarting', async () => {
+  const phase: { signal: AbortSignal | null; release: (() => void) | null; calls: number } = {
+    signal: null,
+    release: null,
+    calls: 0,
+  };
+  const first = queued({
+    background: true,
+    preparePublish: async (_file, signal) => {
+      phase.calls++;
+      if (phase.calls !== 1) return;
+      phase.signal = signal;
+      await new Promise<void>((resolve) => {
+        phase.release = resolve;
+      });
+    },
+  });
+  finish(0);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(phase.signal).not.toBeNull();
+  const next = service.saveCopy(
+    join(dir, 'source.mp4'),
+    join(dir, 'second.json'),
+    { durationMs: 1, video: null, audio: null },
+    { args: (tmp) => [tmp], lengthMs: 1, waitForShow: true, strictPriority: true },
+  );
+  expect(children).toHaveLength(1);
+  show = true;
+  service.activityChanged();
+  expect(phase.signal?.aborted).toBe(true);
+  phase.release?.();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(existsSync(children[0]?.tmp ?? '')).toBe(false);
+  expect(existsSync(join(dir, 'complete.json'))).toBe(false);
+  show = false;
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(children).toHaveLength(2);
+  finish(1);
+  await expect(next.done).resolves.toMatchObject({ ok: true });
+  expect(children).toHaveLength(3);
+  finish(2);
+  await expect(first.done).resolves.toMatchObject({ ok: true });
+  expect(phase.calls).toBe(2);
 });
