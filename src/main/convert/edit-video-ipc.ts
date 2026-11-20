@@ -12,6 +12,8 @@ interface Deps {
   available(mediaId: string): boolean;
   changed(edit: VideoEditSnapshot): void;
   write: SourceWrite;
+  appendScenes?(mediaId: string, times: number[], save: () => VideoEditResult): VideoEditResult;
+  markersChanged?(): void;
 }
 const refused: VideoEditResult = {
   ok: false,
@@ -43,9 +45,23 @@ export function registerEditVideoIpc(deps: Deps): void {
           signal: new AbortController().signal,
           allowed: () => deps.fromOperator(event) && deps.available(deps.repo.sourceId(parsed.data.mediaId)),
         },
-        () => deps.repo.save(parsed.data),
+        () => {
+          const request = parsed.data;
+          if (!request.sceneMarkers?.length) return deps.repo.save(request);
+          if (!deps.appendScenes)
+            return {
+              ok: false as const,
+              message: 'The scene markers could not be saved. Keep this window open and try Save again.',
+            };
+          return deps.appendScenes(deps.repo.sourceId(request.mediaId), request.sceneMarkers, () =>
+            deps.repo.save(request),
+          );
+        },
       );
-      if (result.ok) deps.changed(result.edit);
+      if (result.ok) {
+        deps.changed(result.edit);
+        if (parsed.data.sceneMarkers?.length) deps.markersChanged?.();
+      }
       return result;
     } catch {
       return {

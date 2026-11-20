@@ -55,7 +55,8 @@ export function SceneSuggestions({
       )}
       {points.markers.length >= 50 && (
         <p className="text-xs text-muted">
-          All 50 marker places are used. Remove a draft marker before keeping another scene.
+          All 50 marker places are used. Remove a saved marker in Start, end and markers… before keeping
+          another scene.
         </p>
       )}
     </section>

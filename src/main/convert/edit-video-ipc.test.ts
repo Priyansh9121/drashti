@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerEditVideoIpc } from './edit-video-ipc';
-import { PLAIN_VIDEO_EDIT, type VideoEditSnapshot } from '../../shared/video-edit';
+import { PLAIN_VIDEO_EDIT, type VideoEditSnapshot, type VideoEditResult } from '../../shared/video-edit';
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 vi.mock('../ipc/handle', () => ({
@@ -22,7 +22,11 @@ function fixture() {
   };
   const save = vi.fn(() => ({ ok: true as const, edit: { ...edit, revision: 1 } }));
   const changed = vi.fn();
+  const appendScenes = vi.fn((_id: string, _times: number[], save: () => VideoEditResult) => save());
+  const markersChanged = vi.fn();
   registerEditVideoIpc({
+    appendScenes,
+    markersChanged,
     fromOperator: () => operator,
     available: () => available,
     repo: { sourceId: (id) => id, read: () => edit, save },
@@ -35,6 +39,8 @@ function fixture() {
   return {
     save,
     changed,
+    appendScenes,
+    markersChanged,
     request: { mediaId: 'video', revision: 0, recipe: PLAIN_VIDEO_EDIT },
     call: (name: string, ...args: unknown[]) => handlers.get(`media:${name}`)?.({}, ...args),
     revoke: () => {
@@ -77,4 +83,16 @@ describe('Edit Video operator boundary', () => {
     expect(f.save).not.toHaveBeenCalled();
     expect(f.changed).not.toHaveBeenCalled();
   });
+});
+
+it('appends validated source scenes inside the guarded recipe Save and announces markers only after success', async () => {
+  const f = fixture();
+  expect(await f.call('set-video-edit', { ...f.request, sceneMarkers: [2500] })).toMatchObject({ ok: true });
+  expect(f.appendScenes).toHaveBeenCalledWith('video', [2500], expect.any(Function));
+  expect(f.save).toHaveBeenCalledOnce();
+  expect(f.markersChanged).toHaveBeenCalledOnce();
+  f.fail();
+  expect(await f.call('set-video-edit', { ...f.request, sceneMarkers: [4000] })).toMatchObject({ ok: false });
+  expect(f.appendScenes).toHaveBeenCalledOnce();
+  expect(f.markersChanged).toHaveBeenCalledOnce();
 });
