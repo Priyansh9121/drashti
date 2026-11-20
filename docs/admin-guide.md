@@ -688,3 +688,9 @@ At most 1,000 kirtans go in one bundle. The whole file is at most 2 GB, and each
 - **When Google cannot be reached**, its day's allowance is used up (10,000 units a day, free; each call costs 1; it starts again at midnight Pacific time) or the sign-in has run out, Drashti says so in one sentence, and a key already saved still goes live. A sign-in Google no longer takes (removed, unused for 6 months, or a Testing project's 7 days) says "Sign in to YouTube again", once.
 - **Sign out** forgets the sign-in on that computer only. To sign every computer out at once, remove Drashti's access in your Google account: its linked apps page (myaccount.google.com/linkedapps), **Access to your Google Account**, your project's app, **See details**, **Remove access**, **Confirm**.
 - **A key typed by hand** in the profile replaces the broadcast's: the profile then streams to wherever that key belongs.
+
+### Video previews and analysis
+
+Media's silent frame strip, Edit Video's sound waveform and suggested scene changes use Drashti's bundled FFmpeg through the existing single conversion worker. No extra program or account is needed. All preparation waits until the show, stream and recording are idle. Activity stops the process and removes partial output; idle preparation starts again from the beginning. A failed attempt offers Retry after the file, permissions and free space are checked. Drashti keeps its 2 GB disk reserve.
+
+Analysis is derived from the immutable source and the selected sound track. Its bounded cache can be rebuilt, and its suggestions never write library or row markers. An unavailable cache does not remove valid trim points. No analysis is run by a screen, stream renderer, phone or node.

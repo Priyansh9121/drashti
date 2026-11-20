@@ -426,6 +426,8 @@ const bridge: DrashtiBridge = {
     startCountdown: (time) => invoke(IPC.timers.startCountdown, time),
   },
   media: {
+    videoAnalysis: (mediaId, audioStream = 0, retry = false) =>
+      invoke(IPC.media.videoAnalysis, mediaId, audioStream, retry),
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
     convert: (mediaIds) => invoke(IPC.media.convert, mediaIds),
     retryConversion: (jobId) => invoke(IPC.media.retryConversion, jobId),

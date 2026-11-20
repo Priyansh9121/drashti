@@ -2,7 +2,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { rename } from 'node:fs/promises';
-import { constants, setPriority } from 'node:os';
+import { constants, getPriority, setPriority } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
 import { z } from 'zod';
 import type { ConversionJob, ConvertResult } from '../../shared/convert';
@@ -228,6 +228,17 @@ export interface CopyOptions {
   waitForShow?: boolean;
   /** Record a managed Trim copy before it can appear at its final path. */
   beforePublish?(temporary: string, destination: string): void;
+  /** Idle analysis: probe in this same worker, never alongside another conversion. */
+  inspect?(info: MediaInfo): void;
+  /** Bounded consumers only; called afresh after args() resets each attempt's reducers. */
+  stdout?(chunk: Buffer): void;
+  /** Materialize a reduced artifact, after close drained all FFmpeg output. */
+  finish?(temporary: string): void;
+  /** Refuse preparation when below-normal priority cannot be verified. */
+  strictPriority?: boolean;
+  /** Bounded artifacts reserve their actual upper bound, rather than a whole source-sized video. */
+  estimatedBytes?: number;
+  kind?: 'analysis' | 'proxy' | 'clip';
   progress?(fraction: number | null): void;
   waiting?(note: string | null): void;
 }
@@ -680,7 +691,8 @@ export class ConvertService {
   private pauseForActivity(running: Running | RunningFile, waitForShow: boolean): Stop | null {
     if (!running.stop && this.waitFor(waitForShow) !== null) {
       running.stop = 'wait';
-      running.child?.kill();
+      if ('copy' in running.job && running.job.copy?.strictPriority) running.child?.kill('SIGKILL');
+      else running.child?.kill();
     }
     return running.stop;
   }
@@ -1117,11 +1129,30 @@ export class ConvertService {
       : `Only ${gb(free)} is free on this disk, and Drashti keeps 2 GB free. ${advice}`;
   }
 
+  private lowerPriority(child: ChildProcess): boolean {
+    try {
+      if (child.pid === undefined) return false;
+      setPriority(child.pid, constants.priority.PRIORITY_LOW);
+      if (getPriority(child.pid) >= constants.priority.PRIORITY_BELOW_NORMAL) return true;
+    } catch {
+      /* Refused or the process ended before its priority was verified. */
+    }
+    child.kill();
+    return false;
+  }
+
   private async runFile(job: FileJob): Promise<void> {
     const ffmpeg = this.deps.ffmpegPath();
     const height = String(job.options.maxHeight);
     const saving = job.copy !== null;
-    const what = saving ? 'saved as an MP4' : `made ${height}p`;
+    const what =
+      job.copy?.kind === 'analysis'
+        ? 'analyzed'
+        : job.copy?.kind === 'proxy'
+          ? 'made into a lighter playing copy'
+          : saving
+            ? 'saved as an MP4'
+            : `made ${height}p`;
     const done = (result: FitResult) => {
       this.runningFile = null;
       job.resolve(result);
@@ -1142,36 +1173,110 @@ export class ConvertService {
       done({ ok: false, message: 'Drashti could not write in its own folder: ask the admin.' });
       return;
     }
-    const space = job.copy
-      ? this.trimSpaceProblem(job.source, out, job.info.durationMs, job.copy.lengthMs)
-      : this.fileSpaceProblem(job.source, out, 1, 'import it');
+    const space =
+      job.copy?.estimatedBytes !== undefined
+        ? this.deps.freeBytes(out) - job.copy.estimatedBytes < KEEP_FREE_BYTES
+          ? 'There is not enough free space to prepare this video while keeping 2 GB free. Free up some space, then try again.'
+          : null
+        : job.copy
+          ? this.trimSpaceProblem(job.source, out, job.info.durationMs, job.copy.lengthMs)
+          : this.fileSpaceProblem(job.source, out, 1, 'import it');
     if (space) {
       done({ ok: false, message: space });
       return;
     }
     const tmp = join(out, `.${job.id}.mp4`);
-    const lengthMs = job.copy ? job.copy.lengthMs : job.info.durationMs;
+    let lengthMs = job.copy ? job.copy.lengthMs : job.info.durationMs;
     const running: RunningFile = { job, child: null, tmp, stop: null, limitMs: this.workMs(lengthMs) };
     this.runningFile = running;
     job.options.progress?.(0);
-    const child = spawn(
-      ffmpeg,
-      job.copy
+    if (job.copy?.inspect) {
+      const probePriority = { failed: false };
+      let pid: number | undefined;
+      const info = await readInfo(ffmpeg, job.source, {
+        timeoutMs: this.probeMs(),
+        onSpawn: (probe) => {
+          running.child = probe;
+          pid = probe.pid;
+          this.deps.children?.started(pid);
+          if (job.copy?.strictPriority && !this.lowerPriority(probe)) probePriority.failed = true;
+          this.pauseForActivity(running, job.waitForShow);
+        },
+      });
+      this.deps.children?.ended(pid);
+      running.child = null;
+      const stopped = this.pauseForActivity(running, job.waitForShow);
+      if (stopped === 'wait') {
+        this.runningFile = null;
+        this.files.unshift(job);
+        this.watch();
+        return;
+      }
+      if (stopped || probePriority.failed || info.timedOut || !info.video) {
+        done({
+          ok: false,
+          message: probePriority.failed
+            ? 'Drashti could not lower the preparation priority. Check this computer’s permissions, then try again.'
+            : stopped
+              ? 'Stopped.'
+              : 'Drashti could not read this video. Check the file, then try again.',
+          ...(stopped ? { stopped: true } : {}),
+        });
+        return;
+      }
+      try {
+        job.copy.inspect(info);
+        if (!lengthMs && info.durationMs) {
+          lengthMs = info.durationMs;
+          running.limitMs = this.workMs(lengthMs);
+        }
+      } catch {
+        done({
+          ok: false,
+          message: 'This video cannot be prepared with these choices. Check its information, then try again.',
+        });
+        return;
+      }
+    }
+    let args: string[];
+    try {
+      args = job.copy
         ? job.copy.args(tmp)
-        : convertArgs('mp4', job.source, tmp, job.info, { maxHeight: job.options.maxHeight }),
-      { windowsHide: true, env: ffmpegEnv() },
-    );
+        : convertArgs('mp4', job.source, tmp, job.info, { maxHeight: job.options.maxHeight });
+    } catch {
+      done({
+        ok: false,
+        message: 'Drashti could not prepare these choices. Check the video, then try again.',
+      });
+      return;
+    }
+    const child = spawn(ffmpeg, args, { windowsHide: true, env: ffmpegEnv() });
     running.child = child;
     this.deps.children?.started(child.pid, tmp);
     const limit = setTimeout(() => {
       running.stop ??= 'time';
       child.kill('SIGKILL');
     }, running.limitMs);
-    try {
-      if (child.pid !== undefined) setPriority(child.pid, constants.priority.PRIORITY_LOW);
-    } catch {
-      // Not allowed here: it runs at normal priority.
+    const priorityFailed = job.copy?.strictPriority === true && !this.lowerPriority(child);
+    if (!job.copy?.strictPriority) {
+      try {
+        if (child.pid !== undefined) setPriority(child.pid, constants.priority.PRIORITY_LOW);
+      } catch {
+        /* Existing conversions may keep their priority. */
+      }
     }
+    const output = { failed: false };
+    if (job.copy?.stdout)
+      child.stdout.on('data', (chunk: Buffer) => {
+        if (running.stop || priorityFailed || output.failed) return;
+        try {
+          job.copy?.stdout?.(chunk);
+        } catch {
+          output.failed = true;
+          child.kill();
+        }
+      });
+    this.pauseForActivity(running, job.waitForShow);
     // What FFmpeg says when it fails (a stream an MP4 cannot hold, say), for the log's reason.
     let said = '';
     const reader = new ProgressReader(
@@ -1190,13 +1295,13 @@ export class ConvertService {
       child.on('error', () => {
         resolve(-1);
       });
-      child.on('exit', resolve);
+      child.on('close', resolve);
     });
     clearTimeout(limit);
     this.deps.children?.ended(child.pid);
     running.child = null;
     const stop = this.pauseForActivity(running, job.waitForShow);
-    if (code !== 0 || stop) {
+    if (code !== 0 || stop || priorityFailed || output.failed) {
       removeQuietly(tmp);
       if (stop === 'wait') {
         // It starts again from the beginning once it is safe.
@@ -1226,6 +1331,15 @@ export class ConvertService {
         });
         return;
       }
+      if (priorityFailed || output.failed) {
+        done({
+          ok: false,
+          message: priorityFailed
+            ? 'Drashti could not lower the preparation priority. Check this computer’s permissions, then try again.'
+            : 'Drashti could not read the preparation output. Check the video, then try again.',
+        });
+        return;
+      }
       // A stream an MP4 cannot hold (the check before is by the first picture and sound only).
       const unheld = /not currently supported in container|Could not find tag for codec/u.test(said);
       this.deps.log(
@@ -1239,9 +1353,11 @@ export class ConvertService {
             ? `Stopped: this disk has less than 2 GB free. Free up some space, then ${saving ? 'save it' : 'import it'} again.`
             : unheld
               ? 'One of its streams is of a kind an MP4 cannot hold, so it cannot be saved as an MP4 without converting it.'
-              : saving
-                ? 'FFmpeg could not save it as an MP4.'
-                : `FFmpeg could not make it ${height}p.`,
+              : job.copy?.kind
+                ? 'Drashti could not prepare this video. Check its file and choices, then try again.'
+                : saving
+                  ? 'FFmpeg could not save it as an MP4.'
+                  : `FFmpeg could not make it ${height}p.`,
       });
       return;
     }
@@ -1251,6 +1367,7 @@ export class ConvertService {
       : job.dest;
     try {
       // Publish a show-gated copy in the same turn as the last activity check.
+      job.copy?.finish?.(tmp);
       job.copy?.beforePublish?.(tmp, dest);
       if (job.waitForShow) renameSync(tmp, dest);
       else await rename(tmp, dest);
@@ -1258,15 +1375,24 @@ export class ConvertService {
       removeQuietly(tmp);
       done({
         ok: false,
-        message: saving
-          ? 'Drashti could not save it there: choose another folder.'
-          : 'Drashti could not keep the smaller copy: ask the admin.',
+        message:
+          job.copy?.kind === 'analysis'
+            ? 'Drashti could not keep this video analysis. Check its source and free disk space, then try again.'
+            : saving
+              ? 'Drashti could not save it there: choose another folder.'
+              : 'Drashti could not keep the smaller copy: ask the admin.',
       });
       return;
     }
     this.deps.log(
       'info',
-      saving ? 'A video’s part was saved as an MP4' : `A video was made ${height}p for its import`,
+      job.copy?.kind === 'analysis'
+        ? 'A video analysis artifact was prepared'
+        : job.copy?.kind === 'proxy'
+          ? 'A lighter video playing copy was prepared'
+          : saving
+            ? 'A video’s part was saved as an MP4'
+            : `A video was made ${height}p for its import`,
     );
     job.options.progress?.(1);
     done({ ok: true, copy: dest });

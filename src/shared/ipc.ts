@@ -1,3 +1,4 @@
+import type { VideoAnalysisResult } from './video-analysis';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
@@ -605,6 +606,7 @@ export const IPC = {
      * at low priority, with the library's notes on it (the operator window's, Simple Mode's too; it changes nothing).
      */
     details: 'media:details',
+    videoAnalysis: 'media:video-analysis',
     /** Media information's Copy: its words on the clipboard (operator window only; a page's own clipboard is refused). */
     copyDetails: 'media:copy-details',
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when (operator window). */
@@ -1663,6 +1665,10 @@ export interface InvokeContract {
     result: null;
   };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
+  [IPC.media.videoAnalysis]: {
+    args: [mediaId: string, audioStream: number | null, retry: boolean];
+    result: VideoAnalysisResult;
+  };
   [IPC.media.details]: { args: [mediaId: string]; result: MediaDetailsResult };
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
   [IPC.media.resumePoint]: { args: [mediaId: string]; result: ResumePoint | null };
