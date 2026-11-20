@@ -73,7 +73,7 @@ import {
   playbackLeftMs,
 } from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
-import { keepMoves, learnedFiles, resolvePlaying, videoFilesFor } from './playing';
+import { keepMoves, keepRepeat, learnedFiles, pointsAside, resolvePlaying, videoFilesFor } from './playing';
 import { type Playing, type PlayingRef, playingNow, playingOf } from '../../shared/engine/playing';
 import { type CannotPlayTook, cannotPlayOff, noPictureOff, oneAtATime, putsUp } from './one-at-a-time';
 import {
@@ -212,6 +212,10 @@ const MUSIC_COMMANDS: ReadonlySet<string> = new Set([
   'moveTo',
   'pausePlaying',
   'resumePlaying',
+  // The time bar's ⋯ (alpha.20): A-B repeat, its Stop, a frame back or on.
+  'repeatAb',
+  'stopAb',
+  'stepFrame',
   'playMusic',
   'pauseMusic',
   'resumeMusic',
@@ -434,6 +438,8 @@ interface HeldPoints {
 }
 
 function withPoints<T extends PlaybackPoints>(layer: T, points: PlaybackPoints | undefined): T {
+  // Going round from A to B (alpha.20): the library's points wait aside for Stop (playing.ts pointsAside).
+  if (points && 'ab' in layer) return pointsAside(layer, points);
   if (!points || (sameData(layer.clip, points.clip) && sameData(layer.marks, points.marks))) return layer;
   const { clip: _clip, marks: _marks, ...rest } = layer;
   return { ...rest, ...points } as T;
@@ -1468,8 +1474,14 @@ export class ShowEngine {
     };
     const bg = layers.background;
     const bgNow = this.state.layers.background;
-    const background = bg?.kind === 'media' ? keep(bg, bgNow?.kind === 'media' ? bgNow : null) : bg;
-    const audio = layers.audio ? keep(layers.audio, this.state.layers.audio) : null;
+    // An A-B repeat as it is now too (alpha.20, playing.ts keepRepeat), as its jumps are.
+    const background =
+      bg?.kind === 'media'
+        ? keepRepeat(keep(bg, bgNow?.kind === 'media' ? bgNow : null), bgNow?.kind === 'media' ? bgNow : null)
+        : bg;
+    const audio = layers.audio
+      ? keepRepeat(keep(layers.audio, this.state.layers.audio), this.state.layers.audio)
+      : null;
     return background === bg && audio === layers.audio ? layers : { ...layers, background, audio };
   }
 
@@ -2102,7 +2114,8 @@ export class ShowEngine {
    * its length is not known.
    */
   private endsAt(a: AudioLayer): number | null {
-    if (a.durationMs === undefined) return null;
+    // Going round from A to B (alpha.20): no end.
+    if (a.durationMs === undefined || a.loop) return null;
     const start = Math.min(a.durationMs, a.clip?.startMs ?? 0);
     const end = Math.max(start, Math.min(a.durationMs, a.clip?.endMs ?? a.durationMs));
     if (a.seek) return a.seek.at + Math.max(0, end - Math.min(end, Math.max(start, a.seek.toMs)));
@@ -2848,6 +2861,11 @@ export class ShowEngine {
         return this.skip(command.layer, command.jump);
       // The time bar (Session 54, playing.ts): what plays moved, paused or played on, in step everywhere. An audio
       // playlist's track pauses and plays on as Music's own Pause and Play do.
+      // The time bar's ⋯ (alpha.20, playing.ts): A-B repeat and its Stop, and a frame back or on while paused.
+      case 'repeatAb':
+      case 'stopAb':
+      case 'stepFrame':
+        return this.timeBarMore(command);
       case 'moveTo':
       case 'pausePlaying':
       case 'resumePlaying': {
@@ -3108,9 +3126,22 @@ export class ShowEngine {
     return { ok: true, changed: true, rev: this.revision };
   }
 
+  /**
+   * The time bar's ⋯ (alpha.20): A-B repeat, its Stop and a frame step, resolved as the bar's own moves are
+   * (playing.ts). None is a change Back or Put it back undo.
+   */
+  private timeBarMore(command: Extract<EngineCommand, { type: 'repeatAb' | 'stopAb' | 'stepFrame' }>) {
+    const track = this.musicNow();
+    return resolvePlaying(this.state, command, this.now(), {
+      nextTrack: (at) => (track ? this.musicStep(track, 1, at) : { type: 'layer/clear', layer: 'audio' }),
+      refreshRestart: (playing) => this.refreshRestart(playing),
+    });
+  }
+
   /** What identifies an audio playlist's track as it plays: a new key, a new wait. */
   private musicKey(a: MusicLayer | null): string | null {
-    if (!a || a.pausedAtMs !== undefined) return null;
+    // Paused, or going round from A to B (alpha.20): it never ends by itself, so nothing waits for its end.
+    if (!a || a.pausedAtMs !== undefined || a.loop) return null;
     return `${a.music.playlistId}/${String(a.music.index)}@${String(a.startedAt)}/${String(this.endsAt(a) ?? '?')}`;
   }
 
