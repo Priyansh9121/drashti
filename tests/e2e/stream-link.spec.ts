@@ -260,6 +260,8 @@ test('a YouTube live link through Drashti’s yt-dlp (the fake): never looked at
     await expect.poll(() => outputPages(launched.app).length).toBe(1);
     const [out] = outputPages(launched.app);
     if (!out) throw new Error('a screen expected');
+    // Ready to draw the show (its warm-up over), as hallAndLink waits.
+    await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
     return { app: launched.app, win: page, hall: out };
   })();
   await expect.poll(() => standIn.ready(), { timeout: 30_000 }).toBe(true);
