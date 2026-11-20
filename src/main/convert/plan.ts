@@ -490,3 +490,6 @@ export function convertArgs(
       return [...head, '-vn', '-map', '0:a:0', '-c:a', 'aac', '-b:a', '192k', output];
   }
 }
+
+/** Red (x47, slice 2): still to be written. */
+export const tooLarge = (_video: { codec: string; width: number; height: number }): boolean => false;
