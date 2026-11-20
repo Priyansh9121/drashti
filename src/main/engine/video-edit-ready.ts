@@ -99,9 +99,21 @@ export function prepareVideoEdits(
           ? { ...el, mediaId: edits.get(el.mediaId)?.id ?? el.mediaId }
           : el,
       );
+      const deck = slide.slide.deck;
+      const preparedDeck = deck
+        ? {
+            ...deck,
+            media: deck.media.map((media) => {
+              const edit = edits.get(media.mediaId);
+              return edit
+                ? { ...media, mediaId: edit.id, ...(media.clip ? { clip: edit.times.clip(media.clip) } : {}) }
+                : media;
+            }),
+          }
+        : undefined;
       layers.slide = {
         ...slide,
-        slide: { ...slide.slide, elements },
+        slide: { ...slide.slide, elements, ...(preparedDeck ? { deck: preparedDeck } : {}) },
         ...(slide.clips ? { clips: clips(slide.clips) } : {}),
         ...(slide.seeks ? { seeks: seeks(slide.seeks) } : {}),
       };
