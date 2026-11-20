@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { initialEngineState, type EngineState } from '../shared/engine/state';
-import { AGAIN_MS, KeepsFailing, videosUp } from './keeps-failing';
+import { AGAIN_MS, filesUp, KeepsFailing, keptFailingNotice, stillUpOn } from './keeps-failing';
 
 /*
  * A page that keeps failing on a video up (x53; the owner's Q60-31 bug hunt, x52's show-stoppers; his Q60-50 A): failing
@@ -59,8 +59,8 @@ describe('KeepsFailing', () => {
   });
 });
 
-describe('videosUp', () => {
-  const withVideos = (): EngineState => {
+describe('what a page loads, and where a file still is', () => {
+  const withMusic = (): EngineState => {
     const s = initialEngineState();
     return {
       ...s,
@@ -86,11 +86,62 @@ describe('videosUp', () => {
     };
   };
 
-  it('the background’s video, never the music: the take-off is a video’s', () => {
-    expect(videosUp(withVideos())).toEqual([{ mediaId: 'placeholder-background', since: 2000 }]);
+  it('a screen or LIVE loads the videos; the sound player the music too (Q60-52 A)', () => {
+    expect(filesUp(withMusic(), false)).toEqual([{ mediaId: 'placeholder-background', since: 2000 }]);
+    expect(filesUp(withMusic(), true)).toEqual([
+      { mediaId: 'placeholder-background', since: 2000 },
+      { mediaId: 'placeholder-music', since: 3000 },
+    ]);
+    expect(filesUp(initialEngineState(), true)).toEqual([]);
   });
 
-  it('nothing up: none', () => {
-    expect(videosUp(initialEngineState())).toEqual([]);
+  it('the music is still up on the audio layer; the background video is not on the slide or the audio layer', () => {
+    expect(stillUpOn(withMusic(), 'placeholder-music')).toBe('audio');
+    expect(stillUpOn(withMusic(), 'placeholder-background')).toBeNull();
+    expect(stillUpOn(withMusic(), 'placeholder-gone')).toBeNull();
+  });
+
+  it('a video paused on the slide up is still up there: its slide is what to take off (Q60-52 A)', () => {
+    const s = initialEngineState();
+    const onSlide: EngineState = {
+      ...s,
+      layers: {
+        ...s.layers,
+        slide: {
+          presentationId: 'placeholder-deck',
+          slideIndex: 0,
+          shownAt: 1000,
+          notes: '',
+          seeks: { 'placeholder-slide-video': { at: 2000, toMs: 1000, paused: true } },
+          slide: {
+            id: 'placeholder-slide',
+            width: 1920,
+            height: 1080,
+            background: null,
+            elements: [
+              {
+                id: 'placeholder-video',
+                kind: 'video',
+                mediaId: 'placeholder-slide-video',
+                frame: { x: 0, y: 0, width: 1920, height: 1080 },
+                fit: 'fill',
+                loop: true,
+              },
+            ],
+          },
+        },
+      },
+    };
+    expect(stillUpOn(onSlide, 'placeholder-slide-video')).toBe('slide');
+    expect(filesUp(onSlide, false)).toEqual([{ mediaId: 'placeholder-slide-video', since: 1000 }]);
+  });
+
+  it('says what came off with the file, and where it failed', () => {
+    expect(keptFailingNotice('Placeholder video.mp4', 'LIVE', 'slide')).toBe(
+      '“Placeholder video.mp4” could not play on LIVE, so its slide came off. If it happens again, the file may be damaged: tell whoever looks after Drashti.',
+    );
+    expect(keptFailingNotice('Placeholder music.wav', 'Drashti’s sound player', 'audio')).toBe(
+      '“Placeholder music.wav” could not play on Drashti’s sound player, so it came off. If it happens again, the file may be damaged: tell whoever looks after Drashti.',
+    );
   });
 });
