@@ -727,6 +727,10 @@ const ownFieldsSchema = ownSchema.omit({ id: true }).extend({
 const appearance = new AppearanceService({
   userData: app.getPath('userData'),
   startIn: sw('DRASHTI_TEST_APPEARANCE'),
+  // Tests only (never a packaged Drashti): how many logical cores this computer has, for the moving looks' pause.
+  ...(!packaged() && /^[0-9]{1,3}$/u.test(sw('DRASHTI_TEST_CORES') ?? '')
+    ? { cores: Number(sw('DRASHTI_TEST_CORES')) }
+    : {}),
   say: (line) => {
     log.info(line);
   },
@@ -7929,6 +7933,21 @@ function start(): void {
     return appearance.setMotion(motion)
       ? { ok: true as const }
       : { ok: false as const, message: 'Choose Calm, Lively or Off.' };
+  });
+  // Moving: On or Off (Session 60, the owner's safety rule), this computer's, as the appearance is.
+  handle(IPC.appearance.setMoving, (e, on) => {
+    if (!fromOperator(e) || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can turn moving on or off.' };
+    appearance.setMoving(on);
+    return { ok: true as const };
+  });
+  // Favourites (Session 60): an appearance starred or unstarred in the Appearance window.
+  handle(IPC.appearance.setFavourite, (e, id, on) => {
+    if (!fromOperator(e) || typeof id !== 'string' || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can star an appearance.' };
+    return appearance.setFavourite(id, on)
+      ? { ok: true as const }
+      : { ok: false as const, message: 'That appearance is no longer here.' };
   });
   // The menu's ticks follow the appearance shown (Follow the computer's changes too).
   appearance.onChanged(() => {

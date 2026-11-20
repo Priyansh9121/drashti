@@ -715,6 +715,10 @@ export const IPC = {
     remove: 'appearance:remove',
     /** Interface motion (Session 40): calm, lively or off. */
     setMotion: 'appearance:set-motion',
+    /** Moving: On or Off (Session 60): whether a live appearance's touch moves at all. */
+    setMoving: 'appearance:set-moving',
+    /** Star or unstar an appearance (Session 60). */
+    setFavourite: 'appearance:set-favourite',
     /** main -> operator: View › Appearance… was chosen. */
     open: 'appearance:open',
   },
@@ -1290,6 +1294,11 @@ export interface InvokeContract {
   [IPC.appearance.remove]: { args: [id: string]; result: { ok: true } | { ok: false; message: string } };
   [IPC.appearance.setMotion]: {
     args: [motion: InterfaceMotion];
+    result: { ok: true } | { ok: false; message: string };
+  };
+  [IPC.appearance.setMoving]: { args: [on: boolean]; result: { ok: true } | { ok: false; message: string } };
+  [IPC.appearance.setFavourite]: {
+    args: [id: string, on: boolean];
     result: { ok: true } | { ok: false; message: string };
   };
   [IPC.pictures.job]: { args: []; result: PdfJob | null };
