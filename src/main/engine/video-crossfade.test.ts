@@ -6,7 +6,7 @@ import { ShowEngine } from './show-engine';
 import { MemoryPlaylistSource } from './playlist-source';
 import { makeSource, RecordingTransport } from './testing';
 
-function setup() {
+function setup(crossfadeMs = 2000) {
   let now = 10_000;
   let participants = ['hall', 'audio'];
   const waits: { at: number; run: () => void; canceled: boolean }[] = [];
@@ -33,7 +33,7 @@ function setup() {
     makeSource(),
     new RecordingTransport(),
     () => now,
-    { items: (id) => lists.items(id), repeatAll: (id) => lists.repeatAll(id), crossfadeMs: () => 2000 },
+    { items: (id) => lists.items(id), repeatAll: (id) => lists.repeatAll(id), crossfadeMs: () => crossfadeMs },
     {
       mediaKind: () => 'video',
       mediaLength: () => 10_000,
@@ -170,7 +170,7 @@ it('a newly opened page or reload needs its own fresh first-frame acknowledgemen
 });
 
 it('a same-file cue has a distinct decoder identity from the video already playing', () => {
-  const x = setup();
+  const x = setup(0);
   x.play();
   const live = x.engine.current.layers.background;
   x.engine.dispatch({ type: 'cueVideo', mediaId: 'first' });
