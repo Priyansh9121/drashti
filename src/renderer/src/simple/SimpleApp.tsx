@@ -15,6 +15,7 @@ import { RemoveItemsConfirm, RemovePlaylistConfirm } from '../library/RemoveConf
 import { UndoBar } from '../library/UndoBar';
 import { LinkDialog } from '../links/LinkDialog';
 import { MarkersDialog } from '../markers/MarkersDialog';
+import { MediaInfoDialog } from '../library/MediaInfoDialog';
 import { PlayingBars } from '../markers/PlayingBars';
 import { setMidiHandler } from '../midi/midi-store';
 import { AudioGroup } from '../music/AudioGroup';
@@ -389,6 +390,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <FileMenu platform={platform} />
       {/* A playlist video's Trim prepares a new cut for its row (Session 57). */}
       <MarkersDialog copies={false} />
+      {/* Media information… (alpha.20; the owner's "Yes, all A" to Q60-39: Simple Mode has it too). */}
+      <MediaInfoDialog platform={platform} simple />
       <RemoveItemsConfirm undoKey={shortcutText('undo', platform)} />
       {/* Delete… of a playlist or a folder (Session 56), asked first, with Undo. */}
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />

@@ -108,6 +108,21 @@ The library holds everything on this computer that can go on the screens: presen
 
 ![A playlist's right-click menu](../screenshots/share-with-phones.png)
 
+## Media information
+
+**What it is.** A small window that says what a video or a sound file holds: its container, length and size, its picture's codec, profile, bit depth, size and frame rate, each sound track with its language, and how Drashti plays it.
+
+**When you would use it.** When a file does not play as you expect, or someone asks what kind of file it is.
+
+**How:**
+
+1. Right-click the video or sound, in **Media**, a playlist or **Audio**.
+2. Choose **Media information…**.
+3. Press **Copy** to put its words in a message or a problem report.
+4. Press **Esc** to close it.
+
+![A playlist's right-click menu](../screenshots/share-with-phones.png)
+
 ## The Picture editor
 
 **What it is.** A picture's own editor: **Rotate**, **Flip across**, **Flip up and down**, **Crop**, and the blurred fill behind a photo that does not fill the screen. The picture file itself never changes.
