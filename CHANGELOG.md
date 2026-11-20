@@ -19,7 +19,7 @@ Update after a sabha, and update Main and nodes together.
 - From a Link… asks where to save first, and keeps a YouTube video’s captions beside it.
 - PowerPoint decks look closer to PowerPoint: table styles, first lines, Wheel and Random Bars.
 - Off until turned on: More tools › OSC control… (Pro Mode) for a lighting or sound console or Companion, and Send to other software (Syphon on a Mac, Spout on Windows).
-- Files dropped with no playlist open ask for a new playlist or folder; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… moved to More tools and a new Tools menu.
+- Importing videos, sounds and decks with their animations on a busy computer reads each file whole again. Files dropped with no playlist open ask for a new playlist or folder; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… moved to More tools and a new Tools menu.
 - QR code…: Download… (PNG and SVG), and a logo in its middle.
 - Help › Report a Problem… (both modes, and nodes) sends the admin what went wrong, by feature. Help › Drashti Manual…: every feature, searchable and printable.
 - The access list’s emailed Approve and Reject links open on any phone or computer; its admin pastes the new script once (access-setup.md, section 11), which also brings the reports.
