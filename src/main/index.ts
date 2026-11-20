@@ -3967,6 +3967,8 @@ function start(): void {
     edits.delete(c);
   // The slide editor's picture import joins the same queue.
   edits.delete(IPC.slideEditor.addPicture);
+  // Its file reads and queued import finish before playlistFileWrite takes the library’s write lock.
+  edits.delete(IPC.playlists.importM3u);
   // These wait for the write lock themselves, after the file dialog and background reading have ended.
   edits.delete(IPC.videoCaptions.add);
   edits.delete(IPC.videoCaptions.select);

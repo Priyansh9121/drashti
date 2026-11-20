@@ -1074,7 +1074,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
             </Button>
           </>
         )}
-        <PlaylistFind label="Find in playlist" countTestId="playlist-find-count" find={find} />
+        {!simple && <PlaylistFind label="Find in playlist" countTestId="playlist-find-count" find={find} />}
         {help.button}
         {/* Simple Mode (Session 55, Part 18): no menu of the playlist's own (its Rename and Delete are on the left since
             Session 56, beside the other playlists), and no Close. */}
@@ -1181,7 +1181,9 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
           />
         )}
       </div>
-      {!isTemplate && <PlaylistTiming playlistId={openId} items={items} playback={node?.playback} />}
+      {!simple && !isTemplate && (
+        <PlaylistTiming playlistId={openId} items={items} playback={node?.playback} />
+      )}
       {!isTemplate && node?.playback && (node.playback.shuffle || node.playback.repeatAll) && (
         <p className="shrink-0 px-3 py-1 text-xs text-muted" data-testid="playlist-play-options">
           {[node.playback.shuffle ? 'Shuffled' : '', node.playback.repeatAll ? 'Repeat all' : '']
@@ -1610,5 +1612,12 @@ async function addFilesTo(playlistId: string): Promise<void> {
 export function OpenPlaylist({ platform, simple = false }: { platform: string; simple?: boolean }) {
   const openId = usePlaylists((s) => s.openId);
   if (!openId) return null;
-  return <PlaylistItems key={openId} platform={platform} openId={openId} simple={simple} />;
+  return (
+    <PlaylistItems
+      key={`${openId}-${simple ? 'simple' : 'pro'}`}
+      platform={platform}
+      openId={openId}
+      simple={simple}
+    />
+  );
 }

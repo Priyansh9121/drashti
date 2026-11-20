@@ -21,6 +21,8 @@ The left column holds the playlists, in folders, and under them the wallpapers. 
 
 **What it is.** The middle of the window. A presentation, a PDF or a deck is a row with its name, and a row under it for each slide. A picture, a video, a sound and a video input are a row each. **One click on any row puts it on the screens at once.**
 
+The new timing, Find and M3U controls are in Pro Mode.
+
 **When you would use it.** All through the sabha.
 
 **How:**
