@@ -64,6 +64,16 @@ const interlaced = (file: string) =>
     ...['-flags', '+ildct+ilme', '-x264-params', 'tff=1', file],
   ]);
 
+/**
+ * 3 s of progressive H.264 at 720 × 576, its pixels shaped for a 16:9 picture (alpha.20's "Plays anything" converts an
+ * interlaced one by itself, so a playlist's row of one soon plays its progressive copy).
+ */
+const widePixels = (file: string) =>
+  ff([
+    ...['-f', 'lavfi', '-i', 'testsrc2=s=720x576:r=25:d=3', '-vf', 'setsar=64/45'],
+    ...['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', file],
+  ]);
+
 /** 3 s of an MP3 (44.1 kHz, mono) with a 32 × 32 JPEG cover picture (the picture made first, then put in whole). */
 function withCover(file: string): string {
   const cover = ff(['-f', 'lavfi', '-i', 'color=c=0x3a6ea5:s=32x32:d=1', '-frames:v', '1', `${file}.jpg`]);
@@ -180,15 +190,22 @@ test('Media: a video’s container, length, size, its picture and both its sound
   expect(await background(win)).toEqual(before);
 });
 
-test('a playlist’s row and an audio playlist’s track: an interlaced picture shaped 16:9, an MP3 with its cover; Simple Mode’s rows too', async () => {
+test('a playlist’s row and an audio playlist’s track: pixels shaped 16:9, an interlaced file’s own scan, an MP3 with its cover; Simple Mode’s rows too', async () => {
   test.setTimeout(180_000);
   const { win, dir } = await start();
-  const [videoId = '', soundId = ''] = await importAndGetIds(win, [
-    interlaced(join(dir, 'Placeholder interlaced.mp4')),
+  const [videoId = '', soundId = '', interlacedId = ''] = await importAndGetIds(win, [
+    widePixels(join(dir, 'Placeholder wide pixels.mp4')),
     withCover(join(dir, 'Placeholder cover.mp3')),
+    interlaced(join(dir, 'Placeholder interlaced.mp4')),
   ]);
   expect(videoId).not.toBe('');
   expect(soundId).not.toBe('');
+  // An interlaced file's own information says so (it is converted by itself to a progressive copy since alpha.20).
+  const scan = await win.evaluate(async (id) => {
+    const result = await (globalThis as PageGlobals).drashti.media.details(id);
+    return result.ok ? (result.details.read?.pictures[0]?.scan ?? null) : null;
+  }, interlacedId);
+  expect(scan).toBe('top first');
   const made = await win.evaluate(
     async ({ videoId, soundId }) => {
       const d = (globalThis as PageGlobals).drashti;
@@ -209,10 +226,10 @@ test('a playlist’s row and an audio playlist’s track: an interlaced picture 
 
   // A playlist's row.
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder information sabha' }).click();
-  const row = win.getByTestId('playlist-item').filter({ hasText: 'Placeholder interlaced' });
+  const row = win.getByTestId('playlist-item').filter({ hasText: 'Placeholder wide pixels' });
   let dialog = await openFrom(win, row);
   await expect(line(dialog, 'Picture', 'Size')).toHaveText('720 × 576, shown as 16:9');
-  await expect(line(dialog, 'Picture', 'Scan')).toHaveText('Interlaced, top field first');
+  await expect(line(dialog, 'Picture', 'Scan')).toHaveText('Progressive');
   await expect(dialog.getByRole('region', { name: 'Sound', exact: true })).toHaveCount(0);
   await win.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
@@ -236,7 +253,7 @@ test('a playlist’s row and an audio playlist’s track: an interlaced picture 
   await expect(simple).toBeVisible();
   dialog = await openFrom(
     win,
-    simple.getByTestId('playlist-item').filter({ hasText: 'Placeholder interlaced' }),
+    simple.getByTestId('playlist-item').filter({ hasText: 'Placeholder wide pixels' }),
   );
   await expect(line(dialog, 'Picture', 'Codec')).toHaveText('H.264');
   await expectNoSeriousA11yIssues(win, 'Media information in Simple Mode');

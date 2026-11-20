@@ -5,6 +5,7 @@ import type { AudioOutputStatus } from '../shared/audio';
 import { fileStamp, formatBytes } from '../shared/format';
 import type { LinkState, NodeClock, NodeMediaStatus } from '../shared/nodes';
 import type { DisplayInfo, ScreensSnapshot } from '../shared/screens';
+import { cutText } from '../shared/text';
 import type { Db } from './db/database';
 import { ImportRepo } from './db/imports';
 import { type CrashFile, copyCrashFiles, crashFilesLines, KEEP_CRASH_FILES } from './crash-files';
@@ -33,6 +34,21 @@ export interface DiagnosticsInput {
   crashFiles: CrashFilesChoice;
   logFiles: readonly string[];
   now: Date;
+  /** How Chromium draws here (Session 60, the owner's Q60-37); absent where nothing was read. */
+  graphics?: GraphicsInfo;
+}
+
+/**
+ * The graphics, as Chromium reports them (Session 60, the owner's Q60-37: a video that played on one Mac and not on
+ * another, with nothing saved to tell why): how each feature draws (app.getGPUFeatureStatus()), and its GPU details
+ * (app.getGPUInfo('complete')): each GPU with its driver, and the video decoding it offers. No names or paths in it.
+ */
+export interface GraphicsInfo {
+  featureStatus: Record<string, string>;
+  /** Chromium's GPU details as it gave them (their shape differs by system), or null when they could not be read. */
+  info: unknown;
+  /** Why info is null, when it is. */
+  problem?: string;
 }
 
 /** The crash files kept, and whether the person saving Diagnostics ticked Include crash files. */
@@ -86,6 +102,53 @@ export function redactNames(text: string, names: readonly string[]): string {
 
 function section(title: string, lines: readonly string[]): string {
   return `== ${title} ==\n${lines.length > 0 ? lines.join('\n') : '(none)'}\n`;
+}
+
+const record = (v: unknown): Record<string, unknown> | null =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+
+const hex = (v: unknown) => (typeof v === 'number' ? `0x${v.toString(16).padStart(4, '0')}` : String(v));
+
+/** Every list under a key that names video decoding, wherever Chromium put it (a few levels down at most). */
+function videoDecodeLists(v: unknown, depth = 0): unknown[] {
+  const r = record(v);
+  if (!r || depth > 4) return [];
+  return Object.entries(r).flatMap(([key, value]) =>
+    /video.?decod/iu.test(key) && Array.isArray(value)
+      ? (value as unknown[])
+      : videoDecodeLists(value, depth + 1),
+  );
+}
+
+/** The Graphics section: how each feature draws, each GPU with its driver, the video decoding offered. */
+function graphicsSection(graphics: GraphicsInfo | undefined): string {
+  if (!graphics) return section('Graphics', ['Not read']);
+  const lines = Object.entries(graphics.featureStatus)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([feature, state]) => `${feature}: ${state}`);
+  const info = record(graphics.info);
+  if (!info) {
+    lines.push(`GPU details: could not be read (${graphics.problem ?? 'nothing given'})`);
+    return section('Graphics', lines);
+  }
+  const devices = Array.isArray(info['gpuDevice']) ? info['gpuDevice'] : [];
+  devices.forEach((device, i) => {
+    const d = record(device) ?? {};
+    const driver = [d['driverVendor'], d['driverVersion']]
+      .filter((x) => typeof x === 'string' && x !== '')
+      .join(' ');
+    lines.push(
+      `GPU ${String(i + 1)}${d['active'] === true ? ' (in use)' : ''}: vendor ${hex(d['vendorId'])}, device ${hex(d['deviceId'])}${driver ? `, driver ${driver}` : ''}`,
+    );
+  });
+  for (const key of ['machineModelName', 'machineModelVersion']) {
+    const value = info[key];
+    if (typeof value === 'string' && value !== '') lines.push(`${key}: ${value}`);
+  }
+  const decoding = videoDecodeLists(info);
+  lines.push(decoding.length > 0 ? 'Video decoding offered:' : 'Video decoding offered: none listed');
+  for (const item of decoding.slice(0, 60)) lines.push(`  ${cutText(JSON.stringify(item), 200)}`);
+  return section('Graphics', lines);
 }
 
 /** The versions and the system, the first section of either file. */
@@ -173,6 +236,7 @@ export function diagnosticsText(input: DiagnosticsInput): string {
   const parts: string[] = [];
   parts.push(aboutSection('Drashti diagnostics', app, input.now));
   parts.push(displaysSection(input.displays));
+  parts.push(graphicsSection(input.graphics));
   const states = new Map(input.screens.status.map((s) => [s.screenId, s.state]));
   parts.push(
     section(
