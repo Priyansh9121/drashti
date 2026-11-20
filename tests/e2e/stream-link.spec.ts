@@ -53,16 +53,36 @@ async function showLink(win: Page, url: string, a11y = false): Promise<void> {
   await expect(dialog).toHaveCount(0, { timeout: 30_000 });
 }
 
-/** Its pictures move on this page: two looks a second apart show later frames, never black. */
-async function moving(page: Page, why: string): Promise<void> {
+/** Its pictures move on this page: later looks show later frames, never black (each look's players said on a failure). */
+async function moving(page: Page, why: string, within: string | null = null): Promise<void> {
+  let last = await linkLook(page, within);
+  const said = () => `${why}: ${JSON.stringify(last)}`;
   await expect
-    .poll(async () => (await linkLook(page)).frame, { message: why, timeout: 15_000 })
+    .poll(
+      async () => {
+        last = await linkLook(page, within);
+        return last.frame;
+      },
+      { message: why, timeout: 15_000 },
+    )
     .not.toBeNull();
-  const first = await linkLook(page);
-  await expect
-    .poll(async () => (await linkLook(page)).frame ?? 0, { message: why, timeout: 10_000 })
-    .toBeGreaterThan((first.frame ?? 0) + 10);
-  expect((await linkLook(page)).luma, `${why}: never black`).toBeGreaterThan(40);
+  const first = last.frame ?? 0;
+  try {
+    await expect
+      .poll(
+        async () => {
+          last = await linkLook(page, within);
+          return last.frame ?? 0;
+        },
+        { message: why, timeout: 10_000 },
+      )
+      .toBeGreaterThan(first + 10);
+  } catch (error) {
+    // Said with the players' joins and clocks as they were at the last look.
+    throw new Error(`${said()} (from frame ${String(first)}): ${String(error)}`, { cause: error });
+  }
+  last = await linkLook(page, within);
+  expect(last.luma, `${said()}: never black`).toBeGreaterThan(40);
 }
 
 async function hallAndLink(extra: Record<string, string> = {}) {
@@ -93,7 +113,7 @@ test('Show a Stream Link… puts a live stream on the hall’s screen and LIVE, 
     timeout: 15_000,
   });
   await moving(hall, 'the hall’s screen');
-  await moving(win, 'LIVE');
+  await moving(win, 'LIVE', '[data-testid="live-preview"]');
   await expect(win.getByTestId('stream-link-notice')).toHaveAttribute('data-state', 'playing');
 
   // Drashti's own stream never carries it: the Wallpaper, and no player of it there.
@@ -129,7 +149,7 @@ test('a stream link that drops: its last picture held while Drashti reconnects, 
   const notice = win.getByTestId('stream-link-notice');
   await expect(notice).toHaveAttribute('data-state', 'reconnecting', { timeout: 15_000 });
   const held = await linkLook(hall);
-  expect(held.luma, 'the last picture, never black').toBeGreaterThan(40);
+  expect(held.luma, `the last picture, never black: ${JSON.stringify(held)}`).toBeGreaterThan(40);
   for (let i = 0; i < 4; i++) {
     await letTimePass(hall, 1000, 'the link stays gone');
     const now = await linkLook(hall);
