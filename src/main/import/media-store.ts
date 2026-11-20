@@ -425,6 +425,13 @@ export class MediaStore {
         };
       }
     }
+    if (kind === 'image' && !picture?.convert && this.options.prepareDisplay) {
+      const prepared = await this.options.prepareDisplay({ path: rel, sha256: hashed.sha256 }).catch(() => ({ ok: false as const, message: 'The picture could not be prepared.' }));
+      if (!prepared.ok) return {
+        ok: false,
+        issue: { severity: 'error', code: 'picture-display', message: `Could not prepare ${name} for the screens. ${prepared.message}`, fix: { kind: 'import-again', sourcePath: path } },
+      };
+    }
     if (picture) return { ok: true, staged: { kind, name, rel, ...hashed, ...picture } };
     const probe = await probeMedia(target);
     return {
