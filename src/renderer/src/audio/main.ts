@@ -1,3 +1,5 @@
+import { reportVideoCue } from '../render/video-cue-report';
+import { videoSoundGain } from './sounds';
 import { bandsText, type ToneChain, toneThrough } from './tone-chain';
 import type { AudioDevice } from '../../../shared/audio';
 import { resolveOutput } from '../../../shared/audio';
@@ -107,10 +109,13 @@ const meterSpectrum = new Float32Array(1024);
  */
 function setLevel(player: Player, musicLevel: number): void {
   const state = useEngine.getState().state;
-  const value = Math.round(soundGain(player.sound, musicLevel, state) * 1000) / 1000;
+  const envelope = videoSoundGain(player.sound, engineNow());
+  if (player.sound.envelope) player.el.dataset['crossfadeGain'] = String(Math.round(envelope * 1e6) / 1e6);
+  else delete player.el.dataset['crossfadeGain'];
+  const value = Math.round(soundGain(player.sound, musicLevel, state) * envelope * 1000) / 1000;
   // Where Web Audio could not be had, the file plays as it is (as before Part 7), and silent while its kind is muted
   // or at 0 %: a mute always holds.
-  if (!player.level) player.el.muted = kindLevel(state, player.sound.kind) === 0;
+  if (!player.level) { player.el.muted = kindLevel(state, player.sound.kind) === 0; if (player.sound.envelope || player.sound.prepared) player.el.volume = player.volume * envelope; }
   if (player.levelSet === value) return;
   const first = player.levelSet < 0;
   player.levelSet = value;
@@ -281,6 +286,8 @@ function play(state: EngineState | null): void {
       audible: true,
       limits: SOUND_LIMITS,
       timing: () => ({ loop: player.sound.loop, clip: player.sound.clip, seek: player.sound.seek }),
+      onFrame: () => reportVideoCue(sound.cueId, 'sound', true),
+      onError: () => reportVideoCue(sound.cueId, 'sound', false),
       // An audio playlist's track fades in once it has its first sound.
       ...(sound.fadeInMs
         ? {

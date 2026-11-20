@@ -5,7 +5,7 @@ import type { MusicPlaylist } from './music';
 import { z } from 'zod';
 import type { PlaylistItemInfo } from './playlists';
 
-export const playlistPlayOptionsSchema = z.object({ shuffle: z.boolean(), repeatAll: z.boolean() }).strict();
+export const playlistPlayOptionsSchema = z.object({ shuffle: z.boolean(), repeatAll: z.boolean(), crossfadeMs: z.number().int().min(0).max(10_000).optional() }).strict();
 export type PlaylistPlayOptions = z.infer<typeof playlistPlayOptionsSchema>;
 export interface PlaylistPlayback extends PlaylistPlayOptions {
   playOrder: string[];

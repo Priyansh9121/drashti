@@ -422,6 +422,8 @@ export type BackgroundLayer =
       startedAt: number;
       /** The playlist video row that supplied it, or null for a direct choice. Older saves omit it. */
       sourceItemId?: string | null;
+      /** Stable identity of a showing prepared privately; keeps its decoder through Go. */
+      cueId?: string;
       /** It came on dissolving from the background before, with its slide: from `at` for `durationMs`. */
       fade?: { at: number; durationMs: number };
       /** A video's length, once known (learned from playing it): a stage screen shows the time left. */

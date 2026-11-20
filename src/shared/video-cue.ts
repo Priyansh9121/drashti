@@ -24,11 +24,12 @@ export interface VideoCrossfade {
 
 /** The same curve drives picture and sound on every page. */
 export function videoFadeProgress(_fade: VideoCrossfade, _now: number): number {
-  return 1;
+  const at = _fade.pausedAt ?? _now;
+  return Math.max(0, Math.min(1, (at - _fade.at) / _fade.durationMs));
 }
 
 export function videoCueReady(_cue: VideoCue): boolean {
-  return false;
+  return !_cue.error && _cue.required.every((page) => _cue.ready.includes(page));
 }
 
 export const VIDEO_GO_LEAD_MS = 120;

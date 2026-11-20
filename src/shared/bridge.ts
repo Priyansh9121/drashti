@@ -441,6 +441,8 @@ export interface DrashtiBridge {
     pathFor(file: File): string;
   };
   engine: {
+    /** A matching first decoded cue frame or sound, reported by a trusted participant. */
+    videoCueReady(cueId: string, kind: 'picture' | 'sound', ready: boolean): Promise<null>;
     /**
      * Listen for engine messages (snapshots and patches). Register before
      * calling subscribe() so nothing is missed. Returns an unsubscribe function.

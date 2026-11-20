@@ -1,3 +1,5 @@
+import { reportVideoCue } from '../render/video-cue-report';
+import { videoSoundGain } from '../audio/sounds';
 import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
 import type { EngineState } from '../../../shared/engine/state';
 import { SOUND_LIMITS } from '../../../shared/media';
@@ -153,7 +155,8 @@ export class StreamSound {
   setOwnSound(on: boolean, state: EngineState | null): void {
     this.ownOn = on;
     this.state = state;
-    const wanted = new Map((on && state ? soundsOf(state) : []).map((s) => [s.key, s]));
+    // A stream page prepares the cue's silent sound even when its own mix is switched off.
+    const wanted = new Map((state ? soundsOf(state).filter(s => on || s.prepared) : []).map((s) => [s.key, s]));
     for (const [key, own] of this.own) {
       if (wanted.has(key)) continue;
       own.stop();
@@ -195,6 +198,8 @@ export class StreamSound {
         startedAt: sound.startedAt,
         audible: true,
         limits: SOUND_LIMITS,
+        onFrame: () => reportVideoCue(sound.cueId, 'sound', true),
+        onError: () => reportVideoCue(sound.cueId, 'sound', false),
         timing: () => ({ loop: own.sound.loop, clip: own.sound.clip, seek: own.sound.seek }),
       });
       own.stop = playback;
@@ -218,7 +223,7 @@ export class StreamSound {
    * kind's level, 0 while muted (X33).
    */
   private levelOf(sound: Sound, musicLevel = this.musicLevel()): number {
-    return sound.volume * soundGain(sound, musicLevel, this.state);
+    return sound.volume * soundGain(sound, musicLevel, this.state) * videoSoundGain(sound, engineNow());
   }
 
   /** The music's level now (Part 7, K), by the engine's time. */
@@ -230,8 +235,11 @@ export class StreamSound {
   /** Every own sound's gain, as the show has it now, eased there so no change clicks. */
   private applyLevels(): void {
     const musicLevel = this.musicLevel();
-    for (const own of this.own.values())
+    for (const own of this.own.values()) {
+      if (own.sound.envelope) own.el.dataset['crossfadeGain'] = String(Math.round(videoSoundGain(own.sound, engineNow()) * 1e6) / 1e6);
+      else delete own.el.dataset['crossfadeGain'];
       own.gain.gain.setTargetAtTime(this.levelOf(own.sound, musicLevel), this.ctx.currentTime, 0.015);
+    }
     // How loud the stream is low down and high up (alpha.20, the tests' meter of Sound and picture…'s tones).
     document.body.dataset['bands'] = bandsText(this.meter, this.spectrum);
   }

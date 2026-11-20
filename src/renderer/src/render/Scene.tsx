@@ -1,3 +1,4 @@
+import type { VideoCue, VideoCrossfade } from '../../../shared/video-cue';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   Fragment,
@@ -304,22 +305,32 @@ function BackgroundPicture({
   annotate,
   movement,
   onDrawn,
+  cue,
+  crossfade,
 }: {
+  cue?: VideoCue | null;
+  crossfade?: VideoCrossfade | null;
   background: BackgroundLayer | null;
   annotate: boolean;
   movement: Movement;
   /** Told which background is drawn now (the main picture's alone: render/BackgroundMedia.tsx). */
   onDrawn?: (key: string | null) => void;
 }) {
+  // A scheduled Cue has a decoded frame already, but keeps the previous colour until its Go moment.
+  const [keptColor, setKeptColor] = useState<string | null>(background?.kind === 'color' ? background.color : null);
+  if (background?.kind === 'color' && keptColor !== background.color) setKeptColor(background.color);
+  const drawn = useCallback((key: string | null) => { if (key !== null) setKeptColor(null); onDrawn?.(key); }, [onDrawn]);
+  const color = background?.kind === 'color' ? background.color : background?.kind === 'media' && background.cueId ? keptColor : null;
   return (
     <>
+      {color !== null && <div data-cue-underlay="" style={{ position: 'absolute', inset: 0, background: color }} />}
       {background?.kind === 'color' && (
         <div
           data-layer="background"
           style={{ position: 'absolute', inset: 0, background: background.color }}
         />
       )}
-      <BackgroundMedia layer={background} annotate={annotate} movement={movement} onDrawn={onDrawn} />
+      <BackgroundMedia layer={background} annotate={annotate} movement={movement} onDrawn={drawn} cue={cue} crossfade={crossfade} />
       {background?.kind === 'window' && <LiveWindowView layer={background} />}
     </>
   );
@@ -588,6 +599,8 @@ export const Scene = memo(function Scene({
                   {/* The canvas, for a turned or cropped picture placed from the first frame (Session 55, Part 5). */}
                   <BackgroundBox.Provider value={canvas}>
                     <BackgroundPicture
+                      cue={state.videoCue}
+                      crossfade={state.videoCrossfade}
                       background={holding ? back.keep : background}
                       annotate={annotate}
                       movement={look.movement}

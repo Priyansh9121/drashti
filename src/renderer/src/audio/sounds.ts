@@ -1,3 +1,4 @@
+import { type VideoCrossfade, videoFadeProgress } from '../../../shared/video-cue';
 import { type EngineState, videoClip, videoSeek } from '../../../shared/engine/state';
 import type { DeckMedia } from '../../../shared/deck';
 import { deckMediaOf, playsAcross } from '../../../shared/deck-show';
@@ -10,6 +11,9 @@ import { gainOf, type SoundKind } from '../../../shared/sound';
 export interface Sound {
   /** The same key is the same playback, carrying on. */
   key: string;
+  cueId?: string;
+  prepared?: true;
+  envelope?: { fade: VideoCrossfade; role: 'in' | 'out' };
   mediaId: string;
   startedAt: number;
   loop: boolean;
@@ -123,19 +127,16 @@ export function soundsOf(state: EngineState): Sound[] {
     });
   }
   const bg = state.layers.background;
-  if (bg?.kind === 'media' && bg.media === 'video') {
-    sounds.push({
-      key: `background:${bg.mediaId}@${bg.startedAt}`,
-      mediaId: bg.mediaId,
-      startedAt: bg.startedAt,
-      loop: bg.loop,
-      volume: 1,
-      ...(bg.clip ? { clip: bg.clip } : {}),
-      ...(bg.seek ? { seek: bg.seek } : {}),
-      ...evenGain(state, bg.mediaId),
-      kind: 'video',
-    });
-  }
+  const pair = state.videoCrossfade;
+  const backgroundSound = (video: Extract<EngineState['layers']['background'], { kind: 'media' }>, extra: Partial<Sound> = {}) => {
+    sounds.push({ key: `background:${video.mediaId}@${video.startedAt}`, mediaId: video.mediaId, startedAt: video.startedAt,
+      loop: video.loop, volume: 1, ...(video.clip ? { clip: video.clip } : {}), ...(video.seek ? { seek: video.seek } : {}),
+      ...evenGain(state, video.mediaId), kind: 'video', ...extra });
+  };
+  if (pair) backgroundSound(pair.from, { envelope: { fade: pair, role: 'out' } });
+  if (bg?.kind === 'media' && bg.media === 'video') backgroundSound(bg, pair ? { envelope: { fade: pair, role: 'in' } } : {});
+  const cue = state.videoCue;
+  if (cue) backgroundSound(cue.background, { cueId: cue.id, prepared: true });
   const slide = state.layers.slide;
   if (slide) {
     for (const el of slide.slide.elements) {
@@ -221,4 +222,13 @@ export function withPlayback(state: EngineState, sound: Sound): Sound {
     out = { ...out, seek };
   }
   return out;
+}
+
+/** A private cue is silent; a crossfade's two sound gains share its exact picture clock. */
+export function videoSoundGain(sound: Sound, now: number): number {
+  if (sound.prepared) return 0;
+  const envelope = sound.envelope;
+  if (!envelope) return 1;
+  const gain = videoFadeProgress(envelope.fade, now);
+  return envelope.role === 'out' ? 1 - gain : gain;
 }

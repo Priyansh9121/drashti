@@ -55,6 +55,10 @@ function upsert<T extends { id: string }>(items: T[], item: T): T[] | null {
  */
 export function reduce(state: EngineState, action: EngineAction): EngineState {
   switch (action.type) {
+    case 'videoCue/set':
+      return sameData(state.videoCue, action.cue) ? state : { ...state, videoCue: action.cue };
+    case 'videoCrossfade/set':
+      return sameData(state.videoCrossfade, action.fade) ? state : { ...state, videoCrossfade: action.fade };
     case 'slide/show': {
       const {
         presentationId,

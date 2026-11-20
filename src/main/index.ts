@@ -1785,7 +1785,7 @@ function start(): void {
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
     Date.now,
-    { items: (id) => playlists.playItems(id), repeatAll: (id) => playlists.playOptions(id).repeatAll },
+    { items: (id) => playlists.playItems(id), repeatAll: (id) => playlists.playOptions(id).repeatAll, crossfadeMs: (id) => playlists.playOptions(id).crossfadeMs ?? 0 },
     {
       defaultTransition: () => defaultTransition(settings),
       looks: { start: () => lookService?.start() ?? NO_LOOK },
@@ -1796,6 +1796,17 @@ function start(): void {
           : simpleNow() && simpleModeRefuses(command, state)
             ? simpleRefusalText(simpleAccess())
             : null,
+      videoCueParticipants: () => {
+        const ids: string[] = [];
+        if (operatorWindow && !operatorWindow.isDestroyed()) ids.push(`picture:${operatorWindow.webContents.id}`);
+        if (audioWindow && !audioWindow.isDestroyed()) ids.push(`sound:${audioWindow.webContents.id}`);
+        const groups = screenRepo.groups();
+        const audience = new Set(screenRepo.screens().filter(s => groups.find(g => g.id === s.groupId)?.role !== 'stage').map(s => s.id));
+        for (const entry of manager.windows()) if (audience.has(entry.screenId) && !entry.window.isDestroyed()) ids.push(`picture:${entry.window.webContentsId}`);
+        const program = streaming?.programContents();
+        if (program && !program.isDestroyed()) ids.push(`picture:${program.id}`, `sound:${program.id}`);
+        return ids;
+      },
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
@@ -4606,9 +4617,18 @@ function start(): void {
     (globalThis as { drashtiTestReadable?: (name: string) => void }).drashtiTestReadable = (name) => {
       windowReads.readable(name);
     };
+  handle(IPC.engine.videoCueReady, (event, cueId, kind, ready) => {
+    if (typeof cueId !== 'string' || cueId.length > 128 || typeof ready !== 'boolean') return null;
+    const picture = fromOperator(event) || manager.screenIdFor(event.sender.id) !== undefined || streaming.isProgram(event.sender);
+    const sound = event.sender.id === audioWindow?.webContents.id || streaming.isProgram(event.sender);
+    if ((kind === 'picture' && picture) || (kind === 'sound' && sound)) engine.reportVideoCue(cueId, `${kind}:${event.sender.id}`, ready);
+    return null;
+  });
   handle(IPC.engine.subscribe, (event) =>
     windowReads.read('engine', () => {
       transport.add(event.sender);
+      engine.videoCuePageJoined(`picture:${event.sender.id}`);
+      engine.videoCuePageJoined(`sound:${event.sender.id}`);
       return engine.snapshot();
     }),
   );

@@ -1,3 +1,4 @@
+import { storedCrossfadeMs, keepCrossfadeMs } from '../../shared/video-crossfade';
 import { randomUUID } from 'node:crypto';
 import { posix, win32 } from 'node:path';
 import {
@@ -492,7 +493,9 @@ export class PlaylistRepo {
           name: r.name,
           isFolder: r.is_folder === 1,
           kind: r.kind,
-          ...(!templates && r.is_folder === 0 && (r.shuffle === 1 || r.repeat_all === 1)
+          ...(!templates &&
+          r.is_folder === 0 &&
+          (r.shuffle === 1 || r.repeat_all === 1 || storedCrossfadeMs(r.settings) > 0)
             ? { playback: this.playOptions(r.id) }
             : {}),
           ...(r.kind === 'repeat' ? { repeat: repeatSettingsOf(r.settings) } : {}),
@@ -550,8 +553,9 @@ export class PlaylistRepo {
   /** Saved playback choices. Reconcile only when the rows changed; a draw is never made while reading. */
   playOptions(playlistId: string): PlaylistPlayback {
     const row = this.db
-      .prepare('SELECT shuffle, repeat_all, play_order FROM playlists WHERE id = ?')
-      .get(playlistId) as { shuffle: number; repeat_all: number; play_order: string | null } | undefined;
+      .prepare('SELECT shuffle, repeat_all, play_order, settings FROM playlists WHERE id = ?')
+      .get(playlistId) as
+      { shuffle: number; repeat_all: number; play_order: string | null; settings: string | null } | undefined;
     const current = this.order(playlistId);
     let saved: string[] = [];
     try {
@@ -567,7 +571,13 @@ export class PlaylistRepo {
             saved,
           ).map((i) => i.id)
         : current;
-    return { shuffle: row?.shuffle === 1, repeatAll: row?.repeat_all === 1, playOrder };
+    const crossfadeMs = storedCrossfadeMs(row?.settings ?? null);
+    return {
+      shuffle: row?.shuffle === 1,
+      repeatAll: row?.repeat_all === 1,
+      playOrder,
+      ...(crossfadeMs > 0 ? { crossfadeMs } : {}),
+    };
   }
 
   /** Reconcile during the edit that adds or removes rows, never during a show read. */
@@ -584,6 +594,14 @@ export class PlaylistRepo {
     if (!this.activePlaylist(playlistId) || this.kindOf(playlistId) !== 'playlist') return false;
     return this.db.transaction(() => {
       const before = this.playOptions(playlistId);
+      if (options.crossfadeMs !== undefined) {
+        const row = this.db.prepare('SELECT settings FROM playlists WHERE id = ?').get(playlistId) as {
+          settings: string | null;
+        };
+        this.db
+          .prepare('UPDATE playlists SET settings = ? WHERE id = ?')
+          .run(keepCrossfadeMs(row.settings, options.crossfadeMs), playlistId);
+      }
       const order = before.playOrder.slice();
       if (options.shuffle && !before.shuffle) {
         for (let i = order.length - 1; i > 0; i--) {

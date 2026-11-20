@@ -263,6 +263,7 @@ const bridge: DrashtiBridge = {
     pathFor: (file) => webUtils.getPathForFile(file),
   },
   engine: {
+    videoCueReady: (cueId, kind, ready) => invoke(IPC.engine.videoCueReady, cueId, kind, ready),
     onMessage: (listener) =>
       on(IPC.engine.message, (message) => {
         engineSeen.remember(message, true);

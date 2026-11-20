@@ -448,6 +448,7 @@ export const IPC = {
     changed: 'music:changed',
   },
   engine: {
+    videoCueReady: 'engine:video-cue-ready',
     /** Start receiving engine messages in this window; returns a snapshot. */
     subscribe: 'engine:subscribe',
     /** A fresh snapshot, for resyncing after a missed revision. */
@@ -1479,6 +1480,7 @@ export interface InvokeContract {
   [IPC.links.showSaved]: { args: [runId: string | null]; result: null };
   [IPC.links.setMaxHeight]: { args: [height: number]; result: LinkResult };
   [IPC.links.setPlaylist]: { args: [playlistId: string]; result: LinkResult };
+  [IPC.engine.videoCueReady]: { args: [cueId: string, kind: 'picture' | 'sound', ready: boolean]; result: null };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand, seen?: EngineSeen]; result: CommandResult };

@@ -47,6 +47,8 @@ export interface PlaylistSource {
   items(playlistId: string): readonly PlayItem[] | null;
   /** Left out by older sources: stop at the end. */
   repeatAll?(playlistId: string): boolean;
+  /** Off unless a playlist explicitly asks for an overlap. */
+  crossfadeMs?(playlistId: string): number;
 }
 
 /** A PlaylistSource over an in-memory map, for tests. */
