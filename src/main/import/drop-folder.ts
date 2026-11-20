@@ -19,6 +19,7 @@ import type {
 import type { Db } from '../db/database';
 import { madeFrom } from '../playlists/folder-playlist';
 import { type Found, heldStill, type Seen } from '../playlists/smart-folders';
+import { wholeFile } from './whole-file';
 import { unreadPictureWords } from '../../shared/media';
 import { extOf, mediaKindOf } from './scan';
 
@@ -447,6 +448,12 @@ export class DropFolder {
       if (!heldStill(this.pending, name, found, now, this.deps.settleMs)) continue;
       // Still open in the program writing it (Windows): it waits as a file that has not held still.
       if (await (this.deps.busy ?? busyOnWindows)(join(folder, name))) {
+        this.pending.set(name, { ...found, since: now });
+        continue;
+      }
+      // Its own structure says it is still being copied (Q60-31: an MP4 whose movie box is not there yet, its copy
+      // stalled): it waits the same way, however long, never taken half-written (import/whole-file.ts).
+      if ((await wholeFile(join(folder, name))) === 'cut') {
         this.pending.set(name, { ...found, since: now });
         continue;
       }
