@@ -4,6 +4,7 @@ import { flushSync } from 'react-dom';
 import type { PipLayer, PipSource, VideoClips, VideoSeeks } from '../../../shared/engine/state';
 import type { Movement } from '../../../shared/looks';
 import type { MediaElement } from '../../../shared/model';
+import { shapedFrame } from '../../../shared/video-shape';
 import type { Size } from '../../../shared/scaling';
 import { engineNow, onClockJump } from './clock';
 import { LiveWindowView } from './LiveWindowView';
@@ -23,6 +24,7 @@ import {
 import { KeptVideo } from './KeptVideo';
 import { ElementView } from './SlideView';
 import { useInputReport, useVideoInput } from './video-input';
+import { shapeFor, useVideoShapes } from './video-shape';
 
 /*
  * The picture-in-picture box on a screen (Session 50, render/pip.ts): a 16:9 box over the props and under the
@@ -323,6 +325,10 @@ function PipMedia({
   size: Size;
 }) {
   const { width, height } = size;
+  // A video with a Shape of its own (Sound and picture…, alpha.20, x55): fitted in the box in that shape, the picture
+  // stretched to it; a new shape moves the same video's box, never loading it again.
+  const shapes = useVideoShapes();
+  const shape = media === 'video' ? shapeFor(shapes, mediaId, 'fit') : null;
   // As a slide's picture or video is drawn (its look, a node's copy, a phone's preview), filling the box; a video
   // between its file's points as a slide's is (Session 53), new ones moving it at once without a reload, as the time
   // bar's moves and pauses do (Session 54).
@@ -331,11 +337,11 @@ function PipMedia({
       id: 'pip-media',
       kind: media,
       mediaId,
-      frame: { x: 0, y: 0, width, height },
-      fit: 'fit',
+      frame: shape === null ? { x: 0, y: 0, width, height } : shapedFrame(shape, { width, height }, 'fit'),
+      fit: shape === null ? 'fit' : 'stretch',
       loop: true,
     }),
-    [media, mediaId, width, height],
+    [media, mediaId, width, height, shape],
   );
   return (
     <div data-pip-picture="media" style={BLACK}>
