@@ -68,3 +68,16 @@ describe('versioned video edits in the library', () => {
     db.close();
   });
 });
+
+it('keeps the exact recipe of an older prepared showing after a newer Save', () => {
+  const { db, repo } = fixture();
+  const first = { ...PLAIN_VIDEO_EDIT, speed: 2 };
+  expect(repo.save({ mediaId: 'video', revision: 0, recipe: first }).ok).toBe(true);
+  db.prepare(
+    "INSERT INTO media (id,kind,name,path,listed) VALUES ('pinned','video','Placeholder pinned.mp4','bb/pinned.mp4',0)",
+  ).run();
+  expect(repo.complete('video', 1, 'pinned')).toBe(true);
+  expect(repo.save({ mediaId: 'video', revision: 1, recipe: { ...first, speed: 0.5 } }).ok).toBe(true);
+  expect(repo.renditionOf('pinned')).toMatchObject({ sourceId: 'video', revision: 1, recipe: first });
+  db.close();
+});
