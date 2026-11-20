@@ -189,7 +189,12 @@ import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
 import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
-import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES, openingCopyPath } from './media/media-protocol';
+import {
+  handleMediaRequest,
+  MEDIA_SCHEME_PRIVILEGES,
+  mediaRequestOf,
+  openingCopyPath,
+} from './media/media-protocol';
 import { openingPhotoPlace, openingPhotoThere } from './opening/opening-photo';
 import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
@@ -730,6 +735,29 @@ const mediaDelayMs = Math.min(60_000, Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_
  * from a slow disk or a busy computer: a video's first frame then comes late while it still loads. 0: as fast as it can.
  */
 const mediaPaceBps = Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_PACE_BPS') ?? 0) || 0);
+
+/**
+ * Bytes Main has sent of each library file as the pages load it, by its id (Q60-51): a video whose file is still coming
+ * in is loading, even where its page can tell nothing else (on CI's Mac a slow file showed no buffered time, no frame,
+ * no readiness step and no 'progress' event: x47-1120-205802-554). One number a file, for as long as Drashti runs.
+ */
+const mediaServed = new Map<string, number>();
+
+/** A library file's response, counting what of it goes out (mediaServed). */
+function counted(response: Response, mediaId: string): Response {
+  if (!response.body) return response;
+  const counter = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      mediaServed.set(mediaId, (mediaServed.get(mediaId) ?? 0) + chunk.byteLength);
+      controller.enqueue(chunk);
+    },
+  });
+  return new Response(response.body.pipeThrough(counter), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
 
 /** A response's body sent at mediaPaceBps (the test switch above); as it is with none. */
 async function paced(response: Response): Promise<Response> {
@@ -2266,7 +2294,9 @@ function start(): void {
         log.warn(message);
       },
     });
-    const sent = await paced(response);
+    const asked = mediaRequestOf(request.url);
+    const sent =
+      asked?.what === 'media' ? counted(await paced(response), asked.mediaId) : await paced(response);
     return perfWatch ? watchedMedia(perfWatch, request, started, sent) : sent;
   };
   // Every window's session: the default one, and the audio player's own.
@@ -7092,6 +7122,11 @@ function start(): void {
   // box, Q60-46) or waits paused (on the slide); the operator window says so, once a file; and it is converted by itself
   // once the show is idle. Only for a video that was up, so a page's word never takes off anything else; the other
   // windows that found the same showing find it off already, and say nothing more.
+  // How much of a library file Main has sent so far (Q60-51): a page waiting on a video's first frame counts it as
+  // progress.
+  handle(IPC.media.served, (_e, mediaId) =>
+    typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? (mediaServed.get(mediaId) ?? 0) : 0,
+  );
   handle(IPC.media.noPicture, (e, mediaId, startedAt) => {
     const drawsShow = fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined;
     if (!drawsShow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
