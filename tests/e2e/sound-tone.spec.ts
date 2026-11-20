@@ -68,6 +68,15 @@ test('Bass and Treble from Sound and picture…: the hall’s and the stream’s
     const dir = mkdtempSync(join(tmpdir(), 'drashti-sound-tone-'));
     const [id = ''] = await importAndGetIds(win, [twoTones(join(dir, 'Placeholder two tones.m4a'))]);
     expect(id).not.toBe('');
+    // Its even loudness measured first, so its gain is settled before the meter's first reading (CI
+    // x47-1120-170740-53614: a gain that came a moment later lifted both bands by up to 10 dB mid-test).
+    await expect
+      .poll(
+        () =>
+          win.evaluate(async (m) => (await (globalThis as PageGlobals).drashti.sound.file(m))?.measured, id),
+        { timeout: 30_000, message: 'its loudness measured' },
+      )
+      .toBe(true);
     // Drashti's own sound in the stream's page (its preview kept running: nothing is sent anywhere).
     await win.evaluate(async () => {
       const d = (globalThis as PageGlobals).drashti;
