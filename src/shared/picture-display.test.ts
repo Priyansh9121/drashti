@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PLAIN } from './picture-look';
-import { displayPictureSize } from './picture-display';
+import { displayPictureSize, picturesWithLocalDisplayCopies } from './picture-display';
+import { displayMediaId } from './media';
 
 const big = { width: 6144, height: 3456 };
 const hd = { width: 1920, height: 1080 };
@@ -61,4 +62,25 @@ describe('pictures sized for their displays', () => {
     expect(displayPictureSize({ width: 0, height: 20 }, [hd])).toBeNull();
     expect(displayPictureSize({ width: Number.NaN, height: 20 }, [hd])).toBeNull();
   });
+});
+
+it('keeps an older node picture on its existing original until the derived file exists locally', () => {
+  const copy = { key: `p1-${'ab'.repeat(16)}-1920x1080`, width: 1920, height: 1080 };
+  const pictures = { old: { ...PLAIN, display: copy } };
+  const before = picturesWithLocalDisplayCopies(pictures, (id) => id === 'old');
+  expect(before.old?.display).toBeUndefined();
+  expect(pictures.old.display).toEqual(copy);
+  const landed = picturesWithLocalDisplayCopies(
+    pictures,
+    (id) => id === 'old' || id === displayMediaId('old', copy.key),
+  );
+  expect(landed).toBe(pictures);
+  expect(landed.old?.display).toEqual(copy);
+});
+
+it('keeps the small display source for a new node item when neither file has arrived', () => {
+  const pictures = {
+    fresh: { ...PLAIN, display: { key: `p1-${'cd'.repeat(16)}-1920x1080`, width: 1920, height: 1080 } },
+  };
+  expect(picturesWithLocalDisplayCopies(pictures, () => false)).toBe(pictures);
 });

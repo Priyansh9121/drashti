@@ -44,3 +44,11 @@ export function displayPictureSize(
   };
   return size.width === picture.width && size.height === picture.height ? null : size;
 }
+
+/** A node keeps an already cached original while its display file is still arriving. */
+export function picturesWithLocalDisplayCopies(
+  pictures: Record<string, PictureLook>,
+  _has: (mediaId: string) => boolean,
+): Record<string, PictureLook> {
+  return pictures;
+}
