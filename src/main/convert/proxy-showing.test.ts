@@ -17,7 +17,7 @@ function showing(at = 1000): EngineState {
         startedAt: at,
         clip: { startMs: 350, endMs: 1750 },
         marks: [{ id: 'own', name: 'Placeholder', atMs: 800 }],
-        seek: { atMs: 600, at: 1100 },
+        seek: { toMs: 600, at: 1100 },
       },
     },
   };
