@@ -36,3 +36,10 @@ describe('Edit Video source-time recipes', () => {
     ).toBe(true);
   });
 });
+
+it('keeps old recipes valid and requires a copy for an explicit new frame shape', () => {
+  const portrait = { ...PLAIN_VIDEO_EDIT, picture: { ...PLAIN_VIDEO_EDIT.picture, frame: '9:16' } };
+  expect(videoEditRecipeSchema.safeParse(PLAIN_VIDEO_EDIT).success).toBe(true);
+  expect(videoEditRecipeSchema.safeParse(portrait).success).toBe(true);
+  expect(videoEditNeedsCopy(portrait)).toBe(true);
+});
