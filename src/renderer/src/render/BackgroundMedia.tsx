@@ -97,22 +97,43 @@ function VideoSlot({
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    // Its first frame came, or it failed: no more waiting for it.
-    let settled = false;
+    // A private Cue is ready only after its decoded first frame has reached the compositor.
+    // loadeddata alone can precede that by several frames on a software renderer.
+    let settled = false,
+      loaded = false,
+      presented = !privateCue.current,
+      frameRequest = 0;
+    const ready = () => {
+      if (settled || !loaded || !presented) return;
+      settled = true;
+      reportVideoCue(layer.cueId, 'picture', true);
+      dispatch({ type: 'ready', key, at: engineNow() });
+    };
+    const waitForFrame = () => {
+      frameRequest = v.requestVideoFrameCallback(() => {
+        frameRequest = 0;
+        if (v.seeking) waitForFrame();
+        else {
+          presented = true;
+          ready();
+        }
+      });
+    };
+    if (privateCue.current) waitForFrame();
     const p = startPlayback(v, {
       mediaId,
       attempt,
       startedAt,
       timing: () => ({ loop: timing.current.loop, clip: timing.current.clip, seek: timing.current.seek }),
       onFrame: () => {
-        settled = true;
         if (hasNoPicture(v)) {
+          settled = true;
           reportVideoCue(layer.cueId, 'picture', false);
           if (!privateCue.current) tellNoPicture(mediaId, startedAt);
           return;
         }
-        reportVideoCue(layer.cueId, 'picture', true);
-        dispatch({ type: 'ready', key, at: engineNow() });
+        loaded = true;
+        ready();
       },
       onError: (error) => {
         settled = true;
@@ -135,7 +156,9 @@ function VideoSlot({
     }, FIRST_FRAME_MS);
     playback.current = p;
     return () => {
+      settled = true;
       clearTimeout(noFirstFrame);
+      if (frameRequest) v.cancelVideoFrameCallback(frameRequest);
       playback.current = null;
       p();
     };
@@ -341,7 +364,9 @@ function setVideoFade(root: HTMLElement | null, fade: VideoCrossfade): number {
   for (const el of root?.querySelectorAll<HTMLElement>('[data-bg-wrap]') ?? []) {
     const role = el.dataset['bgFade'];
     const gain = role === undefined ? 1 : role === 'out' ? 1 - progress : progress;
-    el.style.opacity = String(gain);
+    // The incoming opaque canvas supplies p; source-over attenuates the opaque old canvas by 1-p.
+    // This is the same linear picture mix without a costly plus-lighter software blend.
+    el.style.opacity = String(role === 'out' ? 1 : gain);
     el.dataset['videoGain'] = String(Math.round(gain * 1e6) / 1e6);
   }
   return progress;
@@ -501,7 +526,7 @@ function BackgroundPlayer({
       data-fading={fading ? 'true' : undefined}
       data-fade-start={slots.fade?.start ?? undefined}
       // The old and new pictures blend with each other only.
-      style={{ position: 'absolute', inset: 0, isolation: fading ? 'isolate' : undefined }}
+      style={{ position: 'absolute', inset: 0, isolation: fading && !crossfade ? 'isolate' : undefined }}
     >
       {list.map((slot) => {
         const visible = (slot === slots.shown || slot === leaving) && isDrawn(slot);
@@ -526,7 +551,10 @@ function BackgroundPlayer({
             style={{
               position: 'absolute',
               inset: 0,
-              mixBlendMode: fading && slot === slots.shown && slots.leaving ? 'plus-lighter' : undefined,
+              mixBlendMode:
+                fading && !crossfade && slot === slots.shown && slots.leaving ? 'plus-lighter' : undefined,
+              // Full canvas matte also preserves linear weights through letterboxes and video shapes.
+              background: fading && crossfade ? '#000000' : undefined,
               willChange: ownLayers ? 'opacity' : undefined,
               // A video in a shape of its own: its box laid out in this place, and clipped to it (filling).
               ...(shape === null ? {} : SHAPED_PLACE),
