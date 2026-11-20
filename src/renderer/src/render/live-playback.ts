@@ -41,6 +41,8 @@ export interface LivePlaybackOptions {
 
 /** How long a player plays before it may be found far behind (a start that came late catches up first). */
 const SETTLE_MS = 3000;
+/** Its time this far on from where it was first played: it plays (a frame or two). */
+const MOVED_S = 0.04;
 
 /** Play a stream link in `el` (see above). Returns its stop, which lets go of the stream and the decoder. */
 export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOptions): () => void {
@@ -75,20 +77,22 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     el.load();
   };
   /**
-   * Its first frame is in, playing: told once, as a picture is presented (a player never played may draw nothing,
-   * x54-1120-195548-69004), or as sound plays.
+   * Its first frame is in, playing: told once its time has moved on from where it started (a player never played may
+   * draw nothing, x54-1120-195548-69004; and a picture not yet shown is never presented, so no frame callback comes for
+   * it, x54-1120-202541-81657: its time is what says it plays).
    */
   const frameIn = () => {
     if (framed || !on) return;
     framed = true;
     options.onFrame?.();
   };
+  /** Where its time stood as it was first played. */
+  let playedFrom = 0;
   const play = () => {
     void el.play().catch(() => undefined);
     if (playedAt !== null) return;
     playedAt = engineNow();
-    if (el instanceof HTMLVideoElement) el.requestVideoFrameCallback(frameIn);
-    else el.addEventListener('playing', frameIn, { once: true });
+    playedFrom = el.currentTime;
   };
   const check = () => {
     const j = joined;
@@ -132,7 +136,12 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
   const failed = () => {
     options.onError?.();
   };
+  // Its time moving on, played: its first frame is in (see frameIn).
+  const moved = () => {
+    if (!framed && playedAt !== null && !el.paused && el.currentTime > playedFrom + MOVED_S) frameIn();
+  };
   el.addEventListener('loadeddata', check);
+  el.addEventListener('timeupdate', moved);
   el.addEventListener('error', failed);
   // eslint-disable-next-line no-restricted-syntax -- checks every 250 ms that it is where the engine's time says (check)
   const timer = setInterval(check, CHECK_MS);
@@ -142,8 +151,8 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     clearInterval(timer);
     if (wait) clearTimeout(wait);
     el.removeEventListener('loadeddata', check);
+    el.removeEventListener('timeupdate', moved);
     el.removeEventListener('error', failed);
-    el.removeEventListener('playing', frameIn);
     el.pause();
     el.removeAttribute('src');
     el.load();
