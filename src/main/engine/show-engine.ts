@@ -249,6 +249,8 @@ export interface LookSource {
 }
 
 export interface EngineOptions {
+  /** Trusted identities of the local pages that must load the cued first frame. */
+  videoCueParticipants?: () => string[];
   /** Drashti's own default transition, for presentations without one (a setting; a cut when left out). */
   defaultTransition?: () => Transition;
   /** Run `run` after `delayMs`; returns a way to cancel it (setTimeout when left out; tests run it by hand). */
@@ -543,6 +545,11 @@ export class ShowEngine {
 
   get rev(): number {
     return this.revision;
+  }
+
+  /** A first-frame result from a trusted page; stale showing identities do nothing. */
+  reportVideoCue(_cueId: string, _participant: string, _ready: boolean): CommandResult {
+    return this.unchanged();
   }
 
   snapshot(): EngineSnapshotMessage {
@@ -2644,6 +2651,10 @@ export class ShowEngine {
 
   private resolve(command: EngineCommand): Resolved {
     switch (command.type) {
+      case 'cueVideo':
+      case 'goVideoCue':
+      case 'cancelVideoCue':
+        return NO_CHANGE;
       case 'goLive': {
         // One of a Repeat Slides playlist's slides put up: it goes round from there (Session 26d).
         const repeating = repeatPlaylistOf(command.presentationId);

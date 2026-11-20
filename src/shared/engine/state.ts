@@ -1,3 +1,4 @@
+import type { VideoCue, VideoCrossfade } from '../video-cue';
 import type { CalendarDay, CalendarLang } from '../calendar';
 import type { Quote } from '../idle';
 import type { LiveLook } from '../looks';
@@ -73,7 +74,8 @@ import type { VideoCaptionsShown } from '../video-captions';
 // 28 carries PowerPoint's editable click effects and native transitions to every screen.
 // 29 carries a video’s stored caption track to screens and nodes; live speech stays private. (An A-B repeat, alpha.20,
 // needs no new number: a screen or node plays its `clip` and `loop` as ever; only Main reads the kept `ab`.)
-export const ENGINE_STATE_VERSION = 29;
+// 30 adds a private paused video cue and the two showings of a playlist crossfade.
+export const ENGINE_STATE_VERSION = 30;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -85,6 +87,7 @@ export const ENGINE_STATE_VERSION = 29;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
+    version === 29 ||
     version === 28 ||
     version === 27 ||
     version === 26 ||
@@ -715,6 +718,10 @@ export interface EngineState {
   next: UpNext | null;
   /** Put first in line for Next (the arti at its time), or null. */
   cue: CuedNext | null;
+  /** Private video preparation; never a request to play after restart. */
+  videoCue?: VideoCue | null;
+  /** The outgoing video while the background is the incoming showing. */
+  videoCrossfade?: VideoCrossfade | null;
   /** Today's entry in the loaded calendars (Samvat date, tithi, festivals), or null when none gives today. */
   calendar: CalendarDay | null;
   /** The quote of the day (one per date, for a stage layout's Quote box), or null when there are no quotes. */
