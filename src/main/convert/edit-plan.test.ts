@@ -306,6 +306,32 @@ describe.runIf(available)('one prepared video, original untouched', () => {
     expect(rgba[3]).toBeGreaterThan(110);
     expect(rgba[3]).toBeLessThan(145);
   });
+  it('an exported interval samples the saved sound fade at its source time', () => {
+    const recipe = { ...PLAIN_VIDEO_EDIT, fades: { ...PLAIN_VIDEO_EDIT.fades, soundInMs: 2000 } };
+    const full = render(recipe, 'full-fade');
+    const plan = editPlan({
+      file: source,
+      recipe,
+      info: INFO,
+      identity: 'fade-interval',
+      range: { startMs: 1000, endMs: 3000 },
+    });
+    const output = join(dir, 'fade-interval.mp4');
+    ff(plan.args(output));
+    const rms = (bytes: Buffer, from: number, to: number) => {
+      let power = 0;
+      let n = 0;
+      for (let i = from; i < to; i++) {
+        power += bytes.readFloatLE(i * 4) ** 2;
+        n++;
+      }
+      return Math.sqrt(power / n);
+    };
+    const reference = rms(audio(full.output), 8800, 9600);
+    const clipped = rms(audio(output), 800, 1600);
+    expect(clipped / reference).toBeGreaterThan(0.8);
+    expect(clipped / reference).toBeLessThan(1.2);
+  });
 });
 
 it('refuses invalid source intervals instead of exporting an empty or different cut', () => {
