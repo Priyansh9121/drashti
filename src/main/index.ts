@@ -367,7 +367,6 @@ import { ManualPrinter, readManual } from './manual-service';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
 import { runReportIntake, runReportJob } from './report/report-worker-run';
-import { fileProblem } from './plain-errors';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
 import {
