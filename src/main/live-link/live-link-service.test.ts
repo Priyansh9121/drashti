@@ -495,6 +495,31 @@ describe('every page joining a stream link at the same frame at the same moment'
     );
   });
 
+  it('a second page joining at the same segment a moment later is given its own first three too', async () => {
+    const t = setUp();
+    const shown = t.service.show(LINK);
+    for (const n of [0, 1, 2]) {
+      await vi.advanceTimersByTimeAsync(1000);
+      t.progress.newest = n;
+    }
+    // Up within 100 ms of now: its anchor's moment is 2 s off.
+    for (let i = 0; i < 10 && t.last() !== 'playing'; i++) await vi.advanceTimersByTimeAsync(100);
+    expect(await shown).toEqual({ ok: true });
+    const bg = t.engine.get().layers.background;
+    if (bg?.kind !== 'link') throw new Error('a link expected');
+    expect(t.service.join(bg.linkId)?.segment).toBe(0);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(t.service.join(bg.linkId)?.segment).toBe(0);
+    await vi.advanceTimersByTimeAsync(600);
+    t.progress.newest = 4;
+    // 2.15 s after the first page joined, 1.85 s after the second.
+    await vi.advanceTimersByTimeAsync(1250);
+    const names = ((await t.service.playlistFor(bg.linkId, 0)) ?? '')
+      .split('\n')
+      .filter((l) => l.startsWith('seg-'));
+    expect(names).toEqual(['seg-000000.ts', 'seg-000001.ts', 'seg-000002.ts']);
+  });
+
   it('no page joins while its Wallpaper is up, nor a link not up', async () => {
     const t = setUp();
     await showUp(t);
