@@ -50,7 +50,11 @@ export function useVideoCaptionClock(
         return;
       }
       stop = watchVideoClock(video, (sourceMs) => {
-        const cue = sourceMs === null ? null : captionAt(chosen.track.cues, sourceMs, playing.clock.clip);
+        // Sound and picture… (alpha.20): the captions' own delay against the picture.
+        const cue =
+          sourceMs === null
+            ? null
+            : captionAt(chosen.track.cues, sourceMs, playing.clock.clip, chosen.delayMs ?? 0);
         // At video-frame frequency, only a new line/gap changes React state.
         if (cue === previous) return;
         previous = cue;
