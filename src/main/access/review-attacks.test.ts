@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { core, linkParams, PEOPLE, placeholderComputer, TestList } from '../../../tests/access-core';
 import { ACCESS_CHECK_EVERY_MS } from '../../shared/access-protocol';
-import { AccessClient, type AccessReply, type AccessTransport } from './client';
+import { AccessClient, bodyText, type AccessReply, type AccessTransport } from './client';
 import { accessState, setAccessState } from './gate';
 import { AccessService, keptAt } from './service';
 import { AccessStore } from './store';
@@ -103,7 +103,7 @@ class Google {
     if (method === 'POST') {
       this.posts += 1;
       if (this.delayMs > 0) await takes(this.delayMs, signal);
-      this.answer = JSON.stringify(this.handle(body ?? ''));
+      this.answer = JSON.stringify(this.handle(bodyText(body)));
       return reply(302, 'https://script.googleusercontent.com/macros/echo?user_content_key=placeholder');
     }
     return reply(200, null, this.answer);

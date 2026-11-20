@@ -539,8 +539,8 @@ describe('a report’s words', () => {
       features: [
         {
           chapter: 'Stream',
-          name: 'Going‮ live',
-          what: '  Placeholder\u0007 words\r\n\r\n\r\n\r\nsecond​ line\t\there  \n',
+          name: 'Going\u202e live',
+          what: '  Placeholder\u0007 words\r\n\r\n\r\n\r\nsecond\u200b line\t\there  \n',
         },
       ],
       notice: 'Placeholder\nnotice',
@@ -550,7 +550,7 @@ describe('a report’s words', () => {
       '\n1. Going live (Stream)\nWhat went wrong:\nPlaceholder words\n\nsecond line here\n',
     );
     expect(body).toContain('The notice Drashti showed: “Placeholder notice”');
-    expect(core.cleanLines(' a\u0000b \r\nc d ')).toBe('a b\nc d');
+    expect(core.cleanLines(' a\u0000b \r\nc\u2028d ')).toBe('a b\nc d');
   });
 
   it('carry 30 recent error lines at most, each 300 letters at most, and a notice of 500', () => {
