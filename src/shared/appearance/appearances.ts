@@ -236,6 +236,11 @@ export interface AppearanceNow {
   look: readonly MotionKind[];
   /** This computer has four logical cores or fewer (Session 60, the owner's Q60-45): motion pauses while it streams or records. */
   slow: boolean;
+  /**
+   * Whether Chromium draws with a graphics chip (Session 60): unknown until its GPU process has said, so a live look
+   * never moves before it is known (no chip: it never moves).
+   */
+  chip: 'unknown' | 'yes' | 'no';
 }
 
 /** One a person made (Session 40): kept as its name, base and accent; the rest is worked out (derive.ts). */
