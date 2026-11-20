@@ -4,7 +4,7 @@ How Drashti looks on this computer, how it opens, and what it does by itself: ba
 
 ## Appearance
 
-**What it is.** **View › Appearance**: Drashti's own colours on this computer. There are sixty-four, in families: **Plain** (**Black** and **White**), **Flags** (**Dhaja** and **Tiranga**), **Dusk**, **Festivals**, **Nature**, **Jewels**, **Crafts and textiles** and **Mandir materials**, besides **Follow the computer** (Black or White, as the computer is set). Every one is easy on the eyes: the dark ones are deep colours rather than black, and the light ones soft paper rather than bright white, with words that read clearly without glaring. The hall's screens, the stream and the phones never change with it.
+**What it is.** **View › Appearance**: Drashti's own colours on this computer. There are sixty-four, in families: **Plain** (**Black** and **White**), **Flags** (**Dhaja** and **Tiranga**), **Dusk**, **Festivals**, **Nature**, **Jewels**, **Crafts and textiles** and **Mandir materials**, besides **Follow the computer** (Black or White, as the computer is set). Every one is easy on the eyes: the dark ones are deep colours rather than black, and the light ones soft paper rather than bright white, with words that read clearly without glaring. Black keeps its look as it was. The hall's screens, the stream and the phones never change with it.
 
 **When you would use it.** To make the window easier on the eyes, or to suit the occasion.
 
@@ -34,7 +34,7 @@ How Drashti looks on this computer, how it opens, and what it does by itself: ba
 
 ## Moving appearances
 
-**What it is.** Some appearances move gently: the top bar's colours drift, the thin band under it shimmers, or a touch of the occasion passes across the top bar (a diya's glow, petals, kites, rain or clouds). The Appearance window says what the chosen one moves. Only the top bar and the band move, behind their words; LIVE, Next, Back, the clears, the slides and the hall's screens never do.
+**What it is.** Twenty-eight of the sixty-four appearances move gently: the top bar's colours drift, the thin band under it shimmers, or a touch of the occasion passes across the top bar (a diya's glow, petals, kites, rain or clouds). The Appearance window says what the chosen one moves. Only the top bar and the band move, behind their words; LIVE, Next, Back, the clears, the slides and the hall's screens never do.
 
 **When you would use it.** For a festival's look, or turn **Moving** off to keep the window still.
 
@@ -101,7 +101,7 @@ How Drashti looks on this computer, how it opens, and what it does by itself: ba
 1. Choose **File**, then **Drop Folder…**.
 2. Press **Choose…** and choose the folder. It is on.
 3. In **Media**, **From the drop folder** shows what came from it.
-4. Files that were not taken are listed with why.
+4. A file still being copied waits until it is whole. **Not taken** lists one whose copy may have stopped or is damaged, and says why.
 
 ![File › Drop Folder…: the folder and what came from it](../screenshots/manual-drop-folder.png)
 
@@ -115,8 +115,10 @@ How Drashti looks on this computer, how it opens, and what it does by itself: ba
 
 1. Choose **File**, then **Events Out…**.
 2. Type the receiver's address under **Add an address**, then add it.
-3. Copy the secret it shows into the receiver: it is shown once.
+3. Press **Copy** beside the secret: it says **Copied**. Paste it into the receiver, then press **Done**. It is shown once.
 4. Tick what that address gets. **Send a test** checks it.
+
+If the secret was not kept, **New secret** makes another. Copy it into the receiver too; the old one still signs for a day while you change over. The admin's guide, **Events out**, has the receiver's setup; `docs/api.md` has its request format.
 
 ![File › Events Out…: an address and what it gets](../screenshots/manual-events-out.png)
 
