@@ -268,9 +268,18 @@ function EventsOutForm({ view }: { view: EventsOutView }) {
                 size="sm"
                 data-testid="events-secret-copy"
                 onClick={() => {
-                  void navigator.clipboard.writeText(secret.value).then(() => {
-                    setCopied(true);
-                  });
+                  // By the main process (alpha.20): Drashti refuses a page its own clipboard (windows/security.ts).
+                  void window.drashti.events.copySecret(secret.value).then(
+                    (done) => {
+                      setCopied(done);
+                      setProblem(
+                        done
+                          ? null
+                          : 'Drashti could not copy the secret. Select it and copy it by hand, then press Done.',
+                      );
+                    },
+                    () => undefined,
+                  );
                 }}
               >
                 <Copy size={14} aria-hidden="true" />

@@ -84,6 +84,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.playlists.newFromTemplate,
   // Session 55 (Parts 4 and 14): Duplicate is Pro Mode's (the one right-click menu's Rename is bounded since Part 18).
   IPC.playlists.duplicate,
+  IPC.playlists.setPlayOptions,
+  IPC.playlists.importM3u,
+  IPC.playlists.exportM3u,
   IPC.playlists.addSlot,
   IPC.messages.create,
   IPC.messages.update,
@@ -218,6 +221,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.events.remove,
   IPC.events.rotate,
   IPC.events.test,
+  IPC.events.copySecret,
   // The drop folder (Session 28): Simple Mode never sees its settings (the folder carries on quietly).
   IPC.drop.view,
   IPC.drop.pickFolder,
@@ -531,6 +535,8 @@ export function simpleModeRefusals(
   answers.set(IPC.playlists.createSmartFrom, () => ({ made: [], files: [], problems: [words()] }));
   answers.set(IPC.audio.setOutput, sound);
   answers.set(IPC.events.view, () => ({ available: false, message: words(), addresses: [] }));
+  // Nothing copied (alpha.20: the new secret's Copy, whose window Simple Mode never opens).
+  answers.set(IPC.events.copySecret, () => false);
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
   answers.set(IPC.drop.pickFolder, () => null);
   // The Access List's: what happened, with no list (its window keeps the one it shows).

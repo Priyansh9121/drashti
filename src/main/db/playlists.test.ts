@@ -160,6 +160,7 @@ describe('playlists the operator edits', () => {
         unplayable: 'ProRes 422 video (QuickTime)',
         timers: [],
         durationMs: null,
+        playingMs: null,
       },
     ]);
   });
@@ -511,5 +512,71 @@ describe('sabha templates', () => {
     const ravi = playlists.itemsOf(made[0]?.id ?? '');
     expect(ravi.flatMap((i) => (i.kind === 'placeholder' ? [i.category] : []))).toContain('Arti');
     expect(playlists.tree()).toEqual([]);
+  });
+});
+
+describe('playlist playback order (x50)', () => {
+  it('draws once, keeps it on a fresh repo and another read, and leaves the numbered rows in place', () => {
+    const id = playlists.create('Placeholder shuffle', null, false) ?? '';
+    const ids = playlists.addItems(
+      id,
+      null,
+      Array.from({ length: 6 }, (_, i) => ({ kind: 'header' as const, label: `Placeholder ${String(i)}` })),
+    );
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      expect(playlists.setPlayOptions(id, { shuffle: true, repeatAll: true })).toBe(true);
+      const order = playlists.playItems(id)?.map((i) => i.id);
+      expect(order).toEqual([...ids.slice(1), ids[0]]);
+      const changes = () => db.prepare('SELECT total_changes() AS count').get() as { count: number };
+      const beforeRead = changes();
+      expect(playlists.playItems(id)?.map((i) => i.id)).toEqual(order);
+      expect(new PlaylistRepo(db).playItems(id)?.map((i) => i.id)).toEqual(order);
+      expect(changes()).toEqual(beforeRead);
+      expect(playlists.itemsOf(id).map((i) => i.id)).toEqual(ids);
+      expect(playlists.playOptions(id)).toEqual({ shuffle: true, repeatAll: true, playOrder: order });
+      expect(playlists.setPlayOptions(id, { shuffle: true, repeatAll: false })).toBe(true);
+      expect(playlists.playItems(id)?.map((i) => i.id)).toEqual(order);
+      expect(playlists.setPlayOptions(id, { shuffle: false, repeatAll: false })).toBe(true);
+      expect(playlists.playItems(id)?.map((i) => i.id)).toEqual(ids);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('adds new rows at the end of the saved order and drops removed rows', () => {
+    const id = playlists.create('Placeholder changed', null, false) ?? '';
+    const ids = playlists.addItems(
+      id,
+      null,
+      ['A', 'B', 'C'].map((label) => ({ kind: 'header' as const, label })),
+    );
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      expect(playlists.setPlayOptions(id, { shuffle: true, repeatAll: false })).toBe(true);
+      const before = playlists.playItems(id)?.map((i) => i.id) ?? [];
+      const added = playlists.addItems(id, 0, [{ kind: 'header', label: 'Placeholder new' }]);
+      playlists.removeItems([ids[1] ?? '']);
+      expect(playlists.playItems(id)?.map((i) => i.id)).toEqual([
+        ...before.filter((i) => i !== ids[1]),
+        ...added,
+      ]);
+      playlists.moveItems(id, added, 1);
+      expect(playlists.playItems(id)?.map((i) => i.id)).toEqual([
+        ...before.filter((i) => i !== ids[1]),
+        ...added,
+      ]);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('reports each video or sound’s playing length between its points', () => {
+    db.prepare("UPDATE media SET duration_ms = 30000, markers = ? WHERE id = 'loop'").run(
+      JSON.stringify({ startMs: 2000, endMs: 12000, markers: [] }),
+    );
+    const id = playlists.create('Placeholder points', null, false) ?? '';
+    playlists.addItems(id, null, [{ kind: 'media', mediaId: 'loop' }]);
+    expect(playlists.itemsOf(id)[0]).toMatchObject({ durationMs: 30000, playingMs: 10000 });
   });
 });
