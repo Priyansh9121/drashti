@@ -1134,7 +1134,8 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
       if (displayId === undefined) return 'no display for it (no pretend display here)';
       // A new hall screen is a new window; a stage screen may be the same window given another job.
       const before = new Set(job === 'audience' ? deps.outputs() : []);
-      if (!(await ask<boolean, boolean>(op, SET_JOB(displayId, job), false))) return 'Screens did not give it';
+      if (!(await ask<boolean, boolean>(op, SET_JOB(displayId, job), false)))
+        return 'Screens did not give it';
       const until = Date.now() + SCREEN_LIMIT_MS;
       while (Date.now() < until) {
         const ready = (await screens()).find(
