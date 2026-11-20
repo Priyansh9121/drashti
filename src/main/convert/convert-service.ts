@@ -9,7 +9,7 @@ import type { ConversionJob, ConvertResult } from '../../shared/convert';
 import { isHevc } from '../../shared/convert';
 import { formatBytes } from '../../shared/format';
 import type { ImportIssue } from '../../shared/import';
-import type { Db } from '../db/database';
+import { type Db, LIBRARY_BUSY_TIMEOUT_MS } from '../db/database';
 import { CONVERTING_DIR, MediaStore, sha256File } from '../import/media-store';
 import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
 import { ProgressReader } from '../stream/worker/progress';
@@ -24,6 +24,7 @@ import {
 } from './plan';
 import { PROBE_MS, readInfo } from './read-info';
 import { copyFinder, moveBack, moveMedia, type Moved, presentationsMoved } from './relink';
+import { Reread, type RereadDeps } from './reread';
 import { freeFileName } from './trim';
 
 /*
@@ -122,6 +123,12 @@ export interface ConvertDeps {
     started(pid: number | undefined, partFile?: string): void;
     ended(pid: number | undefined): void;
   };
+  /**
+   * The idle sweep (alpha.20, "Plays anything", convert/reread.ts): every video and sound FFmpeg never read is read
+   * once at idle moments, from AFTER_START_MS after resumeWaiting, and converted by itself when it cannot play. Off when
+   * left out (tests that judge files by their headers alone keep them so); tests may give FFmpeg's reading and pace.
+   */
+  reread?: boolean | { read?: RereadDeps['read']; everyMs?: number };
 }
 
 interface MediaRow {
@@ -264,6 +271,9 @@ export class ConvertService {
   private closed = false;
   /** Once idle after the start (Session 51 review): what still uses a converted original moves to its copy. */
   private followAtStart = false;
+  /** The idle sweep (alpha.20), when it is on, and from when (once the start is over: resumeWaiting). */
+  private readonly reread: Reread | null;
+  private sweepFrom = Number.POSITIVE_INFINITY;
 
   /** How long reading what a file holds may take (tests give less). */
   private probeMs(): number {
@@ -276,6 +286,25 @@ export class ConvertService {
   }
 
   constructor(private readonly deps: ConvertDeps) {
+    const sweep = deps.reread;
+    this.reread = sweep
+      ? new Reread(
+          {
+            db: deps.db,
+            mediaDir: deps.mediaDir,
+            ffmpegPath: () => deps.ffmpegPath(),
+            ...(typeof sweep === 'object' && sweep.read ? { read: sweep.read } : {}),
+            convert: (id) => {
+              this.convertRead(id);
+            },
+            log: (message) => {
+              deps.log('info', message);
+            },
+            busyTimeoutMs: LIBRARY_BUSY_TIMEOUT_MS,
+          },
+          typeof sweep === 'object' ? sweep.everyMs : undefined,
+        )
+      : null;
     // Part-files left by a conversion that was going when Drashti stopped.
     removeQuietly(join(deps.mediaDir, CONVERTING_DIR));
     // Every second: start the next file, or make the one going wait (the show, the stream, the disk).
@@ -317,6 +346,8 @@ export class ConvertService {
       );
     // And, once off air, what was added on a converted original before Session 51 moves to its copy.
     this.followAtStart = true;
+    // The idle sweep (alpha.20) from the same moment on.
+    this.sweepFrom = at;
   }
 
   /**
@@ -398,6 +429,16 @@ export class ConvertService {
     }
     if (this.deps.ffmpegPath()) this.enqueue([id], Date.now());
     return this.jobs.some((j) => j.mediaId === id && (j.state === 'waiting' || j.state === 'converting'));
+  }
+
+  /**
+   * A file the idle sweep read and found Drashti's player cannot play (alpha.20), marked so: converted by itself a
+   * moment later, as an import's are, once the show and the stream are idle; the windows read the library again.
+   */
+  private convertRead(id: string): void {
+    this.deps.libraryChanged([]);
+    if (this.deps.ffmpegPath())
+      this.enqueue([id], Date.now() + (this.deps.limits?.afterImportMs ?? AFTER_IMPORT_MS));
   }
 
   /**
@@ -675,6 +716,9 @@ export class ConvertService {
         this.changed();
       }
       this.nextFile();
+      // Nothing to convert, nothing up, off air: one file FFmpeg never read, now and then (alpha.20).
+      const now = Date.now();
+      if (!next && !busy && !this.runningFile && now >= this.sweepFrom) void this.reread?.step(now);
       return;
     }
     // One an import found waits its moment after the import (Session 50); the timer looks again.

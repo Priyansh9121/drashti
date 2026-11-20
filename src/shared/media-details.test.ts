@@ -78,6 +78,21 @@ const twoTracks: MediaDetails = {
 };
 
 describe('Media information’s window', () => {
+  it('says an interlaced picture by the field that comes first', () => {
+    const scanOf = (scan: PictureTrack['scan']) =>
+      detailSections(
+        { ...twoTracks, read: twoTracks.read && { ...twoTracks.read, pictures: [{ ...picture, scan }] } },
+        {},
+        'en-GB',
+      )
+        .find((s) => s.heading === 'Picture')
+        ?.rows.find((r) => r.label === 'Scan')?.value;
+    expect(scanOf('top first')).toBe('Interlaced, top field first');
+    expect(scanOf('bottom first')).toBe('Interlaced, bottom field first');
+    expect(scanOf('progressive')).toBe('Progressive');
+    expect(scanOf(null)).toBeUndefined();
+  });
+
   it('says the file, its picture and both sound tracks (the first is played), and how Drashti plays it', () => {
     expect(detailsTitle(twoTracks.name)).toBe('Media information: Placeholder two tracks.mkv');
     expect(
