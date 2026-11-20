@@ -6768,8 +6768,8 @@ function start(): void {
     return null;
   });
   // A video's picture cannot be drawn on this computer (Session 60, x36: the owner's bug, his "Yes, A"): an output or
-  // the operator window found it plays as sound only. What of it is up comes off (the background, with its sound) or
-  // waits paused (on the slide, in the box); the operator window says so, once a file; and it is converted by itself
+  // the operator window found it plays as sound only. What of it is up comes off (the background, with its sound; the
+  // box, Q60-46) or waits paused (on the slide); the operator window says so, once a file; and it is converted by itself
   // once the show is idle. Only for a video that was up, so a page's word never takes off anything else; the other
   // windows that found the same showing find it off already, and say nothing more.
   handle(IPC.media.noPicture, (e, mediaId, startedAt) => {
@@ -6785,7 +6785,7 @@ function start(): void {
   });
   // A video whose element failed on a page that draws the show (Q60-31, the owner's own bug: the hall went black while
   // its sound played on, never taken off, nobody told): taken off as one whose picture cannot be drawn (its sound with
-  // it; on the slide or in the box, paused), said by its name and where it failed, and logged with the error's kind,
+  // it; on the slide, paused; the box off), said by its name and where it failed, and logged with the error's kind,
   // after a short wait; unless a GPU process stopped then, whose videos load again by themselves.
   handle(IPC.media.cannotPlay, (e, mediaId, startedAt, code, words) => {
     const screenId = manager.screenIdFor(e.sender.id);
