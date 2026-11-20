@@ -128,6 +128,7 @@ it('keeps a deck video’s trigger, loop and volume with its prepared ID and sou
   };
   source.layers.slide = {
     presentationId: 'p',
+    notes: '',
     slideIndex: 0,
     slide,
     shownAt: 1000,
