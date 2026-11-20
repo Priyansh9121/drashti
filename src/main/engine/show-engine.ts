@@ -1,3 +1,6 @@
+import type { VideoEditPreparation } from './video-edit-ready';
+import type { Tone } from '../../shared/playback-settings';
+import type { ShapeOverride } from '../../shared/video-shape';
 import { followingItems } from './playlist-source';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { randomUUID } from 'node:crypto';
@@ -248,6 +251,8 @@ export interface LookSource {
 }
 
 export interface EngineOptions {
+  /** Check new showings once; historic/recovered showings keep their immutable files. */
+  prepareVideoEdits?: (previous: EngineState, next: EngineState, historic: boolean) => VideoEditPreparation;
   /** Drashti's own default transition, for presentations without one (a setting; a cut when left out). */
   defaultTransition?: () => Transition;
   /** Run `run` after `delayMs`; returns a way to cancel it (setTimeout when left out; tests run it by hand). */
@@ -311,6 +316,16 @@ export interface EngineOptions {
   levels?: () => SoundLevels;
   /** Parsed captions for a library video, with the admin’s band size and place. */
   videoCaptionsOf?: (mediaId: string) => VideoCaptionsShown | null;
+  /**
+   * Sound and picture… (alpha.20, main/index.ts from the library): a file's tone (none: as it is) and how much later
+   * its sound comes than its picture (ms); null for none.
+   */
+  playbackOf?: (mediaId: string) => { tone: Tone | null; soundDelayMs: number } | null;
+  /**
+   * Sound and picture…'s Shape (alpha.20, x55; main/index.ts from the library): a video's own shape on the screens, or
+   * null as its file says (shared/video-shape.ts).
+   */
+  videoShape?: (mediaId: string) => ShapeOverride | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -493,6 +508,7 @@ export class ShowEngine {
   private at: number | null = null;
   /** The change being made only adds what is known about it (a file's length): not a change to the show. */
   private bookkeeping = false;
+  private restoringVideoEdits = false;
   /**
    * The chosen video input put up by LIVE's one press (Session 55, toggleInput), as it went up, and the background it
    * replaced: pressed again while that showing is still up, that background comes back.
@@ -745,7 +761,12 @@ export class ShowEngine {
     const repeating = request.repeat ? this.repeatRun(request.repeat.playlistId) : null;
     if (slide && repeating && request.slide?.presentationId === repeatPresentationId(repeating.playlistId))
       actions.push({ type: 'repeat/set', repeat: repeating });
-    this.apply(actions);
+    this.restoringVideoEdits = true;
+    try {
+      this.apply(actions);
+    } finally {
+      this.restoringVideoEdits = false;
+    }
     // A video or a video input under black-out or the Wallpaper (a file saved before Session 56 could hold both) did not
     // come back: the cover did (one-at-a-time.ts), so the notice never names it.
     const kept = this.state.layers.background !== null;
@@ -888,7 +909,13 @@ export class ShowEngine {
       Object.keys(old).length === Object.keys(tracks).length &&
       Object.entries(tracks).every(([id, next]) => {
         const prev = old[id];
-        return prev?.track === next.track && prev.size === next.size && prev.place === next.place;
+        return (
+          prev?.track === next.track &&
+          prev.size === next.size &&
+          prev.place === next.place &&
+          // Sound and picture… (alpha.20): a caption delay changed is a change.
+          prev.delayMs === next.delayMs
+        );
       })
     )
       return old;
@@ -912,8 +939,8 @@ export class ShowEngine {
    * an engine with no library to ask (then the state never says, and every page plays each file as it is).
    */
   private soundFor(state: EngineState): SoundState | undefined {
-    const { soundOf, stepsAside, levels } = this.options;
-    if (!soundOf && !stepsAside && !levels) return undefined;
+    const { soundOf, stepsAside, levels, playbackOf } = this.options;
+    if (!soundOf && !stepsAside && !levels && !playbackOf) return undefined;
     const gains: Record<string, number> = {};
     const silent: string[] = [];
     for (const mediaId of soundFilesOf(state)) {
@@ -923,7 +950,33 @@ export class ShowEngine {
       if (known.silent) silent.push(mediaId);
     }
     // The operator's Audio and Video levels and mutes (X33), as Main has them now.
-    return { stepsAside: stepsAside?.() ?? true, gains, silent, ...(levels ? { levels: levels() } : {}) };
+    return {
+      stepsAside: stepsAside?.() ?? true,
+      gains,
+      silent,
+      ...(levels ? { levels: levels() } : {}),
+      ...this.ownPlaybackFor(state),
+    };
+  }
+
+  /**
+   * Sound and picture… (alpha.20): the tone and the sound's delay of each file sounding now that has them, by media id,
+   * stamped as the even gains are, so the hall's audio player and the stream's own sound play them alike.
+   */
+  private ownPlaybackFor(state: EngineState): Pick<SoundState, 'tones' | 'delays'> {
+    const { playbackOf } = this.options;
+    if (!playbackOf) return {};
+    const tones: Record<string, Tone> = {};
+    const delays: Record<string, number> = {};
+    for (const mediaId of soundFilesOf(state)) {
+      const own = playbackOf(mediaId);
+      if (own?.tone) tones[mediaId] = own.tone;
+      if (own?.soundDelayMs) delays[mediaId] = own.soundDelayMs;
+    }
+    return {
+      ...(Object.keys(tones).length > 0 ? { tones } : {}),
+      ...(Object.keys(delays).length > 0 ? { delays } : {}),
+    };
   }
 
   refreshFiles(): CommandResult {
@@ -1886,6 +1939,27 @@ export class ShowEngine {
    */
   refreshPictures(): CommandResult {
     return this.atOnce(() => this.apply([this.picturesSet(this.state)]));
+  }
+
+  /** A video's Shape changed in Sound and picture… (alpha.20, x55): the screens draw it so at once. */
+  refreshVideoShapes(): CommandResult {
+    return this.apply(this.videoShapesSet(this.state));
+  }
+
+  /**
+   * Sound and picture…'s Shape (alpha.20, x55): the shapes of the videos on the screens and coming next, and of the
+   * box's going out, by media id, as their pictures carry their looks (picturesIn), so every screen, node and the stream
+   * draw them alike; a video as its file says is left out. Nothing for an engine with no library to ask.
+   */
+  private videoShapesSet(state: EngineState): EngineAction[] {
+    const shapeOf = this.options.videoShape;
+    if (!shapeOf) return [];
+    const shapes: Record<string, ShapeOverride> = {};
+    for (const id of this.picturesIn(state)) {
+      const shape = shapeOf(id);
+      if (shape) shapes[id] = shape;
+    }
+    return [{ type: 'videoShapes/set', shapes }];
   }
 
   /** The live zoom ends (kept as the picture's look, say): the screens show its kept look. */
@@ -2998,6 +3072,13 @@ export class ShowEngine {
     // Before all that follows from the layers (what comes next, the time bars, the sound, Oops).
     const putUp = operator && !this.bookkeeping && putsUp(actions, next);
     next = oneAtATime(prev, next, { operator, putUp }, this.now()).reduce(reduce, next);
+    const edited = this.options.prepareVideoEdits?.(
+      prev,
+      next,
+      this.restoringVideoEdits || (cause !== null && BACKWARDS.has(cause)),
+    );
+    if (edited?.message) return { ok: false, error: 'preparing', message: edited.message };
+    if (edited?.state) next = edited.state;
     // Repeat Slides goes round only while its slides are up: anything else going up, Clear all or the
     // slide cleared ends it (Stop and Esc leave its slide up).
     if (next.repeat && next.layers.slide?.presentationId !== repeatPresentationId(next.repeat.playlistId))
@@ -3091,6 +3172,9 @@ export class ShowEngine {
       next.chosenWallpaper !== prev.chosenWallpaper
     )
       next = reduce(next, this.picturesSet(next));
+    // Sound and picture…'s Shape (alpha.20, x55): the videos up and coming next carry their shapes too.
+    if (next.layers !== prev.layers || next.next !== prev.next || next.pipOff !== prev.pipOff)
+      next = this.videoShapesSet(next).reduce(reduce, next);
     next = this.keepUndo(prev, next, cause);
     next = this.withAutoAdvance(prev, next);
     if (next === prev) return this.unchanged();

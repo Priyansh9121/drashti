@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MORE_MOTIONS } from './lower-third-motions-more';
-import type { MotionDef } from './lower-third-motion-kit';
+import type { MotionDef, PiecePose } from './lower-third-motion-kit';
 import { LOWER_THIRD_MOTIONS, MOTION_NAMES } from './lower-third-styles';
 import { OFFERED, OFFERED_MOTIONS } from './lower-third-studio';
 import { DEFAULT_LOWER_THIRD_LOOK, type LowerThirdLook } from './lower-thirds';
@@ -59,21 +59,27 @@ interface Parts {
   skew: number;
 }
 
-function partsOf(transform: string, what: string): Parts {
+/** A transform's parts, or what in it is none of them (a part of another kind, or a move in two units). */
+function readParts(transform: string): Parts | string {
   const parts: Parts = { move: null, scale: { x: 1, y: 1 }, rotate: 0, skew: 0 };
   if (transform === '') return parts;
   for (const part of transform.split(/(?<=\)) /u)) {
     const m = PART.exec(part);
-    expect(m, `${what}: ${transform}`).not.toBeNull();
-    if (!m) continue;
+    if (!m) return `${transform}: ${part} is not a move, a scale, a turn or a slant`;
     if (m[1] !== undefined) {
-      expect(m[2], `${what}: one unit in a move`).toBe(m[4]);
+      if (m[2] !== m[4]) return `${transform}: one unit in a move`;
       parts.move = { x: Number(m[1]), y: Number(m[3]), unit: m[2] ?? '' };
     } else if (m[5] !== undefined) parts.scale = { x: Number(m[5]), y: Number(m[6] ?? m[5]) };
     else if (m[7] !== undefined) parts.rotate = Number(m[7]);
     else parts.skew = Number(m[8]);
   }
   return parts;
+}
+
+function partsOf(transform: string, what: string): Parts {
+  const parts = readParts(transform);
+  expect(typeof parts === 'string' ? parts : '', what).toBe('');
+  return typeof parts === 'string' ? { move: null, scale: { x: 1, y: 1 }, rotate: 0, skew: 0 } : parts;
 }
 
 /** How far apart two turns look (degrees): a whole turn round is no turn at all. */
@@ -83,6 +89,33 @@ const turnApart = (a: number, b: number): number => Math.abs(((((b - a) % 360) +
 const STEP = { em: 0.15, percent: 4, deg: 8, scale: 0.1, skew: 1, opacity: 0.15 };
 const SHOWS = 0.02;
 const FRAME_MS = 1000 / 60;
+
+/**
+ * How a piece changed by more than a move from one frame to the next (STEP), or null: its opacity always; while it
+ * shows (SHOWS), its move (in one unit), its size, its turn and its slant. Nothing but numbers (x58: an expect for each
+ * of every frame's values, a million in all, took 22.9 s of the 20 a test has on this Mac under the lead's merge check).
+ */
+function jumpOf(q: PiecePose, p: PiecePose): string | null {
+  const within = (change: number, most: number) => change <= most;
+  if (!within(Math.abs(p.opacity - q.opacity), STEP.opacity))
+    return `its opacity, ${String(q.opacity)} → ${String(p.opacity)}`;
+  if (p.opacity < SHOWS || q.opacity < SHOWS) return null;
+  const a = readParts(q.transform);
+  if (typeof a === 'string') return a;
+  const b = readParts(p.transform);
+  if (typeof b === 'string') return b;
+  const unit = a.move?.unit ?? b.move?.unit ?? 'em';
+  const most = unit === 'em' ? STEP.em : STEP.percent;
+  if (a.move && b.move && a.move.unit !== b.move.unit)
+    return `its move's unit, ${a.move.unit} → ${b.move.unit}`;
+  if (!within(Math.abs((b.move?.x ?? 0) - (a.move?.x ?? 0)), most)) return 'its move across';
+  if (!within(Math.abs((b.move?.y ?? 0) - (a.move?.y ?? 0)), most)) return 'its move up or down';
+  if (!within(Math.abs(b.scale.x - a.scale.x), STEP.scale)) return 'its width';
+  if (!within(Math.abs(b.scale.y - a.scale.y), STEP.scale)) return 'its height';
+  if (!within(turnApart(a.rotate, b.rotate), STEP.deg)) return 'its turn';
+  if (!within(Math.abs(b.skew - a.skew), STEP.skew)) return 'its slant';
+  return null;
+}
 
 describe('the studio’s moving backgrounds, part 2', () => {
   it('eleven more, each with a key and a plain name of its own, none the same as another background’s', () => {
@@ -183,29 +216,22 @@ describe('the studio’s moving backgrounds, part 2', () => {
       const def: MotionDef = MORE_MOTIONS[motion];
       const count = def.pieces(look()).length;
       const turnAt = (t: number) => (t % def.periodMs) / def.periodMs;
+      // Every frame of a whole turn and a little more, each piece against the frame before: the first jump, in words.
+      let jumped: string | null = null;
       let before = def.at(turnAt(0), count);
-      for (let t = FRAME_MS; t <= def.periodMs + 3 * FRAME_MS; t += FRAME_MS) {
+      for (let t = FRAME_MS; jumped === null && t <= def.periodMs + 3 * FRAME_MS; t += FRAME_MS) {
         const now = def.at(turnAt(t), count);
         for (const [i, p] of now.entries()) {
           const q = before[i];
           if (!q) continue;
-          const what = `${motion} piece ${String(i)} at ${t.toFixed(1)} ms: ${q.transform} → ${p.transform}`;
-          expect(Math.abs(p.opacity - q.opacity), what).toBeLessThanOrEqual(STEP.opacity);
-          if (p.opacity < SHOWS || q.opacity < SHOWS) continue;
-          const a = partsOf(q.transform, what);
-          const b = partsOf(p.transform, what);
-          const unit = a.move?.unit ?? b.move?.unit ?? 'em';
-          const most = unit === 'em' ? STEP.em : STEP.percent;
-          if (a.move && b.move) expect(a.move.unit, what).toBe(b.move.unit);
-          expect(Math.abs((b.move?.x ?? 0) - (a.move?.x ?? 0)), what).toBeLessThanOrEqual(most);
-          expect(Math.abs((b.move?.y ?? 0) - (a.move?.y ?? 0)), what).toBeLessThanOrEqual(most);
-          expect(Math.abs(b.scale.x - a.scale.x), what).toBeLessThanOrEqual(STEP.scale);
-          expect(Math.abs(b.scale.y - a.scale.y), what).toBeLessThanOrEqual(STEP.scale);
-          expect(turnApart(a.rotate, b.rotate), what).toBeLessThanOrEqual(STEP.deg);
-          expect(Math.abs(b.skew - a.skew), what).toBeLessThanOrEqual(STEP.skew);
+          const jump = jumpOf(q, p);
+          if (jump === null) continue;
+          jumped = `${motion} piece ${String(i)} at ${t.toFixed(1)} ms: ${q.transform} → ${p.transform}: ${jump}`;
+          break;
         }
         before = now;
       }
+      expect(jumped, motion).toBeNull();
     }
   });
 });

@@ -6,24 +6,25 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 Update after a sabha, and update Main and nodes together.
 
-- Smoother: without a graphics chip a deck’s own Wipe now sweeps in, and its moves drop far fewer frames while streaming; with one, going live, recording or opening the stream no longer holds up the hall (the stream’s picture ready in about a second); on a Mac, a 16:9 deck’s first Cover no longer stutters.
-- Playback: Media information… (right-click any video or sound); videos above 4K or interlaced are converted by themselves; a long video or sound offers Resume at where it stopped, Media shows when each file last played, and an audio playlist plays on from its track; the time bar’s ⋯ (Pro Mode) has A-B repeat, one frame back and on, and Snapshot; playlists get Shuffle, Repeat all, the total time and when it ends, Find, and M3U import and export.
-- A video never leaves the hall black: one this computer can’t show, or that fails, comes off with its sound and a notice naming it and the screen (converted once idle when it can’t show); the Wallpaper or a cover stays until a video’s first frame; back to the Wallpaper with no black frame; a file still copying into a folder is taken only once whole. LIVE no longer goes black while a slow video starts.
-- Appearances are easier on the eyes (deep colours, soft paper; Black as it was), with 38 new ones in families, 28 that move gently (Moving: On / Off), and search and favourites.
-- How loud, under the live picture: Audio and Video volume, each with a mute switch; Drashti always starts with the sound on.
-- A video’s captions (SRT or WebVTT) can show on the screens and the stream: CC beside the time bar.
-- Screens: Adjust the picture… (zoom, move, pin the corners) and One wide picture… (two to four projectors blended into one).
-- Schedule YouTube streams (Pro Mode, your own free Google project: youtube-setup.md): Unlisted at first, the new key straight into the stream profile.
+- Smoother: without a graphics chip a deck’s own Wipe sweeps in and its moves drop far fewer frames while streaming; with one, going live, recording or opening the stream no longer holds up the hall; on a Mac a 16:9 deck’s first Cover no longer stutters.
+- Playback: right-click a video or sound for Media information… and Sound and picture… (Pro Mode: its own bass, treble, voice boost, sound and caption delays and shape); videos above 4K or interlaced are converted by themselves; Resume at where a long file or an audio playlist stopped; when each file last played; the time bar’s ⋯ (Pro Mode): A-B repeat, frame steps, Snapshot; playlists: Shuffle, Repeat all, total and end time, Find, M3U.
+- A video never leaves the hall black: one that can’t show or fails comes off with its sound and a notice naming it and the screen (converted later when it can’t show); the Wallpaper or a cover stays until its first frame and comes back with no black frame; a file still copying into a folder waits until whole; LIVE stays lit while a slow video starts. A screen, LIVE or the sound that keeps failing on a video takes it off (on a slide, its slide) and is back at once, with a notice; with nothing to blame it says Stopped and tries again.
+- Edit Video… (Pro Mode, a video’s right-click menu): trim and jump by the file’s own time, choose its library picture, and keep the edits for its next showing; the file itself and a showing already up are never changed.
+- Appearances: easier on the eyes (Black as it was), 38 new ones in families, 28 that move gently (Moving: On / Off), search and favourites.
+- Audio and Video volume and mute switches under the live picture; Drashti always starts with the sound on.
+- A video’s captions (SRT, WebVTT) on the screens and the stream: CC by the time bar.
+- Screens: Adjust the picture… (zoom, move, pin the corners) and One wide picture… (two to four projectors blended).
+- Schedule YouTube streams (Pro Mode, your own free Google project): Unlisted at first, the new key straight into the profile.
 - A paired node can show the whole show to a second operator, and run it if Main allows.
-- Library › Export kirtan bundle… shares kirtans (and their media) with another library; importing never overwrites an edited kirtan.
+- Library › Export kirtan bundle… shares kirtans and their media; importing never overwrites an edited kirtan.
 - From a Link… asks where to save first, and keeps a YouTube video’s captions beside it.
 - PowerPoint decks look closer to PowerPoint: table styles, first lines, Wheel and Random Bars.
-- Off until turned on: More tools › OSC control… (Pro Mode) for a lighting or sound console or Companion, and Send to other software (Syphon on a Mac, Spout on Windows).
-- Files dropped with no playlist open ask for a new playlist or folder; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… moved to More tools and a new Tools menu.
-- QR code…: Download… (PNG and SVG), and a logo in its middle.
-- Help › Report a Problem… (both modes, and nodes) sends the admin what went wrong, by feature. Help › Drashti Manual…: every feature, searchable and printable.
-- The access list’s emailed Approve and Reject links open on any phone or computer; its admin pastes the new script once (access-setup.md, section 11), which also brings the reports.
-- Save Diagnostics… also records the graphics (each GPU, its driver, the video decoding offered). Events out’s Copy puts a new secret on the clipboard again.
+- Off until turned on: OSC control… (Pro Mode; a lighting or sound console, Companion) and Send to other software (Syphon, Spout).
+- Importing on a busy computer reads each file whole again. Files dropped with no playlist open ask for one; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… are in More tools and a new Tools menu.
+- QR code…: Download… (PNG, SVG) and a logo in its middle.
+- Help › Report a Problem… (both modes, nodes) tells the admin what went wrong, by feature; Help › Drashti Manual…: every feature, searchable, printable.
+- The access list’s emailed Approve and Reject links work on any phone or computer once its admin pastes the new script (access-setup.md, section 11), which also brings the reports.
+- Save Diagnostics… records the graphics too (GPUs, drivers, video decoding). Events out’s Copy puts a new secret on the clipboard again.
 
 ## 1.0.0-alpha.19 (19 Nov 2026)
 

@@ -1,3 +1,5 @@
+import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
+import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
 import type { ControllerArea, ControllerReply, ControllerRequest, EngineSeen } from './controller-actions';
@@ -615,6 +617,12 @@ export const IPC = {
     resumePoint: 'media:resume-point',
     /** Snapshot (alpha.20, the time bar's ⋯): the frame on the screens, a PNG in Media (operator window, Pro Mode). */
     snapshot: 'media:snapshot',
+    /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays, read and kept (operator window). */
+    videoEdit: 'media:video-edit',
+    setVideoEdit: 'media:set-video-edit',
+    videoEditChanged: 'media:video-edit-changed',
+    playback: 'media:playback',
+    setPlayback: 'media:set-playback',
     /**
      * A picture's look (Session 26e): read one, every one (the thumbnails), keep one (the Picture editor),
      * and keep the live zoom as the picture's (Keep this zoom).
@@ -657,6 +665,8 @@ export const IPC = {
     testTone: 'audio:test-tone',
     /** main -> operator: the sound output status changed. */
     status: 'audio:status',
+    /** The sound player given up on is tried again now (x53, its red notice's Try again; the operator window only). */
+    tryAgain: 'audio:try-again',
   },
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside switch, a file's Even
@@ -1215,6 +1225,11 @@ export const IPC = {
     /** main -> output, tests only (never sent by a packaged Drashti): draw an element that throws (Session 23). */
     testThrow: 'output:test-throw',
     /**
+     * main -> output, tests only (never sent by a packaged Drashti): the hall screen's scene fails each time it draws
+     * while this file is up (x53; null: none), as a layer whose data makes a component throw would.
+     */
+    testThrowWhile: 'output:test-throw-while',
+    /**
      * main -> output, tests only (never sent by a packaged Drashti): hold the page's clock at a moment of the
      * engine's time, or let it go (null), so two screens can be compared part-way through a transition
      * (Session 26d).
@@ -1669,6 +1684,13 @@ export interface InvokeContract {
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
   [IPC.media.resumePoint]: { args: [mediaId: string]; result: ResumePoint | null };
   [IPC.media.snapshot]: { args: [playing: PlayingRef]; result: SnapshotResult };
+  [IPC.media.videoEdit]: { args: [mediaId: string]; result: VideoEditResult };
+  [IPC.media.setVideoEdit]: { args: [request: SaveVideoEdit]; result: VideoEditResult };
+  [IPC.media.playback]: { args: [mediaId: string]; result: PlaybackSettings | null };
+  [IPC.media.setPlayback]: {
+    args: [mediaId: string, settings: PlaybackSettings];
+    result: { ok: true } | { ok: false; message: string };
+  };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
   [IPC.media.remove]: { args: [mediaIds: string[]]; result: MediaRemovalResult };
@@ -1708,6 +1730,7 @@ export interface InvokeContract {
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
+  [IPC.audio.tryAgain]: { args: []; result: { ok: true } | { ok: false; message: string } };
   [IPC.messages.list]: { args: []; result: MessageTemplate[] };
   [IPC.messages.create]: { args: [template: MessageTemplateFields]; result: MessageResult };
   [IPC.messages.update]: {
@@ -2022,6 +2045,7 @@ export interface EventContract {
   [IPC.output.gpuRestarted]: { at: number };
   [IPC.output.pointed]: { clip: PointedClip | null };
   [IPC.output.testThrow]: Record<string, never>;
+  [IPC.output.testThrowWhile]: { mediaId: string | null };
   [IPC.output.testClock]: { at: number | null };
   [IPC.audio.chosen]: { device: AudioDevice | null };
   [IPC.audio.testTone]: { deviceId: string };
@@ -2036,6 +2060,7 @@ export interface EventContract {
   [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];
   [IPC.media.preparingTrimsChanged]: string[];
+  [IPC.media.videoEditChanged]: VideoEditSnapshot;
   [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: { role: 'preview' | 'encoder' | 'speech' };
   [IPC.stream.context]: ProgramContext;

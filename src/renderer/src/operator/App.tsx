@@ -1,3 +1,5 @@
+import { EditVideoDialog } from '../library/EditVideoDialog';
+import { SoundPictureDialog } from '../library/SoundPictureDialog';
 import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
 import { connectEngine } from '../engine/engine-store';
@@ -51,6 +53,7 @@ import { ScreensSaidNotice } from '../screens/ScreensSaid';
 import { EngineUnread } from './EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
+import { SoundPlayerStopped } from './SoundPlayerStopped';
 import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
 import { WindowPicker } from '../live-window/WindowPicker';
 import { ReadyDialog } from './ReadyDialog';
@@ -372,6 +375,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       />
       <NoSoundNotice />
       <StreamPageStopped />
+      {/* Drashti's sound stopped: its sound player kept failing (x53): in the flow too. */}
+      <SoundPlayerStopped />
       <LiveWindowNotice />
       <VideoInputNotice platform={platform} />
       <RecoveryBanner />
@@ -496,6 +501,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <PictureEditor />
       {/* Media information… (alpha.20, Q60-34 item 1): a video's or a sound's file, as FFmpeg reads it. */}
       <MediaInfoDialog platform={platform} />
+      {/* Sound and picture… (alpha.20): a file's own tone and delays (Pro Mode). */}
+      <SoundPictureDialog />
+      <EditVideoDialog />
       {dashboardOpen && (
         <ScreensDashboard
           simple={false}

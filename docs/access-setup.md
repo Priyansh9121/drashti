@@ -164,6 +164,8 @@ The address and the key stay the same, so the line built into Drashti keeps work
   6. Links in emails sent before step 4 still open Google's own page: open those where only your approver Gmail is signed in, or answer in Drashti's Access List (section 13).
   7. On your own computer, in Drashti: **Help**, then **Report a Problem…**. Tick a feature, write a few words, tick **Diagnostics** and **A picture of this window**, press **Review…**, then **Send**. Within a minute its email reaches your approver Gmail, from **Drashti**, with both files (no "received" email comes back: it is your own report). Reports anyone sent before step 4 waited on their computers; they go by themselves now.
 
+The [Manual's Report a Problem steps](manual/help.md#report-a-problem) explain choosing features, reviewing optional files and **Your reports**. The [admin's guide, section 12](admin-guide.md#12-checks-diagnostics-and-when-things-go-wrong), explains the received email and a node's report. The steps above update the existing deployment once for both access links and reports.
+
 ## 12. The limits of a free Google account
 
 Google's own figures (its quota page, https://developers.google.com/apps-script/guides/services/quotas, read on 27 October 2026; Google may change them):

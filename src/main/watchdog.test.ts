@@ -380,17 +380,48 @@ describe('a render error (Session 23)', () => {
     clock.advance(100);
     expect(contents.reloads).toBe(1);
     expect(kinds()).toEqual(['render-error', 'reloaded']);
-    // It fails again as it draws after the reload: logged, not reloaded again within the minute.
-    clock.advance(5000);
-    dog.renderError(contents, 'output "Main Hall"', 'Error: boom');
-    clock.advance(10_000);
-    expect(contents.reloads).toBe(1);
-    expect(kinds()).toEqual(['render-error', 'reloaded', 'render-error']);
-    // A minute after the reload, once more.
-    clock.advance(50_000);
+    // Two minutes on, a new fault: once more.
+    clock.advance(120_000);
     dog.renderError(contents, 'output "Main Hall"', 'Error: boom');
     clock.advance(100);
     expect(contents.reloads).toBe(2);
+  });
+
+  // x53 (the owner's Q60-31 bug hunt, x52's D6a): a page that failed again after its reload was left black for good,
+  // counted as showing, nobody told; and an error said by the old page before its reload is not its failing again.
+  it('fails again after its reload: given up on as a crash loop is, once; tried again 2 minutes later', () => {
+    const hall = new FakeContents();
+    dog.watch(hall, 'output "Main Hall"');
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    // The old page, still drawing before its reload: not its failing again.
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    clock.advance(100);
+    expect(hall.reloads).toBe(1);
+    clock.advance(5000);
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    expect(events.map((e) => `${e.kind}${e.reason === undefined ? '' : ` (${e.reason})`}`)).toEqual([
+      'render-error (Error: boom)',
+      'reloaded',
+      'render-error (Error: boom)',
+      'gave-up (its picture failed again after a reload)',
+    ]);
+    // Given up on: no more reloads, and its errors meanwhile say nothing more.
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    clock.advance(60_000);
+    expect(hall.reloads).toBe(1);
+    expect(kinds()).toHaveLength(4);
+    // Tried again by itself, as a crash loop's is.
+    clock.advance(RETRY_FIRST_MS);
+    expect(hall.reloads).toBe(2);
+    expect(kinds().at(-1)).toBe('retried');
+    // Failing again at once after that try (its reload): given up on again, now for 10 minutes.
+    clock.advance(2000);
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    expect(kinds().at(-1)).toBe('gave-up');
+    clock.advance(RETRY_AGAIN_MS - 1);
+    expect(hall.reloads).toBe(2);
+    clock.advance(1);
+    expect(hall.reloads).toBe(3);
   });
 
   it('each window has its own minute, and a window gone is not reloaded', () => {
@@ -401,6 +432,98 @@ describe('a render error (Session 23)', () => {
     clock.advance(100);
     expect(contents.reloads).toBe(1);
     expect(other.reloads).toBe(0);
+  });
+
+  it('given up on for its picture, it draws again: no longer given up on, nothing reloaded; its next fault starts afresh', () => {
+    const hall = new FakeContents();
+    dog.watch(hall, 'output "Main Hall"');
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    clock.advance(100);
+    clock.advance(3000);
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    expect(kinds().at(-1)).toBe('gave-up');
+    dog.drawsAgain(hall, 'output "Main Hall"');
+    // No retry left waiting, and nothing reloaded by it.
+    clock.advance(RETRY_AGAIN_MS);
+    expect(hall.reloads).toBe(1);
+    expect(kinds().at(-1)).toBe('gave-up');
+    // A new fault later: reloaded once, as the first.
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    clock.advance(100);
+    expect(hall.reloads).toBe(2);
+  });
+
+  it('a window made again for the same screen starts afresh: its picture failing is reloaded, as its own page', () => {
+    const old = new FakeContents();
+    let oldLoads = 0;
+    dog.watch(old, 'output "Main Hall"');
+    dog.renderError(old, 'output "Main Hall"', 'its page failed to load (ERR_FILE_NOT_FOUND)', () => {
+      oldLoads++;
+    });
+    clock.advance(100);
+    clock.advance(2000);
+    dog.renderError(old, 'output "Main Hall"', 'Error: boom');
+    expect(kinds().at(-1)).toBe('gave-up');
+    old.destroyed = true;
+    old.emit('destroyed');
+    const made = new FakeContents();
+    dog.watch(made, 'output "Main Hall"');
+    clock.advance(60_000);
+    dog.renderError(made, 'output "Main Hall"', 'Error: boom');
+    clock.advance(100);
+    expect([made.reloads, oldLoads]).toEqual([1, 1]);
+  });
+
+  it('a page failing to load is loaded again as itself when tried again, never at the address that failed', () => {
+    const hall = new FakeContents();
+    let ownLoads = 0;
+    dog.watch(hall, 'output "Main Hall"');
+    const ownPage = () => {
+      ownLoads++;
+    };
+    dog.renderError(hall, 'output "Main Hall"', 'its page failed to load (ERR_FILE_NOT_FOUND)', ownPage);
+    clock.advance(100);
+    clock.advance(2000);
+    dog.renderError(hall, 'output "Main Hall"', 'its page failed to load (ERR_FILE_NOT_FOUND)', ownPage);
+    expect(kinds().at(-1)).toBe('gave-up');
+    clock.advance(RETRY_FIRST_MS);
+    expect([ownLoads, hall.reloads]).toEqual([2, 0]);
+  });
+});
+
+// x53 (the owner's Q60-31 bug hunt, x52's D6b-d; his Q60-50 A): a window that kept going down on a video, the video
+// taken off, is loaded again at once, its count afresh, never after its longer back-off, or never at all once given up.
+describe('what kept bringing a window down taken off', () => {
+  it('loads it again almost at once, instead of after its back-off', () => {
+    contents.emit('render-process-gone', {}, { reason: 'crashed' });
+    clock.advance(100);
+    contents.emit('render-process-gone', {}, { reason: 'crashed' });
+    dog.tookOff(contents, 'operator', 'without the video it kept going down on');
+    clock.advance(100);
+    expect(contents.reloads).toBe(2);
+    // The back-off's own reload no longer comes.
+    clock.advance(5000);
+    expect(contents.reloads).toBe(2);
+    expect(lineOf(events.at(-1))).toBe(
+      'Watchdog: operator reloaded (without the video it kept going down on)',
+    );
+  });
+
+  it('given up on, it is tried at once, its crash count afresh: a crash loop after that gives up again only at its limit', () => {
+    for (let i = 0; i < 4; i++) contents.emit('render-process-gone', {}, { reason: 'crashed' });
+    expect(kinds()).toContain('gave-up');
+    dog.tookOff(contents, 'operator', 'without the video it kept going down on');
+    clock.advance(100);
+    expect(contents.reloads).toBe(1);
+    // No retry left waiting from the give-up.
+    clock.advance(RETRY_FIRST_MS);
+    expect(contents.reloads).toBe(1);
+    // Three crashes now are within its limit (3 a minute here): reloaded each time.
+    for (let i = 0; i < 3; i++) {
+      contents.emit('render-process-gone', {}, { reason: 'crashed' });
+      clock.advance(1000);
+    }
+    expect(contents.reloads).toBe(4);
   });
 });
 

@@ -79,13 +79,13 @@ Drashti puts slides, pictures, videos and sound on the hall's screens. This manu
 
 ## Using this manual
 
-**What it is.** This manual, inside Drashti. It needs no internet. Each "?" on a panel's heading leads to that panel's chapter here.
+**What it is.** This manual, inside Drashti. It needs no internet. Each **?** on a panel's heading first shows its short help in that panel. **Open the manual** there opens this manual at that panel's chapter and feature.
 
 **When you would use it.** Whenever you are not sure how something works.
 
 **How:**
 
-1. Choose **Help**, then **Drashti Manual…**.
+1. Choose **Help**, then **Drashti Manual…**, or press **Open the manual** in a panel's **?** card.
 2. Choose a chapter on the left, or type a word in **Search the manual**.
 3. Choose a result to read it in its place.
 4. Press **Print…**, or **Save as PDF…** to keep it for the setup kit. Both wait while anything is up, on air or recording.

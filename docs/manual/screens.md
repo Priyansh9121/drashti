@@ -160,4 +160,6 @@
 2. Tick **Show controls** and, if wanted, **Media playback** under it.
 3. On the node, a press says **Applied on Main**, **No change on Main**, or why not.
 
+The operator's guide, **Following the show on another computer**, explains the controls and what to check before pressing again. For a video the node cannot show, see **LIVE, Back and Next › When a video cannot play**.
+
 ![The node's window](../screenshots/node-window.png)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { framesOnTime, ON_TIME_MS, STEADY_FRAMES } from './frames-on-time';
+import { drawBeforeFrames, framesOnTime, ON_TIME_MS, STEADY_FRAMES } from './frames-on-time';
 
 /** A page's frames given by hand: each request waits until the test gives the next frame's time. */
 function frames() {
@@ -97,5 +97,85 @@ describe('frames on time (the warm-up and its last step, Session 58 fault 2)', (
     for (let i = 1; i <= STEADY_FRAMES + 1; i++) await w.page.at(i * 16);
     expect(w.done()).toBe(false);
     expect(w.page.waiting()).toBe(0);
+  });
+});
+
+describe('the warm-up’s frames before its transitions', () => {
+  it('draws the two before frames, keeps their requests, then begins the transitions once', async () => {
+    const page = frames();
+    const kept: number[] = [];
+    let drawn = 0;
+    let ready = 0;
+    drawBeforeFrames({
+      count: 2,
+      each: () => {
+        drawn++;
+      },
+      live: () => true,
+      keep: (request) => kept.push(request),
+      ready: () => {
+        ready++;
+      },
+      frame: page.frame,
+    });
+    await page.at(0);
+    expect(drawn).toBe(1);
+    expect(ready).toBe(0);
+    await page.at(16);
+    expect(drawn).toBe(2);
+    expect(ready).toBe(1);
+    expect(kept).toEqual([1, 2]);
+    expect(page.waiting()).toBe(0);
+  });
+
+  it('a before frame already queued when the warm-up is cut cannot replace settling with during', async () => {
+    const page = frames();
+    const phases = ['before'];
+    let finished = false;
+    let drawn = 0;
+    drawBeforeFrames({
+      count: 2,
+      each: () => {
+        drawn++;
+      },
+      live: () => !finished,
+      keep: () => undefined,
+      ready: () => {
+        phases.push('during');
+      },
+      frame: page.frame,
+    });
+    await page.at(0);
+    // Main has said no GPU: finish marks it ended and starts settling. Cleanup/cancellation is still pending.
+    finished = true;
+    phases.push('settle');
+    await page.at(16);
+    expect(phases, 'the queued callback cannot restart a finished warm-up').toEqual(['before', 'settle']);
+    expect(drawn, 'no further warm-up frame after the cut').toBe(1);
+    expect(page.waiting()).toBe(0);
+  });
+
+  it('does nothing if cut after its first request but before that frame is delivered', async () => {
+    const page = frames();
+    let live = true;
+    let drawn = 0;
+    let ready = false;
+    drawBeforeFrames({
+      count: 2,
+      each: () => {
+        drawn++;
+      },
+      live: () => live,
+      keep: () => undefined,
+      ready: () => {
+        ready = true;
+      },
+      frame: page.frame,
+    });
+    live = false;
+    await page.at(0);
+    expect(drawn).toBe(0);
+    expect(ready).toBe(false);
+    expect(page.waiting()).toBe(0);
   });
 });
