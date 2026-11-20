@@ -114,7 +114,7 @@ const realTimers: Timers = {
  */
 export class RendererWatchdog {
   readonly events: WatchdogEvent[] = [];
-  /** When each window was last reloaded after a render error (or tried again: x53), and how its page loads again. */
+  /** When each window was last reloaded after a render error, or tried again (x53). */
   private readonly renderReloads = new Map<string, number>();
   /** Windows with a reload for a render error on its way: what their old page still says is not a new failure. */
   private readonly renderReloading = new Set<string>();
@@ -414,6 +414,11 @@ export class RendererWatchdog {
       if (retryTimer !== null) this.timers.clearTimeout(retryTimer);
       this.retries.delete(target);
       this.states.delete(target);
+      // A window made again for the same screen starts afresh (x53): never left given up on, never loaded again
+      // through the closed window's own loader.
+      this.renderGaveUp.delete(name);
+      this.renderReloading.delete(name);
+      this.ownReloads.delete(name);
     });
   }
 }
