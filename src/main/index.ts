@@ -196,6 +196,7 @@ import { playingSchema } from '../shared/engine/playing';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { DisplayCopies } from './media/display-copies';
+import { handleDisplaySourceRequest } from './media/display-worker-source';
 import { DEFAULT_DISPLAY_SIZE } from '../shared/picture-display';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
 import { pictureCannotSeeThrough } from './media/see-through';
@@ -1963,16 +1964,27 @@ function start(): void {
   });
   handle(IPC.sharpen.next, (e) => sharpened.next(e.sender.id));
   handle(IPC.sharpen.made, (e, key, bytes) => sharpened.made(e.sender.id, key, bytes));
+  // No shared media permissions or cache: this Session can read only its one currently granted source.
+  const displaySession = session.fromPartition('drashti-display-copies');
+  applySessionSecurity(displaySession);
+  let displayWorkerId = 0;
   const displayCopies = new DisplayCopies({
     mediaDir,
     targets: displayTargets,
     canStart: () => !sharpened.working,
     canWork: () => nothingUp(engine.current.layers) && !displayOnAir(),
     open: (gone) => {
-      const win = createSharpenWindow(gone, true);
+      const win = createSharpenWindow(gone, true, displaySession);
+      const id = win.webContents.id;
+      displayWorkerId = id;
       return {
-        id: win.webContents.id,
+        id,
+        beforeBytes: () => {
+          const priority = pictureWorkerPriority(win.webContents.getOSProcessId());
+          log.info(`Display copy worker priority: ${String(priority)} (${process.platform})`);
+        },
         destroy: () => {
+          if (displayWorkerId === id) displayWorkerId = 0;
           if (!win.isDestroyed()) win.destroy();
         },
       };
@@ -1984,21 +1996,17 @@ function start(): void {
     },
     log: (message) => log.info(message),
   });
+  displaySession.protocol.handle(MEDIA_SCHEME, (request) =>
+    handleDisplaySourceRequest(request, {
+      mediaDir,
+      lookup: (key) => displayCopies.workerSource(displayWorkerId, key),
+    }),
+  );
   const refreshDisplayCopies = () =>
     db === null ? Promise.resolve() : displayCopies.refresh(media.displayCandidates());
   displayWorkerBusy = () => displayCopies.working;
   stops.add('display copies', () => displayCopies.close());
-  handle(IPC.displayCopies.next, (e) => {
-    if (!displayCopies.ownsWorker(e.sender.id)) return null;
-    try {
-      const priority = pictureWorkerPriority(e.sender.getOSProcessId());
-      log.info(`Display copy worker priority: ${String(priority)} (${process.platform})`);
-    } catch {
-      displayCopies.failWorker(e.sender.id);
-      return null;
-    }
-    return displayCopies.next(e.sender.id);
-  });
+  handle(IPC.displayCopies.next, (e) => displayCopies.next(e.sender.id));
   handle(IPC.displayCopies.made, (e, key, bytes) => displayCopies.made(e.sender.id, key, bytes));
 
   // ---- pictures' blurred copies (Session 55, Part 5, D): made once each, drawn behind a photo that does not fill ----

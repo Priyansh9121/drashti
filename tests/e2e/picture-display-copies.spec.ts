@@ -170,6 +170,9 @@ type DisplayCostPageGlobals = typeof globalThis & { drashtiDisplayCostPage?: Dis
 /** Observation only: return the original native promises, with no gate, delayed work or changed pixels. */
 function logDisplayWork(): void {
   if (new URLSearchParams(location.search).get('purpose') !== 'display') return;
+  const observed = globalThis as typeof globalThis & { drashtiDisplayWorkObserved?: boolean };
+  if (observed.drashtiDisplayWorkObserved) return;
+  observed.drashtiDisplayWorkObserved = true;
   const mark = (kind: DisplayJobMark['kind']) =>
     console.log(
       'DISPLAY_COST_JOB ' + JSON.stringify({ kind, t: performance.timeOrigin + performance.now() }),
@@ -200,10 +203,10 @@ function logDisplayWork(): void {
 /** Attach at dom-ready, before the hall exists (the Windows capture lifecycle verified by L7). */
 async function recordDisplayCost(app: ElectronApplication): Promise<void> {
   await app.context().addInitScript(logDisplayWork);
-  await app.evaluate(({ app }) => {
+  await app.evaluate(({ app, BrowserWindow }) => {
     const cost: DisplayCostMain = { active: false, frames: [], jobs: [], hallPid: 0, mainPid: process.pid };
     (globalThis as DisplayCostMainGlobals).drashtiDisplayCostMain = cost;
-    app.on('browser-window-created', (_event, win) => {
+    const watchJobs = (win: ReturnType<typeof BrowserWindow.getAllWindows>[number]) => {
       win.webContents.on('console-message', (event) => {
         if (!event.message.startsWith('DISPLAY_COST_JOB ')) return;
         const mark = JSON.parse(event.message.slice('DISPLAY_COST_JOB '.length)) as Pick<
@@ -215,10 +218,14 @@ async function recordDisplayCost(app: ElectronApplication): Promise<void> {
         try {
           priority = process.getBuiltinModule('node:os').getPriority(pid);
         } catch {
-          // A missing actual OS answer fails the test; a log message alone is not priority evidence.
+          // Missing actual priority still fails the test.
         }
         cost.jobs.push({ ...mark, received: Date.now(), pid, priority });
       });
+    };
+    for (const win of BrowserWindow.getAllWindows()) watchJobs(win);
+    app.on('browser-window-created', (_event, win) => {
+      watchJobs(win);
       win.webContents.once('dom-ready', () => {
         const url = win.webContents.getURL();
         if (!url.includes('/output.html') || url.includes('identify=')) return;
@@ -229,6 +236,11 @@ async function recordDisplayCost(app: ElectronApplication): Promise<void> {
       });
     });
   });
+  // A quiet startup may already have made the idle worker. Observe it too, exactly once, before the trials.
+  for (const page of app.windows()) {
+    if (new URLSearchParams(new URL(page.url()).search).get('purpose') === 'display')
+      await page.evaluate(logDisplayWork);
+  }
 }
 
 function periods(frames: readonly number[], reference?: number) {

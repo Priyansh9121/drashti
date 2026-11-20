@@ -126,17 +126,26 @@ export function tidyNotes(text: string): string {
   );
 }
 
-/** One picture for the hidden window that makes sharpened copies (Session 26f): its file's bytes, the percent, and what to hand back. */
-export interface SharpenJobView {
+/** The display source bound, applied before grant, by its private protocol, and by its worker reader. */
+export const MAX_DISPLAY_SOURCE_BYTES = 256 * 1024 * 1024;
+
+interface PictureCopyJob {
   key: string;
-  data: Uint8Array;
   percent: number;
-  /** Private display-copy job: resize only, with no pixel convolution/readback. */
-  resizeOnly?: true;
-  /** The oriented source dimensions read from its header; a mismatch is refused, never stretched. */
-  sourceSize?: { width: number; height: number };
   type: 'image/jpeg' | 'image/png';
   maxPixels: number;
-  /** The size the screens draw it at (Session 26g): the copy is the picture fitted into it; null, its own size. */
   box: { width: number; height: number } | null;
 }
+/** Sharpen jobs retain their bytes; a display job names only its current private streamed original. */
+export type SharpenJobView = PictureCopyJob &
+  (
+    | { data: Uint8Array; resizeOnly?: never; sourceSize?: never; source?: never; maxBytes?: never }
+    | {
+        resizeOnly: true;
+        source: string;
+        maxBytes: number;
+        sourceSize: { width: number; height: number };
+        box: { width: number; height: number };
+        data?: never;
+      }
+  );

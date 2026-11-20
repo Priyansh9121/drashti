@@ -65,6 +65,37 @@ async function finishFirst(t: ReturnType<typeof setup>) {
 }
 
 describe('the display worker between imports', () => {
+  it.each(['made', 'cancel'] as const)(
+    'exposes only its granted source and revokes it after %s',
+    async (ending) => {
+      const t = setup();
+      const abort = new AbortController();
+      const candidate = t.candidate('a');
+      const prepared = t.copies.prepare(candidate, abort.signal);
+      await vi.waitFor(() => expect(t.windows).toHaveLength(1));
+      const key = 'p1-' + candidate.sha256.slice(0, 32) + '-1920x1080';
+      expect(t.copies.workerSource(1, key)).toBeNull();
+      t.beforeBytes.mockImplementation(() => {
+        expect(t.copies.workerSource(1, key)).toBeNull();
+      });
+      const grant = t.copies.next(1);
+      expect(t.copies.workerSource(1, key)).toBeNull();
+      const job = await grant;
+      if (!job) throw new Error('The owned source was not granted.');
+      expect(t.copies.workerSource(1, key)).toEqual({ ...candidate, missing: false });
+      expect(t.copies.workerSource(999, key)).toBeNull();
+      expect(t.copies.workerSource(1, 'another-job')).toBeNull();
+      if (ending === 'made') {
+        await t.copies.made(1, key, png(1920, 1080));
+        expect(await prepared).toMatchObject({ ok: true });
+      } else {
+        abort.abort();
+        expect(await prepared).toMatchObject({ ok: false });
+      }
+      expect(t.copies.workerSource(1, key)).toBeNull();
+    },
+  );
+
   it('prewarms an empty worker during a quiet refresh, never during a show', async () => {
     const t = setup();
     t.activity.quiet = false;
@@ -189,6 +220,8 @@ describe('the display worker between imports', () => {
     expect(await t.copies.next(1)).toBeNull();
     const job = await t.copies.next(2);
     if (!job) throw new Error('The replacement worker did not receive the next import.');
+    t.windows[0]?.gone();
+    expect(t.copies.workerSource(2, job.key)).not.toBeNull();
     expect(await t.copies.made(1, job.key, png(1920, 1080))).toBe(false);
     expect(await t.copies.made(2, job.key, png(1920, 1080))).toBe(true);
     expect(await second).toMatchObject({ ok: true });

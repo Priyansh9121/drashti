@@ -46,6 +46,7 @@ function setup(
       windows.opened++;
       return {
         id: windows.opened,
+        beforeBytes: () => undefined,
         destroy: () => {
           windows.destroyed++;
         },
@@ -72,7 +73,12 @@ describe('original-preserving display copies', () => {
     const job = await t.copies.next(1);
     if (!job) throw new Error('The queued copy job was not offered.');
     expect(job).toMatchObject({ box: { width: 1920, height: 1080 }, percent: 0 });
-    expect(job.data).toEqual(new Uint8Array(png(6144, 3456)));
+    expect(job).not.toHaveProperty('data');
+    const originalSource = t.copies.workerSource(1, job.key);
+    if (!originalSource) throw new Error('The owned source was not granted to the worker.');
+    expect(new Uint8Array(readFileSync(join(t.dir, originalSource.path)))).toEqual(
+      new Uint8Array(png(6144, 3456)),
+    );
     const output = png(1920, 1080);
     expect(await t.copies.made(1, job.key, new Uint8Array(output))).toBe(true);
     const result = await prepared;
@@ -106,13 +112,15 @@ describe('original-preserving display copies', () => {
       await t.copies.made(1, job.key, new Uint8Array(png(1920, 1080)));
       const result = await first;
       if (!result.ok || !result.copy) throw new Error('The display file was not made.');
-      await t.copies.next(1);
+      const idleNext = t.copies.next(1);
       await t.copies.idle();
       const file = join(t.dir, result.copy.path);
       if (damage === 'deleted') rmSync(file);
       else writeFileSync(file, png(320, 180));
       const replacement = t.copies.prepare(t.candidate);
-      await vi.waitFor(() => expect(t.windows.opened).toBe(2));
+      const replacementJob = await idleNext;
+      expect(replacementJob).not.toBeNull();
+      expect(t.windows.opened).toBe(1);
       expect(t.copies.ready(SHA)).toBeNull();
       expect(t.copies.relativePath(SHA, job.key)).toBeNull();
       expect(t.changed).toHaveBeenCalledTimes(2);
@@ -183,9 +191,11 @@ describe('original-preserving display copies', () => {
     expect(await fresh).toMatchObject({ ok: true });
     expect(await old).toMatchObject({ ok: true });
     quiet = true;
-    await t.copies.next(1);
+    const idleNext = t.copies.next(1);
     await t.copies.idle();
     expect(t.windows.opened).toBe(1);
+    t.copies.close();
+    expect(await idleNext).toBeNull();
   });
   it('waits for the other picture worker before starting a decode', async () => {
     let otherWorkerBusy = true;
@@ -215,7 +225,7 @@ describe('original-preserving display copies', () => {
     if (!job) throw new Error('The first display copy job did not start.');
     await t.copies.made(1, job.key, new Uint8Array(png(1920, 1080)));
     await first;
-    await t.copies.next(1);
+    const idleNext = t.copies.next(1);
     await t.copies.idle();
     quiet = false;
     target = { width: 3840, height: 2160 };
@@ -223,14 +233,12 @@ describe('original-preserving display copies', () => {
     expect(t.copies.ready(SHA)).toMatchObject({ width: 1920, height: 1080 });
     expect(t.windows.opened).toBe(1);
     quiet = true;
-    await vi.waitFor(() => {
-      t.copies.activityChanged();
-      expect(t.windows.opened).toBe(2);
-    });
-    const next = await t.copies.next(2);
+    t.copies.activityChanged();
+    const next = await idleNext;
+    expect(t.windows.opened).toBe(1);
     if (!next) throw new Error('The larger display copy job did not start at idle.');
     expect(next.box).toEqual(target);
-    await t.copies.made(2, next.key, new Uint8Array(png(3840, 2160)));
+    await t.copies.made(1, next.key, new Uint8Array(png(3840, 2160)));
     await larger;
     expect(t.copies.ready(SHA)).toMatchObject(target);
   });

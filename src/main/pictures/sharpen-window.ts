@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, type Session } from 'electron';
 import { constants, setPriority, getPriority } from 'node:os';
 import { loadPage } from '../windows/renderer';
 import { secureWebPreferences } from '../windows/web-preferences';
@@ -8,7 +8,7 @@ import { secureWebPreferences } from '../windows/web-preferences';
  * shown, never focused, never throttled, with the app's secure settings, its process at the lowest
  * priority so the show's processes always come first. `gone`: its process ended unexpectedly.
  */
-export function createSharpenWindow(gone: () => void, display = false): BrowserWindow {
+export function createSharpenWindow(gone: () => void, display = false, pages?: Session): BrowserWindow {
   const win = new BrowserWindow({
     show: false,
     width: 320,
@@ -16,7 +16,11 @@ export function createSharpenWindow(gone: () => void, display = false): BrowserW
     title: 'Drashti sharpening',
     skipTaskbar: true,
     focusable: false,
-    webPreferences: { ...secureWebPreferences(), backgroundThrottling: false },
+    webPreferences: {
+      ...secureWebPreferences(),
+      ...(pages ? { session: pages } : {}),
+      backgroundThrottling: false,
+    },
   });
   win.webContents.once('dom-ready', () => {
     try {

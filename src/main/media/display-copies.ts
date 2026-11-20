@@ -1,15 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, stat, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readdir, rename, stat, writeFile, rm } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import type { PictureLook, PixelSize } from '../../shared/picture-look';
 import { displayPictureSize, originalForOlderPictureWithoutDisplayCopy } from '../../shared/picture-display';
-import type { SharpenJobView } from '../../shared/pictures';
+import { MAX_DISPLAY_SOURCE_BYTES, type SharpenJobView } from '../../shared/pictures';
+import { mediaUrl } from '../../shared/media';
+import type { MediaFileRow } from './media-protocol';
 import { diskFreeBytes, sha256File } from '../import/media-store';
 import { realPlaceAsync } from './contained';
 import { pictureHeader, readPictureHeader, type PictureHeader } from './picture-header';
 
 export const DISPLAY_DIR = 'display';
-const MAX_SOURCE_BYTES = 256 * 1024 * 1024;
+const MAX_SOURCE_BYTES = MAX_DISPLAY_SOURCE_BYTES;
 const MAX_COPY_BYTES = 512 * 1024 * 1024;
 const MAX_SOURCE_PIXELS = 50_000_000;
 const RESERVE_BYTES = 2 * 1024 ** 3;
@@ -31,10 +33,16 @@ export interface DisplayFile {
   ext: 'jpg' | 'png';
 }
 export type DisplayResult = { ok: true; copy: DisplayFile | null } | { ok: false; message: string };
+export interface DisplayWorker {
+  id: number;
+  destroy(): void;
+  /** Recheck this window's current OS process immediately before each job grant. */
+  beforeBytes(): void;
+}
 export interface DisplayDeps {
   mediaDir: string;
   targets(): readonly PixelSize[];
-  open(gone: () => void): { id: number; destroy(): void };
+  open(gone: () => void): DisplayWorker;
   changed(): void;
   log(message: string): void;
   canWork?(): boolean;
@@ -70,9 +78,11 @@ export class DisplayCopies {
   private readonly headers = new Map<string, Promise<PictureHeader | null>>();
   private readonly pending = new Map<string, Job>();
   private queue: Job[] = [];
-  private win: { id: number; destroy(): void } | null = null;
-  private finishing = false;
-  private current: { job: Job; timer: ReturnType<typeof setTimeout> } | null = null;
+  private win: DisplayWorker | null = null;
+  private generation = 0;
+  private active = false;
+  private waiting: { sender: number; resolve(job: SharpenJobView | null): void } | null = null;
+  private current: { job: Job; timer: ReturnType<typeof setTimeout>; granted: boolean } | null = null;
   private stopped = false;
   private sweeping: Promise<void> = Promise.resolve();
   private wake: ReturnType<typeof setTimeout> | null = null;
@@ -211,8 +221,7 @@ export class DisplayCopies {
           const active = this.current?.job === job;
           this.complete(job, failure('Picture preparation was cancelled.'));
           if (active) {
-            this.win?.destroy();
-            this.win = null;
+            this.destroyWorker();
             this.start();
           }
         }
@@ -223,34 +232,74 @@ export class DisplayCopies {
     });
   }
 
+  private resolveWaiting(): void {
+    const waiting = this.waiting;
+    this.waiting = null;
+    waiting?.resolve(null);
+  }
+
+  private destroyWorker(): void {
+    const win = this.win;
+    this.win = null;
+    this.generation++;
+    this.active = false;
+    this.resolveWaiting();
+    win?.destroy();
+  }
+
+  private openWorker(): void {
+    if (this.win || this.stopped) return;
+    const generation = ++this.generation;
+    try {
+      this.win = this.deps.open(() => {
+        if (this.generation === generation) this.gone();
+      });
+    } catch {
+      this.active = false;
+      for (const job of [...this.pending.values()])
+        this.complete(job, failure('The picture worker could not open.'));
+      this.resolveWaiting();
+      this.settle();
+    }
+  }
+
+  /** Build the empty worker while nothing is up, before a first import has to do it during the show. */
+  private warm(): void {
+    if (!this.stopped && this.deps.canWork?.() !== false) this.openWorker();
+  }
+
   private start(): void {
-    if (this.stopped || this.current || this.queue.length === 0) {
+    if (this.stopped || this.current) return;
+    if (this.queue.length === 0) {
+      this.active = false;
       this.settle();
       return;
     }
     if (this.deps.canStart?.() === false || (this.queue[0]?.idleOnly && this.deps.canWork?.() === false)) {
+      this.active = false;
       this.wake ??= setTimeout(() => {
         this.wake = null;
         this.start();
       }, 1000);
       return;
     }
-    if (this.win && !this.finishing) return;
-    this.win?.destroy();
-    this.win = null;
-    this.finishing = false;
-    try {
-      this.win = this.deps.open(() => this.gone());
-    } catch {
-      for (const job of [...this.pending.values()])
-        this.complete(job, failure('The picture worker could not open.'));
-    }
+    // Claim the shared decode slot before opening or waking the worker. An empty warm worker owns none.
+    this.active = true;
+    this.openWorker();
+    const waiting = this.waiting;
+    if (!this.win || !waiting) return;
+    this.waiting = null;
+    void this.grant(waiting.sender).then(waiting.resolve);
   }
 
   private gone(): void {
     this.win = null;
+    this.generation++;
+    this.active = false;
+    this.resolveWaiting();
     if (this.current) this.complete(this.current.job, failure('The picture worker stopped.'));
     if (!this.stopped) this.start();
+    this.settle();
   }
 
   private complete(job: Job, result: DisplayResult): void {
@@ -258,71 +307,81 @@ export class DisplayCopies {
     if (this.current?.job === job) {
       clearTimeout(this.current.timer);
       this.current = null;
+      this.active = false;
     }
     this.pending.delete(job.key);
     this.queue = this.queue.filter((j) => j !== job);
+    if (!this.current && this.queue.length === 0) this.active = false;
     job.resolve(result);
     if (!result.ok) this.deps.log(`Display copy: ${result.message}`);
     this.settle();
   }
 
   private settle(): void {
-    if (this.current || this.pending.size > 0 || this.win) return;
+    if (this.current || this.pending.size > 0) return;
     for (const done of this.idleWaiters.splice(0)) done();
   }
 
-  async next(sender: number): Promise<SharpenJobView | null> {
-    if (this.stopped || this.win?.id !== sender || this.current) return null;
-    for (let job = this.queue.shift(); job; job = this.queue.shift()) {
-      if (job.idleOnly && this.deps.canWork?.() === false) {
-        this.queue.unshift(job);
-        this.finishing = true;
-        this.start();
+  next(sender: number): Promise<SharpenJobView | null> {
+    if (this.stopped || this.win?.id !== sender || this.current || this.waiting) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      this.waiting = { sender, resolve };
+      this.start();
+    });
+  }
+
+  private async grant(sender: number): Promise<SharpenJobView | null> {
+    const job = this.queue.shift();
+    if (!job || !this.ownsWorker(sender) || this.stopped) return null;
+    const timer = setTimeout(() => {
+      if (!this.isCurrent(job)) return;
+      this.complete(job, failure('Picture preparation took too long.'));
+      this.destroyWorker();
+      this.start();
+    }, JOB_MS);
+    this.current = { job, timer, granted: false };
+    try {
+      const source = await realPlaceAsync(this.deps.mediaDir, join(this.deps.mediaDir, job.candidate.path));
+      if (!source?.inside) throw new Error('outside media');
+      const info = await stat(source.path);
+      if (!info.isFile() || info.size <= 0 || info.size > MAX_SOURCE_BYTES) throw new Error('too large');
+      if (!this.ownsWorker(sender) || !this.isCurrent(job)) return null;
+      try {
+        this.win?.beforeBytes();
+      } catch {
+        this.failWorker(sender);
         return null;
       }
-      const timer = setTimeout(() => {
-        const win = this.win;
-        this.win = null;
-        this.complete(job, failure('Picture preparation took too long.'));
-        win?.destroy();
-        this.start();
-      }, JOB_MS);
-      this.current = { job, timer };
-      try {
-        const source = await realPlaceAsync(this.deps.mediaDir, join(this.deps.mediaDir, job.candidate.path));
-        if (!source?.inside) throw new Error('outside media');
-        if ((await stat(source.path)).size > MAX_SOURCE_BYTES) throw new Error('too large');
-        const data = await readFile(source.path);
-        if (data.length > MAX_SOURCE_BYTES) throw new Error('too large');
-        if (!this.ownsWorker(sender) || !this.isCurrent(job)) return null;
-        return {
-          key: job.key,
-          data: new Uint8Array(data),
-          percent: 0,
-          type: job.header.type === 'jpg' ? 'image/jpeg' : 'image/png',
-          maxPixels: MAX_SOURCE_PIXELS,
-          box: job.size,
-          sourceSize: job.header.size,
-          resizeOnly: true,
-        };
-      } catch {
-        this.complete(job, failure('The picture could not be read.'));
-      }
+      if (!this.ownsWorker(sender) || !this.isCurrent(job) || !this.current) return null;
+      this.current.granted = true;
+      return {
+        key: job.key,
+        source: mediaUrl(job.key),
+        maxBytes: MAX_SOURCE_BYTES,
+        percent: 0,
+        type: job.header.type === 'jpg' ? 'image/jpeg' : 'image/png',
+        maxPixels: MAX_SOURCE_PIXELS,
+        box: job.size,
+        sourceSize: job.header.size,
+        resizeOnly: true,
+      };
+    } catch {
+      this.complete(job, failure('The picture could not be read.'));
+      // The failed import resolves, but the same empty renderer can wait for the following owned job.
+      return this.next(sender);
     }
-    this.finishing = true;
-    setTimeout(() => {
-      if (!this.current && this.queue.length === 0) {
-        this.win?.destroy();
-        this.win = null;
-        this.settle();
-      }
-    }, 0);
-    return null;
+  }
+
+  /** This Session serves only the exact job granted to its worker, and only until that job ends. */
+  workerSource(sender: number, key: string): MediaFileRow | null {
+    const current = this.current;
+    if (!current?.granted || !this.ownsWorker(sender) || key !== current.job.key) return null;
+    return { path: current.job.candidate.path, sha256: current.job.candidate.sha256, missing: false };
   }
 
   async made(sender: number, key: unknown, bytes: unknown): Promise<boolean> {
     const job = this.current?.job;
-    if (!job || this.win?.id !== sender || key !== job.key) return false;
+    if (!job || !this.current?.granted || this.win?.id !== sender || key !== job.key) return false;
     if (!(bytes instanceof Uint8Array) || bytes.length > MAX_COPY_BYTES) {
       this.complete(job, failure('The display copy could not be drawn.'));
       return true;
@@ -398,6 +457,7 @@ export class DisplayCopies {
     return this.files.get(`${sha}/${key}`) ?? null;
   }
   refresh(candidates: readonly DisplayCandidate[]): Promise<void> {
+    this.warm();
     this.sweeping = this.sweeping
       .then(async () => {
         for (const candidate of candidates) {
@@ -413,22 +473,20 @@ export class DisplayCopies {
   }
   failWorker(sender: number): void {
     if (this.win?.id !== sender) return;
-    const win = this.win;
-    this.win = null;
+    this.destroyWorker();
     for (const job of [...this.pending.values()])
       this.complete(job, failure('The picture worker could not run below normal priority.'));
-    win.destroy();
     this.settle();
   }
   get working(): boolean {
-    return this.current !== null || (this.win !== null && !this.finishing);
+    return this.active || this.current !== null;
   }
   activityChanged(): void {
     this.start();
   }
   async idle(): Promise<void> {
     await this.sweeping;
-    if (this.pending.size > 0 || this.win) await new Promise<void>((done) => this.idleWaiters.push(done));
+    if (this.pending.size > 0 || this.current) await new Promise<void>((done) => this.idleWaiters.push(done));
   }
   close(): void {
     this.stopped = true;
@@ -436,8 +494,7 @@ export class DisplayCopies {
     this.wake = null;
     for (const job of [...this.pending.values()])
       this.complete(job, failure('Picture preparation was cancelled.'));
-    this.win?.destroy();
-    this.win = null;
+    this.destroyWorker();
     this.settle();
   }
 }
