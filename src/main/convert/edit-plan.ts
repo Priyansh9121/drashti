@@ -61,6 +61,7 @@ export function editPlan(input: EditPlanInput): EditPlan {
   const prep = [
     `trim=duration=${seconds(sourceEndMs - sourceStartMs)}`,
     `setpts=(PTS-STARTPTS)/${String(r.speed)}`,
+    `fps=fps=source_fps*${String(r.speed)}`,
     ...(video.interlaced ? ['bwdif=mode=send_frame:deint=interlaced'] : []),
     "scale=w='max(2,round(iw*sar/2)*2)':h=ih",
     'setsar=1',
