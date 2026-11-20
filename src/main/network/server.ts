@@ -202,6 +202,8 @@ const ROUTES: Route[] = [
   route('POST', '/api/v1/music/play', 'music.play', (b) => ({
     playlistId: b['playlistId'],
     index: b['index'],
+    // A phone's own Play (alpha.20): on from the track a playlist stopped on part-way.
+    playOn: b['playOn'],
   })),
   // The time bar (Session 54): what plays moved, paused or played on; the engine checks what `playing` names.
   route('POST', '/api/v1/playing/move', 'command', (b) => ({
