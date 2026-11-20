@@ -19,7 +19,8 @@ import type {
 import type { Db } from '../db/database';
 import { madeFrom } from '../playlists/folder-playlist';
 import { type Found, heldStill, type Seen } from '../playlists/smart-folders';
-import { wholeFile } from './whole-file';
+import type { CutSeen } from './whole-file';
+import { UNFINISHED_MS, wholeNow } from './whole-file';
 import { unreadPictureWords } from '../../shared/media';
 import { extOf, mediaKindOf } from './scan';
 
@@ -42,6 +43,12 @@ import { extOf, mediaKindOf } from './scan';
 const SETTING = 'dropFolder';
 /** Why a file is not taken for its type (Session 51: sounds are taken too). */
 const NOT_MEDIA = 'Only pictures, videos and sounds are taken from the drop folder.';
+/** A file whose own bytes say it is not whole, unchanged for 2 minutes (Q60-31): listed as not taken with this. */
+const NOT_WHOLE =
+  'Not whole, and unchanged for 2 minutes: its copy may have stopped, or it is damaged. It is taken once whole.';
+/** …and said once, with this. */
+const NOT_WHOLE_NOTICE =
+  'Not whole, and unchanged for 2 minutes: its copy may have stopped, or it is damaged. Use Import… to bring it in as it is.';
 /** Watching stopped with an error: watched again after this long (the scan carries on meanwhile). */
 const REWATCH_MS = 5000;
 
@@ -144,6 +151,8 @@ const sizeText = (n: number) => (n % GiB === 0 ? `${String(n / GiB)} GB` : forma
 
 export class DropFolder {
   private readonly pending = new Map<string, Seen>();
+  /** Files found not whole: not read again until they change (import/whole-file.ts). */
+  private readonly cut = new Map<string, CutSeen>();
   private running: Promise<void> | null = null;
   private again: Promise<void> | null = null;
   private soonCancel: (() => void) | null = null;
@@ -327,6 +336,7 @@ export class DropFolder {
       };
     this.deps.settings.set(SETTING, { folder, on: true });
     this.pending.clear();
+    this.cut.clear();
     this.state = 'watching';
     this.deps.log('info', 'Drop folder: a folder was chosen');
     this.watchFolder();
@@ -340,6 +350,7 @@ export class DropFolder {
     if (on && !folder) return { ok: false, message: 'Choose the folder first.' };
     this.deps.settings.set(SETTING, { folder, on });
     this.pending.clear();
+    this.cut.clear();
     this.deps.log('info', `Drop folder: turned ${on ? 'on' : 'off'}`);
     if (on) {
       this.state = 'watching';
@@ -395,6 +406,7 @@ export class DropFolder {
     const { folder, on } = this.saved();
     if (!on || !folder) {
       this.pending.clear();
+      this.cut.clear();
       this.state = 'off';
       return;
     }
@@ -402,6 +414,7 @@ export class DropFolder {
     if (!files) {
       if (this.state !== 'folder-gone') this.deps.log('info', 'Drop folder: the folder is not there');
       this.pending.clear();
+      this.cut.clear();
       this.state = 'folder-gone';
       return;
     }
@@ -424,6 +437,11 @@ export class DropFolder {
       // over the size limit) is judged again (Session 51 review: alpha.10 listed sounds, and the videos Session 50
       // added, as not taken), and one still not taken says why in today's words.
       if (row?.size === found.size && row.mtime_ms === found.mtimeMs) {
+        // Listed as not whole (Q60-31): judged again once it changes.
+        if (row.state === 'not-taken' && row.reason === NOT_WHOLE) {
+          this.pending.delete(name);
+          continue;
+        }
         const forItsType = row.state === 'not-taken' && found.size <= this.maxBytes;
         if (!forItsType || kind === null) {
           if (forItsType && row.reason !== why) this.record(folder, name, found, 'not-taken', null, why);
@@ -452,9 +470,18 @@ export class DropFolder {
         continue;
       }
       // Its own structure says it is still being copied (Q60-31: an MP4 whose movie box is not there yet, its copy
-      // stalled): it waits the same way, however long, never taken half-written (import/whole-file.ts).
-      if ((await wholeFile(join(folder, name))) === 'cut') {
-        this.pending.set(name, { ...found, since: now });
+      // stalled): it waits the same way, however long, never taken half-written (import/whole-file.ts). Unchanged for 2
+      // minutes, its copy stopped or it is damaged: listed as not taken and said once, it is judged again once it
+      // changes.
+      const { wholeness, stalledMs } = await wholeNow(this.cut, name, join(folder, name), found, now);
+      if (wholeness === 'cut') {
+        if (stalledMs < UNFINISHED_MS) {
+          this.pending.set(name, { ...found, since: now });
+          continue;
+        }
+        this.pending.delete(name);
+        this.record(folder, name, found, 'not-taken', null, NOT_WHOLE);
+        refused.push({ name, reason: NOT_WHOLE_NOTICE });
         continue;
       }
       if (found.size > this.maxBytes) {
@@ -475,6 +502,7 @@ export class DropFolder {
     }
     if (refused.length > 0) this.deps.importNotice({ refused });
     for (const name of this.pending.keys()) if (!files.has(name)) this.pending.delete(name);
+    for (const name of this.cut.keys()) if (!files.has(name)) this.cut.delete(name);
     // Files not taken that have gone from the folder leave the list (the library never loses anything).
     const forget = this.deps.db.prepare(
       "DELETE FROM drop_files WHERE folder = ? AND name = ? AND state != 'taken'",

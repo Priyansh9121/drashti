@@ -718,9 +718,16 @@ hunt (CI x46-1120-112649-63694) found three things Drashti did on every computer
   Now each scene keeps nothing-up while nothing of the new background is drawn, and such a cover until that
   background's first frame, as `BackgroundMedia` tells it (`onDrawn`, before the painting) (`render/Scene.tsx`).
 - **A file still being copied** into a folder Drashti follows was taken half-written once its size held still for the
-  folder's wait. Now the folders take a file only once its own structure says it is whole (`import/whole-file.ts`:
-  MP4/MOV boxes and a movie box, a RIFF size, a Matroska Segment size; any other kind by its size alone, as before), and
-  a smart playlist's line names one still being copied.
+  folder's wait. Now the folders take a file only once its own bytes say it is whole (`import/whole-file.ts`), for
+  every kind that says where it ends: an ISO file's boxes (a movie box; a HEIF or AVIF picture's meta box, by its
+  brands), RIFF and AIFF sizes, a Matroska Segment, JPEG's end marker after its picture data, PNG's IEND, GIF's
+  trailer, a BMP's size, JPEG 2000's boxes and end marker, a PDF's startxref and %%EOF, a zip's end-of-central-directory
+  record (.pptx, .key), an MP3's Xing, Info or VBRI byte count, an Ogg file's last page marked as the end, ASF's file
+  size, and a transport stream ending part-way through a packet. A kind with no such mark is taken by its size alone, as
+  before: an MPEG program stream, a transport stream of whole packets, an MP3 with no Xing header, raw AAC, AC-3 or DTS,
+  FLAC, and rarer kinds. A smart playlist's line names one still being copied. One found not whole and unchanged for
+  2 minutes (its copy stopped, or it is damaged) is still never taken by itself, and is not read again until it changes:
+  the line says so, and the drop folder lists it under **Not taken** and says it once (Import… brings it in as it is).
 
 ## Shared show view on a paired computer
 
