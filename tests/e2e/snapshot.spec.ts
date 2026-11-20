@@ -56,10 +56,10 @@ function pixelsOf(file: string): { bytes: number; middle: number[] } {
   return { bytes: raw.length, middle: [...raw.subarray(middle, middle + 3)] };
 }
 
-/** Every PNG in the library's media folder. */
+/** Every PNG the library keeps as a file of its own (stored by its sha256, as import/media-store.ts storedPath). */
 function pngsIn(mediaDir: string): string[] {
   return readdirSync(mediaDir, { recursive: true, encoding: 'utf8' })
-    .filter((f) => f.endsWith('.png'))
+    .filter((f) => /^[0-9a-f]{2}[/\\][0-9a-f]{64}\.png$/u.test(f))
     .map((f) => join(mediaDir, f));
 }
 
