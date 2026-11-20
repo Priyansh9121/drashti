@@ -518,7 +518,7 @@ describe('a video this computer cannot draw (Session 60, x36: the owner’s "Yes
     expect(engine.noPicture('clip')).toBe(false);
   });
 
-  it('on the slide up and in the box, waits where it is, paused, the slide and the box staying', () => {
+  it('on the slide up, waits where it is, paused, the slide staying; in the box, the box comes off (Q60-46: never a black box)', () => {
     const { engine, elapse } = setup();
     engine.dispatch({ type: 'goLive', presentationId: 'onslide', slideIndex: 0 });
     engine.dispatch({
@@ -538,10 +538,11 @@ describe('a video this computer cannot draw (Session 60, x36: the owner’s "Yes
     // The box's video plays on: only the file that cannot be drawn waits.
     expect(engine.current.layers.pip?.seeks?.['boxed']?.paused).toBeUndefined();
     expect(engine.noPicture('boxed')).toBe(true);
-    expect(engine.current.layers.pip?.source).toMatchObject({ kind: 'media', mediaId: 'boxed' });
-    expect(engine.current.layers.pip?.seeks?.['boxed']).toMatchObject({ toMs: 2000, paused: true });
-    // Paused already: nothing more to do.
+    expect(engine.current.layers.pip).toBeNull();
+    expect(engine.current.pipOff?.layer.source).toMatchObject({ kind: 'media', mediaId: 'boxed' });
+    // Paused already, the box off: nothing more to do.
     expect(engine.noPicture('onslide')).toBe(false);
+    expect(engine.noPicture('boxed')).toBe(false);
   });
 });
 
