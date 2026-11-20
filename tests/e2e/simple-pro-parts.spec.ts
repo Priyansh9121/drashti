@@ -299,13 +299,16 @@ test('a row’s Trim in Simple Mode saves and resets a cut; Trim black and silen
     );
   const originalMarkers = await markersOf(win, videoId);
 
-  // Its menu: Trim, Captions, Trim black and silence, Even loudness and When it ends, as Pro Mode's; Rename and Delete.
+  // Its menu: Trim, Captions, Trim black and silence, Even loudness, When it ends and Media information… (alpha.20: the
+  // owner's "Yes, all A" to Q60-39; after the sound's items, which the window adds as it opens, before either mode), as
+  // Pro Mode's; Rename and Delete.
   await row.click({ button: 'right' });
   const menu = win.getByRole('menu');
   await expect(menu.getByRole('menuitem')).toHaveText([
     'Trim (start, end and markers)…',
     'Captions…',
     'Trim black and silence',
+    'Media information…',
     'Rename…',
     'Remove from playlist',
   ]);

@@ -24,6 +24,8 @@ Update after a sabha, and update Main and nodes together.
 - A video whose picture this computer can’t show (some HEVC, ProRes) no longer plays its sound over black: it comes off with a notice, and Drashti converts it once the show is idle.
 - Files dropped with no playlist open ask for a new playlist or folder; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… moved to More tools and a new Tools menu.
 - LIVE no longer goes black for a moment while a slow video starts: it keeps showing what the screens show.
+- Media information… (right-click a video or a sound, both modes): its container, length, size, picture and sound tracks, with Copy.
+- QR code…: Download… saves the code as a PNG and an SVG; a logo can sit in its middle.
 - Help › Drashti Manual…: every feature, searchable and printable.
 - Help › Save Diagnostics… now holds the graphics: each GPU and its driver, how each part draws, the video decoding offered.
 
