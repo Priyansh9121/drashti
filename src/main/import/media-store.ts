@@ -94,6 +94,11 @@ export interface StagedMedia {
   probe: MediaProbe;
   /** Read by the bundled FFmpeg (Session 50): `probe` says what it read. */
   read?: boolean;
+  /**
+   * What the bundled FFmpeg made of it (alpha.20, migration 86): read ('ffmpeg'), or found nothing it could read in it
+   * or took too long ('nothing'). Left out where there was no FFmpeg to ask: the idle sweep reads it later.
+   */
+  readBy?: 'ffmpeg' | 'nothing';
   /** To be converted by itself once it is in the library (Session 50). */
   convert?: boolean;
   /** A linked video's height limit, when its original is taller. */
@@ -212,12 +217,12 @@ export class MediaStore {
     file: string,
     probe: MediaProbe,
     maxVideoHeight?: number,
-  ): Promise<Pick<StagedMedia, 'probe' | 'read' | 'convert' | 'maxHeight' | 'durationMs'>> {
+  ): Promise<Pick<StagedMedia, 'probe' | 'read' | 'readBy' | 'convert' | 'maxHeight' | 'durationMs'>> {
     if (kind === 'image' || !this.options.readInfo) return { probe };
     const info = await this.options.readInfo(file).catch(() => null);
-    if (!info || info.timedOut) return { probe };
+    if (!info || info.timedOut) return { probe, readBy: 'nothing' };
     const verdict = atImport(kind, info, this.options.playsHevc ?? null, this.options.hevcKinds ?? null);
-    if (verdict === 'unread') return { probe };
+    if (verdict === 'unread') return { probe, readBy: 'nothing' };
     const video = info.video;
     const moving = kind === 'video' && video !== null && !video.still;
     const maxHeight =
@@ -229,11 +234,18 @@ export class MediaStore {
         kind: moving ? 'video' : 'audio',
       },
       read: true,
+      readBy: 'ffmpeg',
       ...(verdict === 'convert' ? { convert: true } : {}),
       ...(maxHeight === undefined ? {} : { maxHeight }),
       // Its length, kept with it (Session 55, P3).
       ...(info.durationMs !== null && info.durationMs > 0 ? { durationMs: info.durationMs } : {}),
     };
+  }
+
+  /** Whether FFmpeg read it at this import (alpha.20, migration 86), so the idle sweep never reads it again. */
+  private keepReadBy(id: string, staged: StagedMedia): void {
+    if (staged.readBy === undefined || staged.kind === 'image') return;
+    this.db.prepare('UPDATE media SET read_by = ? WHERE id = ?').run(staged.readBy, id);
   }
 
   /** A video's or sound's length FFmpeg read at import (Session 55, P3), kept where the library knows none yet. */
@@ -472,6 +484,7 @@ export class MediaStore {
       // Imported before playability was known (or, Session 50, read by FFmpeg now): record it.
       this.markPlayable(existing.id, staged);
       this.keepLength(existing.id, staged);
+      this.keepReadBy(existing.id, staged);
       // Converted already (Session 51): its copy, which plays, is what this import adds.
       const copy = this.copyOf(existing.id);
       // Imported as media this time (a deck's page dropped in on its own): it shows in the Media list
@@ -531,6 +544,7 @@ export class MediaStore {
         source.kind === 'drashti' ? 0 : 1,
       );
     this.keepLength(id, staged);
+    this.keepReadBy(id, staged);
     return {
       outcome: 'imported',
       mediaId: id,
@@ -632,6 +646,7 @@ export class MediaStore {
         repoint(mediaId, into);
         this.db.prepare('DELETE FROM media WHERE id = ?').run(mediaId);
         this.markPlayable(existing.id, stored);
+        this.keepReadBy(existing.id, stored);
         return points ? this.takeMarkers(into, JSON.parse(points) as MediaMarkers) : null;
       })();
       return {
@@ -658,6 +673,7 @@ export class MediaStore {
         mediaId,
       );
     this.keepLength(mediaId, stored);
+    this.keepReadBy(mediaId, stored);
     return {
       outcome: 'imported',
       mediaId,

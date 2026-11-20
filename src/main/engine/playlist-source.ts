@@ -45,14 +45,26 @@ export type PlayItem =
 export interface PlaylistSource {
   /** A playlist's items in order, or null if it does not exist. */
   items(playlistId: string): readonly PlayItem[] | null;
+  /** Left out by older sources: stop at the end. */
+  repeatAll?(playlistId: string): boolean;
 }
 
 /** A PlaylistSource over an in-memory map, for tests. */
 export class MemoryPlaylistSource implements PlaylistSource {
   private readonly lists = new Map<string, PlayItem[]>();
+  private readonly repeating = new Set<string>();
+
+  setRepeatAll(playlistId: string, on: boolean): void {
+    if (on) this.repeating.add(playlistId);
+    else this.repeating.delete(playlistId);
+  }
 
   set(playlistId: string, items: PlayItem[]): void {
     this.lists.set(playlistId, items);
+  }
+
+  repeatAll(playlistId: string): boolean {
+    return this.repeating.has(playlistId);
   }
 
   items(playlistId: string): readonly PlayItem[] | null {
@@ -61,3 +73,20 @@ export class MemoryPlaylistSource implements PlaylistSource {
 }
 
 export const NO_PLAYLISTS: PlaylistSource = { items: () => null };
+
+/** One bounded lap from an item: used alike by stepping, Next’s picture and the stage’s coming up. */
+export function followingItems(
+  items: readonly PlayItem[],
+  index: number,
+  delta: 1 | -1,
+  repeatAll: boolean,
+): PlayItem[] {
+  const out: PlayItem[] = [];
+  for (let step = 1; step <= items.length; step++) {
+    const next = index + step * delta;
+    if (!repeatAll && (next < 0 || next >= items.length)) break;
+    const item = items[(next + items.length) % items.length];
+    if (item) out.push(item);
+  }
+  return out;
+}

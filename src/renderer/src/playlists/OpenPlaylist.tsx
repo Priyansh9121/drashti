@@ -1,3 +1,8 @@
+import { changePlaylistPlayOption } from './play-options';
+import { PlaylistFind, useRowFind } from './PlaylistFind';
+import { PlaylistTiming } from './PlaylistTiming';
+import { exportPlaylistFile } from './m3u-actions';
+import { useNotice } from '../operator/actions';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, DragEvent, MouseEvent, ReactNode } from 'react';
@@ -59,7 +64,7 @@ import { playlistRow, slideOutEntry, slideRowTarget } from '../files/targets';
 import { setJumpRows } from '../operator/jump';
 import { practisePlaylist } from '../practice/practice-store';
 import { useDocs, readDocAgain, useWantDocs } from './docs-store';
-import { useFolded } from './fold-store';
+import { unfold, useFolded } from './fold-store';
 import { groupDocId, groupName, type MiddleRow, playlistRows, repeatRows } from './rows';
 import { SlideRow } from './SlideRow';
 import { PresentationPreparing, TrimPreparing } from './PreparingMark';
@@ -765,6 +770,55 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
     if (isRepeat) return repeatRows(items, docs[repeatId], folded);
     return playlistRows(items, new Map(Object.entries(docs)), folded);
   }, [items, docs, foldedIds, isRepeat, repeatId]);
+  const findRows = useMemo(
+    () =>
+      middle.map((row) => ({
+        key: row.key,
+        itemId: row.item?.id ?? '',
+        slide: row.kind === 'slide',
+        words:
+          row.kind === 'slide'
+            ? [
+                row.label,
+                row.item && 'fileName' in row.item ? row.item.fileName : '',
+                ...row.at.slide.slide.elements.flatMap((e) => (e.kind === 'text' ? [e.text] : [])),
+              ].join(' ')
+            : [
+                row.item.label,
+                'fileName' in row.item ? row.item.fileName : '',
+                row.item.kind === 'presentation'
+                  ? row.item.presentationName
+                  : row.item.kind === 'media'
+                    ? row.item.mediaName
+                    : '',
+              ].join(' '),
+      })),
+    [middle],
+  );
+  const find = useRowFind(findRows);
+  const found = find.found;
+  useEffect(() => {
+    if (!found) return;
+    if (byFolder) {
+      const targetFolder = view.folderOf.get(found.itemId) ?? '';
+      if (targetFolder !== shownFolder) usePlaylists.setState({ folder: targetFolder });
+    }
+    if (found.slide) unfold(found.itemId);
+    else
+      listRef.current
+        ?.querySelector<HTMLElement>(
+          `[data-item-row="${CSS.escape(found.itemId)}"] [data-testid="playlist-item"]`,
+        )
+        ?.scrollIntoView({ block: 'center' });
+  }, [found, byFolder, view, shownFolder]);
+  const setPlayOptions = async (option: 'shuffle' | 'repeatAll') => {
+    try {
+      const result = await changePlaylistPlayOption(openId, option);
+      if (!result.ok) useNotice.setState({ text: result.message });
+    } catch {
+      useNotice.setState({ text: 'The playlist playback choice could not be kept: try it again.' });
+    }
+  };
   /** Each item's row (its number, or its name row) and its slides' rows. */
   const byItem = useMemo(() => {
     const out = new Map<
@@ -1034,6 +1088,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
             </Button>
           </>
         )}
+        {!simple && <PlaylistFind label="Find in playlist" countTestId="playlist-find-count" find={find} />}
         {help.button}
         {/* Simple Mode (Session 55, Part 18): no menu of the playlist's own (its Rename and Delete are on the left since
             Session 56, beside the other playlists), and no Close. */}
@@ -1043,6 +1098,29 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
             title="Playlist actions"
             icon={MoreHorizontal}
             entries={[
+              ...(!isTemplate && !isRepeat
+                ? [
+                    {
+                      label: 'Shuffle',
+                      checked: node?.playback?.shuffle ?? false,
+                      onSelect: () => void setPlayOptions('shuffle'),
+                    },
+                    {
+                      label: 'Repeat all',
+                      checked: node?.playback?.repeatAll ?? false,
+                      onSelect: () => void setPlayOptions('repeatAll'),
+                    },
+                  ]
+                : []),
+              ...(!isTemplate
+                ? [
+                    {
+                      label: 'Export as M3U…',
+                      onSelect: () => void exportPlaylistFile(openId),
+                      separatorBefore: true,
+                    },
+                  ]
+                : []),
               { label: 'Add a header', icon: ListPlus, onSelect: () => void addHeader() },
               ...(extras
                 ? [
@@ -1117,6 +1195,16 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
           />
         )}
       </div>
+      {!simple && !isTemplate && (
+        <PlaylistTiming playlistId={openId} items={items} playback={node?.playback} />
+      )}
+      {!isTemplate && node?.playback && (node.playback.shuffle || node.playback.repeatAll) && (
+        <p className="shrink-0 px-3 py-1 text-xs text-muted" data-testid="playlist-play-options">
+          {[node.playback.shuffle ? 'Shuffled' : '', node.playback.repeatAll ? 'Repeat all' : '']
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+      )}
       {byFolder && <FolderCrumbs path={shownFolder} top={node?.name ?? ''} />}
       {/* Its words shrink and scroll in the playlist's share of the middle (Session 51: in a 1024 × 645 window its
           buttons had run under the slides' strip below). */}
@@ -1202,6 +1290,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
             );
           // Its row in the middle's rows (Session 55): its number, or its name row and its slides.
           const own = byItem.get(item.id);
+          const itemFound = found ? found.key === own?.row?.key : false;
           const group = own?.row?.kind === 'group' ? own.row : null;
           const slides = own?.slides ?? [];
           const doc =
@@ -1294,6 +1383,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                 data-kind={item.kind}
                 data-item-id={item.id}
                 data-marked={isMarked ? 'true' : undefined}
+                data-found={itemFound ? 'true' : undefined}
                 data-live={isLive ? 'true' : undefined}
                 data-last-seconds={endingItem === item.id ? 'true' : undefined}
                 data-row-number={own?.row?.kind === 'item' ? (own.row.number ?? undefined) : undefined}
@@ -1341,6 +1431,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                   'pr-10 pl-2.5',
                   item.kind === 'header' ? 'min-h-8 pt-2 pb-1' : 'min-h-11 py-1.5',
                   look,
+                  itemFound && !isLive && 'border-accent! bg-panel-2',
                   endingItem === item.id && 'border-warning! bg-warning-bg!',
                 )}
               >
@@ -1435,6 +1526,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                         at={r.at}
                         firstOfRun={r.firstOfRun}
                         live={isSlideLive(r)}
+                        found={found?.key === r.key}
                         itemId={item.id}
                         // A click on it goes live but in a template (C3, Session 58): pointed at, its clip loads ahead.
                         pointAt={
@@ -1535,5 +1627,12 @@ async function addFilesTo(playlistId: string): Promise<void> {
 export function OpenPlaylist({ platform, simple = false }: { platform: string; simple?: boolean }) {
   const openId = usePlaylists((s) => s.openId);
   if (!openId) return null;
-  return <PlaylistItems platform={platform} openId={openId} simple={simple} />;
+  return (
+    <PlaylistItems
+      key={`${openId}-${simple ? 'simple' : 'pro'}`}
+      platform={platform}
+      openId={openId}
+      simple={simple}
+    />
+  );
 }
