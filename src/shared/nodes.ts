@@ -40,6 +40,8 @@ export const NODE_PATHS = {
   feed: '/node/v1/feed',
   /** + a media id: the file, by range. */
   media: '/node/v1/media/',
+  /** A node's report (x49, Help › Report a Problem…), handed to Main to send on. */
+  report: '/node/v1/report',
 } as const;
 
 // ---- what a node shows ---------------------------------------------------------------------

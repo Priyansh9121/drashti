@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http';
+import type { NodeReportAnswer } from '../../shared/report';
 import { request } from 'node:https';
 import { connect, type PeerCertificate } from 'node:tls';
 import WebSocket from 'ws';
@@ -311,6 +312,17 @@ export function openMediaFromMain(
     req.on('error', reject);
     req.end();
   });
+}
+
+/** A report handed to Main (x49): not yet. */
+export function postReportToMain(
+  _main: PinnedMain,
+  _host: string,
+  _token: string,
+  _body: Uint8Array,
+  _signal?: AbortSignal,
+): Promise<NodeReportAnswer> {
+  return Promise.resolve({ ok: false, message: 'Not yet.' });
 }
 
 // ---- the feed ------------------------------------------------------------------------------
