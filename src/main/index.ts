@@ -6329,13 +6329,16 @@ function start(): void {
       });
     };
   if (testRenderErrors)
-    (globalThis as { drashtiTestRenderError?: (screenId?: string) => number }).drashtiTestRenderError = (
-      screenId,
-    ) => {
+    (
+      globalThis as { drashtiTestRenderError?: (screenId?: string, whileUp?: string | null) => number }
+    ).drashtiTestRenderError = (screenId, whileUp) => {
       let sent = 0;
       for (const [id, win] of outputWindows)
         if (screenId === undefined || id === screenId) {
-          sendToPage(win, IPC.output.testThrow, {});
+          // A file named (null: none): the scene fails each time it draws while that file is up (x53), and the page
+          // keeps the word until it loads again; else it fails at once, whatever is up, until it loads again.
+          if (whileUp === undefined) sendToPage(win, IPC.output.testThrow, {});
+          else sendToPage(win, IPC.output.testThrowWhile, { mediaId: whileUp });
           sent++;
         }
       return sent;

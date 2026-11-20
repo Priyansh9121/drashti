@@ -790,6 +790,10 @@ const bridge: DrashtiBridge = {
       on(IPC.output.testThrow, () => {
         listener();
       }),
+    onTestThrowWhile: (listener) =>
+      on(IPC.output.testThrowWhile, ({ mediaId }) => {
+        listener(mediaId);
+      }),
     onTestClock: (listener) =>
       on(IPC.output.testClock, ({ at }) => {
         listener(at);
