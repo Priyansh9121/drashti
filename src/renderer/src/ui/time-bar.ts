@@ -78,6 +78,16 @@ export function keyPress(press: BarKey, atMs: number, span: BarSpan): { to: numb
   return { to: press.repeat || to === atMs ? null : to };
 }
 
+/**
+ * Alt with ← or → (alpha.20, the time bar's ⋯ by keys): one frame back or on; null for any other key, or with Ctrl,
+ * Cmd or Shift too. Never "," or "." ("." is Black-out).
+ */
+export function frameKey(press: BarKey & { shiftKey: boolean }): 1 | -1 | null {
+  if (!press.altKey || press.ctrlKey || press.metaKey || press.shiftKey) return null;
+  if (press.key === 'ArrowRight') return 1;
+  return press.key === 'ArrowLeft' ? -1 : null;
+}
+
 /** How long is left to the end point (ms), never less than none. */
 export const leftMs = (atMs: number, span: BarSpan): number => Math.max(0, span.endMs - atMs);
 

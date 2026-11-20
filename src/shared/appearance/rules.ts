@@ -8,7 +8,8 @@ import { ZONE_NAMES, ZONE_TOKENS, ZONES } from './zones';
 /*
  * The rules every appearance meets (Sessions 39–40), from Drashti's design rules (docs/design.md §2): text at
  * 4.5:1 or more on every surface, every fill with its text, control edges at 3:1 where controls sit, the
- * design lab's stronger aims (the words at 15:1 on panels, secondary words at 7:1), and the primary kept
+ * design lab's stronger aims (secondary words at 7:1; the words on panels at least 10:1, aiming at 10–13:1, since
+ * the owner's Q60-36: 15:1 kept every dark appearance near-black), and the primary kept
  * apart from LIVE, ON AIR and a warning (CIEDE2000, at least 10, for usual colour vision and simulated
  * protanopia, deuteranopia and tritanopia) and from success and danger (at least 7). Ratios are compared
  * unrounded (2.999 fails 3). The built-in appearances are measured by src/main/contrast.test.ts; one a person
@@ -28,6 +29,10 @@ import { ZONE_NAMES, ZONE_TOKENS, ZONES } from './zones';
  * edges and the chosen tab's underline at 3:1); a lit layer button's words at 4.5:1 on its fill and its dot (LIVE's
  * red) at 3:1 there; and a lit layer button's fill, and an unlit one's edge, kept apart from the states, so a
  * layer button's own colour is never taken for LIVE.
+ *
+ * Session 60, comfortable appearances (the owner's Q60-36, Q1 A): LIVE's frame and lit dots are measured in
+ * `live-edge` (a lighter red on the lifted dark surfaces, LIVE's own red elsewhere), kept 10 from everything that
+ * acts, marks or decorates as LIVE's own is; the LIVE label stays white on `live`.
  */
 
 type Colour = ColourToken | DecorationToken | 'white' | 'black';
@@ -47,6 +52,12 @@ export interface ContrastRule {
   /** Where the rule comes from. */
   source: string;
 }
+
+/**
+ * The words on panels (the owner's Q60-36, Q1 A): at least 10:1, aiming at 10–13:1, so a dark panel can be a deep
+ * tint rather than near-black and a light one soft paper rather than near-white (15:1 until then).
+ */
+export const WORDS_AIM = { least: 10, most: 13 } as const;
 
 const SURFACES = ['ink', 'panel', 'panel-2', 'panel-3'] as const;
 /** Where controls sit: the window, panels, and raised cards and dialogs' fields. */
@@ -92,7 +103,13 @@ export const BUTTON_EDGES = {
 } as const satisfies Record<string, ColourToken>;
 
 export const CONTRAST_RULES: readonly ContrastRule[] = [
-  { what: 'words on panels', fg: 'fg', bg: 'panel', min: 15, source: 'design.md (fg 15:1 on panels)' },
+  {
+    what: 'words on panels',
+    fg: 'fg',
+    bg: 'panel',
+    min: WORDS_AIM.least,
+    source: 'design.md (fg at least 10:1 on panels, aiming at 10–13:1)',
+  },
   { what: 'secondary words on panels', fg: 'muted', bg: 'panel', min: 7, source: 'design.md (muted 7:1)' },
   { what: 'secondary words on cards', fg: 'muted', bg: 'panel-2', min: 7, source: 'design.md (muted 7:1)' },
   ...TEXT.flatMap((fg) =>
@@ -124,19 +141,19 @@ export const CONTRAST_RULES: readonly ContrastRule[] = [
   ),
   {
     what: 'live border vs panel (live row, thumbnail)',
-    fg: 'live',
+    fg: 'live-edge',
     bg: 'panel',
     min: 3,
     source: 'WCAG 1.4.11',
   },
   {
     what: 'live border vs the black slide inside it',
-    fg: 'live',
+    fg: 'live-edge',
     bg: 'black',
     min: 3,
     source: 'WCAG 1.4.11',
   },
-  { what: 'live (lit clear dot) vs panel-2', fg: 'live', bg: 'panel-2', min: 3, source: 'WCAG 1.4.11' },
+  { what: 'live (lit clear dot) vs panel-2', fg: 'live-edge', bg: 'panel-2', min: 3, source: 'WCAG 1.4.11' },
   { what: 'warning (Stopped rail) vs panel-2', fg: 'warning', bg: 'panel-2', min: 3, source: 'WCAG 1.4.11' },
   ...decorationRules(),
 ];
@@ -219,7 +236,7 @@ function decorationRules(): ContrastRule[] {
     },
     {
       what: 'a lit layer button’s dot (live) on its fill',
-      fg: 'live',
+      fg: 'live-edge',
       bg: 'layer',
       min: 3,
       source: 'WCAG 1.4.11 (operator/LayerBar.tsx)',
@@ -279,6 +296,19 @@ export const DISTANCE_RULES: readonly (readonly [
     (s) => [`a lit layer button vs ${s}`, 'layer', s, 10] as const,
   ),
   ['an unlit layer button’s edge vs live', 'layer-edge', 'live', 10],
+  // Session 60 (Q60-36, Q1 A): LIVE's frame and lit dot, lighter on the comfortable dark surfaces, as LIVE's own.
+  ...(
+    [
+      'primary',
+      'primary-hi',
+      'primary-lo',
+      'primary-edge',
+      'second',
+      'heading',
+      'layer',
+      'layer-edge',
+    ] as const
+  ).map((x) => [`${x} vs live-edge`, x, 'live-edge', 10] as const),
 ];
 
 export interface Measured {
@@ -397,7 +427,7 @@ export function measureDistances(a: Appearance): Measured[] {
 export function appearanceProblems(a: Appearance): string[] {
   const cut = (v: number, places: number) => (Math.floor(v * 10 ** places) / 10 ** places).toFixed(places);
   return [
-    ...measureContrast(a)
+    ...[...measureContrast(a), ...measureMoving(a)]
       .filter((m) => !m.ok)
       .map((m) => `${m.what}: ${cut(m.value, 2)}:1, at least ${String(m.min)}:1`),
     ...measureDistances(a)
@@ -500,4 +530,84 @@ export function hueCount(a: Appearance): { count: number; chosen: string[] } {
   };
   walk(0, []);
   return { count: best.length, chosen: best };
+}
+
+/*
+ * No two alike (Session 60, the owner's Q60-36: every appearance re-tuned "so no two look alike"): how far apart two
+ * appearances of a base look, as the OKLab distance (×100; about 2 is just noticeable) between the same fourteen
+ * places of each, averaged: the window, panels and cards, the four zones' panels, both ends of the header and of the
+ * title strips, the next thing to do, the marks and the headings (x43's audit measure; the surfaces are about 85 % of
+ * the window, so it reads the window as a person sees it at a glance). Before Session 60 the closest two, Prabhat and
+ * Mehndi, were 3.7 apart; every two of a base are now at least LOOKS_APART.
+ */
+export const LOOKS_APART = 7;
+
+/** The fourteen places compared. */
+export const LOOK_PLACES: readonly ((a: Appearance) => string)[] = [
+  (a) => a.colours.ink,
+  (a) => a.colours.panel,
+  (a) => a.colours['panel-2'],
+  (a) => a.zones.left.panel,
+  (a) => a.zones.middle.panel,
+  (a) => a.zones.right.panel,
+  (a) => a.zones.bar.panel,
+  (a) => a.decoration.header,
+  (a) => a.decoration['header-2'],
+  (a) => a.decoration.strip,
+  (a) => a.decoration['strip-2'],
+  (a) => a.colours.primary,
+  (a) => a.decoration.second,
+  (a) => a.decoration.heading,
+];
+
+/** A colour in OKLab. */
+function oklab(hex: string): readonly [number, number, number] {
+  const { l, c, h } = hexToOklch(hex);
+  return [l, c * Math.cos((h * Math.PI) / 180), c * Math.sin((h * Math.PI) / 180)];
+}
+
+/** How far apart two appearances look: the OKLab distance ×100 of their fourteen places, averaged. */
+export function lookApart(a: Appearance, b: Appearance): number {
+  let sum = 0;
+  for (const place of LOOK_PLACES) {
+    const [x, y] = [oklab(place(a)), oklab(place(b))];
+    sum += 100 * Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+  }
+  return sum / LOOK_PLACES.length;
+}
+
+/*
+ * A live look's touch over the header (Session 60): a drift's far end, a glow, petals, puffs, rain, kites or clouds
+ * draw over the header's colour, under its words and controls, so the header's rules are measured on the touch's
+ * colour too: the words at 4.5:1, the focus ring and controls' edges at 3:1, a warning button by its edge or fill.
+ * A touch drawn part see-through lies between the header and its colour, and the header is measured at every point
+ * already, so its words hold everywhere the touch moves.
+ */
+export function measureMoving(a: Appearance): Measured[] {
+  const touch = a.moving?.touch;
+  if (touch === undefined) return [];
+  const d = a.decoration;
+  const c = a.colours;
+  const row = (what: string, fg: string, name: string, min: number): Measured => {
+    const value = contrastRatio(fg, touch);
+    return {
+      what: `${what} on the header’s touch`,
+      colours: `${name} ${fg} on the touch ${touch}`,
+      value,
+      min,
+      source: 'WCAG 1.4.3 and 1.4.11 (appearance/LookMotion.tsx)',
+      ok: value >= min,
+    };
+  };
+  const warning =
+    contrastRatio(c.warning, touch) >= contrastRatio(c['warning-bg'], touch)
+      ? (['warning', c.warning] as const)
+      : (['warning-bg', c['warning-bg']] as const);
+  return [
+    row('words', d['on-header'], 'on-header', 4.5),
+    row('the header’s buttons’ words', d['on-header-muted'], 'on-header-muted', 4.5),
+    row('focus ring', d['header-ring'], 'header-ring', 3),
+    row('control edge', d['header-field'], 'header-field', 3),
+    row('a warning button (its edge or its fill)', warning[1], warning[0], 3),
+  ];
 }

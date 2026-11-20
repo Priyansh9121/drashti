@@ -71,7 +71,7 @@ const BAR_BUTTON =
 /** Nothing of it up: dimmed (Session 55), its edge the appearance's own (Session 44: Black and White's divider). */
 const DIMMED = 'border-layer-edge bg-transparent text-faint';
 /** Its layer up: lit, as LIVE's edge. */
-const LIT = 'border-live bg-layer text-fg hover:bg-panel-3';
+const LIT = 'border-live-edge bg-layer text-fg hover:bg-panel-3';
 /** A cover on (the Wallpaper, Black-out): LIVE's red. */
 const ON = 'border-live bg-live text-white hover:brightness-110';
 
@@ -231,7 +231,7 @@ export function LayerBar({
                   {on && (
                     <span
                       aria-hidden="true"
-                      className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-live"
+                      className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-live-edge"
                     />
                   )}
                 </button>

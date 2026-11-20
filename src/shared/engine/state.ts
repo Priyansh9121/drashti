@@ -72,7 +72,8 @@ import type { ShapeOverride } from '../video-shape';
 // 25 (Part 17b): native normalized vector paths travel with slides to every player.
 // 26 adds private live captions; 27 reserves the offline helpers’ version. Each additive predecessor reads whole.
 // 28 carries PowerPoint's editable click effects and native transitions to every screen.
-// 29 carries a video’s stored caption track to screens and nodes; live speech stays private.
+// 29 carries a video’s stored caption track to screens and nodes; live speech stays private. (An A-B repeat, alpha.20,
+// needs no new number: a screen or node plays its `clip` and `loop` as ever; only Main reads the kept `ab`.)
 // 30 (alpha.20, x55, slice 6b): a video's own shape on the screens (`videoShapes`); an older page or node would draw it as
 // its file says, so it says 'incompatible'. A state 29 saved is read whole (30 only adds to it).
 export const ENGINE_STATE_VERSION = 30;
@@ -315,6 +316,8 @@ export interface AudioLayer extends AudioChoice {
   seek?: PlaybackSeek;
   /** The file's named markers to jump to (Session 14), when it has any. */
   marks?: PlaybackMarker[];
+  /** Going round from A to B (alpha.20): its own points and loop, kept aside until Stop. */
+  ab?: AbRepeat;
   /**
    * A sound set to play across slides (Session 54, main/engine/across-slides.ts): a deck's (PowerPoint's Play Across
    * Slides or "stop after N slides", Keynote's soundtrack), or a slide's sound cue that came in as one. It plays on as
@@ -430,7 +433,19 @@ export type BackgroundLayer =
       seek?: PlaybackSeek;
       /** The file's named markers to jump to (Session 14), when it has any. */
       marks?: PlaybackMarker[];
+      /** Going round from A to B (alpha.20): its own points and loop, kept aside until Stop. */
+      ab?: AbRepeat;
     });
+
+/**
+ * An A-B repeat (alpha.20, the time bar's ⋯): while it is on, the layer plays between A and B (its `clip`) going round
+ * (`loop`), and keeps here what it had before (the library's points, which a change while it repeats lands in, and
+ * whether it went round), for Stop to put back.
+ */
+export interface AbRepeat {
+  clip?: PlaybackClip;
+  loop: boolean;
+}
 
 /** The playback row for this background. A save from before origins were stored uses the old fallback. */
 export function backgroundItemId(

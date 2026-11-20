@@ -25,8 +25,8 @@ import { mediaUrl } from '../../src/shared/media';
  * playing"). Chromium plays such a file as sound only, with no error: the screens' video says it has data, at 0 × 0
  * with no frame, its sound plays and its clock runs, and the hall sees black (reproduced on alpha.19 and phase1, CI's
  * Windows, with HEVC taken as playable where it cannot be decoded). His answer, "Yes, A": noticed within a second or
- * two; the screens keep what they showed until then; then the video comes off with its sound (a video in the
- * picture-in-picture box waits paused); a plain notice says so; Drashti converts the file by itself once the show is
+ * two; the screens keep what they showed until then; then the video comes off with its sound (in the picture-in-picture
+ * box, the box comes off: Q60-46, never a black box); a plain notice says so; Drashti converts the file by itself once the show is
  * idle, and the copy is used from then on. The stand-ins: FFV1 in a .mov, which no Chromium decodes, judged by its
  * header alone as a library imported before Session 50 judged it (DRASHTI_TEST_NO_CONVERT_AT_IMPORT: "not sure, tried
  * when used"), on both systems; and HEVC taken as playable (DRASHTI_TEST_PLAYS_HEVC), which CI's Windows cannot decode
@@ -149,10 +149,13 @@ async function watchWhileItPlays(
   const looks: string[] = [];
   const until = Date.now() + ms;
   for (;;) {
+    // The screen first, then the sound, then the show (x46, Q60-31): a look still up was up when the screen was read, so
+    // one taken as the video comes off is marked off, never a mix of two moments.
+    const look = await shown(page, root);
+    const plays = await soundPlays(app, mediaId);
     const bg = (await snapshot(win)).layers.background;
     const up = bg?.kind === 'media' && bg.mediaId === mediaId;
-    const plays = await soundPlays(app, mediaId);
-    looks.push(`${await shown(page, root)}${plays ? '+sound' : ''}${up ? '' : ' (off)'}`);
+    looks.push(`${look}${plays ? '+sound' : ''}${up ? '' : ' (off)'}`);
     if (!up) return { looks, off: true };
     if (Date.now() > until) return { looks, off: false };
   }
@@ -266,7 +269,9 @@ test('a video this computer cannot draw (FFV1, judged by its header) never plays
     const watched = await watchWhileItPlays(win, app, hall, '[data-testid="output-root"]', clipId, 10_000);
     expect(watched.off, `the video came off the screens: ${watched.looks.join(', ')}`).toBe(true);
     expect(
-      watched.looks.filter((look) => look.includes('+sound') && !/^(VIDEO|BEFORE)/u.test(look)),
+      watched.looks.filter(
+        (look) => look.includes('+sound') && !look.endsWith('(off)') && !/^(VIDEO|BEFORE)/u.test(look),
+      ),
       `never anything but the picture before while its sound played: ${watched.looks.join(', ')}`,
     ).toEqual([]);
     await expect.poll(() => soundPlays(app, clipId), { message: 'its sound stopped' }).toBe(false);
@@ -297,7 +302,7 @@ test('a video this computer cannot draw (FFV1, judged by its header) never plays
   }
 });
 
-test('in the picture-in-picture box, a video this computer cannot draw waits paused, said plainly', async () => {
+test('in the picture-in-picture box, a video this computer cannot draw comes off with the box, said plainly (Q60-46: never a black box)', async () => {
   test.setTimeout(150_000);
   expect(ffmpeg, 'the bundled FFmpeg').not.toBeNull();
   const dir = mkdtempSync(join(tmpdir(), 'drashti-no-picture-box-'));
@@ -310,9 +315,9 @@ test('in the picture-in-picture box, a video this computer cannot draw waits pau
     expect(clipId).not.toBe('');
     await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: clipId } });
     await expect
-      .poll(async () => (await snapshot(win)).layers.pip?.seeks?.[clipId]?.paused ?? false, {
+      .poll(async () => (await snapshot(win)).layers.pip === null, {
         timeout: 10_000,
-        message: 'the box’s video waits paused',
+        message: 'the box came off',
       })
       .toBe(true);
     await expect(win.getByTestId('operator-notice')).toContainText(NOTICE);
@@ -345,7 +350,9 @@ test('HEVC taken as playable: where this computer decodes it (CI’s Mac) it pla
     });
     const watched = await watchWhileItPlays(win, app, win, '[data-testid="live-preview"]', clipId, 6000);
     expect(
-      watched.looks.filter((look) => look.includes('+sound') && !/^(VIDEO|BEFORE)/u.test(look)),
+      watched.looks.filter(
+        (look) => look.includes('+sound') && !look.endsWith('(off)') && !/^(VIDEO|BEFORE)/u.test(look),
+      ),
       `never anything but its picture, or the picture before, while its sound played: ${watched.looks.join(', ')}`,
     ).toEqual([]);
     if (watched.off) {

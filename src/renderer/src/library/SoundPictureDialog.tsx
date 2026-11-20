@@ -11,7 +11,7 @@ import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Field, Select } from '../ui/Field';
 import { RotateCcw } from '../ui/icons';
-import { addSoundPictureToMenu, closeSoundPicture, useSoundPicture } from './sound-picture';
+import { addSoundPictureToMenu, closeSoundPicture, playbackKeeper, useSoundPicture } from './sound-picture';
 
 /*
  * Sound and picture… (alpha.20: the owner's Q60-34 and his "Yes, all A" to Q60-39 P2 A and P6 (a) A): a video's or a
@@ -20,8 +20,6 @@ import { addSoundPictureToMenu, closeSoundPicture, useSoundPicture } from './sou
  * the stream's microphones). Each change is kept as it is made and eases in while it plays. Reset puts them all back.
  * A video's Shape too (slice 6b, P6 (c) A): as the file says, or 16:9, 4:3, 1:1 or 21:9, drawn so on every screen.
  */
-
-const KEEP_AFTER_MS = 150;
 
 const dbWords = (db: number): string =>
   db === 0 ? '0 dB' : `${db > 0 ? '+' : '−'}${String(Math.abs(db))} dB`;
@@ -35,33 +33,12 @@ export function SoundPictureDialog() {
   return <SoundPictureWindow key={file.id} id={file.id} name={file.name} video={file.kind === 'video'} />;
 }
 
-/** Keeps a file's settings a moment after the last change (a slider dragged sends one change, not a hundred). */
-function keeper(id: string, said: (problem: string | null) => void) {
-  let waiting: ReturnType<typeof setTimeout> | null = null;
-  return {
-    keep(next: PlaybackSettings): void {
-      if (waiting) clearTimeout(waiting);
-      waiting = setTimeout(() => {
-        waiting = null;
-        void window.drashti.media.setPlayback(id, next).then(
-          (r) => {
-            said(r.ok ? null : r.message);
-          },
-          () => undefined,
-        );
-      }, KEEP_AFTER_MS);
-    },
-    stop(): void {
-      if (waiting) clearTimeout(waiting);
-      waiting = null;
-    },
-  };
-}
-
 function SoundPictureWindow({ id, name, video }: { id: string; name: string; video: boolean }) {
   const [settings, setSettings] = useState<PlaybackSettings | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [keeping] = useState(() => keeper(id, setProblem));
+  const [keeping] = useState(() =>
+    playbackKeeper(id, (mediaId, next) => window.drashti.media.setPlayback(mediaId, next), setProblem),
+  );
   useEffect(() => {
     let live = true;
     void window.drashti.media.playback(id).then(
@@ -72,7 +49,7 @@ function SoundPictureWindow({ id, name, video }: { id: string; name: string; vid
     );
     return () => {
       live = false;
-      keeping.stop();
+      keeping.close();
     };
   }, [id, keeping]);
   /** Shown at once; kept a moment after the last change. */
