@@ -1,3 +1,4 @@
+import { EditVideoDialog } from '../library/EditVideoDialog';
 import { SoundPictureDialog } from '../library/SoundPictureDialog';
 import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
@@ -499,6 +500,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <MediaInfoDialog platform={platform} />
       {/* Sound and picture… (alpha.20): a file's own tone and delays (Pro Mode). */}
       <SoundPictureDialog />
+      <EditVideoDialog />
       {dashboardOpen && (
         <ScreensDashboard
           simple={false}

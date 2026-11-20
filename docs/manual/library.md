@@ -125,6 +125,21 @@ For the button that offers a long file's saved place, see **LIVE, Back and Next 
 
 ![Media: right-click a video or sound for Media information…](../screenshots/convert-media-list-done.png)
 
+## Edit Video
+
+**What it is.** **Edit Video…** in a ready local video's right-click menu, in Pro Mode: one window with a private source preview, trim timeline, and Picture, Sound and Playback sections. The recipe belongs to the library video; a playlist row keeps its own trim points and markers.
+
+**When you would use it.** To prepare a video's picture, sound or timing for its next showing, or to choose the frame used for its library thumbnail.
+
+**How:**
+
+1. In **Media** or a playlist, right-click the video and choose **Edit Video…**.
+2. Type a source time such as **1:23.500** in **Go to time** and press **Jump**, or move the trim timeline. The preview is private and silent. **Use this frame as library thumbnail** keeps the chosen frame with the next Save.
+3. Set the start and end, picture, sound and playback choices. **Frame shape** offers Original shape, 16:9, 4:3, square and vertical 9:16; Original shape is the default. The source preview is labelled so it is clear which file it shows.
+4. Press **Save**. **Ready for next showing** means the saved revision is ready; **Preparing** waits while a show, stream or recording is active. A video already on the screens keeps its earlier revision. If saving fails, keep the window open, read the reason and try Save again.
+
+**Reset edits** changes the draft; press Save to keep that reset. **Cancel**, or closing the window, lets you discard an unsaved draft or keep editing. Originals, the default thumbnail, existing row trims, and Sound and picture's tone and delays are kept. A newer save in another editor is reported instead of being overwritten.
+
 ## The Picture editor
 
 **What it is.** A picture's own editor: **Rotate**, **Flip across**, **Flip up and down**, **Crop**, and the blurred fill behind a photo that does not fill the screen. The picture file itself never changes.

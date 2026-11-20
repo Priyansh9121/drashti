@@ -89,6 +89,13 @@ test('Edit Video…: one private draft window, source-time jump, chosen library 
     let dialog = await open(win, 'Placeholder editor');
     await expectFits(dialog, 'Edit Video at the CI operator size');
     await expectNoSeriousA11yIssues(win, 'Edit Video');
+    await dialog.getByRole('button', { name: 'Picture', exact: true }).click();
+    await expect(dialog.getByLabel('Frame shape')).toHaveValue('source');
+    await expect(dialog.getByLabel('Frame shape').locator('option')).toHaveCount(5);
+    await dialog.getByRole('button', { name: 'Trim', exact: true }).click();
+    await test
+      .info()
+      .attach('Edit Video window', { body: await dialog.screenshot(), contentType: 'image/png' });
     await dialog.getByLabel('Go to time').fill('0:03');
     await dialog.getByRole('button', { name: 'Jump', exact: true }).click();
     await expect
@@ -191,7 +198,10 @@ test('Save pins the current showing and a later attempt waits for its edited cop
     }, id);
     expect(stale).toMatchObject({ ok: false, message: expect.stringContaining('changed') });
     await win.evaluate(() =>
-      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearLayer', layer: 'background' }),
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'setBackground',
+        background: { kind: 'color', color: '#202020' },
+      }),
     );
     expect(await show()).toMatchObject({
       ok: false,

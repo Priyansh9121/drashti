@@ -122,8 +122,17 @@ export class VideoEditsRepo {
     return row?.video_edit_thumbnail ?? null;
   }
 
-  renditionOf(_copyId: string): { sourceId: string; revision: number; recipe: VideoEditRecipe } | null {
-    return null;
+  renditionOf(copyId: string): { sourceId: string; revision: number; recipe: VideoEditRecipe } | null {
+    const row = this.db
+      .prepare('SELECT source_id,revision,recipe FROM video_edit_copies WHERE copy_id=?')
+      .get(copyId) as { source_id: string; revision: number; recipe: string } | undefined;
+    return row
+      ? {
+          sourceId: row.source_id,
+          revision: row.revision,
+          recipe: videoEditRecipeSchema.parse(JSON.parse(row.recipe)),
+        }
+      : null;
   }
 
   complete(mediaId: string, revision: number, copyId: string): boolean {
@@ -135,8 +144,8 @@ export class VideoEditsRepo {
         .get(copyId);
       if (!copy || copyId === source.mediaId) return false;
       this.db
-        .prepare('INSERT INTO video_edit_copies (source_id,revision,copy_id) VALUES (?,?,?)')
-        .run(source.mediaId, revision, copyId);
+        .prepare('INSERT INTO video_edit_copies (source_id,revision,copy_id,recipe) VALUES (?,?,?,?)')
+        .run(source.mediaId, revision, copyId, JSON.stringify(source.recipe));
       return (
         this.db
           .prepare(
