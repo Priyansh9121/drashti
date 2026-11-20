@@ -57,6 +57,10 @@ export type SlotEvent =
 
 export const NO_SLOTS: Slots = { shown: null, incoming: null, leaving: null, fade: null };
 
+/** The background drawn on screen now, by its key (null: none). */
+export const drawnKeyOf = (slots: Slots): string | null =>
+  slots.shown?.state === 'ready' ? slots.shown.key : null;
+
 export const slotKey = (layer: SlotLayer): string =>
   layer.kind === 'input'
     ? `input:${layer.inputId}@${layer.startedAt}`
