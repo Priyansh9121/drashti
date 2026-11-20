@@ -7,7 +7,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 Update after a sabha, and update Main and nodes together.
 
 - Smoother: without a graphics chip a deck’s own Wipe now sweeps in, and its moves drop far fewer frames while streaming; with one, going live, recording or opening the stream no longer holds up the hall (the stream’s picture ready in about a second); on a Mac, a 16:9 deck’s first Cover no longer stutters.
-- Playback: Media information… (right-click any video or sound); videos above 4K or interlaced are converted by themselves; playlists get Shuffle, Repeat all, the total time and when it ends, Find, and M3U import and export.
+- Playback: Media information… (right-click any video or sound); videos above 4K or interlaced are converted by themselves; a long video or sound offers Resume at where it stopped, Media shows when each file last played, and an audio playlist plays on from its track; playlists get Shuffle, Repeat all, the total time and when it ends, Find, and M3U import and export.
 - A video this computer can’t show no longer plays its sound over black: it comes off with a notice and is converted once the show is idle. LIVE no longer goes black while a slow video starts.
 - How loud, under the live picture: Audio and Video volume, each with a mute switch; Drashti always starts with the sound on.
 - A video’s captions (SRT or WebVTT) can show on the screens and the stream: CC beside the time bar.
