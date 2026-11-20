@@ -85,21 +85,23 @@ it('hands only local regular files to the existing importer once, then keeps rep
       file,
       '#EXTM3U\n#EXTINF:10,Placeholder label\nPlaceholder sound.wav\nhttps://example.invalid/never\nPlaceholder sound.wav\nPlaceholder picture.png\nmissing.wav\n',
     );
-    const importFiles = vi.fn(async (paths: string[]): Promise<ImportItemReport[]> =>
-      paths.map((sourcePath) => ({
-        id: sourcePath,
-        sourcePath,
-        format: 'media',
-        outcome: 'imported',
-        name: null,
-        target: { kind: 'media', id: sourcePath === sound ? 'sound' : 'picture' },
-        counts: NO_COUNTS,
-        message: null,
-        issues: [],
-      })),
+    const importFiles = vi.fn((paths: string[]): Promise<ImportItemReport[]> =>
+      Promise.resolve(
+        paths.map((sourcePath) => ({
+          id: sourcePath,
+          sourcePath,
+          format: 'media',
+          outcome: 'imported',
+          name: null,
+          target: { kind: 'media', id: sourcePath === sound ? 'sound' : 'picture' },
+          counts: NO_COUNTS,
+          message: null,
+          issues: [],
+        })),
+      ),
     );
-    const make = vi.fn(
-      async (_name: string, _rows: { item: NewItem; title: string | null }[], _audio: boolean) => 'made',
+    const make = vi.fn((_name: string, _rows: { item: NewItem; title: string | null }[], _audio: boolean) =>
+      Promise.resolve('made'),
     );
     const result = await importM3u(file, true, { importFiles, make, isAudio: (id) => id === 'sound' });
     expect(importFiles).toHaveBeenCalledExactlyOnceWith([sound, picture]);

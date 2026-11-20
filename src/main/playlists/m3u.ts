@@ -6,6 +6,8 @@ import { itemsMadeBy } from '../../shared/import-items';
 import type { M3uNotTaken } from '../../shared/m3u';
 import type { NewItem } from '../../shared/playlists';
 
+export class M3uError extends Error {}
+
 export const M3U_MAX_BYTES = 1024 * 1024;
 export const M3U_MAX_ENTRIES = 2000;
 export interface M3uEntry {
@@ -49,7 +51,7 @@ function localPath(entry: string, file: string): string | null {
 /** Reads local entries only. The parser has no network operation of any kind. */
 export function parseM3u(text: string, file: string): M3uRead {
   if (Buffer.byteLength(text, 'utf8') > M3U_MAX_BYTES)
-    throw new Error('A playlist file can be at most 1 MB.');
+    throw new M3uError('A playlist file can be at most 1 MB.');
   const out: M3uRead = { entries: [], notTaken: [] };
   let title: string | null = null;
   let durationMs: number | null = null;
@@ -66,7 +68,7 @@ export function parseM3u(text: string, file: string): M3uRead {
     }
     if (line.startsWith('#')) continue;
     count++;
-    if (count > M3U_MAX_ENTRIES) throw new Error('A playlist file can name at most 2,000 entries.');
+    if (count > M3U_MAX_ENTRIES) throw new M3uError('A playlist file can name at most 2,000 entries.');
     const path = Array.from(line).some((character) => character.charCodeAt(0) < 32)
       ? null
       : localPath(line, file);
@@ -86,7 +88,7 @@ export function parseM3u(text: string, file: string): M3uRead {
 export async function readM3u(file: string): Promise<M3uRead> {
   const handle = await open(file, 'r');
   try {
-    if (!(await handle.stat()).isFile()) throw new Error('Choose an M3U playlist file.');
+    if (!(await handle.stat()).isFile()) throw new M3uError('Choose an M3U playlist file.');
     const bytes = Buffer.alloc(M3U_MAX_BYTES + 1);
     let count = 0;
     while (count < bytes.length) {
@@ -94,7 +96,7 @@ export async function readM3u(file: string): Promise<M3uRead> {
       if (read.bytesRead === 0) break;
       count += read.bytesRead;
     }
-    if (count > M3U_MAX_BYTES) throw new Error('A playlist file can be at most 1 MB.');
+    if (count > M3U_MAX_BYTES) throw new M3uError('A playlist file can be at most 1 MB.');
     return parseM3u(bytes.subarray(0, count).toString('utf8'), file);
   } finally {
     await handle.close();
@@ -115,7 +117,7 @@ export async function importM3u(
   const local: M3uEntry[] = [];
   for (const entry of parsed.entries) {
     try {
-      if (!(await stat(entry.path)).isFile()) throw new Error('not a file');
+      if (!(await stat(entry.path)).isFile()) throw new M3uError('not a file');
       local.push(entry);
     } catch {
       parsed.notTaken.push({ entry: entry.path, reason: 'Not taken: this file is not on this computer.' });
@@ -146,7 +148,7 @@ export async function importM3u(
 
 /** UTF-8 extended M3U. Comments cannot inject entries, and every media path is absolute. */
 export function writeM3u(rows: readonly M3uExportRow[]): string {
-  if (rows.length > M3U_MAX_ENTRIES) throw new Error('An M3U playlist can name at most 2,000 entries.');
+  if (rows.length > M3U_MAX_ENTRIES) throw new M3uError('An M3U playlist can name at most 2,000 entries.');
   const lines = ['#EXTM3U'];
   for (const row of rows) {
     const label = row.label.replace(/[\r\n]/gu, ' ').replaceAll(String.fromCharCode(0), ' ');
@@ -159,12 +161,12 @@ export function writeM3u(rows: readonly M3uExportRow[]): string {
       /[\r\n]/u.test(row.path) ||
       row.path.includes(String.fromCharCode(0))
     )
-      throw new Error('A library file’s full path could not be written.');
+      throw new M3uError('A library file’s full path could not be written.');
     const seconds = row.durationMs != null && row.durationMs >= 0 ? row.durationMs / 1000 : -1;
     lines.push(`#EXTINF:${String(seconds)},${label}`, row.path);
   }
   const text = lines.join('\n') + '\n';
   if (Buffer.byteLength(text, 'utf8') > M3U_MAX_BYTES)
-    throw new Error('An M3U playlist can be at most 1 MB.');
+    throw new M3uError('An M3U playlist can be at most 1 MB.');
   return text;
 }

@@ -678,8 +678,8 @@ export const IPC = {
     /** A video row's When it ends (Session 55, Part 6). */
     setWhenEnds: 'playlists:set-when-ends',
     setPlayOptions: 'playlists:set-play-options',
-    importM3u: 'playlists:import-m3u',
-    exportM3u: 'playlists:export-m3u',
+    importM3u: 'playlists:import-playlist-file',
+    exportM3u: 'playlists:export-playlist-file',
     /** Duplicate a playlist (Session 55, Part 4): "<name> copy", beside it, with its rows in their order. */
     duplicate: 'playlists:duplicate',
     /** A slide's row dragged out of its deck into an item of its own (Session 55, Part 4b), and its Undo. */
