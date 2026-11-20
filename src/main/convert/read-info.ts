@@ -38,7 +38,9 @@ export function readInfo(
       clearTimeout(timer);
       resolve(parseFfmpegInfo(''));
     });
-    child.on('exit', () => {
+    // Once it has exited and all it wrote has been read: its exit alone can be told first, and a busy computer then
+    // had read none of it (x58: a 2.4 s clip read as no length).
+    child.on('close', () => {
       clearTimeout(timer);
       resolve(timedOut ? { ...parseFfmpegInfo(''), timedOut: true } : parseFfmpegInfo(text));
     });

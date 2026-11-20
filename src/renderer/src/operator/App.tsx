@@ -52,6 +52,7 @@ import { ScreensSaidNotice } from '../screens/ScreensSaid';
 import { EngineUnread } from './EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
+import { SoundPlayerStopped } from './SoundPlayerStopped';
 import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
 import { StreamLinkNotice } from '../live-link/StreamLinkNotice';
 import { StreamLinkDialog } from '../live-link/StreamLinkDialog';
@@ -377,6 +378,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       />
       <NoSoundNotice />
       <StreamPageStopped />
+      {/* Drashti's sound stopped: its sound player kept failing (x53): in the flow too. */}
+      <SoundPlayerStopped />
       <LiveWindowNotice />
       <StreamLinkNotice />
       <VideoInputNotice platform={platform} />

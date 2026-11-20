@@ -19,6 +19,7 @@ import {
   type PageGlobals,
   windowShowing,
 } from './helpers';
+import { goLive, makeSlides } from './placeholder-slides';
 import { decodePng } from './png-decode';
 import { testFfmpeg } from './stream-helpers';
 import { dispatch } from './time-bar-helpers';
@@ -28,8 +29,8 @@ import { dispatch } from './time-bar-helpers';
  * 640 × 480 video (4:3, square pixels) of a white circle on blue, set to 16:9 in its window, is drawn 16:9 with its
  * circle 1.33 times as wide as tall, in pixels: on the audience screen, in LIVE and in the stream's own picture (its
  * page's capture of itself, as its encoder gets it; nothing is sent anywhere); 21:9 fitted bars it above and below, the
- * circle 1.75 times as wide; As the file says puts it back. In the picture-in-picture box the same. Generated media
- * only. (A slide's video comes with SlideView's part, after L8: N/reports/x55-slide-part.)
+ * circle 1.75 times as wide; As the file says puts it back. In the picture-in-picture box the same, and on a slide, in
+ * the video's own box there. Generated media only.
  */
 
 const ffmpeg = testFfmpeg();
@@ -358,6 +359,45 @@ test('in the picture-in-picture box, a 4:3 video set to 16:9 fills the 16:9 box,
     await expectDrawn(() => drawnOn(hall, BOX), AS_THE_FILE, 0.05, 'the box as the file says', 30_000);
     await keepShape(win, id, '16:9');
     await expectDrawn(() => drawnOn(hall, BOX), WIDE, 0.05, 'the box at 16:9');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a slide’s video set to 16:9 is drawn 16:9 in its own box on the slide, its circle 1.33 times as wide as tall', async () => {
+  test.setTimeout(180_000);
+  const { app, win, hall, id } = await setUp();
+  try {
+    // The video alone on the slide, fitted in a 16:9 box of half the slide's size in its middle (nothing else lit).
+    const slides = await makeSlides(
+      win,
+      'Placeholder shape slide',
+      [
+        {
+          elements: [
+            {
+              id: 'placeholder-shape-video',
+              kind: 'video',
+              mediaId: id,
+              frame: { x: 480, y: 270, width: 960, height: 540 },
+              fit: 'fit',
+              loop: true,
+            },
+          ],
+        },
+      ],
+      { kind: 'cut', durationMs: 0 },
+    );
+    expect((await goLive(win, slides, 0)).ok).toBe(true);
+    await expectDrawn(
+      () => drawnOn(hall, HALL),
+      AS_THE_FILE,
+      0.05,
+      'the slide’s video as the file says',
+      30_000,
+    );
+    await keepShape(win, id, '16:9');
+    await expectDrawn(() => drawnOn(hall, HALL), WIDE, 0.05, 'the slide’s video at 16:9');
   } finally {
     await app.close();
   }

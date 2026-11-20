@@ -22,6 +22,8 @@ export class AudioOutput {
   private devices: AudioDevice[] = [];
   private state: AudioOutputState;
   private checked = false;
+  /** The sound player given up on (x53): nothing is heard until it is tried again. */
+  private playerStopped = false;
 
   constructor(private readonly deps: AudioOutputDeps) {
     const saved = audioDeviceSchema.nullable().safeParse(deps.load() ?? null);
@@ -30,7 +32,25 @@ export class AudioOutput {
   }
 
   get status(): AudioOutputStatus {
-    return { chosen: this.chosenDevice, devices: this.devices, state: this.state, checked: this.checked };
+    return {
+      chosen: this.chosenDevice,
+      devices: this.devices,
+      state: this.state,
+      checked: this.checked,
+      ...(this.playerStopped ? { playerStopped: true as const } : {}),
+    };
+  }
+
+  /** The sound player given up on (it kept failing), or tried again (x53): the operator is told. */
+  setPlayerStopped(stopped: boolean): void {
+    if (this.playerStopped === stopped) return;
+    this.playerStopped = stopped;
+    this.deps.log(
+      stopped
+        ? 'The sound player kept failing: given up on for now, and the operator told'
+        : 'The sound player is tried again',
+    );
+    this.deps.status(this.status);
   }
 
   get chosen(): AudioDevice | null {
