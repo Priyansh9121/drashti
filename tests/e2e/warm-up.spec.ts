@@ -579,9 +579,22 @@ test('where Chromium draws without a graphics chip the LIVE picture draws the sh
   const win = await operatorPage(app);
   await operatorReady(win);
   // Never warmed up to its end: not begun, or cut short as soon as Chromium said how it draws (a moment after the start).
-  await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0, {
-    timeout: 30_000,
-  });
+  try {
+    await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0, {
+      timeout: 30_000,
+    });
+  } catch (error) {
+    // Keep the phase before another IPC read: a late GPU choice, a stuck hand-over and a pixel failure differ.
+    const phases = await win
+      .locator('[data-testid="live-preview"] [data-warm-up]')
+      .evaluateAll((hosts) => hosts.map((host) => ({ phase: host.getAttribute('data-warm-up') })));
+    const noGpu = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.noGpu());
+    await test.info().attach('live-warm-up-still-mounted', {
+      body: JSON.stringify({ phases, noGpu, marks: await warmUpMarks(win), lines: warmUpLines(userData) }),
+      contentType: 'application/json',
+    });
+    throw error;
+  }
   await expect
     .poll(() => warmUpLines(userData).filter((line) => line.endsWith('for the LIVE picture')))
     .toEqual([LIVE_SKIPPED]);
