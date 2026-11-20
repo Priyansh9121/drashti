@@ -43,6 +43,9 @@ export interface DetailsRow {
   convertedTo: string | null;
   /** The original it is a copy of, when Drashti made it: its name. */
   copyOf: string | null;
+  /** How many times it has gone up, and when it last did (alpha.20, migration 87); 0 and null until then. */
+  playCount: number;
+  lastPlayedAt: string | null;
 }
 
 /** What FFmpeg printed, or that it took too long; null when it could not be started. */
@@ -146,6 +149,7 @@ export class MediaDetailsService {
       importedAt: row.importedAt,
       importedFrom: row.importedFrom,
       inDrashti: inDrashti(row, this.deps.converting(mediaId)),
+      plays: { count: row.playCount, lastAt: row.lastPlayedAt },
       read: null,
       problem: null,
     };
