@@ -76,9 +76,9 @@ export function prepareVideoEdits(
           ...bg,
           mediaId: e.id,
           durationMs: e.times.durationMs,
-          clip: e.times.clip(bg.clip),
-          seek: e.times.seek(bg.seek),
-          marks: e.times.marks(bg.marks ?? []),
+          ...(bg.clip ? { clip: e.times.clip(bg.clip) } : {}),
+          ...(bg.seek ? { seek: e.times.seek(bg.seek) } : {}),
+          ...(bg.marks ? { marks: e.times.marks(bg.marks) } : {}),
         };
     }
     const audio = layers.audio;
@@ -88,9 +88,9 @@ export function prepareVideoEdits(
         ...audio,
         mediaId: sound.id,
         durationMs: sound.times.durationMs,
-        clip: sound.times.clip(audio.clip),
-        seek: sound.times.seek(audio.seek),
-        marks: sound.times.marks(audio.marks ?? []),
+        ...(audio.clip ? { clip: sound.times.clip(audio.clip) } : {}),
+        ...(audio.seek ? { seek: sound.times.seek(audio.seek) } : {}),
+        ...(audio.marks ? { marks: sound.times.marks(audio.marks) } : {}),
       };
     const slide = layers.slide;
     if (slide) {
@@ -102,8 +102,8 @@ export function prepareVideoEdits(
       layers.slide = {
         ...slide,
         slide: { ...slide.slide, elements },
-        clips: clips(slide.clips),
-        seeks: seeks(slide.seeks),
+        ...(slide.clips ? { clips: clips(slide.clips) } : {}),
+        ...(slide.seeks ? { seeks: seeks(slide.seeks) } : {}),
       };
     }
     const pip = layers.pip;
@@ -113,8 +113,8 @@ export function prepareVideoEdits(
         layers.pip = {
           ...pip,
           source: { ...pip.source, mediaId: e.id },
-          clips: clips(pip.clips),
-          seeks: seeks(pip.seeks),
+          ...(pip.clips ? { clips: clips(pip.clips) } : {}),
+          ...(pip.seeks ? { seeks: seeks(pip.seeks) } : {}),
         };
     }
     return { state: { ...next, layers } };
