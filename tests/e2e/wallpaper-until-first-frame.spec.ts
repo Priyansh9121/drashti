@@ -8,6 +8,7 @@ import {
   before,
   dispatch,
   domLook,
+  failVideo,
   installLooks,
   isBlack,
   LIVE,
@@ -128,6 +129,88 @@ test('from the Wallpaper (nothing up), from the Wallpaper over a picture (F12) a
       bad,
       'until a video’s first frame: what was there before, never black, never the hidden picture',
     ).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('back to the Wallpaper (Clear background over a picture and over a video, a video’s end, a video that cannot play coming off): what was up stays until the Wallpaper’s picture has come, never black between, on the hall, LIVE and the stream', async () => {
+  test.setTimeout(480_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-back-to-the-wall-'));
+  const clip = makeClip(join(dir, 'Placeholder back to the wall.mp4'), 'h264', 30, 410);
+  const short = makeClip(join(dir, 'Placeholder ends by itself.mp4'), 'h264', 6, 450);
+  // Every read of a media file 600 ms late: the Wallpaper's picture is read again each time it comes back (no-store),
+  // so it comes 600 ms after the scene shows nothing up (within the 1 s that what was up may stay).
+  const { app } = await launchApp({ ...SCREENS, DRASHTI_TEST_MEDIA_DELAY_MS: '600' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const hall = (await audienceScreen(app, win)).page;
+    const beforeId = await wallpaperAndPicture(win, dir);
+    const stream = await streamWatched(app, win);
+    await installLooks(hall, OUT);
+    await installLooks(win, LIVE);
+    const pages = [hall, win, stream];
+    const [clipId = '', shortId = ''] = await importAndGetIds(win, [clip, short]);
+    expect(clipId !== '' && shortId !== '').toBe(true);
+    const { item: shortItem } = await openNewPlaylist(win, 'Placeholder ends by itself', shortId);
+    const allShow = async (look: string, what: string) => {
+      for (const [page, name] of [
+        [hall, 'the hall'],
+        [win, 'LIVE'],
+        [stream, 'the stream'],
+      ] as const)
+        await expect
+          .poll(() => domLook(page), { timeout: 30_000, message: `${what}: ${name} shows ${look}` })
+          .toBe(look);
+    };
+    const putUpVideo = () =>
+      dispatch(win, {
+        type: 'setBackground',
+        background: { kind: 'media', mediaId: clipId, media: 'video', fit: 'fill', loop: true },
+      });
+    const bad: string[] = [];
+    const round = async (
+      what: string,
+      up: () => Promise<unknown>,
+      upLook: string,
+      back: () => Promise<unknown>,
+    ) => {
+      await dispatch(win, { type: 'clearAll' });
+      await allShow('WALL', `${what}, before`);
+      await up();
+      await allShow(upLook, `${what}, up`);
+      await recAll(pages);
+      await back();
+      await allShow('WALL', `${what}, back to the Wallpaper`);
+      const [h = [], l = [], st = []] = await stopAll(pages);
+      for (const [looks, name] of [
+        [h, 'the hall'],
+        [l, 'LIVE'],
+        [st, 'the stream'],
+      ] as const)
+        if (looks.some(isBlack)) bad.push(`${what}: ${name}: ${looks.join(' → ')}`);
+    };
+    await round(
+      'Clear background over a picture',
+      () => showPicture(win, beforeId),
+      'PIC',
+      () => dispatch(win, { type: 'clearLayer', layer: 'background' }),
+    );
+    await round('Clear background over a video', putUpVideo, 'VIDEO', () =>
+      dispatch(win, { type: 'clearLayer', layer: 'background' }),
+    );
+    // Its row's default at its end, with a wallpaper chosen: the video goes, and nothing is up.
+    await round(
+      'a video’s end',
+      () => row(win, shortItem).click(),
+      'VIDEO',
+      () => Promise.resolve(),
+    );
+    await round('a video that cannot play coming off', putUpVideo, 'VIDEO', async () => {
+      expect(await failVideo(hall, clipId), 'the hall’s video element').toBe(true);
+    });
+    expect(bad, 'back to the Wallpaper: never black between').toEqual([]);
   } finally {
     await app.close();
   }
