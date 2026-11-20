@@ -33,7 +33,7 @@ export function editedClipSource(request: ClipExportRequest, deps: Deps): Export
   const id = deps.sourceId(request.mediaId);
   const edit = deps.read(id);
   const row = deps.row(id);
-  if (!edit || edit.state !== 'ready' || request.revision !== edit.revision)
+  if (edit?.state !== 'ready' || request.revision !== edit.revision)
     return {
       ok: false,
       message:

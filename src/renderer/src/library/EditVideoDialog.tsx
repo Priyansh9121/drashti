@@ -1,3 +1,5 @@
+import { ClipExportPanel } from '../video-analysis/ClipExportPanel';
+import { ProxyInfo } from '../video-analysis/ProxyInfo';
 import type { MediaMarkers } from '../../../shared/markers';
 import { useAnalysis } from '../video-analysis/use-analysis';
 import { Waveform } from '../video-analysis/Waveform';
@@ -87,7 +89,7 @@ async function thumbnail(video: HTMLVideoElement): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-const sections = ['Trim', 'Picture', 'Sound', 'Playback'] as const;
+const sections = ['Trim', 'Picture', 'Sound', 'Playback', 'Preparation and export'] as const;
 type Section = (typeof sections)[number];
 
 function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string }) {
@@ -664,6 +666,25 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
                       ),
                     )}
                   </div>
+                </>
+              )}
+              {section === 'Preparation and export' && (
+                <>
+                  {kept.state === 'ready' && kept.readyMediaId ? (
+                    <ProxyInfo mediaId={kept.readyMediaId} />
+                  ) : (
+                    <p className="text-xs text-muted">
+                      Wait for the saved edits to be ready before checking their lighter playing copy.
+                    </p>
+                  )}
+                  <ClipExportPanel
+                    mediaId={initial.mediaId}
+                    startMs={draft.trim.startMs ?? 0}
+                    endMs={draft.trim.endMs ?? duration}
+                    revision={kept.revision}
+                    dirty={dirty}
+                    ready={kept.state === 'ready'}
+                  />
                 </>
               )}
             </section>
