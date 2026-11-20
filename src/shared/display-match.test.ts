@@ -72,6 +72,40 @@ describe('matchDisplays', () => {
     expect([m.get('a'), m.get('b')]).toEqual([2, null]);
   });
 
+  // x53 (the owner's Q60-31 bug hunt, x52's D2): a display that gives no name and no serial number (some cheap
+  // projectors, HDMI converters, extenders) changing its resolution: its id holds, as a named display's name does.
+  it('keeps a display with no name whose resolution changed by its id: never a new screen for it', () => {
+    const projector = display(900, '', 1920, 1080, 1440, 0);
+    const m = matchDisplays([saved('hall', projector)], [laptop, display(900, '', 1280, 720, 1440, 0)]);
+    expect(m.get('hall')).toBe(900);
+  });
+
+  it('two projectors of one model with one name, both at another resolution: each keeps its own by its id', () => {
+    const a = display(900, 'PJ', 1920, 1080, 1440, 0);
+    const b = display(901, 'PJ', 1920, 1080, 3360, 0);
+    const m = matchDisplays(
+      [saved('left', a), saved('right', b)],
+      [laptop, display(901, 'PJ', 1280, 720, 3360, 0), display(900, 'PJ', 1280, 720, 1440, 0)],
+    );
+    expect([m.get('left'), m.get('right')]).toEqual([900, 901]);
+  });
+
+  it('never gives a screen another display on its old id: a different name there, or a different identity', () => {
+    const hallTv = display(900, 'Hall TV', 1920, 1080, 1440, 0);
+    expect(
+      matchDisplays([saved('hall', hallTv)], [laptop, display(900, 'Stage TV', 1280, 720)]).get('hall'),
+    ).toBeNull();
+    const known = {
+      ...display(900, '', 1920, 1080),
+      key: { ...display(900, '', 1920, 1080).key, hardwareId: 'edid:a:b:n1' },
+    };
+    const other = {
+      ...display(900, '', 1280, 720),
+      key: { ...display(900, '', 1280, 720).key, hardwareId: 'edid:a:b:n2' },
+    };
+    expect(matchDisplays([saved('hall', known)], [laptop, other]).get('hall')).toBeNull();
+  });
+
   it('does not guess between two equally good displays', () => {
     const tv1 = display(21, 'TV', 1920, 1080, 0, 0);
     const tv2 = display(22, 'TV', 1920, 1080, 1920, 0);
