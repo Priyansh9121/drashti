@@ -19,6 +19,7 @@ import {
   DEFAULT_NODE_PORT,
   type MediaWant,
   NODE_PAIRING_TTL_MS,
+  type NodeCannotPlayReport,
   type NodeHealth,
   type NodeControllerContext,
   type NodeInfo,
@@ -98,6 +99,8 @@ export interface NodeServiceDeps {
   /** Screens on nodes changed state (Screens shows them). */
   screensChanged(): void;
   thumbs(thumbs: ScreenThumb[]): void;
+  /** A showing one of a node's screens could not play (Q60-44): the node, by its name, and its word. */
+  cannotPlay?(node: { id: string; name: string }, report: NodeCannotPlayReport): void;
   /** How Main's own outputs draw, for the dashboard. */
   localOutputs(): NodeOutputStatus[];
   log(level: 'info' | 'warn', message: string): void;
@@ -410,6 +413,11 @@ export class NodeService implements EngineTransport {
           },
         ]);
         return;
+      case 'cannot-play': {
+        const node = this.deps.nodes.get(m.nodeId);
+        if (node) this.deps.cannotPlay?.({ id: node.id, name: node.name }, m.report);
+        return;
+      }
       case 'refused':
         this.liveOf(m.nodeId).refused = m.version;
         this.changed();

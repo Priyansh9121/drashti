@@ -171,7 +171,14 @@ import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
-import { noPictureNotice } from '../shared/no-picture';
+import { cannotPlayNotice, NO_FIRST_FRAME, noPictureNotice } from '../shared/no-picture';
+import {
+  CannotPlay,
+  type CannotPlayWhere,
+  errorKindWords,
+  NodeCannotPlay,
+  whereWords,
+} from './media/cannot-play';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -541,6 +548,18 @@ app.on('child-process-gone', (_event, details) => {
 
 /** The GPU process's stops (Sessions 31–36, ROB-5): a second within 10 minutes is said. */
 const gpuStops = new GpuStops();
+/**
+ * A video whose element failed on a page that draws the show (Q60-31): taken off after a short wait, unless a GPU
+ * process stopped then (its videos load again by themselves). main/media/cannot-play.ts.
+ */
+/** A paired computer's screen that could not play a video (Q60-44): told once for each node and showing. */
+const nodeCannotPlay = new NodeCannotPlay();
+const cannotPlay = new CannotPlay({
+  now: () => Date.now(),
+  later: (ms, run) => {
+    setTimeout(run, ms);
+  },
+});
 /** Said to the operator (Main) once the GPU process has stopped twice within 10 minutes. */
 let gpuStoppedTwice: ((text: string) => void) | null = null;
 // The GPU process stopped (Sessions 31–36, ROB-5): Chromium starts another by itself, but the videos it was
@@ -548,6 +567,7 @@ let gpuStoppedTwice: ((text: string) => void) | null = null;
 // engine's time. A second stop within 10 minutes is told to the operator, once.
 app.on('child-process-gone', (_event, details) => {
   if (details.type !== 'GPU' || quitting) return;
+  cannotPlay.gpuGone();
   log.warn(
     `The GPU process stopped (${details.reason}); its features now: ${JSON.stringify(app.getGPUFeatureStatus())}`,
   );
@@ -6050,6 +6070,17 @@ function start(): void {
     thumbs: (thumbs) => {
       sendToOperator(IPC.nodes.thumbs, thumbs);
     },
+    // A paired computer's screen could not play a video (Q60-44, the owner's answer A): it keeps what it showed; the
+    // video plays on everywhere else, and the operator is told, once for each node and showing (media/cannot-play.ts).
+    cannotPlay: (node, report) => {
+      const file = media.kindAndName(report.mediaId);
+      if (file?.kind !== 'video') return;
+      const screen = screenRepo.screens().find((s) => s.id === report.screenId)?.name ?? report.screenId;
+      const told = nodeCannotPlay.heard(node, screen, file, report);
+      if (!told) return;
+      log.warn(told.log);
+      sendToOperator(IPC.app.notice, { text: told.notice });
+    },
     localOutputs: () =>
       manager.status().flatMap((st): NodeOutputStatus[] =>
         st.state === 'showing' || st.state === 'missing-display' || st.state === 'disabled'
@@ -6975,8 +7006,8 @@ function start(): void {
     return null;
   });
   // A video's picture cannot be drawn on this computer (Session 60, x36: the owner's bug, his "Yes, A"): an output or
-  // the operator window found it plays as sound only. What of it is up comes off (the background, with its sound) or
-  // waits paused (on the slide, in the box); the operator window says so, once a file; and it is converted by itself
+  // the operator window found it plays as sound only. What of it is up comes off (the background, with its sound; the
+  // box, Q60-46) or waits paused (on the slide); the operator window says so, once a file; and it is converted by itself
   // once the show is idle. Only for a video that was up, so a page's word never takes off anything else; the other
   // windows that found the same showing find it off already, and say nothing more.
   handle(IPC.media.noPicture, (e, mediaId, startedAt) => {
@@ -6988,6 +7019,61 @@ function start(): void {
     log.warn(`A video's picture cannot be drawn here (sound only): ${mediaId}; taken off`);
     const converting = conversions.convertUndrawable(mediaId);
     sendToOperator(IPC.app.notice, { text: noPictureNotice(file.name, converting) });
+    return null;
+  });
+  // A video whose element failed on a page that draws the show (Q60-31, the owner's own bug: the hall went black while
+  // its sound played on, never taken off, nobody told): taken off as one whose picture cannot be drawn (its sound with
+  // it; on the slide, paused; the box off), said by its name and where it failed, and logged with the error's kind,
+  // after a short wait; unless a GPU process stopped then, whose videos load again by themselves.
+  handle(IPC.media.cannotPlay, (e, mediaId, startedAt, code, words) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    const where: CannotPlayWhere | null =
+      screenId !== undefined
+        ? { screen: screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId }
+        : fromOperator(e)
+          ? 'live'
+          : streaming.isProgram(e.sender)
+            ? 'stream'
+            : null;
+    if (where === null || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    if (typeof code !== 'number' || typeof words !== 'string') return null;
+    const file = media.kindAndName(mediaId);
+    if (file?.kind !== 'video') return null;
+    // The error's kind and Chromium's words, for the log only (the notice names the file and where).
+    const kind = errorKindWords(code);
+    const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;
+    // No first frame within FIRST_FRAME_MS (Q60-44): heeded from Main's own screens, what the hall sees; LIVE's or the
+    // stream's page alone only logs it (shared/no-picture.ts).
+    if (code === NO_FIRST_FRAME && screenId === undefined) {
+      log.info(
+        `A video had ${kind} on ${whereWords([where])}: ${mediaId}; left up (only a screen’s takes it off)`,
+      );
+      return null;
+    }
+    // Every page that says so within the wait is named, the screens first (cannot-play.ts whereWords).
+    cannotPlay.heard(
+      `${mediaId}@${String(startedAt)}`,
+      where,
+      (named) => {
+        const took = engine.cannotPlay(mediaId);
+        if (!took) return;
+        const off = [
+          took.background ? 'the background' : '',
+          took.slide ? 'paused on the slide' : '',
+          took.box ? 'the box' : '',
+        ]
+          .filter((w) => w !== '')
+          .join(', ');
+        log.warn(`A video could not play on ${named} (${kind}${detail}): ${mediaId}; taken off (${off})`);
+        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, named, took) });
+      },
+      (named) => {
+        log.info(
+          `A video could not play on ${named} (${kind}${detail}) as the GPU process stopped: ${mediaId}; it loads again`,
+        );
+      },
+    );
     return null;
   });
   handle(IPC.audio.reportDevices, (e, devices, state) => {
