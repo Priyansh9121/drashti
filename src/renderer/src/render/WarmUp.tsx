@@ -1089,7 +1089,7 @@ export function WarmUp({
       return img;
     });
     void Promise.all(images.map((img) => img.decode().catch(() => undefined))).then(() => {
-      if (!live) return;
+      if (!live || finished.current) return;
       // For a trace (the Performance check's): what the GPU made while it warmed up.
       performance.mark(mark);
       setStep({ phase: 'before', at: engineNow() });
@@ -1148,7 +1148,8 @@ export function WarmUp({
         each: () => {
           drewFrame.current = true;
         },
-        live,
+        // A cut marks it finished before passive cleanup cancels the old step's frame request.
+        live: () => live() && !finished.current,
         keep,
         ready: () => {
           setStep({ phase: 'during', at: engineNow() });
