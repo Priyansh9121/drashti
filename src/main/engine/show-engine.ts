@@ -1,3 +1,4 @@
+import type { Tone } from '../../shared/playback-settings';
 import { followingItems } from './playlist-source';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { randomUUID } from 'node:crypto';
@@ -307,6 +308,11 @@ export interface EngineOptions {
   levels?: () => SoundLevels;
   /** Parsed captions for a library video, with the admin’s band size and place. */
   videoCaptionsOf?: (mediaId: string) => VideoCaptionsShown | null;
+  /**
+   * Sound and picture… (alpha.20, main/index.ts from the library): a file's tone (none: as it is) and how much later
+   * its sound comes than its picture (ms); null for none.
+   */
+  playbackOf?: (mediaId: string) => { tone: Tone | null; soundDelayMs: number } | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -906,8 +912,8 @@ export class ShowEngine {
    * an engine with no library to ask (then the state never says, and every page plays each file as it is).
    */
   private soundFor(state: EngineState): SoundState | undefined {
-    const { soundOf, stepsAside, levels } = this.options;
-    if (!soundOf && !stepsAside && !levels) return undefined;
+    const { soundOf, stepsAside, levels, playbackOf } = this.options;
+    if (!soundOf && !stepsAside && !levels && !playbackOf) return undefined;
     const gains: Record<string, number> = {};
     const silent: string[] = [];
     for (const mediaId of soundFilesOf(state)) {
@@ -917,7 +923,22 @@ export class ShowEngine {
       if (known.silent) silent.push(mediaId);
     }
     // The operator's Audio and Video levels and mutes (X33), as Main has them now.
-    return { stepsAside: stepsAside?.() ?? true, gains, silent, ...(levels ? { levels: levels() } : {}) };
+    return {
+      stepsAside: stepsAside?.() ?? true,
+      gains,
+      silent,
+      ...(levels ? { levels: levels() } : {}),
+      ...this.ownPlaybackFor(state),
+    };
+  }
+
+  /**
+   * Sound and picture… (alpha.20): the tone and the sound's delay of each file sounding now that has them, by media id,
+   * stamped as the even gains are, so the hall's audio player and the stream's own sound play them alike.
+   */
+  private ownPlaybackFor(_state: EngineState): Pick<SoundState, 'tones' | 'delays'> {
+    // Red (x47, slice 6a): still to be written.
+    return {};
   }
 
   refreshFiles(): CommandResult {

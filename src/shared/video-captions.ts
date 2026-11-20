@@ -33,6 +33,8 @@ export interface VideoCaptionsShown {
   track: VideoCaptionTrack;
   size: CaptionSize;
   place: CaptionPlace;
+  /** Sound and picture… (alpha.20): how much later its captions come than its picture (ms, − earlier). */
+  delayMs?: number;
 }
 
 export type VideoCaptionResult =
@@ -207,11 +209,16 @@ export function readVideoCaptions(source: string): { cues: VideoCaptionCue[]; pr
   return { cues: result, problem: damaged ? 'Some damaged captions were left out of this file.' : null };
 }
 
-/** Read the actual video's source clock, including seeks/loops. No second elapsed-time clock is needed. */
+/**
+ * Read the actual video's source clock, including seeks/loops. No second elapsed-time clock is needed. `delayMs` (alpha.20,
+ * Sound and picture…): the captions come that much later than the picture (− earlier): at the video's `sourceMs` the
+ * line shown is the one for `sourceMs − delayMs`, while the video itself is between its points.
+ */
 export function captionAt(
   cues: readonly VideoCaptionCue[],
   sourceMs: number,
   clip?: PlaybackClip,
+  delayMs = 0,
 ): VideoCaptionCue | null {
   if (
     !Number.isFinite(sourceMs) ||
@@ -219,13 +226,15 @@ export function captionAt(
     (clip?.endMs != null && sourceMs >= clip.endMs)
   )
     return null;
+  // Red (x47, slice 6a): the delay not read yet.
+  const at = sourceMs + 0 * (Number.isFinite(delayMs) ? delayMs : 0);
   let lo = 0;
   let hi = cues.length;
   while (lo < hi) {
     const mid = (lo + hi) >>> 1;
-    if ((cues[mid]?.startMs ?? Infinity) <= sourceMs) lo = mid + 1;
+    if ((cues[mid]?.startMs ?? Infinity) <= at) lo = mid + 1;
     else hi = mid;
   }
   const cue = cues[lo - 1];
-  return cue && sourceMs < cue.endMs ? cue : null;
+  return cue && at < cue.endMs ? cue : null;
 }
