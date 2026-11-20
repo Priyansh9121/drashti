@@ -919,3 +919,29 @@ describe('deleting media from the library', () => {
     expect(existsSync(climbing)).toBe(true);
   });
 });
+
+it('purges only a deleted original’s display copies, keeping the other pictures and malformed cache names', async () => {
+  const { db, removal } = library();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-display-purge-'));
+  const sha = 'a1'.repeat(32);
+  const other = 'b2'.repeat(32);
+  const names = [
+    `v1-${sha}-1920x1080.png`,
+    `v1-${sha}-3840x2160.jpg`,
+    `v1-${other}-1920x1080.png`,
+    `v1-${sha}-not-a-size.png`,
+  ];
+  try {
+    db.prepare('UPDATE media SET sha256 = ? WHERE id = ?').run(sha, 'pic');
+    mkdirSync(join(dir, 'aa'), { recursive: true });
+    mkdirSync(join(dir, 'display'));
+    writeFileSync(join(dir, 'aa/pic.png'), 'Placeholder original.');
+    for (const name of names) writeFileSync(join(dir, 'display', name), 'Placeholder cache.');
+    removal.remove(['pic']);
+    expect(await removal.purge(dir, new Set())).toBe(1);
+    expect(names.map((name) => existsSync(join(dir, 'display', name)))).toEqual([false, false, true, true]);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
