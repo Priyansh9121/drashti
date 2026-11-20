@@ -1,3 +1,4 @@
+import type { VideoEditPreparation } from './video-edit-ready';
 import type { Tone } from '../../shared/playback-settings';
 import type { ShapeOverride } from '../../shared/video-shape';
 import { followingItems } from './playlist-source';
@@ -250,6 +251,8 @@ export interface LookSource {
 }
 
 export interface EngineOptions {
+  /** Check new showings once; historic/recovered showings keep their immutable files. */
+  prepareVideoEdits?: (previous: EngineState, next: EngineState, historic: boolean) => VideoEditPreparation;
   /** Drashti's own default transition, for presentations without one (a setting; a cut when left out). */
   defaultTransition?: () => Transition;
   /** Run `run` after `delayMs`; returns a way to cancel it (setTimeout when left out; tests run it by hand). */
@@ -505,6 +508,7 @@ export class ShowEngine {
   private at: number | null = null;
   /** The change being made only adds what is known about it (a file's length): not a change to the show. */
   private bookkeeping = false;
+  private restoringVideoEdits = false;
   /**
    * The chosen video input put up by LIVE's one press (Session 55, toggleInput), as it went up, and the background it
    * replaced: pressed again while that showing is still up, that background comes back.
@@ -757,7 +761,12 @@ export class ShowEngine {
     const repeating = request.repeat ? this.repeatRun(request.repeat.playlistId) : null;
     if (slide && repeating && request.slide?.presentationId === repeatPresentationId(repeating.playlistId))
       actions.push({ type: 'repeat/set', repeat: repeating });
-    this.apply(actions);
+    this.restoringVideoEdits = true;
+    try {
+      this.apply(actions);
+    } finally {
+      this.restoringVideoEdits = false;
+    }
     // A video or a video input under black-out or the Wallpaper (a file saved before Session 56 could hold both) did not
     // come back: the cover did (one-at-a-time.ts), so the notice never names it.
     const kept = this.state.layers.background !== null;
@@ -3063,6 +3072,13 @@ export class ShowEngine {
     // Before all that follows from the layers (what comes next, the time bars, the sound, Oops).
     const putUp = operator && !this.bookkeeping && putsUp(actions, next);
     next = oneAtATime(prev, next, { operator, putUp }, this.now()).reduce(reduce, next);
+    const edited = this.options.prepareVideoEdits?.(
+      prev,
+      next,
+      this.restoringVideoEdits || (cause !== null && BACKWARDS.has(cause)),
+    );
+    if (edited?.message) return { ok: false, error: 'preparing', message: edited.message };
+    if (edited?.state) next = edited.state;
     // Repeat Slides goes round only while its slides are up: anything else going up, Clear all or the
     // slide cleared ends it (Stop and Esc leave its slide up).
     if (next.repeat && next.layers.slide?.presentationId !== repeatPresentationId(next.repeat.playlistId))
