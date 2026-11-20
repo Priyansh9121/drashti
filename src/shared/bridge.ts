@@ -1213,6 +1213,8 @@ export interface DrashtiBridge {
     onPointed(listener: (clip: PointedClip | null) => void): () => void;
     /** Tests only (a packaged Drashti never sends it): draw an element that throws (Session 23). */
     onTestThrow(listener: () => void): () => void;
+    /** Tests only (a packaged Drashti never sends it): the scene fails as it draws while this file is up (x53). */
+    onTestThrowWhile(listener: (mediaId: string | null) => void): () => void;
     /** Tests only (a packaged Drashti never sends it): hold the clock at a moment, or let it go (Session 26d). */
     onTestClock(listener: (at: number | null) => void): () => void;
     /** Keep these screens? (Session 50) on this output, when it covers the controls (null: answered). */

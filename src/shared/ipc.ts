@@ -1202,6 +1202,11 @@ export const IPC = {
     /** main -> output, tests only (never sent by a packaged Drashti): draw an element that throws (Session 23). */
     testThrow: 'output:test-throw',
     /**
+     * main -> output, tests only (never sent by a packaged Drashti): the hall screen's scene fails each time it draws
+     * while this file is up (x53; null: none), as a layer whose data makes a component throw would.
+     */
+    testThrowWhile: 'output:test-throw-while',
+    /**
      * main -> output, tests only (never sent by a packaged Drashti): hold the page's clock at a moment of the
      * engine's time, or let it go (null), so two screens can be compared part-way through a transition
      * (Session 26d).
@@ -2002,6 +2007,7 @@ export interface EventContract {
   [IPC.output.gpuRestarted]: { at: number };
   [IPC.output.pointed]: { clip: PointedClip | null };
   [IPC.output.testThrow]: Record<string, never>;
+  [IPC.output.testThrowWhile]: { mediaId: string | null };
   [IPC.output.testClock]: { at: number | null };
   [IPC.audio.chosen]: { device: AudioDevice | null };
   [IPC.audio.testTone]: { deviceId: string };
