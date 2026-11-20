@@ -8,6 +8,8 @@ import { SMART_MAX_FILES } from '../../shared/playlists';
 import type { Db } from '../db/database';
 import type { PlaylistRepo } from '../db/playlists';
 import { formatOf } from '../import/scan';
+import type { CutSeen } from '../import/whole-file';
+import { UNFINISHED_MS, wholeNow } from '../import/whole-file';
 import { addToFolderParts, folderItems, freeName, madeFrom, type FolderFile } from './folder-playlist';
 
 /*
@@ -22,7 +24,11 @@ import { addToFolderParts, folderItems, freeName, madeFrom, type FolderFile } fr
  *   changed while it was closed.
  * - A new file waits until its size has held still for 3 s, then is
  *   imported (the same rules as a file dropped on Drashti) and joins at the
- *   end of its folder's part, so items moved by hand stay put.
+ *   end of its folder's part, so items moved by hand stay put. One whose own
+ *   structure says it is still being copied (an MP4 with its movie box not
+ *   there yet, import/whole-file.ts; Q60-31) waits on, however long its copy
+ *   stalls, and the playlist's line names it; unchanged for 2 minutes, the
+ *   line says its copy may have stopped, or it is damaged.
  * - A file that is gone shows as missing (its item stays); one button takes
  *   the missing out. A file whose size or time changed is imported again:
  *   when its bytes differ, it replaces its item in place.
@@ -113,6 +119,8 @@ interface Followed {
   folder: string;
   /** New or changed files waiting for their size to hold still, by path inside the folder. */
   pending: Map<string, Seen>;
+  /** Files found not whole, by path inside the folder: not read again until they change (import/whole-file.ts). */
+  cut: Map<string, CutSeen>;
   view: SmartPlaylistView;
   /** The look going, if one is. */
   running: Promise<void> | null;
@@ -385,11 +393,20 @@ export class SmartFolders {
     const f: Followed = {
       folder,
       pending: new Map(),
+      cut: new Map(),
       running: null,
       again: null,
       soon: null,
       stopWatching: null,
-      view: { playlistId, folder, state: 'following', adding: 0, missing: this.missingCount(playlistId) },
+      view: {
+        playlistId,
+        folder,
+        state: 'following',
+        adding: 0,
+        copying: [],
+        stalled: [],
+        missing: this.missingCount(playlistId),
+      },
     };
     this.followed.set(playlistId, f);
     this.watchFolder(playlistId, f);
@@ -486,7 +503,8 @@ export class SmartFolders {
       if (f.view.state !== 'folder-gone')
         this.deps.log('info', 'Smart playlists: a followed folder is not there');
       f.pending.clear();
-      this.setView(f, { state: 'folder-gone', adding: 0 });
+      f.cut.clear();
+      this.setView(f, { state: 'folder-gone', adding: 0, copying: [], stalled: [] });
       return;
     }
     if (f.view.state === 'folder-gone') {
@@ -497,7 +515,8 @@ export class SmartFolders {
     if (found.tooMany) {
       // Which files are past the limit is anyone's guess: add and mark nothing until some go.
       f.pending.clear();
-      this.setView(f, { state: 'too-many', adding: 0 });
+      f.cut.clear();
+      this.setView(f, { state: 'too-many', adding: 0, copying: [], stalled: [] });
       return;
     }
     const rows = this.rows(playlistId);
@@ -510,6 +529,7 @@ export class SmartFolders {
         marked = true;
       }
     const ready: string[] = [];
+    const stalled: string[] = [];
     for (const [relative, s] of found.files) {
       // Its missing item was taken out: back, it is a new file.
       const r = rows.get(relative)?.state === 'removed' ? undefined : rows.get(relative);
@@ -529,19 +549,51 @@ export class SmartFolders {
         f.pending.delete(relative);
         continue;
       }
+      // Not whole and unchanged for 2 minutes (Q60-31): its copy stopped, or it is damaged. Never taken by itself, and
+      // not waited on either: the light scans look at it again, and it is judged again once it changes.
+      const cut = f.cut.get(relative);
+      if (cut?.size === s.size && cut.mtimeMs === s.mtimeMs && now - cut.since >= UNFINISHED_MS) {
+        f.pending.delete(relative);
+        stalled.push(relative);
+        continue;
+      }
       // New, or changed: ready once its size has held still for the settle time.
       if (heldStill(f.pending, relative, s, now, this.deps.settleMs)) ready.push(relative);
     }
     for (const relative of f.pending.keys()) if (!found.files.has(relative)) f.pending.delete(relative);
+    for (const relative of f.cut.keys()) if (!found.files.has(relative)) f.cut.delete(relative);
+    // Held still, but its own structure says it is still being copied (Q60-31: a copy that stalled): it waits on, as
+    // one whose size has not held still, never taken half-written; the playlist's line names it.
+    const copying: string[] = [];
+    const whole: string[] = [];
+    for (const relative of ready) {
+      const s = found.files.get(relative);
+      if (!s) continue;
+      const { wholeness, stalledMs } = await wholeNow(
+        f.cut,
+        relative,
+        join(f.folder, ...relative.split('/')),
+        s,
+        now,
+      );
+      if (wholeness !== 'cut') whole.push(relative);
+      else if (stalledMs < UNFINISHED_MS) copying.push(relative);
+      else {
+        f.pending.delete(relative);
+        stalled.push(relative);
+      }
+    }
     // On air or recording (Session 28): what held still waits, and is looked at again after the settle time.
-    const waiting = ready.length > 0 && (this.deps.onAir?.() ?? false);
+    const waiting = whole.length > 0 && (this.deps.onAir?.() ?? false);
     this.setView(f, {
       state: waiting ? 'waiting' : 'following',
       adding: f.pending.size,
+      copying,
+      stalled,
       missing: this.missingCount(playlistId),
     });
     if (marked) this.deps.changed(playlistId);
-    if (ready.length > 0 && !waiting) await this.importReady(playlistId, f, ready, found.files, rows);
+    if (whole.length > 0 && !waiting) await this.importReady(playlistId, f, whole, found.files, rows);
   }
 
   private async importReady(

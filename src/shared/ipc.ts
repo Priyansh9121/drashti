@@ -590,6 +590,11 @@ export const IPC = {
      * Chromium plays such a file as sound only. The show takes it off, says so, and converts it by itself.
      */
     noPicture: 'media:no-picture',
+    /**
+     * An output, the operator window or the stream's page found a video's element failed (Q60-31): the show takes it
+     * off with its sound, says so by its name and where, and logs the error's kind (unless a GPU process stopped then).
+     */
+    cannotPlay: 'media:cannot-play',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -1636,6 +1641,10 @@ export interface InvokeContract {
   [IPC.media.playsHevc]: { args: []; result: boolean | null };
   [IPC.media.reportLength]: { args: [mediaId: string, durationMs: number]; result: null };
   [IPC.media.noPicture]: { args: [mediaId: string, startedAt: number]; result: null };
+  [IPC.media.cannotPlay]: {
+    args: [mediaId: string, startedAt: number, code: number, words: string];
+    result: null;
+  };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.details]: { args: [mediaId: string]; result: MediaDetailsResult };
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
