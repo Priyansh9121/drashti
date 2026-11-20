@@ -218,3 +218,11 @@ it('takes an outgoing video with no picture off without removing the incoming sh
   expect(x.engine.current.videoCrossfade).toBeNull();
   expect(x.engine.current.layers.background).toMatchObject({ mediaId: 'second' });
 });
+
+it('Go on an automatic crossfade cue keeps the playlist blend instead of cutting', () => {
+  const x = setup(); x.play(); x.ready(); x.advance(11_000);
+  const cue = x.engine.current.videoCue;
+  if (!cue) throw new Error('No automatic cue');
+  x.engine.dispatch({ type: 'goVideoCue', cueId: cue.id });
+  expect(x.engine.current.videoCrossfade).toMatchObject({ at: 11_120, durationMs: 2000 });
+});
