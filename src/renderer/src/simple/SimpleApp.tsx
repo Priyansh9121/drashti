@@ -60,6 +60,7 @@ import { StreamPageStopped } from '../stream/StreamPageStopped';
 import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { LookMotion } from '../appearance/LookMotion';
 import { Band, HeaderStates } from '../ui/Decoration';
 import { WordMark } from '../ui/Mark';
 import { ListMusic } from '../ui/icons';
@@ -274,6 +275,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
         className="flex h-12 shrink-0 items-center gap-4 border-b border-line bg-header px-4 text-on-header"
         data-header=""
       >
+        <LookMotion where="header" />
         <h1 className="shrink-0 text-base font-bold tracking-wide">
           <WordMark />
         </h1>
@@ -302,6 +304,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
         )}
       </header>
       <Band />
+      <LookMotion where="band" />
       {/* No internet, and when access ends (Session 54): in the flow, never over the show's controls. */}
       <AccessOfflineNotice />
       <AccessEndsNotice />

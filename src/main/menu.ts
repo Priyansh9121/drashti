@@ -21,9 +21,12 @@ const priorityItem = (p: PriorityItem): MenuItemConstructorOptions => ({
   click: p.toggle,
 });
 
-/** View › Appearance (Sessions 39–40): Follow the computer and each appearance, as radio items, then the window. */
+/**
+ * View › Appearance (Sessions 39–40): Follow the computer and each appearance, as radio items, then the window.
+ * Session 60: each family's under its name (a heading that does nothing), in the window's order.
+ */
 export interface AppearanceItems {
-  choices: readonly { id: string; label: string }[];
+  choices: readonly { id: string; label: string; family?: string }[];
   /** FOLLOW, or the chosen appearance's id. */
   chosen: string;
   choose: (id: string) => void;
@@ -301,15 +304,24 @@ export function installMenu(actions: MenuActions): void {
                 id: 'appearance',
                 label: 'Appearance',
                 submenu: [
-                  ...actions.appearance.choices.map((c): MenuItemConstructorOptions => ({
-                    id: `appearance-${c.id}`,
-                    label: c.label,
-                    type: 'radio',
-                    checked: c.id === actions.appearance.chosen,
-                    click: () => {
-                      actions.appearance.choose(c.id);
+                  ...actions.appearance.choices.flatMap((c, i, all): MenuItemConstructorOptions[] => [
+                    // A family's name before its first one (Session 60): a heading, never chosen.
+                    ...(c.family !== undefined && c.family !== all[i - 1]?.family
+                      ? [
+                          { type: 'separator' } as MenuItemConstructorOptions,
+                          { id: `appearance-family-${String(i)}`, label: c.family, enabled: false },
+                        ]
+                      : []),
+                    {
+                      id: `appearance-${c.id}`,
+                      label: c.label,
+                      type: 'radio',
+                      checked: c.id === actions.appearance.chosen,
+                      click: () => {
+                        actions.appearance.choose(c.id);
+                      },
                     },
-                  })),
+                  ]),
                   { type: 'separator' },
                   { id: 'appearance-window', label: 'Appearance…', click: actions.appearance.open },
                 ],

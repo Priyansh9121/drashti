@@ -58,6 +58,21 @@ const TABLE: Record<string, string> = {
   // the motion skills' 500 ms (one entry under 800 ms, the stagger under 500 ms in all).
   'dur-sweep': '320ms',
   'stagger-sweep': '40ms',
+  // Live appearances (Session 60, the owner's Q60-36 (3)): slow loops in the header and the band, on a sine curve.
+  'dur-look-fade': '1200ms',
+  'dur-look-drift': '40000ms',
+  'dur-look-shimmer': '9600ms',
+  'dur-look-glint': '14000ms',
+  'dur-look-sparkle': '2400ms',
+  'dur-look-glow': '4800ms',
+  'dur-look-petal': '12000ms',
+  'dur-look-puff': '16000ms',
+  'dur-look-rain': '1600ms',
+  'dur-look-kite': '30000ms',
+  'dur-look-cloud': '72000ms',
+  'stagger-look': '2400ms',
+  'ease-look': 'cubic-bezier(0.37, 0, 0.63, 1)',
+  'ease-look-steady': 'linear',
 };
 
 /** The window's own code: every .ts and .tsx under src/renderer/src but the audience screens'. */
