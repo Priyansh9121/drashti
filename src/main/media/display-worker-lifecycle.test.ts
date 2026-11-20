@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DisplayCopies } from './display-copies';
 
-// Draft for the cost correction: apply and run RED only after the phase1 attribution prerequisite.
+// Preserve below-normal work and one decode slot while avoiding repeated Main window construction.
 const fixtures: { copies: DisplayCopies; dir: string }[] = [];
 afterEach(() => {
   for (const f of fixtures.splice(0)) {
@@ -65,6 +65,20 @@ async function finishFirst(t: ReturnType<typeof setup>) {
 }
 
 describe('the display worker between imports', () => {
+  it('prewarms an empty worker during a quiet refresh, never during a show', async () => {
+    const t = setup();
+    t.activity.quiet = false;
+    await t.copies.refresh([]);
+    await t.copies.idle();
+    expect(t.windows).toHaveLength(0);
+    t.activity.quiet = true;
+    await t.copies.refresh([]);
+    await t.copies.idle();
+    expect(t.windows).toHaveLength(1);
+    expect(t.copies.working).toBe(false);
+    expect(t.windows[0]?.destroy).not.toHaveBeenCalled();
+  });
+
   it('grants a bounded private source address instead of copying the original through Main IPC', async () => {
     const t = setup();
     const prepared = t.copies.prepare(t.candidate('a'));
