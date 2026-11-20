@@ -531,3 +531,47 @@ export function hueCount(a: Appearance): { count: number; chosen: string[] } {
   walk(0, []);
   return { count: best.length, chosen: best };
 }
+
+/*
+ * No two alike (Session 60, the owner's Q60-36: every appearance re-tuned "so no two look alike"): how far apart two
+ * appearances of a base look, as the OKLab distance (×100; about 2 is just noticeable) between the same fourteen
+ * places of each, averaged: the window, panels and cards, the four zones' panels, both ends of the header and of the
+ * title strips, the next thing to do, the marks and the headings (x43's audit measure; the surfaces are about 85 % of
+ * the window, so it reads the window as a person sees it at a glance). Before Session 60 the closest two, Prabhat and
+ * Mehndi, were 3.7 apart; every two of a base are now at least LOOKS_APART.
+ */
+export const LOOKS_APART = 8;
+
+/** The fourteen places compared. */
+export const LOOK_PLACES: readonly ((a: Appearance) => string)[] = [
+  (a) => a.colours.ink,
+  (a) => a.colours.panel,
+  (a) => a.colours['panel-2'],
+  (a) => a.zones.left.panel,
+  (a) => a.zones.middle.panel,
+  (a) => a.zones.right.panel,
+  (a) => a.zones.bar.panel,
+  (a) => a.decoration.header,
+  (a) => a.decoration['header-2'],
+  (a) => a.decoration.strip,
+  (a) => a.decoration['strip-2'],
+  (a) => a.colours.primary,
+  (a) => a.decoration.second,
+  (a) => a.decoration.heading,
+];
+
+/** A colour in OKLab. */
+function oklab(hex: string): readonly [number, number, number] {
+  const { l, c, h } = hexToOklch(hex);
+  return [l, c * Math.cos((h * Math.PI) / 180), c * Math.sin((h * Math.PI) / 180)];
+}
+
+/** How far apart two appearances look: the OKLab distance ×100 of their fourteen places, averaged. */
+export function lookApart(a: Appearance, b: Appearance): number {
+  let sum = 0;
+  for (const place of LOOK_PLACES) {
+    const [x, y] = [oklab(place(a)), oklab(place(b))];
+    sum += 100 * Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+  }
+  return sum / LOOK_PLACES.length;
+}
