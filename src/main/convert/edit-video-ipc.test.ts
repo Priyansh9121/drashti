@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerEditVideoIpc } from './edit-video-ipc';
-import { PLAIN_VIDEO_EDIT, type VideoEditSnapshot } from '../../shared/video-edit';
+import { PLAIN_VIDEO_EDIT, type VideoEditResult, type VideoEditSnapshot } from '../../shared/video-edit';
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 vi.mock('../ipc/handle', () => ({
@@ -96,7 +96,7 @@ it('reports a missing prepared file as retryable, keeping the source recipe and 
     changed: () => undefined,
     write: (_guard, run) => Promise.resolve(run()),
   });
-  const result = handlers.get('media:video-edit')?.({}, 'video');
+  const result = handlers.get('media:video-edit')?.({}, 'video') as VideoEditResult;
   expect(result).toMatchObject({
     ok: true,
     edit: {
@@ -105,8 +105,8 @@ it('reports a missing prepared file as retryable, keeping the source recipe and 
       state: 'failed',
       readyMediaId: null,
       recipe: { speed: 2 },
-      message: expect.stringContaining('Save'),
     },
   });
+  if (result.ok) expect(result.edit.message).toContain('Save');
   expect(save).not.toHaveBeenCalled();
 });
