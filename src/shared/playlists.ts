@@ -48,6 +48,11 @@ export interface SmartPlaylistView {
   state: 'following' | 'folder-gone' | 'too-many' | 'waiting';
   /** New or changed files waiting for their size to hold still, or being imported. */
   adding: number;
+  /**
+   * Files that held still but whose own structure says they are still being copied (Q60-31: an MP4 whose movie box is
+   * not there yet), by their path inside the folder: they join once whole.
+   */
+  copying: string[];
   /** Items whose files are gone from the folder (marked, not removed). */
   missing: number;
 }

@@ -8,6 +8,7 @@ import { SMART_MAX_FILES } from '../../shared/playlists';
 import type { Db } from '../db/database';
 import type { PlaylistRepo } from '../db/playlists';
 import { formatOf } from '../import/scan';
+import { wholeFile } from '../import/whole-file';
 import { addToFolderParts, folderItems, freeName, madeFrom, type FolderFile } from './folder-playlist';
 
 /*
@@ -22,7 +23,10 @@ import { addToFolderParts, folderItems, freeName, madeFrom, type FolderFile } fr
  *   changed while it was closed.
  * - A new file waits until its size has held still for 3 s, then is
  *   imported (the same rules as a file dropped on Drashti) and joins at the
- *   end of its folder's part, so items moved by hand stay put.
+ *   end of its folder's part, so items moved by hand stay put. One whose own
+ *   structure says it is still being copied (an MP4 with its movie box not
+ *   there yet, import/whole-file.ts; Q60-31) waits on, however long its copy
+ *   stalls, and the playlist's line names it.
  * - A file that is gone shows as missing (its item stays); one button takes
  *   the missing out. A file whose size or time changed is imported again:
  *   when its bytes differ, it replaces its item in place.
@@ -389,7 +393,14 @@ export class SmartFolders {
       again: null,
       soon: null,
       stopWatching: null,
-      view: { playlistId, folder, state: 'following', adding: 0, missing: this.missingCount(playlistId) },
+      view: {
+        playlistId,
+        folder,
+        state: 'following',
+        adding: 0,
+        copying: [],
+        missing: this.missingCount(playlistId),
+      },
     };
     this.followed.set(playlistId, f);
     this.watchFolder(playlistId, f);
@@ -486,7 +497,7 @@ export class SmartFolders {
       if (f.view.state !== 'folder-gone')
         this.deps.log('info', 'Smart playlists: a followed folder is not there');
       f.pending.clear();
-      this.setView(f, { state: 'folder-gone', adding: 0 });
+      this.setView(f, { state: 'folder-gone', adding: 0, copying: [] });
       return;
     }
     if (f.view.state === 'folder-gone') {
@@ -497,7 +508,7 @@ export class SmartFolders {
     if (found.tooMany) {
       // Which files are past the limit is anyone's guess: add and mark nothing until some go.
       f.pending.clear();
-      this.setView(f, { state: 'too-many', adding: 0 });
+      this.setView(f, { state: 'too-many', adding: 0, copying: [] });
       return;
     }
     const rows = this.rows(playlistId);
@@ -533,15 +544,23 @@ export class SmartFolders {
       if (heldStill(f.pending, relative, s, now, this.deps.settleMs)) ready.push(relative);
     }
     for (const relative of f.pending.keys()) if (!found.files.has(relative)) f.pending.delete(relative);
+    // Held still, but its own structure says it is still being copied (Q60-31: a copy that stalled): it waits on, as
+    // one whose size has not held still, never taken half-written; the playlist's line names it.
+    const copying: string[] = [];
+    const whole: string[] = [];
+    for (const relative of ready)
+      if ((await wholeFile(join(f.folder, ...relative.split('/')))) === 'cut') copying.push(relative);
+      else whole.push(relative);
     // On air or recording (Session 28): what held still waits, and is looked at again after the settle time.
-    const waiting = ready.length > 0 && (this.deps.onAir?.() ?? false);
+    const waiting = whole.length > 0 && (this.deps.onAir?.() ?? false);
     this.setView(f, {
       state: waiting ? 'waiting' : 'following',
       adding: f.pending.size,
+      copying,
       missing: this.missingCount(playlistId),
     });
     if (marked) this.deps.changed(playlistId);
-    if (ready.length > 0 && !waiting) await this.importReady(playlistId, f, ready, found.files, rows);
+    if (whole.length > 0 && !waiting) await this.importReady(playlistId, f, whole, found.files, rows);
   }
 
   private async importReady(

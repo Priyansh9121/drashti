@@ -700,6 +700,28 @@ The owner, 19 Nov 2026, using alpha.19 (Session 60, x36):
   Audio, a folder (a smart playlist at once), and every drop while a playlist is open are as before.
 - `tests/e2e/library-and-tools.spec.ts` and `tests/e2e/drop-new-playlist.spec.ts` check them at CI's 1024 × 645, with axe.
 
+## 54. A video that cannot play, its first frame, and a file still being copied (alpha.20, Q60-31)
+
+The owner, 20 Nov 2026 ("i just found a bug with the video where it doesnt play in audience screen"): his ordinary H.264
+file played on his laptop and not on the mandir's Mac, its sound playing while LIVE showed black or the Wallpaper. x46's
+hunt (CI x46-1120-112649-63694) found three things Drashti did on every computer:
+
+- **A video whose element fails** (that computer's decoder raising an error, a cut or damaged file, its copy unreadable)
+  left its slot drawing nothing: the hall black at once, its sound playing on in the audio player, never taken off,
+  nobody told. Now the page tells Main (`media:cannot-play`, a screen, LIVE or the stream's page) with the error's kind;
+  after 1 s Main takes it off as x36 takes off a picture that cannot be drawn (`ShowEngine.noPicture`), says so by its
+  name and where, and logs the kind and where; a failure within 3 s of a GPU process stopping is that stop's and loads
+  again by itself (`main/media/cannot-play.ts`). Meanwhile a file that fails as it loads leaves the picture before, and
+  one that fails while it plays stays drawn as it was (`render/background-slots.ts`: `drawn`, `isDrawn`).
+- **The first frame**: the Wallpaper went the moment the engine had a background, and a cover the engine took off as a
+  video went up showed the picture it hid, until the video's first frame (31-446 ms on CI; longer on a slow computer).
+  Now each scene keeps nothing-up while nothing of the new background is drawn, and such a cover until that
+  background's first frame, as `BackgroundMedia` tells it (`onDrawn`, before the painting) (`render/Scene.tsx`).
+- **A file still being copied** into a folder Drashti follows was taken half-written once its size held still for the
+  folder's wait. Now the folders take a file only once its own structure says it is whole (`import/whole-file.ts`:
+  MP4/MOV boxes and a movie box, a RIFF size, a Matroska Segment size; any other kind by its size alone, as before), and
+  a smart playlist's line names one still being copied.
+
 ## Shared show view on a paired computer
 
 Main's Screens adds **Shared show view** to each node card, off by default and changed only from Main's operator window in Pro Mode. The choice is public metadata on Main, separate from the unchanged node pairing and pinned certificate. Its feed carries an audience preview's geometry and the chosen public action areas in addition to the existing ordered engine feed. Action areas start empty; the view alone never grants an action.
