@@ -89,6 +89,31 @@ describe('original-preserving display copies', () => {
     expect(again.windows.opened).toBe(0);
     expect(again.changed).toHaveBeenCalledOnce();
   });
+  it.each(['deleted', 'damaged'])(
+    'withdraws a %s cache file before its replacement is ready',
+    async (damage) => {
+      const t = setup();
+      const first = t.copies.prepare(t.candidate);
+      await vi.waitFor(() => expect(t.windows.opened).toBe(1));
+      const job = await t.copies.next(1);
+      if (!job) throw new Error('The queued copy job was not offered.');
+      await t.copies.made(1, job.key, new Uint8Array(png(1920, 1080)));
+      const result = await first;
+      if (!result.ok || !result.copy) throw new Error('The display file was not made.');
+      await t.copies.next(1);
+      await t.copies.idle();
+      const file = join(t.dir, result.copy.path);
+      if (damage === 'deleted') rmSync(file);
+      else writeFileSync(file, png(320, 180));
+      const replacement = t.copies.prepare(t.candidate);
+      await vi.waitFor(() => expect(t.windows.opened).toBe(2));
+      expect(t.copies.ready(SHA)).toBeNull();
+      expect(t.copies.relativePath(SHA, job.key)).toBeNull();
+      expect(t.changed).toHaveBeenCalledTimes(2);
+      t.copies.close();
+      expect(await replacement).toMatchObject({ ok: false });
+    },
+  );
   it('keeps small pictures and animation as their originals, with no copy job', async () => {
     for (const bytes of [png(640, 360), png(6144, 3456, true)]) {
       const t = setup(bytes);
