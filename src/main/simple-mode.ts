@@ -47,8 +47,12 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // Writing and saving slides from words are Pro Mode's.
   IPC.library.saveWords,
   IPC.library.newFromWords,
-  // New › QR code… (Session 55, Part 8): Pro Mode's.
+  // New › QR code… (Session 55, Part 8): Pro Mode's; so are its window's logo and Download… (Q60-28).
   IPC.library.newQrSlide,
+  IPC.library.pickQrLogo,
+  IPC.library.keepQrLogo,
+  IPC.library.setQrChoices,
+  IPC.library.downloadQr,
   // The slide editor's Save a PDF copy… (a copy: Pro Mode's; its save is bounded since Session 56, below).
   IPC.library.exportPdf,
   IPC.library.setDefaultTransition,

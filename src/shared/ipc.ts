@@ -8,6 +8,14 @@ import type { PdfJob, PdfPage, PdfPageReceipt, PdfDone } from './editable-source
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { ReadyReport } from './ready';
 import type { ToolsMenuItem } from './setup-tools';
+import type {
+  QrChoices,
+  QrChoicesChange,
+  QrChoicesResult,
+  QrDownloadResult,
+  QrPicked,
+  QrSlideOptions,
+} from './qr-picture';
 import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type {
@@ -442,6 +450,16 @@ export const IPC = {
     newFromWords: 'library:new-from-words',
     /** New › QR code… (Session 55, Part 8, G): a link or words as one slide, the code large and the words under it. */
     newQrSlide: 'library:new-qr-slide',
+    /** The QR code… window's choices (Q60-28): the logo kept for the middle, Logo in the middle, the words under it. */
+    qrChoices: 'library:qr-choices',
+    /** Logo in the middle: Choose a Picture…, the system's open dialog (operator window only). */
+    pickQrLogo: 'library:qr-pick-logo',
+    /** The window's copy of that picture (a PNG), kept and remembered (operator window only). */
+    keepQrLogo: 'library:qr-keep-logo',
+    /** Logo in the middle and the words under the code, remembered (operator window only). */
+    setQrChoices: 'library:qr-set-choices',
+    /** Download…: the code as a PNG and an SVG, where the person chooses (operator window only). */
+    downloadQr: 'library:qr-download',
     restoreRevision: 'library:restore-revision',
     legacyPresentations: 'library:legacy-presentations',
     getPresentation: 'library:get-presentation',
@@ -1394,7 +1412,12 @@ export interface InvokeContract {
   [IPC.library.words]: { args: [presentationId: string]; result: WordsResult };
   [IPC.library.saveWords]: { args: [presentationId: string, text: string]; result: SaveWordsResult };
   [IPC.library.newFromWords]: { args: [name: string, text: string]; result: NewFromWordsResult };
-  [IPC.library.newQrSlide]: { args: [text: string]; result: NewFromWordsResult };
+  [IPC.library.newQrSlide]: { args: [text: string, options?: QrSlideOptions]; result: NewFromWordsResult };
+  [IPC.library.qrChoices]: { args: []; result: QrChoices };
+  [IPC.library.pickQrLogo]: { args: []; result: QrPicked };
+  [IPC.library.keepQrLogo]: { args: [name: string, png: Uint8Array]; result: QrChoicesResult };
+  [IPC.library.setQrChoices]: { args: [change: QrChoicesChange]; result: QrChoicesResult };
+  [IPC.library.downloadQr]: { args: [text: string, options: { logo: boolean }]; result: QrDownloadResult };
   [IPC.library.restoreRevision]: { args: [revisionId: string]; result: RevisionResult };
   [IPC.library.legacyPresentations]: { args: []; result: { id: string; name: string }[] };
   [IPC.playlists.tree]: { args: []; result: PlaylistNode[] };

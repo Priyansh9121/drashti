@@ -42,7 +42,7 @@ export const SETUP_TOOLS: readonly SetupToolWords[] = [
   {
     id: 'qr-code',
     label: 'QR code…',
-    line: 'Makes a slide with a large QR code of a link or words, and the words under it.',
+    line: 'Makes a slide with a large QR code of a link or words, or saves the code as a picture.',
   },
 ];
 
