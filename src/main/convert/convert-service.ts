@@ -1,4 +1,5 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import { preparationLaunch, PRIORITY_FAILURE_EXIT } from './preparation-launch';
+import { type ChildProcess, type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { rename } from 'node:fs/promises';
@@ -91,6 +92,8 @@ export interface ConvertDeps {
   db: Db;
   mediaDir: string;
   ffmpegPath(): string | null;
+  /** Native-platform priority path; injectable for OS policy assays. */
+  preparationPlatform?: NodeJS.Platform;
   /** Why jobs must wait for the stream or a recording, or null. */
   busy(): string | null;
   /** Background conversions also wait while there is something live. */
@@ -1146,14 +1149,15 @@ export class ConvertService {
     running: RunningFile,
   ): Promise<{ info: MediaInfo; priorityFailed: boolean; timedOut: boolean }> {
     return new Promise((resolve) => {
-      const child = spawn(
+      const launched = this.preparationProcess(
         ffmpeg,
         ['-hide_banner', '-nostdin', '-threads', '1', '-protocol_whitelist', 'file', '-i', file],
-        { windowsHide: true, env: ffmpegEnv() },
+        true,
       );
+      const child = launched.child;
       running.child = child;
       this.deps.children?.started(child.pid, running.tmp);
-      const priorityFailed = !this.lowerPriority(child);
+      let priorityFailed = launched.priorityFailed;
       const reading = { text: '', timedOut: false, done: false };
       const timer = setTimeout(() => {
         reading.timedOut = true;
@@ -1164,7 +1168,8 @@ export class ConvertService {
       child.stderr.on('data', (chunk: Buffer) => {
         if (reading.text.length < 512 * 1024) reading.text += chunk.toString();
       });
-      const finish = () => {
+      const finish = (code: number | null = null) => {
+        if (launched.guarded && code === PRIORITY_FAILURE_EXIT) priorityFailed = true;
         if (reading.done) return;
         reading.done = true;
         clearTimeout(timer);
@@ -1179,9 +1184,32 @@ export class ConvertService {
           info.video.pixFmt = 'yuva420p';
         resolve({ info, priorityFailed, timedOut: reading.timedOut });
       };
-      child.once('error', finish);
+      child.once('error', () => {
+        priorityFailed = true;
+        finish();
+      });
       child.once('close', finish);
     });
+  }
+
+  private preparationProcess(
+    ffmpeg: string,
+    args: string[],
+    strict: boolean,
+  ): {
+    child: ChildProcessWithoutNullStreams;
+    priorityFailed: boolean;
+    guarded: boolean;
+  } {
+    const launch = strict
+      ? preparationLaunch(ffmpeg, args, this.deps.preparationPlatform)
+      : { file: ffmpeg, args, guarded: false };
+    const child = spawn(launch.file, launch.args, { windowsHide: true, env: ffmpegEnv() });
+    return {
+      child,
+      guarded: launch.guarded,
+      priorityFailed: strict && !launch.guarded && !this.lowerPriority(child),
+    };
   }
 
   private lowerPriority(child: ChildProcess): boolean {
@@ -1301,14 +1329,15 @@ export class ConvertService {
       });
       return;
     }
-    const child = spawn(ffmpeg, args, { windowsHide: true, env: ffmpegEnv() });
+    const launched = this.preparationProcess(ffmpeg, args, job.copy?.strictPriority === true);
+    const child = launched.child;
     running.child = child;
     this.deps.children?.started(child.pid, tmp);
     const limit = setTimeout(() => {
       running.stop ??= 'time';
       child.kill('SIGKILL');
     }, running.limitMs);
-    const priorityFailed = job.copy?.strictPriority === true && !this.lowerPriority(child);
+    let priorityFailed = launched.priorityFailed;
     if (!job.copy?.strictPriority) {
       try {
         if (child.pid !== undefined) setPriority(child.pid, constants.priority.PRIORITY_LOW);
@@ -1349,6 +1378,7 @@ export class ConvertService {
       child.on('close', resolve);
     });
     clearTimeout(limit);
+    if (launched.guarded && code === PRIORITY_FAILURE_EXIT) priorityFailed = true;
     this.deps.children?.ended(child.pid);
     running.child = null;
     const stop = this.pauseForActivity(running, job.waitForShow);
