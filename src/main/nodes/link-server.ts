@@ -408,7 +408,7 @@ export class LinkServer {
         this.json(res, 500, {
           ok: false,
           message:
-            'Main could not answer that. Try again; if it happens again, choose Help, then Save Diagnostics… on Main, and tell the admin.',
+            'Main could not answer that. Try again; if it happens again, choose Help › Report a Problem… on Main (or Save Diagnostics… when it can’t be sent).',
         });
       }
     }

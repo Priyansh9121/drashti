@@ -215,5 +215,5 @@ export function journalNotice(unshown: readonly CrashEntry[], time: (iso: string
     unshown.length === 1
       ? `a problem was noted at ${time(last.at)}: ${last.what}`
       : `${String(unshown.length)} problems were noted; the last at ${time(last.at)}: ${last.what}`;
-  return `While Drashti last ran, ${what}. Help, then Save Diagnostics…, keeps the details for the admin.`;
+  return `While Drashti last ran, ${what}. To tell the admin, choose Help › Report a Problem… (or Save Diagnostics… when it can’t be sent).`;
 }
