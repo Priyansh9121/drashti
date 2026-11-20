@@ -36,6 +36,11 @@ export interface Sound {
   /** Sound and picture… (alpha.20): its file's tone (Bass, Treble, Voice boost). Left out: as it is. */
   tone?: Tone;
   /**
+   * A stream link's sound (alpha.20, the playback set's slice 8): the link's id, its player joined as its pictures are
+   * (render/live-playback.ts), never a file. Left out for every file's sound.
+   */
+  link?: string;
+  /**
    * Which of the operator's two levels it plays under (X33, shared/sound.ts): Audio's (a sound: the audio layer, a sound
    * over it, a deck's sounds and its transition's) or Video's (a video's sound: the background's, the slide's videos').
    */
@@ -221,4 +226,9 @@ export function withPlayback(state: EngineState, sound: Sound): Sound {
     out = { ...out, seek };
   }
   return out;
+}
+
+/** Red (x54, slice 8): the hall's sounds, a stream link's among them: not built yet. */
+export function hallSoundsOf(state: EngineState): Sound[] {
+  return soundsOf(state);
 }

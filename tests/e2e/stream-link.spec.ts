@@ -17,6 +17,7 @@ import {
   windowShowing,
 } from './helpers';
 import { linkLook, type LiveStandIn, liveStandIn } from './live-stand-in';
+import { audioPage } from './time-bar-helpers';
 import { testFfmpeg } from './stream-helpers';
 
 /*
@@ -135,6 +136,36 @@ test('Show a Stream Link… puts a live stream on the hall’s screen and LIVE, 
   await expect(win.getByTestId('stream-link-notice')).toHaveCount(0);
   const folder = join(userData, 'Stream links');
   await expect.poll(() => (existsSync(folder) ? readdirSync(folder).length : 0), { timeout: 15_000 }).toBe(0);
+  await closeAll(app, standIn);
+});
+
+test('a stream link’s sound plays in the hall at the Video level, and none of it in Drashti’s own stream', async () => {
+  test.setTimeout(180_000);
+  const { standIn, app, win, hall } = await hallAndLink();
+  const audio = await audioPage(app);
+  await showLink(win, standIn.url);
+  await moving(hall, 'the hall’s screen');
+  // The stand-in's tone through the audio player, under Video's level.
+  const sound = audio.locator('audio[data-key^="link:"]');
+  await expect(sound).toHaveCount(1);
+  await expect(sound).toHaveAttribute('data-kind', 'video');
+  await expect
+    .poll(async () => Number(await audio.locator('body').getAttribute('data-level')), { timeout: 15_000 })
+    .toBeGreaterThan(-50);
+  // Video's mute takes it away; unmuted, it is back.
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('video', true));
+  await expect.poll(async () => Number(await sound.getAttribute('data-gain'))).toBe(0);
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('video', false));
+  await expect.poll(async () => Number(await sound.getAttribute('data-gain'))).toBeGreaterThan(0);
+  // Drashti's own stream mixes none of it.
+  await win.getByTestId('open-stream').click();
+  const program = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
+  await expect(program.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
+    timeout: 60_000,
+  });
+  await letTimePass(program, 2000, 'the stream’s page has had its state');
+  await expect(program.locator('audio[data-key^="link:"]')).toHaveCount(0);
+  await win.getByRole('button', { name: 'Close stream' }).click();
   await closeAll(app, standIn);
 });
 
