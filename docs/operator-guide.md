@@ -498,3 +498,17 @@ A press says **Applied on Main**, **No change on Main**, or why Main refused it.
 **Connected to Main** means it has Main's current show. **Not connected** leaves the last view visible while it tries to reconnect. Main and its audience screens keep running. Any displays assigned to the controller keep their last show too, even through a longer link loss; an explicit stop from Main still applies. Untick **Shared show view** on Main to remove the view; the show stays as it was. Sound stays on Main. Main's video inputs and other app windows are named as being on Main; pictures and videos use the copies on the second computer.
 
 The video editor’s **Preview saved edits** checks the prepared file privately once it is ready; **Source preview** returns to the original for source-time trimming. Saving draft changes prepares the next preview while idle. **Prepare again** rebuilds a copy that cannot play, keeping the same recipe and original.
+
+### Browsing video frames, waveforms and scene suggestions
+
+In the library's **Media**, point at a video and move across its small preview to browse a silent strip of approximate frames. Tab to **Browse frames of …** for arrow keys, Home and End. The strip is made once while the show, stream and recording are idle. A failure offers **Retry preview** after the file and free space are checked.
+
+**Edit Video…** uses the chosen sound track's waveform along its trim timeline. Time fields still work while it prepares; a silent file says **No audio track**. Scene changes are offered separately: **Keep** adds a marker to this draft, **Drop** dismisses the suggestion from this view, and only **Save** keeps draft changes. Your own markers and a playlist row's trim points are never replaced by analysis. Preparation stops and removes its partial output when a show, stream or recording starts, then starts again while idle.
+
+## Export a video clip
+
+In Pro Mode, open the video's **Edit Video…** window and choose the start and end. **Export clip…** offers **Saved edits** or **Original**, the video's shape or **Vertical 9:16**, and MP4 or WebM. Save edits and wait for **Ready for next showing** before exporting Saved edits. Vertical keeps the middle of the picture without stretching; choose WebM to retain transparency. **Also add the clip to Media** adds the finished file to the library.
+
+Choose **Export clip…**, then choose a new file with Save as…. The job waits while a show, stream or recording is on and continues when idle. You can close the editor; open it again for progress, **Stop export**, or **Show the file**. A failed export says what to check before trying again. The source video stays unchanged.
+
+**Lighter playing copy** shows whether this slow computer needs a smaller copy. It prepares by itself while idle, keeps the original's proportions and sound, and is used by the next showing once ready. The current showing keeps its file. **Stop lighter copy** stops preparation; use **Retry lighter copy** after fixing a missing source or full disk.

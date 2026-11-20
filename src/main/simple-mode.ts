@@ -176,6 +176,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // aside, Even loudness and Trim black and silence are bounded since Session 56, below.)
   IPC.media.saveTrim,
   IPC.media.stopSave,
+  // Edit Video: exports and manual preparation controls are Pro Mode’s. Status stays readable.
+  IPC.media.clipExport,
+  IPC.media.stopClipExport,
+  IPC.media.stopProxy,
   IPC.media.setLook,
   IPC.media.keepLiveZoom,
   IPC.media.savePicture,
@@ -543,6 +547,8 @@ export function simpleModeRefusals(
   answers.set(IPC.events.view, () => ({ available: false, message: words(), addresses: [] }));
   // Nothing copied (alpha.20: the new secret's Copy, whose window Simple Mode never opens).
   answers.set(IPC.events.copySecret, () => false);
+  answers.set(IPC.media.stopClipExport, () => false);
+  answers.set(IPC.media.stopProxy, () => false);
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
   answers.set(IPC.drop.pickFolder, () => null);
   // The Access List's: what happened, with no list (its window keeps the one it shows).

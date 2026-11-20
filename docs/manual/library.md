@@ -173,3 +173,66 @@ For the button that offers a long file's saved place, see **LIVE, Back and Next 
 4. Press **Save**.
 
 ![The timeline: start, end and markers on a placeholder video](../screenshots/video-timeline.png)
+
+## Browsing a video's frames
+
+**What it is.** In **Media**, a video's small preview browses a strip of frames prepared once while Drashti is idle. It is silent and does not move the video on the screens. Its times are approximate.
+
+**When you would use it.** To recognise a video before adding it to a playlist.
+
+**How:**
+
+1. Point at a video in **Media**. Its preview waits while the show, stream or recording is on.
+2. Move across the small preview to browse its frames.
+3. With the keyboard, Tab to **Browse frames of …**, then use the arrow keys, Home or End.
+4. If it says **Retry preview**, check the video is available and that the disk has space, then press it while idle.
+
+![The library opens above the playlists; choose its Media tab](../screenshots/playlist-up-down.png)
+
+## Waveforms and suggested scene markers
+
+**What it is.** **Edit Video…** shows the chosen sound track's waveform along the trim timeline, and offers scene changes as suggested markers. The waveform and suggestions use the original video's time. They prepare while the show, stream and recording are idle; starting any of these stops preparation and removes its partial copy. It starts again from the beginning once idle.
+
+**When you would use it.** To find a quiet gap for a trim, or mark a change of scene without replacing your own named points.
+
+**How:**
+
+1. Open **Edit Video…** and wait for its waveform and scene suggestions. The time fields still work while they prepare.
+2. A video without sound says **No audio track**. Choosing another track prepares its own waveform.
+3. Press **Keep** beside a scene to add it to the current draft, or **Drop** to dismiss that suggestion from this view.
+4. Press **Save** to keep the draft. Cancel leaves saved markers and each playlist row's trim points as they were. A new analysis never replaces those points.
+5. If preparation fails, check the source video and free space, then use **Retry**.
+
+![The video preview and its start, end and marker controls](../screenshots/markers-dialog.png)
+
+## Lighter playing copies
+
+**What it is.** On a slow computer, a large video gets a smaller playing copy while Drashti is idle. The original is kept for editing and export. A current showing keeps its file; the next showing uses its prepared copy.
+
+**When you would use it.** To play a large video more smoothly on a computer with few processor cores or software video drawing.
+
+**How:**
+
+1. Open the video's **Media information…** to read its lighter copy's status.
+2. Finish the show and stop streaming and recording so waiting preparation can run.
+3. In **Edit Video…**, use **Stop lighter copy** to stop it. If it failed or was stopped, check the source and free space, then use **Retry lighter copy**.
+4. Wait for the status to say the next showing uses the lighter copy. It retains the picture's proportions and transparency.
+
+![The library's Media controls are opened from its file menu](../screenshots/markers-dialog.png)
+
+## Exporting a clip, including vertical video
+
+**What it is.** A new video file containing the start and end chosen in Edit Video, with saved edits or the original picture. Vertical 9:16 keeps the middle of the picture without stretching. The original stays unchanged.
+
+**When you would use it.** To share a short part of a video or make a portrait clip for a phone.
+
+**How:**
+
+1. Open **Edit Video…** in Pro Mode and choose the start and end.
+2. Choose **Saved edits** or **Original**, then **As the video** or **Vertical 9:16**. Save edits and wait for them to be ready before exporting Saved edits.
+3. Choose MP4, or WebM to keep transparency. Tick **Also add the clip to Media** if wanted.
+4. Press **Export clip…** and choose a new file with Save as…. The original is never replaced, even when you choose its name.
+5. The export waits while a show, stream or recording is on. You may close the editor; it keeps the accepted request across a restart too.
+6. Open the editor again for progress, **Stop export**, or **Show the file** when done. If it failed, check the source, chosen folder and free space, then export again.
+
+![The source video's timeline supplies the selected start and end](../screenshots/video-timeline.png)
