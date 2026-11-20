@@ -11,7 +11,6 @@ import type { GpuPipelines, MainWatch, PerfProfile } from './perf-watch';
 import type { ScenarioRun } from './perf-scenarios';
 import { describePriority } from './priority';
 import { plural } from '../shared/text';
-import { startRetireStartup } from './x19-retire-trace';
 
 /*
  * Performance self-test, run by hand on the real machines (README,
@@ -657,7 +656,6 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
   // A trace (DRASHTI_PERF_PROFILE) from the start: the LIVE picture's GPU warm-up, the cold start and the
   // test output's warm-up are in it too.
   await ctx.profile?.start();
-  const stopRetireStartup = ctx.profile ? undefined : await startRetireStartup();
   // The window draws first, on view, as before a show; then the test output goes over it.
   const cold = await coldStart(ctx.operator(), startedAt);
   const folder = mkdtempSync(join(tmpdir(), 'drashti-perf-lyrics-'));
@@ -718,7 +716,6 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
         ).filter((state) => state === 'warming').length,
       quiet: { reset: () => ctx.watch?.reset(), worst: () => ctx.watch?.worstBlockMs() ?? 0 },
     });
-    if (stopRetireStartup) await stopRetireStartup();
     ctx.cpu?.();
     d.loopDelay.reset();
     d.handlerTimes.clear();
@@ -881,7 +878,6 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       );
     return { passed: checks.every((c) => c.ok), checks, summary, coldStart: cold, raw };
   } finally {
-    if (stopRetireStartup) await stopRetireStartup();
     undo();
     rmSync(folder, { recursive: true, force: true });
   }
