@@ -700,6 +700,54 @@ The owner, 19 Nov 2026, using alpha.19 (Session 60, x36):
   Audio, a folder (a smart playlist at once), and every drop while a playlist is open are as before.
 - `tests/e2e/library-and-tools.spec.ts` and `tests/e2e/drop-new-playlist.spec.ts` check them at CI's 1024 × 645, with axe.
 
+## 54. A video that cannot play, its first frame, and a file still being copied (alpha.20, Q60-31)
+
+The owner, 20 Nov 2026 ("i just found a bug with the video where it doesnt play in audience screen"): his ordinary H.264
+file played on his laptop and not on the mandir's Mac, its sound playing while LIVE showed black or the Wallpaper. x46's
+hunt (CI x46-1120-112649-63694) found three things Drashti did on every computer:
+
+- **A video whose element fails** (that computer's decoder raising an error, a cut or damaged file, its copy unreadable)
+  left its slot drawing nothing: the hall black at once, its sound playing on in the audio player, never taken off,
+  nobody told. Now the page tells Main (`media:cannot-play`, a screen, LIVE or the stream's page) with the error's kind;
+  after 1 s Main takes it off as x36 takes off a picture that cannot be drawn (`ShowEngine.noPicture`), says so by its
+  name and where, and logs the kind and where; a failure within 3 s of a GPU process stopping is that stop's and loads
+  again by itself (`main/media/cannot-play.ts`). Meanwhile a file that fails as it loads leaves the picture before, and
+  one that fails while it plays stays drawn as it was (`render/background-slots.ts`: `drawn`, `isDrawn`).
+- **No first frame** (Q60-44, the owner's answer A, 20 Nov 2026): a video with no first frame 10 s after a page began
+  to load it (`FIRST_FRAME_MS`, `shared/no-picture.ts`, its one place) is said to Main as a video that cannot play; the
+  page keeps loading it, what it drew before staying. Main heeds the word from its own screens and takes it off (LIVE's
+  or the stream's page alone is only logged, and shows the video if its first frame comes after all: a page out of
+  sight may wait longer, and the hall is what the audience sees), the Wallpaper or the cover staying until then, never
+  black.
+- **A paired computer's screen** that cannot play (its element failed, no first frame, or a picture it cannot draw;
+  ledger G-A14) keeps what it showed, never black; the node tells Main once its copy of the file is there
+  (`node-mode/node-app.ts`, the feed's `cannot-play`), and Main tells the operator by the node's and the file's names,
+  once for each node and showing, and logs it; the video plays on everywhere else (`NodeCannotPlay`,
+  `main/media/cannot-play.ts`, its one place).
+- **The first frame**: the Wallpaper went the moment the engine had a background, and a cover the engine took off as a
+  video went up showed the picture it hid, until the video's first frame (31-446 ms on CI; longer on a slow computer).
+  Now each scene keeps nothing-up while nothing of the new background is drawn, and such a cover until that
+  background's first frame, as `BackgroundMedia` tells it (`onDrawn`, before the painting) (`render/Scene.tsx`).
+- **Back to the Wallpaper** (the lead's yes, 20 Nov): the Wallpaper's picture is read again each time it comes back
+  (the media protocol's no-store), so every clear to it (Clear background, a video's end, one that could not play
+  coming off) showed black until its picture came (a frame or more; as long as a slow disk takes). Now what the
+  background drew stays, the Wallpaper drawn out of sight over it, until the Wallpaper's picture has come
+  (`NothingUp`'s and `WallpaperView`'s `onDrawn`: loaded and decoded), at most 1 s (`HOLD_FOR_WALLPAPER_MS`,
+  `render/Scene.tsx`), never black between.
+- **A file still being copied** into a folder Drashti follows was taken half-written once its size held still for the
+  folder's wait. Now the folders take a file only once its own bytes say it is whole (`import/whole-file.ts`), for
+  every kind that says where it ends: an ISO file's boxes (a movie box; a HEIF or AVIF picture's meta box, by its
+  brands), RIFF and AIFF sizes, a Matroska Segment, JPEG's end marker after its picture data, PNG's IEND, GIF's
+  trailer, a BMP's size, JPEG 2000's boxes and end marker, a PDF's startxref and %%EOF, a zip's end-of-central-directory
+  record (.pptx, .key), an MP3's Xing, Info or VBRI byte count, an Ogg file's last page marked as the end, ASF's file
+  size, and a transport stream ending part-way through a packet; and on a longer read (Q60-46, the owner's A,
+  `import/whole-more.ts`): FLAC (its last frame against the samples it counts, its own CRC-16), TIFF, PSD, Targa, ICO,
+  FLV, MXF, RealMedia, CAF, AU, APE, WavPack, DV cut part-way through a frame, and the Office 97-2003 compound file. A
+  kind with no such mark is taken by its size alone, as before: an MPEG program stream, a transport stream or DV of
+  whole packets or frames, an MP3 with no Xing header, raw AAC, AC-3, E-AC-3, DTS, MP2 or AMR. A smart playlist's line names one still being copied. One found not whole and unchanged for
+  2 minutes (its copy stopped, or it is damaged) is still never taken by itself, and is not read again until it changes:
+  the line says so, and the drop folder lists it under **Not taken** and says it once (Import… brings it in as it is).
+
 ## Shared show view on a paired computer
 
 Main's Screens adds **Shared show view** to each node card, off by default and changed only from Main's operator window in Pro Mode. The choice is public metadata on Main, separate from the unchanged node pairing and pinned certificate. Its feed carries an audience preview's geometry and the chosen public action areas in addition to the existing ordered engine feed. Action areas start empty; the view alone never grants an action.

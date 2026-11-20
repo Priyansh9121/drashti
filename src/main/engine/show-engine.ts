@@ -75,7 +75,7 @@ import {
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { keepMoves, learnedFiles, resolvePlaying, videoFilesFor } from './playing';
 import { type Playing, type PlayingRef, playingNow, playingOf } from '../../shared/engine/playing';
-import { noPictureOff, oneAtATime, putsUp } from './one-at-a-time';
+import { type CannotPlayTook, cannotPlayOff, noPictureOff, oneAtATime, putsUp } from './one-at-a-time';
 import {
   clipLeftMs,
   type DeckEntry,
@@ -1321,8 +1321,8 @@ export class ShowEngine {
    * A video's picture cannot be drawn on this computer (Session 60, x36: the owner's bug of 19 Nov 2026 and his "Yes,
    * A"): a window found it as the file loaded, Chromium playing it as sound only, so the hall saw black (or the picture
    * before) while its sound played. The background playing it comes off with its sound; a video of it on the slide up
-   * or in the picture-in-picture box waits where it is, paused (one-at-a-time.ts noPictureOff). Not a change of the
-   * operator's: Back, Oops and Put it back are as they were. Whether any of it was up.
+   * waits where it is, paused; the picture-in-picture box playing it comes off (Q60-46: one-at-a-time.ts noPictureOff).
+   * Not a change of the operator's: Back, Oops and Put it back are as they were. Whether any of it was up.
    */
   noPicture(mediaId: string): boolean {
     let took = false;
@@ -1333,6 +1333,29 @@ export class ShowEngine {
       this.bookkeeping = true;
       try {
         this.apply(actions);
+      } finally {
+        this.bookkeeping = false;
+      }
+    });
+    return took;
+  }
+
+  /**
+   * A video could not play on a page that draws the show (Q60-31, the owner's own bug; x46's item 4): its element
+   * failed there, or its first frame never came (Q60-44). The background playing it comes off with its sound; a video
+   * of it on the slide up waits where it is, paused with its sound, the slide staying; the picture-in-picture box
+   * playing it comes off (one-at-a-time.ts cannotPlayOff). Not a change of the operator's: Back, Oops and Put it back
+   * are as they were. What it took, or null when none of it was up.
+   */
+  cannotPlay(mediaId: string): CannotPlayTook | null {
+    let took: CannotPlayTook | null = null;
+    this.atOnce(() => {
+      const off = cannotPlayOff(this.state, mediaId, this.now());
+      if (off.actions.length === 0) return;
+      took = off.took;
+      this.bookkeeping = true;
+      try {
+        this.apply(off.actions);
       } finally {
         this.bookkeeping = false;
       }

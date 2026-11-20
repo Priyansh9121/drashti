@@ -138,6 +138,20 @@ export interface NodeHealth {
   noGpu?: true;
 }
 
+/**
+ * A showing a node's screen could not play (Q60-44, the owner's answer A of 20 Nov 2026): its element failed there, its
+ * first frame never came (shared/no-picture.ts FIRST_FRAME_MS), or its picture cannot be drawn there (code NO_PICTURE).
+ */
+export interface NodeCannotPlayReport {
+  screenId: string;
+  mediaId: string;
+  startedAt: number;
+  /** MediaError's 1 to 4, NO_FIRST_FRAME, NO_PICTURE (shared/no-picture.ts), or 0 for none given. */
+  code: number;
+  /** Chromium's words on it, for the log (up to 1,000 characters), or ''. */
+  words: string;
+}
+
 // ---- the feed ------------------------------------------------------------------------------
 
 /** What a node sends Main on the feed. The first message must be `hello`, within a few seconds. */
@@ -150,7 +164,9 @@ export type FromNode =
   | { type: 'health'; health: NodeHealth }
   | { type: 'controller-action'; request: ControllerRequest }
   /** A small picture of what a screen shows (while the dashboard is open): a JPEG, base64. */
-  | { type: 'thumb'; screenId: string; jpeg: string };
+  | { type: 'thumb'; screenId: string; jpeg: string }
+  /** A showing one of its screens could not play (Q60-44): it keeps what it showed; Main tells the operator. */
+  | { type: 'cannot-play'; report: NodeCannotPlayReport };
 
 export type NodeByeReason = 'unauthorized' | 'revoked' | 'version' | 'too-slow' | 'closing' | 'replaced';
 
