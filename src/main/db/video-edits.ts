@@ -78,12 +78,28 @@ export class VideoEditsRepo {
         };
       const revision = current.revision + 1;
       const recipe = parsed.data.recipe;
+      const jpeg = parsed.data.thumbnailJpeg;
+      if (recipe.thumbnailMs !== null && recipe.thumbnailMs !== current.recipe.thumbnailMs && !jpeg)
+        return {
+          ok: false,
+          message:
+            'The chosen thumbnail frame is missing. Choose that frame in the preview again, then Save.',
+        };
       const needsCopy = videoEditNeedsCopy(recipe);
       this.db
         .prepare(
-          `UPDATE media SET video_edit=?,video_edit_revision=?,video_edit_ready_revision=?,video_edit_copy_id=NULL,video_edit_error=NULL WHERE id=? AND video_edit_revision=?`,
+          `UPDATE media SET video_edit=?,video_edit_revision=?,video_edit_ready_revision=?,video_edit_copy_id=NULL,video_edit_error=NULL,
+        video_edit_thumbnail=CASE WHEN ? THEN ? ELSE video_edit_thumbnail END WHERE id=? AND video_edit_revision=?`,
         )
-        .run(JSON.stringify(recipe), revision, needsCopy ? -1 : revision, current.mediaId, current.revision);
+        .run(
+          JSON.stringify(recipe),
+          revision,
+          needsCopy ? -1 : revision,
+          recipe.thumbnailMs === null || jpeg ? 1 : 0,
+          recipe.thumbnailMs === null || !jpeg ? null : Buffer.from(jpeg),
+          current.mediaId,
+          current.revision,
+        );
       return {
         ok: true,
         edit: {
@@ -96,6 +112,14 @@ export class VideoEditsRepo {
         },
       };
     })();
+  }
+
+  /** The deliberate library thumbnail lives in the backed-up database; the default still and video bytes stay intact. */
+  thumbnailOf(mediaId: string): Uint8Array | null {
+    const row = this.db
+      .prepare('SELECT video_edit_thumbnail FROM media WHERE id=? AND deleted_at IS NULL')
+      .get(this.sourceId(mediaId)) as { video_edit_thumbnail: Buffer | null } | undefined;
+    return row?.video_edit_thumbnail ?? null;
   }
 
   complete(mediaId: string, revision: number, copyId: string): boolean {

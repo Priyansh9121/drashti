@@ -56,7 +56,12 @@ describe('versioned video edits in the library', () => {
   it('a thumbnail-only choice is ready, and missing/deleted/non-video targets cannot be edited', () => {
     const { db, repo } = fixture();
     expect(
-      repo.save({ mediaId: 'video', revision: 0, recipe: { ...PLAIN_VIDEO_EDIT, thumbnailMs: 2000 } }),
+      repo.save({
+        mediaId: 'video',
+        revision: 0,
+        recipe: { ...PLAIN_VIDEO_EDIT, thumbnailMs: 2000 },
+        thumbnailJpeg: new Uint8Array([255, 216, 255, 217]),
+      }),
     ).toMatchObject({ ok: true, edit: { state: 'ready', readyMediaId: 'video' } });
     db.prepare("UPDATE media SET missing=1 WHERE id='video'").run();
     expect(repo.save({ mediaId: 'video', revision: 1, recipe: PLAIN_VIDEO_EDIT }).ok).toBe(false);
