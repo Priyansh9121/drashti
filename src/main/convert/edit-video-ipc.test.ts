@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerEditVideoIpc } from './edit-video-ipc';
-import { PLAIN_VIDEO_EDIT, type VideoEditSnapshot } from '../../shared/video-edit';
+import { PLAIN_VIDEO_EDIT, type VideoEditResult, type VideoEditSnapshot } from '../../shared/video-edit';
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 vi.mock('../ipc/handle', () => ({
@@ -77,4 +77,36 @@ describe('Edit Video operator boundary', () => {
     expect(f.save).not.toHaveBeenCalled();
     expect(f.changed).not.toHaveBeenCalled();
   });
+});
+
+it('reports a missing prepared file as retryable, keeping the source recipe and revision', () => {
+  const edit: VideoEditSnapshot = {
+    mediaId: 'video',
+    revision: 3,
+    recipe: { ...PLAIN_VIDEO_EDIT, speed: 2 },
+    state: 'ready',
+    readyMediaId: 'copy',
+    message: null,
+  };
+  const save = vi.fn(() => ({ ok: true as const, edit }));
+  registerEditVideoIpc({
+    fromOperator: () => true,
+    available: (id) => id === 'video',
+    repo: { sourceId: (id) => id, read: () => edit, save },
+    changed: () => undefined,
+    write: (_guard, run) => Promise.resolve(run()),
+  });
+  const result = handlers.get('media:video-edit')?.({}, 'video') as VideoEditResult;
+  expect(result).toMatchObject({
+    ok: true,
+    edit: {
+      mediaId: 'video',
+      revision: 3,
+      state: 'failed',
+      readyMediaId: null,
+      recipe: { speed: 2 },
+    },
+  });
+  if (result.ok) expect(result.edit.message).toContain('Save');
+  expect(save).not.toHaveBeenCalled();
 });

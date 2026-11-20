@@ -138,6 +138,8 @@ For the button that offers a long file's saved place, see **LIVE, Back and Next 
 3. Set the start and end, picture, sound and playback choices. **Frame shape** offers Original shape, 16:9, 4:3, square and vertical 9:16; Original shape is the default. The source preview is labelled so it is clear which file it shows.
 4. Press **Save**. **Ready for next showing** means the saved revision is ready; **Preparing** waits while a show, stream or recording is active. A video already on the screens keeps its earlier revision. If saving fails, keep the window open, read the reason and retry Save.
 
+5. When **Ready for next showing** appears, choose **Preview saved edits** to check the prepared copy privately. **Source preview** returns to source-time trimming. **Prepare again** rebuilds a damaged copy.
+
 **Reset edits** changes the draft; press Save to keep that reset. **Cancel**, or closing the window, lets you discard an unsaved draft or keep editing. Originals, the default thumbnail, existing row trims, and Sound and picture's tone and delays are kept. A newer save in another editor is reported instead of being overwritten.
 
 ![Media: right-click a video to open its editing tools](../screenshots/convert-media-list-done.png)
