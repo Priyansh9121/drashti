@@ -1176,6 +1176,20 @@ export function WarmUp({
         ready: () => {
           setStep({ phase: 'during', at: engineNow() });
         },
+        // Tests only: a frame already queued by the browser can be delivered after the cut. A packaged page never holds.
+        ...(hold
+          ? {
+              frame: (tick: FrameRequestCallback) => {
+                const request = new CustomEvent('drashti-test-warm-up-before-frame', {
+                  bubbles: true,
+                  cancelable: true,
+                  detail: { tick, drew: drewFrame.current },
+                });
+                if (canvasHost.current?.dispatchEvent(request) === false) return 0;
+                return requestAnimationFrame(tick);
+              },
+            }
+          : {}),
       });
     } else {
       /**
@@ -1207,7 +1221,7 @@ export function WarmUp({
       clearTimeout(settleCap);
       pauseClock(null);
     };
-  }, [step, tree, finish, page, uiParent]);
+  }, [step, tree, finish, page, uiParent, hold]);
   const urlOf = useCallback(
     (id: string, attempt?: number) => pictures[id] ?? mediaUrl(id, attempt),
     [pictures],

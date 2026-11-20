@@ -604,6 +604,66 @@ test('where Chromium draws without a graphics chip the LIVE picture draws the sh
   await app.close();
 });
 
+test('a LIVE warm-up cut between its before frames cannot be restarted by a frame the browser had already queued', async () => {
+  const { app, userData } = await launchApp({ ...SAID_LATE, ...WITHOUT_A_CHIP });
+  try {
+    await app.context().addInitScript(() => {
+      let queued: FrameRequestCallback | null = null;
+      let delivered = false;
+      document.addEventListener('drashti-test-warm-up-before-frame', (event) => {
+        const request = event as CustomEvent<{ tick: FrameRequestCallback; drew: boolean }>;
+        const host = event.target;
+        if (
+          queued ||
+          !request.detail.drew ||
+          !(host instanceof HTMLElement) ||
+          !host.closest('[data-testid="live-preview"]')
+        )
+          return;
+        queued = request.detail.tick;
+        event.preventDefault();
+        document.documentElement.dataset['testBeforeQueued'] = 'yes';
+      });
+      new MutationObserver(() => {
+        if (!queued || delivered) return;
+        const host = document.querySelector('[data-testid="live-preview"] [data-warm-up]');
+        if (host?.getAttribute('data-warm-up') !== 'settle') return;
+        // Deliver in the gap between the cut's commit and passive cleanup, as an already-dequeued frame can be.
+        delivered = true;
+        queued(performance.now());
+        document.documentElement.dataset['testBeforeDelivered'] = 'yes';
+      }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-warm-up'] });
+    });
+    const win = await operatorPage(app);
+    // The listener must be installed before this document's warm-up begins; no condition is retried by this reload.
+    await win.reload();
+    await operatorReady(win);
+    await expect(win.locator('html')).toHaveAttribute('data-test-before-queued', 'yes', { timeout: 30_000 });
+    await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveAttribute(
+      'data-warm-up',
+      'before',
+    );
+    await app.evaluate(() => {
+      const say = (globalThis as MainGlobals).drashtiTestGpuSaid;
+      if (!say) throw new Error('Main has no late-GPU test hook');
+      say();
+    });
+    await expect(win.locator('html')).toHaveAttribute('data-test-before-delivered', 'yes');
+    await expect(win.locator('[data-testid="live-preview"] [data-warm-up]')).toHaveCount(0, {
+      timeout: 30_000,
+    });
+    await expect(win.locator('[data-testid="live-preview"] [data-testid="scene"]')).toHaveCount(1);
+    await expect
+      .poll(() => warmUpLines(userData).filter((line) => line.endsWith('for the LIVE picture')))
+      .toEqual([LIVE_SKIPPED]);
+    const marks = await warmUpMarks(win);
+    expect(marks).toContain('drashti-warm-up:live-cut');
+    expect(marks).not.toContain('drashti-warm-up:live-end');
+  } finally {
+    await app.close();
+  }
+});
+
 test('where Chromium draws without a graphics chip the stream’s page draws the show without a warm-up, as the outputs do, and the log says so once (WU-1)', async () => {
   test.setTimeout(180_000);
   const { app, userData } = await launchApp({ ...WITHOUT_A_CHIP, DRASHTI_TEST_FAKE_DEVICES: '1' });
