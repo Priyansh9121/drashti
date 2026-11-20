@@ -109,3 +109,62 @@ it('Cue pins the resolved copy once, caps overlap using its output time, and Go 
   });
   expect(engine.current.videoCrossfade?.durationMs).toBe(1375);
 });
+
+it('keeps a preparing automatic edit visibly unavailable and holds the current video without a source fallback', () => {
+  const lists = new MemoryPlaylistSource();
+  lists.set('pl', [
+    {
+      id: 'a',
+      kind: 'media',
+      mediaId: 'first',
+      media: 'video',
+      label: 'Placeholder first',
+      whenEnds: 'next',
+    },
+    {
+      id: 'b',
+      kind: 'media',
+      mediaId: 'second',
+      media: 'video',
+      label: 'Placeholder second',
+      whenEnds: 'freeze',
+    },
+  ]);
+  const engine = new ShowEngine(
+    makeSource(),
+    new RecordingTransport(),
+    () => 1000,
+    {
+      items: (id) => lists.items(id),
+      crossfadeMs: () => 2000,
+    },
+    {
+      schedule: () => () => undefined,
+      mediaKind: () => 'video',
+      mediaLength: () => 10_000,
+      prepareVideoEdits: (previous, next, historic) =>
+        prepareVideoEdits(
+          previous,
+          next,
+          (id) =>
+            id === 'second'
+              ? {
+                  mediaId: id,
+                  revision: 1,
+                  recipe: { ...PLAIN_VIDEO_EDIT, speed: 2 },
+                  state: 'preparing',
+                  readyMediaId: null,
+                  message: null,
+                }
+              : null,
+          historic,
+        ),
+    },
+  );
+  engine.dispatch({ type: 'playItem', playlistId: 'pl', itemId: 'a' });
+  expect(engine.current.videoCue?.error).toContain('preparing');
+  const cue = engine.current.videoCue;
+  if (!cue) throw new Error('No visible preparing reason');
+  expect(engine.dispatch({ type: 'goVideoCue', cueId: cue.id })).toMatchObject({ ok: false });
+  expect(engine.current.layers.background).toMatchObject({ mediaId: 'first' });
+});
