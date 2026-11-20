@@ -296,8 +296,9 @@ function stillBox(box: PipLayer | null): PipLayer | null {
  * it was, once only or going round as it did before the repeat, between its own points (the library's, as ever).
  */
 function ownPlaying<T extends { loop: boolean; ab?: { loop: boolean } }>(layer: T): T {
-  // Red (x47, slice 4).
-  return layer;
+  if (!layer.ab) return layer;
+  const { ab, ...rest } = layer;
+  return { ...rest, loop: ab.loop } as T;
 }
 
 export function savedFrom(state: EngineState, session: string, now = new Date()): SavedLive {

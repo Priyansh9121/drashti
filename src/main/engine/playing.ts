@@ -63,6 +63,94 @@ const NO_LENGTH: Refused = {
   message: 'Its length is not known yet: try again in a moment, once it has started playing.',
 };
 
+const AB_NOT_HERE: Refused = {
+  ok: false,
+  error: 'invalid-command',
+  message: 'A-B repeat is for the background video and the sound: use it on one of those.',
+};
+
+const AB_TOO_SHORT: Refused = {
+  ok: false,
+  error: 'invalid-command',
+  message: 'A and B are too close together: choose them at least half a second apart.',
+};
+
+const NOT_AB: Refused = {
+  ok: false,
+  error: 'not-repeating',
+  message: 'It is not repeating A-B: there is nothing to stop.',
+};
+
+const FRAMES_OF_VIDEOS: Refused = {
+  ok: false,
+  error: 'invalid-command',
+  message: 'One frame back and on are for a video: use them on a video that is playing.',
+};
+
+const FRAMES_WHILE_PAUSED: Refused = {
+  ok: false,
+  error: 'invalid-command',
+  message: 'Pause it first: a frame is stepped while it waits.',
+};
+
+/**
+ * The background video's or the sound's layer going round between new points, or back to its own (A-B repeat,
+ * alpha.20): its points (none: the whole file), whether it goes round, what it keeps aside, and where it plays from
+ * (`toMs` into its file): a jump as a marker's (waiting there when paused); an audio playlist's track paused by Music's
+ * Pause waits there by how far it is past its start point, as Music's Pause keeps it, with no jump.
+ */
+function withRepeat(
+  state: EngineState,
+  playing: Playing,
+  next: { clip: PlaybackClip | undefined; loop: boolean; ab: AbRepeat | undefined; toMs: number },
+  now: number,
+): EngineAction | null {
+  const shaped = <T extends { clip?: PlaybackClip; loop: boolean; seek?: PlaybackSeek; ab?: AbRepeat }>(
+    layer: T,
+    seek: PlaybackSeek | undefined,
+  ): T => {
+    const out: T = { ...layer, loop: next.loop };
+    if (next.clip) out.clip = next.clip;
+    else delete out.clip;
+    if (next.ab) out.ab = next.ab;
+    else delete out.ab;
+    if (seek) out.seek = seek;
+    else delete out.seek;
+    return out;
+  };
+  const jump = (paused: boolean): PlaybackSeek => ({
+    at: now,
+    toMs: next.toMs,
+    ...(paused ? { paused: true } : {}),
+  });
+  const { layers } = state;
+  if (playing.ref.layer === 'background') {
+    const bg = layers.background;
+    if (bg?.kind !== 'media') return null;
+    return { type: 'background/set', background: shaped(bg, jump(bg.seek?.paused === true)) };
+  }
+  const a = layers.audio;
+  if (playing.ref.layer !== 'audio' || !a) return null;
+  if (a.pausedAtMs !== undefined)
+    return {
+      type: 'audio/set',
+      audio: { ...shaped(a, undefined), pausedAtMs: Math.max(0, next.toMs - (next.clip?.startMs ?? 0)) },
+    };
+  return { type: 'audio/set', audio: shaped(a, jump(a.seek?.paused === true)) };
+}
+
+/** The layer's own points and loop, as kept aside by an A-B repeat or as they are. */
+function ownOf(state: EngineState, playing: Playing): AbRepeat {
+  const layer =
+    playing.ref.layer === 'background'
+      ? state.layers.background?.kind === 'media'
+        ? state.layers.background
+        : null
+      : state.layers.audio;
+  if (layer?.ab) return layer.ab;
+  return { ...(playing.clock.clip ? { clip: playing.clock.clip } : {}), loop: playing.clock.loop };
+}
+
 /** The layer with this jump for what plays: the background's and the sound's own, the rest by file. */
 function withSeek(state: EngineState, playing: Playing, seek: PlaybackSeek): EngineAction | null {
   const by = (seeks: VideoSeeks | undefined): VideoSeeks => ({ ...seeks, [playing.mediaId]: seek });
@@ -135,12 +223,50 @@ export function resolvePlaying(
     return action ? { ok: true, actions: [action] } : NO_CHANGE;
   };
   const paused = clock.seek?.paused === true;
+  const waiting = paused || clock.pausedAtMs !== undefined;
   switch (command.type) {
-    // Red (x47, slice 4): the time bar's ⋯, still to be written.
-    case 'repeatAb':
-    case 'stopAb':
-    case 'stepFrame':
-      return NO_CHANGE;
+    case 'repeatAb': {
+      if (command.playing.layer !== 'background' && command.playing.layer !== 'audio') return AB_NOT_HERE;
+      // Kept between its own points (as they were before any A-B), B before A swapped.
+      const own = ownOf(state, playing);
+      const room = playbackSpanMs(own.clip, length);
+      const keep = (ms: number) => Math.min(room.end, Math.max(room.start, ms));
+      const [a, b] = [keep(command.fromMs), keep(command.toMs)].sort((x, y) => x - y) as [number, number];
+      if (b - a < AB_SHORTEST_MS) return AB_TOO_SHORT;
+      const action = withRepeat(
+        state,
+        playing,
+        { clip: { startMs: a, endMs: b }, loop: true, ab: own, toMs: a },
+        now,
+      );
+      return action ? { ok: true, actions: [action] } : NO_CHANGE;
+    }
+    case 'stopAb': {
+      const layer =
+        command.playing.layer === 'background'
+          ? state.layers.background?.kind === 'media'
+            ? state.layers.background
+            : null
+          : command.playing.layer === 'audio'
+            ? state.layers.audio
+            : null;
+      const own = layer?.ab;
+      if (!own) return NOT_AB;
+      // Plays on from where it is, between its own points again (kept to them), once only or going round as before.
+      const back = playbackSpanMs(own.clip, length);
+      const toMs = Math.min(back.end, Math.max(back.start, atMs));
+      const action = withRepeat(state, playing, { clip: own.clip, loop: own.loop, ab: undefined, toMs }, now);
+      return action ? { ok: true, actions: [action] } : NO_CHANGE;
+    }
+    case 'stepFrame': {
+      if (command.playing.layer === 'audio' || playing.sound === true) return FRAMES_OF_VIDEOS;
+      if (!waiting) return FRAMES_WHILE_PAUSED;
+      // The frame it shows, then the middle of the one before or after it, kept between its points.
+      const frame = Math.floor((atMs + 0.5) / command.frameMs);
+      const middle = Math.round((frame + command.by + 0.5) * command.frameMs);
+      const toMs = Math.min(span.end, Math.max(span.start, middle));
+      return toMs === atMs ? NO_CHANGE : put({ at: now, toMs, paused: true });
+    }
     case 'moveTo': {
       const toMs = Math.min(span.end, Math.max(span.start, command.toMs));
       const track = state.layers.audio;
@@ -212,9 +338,15 @@ interface Points {
  * Going round from A to B (alpha.20): the library's points as they are now wait aside, with the loop, for Stop to put
  * back, and its markers show at once; A and B stay.
  */
-export function pointsAside<T extends Points>(layer: T, _points: Points): T {
-  // Red (x47, slice 4).
-  return layer;
+export function pointsAside<T extends Points>(layer: T, points: Points): T {
+  const was = (layer as T & { ab?: AbRepeat }).ab;
+  if (!was) return layer;
+  const ab: AbRepeat = { ...(points.clip ? { clip: points.clip } : {}), loop: was.loop };
+  if (sameData(was, ab) && sameData(layer.marks, points.marks)) return layer;
+  const out: T & { ab?: AbRepeat } = { ...layer, ab };
+  if (points.marks) out.marks = points.marks;
+  else delete out.marks;
+  return out;
 }
 
 /**
@@ -223,9 +355,16 @@ export function pointsAside<T extends Points>(layer: T, _points: Points): T {
  */
 export function keepRepeat<
   T extends { mediaId: string | null; startedAt: number; clip?: PlaybackClip; loop: boolean; ab?: AbRepeat },
->(was: T, _is: T | null): T {
-  // Red (x47, slice 4).
-  return was;
+>(was: T, is: T | null): T {
+  if (!is || is.mediaId !== was.mediaId || is.startedAt !== was.startedAt) return was;
+  if (!was.ab && !is.ab) return was;
+  if (sameData(was.ab, is.ab) && sameData(was.clip, is.clip) && was.loop === is.loop) return was;
+  const out: T = { ...was, loop: is.loop };
+  if (is.clip) out.clip = is.clip;
+  else delete out.clip;
+  if (is.ab) out.ab = is.ab;
+  else delete out.ab;
+  return out;
 }
 
 /** A layer with these moves (none: left out). */
