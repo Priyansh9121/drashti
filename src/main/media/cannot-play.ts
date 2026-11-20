@@ -11,6 +11,17 @@
  * they drew meanwhile (render/background-slots.ts), never black.
  */
 
+/** A media element's error code (MediaError's 1 to 4) in words for the log; 0 and anything else: none given. */
+export function errorKindWords(code: number): string {
+  const kinds: Record<number, string> = {
+    1: 'stopped',
+    2: 'a network or file error',
+    3: 'a decoding error',
+    4: 'not playable here',
+  };
+  return kinds[code] ?? 'an error with no code';
+}
+
 /** How long after a page's word Main waits before taking the video off (a GPU process's stop may be heard after it). */
 export const CANNOT_PLAY_SETTLE_MS = 1000;
 /** A failure heard this soon after a GPU process stopped is that stop's. */

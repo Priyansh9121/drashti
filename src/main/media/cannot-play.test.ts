@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CANNOT_PLAY_SETTLE_MS, CannotPlay, GPU_GONE_GRACE_MS } from './cannot-play';
+import { CANNOT_PLAY_SETTLE_MS, CannotPlay, errorKindWords, GPU_GONE_GRACE_MS } from './cannot-play';
 
 /** A CannotPlay on a hand-turned clock: what ran, and the clock to move. */
 function rig() {
@@ -59,5 +59,18 @@ describe('a video that could not play (Q60-31)', () => {
     r.heard();
     r.to(r.at() + CANNOT_PLAY_SETTLE_MS);
     expect(r.ran).toEqual(['off']);
+  });
+});
+
+describe('a media element’s error in words for the log', () => {
+  it('says MediaError’s four codes plainly, and none for anything else', () => {
+    expect([1, 2, 3, 4, 0, 9].map(errorKindWords)).toEqual([
+      'stopped',
+      'a network or file error',
+      'a decoding error',
+      'not playable here',
+      'an error with no code',
+      'an error with no code',
+    ]);
   });
 });

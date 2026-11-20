@@ -166,7 +166,7 @@ import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter 
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
 import { cannotPlayNotice, noPictureNotice } from '../shared/no-picture';
-import { CannotPlay } from './media/cannot-play';
+import { CannotPlay, errorKindWords } from './media/cannot-play';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -6688,7 +6688,7 @@ function start(): void {
   // its sound played on, never taken off, nobody told): taken off as one whose picture cannot be drawn (its sound with
   // it; on the slide or in the box, paused), said by its name and where it failed, and logged with the error's kind,
   // after a short wait; unless a GPU process stopped then, whose videos load again by themselves.
-  handle(IPC.media.cannotPlay, (e, mediaId, startedAt, kind) => {
+  handle(IPC.media.cannotPlay, (e, mediaId, startedAt, code, words) => {
     const screenId = manager.screenIdFor(e.sender.id);
     const where =
       screenId !== undefined
@@ -6699,19 +6699,22 @@ function start(): void {
             ? 'the stream'
             : null;
     if (where === null || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
-    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt) || typeof kind !== 'string') return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    if (typeof code !== 'number' || typeof words !== 'string') return null;
     const file = media.kindAndName(mediaId);
     if (file?.kind !== 'video') return null;
-    const said = cutText(kind, 300, '…');
+    // The error's kind and Chromium's words, for the log only (the notice names the file and where).
+    const kind = errorKindWords(code);
+    const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;
     cannotPlay.heard(
       () => {
         if (!engine.noPicture(mediaId)) return;
-        log.warn(`A video could not play on ${where} (${said}): ${mediaId}; taken off`);
+        log.warn(`A video could not play on ${where} (${kind}${detail}): ${mediaId}; taken off`);
         sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, where) });
       },
       () => {
         log.info(
-          `A video could not play on ${where} (${said}) as the GPU process stopped: ${mediaId}; it loads again`,
+          `A video could not play on ${where} (${kind}${detail}) as the GPU process stopped: ${mediaId}; it loads again`,
         );
       },
     );
