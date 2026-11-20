@@ -1,3 +1,4 @@
+import { followingItems } from './playlist-source';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { randomUUID } from 'node:crypto';
 import type { CommandResult, EngineCommand, EngineCommandType } from '../../shared/engine/commands';
@@ -1466,7 +1467,8 @@ export class ShowEngine {
     const at = live.playlist ? this.checkItem(live.playlist) : null;
     if (!at) return [];
     const out: UpcomingItem[] = [];
-    for (const item of at.items.slice(at.index + 1)) {
+    for (const item of this.followingPlaylistItems(at, 1)) {
+      if (item.id === at.item.id) continue;
       if (out.length >= UPCOMING_ITEMS) break;
       if (item.kind === 'presentation')
         out.push({ id: item.id, label: item.label ?? '', kind: 'presentation' });
@@ -1782,13 +1784,25 @@ export class ShowEngine {
     );
   }
 
+  /** The same bounded walk for a press, an automatic Next and every preview of it. */
+  private followingPlaylistItems(
+    at: { cursor: PlaylistCursor; items: readonly PlayItem[]; index: number },
+    delta: 1 | -1,
+  ): PlayItem[] {
+    return followingItems(
+      at.items,
+      at.index,
+      delta,
+      this.playlists.repeatAll?.(at.cursor.playlistId) === true,
+    );
+  }
+
   /** The next (or previous) item that can play, stepping over headers, placeholders and anything gone. */
   private stepItem(cursor: PlaylistCursor, delta: 1 | -1, from: 'first' | 'last'): Resolved {
     const at = this.checkItem(cursor);
     if (!at) return NO_CHANGE;
-    for (let i = at.index + delta; i >= 0 && i < at.items.length; i += delta) {
-      const item = at.items[i];
-      const started = item ? this.startItem(cursor.playlistId, item, from) : null;
+    for (const item of this.followingPlaylistItems(at, delta)) {
+      const started = this.startItem(cursor.playlistId, item, from);
       if (started) return started;
     }
     return NO_CHANGE;
@@ -2510,7 +2524,7 @@ export class ShowEngine {
     }
     const at = live.playlist ? this.checkItem(live.playlist) : null;
     if (!at) return null;
-    for (const item of at.items.slice(at.index + 1)) {
+    for (const item of this.followingPlaylistItems(at, 1)) {
       if (item.kind === 'media')
         return {
           kind: 'media',

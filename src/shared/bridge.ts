@@ -1,3 +1,5 @@
+import type { PlaylistPlayOptions } from './playlist-playback';
+import type { M3uResult } from './m3u';
 import type { ControllerArea, ControllerReply, ControllerRequest } from './controller-actions';
 import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
 import type { YouTubeListResult, YouTubeResult, YouTubeScheduleInput, YouTubeStatus } from './youtube';
@@ -288,6 +290,8 @@ export interface DrashtiBridge {
     remove(id: string): Promise<EventsOutResult>;
     rotate(id: string): Promise<EventsOutResult>;
     test(id: string): Promise<{ ok: boolean; message: string }>;
+    /** The new secret's Copy, by the main process (alpha.20); false when it could not be copied. */
+    copySecret(secret: string): Promise<boolean>;
     onChanged(listener: (view: EventsOutView) => void): () => void;
     /** File > Events Out… was chosen. */
     onOpen(listener: () => void): () => void;
@@ -588,6 +592,10 @@ export interface DrashtiBridge {
     setTimers(itemId: string, cues: TimerCue[]): Promise<PlaylistResult>;
     /** What a video's row does when it ends (Session 55, Part 6). */
     setWhenEnds(itemId: string, whenEnds: WhenEnds): Promise<PlaylistResult>;
+    setPlayOptions(playlistId: string, options: PlaylistPlayOptions): Promise<PlaylistResult>;
+    importM3u(audio: boolean, targetId: string | null): Promise<M3uResult>;
+    exportM3u(playlistId: string, audio: boolean): Promise<M3uResult>;
+
     /** "<name> copy" beside it, with its rows in their order (Session 55, Part 4). */
     duplicate(playlistId: string): Promise<PlaylistResult>;
     /**
