@@ -182,12 +182,16 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
 
     let jobs: ConversionJob[] = [];
     let busy: string | null = 'On air: conversions wait for the stream to end.';
+    let looks = 0;
     const changed: string[][] = [];
     service = new ConvertService({
       db,
       mediaDir,
       ffmpegPath: () => ffmpeg,
-      busy: () => busy,
+      busy: () => {
+        looks += 1;
+        return busy;
+      },
       freeBytes: () => 100 * 1024 ** 3,
       changed: (j) => {
         jobs = j;
@@ -196,8 +200,11 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
       log: () => undefined,
     });
     expect(service.convert(files.map(([id]) => id))).toMatchObject({ ok: true });
-    // While on air nothing starts, and the window is told why.
-    await sleep(1500);
+    // While on air nothing starts, and the window is told why: from the service's first look (each second), and still
+    // once it has looked again (x58: a fixed 1.5 s raced that first look on a busy computer).
+    await until(() => jobs.length === 5 && jobs.every((j) => j.note?.startsWith('On air') === true));
+    const lookedAt = looks;
+    await until(() => looks > lookedAt);
     expect(jobs.every((j) => j.state === 'waiting' && j.note?.startsWith('On air'))).toBe(true);
     busy = null;
     await until(() => jobs.length === 5 && jobs.every((j) => j.state === 'done' || j.state === 'failed'));
@@ -382,11 +389,15 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
     const before = await sha256File(source);
     db = openDatabase(join(dir, 'drashti.sqlite'));
     let busy: string | null = 'Waits while the stream is on air or recording.';
+    let looks = 0;
     service = new ConvertService({
       db,
       mediaDir: join(dir, 'Media'),
       ffmpegPath: () => ffmpeg,
-      busy: () => busy,
+      busy: () => {
+        looks += 1;
+        return busy;
+      },
       freeBytes: () => 100 * 1024 ** 3,
       changed: () => undefined,
       libraryChanged: () => undefined,
@@ -400,8 +411,11 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
       waiting: (note) => notes.push(note),
       progress: (fraction) => (most = Math.max(most, fraction ?? 0)),
     });
-    // On air: nothing is made, and it says why.
-    await sleep(2500);
+    // On air: once FFmpeg has read what the file holds, it waits and says why, and makes nothing however often it looks
+    // again (x58: a fixed 2.5 s raced FFmpeg's read on a busy computer).
+    await until(() => notes.includes(busy));
+    const lookedAt = looks;
+    await until(() => looks > lookedAt);
     expect(existsSync(join(out, 'Placeholder 2160p.mp4'))).toBe(false);
     expect(notes).toContain(busy);
     busy = null;
@@ -422,10 +436,14 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
       ok: true,
       copy: null,
     });
-    // Drashti quitting stops one waiting, with a plain answer.
+    // Drashti quitting stops one waiting (once FFmpeg has read the file: x58, not a fixed 1.5 s), with a plain answer.
     busy = 'Waits while the stream is on air or recording.';
-    const waiting = service.fitHeight(source, join(dir, 'later'), { maxHeight: 1080 });
-    await sleep(1500);
+    const laterNotes: (string | null)[] = [];
+    const waiting = service.fitHeight(source, join(dir, 'later'), {
+      maxHeight: 1080,
+      waiting: (note) => laterNotes.push(note),
+    });
+    await until(() => laterNotes.includes(busy));
     service.close();
     expect(await waiting).toEqual({ ok: false, message: 'Stopped: Drashti is quitting.' });
   }, 120_000);
