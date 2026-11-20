@@ -64,7 +64,7 @@ export function framesOnTime({
 
 /**
  * The warm-up's slides before their transitions, drawn for `count` frames. Each request is kept for cleanup;
- * the caller says whether that step is still live when it starts.
+ * the caller says whether that step is still live at each delivered frame, including one queued before a cut.
  */
 export function drawBeforeFrames({
   count,
@@ -84,6 +84,7 @@ export function drawBeforeFrames({
   if (!live()) return;
   let left = count;
   const tick = () => {
+    if (!live()) return;
     each();
     left -= 1;
     if (left > 0) keep(frame(tick));
