@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http';
+import type { NodeReportAnswer } from '../../shared/report';
 import { request } from 'node:https';
 import { connect, type PeerCertificate } from 'node:tls';
 import WebSocket from 'ws';
@@ -310,6 +311,99 @@ export function openMediaFromMain(
     req.on('timeout', () => req.destroy(Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' })));
     req.on('error', reject);
     req.end();
+  });
+}
+
+/** A report goes to Main a piece at a time, about two megabytes a second, so the hall's network is never filled by it. */
+const REPORT_PIECE = 64 * 1024;
+const REPORT_PIECE_GAP_MS = 32;
+
+/**
+ * A report handed to Main (x49, Help › Report a Problem…; the owner's Q60-42, 2: a node's report goes through the Main it
+ * is paired with, which sends it on with its own access): over the pinned connection with the node's token, on the
+ * link's web side, never the show's feed. Main's answer, or why there is none.
+ */
+export function postReportToMain(
+  main: PinnedMain,
+  host: string,
+  token: string,
+  body: Uint8Array,
+  signal?: AbortSignal,
+): Promise<NodeReportAnswer> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (answer: NodeReportAnswer) => {
+      if (done) return;
+      done = true;
+      resolve(answer);
+    };
+    const req = request(
+      {
+        host,
+        port: main.port,
+        path: NODE_PATHS.report,
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Content-Length': String(body.length),
+        },
+        timeout: 60_000,
+        agent: false,
+        ...pinnedTls(main, host),
+      },
+      (res) => {
+        const parts: Buffer[] = [];
+        let size = 0;
+        res.on('data', (chunk: Buffer) => {
+          size += chunk.length;
+          if (size <= 64 * 1024) parts.push(chunk);
+        });
+        res.on('end', () => {
+          let said: { ok?: unknown; reference?: unknown; message?: unknown } = {};
+          try {
+            said = JSON.parse(Buffer.concat(parts).toString('utf8')) as typeof said;
+          } catch {
+            // Said below.
+          }
+          if (res.statusCode === 200 && said.ok === true && typeof said.reference === 'string')
+            finish({ ok: true, reference: said.reference });
+          else
+            finish({
+              ok: false,
+              message:
+                typeof said.message === 'string' ? said.message : `Main answered ${String(res.statusCode)}.`,
+            });
+        });
+        res.on('error', () => {
+          finish({ ok: false, message: 'Main’s answer broke off.' });
+        });
+      },
+    );
+    req.on('timeout', () => req.destroy(Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' })));
+    req.on('error', (error) => {
+      finish({ ok: false, message: unreachable(error, 'Main') });
+    });
+    signal?.addEventListener(
+      'abort',
+      () => {
+        req.destroy(new Error('given up'));
+      },
+      { once: true },
+    );
+    let at = 0;
+    const next = () => {
+      if (done || req.destroyed) return;
+      if (at >= body.length) {
+        req.end();
+        return;
+      }
+      const piece = body.subarray(at, at + REPORT_PIECE);
+      at += piece.length;
+      req.write(piece);
+      setTimeout(next, REPORT_PIECE_GAP_MS);
+    };
+    next();
   });
 }
 

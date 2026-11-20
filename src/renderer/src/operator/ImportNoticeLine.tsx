@@ -1,5 +1,6 @@
 import type { useImportNotices } from '../library/import-notices';
 import { dismissImportNotice, findImportMedia, retryImportNotice } from '../library/import-notices';
+import { showReport } from '../help/report-store';
 import { Button } from '../ui/Button';
 import { Info, X } from '../ui/icons';
 import { Truncate } from '../ui/Truncate';
@@ -45,6 +46,16 @@ export function ImportNoticeLine({ item, canFindMissing }: { item: ImportNotice;
           onClick={() => void retryImportNotice(item)}
         >
           Try again
+        </Button>
+      )}
+      {(item.retry ?? item.findMissing) && (
+        // Report a Problem about Importing files, with this line's words (x49, Q60-38).
+        <Button
+          size="sm"
+          className="pointer-events-auto h-5 shrink-0"
+          onClick={() => void showReport({ notice: item.text, featureId: 'library/importing-files' })}
+        >
+          Report this…
         </Button>
       )}
       <button
