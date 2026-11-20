@@ -15,6 +15,7 @@ import type { MessageLook } from '../message-look';
 import type { StageCall } from '../stage-message';
 import type { CaptionsShown } from '../captions';
 import type { VideoCaptionsShown } from '../video-captions';
+import type { ShapeOverride } from '../video-shape';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -808,6 +809,12 @@ export interface EngineState {
   captions?: CaptionsShown | null;
   /** The chosen library track for the first captioned video up, shared with output nodes. Off under covers. */
   videoCaptions?: Record<string, VideoCaptionsShown>;
+  /**
+   * Sound and picture…'s Shape (alpha.20, x55; shared/video-shape.ts): the shapes of the videos on the screens and
+   * coming next (and the box's going out) that are not drawn as their files say, by media id, as the pictures carry
+   * their looks: every screen, node and the stream draw such a video in a box of that shape. Left out until one has.
+   */
+  videoShapes?: Record<string, ShapeOverride>;
 }
 
 export function emptyLayers(): Layers {
