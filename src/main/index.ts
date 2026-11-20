@@ -719,6 +719,36 @@ const noRelaunch = sw('DRASHTI_TEST_NO_RELAUNCH') === '1';
 const logPermissions = sw('DRASHTI_LOG_PERMISSIONS') === '1';
 // Tests only: answer media requests late, as a slow disk would (up to a minute: the opening's photo past its limit).
 const mediaDelayMs = Math.min(60_000, Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_DELAY_MS') ?? 0) || 0));
+/**
+ * A test switch (Q60-51): every media file sent at this many bytes a second, a quarter of it four times a second, as
+ * from a slow disk or a busy computer: a video's first frame then comes late while it still loads. 0: as fast as it can.
+ */
+const mediaPaceBps = Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_PACE_BPS') ?? 0) || 0);
+
+/** A response's body sent at mediaPaceBps (the test switch above); as it is with none. */
+async function paced(response: Response): Promise<Response> {
+  if (mediaPaceBps <= 0 || !response.body) return response;
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const slice = Math.max(1024, Math.floor(mediaPaceBps / 4));
+  let at = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (at >= bytes.length) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(bytes.subarray(at, at + slice));
+      at += slice;
+      // A test switch's pace, never in a real show.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    },
+  });
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
 
 // Drashti's sound is the show's, not the computer's media (Session 15): the system's media controls
 // (Windows' media overlay, macOS's Now Playing) and the keyboard's or a headset's media keys never see
@@ -2230,7 +2260,8 @@ function start(): void {
         log.warn(message);
       },
     });
-    return perfWatch ? watchedMedia(perfWatch, request, started, response) : response;
+    const sent = await paced(response);
+    return perfWatch ? watchedMedia(perfWatch, request, started, sent) : sent;
   };
   // Every window's session: the default one, and the audio player's own.
   protocol.handle(MEDIA_SCHEME, serveMedia);
