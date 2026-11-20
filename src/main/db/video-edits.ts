@@ -23,7 +23,10 @@ interface EditRow {
 
 /** The source's media row and bytes are never replaced by a prepared rendition. */
 export class VideoEditsRepo {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    private readonly originalFileId: (id: string) => string = (id) => id,
+  ) {}
 
   /** Resolve a prepared immutable file back to its source when its editor is opened from a playlist. */
   sourceId(mediaId: string): string {
@@ -123,6 +126,7 @@ export class VideoEditsRepo {
   }
 
   renditionOf(copyId: string): { sourceId: string; revision: number; recipe: VideoEditRecipe } | null {
+    copyId = this.originalFileId(copyId);
     const row = this.db
       .prepare('SELECT source_id,revision,recipe FROM video_edit_copies WHERE copy_id=?')
       .get(copyId) as { source_id: string; revision: number; recipe: string } | undefined;

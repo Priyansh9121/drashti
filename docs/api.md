@@ -574,6 +574,8 @@ The operator/Pro bridge exposes `media.videoEdit(mediaId)`, `media.setVideoEdit(
 
 Recipes use source milliseconds for in/out and thumbnail time, normalized crop, quarter-turn/flip, zoom/position, brightness/contrast/colour, optional frame shape, picture/sound fade durations, 0.5–2 speed, a zero-based source-audio ordinal, and optional talk noise reduction. The existing tone/delay and marker stores stay separate. A showing captures its immutable file; edits do not change a current showing. `SaveVideoEdit.sceneMarkers` is reserved for the analysis slice's append-only, same-transaction source-time marker contract; its schema and helper are added with that slice.
 
+Edit Video’s prepared IDs retain immutable recipe history. Main resolves source-owned tone, captions, resume points and play counts through that history; source times are mapped once for the prepared file. The pure `editPlan` accepts a source-time export interval inside the recipe trim and an optional frame/fit override, always reading the source rather than a proxy.
+
 ## Idle video preparation worker
 
 `ConvertService.saveCopy` also prepares video-edit assets through the existing single worker. These callers set `waitForShow: true` and `strictPriority: true`. An active show, stream or recording prevents launch and aborts a running decoder or registration callback; its partial file is removed and the accepted job restarts while idle. A failed priority change or verification refuses preparation.
