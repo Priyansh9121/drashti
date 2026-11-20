@@ -376,7 +376,7 @@ describe('every video and sound read with FFmpeg at import (Session 50)', () => 
     }
   });
 
-  it('keeps whether FFmpeg read each video and sound (alpha.20, migration 87): read, nothing read, or never asked', async () => {
+  it('keeps whether FFmpeg read each video and sound (alpha.20, migration 86): read, nothing read, or never asked', async () => {
     const t = checking({ reads: { ...READS, avi: '' } });
     await t.take('Placeholder clip.mp4', 'placeholder mp4');
     await t.take('Placeholder old.avi', 'placeholder avi');
