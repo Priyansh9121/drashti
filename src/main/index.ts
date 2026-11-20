@@ -3669,6 +3669,8 @@ function start(): void {
       // Quitting: the library has closed (Session 23: a change during an import came 2 s later).
       if (db === null) return;
       lastChanged = Date.now();
+      // Renditions are known before an imported item is first drawn as a thumbnail.
+      looksChanged();
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
       // The slide editor's own window: its pictures, videos and sounds to choose from (Session 55, Part 17a).
       slideEditor?.send(IPC.library.changed, { at: lastChanged, what: 'presentations' });
@@ -5752,6 +5754,10 @@ function start(): void {
         previewSource(mediaId, {
           mediaDir,
           kindAndFile: (id) => media.kindAndFile(id),
+          display: (id, key) => {
+            const found = media.file(id);
+            return found?.sha256 && !found.missing ? displayCopies.relativePath(found.sha256, key) : null;
+          },
           sharpened: (id, step) => {
             const found = media.file(id);
             return found && !found.missing ? sharpened.relativePath(found.sha256, step) : null;
@@ -5976,6 +5982,11 @@ function start(): void {
     // A picture's sharpened copy (Session 26f), once it is ready: one more file for the node, copied as
     // media is, right after the picture's own.
     {
+      display: (mediaId) => {
+        const found = media.file(mediaId);
+        const copy = found?.sha256 && !found.missing ? displayCopies.ready(found.sha256, media.look(mediaId)) : null;
+        return copy ? { id: displayMediaId(mediaId, copy.key), sha256: copy.hash, bytes: copy.bytes, ext: copy.ext } : null;
+      },
       want: (mediaId) => {
         const look = media.look(mediaId);
         const step = look ? sharpenStep(look.sharpness) : 0;
@@ -5993,6 +6004,12 @@ function start(): void {
         return file ? { id: blurMediaId(mediaId), sha256: file.hash, bytes: file.bytes, ext: 'jpg' } : null;
       },
       source: (copyId) => {
+        const display = displayOfId(copyId);
+        if (display) {
+          const found = media.file(display.mediaId);
+          const file = found?.sha256 && !found.missing ? displayCopies.fileOf(found.sha256, display.key) : null;
+          return file ? { path: join(mediaDir, file.path), sha256: file.hash, bytes: file.bytes, ext: file.ext } : null;
+        }
         const blurOf = blurOfId(copyId);
         if (blurOf) {
           const found = media.file(blurOf);

@@ -454,7 +454,7 @@ function boundDecodes({ live, next, hazard }: { live: string; next: string; haza
   (globalThis as BoundGlobals).drashtiStartupBound = probe;
   const native = Reflect.get(HTMLImageElement.prototype, 'decode');
   HTMLImageElement.prototype.decode = function (this: HTMLImageElement) {
-    const mediaId = /^drashti-media:\/\/media\/([^?#/]+)/iu.exec(this.src || this.currentSrc)?.[1] ?? '';
+    const mediaId = /^drashti-media:\/\/(?:media|display|sharp)\/([^?#/]+)/iu.exec(this.src || this.currentSrc)?.[1] ?? '';
     const role = mediaId === live ? 'live' : mediaId === next ? 'next' : 'other';
     const where = this.closest('[data-slide-in]')
       ? 'own'

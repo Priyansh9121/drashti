@@ -13,7 +13,7 @@ import { MainAccess } from './main-access';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION, type EngineState, initialEngineState } from '../../shared/engine/state';
 import { IPC } from '../../shared/ipc';
-import { blurMediaId, copyMediaId, MEDIA_ID_PATTERN, MEDIA_SCHEME, mediaUrl } from '../../shared/media';
+import { blurMediaId, copyMediaId, displayMediaId, MEDIA_ID_PATTERN, MEDIA_SCHEME, mediaUrl } from '../../shared/media';
 import { saveStill } from '../media/stills';
 import { sharpenStep } from '../../shared/picture-look';
 import { mediaInState } from '../../shared/node-media';
@@ -333,7 +333,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         ...(look?.blurred ? [blurMediaId(id)] : []),
       ];
     });
-    return [...m.now, ...m.next, ...copies];
+    const display = [...m.now, ...m.next].flatMap((id) => { const ready = s.pictures[id]?.display; return ready ? [displayMediaId(id, ready.key)] : []; });
+    return [...display, ...m.now, ...m.next, ...copies];
   };
   const cache = new MediaCache({
     dir: cacheDir,
@@ -356,6 +357,11 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   });
   protocol.handle(MEDIA_SCHEME, async (request) => {
     let asked = mediaRequestOf(request.url);
+    if (asked?.what === 'display') {
+      const id = displayMediaId(asked.mediaId, asked.key);
+      request = new Request(mediaUrl(id), { method: request.method, headers: request.headers });
+      asked = { what: 'media', mediaId: id };
+    }
     // A picture's sharpened copy (Session 26f) is a file of its own here, copied from Main as media is.
     if (asked?.what === 'sharp') {
       const id = copyMediaId(asked.mediaId, asked.step);
