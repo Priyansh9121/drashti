@@ -1,6 +1,6 @@
 # Windows hand checks for the parallel run
 
-Automated tests run on a Windows runner with one virtual display, no taskbar interaction, no notifications and no real screens. These checks cover what they can't see. Do them on the mandir's Windows PC, with the real screens connected, during the first parallel-run evenings (PLAN.md section 5.1). ProPresenter stays installed as the fallback.
+Automated tests run on a Windows runner with one virtual display, no taskbar interaction, no notifications and no real screens. These checks cover what they can't see. Do them on the mandir's Windows PC, with the real screens connected, during the first parallel-run evenings (PLAN.md section 5.1). The old presentation program stays installed as the fallback.
 
 Record each result as **Pass**, **Fail** (write what you saw) or **N/A**. A failure in sections 1 to 5 blocks the first live sabha on this PC.
 
@@ -83,10 +83,10 @@ Do these if the displays have different scale settings, or set one to 125% for t
 
 ## 8. Fallback drill
 
-| #   | Check                                         | Expected                                               | Result |
-| --- | --------------------------------------------- | ------------------------------------------------------ | ------ |
-| 8.1 | Quit Drashti and start ProPresenter. Time it. | ProPresenter's outputs return in under a minute.       |        |
-| 8.2 | Quit Drashti while outputs are showing.       | Drashti asks first, because the screens will go black. |        |
+| #   | Check                                                         | Expected                                                         | Result |
+| --- | ------------------------------------------------------------- | ---------------------------------------------------------------- | ------ |
+| 8.1 | Quit Drashti and start the old presentation program. Time it. | the old presentation program's outputs return in under a minute. |        |
+| 8.2 | Quit Drashti while outputs are showing.                       | Drashti asks first, because the screens will go black.           |        |
 
 ## 9. Streaming, recording and converting
 
@@ -101,4 +101,4 @@ Never go live to the mandir's real channel for these checks: make an **Unlisted*
 | 9.5 | Drag into Drashti a video from a phone (HEVC), an AVI or ProRes file, and an MKV with AC-3 or DTS sound (one of the mandir's own, never copied anywhere else).                                | The AVI or ProRes and the MKV say **Converting…** and cannot go live until Drashti has converted them by itself, one at a time, a moment after the import (with nothing up or playing); **Media** shows each converting, and the copies play on the screens, the MKV with its sound. If this PC can play HEVC (Microsoft's HEVC extension), the HEVC video plays as it is; if it cannot, it too says **Converting…** until Drashti has converted it by itself, and then the copy plays. |        |
 | 9.6 | Turn off **Camera access** (Windows 11: Settings, then Privacy & security, then Camera; Windows 10: Settings, then Privacy, then Camera). In Drashti: **More tools**, **Add a Video Input…**. | Drashti says "Windows' camera privacy setting is off", with **Open Settings**, which opens that camera page. Turn on **Camera access** and **Let desktop apps access your camera** again, then **Look again**: the video mixer's input (and any camera) shows by name, with its small live picture.                                                                                                                                                                                     |        |
 
-Report failures with the step number, what you saw, and a photo of the screen if possible.
+Report failures through **Help › Report a Problem…**, with the step number and what you saw. Review any diagnostics or picture you choose to attach before **Send**; the Manual's **Help and when something goes wrong** chapter has the steps.
