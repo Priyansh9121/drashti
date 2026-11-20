@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { DisplayCandidate, DisplayResult } from '../media/display-copies';
 import type { ImportOptions, ImportProgress, ImportResult, ImportRunSummary } from '../../shared/import';
 import type { PicturesResult } from '../../shared/pictures';
 import type { HevcKinds } from '../convert/plays-hevc';
@@ -73,6 +74,8 @@ export interface ImportServiceDeps {
   baker?(): boolean | 'stand-in';
   /** Draw a PDF's pages as pictures for the worker (Session 15): it cannot open the window that draws. */
   drawPdf?(pdf: string, outDir: string, signal: AbortSignal, readPageText?: boolean): Promise<PicturesResult>;
+  /** A new picture remains preparing until Main has its display rendition. */
+  prepareDisplay?(candidate: DisplayCandidate, signal: AbortSignal): Promise<DisplayResult>;
   log(level: 'info' | 'warn', message: string): void;
   /** Bring the operator's window back to the front (Keynote or PowerPoint took it, Session 16). */
   refocus?(): void;
@@ -280,6 +283,13 @@ export class ImportService {
           if (job.options.automatic) this.deps.onAutoMarked?.(m.mediaIds);
           else this.deps.onMarked?.(m.mediaIds);
           break;
+        case 'prepare-display': {
+          const prepared = this.deps.prepareDisplay?.(m.candidate, active.drawing.signal) ?? Promise.resolve<DisplayResult>({ ok: true, copy: null });
+          void prepared.catch((): DisplayResult => ({ ok: false, message: 'The picture could not be prepared.' })).then((result) => {
+            if (!settled) worker.postMessage({ type: 'display-prepared', requestId: m.requestId, result });
+          });
+          break;
+        }
         case 'draw-pdf': {
           const drawn = this.deps.drawPdf
             ? this.deps.drawPdf(m.pdf, m.outDir, active.drawing.signal, m.readPageText)
