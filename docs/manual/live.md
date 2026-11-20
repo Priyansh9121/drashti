@@ -117,6 +117,20 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 
 ![Markers under the live picture](../screenshots/marker-jumps.png)
 
+## Resume where it stopped
+
+**What it is.** A button, **Resume at 6:00**, under the time bars when a video or sound of 10 minutes or more goes up again after it was taken off part-way.
+
+**When you would use it.** For a long talk or katha stopped part-way, to carry on from there next time.
+
+**How:**
+
+1. Put the video or sound up again. It starts at its start, as always.
+2. Within 30 seconds, press **Resume at …** to go where it was taken off, on every screen and the sound together.
+3. Leave it, and the button goes after 30 seconds.
+
+![The time bars under Back and Next: a background video and the music](../screenshots/time-bar.png)
+
 ## Zooming a picture
 
 **What it is.** A picture on the screens zoomed and moved from **LIVE**. Every screen follows smoothly, together.
