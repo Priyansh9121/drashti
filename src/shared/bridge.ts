@@ -808,6 +808,8 @@ export interface DrashtiBridge {
     onChosen(listener: (device: AudioDevice | null) => void): () => void;
     /** Audio player only: play a short test tone on this output ('' for the system default). */
     onTestTone(listener: (deviceId: string) => void): () => void;
+    /** The sound player given up on, tried again now (x53: its red notice's Try again). */
+    tryAgain(): Promise<{ ok: true } | { ok: false; message: string }>;
   };
   /** Built-in streaming (PLAN.md 4.2). Going live and ending need the operator's confirmation. */
   stream: {

@@ -648,6 +648,8 @@ export const IPC = {
     testTone: 'audio:test-tone',
     /** main -> operator: the sound output status changed. */
     status: 'audio:status',
+    /** The sound player given up on is tried again now (x53, its red notice's Try again; the operator window only). */
+    tryAgain: 'audio:try-again',
   },
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside switch, a file's Even
@@ -1693,6 +1695,7 @@ export interface InvokeContract {
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
+  [IPC.audio.tryAgain]: { args: []; result: { ok: true } | { ok: false; message: string } };
   [IPC.messages.list]: { args: []; result: MessageTemplate[] };
   [IPC.messages.create]: { args: [template: MessageTemplateFields]; result: MessageResult };
   [IPC.messages.update]: {
