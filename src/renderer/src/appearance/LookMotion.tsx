@@ -303,12 +303,13 @@ function Layer({ where, kinds }: { where: 'header' | 'band'; kinds: readonly Mot
       for (const a of running) a.revert();
     };
   }, [key]);
+  // data-touch-layer, not data-look-motion: <html> carries data-look-motion (the shown look's motions, draw.ts).
   const layer = (
     <div
       ref={ref}
       aria-hidden="true"
       inert
-      data-look-motion={where}
+      data-touch-layer={where}
       data-testid={`look-motion-${where}`}
       className="look-layer"
     >

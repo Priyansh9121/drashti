@@ -62,9 +62,10 @@ for (const { family, list } of FAMILY_IDS) {
     const { app } = await launchApp({ DRASHTI_DIAGNOSTICS: '1' });
     const win = await operatorPage(app);
     await operatorReady(win);
+    // Pro Mode in every one first, while there is no playlist yet: Simple Mode makes the day's sabha playlist as it
+    // opens, and its empty place would be gone.
     for (const a of list)
-      await test.step(a.name, async () => {
-        await toProMode(app, win);
+      await test.step(`${a.name} in Pro Mode`, async () => {
         await chooseMenuItem(app, `appearance-${a.id}`);
         await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
         await plainHeader(win.getByTestId('app-header'), 'Drashti', a);
@@ -90,8 +91,13 @@ for (const { family, list } of FAMILY_IDS) {
         expect(Number.parseFloat(await style(warning, 'border-left-width'))).toBeGreaterThanOrEqual(4);
         await expect(warning.locator('svg').first()).toBeVisible();
         await gallery.close();
-
-        // Simple Mode: the same mark and plain header.
+      });
+    // Then Simple Mode in every one: the same mark and plain header (chosen in Pro Mode, which alone chooses).
+    for (const a of list)
+      await test.step(`${a.name} in Simple Mode`, async () => {
+        await toProMode(app, win);
+        await chooseMenuItem(app, `appearance-${a.id}`);
+        await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
         await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
         const simple = win.getByTestId('simple-mode');
         await expect(simple).toBeVisible();
@@ -162,7 +168,7 @@ function newWaysToDraw(page: Page) {
       if (el.closest('[data-chip-warm-up]')) continue;
       // A live look's touch (Session 60, the owner's Q60-36 (3)): only where Chromium draws with a graphics chip,
       // after the window has opened; lookTouches below holds it to its own rules.
-      if (el.closest('[data-look-motion]')) continue;
+      if (el.closest('[data-touch-layer]')) continue;
       for (const pseudo of [null, '::before', '::after']) {
         const st = getComputedStyle(el, pseudo);
         if (pseudo !== null && st.content === 'none') continue;
@@ -334,8 +340,8 @@ async function lookTouches(page: Page, a: Appearance): Promise<void> {
   await expect(page.locator('html')).toHaveAttribute('data-chip', /^(yes|no)$/u);
   const { chipless, layers } = await page.evaluate(() => ({
     chipless: document.documentElement.dataset['chip'] === 'no',
-    layers: [...document.querySelectorAll('[data-look-motion]')].map((el) => ({
-      where: el.getAttribute('data-look-motion'),
+    layers: [...document.querySelectorAll('[data-touch-layer]')].map((el) => ({
+      where: el.getAttribute('data-touch-layer'),
       inHeader: el.parentElement?.matches('[data-header]') === true,
       hidden: el.getAttribute('aria-hidden') === 'true',
       inert: el instanceof HTMLElement && el.inert,

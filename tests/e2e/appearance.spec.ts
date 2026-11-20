@@ -357,7 +357,7 @@ test('the audience screens draw exactly the same in every appearance: the hallâ€
     for (const out of outputPages(app)) {
       expect(await out.evaluate(() => document.documentElement.dataset['appearance'] ?? null)).toBeNull();
       // Nor a live look's touch (Session 60): it is only ever in the operator window's header and band.
-      expect(await out.locator('[data-look-motion]').count()).toBe(0);
+      expect(await out.locator('[data-touch-layer]').count()).toBe(0);
     }
     const now = await pictures();
     for (const role of ['audience', 'stage'])
