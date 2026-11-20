@@ -148,7 +148,38 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       if (!live.ok) throw new Error(live.message);
     });
     const status = () => win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status());
-    await expect.poll(async () => (await status()).live.state, { timeout: 45_000 }).toBe('live');
+    let startState: {
+      programOn: boolean;
+      encoder: string | null;
+      state: string;
+      fps: number | null;
+      dropped: number;
+      message: string | null;
+    } | null = null;
+    try {
+      await expect
+        .poll(
+          async () => {
+            const s = await status();
+            startState = {
+              programOn: s.programOn,
+              encoder: s.encoder,
+              state: s.live.state,
+              fps: s.live.fps,
+              dropped: s.live.droppedFrames,
+              message: s.live.message?.replace(/rtmps?:\/\/\S+/gu, '[loopback destination]') ?? null,
+            };
+            return s.live.state;
+          },
+          { timeout: 45_000 },
+        )
+        .toBe('live');
+    } finally {
+      await info.attach('s5-stream-start.json', {
+        body: Buffer.from(JSON.stringify(startState)),
+        contentType: 'application/json',
+      });
+    }
     const encoder = (await status()).encoder;
     if (process.platform === 'win32') expect(encoder).toMatch(/software/u);
     const playlist = await win.evaluate(async (ids) => {

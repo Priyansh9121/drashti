@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -57,13 +57,23 @@ export async function setupVideoCue(software = false) {
 }
 
 export async function cueReady(win: Page) {
-  await expect
-    .poll(
-      async () => {
-        const cue = (await snapshot(win)).videoCue;
-        return !!cue && !cue.error && cue.required.every((id) => cue.ready.includes(id));
-      },
-      { message: 'Every required playing page must acknowledge this exact first frame' },
-    )
-    .toBe(true);
+  let last: Awaited<ReturnType<typeof snapshot>>['videoCue'] = null;
+  try {
+    await expect
+      .poll(
+        async () => {
+          const cue = (await snapshot(win)).videoCue;
+          last = cue;
+          return !!cue && !cue.error && cue.required.every((id) => cue.ready.includes(id));
+        },
+        { message: 'Every required playing page must acknowledge this exact first frame' },
+      )
+      .toBe(true);
+  } catch (error) {
+    await test.info().attach('s5-cue-readiness.json', {
+      body: Buffer.from(JSON.stringify(last)),
+      contentType: 'application/json',
+    });
+    throw error;
+  }
 }

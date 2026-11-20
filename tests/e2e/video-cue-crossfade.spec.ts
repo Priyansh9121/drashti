@@ -10,6 +10,7 @@ const video = (page: Page, id: string) => page.locator(`video[data-media-id="${i
 
 test('Cue holds the first trimmed frame privately, then Go uses its loaded frame at one shared engine moment', async () => {
   const { app, win, hall, stream, audio, ids } = await setupVideoCue();
+  let pixelGoAt: number | null = null;
   try {
     const id = ids[1] ?? '';
     await win.evaluate(
@@ -32,7 +33,22 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
       await video(page, id).evaluate((v: HTMLVideoElement) => {
         v.dataset['prepared'] = 'yes';
         const initial = v.currentTime;
+        const callbacks: {
+          at: number;
+          expected: number;
+          mediaTime: number;
+          presentedFrames: number;
+          currentTime: number;
+        }[] = [];
         const presented: VideoFrameRequestCallback = (_now, frame) => {
+          callbacks.push({
+            at: Date.now(),
+            expected: Date.now() + frame.expectedDisplayTime - performance.now(),
+            mediaTime: frame.mediaTime,
+            presentedFrames: frame.presentedFrames,
+            currentTime: v.currentTime,
+          });
+          v.dataset['cueCallbacks'] = JSON.stringify(callbacks);
           if (frame.mediaTime > initial + 0.001) {
             v.dataset['firstMotionAt'] = String(Date.now() + frame.expectedDisplayTime - performance.now());
             v.dataset['firstMotionCallbackAt'] = String(Date.now());
@@ -49,10 +65,66 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
     }
     const sound = audio.locator(`audio[data-media-id="${id}"]`);
     await expect(sound).toHaveJSProperty('paused', true);
+    const box = await video(hall, id).evaluate((v: HTMLVideoElement) => {
+      const r = v.getBoundingClientRect();
+      return {
+        x: r.x,
+        y: r.y,
+        width: r.width,
+        height: r.height,
+        innerWidth,
+        innerHeight,
+        sourceWidth: v.videoWidth,
+      };
+    });
+    await app.evaluate(
+      ({ BrowserWindow }, { url, box }) => {
+        const w = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL() === url);
+        if (!w) throw new Error('No native hall for Cue pixel evidence');
+        const rows: { at: number; center: number | null; rgb: number[] }[] = [];
+        const stop = () => {
+          if (!w.isDestroyed()) w.webContents.endFrameSubscription();
+        };
+        (
+          globalThis as { s5CuePixels?: { box: typeof box; rows: typeof rows; stop: () => void } }
+        ).s5CuePixels = { box, rows, stop };
+        w.webContents.beginFrameSubscription(true, (image) => {
+          const size = image.getSize(),
+            data = image.toBitmap();
+          const sx = size.width / box.innerWidth,
+            sy = size.height / box.innerHeight;
+          const y = Math.max(0, Math.min(size.height - 1, Math.round((box.y + box.height / 2) * sy)));
+          const begin = Math.max(0, Math.round(box.x * sx));
+          const end = Math.min(size.width - 1, Math.round((box.x + box.width) * sx));
+          let left: number | null = null,
+            right: number | null = null;
+          for (let x = begin; x <= end; x++) {
+            const p = (y * size.width + x) * 4;
+            if ((data[p] ?? 0) > 220 && (data[p + 1] ?? 0) > 220 && (data[p + 2] ?? 0) > 220) {
+              left ??= x;
+              right = x;
+            }
+          }
+          const p = (y * size.width + Math.floor((begin + end) / 2)) * 4;
+          rows.push({
+            at: Date.now(),
+            center:
+              left === null || right === null
+                ? null
+                : (((left + right + 1) / 2 - box.x * sx) * box.sourceWidth) / (box.width * sx),
+            rgb: [data[p + 2] ?? 0, data[p + 1] ?? 0, data[p] ?? 0],
+          });
+          if (rows.length >= 60) stop();
+        });
+      },
+      { url: hall.url(), box },
+    );
     await win.getByRole('button', { name: 'Go cued video', exact: true }).click();
     const bg = (await snapshot(win)).layers.background;
     if (bg?.kind !== 'media' || !bg.seek) throw new Error('No scheduled Go');
-    const motion: { page: string; at: number; callbackAt: number; polledAt: number }[] = [];
+    pixelGoAt = bg.seek.at;
+    const motion: { page: string; at: number; callbackAt: number; polledAt: number; callbacks: unknown }[] =
+      [];
     for (const [index, page] of [hall, win, stream].entries()) {
       await expect(video(page, id)).toHaveAttribute('data-first-motion-at', /[1-9]/);
       motion.push({
@@ -60,6 +132,7 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
         at: Number(await video(page, id).getAttribute('data-first-motion-at')),
         callbackAt: Number(await video(page, id).getAttribute('data-first-motion-callback-at')),
         polledAt: Number(await video(page, id).getAttribute('data-polled-motion-at')),
+        callbacks: JSON.parse((await video(page, id).getAttribute('data-cue-callbacks')) ?? '[]'),
       });
       await expect(video(page, id)).toHaveAttribute('data-prepared', 'yes');
     }
@@ -73,6 +146,21 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
     }
     await expect(sound).toHaveJSProperty('paused', false);
   } finally {
+    const pixels = await app
+      .evaluate(() => {
+        const g = globalThis as { s5CuePixels?: { box: unknown; rows: unknown; stop: () => void } };
+        const value = g.s5CuePixels;
+        if (!value) return null;
+        value.stop();
+        delete g.s5CuePixels;
+        return { box: value.box, rows: value.rows };
+      })
+      .catch(() => null);
+    if (pixels)
+      await test.info().attach('s5-native-cue-pixels.json', {
+        body: Buffer.from(JSON.stringify({ goAt: pixelGoAt, ...pixels })),
+        contentType: 'application/json',
+      });
     await app.close();
   }
 });
