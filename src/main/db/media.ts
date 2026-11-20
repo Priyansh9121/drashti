@@ -228,8 +228,51 @@ export class MediaRepo {
    * when and from where it came in, whether it plays as it is, and the copy everything uses when it was converted (or
    * the original, when it is Drashti's copy). Null for no such item.
    */
-  about(_mediaId: string): DetailsRow | null {
-    // Red (x47): still to be written.
-    return null;
+  about(mediaId: string): DetailsRow | null {
+    const row = this.db
+      .prepare(
+        `SELECT m.name, m.kind, m.path, m.sha256, m.bytes, m.missing, m.deleted_at IS NOT NULL AS deleted, m.playable,
+                m.format, m.duration_ms, COALESCE(m.source_imported_at, m.created_at) AS imported_at, m.source_path,
+                (SELECT c.name FROM media_conversions mc JOIN media c ON c.id = mc.converted_id
+                  WHERE mc.original_id = m.id AND mc.undone_at IS NULL AND c.deleted_at IS NULL
+                  ORDER BY mc.created_at DESC LIMIT 1) AS converted_to,
+                (SELECT o.name FROM media o WHERE o.id = m.converted_from) AS copy_of
+           FROM media m WHERE m.id = ?`,
+      )
+      .get(mediaId) as
+      | {
+          name: string;
+          kind: DetailsRow['kind'];
+          path: string;
+          sha256: string | null;
+          bytes: number | null;
+          missing: number;
+          deleted: number;
+          playable: number | null;
+          format: string | null;
+          duration_ms: number | null;
+          imported_at: string | null;
+          source_path: string | null;
+          converted_to: string | null;
+          copy_of: string | null;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      name: row.name,
+      kind: row.kind,
+      path: row.path,
+      sha256: row.sha256,
+      bytes: row.bytes,
+      missing: row.missing === 1,
+      deleted: row.deleted === 1,
+      playable: row.playable === null ? null : row.playable === 1,
+      format: row.format,
+      durationMs: row.duration_ms,
+      importedAt: row.imported_at,
+      importedFrom: row.source_path,
+      convertedTo: row.converted_to,
+      copyOf: row.copy_of,
+    };
   }
 }

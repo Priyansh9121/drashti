@@ -174,6 +174,7 @@ import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES, openingCopyPath } from './
 import { openingPhotoPlace, openingPhotoThere } from './opening/opening-photo';
 import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
+import { MediaDetailsService } from './media/media-details';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
@@ -6612,6 +6613,21 @@ function start(): void {
     if (!file?.sha256 || file.missing) return { ok: false as const, message: 'That media item has no file.' };
     return saveStill(mediaDir, file.sha256, jpeg);
   });
+  // Media information… (alpha.20, Q60-34 item 1; the owner's "Yes, all A" to Q60-39): a video's or a sound's file read
+  // by the bundled FFmpeg at low priority, one at a time, with the library's notes on it. It only reads, so Simple Mode
+  // has it too; nothing on the screens or in the library changes.
+  const mediaDetails = new MediaDetailsService({
+    mediaDir,
+    row: (id) => media.about(id),
+    ffmpeg: pictureFfmpeg,
+    converting: (id) =>
+      conversions.list().some((j) => j.mediaId === id && (j.state === 'waiting' || j.state === 'converting')),
+  });
+  handle(IPC.media.details, (e, mediaId) =>
+    fromOperator(e) && typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
+      ? mediaDetails.details(mediaId)
+      : { ok: false as const, message: 'Only the operator window can read a file’s information.' },
+  );
   handle(IPC.audio.getOutput, () => audioOutput.status);
   handle(IPC.audio.setOutput, (e, device) =>
     fromOperator(e) ? audioOutput.choose(device) : audioOutput.status,
