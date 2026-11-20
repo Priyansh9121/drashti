@@ -1826,6 +1826,7 @@ function start(): void {
       sourceMediaId: (id) => editedPlaying.sourceId(id),
       prepareVideoEdits: (previous, next, historic) =>
         prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic, {
+          sourceId: (id) => editedPlaying.sourceId(id),
           renditionOf: (id) => editedPlaying.renditionOf(id),
           lengthOf: (id) => mediaLength(id),
           available: (id) => {
