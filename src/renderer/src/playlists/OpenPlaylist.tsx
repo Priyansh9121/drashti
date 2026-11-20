@@ -1274,6 +1274,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
             );
           // Its row in the middle's rows (Session 55): its number, or its name row and its slides.
           const own = byItem.get(item.id);
+          const itemFound = found ? found.key === own?.row?.key : false;
           const group = own?.row?.kind === 'group' ? own.row : null;
           const slides = own?.slides ?? [];
           const doc =
@@ -1366,7 +1367,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                 data-kind={item.kind}
                 data-item-id={item.id}
                 data-marked={isMarked ? 'true' : undefined}
-                data-found={found?.key === own?.row?.key ? 'true' : undefined}
+                data-found={itemFound ? 'true' : undefined}
                 data-live={isLive ? 'true' : undefined}
                 data-last-seconds={endingItem === item.id ? 'true' : undefined}
                 data-row-number={own?.row?.kind === 'item' ? (own.row.number ?? undefined) : undefined}
@@ -1414,7 +1415,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                   'pr-10 pl-2.5',
                   item.kind === 'header' ? 'min-h-8 pt-2 pb-1' : 'min-h-11 py-1.5',
                   look,
-                  found?.key === own?.row?.key && !isLive && 'border-accent! bg-panel-2',
+                  itemFound && !isLive && 'border-accent! bg-panel-2',
                   endingItem === item.id && 'border-warning! bg-warning-bg!',
                 )}
               >
