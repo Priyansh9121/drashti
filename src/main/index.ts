@@ -1,6 +1,13 @@
+import { editPlan } from './convert/edit-plan';
+import { editedClipSource } from './convert/clip-edited-source';
+import { withSceneMarkers } from './convert/scene-marker-save';
 import { VideoEditsRepo } from './db/video-edits';
 import { prepareVideoEdits } from './engine/video-edit-ready';
+import { prepareVideoProxies } from './convert/proxy-showing';
 import { registerEditVideoIpc } from './convert/edit-video-ipc';
+
+import { registerVideoCopies } from './convert/video-copies-ipc';
+import { VideoAnalysisService } from './convert/video-analysis';
 import { EditService } from './convert/edit-service';
 import { registerEditedFile } from './convert/edit-files';
 import { videoEditTimes } from '../shared/video-edit-time';
@@ -1792,7 +1799,12 @@ function start(): void {
   const videoCaptionsRepo = new VideoCaptionsRepo(db);
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
   // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
-  const videoEdits = new VideoEditsRepo(db);
+  let proxySourceOf: (id: string) => string = (id) => id;
+  let proxyReadyFor: (id: string) => { mediaId: string | null; message: string | null } = (id) => ({
+    mediaId: id,
+    message: null,
+  });
+  const videoEdits = new VideoEditsRepo(db, (id) => proxySourceOf(id));
   // Every playback metadata consumer follows the repo's shared identity callback (S4 supplies proxy parents).
   const editedPlaying = {
     sourceId: (id: string) => videoEdits.sourceId(id),
@@ -1825,8 +1837,8 @@ function start(): void {
             ? simpleRefusalText(simpleAccess())
             : null,
       sourceMediaId: (id) => editedPlaying.sourceId(id),
-      prepareVideoEdits: (previous, next, historic) =>
-        prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic, {
+      prepareVideoEdits: (previous, next, historic) => {
+        const edited = prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic, {
           sourceId: (id) => editedPlaying.sourceId(id),
           renditionOf: (id) => editedPlaying.renditionOf(id),
           lengthOf: (id) => mediaLength(id),
@@ -1834,7 +1846,9 @@ function start(): void {
             const row = playbackRepo.kindAndFile(id);
             return !!row && !row.missing && existsSync(join(mediaDir, row.path));
           },
-        }),
+        });
+        return edited.state ? prepareVideoProxies(previous, edited.state, proxyReadyFor, historic) : edited;
+      },
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
@@ -1995,6 +2009,8 @@ function start(): void {
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
   registerEditVideoIpc({
+    appendScenes: (id, times, save) => withSceneMarkers(libraryDb, media, id, times, save),
+    markersChanged: () => libraryChanged(true),
     repo: videoEdits,
     fromOperator: (event) => fromOperator(event) && !simpleNow(),
     available: (id) => {
@@ -4279,6 +4295,56 @@ function start(): void {
       },
     },
   });
+  const videoAnalysis = new VideoAnalysisService({ mediaDir, row: (id) => media.about(id), conversions });
+  const analysisResume = setTimeout(() => videoAnalysis.resume(), AFTER_START_MS);
+  stops.add('video analysis', () => {
+    clearTimeout(analysisResume);
+    videoAnalysis.close();
+  });
+  handle(IPC.media.videoAnalysis, (e, mediaId, audioStream, retry) =>
+    fromOperator(e) &&
+    typeof mediaId === 'string' &&
+    MEDIA_ID_PATTERN.test(mediaId) &&
+    (typeof audioStream === 'number' || audioStream === null) &&
+    typeof retry === 'boolean'
+      ? videoAnalysis.get(mediaId, audioStream, retry)
+      : { ok: false as const, message: 'Open the video in the operator window, then try again.' },
+  );
+  const videoCopies = registerVideoCopies({
+    editedExport: (request) =>
+      editedClipSource(request, {
+        mediaDir,
+        sourceId: (id) => videoEdits.sourceId(id),
+        row: (id) => media.about(id),
+        read: (id) => videoEdits.read(id),
+        plan: editPlan,
+      }),
+    sourceId: (id) => videoEdits.sourceId(id),
+    db: libraryDb,
+    media,
+    mediaDir,
+    conversions,
+    fromOperator,
+    proMode: () => mode === 'pro',
+    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    gpuStatus,
+    freeBytes: diskFreeBytes,
+    pickDest: async (name, container) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export video clip',
+        defaultPath: name,
+        buttonLabel: 'Export',
+        filters: [{ name: container === 'mp4' ? 'MP4 video' : 'WebM video', extensions: [container] }],
+      });
+      return picked.canceled ? null : picked.filePath;
+    },
+    showFile: (path) => shell.showItemInFolder(path),
+    libraryChanged: () => libraryChanged(true),
+  });
+  proxySourceOf = (id) => videoCopies.proxies.sourceOf(id);
+  proxyReadyFor = (id) => videoCopies.proxies.readyFor(id);
+  stops.add('video copies', () => videoCopies.close());
   const editedCopies = new EditService({
     repo: videoEdits,
     mediaDir,

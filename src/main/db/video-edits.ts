@@ -30,6 +30,7 @@ export class VideoEditsRepo {
 
   /** Resolve a prepared immutable file back to its source when its editor is opened from a playlist. */
   sourceId(mediaId: string): string {
+    mediaId = this.originalFileId(mediaId);
     const row = this.db.prepare('SELECT source_id FROM video_edit_copies WHERE copy_id = ?').get(mediaId) as
       { source_id: string } | undefined;
     return row?.source_id ?? mediaId;

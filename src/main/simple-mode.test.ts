@@ -740,3 +740,14 @@ describe('Simple Mode locks', () => {
     }
   });
 });
+
+it('keeps clip exports and manual preparation stops in Pro Mode with their expected refusal shapes', () => {
+  const answers = simpleModeRefusals(() => ({}) as AudioOutputStatus);
+  for (const channel of [IPC.media.clipExport, IPC.media.stopClipExport, IPC.media.stopProxy])
+    expect(simpleModeRefusesWhole(channel), channel).toBe(true);
+  expect(answers.get(IPC.media.clipExport)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  expect(answers.get(IPC.media.stopClipExport)?.()).toBe(false);
+  expect(answers.get(IPC.media.stopProxy)?.()).toBe(false);
+  for (const channel of [IPC.media.proxyStatus, IPC.media.clipExports])
+    expect(simpleModeRefusesWhole(channel), channel).toBe(false);
+});

@@ -1,3 +1,9 @@
+import { ClipExportPanel } from '../video-analysis/ClipExportPanel';
+import { ProxyInfo } from '../video-analysis/ProxyInfo';
+import type { MediaMarkers } from '../../../shared/markers';
+import { useAnalysis } from '../video-analysis/use-analysis';
+import { Waveform } from '../video-analysis/Waveform';
+import { SceneSuggestions } from '../video-analysis/SceneSuggestions';
 import { useEffect, useRef, useState } from 'react';
 import { mediaUrl, STILL_WIDTH } from '../../../shared/media';
 import type { SoundTrack } from '../../../shared/media-details';
@@ -83,7 +89,7 @@ async function thumbnail(video: HTMLVideoElement): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-const sections = ['Trim', 'Picture', 'Sound', 'Playback'] as const;
+const sections = ['Trim', 'Picture', 'Sound', 'Playback', 'Preparation and export'] as const;
 type Section = (typeof sections)[number];
 
 function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string }) {
@@ -99,6 +105,34 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
   const [jpeg, setJpeg] = useState<Uint8Array | undefined>();
   const [tracks, setTracks] = useState<SoundTrack[]>([]);
   const video = useRef<HTMLVideoElement>(null);
+  const [sceneBase, setSceneBase] = useState<MediaMarkers | null>(null);
+  const [sceneDraft, setSceneDraft] = useState<MediaMarkers | null>(null);
+  const analysisReading = useAnalysis(initial.mediaId, draft.audioTrack ?? 0);
+  const analysis = analysisReading.result?.ok ? analysisReading.result.analysis : null;
+  const sceneTimes =
+    sceneDraft?.markers
+      .filter((marker) => !sceneBase?.markers.some((saved) => saved.atMs === marker.atMs))
+      .map((marker) => marker.atMs) ?? [];
+  const dirty =
+    JSON.stringify(draft) !== JSON.stringify(kept.recipe) || jpeg !== undefined || sceneTimes.length > 0;
+  useEffect(() => {
+    let active = true;
+    void window.drashti.media.markers(initial.mediaId).then(
+      (points) => {
+        if (active) {
+          setSceneBase(points);
+          setSceneDraft(points);
+        }
+      },
+      () => {
+        if (active)
+          setProblem('The saved markers could not be read. Open this editor again before keeping scenes.');
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [initial.mediaId]);
   const prepared = useRef<HTMLVideoElement>(null);
   const [savedPreview, setSavedPreview] = useState(false);
   const canPreviewSaved =
@@ -108,7 +142,6 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
     const player = showSaved ? prepared.current : video.current;
     return () => player?.pause();
   }, [showSaved]);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(kept.recipe) || jpeg !== undefined;
   useEffect(
     () =>
       window.drashti.media.onVideoEdit((next) => {
@@ -172,6 +205,7 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
         revision: kept.revision,
         recipe: checked.data,
         ...(jpeg ? { thumbnailJpeg: jpeg } : {}),
+        ...(sceneTimes.length ? { sceneMarkers: sceneTimes } : {}),
       });
       if (!result.ok) {
         setProblem(result.message);
@@ -180,6 +214,12 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
       setKept(result.edit);
       setDraft(structuredClone(result.edit.recipe));
       setJpeg(undefined);
+      if (sceneDraft) setSceneBase(sceneDraft);
+      const points = await window.drashti.media.markers(initial.mediaId).catch(() => null);
+      if (points) {
+        setSceneBase(points);
+        setSceneDraft(points);
+      }
       refreshStill(result.edit.mediaId);
       return true;
     } catch {
@@ -252,6 +292,7 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
               onClick={() => {
                 setDraft(structuredClone(PLAIN_VIDEO_EDIT));
                 setJpeg(undefined);
+                setSceneDraft(sceneBase);
                 setProblem(null);
               }}
             >
@@ -415,6 +456,20 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
                     Play / pause preview
                   </Button>
                 </div>
+                <Waveform
+                  analysis={analysis}
+                  startMs={draft.trim.startMs ?? 0}
+                  endMs={draft.trim.endMs ?? duration ?? analysis?.durationMs ?? 0}
+                  playheadMs={position}
+                />
+                {analysisReading.result && !analysisReading.result.ok && (
+                  <p role="alert" className="text-xs text-danger-fg">
+                    {analysisReading.result.message}
+                  </p>
+                )}
+                {(analysis?.state === 'failed' || (analysisReading.result && !analysisReading.result.ok)) && (
+                  <Button onClick={analysisReading.retry}>Retry analysis</Button>
+                )}
                 <Field label="Trim timeline">
                   <Slider
                     min={0}
@@ -461,6 +516,25 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
                   <p className="text-xs text-muted">
                     These times are in the source video. Existing playlist row trims stay with their row.
                   </p>
+                  {sceneDraft && (
+                    <SceneSuggestions
+                      key={kept.revision}
+                      analysis={analysis}
+                      points={sceneDraft}
+                      onChange={setSceneDraft}
+                    />
+                  )}
+                  {sceneTimes.length > 0 && (
+                    <div className="flex items-center gap-2 text-xs text-muted">
+                      <p role="status">
+                        {sceneTimes.length} scene marker{sceneTimes.length === 1 ? '' : 's'} will be added on
+                        Save.
+                      </p>
+                      <Button size="sm" onClick={() => setSceneDraft(sceneBase)}>
+                        Clear kept scenes
+                      </Button>
+                    </div>
+                  )}
                   <Button
                     disabled={showSaved}
                     onClick={() => {
@@ -651,6 +725,25 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
                       ),
                     )}
                   </div>
+                </>
+              )}
+              {section === 'Preparation and export' && (
+                <>
+                  {kept.state === 'ready' && kept.readyMediaId ? (
+                    <ProxyInfo mediaId={kept.readyMediaId} />
+                  ) : (
+                    <p className="text-xs text-muted">
+                      Wait for the saved edits to be ready before checking their lighter playing copy.
+                    </p>
+                  )}
+                  <ClipExportPanel
+                    mediaId={initial.mediaId}
+                    startMs={draft.trim.startMs ?? 0}
+                    endMs={draft.trim.endMs ?? duration}
+                    revision={kept.revision}
+                    dirty={dirty}
+                    ready={kept.state === 'ready'}
+                  />
                 </>
               )}
             </section>
