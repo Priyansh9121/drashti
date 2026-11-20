@@ -19,24 +19,24 @@ Files come into Drashti by **Import…**, **Add files…**, a drop, **From a Lin
 
 ## From a Link…
 
-**What it is.** A YouTube or Dropbox share link downloaded into the open playlist, at the best quality up to 1080p. Checking the link downloads nothing.
+**What it is.** A YouTube or Dropbox share link downloaded into the open playlist, at the best quality up to 1080p. You choose where to save before pressing **Download**. Pasting a link only checks it; nothing is downloaded yet.
 
 **When you would use it.** When someone sends a link to a video for tonight.
 
 **How:**
 
 1. Press **From a Link…** above the playlist (or in the library's **Import…**).
-2. Paste the link into its small window.
-3. Check or change **Name** and **Save in** (**Choose…** changes the folder).
+2. Paste the link into its small window and wait for its name and details.
+3. Check or change **Name** and **Save in**. Press **Choose…** to choose the folder before the download starts.
 4. Press **Download** (Enter). The status bar shows how it goes, with **Stop**.
 
 ![From a Link…: a placeholder YouTube link pasted](../screenshots/import-link-youtube.png)
 
 ## A YouTube video's captions
 
-**What it is.** **Download its captions**, in **From a Link…**: the creator's captions in every language, saved as SRT files beside the video, with a copy in **Captions for learning**. Ticked to begin with.
+**What it is.** **Download its captions**, in **From a Link…**: the creator's captions in their languages, and the original language of any automatic captions, saved as SRT files beside the video, with a copy in **Captions for learning**. Ticked to begin with.
 
-**When you would use it.** For a video whose captions the hall may need (CC, in the LIVE chapter).
+**When you would use it.** For a video whose captions the hall may need: see **LIVE, Back and Next › A video's captions** for **CC** and the language choice.
 
 **How:**
 
@@ -58,19 +58,23 @@ Files come into Drashti by **Import…**, **Add files…**, a drop, **From a Lin
 2. Click its first slide's row: each **Next** plays its next click.
 3. A notice names any slide that uses the closest effects Drashti can play: check its clicks before going live.
 
+PowerPoint table styles and first-line spacing come across more closely in alpha.20. A deck's own Wipe also sweeps on a computer without a graphics chip. Wheel and Random Bars look closer too; where PowerPoint's own video can be made, a slide using those effects keeps it. Check words, tables and clicks before the sabha, on the screens you use. The original deck stays unchanged. For editing its copy, see **Editing slides**; the admin's guide, **Decks with their animations**, has the effect list.
+
 ![A deck's slide up at its first click, with its slides as rows](../screenshots/deck-live-click.png)
 
 ## Files Drashti converts
 
-**What it is.** A file the screens can't play as it is (some AVI, WMA or HEVC files, say) is converted by itself: Drashti makes a copy that plays and keeps the original. It says **Converting…** until then, and waits while anything is up or playing.
+**What it is.** A file the screens can't play as it is (some AVI, WMA or HEVC files, say) is converted by itself: Drashti makes a copy that plays and keeps the original. An H.264 video above 4K gets a 4K copy; an interlaced video, such as 1080i, gets a smooth picture. The file says **Converting…** until its copy is ready.
 
 **When you would use it.** It happens by itself: bring such files in before the sabha.
 
 **How:**
 
 1. Import the file as usual.
-2. Watch **Media**: the file says **Converting…**, then plays.
+2. Watch **Media**: the file says **Converting…** until ready. Converting waits while anything is up or playing, or the stream is on air or recording; it carries on afterwards.
 3. One that fails has a notice saying why, with **Try again**.
+
+**Library › Media information** says why a file needs a copy. Older library files are checked at quiet moments too. For a video that fails while up, see **LIVE, Back and Next › When a video cannot play**. The admin's guide, **Video and sound files**, has the file kinds and limits.
 
 ![Media while files convert, each with its progress](../screenshots/convert-media-list.png)
 
