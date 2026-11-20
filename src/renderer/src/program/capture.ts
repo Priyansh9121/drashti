@@ -23,6 +23,8 @@ let encoder: MessagePort | null = null;
 /** Video out's port (x30): each frame raw, as the encoder gets it, when video out is on (src/main/video-out/). */
 let videoOut: MessagePort | null = null;
 let track: MediaStreamTrack | null = null;
+/** Share the pending platform request while ports arrive before its track. */
+let capturePending = false;
 let soundReader: ReadableStreamDefaultReader<AudioData> | null = null;
 let size = { width: 1920, height: 1080 };
 let levelOf: () => number = () => -100;
@@ -309,20 +311,30 @@ async function capture(): Promise<void> {
   say(`capture ${String(mine)} asks for the picture (${String(size.width)}x${String(size.height)})`);
   // In turn with a capture of another app's window up as the background (Session 48): the main process
   // gives each request what this page asked for last, its own picture unless it asked for the window.
-  const display = await inTurn(() =>
-    navigator.mediaDevices.getDisplayMedia({
-      video: { width: size.width, height: size.height, frameRate: 30 },
-      audio: false,
-    }),
-  );
+  const askingSize = { ...size };
+  let display: MediaStream;
+  capturePending = true;
+  try {
+    display = await inTurn(() =>
+      navigator.mediaDevices.getDisplayMedia({
+        video: { width: askingSize.width, height: askingSize.height, frameRate: 30 },
+        audio: false,
+      }),
+    );
+  } finally {
+    capturePending = false;
+  }
   const video = display.getVideoTracks()[0];
   if (!video) {
     say(`capture ${String(mine)} got no video track`);
     return;
   }
-  if (mine !== generation) {
+  if (mine !== generation || !wanted()) {
     say(`capture ${String(mine)} was replaced before it began`);
     video.stop();
+    // A resize or a new consumer superseded this request while it opened. Acquire only that new request;
+    // a failed acquisition above is never retried here.
+    if (wanted() && !track) update();
     return;
   }
   track = video;
@@ -380,17 +392,17 @@ function wanted(): boolean {
 }
 
 function update(): void {
-  if (wanted() && !track) {
+  if (wanted() && !track && !capturePending) {
     void capture().catch((error: unknown) => {
       say(`the capture failed: ${why(error)}`);
       track = null;
       document.body.dataset['capture'] = 'failed';
     });
-  } else if (!wanted() && track) {
+  } else if (!wanted() && (track || capturePending)) {
     say('nothing wants the picture: the capture stops');
     generation++;
     keepLatest(null);
-    track.stop();
+    track?.stop();
     track = null;
     document.body.dataset['capture'] = 'off';
   }
@@ -579,6 +591,7 @@ export function stopVideoOut(): void {
 export function setCaptureSize(next: { width: number; height: number }): void {
   if (next.width === size.width && next.height === size.height) return;
   size = next;
+  if (capturePending) generation++;
   if (track) {
     generation++;
     keepLatest(null);
