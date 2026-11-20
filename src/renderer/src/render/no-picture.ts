@@ -71,11 +71,11 @@ export function watchFirstFrame(
 ): () => void {
   if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return () => undefined;
   const listening = new AbortController();
-  const stopWatch = watchStart(v, mediaId, (verdict) => {
+  const stopWatch = watchStart(v, mediaId, (verdict, seen) => {
     listening.abort();
     tellCannotPlay(mediaId, startedAt, attempt, {
       code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
-      message: '',
+      message: seen,
     });
   });
   const stop = () => {
@@ -112,9 +112,11 @@ function decodedFrames(v: HTMLVideoElement): number {
 export function watchStart(
   v: HTMLVideoElement,
   mediaId: string,
-  said: (verdict: 'stalled' | 'slow') => void,
+  said: (verdict: 'stalled' | 'slow', seen: string) => void,
 ): () => void {
   let watch = startWatch(engineNow());
+  let looked = 0;
+  let answers = 0;
   let progressEvents = 0;
   const onProgress = () => {
     progressEvents++;
@@ -128,6 +130,7 @@ export function watchStart(
     void bridge.media
       .served(mediaId)
       .then((bytes) => {
+        answers++;
         if (typeof bytes === 'number' && bytes > served) served = bytes;
       })
       .catch(() => undefined);
@@ -144,11 +147,22 @@ export function watchStart(
       progressEvents,
       served,
     });
+    looked++;
     askServed();
     const verdict = startVerdict(watch, at);
     if (verdict === 'wait') return;
     stop();
-    said(verdict);
+    // What it saw, for the log and Save Diagnostics (Main logs it with the video's kind; never shown to anyone).
+    const last = watch.last;
+    const seen = `${String(looked)} looks over ${((at - watch.since) / 1000).toFixed(1)} s, the last progress ${(
+      (at - watch.lastProgress) /
+      1000
+    ).toFixed(1)} s ago; loaded ${String(Math.round(last?.loadedMs ?? 0))} ms, ready state ${String(
+      last?.readyState ?? 0,
+    )}, ${String(last?.decoded ?? 0)} decoded, ${String(last?.progressEvents ?? 0)} progress, ${String(
+      last?.served ?? 0,
+    )} bytes sent (${String(answers)} answers)`;
+    said(verdict, seen);
   }, START_LOOK_MS);
   const stop = () => {
     clearInterval(looks);

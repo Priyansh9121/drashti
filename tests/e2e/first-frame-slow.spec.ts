@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
@@ -79,12 +79,22 @@ function slowVideo(seconds: number): { file: string; pace: string } {
 }
 
 async function start(env: Record<string, string>) {
-  const { app } = await launchApp({ ...SCREENS, ...env });
+  const { app, userData } = await launchApp({ ...SCREENS, ...env });
   const win = await operatorPage(app);
   await operatorReady(win);
   const hall = await audienceScreen(app, win);
   await installLooks(hall.page, OUT);
-  return { app, win, hall };
+  // Main's lines about videos (which page's word took one off, with what its watch saw), said by a failure.
+  const log = join(userData, 'logs', 'drashti.log');
+  const mainSaid = (): string =>
+    existsSync(log)
+      ? readFileSync(log, 'utf8')
+          .split('\n')
+          .filter((l) => l.includes('A video'))
+          .slice(-6)
+          .join(' | ')
+      : '(no log)';
+  return { app, win, hall, mainSaid };
 }
 
 /** Put the video up as the background: taken, and up, before any time is counted. */
@@ -116,7 +126,7 @@ async function looksUntil(
 test('a video that still loads is not taken off at 10 s: the Wallpaper meanwhile, never black, then it plays, and nobody is told it failed', async () => {
   test.setTimeout(180_000);
   const video = slowVideo(18);
-  const { app, win, hall } = await start({ DRASHTI_TEST_MEDIA_PACE_BPS: video.pace });
+  const { app, win, hall, mainSaid } = await start({ DRASHTI_TEST_MEDIA_PACE_BPS: video.pace });
   try {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-first-frame-wall-'));
     await wallpaperAndPicture(win, dir);
@@ -132,7 +142,9 @@ test('a video that still loads is not taken off at 10 s: the Wallpaper meanwhile
       60_000,
     );
     expect(seen, 'never black while it started').not.toContain('BLACK');
-    expect(await shown(hall.page, OUT), 'it plays once its first frame comes').toBe('VIDEO');
+    expect(await shown(hall.page, OUT), `it plays once its first frame comes; Main: ${mainSaid()}`).toBe(
+      'VIDEO',
+    );
     expect(
       Date.now() - went,
       'its first frame came after 10 s (the old bound would have taken it off)',
@@ -147,7 +159,7 @@ test('a video that still loads is not taken off at 10 s: the Wallpaper meanwhile
 test('a video still loading with no first frame by 30 s comes off then, said not to have started in time, never damaged; the Wallpaper meanwhile', async () => {
   test.setTimeout(180_000);
   const video = slowVideo(60);
-  const { app, win, hall } = await start({ DRASHTI_TEST_MEDIA_PACE_BPS: video.pace });
+  const { app, win, hall, mainSaid } = await start({ DRASHTI_TEST_MEDIA_PACE_BPS: video.pace });
   try {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-first-frame-wall-'));
     await wallpaperAndPicture(win, dir);
@@ -159,7 +171,7 @@ test('a video still loading with no first frame by 30 s comes off then, said not
     const after = Date.now() - went;
     expect(seen, 'never black while it tried to start').not.toContain('BLACK');
     expect(await backgroundUp(win), 'taken off').not.toBe(id);
-    expect(after, 'not before 30 s, while it still loaded').toBeGreaterThan(29_000);
+    expect(after, `not before 30 s, while it still loaded; Main: ${mainSaid()}`).toBeGreaterThan(29_000);
     expect(after, 'soon after 30 s').toBeLessThan(40_000);
     await expect
       .poll(() => notices(win), { timeout: 10_000 })
