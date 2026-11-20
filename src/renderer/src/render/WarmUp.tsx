@@ -127,7 +127,10 @@ const MAX_MS = 5000;
  */
 const CAP_MS = 8000;
 /**
- * Its last step when it ends before its frames came on time (Session 58, h-black2, fault 2): stopped (told the page
+ * Its last step after drawing, including normal completion: remove the scenes and draw empty black frames before
+ * the parent needs their tiles. A finished GPU warm-up can still hold the old tree's tile resources as the live
+ * picture starts (L8, CI 61979); frames on time say it was drawn, not that its pictures have been retired.
+ * Also when it ends before its frames came on time (Session 58, h-black2, fault 2): stopped (told the page
  * draws without a graphics chip), at its cap, or by a scene that failed, once a frame of it has been drawn. It lets go
  * of its drawing (nothing but black) and waits until the page's frames come on time again, SETTLE_MS at most (by this
  * computer's clock too: a window that draws no frames still draws the show), before the show is drawn. Without a chip
@@ -957,7 +960,7 @@ export function handOverWarmUp({
   retire: (ready: () => void) => void;
   ready: () => void;
 }): void {
-  if (how === 'drawn' || how === 'unseen' || !drewFrame) ready();
+  if (how === 'unseen' || !drewFrame) ready();
   else retire(ready);
 }
 
@@ -1032,7 +1035,7 @@ export function WarmUp({
       if (how !== 'cut') performance.mark(`${mark}-end`);
       ended.current?.(how, lengthClock() - began.current);
       const then = how === 'cut' ? () => stopped.current?.() : () => done.current();
-      // Drawn to its end on time, not seen (no frames come), or no frame of it drawn: nothing to let go of.
+      // Retire a drawn scene before the parent needs its tiles: on-time frames do not release the old tree.
       handOverWarmUp({
         how,
         drewFrame: drewFrame.current,
