@@ -16,7 +16,7 @@ import {
   setUpScreen,
   windowShowing,
 } from './helpers';
-import { linkLook, type LiveStandIn, liveStandIn } from './live-stand-in';
+import { type LinkLook, linkLook, type LiveStandIn, liveStandIn } from './live-stand-in';
 import { audioPage } from './time-bar-helpers';
 import { testFfmpeg } from './stream-helpers';
 
@@ -63,6 +63,36 @@ async function showLink(win: Page, url: string, a11y = false): Promise<void> {
   }
   await dialog.getByTestId('stream-link-show').click();
   await expect(dialog).toHaveCount(0, { timeout: 30_000 });
+}
+
+/**
+ * Its picture comes to rest on this page: two looks a whole second apart show the same frame (two looks closer than a
+ * frame would match while it still moved). Returns the last look; the frames seen and the players said on a failure.
+ */
+async function cameToRest(page: Page, why: string): Promise<LinkLook> {
+  let held = await linkLook(page);
+  const seen: string[] = [];
+  try {
+    await expect
+      .poll(
+        async () => {
+          await letTimePass(page, 1000, 'the screen plays out what it had');
+          const now = await linkLook(page);
+          seen.push(`${String(now.frame)} [${now.state ?? '-'}]`);
+          const still = now.frame !== null && now.frame === held.frame;
+          held = now;
+          return still;
+        },
+        { message: why, intervals: [100], timeout: 15_000 },
+      )
+      .toBe(true);
+  } catch (error) {
+    throw new Error(
+      `${why}: frames a second apart ${seen.join(', ')}; the last look ${JSON.stringify(held)} Main: ${mainSaid()}: ${String(error)}`,
+      { cause: error },
+    );
+  }
+  return held;
 }
 
 /** Its pictures move on this page: later looks show later frames, never black (each look's players said on a failure). */
@@ -197,20 +227,7 @@ test('a stream link that drops: its last picture held while Drashti reconnects, 
   await expect(notice).toHaveAttribute('data-state', 'reconnecting', { timeout: 15_000 });
   // The screen plays out the few seconds it had (it plays a little behind the stream), then keeps its last picture
   // (CI x54-1120-233555-18462: still moving as LIVE first said Reconnecting…).
-  // Each look a whole second after the one before: two looks closer than a frame would match while it still moved.
-  let held = await linkLook(hall);
-  await expect
-    .poll(
-      async () => {
-        await letTimePass(hall, 1000, 'the screen plays out what it had');
-        const now = await linkLook(hall);
-        const still = now.frame !== null && now.frame === held.frame;
-        held = now;
-        return still;
-      },
-      { message: 'its picture comes to rest', intervals: [100], timeout: 15_000 },
-    )
-    .toBe(true);
+  const held = await cameToRest(hall, 'the hall’s screen comes to rest on its last picture');
   expect(held.luma, `the last picture, never black: ${JSON.stringify(held)}`).toBeGreaterThan(40);
   for (let i = 0; i < 4; i++) {
     await letTimePass(hall, 1000, 'the link stays gone');
