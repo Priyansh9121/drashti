@@ -701,6 +701,8 @@ export interface DrashtiBridge {
     markers(mediaId: string): Promise<MediaMarkers>;
     /** Media information… (alpha.20, Q60-34 item 1): what a video's or a sound's file holds, as FFmpeg reads it. */
     details(mediaId: string): Promise<MediaDetailsResult>;
+    /** Media information's Copy: its words on the clipboard, by the main process; false when they could not be. */
+    copyDetails(text: string): Promise<boolean>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
