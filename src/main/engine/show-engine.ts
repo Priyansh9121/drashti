@@ -513,6 +513,7 @@ export class ShowEngine {
   private cueWait: { key: string; cancel: () => void } | null = null;
   private fadeWait: { key: string; cancel: () => void } | null = null;
   private cueStamp = 0;
+  private canceledAutoFrom: string | null = null;
   private endWait: { key: string; cancel: () => void } | null = null;
   /** The time of the change being made, read once (null between changes). */
   private at: number | null = null;
@@ -692,12 +693,12 @@ export class ShowEngine {
     const background = { ...cue.background, seek: { at, toMs: cue.background.clip?.startMs ?? 0 } };
     const from = this.state.layers.background;
     const fade =
-      automatic && cue.automatic && from?.kind === 'media' && from.media === 'video'
+      from?.kind === 'media' && from.media === 'video'
         ? {
             id: cue.id,
             from: { ...from, media: 'video' as const },
             at,
-            durationMs: cue.automatic.durationMs,
+            durationMs: automatic ? (cue.automatic?.durationMs ?? 0) : 0,
           }
         : null;
     return {
@@ -757,6 +758,7 @@ export class ShowEngine {
     if (durationMs <= 0) return null;
     const at = this.now() + playbackLeftMs(bg, bg.durationMs, this.now()) - durationMs;
     const from = `${bg.mediaId}@${bg.startedAt}`;
+    if (this.canceledAutoFrom === from) return null;
     const existing = state.videoCue;
     if (existing && !existing.automatic) return null;
     if (
@@ -798,6 +800,11 @@ export class ShowEngine {
     const prepared = this.automaticVideoCue();
     if (prepared?.ok && prepared.actions.length) {
       this.apply(prepared.actions);
+      return;
+    }
+    const bg = this.state.layers.background;
+    if (prepared === null && this.state.videoCue?.automatic && !(bg?.kind === 'media' && bg.seek?.paused)) {
+      this.apply([{ type: 'videoCue/set', cue: null }]);
       return;
     }
     const cue = this.state.videoCue;
@@ -2951,6 +2958,7 @@ export class ShowEngine {
       case 'goVideoCue':
         return this.goVideoCue(command.cueId);
       case 'cancelVideoCue':
+        this.canceledAutoFrom = this.state.videoCue?.automatic?.from ?? null;
         return { ok: true, actions: [{ type: 'videoCue/set', cue: null }] };
       case 'goLive': {
         // One of a Repeat Slides playlist's slides put up: it goes round from there (Session 26d).
@@ -3829,6 +3837,7 @@ export class ShowEngine {
     if (bg?.kind !== 'media' || bg.media !== 'video' || bg.loop || bg.seek?.paused === true) return null;
     if (bg.durationMs === undefined || bg.durationMs <= 0) return null;
     if (state.layers.slide !== null || state.layers.pip !== null || state.stopped) return null;
+    if (this.canceledAutoFrom === `${bg.mediaId}@${bg.startedAt}`) return null;
     const then = this.whenEndsOf(state, bg.mediaId);
     if (then === 'loop' || then === 'freeze') return null;
     if (then === 'wallpaper' && !state.chosenWallpaper) return null;

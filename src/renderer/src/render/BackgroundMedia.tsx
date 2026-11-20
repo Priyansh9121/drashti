@@ -89,6 +89,10 @@ function VideoSlot({
   useLayoutEffect(() => {
     timing.current = layer;
   });
+  const privateCue = useRef(slot.cued === true);
+  useLayoutEffect(() => {
+    privateCue.current = slot.cued === true;
+  });
   const playback = useRef<Playback | null>(null);
   useEffect(() => {
     const v = ref.current;
@@ -104,7 +108,7 @@ function VideoSlot({
         settled = true;
         if (hasNoPicture(v)) {
           reportVideoCue(layer.cueId, 'picture', false);
-          tellNoPicture(mediaId, startedAt);
+          if (!privateCue.current) tellNoPicture(mediaId, startedAt);
           return;
         }
         reportVideoCue(layer.cueId, 'picture', true);
@@ -113,7 +117,7 @@ function VideoSlot({
       onError: (error) => {
         settled = true;
         reportVideoCue(layer.cueId, 'picture', false);
-        tellCannotPlay(mediaId, startedAt, attempt ?? 0, error);
+        if (!privateCue.current) tellCannotPlay(mediaId, startedAt, attempt ?? 0, error);
         dispatch({ type: 'failed', key, landed: landed.current });
       },
     });
@@ -126,7 +130,8 @@ function VideoSlot({
       if (settled) return;
       settled = true;
       reportVideoCue(layer.cueId, 'picture', false);
-      tellCannotPlay(mediaId, startedAt, attempt ?? 0, { code: NO_FIRST_FRAME, message: '' });
+      if (!privateCue.current)
+        tellCannotPlay(mediaId, startedAt, attempt ?? 0, { code: NO_FIRST_FRAME, message: '' });
     }, FIRST_FRAME_MS);
     playback.current = p;
     return () => {

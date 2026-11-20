@@ -25,6 +25,7 @@ export interface VideoCrossfade {
 /** The same curve drives picture and sound on every page. */
 export function videoFadeProgress(_fade: VideoCrossfade, _now: number): number {
   const at = _fade.pausedAt ?? _now;
+  if (_fade.durationMs <= 0) return at < _fade.at ? 0 : 1;
   return Math.max(0, Math.min(1, (at - _fade.at) / _fade.durationMs));
 }
 
