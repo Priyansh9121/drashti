@@ -187,7 +187,13 @@ import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
-import { cannotPlayNotice, NO_FIRST_FRAME, noPictureNotice } from '../shared/no-picture';
+import {
+  cannotPlayNotice,
+  cannotStartInTimeNotice,
+  NO_FIRST_FRAME,
+  NO_START_IN_TIME,
+  noPictureNotice,
+} from '../shared/no-picture';
 import {
   CannotPlay,
   type CannotPlayWhere,
@@ -199,7 +205,12 @@ import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
 import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
-import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES, openingCopyPath } from './media/media-protocol';
+import {
+  handleMediaRequest,
+  MEDIA_SCHEME_PRIVILEGES,
+  mediaRequestOf,
+  openingCopyPath,
+} from './media/media-protocol';
 import { openingPhotoPlace, openingPhotoThere } from './opening/opening-photo';
 import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
@@ -739,6 +750,50 @@ const noRelaunch = sw('DRASHTI_TEST_NO_RELAUNCH') === '1';
 const logPermissions = sw('DRASHTI_LOG_PERMISSIONS') === '1';
 // Tests only: answer media requests late, as a slow disk would (up to a minute: the opening's photo past its limit).
 const mediaDelayMs = Math.min(60_000, Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_DELAY_MS') ?? 0) || 0));
+/**
+ * A test switch (Q60-51): every media file sent at this many bytes a second, a quarter of it four times a second, as
+ * from a slow disk or a busy computer: a video's first frame then comes late while it still loads. 0: as fast as it can.
+ */
+const mediaPaceBps = Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_PACE_BPS') ?? 0) || 0);
+
+/**
+ * Bytes Main has sent of each library file as the pages load it, by its id (Q60-51): a video whose file is still coming
+ * in is loading, even where its page can tell nothing else (on CI's Mac a slow file showed no buffered time, no frame,
+ * no readiness step and no 'progress' event: x47-1120-205802-554). One number a file, for as long as Drashti runs.
+ * Counted as the file is read for the page (media-protocol.ts `sent`), or as the test pace sends it (paced): never by
+ * wrapping the response, which changed how the bytes reached the player (x47-1120-215255-57755).
+ */
+const mediaServed = new Map<string, number>();
+const mediaSent = (mediaId: string, bytes: number): void => {
+  mediaServed.set(mediaId, (mediaServed.get(mediaId) ?? 0) + bytes);
+};
+
+/** A response's body sent at mediaPaceBps (the test switch above), counted as it goes for a library file; as it is with none. */
+async function paced(response: Response, mediaId: string | null): Promise<Response> {
+  if (mediaPaceBps <= 0 || !response.body) return response;
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const slice = Math.max(1024, Math.floor(mediaPaceBps / 4));
+  let at = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (at >= bytes.length) {
+        controller.close();
+        return;
+      }
+      const chunk = bytes.subarray(at, at + slice);
+      controller.enqueue(chunk);
+      if (mediaId !== null) mediaSent(mediaId, chunk.byteLength);
+      at += slice;
+      // A test switch's pace, never in a real show.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    },
+  });
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
 
 // Drashti's sound is the show's, not the computer's media (Session 15): the system's media controls
 // (Windows' media overlay, macOS's Now Playing) and the keyboard's or a headset's media keys never see
@@ -2349,8 +2404,12 @@ function start(): void {
       warn: (message) => {
         log.warn(message);
       },
+      // What of a library file goes out (Q60-51, mediaServed): as it is read, or, at the test pace, as that sends it.
+      ...(mediaPaceBps > 0 ? {} : { sent: mediaSent }),
     });
-    return perfWatch ? watchedMedia(perfWatch, request, started, response) : response;
+    const asked = mediaRequestOf(request.url);
+    const sent = await paced(response, asked?.what === 'media' ? asked.mediaId : null);
+    return perfWatch ? watchedMedia(perfWatch, request, started, sent) : sent;
   };
   // Every window's session: the default one, and the audio player's own.
   protocol.handle(MEDIA_SCHEME, serveMedia);
@@ -7404,6 +7463,11 @@ function start(): void {
   // box, Q60-46) or waits paused (on the slide); the operator window says so, once a file; and it is converted by itself
   // once the show is idle. Only for a video that was up, so a page's word never takes off anything else; the other
   // windows that found the same showing find it off already, and say nothing more.
+  // How much of a library file Main has sent so far (Q60-51): a page waiting on a video's first frame counts it as
+  // progress.
+  handle(IPC.media.served, (_e, mediaId) =>
+    typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? (mediaServed.get(mediaId) ?? 0) : 0,
+  );
   handle(IPC.media.noPicture, (e, mediaId, startedAt) => {
     const drawsShow = fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined;
     if (!drawsShow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
@@ -7439,7 +7503,7 @@ function start(): void {
     const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;
     // No first frame within FIRST_FRAME_MS (Q60-44): heeded from Main's own screens, what the hall sees; LIVE's or the
     // stream's page alone only logs it (shared/no-picture.ts).
-    if (code === NO_FIRST_FRAME && screenId === undefined) {
+    if ((code === NO_FIRST_FRAME || code === NO_START_IN_TIME) && screenId === undefined) {
       log.info(
         `A video had ${kind} on ${whereWords([where])}: ${mediaId}; left up (only a screen’s takes it off)`,
       );
@@ -7460,7 +7524,13 @@ function start(): void {
           .filter((w) => w !== '')
           .join(', ');
         log.warn(`A video could not play on ${named} (${kind}${detail}): ${mediaId}; taken off (${off})`);
-        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, named, took) });
+        // Q60-51: a video that still loaded but could not start in time is said to be that, never damaged.
+        sendToOperator(IPC.app.notice, {
+          text:
+            code === NO_START_IN_TIME
+              ? cannotStartInTimeNotice(file.name, named, took)
+              : cannotPlayNotice(file.name, named, took),
+        });
       },
       (named) => {
         log.info(
