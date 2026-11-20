@@ -42,8 +42,24 @@ export interface CannotPlayDeps {
   later(ms: number, run: () => void): void;
 }
 
+/** Where a page that draws the show found a video could not play: one of this computer's screens, LIVE, the stream. */
+export type CannotPlayWhere = { screen: string } | 'live' | 'stream';
+
+/**
+ * Where a showing could not play, in words, from every page that said so: the screens by name first (the hall is what
+ * the audience sees), else LIVE, else the stream.
+ */
+export function whereWords(wheres: readonly CannotPlayWhere[]): string {
+  const screens = [...new Set(wheres.flatMap((w) => (typeof w === 'object' ? [`“${w.screen}”`] : [])))];
+  if (screens.length === 1) return `the screen ${screens[0] ?? ''}`;
+  if (screens.length > 1) return `the screens ${screens.slice(0, -1).join(', ')} and ${screens.at(-1) ?? ''}`;
+  return wheres.includes('live') ? 'LIVE' : 'the stream';
+}
+
 export class CannotPlay {
   private gpuGoneAt: number | null = null;
+  /** Showings heard of and waiting: where each was said, so far. */
+  private readonly waiting = new Map<string, CannotPlayWhere[]>();
 
   constructor(private readonly deps: CannotPlayDeps) {}
 
@@ -53,15 +69,32 @@ export class CannotPlay {
   }
 
   /**
-   * A page said a showing could not play: after the short wait, `takeOff` runs; or `leftToGpu`, when a GPU process
-   * stopped about then (from GPU_GONE_GRACE_MS before the word to the end of the wait).
+   * A page said a showing (`showing`: its file and when it went up) could not play: after the short wait, `takeOff`
+   * runs once, with every page that said so meanwhile in words (whereWords); or `leftToGpu`, when a GPU process stopped
+   * about then (from GPU_GONE_GRACE_MS before the first word to the end of the wait). A later word on a showing waiting
+   * is only gathered.
    */
-  heard(takeOff: () => void, leftToGpu: () => void): void {
+  heard(
+    showing: string,
+    where: CannotPlayWhere,
+    takeOff: (where: string) => void,
+    leftToGpu: (where: string) => void,
+  ): void {
+    const gathered = this.waiting.get(showing);
+    if (gathered) {
+      gathered.push(where);
+      return;
+    }
+    const wheres = [where];
+    this.waiting.set(showing, wheres);
     const at = this.deps.now();
     this.deps.later(CANNOT_PLAY_SETTLE_MS, () => {
+      this.waiting.delete(showing);
+      const named = whereWords(wheres);
       const gone = this.gpuGoneAt;
-      if (gone !== null && gone >= at - GPU_GONE_GRACE_MS && gone <= at + CANNOT_PLAY_SETTLE_MS) leftToGpu();
-      else takeOff();
+      if (gone !== null && gone >= at - GPU_GONE_GRACE_MS && gone <= at + CANNOT_PLAY_SETTLE_MS)
+        leftToGpu(named);
+      else takeOff(named);
     });
   }
 }
