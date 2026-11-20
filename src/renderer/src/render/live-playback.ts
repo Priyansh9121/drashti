@@ -133,6 +133,9 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     }
   };
   const failed = () => {
+    // For the tests and Save Diagnostics: how it failed, in Chromium's own words, and where it was.
+    el.dataset['error'] =
+      `${String(el.error?.code ?? 0)} ${el.error?.message ?? ''} at ${el.currentTime.toFixed(2)} s`;
     options.onError?.();
   };
   // Its time moving on, played: its first frame is in (see frameIn).

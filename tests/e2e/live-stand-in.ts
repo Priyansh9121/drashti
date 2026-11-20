@@ -146,7 +146,7 @@ export function linkLook(page: Page, within: string | null = null): Promise<Link
   return page.evaluate((scope) => {
     const root = scope === null ? document : document.querySelector(scope);
     const box = root?.querySelector('[data-kind="link"]');
-    const state = `${box?.getAttribute('data-link-state') ?? 'none'} joins ${box?.getAttribute('data-link-joins') ?? '-'}`;
+    const state = `${box?.getAttribute('data-link-state') ?? 'none'} joins ${box?.getAttribute('data-link-joins') ?? '-'} last error ${box?.getAttribute('data-link-error') ?? '-'}`;
     const all = [...(box?.querySelectorAll('video') ?? [])];
     const players = all
       .map(
