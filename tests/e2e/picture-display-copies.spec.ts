@@ -1,10 +1,11 @@
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
-import { displayUrl } from '../../src/shared/media';
+import { displayUrl, mediaUrl } from '../../src/shared/media';
+import { launchMain, launchNode, pairNode } from './nodes';
 import {
   importAndGetIds,
   launchApp,
@@ -119,6 +120,13 @@ test('an oversized imported still is ready with its display source, while the or
       `${large.hash}.png`,
     );
     expect(createHash('sha256').update(readFileSync(original)).digest('hex')).toBe(large.hash);
+    const originalRoleHash = await win.evaluate(async (url) => {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('The original picture role could not be read.');
+      const hash = await crypto.subtle.digest('SHA-256', await response.arrayBuffer());
+      return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    }, mediaUrl(id));
+    expect(originalRoleHash).toBe(large.hash);
     expect(await importAndGetIds(win, [large.file])).toEqual([id]);
     await setUpScreen(win);
     const out = await outputPage(app);
@@ -174,13 +182,14 @@ function logDisplayWork(): void {
   const decode = globalThis.createImageBitmap;
   globalThis.createImageBitmap = ((...args: Parameters<typeof decode>) => {
     mark('decode-start');
-    const native = Reflect.apply(decode, globalThis, args) as ReturnType<typeof decode>;
+    const native = Reflect.apply(decode, globalThis, args);
     void native.then(
       () => mark('decode-end'),
       () => undefined,
     );
     return native;
   }) as typeof decode;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- called with the original canvas as this below
   const blob = OffscreenCanvas.prototype.convertToBlob;
   OffscreenCanvas.prototype.convertToBlob = function (this: OffscreenCanvas, options) {
     mark('blob-start');
@@ -209,7 +218,7 @@ async function recordDisplayCost(app: ElectronApplication): Promise<void> {
         const pid = win.webContents.getOSProcessId();
         let priority: number | null = null;
         try {
-          priority = (process.getBuiltinModule('node:os') as typeof import('node:os')).getPriority(pid);
+          priority = process.getBuiltinModule('node:os').getPriority(pid);
         } catch {
           // A missing actual OS answer fails the test; a log message alone is not priority evidence.
         }
@@ -268,7 +277,8 @@ async function startDisplayCostPage(out: Page): Promise<void> {
 }
 
 /** Main callbacks and renderer rAF are separate observations; neither claims a hardware presentation timestamp. */
-test('a large picture imported during a hall dissolve does not add sustained frame gaps', async ({}, info) => {
+test('a large picture imported during a hall dissolve does not add sustained frame gaps', async () => {
+  const info = test.info();
   test.setTimeout(240_000);
   const { app } = await launchApp();
   const trials: {
@@ -286,7 +296,14 @@ test('a large picture imported during a hall dissolve does not add sustained fra
     await setUpScreen(win);
     const out = await outputPage(app);
     await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
-    const operatorPid = await (await app.browserWindow(win)).evaluate((w) => w.webContents.getOSProcessId());
+    const operatorPid = await app.evaluate(
+      ({ BrowserWindow }, url) =>
+        BrowserWindow.getAllWindows()
+          .find((w) => w.webContents.getURL() === url)
+          ?.webContents.getOSProcessId() ?? 0,
+      win.url(),
+    );
+    expect(operatorPid).toBeGreaterThan(0);
     const dir = mkdtempSync(join(tmpdir(), 'drashti-display-dissolve-'));
     // All original fixture generation precedes capture. Fresh 21 MP noise PNGs also exercise the byte handoff;
     // a different hash every time prevents a cached display job from masquerading as an overlapping import.
@@ -354,7 +371,7 @@ test('a large picture imported during a hall dissolve does not add sustained fra
           if (cost) cost.active = false;
           return cost;
         });
-        if (!page || page.start === null || page.end === null || !main)
+        if (page?.start == null || page.end === null || !main)
           throw new Error('The actual dissolve interval was not recorded.');
         main.frames = main.frames.filter((t) => t >= (page.start ?? 0) && t <= (page.end ?? 0));
         const trial = { pair, importing, page, main, imported };
@@ -413,5 +430,89 @@ test('a large picture imported during a hall dissolve does not add sustained fra
       contentType: 'application/json',
     });
     await app.close();
+  }
+});
+
+test('a node receives and decodes the ready display file with its own hash', async () => {
+  test.setTimeout(120_000);
+  const main = await launchMain();
+  const node = await launchNode();
+  try {
+    const nodeId = await pairNode(main, node);
+    await setUpScreen(main.win, 'Placeholder display copies', 1);
+    const group = await main.win.evaluate(
+      async () =>
+        (await (globalThis as PageGlobals).drashti.screens.get()).groups.find(
+          (g) => g.name === 'Placeholder display copies',
+        )?.id,
+    );
+    if (!group) throw new Error('The placeholder screen group is missing.');
+    await expect
+      .poll(async () =>
+        main.win.evaluate(
+          async (id) =>
+            (await (globalThis as PageGlobals).drashti.screens.get()).nodes.find((n) => n.id === id)?.displays
+              .length ?? 0,
+          nodeId,
+        ),
+      )
+      .toBeGreaterThanOrEqual(2);
+    const assigned = await main.win.evaluate(
+      async ({ group, nodeId }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const onNode = (await d.screens.get()).nodes.find((n) => n.id === nodeId);
+        return d.screens.assignNodeDisplay(group, nodeId, onNode?.displays[1]?.id ?? -1);
+      },
+      { group, nodeId },
+    );
+    expect(assigned.ok).toBe(true);
+    const out = await outputPage(node.app);
+    await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-display-node-'));
+    const original = picture(join(dir, 'Placeholder node alpha.png'));
+    const [id = ''] = await importAndGetIds(main.win, [original.file]);
+    expect(id).not.toBe('');
+    const look = await main.win.evaluate(
+      async (mediaId) => (await (globalThis as PageGlobals).drashti.media.looks())[mediaId],
+      id,
+    );
+    const copy = look?.display;
+    if (!copy) throw new Error('The new picture was ready without its display file.');
+    const files = readdirSync(join(main.userData, 'Media', 'display')).filter((name) =>
+      name.startsWith(`v1-${original.hash}-${String(copy.width)}x${String(copy.height)}.`),
+    );
+    expect(files).toHaveLength(1);
+    const bytes = readFileSync(join(main.userData, 'Media', 'display', files[0] ?? ''));
+    const displayHash = createHash('sha256').update(bytes).digest('hex');
+    expect(displayHash).not.toBe(original.hash);
+    const presentation = await makeSlides(main.win, 'Placeholder node source', [{ picture: id }], {
+      kind: 'cut',
+      durationMs: 0,
+    });
+    await goLive(main.win, presentation, 0);
+    const image = out.locator(`[data-layer="slide"] img[data-media-id="${id}"]`);
+    await expect
+      .poll(async () => (await image.getAttribute('src'))?.startsWith(displayUrl(id, copy.key)) ?? false)
+      .toBe(true);
+    await expect
+      .poll(() =>
+        image.evaluate((element) => {
+          const img = element as HTMLImageElement;
+          return img.complete && img.naturalWidth > 0
+            ? { width: img.naturalWidth, height: img.naturalHeight }
+            : null;
+        }),
+      )
+      .toEqual({ width: copy.width, height: copy.height });
+    const received = join(node.userData, 'Media cache', `${displayHash}.png`);
+    await expect.poll(() => existsSync(received)).toBe(true);
+    expect(readFileSync(received)).toEqual(bytes);
+    console.log(
+      'DISPLAY NODE READY ' +
+        JSON.stringify({ originalHash: original.hash, displayHash, copy, sameBytes: true }),
+    );
+  } finally {
+    await node.app.close();
+    await main.app.close();
   }
 });

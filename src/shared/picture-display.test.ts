@@ -68,14 +68,14 @@ it('keeps an older node picture on its existing original until the derived file 
   const copy = { key: `p1-${'ab'.repeat(16)}-1920x1080`, width: 1920, height: 1080 };
   const pictures = { old: { ...PLAIN, display: copy } };
   const before = picturesWithLocalDisplayCopies(pictures, (id) => id === 'old');
-  expect(before.old?.display).toBeUndefined();
+  expect(before['old']?.display).toBeUndefined();
   expect(pictures.old.display).toEqual(copy);
   const landed = picturesWithLocalDisplayCopies(
     pictures,
     (id) => id === 'old' || id === displayMediaId('old', copy.key),
   );
   expect(landed).toBe(pictures);
-  expect(landed.old?.display).toEqual(copy);
+  expect(landed['old']?.display).toEqual(copy);
 });
 
 it('keeps the small display source for a new node item when neither file has arrived', () => {
