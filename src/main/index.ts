@@ -1,3 +1,4 @@
+import { registerVideoCopies } from './convert/video-copies-ipc';
 import { VideoAnalysisService } from './convert/video-analysis';
 import { type PlaybackSettings, playbackSettingsSchema, toneOf } from '../shared/playback-settings';
 import { shapeOverride } from '../shared/video-shape';
@@ -4150,6 +4151,30 @@ function start(): void {
       ? videoAnalysis.get(mediaId, audioStream, retry)
       : { ok: false as const, message: 'Open the video in the operator window, then try again.' },
   );
+  const videoCopies = registerVideoCopies({
+    db: libraryDb,
+    media,
+    mediaDir,
+    conversions,
+    fromOperator,
+    proMode: () => mode === 'pro',
+    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    gpuStatus,
+    freeBytes: diskFreeBytes,
+    pickDest: async (name, container) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export video clip',
+        defaultPath: name,
+        buttonLabel: 'Export',
+        filters: [{ name: container === 'mp4' ? 'MP4 video' : 'WebM video', extensions: [container] }],
+      });
+      return picked.canceled ? null : picked.filePath;
+    },
+    showFile: (path) => shell.showItemInFolder(path),
+    libraryChanged: () => libraryChanged(true),
+  });
+  stops.add('video copies', () => videoCopies.close());
   conversionActivityChanged = () => conversions.activityChanged();
   const offConversionActivity = engine.onChange((state) => {
     if (!nothingUp(state.layers)) conversions.activityChanged();

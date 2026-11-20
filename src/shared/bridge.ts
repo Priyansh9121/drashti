@@ -1,3 +1,4 @@
+import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
 import type { VideoAnalysisResult } from './video-analysis';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
@@ -702,6 +703,12 @@ export interface DrashtiBridge {
     startCountdown(time: string): Promise<TimerResult>;
   };
   media: {
+    proxyStatus(mediaId: string, retry?: boolean): Promise<VideoProxyResult>;
+    stopProxy(mediaId: string): Promise<boolean>;
+    clipExport(request: ClipExportRequest): Promise<ClipExportResult>;
+    clipExports(): Promise<ClipExportJob[]>;
+    stopClipExport(jobId: string): Promise<boolean>;
+    showClipExport(jobId: string): Promise<null>;
     /** Cached source-time analysis; queues only through the idle conversion worker. Audio uses 0:a:N. */
     videoAnalysis(
       mediaId: string,

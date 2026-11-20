@@ -19,6 +19,7 @@ import {
   convertArgs,
   type ConvertTarget,
   type MediaInfo,
+  parseFfmpegInfo,
   TARGET_EXT,
   TARGET_FORMAT,
 } from './plan';
@@ -229,7 +230,13 @@ export interface CopyOptions {
   /** Record a managed Trim copy before it can appear at its final path. */
   beforePublish?(temporary: string, destination: string): void;
   /** Idle analysis: probe in this same worker, never alongside another conversion. */
-  inspect?(info: MediaInfo): void;
+  inspect?: ((info: MediaInfo) => void) | ((info: MediaInfo) => false | string);
+  /** Validate an encoded video in this worker before it receives a public filename. */
+  validate?: ((info: MediaInfo) => void) | ((info: MediaInfo) => string);
+  /** User-requested files go before speculative copies when the worker next becomes free. */
+  background?: boolean;
+  /** Hash/copy/register in this same worker. Activity aborts this work before publication. */
+  preparePublish?(temporary: string, signal: AbortSignal): Promise<void>;
   /** Bounded consumers only; called afresh after args() resets each attempt's reducers. */
   stdout?(chunk: Buffer): void;
   /** Materialize a reduced artifact, after close drained all FFmpeg output. */
@@ -257,6 +264,7 @@ interface FileJob {
 }
 
 interface RunningFile {
+  preparation?: AbortController;
   job: FileJob;
   child: ChildProcess | null;
   tmp: string;
@@ -691,6 +699,7 @@ export class ConvertService {
   private pauseForActivity(running: Running | RunningFile, waitForShow: boolean): Stop | null {
     if (!running.stop && this.waitFor(waitForShow) !== null) {
       running.stop = 'wait';
+      if ('preparation' in running) running.preparation?.abort();
       if ('copy' in running.job && running.job.copy?.strictPriority) running.child?.kill('SIGKILL');
       else running.child?.kill();
     }
@@ -1085,6 +1094,7 @@ export class ConvertService {
     const running = this.runningFile;
     if (running?.job.id !== id) return false;
     running.stop = 'cancel';
+    running.preparation?.abort();
     running.child?.kill();
     return true;
   }
@@ -1095,7 +1105,7 @@ export class ConvertService {
     for (const [at, job] of this.files.entries()) {
       const note = this.waitFor(job.waitForShow);
       if (note === null) {
-        if (ready < 0) ready = at;
+        if (ready < 0 || (this.files[ready]?.copy?.background && !job.copy?.background)) ready = at;
       } else if (note !== job.note) {
         job.note = note;
         job.options.waiting?.(note);
@@ -1127,6 +1137,51 @@ export class ConvertService {
     return action === 'save it'
       ? `This cut needs about ${formatBytes(estimate)}, and only ${gb(free)} is free on this disk (Drashti keeps 2 GB free). ${advice}`
       : `Only ${gb(free)} is free on this disk, and Drashti keeps 2 GB free. ${advice}`;
+  }
+
+  /** Header/index reads stay in the same idle worker and wait for all stderr before parsing. */
+  private preparationInfo(
+    ffmpeg: string,
+    file: string,
+    running: RunningFile,
+  ): Promise<{ info: MediaInfo; priorityFailed: boolean; timedOut: boolean }> {
+    return new Promise((resolve) => {
+      const child = spawn(
+        ffmpeg,
+        ['-hide_banner', '-nostdin', '-threads', '1', '-protocol_whitelist', 'file', '-i', file],
+        { windowsHide: true, env: ffmpegEnv() },
+      );
+      running.child = child;
+      this.deps.children?.started(child.pid, running.tmp);
+      const priorityFailed = !this.lowerPriority(child);
+      const reading = { text: '', timedOut: false, done: false };
+      const timer = setTimeout(() => {
+        reading.timedOut = true;
+        child.kill('SIGKILL');
+      }, this.probeMs());
+      this.pauseForActivity(running, running.job.waitForShow);
+      child.stdout.resume();
+      child.stderr.on('data', (chunk: Buffer) => {
+        if (reading.text.length < 512 * 1024) reading.text += chunk.toString();
+      });
+      const finish = () => {
+        if (reading.done) return;
+        reading.done = true;
+        clearTimeout(timer);
+        this.deps.children?.ended(child.pid);
+        running.child = null;
+        const info = parseFfmpegInfo(reading.text);
+        if (
+          info.video &&
+          /^vp[89]$/u.test(info.video.codec) &&
+          /^\s*alpha_mode[ \t]*:[ \t]*1\s*$/imu.test(reading.text)
+        )
+          info.video.pixFmt = 'yuva420p';
+        resolve({ info, priorityFailed, timedOut: reading.timedOut });
+      };
+      child.once('error', finish);
+      child.once('close', finish);
+    });
   }
 
   private lowerPriority(child: ChildProcess): boolean {
@@ -1191,20 +1246,8 @@ export class ConvertService {
     this.runningFile = running;
     job.options.progress?.(0);
     if (job.copy?.inspect) {
-      const probePriority = { failed: false };
-      let pid: number | undefined;
-      const info = await readInfo(ffmpeg, job.source, {
-        timeoutMs: this.probeMs(),
-        onSpawn: (probe) => {
-          running.child = probe;
-          pid = probe.pid;
-          this.deps.children?.started(pid);
-          if (job.copy?.strictPriority && !this.lowerPriority(probe)) probePriority.failed = true;
-          this.pauseForActivity(running, job.waitForShow);
-        },
-      });
-      this.deps.children?.ended(pid);
-      running.child = null;
+      const probe = await this.preparationInfo(ffmpeg, job.source, running);
+      const info = probe.info;
       const stopped = this.pauseForActivity(running, job.waitForShow);
       if (stopped === 'wait') {
         this.runningFile = null;
@@ -1212,10 +1255,10 @@ export class ConvertService {
         this.watch();
         return;
       }
-      if (stopped || probePriority.failed || info.timedOut || !info.video) {
+      if (stopped || probe.priorityFailed || probe.timedOut || !info.video) {
         done({
           ok: false,
-          message: probePriority.failed
+          message: probe.priorityFailed
             ? 'Drashti could not lower the preparation priority. Check this computer’s permissions, then try again.'
             : stopped
               ? 'Stopped.'
@@ -1225,7 +1268,15 @@ export class ConvertService {
         return;
       }
       try {
-        job.copy.inspect(info);
+        const issue = job.copy.inspect(info);
+        if (issue === false) {
+          done({ ok: true, copy: null });
+          return;
+        }
+        if (typeof issue === 'string') {
+          done({ ok: false, message: issue });
+          return;
+        }
         if (!lengthMs && info.durationMs) {
           lengthMs = info.durationMs;
           running.limitMs = this.workMs(lengthMs);
@@ -1361,6 +1412,72 @@ export class ConvertService {
       });
       return;
     }
+    if (job.copy?.validate) {
+      const probe = await this.preparationInfo(ffmpeg, tmp, running);
+      const stopped = this.pauseForActivity(running, job.waitForShow);
+      if (stopped || probe.priorityFailed || probe.timedOut || !probe.info.video) {
+        removeQuietly(tmp);
+        if (stopped === 'wait') {
+          this.runningFile = null;
+          this.files.unshift(job);
+          this.watch();
+          return;
+        }
+        done({
+          ok: false,
+          message: stopped
+            ? 'Stopped.'
+            : 'The prepared video could not be checked. Check its file and this computer’s permissions, then try again.',
+          ...(stopped ? { stopped: true } : {}),
+        });
+        return;
+      }
+      try {
+        const issue = job.copy.validate(probe.info);
+        if (issue) {
+          removeQuietly(tmp);
+          done({ ok: false, message: issue });
+          return;
+        }
+      } catch {
+        removeQuietly(tmp);
+        done({
+          ok: false,
+          message:
+            'The prepared video did not pass its checks. Check the source and choices, then try again.',
+        });
+        return;
+      }
+    }
+    if (job.copy?.preparePublish) {
+      const controller = new AbortController();
+      running.preparation = controller;
+      let failed = false;
+      try {
+        await job.copy.preparePublish(tmp, controller.signal);
+      } catch {
+        failed = true;
+      }
+      delete running.preparation;
+      const stopped = this.pauseForActivity(running, job.waitForShow);
+      if (failed || stopped || controller.signal.aborted) {
+        removeQuietly(tmp);
+        if (stopped === 'wait') {
+          this.runningFile = null;
+          this.files.unshift(job);
+          this.watch();
+          return;
+        }
+        done({
+          ok: false,
+          message: stopped
+            ? 'Stopped.'
+            : 'Drashti could not keep the prepared copy. Check free disk space and the video, then try again.',
+          ...(stopped ? { stopped: true } : {}),
+        });
+        return;
+      }
+    }
     // Never over a file already there: one that came since it was named gets a free name beside it.
     const dest = saving
       ? join(dirname(job.dest), freeFileName(dirname(job.dest), basename(job.dest)))
@@ -1409,6 +1526,7 @@ export class ConvertService {
     const file = this.runningFile;
     if (file) {
       file.stop = 'quit';
+      file.preparation?.abort();
       file.child?.kill();
       removeQuietly(file.tmp);
     }

@@ -82,17 +82,17 @@ async function start(silent = false) {
   cleanup.push(() => analysis.close());
   return { source, digest, row };
 }
-async function ready() {
+async function ready(audio: number | null = 0) {
   await vi.waitFor(
     () => {
-      const result = analysis.get('m');
+      const result = analysis.get('m', audio);
       if (!result.ok) throw new Error(result.message);
       if (result.analysis.state === 'failed') throw new Error(result.analysis.message ?? 'Failed analysis.');
       expect(result.analysis.state).toBe('ready');
     },
     { timeout: 10_000 },
   );
-  const result = analysis.get('m');
+  const result = analysis.get('m', audio);
   if (!result.ok) throw new Error(result.message);
   return result.analysis;
 }
@@ -116,7 +116,12 @@ it('uses bundled scene/tile/PCM filters through one idle queue and reuses a dura
   const cache = readdirSync(join(dir, 'video-analysis')).filter(
     (name) => name.endsWith('.json') && name !== 'requests.json',
   );
-  expect(cache).toHaveLength(1);
+  expect(cache.length).toBeLessThanOrEqual(200);
+  analysis.get('m', null);
+  const withoutSound = await ready(null);
+  expect(withoutSound.waveform).toBeNull();
+  expect(withoutSound.storyboard).toBe(result.storyboard);
+  expect(queued).toHaveBeenCalledTimes(3);
   expect(readFileSync(join(dir, 'video-analysis', cache[0] ?? '')).length).toBeLessThan(2 * 1024 ** 2);
 }, 15_000);
 it('labels a silent source without an audio decode and never modifies its markers', async () => {

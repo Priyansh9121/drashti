@@ -31,6 +31,9 @@ const artifactSchema = z.object({
   scenes: z.array(z.number().int().positive().max(86_400_000)).max(50),
   storyboard: z.string().max(MAX_ARTIFACT_BYTES).startsWith('data:image/jpeg;base64,'),
 });
+const visualSchema = artifactSchema.omit({ waveform: true }).extend({ hasAudio: z.boolean() });
+type Visual = z.infer<typeof visualSchema>;
+type Queue = (suffix: string, options: CopyOptions) => Promise<string>;
 const keptSchema = z
   .array(
     z.object({
@@ -66,6 +69,7 @@ export class VideoAnalysisService {
   private readonly dir: string;
   private readonly parts: string;
   private readonly entries = new Map<string, Entry>();
+  private readonly visualGoing = new Map<string, Promise<Visual>>();
   private readonly requested = new Map<string, Kept>();
   private closed = false;
   constructor(private readonly deps: VideoAnalysisDeps) {
@@ -258,14 +262,80 @@ export class VideoAnalysisService {
         throw new AnalysisFailure('No prepared file was kept. Check the video, then try again.');
       return result.copy;
     };
-    const readThenRemove = (file: string): string => {
-      try {
-        return this.readSmall(file);
-      } finally {
-        rmSync(file, { force: true });
-      }
-    };
     try {
+      const visual = await this.visual(entry, info, queue, base);
+      info.durationMs = visual.durationMs;
+      info.audio = visual.hasAudio ? { codec: 'source audio' } : null;
+      entry.durationMs = visual.durationMs;
+      let waveform: VideoAnalysis['waveform'] = null;
+      if (info.audio && entry.request.audioStream !== null) {
+        let peaks = new WaveformReducer(entry.durationMs, 48000);
+        const waveformFile = await queue('waveform.json', {
+          lengthMs: entry.durationMs,
+          args: () => {
+            peaks = new WaveformReducer(entry.durationMs, 48000);
+            return [
+              ...base,
+              '-map',
+              `0:a:${String(entry.request.audioStream)}`,
+              '-vn',
+              '-sn',
+              '-dn',
+              '-ac',
+              '1',
+              '-ar',
+              '48000',
+              '-c:a',
+              'pcm_s16le',
+              '-f',
+              's16le',
+              'pipe:1',
+            ];
+          },
+          stdout: (chunk) => peaks.push(chunk),
+          finish: (tmp) => {
+            writeFileSync(tmp, JSON.stringify(peaks.finish()));
+          },
+        });
+        waveform = JSON.parse(this.readThenRemove(waveformFile)) as VideoAnalysis['waveform'];
+      }
+      const artifact = artifactSchema.parse({ ...visual, waveform });
+      if (!this.current(entry))
+        throw new AnalysisFailure('The video changed or was removed. Open its editor again.');
+      const tmp = join(this.dir, `${key}.part`);
+      writeFileSync(tmp, JSON.stringify(artifact));
+      renameSync(tmp, join(this.dir, `${key}.json`));
+      entry.state = 'ready';
+      entry.note = null;
+      this.requested.delete(key);
+      this.keep();
+      this.prune(key);
+    } catch (error) {
+      entry.state = 'failed';
+      entry.note = null;
+      entry.message =
+        error instanceof AnalysisFailure
+          ? error.words
+          : 'The video could not be prepared. Check its file, then try again.';
+    }
+  }
+  private readThenRemove(file: string): string {
+    try {
+      return this.readSmall(file);
+    } finally {
+      rmSync(file, { force: true });
+    }
+  }
+  private async visual(entry: Entry, info: MediaInfo, queue: Queue, base: string[]): Promise<Visual> {
+    const key = `${entry.sha}-visual-v${String(ANALYSIS_VERSION)}`;
+    try {
+      return visualSchema.parse(JSON.parse(this.readSmall(join(this.dir, `${key}.json`))));
+    } catch {
+      /* Rebuild a missing visual cache once per source. */
+    }
+    const going = this.visualGoing.get(key);
+    if (going) return going;
+    const make = async (): Promise<Visual> => {
       let cuts = new SceneReducer(1);
       const scenesFile = await queue('scenes.json', {
         lengthMs: 0,
@@ -299,39 +369,7 @@ export class VideoAnalysisService {
       const scenes = z
         .array(z.number().int().positive())
         .max(50)
-        .parse(JSON.parse(readThenRemove(scenesFile)));
-      let waveform: VideoAnalysis['waveform'] = null;
-      if (info.audio && entry.request.audioStream !== null) {
-        let peaks = new WaveformReducer(entry.durationMs, 48000);
-        const waveformFile = await queue('waveform.json', {
-          lengthMs: entry.durationMs,
-          args: () => {
-            peaks = new WaveformReducer(entry.durationMs, 48000);
-            return [
-              ...base,
-              '-map',
-              `0:a:${String(entry.request.audioStream)}`,
-              '-vn',
-              '-sn',
-              '-dn',
-              '-ac',
-              '1',
-              '-ar',
-              '48000',
-              '-c:a',
-              'pcm_s16le',
-              '-f',
-              's16le',
-              'pipe:1',
-            ];
-          },
-          stdout: (chunk) => peaks.push(chunk),
-          finish: (tmp) => {
-            writeFileSync(tmp, JSON.stringify(peaks.finish()));
-          },
-        });
-        waveform = JSON.parse(readThenRemove(waveformFile)) as VideoAnalysis['waveform'];
-      }
+        .parse(JSON.parse(this.readThenRemove(scenesFile)));
       const sheet = await queue('sheet.jpg', {
         lengthMs: entry.durationMs,
         args: (tmp) => [
@@ -367,36 +405,32 @@ export class VideoAnalysisService {
       } finally {
         rmSync(sheet, { force: true });
       }
-      const artifact = artifactSchema.parse({
+      const visual = visualSchema.parse({
         version: ANALYSIS_VERSION,
         durationMs: entry.durationMs,
-        waveform,
+        hasAudio: info.audio !== null,
         scenes,
         storyboard,
       });
       if (!this.current(entry))
         throw new AnalysisFailure('The video changed or was removed. Open its editor again.');
       const tmp = join(this.dir, `${key}.part`);
-      writeFileSync(tmp, JSON.stringify(artifact));
+      writeFileSync(tmp, JSON.stringify(visual));
       renameSync(tmp, join(this.dir, `${key}.json`));
-      entry.state = 'ready';
-      entry.note = null;
-      this.requested.delete(key);
-      this.keep();
-      this.prune(key);
-    } catch (error) {
-      entry.state = 'failed';
-      entry.note = null;
-      entry.message =
-        error instanceof AnalysisFailure
-          ? error.words
-          : 'The video could not be prepared. Check its file, then try again.';
+      return visual;
+    };
+    const promise = make();
+    this.visualGoing.set(key, promise);
+    try {
+      return await promise;
+    } finally {
+      this.visualGoing.delete(key);
     }
   }
   private prune(keep: string): void {
     try {
       const files = readdirSync(this.dir)
-        .filter((name) => /^[a-f0-9]{64}-(?:silent|\d+)-v\d+\.json$/u.test(name))
+        .filter((name) => /^[a-f0-9]{64}-(?:silent|visual|\d+)-v\d+\.json$/u.test(name))
         .map((name) => {
           const stat = statSync(join(this.dir, name));
           return { name, size: stat.size, mtimeMs: stat.mtimeMs };
