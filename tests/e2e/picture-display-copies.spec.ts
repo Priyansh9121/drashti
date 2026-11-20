@@ -403,8 +403,13 @@ test('a large picture imported during a hall dissolve does not add sustained fra
       const rafImport = periods(importing.page.frames, rafControl.period);
       expect(nativeControl.period).toBeGreaterThan(0);
       expect(rafControl.period).toBeGreaterThan(0);
-      allWorse.native.push(nativeImport.over15 > nativeControl.over15);
-      allWorse.raf.push(rafImport.over15 > rafControl.over15);
+      // The existing paired rule (N/bin/measure-tables.py): p95/longest within +1 ms and no more long gaps.
+      const worse = (measured: ReturnType<typeof periods>, control: ReturnType<typeof periods>) =>
+        measured.p95 - control.p95 > 1 ||
+        measured.longest - control.longest > 1 ||
+        measured.over15 > control.over15;
+      allWorse.native.push(worse(nativeImport, nativeControl));
+      allWorse.raf.push(worse(rafImport, rafControl));
       const verdict = {
         pair,
         nativeControl,
@@ -417,10 +422,11 @@ test('a large picture imported during a hall dissolve does not add sustained fra
       console.log('DISPLAY DISSOLVE PAIR ' + JSON.stringify(verdict));
     }
     // Q59-1: each observation fails for a cost in every one of its three ordered paired rounds.
-    expect(allWorse.native.every(Boolean), 'Import added native callback gaps in all three pairs.').toBe(
-      false,
-    );
-    expect(allWorse.raf.every(Boolean), 'Import added renderer frame gaps in all three pairs.').toBe(false);
+    expect(
+      allWorse.native.every(Boolean),
+      'Import made native callback frames worse in all three pairs.',
+    ).toBe(false);
+    expect(allWorse.raf.every(Boolean), 'Import made renderer frames worse in all three pairs.').toBe(false);
   } finally {
     const unfinished = await app
       .evaluate(() => (globalThis as DisplayCostMainGlobals).drashtiDisplayCostMain)
