@@ -144,6 +144,8 @@ import type { PipPlace } from './engine/state';
 import type { SavePictureResult, SaveStillResult } from './media';
 import type { MediaDetailsResult } from './media-details';
 import type { ResumePoint } from './play-history';
+import type { SnapshotResult } from './snapshot';
+import type { PlayingRef } from './engine/playing';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
@@ -668,6 +670,10 @@ export interface DrashtiBridge {
     remove(id: string): Promise<{ ok: true } | { ok: false; message: string }>;
     /** Interface motion: Calm, Lively or Off (Session 40). */
     setMotion(motion: InterfaceMotion): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Moving: On or Off (Session 60). */
+    setMoving(on: boolean): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Star or unstar an appearance (Session 60). */
+    setFavourite(id: string, on: boolean): Promise<{ ok: true } | { ok: false; message: string }>;
     /** View › Appearance… was chosen. */
     onOpen(listener: () => void): () => void;
     /** The appearance or the motion changed (every window draws it by itself; the Appearance window shows it). */
@@ -762,6 +768,8 @@ export interface DrashtiBridge {
     copyDetails(text: string): Promise<boolean>;
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when; null for none. */
     resumePoint(mediaId: string): Promise<ResumePoint | null>;
+    /** Snapshot (alpha.20): the frame of a video on the screens now, a PNG in Media; or why not. */
+    snapshot(playing: PlayingRef): Promise<SnapshotResult>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;

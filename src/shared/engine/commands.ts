@@ -251,6 +251,40 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('pausePlaying'), playing: playingSchema }),
   z.object({ type: z.literal('resumePlaying'), playing: playingSchema }),
+  /**
+   * A-B repeat (alpha.20: the owner's Q60-34, his "Yes, all A" to Q60-39 P4 A; the time bar's ⋯ in Pro Mode): the
+   * background video or the sound (an audio playlist's track too) goes round from A to B (ms into its file, kept between
+   * its own start and end points; B before A swapped; under half a second refused), every screen and the sound in step,
+   * its own points and loop kept aside until Stop, which plays on from where it is. Not a change Back or Put it back undo.
+   */
+  z.object({
+    type: z.literal('repeatAb'),
+    playing: playingSchema,
+    fromMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 3600 * 1000),
+    toMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 3600 * 1000),
+  }),
+  z.object({ type: z.literal('stopAb'), playing: playingSchema }),
+  /**
+   * One frame back or on (alpha.20, P6 (i) A), while paused: a video by one frame of its own length (ms, from its frame
+   * rate: 1/120 s to 1/10 s), aimed at that frame's middle so every screen shows exactly it.
+   */
+  z.object({
+    type: z.literal('stepFrame'),
+    playing: playingSchema,
+    by: z.union([z.literal(-1), z.literal(1)]),
+    frameMs: z
+      .number()
+      .min(1000 / 120)
+      .max(100),
+  }),
   /** A timer up alone, in the Timer only layout, in the slide's place (Session 50: Show on the screens). */
   z.object({ type: z.literal('showTimer'), timerId: id }),
   /**
