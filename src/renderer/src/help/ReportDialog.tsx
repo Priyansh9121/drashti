@@ -195,7 +195,13 @@ function WritePage() {
           </div>
         )}
       </section>
-      {opened && (
+      {opened?.via != null && (
+        <p className="text-xs text-muted">
+          It goes to the admin through Main (“{opened.via}”), with Main’s Gmail and this node’s name (
+          {opened.computer}), so the admin can answer.
+        </p>
+      )}
+      {opened?.via === null && (
         <p className="text-xs text-muted">
           Your Gmail ({opened.gmail}) and this computer’s name ({opened.computer}) go with it, so the admin
           can answer you.
@@ -267,12 +273,20 @@ function DonePage() {
   const result = useReport((s) => s.result);
   const opened = useReport((s) => s.opened);
   if (!result) return null;
+  // On a node (x49, Q60-42 2), sent means handed to Main, which sends it on.
+  const via = opened?.via ?? null;
+  const words =
+    via !== null && result.kind === 'sent'
+      ? `Handed to Main (“${via}”): it goes to the admin from there, by itself.`
+      : via !== null && result.kind === 'waiting' && result.why === 'unreachable'
+        ? 'Kept on this node: it goes to Main by itself once Main can be reached.'
+        : reportStateWords(result);
   return (
     <div className="flex flex-col gap-2 text-sm">
       <p>
-        {reportStateWords(result)} Its reference: <strong>{result.reference}</strong>.
+        {words} Its reference: <strong>{result.reference}</strong>.
       </p>
-      {result.kind === 'sent' && opened && !opened.owner && (
+      {result.kind === 'sent' && opened && !opened.owner && via === null && (
         <p className="text-muted">A short email to {opened.gmail} says it arrived.</p>
       )}
       <p className="text-xs text-muted">A copy stays on this computer: Your reports.</p>

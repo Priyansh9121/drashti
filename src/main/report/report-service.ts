@@ -1,7 +1,7 @@
-import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AccessComputer, AccessGrant } from '../../shared/access-protocol';
+import type { AccessGrant } from '../../shared/access-protocol';
 import { fileStamp } from '../../shared/format';
 import type { CapturedPicture } from '../../shared/pdf-copy';
 import {
@@ -12,9 +12,12 @@ import {
   reportCleanLines,
   reportComputerLine,
   reportMailText,
+  readNodeReportBody,
+  reportComputerOf,
   reportReference,
   reportSubject,
   reportWhen,
+  type ReportComputer,
   type NodeReportAnswer,
   type ReportCallReport,
   type ReportDraft,
@@ -27,6 +30,7 @@ import {
 import { cutText } from '../../shared/text';
 import type { AccessClient } from '../access/client';
 import type { CrashFile } from '../crash-files';
+import type { NodeDiagnosticsInput } from '../diagnostics';
 import { REPORTS_KEPT_WAITING, ReportOutbox, type ReportState, type StoredReport } from './outbox';
 import type { ReportDiagnosticsInput, ReportFilesJob, ReportFilesMade } from './report-files';
 
@@ -68,6 +72,20 @@ export interface ReportServiceDeps {
   /** Tests only: the waits after no answer, and before the first try after a start. */
   retryMs?: readonly number[];
   startDelayMs?: number;
+  /**
+   * On a node (x49, the owner's Q60-42, 2): its reports are handed to the Main it is paired with, which sends them on
+   * with its own access (never through the show's feed); the node's own diagnostics; its Review says Main's part.
+   */
+  node?: {
+    /** The node itself, as the email names it. */
+    self(): ReportComputer;
+    /** Main's name while paired, or null. */
+    main(): string | null;
+    /** The report handed to Main: Main's answer, or null when Main could not be reached. */
+    handOver(body: Uint8Array, stop: AbortSignal): Promise<NodeReportAnswer | null>;
+    /** The node's own Save Diagnostics input, crash files said as ticked or not. */
+    diagnostics(crashIncluded: boolean): NodeDiagnosticsInput;
+  };
 }
 
 /** The window as it was when Report a Problem opened: its pixels, and a small copy to show beside the tick. */
@@ -101,6 +119,28 @@ export class ReportService {
     this.outbox = new ReportOutbox({
       dir: d.dir,
       send: async (r, data, stop) => {
+        if (d.node) {
+          // The node's report, handed to Main: its call's part, then its files' data as the worker wrote it.
+          const self = d.node.self();
+          const head = Buffer.from(
+            JSON.stringify({
+              v: 1,
+              node: { version: self.version, platform: self.platform },
+              report: r.call,
+            }),
+            'utf8',
+          );
+          const body = Buffer.concat([
+            head.subarray(0, head.length - 1),
+            Buffer.from(',"data":', 'utf8'),
+            data,
+            Buffer.from('}', 'utf8'),
+          ]);
+          const answer = await d.node.handOver(body, stop);
+          return answer?.ok
+            ? { ok: true, reference: answer.reference, again: false }
+            : { ok: false, kind: 'no-answer', stopped: stop.aborted };
+        }
         const client = await d.client();
         const grant = d.grant();
         if (!client || !grant) return { ok: false, kind: 'no-answer', stopped: false };
@@ -144,13 +184,14 @@ export class ReportService {
     this.discardPrepared();
     this.held = picture;
     const crash = this.d.crashFiles();
-    const client = await this.d.client();
+    const client = this.d.node ? null : await this.d.client();
     const gmail = this.d.gmail() ?? '';
     return {
       ok: true,
       gmail,
       owner: this.d.owner(),
-      computer: client?.computer().name ?? 'This computer',
+      computer: this.d.node ? this.d.node.self().name : (client?.computer().name ?? 'This computer'),
+      via: this.d.node ? this.d.node.main() : null,
       crash: crash.length > 0 ? { count: crash.length, bytes: crash.reduce((n, f) => n + f.bytes, 0) } : null,
       picture: picture
         ? { thumb: picture.thumb, width: picture.picture.width, height: picture.picture.height }
@@ -179,8 +220,10 @@ export class ReportService {
         message: `${String(REPORTS_KEPT_WAITING)} reports wait to go already: forget some in Your reports first.`,
       };
     this.discardPrepared();
-    const client = await this.d.client();
-    if (!client) return { ok: false, message: 'Report a Problem works once this computer is let in.' };
+    const node = this.d.node ?? null;
+    const client = node ? null : await this.d.client();
+    if (!node && !client)
+      return { ok: false, message: 'Report a Problem works once this computer is let in.' };
     const now = this.d.now();
     const id = randomBytes(16).toString('hex');
     const reference = reportReference(id);
@@ -191,9 +234,11 @@ export class ReportService {
       made = await this.d.makeFiles({
         dir,
         stamp: fileStamp(new Date(now)),
-        diagnostics: draft.diagnostics
-          ? { input: await this.d.diagnostics(draft.crashFiles), dbFile: this.d.dbFile }
-          : null,
+        diagnostics:
+          draft.diagnostics && !node
+            ? { input: await this.d.diagnostics(draft.crashFiles), dbFile: this.d.dbFile }
+            : null,
+        nodeDiagnostics: draft.diagnostics && node ? node.diagnostics(draft.crashFiles) : null,
         picture: draft.picture ? (this.held?.picture ?? null) : null,
         crash: draft.crashFiles
           ? this.d.crashFiles().map((f) => ({ path: f.path, name: f.name, bytes: f.bytes }))
@@ -226,22 +271,30 @@ export class ReportService {
       id,
       written: now,
       from,
+      ...(node ? { node: node.self() } : {}),
       features,
       ...(notice ? { notice } : {}),
       ...(made.errors.length > 0 ? { errors: made.errors } : {}),
       files: made.files,
       ...(made.kept.length > 0 ? { kept: made.kept } : {}),
     };
-    const computer: AccessComputer = client.computer();
     const owner = this.d.owner();
+    // On a node, Main adds its own Gmail and name when it sends the report on: the Review says so where they go.
+    let whoLine = this.d.gmail() ?? '';
+    let computerLine = '';
+    if (node) {
+      const via = node.main() ?? '';
+      whoLine = `the Gmail let in on Main “${via}”`;
+      computerLine = `the node ${reportComputerOf(node.self())}, through Main “${via}”`;
+    } else if (client) computerLine = reportComputerLine(client.computer(), from, null);
     const subject = reportSubject(
       features.map((f) => f.name),
       reference,
     );
     const text = reportMailText({
       reference,
-      gmail: this.d.gmail() ?? '',
-      computer: reportComputerLine(computer, from, null),
+      gmail: whoLine,
+      computer: computerLine,
       written: reportWhen(now),
       received: REPORT_RECEIVED_LATER,
       features,
@@ -299,9 +352,74 @@ export class ReportService {
       }));
   }
 
-  /** A node's report, handed to Main to send on (x49, Q60-42 2): not yet. */
-  fromNode(_node: { id: string; name: string }, _body: Uint8Array): Promise<NodeReportAnswer> {
-    return Promise.resolve({ ok: false, message: 'Not yet.' });
+  /**
+   * A paired node's report, handed to Main (x49, the owner's Q60-42, 2): read and checked (its files against their
+   * data), kept in Main's outbox as the node's, named as Main knows the node, and sent on with Main's access, once
+   * however often the node hands it over. The node is answered as soon as it is kept.
+   */
+  async fromNode(node: { id: string; name: string }, body: Uint8Array): Promise<NodeReportAnswer> {
+    if (!this.d.letIn()) return { ok: false, message: 'Main is not let in: the report waits on the node.' };
+    const read = readNodeReportBody(body);
+    if (read?.report.from !== 'node') return { ok: false, message: 'Main could not read that report.' };
+    const { report, data } = read;
+    const reference = reportReference(report.id);
+    // Handed over again (the node tried again): taken already.
+    if (this.outbox.get(report.id)) return { ok: true, reference };
+    if (this.outbox.waiting() >= REPORTS_KEPT_WAITING)
+      return { ok: false, message: 'Main has 20 reports waiting already: the report waits on the node.' };
+    const wanted = new Set(report.files.map((f) => f.sha256));
+    const keys = Object.keys(data);
+    if (keys.length !== wanted.size || keys.some((k) => !wanted.has(k)))
+      return { ok: false, message: 'Main could not read that report.' };
+    let total = 0;
+    const files: { name: string; bytes: Buffer }[] = [];
+    for (const f of report.files) {
+      const base64 = data[f.sha256] ?? '';
+      const bytes = Buffer.from(base64, 'base64');
+      if (
+        bytes.toString('base64') !== base64 ||
+        bytes.length !== f.bytes ||
+        createHash('sha256').update(bytes).digest('hex') !== f.sha256
+      )
+        return { ok: false, message: 'Main could not read that report.' };
+      total += bytes.length;
+      files.push({ name: f.name, bytes });
+    }
+    if (total > REPORT_LIMITS.filesBytes) return { ok: false, message: 'The report is too large.' };
+    const dir = join(this.d.dir, report.id);
+    mkdirSync(join(dir, 'files'), { recursive: true });
+    for (const f of files) writeFileSync(join(dir, 'files', f.name), f.bytes);
+    writeFileSync(join(dir, 'data.json'), JSON.stringify(data), 'utf8');
+    const call: ReportCallReport = {
+      ...report,
+      from: 'node',
+      node: { name: node.name, version: read.node.version, platform: read.node.platform },
+    };
+    const client = await this.d.client();
+    const subject = reportSubject(
+      call.features.map((f) => f.name),
+      reference,
+    );
+    const text = reportMailText({
+      reference,
+      gmail: this.d.gmail() ?? '',
+      computer: client
+        ? reportComputerLine(client.computer(), 'node', call.node ?? null)
+        : `the node ${node.name}`,
+      written: reportWhen(call.written),
+      received: REPORT_RECEIVED_LATER,
+      features: call.features,
+      ...(call.notice ? { notice: call.notice } : {}),
+      errors: call.errors ?? [],
+      files: call.files,
+      kept: call.kept ?? [],
+      owner: this.d.owner(),
+    });
+    this.outbox.prepared({ id: report.id, reference, prepared: this.d.now(), subject, text, call });
+    this.d.log(`Report ${reference}: handed over by the node “${node.name}”`);
+    void this.outbox.send(report.id);
+    this.d.changed();
+    return { ok: true, reference };
   }
 
   /** Forget a report on this computer (one waiting is then never sent). */
