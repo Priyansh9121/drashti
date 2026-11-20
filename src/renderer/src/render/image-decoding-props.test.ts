@@ -6,6 +6,9 @@ import type { StepTiming } from '../../../shared/deck-show';
 import type { MediaElement, RenderSlide } from '../../../shared/model';
 import { DeckStepStill, DeckStepView } from './DeckStep';
 import { ElementView, SlideView } from './SlideView';
+import { ScreenPictures } from './picture-looks';
+import { PLAIN } from '../../../shared/picture-look';
+import { displayUrl } from '../../../shared/media';
 
 // A still's version is supplied by the window's store; this test needs no window or video decoder.
 vi.mock('./stills', () => ({ useStill: () => ({ version: 0, failed: false }), requestStill: vi.fn() }));
@@ -104,4 +107,16 @@ describe('a slide image decoding hint passed through the existing render tree', 
     expect(images(html)).toHaveLength(4);
     expect(html).not.toContain('decoding="sync"');
   });
+});
+
+
+it('selects a prepared display rendition in its very first image, before any loading effect runs', () => {
+  const key = `p1-${'ab'.repeat(16)}-1920x1080`;
+  const rendered = renderToStaticMarkup(createElement(ScreenPictures.Provider, {
+    value: { pictures: { [picture.mediaId]: { ...PLAIN, display: { key, width: 1920, height: 1080 } } }, liveZoom: null },
+  }, createElement(ElementView, { el: picture, imageDecoding: 'sync' })));
+  expect(images(rendered)).toHaveLength(1);
+  expect(rendered).toContain(displayUrl(picture.mediaId, key));
+  expect(rendered).not.toContain(`drashti-media://media/${picture.mediaId}`);
+  expectSync(rendered, 1);
 });
