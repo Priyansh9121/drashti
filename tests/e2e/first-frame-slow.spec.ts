@@ -30,20 +30,34 @@ import { testFfmpeg } from './stream-helpers';
 const ffmpeg = testFfmpeg();
 test.skip(!ffmpeg && !process.env['CI'], 'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs');
 
-/** One frame of noise at 1920 × 1080, lossless: a first frame of a few MB, which comes late at a slow pace. */
+/**
+ * Ten seconds at 1920 × 1080 whose first frame is noise of a few MB and every frame after it the same (a few bytes
+ * each): H.264 High 8-bit 4:2:0, which every player here decodes, so its first frame comes late at a slow pace and
+ * nothing else stops it. (A lossless frame is High 4:4:4 Predictive, which this computer's player cannot draw: it came
+ * off at once as a file that cannot play, so the first CI runs never reached the start watch: x47-1120-194410-66097.)
+ */
 function bigFirstFrame(file: string): string {
   const r = spawnSync(
     ffmpeg ?? '',
     [
       ...['-hide_banner', '-loglevel', 'error', '-nostdin', '-y'],
-      ...['-f', 'lavfi', '-i', 'nullsrc=s=1920x1080:r=25,geq=lum=random(1)*255:cb=128:cr=128'],
+      ...[
+        '-f',
+        'lavfi',
+        '-i',
+        'nullsrc=s=1920x1080:r=25,geq=lum=random(1)*255:cb=128:cr=128,trim=end_frame=1,loop=loop=249:size=1:start=0,setpts=N/25/TB',
+      ],
       ...[
         '-frames:v',
-        '1',
+        '250',
         '-c:v',
         'libx264',
         '-qp',
-        '0',
+        '1',
+        '-profile:v',
+        'high',
+        '-g',
+        '250',
         '-pix_fmt',
         'yuv420p',
         '-movflags',
@@ -73,11 +87,15 @@ async function start(env: Record<string, string>) {
   return { app, win, hall };
 }
 
-const upAsBackground = (win: Page, mediaId: string) =>
-  dispatch(win, {
+/** Put the video up as the background: taken, and up, before any time is counted. */
+async function upAsBackground(win: Page, mediaId: string): Promise<void> {
+  const result = await dispatch(win, {
     type: 'setBackground',
     background: { kind: 'media', mediaId, media: 'video', fit: 'fill', loop: false },
   });
+  expect(result.ok, 'the background is taken').toBe(true);
+  expect(await backgroundUp(win), 'the video is up').toBe(mediaId);
+}
 
 /** Every look at the hall until `until` says so, each a few hundred ms apart: what it showed. */
 async function looksUntil(
