@@ -180,3 +180,33 @@ export function noPictureOff(state: EngineState, mediaId: string, now: number): 
     });
   return actions;
 }
+
+/** What a video that cannot play took off (Q60-31, x46's item 4): the background, its slide's video, the box. */
+export interface CannotPlayTook {
+  background: boolean;
+  slide: boolean;
+  box: boolean;
+}
+
+/**
+ * What takes a video that could not play on a page off what the audience sees (Q60-31, the owner's own bug; x46's
+ * item 4): the background playing it comes off, as Clear background takes it (its sound with it); a video of it on the
+ * slide up waits where it is, paused with its sound, as x36's noPictureOff has it (the slide's words stay); the
+ * picture-in-picture box playing it comes off, its way out as Hide takes it (a box with nothing to show is not left up
+ * black). None when nothing of it is up and playing.
+ */
+export function cannotPlayOff(
+  state: EngineState,
+  mediaId: string,
+  now: number,
+): { actions: EngineAction[]; took: CannotPlayTook } {
+  const playing = videosPlaying(state, now).filter((p) => p.mediaId === mediaId);
+  const bg = state.layers.background;
+  const background = bg?.kind === 'media' && bg.media === 'video' && bg.mediaId === mediaId;
+  const slide = state.layers.slide !== null && playing.some((p) => p.ref.layer === 'slide');
+  const box = state.layers.pip !== null && playing.some((p) => p.ref.layer === 'pip');
+  // The background and the slide as x36's noPictureOff takes them; the box off instead of paused.
+  const actions = noPictureOff(state, mediaId, now).filter((a) => a.type !== 'pip/set');
+  if (box) actions.push({ type: 'pip/hide', at: now });
+  return { actions, took: { background, slide, box } };
+}

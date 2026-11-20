@@ -6807,9 +6807,17 @@ function start(): void {
     }
     cannotPlay.heard(
       () => {
-        if (!engine.noPicture(mediaId)) return;
-        log.warn(`A video could not play on ${where} (${kind}${detail}): ${mediaId}; taken off`);
-        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, where) });
+        const took = engine.cannotPlay(mediaId);
+        if (!took) return;
+        const off = [
+          took.background ? 'the background' : '',
+          took.slide ? 'paused on the slide' : '',
+          took.box ? 'the box' : '',
+        ]
+          .filter((w) => w !== '')
+          .join(', ');
+        log.warn(`A video could not play on ${where} (${kind}${detail}): ${mediaId}; taken off (${off})`);
+        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, where, took) });
       },
       () => {
         log.info(
