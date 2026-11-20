@@ -568,6 +568,12 @@ The operator window in Pro Mode can call the typed desktop bridge `drashti.kirta
 
 Import uses `drashti.library.importPaths` with the chosen `.drashti-kirtans` path. A saved import report has one `format: 'kirtan-bundle'` item per kirtan, with the library target, counts and issues. Stable identities update the same presentation; local edits are skipped with `bundle-local-edit`, and locally deleted items with `bundle-deleted`. Missing media uses `missing-media`. Import never dispatches a show action or refreshes the live slide. The [versioned file format](kirtan-bundle-format.md) defines validation, re-imports and resource bounds. There is no HTTP bundle endpoint or sync service.
 
+## Edit Video library settings (desktop)
+
+The operator/Pro bridge exposes `media.videoEdit(mediaId)`, `media.setVideoEdit(request)` and `media.onVideoEdit(listener)`. The request contains a library ID, expected revision and strict version-1 recipe, optionally a chosen thumbnail JPEG (at most 1 MB). No source or destination path is accepted. A successful result contains the source identity, desired revision, recipe, readiness and immutable `readyMediaId`; a newer preparing revision never reports an older ready copy as current. Stale saves fail. The chosen JPEG and recipe commit atomically through the guarded source writer; a failed write emits no Saved event.
+
+Recipes use source milliseconds for in/out and thumbnail time, normalized crop, quarter-turn/flip, zoom/position, brightness/contrast/colour, optional frame shape, picture/sound fade durations, 0.5–2 speed, a zero-based source-audio ordinal, and optional talk noise reduction. The existing tone/delay and marker stores stay separate. A showing captures its immutable file; edits do not change a current showing. `SaveVideoEdit.sceneMarkers` is reserved for the analysis slice's append-only, same-transaction source-time marker contract; its schema and helper are added with that slice.
+
 ## Video analysis (operator IPC)
 
 `media.videoAnalysis(mediaId, audioStream = 0, retry = false)` returns a snapshot of source-time waveform peaks, scene suggestions and a bounded JPEG contact sheet. `audioStream` is the source's zero-based audio ordinal (`0:a:N`); `null` explicitly requests no sound. The Edit Video recipe's default `audioTrack: null` therefore maps to ordinal 0. Only the operator window may ask. There is no HTTP/OSC command and no live-engine action.
