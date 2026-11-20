@@ -197,6 +197,7 @@ import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
 import { MediaDetailsService } from './media/media-details';
 import { PlayHistory } from './media/play-history';
+import { editedPlayHistory } from './media/edit-play-history';
 import { takeSnapshot } from './media/snapshot';
 import { playingSchema } from '../shared/engine/playing';
 import { saveStill } from './media/stills';
@@ -7208,8 +7209,9 @@ function start(): void {
   // Resume where it stopped, last played and play counts (alpha.20, the owner's Q60-34 item 3 and his "Yes, all A" to
   // Q60-39): Main follows the engine's state; each write waits while the library is busy. An audio playlist stopped
   // part-way plays on from its track. What plays at a quit keeps where it is.
+  const historyMedia = editedPlayHistory(media, videoEdits);
   const history = new PlayHistory(
-    { later: (key, run) => later.write(key, run), media, now: () => Date.now() },
+    { later: (key, run) => later.write(key, run), media: historyMedia, now: () => Date.now() },
     engine.current,
   );
   engine.onChange((state) => {
@@ -7222,7 +7224,7 @@ function start(): void {
   });
   handle(IPC.media.resumePoint, (e, mediaId) =>
     fromOperator(e) && typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
-      ? media.resumeOf(mediaId)
+      ? historyMedia.resumeOf(mediaId)
       : null,
   );
   // Snapshot (alpha.20, the time bar's ⋯; the owner's "Yes, all A" to Q60-39 P6 (d) A): the frame on the screens, made
