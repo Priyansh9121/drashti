@@ -99,7 +99,8 @@ function toneAmplitudes(pcm: Buffer): { a: number; b: number }[] {
   return amplitudes;
 }
 
-test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades while a loopback stream encodes, three rotating rounds', async (_fixtures, info) => {
+test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades while a loopback stream encodes, three rotating rounds', async () => {
+  const info = test.info();
   test.setTimeout(180_000);
   let previousAffinity: string | null = null;
   const ffmpeg = testFfmpeg();
