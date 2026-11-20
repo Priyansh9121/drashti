@@ -7,7 +7,7 @@ import {
 } from '../../shared/controller-actions';
 import type { Installer } from '../update/installer';
 import { UpdateService } from '../update/update-service';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { EngineMirror } from '../../shared/engine/mirror';
 import { MainAccess } from './main-access';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
@@ -39,7 +39,8 @@ import {
 import type { DisplayInfo, OutputContext, OutputReport, ScreenConfig } from '../../shared/screens';
 import { missingFontsIn } from '../../shared/screens';
 import { hallPictureOfScreens } from '../../shared/stage-layouts';
-import type { CrashFilesChoice, DiagnosticsInput } from '../diagnostics';
+import type { CrashFile } from '../crash-files';
+import type { CrashFilesChoice, DiagnosticsInput, NodeDiagnosticsInput } from '../diagnostics';
 import { saveNodeDiagnostics } from '../diagnostics';
 import { handle } from '../ipc/handle';
 import { hearRenderErrors } from '../render-errors-ipc';
@@ -64,7 +65,13 @@ import { loadPage } from '../windows/renderer';
 import { watchLoadFailures } from '../outputs/load-failures';
 import { followOutputs, type WarmUpChoices, warmUpFact } from '../outputs/warm-up-choice';
 import { secureWebPreferences } from '../windows/web-preferences';
-import { LinkClient, openMediaFromMain, pairWithMain } from './link-client';
+import { LinkClient, openMediaFromMain, pairWithMain, postReportToMain } from './link-client';
+import { isReportId, readReportDraft } from '../../shared/report';
+import type { GuideFiles } from '../guides';
+import { readManual } from '../manual-service';
+import { capturedPixelOrder } from '../library/pixel-order';
+import type { ReportFilesJob, ReportFilesMade } from '../report/report-files';
+import { type HeldPicture, ReportService } from '../report/report-service';
 import { MediaCache } from './media-cache';
 import { NodeStore, ShowSaver, type NodeFile } from './node-state';
 import { plural } from '../../shared/text';
@@ -120,6 +127,17 @@ export interface NodeAppDeps {
     logFiles: () => string[];
     desktop: () => string;
   };
+  /**
+   * Help › Report a Problem… on a node (x49, the owner's Q60-42, 2): the crash files kept here, the report worker, the
+   * Manual's files (its features), and (tests only) the wait before a try again. Its reports go through the Main it
+   * is paired with.
+   */
+  reports: {
+    crashFiles: () => CrashFile[];
+    makeFiles: (job: ReportFilesJob) => Promise<ReportFilesMade>;
+    guides: GuideFiles;
+    retryMs?: readonly number[];
+  };
 }
 
 /** What the node's menu can do (Session 17). */
@@ -127,6 +145,8 @@ export interface NodeAppHandle {
   /** A self-test's end is not the quit an update waits for. */
   holdUpdate: () => void;
   saveDiagnostics: () => void;
+  /** Help › Report a Problem… (x49): the node's window opens it. */
+  reportProblem: () => void;
   runSelfTest: () => Promise<SelfTestResult>;
   crashWindow: () => void;
   crashOutputs: () => void;
@@ -239,6 +259,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     log.warn(`Node: ${m}`);
   });
 
+  /** Reports kept while Main was away are handed over once the link is back (x49; set once the reports are made). */
+  let problemReportsWake: (() => void) | null = null;
   // ---- link state, for the window ------------------------------------------------------------
   let link: { state: LinkState; why: string | null; since: number } = {
     state: paired ? 'connecting' : 'unpaired',
@@ -729,8 +751,11 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       link = { state, why, since: Date.now() };
       log.info(`Node: link ${state}${why ? ` (${why})` : ''}`);
     }
-    if (state === 'online') cache.backOnline();
-    else {
+    if (state === 'online') {
+      cache.backOnline();
+      // Reports kept while Main was away go now (x49).
+      problemReportsWake?.();
+    } else {
       cancelActions();
       controllerReady = false;
       updatePointed(null);
@@ -1147,50 +1172,54 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       if (crash) writeDiagnostics(crash);
     })();
   };
+  /** The node's diagnostics as they stand now (Save Diagnostics, and a report's: x49). */
+  const nodeDiagnosticsInput = (crash: CrashFilesChoice): NodeDiagnosticsInput => {
+    const status = manager.status();
+    const displays = listDisplays();
+    return {
+      app: deps.diagnostics.app(),
+      displays,
+      screens: (paired?.screens ?? []).map((s) => {
+        const st = status.find((x) => x.screenId === s.screenId);
+        const d = displays.find((x) => x.id === st?.displayId);
+        const r = reports.get(s.screenId);
+        return {
+          name: s.name,
+          groupName: s.groupName,
+          role: s.role,
+          canvasWidth: s.canvasWidth,
+          canvasHeight: s.canvasHeight,
+          scaling: s.scaling,
+          enabled: s.enabled,
+          state: st?.state ?? 'unknown',
+          display: d ? d.label || `display ${String(d.id)}` : null,
+          droppedFrames: r?.droppedFrames ?? 0,
+          paintedRev: r?.paintedRev ?? -1,
+        };
+      }),
+      main: paired
+        ? {
+            name: paired.main.name,
+            addresses: paired.main.addresses,
+            port: paired.main.port,
+            pairedAt: paired.pairedAt,
+          }
+        : null,
+      link,
+      clock,
+      rev: mirror.rev,
+      fromSaved,
+      media: cache.status(mirror.state ? inUse().filter((id) => !cache.has(id)).length : 0),
+      watchdog: deps.diagnostics.watchdogHistory(),
+      crashJournal: deps.diagnostics.crashJournal(),
+      crashFiles: crash,
+      logFiles: deps.diagnostics.logFiles(),
+      now: new Date(),
+    };
+  };
   const writeDiagnostics = (crash: CrashFilesChoice) => {
     try {
-      const status = manager.status();
-      const displays = listDisplays();
-      const file = saveNodeDiagnostics(deps.diagnostics.desktop(), {
-        app: deps.diagnostics.app(),
-        displays,
-        screens: (paired?.screens ?? []).map((s) => {
-          const st = status.find((x) => x.screenId === s.screenId);
-          const d = displays.find((x) => x.id === st?.displayId);
-          const r = reports.get(s.screenId);
-          return {
-            name: s.name,
-            groupName: s.groupName,
-            role: s.role,
-            canvasWidth: s.canvasWidth,
-            canvasHeight: s.canvasHeight,
-            scaling: s.scaling,
-            enabled: s.enabled,
-            state: st?.state ?? 'unknown',
-            display: d ? d.label || `display ${String(d.id)}` : null,
-            droppedFrames: r?.droppedFrames ?? 0,
-            paintedRev: r?.paintedRev ?? -1,
-          };
-        }),
-        main: paired
-          ? {
-              name: paired.main.name,
-              addresses: paired.main.addresses,
-              port: paired.main.port,
-              pairedAt: paired.pairedAt,
-            }
-          : null,
-        link,
-        clock,
-        rev: mirror.rev,
-        fromSaved,
-        media: cache.status(mirror.state ? inUse().filter((id) => !cache.has(id)).length : 0),
-        watchdog: deps.diagnostics.watchdogHistory(),
-        crashJournal: deps.diagnostics.crashJournal(),
-        crashFiles: crash,
-        logFiles: deps.diagnostics.logFiles(),
-        now: new Date(),
-      });
+      const file = saveNodeDiagnostics(deps.diagnostics.desktop(), nodeDiagnosticsInput(crash));
       log.info(`Node: diagnostics saved to the Desktop${crash.included ? ', with the crash files' : ''}`);
       say(deps.diagnostics.savedText(file, crash));
     } catch (error) {
@@ -1198,12 +1227,148 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       say('Could not save diagnostics: see the log in the data folder.');
     }
   };
+  // ---- Help › Report a Problem… (x49, the owner's Q60-42, 2): handed to the Main this node follows --------
+  const problemReports = new ReportService({
+    dir: join(deps.userData, 'reports'),
+    dbFile: '',
+    client: () => Promise.resolve(null),
+    grant: () => null,
+    // Handed over only while the link to Main is up; kept here until then.
+    letIn: () => paired !== null && client?.online === true,
+    gmail: () => null,
+    owner: () => false,
+    from: () => 'node',
+    onAir: () => false,
+    crashFiles: () => deps.reports.crashFiles(),
+    diagnostics: () => Promise.reject(new Error('A node has its own diagnostics.')),
+    makeFiles: (job) => deps.reports.makeFiles(job),
+    now: () => Date.now(),
+    setTimer: (ms, run) => {
+      const t = setTimeout(run, ms);
+      return () => {
+        clearTimeout(t);
+      };
+    },
+    notice: say,
+    changed: () => {
+      if (pageAlive(nodeWindow)) sendToPage(nodeWindow, IPC.report.changed, { at: Date.now() });
+    },
+    log: (line) => {
+      log.info(line);
+    },
+    ...(deps.reports.retryMs ? { retryMs: deps.reports.retryMs, startDelayMs: deps.reports.retryMs[0] } : {}),
+    node: {
+      self: () => ({ name: deps.computerName, version: deps.version, platform: process.platform }),
+      main: () => paired?.main.name ?? null,
+      handOver: (body, stop) =>
+        paired && client
+          ? postReportToMain(paired.main, client.host, paired.token, body, stop)
+          : Promise.resolve(null),
+      diagnostics: (crashIncluded) =>
+        nodeDiagnosticsInput({ files: deps.reports.crashFiles(), included: crashIncluded }),
+    },
+  });
+  deps.atQuit('reports', () => {
+    problemReports.dispose();
+  });
+  problemReports.start();
+  problemReportsWake = () => {
+    problemReports.wake();
+  };
+  const fromNodeWindow = (event: { sender: { id: number } }) =>
+    pageAlive(nodeWindow) && event.sender.id === nodeWindow.webContents.id;
+  /** The node's window as it is now, before Report a Problem draws: its pixels and a small copy. */
+  const captureNodeWindow = async (): Promise<HeldPicture | null> => {
+    if (!pageAlive(nodeWindow)) return null;
+    try {
+      const image = await nodeWindow.webContents.capturePage();
+      if (image.isEmpty()) return null;
+      for (const scaleFactor of [...image.getScaleFactors(), 1]) {
+        const { width, height } = image.getSize(scaleFactor);
+        const pixels = image.toBitmap({ scaleFactor });
+        if (width > 0 && height > 0 && pixels.length === width * height * 4)
+          return {
+            picture: {
+              width,
+              height,
+              pixels: new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.length),
+              order: capturedPixelOrder(),
+            },
+            thumb: `data:image/jpeg;base64,${image.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64')}`,
+          };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+  const notPaired = {
+    ok: false as const,
+    message: 'Report a Problem works once this node is paired with Main.',
+  };
+  // The Manual's features, read from the files beside the app.
+  handle(IPC.manual.read, (e) =>
+    fromNodeWindow(e)
+      ? readManual(deps.reports.guides)
+      : { ok: false, message: 'Only Drashti’s own window can read the manual.' },
+  );
+  handle(IPC.report.open, async (e) =>
+    fromNodeWindow(e) && paired ? problemReports.opened(await captureNodeWindow()) : notPaired,
+  );
+  handle(IPC.report.close, (e) => {
+    if (fromNodeWindow(e)) problemReports.closed();
+    return true;
+  });
+  handle(IPC.report.prepare, (e, raw) => {
+    const draft = readReportDraft(raw);
+    return fromNodeWindow(e) && draft && paired ? problemReports.prepare(draft) : Promise.resolve(notPaired);
+  });
+  handle(IPC.report.discard, (e, id) => {
+    if (fromNodeWindow(e) && isReportId(id)) problemReports.discard(id);
+    return true;
+  });
+  handle(IPC.report.send, (e, id) =>
+    fromNodeWindow(e) && isReportId(id) ? problemReports.send(id) : Promise.resolve(null),
+  );
+  handle(IPC.report.list, (e) => (fromNodeWindow(e) ? problemReports.list() : []));
+  handle(IPC.report.forget, (e, id) => fromNodeWindow(e) && isReportId(id) && problemReports.forget(id));
+  handle(IPC.report.copy, async (e, id) => {
+    if (!fromNodeWindow(e) || !isReportId(id) || !pageAlive(nodeWindow))
+      return { ok: false as const, cancelled: false as const, message: notPaired.message };
+    const picked = await dialog.showOpenDialog(nodeWindow, {
+      title: 'Save a Copy of the Report',
+      defaultPath: deps.diagnostics.desktop(),
+      buttonLabel: 'Save Here',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    const into = picked.filePaths[0];
+    if (picked.canceled || !into) return { ok: false as const, cancelled: true as const };
+    const folder = problemReports.copy(id, into);
+    return folder
+      ? { ok: true as const, folder }
+      : { ok: false as const, cancelled: false as const, message: 'That report is no longer kept here.' };
+  });
+  handle(IPC.report.showFile, async (e, id, name) => {
+    const file =
+      fromNodeWindow(e) && isReportId(id) && typeof name === 'string' && name.length <= 200
+        ? problemReports.filePath(id, name)
+        : null;
+    if (!file) return false;
+    if (!packaged() && sw('DRASHTI_TEST_REPORT_SHOW') === 'log') {
+      log.info(`Report: would show ${basename(file)}`);
+      return true;
+    }
+    return (await shell.openPath(file)) === '';
+  });
   const showingOutputs = () => [...outputWindows.values()].filter((w) => !w.isDestroyed());
   return {
     holdUpdate: () => {
       updates.holdForNextQuit();
     },
     saveDiagnostics,
+    reportProblem: () => {
+      if (pageAlive(nodeWindow)) sendToPage(nodeWindow, IPC.app.showReport, { at: Date.now() });
+    },
     runSelfTest: () =>
       runNodeWatchdogSelfTest({
         nodeWindow: () => (nodeWindow && !nodeWindow.isDestroyed() ? nodeWindow : null),

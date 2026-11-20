@@ -3220,6 +3220,17 @@ test('the Drashti Manual’s pictures: the manual, the guides, the levels, a tim
   await win.getByTestId('kirtan-bundle-export').click();
   await dialogShot('kirtan-bundle-export-dialog', 'manual-kirtan-bundle');
   await closeLibrary(win);
+
+  // Help › Report a Problem… (x49): a feature found and ticked, and its words, for the Manual's Help chapter.
+  await chooseMenuItem(app, 'report-problem');
+  const report = win.getByTestId('report-problem');
+  await expect(report).toBeVisible();
+  await report.getByLabel('Find a feature').fill('time bar');
+  await report.getByRole('checkbox', { name: 'The time bar', exact: true }).click();
+  await report
+    .getByLabel('What went wrong with The time bar?')
+    .fill('Placeholder: the time bar stops at a marker.');
+  await dialogShot('report-problem', 'manual-report-problem');
   await app.close();
 });
 

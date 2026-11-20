@@ -82,7 +82,10 @@ export const electronTransport: AccessTransport = ({ method, url, body, signal }
     });
     if (body !== null) {
       request.setHeader('content-type', 'application/json');
-      request.write(body);
+      // A report's bytes (x49) as one Buffer, handed to the network process as they are.
+      request.write(
+        typeof body === 'string' ? body : Buffer.from(body.buffer, body.byteOffset, body.byteLength),
+      );
     }
     request.end();
   });

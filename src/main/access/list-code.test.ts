@@ -164,7 +164,14 @@ function appsScript(
 ) {
   const sheets: FakeSheet[] = [new FakeSheet('Sheet1')];
   const props = new Map(Object.entries(o.props ?? {}));
-  const mails: { to: string; subject: string; body: string; name: string }[] = [];
+  const mails: {
+    to: string;
+    subject: string;
+    body: string;
+    name: string;
+    replyTo?: string;
+    attachments?: { bytes: Buffer; type: string; name: string }[];
+  }[] = [];
   const counts = { propertyReads: 0, rsaCharsets: new Set<unknown>(), hmacCharsets: new Set<unknown>() };
   const ui: Ui = { context: o.context ?? 'sheet', answers: [], alerts: [], dialogs: [], menus: [] };
   const cache = new MemoryCache(() => Date.now());
@@ -275,20 +282,34 @@ function appsScript(
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => undefined }) },
     MailApp: {
       getRemainingDailyQuota: () => 100 - mails.length,
-      sendEmail: (m: { to: string; subject: string; body: string; name: string }) => mails.push(m),
+      sendEmail: (m: {
+        to: string;
+        subject: string;
+        body: string;
+        name: string;
+        replyTo?: string;
+        attachments?: { bytes: Buffer; type: string; name: string }[];
+      }) => mails.push(m),
     },
     Utilities: {
       Charset,
       DigestAlgorithm: { SHA_256: 'SHA_256' },
       getUuid: () => randomUUID(),
-      computeDigest: (alg: string, text: string, charset: string) => {
+      computeDigest: (alg: string, text: string | number[], charset?: string) => {
         expect(alg).toBe('SHA_256');
+        // Of a text in a character set, or of bytes as Google gives them (Java's signed bytes: a report's files, x49).
+        if (Array.isArray(text)) return signed(createHash('sha256').update(unsigned(text)).digest());
         return signed(
           createHash('sha256')
             .update(text, charset === Charset.UTF_8 ? 'utf8' : 'latin1')
             .digest(),
         );
       },
+      base64Decode: (text: string) => {
+        if (!/^[A-Za-z0-9+/]*={0,2}$/u.test(text)) throw new Error('Could not decode string.');
+        return signed(Buffer.from(text, 'base64'));
+      },
+      newBlob: (bytes: number[], type: string, name: string) => ({ bytes: unsigned(bytes), type, name }),
       computeHmacSha256Signature: (text: string, key: string, charset: unknown) => {
         counts.hmacCharsets.add(charset);
         return signed(createHmac('sha256', Buffer.from(key, 'utf8')).update(text, 'utf8').digest());
@@ -656,6 +677,71 @@ describe('the list in Apps Script', () => {
     expect(g.fn('drashtiDailyCheck')).toBeUndefined();
     expect(computers.records()[0]).toMatchObject({ 'Why ended': 'no-contact' });
     expect(g.fn('drashtiDailyCheck')).toBeUndefined();
+  });
+
+  it('sends a report’s email (x49) through MailApp with its files as blobs of their own bytes, Reply-To the person and named Drashti, and the person’s note; no new scope', () => {
+    const g = appsScript({ props: setUpProps() });
+    g.fn('prepareSheet_');
+    const computer = placeholderComputer('code-report');
+    post(g, callBody('request', computer, { gmail: PERSON }).body);
+    const approve = /Approve: (\S+)/u.exec(g.mails[0]?.body ?? '')?.[1] ?? '';
+    expect(g.fn('answerLink', linkParams(approve))).toMatchObject({ kind: 'done' });
+    const token = /\b([0-9A-Z]{4}(?:-[0-9A-Z]{4}){6})\b/u.exec(g.mails[1]?.body ?? '')?.[1] ?? '';
+    const r = post(g, callBody('redeem', computer, { gmail: PERSON, token }).body);
+    const grant = { gmail: PERSON, grantId: String(r['grantId']), secret: String(r['secret']) };
+    const diagnostics = Buffer.from('== Drashti diagnostics ==\nPlaceholder line ક\n', 'utf8');
+    const picture = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), randomBytes(300)]);
+    const hash = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+    const files = [
+      {
+        kind: 'diagnostics',
+        name: 'Drashti diagnostics 2026-10-27 10-00.txt',
+        type: 'text/plain',
+        bytes: diagnostics,
+      },
+      { kind: 'picture', name: 'Drashti window 2026-10-27 10-00.png', type: 'image/png', bytes: picture },
+    ];
+    const body: Record<string, unknown> = {
+      v: 1,
+      op: 'report',
+      nonce: randomBytes(16).toString('hex'),
+      computer,
+      gmail: grant.gmail,
+      grantId: grant.grantId,
+      at: Date.now(),
+      report: {
+        id: randomBytes(16).toString('hex'),
+        written: Date.now(),
+        from: 'pro',
+        features: [{ chapter: 'Stream', name: 'Going live', what: 'Placeholder words.' }],
+        files: files.map((f) => ({
+          kind: f.kind,
+          name: f.name,
+          type: f.type,
+          bytes: f.bytes.length,
+          sha256: hash(f.bytes),
+        })),
+      },
+    };
+    body['mac'] = createHmac('sha256', Buffer.from(grant.secret, 'utf8'))
+      .update(`drashti-access-v1\n${core.canonicalJson(body)}`, 'utf8')
+      .digest('hex');
+    body['data'] = Object.fromEntries(files.map((f) => [hash(f.bytes), f.bytes.toString('base64')]));
+    const before = g.mails.length;
+    expect(post(g, body)).toMatchObject({ ok: true, received: true });
+    const [admin, note] = g.mails.slice(before);
+    expect(admin).toMatchObject({ to: PLACEHOLDER_APPROVER, name: 'Drashti', replyTo: PERSON });
+    expect(admin?.subject).toMatch(/^Drashti problem: Going live \(R-/u);
+    expect(admin?.attachments).toEqual([
+      { bytes: diagnostics, type: 'text/plain', name: 'Drashti diagnostics 2026-10-27 10-00.txt' },
+      { bytes: picture, type: 'image/png', name: 'Drashti window 2026-10-27 10-00.png' },
+    ]);
+    expect(note).toMatchObject({ to: PERSON, name: 'Drashti' });
+    expect(note?.attachments).toBeUndefined();
+    expect(note?.replyTo).toBeUndefined();
+    // The access list's own emails are as they were: named for the list, with no files.
+    expect(g.mails[0]).toMatchObject({ name: 'Drashti access list' });
+    expect(g.mails[0]?.attachments).toBeUndefined();
   });
 
   it('asks Google for the one scope a trigger needs, beside the three it had', () => {
