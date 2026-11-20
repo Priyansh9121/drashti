@@ -2055,9 +2055,13 @@ function start(): void {
   const fillsWithBlur = (mediaId: string, look: PictureLook | null): boolean =>
     look?.fill ?? media.photoByDefault(mediaId);
   /** A look as the screens and thumbnails get it: with its sharpened copy, once that is ready. */
-  const shownLook = (mediaId: string, look: PictureLook | null): PictureLook | null => {
+  const shownLook = (
+    mediaId: string,
+    look: PictureLook | null,
+    targets?: readonly PixelSize[],
+  ): PictureLook | null => {
     const sha = media.file(mediaId)?.sha256 ?? null;
-    const file = sha ? displayCopies.ready(sha, look) : null;
+    const file = sha ? displayCopies.ready(sha, look, targets) : null;
     const shown = file
       ? { ...(look ?? PLAIN), display: { key: file.key, width: file.width, height: file.height } }
       : look;
@@ -2077,14 +2081,16 @@ function start(): void {
     return look;
   };
   const shownLooks = (): Record<string, PictureLook> => {
+    // One fresh physical target snapshot for this synchronous publication.
+    const targets = displayTargets();
     const looks = media.looks();
     for (const candidate of media.displayCandidates()) {
-      if (!(candidate.mediaId in looks) && displayCopies.ready(candidate.sha256, candidate.look))
+      if (!(candidate.mediaId in looks) && displayCopies.ready(candidate.sha256, candidate.look, targets))
         looks[candidate.mediaId] = candidate.look ?? PLAIN;
     }
     return Object.fromEntries(
       Object.entries(looks).flatMap(([id, look]) => {
-        const shown = shownLook(id, look);
+        const shown = shownLook(id, look, targets);
         return shown ? [[id, shown]] : [];
       }),
     );

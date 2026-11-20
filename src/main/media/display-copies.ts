@@ -439,11 +439,7 @@ export class DisplayCopies {
     return true;
   }
 
-  ready(
-    sha: string,
-    look: PictureLook | null = null,
-    targets?: readonly PixelSize[],
-  ): DisplayFile | null {
+  ready(sha: string, look: PictureLook | null = null, targets?: readonly PixelSize[]): DisplayFile | null {
     const header = this.sources.get(sha);
     if (!header || header.animated)
       return originalForOlderPictureWithoutDisplayCopy<DisplayFile>(null, { original: true, display: false });
