@@ -52,8 +52,9 @@ import { WarmUpBoundary } from './WarmUpBoundary';
  * It draws in a shadow tree of its own, closed, so no page script or test finds its placeholder slides,
  * tickers and lower thirds among the show's (open only when a test keeps it drawn, to look at it).
  *
- * All of it under a black layer at opacity 0.999, over black: the compositor still draws the scenes underneath,
- * but less than half an 8-bit colour level reaches the screen, so the audience sees black throughout (e2e checked).
+ * All of it under a black layer at opacity 0.999, over black, then another outside that opacity group. The
+ * compositor still draws the opaque scenes underneath. A rastered tile can round the first result to level 1
+ * (CI's Mac, the repaint marker's tile); the separate final cover attenuates that result to exact black too.
  * Unlike the old outer brightness(0), this leaves a Cover's own shade on its RGBA surface, as on air (X12 wide:
  * the filter flattened that pass, leaving its antialiased, analytically clipped pipeline for the first live Cover).
  * Drawing the scenes themselves at opacity 0 or 0.001 was skipped as unseen (Session 27); a cover leaves them opaque.
@@ -1330,6 +1331,19 @@ export function WarmUp({
             tree,
           )}
       </div>
+      {/* Compose this cover after the group's result: two covers within that group still leak on CI's Mac. */}
+      <div
+        data-warm-final-cover=""
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: '-1%',
+          background: '#000000',
+          opacity: 0.999,
+          zIndex: 2,
+          pointerEvents: 'none',
+        }}
+      />
       {page === 'live' &&
         uiParent &&
         step.phase === 'during' &&
