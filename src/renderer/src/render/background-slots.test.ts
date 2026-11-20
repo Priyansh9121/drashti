@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { InputBackground } from '../../../shared/engine/state';
 import type { MediaLayer, Slots } from './background-slots';
-import { NO_SLOTS, retryAfterLanding, slotKey, slotsReducer } from './background-slots';
+import { drawnKeyOf, NO_SLOTS, retryAfterLanding, slotKey, slotsReducer } from './background-slots';
 
 const video = (mediaId: string, startedAt: number, extra: Partial<MediaLayer> = {}): MediaLayer => ({
   kind: 'media',
@@ -73,25 +73,28 @@ describe('background slots', () => {
     );
   });
 
-  it('replaces the old picture with nothing when the new file cannot play', () => {
+  it('keeps the picture before when the new file cannot play, and draws one that fails while it plays as it was until it is taken off (Q60-31)', () => {
+    // A file that cannot play as it loads: the picture before stays drawn (the show takes the file off: Main is told).
     let s = run({ type: 'layer', layer: a }, { type: 'ready', key: slotKey(a) }, { type: 'layer', layer: b });
     s = slotsReducer(s, { type: 'failed', key: slotKey(b) });
-    expect(onScreen(s)).toBeNull();
-    expect(s.shown).toMatchObject({ key: slotKey(b), state: 'failed' });
-    // A playing background that fails shows nothing either; the next one loads as usual.
+    expect(drawnKeyOf(s)).toBe(slotKey(a));
+    expect(s.incoming).toMatchObject({ key: slotKey(b), state: 'failed' });
+    // One that fails with nothing before it draws nothing (the screen's nothing-up shows meanwhile: Scene.tsx).
+    expect(drawnKeyOf(run({ type: 'layer', layer: b }, { type: 'failed', key: slotKey(b) }))).toBeNull();
+    // A playing background that fails stays drawn as it was until the show takes it off, never black meanwhile.
     s = run(
       { type: 'layer', layer: a },
       { type: 'ready', key: slotKey(a) },
       { type: 'failed', key: slotKey(a) },
     );
-    expect(onScreen(s)).toBeNull();
+    expect(s.shown).toMatchObject({ key: slotKey(a), state: 'failed', drawn: true });
+    expect(drawnKeyOf(s)).toBe(slotKey(a));
+    expect(slotsReducer(s, { type: 'layer', layer: null })).toEqual(NO_SLOTS);
+    // The next one loads as usual, the failed one drawn until it has its first frame.
     s = slotsReducer(s, { type: 'layer', layer: c });
-    expect(s).toEqual({
-      shown: null,
-      incoming: { key: slotKey(c), layer: c, state: 'loading' },
-      leaving: null,
-      fade: null,
-    });
+    expect(s.incoming).toMatchObject({ key: slotKey(c), state: 'loading' });
+    expect(drawnKeyOf(s)).toBe(slotKey(a));
+    expect(drawnKeyOf(slotsReducer(s, { type: 'ready', key: slotKey(c) }))).toBe(slotKey(c));
   });
 
   it('dissolves a background a dissolving slide brings, from when the slide began or when it is ready', () => {
@@ -215,9 +218,11 @@ describe('background slots', () => {
       { type: 'layer', layer: b },
       { type: 'failed', key: slotKey(b) },
     );
-    expect(s.shown).toMatchObject({ key: slotKey(b), state: 'failed' });
+    expect(s.incoming).toMatchObject({ key: slotKey(b), state: 'failed' });
+    // The picture before stays drawn meanwhile (Q60-31), and while it is tried again.
+    expect(drawnKeyOf(s)).toBe(slotKey(a));
     s = slotsReducer(s, { type: 'retry', key: slotKey(b) });
-    expect(s.shown).toBeNull();
+    expect(drawnKeyOf(s)).toBe(slotKey(a));
     expect(s.incoming).toMatchObject({ key: slotKey(b), state: 'loading', attempt: 1 });
     expect(onScreen(slotsReducer(s, { type: 'ready', key: slotKey(b) }))).toBe(slotKey(b));
     // Only a failed background is tried again: one on screen, or one no longer up, is left alone.
@@ -229,21 +234,66 @@ describe('background slots', () => {
   it('tries a failed background again once for each landing of its file, never in a loop', () => {
     let s = run({ type: 'layer', layer: b }, { type: 'failed', key: slotKey(b) });
     // Not landed yet: no try.
-    expect(retryAfterLanding(s.shown, 0)).toBeNull();
+    expect(retryAfterLanding(s, 0)).toBeNull();
     // Landed once: one try.
-    expect(retryAfterLanding(s.shown, 1)).toBe(slotKey(b));
+    expect(retryAfterLanding(s, 1)).toBe(slotKey(b));
     s = slotsReducer(s, { type: 'retry', key: slotKey(b) });
     // While that try loads, nothing more.
-    expect(retryAfterLanding(s.shown, 1)).toBeNull();
+    expect(retryAfterLanding(s, 1)).toBeNull();
     s = slotsReducer(s, { type: 'failed', key: slotKey(b) });
     // It failed again: no new try until the file lands again.
-    expect(s.shown).toMatchObject({ state: 'failed', attempt: 1 });
-    expect(retryAfterLanding(s.shown, 1)).toBeNull();
-    expect(retryAfterLanding(s.shown, 2)).toBe(slotKey(b));
-    // One on screen is left alone.
+    expect(s.incoming).toMatchObject({ state: 'failed', attempt: 1 });
+    expect(retryAfterLanding(s, 1)).toBeNull();
+    expect(retryAfterLanding(s, 2)).toBe(slotKey(b));
+    // One on screen is left alone; one that failed while it played is tried again the same way (a GPU process gone).
     expect(
-      retryAfterLanding(run({ type: 'layer', layer: b }, { type: 'ready', key: slotKey(b) }).shown, 3),
+      retryAfterLanding(run({ type: 'layer', layer: b }, { type: 'ready', key: slotKey(b) }), 3),
     ).toBeNull();
+    const played = run(
+      { type: 'layer', layer: b },
+      { type: 'ready', key: slotKey(b) },
+      { type: 'failed', key: slotKey(b) },
+    );
+    expect(retryAfterLanding(played, 1)).toBe(slotKey(b));
+  });
+
+  it('tries one that failed while it played out of sight, drawn as it was meanwhile, never black (Q60-31: a node, its copy landed before, tries it again at once)', () => {
+    let s = run(
+      { type: 'layer', layer: b },
+      { type: 'ready', key: slotKey(b) },
+      { type: 'failed', key: slotKey(b) },
+    );
+    expect(retryAfterLanding(s, 1)).toBe(slotKey(b));
+    s = slotsReducer(s, { type: 'retry', key: slotKey(b) });
+    expect(drawnKeyOf(s)).toBe(slotKey(b));
+    expect(s.incoming).toMatchObject({ key: slotKey(b), state: 'loading', attempt: 1 });
+    // While that try loads, nothing more.
+    expect(retryAfterLanding(s, 1)).toBeNull();
+    expect(slotsReducer(s, { type: 'retry', key: slotKey(b) })).toBe(s);
+    // The try draws: it is on screen.
+    const back = slotsReducer(s, { type: 'ready', key: slotKey(b) });
+    expect(back.shown).toMatchObject({ key: slotKey(b), state: 'ready', attempt: 1 });
+    expect(back.incoming).toBeNull();
+    // The try fails too: still drawn as it was; no more tries until the file lands again.
+    const again = slotsReducer(s, { type: 'failed', key: slotKey(b) });
+    expect(drawnKeyOf(again)).toBe(slotKey(b));
+    expect(retryAfterLanding(again, 1)).toBeNull();
+  });
+
+  it('tries one again only for a landing or a new GPU process after it failed, never for one before (Q60-31: a node whose copy landed long before)', () => {
+    // Its file landed once before it played (a node's copy); then it failed while it played.
+    const s = run(
+      { type: 'layer', layer: b },
+      { type: 'ready', key: slotKey(b) },
+      { type: 'failed', key: slotKey(b), landed: 1 },
+    );
+    expect(retryAfterLanding(s, 1)).toBeNull();
+    // A landing since (or a new GPU process): one try.
+    expect(retryAfterLanding(s, 2)).toBe(slotKey(b));
+    // As it loaded, the same.
+    const loading = run({ type: 'layer', layer: b }, { type: 'failed', key: slotKey(b), landed: 3 });
+    expect(retryAfterLanding(loading, 3)).toBeNull();
+    expect(retryAfterLanding(loading, 4)).toBe(slotKey(b));
   });
 
   it('treats the same file started again as a new playback', () => {
@@ -357,6 +407,6 @@ describe('a video input in the background slots (Session 50)', () => {
 
   it('is never tried again for a copy landing (it is no file)', () => {
     const s = run({ type: 'layer', layer: input('I', 5) }, { type: 'failed', key: slotKey(input('I', 5)) });
-    expect(retryAfterLanding(s.shown, 3)).toBeNull();
+    expect(retryAfterLanding(s, 3)).toBeNull();
   });
 });

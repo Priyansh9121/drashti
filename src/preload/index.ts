@@ -102,6 +102,10 @@ const bridge: DrashtiBridge = {
       on(IPC.app.showManual, () => {
         listener();
       }),
+    onShowReport: (listener) =>
+      on(IPC.app.showReport, () => {
+        listener();
+      }),
     onShowTool: (listener) =>
       on(IPC.app.showTool, ({ tool }) => {
         listener(tool);
@@ -115,6 +119,21 @@ const bridge: DrashtiBridge = {
     read: () => invoke(IPC.manual.read),
     print: () => invoke(IPC.manual.print),
     pdf: () => invoke(IPC.manual.pdf),
+  },
+  report: {
+    open: () => invoke(IPC.report.open),
+    close: () => invoke(IPC.report.close),
+    prepare: (draft) => invoke(IPC.report.prepare, draft),
+    discard: (id) => invoke(IPC.report.discard, id),
+    send: (id) => invoke(IPC.report.send, id),
+    list: () => invoke(IPC.report.list),
+    forget: (id) => invoke(IPC.report.forget, id),
+    copy: (id) => invoke(IPC.report.copy, id),
+    showFile: (id, name) => invoke(IPC.report.showFile, id, name),
+    onChanged: (listener) =>
+      on(IPC.report.changed, () => {
+        listener();
+      }),
   },
   backups: {
     view: () => invoke(IPC.backups.view),
@@ -441,9 +460,12 @@ const bridge: DrashtiBridge = {
     reveal: (mediaId) => invoke(IPC.media.reveal, mediaId),
     reportLength: (mediaId, durationMs) => invoke(IPC.media.reportLength, mediaId, durationMs),
     noPicture: (mediaId, startedAt) => invoke(IPC.media.noPicture, mediaId, startedAt),
+    cannotPlay: (mediaId, startedAt, code, words) =>
+      invoke(IPC.media.cannotPlay, mediaId, startedAt, code, words),
     markers: (mediaId) => invoke(IPC.media.markers, mediaId),
     details: (mediaId) => invoke(IPC.media.details, mediaId),
     copyDetails: (text) => invoke(IPC.media.copyDetails, text),
+    resumePoint: (mediaId) => invoke(IPC.media.resumePoint, mediaId),
     snapshot: (playing) => invoke(IPC.media.snapshot, playing),
     setMarkers: (mediaId, markers) => invoke(IPC.media.setMarkers, mediaId, markers),
   },

@@ -47,6 +47,7 @@ import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
 import type { MediaDetailsResult } from './media-details';
+import type { ResumePoint } from './play-history';
 import type { PlayingRef } from './engine/playing';
 import type { SnapshotResult } from './snapshot';
 import type { PictureAssetKind, SharpenJobView } from './pictures';
@@ -171,6 +172,14 @@ import type { ScreenSwitch, ScreenSwitches, ScreenSwitchResult } from './screen-
 import type { PendingScreens } from './keep-screens';
 import type { PointAt, PointedClip } from './point-ahead';
 import type { PipSettingsResult } from './pip';
+import type {
+  ReportCopied,
+  ReportDraft,
+  ReportOpened,
+  ReportPrepared,
+  ReportRow,
+  ReportStateView,
+} from './report';
 import type { PipPlace } from './engine/state';
 import type {
   EvenResult,
@@ -263,6 +272,8 @@ export const IPC = {
     showGuides: 'app:show-guides',
     /** main -> operator: Help › Drashti Manual… was chosen (x37, Session 60), in either mode. */
     showManual: 'app:show-manual',
+    /** main -> operator: Help › Report a Problem… was chosen (x49), in either mode. */
+    showReport: 'app:show-report',
     /** main -> operator: an item of the Tools menu was chosen (Session 60, x36; Pro Mode): which (shared/setup-tools.ts). */
     showTool: 'app:show-tool',
   },
@@ -581,6 +592,11 @@ export const IPC = {
      * Chromium plays such a file as sound only. The show takes it off, says so, and converts it by itself.
      */
     noPicture: 'media:no-picture',
+    /**
+     * An output, the operator window or the stream's page found a video's element failed (Q60-31): the show takes it
+     * off with its sound, says so by its name and where, and logs the error's kind (unless a GPU process stopped then).
+     */
+    cannotPlay: 'media:cannot-play',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -590,6 +606,8 @@ export const IPC = {
     details: 'media:details',
     /** Media information's Copy: its words on the clipboard (operator window only; a page's own clipboard is refused). */
     copyDetails: 'media:copy-details',
+    /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when (operator window). */
+    resumePoint: 'media:resume-point',
     /** Snapshot (alpha.20, the time bar's ⋯): the frame on the screens, a PNG in Media (operator window, Pro Mode). */
     snapshot: 'media:snapshot',
     /**
@@ -1285,6 +1303,25 @@ export const IPC = {
     /** main -> operator: the bar changed. */
     changed: 'quickbar:changed',
   },
+  /**
+   * Help › Report a Problem… (x49, the owner's Q60-38 and his "Yes, all A" to Q60-42), in either mode, only while this
+   * computer is let in: open (the window's picture taken first), Review (the files made off Main's thread, exactly what
+   * goes), Send (the outbox sends it by itself through the access list), the reports kept here, Forget, Save a Copy….
+   */
+  report: {
+    open: 'report:open',
+    close: 'report:close',
+    prepare: 'report:prepare',
+    discard: 'report:discard',
+    send: 'report:send',
+    list: 'report:list',
+    forget: 'report:forget',
+    copy: 'report:copy',
+    /** A file of a report under Review, shown in the computer's own app (the diagnostics' text). */
+    showFile: 'report:show-file',
+    /** main -> operator: the reports changed (one went, or waits for another reason). */
+    changed: 'report:changed',
+  },
 } as const;
 
 /** Request/response channels: arguments and result for each. */
@@ -1324,6 +1361,15 @@ export interface InvokeContract {
   [IPC.guides.list]: { args: []; result: { id: GuideId; tab: string }[] };
   [IPC.guides.read]: { args: [id: GuideId]; result: GuideRead };
   [IPC.manual.read]: { args: []; result: ManualRead };
+  [IPC.report.open]: { args: []; result: ReportOpened };
+  [IPC.report.close]: { args: []; result: boolean };
+  [IPC.report.prepare]: { args: [draft: ReportDraft]; result: ReportPrepared };
+  [IPC.report.discard]: { args: [id: string]; result: boolean };
+  [IPC.report.send]: { args: [id: string]; result: ReportStateView | null };
+  [IPC.report.list]: { args: []; result: ReportRow[] };
+  [IPC.report.forget]: { args: [id: string]; result: boolean };
+  [IPC.report.copy]: { args: [id: string]; result: ReportCopied };
+  [IPC.report.showFile]: { args: [id: string, name: string]; result: boolean };
   [IPC.manual.pdf]: { args: []; result: ManualPrinted };
   [IPC.manual.print]: { args: []; result: ManualPrinted };
   [IPC.access.view]: { args: []; result: AccessView };
@@ -1599,9 +1645,14 @@ export interface InvokeContract {
   [IPC.media.playsHevc]: { args: []; result: boolean | null };
   [IPC.media.reportLength]: { args: [mediaId: string, durationMs: number]; result: null };
   [IPC.media.noPicture]: { args: [mediaId: string, startedAt: number]; result: null };
+  [IPC.media.cannotPlay]: {
+    args: [mediaId: string, startedAt: number, code: number, words: string];
+    result: null;
+  };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.details]: { args: [mediaId: string]; result: MediaDetailsResult };
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
+  [IPC.media.resumePoint]: { args: [mediaId: string]; result: ResumePoint | null };
   [IPC.media.snapshot]: { args: [playing: PlayingRef]; result: SnapshotResult };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
@@ -1934,6 +1985,8 @@ export interface EventContract {
   [IPC.app.showKeys]: { at: number };
   [IPC.app.showGuides]: { at: number };
   [IPC.app.showManual]: { at: number };
+  [IPC.app.showReport]: { at: number };
+  [IPC.report.changed]: { at: number };
   [IPC.app.showTool]: { tool: ToolsMenuItem; at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.stageLayouts.changed]: StageLayout[];

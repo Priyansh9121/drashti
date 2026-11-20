@@ -105,7 +105,7 @@ function PresentationUnread({ id }: { id: string }) {
           </Button>
         }
       >
-        The screens keep what they show. If Try again doesn’t open it, tell the admin.
+        The screens keep what they show. If Try again doesn’t open it, choose Help › Report a Problem….
       </ErrorState>
     </CentredPlace>
   );

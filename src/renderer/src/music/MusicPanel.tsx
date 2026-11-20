@@ -187,7 +187,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
                 onClick={() =>
                   void (isShownPlaying
                     ? dispatch('resumeMusic')
-                    : musicAction(() => window.drashti.music.play(shown.id, 0)))
+                    : musicAction(() => window.drashti.music.play(shown.id)))
                 }
               >
                 Play

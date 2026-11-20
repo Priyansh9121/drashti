@@ -14,8 +14,9 @@ The new timing, Find and M3U controls are in Pro Mode.
 
 1. In **Audio**, press **+**, then **Create playlist**, or **Import** to bring sounds in.
 2. Drag sounds onto a list to add them.
-3. Press **Play** to start a list; **Pause** stops it where it is.
-4. **Clear audio** along the bottom, or **F5**, stops any sound.
+3. Press **Play** to start a list; **Pause** stops it where it is. A list stopped part-way plays on from that track.
+4. Click a track to play from it.
+5. **Clear audio** along the bottom, or **F5**, stops any sound.
 
 **Shuffle** plays the tracks in a drawn order from the next Play. **Repeat** goes round again at the end. While an audio playlist plays, **Ends at** follows its remaining tracks and their start and end points; **Goes round** appears with Repeat on. An end time waits while paused or while a length is not yet known.
 

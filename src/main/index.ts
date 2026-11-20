@@ -171,7 +171,14 @@ import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
-import { noPictureNotice } from '../shared/no-picture';
+import { cannotPlayNotice, NO_FIRST_FRAME, noPictureNotice } from '../shared/no-picture';
+import {
+  CannotPlay,
+  type CannotPlayWhere,
+  errorKindWords,
+  NodeCannotPlay,
+  whereWords,
+} from './media/cannot-play';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -181,6 +188,7 @@ import { openingPhotoPlace, openingPhotoThere } from './opening/opening-photo';
 import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
 import { MediaDetailsService } from './media/media-details';
+import { PlayHistory } from './media/play-history';
 import { takeSnapshot } from './media/snapshot';
 import { playingSchema } from '../shared/engine/playing';
 import { saveStill } from './media/stills';
@@ -366,6 +374,9 @@ import { runQrJob } from './library/qr-worker-run';
 import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
+import { isReportId, readReportDraft } from '../shared/report';
+import { type HeldPicture, ReportService } from './report/report-service';
+import { runReportIntake, runReportJob } from './report/report-worker-run';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
 import {
@@ -539,6 +550,18 @@ app.on('child-process-gone', (_event, details) => {
 
 /** The GPU process's stops (Sessions 31–36, ROB-5): a second within 10 minutes is said. */
 const gpuStops = new GpuStops();
+/**
+ * A video whose element failed on a page that draws the show (Q60-31): taken off after a short wait, unless a GPU
+ * process stopped then (its videos load again by themselves). main/media/cannot-play.ts.
+ */
+/** A paired computer's screen that could not play a video (Q60-44): told once for each node and showing. */
+const nodeCannotPlay = new NodeCannotPlay();
+const cannotPlay = new CannotPlay({
+  now: () => Date.now(),
+  later: (ms, run) => {
+    setTimeout(run, ms);
+  },
+});
 /** Said to the operator (Main) once the GPU process has stopped twice within 10 minutes. */
 let gpuStoppedTwice: ((text: string) => void) | null = null;
 // The GPU process stopped (Sessions 31–36, ROB-5): Chromium starts another by itself, but the videos it was
@@ -546,6 +569,7 @@ let gpuStoppedTwice: ((text: string) => void) | null = null;
 // engine's time. A second stop within 10 minutes is told to the operator, once.
 app.on('child-process-gone', (_event, details) => {
   if (details.type !== 'GPU' || quitting) return;
+  cannotPlay.gpuGone();
   log.warn(
     `The GPU process stopped (${details.reason}); its features now: ${JSON.stringify(app.getGPUFeatureStatus())}`,
   );
@@ -1027,7 +1051,7 @@ function pendingRestore(): ReturnType<typeof applyPendingRestore> {
       restored: false,
       code: 'copy-failed',
       message:
-        'The library was not restored: copying the backup stopped part way. The library is as it was: restore again, and if it stops again, choose Help, then Save Diagnostics…, and tell the admin.',
+        'The library was not restored: copying the backup stopped part way. The library is as it was: restore again; if it stops again, choose Help › Report a Problem… (or Save Diagnostics… when it can’t be sent).',
     };
   }
 }
@@ -1313,6 +1337,7 @@ function startNodeMode(): void {
     isOperator: () => false,
   });
   allowHangStacks(session.defaultSession);
+  const nodeReportRetry = packaged() ? undefined : swMs('DRASHTI_TEST_REPORT_RETRY_MS');
   const node = startNode({
     appearance,
     userData: app.getPath('userData'),
@@ -1341,6 +1366,15 @@ function startNodeMode(): void {
       savedText: savedDiagnosticsText,
       logFiles,
       desktop: () => app.getPath('desktop'),
+    },
+    // Help › Report a Problem… on a node (x49): handed to its Main.
+    reports: {
+      crashFiles: () => crashFiles(crashFilesDir),
+      makeFiles: (job) => runReportJob(job),
+      guides: new GuideFiles(
+        guidesDir({ packaged: packaged(), resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
+      ),
+      ...(nodeReportRetry ? { retryMs: [nodeReportRetry] } : {}),
     },
     restartAsMain: () => {
       writeRole(app.getPath('userData'), 'main');
@@ -1377,6 +1411,7 @@ function startNodeMode(): void {
     installNodeMenu({
       priority: priorityItem(() => nodeMenu()),
       saveDiagnostics: node.saveDiagnostics,
+      reportProblem: node.reportProblem,
       diagnostics: diagnostics
         ? {
             runSelfTest: () => {
@@ -5012,7 +5047,8 @@ function start(): void {
     fromOperator(e) ? music.restoreTrack(id, at) : notMusicOperator,
   );
   handle(IPC.music.play, (e, playlistId, trackIndex) => {
-    const parsed = musicPlaySchema.safeParse({ playlistId, index: trackIndex ?? 0 });
+    // No track asked (alpha.20): the one it was stopped on part-way, else its first (music-service.ts).
+    const parsed = musicPlaySchema.safeParse({ playlistId, index: trackIndex });
     if (!fromOperator(e) || !parsed.success) return notMusicOperator;
     return music.play(parsed.data.playlistId, parsed.data.index);
   });
@@ -5954,6 +5990,8 @@ function start(): void {
     string,
     { droppedFrames: number; paintedRev: number; missingFonts: string[] }
   >();
+  // A paired node's report (x49) is kept by Main's reports, made further on: until then, the node keeps it.
+  let reportsForNodes: ReportService | null = null;
   const nodes = new NodeService({
     nodes: nodeRepo,
     write: (key, run) => {
@@ -6017,6 +6055,10 @@ function start(): void {
     runShowAction: (command, who) => net.runShowAction({ op: 'command', args: command }, who),
     wanted: (state, everything) => wanted.list(state, everything),
     mediaFile: (mediaId) => wanted.source(mediaId, mediaDir),
+    nodeReport: (node, body) =>
+      reportsForNodes
+        ? reportsForNodes.fromNode(node, body)
+        : Promise.resolve({ ok: false as const, message: 'Main is starting: the report goes in a moment.' }),
     onAir: () => streaming.inUse(),
     changed: (status) => {
       sendToOperator(IPC.nodes.changed, status);
@@ -6029,6 +6071,17 @@ function start(): void {
     },
     thumbs: (thumbs) => {
       sendToOperator(IPC.nodes.thumbs, thumbs);
+    },
+    // A paired computer's screen could not play a video (Q60-44, the owner's answer A): it keeps what it showed; the
+    // video plays on everywhere else, and the operator is told, once for each node and showing (media/cannot-play.ts).
+    cannotPlay: (node, report) => {
+      const file = media.kindAndName(report.mediaId);
+      if (file?.kind !== 'video') return;
+      const screen = screenRepo.screens().find((s) => s.id === report.screenId)?.name ?? report.screenId;
+      const told = nodeCannotPlay.heard(node, screen, file, report);
+      if (!told) return;
+      log.warn(told.log);
+      sendToOperator(IPC.app.notice, { text: told.notice });
     },
     localOutputs: () =>
       manager.status().flatMap((st): NodeOutputStatus[] =>
@@ -6912,6 +6965,26 @@ function start(): void {
       ? mediaDetails.details(mediaId)
       : { ok: false as const, message: 'Only the operator window can read a file’s information.' },
   );
+  // Resume where it stopped, last played and play counts (alpha.20, the owner's Q60-34 item 3 and his "Yes, all A" to
+  // Q60-39): Main follows the engine's state; each write waits while the library is busy. An audio playlist stopped
+  // part-way plays on from its track. What plays at a quit keeps where it is.
+  const history = new PlayHistory(
+    { later: (key, run) => later.write(key, run), media, now: () => Date.now() },
+    engine.current,
+  );
+  engine.onChange((state) => {
+    history.changed(state);
+    music.follow(state);
+  });
+  stops.add('play history', () => {
+    history.quitting();
+    music.quitting();
+  });
+  handle(IPC.media.resumePoint, (e, mediaId) =>
+    fromOperator(e) && typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
+      ? media.resumeOf(mediaId)
+      : null,
+  );
   // Snapshot (alpha.20, the time bar's ⋯; the owner's "Yes, all A" to Q60-39 P6 (d) A): the frame on the screens, made
   // from the video's own file (media/snapshot.ts), a PNG in Media through the import, never put up. Pro Mode's.
   handle(IPC.media.snapshot, (e, playing) => {
@@ -6968,8 +7041,8 @@ function start(): void {
     return null;
   });
   // A video's picture cannot be drawn on this computer (Session 60, x36: the owner's bug, his "Yes, A"): an output or
-  // the operator window found it plays as sound only. What of it is up comes off (the background, with its sound) or
-  // waits paused (on the slide, in the box); the operator window says so, once a file; and it is converted by itself
+  // the operator window found it plays as sound only. What of it is up comes off (the background, with its sound; the
+  // box, Q60-46) or waits paused (on the slide); the operator window says so, once a file; and it is converted by itself
   // once the show is idle. Only for a video that was up, so a page's word never takes off anything else; the other
   // windows that found the same showing find it off already, and say nothing more.
   handle(IPC.media.noPicture, (e, mediaId, startedAt) => {
@@ -6981,6 +7054,61 @@ function start(): void {
     log.warn(`A video's picture cannot be drawn here (sound only): ${mediaId}; taken off`);
     const converting = conversions.convertUndrawable(mediaId);
     sendToOperator(IPC.app.notice, { text: noPictureNotice(file.name, converting) });
+    return null;
+  });
+  // A video whose element failed on a page that draws the show (Q60-31, the owner's own bug: the hall went black while
+  // its sound played on, never taken off, nobody told): taken off as one whose picture cannot be drawn (its sound with
+  // it; on the slide, paused; the box off), said by its name and where it failed, and logged with the error's kind,
+  // after a short wait; unless a GPU process stopped then, whose videos load again by themselves.
+  handle(IPC.media.cannotPlay, (e, mediaId, startedAt, code, words) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    const where: CannotPlayWhere | null =
+      screenId !== undefined
+        ? { screen: screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId }
+        : fromOperator(e)
+          ? 'live'
+          : streaming.isProgram(e.sender)
+            ? 'stream'
+            : null;
+    if (where === null || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    if (typeof code !== 'number' || typeof words !== 'string') return null;
+    const file = media.kindAndName(mediaId);
+    if (file?.kind !== 'video') return null;
+    // The error's kind and Chromium's words, for the log only (the notice names the file and where).
+    const kind = errorKindWords(code);
+    const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;
+    // No first frame within FIRST_FRAME_MS (Q60-44): heeded from Main's own screens, what the hall sees; LIVE's or the
+    // stream's page alone only logs it (shared/no-picture.ts).
+    if (code === NO_FIRST_FRAME && screenId === undefined) {
+      log.info(
+        `A video had ${kind} on ${whereWords([where])}: ${mediaId}; left up (only a screen’s takes it off)`,
+      );
+      return null;
+    }
+    // Every page that says so within the wait is named, the screens first (cannot-play.ts whereWords).
+    cannotPlay.heard(
+      `${mediaId}@${String(startedAt)}`,
+      where,
+      (named) => {
+        const took = engine.cannotPlay(mediaId);
+        if (!took) return;
+        const off = [
+          took.background ? 'the background' : '',
+          took.slide ? 'paused on the slide' : '',
+          took.box ? 'the box' : '',
+        ]
+          .filter((w) => w !== '')
+          .join(', ');
+        log.warn(`A video could not play on ${named} (${kind}${detail}): ${mediaId}; taken off (${off})`);
+        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, named, took) });
+      },
+      (named) => {
+        log.info(
+          `A video could not play on ${named} (${kind}${detail}) as the GPU process stopped: ${mediaId}; it loads again`,
+        );
+      },
+    );
     return null;
   });
   handle(IPC.audio.reportDevices, (e, devices, state) => {
@@ -8068,6 +8196,153 @@ function start(): void {
   stops.add('Access List', () => {
     accessList.close();
   });
+  // ---- Help › Report a Problem… (x49, the owner's Q60-38 and his "Yes, all A" to Q60-42) ----------------
+  // In either mode, while let in: the window's picture taken as it opens (kept in memory only), the files made by the
+  // report worker off Main's thread, and each report sent by itself through the access list, never while the stream
+  // or a recording is on.
+  const reportRetry = packaged() ? undefined : swMs('DRASHTI_TEST_REPORT_RETRY_MS');
+  const reportShowFiles = !packaged() && sw('DRASHTI_TEST_REPORT_SHOW') === 'log';
+  const reports = new ReportService({
+    dir: join(userDataDir, 'reports'),
+    dbFile: libraryFile(),
+    client: () => Promise.resolve(behind?.client ?? null),
+    grant: () => behind?.service.grant() ?? null,
+    letIn: isLetIn,
+    gmail: () => accessState().gmail,
+    owner: () => isLetIn() && accessState().owner,
+    from: () => (simpleNow() ? 'simple' : 'pro'),
+    onAir: () => streaming.inUse() || testOnAir,
+    crashFiles: () => crashFiles(crashFilesDir),
+    diagnostics: async (crashIncluded) => ({
+      app: appInfo(),
+      displays: listDisplays(),
+      screens: screens.snapshot(),
+      sound: audioOutput.status,
+      watchdog: watchdogHistory,
+      crashJournal: crashJournal.entries(),
+      crashFiles: { files: crashFiles(crashFilesDir), included: crashIncluded, kept: crashFilesKept },
+      logFiles: logFiles(),
+      now: new Date(),
+      graphics: await readGraphics(),
+    }),
+    makeFiles: (job) => runReportJob(job),
+    // A paired node's report (x49): read, checked and written by a report worker, off Main's thread.
+    intake: (job) => runReportIntake(job),
+    now: () => Date.now(),
+    setTimer: (ms, run) => {
+      const t = setTimeout(run, ms);
+      return () => {
+        clearTimeout(t);
+      };
+    },
+    notice: (text) => {
+      sendToOperator(IPC.app.notice, { text });
+    },
+    changed: () => {
+      sendToOperator(IPC.report.changed, { at: Date.now() });
+    },
+    log: (line) => {
+      log.info(line);
+    },
+    ...(reportRetry ? { retryMs: [reportRetry], startDelayMs: reportRetry } : {}),
+  });
+  reportsForNodes = reports;
+  stops.add('reports', () => {
+    reportsForNodes = null;
+    reports.dispose();
+  });
+  // Let in again (an answer after none, or a start), what waits is tried at once.
+  let reportsLetIn = isLetIn();
+  onAccessChange(() => {
+    if (isLetIn() && !reportsLetIn) reports.wake();
+    reportsLetIn = isLetIn();
+  });
+  /** The operator window as it is now, before Report a Problem draws: its pixels and a small copy. */
+  const captureOperator = async (): Promise<HeldPicture | null> => {
+    const win = operatorWindow;
+    if (!win || win.isDestroyed()) return null;
+    try {
+      const image = await win.webContents.capturePage();
+      if (image.isEmpty()) return null;
+      // A Retina window's picture is at twice its size in points: its pixels at the scale they were taken.
+      for (const scaleFactor of [...image.getScaleFactors(), 1]) {
+        const { width, height } = image.getSize(scaleFactor);
+        const pixels = image.toBitmap({ scaleFactor });
+        if (width > 0 && height > 0 && pixels.length === width * height * 4)
+          return {
+            picture: {
+              width,
+              height,
+              pixels: new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.length),
+              order: capturedPixelOrder(),
+            },
+            thumb: `data:image/jpeg;base64,${image.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64')}`,
+          };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+  const notLetIn = { ok: false as const, message: 'Report a Problem works once this computer is let in.' };
+  handle(IPC.report.open, async (e) =>
+    fromOperator(e) && isLetIn() ? reports.opened(await captureOperator()) : notLetIn,
+  );
+  handle(IPC.report.close, (e) => {
+    if (fromOperator(e)) reports.closed();
+    return true;
+  });
+  handle(IPC.report.prepare, (e, raw) => {
+    const draft = readReportDraft(raw);
+    return fromOperator(e) && draft ? reports.prepare(draft) : Promise.resolve(notLetIn);
+  });
+  handle(IPC.report.discard, (e, id) => {
+    if (fromOperator(e) && isReportId(id)) reports.discard(id);
+    return true;
+  });
+  handle(IPC.report.send, (e, id) =>
+    fromOperator(e) && isReportId(id) ? reports.send(id) : Promise.resolve(null),
+  );
+  handle(IPC.report.list, (e) => (fromOperator(e) ? reports.list() : []));
+  handle(IPC.report.forget, (e, id) => fromOperator(e) && isReportId(id) && reports.forget(id));
+  handle(IPC.report.copy, async (e, id) => {
+    if (!fromOperator(e) || !isReportId(id))
+      return { ok: false as const, cancelled: false as const, message: notLetIn.message };
+    const options = {
+      title: 'Save a Copy of the Report',
+      defaultPath: app.getPath('desktop'),
+      buttonLabel: 'Save Here',
+      properties: ['openDirectory' as const, 'createDirectory' as const],
+    };
+    const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null;
+    const picked = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options);
+    const into = picked.filePaths[0];
+    if (picked.canceled || !into) return { ok: false as const, cancelled: true as const };
+    try {
+      const folder = reports.copy(id, into);
+      return folder
+        ? { ok: true as const, folder }
+        : { ok: false as const, cancelled: false as const, message: 'That report is no longer kept here.' };
+    } catch (error) {
+      return { ok: false as const, cancelled: false as const, message: fileProblem(error, 'write') };
+    }
+  });
+  handle(IPC.report.showFile, async (e, id, name) => {
+    const file =
+      fromOperator(e) && isReportId(id) && typeof name === 'string' && name.length <= 200
+        ? reports.filePath(id, name)
+        : null;
+    if (!file) return false;
+    // Tests: said in the log, never opened in another app.
+    if (reportShowFiles) {
+      log.info(`Report: would show ${basename(file)}`);
+      return true;
+    }
+    return (await shell.openPath(file)) === '';
+  });
+  reports.start();
   rebuildMenu = () => {
     // Not let in (a self-test, or stopped, Session 54): Quit and the editing keys only.
     if (!isLetIn()) {
@@ -8240,6 +8515,10 @@ function start(): void {
     // Help › Drashti Manual… (x37, Session 60), in either mode.
     manual: () => {
       sendToOperator(IPC.app.showManual, { at: Date.now() });
+    },
+    // Help › Report a Problem… (x49): the window asks for its picture and opens.
+    reportProblem: () => {
+      sendToOperator(IPC.app.showReport, { at: Date.now() });
     },
     // The Tools menu (Session 60, x36): Pro Mode's, each item opening its window in the operator window.
     tools: (tool) => {

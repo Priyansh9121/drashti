@@ -42,6 +42,12 @@ export function catchUpLeftMs(lateMs: number, spanMs: number, maxRate: number): 
   return Math.max(0, lateMs - (Math.max(0, spanMs) * (rate - 1)) / rate);
 }
 
+/** What a media element said as it failed (Session 60, Q60-31): its MediaError's code and Chromium's message. */
+export interface PlaybackError {
+  code: number;
+  message: string;
+}
+
 export interface PlaybackOptions {
   mediaId: string;
   /** A later try at loading it (a node's copy that landed after the first try failed). */
@@ -63,8 +69,11 @@ export interface PlaybackOptions {
   startedAt: number;
   /** The file has its first frame (or sound), at the right point. */
   onFrame?: () => void;
-  /** The file cannot be loaded or played. */
-  onError?: () => void;
+  /**
+   * The file cannot be loaded or played: the element's MediaError (its code, 1 to 4, and Chromium's own words), or 0
+   * and no words where an error came with none.
+   */
+  onError?: (error: PlaybackError) => void;
   /** Sound: the audio player plays it; every other window keeps media muted (the default). */
   audible?: boolean;
   /** When to jump, and how much the speed may change to catch up (pictures by default). */
@@ -244,7 +253,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     for (const event of READY_EVENTS) v.addEventListener(event, canPlay);
   };
   const failed = () => {
-    onError?.();
+    onError?.({ code: v.error?.code ?? 0, message: v.error?.message ?? '' });
   };
   const whenFrame = () => {
     if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) frame();
