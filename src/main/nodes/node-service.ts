@@ -1,4 +1,5 @@
 import { randomInt } from 'node:crypto';
+import type { NodeReportAnswer } from '../../shared/report';
 import { cutText } from '../../shared/text';
 import { z } from 'zod';
 import {
@@ -88,6 +89,8 @@ export interface NodeServiceDeps {
   runShowAction?(command: EngineCommand, who: string): DeviceAnswer;
   /** A media file for a node: where it is, its hash, size and extension. */
   mediaFile(mediaId: string): { path: string; sha256: string; bytes: number; ext: string } | null;
+  /** A paired node's report (x49): Main keeps it and sends it on; its answer for the node. */
+  nodeReport?(node: { id: string; name: string }, body: Uint8Array): Promise<NodeReportAnswer>;
   /** The stream is on air or recording: copies go slower. */
   onAir(): boolean;
   /** The nodes' state changed (the dashboard and the status bar). */
@@ -319,6 +322,18 @@ export class NodeService implements EngineTransport {
         if (m.question.kind === 'paired') {
           const node = this.letIn ? this.paired(m.question.node) : null;
           worker.send({ type: 'answer', id: m.id, answer: node });
+        } else if (m.question.kind === 'report') {
+          // A paired node's report (x49, the owner's Q60-42, 2): Main keeps it and sends it on with its own access.
+          const { id } = m;
+          const { nodeId, body } = m.question;
+          const node = this.deps.nodes.list().find((n) => n.id === nodeId);
+          const taken =
+            node && this.letIn ? this.deps.nodeReport?.({ id: node.id, name: node.name }, body) : undefined;
+          void (taken ?? Promise.resolve(null))
+            .catch(() => null)
+            .then((answer) => {
+              worker.send({ type: 'answer', id, answer });
+            });
         } else {
           const file = this.letIn ? this.deps.mediaFile(m.question.mediaId) : null;
           worker.send({ type: 'answer', id: m.id, answer: file });

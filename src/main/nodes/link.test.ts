@@ -6,7 +6,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import type { NodeHealth, ToNode } from '../../shared/nodes';
 import { versionMismatch } from '../../shared/nodes';
-import { LinkClient, openMediaFromMain, pairWithMain, type PinnedMain } from '../node-mode/link-client';
+import {
+  LinkClient,
+  openMediaFromMain,
+  pairWithMain,
+  postReportToMain,
+  type PinnedMain,
+} from '../node-mode/link-client';
 import { makeIdentity } from './certificate';
 import { hashToken } from '../network/tokens';
 import { byteRange, type LinkHost, LinkServer } from './link-server';
@@ -35,6 +41,8 @@ interface Fake extends LinkHost {
   kept: { name: string; tokenHash: string }[];
   events: string[];
   healths: NodeHealth[];
+  /** The nodes' reports Main was handed (x49). */
+  reports: { nodeId: string; body: Buffer }[];
 }
 
 async function start(identity = main, port = 0) {
@@ -73,6 +81,11 @@ async function start(identity = main, port = 0) {
     },
     resync: () => undefined,
     log: () => undefined,
+    reports: [],
+    report: (nodeId, body) => {
+      host.reports.push({ nodeId, body: Buffer.from(body) });
+      return Promise.resolve({ ok: true, reference: 'R-0000-0001' });
+    },
   };
   server = new LinkServer(host);
   const started = await server.start({
@@ -317,5 +330,36 @@ describe('the node link', () => {
     expect(byteRange('bytes=0-9', 100)).toEqual({ start: 0, end: 9 });
     expect(byteRange('bytes=100-', 100)).toBe('bad');
     expect(byteRange(undefined, 100)).toBeNull();
+  });
+
+  it('hands a paired node’s report to Main whole, from that node only (x49, the owner’s Q60-42: a node’s report goes through its Main)', async () => {
+    const { port, host, server: s } = await start();
+    s.setOffer({ code: '482913', expiresAt: Date.now() + 60_000 });
+    const paired = await pair(port, '482913');
+    if (!paired.ok) throw new Error(paired.message);
+    s.setNodes([{ id: paired.node.id, name: paired.node.name, tokenHash: host.kept[0]?.tokenHash ?? '' }]);
+    // Megabytes, and words past ASCII across the upload's parts.
+    const body = Buffer.from(
+      JSON.stringify({ v: 1, words: 'પ્લેસહોલ્ડર '.repeat(200), data: 'A'.repeat(3 * 1024 * 1024) }),
+      'utf8',
+    );
+    expect(await postReportToMain(paired.main, '127.0.0.1', paired.token, body)).toEqual({
+      ok: true,
+      reference: 'R-0000-0001',
+    });
+    expect(host.reports).toHaveLength(1);
+    expect(host.reports[0]?.nodeId).toBe(paired.node.id);
+    expect(host.reports[0]?.body.equals(body)).toBe(true);
+    // Any other: refused, nothing handed on.
+    expect(
+      await postReportToMain(paired.main, '127.0.0.1', 'test-made-up-wrong-token-000000000000', body),
+    ).toMatchObject({
+      ok: false,
+    });
+    const tooLarge = Buffer.alloc(11 * 1024 * 1024, 65);
+    expect(await postReportToMain(paired.main, '127.0.0.1', paired.token, tooLarge)).toMatchObject({
+      ok: false,
+    });
+    expect(host.reports).toHaveLength(1);
   });
 });
