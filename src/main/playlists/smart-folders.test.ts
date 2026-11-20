@@ -243,6 +243,24 @@ describe('a smart playlist following a folder', () => {
     expect(view(id)).toMatchObject({ copying: [] });
   });
 
+  it('one that stays not whole, unchanged for 2 minutes (its copy stopped, or it is damaged): never taken by itself, named so on the line; whole later, it joins (Q60-31)', async () => {
+    await putBytes('Talk.mp4', exportedMp4(3000));
+    const { service, settle, imports, view, clock } = setup();
+    const made = await service.create(folder());
+    const id = made.ok ? made.id : '';
+    await settle(id);
+    expect(view(id)).toMatchObject({ copying: ['Talk.mp4'], stalled: [] });
+    clock.now += 2 * 60_000;
+    await service.scan(id);
+    expect(imports).toEqual([]);
+    expect(view(id)).toMatchObject({ copying: [], stalled: ['Talk.mp4'] });
+    // Its copy carries on: whole now, it joins.
+    await putBytes('Talk.mp4', exportedMp4());
+    await settle(id);
+    expect(imports).toHaveLength(1);
+    expect(view(id)).toMatchObject({ copying: [], stalled: [] });
+  });
+
   it('waits while the stream is on air or recording, then adds what held still (Session 28)', async () => {
     await put('Opening.mp4', 'video one');
     const air = { on: true };
