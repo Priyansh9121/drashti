@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DisplayCopies, type DisplayDeps } from './display-copies';
+import { PLAIN } from '../../shared/picture-look';
 
 const SHA = 'aa'.repeat(32);
 const png = (width: number, height: number, animated = false) => {
@@ -333,5 +334,57 @@ describe('asynchronous display checksums', () => {
     } finally {
       digest.mockRestore();
     }
+  });
+});
+
+describe('display look target snapshots', () => {
+  const small = [{ width: 1920, height: 1080 }];
+  const large = [{ width: 3840, height: 2160 }];
+
+  async function checkedSizes() {
+    let current = small;
+    const targets = vi.fn(() => current);
+    const t = setup(png(6144, 3456), 10 * 1024 ** 3, undefined, { targets });
+    const first = t.copies.prepare(t.candidate);
+    await vi.waitFor(() => expect(t.windows.opened).toBe(1));
+    const a = await t.copies.next(1);
+    if (!a) throw new Error('The small checked copy was not offered.');
+    await t.copies.made(1, a.key, new Uint8Array(png(1920, 1080)));
+    const smallResult = await first;
+    const waiting = t.copies.next(1);
+    await t.copies.idle();
+    current = large;
+    const second = t.copies.prepare(t.candidate);
+    const b = await waiting;
+    if (!b) throw new Error('The large checked copy was not offered.');
+    await t.copies.made(1, b.key, new Uint8Array(png(3840, 2160)));
+    const largeResult = await second;
+    if (!smallResult.ok || !smallResult.copy || !largeResult.ok || !largeResult.copy)
+      throw new Error('Both physical target sizes must have checked copies.');
+    targets.mockClear();
+    return { copies: t.copies, targets, smallCopy: smallResult.copy, largeCopy: largeResult.copy };
+  }
+
+  it('does not reread screens and stream context for each look in one supplied target snapshot', async () => {
+    const t = await checkedSizes();
+    for (let i = 0; i < 10; i++) expect(t.copies.ready(SHA, null, large)).toEqual(t.largeCopy);
+    expect(t.targets).not.toHaveBeenCalled();
+  });
+
+  it('selects the exact checked copy for each supplied snapshot without retaining it for later calls', async () => {
+    const t = await checkedSizes();
+    expect(t.copies.ready(SHA, null, small)).toEqual(t.smallCopy);
+    expect(t.copies.ready(SHA, null, large)).toEqual(t.largeCopy);
+    expect(t.copies.ready(SHA, null, small)).toEqual(t.smallCopy);
+    expect(t.targets).not.toHaveBeenCalled();
+    // A caller without a snapshot still reads the current physical demand immediately.
+    expect(t.copies.ready(SHA)).toEqual(t.largeCopy);
+    expect(t.targets).toHaveBeenCalledOnce();
+  });
+
+  it("keeps each picture look's zoom demand within the supplied physical target snapshot", async () => {
+    const t = await checkedSizes();
+    expect(t.copies.ready(SHA, { ...PLAIN, zoom: 2 }, small)).toEqual(t.largeCopy);
+    expect(t.targets).not.toHaveBeenCalled();
   });
 });
