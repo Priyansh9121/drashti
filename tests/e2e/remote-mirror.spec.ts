@@ -99,6 +99,29 @@ const clearWords = (phone: Page) =>
     .getByRole('button')
     .evaluateAll((buttons) => buttons.map((b) => (b as HTMLElement).innerText.replace(/\s+/gu, ' ').trim()));
 
+/** How late the phone hears Drashti in the clears' test: a phone on a busy Wi-Fi (x58). */
+const FEED_LATE_MS = 400;
+
+/**
+ * Everything Drashti says to the phone over its state feed reaches it `ms` late, in order, as over a busy Wi-Fi; what
+ * the phone says goes at once (x58: CI's Mac once read the phone's clears before its feed had said the Wallpaper was
+ * off, while the window's own bar already had).
+ */
+async function feedComesLate(page: Page, ms: number): Promise<void> {
+  await page.routeWebSocket(/\/api\/v1\/feed$/u, (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((message) => {
+      server.send(message);
+    });
+    server.onMessage((message) => {
+      // The late Wi-Fi itself, never a wait of the test's.
+      setTimeout(() => {
+        ws.send(message);
+      }, ms);
+    });
+  });
+}
+
 for (const engine of ['webkit', 'chromium'] as Engine[])
   test(`the phone’s clears are the desktop’s bottom bar: in its order with its keys’ names, each lit while its layer is up and clearing it, the keys followed as they change (${engine})`, async () => {
     test.setTimeout(180_000);
@@ -111,6 +134,7 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     const { base } = await networkOn(win);
     const phone = await device(engine);
     const p = phone.page;
+    await feedComesLate(p, FEED_LATE_MS);
     try {
       await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
