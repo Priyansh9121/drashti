@@ -28,15 +28,16 @@ Audio’s **+ › Import** accepts an M3U file as well as sounds. An M3U makes a
 
 ## Sound and picture…
 
-**What it is.** A small window for one video or sound: its own **Bass** and **Treble**, **Voice boost**, and how much later its sound or its captions come than its picture.
+**What it is.** A small window for one video or sound: its own **Bass** and **Treble**, **Voice boost**, how much later its sound or its captions come than its picture, and a video's **Shape**.
 
-**When you would use it.** For a talk that sounds muddy or thin, or a video whose sound or captions are out of step with the speaker.
+**When you would use it.** For a talk that sounds muddy or thin, a video whose sound or captions are out of step with the speaker, or a video drawn too wide or too narrow.
 
 **How:**
 
 1. Right-click the video or sound (in **Media**, a playlist or **Audio**), then choose **Sound and picture…**.
 2. Move **Bass** or **Treble**, or tick **Voice boost**; it is heard at once, in the hall and on the stream.
 3. Move **Sound delay** or **Caption delay** until they match the picture; **Reset** puts everything back.
+4. For a background video, or one in the picture-in-picture box, drawn the wrong shape, choose its **Shape**: **16:9**, **4:3**, **1:1** or **21:9**; every screen and the stream show it at once.
 
 ![The Audio panel: its audio playlists, and Music steps aside for a video](../screenshots/music-panel.png)
 

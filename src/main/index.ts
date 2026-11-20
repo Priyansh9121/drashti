@@ -1,4 +1,5 @@
 import { type PlaybackSettings, playbackSettingsSchema, toneOf } from '../shared/playback-settings';
+import { shapeOverride } from '../shared/video-shape';
 import { fileProblem } from './plain-errors';
 import { importM3u, M3uError, writeM3u, type M3uExportRow } from './playlists/m3u';
 import { playlistPlayOptionsSchema } from '../shared/playlist-playback';
@@ -1835,6 +1836,8 @@ function start(): void {
         const own = playbackOfFile(mediaId);
         return { tone: toneOf(own), soundDelayMs: own.soundDelayMs };
       },
+      // Sound and picture…'s Shape (alpha.20, x55): each video's own shape on the screens.
+      videoShape: (mediaId) => shapeOverride(playbackOfFile(mediaId).shape),
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
@@ -7078,6 +7081,7 @@ function start(): void {
     ownPlayback.set(mediaId, parsed.data);
     engine.refreshSound();
     engine.refreshVideoCaptions();
+    engine.refreshVideoShapes();
     return { ok: true as const };
   });
   handle(IPC.audio.getOutput, () => audioOutput.status);
