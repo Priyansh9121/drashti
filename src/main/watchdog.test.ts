@@ -380,17 +380,48 @@ describe('a render error (Session 23)', () => {
     clock.advance(100);
     expect(contents.reloads).toBe(1);
     expect(kinds()).toEqual(['render-error', 'reloaded']);
-    // It fails again as it draws after the reload: logged, not reloaded again within the minute.
-    clock.advance(5000);
-    dog.renderError(contents, 'output "Main Hall"', 'Error: boom');
-    clock.advance(10_000);
-    expect(contents.reloads).toBe(1);
-    expect(kinds()).toEqual(['render-error', 'reloaded', 'render-error']);
-    // A minute after the reload, once more.
-    clock.advance(50_000);
+    // Two minutes on, a new fault: once more.
+    clock.advance(120_000);
     dog.renderError(contents, 'output "Main Hall"', 'Error: boom');
     clock.advance(100);
     expect(contents.reloads).toBe(2);
+  });
+
+  // x53 (the owner's Q60-31 bug hunt, x52's D6a): a page that failed again after its reload was left black for good,
+  // counted as showing, nobody told; and an error said by the old page before its reload is not its failing again.
+  it('fails again after its reload: given up on as a crash loop is, once; tried again 2 minutes later', () => {
+    const hall = new FakeContents();
+    dog.watch(hall, 'output "Main Hall"');
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    // The old page, still drawing before its reload: not its failing again.
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    clock.advance(100);
+    expect(hall.reloads).toBe(1);
+    clock.advance(5000);
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    expect(events.map((e) => `${e.kind}${e.reason === undefined ? '' : ` (${e.reason})`}`)).toEqual([
+      'render-error (Error: boom)',
+      'reloaded',
+      'render-error (Error: boom)',
+      'gave-up (its picture failed again after a reload)',
+    ]);
+    // Given up on: no more reloads, and its errors meanwhile say nothing more.
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    clock.advance(60_000);
+    expect(hall.reloads).toBe(1);
+    expect(kinds()).toHaveLength(4);
+    // Tried again by itself, as a crash loop's is.
+    clock.advance(RETRY_FIRST_MS);
+    expect(hall.reloads).toBe(2);
+    expect(kinds().at(-1)).toBe('retried');
+    // Failing again at once after that try (its reload): given up on again, now for 10 minutes.
+    clock.advance(2000);
+    dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
+    expect(kinds().at(-1)).toBe('gave-up');
+    clock.advance(RETRY_AGAIN_MS - 1);
+    expect(hall.reloads).toBe(2);
+    clock.advance(1);
+    expect(hall.reloads).toBe(3);
   });
 
   it('each window has its own minute, and a window gone is not reloaded', () => {
