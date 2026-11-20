@@ -6,7 +6,8 @@ import { WEB_PAGES } from '../network/web-files';
 /*
  * Every page's Content Security Policy: scripts only from the app, nothing
  * fetched from anywhere, and library media (drashti-media:) allowed only as
- * images and media. The pages phones and tablets open over the local network
+ * images and media, except the picture worker's owned source stream.
+ * The pages phones and tablets open over the local network
  * connect to Drashti's own feed (ws:, which the server's own header narrows
  * to this computer's address) and never name drashti-media: (they get
  * previews over HTTP, by id).
@@ -60,18 +61,23 @@ describe('page security policies', () => {
     for (const [name, values] of policy) expect(values, name).not.toContain('drashti-media:');
   });
 
-  // The hidden window that makes pictures' sharpened copies (Session 26f): the pictures come through the
-  // bridge, so it names no library media and plays none.
-  it('sharpen.html (sharpened copies): app scripts only, no fetching, no media', () => {
+  // Normal sharpen jobs keep their bridge bytes. A display job streams only its currently granted original
+  // through a private Session; this worker alone connects to the local media scheme, never the network.
+  it('sharpen.html (picture copies): app scripts and the private local source only, no media playback', () => {
     const policy = policyOf(readFileSync(join(RENDERER, 'sharpen.html'), 'utf8'));
     expect(policy.get('default-src')).toEqual(["'self'"]);
     expect(policy.get('script-src')).toEqual(["'self'"]);
-    expect(policy.get('connect-src')).toEqual(["'self'"]);
+    expect(policy.get('connect-src')).toEqual(["'self'", 'drashti-media:']);
+    expect(policy.get('style-src')).toEqual(["'self'"]);
+    expect(policy.get('img-src')).toEqual(["'self'", 'blob:']);
+    expect(policy.get('font-src')).toEqual(["'none'"]);
     expect(policy.get('media-src')).toEqual(["'none'"]);
     expect(policy.get('object-src')).toEqual(["'none'"]);
     expect(policy.get('base-uri')).toEqual(["'none'"]);
     expect(policy.get('form-action')).toEqual(["'none'"]);
-    for (const [name, values] of policy) expect(values, name).not.toContain('drashti-media:');
+    for (const [name, values] of policy) {
+      if (name !== 'connect-src') expect(values, name).not.toContain('drashti-media:');
+    }
   });
 
   // The window for Zoom (Session 48): the stream's picture is a capture, set on its video directly, so it

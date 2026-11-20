@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <!--
-      The hidden window that makes pictures' sharpened copies (Session 26f). It reads nothing from
-      anywhere: each picture's bytes come through the bridge, and the copy goes back the same way.
+      The hidden picture worker: sharpened copies keep their bridge bytes. Display copies stream only
+      their currently granted original through a private local Session; completed bytes return by bridge.
     -->
     <meta
       http-equiv="Content-Security-Policy"
