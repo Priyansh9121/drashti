@@ -1843,6 +1843,7 @@ function start(): void {
         return ids;
       },
 
+      sourceMediaId: (mediaId) => videoEdits.sourceId(mediaId),
       prepareVideoEdits: (previous, next, historic) =>
         prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic),
       mediaLength: (mediaId) => mediaLength(mediaId),
@@ -2002,7 +2003,12 @@ function start(): void {
       const file = media.file(id);
       return !!file && !file.missing && !file.deleted && existsSync(join(mediaDir, file.path));
     },
-    changed: (edit) => sendToOperator(IPC.media.videoEditChanged, edit),
+    changed: (edit) => {
+      const cue = engine.current.videoCue;
+      if (cue && videoEdits.sourceId(cue.background.mediaId) === edit.mediaId)
+        engine.dispatch({ type: 'cancelVideoCue' });
+      sendToOperator(IPC.media.videoEditChanged, edit);
+    },
     write: sourceWrite(
       libraryDb,
       () => importer?.giveWay() ?? { ready: Promise.resolve(), done: () => undefined },

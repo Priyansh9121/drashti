@@ -265,6 +265,8 @@ export interface EngineOptions {
   /** Trusted identities of the local pages that must load the cued first frame. */
   videoCueParticipants?: () => string[];
 
+  /** Logical library identity of an immutable prepared video. */
+  sourceMediaId?: (mediaId: string) => string;
   /** Check new showings once; historic/recovered showings keep their immutable files. */
   prepareVideoEdits?: (previous: EngineState, next: EngineState, historic: boolean) => VideoEditPreparation;
   /** Drashti's own default transition, for presentations without one (a setting; a cut when left out). */
@@ -608,6 +610,14 @@ export class ShowEngine {
       this.apply([{ type: 'videoCue/set', cue: { ...cue, required, ready } }]);
   }
 
+  private sameVideoMedia(first: string, second: string): boolean {
+    return (
+      first === second ||
+      (!!this.options.sourceMediaId &&
+        this.options.sourceMediaId(first) === this.options.sourceMediaId(second))
+    );
+  }
+
   private prepareVideoCue(
     mediaId: string,
     playlist: PlaylistCursor | null,
@@ -648,13 +658,43 @@ export class ShowEngine {
     if (layer.kind !== 'media') return NO_CHANGE;
     const startedAt = Math.max(this.now(), this.cueStamp + 1, layer.startedAt + 1);
     this.cueStamp = startedAt;
-    const background: CuedVideo = {
+    let background: CuedVideo = {
       ...structuredClone(layer),
       media: 'video',
       startedAt,
       cueId: id,
       seek: { at: this.now(), toMs: layer.clip?.startMs ?? 0, paused: true },
     };
+    // The same new-showing resolver as ordinary playback, with only this private video in it.
+    // Nothing from its temporary scene replaces LIVE; S2/S4 can compose at this one boundary.
+    const edited = this.options.prepareVideoEdits?.(
+      this.state,
+      {
+        ...this.state,
+        videoCue: null,
+        videoCrossfade: null,
+        videoStart: null,
+        layers: { ...this.state.layers, background, slide: null, pip: null, audio: null },
+      },
+      false,
+    );
+    if (edited?.message) return { ok: false, error: 'preparing', message: edited.message };
+    if (edited?.state) {
+      const file = edited.state.layers.background;
+      if (file?.kind !== 'media' || file.media !== 'video')
+        return {
+          ok: false,
+          error: 'preparing',
+          message: 'The edited video is not ready: open Edit Video… and try Save again.',
+        };
+      background = {
+        ...file,
+        media: 'video',
+        cueId: id,
+        startedAt,
+        seek: { at: this.now(), toMs: file.seek?.toMs ?? file.clip?.startMs ?? 0, paused: true },
+      };
+    }
     return {
       ok: true,
       actions: [
@@ -687,7 +727,7 @@ export class ShowEngine {
       };
     if (cue.playlist) {
       const item = this.checkItem(cue.playlist)?.item;
-      if (item?.kind !== 'media' || item.mediaId !== cue.background.mediaId)
+      if (item?.kind !== 'media' || !this.sameVideoMedia(item.mediaId, cue.background.mediaId))
         return {
           ok: false,
           error: 'not-playable',
@@ -763,28 +803,30 @@ export class ShowEngine {
       this.playlists.repeatAll?.(cursor.playlistId) ?? false,
     ).find((i) => i.kind !== 'skip');
     if (following?.kind !== 'media' || following.media !== 'video') return null;
-    const length = this.options.mediaLength?.(following.mediaId);
-    if (!length || length <= 0) return null;
-    const points = this.clipOf(following.mediaId, following.id).clip;
-    const span = playbackSpanMs(points, length);
-    const outgoing = playbackSpanMs(bg.clip, bg.durationMs);
-    // At most half each span: adjacent overlaps can never require a third decoder.
-    const durationMs = videoOverlapMs(ms, span.end - span.start, outgoing.end - outgoing.start);
-    if (durationMs <= 0) return null;
-    const at = this.now() + playbackLeftMs(bg, bg.durationMs, this.now()) - durationMs;
     const from = `${bg.mediaId}@${bg.startedAt}`;
     if (this.canceledAutoFrom === from) return null;
     const existing = state.videoCue;
     if (existing && !existing.automatic) return null;
-    if (
+    const pinned =
       existing?.automatic?.from === from &&
-      existing.background.mediaId === following.mediaId &&
+      this.sameVideoMedia(existing.background.mediaId, following.mediaId) &&
       existing.playlist?.itemId === following.id
-    ) {
+        ? existing
+        : null;
+    const length = pinned?.background.durationMs ?? this.options.mediaLength?.(following.mediaId);
+    if (!length || length <= 0) return null;
+    const points = pinned ? pinned.background.clip : this.clipOf(following.mediaId, following.id).clip;
+    const span = playbackSpanMs(points, length);
+    const outgoing = playbackSpanMs(bg.clip, bg.durationMs);
+    // Use the prepared copy's output time; speed/trim must never be counted a second time.
+    const durationMs = videoOverlapMs(ms, span.end - span.start, outgoing.end - outgoing.start);
+    if (durationMs <= 0) return null;
+    const at = this.now() + playbackLeftMs(bg, bg.durationMs, this.now()) - durationMs;
+    if (pinned) {
       const automatic = { from, at, durationMs };
-      return sameData(existing.automatic, automatic)
+      return sameData(pinned.automatic, automatic)
         ? NO_CHANGE
-        : { ok: true, actions: [{ type: 'videoCue/set', cue: { ...existing, automatic } }] };
+        : { ok: true, actions: [{ type: 'videoCue/set', cue: { ...pinned, automatic } }] };
     }
     return this.prepareVideoCue(
       following.mediaId,
@@ -3923,7 +3965,7 @@ export class ShowEngine {
     const cursor = state.live.playlist;
     if (!cursor || state.live.presentationId !== null) return DEFAULT_WHEN_ENDS;
     const item = this.playlists.items(cursor.playlistId)?.find((i) => i.id === cursor.itemId);
-    return item?.kind === 'media' && item.mediaId === mediaId
+    return item?.kind === 'media' && this.sameVideoMedia(item.mediaId, mediaId)
       ? (item.whenEnds ?? DEFAULT_WHEN_ENDS)
       : DEFAULT_WHEN_ENDS;
   }

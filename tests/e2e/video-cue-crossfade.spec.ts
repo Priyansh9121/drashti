@@ -147,3 +147,35 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
     await app.close();
   }
 });
+
+test('Saving a new edit cancels only its private cue, keeps LIVE, and Cue waits for that edited copy', async () => {
+  const { app, win, hall, ids } = await setupVideoCue();
+  try {
+    const id = ids[1] ?? '';
+    await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#205020' } });
+    const live = (await snapshot(win)).layers;
+    expect((await dispatch(win, { type: 'cueVideo', mediaId: id })).ok).toBe(true);
+    await cueReady(win);
+    const saved = await win.evaluate(async (id) => {
+      const media = (globalThis as PageGlobals).drashti.media;
+      const read = await media.videoEdit(id);
+      if (!read.ok) throw new Error(read.message);
+      return media.setVideoEdit({
+        mediaId: id,
+        revision: read.edit.revision,
+        recipe: { ...read.edit.recipe, speed: 2 },
+      });
+    }, id);
+    expect(saved.ok).toBe(true);
+    await expect.poll(async () => (await snapshot(win)).videoCue ?? null).toBeNull();
+    expect((await snapshot(win)).layers).toEqual(live);
+    expect(await dispatch(win, { type: 'cueVideo', mediaId: id })).toMatchObject({
+      ok: false,
+      error: 'preparing',
+    });
+    await expect(video(hall, id)).toHaveCount(0);
+    expect((await snapshot(win)).layers).toEqual(live);
+  } finally {
+    await app.close();
+  }
+});
