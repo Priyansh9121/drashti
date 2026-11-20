@@ -4,6 +4,7 @@ import {
   app,
   autoUpdater,
   BrowserWindow,
+  clipboard,
   net as electronNet,
   shell,
   crashReporter,
@@ -6631,6 +6632,15 @@ function start(): void {
       ? mediaDetails.details(mediaId)
       : { ok: false as const, message: 'Only the operator window can read a file’s information.' },
   );
+  // Its Copy: the window's words on the clipboard, by the main process (a page's own clipboard is refused to every
+  // page: windows/security.ts). Words only, at most 64 KB, from the operator window.
+  handle(IPC.media.copyDetails, async (e, text) => {
+    if (!fromOperator(e) || typeof text !== 'string' || text.length > 64 * 1024) return false;
+    return clipboard.writeText(text).then(
+      () => true,
+      () => false,
+    );
+  });
   handle(IPC.audio.getOutput, () => audioOutput.status);
   handle(IPC.audio.setOutput, (e, device) =>
     fromOperator(e) ? audioOutput.choose(device) : audioOutput.status,
