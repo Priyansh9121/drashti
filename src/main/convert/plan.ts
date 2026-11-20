@@ -199,7 +199,7 @@ export function atImport(
 }
 
 /** Containers for people, and the codecs that are their own (named once: "AC-3 sound file"). */
-const CONTAINERS: Record<string, { name: string; own?: readonly string[] }> = {
+export const CONTAINERS: Record<string, { name: string; own?: readonly string[] }> = {
   'matroska,webm': { name: 'Matroska' },
   'mov,mp4,m4a,3gp,3g2,mj2': { name: 'MP4' },
   avi: { name: 'AVI' },
@@ -232,7 +232,7 @@ const CONTAINERS: Record<string, { name: string; own?: readonly string[] }> = {
 };
 
 /** The ISO and Matroska families by the file's own extension: a .mov is QuickTime, a .webm WebM. */
-const BY_EXTENSION: Record<string, string> = {
+export const BY_EXTENSION: Record<string, string> = {
   mov: 'QuickTime',
   qt: 'QuickTime',
   m4a: 'M4A',
@@ -245,7 +245,7 @@ const BY_EXTENSION: Record<string, string> = {
   weba: 'WebM',
 };
 
-const PICTURE_NAMES: Record<string, string> = {
+export const PICTURE_NAMES: Record<string, string> = {
   h264: 'H.264',
   hevc: 'HEVC (H.265)',
   vp8: 'VP8',
@@ -283,7 +283,7 @@ const PICTURE_NAMES: Record<string, string> = {
   svq3: 'Sorenson Video 3',
 };
 
-const SOUND_NAMES: Record<string, string> = {
+export const SOUND_NAMES: Record<string, string> = {
   aac: 'AAC',
   mp3: 'MP3',
   mp2: 'MP2',
