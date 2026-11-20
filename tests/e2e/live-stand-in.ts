@@ -139,7 +139,7 @@ export interface LinkLook {
 }
 
 /**
- * Read the stream link a page shows (its player shown: the one fully on), from its picture: an output's, or in the
+ * Read the stream link a page shows (its player shown: the one over the others), from its picture: an output's, or in the
  * operator window LIVE's (`within`: the element it is drawn in), never another small picture of the screens.
  */
 export function linkLook(page: Page, within: string | null = null): Promise<LinkLook> {
@@ -151,14 +151,14 @@ export function linkLook(page: Page, within: string | null = null): Promise<Link
     const players = all
       .map(
         (v) =>
-          `[shown ${v.style.opacity} seg ${v.dataset['segment'] ?? '-'} startAt-now ${
+          `[shown ${v.dataset['shown'] ?? '0'} played ${v.dataset['played'] ? String(Number(v.dataset['played']) - Date.now()) : '-'} moved ${v.dataset['moved'] ?? '-'} seg ${v.dataset['segment'] ?? '-'} startAt-now ${
             v.dataset['startAt'] ? String(Number(v.dataset['startAt']) - Date.now()) : '-'
           } offset ${v.dataset['offset'] ?? '-'} t ${v.currentTime.toFixed(2)} paused ${String(v.paused)} rs ${String(
             v.readyState,
           )} rate ${String(v.playbackRate)} w ${String(v.videoWidth)} err ${v.error ? String(v.error.code) : '-'}]`,
       )
       .join(' ');
-    const video = all.find((v) => v.style.opacity === '1');
+    const video = all.find((v) => v.dataset['shown'] === '1');
     if (!video || video.videoWidth === 0) return { state, frame: null, luma: null, players };
     const c = document.createElement('canvas');
     c.width = 640;
