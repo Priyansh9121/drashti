@@ -56,7 +56,7 @@ function setup() {
     };
   });
   const cancelFile = vi.fn(() => true);
-  const register = vi.fn(async () => 'immutable');
+  const register = vi.fn(() => Promise.resolve('immutable'));
   const deps: EditServiceDeps = {
     repo,
     mediaDir: directory,
@@ -65,9 +65,9 @@ function setup() {
     conversions: { saveCopy, cancelFile },
     register,
     changed: vi.fn(),
-    write: async (guard, run) => {
+    write: (guard, run) => {
       if (!guard.allowed() || guard.signal.aborted) throw new Error('Stopped');
-      return run();
+      return Promise.resolve(run());
     },
   };
   service = new EditService(deps);

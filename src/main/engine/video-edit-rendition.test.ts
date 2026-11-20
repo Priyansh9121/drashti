@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { initialEngineState, type EngineState } from '../../shared/engine/state';
 import { PLAIN_VIDEO_EDIT, type VideoEditSnapshot } from '../../shared/video-edit';
 import { prepareVideoEdits } from './video-edit-ready';
+import { ShowEngine } from './show-engine';
+import { makeSource, RecordingTransport } from './testing';
 
 const recipe = { ...PLAIN_VIDEO_EDIT, trim: { startMs: 2000, endMs: 8000 }, speed: 2 };
 const ready: VideoEditSnapshot = {
@@ -66,4 +68,32 @@ describe('immutable edited files at new showings', () => {
     expect(result.message).toContain('missing');
     expect(result.state).toBeUndefined();
   });
+});
+
+it('carries an already-playing rendition across a repeated library choice while new edits prepare', () => {
+  let desired = ready;
+  let clock = 1000;
+  const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => ++clock, undefined, {
+    sourceMediaId: (id) => resolution.renditionOf(id)?.sourceId ?? id,
+    mediaLength: (id) => (id === 'source' ? 10000 : 3000),
+    prepareVideoEdits: (before, next, historic) =>
+      prepareVideoEdits(before, next, () => desired, historic, resolution),
+  });
+  const command = {
+    type: 'setBackground' as const,
+    background: {
+      kind: 'media' as const,
+      mediaId: 'source',
+      media: 'video' as const,
+      fit: 'fit' as const,
+      loop: true,
+    },
+  };
+  expect(engine.dispatch(command).ok).toBe(true);
+  const pinned = engine.current.layers.background;
+  expect(pinned).toMatchObject({ mediaId: 'copy-1' });
+  desired = { ...ready, revision: 2, state: 'preparing', readyMediaId: null };
+  clock = 2000;
+  expect(engine.dispatch(command).ok).toBe(true);
+  expect(engine.current.layers.background).toEqual(pinned);
 });
