@@ -1,3 +1,6 @@
+import { VideoEditsRepo } from './db/video-edits';
+import { prepareVideoEdits } from './engine/video-edit-ready';
+import { registerEditVideoIpc } from './convert/edit-video-ipc';
 import { type PlaybackSettings, playbackSettingsSchema, toneOf } from '../shared/playback-settings';
 import { shapeOverride } from '../shared/video-shape';
 import { fileProblem } from './plain-errors';
@@ -1772,6 +1775,7 @@ function start(): void {
   const videoCaptionsRepo = new VideoCaptionsRepo(db);
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
   // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
+  const videoEdits = new VideoEditsRepo(db);
   const playbackRepo = new MediaRepo(db);
   const ownPlayback = new Map<string, PlaybackSettings>();
   const playbackOfFile = (mediaId: string): PlaybackSettings => {
@@ -1797,6 +1801,8 @@ function start(): void {
           : simpleNow() && simpleModeRefuses(command, state)
             ? simpleRefusalText(simpleAccess())
             : null,
+      prepareVideoEdits: (previous, next, historic) =>
+        prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic),
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
@@ -1947,6 +1953,19 @@ function start(): void {
   const mediaDir = join(userDataDir, 'Media');
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
+  registerEditVideoIpc({
+    repo: videoEdits,
+    fromOperator: (event) => fromOperator(event) && !simpleNow(),
+    available: (id) => {
+      const file = media.file(id);
+      return !!file && !file.missing && !file.deleted && existsSync(join(mediaDir, file.path));
+    },
+    changed: (edit) => sendToOperator(IPC.media.videoEditChanged, edit),
+    write: sourceWrite(
+      libraryDb,
+      () => importer?.giveWay() ?? { ready: Promise.resolve(), done: () => undefined },
+    ),
+  });
   const trimmedVideos = new TrimmedVideos(libraryDb, media, playlists);
   mediaLength = (mediaId) => media.lengthOf(mediaId);
   mediaKind = (mediaId) => media.kindAndName(mediaId)?.kind ?? null;
@@ -2244,6 +2263,7 @@ function start(): void {
         const found = media.file(id);
         return found?.deleted && !mediaUpNow(engine.current).has(id) ? { ...found, missing: true } : found;
       },
+      selectedThumbnail: (id) => videoEdits.thumbnailOf(id),
       sharpened: (sha256, step) => sharpened.relativePath(sha256, step),
       blurred: (sha256) => blurred.relativePath(sha256),
       // A picture one of the guides shows (only those, from the guides' own folder).
