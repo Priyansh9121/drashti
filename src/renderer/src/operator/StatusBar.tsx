@@ -1,4 +1,5 @@
 import { useWhatIsThis } from '../help/WhatIsThis';
+import { showReport } from '../help/report-store';
 import { useEffect } from 'react';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import { useEngine } from '../engine/engine-store';
@@ -395,6 +396,16 @@ function NoticeCard({ notice }: { notice: string }) {
     >
       <Info size={13} aria-hidden="true" className="mt-px shrink-0 text-accent" />
       <p className="min-w-0 flex-1 break-words">{notice}</p>
+      {/* Report a Problem with this notice's words and the feature they name (x49, Q60-38). */}
+      <button
+        type="button"
+        onClick={() => {
+          void showReport({ notice });
+        }}
+        className="pointer-events-auto -my-0.5 shrink-0 rounded-sm px-1 text-xs text-muted underline hover:bg-panel-2 hover:text-fg"
+      >
+        Report this…
+      </button>
       <button
         type="button"
         aria-label="Dismiss"

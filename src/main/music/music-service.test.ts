@@ -180,3 +180,64 @@ describe('an audio playlist’s name (Session 58, X3)', () => {
     expect(names()).toContain('Placeholder\u202E older');
   });
 });
+
+describe('an audio playlist stopped part-way (alpha.20, the owner’s "Yes, all A" to Q60-39, P1)', () => {
+  /** The engine playing this playlist's track `index` of s1, s2, s3, started `ago` ms ago, each 60 s long. */
+  const playingTrack = (playlistId: string, index: number, ago = 10_000): EngineState => {
+    const base = initialEngineState();
+    const tracks = ['s1', 's2', 's3'].map((mediaId) => ({ mediaId, title: `Placeholder ${mediaId}` }));
+    return {
+      ...base,
+      layers: {
+        ...base.layers,
+        audio: {
+          id: 'track',
+          title: tracks[index]?.title ?? '',
+          mediaId: tracks[index]?.mediaId ?? '',
+          volume: 1,
+          loop: false,
+          startedAt: Date.now() - ago,
+          durationMs: 60_000,
+          music: { playlistId, name: 'Placeholder before sabha', tracks, index, loop: false, shuffle: false },
+        },
+      },
+    };
+  };
+  const startedAt = (commands: EngineCommand[]) => {
+    const last = commands.at(-1);
+    return last?.type === 'playMusic' ? last.music.tracks[last.index]?.mediaId : undefined;
+  };
+
+  it('plays on from the track it stopped on when no track is asked; a track asked plays as asked', () => {
+    const { service, commands } = setup();
+    const made = service.create('Placeholder before sabha');
+    if (!made.ok || !made.id) throw new Error('not made');
+    service.addTracks(made.id, ['s1', 's2', 's3'], null);
+    service.follow(playingTrack(made.id, 1));
+    service.follow(initialEngineState());
+    expect(service.play(made.id).ok).toBe(true);
+    expect(startedAt(commands)).toBe('s2');
+    // Played on from there: Play with no track asked again starts at its first.
+    expect(service.play(made.id).ok).toBe(true);
+    expect(startedAt(commands)).toBe('s1');
+    service.follow(playingTrack(made.id, 2));
+    service.follow(initialEngineState());
+    expect(service.play(made.id, 0).ok).toBe(true);
+    expect(startedAt(commands)).toBe('s1');
+  });
+
+  it('played to the end of its last track keeps nothing; a quit keeps the track playing', () => {
+    const { service, commands } = setup();
+    const made = service.create('Placeholder before sabha');
+    if (!made.ok || !made.id) throw new Error('not made');
+    service.addTracks(made.id, ['s1', 's2', 's3'], null);
+    service.follow(playingTrack(made.id, 2, 60_000));
+    service.follow(initialEngineState());
+    expect(service.play(made.id).ok).toBe(true);
+    expect(startedAt(commands)).toBe('s1');
+    service.follow(playingTrack(made.id, 1));
+    service.quitting();
+    expect(service.play(made.id).ok).toBe(true);
+    expect(startedAt(commands)).toBe('s2');
+  });
+});

@@ -401,11 +401,27 @@ function ItemBody({
 }
 
 /** How following the folder goes, in words. */
-function smartState(view: { state: string; adding: number }): string {
+function smartState(view: {
+  state: string;
+  adding: number;
+  copying?: readonly string[];
+  stalled?: readonly string[];
+}): string {
   if (view.state === 'folder-gone')
     return 'The folder is not there (a USB stick taken out?). Its items stay, and it carries on when the folder is back.';
   if (view.state === 'too-many')
     return `The folder holds more than ${SMART_MAX_FILES.toLocaleString('en')} videos, pictures, sounds and decks: nothing more is added until some are moved out.`;
+  // A file whose copy has stalled (Q60-31): never taken half-written, it joins once whole. Unchanged for 2 minutes, its
+  // copy may have stopped, or it is damaged.
+  const stalled = view.stalled ?? [];
+  if (stalled.length === 1)
+    return `“${stalled[0] ?? ''}” is not whole and has not changed for 2 minutes: its copy may have stopped, or it is damaged. It joins once it is whole.`;
+  if (stalled.length > 1)
+    return `${plural(stalled.length, 'file')} are not whole and have not changed for 2 minutes: their copies may have stopped, or they are damaged. Each joins once it is whole.`;
+  const copying = view.copying ?? [];
+  if (copying.length === 1) return `“${copying[0] ?? ''}” is still being copied: it joins once it is whole.`;
+  if (copying.length > 1)
+    return `${plural(copying.length, 'file')} are still being copied: each joins once it is whole.`;
   if (view.state === 'waiting')
     return `Waiting while the stream is on air or recording: ${plural(view.adding, 'file')} will join afterwards.`;
   if (view.adding > 0) return `Adding ${plural(view.adding, 'file')}…`;

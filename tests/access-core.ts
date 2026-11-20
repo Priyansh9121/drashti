@@ -27,10 +27,24 @@ export { NO_ACTIVITY } from '../src/shared/access-protocol';
  * Placeholder addresses only (example.com).
  */
 
-export interface SentMail {
+/** A file an email carries (a report's, x49): as core.js hands it to Code.js, which makes it a blob for MailApp. */
+export interface MailFile {
+  name: string;
+  type: string;
+  base64: string;
+}
+
+/** An email as core.js hands it to Code.js: who from (its name), Reply-To and files only for a report (x49). */
+export interface ListMail {
   to: string;
   subject: string;
   body: string;
+  name?: string;
+  replyTo?: string;
+  attachments?: MailFile[];
+}
+
+export interface SentMail extends ListMail {
   at: number;
 }
 
@@ -60,7 +74,9 @@ export interface ListEnv {
   props(): ListProps | null;
   /** The script's settings (Script Properties), read and written as they are. */
   properties: { get(key: string): string | null; set(key: string, value: string): void };
-  mail: { remaining(): number; send(mail: { to: string; subject: string; body: string }): void };
+  mail: { remaining(): number; send(mail: ListMail): void };
+  /** A file's size and SHA-256 (hex) from its base64 (a report's files, x49): Code.js decodes it as Google does. */
+  fileOf(base64: string): { bytes: number; sha256: string };
   lock<T>(fn: () => T): T;
   flush(): void;
   cache: {
@@ -127,6 +143,8 @@ export interface AccessCore {
     macPrefix: string;
     lengths: { days: number[]; maxDays: number };
     modes: string[];
+    /** Help › Report a Problem… (x49): src/shared/access-protocol.ts's ACCESS_REPORT. */
+    report: Record<string, number>;
   };
   MESSAGES: Record<string, string>;
   handle(env: ListEnv, text: string): { payload: string; sig: string };
@@ -145,6 +163,41 @@ export interface AccessCore {
   formatToken(token: string): string;
   cleanText(value: unknown, max: number): string;
   sameText(a: string, b: string): boolean;
+  /** A report's reference from its id (x49): "R-" and 8 of Crockford's base32 letters, in two fours. */
+  reportReference(id: string): string;
+  /** Words a person typed for a report, made safe to email: their line breaks kept (x49). */
+  cleanLines(value: unknown): string;
+  /** A report's email text, from its parts (x49): Drashti's Review shows the same (src/shared/report.ts). */
+  reportMailText(parts: ReportMailParts): string;
+  /** A file's size as the email says it (x49), as src/shared/format.ts's formatBytes. */
+  sizeText(bytes: number): string;
+  /** A report's subject (x49): its first features (up to three, then how many more) and its reference. */
+  reportSubject(names: string[], reference: string): string;
+  /** Where a report was written (x49): the computer and its mode, or the node through its Main. */
+  reportComputerLine(
+    sender: { name: string; version: string; platform: string },
+    from: string,
+    node: { name: string; version: string; platform: string } | null,
+  ): string;
+}
+
+/** What a report's email is made of (x49): the list fills it from the call; Drashti's Review from what it will send. */
+export interface ReportMailParts {
+  reference: string;
+  /** The reporter's Gmail as the list has it. */
+  gmail: string;
+  /** The computer it came from, as the email says it (its name, version, system and mode, or the node's and Main's). */
+  computer: string;
+  /** When it was written (by that computer's clock) and received (by the list's), as the email says them. */
+  written: string;
+  received: string;
+  features: { chapter: string; name: string; what: string; expected?: string }[];
+  notice?: string;
+  errors?: string[];
+  files: { name: string; bytes: number }[];
+  kept?: { name: string; bytes: number }[];
+  /** Written on the owner's own computer: no "reply" line. */
+  owner: boolean;
 }
 
 export const ACCESS_LIST_DIR = join(__dirname, '..', 'access-list');
@@ -408,6 +461,10 @@ export class TestList {
             throw new Error('Service invoked too many times for one day: email.');
           this.mailbox.push({ ...m, at: this.t });
         },
+      },
+      fileOf: (base64) => {
+        const bytes = Buffer.from(base64, 'base64');
+        return { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
       },
       lock: <T>(fn: () => T): T => {
         if (this.lockBusy) throw new Error('busy');

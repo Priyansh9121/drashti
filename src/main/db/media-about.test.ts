@@ -39,6 +39,8 @@ describe('a media item’s notes for Media information', () => {
       importedFrom: '/Placeholder folder/Placeholder clip.mov',
       convertedTo: 'Placeholder clip.mp4',
       copyOf: null,
+      playCount: 0,
+      lastPlayedAt: null,
     });
     expect(media.about('copy')).toMatchObject({
       name: 'Placeholder clip.mp4',

@@ -1,6 +1,7 @@
 import type { ControllerRequest } from '../../../shared/controller-actions';
 import type { EngineMessage } from '../../../shared/engine/protocol';
-import type { MediaWant, NodeHealth, NodeScreen, ToNode } from '../../../shared/nodes';
+import type { MediaWant, NodeCannotPlayReport, NodeHealth, NodeScreen, ToNode } from '../../../shared/nodes';
+import type { NodeReportAnswer } from '../../../shared/report';
 import type { LinkNode, LinkOptions, LinkStartResult, LinkStats } from '../link-server';
 
 /*
@@ -27,11 +28,14 @@ export type ToLinkWorker =
 
 export type LinkQuestion =
   | { kind: 'paired'; node: { name: string; tokenHash: string; address: string; version: string } }
-  | { kind: 'media'; mediaId: string };
+  | { kind: 'media'; mediaId: string }
+  /** A paired node's report (x49), for Main to keep and send on. */
+  | { kind: 'report'; nodeId: string; body: Uint8Array };
 
 export interface LinkAnswers {
   paired: { id: string; name: string } | null;
   media: { path: string; sha256: string; bytes: number; ext: string } | null;
+  report: NodeReportAnswer | null;
 }
 
 export type FromLinkWorker =
@@ -43,6 +47,7 @@ export type FromLinkWorker =
   | { type: 'health'; nodeId: string; health: NodeHealth }
   | { type: 'controller-action'; nodeId: string; request: ControllerRequest }
   | { type: 'thumb'; nodeId: string; screenId: string; jpeg: string }
+  | { type: 'cannot-play'; nodeId: string; report: NodeCannotPlayReport }
   | { type: 'refused'; nodeId: string; version: string }
   | { type: 'offer-dropped' }
   | { type: 'resync' }

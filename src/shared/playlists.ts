@@ -49,6 +49,16 @@ export interface SmartPlaylistView {
   state: 'following' | 'folder-gone' | 'too-many' | 'waiting';
   /** New or changed files waiting for their size to hold still, or being imported. */
   adding: number;
+  /**
+   * Files that held still but whose own structure says they are still being copied (Q60-31: an MP4 whose movie box is
+   * not there yet), by their path inside the folder: they join once whole.
+   */
+  copying: string[];
+  /**
+   * Of those, the ones unchanged for 2 minutes and still not whole (Q60-31): their copies stopped, or they are damaged.
+   * Never taken by themselves; they join once whole.
+   */
+  stalled: string[];
   /** Items whose files are gone from the folder (marked, not removed). */
   missing: number;
 }
@@ -232,6 +242,9 @@ export interface MediaSummary {
   fromDrop?: true;
   /** Added from a phone (Session 54): the device's name, on its row. */
   fromDevice?: string;
+  /** How many times it has gone up (alpha.20), and when it last did (ISO-8601); left out until it first has. */
+  playCount?: number;
+  lastPlayedAt?: string;
 }
 
 export type PlaylistResult = { ok: true; ids: string[] } | { ok: false; message: string };

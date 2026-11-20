@@ -1,4 +1,5 @@
 import { formatBytes, formatDuration } from './format';
+import { playedWords } from './play-history';
 
 /*
  * Media information… (alpha.20: the owner's Q60-34 item 1, and his "Yes, all A" to Q60-39): what a video's or a sound's
@@ -113,6 +114,8 @@ export interface MediaDetails {
   importedAt: string | null;
   importedFrom: string | null;
   inDrashti: InDrashti;
+  /** How many times it has gone up and when it last did (alpha.20); left out by an older Main. */
+  plays?: { count: number; lastAt: string | null };
   /** What FFmpeg read just now; null when it could not (`problem` says why). */
   read: FileRead | null;
   /** Why the file was not read, in words; null when it was. */
@@ -380,6 +383,7 @@ export function detailSections(d: MediaDetails, extras: DetailExtras = {}, local
           : null,
       ],
       ['Even loudness', extras.loudness ? loudnessWords(extras.loudness) : null],
+      ['Played', d.plays ? playedWords(d.plays.count, d.plays.lastAt, locale) : null],
     ]),
   });
   return sections;

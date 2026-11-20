@@ -21,6 +21,16 @@ export interface Slot {
   /** How many times it has been tried again (a node's copy that landed late); left out the first time. */
   attempt?: number;
   /**
+   * Its file's landings and the GPU processes started when it failed, as its page counted them (Q60-31): it is tried
+   * again only for one after that. Left out: as many as its tries (a landing or a restart before it is not told apart).
+   */
+  failedAt?: number;
+  /**
+   * It had its first frame here and failed while it played (Q60-31): drawn as it was, never black, until the show
+   * takes it off (the page has told Main) or the next background has its first frame.
+   */
+  drawn?: true;
+  /**
    * The first background a window heard of, as it opened (Session 23): shown whole, never faded in
    * from black, even part-way through the slide's dissolve.
    */
@@ -49,7 +59,8 @@ export type SlotEvent =
   | { type: 'layer'; layer: BackgroundLayer | null; joined?: boolean }
   /** `at`: when it became ready, to time its dissolve. */
   | { type: 'ready'; key: string; at?: number }
-  | { type: 'failed'; key: string }
+  /** `landed`: its file's landings and the GPU processes started, when it failed (Q60-31: only later ones try it again). */
+  | { type: 'failed'; key: string; landed?: number }
   /** The file it failed on can be had now (a node's copy landed): try that playback again. */
   | { type: 'retry'; key: string }
   /** The dissolve that started at `start` has finished. */
@@ -57,20 +68,37 @@ export type SlotEvent =
 
 export const NO_SLOTS: Slots = { shown: null, incoming: null, leaving: null, fade: null };
 
+/** Whether a slot draws: ready, or failed while it played (drawn as it was until it is taken off). */
+export const isDrawn = (slot: Slot): boolean => slot.state === 'ready' || slot.drawn === true;
+
+/** The background drawn on screen now, by its key (null: none, the screen's nothing-up showing instead). */
+export const drawnKeyOf = (slots: Slots): string | null =>
+  slots.shown && isDrawn(slots.shown) ? slots.shown.key : null;
+
+/**
+ * A file that failed (as it loaded: the one coming in; or while it played: the one on screen), if one did; none while
+ * the one on screen is being tried again (out of sight).
+ */
+const failedFile = (slots: Slots): Slot | null => {
+  const coming = slots.incoming;
+  if (coming?.state === 'failed' && coming.layer.kind === 'media') return coming;
+  if (coming !== null && coming.key === slots.shown?.key) return null;
+  return slots.shown?.state === 'failed' && slots.shown.layer.kind === 'media' ? slots.shown : null;
+};
+
 export const slotKey = (layer: SlotLayer): string =>
   layer.kind === 'input'
     ? `input:${layer.inputId}@${layer.startedAt}`
     : `${layer.mediaId}@${layer.startedAt}`;
 
 /**
- * On a node: the shown background failed (its copy had not arrived) and its file has landed since
- * its last try. It tries again once for each landing, so a try that fails again never starts a
- * loop of tries. The slot to try again, or null.
+ * On a node: the background failed (its copy had not arrived) and its file has landed since its last try; or a GPU
+ * process stopped and another started (Sessions 31–36). It tries again once for each landing, so a try that fails
+ * again never starts a loop of tries. The slot to try again, or null.
  */
-export function retryAfterLanding(shown: Slot | null, landed: number): string | null {
-  return shown?.state === 'failed' && shown.layer.kind === 'media' && landed > (shown.attempt ?? 0)
-    ? shown.key
-    : null;
+export function retryAfterLanding(slots: Slots, landed: number): string | null {
+  const failed = failedFile(slots);
+  return failed !== null && landed > (failed.failedAt ?? failed.attempt ?? 0) ? failed.key : null;
 }
 
 /**
@@ -104,8 +132,9 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
       if (slots.leaving?.key === key)
         return { shown: { ...slots.leaving, layer }, incoming: null, leaving: null, fade: null };
       // Something new, loading out of sight. A dissolve still running carries on to its end, and the new
-      // one follows it (Session 23): ended where it was, the picture stayed part-way through, dim.
-      const shown = slots.shown?.state === 'ready' ? slots.shown : null;
+      // one follows it (Session 23): ended where it was, the picture stayed part-way through, dim. One that failed
+      // while it played stays drawn as it was until the new one is ready (Q60-31).
+      const shown = slots.shown && isDrawn(slots.shown) ? slots.shown : null;
       return {
         shown,
         incoming: { key, layer, state: 'loading', ...(event.joined ? { joined: true as const } : {}) },
@@ -121,6 +150,8 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
         return { ...slots, shown: { ...failed, state: 'ready' } };
       const incoming = slots.incoming;
       if (incoming?.key !== event.key) return slots;
+      // A file that could not play stays as it is: only a node's copy landing (or a new GPU process) tries it again.
+      if (incoming.state === 'failed' && incoming.layer.kind === 'media') return slots;
       const ready: Slot = { ...incoming, state: 'ready' };
       // A dissolve still on screen finishes first (the picture part-way through never jumps back up);
       // this one follows it ('faded').
@@ -136,21 +167,48 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
         : done;
     }
     case 'retry': {
-      // Loading again out of sight; nothing is on screen meanwhile, as before.
+      // One that failed as it loaded loads again out of sight, the picture before still drawn (Q60-31).
+      const coming = slots.incoming;
+      if (coming?.key === event.key && coming.state === 'failed')
+        return { ...slots, incoming: { ...coming, state: 'loading', attempt: (coming.attempt ?? 0) + 1 } };
       const failed = slots.shown?.key === event.key && slots.shown.state === 'failed' ? slots.shown : null;
-      if (!failed) return slots;
-      return {
-        shown: null,
-        incoming: { ...failed, state: 'loading', attempt: (failed.attempt ?? 0) + 1 },
-        leaving: null,
-        fade: null,
+      // Not failed, or already being tried again.
+      if (!failed || coming?.key === event.key) return slots;
+      const retry: Slot = {
+        key: failed.key,
+        layer: failed.layer,
+        state: 'loading',
+        attempt: (failed.attempt ?? 0) + 1,
+        ...(failed.joined ? { joined: true as const } : {}),
       };
+      // One that failed while it played, drawn as it was (Q60-31): tried again out of sight, still drawn meanwhile,
+      // never black. One never drawn (an input that could not start, say) is tried again in its place, as before.
+      if (failed.drawn) return { ...slots, incoming: retry };
+      return { shown: null, incoming: retry, leaving: null, fade: null };
     }
-    case 'failed':
-      // A file that cannot play replaces the old picture with nothing, as the show asked.
-      if (slots.incoming?.key === event.key)
-        return { shown: { ...slots.incoming, state: 'failed' }, incoming: null, leaving: null, fade: null };
-      if (slots.shown?.key === event.key) return { ...slots, shown: { ...slots.shown, state: 'failed' } };
+    case 'failed': {
+      // A file that cannot play as it loads (Q60-31): the picture before stays drawn, never black; the page tells
+      // Main, which takes the file off (BackgroundMedia.tsx). A video input that cannot start shows nothing, as before.
+      const incoming = slots.incoming;
+      const at = event.landed === undefined ? {} : { failedAt: event.landed };
+      if (incoming?.key === event.key) {
+        if (incoming.layer.kind === 'media')
+          return { ...slots, incoming: { ...incoming, state: 'failed', ...at } };
+        return { shown: { ...incoming, state: 'failed' }, incoming: null, leaving: null, fade: null };
+      }
+      // One that fails while it plays stays drawn as it was until it is taken off (never black meanwhile).
+      const shown = slots.shown;
+      if (shown?.key === event.key)
+        return {
+          ...slots,
+          shown: {
+            ...shown,
+            state: 'failed',
+            ...at,
+            ...(shown.state === 'ready' && shown.layer.kind === 'media' ? { drawn: true as const } : {}),
+          },
+        };
       return slots;
+    }
   }
 }
