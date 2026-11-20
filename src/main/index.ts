@@ -41,6 +41,8 @@ import {
   blurOfId,
   copyMediaId,
   copyOfId,
+  displayMediaId,
+  displayOfId,
   IMAGE_FILE_FILTER,
   MEDIA_ID_PATTERN,
   MEDIA_SCHEME,
@@ -184,6 +186,8 @@ import { MediaDetailsService } from './media/media-details';
 import { PlayHistory } from './media/play-history';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
+import { DisplayCopies } from './media/display-copies';
+import { DEFAULT_DISPLAY_SIZE } from '../shared/picture-display';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
 import { pictureCannotSeeThrough } from './media/see-through';
 import { savedName, savePicture, savesAsJpeg } from './media/save-picture';
@@ -202,7 +206,7 @@ import {
   type PixelSize,
   sharpenStep,
 } from '../shared/picture-look';
-import { largestAudienceScreen, type LocalOutput } from './media/copy-screen';
+import { audienceScreenSizes, type LocalOutput } from './media/copy-screen';
 import { TrimSaves } from './convert/trim-saves';
 import { rowTrimRequestSchema, saveRequestSchema } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
@@ -1891,12 +1895,16 @@ function start(): void {
   mediaKind = (mediaId) => media.kindAndName(mediaId)?.kind ?? null;
   /** The largest audience screen's picture as drawn, in pixels (set once the outputs are). */
   let audienceScreenSize: (() => PixelSize | null) | null = null;
+  let audienceDisplaySizes: () => PixelSize[] = () => [];
+  let streamDisplaySize: () => PixelSize = () => DEFAULT_DISPLAY_SIZE;
+  let displayOnAir: () => boolean = () => true;
+  const displayTargets = () => [...audienceDisplaySizes(), streamDisplaySize()];
   // ---- pictures' sharpened copies (Session 26f): made once each, drawn by every screen ----------
   const sharpened = new SharpenedCopies({
     mediaDir,
     wanted: () => media.sharpenWants(),
     // The largest audience screen's picture as drawn (Session 26g): copies are made at that size.
-    screen: () => audienceScreenSize?.() ?? null,
+    screen: () => audienceScreenSize?.() ?? streamDisplaySize(),
     open: (gone) => {
       const win = createSharpenWindow(gone);
       return {
@@ -1921,6 +1929,22 @@ function start(): void {
   });
   handle(IPC.sharpen.next, (e) => sharpened.next(e.sender.id));
   handle(IPC.sharpen.made, (e, key, bytes) => sharpened.made(e.sender.id, key, bytes));
+  const displayCopies = new DisplayCopies({
+    mediaDir,
+    targets: displayTargets,
+    canWork: () => nothingUp(engine.current.layers) && !displayOnAir(),
+    open: (gone) => {
+      const win = createSharpenWindow(gone, true);
+      return { id: win.webContents.id, destroy: () => { if (!win.isDestroyed()) win.destroy(); } };
+    },
+    changed: () => { looksChanged(); wantedMedia?.invalidate(); nodeService?.libraryChanged(); },
+    log: (message) => log.info(message),
+  });
+  const refreshDisplayCopies = () => db === null ? Promise.resolve() : displayCopies.refresh(media.displayCandidates());
+  stops.add('display copies', () => displayCopies.close());
+  handle(IPC.displayCopies.next, (e) => displayCopies.next(e.sender.id));
+  handle(IPC.displayCopies.made, (e, key, bytes) => displayCopies.made(e.sender.id, key, bytes));
+
   // ---- pictures' blurred copies (Session 55, Part 5, D): made once each, drawn behind a photo that does not fill ----
   /** On air or recording (set once the stream is): no blurred copy is made meanwhile. */
   let blurOnAir: () => boolean = () => false;
@@ -1967,10 +1991,12 @@ function start(): void {
     look?.fill ?? media.photoByDefault(mediaId);
   /** A look as the screens and thumbnails get it: with its sharpened copy, once that is ready. */
   const shownLook = (mediaId: string, look: PictureLook | null): PictureLook | null => {
+    const sha = media.file(mediaId)?.sha256 ?? null;
+    const file = sha ? displayCopies.ready(sha, look) : null;
+    const shown = file ? { ...(look ?? PLAIN), display: { key: file.key, width: file.width, height: file.height } } : look;
     const step = look ? sharpenStep(look.sharpness) : 0;
-    if (!look || step === 0) return look;
-    const ready = sharpened.readyStep(media.file(mediaId)?.sha256 ?? null);
-    return ready === step ? { ...look, copy: step } : look;
+    const ready = sharpened.readyStep(sha);
+    return step > 0 && ready === step ? { ...(shown ?? PLAIN), copy: step } : shown;
   };
   /**
    * A look as the screens get it (Session 55, D): with its blurred copy behind it, once that is ready, on for a photo
@@ -1983,13 +2009,16 @@ function start(): void {
     blurred.want([mediaId]);
     return look;
   };
-  const shownLooks = (): Record<string, PictureLook> =>
-    Object.fromEntries(
-      Object.entries(media.looks()).flatMap(([id, look]) => {
-        const shown = shownLook(id, look);
-        return shown ? [[id, shown]] : [];
-      }),
-    );
+  const shownLooks = (): Record<string, PictureLook> => {
+    const looks = media.looks();
+    for (const candidate of media.displayCandidates()) {
+      if (!(candidate.mediaId in looks) && displayCopies.ready(candidate.sha256, candidate.look)) looks[candidate.mediaId] = candidate.look ?? PLAIN;
+    }
+    return Object.fromEntries(Object.entries(looks).flatMap(([id, look]) => {
+      const shown = shownLook(id, look);
+      return shown ? [[id, shown]] : [];
+    }));
+  };
   pictureLook = (mediaId) => screenLook(mediaId);
   // Which pictures can draw no see-through pixel (X11, media/see-through.ts), only where Chromium draws without a
   // graphics chip (only there do the screens back a moving slide; with one the state stays as it was): each file's first
@@ -2085,6 +2114,7 @@ function start(): void {
     looksChanged();
     // Its sharpened copy made (again), or gone with its sharpness (Session 26f).
     void sharpened.refresh();
+    void refreshDisplayCopies();
     // Its blurred copy, once its fill is on (Session 55, D).
     if (fillsWithBlur(mediaId, media.look(mediaId))) blurred.want([mediaId]);
     log.info('Pictures: a picture’s look was kept');
@@ -2184,6 +2214,7 @@ function start(): void {
         return found?.deleted && !mediaUpNow(engine.current).has(id) ? { ...found, missing: true } : found;
       },
       sharpened: (sha256, step) => sharpened.relativePath(sha256, step),
+      display: (sha256, key) => displayCopies.relativePath(sha256, key),
       blurred: (sha256) => blurred.relativePath(sha256),
       // A picture one of the guides shows (only those, from the guides' own folder).
       guidePicture: (name) => {
@@ -2396,6 +2427,8 @@ function start(): void {
         resized = setTimeout(() => {
           resized = null;
           void sharpened.screensChanged();
+      void refreshDisplayCopies();
+          void refreshDisplayCopies();
         }, 500);
       });
       return h;
@@ -2456,7 +2489,7 @@ function start(): void {
   });
   // The audience screens on this computer, each its canvas as drawn in its window, in pixels: the largest.
   // A node's screens count too (Session 26h), at the size of the node's display each is given to.
-  audienceScreenSize = () => {
+  audienceDisplaySizes = () => {
     const local: LocalOutput[] = [];
     for (const [screenId, win] of outputWindows) {
       const s = screenRepo.screen(screenId);
@@ -2473,12 +2506,16 @@ function start(): void {
       const d = listDisplays().find((x) => x.id === st.displayId);
       if (s && d) local.push({ screen: s, window: { width: d.pixelWidth, height: d.pixelHeight } });
     }
-    return largestAudienceScreen({
+    return audienceScreenSizes({
       local,
       screens: screenRepo.allScreens(),
       roleOf: (groupId) => screenRepo.groupRole(groupId),
       nodes: nodeService?.displays() ?? [],
     });
+  };
+  audienceScreenSize = () => {
+    const all = audienceDisplaySizes();
+    return all.reduce<PixelSize | null>((largest, size) => !largest || size.width * size.height > largest.width * largest.height ? size : largest, null);
   };
   stops.add('outputs', () => {
     manager.closeAll();
@@ -2985,6 +3022,7 @@ function start(): void {
     // The pictures' sharpened copies (Session 26f): any missing made, any no picture wants removed.
     .finally(() => {
       void sharpened.refresh();
+      void refreshDisplayCopies();
     });
   /** After media is deleted or brought back: everything that shows media reads again. */
   const mediaRemovalChanged = () => {
@@ -3274,6 +3312,8 @@ function start(): void {
   });
   // No blurred copy is made while on air or recording (Session 55, D; Session 50's rule).
   blurOnAir = () => streaming.inUse() || testOnAir;
+  displayOnAir = () => streaming.inUse() || testOnAir;
+  streamDisplaySize = () => { const { width, height } = streaming.context(); return { width, height }; };
 
   // ---- live captions (Session 55, Part 10) ------------------------------------
   // Off until an admin turns them on (File › Live Captions…, Pro Mode); the model downloads once into the data folder.
@@ -3632,6 +3672,7 @@ function start(): void {
       nodeService?.libraryChanged();
       // A sharpened picture's file may have come back, or gone (Session 26f).
       void sharpened.refresh();
+      void refreshDisplayCopies();
       // A sound in an audio playlist may have been converted, found or lost.
       if (musicService) sendToOperator(IPC.music.changed, musicService.view());
       // A wallpaper's picture may have been deleted, found or lost (Session 55, Part 6).
@@ -3882,6 +3923,7 @@ function start(): void {
       standInHold: packaged() ? null : (sw('DRASHTI_TEST_DECK_BAKER_HOLD') ?? null),
     },
     drawPdf: (pdf, outDir, signal, readPageText) => pdfPictures.draw(pdf, outDir, signal, readPageText),
+    prepareDisplay: (candidate, signal) => displayCopies.prepare(candidate, signal, true),
     // A deck with its animations where this computer's setting says so (Session 54, C2 and its review). Tests only
     // (never a packaged Drashti): a stand-in makes its movie, or (with the stand-ins or no converter above) no
     // deck's movie is made, as on a computer with no app for it.
@@ -4074,6 +4116,8 @@ function start(): void {
     },
   });
   conversionActivityChanged = () => conversions.activityChanged();
+  const offDisplayActivity = engine.onChange(() => { if (nothingUp(engine.current.layers) && !displayOnAir()) void refreshDisplayCopies(); });
+  stops.add('display activity', offDisplayActivity);
   const offConversionActivity = engine.onChange((state) => {
     if (!nothingUp(state.layers)) conversions.activityChanged();
   });
@@ -8604,6 +8648,8 @@ function start(): void {
           sharpened: async () => {
             await sharpened.refresh();
             await sharpened.idle();
+            await refreshDisplayCopies();
+            await displayCopies.idle();
           },
         },
         operatorContents: () =>

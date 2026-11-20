@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PreloadMedia } from '../../../shared/engine/preload';
 import { mediaToPreload } from '../../../shared/engine/preload';
 import type { UpNext } from '../../../shared/engine/state';
-import { mediaUrl } from '../../../shared/media';
+import { mediaUrl, displayMediaId, displayUrl } from '../../../shared/media';
 import type { PictureLook } from '../../../shared/picture-look';
 import { deckClip, pointedBeside, usePointedClip } from '../render/clips-ahead';
 import { DeckClipAhead } from '../render/DeckStep';
@@ -26,12 +26,14 @@ type PictureStarting = (mediaId: string) => void;
 function PreloadImage({
   mediaId,
   attempt,
+  source,
   first = false,
   onStarting,
   onSettled,
 }: {
   mediaId: string;
   attempt: number;
+  source?: string;
   first?: boolean;
   onStarting?: PictureStarting;
   onSettled?: PictureSettled;
@@ -55,11 +57,11 @@ function PreloadImage({
     return () => {
       current = false;
     };
-  }, [mediaId, attempt, onStarting, onSettled]);
+  }, [mediaId, attempt, source, onStarting, onSettled]);
   return (
     <img
       ref={ref}
-      src={mediaUrl(mediaId, attempt)}
+      src={source ?? mediaUrl(mediaId, attempt)}
       alt=""
       data-preload={first ? undefined : mediaId}
       data-current-preload={first ? mediaId : undefined}
@@ -115,7 +117,10 @@ function PreloadPicture({
   onStarting?: PictureStarting;
   onSettled?: PictureSettled;
 }) {
-  const attempt = useMediaAttempt(mediaId);
+  const descriptor = look?.display;
+  const sourceId = descriptor ? displayMediaId(mediaId, descriptor.key) : mediaId;
+  const attempt = useMediaAttempt(sourceId);
+  const source = descriptor ? displayUrl(mediaId, descriptor.key, attempt) : mediaUrl(mediaId, attempt);
   const copy = useSharpCopy(mediaId, look);
   return copy ? (
     <span
@@ -128,9 +133,10 @@ function PreloadPicture({
     </span>
   ) : (
     <PreloadImage
-      key={attempt}
+      key={source}
       mediaId={mediaId}
       attempt={attempt}
+      source={source}
       first={first}
       onStarting={onStarting}
       onSettled={onSettled}

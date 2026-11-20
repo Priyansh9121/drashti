@@ -1,7 +1,7 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { create } from 'zustand';
-import { blurMediaId, blurredUrl, copyMediaId, sharpenedUrl } from '../../../shared/media';
+import { blurMediaId, blurredUrl, copyMediaId, sharpenedUrl, displayMediaId, displayUrl, mediaUrl } from '../../../shared/media';
 import type { EditLayout, LiveZoom, PictureLook, PixelSize } from '../../../shared/picture-look';
 import {
   copyStep,
@@ -158,6 +158,29 @@ export interface SharpCopy {
   id: string;
 }
 
+/**
+ * On first mount a prepared rendition is the source immediately: the slide's own readiness guard decodes it.
+ * A different rendition announced while visible is loaded/decoded alongside the old source before swapping.
+ * Only that later replacement uses the shared loader; it must not start Next's first decode outside its gate.
+ */
+export function useDisplayCopy(mediaId: string, look: PictureLook | null): SharpCopy | null {
+  const previews = useContext(PreviewsContext) !== null;
+  const descriptor = look?.display;
+  const id = descriptor ? displayMediaId(mediaId, descriptor.key) : mediaId;
+  const attempt = useMediaAttempt(id);
+  const desired = descriptor ? { id, url: displayUrl(mediaId, descriptor.key, attempt) } : { id: mediaId, url: mediaUrl(mediaId, attempt) };
+  const [selection, setSelection] = useState(() => ({ mediaId, source: desired }));
+  const current = selection.mediaId === mediaId ? selection.source : desired;
+  if (selection.mediaId !== mediaId) setSelection({ mediaId, source: desired });
+  const replacement = !previews && current.url !== desired.url ? desired.url : null;
+  const loaded = useLoadedCopy(replacement);
+  const previewLoaded = usePreviewLoaded(previews && descriptor ? id : null);
+  if (loaded && current.url !== desired.url) setSelection({ mediaId, source: desired });
+  if (previews) return descriptor && previewLoaded ? { id, url: '' } : null;
+  const selected = loaded ? desired : current;
+  return selected.id === mediaId ? null : selected;
+}
+
 /** The sharpened copy of a picture with this look, once it is ready and loaded here (Session 26f). */
 export function useSharpCopy(mediaId: string, look: PictureLook | null): SharpCopy | null {
   const step = copyStep(look);
@@ -284,7 +307,9 @@ export function Looked({
   imageDecoding?: 'sync';
 }) {
   const look = usePictureLook(mediaId);
-  const copy = useSharpCopy(mediaId, look);
+  const sharp = useSharpCopy(mediaId, look);
+  const display = useDisplayCopy(mediaId, look);
+  const copy = sharp ?? display;
   const screen = useContext(ScreenPictures);
   const background = useContext(BackgroundBox);
   const z = screen?.liveZoom ?? null;
@@ -325,7 +350,7 @@ export function Looked({
         <PreviewPicture mediaId={fill.id} style={s} />
       )
     ) : null;
-  if (!live && (!look || (isPlain(look) && !look.copy)))
+  if (!live && (!look || isPlain(look)))
     return (
       <>
         {fill && (
@@ -333,7 +358,7 @@ export function Looked({
             {fillOf({ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' })}
           </div>
         )}
-        <Fragment key="picture">{children(style, null)}</Fragment>
+        <Fragment key="picture">{children(style, copy)}</Fragment>
       </>
     );
   const filter = cssFilter(look);
