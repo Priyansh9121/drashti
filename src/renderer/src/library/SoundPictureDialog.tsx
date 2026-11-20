@@ -6,8 +6,10 @@ import {
   type PlaybackSettings,
   TONE_DB,
 } from '../../../shared/playback-settings';
+import { SHAPE_WORDS, VIDEO_SHAPES } from '../../../shared/video-shape';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { Field, Select } from '../ui/Field';
 import { RotateCcw } from '../ui/icons';
 import { addSoundPictureToMenu, closeSoundPicture, useSoundPicture } from './sound-picture';
 
@@ -16,6 +18,7 @@ import { addSoundPictureToMenu, closeSoundPicture, useSoundPicture } from './sou
  * sound's own Bass and Treble (−12 to +12 dB), Voice boost, and its sound's and captions' delay against the picture
  * (−2 to +2 s in 10 ms steps), kept with the file wherever it plays, heard alike in the hall and on the stream (never on
  * the stream's microphones). Each change is kept as it is made and eases in while it plays. Reset puts them all back.
+ * A video's Shape too (slice 6b, P6 (c) A): as the file says, or 16:9, 4:3, 1:1 or 21:9, drawn so on every screen.
  */
 
 const KEEP_AFTER_MS = 150;
@@ -153,6 +156,28 @@ function SoundPictureWindow({ id, name, video }: { id: string; name: string; vid
         {slider('soundDelayMs', 'Sound delay', DELAY_MS, delayWords(s.soundDelayMs, 'sound'))}
         {video &&
           slider('captionDelayMs', 'Caption delay', DELAY_MS, delayWords(s.captionDelayMs, 'captions'))}
+        {video && (
+          <Field
+            label="Shape"
+            hint="For a video drawn the wrong shape (a 4:3 video marked wide, an old wide video drawn narrow): stretched to the shape chosen, fitted to or filling the screen as before."
+          >
+            <Select
+              value={s.shape}
+              disabled={settings === null}
+              data-testid="sound-picture-shape"
+              onChange={(e) => {
+                const chosen = e.currentTarget.value;
+                change({ ...s, shape: VIDEO_SHAPES.find((v) => v === chosen) ?? 'file' });
+              }}
+            >
+              {VIDEO_SHAPES.map((shape) => (
+                <option key={shape} value={shape}>
+                  {SHAPE_WORDS[shape]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         {problem && (
           <p className="text-sm text-danger-fg" role="alert" data-testid="sound-picture-problem">
             {problem}

@@ -1,4 +1,5 @@
 import type { Tone } from '../../shared/playback-settings';
+import type { ShapeOverride } from '../../shared/video-shape';
 import { followingItems } from './playlist-source';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { randomUUID } from 'node:crypto';
@@ -313,6 +314,11 @@ export interface EngineOptions {
    * its sound comes than its picture (ms); null for none.
    */
   playbackOf?: (mediaId: string) => { tone: Tone | null; soundDelayMs: number } | null;
+  /**
+   * Sound and picture…'s Shape (alpha.20, x55; main/index.ts from the library): a video's own shape on the screens, or
+   * null as its file says (shared/video-shape.ts).
+   */
+  videoShape?: (mediaId: string) => ShapeOverride | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -1889,6 +1895,11 @@ export class ShowEngine {
    */
   refreshPictures(): CommandResult {
     return this.atOnce(() => this.apply([this.picturesSet(this.state)]));
+  }
+
+  /** A video's Shape changed in Sound and picture… (alpha.20, x55): the screens draw it so at once. */
+  refreshVideoShapes(): CommandResult {
+    return this.unchanged();
   }
 
   /** The live zoom ends (kept as the picture's look, say): the screens show its kept look. */
