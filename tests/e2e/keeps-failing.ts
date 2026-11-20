@@ -75,19 +75,29 @@ export const poisonKills = (app: ElectronApplication, part: string) =>
     part,
   );
 
+/**
+ * How long a page is given to answer a read. One that goes down in the middle of a read never answers (Electron's
+ * executeJavaScript then never settles: on CI's Mac, 20 Nov, x53-1120-180624-2390, a sampler waited on one such read
+ * until the test's time ran out), so it is 'no answer', which the looks count as black.
+ */
+const READ_MS = 2000;
+
 /** A window's state by Main: crashed, its page's answer to `script` (a string), or why there is none. */
 export const askWindow = (app: ElectronApplication, part: string, script: string): Promise<string> =>
   app.evaluate(
-    async ({ BrowserWindow }, { at, js }) => {
+    async ({ BrowserWindow }, { at, js, ms }) => {
       const w = BrowserWindow.getAllWindows().find(
         (b) => !b.isDestroyed() && b.webContents.getURL().includes(at),
       );
       if (!w) return 'no window';
       if (w.webContents.isCrashed()) return 'crashed';
-      const answer: unknown = await w.webContents.executeJavaScript(js).catch(() => 'no answer');
+      const answer: unknown = await Promise.race([
+        w.webContents.executeJavaScript(js).catch(() => 'no answer'),
+        new Promise<string>((resolve) => setTimeout(() => resolve('no answer'), ms)),
+      ]);
       return typeof answer === 'string' ? answer : JSON.stringify(answer);
     },
-    { at: part, js: script },
+    { at: part, js: script, ms: READ_MS },
   );
 
 /**
