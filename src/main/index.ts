@@ -199,6 +199,7 @@ import { OpeningKeys } from './opening/opening-start';
 import { MediaDetailsService } from './media/media-details';
 import { PlayHistory } from './media/play-history';
 import { editedPlayHistory } from './media/edit-play-history';
+import { editedSoundSettings } from './media/edit-sound-settings';
 import { takeSnapshot } from './media/snapshot';
 import { playingSchema } from '../shared/engine/playing';
 import { saveStill } from './media/stills';
@@ -4371,8 +4372,9 @@ function start(): void {
   soundPass.startLibrary();
   handle(IPC.sound.view, () => soundView());
   /** A video's or sound's loudness as measured, and its own switch (the Even loudness notice, the tests). */
+  const loudnessSettings = editedSoundSettings(soundRepo, (id) => editedPlaying.sourceId(id));
   const fileSound = (mediaId: string) => {
-    const known = soundRepo.soundOf(mediaId);
+    const known = loudnessSettings.read(mediaId);
     if (!known) return null;
     const loudness = known.loudness;
     return {
@@ -4445,9 +4447,10 @@ function start(): void {
       typeof on !== 'boolean'
     )
       return { ok: false as const, message: 'Only the operator window can change a file’s loudness.' };
-    if (!soundRepo.setEven(mediaId, on))
+    const changed = loudnessSettings.set(mediaId, on);
+    if (!changed.ok)
       return { ok: false as const, message: 'Even loudness is for a video or a sound in the library.' };
-    soundKnown.delete(mediaId);
+    soundKnown.delete(changed.sourceId);
     engine.refreshSound();
     sendToOperator(IPC.sound.changed, soundView());
     log.info(`Sound: a file plays ${on ? 'at the even loudness' : 'as it is'}`);
