@@ -88,10 +88,13 @@ export function playbackKeeper(
         }, KEEP_AFTER_MS),
       };
     },
-    /** The window closing. Red (x47, slice 6a, x55's find): a change still waiting is dropped. */
+    /** The window closing: a change still waiting is kept at once, never dropped. */
     close(): void {
-      if (waiting) clearTimeout(waiting.timer);
+      if (!waiting) return;
+      clearTimeout(waiting.timer);
+      const { next } = waiting;
       waiting = null;
+      sendNow(next);
     },
   };
 }
