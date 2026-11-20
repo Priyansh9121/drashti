@@ -41,6 +41,12 @@ const streamProbe = (): boolean => !packaged() && sw('DRASHTI_TEST_STREAM_PROBE'
  * in any scene would (Session 57, warm-up.spec.ts). Never when packaged.
  */
 const warmUpFails = (): string | undefined => (packaged() ? undefined : sw('DRASHTI_TEST_WARM_UP_FAILS'));
+/**
+ * Tests only: the Wallpaper's picture is drawn this many ms after it is put on a page, as from a slow disk (Q60-31 (3),
+ * wallpaper-until-first-frame.spec.ts: what was up stays until it has come). Never when packaged.
+ */
+const wallpaperLate = (): string | undefined =>
+  packaged() ? undefined : sw('DRASHTI_TEST_WALLPAPER_LATE_MS');
 
 /**
  * Run translated (an Intel build under Rosetta on an Apple-silicon Mac, x64 under Windows' emulation): pages
@@ -65,7 +71,9 @@ export function loadPage(
   const moved = motionProbe() ? { ...warm, motionProbe: '1' } : warm;
   const probed = streamProbe() ? { ...moved, streamProbe: '1' } : moved;
   const fails = warmUpFails();
-  const warmed = fails ? { ...probed, warmUpFails: fails } : probed;
+  const failing = fails ? { ...probed, warmUpFails: fails } : probed;
+  const late = wallpaperLate();
+  const warmed = late ? { ...failing, wallpaperLate: late } : failing;
   // X15 / MS-2: only these two control windows can install the fit-report test script. Never packaged.
   const query =
     !packaged() && sw('DRASHTI_TEST_FIT_FAILURES') === '1' && (page === 'index' || page === 'slide-editor')
