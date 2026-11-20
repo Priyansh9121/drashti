@@ -1,6 +1,6 @@
 import type { ControllerRequest } from '../../../shared/controller-actions';
 import type { EngineMessage } from '../../../shared/engine/protocol';
-import type { MediaWant, NodeHealth, NodeScreen, ToNode } from '../../../shared/nodes';
+import type { MediaWant, NodeCannotPlayReport, NodeHealth, NodeScreen, ToNode } from '../../../shared/nodes';
 import type { NodeReportAnswer } from '../../../shared/report';
 import type { LinkNode, LinkOptions, LinkStartResult, LinkStats } from '../link-server';
 
@@ -47,6 +47,7 @@ export type FromLinkWorker =
   | { type: 'health'; nodeId: string; health: NodeHealth }
   | { type: 'controller-action'; nodeId: string; request: ControllerRequest }
   | { type: 'thumb'; nodeId: string; screenId: string; jpeg: string }
+  | { type: 'cannot-play'; nodeId: string; report: NodeCannotPlayReport }
   | { type: 'refused'; nodeId: string; version: string }
   | { type: 'offer-dropped' }
   | { type: 'resync' }

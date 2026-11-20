@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { Appearance } from '../../src/shared/appearance/appearances';
-import { BUILT_IN } from '../../src/shared/appearance/appearances';
+import { APPEARANCE_FAMILIES, BUILT_IN, familyOf } from '../../src/shared/appearance/appearances';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
 
@@ -40,42 +40,69 @@ async function plainHeader(header: Locator, name: string, a: Appearance) {
   expect(await style(header.locator('.mark-halo').first(), 'content', '::before')).toBe('none');
 }
 
-for (const a of BUILT_IN) {
-  test(`${a.name}: the mark in the logo’s colours on plain surfaces, in Pro Mode and Simple Mode; a warning still a filled amber rail`, async () => {
+/*
+ * Every appearance (Session 60: 64, in families), one family to a launch: the same checks for every one, the suite's
+ * time growing by the appearances and not by a start of Drashti for each.
+ */
+const FAMILY_IDS = APPEARANCE_FAMILIES.map((family) => ({
+  family,
+  list: BUILT_IN.filter((a) => familyOf(a) === family),
+}));
+
+/** Back to Pro Mode from Simple Mode (only Pro Mode chooses an appearance). */
+async function toProMode(app: Parameters<typeof chooseMenuItem>[0], win: Page): Promise<void> {
+  if (!(await win.getByTestId('simple-mode').isVisible())) return;
+  await chooseMenuItem(app, 'switch-mode');
+  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+}
+
+for (const { family, list } of FAMILY_IDS) {
+  test(`${family} (${list.map((a) => a.name).join(', ')}): the mark in the logo’s colours on plain surfaces, in Pro Mode and Simple Mode; a warning still a filled amber rail`, async () => {
+    test.setTimeout(60_000 * list.length);
     const { app } = await launchApp({ DRASHTI_DIAGNOSTICS: '1' });
     const win = await operatorPage(app);
     await operatorReady(win);
-    await chooseMenuItem(app, `appearance-${a.id}`);
-    await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
-    await plainHeader(win.getByTestId('app-header'), 'Drashti', a);
-    // Empty places: the unlit lamp, in the quietest words' colour, with no light behind it.
-    const playlists = win.getByText('No playlists yet');
-    await expect(playlists).toBeVisible();
-    const empty = win.locator('.lamp-empty').filter({ has: playlists });
-    await expect(empty.getByTestId('unlit-lamp')).toBeVisible();
-    expect(await style(empty, 'content', '::before')).toBe('none');
-    expect(await style(empty.getByTestId('unlit-lamp'), 'color')).toBe(rgb(a.colours.faint));
+    // Pro Mode in every one first, while there is no playlist yet: Simple Mode makes the day's sabha playlist as it
+    // opens, and its empty place would be gone.
+    for (const a of list)
+      await test.step(`${a.name} in Pro Mode`, async () => {
+        await chooseMenuItem(app, `appearance-${a.id}`);
+        await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
+        await plainHeader(win.getByTestId('app-header'), 'Drashti', a);
+        // Empty places: the unlit lamp, in the quietest words' colour, with no light behind it.
+        const playlists = win.getByText('No playlists yet');
+        await expect(playlists).toBeVisible();
+        const empty = win.locator('.lamp-empty').filter({ has: playlists });
+        await expect(empty.getByTestId('unlit-lamp')).toBeVisible();
+        expect(await style(empty, 'content', '::before')).toBe('none');
+        expect(await style(empty.getByTestId('unlit-lamp'), 'color')).toBe(rgb(a.colours.faint));
 
-    // A warning is a filled amber rail with an icon and words (the component gallery's), in this appearance.
-    const opened = app.waitForEvent('window', { predicate: (w) => w.url().includes('gallery.html') });
-    await chooseMenuItem(app, 'component-gallery');
-    const gallery: Page = await opened;
-    await expect(gallery.locator('html')).toHaveAttribute('data-appearance', a.id);
-    const warning = gallery
-      .getByText('Sound output not connected')
-      .locator('xpath=ancestor::div[contains(@class,"border-l-4")][1]');
-    await expect(warning).toBeVisible();
-    expect(await style(warning, 'background-color')).toBe(rgb(a.colours['warning-bg']));
-    expect(await style(warning, 'border-left-color')).toBe(rgb(a.colours.warning));
-    expect(Number.parseFloat(await style(warning, 'border-left-width'))).toBeGreaterThanOrEqual(4);
-    await expect(warning.locator('svg').first()).toBeVisible();
-    await gallery.close();
-
-    // Simple Mode: the same mark and plain header.
-    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
-    const simple = win.getByTestId('simple-mode');
-    await expect(simple).toBeVisible();
-    await plainHeader(simple.locator('header').first(), 'Drashti', a);
+        // A warning is a filled amber rail with an icon and words (the component gallery's), in this appearance.
+        const opened = app.waitForEvent('window', { predicate: (w) => w.url().includes('gallery.html') });
+        await chooseMenuItem(app, 'component-gallery');
+        const gallery: Page = await opened;
+        await expect(gallery.locator('html')).toHaveAttribute('data-appearance', a.id);
+        const warning = gallery
+          .getByText('Sound output not connected')
+          .locator('xpath=ancestor::div[contains(@class,"border-l-4")][1]');
+        await expect(warning).toBeVisible();
+        expect(await style(warning, 'background-color')).toBe(rgb(a.colours['warning-bg']));
+        expect(await style(warning, 'border-left-color')).toBe(rgb(a.colours.warning));
+        expect(Number.parseFloat(await style(warning, 'border-left-width'))).toBeGreaterThanOrEqual(4);
+        await expect(warning.locator('svg').first()).toBeVisible();
+        await gallery.close();
+      });
+    // Then Simple Mode in every one: the same mark and plain header (chosen in Pro Mode, which alone chooses).
+    for (const a of list)
+      await test.step(`${a.name} in Simple Mode`, async () => {
+        await toProMode(app, win);
+        await chooseMenuItem(app, `appearance-${a.id}`);
+        await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
+        await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
+        const simple = win.getByTestId('simple-mode');
+        await expect(simple).toBeVisible();
+        await plainHeader(simple.locator('header').first(), 'Drashti', a);
+      });
     await app.close();
   });
 }
@@ -139,6 +166,9 @@ function newWaysToDraw(page: Page) {
       if (el.closest('[data-testid="scene"]')) continue;
       // The graphics chip's own warm-up (chipWarmUps below holds it to its own rules).
       if (el.closest('[data-chip-warm-up]')) continue;
+      // A live look's touch (Session 60, the owner's Q60-36 (3)): only where Chromium draws with a graphics chip,
+      // after the window has opened; lookTouches below holds it to its own rules.
+      if (el.closest('[data-touch-layer]')) continue;
       for (const pseudo of [null, '::before', '::after']) {
         const st = getComputedStyle(el, pseudo);
         if (pseudo !== null && st.content === 'none') continue;
@@ -245,49 +275,98 @@ async function chipWarmUps(page: Page, what: string): Promise<void> {
   }
 }
 
-for (const a of BUILT_IN)
-  test(`${a.name}: in the window, Simple Mode, the Appearance window and every component: no new way of drawing, no layer of its own`, async () => {
+for (const { family, list } of FAMILY_IDS)
+  test(`${family} (${list.map((a) => a.name).join(', ')}): in the window, Simple Mode, the Appearance window and every component: no new way of drawing, no layer of its own`, async () => {
     // Each new way of drawing costs a computer without a graphics chip a pause the first time (CI's Mac:
     // 100–600 ms each, in the Performance check's slide changes), and each layer costs it every frame,
     // so every appearance keeps to the few ways it needs and adds no layer.
+    test.setTimeout(90_000 * list.length);
     const { app } = await launchApp({ DRASHTI_DIAGNOSTICS: '1' });
     const win = await operatorPage(app);
     await operatorReady(win);
-    await chooseMenuItem(app, `appearance-${a.id}`);
-    await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
-    expect(await newWaysToDraw(win), 'the window, nothing live').toEqual([]);
-    await chipWarmUps(win, 'the window, nothing live');
-    await win.evaluate(async () => {
-      const d = (globalThis as PageGlobals).drashti;
-      const [p] = await d.library.listPresentations();
-      await d.engine.dispatch({ type: 'goLive', presentationId: p?.id ?? '', slideIndex: 0 });
-    });
-    await expect(win.getByTestId('live-preview')).toHaveClass(/border-live/u);
-    expect(await newWaysToDraw(win), 'the window in a show').toEqual([]);
-    await chipWarmUps(win, 'the window in a show');
-    await chooseMenuItem(app, 'keyboard-shortcuts');
-    await expect(win.getByRole('dialog')).toBeVisible();
-    expect(await newWaysToDraw(win), 'a dialog').toEqual([]);
-    await win.keyboard.press('Escape');
-    await expect(win.getByRole('dialog')).toHaveCount(0);
-    await chooseMenuItem(app, 'appearance-window');
-    await expect(win.getByTestId('appearance-dialog')).toBeVisible();
-    expect(await newWaysToDraw(win), 'the Appearance window').toEqual([]);
-    await win.keyboard.press('Escape');
-    await expect(win.getByRole('dialog')).toHaveCount(0);
+    for (const a of list)
+      await test.step(a.name, async () => {
+        await toProMode(app, win);
+        // Nothing live, as the window first is.
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' }));
+        await chooseMenuItem(app, `appearance-${a.id}`);
+        await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
+        expect(await newWaysToDraw(win), 'the window, nothing live').toEqual([]);
+        await chipWarmUps(win, 'the window, nothing live');
+        await win.evaluate(async () => {
+          const d = (globalThis as PageGlobals).drashti;
+          const [p] = await d.library.listPresentations();
+          await d.engine.dispatch({ type: 'goLive', presentationId: p?.id ?? '', slideIndex: 0 });
+        });
+        await expect(win.getByTestId('live-preview')).toHaveClass(/border-live/u);
+        expect(await newWaysToDraw(win), 'the window in a show').toEqual([]);
+        await chipWarmUps(win, 'the window in a show');
+        await chooseMenuItem(app, 'keyboard-shortcuts');
+        await expect(win.getByRole('dialog')).toBeVisible();
+        expect(await newWaysToDraw(win), 'a dialog').toEqual([]);
+        await win.keyboard.press('Escape');
+        await expect(win.getByRole('dialog')).toHaveCount(0);
+        await chooseMenuItem(app, 'appearance-window');
+        await expect(win.getByTestId('appearance-dialog')).toBeVisible();
+        expect(await newWaysToDraw(win), 'the Appearance window').toEqual([]);
+        await win.keyboard.press('Escape');
+        await expect(win.getByRole('dialog')).toHaveCount(0);
 
-    const opened = app.waitForEvent('window', { predicate: (w) => w.url().includes('gallery.html') });
-    await chooseMenuItem(app, 'component-gallery');
-    const gallery: Page = await opened;
-    await expect(gallery.getByRole('heading', { name: 'Component gallery' })).toBeVisible();
-    expect(await newWaysToDraw(gallery), 'the component gallery').toEqual([]);
-    await gallery.getByRole('button', { name: 'Open a dialog' }).click();
-    await expect(gallery.getByRole('dialog')).toBeVisible();
-    expect(await newWaysToDraw(gallery), 'the gallery’s dialog').toEqual([]);
-    await gallery.close();
+        const opened = app.waitForEvent('window', { predicate: (w) => w.url().includes('gallery.html') });
+        await chooseMenuItem(app, 'component-gallery');
+        const gallery: Page = await opened;
+        await expect(gallery.getByRole('heading', { name: 'Component gallery' })).toBeVisible();
+        expect(await newWaysToDraw(gallery), 'the component gallery').toEqual([]);
+        await gallery.getByRole('button', { name: 'Open a dialog' }).click();
+        await expect(gallery.getByRole('dialog')).toBeVisible();
+        expect(await newWaysToDraw(gallery), 'the gallery’s dialog').toEqual([]);
+        await gallery.close();
 
-    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
-    await expect(win.getByTestId('simple-mode')).toBeVisible();
-    expect(await newWaysToDraw(win), 'Simple Mode').toEqual([]);
+        await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
+        await expect(win.getByTestId('simple-mode')).toBeVisible();
+        expect(await newWaysToDraw(win), 'Simple Mode').toEqual([]);
+        await lookTouches(win, a);
+      });
     await app.close();
   });
+
+/**
+ * A live look's touch (Session 60): never where Chromium draws without a graphics chip; with one, only in the header
+ * and over the band, unreachable and unread, no layer of its own (will-change) and nothing in it a show control;
+ * and a still look draws none.
+ */
+async function lookTouches(page: Page, a: Appearance): Promise<void> {
+  // Once Chromium has said whether it draws with a graphics chip (data-chip: unknown until then).
+  await expect(page.locator('html')).toHaveAttribute('data-chip', /^(yes|no)$/u);
+  const { chipless, layers } = await page.evaluate(() => ({
+    chipless: document.documentElement.dataset['chip'] === 'no',
+    layers: [...document.querySelectorAll('[data-touch-layer]')].map((el) => ({
+      where: el.getAttribute('data-touch-layer'),
+      inHeader: el.parentElement?.matches('[data-header]') === true,
+      hidden: el.getAttribute('aria-hidden') === 'true',
+      inert: el instanceof HTMLElement && el.inert,
+      willChange: [el, ...el.querySelectorAll('*')].filter((x) => getComputedStyle(x).willChange !== 'auto')
+        .length,
+      reachable: el.querySelectorAll(
+        'button, a[href], input, select, textarea, [tabindex], [data-show-control]',
+      ).length,
+    })),
+  }));
+  if (chipless || a.moving === undefined) {
+    expect(layers, `${a.name}: no touch ${chipless ? 'without a graphics chip' : 'in a still look'}`).toEqual(
+      [],
+    );
+    return;
+  }
+  for (const l of layers) {
+    expect(l, `${a.name}: its touch`).toMatchObject({
+      hidden: true,
+      inert: true,
+      willChange: 0,
+      reachable: 0,
+    });
+    if (l.where === 'header')
+      expect(l.inHeader, `${a.name}: the header's touch is inside the header`).toBe(true);
+    else expect(l.where).toBe('band');
+  }
+}
