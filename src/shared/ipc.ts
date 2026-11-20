@@ -1245,7 +1245,7 @@ export const IPC = {
     /** pdf.js's own data (fonts a PDF names without embedding them, and its decoders), by kind and name. */
     asset: 'pictures:asset',
   },
-  displayCopies: { next: 'display-copies:next', made: 'display-copies:made' },
+  displayCopies: { next: 'display:copy-next', made: 'display:copy-made' },
   sharpen: {
     /** The hidden window that makes sharpened copies (Session 26f) asks for the next picture (that window only). */
     next: 'sharpen:next',

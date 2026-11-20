@@ -163,10 +163,14 @@ export class ImportedSlides {
   constructor(
     private readonly db: Db,
     mediaDir = join(dirname(db.name), 'Media'),
-    options: { sourceReader?: SourceReader; sourceWrite?: SourceWrite; prepareDisplay?: MediaStoreOptions['prepareDisplay'] } = {},
+    options: {
+      sourceReader?: SourceReader;
+      sourceWrite?: SourceWrite;
+      prepareDisplay?: MediaStoreOptions['prepareDisplay'];
+    } = {},
   ) {
     this.originals = new OriginalsStore(db, mediaDir);
-    this.media = new MediaStore(db, { dir: mediaDir });
+    this.media = new MediaStore(db, { dir: mediaDir, prepareDisplay: options.prepareDisplay });
     this.reader = options.sourceReader ?? unavailableSourceReader;
     this.write = options.sourceWrite ?? unavailableSourceWrite;
   }
@@ -313,7 +317,7 @@ export class ImportedSlides {
                 if (!allowed()) throw new Error('Source preparation cancelled.');
                 let mediaId = retainedAssets.get(asset.file);
                 if (!mediaId) {
-                  const staged = await this.media.stage(asset.file);
+                  const staged = await this.media.stage(asset.file, undefined, guard.signal);
                   if (!staged.ok) {
                     if (ref.ext === 'pptx') continue;
                     throw new Error('A source object could not be retained.');

@@ -1,3 +1,4 @@
+import type { MediaStoreOptions } from '../import/media-store';
 import type { InsertPdfPagesResult, PdfPageSource, LinkPdfPageResult } from '../../shared/slide-edit';
 import type { IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
@@ -47,6 +48,7 @@ export interface SlidesIpcDeps {
   /** Main selects secure production adapters; omitted readers never fall back to Node canvas. */
   sourceReader?: SourceReader;
   sourceWrite?: SourceWrite;
+  prepareDisplay?: MediaStoreOptions['prepareDisplay'];
   waitForPdfIdle?: (signal: AbortSignal) => Promise<boolean>;
   /**
    * The show needs the computer now (anything up, or the stream on air or recording; Session 57): Edit slides' PDF
@@ -105,12 +107,13 @@ export function registerSlidesIpc({
   saved,
   sourceReader,
   sourceWrite,
+  prepareDisplay,
   mayPrepareSource = () => false,
   waitForPdfIdle = (signal) => Promise.resolve(!signal.aborted),
   showBusy = () => false,
   choosePdfFile,
 }: SlidesIpcDeps): SlidesIpcController {
-  const imported = new ImportedSlides(db, undefined, { sourceReader, sourceWrite });
+  const imported = new ImportedSlides(db, undefined, { sourceReader, sourceWrite, prepareDisplay });
   const generations = new Map<string, AbortController>();
   // Cancellation removes controllers immediately; these complete chains outlive
   // the reader queue while Main stages assets or removes its private files.

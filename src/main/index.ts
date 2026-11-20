@@ -4121,6 +4121,7 @@ function start(): void {
 
   // ---- converting media Drashti cannot play -----------------------------------------
   const conversions = new ConvertService({
+    prepareDisplay: (candidate, signal) => displayCopies.prepare(candidate, signal),
     db: libraryDb,
     mediaDir,
     // Every video and sound FFmpeg never read, read once at idle moments (alpha.20, "Plays anything"); not in a test
@@ -4791,6 +4792,7 @@ function start(): void {
   );
   const pdfReadIdle = () => !streaming.inUse() && nothingUp(engine.snapshot().state.layers);
   const slideEdits = registerSlidesIpc({
+    prepareDisplay: (candidate, signal) => displayCopies.prepare(candidate, signal),
     choosePdfFile: async (e) => {
       const parent = BrowserWindow.fromWebContents(e.sender);
       const options = {

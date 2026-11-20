@@ -4,7 +4,7 @@ import type { DisplayCandidate, DisplayResult } from '../media/display-copies';
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { rename } from 'node:fs/promises';
 import { constants, setPriority } from 'node:os';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, join, relative } from 'node:path';
 import { z } from 'zod';
 import type { ConversionJob, ConvertResult } from '../../shared/convert';
 import { isHevc } from '../../shared/convert';
@@ -197,6 +197,7 @@ function removeQuietly(path: string): void {
 type Stop = 'cancel' | 'quit' | 'wait' | 'space' | 'time';
 
 interface Running {
+  preparing?: AbortController;
   job: ConversionJob;
   child: ChildProcess | null;
   tmp: string | null;
@@ -513,6 +514,7 @@ export class ConvertService {
           if (running?.job === pending && !running.stop) {
             running.stop = 'wait';
             running.child?.kill();
+            running.preparing?.abort();
           }
         }
         going++;
@@ -600,6 +602,7 @@ export class ConvertService {
       if (this.running?.job === job) {
         this.running.stop = 'cancel';
         this.running.child?.kill();
+        this.running.preparing?.abort();
       } else job.state = 'cancelled';
       this.heldUntil.delete(job.id);
     }
@@ -684,6 +687,7 @@ export class ConvertService {
     if (!running.stop && this.waitFor(waitForShow) !== null) {
       running.stop = 'wait';
       running.child?.kill();
+      if ('preparing' in running) running.preparing?.abort();
     }
     return running.stop;
   }
@@ -865,6 +869,24 @@ export class ConvertService {
       if (stopped) {
         removeQuietly(tmp);
         return this.stopped(running, stopped);
+      }
+      if ((target === 'jpeg' || target === 'png') && this.deps.prepareDisplay) {
+        const controller = new AbortController();
+        running.preparing = controller;
+        try {
+          const prepared = await this.deps.prepareDisplay(
+            { path: relative(this.deps.mediaDir, tmp), sha256: digest.sha256 },
+            controller.signal,
+          );
+          if (!prepared.ok) throw new Error(prepared.message);
+        } finally {
+          delete running.preparing;
+        }
+        const paused = this.pauseForActivity(running, true);
+        if (paused) {
+          removeQuietly(tmp);
+          return this.stopped(running, paused);
+        }
       }
       this.store(job, row, target, tmp, digest);
       return true;
@@ -1293,6 +1315,7 @@ export class ConvertService {
     if (running) {
       running.stop = 'quit';
       running.child?.kill();
+      running.preparing?.abort();
       if (running.tmp) removeQuietly(running.tmp);
     }
   }

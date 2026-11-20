@@ -52,7 +52,7 @@ export interface MediaStoreOptions {
    */
   hevcKinds?: HevcKinds | null;
   /** Main prepares a still display rendition before this new item can be announced ready. */
-  prepareDisplay?: (candidate: DisplayCandidate) => Promise<DisplayResult>;
+  prepareDisplay?: (candidate: DisplayCandidate, signal?: AbortSignal) => Promise<DisplayResult>;
 }
 
 export type MediaImportResult =
@@ -341,6 +341,7 @@ export class MediaStore {
   async stage(
     path: string,
     maxVideoHeight?: number,
+    signal?: AbortSignal,
   ): Promise<{ ok: true; staged: StagedMedia } | { ok: false; issue: ImportIssue }> {
     const kind = mediaKindOf(path);
     const name = basename(path);
@@ -427,8 +428,11 @@ export class MediaStore {
     }
     if (kind === 'image' && !picture?.convert && this.options.prepareDisplay) {
       const prepared = await this.options
-        .prepareDisplay({ path: rel, sha256: hashed.sha256 })
-        .catch(() => ({ ok: false as const, message: 'The picture could not be prepared.' }));
+        .prepareDisplay({ path: rel, sha256: hashed.sha256 }, signal)
+        .catch(() => ({
+          ok: false as const,
+          message: 'The picture could not be prepared. Try importing it again.',
+        }));
       if (!prepared.ok)
         return {
           ok: false,

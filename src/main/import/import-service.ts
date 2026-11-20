@@ -288,7 +288,10 @@ export class ImportService {
             this.deps.prepareDisplay?.(m.candidate, active.drawing.signal) ??
             Promise.resolve<DisplayResult>({ ok: true, copy: null });
           void prepared
-            .catch((): DisplayResult => ({ ok: false, message: 'The picture could not be prepared.' }))
+            .catch((): DisplayResult => ({
+              ok: false,
+              message: 'The picture could not be prepared. Try importing it again.',
+            }))
             .then((result) => {
               if (!settled) worker.postMessage({ type: 'display-prepared', requestId: m.requestId, result });
             });
