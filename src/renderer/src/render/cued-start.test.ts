@@ -1,6 +1,5 @@
 import { expect, it } from 'vitest';
 import { initialEngineState } from '../../../shared/engine/state';
-import { textSlide } from '../../../main/engine/testing';
 import { CuedStartKeeper } from './cued-start';
 
 it('keeps the previous slide until Go while arming the same decoded cue, and Clear invalidates the hold', () => {
@@ -11,7 +10,7 @@ it('keeps the previous slide until Go while arming the same decoded cue, and Cle
     slideIndex: 0,
     notes: '',
     shownAt: 0,
-    slide: textSlide('old', 'Placeholder old scene'),
+    slide: { id: 'old', width: 1920, height: 1080, background: '#000000', elements: [] },
   };
   const background = {
     kind: 'media' as const,

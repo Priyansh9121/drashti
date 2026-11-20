@@ -177,6 +177,7 @@ export class StreamSound {
         )
       : null;
     if (release !== null)
+      // eslint-disable-next-line no-restricted-syntax -- Dispose silent old players after the audio-thread gain step; no frame or sound start is timed here.
       this.cueStop = setTimeout(
         () => {
           this.cueStop = null;
