@@ -4,7 +4,9 @@ import { handleMediaRequest, mediaRequestOf, type MediaProtocolDeps } from './me
 /** Only the granted original, streamed in this worker's own Session with the producer's byte bound. */
 export async function handleDisplaySourceRequest(
   request: Request,
-  deps: Pick<MediaProtocolDeps, 'mediaDir' | 'lookup'>,
+  deps: Pick<MediaProtocolDeps, 'mediaDir' | 'lookup'> & {
+    fetchFile?: (url: string, init: RequestInit) => Promise<Response>;
+  },
 ): Promise<Response> {
   const refused = () => new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
   if (mediaRequestOf(request.url)?.what !== 'media') return refused();
