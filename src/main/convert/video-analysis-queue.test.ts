@@ -51,6 +51,8 @@ beforeEach(() => {
     db,
     mediaDir: dir,
     ffmpegPath: () => 'placeholder',
+    // This fake process exercises the native verified-setter policy; POSIX exec is assayed separately.
+    preparationPlatform: 'win32',
     busy: () => busy,
     showBusy: () => show,
     freeBytes: () => 100 * 1024 ** 3,
