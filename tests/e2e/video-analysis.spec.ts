@@ -217,10 +217,10 @@ test('waveform and scene choices stay in the editor draft until Save, preserving
     await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
     const saved = await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.markers(id), id);
     expect(saved).toMatchObject({ startMs: 500, endMs: 7000 });
-    expect(saved?.markers).toHaveLength(2);
-    expect(saved?.markers.find((marker) => marker.id === 'own-marker')).toEqual(points.markers[0]);
+    expect(saved.markers).toHaveLength(2);
+    expect(saved.markers.find((marker) => marker.id === 'own-marker')).toEqual(points.markers[0]);
     expect(
-      saved?.markers.some((marker) => Math.abs(marker.atMs - 4000) <= 80 && marker.id !== 'own-marker'),
+      saved.markers.some((marker) => Math.abs(marker.atMs - 4000) <= 80 && marker.id !== 'own-marker'),
     ).toBe(true);
     expect(digest(file)).toBe(original);
     await expectNoSeriousA11yIssues(win, 'video waveform and saved scene suggestions');

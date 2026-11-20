@@ -1,3 +1,4 @@
+import { withSceneMarkers } from './convert/scene-marker-save';
 import { VideoEditsRepo } from './db/video-edits';
 import { prepareVideoEdits } from './engine/video-edit-ready';
 import { registerEditVideoIpc } from './convert/edit-video-ipc';
@@ -1965,6 +1966,8 @@ function start(): void {
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
   registerEditVideoIpc({
+    appendScenes: (id, times, save) => withSceneMarkers(libraryDb, media, id, times, save),
+    markersChanged: () => libraryChanged(true),
     repo: videoEdits,
     fromOperator: (event) => fromOperator(event) && !simpleNow(),
     available: (id) => {
