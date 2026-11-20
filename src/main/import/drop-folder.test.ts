@@ -371,6 +371,29 @@ describe('the drop folder', () => {
     expect(h.imports).toEqual([{ names: ['Big.mp4'], bytes: [whole] }]);
   });
 
+  it('a video whose copy stalled (its own boxes say it is longer than its bytes) waits however long, then is taken once whole (Q60-31)', async () => {
+    const box = (type: string, bytes: number) => {
+      const b = Buffer.alloc(8 + bytes, 1);
+      b.writeUInt32BE(8 + bytes, 0);
+      b.write(type, 4, 'latin1');
+      return b;
+    };
+    const ftyp = Buffer.concat([Buffer.alloc(8), Buffer.from('isom\0\0\x02\0isomavc1', 'latin1')]);
+    ftyp.writeUInt32BE(ftyp.length, 0);
+    ftyp.write('ftyp', 4, 'latin1');
+    const exported = Buffer.concat([ftyp, box('free', 0), box('mdat', 6000), box('moov', 400)]);
+    const h = setup();
+    await h.service.setFolder(folder);
+    await writeFile(join(folder, 'Stalled.mp4'), exported.subarray(0, 3000));
+    await h.settle();
+    h.clock.now += 60_000;
+    await h.service.scan();
+    expect(h.imports).toEqual([]);
+    await writeFile(join(folder, 'Stalled.mp4'), exported);
+    await h.settle();
+    expect(h.imports).toEqual([{ names: ['Stalled.mp4'], bytes: [exported.length] }]);
+  });
+
   it('a file another program still has open waits (Windows’ check), then is taken', async () => {
     const h = setup();
     await put('Held.png', 'picture');
