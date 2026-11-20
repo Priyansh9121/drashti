@@ -66,6 +66,7 @@ import { up as kirtanBundleReports } from './migrations/083-kirtan-bundle-report
 import { up as videoCaptions } from './migrations/084-video-captions';
 import { up as screenGeometry } from './migrations/085-screen-geometry';
 import { up as mediaReadBy } from './migrations/086-media-read-by';
+import { up as mediaHistory } from './migrations/087-media-history';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -155,6 +156,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 84, name: 'video captions', up: videoCaptions },
   { version: 85, name: 'screen geometry: output scaling, corner-pin and edge blend', up: screenGeometry },
   { version: 86, name: 'media read by FFmpeg (the idle sweep)', up: mediaReadBy },
+  { version: 87, name: 'media plays: counts, last played, where to resume', up: mediaHistory },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

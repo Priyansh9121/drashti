@@ -3,6 +3,7 @@ import { isPlain, lookOf } from '../../shared/picture-look';
 import type { Statement } from 'better-sqlite3';
 import type { MediaMarkers } from '../../shared/markers';
 import { mediaMarkersSchema } from '../../shared/markers';
+import type { ResumePoint } from '../../shared/play-history';
 import type { MediaSummary } from '../../shared/playlists';
 import type { DetailsRow } from '../media/media-details';
 import type { MediaFileRow } from '../media/media-protocol';
@@ -273,6 +274,25 @@ export class MediaRepo {
       importedFrom: row.source_path,
       convertedTo: row.converted_to,
       copyOf: row.copy_of,
+      playCount: 0,
+      lastPlayedAt: null,
     };
+  }
+
+  /* Red (x47, slice 3): the history's writes and reads, still to be written. */
+  countPlay(_mediaId: string, _at: string): void {
+    // Red.
+  }
+
+  keepResume(_mediaId: string, _atMs: number, _at: string): void {
+    // Red.
+  }
+
+  forgetResume(_mediaId: string): void {
+    // Red.
+  }
+
+  resumeOf(_mediaId: string): ResumePoint | null {
+    return null;
   }
 }

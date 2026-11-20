@@ -113,6 +113,8 @@ export interface MediaDetails {
   importedAt: string | null;
   importedFrom: string | null;
   inDrashti: InDrashti;
+  /** How many times it has gone up and when it last did (alpha.20); left out by an older Main. */
+  plays?: { count: number; lastAt: string | null };
   /** What FFmpeg read just now; null when it could not (`problem` says why). */
   read: FileRead | null;
   /** Why the file was not read, in words; null when it was. */
