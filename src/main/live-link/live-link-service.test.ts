@@ -520,6 +520,21 @@ describe('every page joining a stream link at the same frame at the same moment'
     expect(names).toEqual(['seg-000000.ts', 'seg-000001.ts', 'seg-000002.ts']);
   });
 
+  it('no page joins while it reconnects (each keeps its last picture: a player joining then would play the last seconds again, CI x54-1120-235843-34860), and every page joins once it is back', async () => {
+    const t = setUp();
+    await showUp(t);
+    const bg = t.engine.get().layers.background;
+    if (bg?.kind !== 'link') throw new Error('a link expected');
+    expect(t.service.join(bg.linkId)).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(t.last()).toBe('reconnecting');
+    expect(t.service.join(bg.linkId)).toBeNull();
+    t.progress.newest = 3;
+    await vi.advanceTimersByTimeAsync(600);
+    expect(t.last()).toBe('playing');
+    expect(t.service.join(bg.linkId)).not.toBeNull();
+  });
+
   it('no page joins while its Wallpaper is up, nor a link not up', async () => {
     const t = setUp();
     await showUp(t);
