@@ -37,6 +37,7 @@ import {
 } from '../ui/select-many';
 import { clickMedia, loadMedia, setDropOnly, shownMedia, useMedia } from './library-store';
 import { VideoInputsSection } from '../video-inputs/VideoInputsSection';
+import { dayWords } from '../../../shared/play-history';
 
 const ROW_HEIGHT = 48;
 const MARGIN = 600;
@@ -153,11 +154,14 @@ function MediaNote({ m, job }: { m: MediaSummary; job: ConversionJob | undefined
         {mediaKindLabel[m.kind]} · can’t play as it is
       </span>
     );
+  // The day it last played (alpha.20): "Video · played 20 Nov".
+  const played = m.lastPlayedAt === undefined ? null : dayWords(m.lastPlayedAt, true);
   return (
     <span className={`${line} text-muted`} data-testid="media-note">
       {mediaKindLabel[m.kind]}
       {/* Added from a phone (Session 54): the device's name. */}
       {m.fromDevice !== undefined && ` · from ${m.fromDevice}`}
+      {played !== null && ` · played ${played}`}
     </span>
   );
 }

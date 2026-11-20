@@ -24,9 +24,17 @@ export function nothingUpShows(state: EngineState): NothingUpShows {
 }
 
 /** The chosen wallpaper, filling the screen's canvas (Part 6); none chosen: the screen's black shows. */
-function WallpaperPicture({ state, canvas: _canvas }: { state: EngineState; canvas: Size }) {
+function WallpaperPicture({
+  state,
+  canvas: _canvas,
+  onDrawn,
+}: {
+  state: EngineState;
+  canvas: Size;
+  onDrawn?: () => void;
+}) {
   const chosen = state.chosenWallpaper;
-  return chosen && chosen.pictures.length > 0 ? <WallpaperView wallpaper={chosen} /> : null;
+  return chosen && chosen.pictures.length > 0 ? <WallpaperView wallpaper={chosen} onDrawn={onDrawn} /> : null;
 }
 
 /** With nothing up: the chosen wallpaper, or nothing over the scene's own black. */
@@ -34,12 +42,15 @@ export function NothingUp({
   shows,
   state,
   canvas,
+  onDrawn,
 }: {
   shows: NothingUpShows;
   state: EngineState;
   canvas: Size;
+  /** The wallpaper's picture has come and can be drawn (Q60-31 (3): Scene.tsx keeps what was up until then). */
+  onDrawn?: () => void;
 }) {
-  return shows === 'black' ? null : <WallpaperPicture state={state} canvas={canvas} />;
+  return shows === 'black' ? null : <WallpaperPicture state={state} canvas={canvas} onDrawn={onDrawn} />;
 }
 
 /**

@@ -215,6 +215,17 @@ describe('Media information’s window', () => {
     ]);
   });
 
+  it('says how many times a file has played, and when it last did (alpha.20)', () => {
+    const played = detailSections(
+      { ...twoTracks, plays: { count: 2, lastAt: '2026-11-20T12:00:00.000Z' } },
+      {},
+      'en-GB',
+    );
+    expect(played.at(-1)?.rows).toContainEqual({ label: 'Played', value: '2 times, last on 20 Nov 2026' });
+    const never = detailSections({ ...twoTracks, plays: { count: 0, lastAt: null } });
+    expect(never.at(-1)?.rows).toContainEqual({ label: 'Played', value: 'Not yet' });
+  });
+
   it('a file that could not be read: what the library knows, and why', () => {
     const missing: MediaDetails = {
       ...twoTracks,
