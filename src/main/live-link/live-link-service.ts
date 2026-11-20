@@ -539,7 +539,7 @@ export class LiveLinkService {
           this.deps.log('info', `Stream link: ${link.host} came back`);
           // Every page starts again together at the newest pictures (each one's own player would carry on where it
           // stopped, apart from the others and behind the show).
-          if (link.newest >= READY_AT) this.restart_(link);
+          if (link.newest >= READY_AT) this.restart_(link, 'back after a drop');
         } else if (link.state === 'wallpaper') this.comeBack(link);
         else if (link.anchor === null && link.newest >= READY_AT) this.anchor(link);
         else this.keepAnchor(link, now);
@@ -633,9 +633,10 @@ export class LiveLinkService {
   }
 
   /** Every page starts again together (after a drop, or as the show's time has moved too far from the stream's). */
-  private restart_(link: Link): void {
+  private restart_(link: Link, why: string): void {
     this.anchor(link);
     this.deps.restartLink(link.linkId);
+    this.deps.log('info', `Stream link: ${link.host}: every page starts again together (${why})`);
   }
 
   /**
@@ -652,7 +653,11 @@ export class LiveLinkService {
     const ahead = end - shown;
     const target = link.targetSeconds ?? 1;
     // About three segments and the start's moment ahead as it goes up; past seven, pages near the playlist's end.
-    if (ahead < 0.5 || ahead > 7 * target) this.restart_(link);
+    if (ahead < 0.5 || ahead > 7 * target)
+      this.restart_(
+        link,
+        `the stream ${ahead.toFixed(1)} s ahead of the show, segments of ${String(target)} s`,
+      );
   }
 
   /**

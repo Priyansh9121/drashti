@@ -146,14 +146,14 @@ export function linkLook(page: Page, within: string | null = null): Promise<Link
   return page.evaluate((scope) => {
     const root = scope === null ? document : document.querySelector(scope);
     const box = root?.querySelector('[data-kind="link"]');
-    const state = box?.getAttribute('data-link-state') ?? null;
+    const state = `${box?.getAttribute('data-link-state') ?? 'none'} joins ${box?.getAttribute('data-link-joins') ?? '-'}`;
     const all = [...(box?.querySelectorAll('video') ?? [])];
     const players = all
       .map(
         (v) =>
           `[shown ${v.dataset['shown'] ?? '0'} played ${v.dataset['played'] ? String(Number(v.dataset['played']) - Date.now()) : '-'} moved ${v.dataset['moved'] ?? '-'} seg ${v.dataset['segment'] ?? '-'} startAt-now ${
             v.dataset['startAt'] ? String(Number(v.dataset['startAt']) - Date.now()) : '-'
-          } offset ${v.dataset['offset'] ?? '-'} t ${v.currentTime.toFixed(2)} paused ${String(v.paused)} rs ${String(
+          } offset ${v.dataset['offset'] ?? '-'} events ${v.dataset['events'] ?? '-'} t ${v.currentTime.toFixed(2)} paused ${String(v.paused)} rs ${String(
             v.readyState,
           )} rate ${String(v.playbackRate)} w ${String(v.videoWidth)} err ${v.error ? String(v.error.code) : '-'}]`,
       )

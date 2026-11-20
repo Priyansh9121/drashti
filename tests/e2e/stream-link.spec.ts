@@ -35,6 +35,17 @@ test.skip(!ffmpeg && !process.env['CI'], 'FFmpeg is not fetched here: run node s
 
 const FAKE = join(__dirname, 'fake-yt-dlp.cjs');
 
+/** The running Drashti's log, whose stream link lines a failure says (the main process's side of what happened). */
+let logFile: string | null = null;
+const mainSaid = (): string =>
+  logFile !== null && existsSync(logFile)
+    ? readFileSync(logFile, 'utf8')
+        .split('\n')
+        .filter((l) => l.includes('Stream link:'))
+        .slice(-12)
+        .join(' | ')
+    : '(no log)';
+
 function background(win: Page) {
   return win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
 }
@@ -57,7 +68,7 @@ async function showLink(win: Page, url: string, a11y = false): Promise<void> {
 /** Its pictures move on this page: later looks show later frames, never black (each look's players said on a failure). */
 async function moving(page: Page, why: string, within: string | null = null): Promise<void> {
   let last = await linkLook(page, within);
-  const said = () => `${why}: ${JSON.stringify(last)}`;
+  const said = () => `${why}: ${JSON.stringify(last)} Main: ${mainSaid()}`;
   try {
     await expect
       .poll(
@@ -93,6 +104,7 @@ async function moving(page: Page, why: string, within: string | null = null): Pr
 async function hallAndLink(extra: Record<string, string> = {}) {
   const standIn = await liveStandIn();
   const { app, userData } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', ...extra });
+  logFile = join(userData, 'logs', 'drashti.log');
   const win = await operatorPage(app);
   await operatorReady(win);
   await setUpScreen(win, 'Main Hall', 0);
@@ -241,6 +253,7 @@ test('a YouTube live link through Drashti’s yt-dlp (the fake): never looked at
         liveUrl: standIn.url,
       }),
     });
+    logFile = join(launched.userData, 'logs', 'drashti.log');
     const page = await operatorPage(launched.app);
     await operatorReady(page);
     await setUpScreen(page, 'Main Hall', 0);

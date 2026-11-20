@@ -43,6 +43,8 @@ class LinkPlayers {
   private incoming: Player | null = null;
   private off = false;
   private again: ReturnType<typeof setTimeout> | null = null;
+  /** For the tests and Save Diagnostics: how many times it joined, and why last. */
+  private joins = 0;
 
   constructor(
     private readonly root: HTMLElement,
@@ -52,8 +54,10 @@ class LinkPlayers {
   ) {}
 
   /** Join (again): a new player, the one shown kept until its first frame. */
-  join(): void {
+  join(why: 'start' | 'behind' | 'error' = 'start'): void {
     if (this.off) return;
+    this.joins++;
+    this.root.dataset['linkJoins'] = `${String(this.joins)} ${why}`;
     if (this.incoming) this.drop(this.incoming);
     this.incoming = this.make();
   }
@@ -107,7 +111,7 @@ class LinkPlayers {
         this.told('live', true);
       },
       onBehind: () => {
-        if (this.shown === player) this.join();
+        if (this.shown === player) this.join('behind');
       },
       onError: () => {
         if (this.off) return;
@@ -121,7 +125,7 @@ class LinkPlayers {
         // eslint-disable-next-line no-restricted-syntax -- only starts a new player: what it shows and when is the engine's time (live-playback.ts)
         this.again = setTimeout(() => {
           this.again = null;
-          this.join();
+          this.join('error');
         }, AGAIN_MS);
       },
     });
