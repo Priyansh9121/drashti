@@ -37,7 +37,7 @@ Audio’s **+ › Import** accepts an M3U file as well as sounds. An M3U makes a
 1. Right-click the video or sound (in **Media**, a playlist or **Audio**), then choose **Sound and picture…**.
 2. Move **Bass** or **Treble**, or tick **Voice boost**; it is heard at once, in the hall and on the stream.
 3. Move **Sound delay** or **Caption delay** until they match the picture; **Reset** puts everything back.
-4. For a background video, or one in the picture-in-picture box, drawn the wrong shape, choose its **Shape**: **16:9**, **4:3**, **1:1** or **21:9**; every screen and the stream show it at once.
+4. For a video drawn the wrong shape, choose its **Shape**: **16:9**, **4:3**, **1:1** or **21:9**; every screen and the stream show it at once.
 
 ![The Audio panel: its audio playlists, and Music steps aside for a video](../screenshots/music-panel.png)
 
