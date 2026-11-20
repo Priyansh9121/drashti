@@ -352,7 +352,13 @@ export class ProxyService {
         snapshot.width = encoded.info.video?.width ?? null;
         snapshot.height = encoded.info.video?.height ?? null;
         entry.copySha = copy.sha256;
-        this.keep();
+        if (!this.keep()) {
+          snapshot.state = 'failed';
+          snapshot.readyMediaId = null;
+          entry.copySha = null;
+          snapshot.message =
+            'The lighter copy’s identity could not be saved. Check free space, then Retry lighter copy.';
+        }
       } finally {
         rmSync(result.copy, { force: true });
       }
