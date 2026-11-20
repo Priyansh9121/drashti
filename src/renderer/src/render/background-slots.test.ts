@@ -257,6 +257,29 @@ describe('background slots', () => {
     expect(retryAfterLanding(played, 1)).toBe(slotKey(b));
   });
 
+  it('tries one that failed while it played out of sight, drawn as it was meanwhile, never black (Q60-31: a node, its copy landed before, tries it again at once)', () => {
+    let s = run(
+      { type: 'layer', layer: b },
+      { type: 'ready', key: slotKey(b) },
+      { type: 'failed', key: slotKey(b) },
+    );
+    expect(retryAfterLanding(s, 1)).toBe(slotKey(b));
+    s = slotsReducer(s, { type: 'retry', key: slotKey(b) });
+    expect(drawnKeyOf(s)).toBe(slotKey(b));
+    expect(s.incoming).toMatchObject({ key: slotKey(b), state: 'loading', attempt: 1 });
+    // While that try loads, nothing more.
+    expect(retryAfterLanding(s, 1)).toBeNull();
+    expect(slotsReducer(s, { type: 'retry', key: slotKey(b) })).toBe(s);
+    // The try draws: it is on screen.
+    const back = slotsReducer(s, { type: 'ready', key: slotKey(b) });
+    expect(back.shown).toMatchObject({ key: slotKey(b), state: 'ready', attempt: 1 });
+    expect(back.incoming).toBeNull();
+    // The try fails too: still drawn as it was; no more tries until the file lands again.
+    const again = slotsReducer(s, { type: 'failed', key: slotKey(b) });
+    expect(drawnKeyOf(again)).toBe(slotKey(b));
+    expect(retryAfterLanding(again, 1)).toBeNull();
+  });
+
   it('treats the same file started again as a new playback', () => {
     const again = video('A', 9);
     const s = run(

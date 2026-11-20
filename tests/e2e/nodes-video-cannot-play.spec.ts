@@ -65,8 +65,11 @@ async function nodeScreenIn(main: MainRun, node: NodeRun, nodeId: string, groupI
   return outputPage(node.app);
 }
 
-/** The next background video element of that file the page adds fails as it starts to load (its decoder's error). */
-const failNextVideo = (page: Page, mediaId: string) =>
+/**
+ * From now on, every background video element of that file the page adds fails as it starts to load (its decoder's
+ * error, as on a computer that cannot decode it at all): a node's try again, once its copy has landed, fails too.
+ */
+const failVideosFromNow = (page: Page, mediaId: string) =>
   page.evaluate((id) => {
     const seen = new Set(document.querySelectorAll(`video[data-bg-slot][data-media-id="${id}"]`));
     const observer = new MutationObserver(() => {
@@ -75,7 +78,6 @@ const failNextVideo = (page: Page, mediaId: string) =>
       )) {
         if (seen.has(v)) continue;
         seen.add(v);
-        observer.disconnect();
         v.addEventListener(
           'loadstart',
           () => {
@@ -178,7 +180,7 @@ test('a node’s screen whose video cannot play (its decoder failing as it plays
       .poll(() => shown(nodeOut, OUT), { timeout: 60_000, message: 'the picture before on the node' })
       .toBe('BEFORE');
     await expect.poll(() => shown(mainOut, OUT), { timeout: 30_000 }).toBe('BEFORE');
-    await failNextVideo(nodeOut, clipId);
+    await failVideosFromNow(nodeOut, clipId);
     await putUpVideo();
     await expect.poll(() => shown(mainOut, OUT), { timeout: 30_000, message: 'Main plays it' }).toBe('VIDEO');
     const loading = await both(nodeOut, mainOut, 5000);
