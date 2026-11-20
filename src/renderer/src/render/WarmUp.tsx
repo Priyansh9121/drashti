@@ -22,7 +22,7 @@ import {
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../../shared/lower-thirds';
 import { engineNow, pauseClock } from './clock';
 import { deckTransitionFrame } from './transition-frame';
-import { framesOnTime } from './frames-on-time';
+import { drawBeforeFrames, framesOnTime } from './frames-on-time';
 import { LowerThirdView } from './LowerThirdView';
 import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
@@ -1166,14 +1166,17 @@ export function WarmUp({
       settleCap = setTimeout(end, SETTLE_MS);
       void framesOnTime({ maxMs: SETTLE_MS, each, live, keep }).then(end);
     } else if (step.phase === 'before') {
-      let left = BEFORE_FRAMES;
-      const tick = () => {
-        drewFrame.current = true;
-        left -= 1;
-        if (left > 0) frame = requestAnimationFrame(tick);
-        else setStep({ phase: 'during', at: engineNow() });
-      };
-      frame = requestAnimationFrame(tick);
+      drawBeforeFrames({
+        count: BEFORE_FRAMES,
+        each: () => {
+          drewFrame.current = true;
+        },
+        live,
+        keep,
+        ready: () => {
+          setStep({ phase: 'during', at: engineNow() });
+        },
+      });
     } else {
       /**
        * Frames until they come on time (or MAX_MS): on time, all of it has been drawn (frames-on-time.ts).
