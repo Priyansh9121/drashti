@@ -34,7 +34,7 @@ export function Waveform({
       className="relative h-16 overflow-hidden rounded border border-line bg-panel-2"
       data-testid="timeline-waveform"
       role="img"
-      aria-label="Sound waveform, aligned to the video's source time"
+      aria-label="Sound waveform, aligned to the video’s source time"
     >
       <svg
         viewBox="0 0 1000 64"
