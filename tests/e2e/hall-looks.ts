@@ -148,9 +148,10 @@ interface HallGlobals {
 
 /**
  * Each frame, what the page's scene draws by its own markup: Black-out (BLACKOUT), the Wallpaper (the cover, or
- * nothing up), a background picture (PIC) or video (VIDEO; VIDEO-0x0 when it has no picture) ready and seen, or black
- * (BLACK-LOADING while it loads, BLACK-FAILED when it failed, BLACK-NOTHING-UP with no wallpaper). Kept as a list of
- * changes, "<frame>f/<ms>ms:<look>", while recording.
+ * nothing up once its picture has come; WALL-COMING-OVER-PIC or -VIDEO while it comes over what is still drawn), a
+ * background picture (PIC) or video (VIDEO; VIDEO-0x0 when it has no picture) ready and seen, or black (BLACK-LOADING
+ * while it loads, BLACK-FAILED when it failed, BLACK-NOTHING-UP with no wallpaper, BLACK-WALL-COMING while the
+ * wallpaper's picture comes over nothing). Kept as a list of changes, "<frame>f/<ms>ms:<look>", while recording.
  */
 export async function installLooks(page: Page, root: string): Promise<void> {
   await page.evaluate((r) => {
@@ -161,7 +162,18 @@ export async function installLooks(page: Page, root: string): Promise<void> {
       if (document.querySelector(`${r} [data-testid="blackout"]`)) return 'BLACKOUT';
       if (document.querySelector(`${r} [data-testid="wallpaper"]`)) return 'WALL';
       const nothing = scene.getAttribute('data-nothing-up');
-      if (nothing === 'wallpaper') return 'WALL';
+      if (nothing === 'wallpaper') {
+        // The wallpaper is drawn once its picture has come (Q60-31 (3)); until then, what is still drawn under it.
+        const img = scene.querySelector(
+          '[data-testid="wallpaper-picture"][data-wallpaper-role="current"] img',
+        );
+        if (img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0) return 'WALL';
+        const under = Array.from(scene.querySelectorAll<HTMLElement>('[data-bg-slot]')).filter(
+          (e) => e.dataset['state'] !== 'loading' && Number(getComputedStyle(e).opacity) > 0.01,
+        );
+        if (under.some((e) => e instanceof HTMLVideoElement)) return 'WALL-COMING-OVER-VIDEO';
+        return under.length > 0 ? 'WALL-COMING-OVER-PIC' : 'BLACK-WALL-COMING';
+      }
       if (nothing === 'black') return 'BLACK-NOTHING-UP';
       const slots = Array.from(scene.querySelectorAll<HTMLElement>('[data-bg-slot]'));
       const seen = slots.filter(
