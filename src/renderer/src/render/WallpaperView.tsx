@@ -20,11 +20,23 @@ import { useNow } from './useNow';
 const FULL: CSSProperties = { position: 'absolute', inset: 0 };
 const PICTURE: CSSProperties = { ...FULL, width: '100%', height: '100%', objectFit: 'contain' };
 
-function Picture({ mediaId, role }: { mediaId: string; role: 'current' | 'next' }) {
+function Picture({
+  mediaId,
+  role,
+  onDrawn,
+}: {
+  mediaId: string;
+  role: 'current' | 'next';
+  /** Its picture has come and can be drawn (Q60-31 (3): the scene keeps what was up under it until then). */
+  onDrawn?: () => void;
+}) {
   // On a node, a picture whose copy landed after it was asked for is drawn again (a new element).
   const attempt = useMediaAttempt(mediaId);
   const urlOf = useMediaUrl();
   const previews = usePreviewsOnly();
+  useEffect(() => {
+    if (previews) onDrawn?.();
+  }, [previews, onDrawn]);
   return (
     <div
       // Its opacity is the fade's, set frame by frame (WallpaperView); the next one starts unseen.
@@ -48,6 +60,12 @@ function Picture({ mediaId, role }: { mediaId: string; role: 'current' | 'next' 
               alt=""
               draggable={false}
               style={s}
+              onLoad={
+                onDrawn &&
+                ((e) => {
+                  void e.currentTarget.decode().then(onDrawn, onDrawn);
+                })
+              }
             />
           )}
         </Looked>
@@ -56,7 +74,14 @@ function Picture({ mediaId, role }: { mediaId: string; role: 'current' | 'next' 
   );
 }
 
-export function WallpaperView({ wallpaper }: { wallpaper: ChosenWallpaper }) {
+export function WallpaperView({
+  wallpaper,
+  onDrawn,
+}: {
+  wallpaper: ChosenWallpaper;
+  /** The picture up has come and can be drawn (Q60-31 (3)). */
+  onDrawn?: () => void;
+}) {
   // Which pictures are up, drawn again as it steps on (a tenth of a second late at most, when the incoming picture is
   // already whole); the fade itself is painted frame by frame below.
   const now = useNow(wallpaper.pictures.length > 1 ? 100 : 60_000);
@@ -108,7 +133,7 @@ export function WallpaperView({ wallpaper }: { wallpaper: ChosenWallpaper }) {
       data-wallpaper-index={frame.index}
       style={{ ...FULL, background: '#000000', isolation: 'isolate' }}
     >
-      <Picture key={`${String(frame.index)}:${current}`} mediaId={current} role="current" />
+      <Picture key={`${String(frame.index)}:${current}`} mediaId={current} role="current" onDrawn={onDrawn} />
       {next !== undefined && frame.next !== frame.index && (
         <Picture key={`${String(frame.next)}:${next}`} mediaId={next} role="next" />
       )}

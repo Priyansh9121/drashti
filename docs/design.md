@@ -728,6 +728,12 @@ hunt (CI x46-1120-112649-63694) found three things Drashti did on every computer
   video went up showed the picture it hid, until the video's first frame (31-446 ms on CI; longer on a slow computer).
   Now each scene keeps nothing-up while nothing of the new background is drawn, and such a cover until that
   background's first frame, as `BackgroundMedia` tells it (`onDrawn`, before the painting) (`render/Scene.tsx`).
+- **Back to the Wallpaper** (the lead's yes, 20 Nov): the Wallpaper's picture is read again each time it comes back
+  (the media protocol's no-store), so every clear to it (Clear background, a video's end, one that could not play
+  coming off) showed black until its picture came (a frame or more; as long as a slow disk takes). Now what the
+  background drew stays, the Wallpaper drawn out of sight over it, until the Wallpaper's picture has come
+  (`NothingUp`'s and `WallpaperView`'s `onDrawn`: loaded and decoded), at most 1 s (`HOLD_FOR_WALLPAPER_MS`,
+  `render/Scene.tsx`), never black between.
 - **A file still being copied** into a folder Drashti follows was taken half-written once its size held still for the
   folder's wait. Now the folders take a file only once its own bytes say it is whole (`import/whole-file.ts`), for
   every kind that says where it ends: an ISO file's boxes (a movie box; a HEIF or AVIF picture's meta box, by its
