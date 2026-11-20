@@ -69,7 +69,7 @@ test('Shuffle keeps one order after restart; Repeat all and automatic Next follo
       const next = before.next;
       expect(next?.kind).toBe('media');
       if (next?.kind !== 'media') throw new Error('Next has no media picture');
-      await expect(win.getByTestId('next-up')).toHaveAccessibleName(`Next up: ${next.label}`);
+      await expect(win.getByTestId('next-up')).toHaveAccessibleName(`Next up: Video: ${next.label}`);
       await expect(win.getByTestId('next-up').locator('[data-media-id]')).toHaveAttribute(
         'data-media-id',
         next.mediaId,
