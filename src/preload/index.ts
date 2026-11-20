@@ -135,6 +135,7 @@ const bridge: DrashtiBridge = {
     remove: (id) => invoke(IPC.events.remove, id),
     rotate: (id) => invoke(IPC.events.rotate, id),
     test: (id) => invoke(IPC.events.test, id),
+    copySecret: (secret) => invoke(IPC.events.copySecret, secret),
     onChanged: (listener) => on(IPC.events.changed, listener),
     onOpen: (listener) =>
       on(IPC.events.open, () => {
