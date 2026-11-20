@@ -16,7 +16,7 @@ function setup(failure: 'context' | 'draw' | 'encode') {
   const bitmap = { width: 1, height: 1, close: vi.fn() };
   vi.stubGlobal(
     'createImageBitmap',
-    vi.fn(async () => bitmap),
+    vi.fn(() => Promise.resolve(bitmap)),
   );
   vi.stubGlobal(
     'OffscreenCanvas',

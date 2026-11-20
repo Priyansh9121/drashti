@@ -289,7 +289,7 @@ export class DisplayCopies {
     const waiting = this.waiting;
     if (!this.win || !waiting) return;
     this.waiting = null;
-    void this.grant(waiting.sender).then(waiting.resolve);
+    void this.grant(waiting.sender).then((job) => waiting.resolve(job));
   }
 
   private gone(): void {
@@ -352,7 +352,7 @@ export class DisplayCopies {
         this.failWorker(sender);
         return null;
       }
-      if (!this.ownsWorker(sender) || !this.isCurrent(job) || !this.current) return null;
+      if (!this.ownsWorker(sender) || !this.isCurrent(job)) return null;
       this.current.granted = true;
       return {
         key: job.key,
