@@ -453,6 +453,27 @@ describe('a render error (Session 23)', () => {
     expect(hall.reloads).toBe(2);
   });
 
+  it('a window made again for the same screen starts afresh: its picture failing is reloaded, as its own page', () => {
+    const old = new FakeContents();
+    let oldLoads = 0;
+    dog.watch(old, 'output "Main Hall"');
+    dog.renderError(old, 'output "Main Hall"', 'its page failed to load (ERR_FILE_NOT_FOUND)', () => {
+      oldLoads++;
+    });
+    clock.advance(100);
+    clock.advance(2000);
+    dog.renderError(old, 'output "Main Hall"', 'Error: boom');
+    expect(kinds().at(-1)).toBe('gave-up');
+    old.destroyed = true;
+    old.emit('destroyed');
+    const made = new FakeContents();
+    dog.watch(made, 'output "Main Hall"');
+    clock.advance(60_000);
+    dog.renderError(made, 'output "Main Hall"', 'Error: boom');
+    clock.advance(100);
+    expect([made.reloads, oldLoads]).toEqual([1, 1]);
+  });
+
   it('a page failing to load is loaded again as itself when tried again, never at the address that failed', () => {
     const hall = new FakeContents();
     let ownLoads = 0;
