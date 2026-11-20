@@ -28,6 +28,7 @@ Update after a sabha, and update Main and nodes together.
 - Playlists: Shuffle and Repeat all, the total time and when it ends, Find, and M3U import and export.
 - Media information… (right-click a video or a sound, both modes): its container, length, size, picture and sound tracks, with Copy.
 - QR code…: Download… saves the code as a PNG and an SVG; a logo can sit in its middle.
+- Events out’s Copy puts a new secret on the clipboard again.
 - Help › Drashti Manual…: every feature, searchable and printable.
 - Help › Save Diagnostics… now holds the graphics: each GPU and its driver, how each part draws, the video decoding offered.
 
