@@ -26,6 +26,8 @@ export interface DisplayDeps {
   changed(): void;
   log(message: string): void;
   canWork?(): boolean;
+  /** Shared picture worker arbitration, for imports and sweeps alike. */
+  canStart?(): boolean;
   freeBytes?(): number;
 }
 interface Job {
@@ -153,7 +155,7 @@ export class DisplayCopies {
 
   private start(): void {
     if (this.stopped || this.current || this.queue.length === 0) { this.settle(); return; }
-    if (this.queue[0]?.idleOnly && this.deps.canWork?.() === false) {
+    if (this.deps.canStart?.() === false || (this.queue[0]?.idleOnly && this.deps.canWork?.() === false)) {
       this.wake ??= setTimeout(() => { this.wake = null; this.start(); }, 1000);
       return;
     }
@@ -179,7 +181,7 @@ export class DisplayCopies {
   }
 
   private settle(): void {
-    if (this.current || this.pending.size > 0) return;
+    if (this.current || this.pending.size > 0 || this.win) return;
     for (const done of this.idleWaiters.splice(0)) done();
   }
 
@@ -254,7 +256,9 @@ export class DisplayCopies {
     }).catch(() => undefined);
     return this.sweeping;
   }
-  async idle(): Promise<void> { await this.sweeping; if (this.pending.size > 0) await new Promise<void>((done) => this.idleWaiters.push(done)); }
+  get working(): boolean { return this.current !== null || (this.win !== null && !this.finishing); }
+  activityChanged(): void { this.start(); }
+  async idle(): Promise<void> { await this.sweeping; if (this.pending.size > 0 || this.win) await new Promise<void>((done) => this.idleWaiters.push(done)); }
   close(): void {
     this.stopped = true; if (this.wake) clearTimeout(this.wake); this.wake = null;
     for (const job of [...this.pending.values()]) this.complete(job, failure('Picture preparation was cancelled.'));

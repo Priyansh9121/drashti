@@ -1899,10 +1899,12 @@ function start(): void {
   let streamDisplaySize: () => PixelSize = () => DEFAULT_DISPLAY_SIZE;
   let displayOnAir: () => boolean = () => true;
   const displayTargets = () => [...audienceDisplaySizes(), streamDisplaySize()];
+  let displayWorkerBusy: () => boolean = () => false;
   // ---- pictures' sharpened copies (Session 26f): made once each, drawn by every screen ----------
   const sharpened = new SharpenedCopies({
     mediaDir,
     wanted: () => media.sharpenWants(),
+    canWork: () => !displayWorkerBusy(),
     // The largest audience screen's picture as drawn (Session 26g): copies are made at that size.
     screen: () => audienceScreenSize?.() ?? streamDisplaySize(),
     open: (gone) => {
@@ -1932,6 +1934,7 @@ function start(): void {
   const displayCopies = new DisplayCopies({
     mediaDir,
     targets: displayTargets,
+    canStart: () => !sharpened.working,
     canWork: () => nothingUp(engine.current.layers) && !displayOnAir(),
     open: (gone) => {
       const win = createSharpenWindow(gone, true);
@@ -1941,6 +1944,7 @@ function start(): void {
     log: (message) => log.info(message),
   });
   const refreshDisplayCopies = () => db === null ? Promise.resolve() : displayCopies.refresh(media.displayCandidates());
+  displayWorkerBusy = () => displayCopies.working;
   stops.add('display copies', () => displayCopies.close());
   handle(IPC.displayCopies.next, (e) => displayCopies.next(e.sender.id));
   handle(IPC.displayCopies.made, (e, key, bytes) => displayCopies.made(e.sender.id, key, bytes));
@@ -2427,7 +2431,6 @@ function start(): void {
         resized = setTimeout(() => {
           resized = null;
           void sharpened.screensChanged();
-      void refreshDisplayCopies();
           void refreshDisplayCopies();
         }, 500);
       });
@@ -2485,6 +2488,7 @@ function start(): void {
       }
       // Sharpened copies follow the screens' size (Session 26g).
       void sharpened.screensChanged();
+      void refreshDisplayCopies();
     },
   });
   // The audience screens on this computer, each its canvas as drawn in its window, in pixels: the largest.
@@ -3207,6 +3211,7 @@ function start(): void {
       youtubeService?.streamChanged(status);
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
+      if (nothingUp(engine.current.layers) && !displayOnAir()) void refreshDisplayCopies();
       trimActivityChanged?.();
       for (const check of [...pdfReadWaits]) check();
       eventsOut.emit(streamEvents(eventsStreamWas, status));
@@ -3314,6 +3319,7 @@ function start(): void {
   blurOnAir = () => streaming.inUse() || testOnAir;
   displayOnAir = () => streaming.inUse() || testOnAir;
   streamDisplaySize = () => { const { width, height } = streaming.context(); return { width, height }; };
+  void refreshDisplayCopies();
 
   // ---- live captions (Session 55, Part 10) ------------------------------------
   // Off until an admin turns them on (File › Live Captions…, Pro Mode); the model downloads once into the data folder.
@@ -4116,7 +4122,12 @@ function start(): void {
     },
   });
   conversionActivityChanged = () => conversions.activityChanged();
-  const offDisplayActivity = engine.onChange(() => { if (nothingUp(engine.current.layers) && !displayOnAir()) void refreshDisplayCopies(); });
+  let displayWasIdle = nothingUp(engine.current.layers) && !displayOnAir();
+  const offDisplayActivity = engine.onChange(() => {
+    const idle = nothingUp(engine.current.layers) && !displayOnAir();
+    if (idle && !displayWasIdle) void refreshDisplayCopies();
+    displayWasIdle = idle;
+  });
   stops.add('display activity', offDisplayActivity);
   const offConversionActivity = engine.onChange((state) => {
     if (!nothingUp(state.layers)) conversions.activityChanged();
