@@ -678,7 +678,7 @@ export class ShowEngine {
       },
       false,
     );
-    if (edited?.message) return { ok: false, error: 'preparing', message: edited.message };
+    if (edited?.message && !automatic) return { ok: false, error: 'preparing', message: edited.message };
     if (edited?.state) {
       const file = edited.state.layers.background;
       if (file?.kind !== 'media' || file.media !== 'video')
@@ -707,6 +707,7 @@ export class ShowEngine {
             playlist,
             required: [...new Set(this.options.videoCueParticipants?.() ?? [])],
             ready: [],
+            ...(edited?.message ? { error: edited.message } : {}),
             ...(automatic ? { automatic } : {}),
           },
         },

@@ -149,7 +149,7 @@ export function soundsOf(state: EngineState): Sound[] {
   if (bg?.kind === 'media' && bg.media === 'video')
     backgroundSound(bg, pair ? { envelope: { fade: pair, role: 'in' } } : {});
   const cue = state.videoCue;
-  if (cue) backgroundSound(cue.background, { cueId: cue.id, prepared: true });
+  if (cue && !cue.error) backgroundSound(cue.background, { cueId: cue.id, prepared: true });
   const slide = state.layers.slide;
   if (slide) {
     for (const el of slide.slide.elements) {

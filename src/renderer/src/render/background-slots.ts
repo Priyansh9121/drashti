@@ -144,7 +144,7 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
         ? { ...slots, leaving: null, fade: null }
         : slots;
     case 'cue': {
-      const cue = event.cue;
+      const cue = event.cue?.error ? null : event.cue;
       if (!cue) return slots.incoming?.cued ? { ...slots, incoming: null } : slots;
       const key = slotKey(cue.background);
       if (slots.shown?.key === key || slots.leaving?.key === key) return slots;

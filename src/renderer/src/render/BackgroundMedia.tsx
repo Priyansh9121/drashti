@@ -361,7 +361,7 @@ export function BackgroundMedia(props: {
   onDrawn?: (key: string | null) => void;
 }) {
   const previews = usePreviewsOnly();
-  if (!previews) return <BackgroundPlayer {...props} />;
+  if (!previews) return <BackgroundPlayer {...props} cue={props.cue?.error ? null : props.cue} />;
   return <BackgroundPreview {...props} />;
 }
 
