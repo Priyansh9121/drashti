@@ -44,6 +44,14 @@ import type {
   ImportRunSummary,
 } from './import';
 import type {
+  QrChoices,
+  QrChoicesChange,
+  QrChoicesResult,
+  QrDownloadResult,
+  QrPicked,
+  QrSlideOptions,
+} from './qr-picture';
+import type {
   LibraryChange,
   NewFromWordsResult,
   PresentationDoc,
@@ -428,8 +436,21 @@ export interface DrashtiBridge {
     saveWords(presentationId: string, text: string): Promise<SaveWordsResult>;
     /** A new presentation from pasted words, in the default look. */
     newFromWords(name: string, text: string): Promise<NewFromWordsResult>;
-    /** New › QR code… (Session 55, Part 8): one slide, a large code of the link or words and the words under it. */
-    newQrSlide(text: string): Promise<NewFromWordsResult>;
+    /**
+     * New › QR code… (Session 55, Part 8): one slide, a large code of the link or words and the words under it; since
+     * alpha.20 (Q60-28) with the logo in the middle and without the words, as the window asks.
+     */
+    newQrSlide(text: string, options?: QrSlideOptions): Promise<NewFromWordsResult>;
+    /** The QR code… window's choices (Q60-28): the logo kept for the middle, Logo in the middle, the words under it. */
+    qrChoices(): Promise<QrChoices>;
+    /** Logo in the middle: Choose a Picture…, the system's open dialog: the picture's own bytes, or why not. */
+    pickQrLogo(): Promise<QrPicked>;
+    /** The window's copy of that picture (a PNG at most 1024 pixels a side), kept and remembered, the logo on. */
+    keepQrLogo(name: string, png: Uint8Array): Promise<QrChoicesResult>;
+    /** Logo in the middle on or off, and the words under the code: remembered. */
+    setQrChoices(change: QrChoicesChange): Promise<QrChoicesResult>;
+    /** Download…: the system's save dialog, then the code as a PNG of about 2048 pixels and an SVG there. */
+    downloadQr(text: string, options: { logo: boolean }): Promise<QrDownloadResult>;
     /** Undo a change to a presentation's content: write back the copy kept before it. */
     restoreRevision(revisionId: string): Promise<RevisionResult>;
     /** Presentations with slide text in legacy fonts, which search cannot read yet. */
