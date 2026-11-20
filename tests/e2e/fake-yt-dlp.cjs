@@ -9,7 +9,8 @@
 // Like the one-file yt-dlp (and as yt-dlp starts Deno and FFmpeg), it starts a child process of its own,
 // which lives until it ends: a test can see that stopping it stops that too.
 // What it is told to do comes in DRASHTI_FAKE_YT_DLP_CONFIG (JSON): title, duration, heights, live
-// (yt-dlp's live_status), failWith (a line for its error output, then it fails), steps, stepMs, lookMs (how
+// (yt-dlp's live_status), liveUrl (a live video's HLS stream, picture and sound together, as yt-dlp lists one: a
+// test's local stand-in on 127.0.0.1, alpha.20's stream links), failWith (a line for its error output, then it fails), steps, stepMs, lookMs (how
 // long a look takes before it answers: 0, at once, to begin with), pauseAt (bytes: a download not carrying on
 // from a part-file stops writing there and waits to be stopped, so a test's hold always finds it part-way),
 // and log (a file it notes each start, resume and finish in).
@@ -96,6 +97,20 @@ function main() {
         filesize_approx: h * 20_000,
       })),
       { format_id: '140', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128, filesize: 1_000_000 },
+      // A live video's HLS stream (alpha.20), as yt-dlp lists YouTube's: the test's own stand-in, never YouTube.
+      ...(config.liveUrl
+        ? [
+            {
+              format_id: '95',
+              protocol: 'm3u8_native',
+              url: config.liveUrl,
+              height: 720,
+              vcodec: 'avc1.4d401f',
+              acodec: 'mp4a.40.2',
+              tbr: 2500,
+            },
+          ]
+        : []),
     ];
     process.stdout.write(
       `${JSON.stringify({

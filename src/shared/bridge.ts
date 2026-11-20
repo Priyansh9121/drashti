@@ -125,6 +125,7 @@ import type {
   StreamStatus,
 } from './stream';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { StreamLinkJoin, StreamLinkResult, StreamLinkStatus } from './live-link';
 import type { VideoOutResult, VideoOutSettings, VideoOutStatus } from './video-out';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
@@ -870,6 +871,19 @@ export interface DrashtiBridge {
     schedule(input: YouTubeScheduleInput): Promise<YouTubeResult>;
     useBroadcast(profileId: string, broadcastId: string): Promise<YouTubeResult>;
     endBroadcast(profileId: string): Promise<YouTubeResult>;
+  };
+  /** Show a Stream Link… (alpha.20, the playback set's slice 8): an HLS or YouTube live link on the hall's screens. */
+  liveLink: {
+    /** The operator window: show a link typed (up once its pictures come), or why not. */
+    show(link: string): Promise<StreamLinkResult>;
+    /** The operator window: stop the link connecting, or take the one up off. */
+    stop(): Promise<null>;
+    status(): Promise<StreamLinkStatus>;
+    /** The operator window: the last link shown, to offer again. */
+    last(): Promise<string | null>;
+    /** A screen's page or the audio player: join the link up (where its player starts, and when), or null. */
+    join(linkId: string): Promise<StreamLinkJoin | null>;
+    onChanged(listener: (status: StreamLinkStatus) => void): () => void;
   };
   /** Show a Window… (Session 48): another app's window as the hall's background. */
   liveWindow: {
