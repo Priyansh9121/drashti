@@ -128,14 +128,18 @@ function arrive(slots: Slots, ready: Slot, at: number | undefined): Slots {
 export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
   switch (event.type) {
     case 'pairDone':
-      return slots.leaving?.layer.kind === 'media' && slots.shown?.layer.kind === 'media' && slots.shown.layer.cueId
-        ? { ...slots, leaving: null, fade: null } : slots;
+      return slots.leaving?.layer.kind === 'media' &&
+        slots.shown?.layer.kind === 'media' &&
+        slots.shown.layer.cueId
+        ? { ...slots, leaving: null, fade: null }
+        : slots;
     case 'cue': {
       const cue = event.cue;
       if (!cue) return slots.incoming?.cued ? { ...slots, incoming: null } : slots;
       const key = slotKey(cue.background);
       if (slots.shown?.key === key || slots.leaving?.key === key) return slots;
-      if (slots.incoming?.key === key) return { ...slots, incoming: { ...slots.incoming, layer: cue.background, cued: true } };
+      if (slots.incoming?.key === key)
+        return { ...slots, incoming: { ...slots.incoming, layer: cue.background, cued: true } };
       // An active dissolve owns both decoders: a third one is never prepared over it.
       if (slots.leaving) return slots;
       return { ...slots, incoming: { key, layer: cue.background, state: 'loading', cued: true } };
@@ -143,16 +147,31 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
     case 'activate': {
       const coming = slots.incoming;
       if (!coming || coming.key !== event.key || coming.cued || coming.state !== 'ready') return slots;
-      if (event.fade) return { shown: coming, incoming: null, leaving: slots.shown ? { ...slots.shown, layer: event.fade.from } : null, fade: { start: event.fade.at, ms: event.fade.durationMs } };
+      if (event.fade)
+        return {
+          shown: coming,
+          incoming: null,
+          leaving: slots.shown ? { ...slots.shown, layer: event.fade.from } : null,
+          fade: { start: event.fade.at, ms: event.fade.durationMs },
+        };
       return arrive(slots, coming, event.at);
     }
     case 'layer': {
       const { layer } = event;
-      if (layer?.kind !== 'media' && layer?.kind !== 'input') return slots.incoming?.cued ? { ...NO_SLOTS, incoming: slots.incoming } : NO_SLOTS;
+      if (layer?.kind !== 'media' && layer?.kind !== 'input')
+        return slots.incoming?.cued ? { ...NO_SLOTS, incoming: slots.incoming } : NO_SLOTS;
       const key = slotKey(layer);
       // The same playback: new settings (fit, loop), and whatever was loading is not wanted any more.
-      if (slots.shown?.key === key) return { ...slots, shown: { ...slots.shown, layer }, incoming: slots.incoming?.cued ? slots.incoming : null };
-      if (slots.incoming?.key === key) { const { cued: _cued, ...incoming } = slots.incoming; return { ...slots, incoming: { ...incoming, layer } }; }
+      if (slots.shown?.key === key)
+        return {
+          ...slots,
+          shown: { ...slots.shown, layer },
+          incoming: slots.incoming?.cued ? slots.incoming : null,
+        };
+      if (slots.incoming?.key === key) {
+        const { cued: _cued, ...incoming } = slots.incoming;
+        return { ...slots, incoming: { ...incoming, layer } };
+      }
       // The picture going away is wanted again (Back during a dissolve): it comes back whole, at once.
       if (slots.leaving?.key === key)
         return { shown: { ...slots.leaving, layer }, incoming: null, leaving: null, fade: null };
@@ -180,7 +199,8 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
       const ready: Slot = { ...incoming, state: 'ready' };
       // A dissolve still on screen finishes first (the picture part-way through never jumps back up);
       // this one follows it ('faded').
-      if (slots.fade || incoming.cued || (incoming.layer.kind === 'media' && incoming.layer.cueId)) return { ...slots, incoming: ready };
+      if (slots.fade || incoming.cued || (incoming.layer.kind === 'media' && incoming.layer.cueId))
+        return { ...slots, incoming: ready };
       return arrive(slots, ready, event.at);
     }
     case 'faded': {

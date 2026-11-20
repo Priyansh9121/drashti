@@ -128,13 +128,26 @@ export function soundsOf(state: EngineState): Sound[] {
   }
   const bg = state.layers.background;
   const pair = state.videoCrossfade;
-  const backgroundSound = (video: Extract<EngineState['layers']['background'], { kind: 'media' }>, extra: Partial<Sound> = {}) => {
-    sounds.push({ key: `background:${video.mediaId}@${video.startedAt}`, mediaId: video.mediaId, startedAt: video.startedAt,
-      loop: video.loop, volume: 1, ...(video.clip ? { clip: video.clip } : {}), ...(video.seek ? { seek: video.seek } : {}),
-      ...evenGain(state, video.mediaId), kind: 'video', ...extra });
+  const backgroundSound = (
+    video: Extract<EngineState['layers']['background'], { kind: 'media' }>,
+    extra: Partial<Sound> = {},
+  ) => {
+    sounds.push({
+      key: `background:${video.mediaId}@${video.startedAt}`,
+      mediaId: video.mediaId,
+      startedAt: video.startedAt,
+      loop: video.loop,
+      volume: 1,
+      ...(video.clip ? { clip: video.clip } : {}),
+      ...(video.seek ? { seek: video.seek } : {}),
+      ...evenGain(state, video.mediaId),
+      kind: 'video',
+      ...extra,
+    });
   };
   if (pair) backgroundSound(pair.from, { envelope: { fade: pair, role: 'out' } });
-  if (bg?.kind === 'media' && bg.media === 'video') backgroundSound(bg, pair ? { envelope: { fade: pair, role: 'in' } } : {});
+  if (bg?.kind === 'media' && bg.media === 'video')
+    backgroundSound(bg, pair ? { envelope: { fade: pair, role: 'in' } } : {});
   const cue = state.videoCue;
   if (cue) backgroundSound(cue.background, { cueId: cue.id, prepared: true });
   const slide = state.layers.slide;

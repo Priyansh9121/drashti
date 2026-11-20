@@ -317,20 +317,42 @@ function BackgroundPicture({
   onDrawn?: (key: string | null) => void;
 }) {
   // A scheduled Cue has a decoded frame already, but keeps the previous colour until its Go moment.
-  const [keptColor, setKeptColor] = useState<string | null>(background?.kind === 'color' ? background.color : null);
+  const [keptColor, setKeptColor] = useState<string | null>(
+    background?.kind === 'color' ? background.color : null,
+  );
   if (background?.kind === 'color' && keptColor !== background.color) setKeptColor(background.color);
-  const drawn = useCallback((key: string | null) => { if (key !== null) setKeptColor(null); onDrawn?.(key); }, [onDrawn]);
-  const color = background?.kind === 'color' ? background.color : background?.kind === 'media' && background.cueId ? keptColor : null;
+  const drawn = useCallback(
+    (key: string | null) => {
+      if (key !== null) setKeptColor(null);
+      onDrawn?.(key);
+    },
+    [onDrawn],
+  );
+  const color =
+    background?.kind === 'color'
+      ? background.color
+      : background?.kind === 'media' && background.cueId
+        ? keptColor
+        : null;
   return (
     <>
-      {color !== null && <div data-cue-underlay="" style={{ position: 'absolute', inset: 0, background: color }} />}
+      {color !== null && (
+        <div data-cue-underlay="" style={{ position: 'absolute', inset: 0, background: color }} />
+      )}
       {background?.kind === 'color' && (
         <div
           data-layer="background"
           style={{ position: 'absolute', inset: 0, background: background.color }}
         />
       )}
-      <BackgroundMedia layer={background} annotate={annotate} movement={movement} onDrawn={drawn} cue={cue} crossfade={crossfade} />
+      <BackgroundMedia
+        layer={background}
+        annotate={annotate}
+        movement={movement}
+        onDrawn={drawn}
+        cue={cue}
+        crossfade={crossfade}
+      />
       {background?.kind === 'window' && <LiveWindowView layer={background} />}
     </>
   );
@@ -527,8 +549,10 @@ export const Scene = memo(function Scene({
       pictures: state.pictures,
       liveZoom: state.liveZoom,
       ...(state.opaquePictures ? { opaque: state.opaquePictures } : {}),
+      // Sound and picture…'s Shape (alpha.20, x55): the videos drawn in a shape of their own.
+      ...(state.videoShapes ? { videoShapes: state.videoShapes } : {}),
     }),
-    [state.pictures, state.liveZoom, state.opaquePictures],
+    [state.pictures, state.liveZoom, state.opaquePictures, state.videoShapes],
   );
   // The box as drawn: the one up, or the one going out (Take off) over the main picture, already whole again.
   const boxRun = run.layer !== null && boxHere(run.layer) ? run : null;

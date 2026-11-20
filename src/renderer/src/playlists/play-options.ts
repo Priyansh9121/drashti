@@ -29,7 +29,11 @@ export const changePlaylistPlayOption = playlistOptionChanges({
   read: async (playlistId) => {
     const node = (await window.drashti.playlists.tree()).find((p) => p.id === playlistId);
     return node && !node.isFolder && !node.template
-      ? { shuffle: node.playback?.shuffle ?? false, repeatAll: node.playback?.repeatAll ?? false, ...(node.playback?.crossfadeMs ? { crossfadeMs: node.playback.crossfadeMs } : {}) }
+      ? {
+          shuffle: node.playback?.shuffle ?? false,
+          repeatAll: node.playback?.repeatAll ?? false,
+          ...(node.playback?.crossfadeMs ? { crossfadeMs: node.playback.crossfadeMs } : {}),
+        }
       : null;
   },
   write: (playlistId, options) => window.drashti.playlists.setPlayOptions(playlistId, options),

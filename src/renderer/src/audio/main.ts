@@ -115,7 +115,10 @@ function setLevel(player: Player, musicLevel: number): void {
   const value = Math.round(soundGain(player.sound, musicLevel, state) * envelope * 1000) / 1000;
   // Where Web Audio could not be had, the file plays as it is (as before Part 7), and silent while its kind is muted
   // or at 0 %: a mute always holds.
-  if (!player.level) { player.el.muted = kindLevel(state, player.sound.kind) === 0; if (player.sound.envelope || player.sound.prepared) player.el.volume = player.volume * envelope; }
+  if (!player.level) {
+    player.el.muted = kindLevel(state, player.sound.kind) === 0;
+    if (player.sound.envelope || player.sound.prepared) player.el.volume = player.volume * envelope;
+  }
   if (player.levelSet === value) return;
   const first = player.levelSet < 0;
   player.levelSet = value;

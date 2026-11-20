@@ -16,6 +16,7 @@ import type { MessageLook } from '../message-look';
 import type { StageCall } from '../stage-message';
 import type { CaptionsShown } from '../captions';
 import type { VideoCaptionsShown } from '../video-captions';
+import type { ShapeOverride } from '../video-shape';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -74,8 +75,10 @@ import type { VideoCaptionsShown } from '../video-captions';
 // 28 carries PowerPoint's editable click effects and native transitions to every screen.
 // 29 carries a video’s stored caption track to screens and nodes; live speech stays private. (An A-B repeat, alpha.20,
 // needs no new number: a screen or node plays its `clip` and `loop` as ever; only Main reads the kept `ab`.)
-// 30 adds a private paused video cue and the two showings of a playlist crossfade.
-export const ENGINE_STATE_VERSION = 30;
+// 30 (alpha.20, x55, slice 6b): a video's own shape on the screens (`videoShapes`).
+// 31 is reserved for x54's live-stream link; 32 adds a private paused video cue and a playlist's two crossfading showings.
+// These add to the older saved states; older players reject the new version rather than draw an incomplete picture.
+export const ENGINE_STATE_VERSION = 32;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -87,6 +90,8 @@ export const ENGINE_STATE_VERSION = 30;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
+    version === 31 ||
+    version === 30 ||
     version === 29 ||
     version === 28 ||
     version === 27 ||
@@ -832,6 +837,12 @@ export interface EngineState {
   captions?: CaptionsShown | null;
   /** The chosen library track for the first captioned video up, shared with output nodes. Off under covers. */
   videoCaptions?: Record<string, VideoCaptionsShown>;
+  /**
+   * Sound and picture…'s Shape (alpha.20, x55; shared/video-shape.ts): the shapes of the videos on the screens and
+   * coming next (and the box's going out) that are not drawn as their files say, by media id, as the pictures carry
+   * their looks: every screen, node and the stream draw such a video in a box of that shape. Left out until one has.
+   */
+  videoShapes?: Record<string, ShapeOverride>;
 }
 
 export function emptyLayers(): Layers {

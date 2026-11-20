@@ -156,7 +156,9 @@ export class StreamSound {
     this.ownOn = on;
     this.state = state;
     // A stream page prepares the cue's silent sound even when its own mix is switched off.
-    const wanted = new Map((state ? soundsOf(state).filter(s => on || s.prepared) : []).map((s) => [s.key, s]));
+    const wanted = new Map(
+      (state ? soundsOf(state).filter((s) => on || s.prepared) : []).map((s) => [s.key, s]),
+    );
     for (const [key, own] of this.own) {
       if (wanted.has(key)) continue;
       own.stop();
@@ -236,7 +238,10 @@ export class StreamSound {
   private applyLevels(): void {
     const musicLevel = this.musicLevel();
     for (const own of this.own.values()) {
-      if (own.sound.envelope) own.el.dataset['crossfadeGain'] = String(Math.round(videoSoundGain(own.sound, engineNow()) * 1e6) / 1e6);
+      if (own.sound.envelope)
+        own.el.dataset['crossfadeGain'] = String(
+          Math.round(videoSoundGain(own.sound, engineNow()) * 1e6) / 1e6,
+        );
       else delete own.el.dataset['crossfadeGain'];
       own.gain.gain.setTargetAtTime(this.levelOf(own.sound, musicLevel), this.ctx.currentTime, 0.015);
     }

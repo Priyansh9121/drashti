@@ -1,4 +1,5 @@
 import { type PlaybackSettings, playbackSettingsSchema, toneOf } from '../shared/playback-settings';
+import { shapeOverride } from '../shared/video-shape';
 import { fileProblem } from './plain-errors';
 import { importM3u, M3uError, writeM3u, type M3uExportRow } from './playlists/m3u';
 import { playlistPlayOptionsSchema } from '../shared/playlist-playback';
@@ -1785,7 +1786,11 @@ function start(): void {
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
     Date.now,
-    { items: (id) => playlists.playItems(id), repeatAll: (id) => playlists.playOptions(id).repeatAll, crossfadeMs: (id) => playlists.playOptions(id).crossfadeMs ?? 0 },
+    {
+      items: (id) => playlists.playItems(id),
+      repeatAll: (id) => playlists.playOptions(id).repeatAll,
+      crossfadeMs: (id) => playlists.playOptions(id).crossfadeMs ?? 0,
+    },
     {
       defaultTransition: () => defaultTransition(settings),
       looks: { start: () => lookService?.start() ?? NO_LOOK },
@@ -1798,11 +1803,19 @@ function start(): void {
             : null,
       videoCueParticipants: () => {
         const ids: string[] = [];
-        if (operatorWindow && !operatorWindow.isDestroyed()) ids.push(`picture:${operatorWindow.webContents.id}`);
+        if (operatorWindow && !operatorWindow.isDestroyed())
+          ids.push(`picture:${operatorWindow.webContents.id}`);
         if (audioWindow && !audioWindow.isDestroyed()) ids.push(`sound:${audioWindow.webContents.id}`);
         const groups = screenRepo.groups();
-        const audience = new Set(screenRepo.screens().filter(s => groups.find(g => g.id === s.groupId)?.role !== 'stage').map(s => s.id));
-        for (const entry of manager.windows()) if (audience.has(entry.screenId) && !entry.window.isDestroyed()) ids.push(`picture:${entry.window.webContentsId}`);
+        const audience = new Set(
+          screenRepo
+            .screens()
+            .filter((s) => groups.find((g) => g.id === s.groupId)?.role !== 'stage')
+            .map((s) => s.id),
+        );
+        for (const entry of manager.windows())
+          if (audience.has(entry.screenId) && !entry.window.isDestroyed())
+            ids.push(`picture:${entry.window.webContentsId}`);
         const program = streaming?.programContents();
         if (program && !program.isDestroyed()) ids.push(`picture:${program.id}`, `sound:${program.id}`);
         return ids;
@@ -1846,6 +1859,8 @@ function start(): void {
         const own = playbackOfFile(mediaId);
         return { tone: toneOf(own), soundDelayMs: own.soundDelayMs };
       },
+      // Sound and picture…'s Shape (alpha.20, x55): each video's own shape on the screens.
+      videoShape: (mediaId) => shapeOverride(playbackOfFile(mediaId).shape),
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
@@ -4619,9 +4634,13 @@ function start(): void {
     };
   handle(IPC.engine.videoCueReady, (event, cueId, kind, ready) => {
     if (typeof cueId !== 'string' || cueId.length > 128 || typeof ready !== 'boolean') return null;
-    const picture = fromOperator(event) || manager.screenIdFor(event.sender.id) !== undefined || streaming.isProgram(event.sender);
+    const picture =
+      fromOperator(event) ||
+      manager.screenIdFor(event.sender.id) !== undefined ||
+      streaming.isProgram(event.sender);
     const sound = event.sender.id === audioWindow?.webContents.id || streaming.isProgram(event.sender);
-    if ((kind === 'picture' && picture) || (kind === 'sound' && sound)) engine.reportVideoCue(cueId, `${kind}:${event.sender.id}`, ready);
+    if ((kind === 'picture' && picture) || (kind === 'sound' && sound))
+      engine.reportVideoCue(cueId, `${kind}:${event.sender.id}`, ready);
     return null;
   });
   handle(IPC.engine.subscribe, (event) =>
@@ -7098,6 +7117,7 @@ function start(): void {
     ownPlayback.set(mediaId, parsed.data);
     engine.refreshSound();
     engine.refreshVideoCaptions();
+    engine.refreshVideoShapes();
     return { ok: true as const };
   });
   handle(IPC.audio.getOutput, () => audioOutput.status);

@@ -1033,7 +1033,13 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
       }}
       onDrop={onDrop}
     >
-      {crossfadeOpen && <PlaylistCrossfadeDialog playlistId={openId} initialMs={node?.playback?.crossfadeMs ?? 0} onClose={() => setCrossfadeOpen(false)} />}
+      {crossfadeOpen && (
+        <PlaylistCrossfadeDialog
+          playlistId={openId}
+          initialMs={node?.playback?.crossfadeMs ?? 0}
+          onClose={() => setCrossfadeOpen(false)}
+        />
+      )}
       <div
         className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-3 py-2"
         data-strip=""
