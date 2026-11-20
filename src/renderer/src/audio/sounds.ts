@@ -228,7 +228,26 @@ export function withPlayback(state: EngineState, sound: Sound): Sound {
   return out;
 }
 
-/** Red (x54, slice 8): the hall's sounds, a stream link's among them: not built yet. */
+/**
+ * Every sound the hall hears (the audio player's): soundsOf's, and a stream link's up as the background (alpha.20, the
+ * playback set's slice 8), at the Video level as a video's sound is. One sound for the link whatever start its pages
+ * are on (they all start again together after a drop: the player joins again, the sound carries on as one). Never in
+ * soundsOf, which Drashti's own stream mixes: someone else's webcast never goes out again (the owner's Q60-39 P3 A).
+ */
 export function hallSoundsOf(state: EngineState): Sound[] {
-  return soundsOf(state);
+  const sounds = soundsOf(state);
+  const bg = state.layers.background;
+  if (state.stopped || bg?.kind !== 'link') return sounds;
+  return [
+    ...sounds,
+    {
+      key: `link:${bg.linkId}`,
+      mediaId: `link:${bg.linkId}`,
+      link: bg.linkId,
+      startedAt: bg.startedAt,
+      loop: false,
+      volume: 1,
+      kind: 'video',
+    },
+  ];
 }
