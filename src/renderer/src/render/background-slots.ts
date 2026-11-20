@@ -18,7 +18,12 @@ export interface Slot {
   /** One playback: a file (or an input) and when it started. The same key is the same playback, carrying on. */
   key: string;
   layer: SlotLayer;
-  state: 'loading' | 'ready' | 'failed';
+  /**
+   * 'loaded' (a video, alpha.20): its data is in and it is drawn over the picture before, which stays until the video
+   * has been presented on the screen ('ready'): shown the moment its data was in, in the same drawing that took the
+   * picture away, it gave the hall a black frame (CI x54-1121-023510-80364, Main's own readback).
+   */
+  state: 'loading' | 'loaded' | 'ready' | 'failed';
   /** Decoded privately; it stays hidden until this showing is the live background. */
   cued?: true;
   /** How many times it has been tried again (a node's copy that landed late); left out the first time. */
@@ -64,6 +69,8 @@ export type SlotEvent =
   | { type: 'joinPair'; layer: MediaLayer; fade: VideoCrossfade }
   /** `joined`: the first the window hears of the layer (it has just opened or reloaded). */
   | { type: 'layer'; layer: BackgroundLayer | null; joined?: boolean }
+  /** A video's data is in (alpha.20): drawn over what is there, which stays until it is presented ('ready'). */
+  | { type: 'loaded'; key: string }
   /** `at`: when it became ready, to time its dissolve. */
   | { type: 'ready'; key: string; at?: number }
   /** `landed`: its file's landings and the GPU processes started, when it failed (Q60-31: only later ones try it again). */
@@ -77,6 +84,13 @@ export const NO_SLOTS: Slots = { shown: null, incoming: null, leaving: null, fad
 
 /** Whether a slot draws: ready, or failed while it played (drawn as it was until it is taken off). */
 export const isDrawn = (slot: Slot): boolean => slot.state === 'ready' || slot.drawn === true;
+
+/**
+ * Whether the slot coming in is drawn, over the one on screen (which stays drawn): a video whose data is in, waiting
+ * to be presented on the screen (alpha.20), unless a dissolve is on screen (it follows that, as a ready one does).
+ */
+export const drawnOver = (slots: Slots, slot: Slot): boolean =>
+  slot === slots.incoming && slot.state === 'loaded' && slots.fade === null;
 
 /** The background drawn on screen now, by its key (null: none, the screen's nothing-up showing instead). */
 export const drawnKeyOf = (slots: Slots): string | null =>
@@ -207,6 +221,16 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
         leaving: shown && slots.fade ? slots.leaving : null,
         fade: shown ? slots.fade : null,
       };
+    }
+    case 'loaded': {
+      // A page joining an existing S5 pair already owns both slots; keep its decoded-frame arrival.
+      if (slots.shown?.key === event.key && slots.shown.state === 'loading')
+        return { ...slots, shown: { ...slots.shown, state: 'ready' } };
+      if (slots.leaving?.key === event.key && slots.leaving.state === 'loading')
+        return { ...slots, leaving: { ...slots.leaving, state: 'ready' } };
+      const incoming = slots.incoming;
+      if (incoming?.key !== event.key || incoming.state !== 'loading') return slots;
+      return { ...slots, incoming: { ...incoming, state: 'loaded' } };
     }
     case 'ready': {
       if (slots.shown?.key === event.key && slots.shown.state === 'loading')

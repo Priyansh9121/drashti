@@ -473,6 +473,7 @@ const bridge: DrashtiBridge = {
     noPicture: (mediaId, startedAt) => invoke(IPC.media.noPicture, mediaId, startedAt),
     cannotPlay: (mediaId, startedAt, code, words) =>
       invoke(IPC.media.cannotPlay, mediaId, startedAt, code, words),
+    served: (mediaId) => invoke(IPC.media.served, mediaId),
     markers: (mediaId) => invoke(IPC.media.markers, mediaId),
     details: (mediaId) => invoke(IPC.media.details, mediaId),
     copyDetails: (text) => invoke(IPC.media.copyDetails, text),
@@ -600,6 +601,14 @@ const bridge: DrashtiBridge = {
     schedule: (input) => invoke(IPC.youtube.schedule, input),
     useBroadcast: (profileId, broadcastId) => invoke(IPC.youtube.useBroadcast, profileId, broadcastId),
     endBroadcast: (profileId) => invoke(IPC.youtube.endBroadcast, profileId),
+  },
+  liveLink: {
+    show: (link) => invoke(IPC.liveLink.show, link),
+    stop: () => invoke(IPC.liveLink.stop),
+    status: () => invoke(IPC.liveLink.status),
+    last: () => invoke(IPC.liveLink.last),
+    join: (linkId) => invoke(IPC.liveLink.join, linkId),
+    onChanged: (listener) => on(IPC.liveLink.changed, listener),
   },
   liveWindow: {
     list: () => invoke(IPC.liveWindow.list),

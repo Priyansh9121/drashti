@@ -13,6 +13,7 @@ import {
 import type { BackgroundLayer, MediaFit } from '../../../shared/engine/state';
 import {
   drawnKeyOf,
+  drawnOver,
   type InputSlot,
   isDrawn,
   isInputSlot,
@@ -39,8 +40,8 @@ import { useGpuRestarts, useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
 import { KeptVideo } from './KeptVideo';
 import { useInputReport, useVideoInput } from './video-input';
-import { hasNoPicture, tellCannotPlay, tellNoPicture } from './no-picture';
-import { FIRST_FRAME_MS, NO_FIRST_FRAME } from '../../../shared/no-picture';
+import { hasNoPicture, tellCannotPlay, tellNoPicture, watchStart } from './no-picture';
+import { NO_FIRST_FRAME, NO_START_IN_TIME } from '../../../shared/no-picture';
 import { SHAPED_PLACE, shapedVideoStyle, shapeFor, useVideoShapes } from './video-shape';
 
 function style(fit: MediaFit, visible: boolean) {
@@ -64,6 +65,9 @@ function style(fit: MediaFit, visible: boolean) {
  * shape, stretched to it (`shape`: its width over its height; its place, the slot's wrap, is then the box's container:
  * BackgroundPlayer).
  */
+/** How long a video drawn over the picture before waits for its first presented frame before it is taken as ready. */
+const PRESENT_WAIT_MS = 300;
+
 function VideoSlot({
   slot,
   visible,
@@ -133,7 +137,12 @@ function VideoSlot({
           return;
         }
         loaded = true;
-        ready();
+        if (privateCue.current) ready();
+        else {
+          settled = true;
+          // Its data draws over the previous picture; that picture stays until presentation.
+          dispatch({ type: 'loaded', key });
+        }
       },
       onError: (error) => {
         settled = true;
@@ -142,22 +151,25 @@ function VideoSlot({
         dispatch({ type: 'failed', key, landed: landed.current });
       },
     });
-    // No first frame within FIRST_FRAME_MS (Q60-44, the owner's answer A): said to Main, which takes it off from a
-    // screen's word (shared/no-picture.ts). Only said: it still loads here, what was drawn before staying meanwhile
-    // (background-slots.ts, Scene.tsx), so a page whose word Main only logs (LIVE, the stream, a paired computer) shows
-    // it if its first frame comes after all.
-    // eslint-disable-next-line no-restricted-syntax -- decides no frame: only whether a video that never drew is said to fail
-    const noFirstFrame = setTimeout(() => {
+    // No first frame (Q60-44, refined by Q60-51, the owner's "Yes, A"): said to Main, which takes it off from a screen's
+    // word (shared/no-picture.ts): after FIRST_FRAME_MS with no progress at all, or, while it still loads or decodes,
+    // after SLOW_START_MS as not started in time (never "damaged"). Only said: it still loads here, what was drawn
+    // before staying meanwhile (background-slots.ts, Scene.tsx), so a page whose word Main only logs (LIVE, the stream,
+    // a paired computer) shows it if its first frame comes after all.
+    const stopWatch = watchStart(v, mediaId, (verdict, seen) => {
       if (settled) return;
       settled = true;
       reportVideoCue(layer.cueId, 'picture', false);
       if (!privateCue.current)
-        tellCannotPlay(mediaId, startedAt, attempt ?? 0, { code: NO_FIRST_FRAME, message: '' });
-    }, FIRST_FRAME_MS);
+        tellCannotPlay(mediaId, startedAt, attempt ?? 0, {
+          code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
+          message: seen,
+        });
+    });
     playback.current = p;
     return () => {
       settled = true;
-      clearTimeout(noFirstFrame);
+      stopWatch();
       if (frameRequest) v.cancelVideoFrameCallback(frameRequest);
       playback.current = null;
       p();
@@ -172,6 +184,29 @@ function VideoSlot({
   useEffect(() => {
     playback.current?.resync();
   }, [seekAt, clipKey]);
+  // Drawn over the picture before with its data in (alpha.20): ready once Chromium has presented a frame of it on the
+  // screen, so the picture before goes only then, never leaving the hall a black frame between (CI
+  // x54-1121-023510-80364: shown the moment its data was in, it was not yet presented). A frame callback that does not
+  // come (a paused video presents no new frame) is not waited on long.
+  const presenting = slot.state === 'loaded' && visible;
+  useEffect(() => {
+    const v = ref.current;
+    if (!presenting || !v) return;
+    let done = false;
+    const presented = () => {
+      if (done) return;
+      done = true;
+      dispatch({ type: 'ready', key, at: engineNow() });
+    };
+    const callback = v.requestVideoFrameCallback(presented);
+    // eslint-disable-next-line no-restricted-syntax -- only stops waiting for a frame callback: what shows is decided by the slots
+    const fallback = setTimeout(presented, PRESENT_WAIT_MS);
+    return () => {
+      done = true;
+      v.cancelVideoFrameCallback(callback);
+      clearTimeout(fallback);
+    };
+  }, [presenting, key, dispatch]);
 
   return (
     <video
@@ -539,7 +574,8 @@ function BackgroundPlayer({
       style={{ position: 'absolute', inset: 0, isolation: fading && !opaqueBlend ? 'isolate' : undefined }}
     >
       {list.map((slot) => {
-        const visible = (slot === slots.shown || slot === leaving) && isDrawn(slot);
+        const visible =
+          ((slot === slots.shown || slot === leaving) && isDrawn(slot)) || drawnOver(slots, slot);
         const shape =
           isMediaSlot(slot) && slot.layer.media === 'video'
             ? shapeFor(shapes, slot.layer.mediaId, slot.layer.fit)

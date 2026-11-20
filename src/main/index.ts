@@ -40,6 +40,7 @@ import {
   session,
   systemPreferences,
 } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, statSync, promises as fsPromises } from 'node:fs';
 import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
@@ -187,7 +188,13 @@ import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
-import { cannotPlayNotice, NO_FIRST_FRAME, noPictureNotice } from '../shared/no-picture';
+import {
+  cannotPlayNotice,
+  cannotStartInTimeNotice,
+  NO_FIRST_FRAME,
+  NO_START_IN_TIME,
+  noPictureNotice,
+} from '../shared/no-picture';
 import {
   CannotPlay,
   type CannotPlayWhere,
@@ -199,7 +206,12 @@ import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
 import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
-import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES, openingCopyPath } from './media/media-protocol';
+import {
+  handleMediaRequest,
+  MEDIA_SCHEME_PRIVILEGES,
+  mediaRequestOf,
+  openingCopyPath,
+} from './media/media-protocol';
 import { openingPhotoPlace, openingPhotoThere } from './opening/opening-photo';
 import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
@@ -363,6 +375,10 @@ import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { StreamPageWarmUp } from './stream/stream-warm';
 import { LiveWindowService } from './live-window/live-window-service';
+import { LiveLinkService } from './live-link/live-link-service';
+import { localPlaylist, localProgress, startRelay } from './live-link/relay-process';
+import { fetchPlaylist } from './live-link/fetch-playlist';
+import { lookYoutube } from './live-link/youtube-look';
 import { electronWindowSources } from './live-window/electron-sources';
 import { standInWindowSources } from './live-window/stand-in-sources';
 import { applyCaptureRules } from './live-window/capture-rules';
@@ -739,6 +755,50 @@ const noRelaunch = sw('DRASHTI_TEST_NO_RELAUNCH') === '1';
 const logPermissions = sw('DRASHTI_LOG_PERMISSIONS') === '1';
 // Tests only: answer media requests late, as a slow disk would (up to a minute: the opening's photo past its limit).
 const mediaDelayMs = Math.min(60_000, Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_DELAY_MS') ?? 0) || 0));
+/**
+ * A test switch (Q60-51): every media file sent at this many bytes a second, a quarter of it four times a second, as
+ * from a slow disk or a busy computer: a video's first frame then comes late while it still loads. 0: as fast as it can.
+ */
+const mediaPaceBps = Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_PACE_BPS') ?? 0) || 0);
+
+/**
+ * Bytes Main has sent of each library file as the pages load it, by its id (Q60-51): a video whose file is still coming
+ * in is loading, even where its page can tell nothing else (on CI's Mac a slow file showed no buffered time, no frame,
+ * no readiness step and no 'progress' event: x47-1120-205802-554). One number a file, for as long as Drashti runs.
+ * Counted as the file is read for the page (media-protocol.ts `sent`), or as the test pace sends it (paced): never by
+ * wrapping the response, which changed how the bytes reached the player (x47-1120-215255-57755).
+ */
+const mediaServed = new Map<string, number>();
+const mediaSent = (mediaId: string, bytes: number): void => {
+  mediaServed.set(mediaId, (mediaServed.get(mediaId) ?? 0) + bytes);
+};
+
+/** A response's body sent at mediaPaceBps (the test switch above), counted as it goes for a library file; as it is with none. */
+async function paced(response: Response, mediaId: string | null): Promise<Response> {
+  if (mediaPaceBps <= 0 || !response.body) return response;
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const slice = Math.max(1024, Math.floor(mediaPaceBps / 4));
+  let at = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (at >= bytes.length) {
+        controller.close();
+        return;
+      }
+      const chunk = bytes.subarray(at, at + slice);
+      controller.enqueue(chunk);
+      if (mediaId !== null) mediaSent(mediaId, chunk.byteLength);
+      at += slice;
+      // A test switch's pace, never in a real show.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    },
+  });
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
 
 // Drashti's sound is the show's, not the computer's media (Session 15): the system's media controls
 // (Windows' media overlay, macOS's Now Playing) and the keyboard's or a headset's media keys never see
@@ -2362,6 +2422,10 @@ function start(): void {
   });
   /** The opening pack's sound the opening keeps (alpha.16), by its sha256: set once the opening's service is made. */
   let openingSoundFile: (sha256: string) => string | null = () => null;
+  /** A stream link's local stream (alpha.20, slice 8): its folder, and a joined player's playlist; set once its service is made. */
+  let streamLinkFolder: (linkId: string) => string | null = () => null;
+  let streamLinkPlaylist: (linkId: string, segment: number) => Promise<string | null> = () =>
+    Promise.resolve(null);
   const serveMedia = async (request: Request) => {
     const started = performance.now();
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
@@ -2384,11 +2448,18 @@ function start(): void {
       openingPhoto: () => openingPhoto,
       // The opening pack's sound, as Drashti keeps its copy in the media folder (only the one the opening keeps).
       openingSound: (sha256) => openingSoundFile(sha256),
+      // A stream link's local stream (alpha.20, slice 8): only while that link is connecting or up.
+      liveFolder: (linkId) => streamLinkFolder(linkId),
+      livePlaylist: (linkId, segment) => streamLinkPlaylist(linkId, segment),
       warn: (message) => {
         log.warn(message);
       },
+      // What of a library file goes out (Q60-51, mediaServed): as it is read, or, at the test pace, as that sends it.
+      ...(mediaPaceBps > 0 ? {} : { sent: mediaSent }),
     });
-    return perfWatch ? watchedMedia(perfWatch, request, started, response) : response;
+    const asked = mediaRequestOf(request.url);
+    const sent = await paced(response, asked?.what === 'media' ? asked.mediaId : null);
+    return perfWatch ? watchedMedia(perfWatch, request, started, sent) : sent;
   };
   // Every window's session: the default one, and the audio player's own.
   protocol.handle(MEDIA_SCHEME, serveMedia);
@@ -3142,6 +3213,8 @@ function start(): void {
       stageMessage: put.stageMessage,
       timers: put.timers,
       window: put.window,
+      // A stream link (alpha.20, slice 8): never put back, only named.
+      link: put.link ?? null,
       pipWindow: put.pipWindow,
       input: put.input,
       inputGone: put.inputGone,
@@ -3152,6 +3225,7 @@ function start(): void {
     const {
       slide: slideBack,
       window: windowName,
+      link: linkName,
       pipWindow: boxWindowName,
       input: inputName,
       inputGone: inputNotListed,
@@ -3168,6 +3242,7 @@ function start(): void {
         playlistItem: saved.playlist?.itemId ?? null,
         ...alsoBack,
         windowNotPutBack: windowName !== null,
+        linkNotPutBack: linkName !== undefined,
         boxWindowNotPutBack: boxWindowName !== null,
         inputPutBack: inputName !== null,
         inputNotListed: inputNotListed !== null,
@@ -3194,8 +3269,12 @@ function start(): void {
           : null,
       slideGone,
       background:
-        old.background !== null && old.background.kind !== 'window' && old.background.kind !== 'input',
+        old.background !== null &&
+        old.background.kind !== 'window' &&
+        old.background.kind !== 'input' &&
+        old.background.kind !== 'link',
       window: old.background?.kind === 'window' ? old.background.name : null,
+      link: old.background?.kind === 'link' ? old.background.name : null,
       // The picture-in-picture box (Session 50): a window in it named apart, as the background's is.
       pip: old.pip !== null && old.pip.source.kind !== 'window',
       pipWindow: old.pip?.source.kind === 'window' ? old.pip.source.name : null,
@@ -3632,6 +3711,108 @@ function start(): void {
   stops.add('shown window', () => {
     shownWindows.close();
   });
+
+  // ---- a stream link on the screens (alpha.20, the playback set's slice 8; the owner's Q60-39 P3 A) ------------------
+  // Show a Stream Link… (Pro Mode): an HLS or YouTube live link, received by Drashti's own FFmpeg into a short local
+  // stream in its own folder, which the screens play (src/main/live-link/). The folder is emptied at each start (what a
+  // crash left; its FFmpeg was stopped above with the other leftovers). A test run asks nothing of any address but
+  // 127.0.0.1, and looks at YouTube links with the fake yt-dlp only.
+  const streamLinkRoot = join(userDataDir, 'Stream links');
+  void fsPromises.rm(streamLinkRoot, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
+  const streamLinkFfmpeg = findFfmpeg({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+    override: sw('DRASHTI_FFMPEG'),
+  });
+  let lastStreamLink: string | null = null;
+  const streamLinks = new LiveLinkService({
+    startRelay: (args) =>
+      startRelay(streamLinkFfmpeg, args, {
+        started: (pid) => void leftovers.started(pid, 'stream-link'),
+        ended: (pid) => {
+          leftovers.forget(pid);
+        },
+      }),
+    fetchPlaylist: (url, signal) => fetchPlaylist(url, { guard: !packaged() && anyTestSwitch(), signal }),
+    lookYoutube: (url, signal) =>
+      lookYoutube(url, signal, {
+        work: join(userDataDir, 'Stream link look'),
+        launch: (folders) =>
+          youtubeLaunch(
+            {
+              packaged: packaged(),
+              platform: process.platform,
+              testing: anyTestSwitch(),
+              fake: packaged() ? null : (sw('DRASHTI_TEST_FAKE_YT_DLP') ?? null),
+              fakeConfig: packaged() ? null : (sw('DRASHTI_TEST_FAKE_YT_DLP_CONFIG') ?? null),
+              execPath: process.execPath,
+              tools: findYoutubeTools({
+                packaged: packaged(),
+                resourcesPath: process.resourcesPath,
+                appPath: app.getAppPath(),
+                platform: process.platform,
+                arch: process.arch,
+              }),
+              ffmpeg: streamLinkFfmpeg,
+            },
+            folders,
+          ),
+        children: {
+          started: (pid, group) => void leftovers.started(pid, 'yt-dlp', { group }),
+          ended: (pid) => {
+            leftovers.forget(pid);
+          },
+        },
+      }),
+    onAir: () => streaming.inUse() || testOnAir,
+    root: streamLinkRoot,
+    progress: localProgress,
+    readPlaylist: localPlaylist,
+    makeFolder: (dir) => {
+      mkdirSync(dir, { recursive: true });
+    },
+    removeFolder: (dir) =>
+      fsPromises.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }),
+    showLink: (link) => engine.showLink(link),
+    restartLink: (linkId) => engine.restartLink(linkId),
+    dropped: (linkId) => engine.linkDropped(linkId),
+    clearLink: (linkId) => engine.clearLink(linkId),
+    state: () => engine.current,
+    changed: (status) => {
+      sendToOperator(IPC.liveLink.changed, status);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    now: Date.now,
+    newId: randomUUID,
+    guard: !packaged() && anyTestSwitch(),
+  });
+  streamLinkFolder = (linkId) => streamLinks.folderOf(linkId);
+  streamLinkPlaylist = (linkId, segment) => streamLinks.playlistFor(linkId, segment);
+  engine.onChange(() => {
+    streamLinks.follow();
+  });
+  stops.add('stream links', () => streamLinks.close());
+  handle(IPC.liveLink.show, async (e, link) => {
+    if (!fromOperator(e) || typeof link !== 'string')
+      return { ok: false as const, message: 'Only the operator window can show a stream link.' };
+    // Kept for this run only, to offer again (never written down: a link can hold a token); never one too long to be a link.
+    lastStreamLink = link.length <= 2000 ? link.trim() : null;
+    return streamLinks.show(link);
+  });
+  handle(IPC.liveLink.stop, (e) => {
+    if (fromOperator(e)) streamLinks.stop();
+    return null;
+  });
+  handle(IPC.liveLink.status, () => streamLinks.view());
+  handle(IPC.liveLink.last, (e) => (fromOperator(e) ? lastStreamLink : null));
+  // Any of Drashti's own pages that plays it (a screen, LIVE, a card, a stage screen's box, the audio player).
+  handle(IPC.liveLink.join, (_e, linkId) => (typeof linkId === 'string' ? streamLinks.join(linkId) : null));
 
   // ---- the window for Zoom (Session 48) -------------------------------------------
   const zoom = new ZoomWindow({
@@ -7467,6 +7648,11 @@ function start(): void {
   // box, Q60-46) or waits paused (on the slide); the operator window says so, once a file; and it is converted by itself
   // once the show is idle. Only for a video that was up, so a page's word never takes off anything else; the other
   // windows that found the same showing find it off already, and say nothing more.
+  // How much of a library file Main has sent so far (Q60-51): a page waiting on a video's first frame counts it as
+  // progress.
+  handle(IPC.media.served, (_e, mediaId) =>
+    typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? (mediaServed.get(mediaId) ?? 0) : 0,
+  );
   handle(IPC.media.noPicture, (e, mediaId, startedAt) => {
     const drawsShow = fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined;
     if (!drawsShow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
@@ -7502,7 +7688,7 @@ function start(): void {
     const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;
     // No first frame within FIRST_FRAME_MS (Q60-44): heeded from Main's own screens, what the hall sees; LIVE's or the
     // stream's page alone only logs it (shared/no-picture.ts).
-    if (code === NO_FIRST_FRAME && screenId === undefined) {
+    if ((code === NO_FIRST_FRAME || code === NO_START_IN_TIME) && screenId === undefined) {
       log.info(
         `A video had ${kind} on ${whereWords([where])}: ${mediaId}; left up (only a screen’s takes it off)`,
       );
@@ -7523,7 +7709,13 @@ function start(): void {
           .filter((w) => w !== '')
           .join(', ');
         log.warn(`A video could not play on ${named} (${kind}${detail}): ${mediaId}; taken off (${off})`);
-        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, named, took) });
+        // Q60-51: a video that still loaded but could not start in time is said to be that, never damaged.
+        sendToOperator(IPC.app.notice, {
+          text:
+            code === NO_START_IN_TIME
+              ? cannotStartInTimeNotice(file.name, named, took)
+              : cannotPlayNotice(file.name, named, took),
+        });
       },
       (named) => {
         log.info(

@@ -75,9 +75,11 @@ import type { ShapeOverride } from '../video-shape';
 // 28 carries PowerPoint's editable click effects and native transitions to every screen.
 // 29 carries a video’s stored caption track to screens and nodes; live speech stays private. (An A-B repeat, alpha.20,
 // needs no new number: a screen or node plays its `clip` and `loop` as ever; only Main reads the kept `ab`.)
-// 30 (alpha.20, x55, slice 6b): a video's own shape on the screens (`videoShapes`).
-// 31 is reserved for x54's live-stream link; 32 adds a private paused video cue and a playlist's two crossfading showings.
-// These add to the older saved states; older players reject the new version rather than draw an incomplete picture.
+// 30 (alpha.20, x55, slice 6b): a video's own shape on the screens (`videoShapes`); an older page or node would draw it as
+// its file says, so it says 'incompatible'. A state 29 saved is read whole (30 only adds to it).
+// 31 (alpha.20, the playback set's slice 8): a stream link as the background (`kind: 'link'`), which an older node or
+// page does not know, so it says 'incompatible'. A state 30 or 29 saved is read whole (31 only adds to them).
+// 32 adds a private paused video cue and a playlist’s two crossfading showings.
 export const ENGINE_STATE_VERSION = 32;
 
 /**
@@ -410,14 +412,34 @@ export interface InputBackground {
 }
 
 /**
+ * A stream link, live (alpha.20, the playback set's slice 8; the owner's Q60-39 P3 A): an HLS or YouTube live link the
+ * operator typed in Show a Stream Link…, received by the main process's own FFmpeg into a short local stream
+ * (src/main/live-link/), which each of this computer's audience screens, LIVE and Screens' cards play as a video, its
+ * sound in the hall at the Video level. Only the main process puts one up, once its local stream has begun: never a
+ * command from a window, a phone or the API. Drashti's own stream never carries it (the stream shows the Wallpaper
+ * meanwhile, with none of its sound), nor does a key and fill pair; output nodes show nothing of it and phones its name;
+ * and restart recovery never puts it back. A cover going on takes it off, as it takes a video off (one-at-a-time.ts).
+ */
+export interface LinkBackground {
+  kind: 'link';
+  /** Its local stream's id (its folder, and the drashti-media://live/<id>/ address): a new one each time one goes up. */
+  linkId: string;
+  /** Where it comes from, for the operator, a stage screen and a phone: "YouTube live", or the link's host. */
+  name: string;
+  /** When it went up (ms since the epoch, main-process clock): each screen plays it from then. */
+  startedAt: number;
+}
+
+/**
  * What the background layer shows: a colour, an image or video from the
- * media library, another app's window (Session 48) or a video input (Session 50). A slide's background cue sets
- * it (PLAN.md 4.3); it stays up on later slides until something replaces or clears it.
+ * media library, another app's window (Session 48), a video input (Session 50) or a stream link (alpha.20). A slide's
+ * background cue sets it (PLAN.md 4.3); it stays up on later slides until something replaces or clears it.
  */
 export type BackgroundLayer =
   | { kind: 'color'; color: string }
   | WindowBackground
   | InputBackground
+  | LinkBackground
   | (MediaBackground & {
       /**
        * When playback started (ms since the epoch, main-process clock). The
