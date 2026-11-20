@@ -22,7 +22,7 @@ describe('M3U local files only', () => {
       notTaken: [],
     });
   });
-  it('uses the playlist’s Windows path form on either computer, including drive paths and UNC', () => {
+  it('uses the playlist’s Windows path form on either computer; a UNC host is not a local file', () => {
     const result = parseM3u(
       'one.mp3\nC:\\Clips\\two.mp4\nfile:///C:/Clips/Placeholder%20three.wav\n\\\\host\\share\\four.wav',
       'C:\\Lists\\set.m3u8',
@@ -31,8 +31,9 @@ describe('M3U local files only', () => {
       'C:\\Lists\\one.mp3',
       'C:\\Clips\\two.mp4',
       'C:\\Clips\\Placeholder three.wav',
-      '\\\\host\\share\\four.wav',
     ]);
+    expect(result.notTaken.map((i) => i.entry)).toEqual(['\\\\host\\share\\four.wav']);
+    expect(parseM3u('folder\\track.mp3', '/tmp/list.m3u').entries[0]?.path).toBe('/tmp/folder/track.mp3');
   });
   it('lists web addresses and other protocols as not taken, never as import paths', () => {
     const result = parseM3u(

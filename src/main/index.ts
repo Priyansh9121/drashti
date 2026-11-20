@@ -3969,6 +3969,8 @@ function start(): void {
   edits.delete(IPC.slideEditor.addPicture);
   // Its file reads and queued import finish before playlistFileWrite takes the library’s write lock.
   edits.delete(IPC.playlists.importM3u);
+  // Export reads the library and writes only the chosen file; no library write lock spans its dialog.
+  edits.delete(IPC.playlists.exportM3u);
   // These wait for the write lock themselves, after the file dialog and background reading have ended.
   edits.delete(IPC.videoCaptions.add);
   edits.delete(IPC.videoCaptions.select);
