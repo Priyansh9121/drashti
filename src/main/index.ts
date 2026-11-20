@@ -1296,6 +1296,7 @@ function startNodeMode(): void {
     isOperator: () => false,
   });
   allowHangStacks(session.defaultSession);
+  const nodeReportRetry = packaged() ? undefined : swMs('DRASHTI_TEST_REPORT_RETRY_MS');
   const node = startNode({
     appearance,
     userData: app.getPath('userData'),
@@ -1324,6 +1325,15 @@ function startNodeMode(): void {
       savedText: savedDiagnosticsText,
       logFiles,
       desktop: () => app.getPath('desktop'),
+    },
+    // Help › Report a Problem… on a node (x49): handed to its Main.
+    reports: {
+      crashFiles: () => crashFiles(crashFilesDir),
+      makeFiles: (job) => runReportJob(job),
+      guides: new GuideFiles(
+        guidesDir({ packaged: packaged(), resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
+      ),
+      ...(nodeReportRetry ? { retryMs: [nodeReportRetry] } : {}),
     },
     restartAsMain: () => {
       writeRole(app.getPath('userData'), 'main');
@@ -1360,6 +1370,7 @@ function startNodeMode(): void {
     installNodeMenu({
       priority: priorityItem(() => nodeMenu()),
       saveDiagnostics: node.saveDiagnostics,
+      reportProblem: node.reportProblem,
       diagnostics: diagnostics
         ? {
             runSelfTest: () => {
@@ -5927,6 +5938,8 @@ function start(): void {
     string,
     { droppedFrames: number; paintedRev: number; missingFonts: string[] }
   >();
+  // A paired node's report (x49) is kept by Main's reports, made further on: until then, the node keeps it.
+  let reportsForNodes: ReportService | null = null;
   const nodes = new NodeService({
     nodes: nodeRepo,
     write: (key, run) => {
@@ -5990,6 +6003,10 @@ function start(): void {
     runShowAction: (command, who) => net.runShowAction({ op: 'command', args: command }, who),
     wanted: (state, everything) => wanted.list(state, everything),
     mediaFile: (mediaId) => wanted.source(mediaId, mediaDir),
+    nodeReport: (node, body) =>
+      reportsForNodes
+        ? reportsForNodes.fromNode(node, body)
+        : Promise.resolve({ ok: false as const, message: 'Main is starting: the report goes in a moment.' }),
     onAir: () => streaming.inUse(),
     changed: (status) => {
       sendToOperator(IPC.nodes.changed, status);
@@ -7863,7 +7880,9 @@ function start(): void {
     },
     ...(reportRetry ? { retryMs: [reportRetry], startDelayMs: reportRetry } : {}),
   });
+  reportsForNodes = reports;
   stops.add('reports', () => {
+    reportsForNodes = null;
     reports.dispose();
   });
   // Let in again (an answer after none, or a start), what waits is tried at once.

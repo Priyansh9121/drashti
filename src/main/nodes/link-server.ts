@@ -1,4 +1,5 @@
 import { controllerRequestSchema, type ControllerRequest } from '../../shared/controller-actions';
+import { ACCESS_REPORT } from '../../shared/access-protocol';
 import type { NodeReportAnswer } from '../../shared/report';
 import { RateGate } from '../rate-gate';
 import { randomUUID } from 'node:crypto';
@@ -113,6 +114,8 @@ export interface LinkStats {
 }
 
 const MAX_BODY = 4 * 1024;
+/** A node's report (x49): the most a report's call may be (its files as base64), and a little more. */
+const MAX_REPORT = ACCESS_REPORT.textChars + 256 * 1024;
 const MAX_FEED_MESSAGE = 512 * 1024;
 const MAX_CLIENTS = 120;
 const MAX_CLIENTS_PER_ADDRESS = 4;
@@ -382,6 +385,10 @@ export class LinkServer {
         await this.media(req, res, path.slice(NODE_PATHS.media.length));
         return;
       }
+      if (path === NODE_PATHS.report && req.method === 'POST') {
+        this.json(res, 200, await this.report(req));
+        return;
+      }
       throw new HttpError(404, 'There is no such request.');
     } catch (error) {
       const path = (req.url ?? '').split('?')[0] ?? '';
@@ -479,6 +486,26 @@ export class LinkServer {
     if (!node) throw new HttpError(500, 'Main could not keep this node.');
     this.nodes.set(tokenHash, { id: node.id, name: node.name, tokenHash });
     return { ok: true, confirm: confirmation(pairing.key, 'main'), token, node };
+  }
+
+  /**
+   * A paired node's report (x49, the owner's Q60-42, 2): read whole, up to a report's own most, and handed to Main,
+   * which keeps it and sends it on with its own access. Never on the show's feed.
+   */
+  private async report(req: IncomingMessage): Promise<NodeReportAnswer> {
+    const node = this.authenticate(req);
+    if (!node) throw new HttpError(401, 'This node is not paired with Main.');
+    if (Number(req.headers['content-length'] ?? '0') > MAX_REPORT)
+      throw new HttpError(413, 'That report is too large.');
+    const parts: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of req as AsyncIterable<Buffer>) {
+      size += chunk.length;
+      if (size > MAX_REPORT) throw new HttpError(413, 'That report is too large.');
+      parts.push(chunk);
+    }
+    const answer = this.host.report ? await this.host.report(node.id, Buffer.concat(parts)) : null;
+    return answer ?? { ok: false, message: 'Main could not take the report just now.' };
   }
 
   private authenticate(req: IncomingMessage): LinkNode | null {
