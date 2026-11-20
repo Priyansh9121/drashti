@@ -104,9 +104,10 @@ export class DisplayCopies {
   ): Promise<DisplayFile | null> {
     const key = keyOf(candidate.sha256, size);
     const relative = `${DISPLAY_DIR}/${nameOf(candidate.sha256, size, header.type)}`;
-    const place = await realPlaceAsync(this.deps.mediaDir, join(this.deps.mediaDir, relative));
-    if (!place?.inside) return null;
+    let valid = false;
     try {
+      const place = await realPlaceAsync(this.deps.mediaDir, join(this.deps.mediaDir, relative));
+      if (!place?.inside) return null;
       const info = await stat(place.path);
       if (!info.isFile() || info.size > MAX_COPY_BYTES) return null;
       const actual = await readPictureHeader(place.path);
@@ -125,10 +126,24 @@ export class DisplayCopies {
       const largest = this.latest.get(candidate.sha256);
       if (!largest || file.width * file.height >= largest.width * largest.height)
         this.latest.set(candidate.sha256, file);
+      valid = true;
       if (previous?.hash !== file.hash) this.deps.changed();
       return file;
     } catch {
       return null;
+    } finally {
+      if (!valid && this.files.delete(`${candidate.sha256}/${key}`)) {
+        if (this.latest.get(candidate.sha256)?.key === key) {
+          this.latest.delete(candidate.sha256);
+          for (const [id, file] of this.files) {
+            if (!id.startsWith(`${candidate.sha256}/`)) continue;
+            const largest = this.latest.get(candidate.sha256);
+            if (!largest || file.width * file.height > largest.width * largest.height)
+              this.latest.set(candidate.sha256, file);
+          }
+        }
+        this.deps.changed();
+      }
     }
   }
 
