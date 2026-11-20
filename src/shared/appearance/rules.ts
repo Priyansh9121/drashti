@@ -8,7 +8,8 @@ import { ZONE_NAMES, ZONE_TOKENS, ZONES } from './zones';
 /*
  * The rules every appearance meets (Sessions 39–40), from Drashti's design rules (docs/design.md §2): text at
  * 4.5:1 or more on every surface, every fill with its text, control edges at 3:1 where controls sit, the
- * design lab's stronger aims (the words at 15:1 on panels, secondary words at 7:1), and the primary kept
+ * design lab's stronger aims (secondary words at 7:1; the words on panels at least 10:1, aiming at 10–13:1, since
+ * the owner's Q60-36: 15:1 kept every dark appearance near-black), and the primary kept
  * apart from LIVE, ON AIR and a warning (CIEDE2000, at least 10, for usual colour vision and simulated
  * protanopia, deuteranopia and tritanopia) and from success and danger (at least 7). Ratios are compared
  * unrounded (2.999 fails 3). The built-in appearances are measured by src/main/contrast.test.ts; one a person
@@ -28,6 +29,10 @@ import { ZONE_NAMES, ZONE_TOKENS, ZONES } from './zones';
  * edges and the chosen tab's underline at 3:1); a lit layer button's words at 4.5:1 on its fill and its dot (LIVE's
  * red) at 3:1 there; and a lit layer button's fill, and an unlit one's edge, kept apart from the states, so a
  * layer button's own colour is never taken for LIVE.
+ *
+ * Session 60, comfortable appearances (the owner's Q60-36, Q1 A): LIVE's frame and lit dots are measured in
+ * `live-edge` (a lighter red on the lifted dark surfaces, LIVE's own red elsewhere), kept 10 from everything that
+ * acts, marks or decorates as LIVE's own is; the LIVE label stays white on `live`.
  */
 
 type Colour = ColourToken | DecorationToken | 'white' | 'black';
@@ -47,6 +52,12 @@ export interface ContrastRule {
   /** Where the rule comes from. */
   source: string;
 }
+
+/**
+ * The words on panels (the owner's Q60-36, Q1 A): at least 10:1, aiming at 10–13:1, so a dark panel can be a deep
+ * tint rather than near-black and a light one soft paper rather than near-white (15:1 until then).
+ */
+export const WORDS_AIM = { least: 10, most: 13 } as const;
 
 const SURFACES = ['ink', 'panel', 'panel-2', 'panel-3'] as const;
 /** Where controls sit: the window, panels, and raised cards and dialogs' fields. */
@@ -92,7 +103,13 @@ export const BUTTON_EDGES = {
 } as const satisfies Record<string, ColourToken>;
 
 export const CONTRAST_RULES: readonly ContrastRule[] = [
-  { what: 'words on panels', fg: 'fg', bg: 'panel', min: 15, source: 'design.md (fg 15:1 on panels)' },
+  {
+    what: 'words on panels',
+    fg: 'fg',
+    bg: 'panel',
+    min: WORDS_AIM.least,
+    source: 'design.md (fg at least 10:1 on panels, aiming at 10–13:1)',
+  },
   { what: 'secondary words on panels', fg: 'muted', bg: 'panel', min: 7, source: 'design.md (muted 7:1)' },
   { what: 'secondary words on cards', fg: 'muted', bg: 'panel-2', min: 7, source: 'design.md (muted 7:1)' },
   ...TEXT.flatMap((fg) =>
@@ -124,19 +141,19 @@ export const CONTRAST_RULES: readonly ContrastRule[] = [
   ),
   {
     what: 'live border vs panel (live row, thumbnail)',
-    fg: 'live',
+    fg: 'live-edge',
     bg: 'panel',
     min: 3,
     source: 'WCAG 1.4.11',
   },
   {
     what: 'live border vs the black slide inside it',
-    fg: 'live',
+    fg: 'live-edge',
     bg: 'black',
     min: 3,
     source: 'WCAG 1.4.11',
   },
-  { what: 'live (lit clear dot) vs panel-2', fg: 'live', bg: 'panel-2', min: 3, source: 'WCAG 1.4.11' },
+  { what: 'live (lit clear dot) vs panel-2', fg: 'live-edge', bg: 'panel-2', min: 3, source: 'WCAG 1.4.11' },
   { what: 'warning (Stopped rail) vs panel-2', fg: 'warning', bg: 'panel-2', min: 3, source: 'WCAG 1.4.11' },
   ...decorationRules(),
 ];
@@ -219,7 +236,7 @@ function decorationRules(): ContrastRule[] {
     },
     {
       what: 'a lit layer button’s dot (live) on its fill',
-      fg: 'live',
+      fg: 'live-edge',
       bg: 'layer',
       min: 3,
       source: 'WCAG 1.4.11 (operator/LayerBar.tsx)',
@@ -279,6 +296,19 @@ export const DISTANCE_RULES: readonly (readonly [
     (s) => [`a lit layer button vs ${s}`, 'layer', s, 10] as const,
   ),
   ['an unlit layer button’s edge vs live', 'layer-edge', 'live', 10],
+  // Session 60 (Q60-36, Q1 A): LIVE's frame and lit dot, lighter on the comfortable dark surfaces, as LIVE's own.
+  ...(
+    [
+      'primary',
+      'primary-hi',
+      'primary-lo',
+      'primary-edge',
+      'second',
+      'heading',
+      'layer',
+      'layer-edge',
+    ] as const
+  ).map((x) => [`${x} vs live-edge`, x, 'live-edge', 10] as const),
 ];
 
 export interface Measured {
