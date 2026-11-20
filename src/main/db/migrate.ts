@@ -65,7 +65,7 @@ import { up as soundTrimUndo } from './migrations/082-sound-trim-undo';
 import { up as kirtanBundleReports } from './migrations/083-kirtan-bundle-reports';
 import { up as videoCaptions } from './migrations/084-video-captions';
 import { up as screenGeometry } from './migrations/085-screen-geometry';
-import { up as mediaReadBy } from './migrations/086-media-read-by';
+import { up as mediaReadBy } from './migrations/087-media-read-by';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -154,7 +154,8 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 83, name: 'kirtan bundle import reports', up: kirtanBundleReports, rebuildsTable: true },
   { version: 84, name: 'video captions', up: videoCaptions },
   { version: 85, name: 'screen geometry: output scaling, corner-pin and edge blend', up: screenGeometry },
-  { version: 86, name: 'media read by FFmpeg (the idle sweep)', up: mediaReadBy },
+  // 086 is x50's (the playlists' play options, alpha.20), merged before this one.
+  { version: 87, name: 'media read by FFmpeg (the idle sweep)', up: mediaReadBy },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));
