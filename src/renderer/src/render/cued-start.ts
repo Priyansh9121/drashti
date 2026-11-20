@@ -53,7 +53,8 @@ export class CuedStartKeeper {
       pictures: before.pictures,
       opaquePictures: before.opaquePictures,
       videoCue: { ...cue, background: { ...bg, media: 'video' } },
-      videoCrossfade: null,
+      // Arm the child with the pair now; its gains and activation still wait for the future Go.
+      videoCrossfade: state.videoCrossfade,
       sound: before.sound
         ? { ...before.sound, ...(state.sound?.levels ? { levels: state.sound.levels } : {}) }
         : state.sound,
