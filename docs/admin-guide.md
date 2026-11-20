@@ -691,6 +691,10 @@ At most 1,000 kirtans go in one bundle. The whole file is at most 2 GB, and each
 - **Sign out** forgets the sign-in on that computer only. To sign every computer out at once, remove Drashti's access in your Google account: its linked apps page (myaccount.google.com/linkedapps), **Access to your Google Account**, your project's app, **See details**, **Remove access**, **Confirm**.
 - **A key typed by hand** in the profile replaces the broadcast's: the profile then streams to wherever that key belongs.
 
+## Edit Video recipes
+
+**Edit Video…** is Pro Mode's, on ready local videos. Save keeps a versioned recipe for the next showing; the file already playing stays pinned to its earlier revision. Preparation is serialized with media conversion, waits while a show, stream or recording is active, and keeps the original. The window reports Ready for next showing, Preparing, or a failure with its next step. Cancel writes no draft changes. Chosen thumbnail bytes, recipe and immutable copy history are in the ordinary library backup. If a save is refused because another editor saved first, reopen the video before saving again. Existing playlist row points and Sound and picture settings are separate.
+
 ### Video previews and analysis
 
 Media's silent frame strip, Edit Video's sound waveform and suggested scene changes use Drashti's bundled FFmpeg through the existing single conversion worker. No extra program or account is needed. All preparation waits until the show, stream and recording are idle. Activity stops the process and removes partial output; idle preparation starts again from the beginning. A failed attempt offers Retry after the file, permissions and free space are checked. Drashti keeps its 2 GB disk reserve.
