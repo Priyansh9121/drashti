@@ -41,3 +41,50 @@ it('keeps the previous slide until Go while arming the same decoded cue, and Cle
       .background,
   ).toBeNull();
 });
+
+it('gives the armed decoder its crossfade clock before Go while holding the old scene', () => {
+  const before = initialEngineState();
+  const old = {
+    kind: 'media' as const,
+    media: 'video' as const,
+    mediaId: 'old',
+    fit: 'fit' as const,
+    loop: false,
+    startedAt: 1,
+  };
+  before.layers.background = old;
+  const incoming = {
+    ...old,
+    mediaId: 'new',
+    startedAt: 2,
+    cueId: 'cue',
+    seek: { at: 100, toMs: 0, paused: true },
+  };
+  before.videoCue = {
+    id: 'cue',
+    label: 'Placeholder',
+    background: incoming,
+    playlist: null,
+    required: [],
+    ready: [],
+  };
+  const playing = { ...incoming, seek: { at: 500, toMs: 0 } };
+  const pair = { id: 'cue', from: old, at: 500, durationMs: 2000 };
+  const after = {
+    ...before,
+    videoCue: null,
+    videoCrossfade: pair,
+    videoStart: { id: 'cue', at: 500, mediaIds: ['old', 'new'], soundIds: ['old', 'new'] },
+    layers: { ...before.layers, background: playing },
+  };
+  const keeper = new CuedStartKeeper();
+  keeper.at(before, 100);
+  const armed = keeper.at(after, 400);
+  expect(armed?.layers.background).toBe(old);
+  expect(armed?.videoCue?.background.seek).toEqual({ at: 500, toMs: 0 });
+  expect(
+    armed?.videoCrossfade,
+    'the child can activate on the shared clock before its parent refreshes',
+  ).toBe(pair);
+  expect(keeper.at(after, 500)?.layers.background).toBe(playing);
+});
