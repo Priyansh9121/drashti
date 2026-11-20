@@ -1159,7 +1159,8 @@ export class NetworkService implements EngineTransport {
         const playlistId = args['playlistId'] ?? null;
         const play = musicPlaySchema.safeParse({ playlistId, index: args['index'] });
         if (!play.success) return deny(400, 'Which audio playlist?');
-        const played = this.deps.playMusic(who, play.data.playlistId, play.data.index);
+        // A phone names its track, or plays from the first, as before alpha.20's play-on.
+        const played = this.deps.playMusic(who, play.data.playlistId, play.data.index ?? 0);
         return played.ok ? ok({ playing: true }) : deny(409, played.message);
       }
       case 'music.audio':

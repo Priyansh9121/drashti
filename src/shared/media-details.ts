@@ -1,4 +1,5 @@
 import { formatBytes, formatDuration } from './format';
+import { playedWords } from './play-history';
 
 /*
  * Media information… (alpha.20: the owner's Q60-34 item 1, and his "Yes, all A" to Q60-39): what a video's or a sound's
@@ -382,6 +383,7 @@ export function detailSections(d: MediaDetails, extras: DetailExtras = {}, local
           : null,
       ],
       ['Even loudness', extras.loudness ? loudnessWords(extras.loudness) : null],
+      ['Played', d.plays ? playedWords(d.plays.count, d.plays.lastAt, locale) : null],
     ]),
   });
   return sections;

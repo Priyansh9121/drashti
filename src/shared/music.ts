@@ -53,8 +53,12 @@ export type MusicResult = { ok: true; view: MusicView; id?: string } | { ok: fal
 /** An audio playlist's name, cleaned as Rename… cleans a file's (Session 58, X3). */
 export const musicNameSchema = cleanNameSchema(120);
 export const musicOptionsSchema = z.object({ loop: z.boolean(), shuffle: z.boolean() }).strict();
+/**
+ * Play: an audio playlist from one of its tracks; with no track asked (alpha.20), from the track it was stopped on
+ * part-way, or its first.
+ */
 export const musicPlaySchema = z
-  .object({ playlistId: idSchema.nullable(), index: z.number().int().min(0).max(999).default(0) })
+  .object({ playlistId: idSchema.nullable(), index: z.number().int().min(0).max(999).optional() })
   .strict();
 
 /** Fades on the one audio player: in as a track starts, out as it stops (pause, next, Clear audio). */
