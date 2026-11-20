@@ -56,7 +56,7 @@ var DrashtiAccess = (function () {
       recordGapMs: MINUTE,
       cacheMs: 10 * 1000,
     },
-    publicOps: ['request', 'status', 'redeem', 'check'],
+    publicOps: ['request', 'status', 'redeem', 'check', 'report'],
     ownerOps: ['list', 'add', 'approve', 'reject', 'revoke', 'regrant', 'note', 'length', 'mode'],
     statuses: ['requested', 'approved', 'rejected', 'revoked'],
     checkStatuses: ['in', 'revoked', 'rejected', 'expired', 'unknown'],
@@ -76,6 +76,8 @@ var DrashtiAccess = (function () {
       'bad-length',
       'mail-limit',
       'mail-failed',
+      'not-in',
+      'too-large',
       'server',
     ],
     // In two parts, so no secret scanner reads the letters as a secret.
@@ -87,6 +89,29 @@ var DrashtiAccess = (function () {
     lengths: { days: [1, 7, 30, 60, 90, 120, 180, 365], maxDays: 730 },
     // How a Gmail may use Drashti (the owner's decision of 29 Oct 2026): Pro Mode and Simple Mode, or Simple Mode only.
     modes: ['pro', 'simple'],
+    // Help › Report a Problem… (x49, the owner's Q60-38 and his "Yes, all A" to Q60-42 on 20 Nov 2026): what one report
+    // may hold, and how many the list takes. Drashti's copy: src/shared/access-protocol.ts's ACCESS_REPORT.
+    report: {
+      // A day by the list's clock, in UTC: from one computer, and in all.
+      perComputerPerDay: 5,
+      perDay: 20,
+      // None once fewer than this many of the day's emails would be left after it: tokens and approvals keep room.
+      mailReserve: 30,
+      features: 8,
+      whatLetters: 2000,
+      expectedLetters: 1000,
+      noticeLetters: 500,
+      errorLines: 30,
+      errorLetters: 300,
+      // Its files in all (one diagnostics file, one picture, up to five crash files), in bytes.
+      filesBytes: 7 * 1024 * 1024,
+      crashFiles: 5,
+      // The call's text at most (its files as base64, and its words): longer is refused unread.
+      textChars: 10 * 1024 * 1024,
+      // A report's id is remembered this long, the newest this many: the same report is never emailed twice.
+      seenMs: 2 * DAY,
+      seenMax: 60,
+    },
   };
 
   /** The list's own words with each refusal (Drashti shows its own; these are for anyone reading the answer). */
@@ -106,6 +131,8 @@ var DrashtiAccess = (function () {
     'bad-length': 'That is not a length of access the list gives: 1 to 730 whole days, or Unlimited.',
     'mail-limit': 'The list has sent all the emails it may send today; try again tomorrow.',
     'mail-failed': 'The list could not send the email; try again later.',
+    'not-in': 'Only a computer let in can send a report.',
+    'too-large': 'The report is too large for the list to take.',
     server: 'Something went wrong in the list; try again in a moment.',
   };
 
@@ -1767,6 +1794,524 @@ var DrashtiAccess = (function () {
     return { ok: true, status: 'rejected', mailed: mailed };
   }
 
+  // ---- reports (Help › Report a Problem…, x49) ----
+
+  /**
+   * Help › Report a Problem… (x49, the owner's words of 20 Nov 2026, Q60-38: "Any issue any user faces he can log it in, i
+   * receive a mail that this is the issue", and his "Yes, all A" to Q60-42). A report is taken only from a computer let
+   * in now, signed as a check is (`signedGrant`) over the call without its files' data, each file bound by its SHA-256;
+   * it emails the admin (the approver Gmail) from "Drashti", with the files attached and Reply-To the person, and the
+   * person a short "received" note. Never twice for one report (its id remembered for 2 days); at most
+   * PROTOCOL.report's per computer and in all a day, and none once the day's emails would fall below its reserve, so
+   * tokens and approvals always have room. The person's words are kept as plain text (never HTML), line breaks and all.
+   */
+
+  /** A report's files: the kinds, each kind's type, its name, and how many one report may carry. */
+  var REPORT_KINDS = {
+    diagnostics: {
+      type: 'text/plain',
+      name: /^Drashti diagnostics [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}-[0-9]{2}\.txt$/,
+      most: 1,
+    },
+    picture: {
+      type: 'image/png',
+      name: /^Drashti window [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}-[0-9]{2}\.png$/,
+      most: 1,
+    },
+    crash: { type: 'application/octet-stream', name: /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.dmp$/, most: 5 },
+  };
+  /** Where a report was written: Pro Mode, Simple Mode, or a node (through the Main it is paired with). */
+  var REPORT_FROM = ['pro', 'simple', 'node'];
+  /** The day's reports (a day by the list's clock, in UTC), and the reports received lately (their ids). */
+  var REPORTS_DAY = 'REPORTS_TODAY';
+  var REPORTS_SEEN = 'REPORTS_SEEN';
+  var BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+  /** The longest email subject the list makes for a report. */
+  var REPORT_SUBJECT_MAX = 160;
+
+  /** Words a person typed for a report, made safe to email: one text, its line breaks kept (\r\n read as \n). */
+  function cleanLines(value) {
+    var s = typeof value === 'string' ? value : value === null || value === undefined ? '' : String(value);
+    s = s.replace(/\r\n?/g, '\n');
+    var out = '';
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c === 0x0a) out += '\n';
+      else if (c < 0x20 || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029) out += ' ';
+      else if (!hidden(c)) out += s.charAt(i);
+    }
+    return out
+      .split('\n')
+      .map(function (line) {
+        return line.replace(/\s+/g, ' ').trim();
+      })
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/^\n+|\n+$/g, '');
+  }
+
+  /** A report's words: a text of 1 (or 0, when not `needed`) to `max` letters, once cleaned; anything else refused. */
+  function reportWords(value, max, needed) {
+    if (typeof value !== 'string') throw refusal('bad-request');
+    var text = cleanLines(value);
+    var n = letters(text).length;
+    if ((needed && n === 0) || n > max) throw refusal('bad-request');
+    return text;
+  }
+
+  /** One line of a report's words (a name, a chapter, the notice, a line of the log): its line breaks made spaces. */
+  function reportLine(value, max, needed) {
+    return reportWords(value, max, needed).replace(/\n+/g, ' ');
+  }
+
+  function wholeTime(v) {
+    return typeof v === 'number' && isFinite(v) && v === Math.floor(v) && v >= 0 && v <= 1e15;
+  }
+
+  /** A computer as a call names it (its own, or a node's): its name, version and system, cleaned as readCall cleans them. */
+  function reportComputer(c, unnamed) {
+    return {
+      name: cleanText(c.name, 60) || unnamed,
+      version: typeof c.version === 'string' && VERSION_SHAPE.test(c.version) ? c.version : 'unknown',
+      platform: typeof c.platform === 'string' && /^[a-z0-9]{1,12}$/.test(c.platform) ? c.platform : 'other',
+    };
+  }
+
+  /**
+   * A report's call, parsed, or null for any other call (readCall reads those as before). Only a report may be long (its
+   * files go in it): a text longer than the list reads is refused unread.
+   */
+  function reportRaw(text) {
+    if (typeof text !== 'string') return null;
+    if (text.length > PROTOCOL.report.textChars) throw refusal('too-large');
+    var raw;
+    try {
+      raw = JSON.parse(text);
+    } catch (e) {
+      return null;
+    }
+    return isObject(raw) && raw.op === 'report' ? raw : null;
+  }
+
+  /** A report's call read and checked, as readCall reads the others; its files' data checked later (reportFiles). */
+  function readReport(raw, seen) {
+    var L = PROTOCOL.report;
+    seen.op = 'report';
+    if (typeof raw.nonce === 'string' && HEX32.test(raw.nonce)) seen.nonce = raw.nonce;
+    if (isObject(raw.computer) && typeof raw.computer.id === 'string' && HEX64.test(raw.computer.id))
+      seen.computerId = raw.computer.id;
+    if (raw.v !== PROTOCOL.version)
+      throw refusal('bad-request', 'This Drashti speaks another version of the list’s language: update it.');
+    if (!seen.nonce || !seen.computerId) throw refusal('bad-request');
+    if (typeof raw.gmail !== 'string' || !gmailShaped(raw.gmail)) throw refusal('bad-gmail');
+    if (typeof raw.grantId !== 'string' || !HEX32.test(raw.grantId)) throw refusal('bad-request');
+    if (typeof raw.mac !== 'string' || !HEX64.test(raw.mac) || !wholeTime(raw.at))
+      throw refusal('bad-request');
+    var r = raw.report;
+    if (!isObject(r) || typeof r.id !== 'string' || !HEX32.test(r.id) || !wholeTime(r.written))
+      throw refusal('bad-request');
+    if (REPORT_FROM.indexOf(r.from) < 0 || (r.from === 'node') !== isObject(r.node))
+      throw refusal('bad-request');
+    if (!Array.isArray(r.features) || r.features.length < 1 || r.features.length > L.features)
+      throw refusal('bad-request');
+    var features = r.features.map(function (f) {
+      if (!isObject(f)) throw refusal('bad-request');
+      var feature = {
+        chapter: reportLine(f.chapter === undefined ? '' : f.chapter, 80, false),
+        name: reportLine(f.name, 120, true),
+        what: reportWords(f.what, L.whatLetters, true),
+      };
+      if (f.expected !== undefined) {
+        var expected = reportWords(f.expected, L.expectedLetters, false);
+        if (expected) feature.expected = expected;
+      }
+      return feature;
+    });
+    var notice = r.notice === undefined ? '' : reportLine(r.notice, L.noticeLetters, false);
+    if (r.errors !== undefined && (!Array.isArray(r.errors) || r.errors.length > L.errorLines))
+      throw refusal('bad-request');
+    var errors = (r.errors || []).map(function (e) {
+      return reportLine(e, L.errorLetters, false);
+    });
+    if (!Array.isArray(r.files) || r.files.length > 2 + L.crashFiles) throw refusal('bad-request');
+    var counts = {};
+    var total = 0;
+    var files = r.files.map(function (f) {
+      var kind =
+        isObject(f) && typeof f.kind === 'string' && hasOwn(REPORT_KINDS, f.kind)
+          ? REPORT_KINDS[f.kind]
+          : null;
+      if (
+        !kind ||
+        f.type !== kind.type ||
+        typeof f.name !== 'string' ||
+        !kind.name.test(f.name) ||
+        typeof f.bytes !== 'number' ||
+        f.bytes !== Math.floor(f.bytes) ||
+        f.bytes < 0 ||
+        typeof f.sha256 !== 'string' ||
+        !HEX64.test(f.sha256)
+      )
+        throw refusal('bad-request');
+      counts[f.kind] = (counts[f.kind] || 0) + 1;
+      if (counts[f.kind] > kind.most) throw refusal('bad-request');
+      total += f.bytes;
+      return { kind: f.kind, name: f.name, type: f.type, bytes: f.bytes, sha256: f.sha256 };
+    });
+    if (total > L.filesBytes) throw refusal('too-large');
+    if (r.kept !== undefined && (!Array.isArray(r.kept) || r.kept.length > L.crashFiles))
+      throw refusal('bad-request');
+    var kept = (r.kept || []).map(function (k) {
+      if (
+        !isObject(k) ||
+        typeof k.name !== 'string' ||
+        !REPORT_KINDS.crash.name.test(k.name) ||
+        typeof k.bytes !== 'number' ||
+        k.bytes !== Math.floor(k.bytes) ||
+        k.bytes < 0 ||
+        k.bytes > 1e12
+      )
+        throw refusal('bad-request');
+      return { name: k.name, bytes: k.bytes };
+    });
+    // What the mac is over: the call without `mac` (signedGrant leaves it out) and without its files' data.
+    var signedPart = Object.create(null);
+    Object.keys(raw).forEach(function (k) {
+      if (k !== 'data') signedPart[k] = raw[k];
+    });
+    return {
+      raw: signedPart,
+      op: 'report',
+      nonce: raw.nonce,
+      computer: { id: raw.computer.id, name: '', version: '', platform: '' },
+      gmail: raw.gmail.trim(),
+      key: gmailKey(raw.gmail),
+      grantId: raw.grantId,
+      mac: raw.mac,
+      at: raw.at,
+      report: {
+        id: r.id,
+        written: r.written,
+        from: r.from,
+        node: r.from === 'node' ? reportComputer(r.node, 'a node') : null,
+        features: features,
+        notice: notice,
+        errors: errors,
+        files: files,
+        kept: kept,
+      },
+      data: raw.data,
+      sender: reportComputer(raw.computer, 'a computer'),
+    };
+  }
+
+  /**
+   * Each file of a report against its data: the data's entries exactly the files' SHA-256s, each base64 whose bytes
+   * have that SHA-256 and the file's size. The files as the email carries them; bad-request when anything differs.
+   */
+  function reportFiles(env, call) {
+    var data = call.data;
+    var files = call.report.files;
+    if (!isObject(data)) throw refusal('bad-request');
+    var wanted = {};
+    files.forEach(function (f) {
+      wanted[f.sha256] = true;
+    });
+    var keys = Object.keys(data);
+    if (keys.length !== Object.keys(wanted).length) throw refusal('bad-request');
+    var got = {};
+    keys.forEach(function (k) {
+      var b64 = data[k];
+      if (!hasOwn(wanted, k) || typeof b64 !== 'string' || b64.length % 4 !== 0 || !BASE64.test(b64))
+        throw refusal('bad-request');
+      var file;
+      try {
+        file = env.fileOf(b64);
+      } catch (e) {
+        throw refusal('bad-request');
+      }
+      if (!file || file.sha256 !== k) throw refusal('bad-request');
+      got[k] = { base64: b64, bytes: file.bytes };
+    });
+    return files.map(function (f) {
+      var g = got[f.sha256];
+      if (!g || g.bytes !== f.bytes) throw refusal('bad-request');
+      return { name: f.name, type: f.type, base64: g.base64, bytes: f.bytes };
+    });
+  }
+
+  /** A report's reference, from its id: "R-" and the id's first 40 bits in Crockford's base32 letters, in two fours. */
+  function reportReference(id) {
+    var bits = '';
+    for (var i = 0; i < 10; i++)
+      bits += ('0000' + parseInt(String(id).charAt(i) || '0', 16).toString(2)).slice(-4);
+    var out = '';
+    for (var j = 0; j < 40; j += 5) out += PROTOCOL.tokenAlphabet.charAt(parseInt(bits.slice(j, j + 5), 2));
+    return 'R-' + out.slice(0, 4) + '-' + out.slice(4);
+  }
+
+  /** A size as the email says it (as Drashti's formatBytes says it). */
+  function sizeText(n) {
+    var units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+    var v = n;
+    var i = 0;
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024;
+      i++;
+    }
+    return i === 0 ? String(v) + ' bytes' : v.toFixed(1) + ' ' + units[i];
+  }
+
+  /** "A", "A and B", "A, B and C". */
+  function andList(names) {
+    return names.length <= 1
+      ? names.join('')
+      : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+  }
+
+  /** The text cut to at most `max` characters, never inside a letter. */
+  function cutLetters(text, max) {
+    var parts = letters(text);
+    var out = '';
+    for (var i = 0; i < parts.length && out.length + parts[i].length <= max; i++) out += parts[i];
+    return out;
+  }
+
+  /** The subject: the first features (up to three, then how many more) and the reference, 160 characters at most. */
+  function reportSubject(names, reference) {
+    var head = 'Drashti problem: ';
+    var tail = ' (' + reference + ')';
+    for (var k = Math.min(3, names.length); k >= 1; k--) {
+      var text =
+        names.slice(0, k).join(', ') + (names.length > k ? ' and ' + String(names.length - k) + ' more' : '');
+      if ((head + text + tail).length <= REPORT_SUBJECT_MAX) return head + text + tail;
+    }
+    var more = names.length > 1 ? ' and ' + String(names.length - 1) + ' more' : '';
+    return (
+      head +
+      cutLetters(names[0], REPORT_SUBJECT_MAX - head.length - tail.length - more.length - 1) +
+      '…' +
+      more +
+      tail
+    );
+  }
+
+  /** Where the report was written, as the email says it. */
+  function reportFromLine(call) {
+    var r = call.report;
+    if (r.from === 'node')
+      return 'the node ' + computerLine(r.node) + ', through Main ' + computerLine(call.sender);
+    return computerLine(call.sender) + ', in ' + (r.from === 'simple' ? 'Simple Mode' : 'Pro Mode');
+  }
+
+  /**
+   * A report's email text, from its parts. Drashti's Review shows the same text before Send (src/shared/report.ts;
+   * src/main/access/list-report.test.ts keeps the two equal), with "when it arrives" for the time received.
+   */
+  function reportMailText(parts) {
+    var lines = ['Drashti problem ' + parts.reference, ''];
+    lines.push('From: ' + parts.gmail + ' (the Gmail let in on that computer)');
+    lines.push('Computer: ' + parts.computer);
+    lines.push('Written: ' + parts.written + ' (by that computer’s clock); received ' + parts.received);
+    lines.push('');
+    parts.features.forEach(function (f, i) {
+      lines.push(String(i + 1) + '. ' + f.name + (f.chapter ? ' (' + f.chapter + ')' : ''));
+      lines.push('What went wrong:');
+      lines.push(f.what);
+      if (f.expected) {
+        lines.push('What they expected:');
+        lines.push(f.expected);
+      }
+      lines.push('');
+    });
+    if (parts.notice) lines.push('The notice Drashti showed: “' + parts.notice + '”', '');
+    var errors = parts.errors || [];
+    if (errors.length > 0) {
+      lines.push('Recent errors in its log:');
+      errors.forEach(function (e) {
+        lines.push('  ' + e);
+      });
+      lines.push('');
+    }
+    var fileLine = function (f) {
+      return f.name + ' (' + sizeText(f.bytes) + ')';
+    };
+    var kept = parts.kept || [];
+    if (parts.files.length > 0) lines.push('Attached: ' + parts.files.map(fileLine).join('; '));
+    if (kept.length > 0)
+      lines.push('Kept on their computer (too large to send): ' + kept.map(fileLine).join('; '));
+    if (parts.files.length > 0 || kept.length > 0) lines.push('');
+    if (!parts.owner) lines.push('Reply to this email to answer them.');
+    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+    return lines.join('\n');
+  }
+
+  /** The day's reports, counted in the script's settings (as countRequest counts requests); false at a limit. */
+  function countReport(env, call) {
+    var L = PROTOCOL.report;
+    var day = Math.floor(env.now() / DAY);
+    var kept;
+    try {
+      kept = JSON.parse(env.properties.get(REPORTS_DAY) || 'null');
+    } catch (e) {
+      kept = null;
+    }
+    if (!isObject(kept) || kept.d !== day || !isObject(kept.c) || typeof kept.n !== 'number')
+      kept = { d: day, n: 0, c: {} };
+    var c = env.sha256Hex('computer:' + call.computer.id).slice(0, 16);
+    var mine = hasOwn(kept.c, c) ? Number(kept.c[c]) || 0 : 0;
+    if (mine >= L.perComputerPerDay || kept.n >= L.perDay) return false;
+    kept.c[c] = mine + 1;
+    kept.n += 1;
+    try {
+      env.properties.set(REPORTS_DAY, JSON.stringify(kept));
+    } catch (e) {
+      if (env.log)
+        env.log('The day’s reports could not be counted: ' + String(e && e.message ? e.message : e));
+    }
+    return true;
+  }
+
+  /** The reports received lately: [id, when] pairs, newest last, none older than PROTOCOL.report.seenMs. */
+  function reportsSeen(env, now) {
+    var list;
+    try {
+      list = JSON.parse(env.properties.get(REPORTS_SEEN) || '[]');
+    } catch (e) {
+      list = [];
+    }
+    return (Array.isArray(list) ? list : []).filter(function (x) {
+      return (
+        Array.isArray(x) &&
+        typeof x[0] === 'string' &&
+        typeof x[1] === 'number' &&
+        x[1] > now - PROTOCOL.report.seenMs &&
+        x[1] <= now + DAY
+      );
+    });
+  }
+
+  function keepReportsSeen(env, list) {
+    try {
+      env.properties.set(REPORTS_SEEN, JSON.stringify(list.slice(-PROTOCOL.report.seenMax)));
+    } catch (e) {
+      if (env.log)
+        env.log('The reports received could not be kept: ' + String(e && e.message ? e.message : e));
+    }
+  }
+
+  /** The admin's email: to the approver Gmail, from "Drashti", Reply-To the person (not the owner), files attached. */
+  function reportMail(env, props, person, call, files, owner, reference, now) {
+    var r = call.report;
+    var mail = {
+      to: props.approverEmail,
+      subject: reportSubject(
+        r.features.map(function (f) {
+          return f.name;
+        }),
+        reference,
+      ),
+      body: reportMailText({
+        reference: reference,
+        gmail: person.gmail,
+        computer: reportFromLine(call),
+        written: env.formatTime(r.written),
+        received: env.formatTime(now),
+        features: r.features,
+        notice: r.notice,
+        errors: r.errors,
+        files: files,
+        kept: r.kept,
+        owner: owner,
+      }),
+      name: 'Drashti',
+    };
+    if (!owner) mail.replyTo = person.gmail;
+    if (files.length > 0)
+      mail.attachments = files.map(function (f) {
+        return { name: f.name, type: f.type, base64: f.base64 };
+      });
+    return mail;
+  }
+
+  /** The person's short "received" note (Q60-38). */
+  function reportNote(env, person, call, reference, now) {
+    var names = call.report.features.map(function (f) {
+      return f.name;
+    });
+    return {
+      to: person.gmail,
+      subject: 'Your Drashti report ' + reference,
+      body: [
+        'Your report about ' +
+          andList(names) +
+          ' reached the admin of Drashti on ' +
+          env.formatTime(now) +
+          ' (reference ' +
+          reference +
+          '). Thank you.',
+        '',
+        'They may reply to this email.',
+      ].join('\n'),
+      name: 'Drashti',
+    };
+  }
+
+  /** A report from a computer let in now: emailed once, counted, and answered with its reference. */
+  function report(env, props, call) {
+    var data = snapshot(env);
+    var g = signedGrant(env, props, data, call);
+    var p = g ? data.byKey[g.key] : null;
+    if (p && changedByHand(p)) {
+      takeInHandEdits(env, [p.key]);
+      data = load(env);
+      p = data.byKey[g.key];
+      g = data.byGrant[g.grantId] || g;
+    }
+    if (!g || !p || due(env, g) || checkStatus(env, props, p, g) !== 'in') throw refusal('not-in');
+    var files = reportFiles(env, call);
+    var owner = g.key === ownerKey(props);
+    var id = call.report.id;
+    var reference = reportReference(id);
+    var now = env.now();
+    var fresh = withLock(env, function () {
+      var seen = reportsSeen(env, now);
+      if (
+        seen.some(function (x) {
+          return x[0] === id;
+        })
+      )
+        return false;
+      if (remaining(env) - (owner ? 1 : 2) < PROTOCOL.report.mailReserve) throw refusal('mail-limit');
+      if (!countReport(env, call)) throw refusal('too-many');
+      seen.push([id, now]);
+      keepReportsSeen(env, seen);
+      return true;
+    });
+    if (!fresh) return { ok: true, received: true, reference: reference, again: true };
+    try {
+      send(env, reportMail(env, props, p, call, files, owner, reference, now));
+    } catch (e) {
+      // Not received: its next try may go (it stays counted, so a stuck Drashti cannot loop the admin's mail).
+      withLock(env, function () {
+        keepReportsSeen(
+          env,
+          reportsSeen(env, env.now()).filter(function (x) {
+            return x[0] !== id;
+          }),
+        );
+      });
+      throw e;
+    }
+    if (!owner)
+      try {
+        send(env, reportNote(env, p, call, reference, now));
+      } catch (e) {
+        // The admin has the report; the note's failure is in the list's log (send says it, without the Gmail).
+      }
+    return { ok: true, received: true, reference: reference, again: false };
+  }
+
   /**
    * One call from Drashti: its JSON text in, { payload, sig } out. The payload is JSON text (ASCII), signed
    * with the list's key; it echoes the call's op, nonce and computer id, and says the list's time. A call from the
@@ -1778,13 +2323,21 @@ var DrashtiAccess = (function () {
     var seen = { op: '', nonce: '', computerId: '' };
     var answer;
     try {
-      var call = readCall(text, seen);
-      var props = needProps(env);
-      if (call.op === 'request') answer = request(env, props, call);
-      else if (call.op === 'status') answer = status(env, props, call);
-      else if (call.op === 'redeem') answer = redeem(env, props, call);
-      else if (call.op === 'check') answer = check(env, props, call);
-      else answer = owner(env, props, call);
+      // A report (x49) first: only it may be long, with its files in it.
+      var asReport = reportRaw(text);
+      if (asReport) {
+        var reported = readReport(asReport, seen);
+        answer = report(env, needProps(env), reported);
+      } else {
+        var call = readCall(text, seen);
+        var props = needProps(env);
+        if (call.op === 'request') answer = request(env, props, call);
+        else if (call.op === 'status') answer = status(env, props, call);
+        else if (call.op === 'redeem') answer = redeem(env, props, call);
+        else if (call.op === 'check') answer = check(env, props, call);
+        else if (call.op === 'report') throw refusal('bad-request');
+        else answer = owner(env, props, call);
+      }
     } catch (e) {
       if (isRefusal(e)) answer = { ok: false, error: e.refusal, message: e.message };
       else {
@@ -2153,6 +2706,10 @@ var DrashtiAccess = (function () {
     formatToken: formatToken,
     cleanText: cleanText,
     sameText: sameText,
+    reportReference: reportReference,
+    cleanLines: cleanLines,
+    reportMailText: reportMailText,
+    sizeText: sizeText,
   };
 })();
 
