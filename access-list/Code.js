@@ -499,9 +499,25 @@ function env_() {
       remaining: function () {
         return MailApp.getRemainingDailyQuota();
       },
+      // The list's own emails come from "Drashti access list"; a report's (x49) from "Drashti", Reply-To the person who
+      // wrote it, its files attached as blobs of their own bytes (MailApp's own scope: nothing new for Google to ask).
       send: function (m) {
-        MailApp.sendEmail({ to: m.to, subject: m.subject, body: m.body, name: 'Drashti access list' });
+        var mail = { to: m.to, subject: m.subject, body: m.body, name: m.name || 'Drashti access list' };
+        if (m.replyTo) mail.replyTo = m.replyTo;
+        if (m.attachments && m.attachments.length > 0)
+          mail.attachments = m.attachments.map(function (a) {
+            return Utilities.newBlob(Utilities.base64Decode(a.base64), a.type, a.name);
+          });
+        MailApp.sendEmail(mail);
       },
+    },
+    // A report's file (x49): its size and SHA-256, from its base64, decoded as Google decodes it for the email.
+    fileOf: function (base64) {
+      var bytes = Utilities.base64Decode(base64);
+      return {
+        bytes: bytes.length,
+        sha256: hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes)),
+      };
     },
     lock: function (fn) {
       var lock = LockService.getScriptLock();
