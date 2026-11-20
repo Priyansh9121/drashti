@@ -23,7 +23,7 @@ import { TranslitSourceContext, useHtmlLang } from './lang';
 import { translitSource } from '../../../shared/tracks';
 import { OBJECT_FIT } from './media-style';
 import { type Playback, startPlayback } from './playback';
-import { hasNoPicture, tellNoPicture } from './no-picture';
+import { hasNoPicture, tellCannotPlay, tellNoPicture, watchFirstFrame } from './no-picture';
 import { requestStill, useStill } from './stills';
 import { clockHeld, engineFrameNow, engineNow, onClockJump } from './clock';
 import { hasElementMotion, motionFrame } from '../../../shared/element-motion';
@@ -864,12 +864,18 @@ function SlideVideo({
       attempt: attempt + tries,
       startedAt: start,
       timing: () => timing.current,
-      onError: () => {
+      onError: (error) => {
+        // Said to Main (Q60-31, x46's item 4): a slide's video waits paused where it is with its sound, the box comes
+        // off, and the operator is told (unless a GPU process stopped then: it plays again here).
+        tellCannotPlay(el.mediaId, start, attempt + tries, error);
         setFailedWith(restartsNow.current);
       },
     });
+    // No first frame is said too (Q60-44; render/no-picture.ts watchFirstFrame says when).
+    const unwatch = watchFirstFrame(v, el.mediaId, start, attempt + tries);
     playback.current = p;
     return () => {
+      unwatch();
       playback.current = null;
       p();
     };

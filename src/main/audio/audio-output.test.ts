@@ -76,6 +76,23 @@ describe('choosing the sound output', () => {
     expect(events.status).toEqual([]);
   });
 
+  // x53 (the owner's Q60-31 bug hunt, x52's D6c; his Q60-50 (2) A): the sound player given up on was never said.
+  it('says when the sound player was given up on, and when it is tried again; once each', () => {
+    const { output, events } = setup();
+    output.setPlayerStopped(true);
+    output.setPlayerStopped(true);
+    expect(events.status).toHaveLength(1);
+    expect(events.status.at(-1)).toMatchObject({ playerStopped: true });
+    expect(output.status.playerStopped).toBe(true);
+    output.setPlayerStopped(false);
+    expect(events.status).toHaveLength(2);
+    expect(output.status).toEqual({ chosen: null, devices: [], state: 'default', checked: false });
+    expect(events.log).toEqual([
+      'The sound player kept failing: given up on for now, and the operator told',
+      'The sound player is tried again',
+    ]);
+  });
+
   it('keeps the choice in the library settings', () => {
     const db = openDatabase(':memory:');
     const settings = new SettingsRepo(db);
