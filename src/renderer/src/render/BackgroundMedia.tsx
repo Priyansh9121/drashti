@@ -38,6 +38,7 @@ import { useMediaUrl } from './media-urls';
 import { KeptVideo } from './KeptVideo';
 import { useInputReport, useVideoInput } from './video-input';
 import { hasNoPicture, tellCannotPlay, tellNoPicture } from './no-picture';
+import { FIRST_FRAME_MS, NO_FIRST_FRAME } from '../../../shared/no-picture';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -79,12 +80,15 @@ function VideoSlot({
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
+    // Its first frame came, or it failed: no more waiting for it.
+    let settled = false;
     const p = startPlayback(v, {
       mediaId,
       attempt,
       startedAt,
       timing: () => ({ loop: timing.current.loop, clip: timing.current.clip, seek: timing.current.seek }),
       onFrame: () => {
+        settled = true;
         if (hasNoPicture(v)) {
           tellNoPicture(mediaId, startedAt);
           return;
@@ -92,12 +96,23 @@ function VideoSlot({
         dispatch({ type: 'ready', key, at: engineNow() });
       },
       onError: (error) => {
+        settled = true;
         tellCannotPlay(mediaId, startedAt, attempt ?? 0, error);
         dispatch({ type: 'failed', key });
       },
     });
+    // No first frame within FIRST_FRAME_MS (Q60-44, the owner's answer A): it cannot play here, as if its element had
+    // failed. What was drawn before stays until the show takes it off (background-slots.ts, Scene.tsx).
+    // eslint-disable-next-line no-restricted-syntax -- decides no frame: only whether a video that never drew is said to fail
+    const noFirstFrame = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      tellCannotPlay(mediaId, startedAt, attempt ?? 0, { code: NO_FIRST_FRAME, message: '' });
+      dispatch({ type: 'failed', key });
+    }, FIRST_FRAME_MS);
     playback.current = p;
     return () => {
+      clearTimeout(noFirstFrame);
       playback.current = null;
       p();
     };

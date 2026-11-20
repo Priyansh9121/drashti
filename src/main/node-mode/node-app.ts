@@ -17,6 +17,7 @@ import { blurMediaId, copyMediaId, MEDIA_ID_PATTERN, MEDIA_SCHEME, mediaUrl } fr
 import { saveStill } from '../media/stills';
 import { sharpenStep } from '../../shared/picture-look';
 import { mediaInState } from '../../shared/node-media';
+import { NO_PICTURE } from '../../shared/no-picture';
 import { type PointedClip, sameClip } from '../../shared/point-ahead';
 import {
   DEFAULT_NODE_PORT,
@@ -67,7 +68,7 @@ import { secureWebPreferences } from '../windows/web-preferences';
 import { LinkClient, openMediaFromMain, pairWithMain } from './link-client';
 import { MediaCache } from './media-cache';
 import { NodeStore, ShowSaver, type NodeFile } from './node-state';
-import { plural } from '../../shared/text';
+import { cutText, plural } from '../../shared/text';
 import { packaged, sw, swMs } from '../switches';
 import { type ClockStyle, validClockStyle } from '../../shared/format';
 
@@ -1049,6 +1050,32 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   });
   // A node keeps no lengths (the library is Main's).
   handle(IPC.media.reportLength, () => null);
+  // A showing one of this node's screens could not play (Q60-44, the owner's answer A of 20 Nov 2026; ledger G-A14):
+  // its element failed, its first frame never came, or its picture cannot be drawn here (x36's sound only). The screen
+  // keeps what it showed (its page's slots, render/background-slots.ts), never black; Main is told and tells its
+  // operator, while the video plays on everywhere else (main/media/cannot-play.ts). Not while this node's copy of the
+  // file is still on its way: its landing tries it again.
+  const tellMain = (sender: number, mediaId: unknown, startedAt: unknown, code: unknown, words: unknown) => {
+    const screenId = manager.screenIdFor(sender);
+    if (screenId === undefined || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    if (typeof code !== 'number' || !Number.isInteger(code) || typeof words !== 'string') return null;
+    if (!cache.has(mediaId)) return null;
+    log.warn(
+      `Node: a video could not play on ${outputNames.get(screenId) ?? 'a screen'} (code ${String(code)}): ${mediaId}; Main is told`,
+    );
+    client?.send({
+      type: 'cannot-play',
+      report: { screenId, mediaId, startedAt, code, words: cutText(words, 1000) },
+    });
+    return null;
+  };
+  handle(IPC.media.cannotPlay, (event, mediaId, startedAt, code, words) =>
+    tellMain(event.sender.id, mediaId, startedAt, code, words),
+  );
+  handle(IPC.media.noPicture, (event, mediaId, startedAt) =>
+    tellMain(event.sender.id, mediaId, startedAt, NO_PICTURE, ''),
+  );
   // Another app's window as the background (Session 48) is on Main's computer: a node's screens never show
   // it, and keep the rest of the show.
   handle(IPC.liveWindow.ask, () => false);
