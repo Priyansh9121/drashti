@@ -1,3 +1,4 @@
+import { SoundPictureDialog } from '../library/SoundPictureDialog';
 import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
 import { connectEngine } from '../engine/engine-store';
@@ -496,6 +497,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <PictureEditor />
       {/* Media information… (alpha.20, Q60-34 item 1): a video's or a sound's file, as FFmpeg reads it. */}
       <MediaInfoDialog platform={platform} />
+      {/* Sound and picture… (alpha.20): a file's own tone and delays (Pro Mode). */}
+      <SoundPictureDialog />
       {dashboardOpen && (
         <ScreensDashboard
           simple={false}
