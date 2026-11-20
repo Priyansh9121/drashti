@@ -168,6 +168,9 @@ export async function installLooks(page: Page, root: string): Promise<void> {
           '[data-testid="wallpaper-picture"][data-wallpaper-role="current"] img',
         );
         if (img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0) return 'WALL';
+        // Its own black, drawn at once, covers the scene until its picture comes; unless kept out of sight meanwhile.
+        const wall = scene.querySelector('[data-layer="wallpaper-picture"]');
+        if (wall && getComputedStyle(wall).visibility !== 'hidden') return 'BLACK-WALL-COMING';
         const under = Array.from(scene.querySelectorAll<HTMLElement>('[data-bg-slot]')).filter(
           (e) => e.dataset['state'] !== 'loading' && Number(getComputedStyle(e).opacity) > 0.01,
         );
@@ -437,3 +440,55 @@ export const SCREENS = {
   DRASHTI_WINDOWED_OUTPUTS: '1',
   DRASHTI_TEST_DISPLAY_CHANGES: '1',
 };
+
+/**
+ * The Wallpaper's picture slow to come on this page, as from a slow disk, every time it is drawn anew (a page keeps a
+ * picture it showed in its own list, so the media-delay seam never slows it again): its img's address is set `ms`
+ * late while `on`. Test-side only, in the page.
+ */
+export async function slowWallpaper(page: Page, mediaId: string, ms: number, on: boolean): Promise<void> {
+  await page.evaluate(
+    ({ mediaId, ms, on }) => {
+      const g = globalThis as unknown as { hallSlowWall?: { on: boolean; ms: number; id: string } };
+      if (!g.hallSlowWall) {
+        g.hallSlowWall = { on, ms, id: mediaId };
+        const slow = g.hallSlowWall;
+        const setAttribute = Object.getOwnPropertyDescriptor(Element.prototype, 'setAttribute')?.value as (
+          this: Element,
+          name: string,
+          value: string,
+        ) => void;
+        Element.prototype.setAttribute = function (this: Element, name: string, value: string) {
+          if (slow.on && this instanceof HTMLImageElement && name === 'src' && value.includes(slow.id)) {
+            setTimeout(() => {
+              setAttribute.call(this, name, value);
+            }, slow.ms);
+            return;
+          }
+          setAttribute.call(this, name, value);
+        };
+        const src = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+        const set = (src ? Reflect.get(src, 'set') : undefined) as
+          ((this: HTMLImageElement, value: string) => void) | undefined;
+        if (src && set) {
+          Object.defineProperty(HTMLImageElement.prototype, 'src', {
+            ...src,
+            set(this: HTMLImageElement, value: string) {
+              if (slow.on && value.includes(slow.id)) {
+                setTimeout(() => {
+                  set.call(this, value);
+                }, slow.ms);
+                return;
+              }
+              set.call(this, value);
+            },
+          });
+        }
+      }
+      g.hallSlowWall.on = on;
+      g.hallSlowWall.ms = ms;
+      g.hallSlowWall.id = mediaId;
+    },
+    { mediaId, ms, on },
+  );
+}
