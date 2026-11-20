@@ -1,3 +1,4 @@
+import { changePlaylistPlayOption } from './play-options';
 import { PlaylistFind, useRowFind } from './PlaylistFind';
 import { PlaylistTiming } from './PlaylistTiming';
 import { exportPlaylistFile } from './m3u-actions';
@@ -795,15 +796,12 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
         ?.scrollIntoView({ block: 'center' });
   }, [found, byFolder, view, shownFolder]);
   const setPlayOptions = async (option: 'shuffle' | 'repeatAll') => {
-    const options = {
-      shuffle: node?.playback?.shuffle ?? false,
-      repeatAll: node?.playback?.repeatAll ?? false,
-    };
-    const result = await window.drashti.playlists.setPlayOptions(openId, {
-      ...options,
-      [option]: !options[option],
-    });
-    if (!result.ok) useNotice.setState({ text: result.message });
+    try {
+      const result = await changePlaylistPlayOption(openId, option);
+      if (!result.ok) useNotice.setState({ text: result.message });
+    } catch {
+      useNotice.setState({ text: 'The playlist playback choice could not be kept: try it again.' });
+    }
   };
   /** Each item's row (its number, or its name row) and its slides' rows. */
   const byItem = useMemo(() => {
