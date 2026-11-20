@@ -189,7 +189,9 @@ test('back to the Wallpaper (Clear background over a picture and over a video, a
         [l, 'LIVE'],
         [st, 'the stream'],
       ] as const)
-        if (looks.some(isBlack)) bad.push(`${what}: ${name}: ${looks.join(' → ')}`);
+        // Each recorded look is "<frame>f/<ms>ms:<look>": the look after its first colon.
+        if (looks.some((l) => isBlack(l.slice(l.indexOf(':') + 1))))
+          bad.push(`${what}: ${name}: ${looks.join(' → ')}`);
     };
     await round(
       'Clear background over a picture',
