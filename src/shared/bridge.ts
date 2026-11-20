@@ -1,3 +1,4 @@
+import type { VideoAnalysisResult } from './video-analysis';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
@@ -701,6 +702,12 @@ export interface DrashtiBridge {
     startCountdown(time: string): Promise<TimerResult>;
   };
   media: {
+    /** Cached source-time analysis; queues only through the idle conversion worker. Audio uses 0:a:N. */
+    videoAnalysis(
+      mediaId: string,
+      audioStream?: number | null,
+      retry?: boolean,
+    ): Promise<VideoAnalysisResult>;
     /**
      * Keep a still frame (a JPEG drawn from the file) for a media item's
      * thumbnails, so it is made only once (operator window only).

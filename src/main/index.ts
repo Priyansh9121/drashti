@@ -1,3 +1,4 @@
+import { VideoAnalysisService } from './convert/video-analysis';
 import { type PlaybackSettings, playbackSettingsSchema, toneOf } from '../shared/playback-settings';
 import { shapeOverride } from '../shared/video-shape';
 import { fileProblem } from './plain-errors';
@@ -4134,6 +4135,21 @@ function start(): void {
       },
     },
   });
+  const videoAnalysis = new VideoAnalysisService({ mediaDir, row: (id) => media.about(id), conversions });
+  const analysisResume = setTimeout(() => videoAnalysis.resume(), AFTER_START_MS);
+  stops.add('video analysis', () => {
+    clearTimeout(analysisResume);
+    videoAnalysis.close();
+  });
+  handle(IPC.media.videoAnalysis, (e, mediaId, audioStream, retry) =>
+    fromOperator(e) &&
+    typeof mediaId === 'string' &&
+    MEDIA_ID_PATTERN.test(mediaId) &&
+    (typeof audioStream === 'number' || audioStream === null) &&
+    typeof retry === 'boolean'
+      ? videoAnalysis.get(mediaId, audioStream, retry)
+      : { ok: false as const, message: 'Open the video in the operator window, then try again.' },
+  );
   conversionActivityChanged = () => conversions.activityChanged();
   const offConversionActivity = engine.onChange((state) => {
     if (!nothingUp(state.layers)) conversions.activityChanged();

@@ -1,4 +1,4 @@
-import type { MediaMarkers } from './markers';
+import { markerTime, type MediaMarkers } from './markers';
 
 export const ANALYSIS_VERSION = 1;
 export const WAVEFORM_BUCKETS = 4096;
@@ -22,10 +22,18 @@ export interface VideoAnalysis {
   storyboard: string | null;
 }
 export type VideoAnalysisResult = { ok: true; analysis: VideoAnalysis } | { ok: false; message: string };
-export function storyFrame(_fraction: number): number {
-  return 0;
+export function storyFrame(fraction: number): number {
+  if (!Number.isFinite(fraction)) return 0;
+  return Math.max(0, Math.min(STORY_FRAMES - 1, Math.floor(fraction * STORY_FRAMES)));
 }
 /** Append a suggestion to an editor's draft, never persist or replace its markers. */
-export function keepScene(points: MediaMarkers, _atMs: number, _id: string): MediaMarkers {
-  return points;
+export function keepScene(points: MediaMarkers, atMs: number, id: string): MediaMarkers {
+  if (points.markers.length >= 50 || points.markers.some((m) => m.atMs === atMs)) return points;
+  if (!Number.isSafeInteger(atMs) || atMs < 0 || atMs > 86_400_000) return points;
+  return {
+    ...points,
+    markers: [...points.markers, { id, name: `Scene ${markerTime(atMs)}`, atMs }].sort(
+      (a, b) => a.atMs - b.atMs,
+    ),
+  };
 }
