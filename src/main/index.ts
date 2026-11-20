@@ -3,6 +3,7 @@ import { editedClipSource } from './convert/clip-edited-source';
 import { withSceneMarkers } from './convert/scene-marker-save';
 import { VideoEditsRepo } from './db/video-edits';
 import { prepareVideoEdits } from './engine/video-edit-ready';
+import { prepareVideoProxies } from './convert/proxy-showing';
 import { registerEditVideoIpc } from './convert/edit-video-ipc';
 
 import { registerVideoCopies } from './convert/video-copies-ipc';
@@ -1791,6 +1792,10 @@ function start(): void {
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
   // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
   let proxySourceOf: (id: string) => string = (id) => id;
+  let proxyReadyFor: (id: string) => { mediaId: string | null; message: string | null } = (id) => ({
+    mediaId: id,
+    message: null,
+  });
   const videoEdits = new VideoEditsRepo(db, (id) => proxySourceOf(id));
   const playbackRepo = new MediaRepo(db);
   const ownPlayback = new Map<string, PlaybackSettings>();
@@ -1817,8 +1822,10 @@ function start(): void {
           : simpleNow() && simpleModeRefuses(command, state)
             ? simpleRefusalText(simpleAccess())
             : null,
-      prepareVideoEdits: (previous, next, historic) =>
-        prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic),
+      prepareVideoEdits: (previous, next, historic) => {
+        const edited = prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic);
+        return edited.state ? prepareVideoProxies(previous, edited.state, proxyReadyFor, historic) : edited;
+      },
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
@@ -4290,6 +4297,7 @@ function start(): void {
     libraryChanged: () => libraryChanged(true),
   });
   proxySourceOf = (id) => videoCopies.proxies.sourceOf(id);
+  proxyReadyFor = (id) => videoCopies.proxies.readyFor(id);
   stops.add('video copies', () => videoCopies.close());
   conversionActivityChanged = () => conversions.activityChanged();
   const offConversionActivity = engine.onChange((state) => {
