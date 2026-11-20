@@ -280,6 +280,22 @@ describe('background slots', () => {
     expect(retryAfterLanding(again, 1)).toBeNull();
   });
 
+  it('tries one again only for a landing or a new GPU process after it failed, never for one before (Q60-31: a node whose copy landed long before)', () => {
+    // Its file landed once before it played (a node's copy); then it failed while it played.
+    const s = run(
+      { type: 'layer', layer: b },
+      { type: 'ready', key: slotKey(b) },
+      { type: 'failed', key: slotKey(b), landed: 1 },
+    );
+    expect(retryAfterLanding(s, 1)).toBeNull();
+    // A landing since (or a new GPU process): one try.
+    expect(retryAfterLanding(s, 2)).toBe(slotKey(b));
+    // As it loaded, the same.
+    const loading = run({ type: 'layer', layer: b }, { type: 'failed', key: slotKey(b), landed: 3 });
+    expect(retryAfterLanding(loading, 3)).toBeNull();
+    expect(retryAfterLanding(loading, 4)).toBe(slotKey(b));
+  });
+
   it('treats the same file started again as a new playback', () => {
     const again = video('A', 9);
     const s = run(
