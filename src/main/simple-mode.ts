@@ -238,6 +238,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // Snapshot (alpha.20, the time bar's ⋯) is Pro Mode's (the owner's "Yes, all A" to Q60-39 P6 (j) A).
   IPC.media.snapshot,
   // Sound and picture… (alpha.20) is Pro Mode's (the owner's "Yes, all A" to Q60-39 P6 (j) A).
+  IPC.media.videoEdit,
+  IPC.media.setVideoEdit,
   IPC.media.setPlayback,
   IPC.media.restore,
   // Updates (Session 14): Simple Mode never sees them.
