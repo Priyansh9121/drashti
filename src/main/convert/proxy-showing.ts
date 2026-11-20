@@ -40,7 +40,10 @@ export function prepareVideoProxies(
       ? Object.fromEntries(Object.entries(values).map(([id, value]) => [ids.get(id) ?? id, value]))
       : undefined;
   try {
+    // Only a layer whose file changes is copied, and the very state comes back when none does: the engine reads new
+    // layers as a change of the screens (Back, Put it back and Oops would count a cover as one; the second mid-way CI).
     const layers = { ...next.layers };
+    let changed = false;
     const bg = layers.background;
     if (bg?.kind === 'media' && bg.media === 'video') {
       // S5 supplies this trusted prior cue; its initial private background has a NEW cue id.
@@ -50,13 +53,20 @@ export function prepareVideoProxies(
         }
       ).videoCue;
       const held = cue && 'cueId' in bg && bg.cueId === cue.id && bg.mediaId === cue.background.mediaId;
-      layers.background = {
-        ...bg,
-        mediaId: held ? bg.mediaId : mapped('background', bg.mediaId, bg.startedAt),
-      };
+      const id = held ? bg.mediaId : mapped('background', bg.mediaId, bg.startedAt);
+      if (id !== bg.mediaId) {
+        layers.background = { ...bg, mediaId: id };
+        changed = true;
+      }
     }
     const audio = layers.audio;
-    if (audio?.mediaId) layers.audio = { ...audio, mediaId: mapped('audio', audio.mediaId, audio.startedAt) };
+    if (audio?.mediaId) {
+      const id = mapped('audio', audio.mediaId, audio.startedAt);
+      if (id !== audio.mediaId) {
+        layers.audio = { ...audio, mediaId: id };
+        changed = true;
+      }
+    }
     const slide = layers.slide;
     if (slide) {
       const ids = new Map<string, string>();
@@ -71,25 +81,31 @@ export function prepareVideoProxies(
       const media = deck?.media.map((item) =>
         item.kind === 'video' ? { ...item, mediaId: select(item.mediaId) } : item,
       );
-      layers.slide = {
-        ...slide,
-        slide: { ...slide.slide, elements, ...(deck && media ? { deck: { ...deck, media } } : {}) },
-        ...(slide.clips ? { clips: remap(slide.clips, ids) as VideoClips } : {}),
-        ...(slide.seeks ? { seeks: remap(slide.seeks, ids) as VideoSeeks } : {}),
-      };
+      if ([...ids].some(([from, to]) => from !== to)) {
+        layers.slide = {
+          ...slide,
+          slide: { ...slide.slide, elements, ...(deck && media ? { deck: { ...deck, media } } : {}) },
+          ...(slide.clips ? { clips: remap(slide.clips, ids) as VideoClips } : {}),
+          ...(slide.seeks ? { seeks: remap(slide.seeks, ids) as VideoSeeks } : {}),
+        };
+        changed = true;
+      }
     }
     const box = layers.pip;
     if (box?.source.kind === 'media' && box.source.media === 'video') {
       const id = mapped('pip', box.source.mediaId, box.shownAt);
-      const ids = new Map([[box.source.mediaId, id]]);
-      layers.pip = {
-        ...box,
-        source: { ...box.source, mediaId: id },
-        ...(box.clips ? { clips: remap(box.clips, ids) as VideoClips } : {}),
-        ...(box.seeks ? { seeks: remap(box.seeks, ids) as VideoSeeks } : {}),
-      };
+      if (id !== box.source.mediaId) {
+        const ids = new Map([[box.source.mediaId, id]]);
+        layers.pip = {
+          ...box,
+          source: { ...box.source, mediaId: id },
+          ...(box.clips ? { clips: remap(box.clips, ids) as VideoClips } : {}),
+          ...(box.seeks ? { seeks: remap(box.seeks, ids) as VideoSeeks } : {}),
+        };
+        changed = true;
+      }
     }
-    return { state: { ...next, layers } };
+    return { state: changed ? { ...next, layers } : next };
   } catch (error) {
     return {
       message:
