@@ -4,7 +4,14 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+} from './helpers';
 import { testFfmpeg } from './stream-helpers';
 
 interface CopyJob {
@@ -152,9 +159,28 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
         stopped.job.id,
       ),
     ).toBe(true);
-    const accepted = await start();
-    if (!accepted.ok || !accepted.job)
-      throw new Error(accepted.ok ? 'No export was queued.' : accepted.message);
+    await openLibrary(win);
+    await win.getByTestId('library-tab-media').click();
+    await win.getByTestId('media-item').filter({ hasText: 'Placeholder clip' }).click({ button: 'right' });
+    await win.getByRole('menuitem', { name: 'Edit Video…', exact: true }).click();
+    const editor = win.getByTestId('edit-video');
+    await expect(editor).toBeVisible();
+    await editor.getByLabel('Start (seconds)', { exact: true }).fill('0.350');
+    await editor.getByLabel('End (seconds)', { exact: true }).fill('1.750');
+    await editor.getByRole('button', { name: 'Preparation and export', exact: true }).click();
+    await editor.getByLabel('Picture and sound').selectOption('original');
+    await editor.getByLabel('Clip shape').selectOption('vertical');
+    await editor.getByLabel('Also add the clip to Media').check();
+    await editor.getByRole('button', { name: 'Export clip…', exact: true }).click();
+    await expect(editor.locator('[data-testid="clip-export-job"][data-state="waiting"]')).toBeVisible();
+    const queued = await win.evaluate(() =>
+      (globalThis as unknown as CopiesGlobals).drashti.media.clipExports(),
+    );
+    const accepted = { job: queued.find((job) => job.id !== stopped.job?.id && job.state === 'waiting') };
+    if (!accepted.job) throw new Error('The editor did not queue its export.');
+    await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await win.getByRole('button', { name: 'Discard changes', exact: true }).click();
+    await expect(editor).not.toBeVisible();
     expect(accepted.job.state).toBe('waiting');
     expect(existsSync(destination)).toBe(false);
     await app.evaluate(() =>
