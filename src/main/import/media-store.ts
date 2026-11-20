@@ -95,7 +95,7 @@ export interface StagedMedia {
   /** Read by the bundled FFmpeg (Session 50): `probe` says what it read. */
   read?: boolean;
   /**
-   * What the bundled FFmpeg made of it (alpha.20, migration 87): read ('ffmpeg'), or found nothing it could read in it
+   * What the bundled FFmpeg made of it (alpha.20, migration 86): read ('ffmpeg'), or found nothing it could read in it
    * or took too long ('nothing'). Left out where there was no FFmpeg to ask: the idle sweep reads it later.
    */
   readBy?: 'ffmpeg' | 'nothing';
@@ -242,7 +242,7 @@ export class MediaStore {
     };
   }
 
-  /** Whether FFmpeg read it at this import (alpha.20, migration 87), so the idle sweep never reads it again. */
+  /** Whether FFmpeg read it at this import (alpha.20, migration 86), so the idle sweep never reads it again. */
   private keepReadBy(id: string, staged: StagedMedia): void {
     if (staged.readBy === undefined || staged.kind === 'image') return;
     this.db.prepare('UPDATE media SET read_by = ? WHERE id = ?').run(staged.readBy, id);

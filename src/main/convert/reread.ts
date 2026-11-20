@@ -7,7 +7,7 @@ import { atImport, describeMedia, type MediaInfo, parseFfmpegInfo } from './plan
 /*
  * "Plays anything" (alpha.20: the owner's Q60-34 item 2, his "Yes, all A" to Q60-39): every video and sound the bundled
  * FFmpeg has never read (a library from before Session 50, a computer that had no FFmpeg then: its file's own header
- * judged it, migration 87's read_by NULL) is read once, by itself, at idle moments: the caller (convert-service.ts) asks
+ * judged it, migration 86's read_by NULL) is read once, by itself, at idle moments: the caller (convert-service.ts) asks
  * only while nothing is up, the stream is off air and not recording, and no conversion waits or goes on; here one file at
  * a time, FFmpeg below normal priority, REREAD_EVERY_MS apart. What FFmpeg reads decides as at an import (plan.ts
  * atImport, HEVC as this computer's window says, so never converted here): a file Drashti's player cannot play is marked
