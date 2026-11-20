@@ -31,6 +31,40 @@ import { open } from 'node:fs/promises';
 /** whole: its own bytes say it is all there; cut: they say it is longer than its bytes; unknown: they cannot tell. */
 export type Wholeness = 'whole' | 'cut' | 'unknown';
 
+/**
+ * How long a file may stay cut, its size and time unchanged, before the folders say its copy may have stopped or it is
+ * damaged (it is still never taken by itself).
+ */
+export const UNFINISHED_MS = 2 * 60_000;
+
+/** A file found cut: its size and time then, and since when it has been cut as it is. */
+export interface CutSeen {
+  size: number;
+  mtimeMs: number;
+  since: number;
+}
+
+/**
+ * Whether a file is whole now, remembering those found cut (by their key in `cut`): one found cut is not read again
+ * until its size or time changes, as a copy that stopped, or a damaged file, would be read at every look. `stalledMs`:
+ * how long it has been cut as it is.
+ */
+export async function wholeNow(
+  cut: Map<string, CutSeen>,
+  key: string,
+  path: string,
+  found: { size: number; mtimeMs: number },
+  now: number,
+): Promise<{ wholeness: Wholeness; stalledMs: number }> {
+  const seen = cut.get(key);
+  if (seen?.size === found.size && seen.mtimeMs === found.mtimeMs)
+    return { wholeness: 'cut', stalledMs: now - seen.since };
+  const wholeness = await wholeFile(path);
+  if (wholeness === 'cut') cut.set(key, { size: found.size, mtimeMs: found.mtimeMs, since: now });
+  else cut.delete(key);
+  return { wholeness, stalledMs: 0 };
+}
+
 /** More top-level boxes or chunks than a real file has: not told (a strange file, read no further). */
 const MAX_PARTS = 100_000;
 /** A JPEG or GIF read whole to find its end: larger ones are not told. */
