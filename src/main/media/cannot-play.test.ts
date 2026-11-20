@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { NO_FIRST_FRAME } from '../../shared/no-picture';
 import {
   CANNOT_PLAY_SETTLE_MS,
+  type CannotPlayWhere,
+  whereWords,
   CannotPlay,
   errorKindWords,
   GPU_GONE_GRACE_MS,
@@ -25,10 +27,12 @@ function rig() {
       if (w.at <= now) w.run();
       else waiting.push(w);
   };
-  const heard = () => {
+  const heard = (showing = 'clip@1', where: CannotPlayWhere = { screen: 'Placeholder Hall' }) => {
     c.heard(
-      () => ran.push('off'),
-      () => ran.push('gpu'),
+      showing,
+      where,
+      (named) => ran.push(`off ${named}`),
+      (named) => ran.push(`gpu ${named}`),
     );
   };
   return { c, heard, ran, to, at: () => now };
@@ -41,7 +45,7 @@ describe('a video that could not play (Q60-31)', () => {
     r.to(r.at() + CANNOT_PLAY_SETTLE_MS - 1);
     expect(r.ran).toEqual([]);
     r.to(r.at() + 1);
-    expect(r.ran).toEqual(['off']);
+    expect(r.ran).toEqual(['off the screen “Placeholder Hall”']);
   });
 
   it('is left to load again when a GPU process stopped just before the word, or within the wait after it', () => {
@@ -50,13 +54,13 @@ describe('a video that could not play (Q60-31)', () => {
     before.to(before.at() + GPU_GONE_GRACE_MS - 1);
     before.heard();
     before.to(before.at() + CANNOT_PLAY_SETTLE_MS);
-    expect(before.ran).toEqual(['gpu']);
+    expect(before.ran).toEqual(['gpu the screen “Placeholder Hall”']);
     const after = rig();
     after.heard();
     after.to(after.at() + CANNOT_PLAY_SETTLE_MS - 10);
     after.c.gpuGone();
     after.to(after.at() + 10);
-    expect(after.ran).toEqual(['gpu']);
+    expect(after.ran).toEqual(['gpu the screen “Placeholder Hall”']);
   });
 
   it('is taken off when the GPU process stopped long before the word', () => {
@@ -65,7 +69,37 @@ describe('a video that could not play (Q60-31)', () => {
     r.to(r.at() + GPU_GONE_GRACE_MS + 1);
     r.heard();
     r.to(r.at() + CANNOT_PLAY_SETTLE_MS);
-    expect(r.ran).toEqual(['off']);
+    expect(r.ran).toEqual(['off the screen “Placeholder Hall”']);
+  });
+});
+
+describe('every page that said a showing could not play, named (Q60-31)', () => {
+  it('gathers the words heard during the wait, takes it off once, and names the screens first', () => {
+    const r = rig();
+    r.heard('clip@1', 'live');
+    r.heard('clip@1', { screen: 'Placeholder Hall' });
+    r.heard('clip@1', 'stream');
+    r.heard('clip@1', { screen: 'Placeholder Hall' });
+    r.to(r.at() + CANNOT_PLAY_SETTLE_MS);
+    expect(r.ran).toEqual(['off the screen “Placeholder Hall”']);
+  });
+
+  it('keeps each showing to itself: another file, or the same file put up again, waits on its own', () => {
+    const r = rig();
+    r.heard('clip@1', 'live');
+    r.heard('clip@2', { screen: 'Placeholder Hall' });
+    r.to(r.at() + CANNOT_PLAY_SETTLE_MS);
+    expect(r.ran).toEqual(['off LIVE', 'off the screen “Placeholder Hall”']);
+  });
+
+  it('in words: one screen, two, three; LIVE without a screen; the stream alone', () => {
+    expect(whereWords([{ screen: 'A' }])).toBe('the screen “A”');
+    expect(whereWords([{ screen: 'A' }, 'live', { screen: 'B' }])).toBe('the screens “A” and “B”');
+    expect(whereWords([{ screen: 'A' }, { screen: 'B' }, { screen: 'C' }])).toBe(
+      'the screens “A”, “B” and “C”',
+    );
+    expect(whereWords(['stream', 'live'])).toBe('LIVE');
+    expect(whereWords(['stream'])).toBe('the stream');
   });
 });
 

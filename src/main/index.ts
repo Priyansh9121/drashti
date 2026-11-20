@@ -167,7 +167,13 @@ import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter 
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
 import { cannotPlayNotice, NO_FIRST_FRAME, noPictureNotice } from '../shared/no-picture';
-import { CannotPlay, errorKindWords, NodeCannotPlay } from './media/cannot-play';
+import {
+  CannotPlay,
+  type CannotPlayWhere,
+  errorKindWords,
+  NodeCannotPlay,
+  whereWords,
+} from './media/cannot-play';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -6783,13 +6789,13 @@ function start(): void {
   // after a short wait; unless a GPU process stopped then, whose videos load again by themselves.
   handle(IPC.media.cannotPlay, (e, mediaId, startedAt, code, words) => {
     const screenId = manager.screenIdFor(e.sender.id);
-    const where =
+    const where: CannotPlayWhere | null =
       screenId !== undefined
-        ? `the screen “${screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId}”`
+        ? { screen: screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId }
         : fromOperator(e)
-          ? 'LIVE'
+          ? 'live'
           : streaming.isProgram(e.sender)
-            ? 'the stream'
+            ? 'stream'
             : null;
     if (where === null || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
     if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
@@ -6802,11 +6808,16 @@ function start(): void {
     // No first frame within FIRST_FRAME_MS (Q60-44): heeded from Main's own screens, what the hall sees; LIVE's or the
     // stream's page alone only logs it (shared/no-picture.ts).
     if (code === NO_FIRST_FRAME && screenId === undefined) {
-      log.info(`A video had ${kind} on ${where}: ${mediaId}; left up (only a screen's takes it off)`);
+      log.info(
+        `A video had ${kind} on ${whereWords([where])}: ${mediaId}; left up (only a screen's takes it off)`,
+      );
       return null;
     }
+    // Every page that says so within the wait is named, the screens first (cannot-play.ts whereWords).
     cannotPlay.heard(
-      () => {
+      `${mediaId}@${String(startedAt)}`,
+      where,
+      (named) => {
         const took = engine.cannotPlay(mediaId);
         if (!took) return;
         const off = [
@@ -6816,12 +6827,12 @@ function start(): void {
         ]
           .filter((w) => w !== '')
           .join(', ');
-        log.warn(`A video could not play on ${where} (${kind}${detail}): ${mediaId}; taken off (${off})`);
-        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, where, took) });
+        log.warn(`A video could not play on ${named} (${kind}${detail}): ${mediaId}; taken off (${off})`);
+        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, named, took) });
       },
-      () => {
+      (named) => {
         log.info(
-          `A video could not play on ${where} (${kind}${detail}) as the GPU process stopped: ${mediaId}; it loads again`,
+          `A video could not play on ${named} (${kind}${detail}) as the GPU process stopped: ${mediaId}; it loads again`,
         );
       },
     );

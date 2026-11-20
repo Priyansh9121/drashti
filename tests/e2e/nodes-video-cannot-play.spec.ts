@@ -5,7 +5,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import { importAndGetIds, letTimePass, outputPage, setUpScreen } from './helpers';
-import { backgroundUp, dispatch, failVideo, makeClip, notices, OUT, showPicture, shown } from './hall-looks';
+import {
+  backgroundUp,
+  dispatch,
+  failVideo,
+  installLooks,
+  makeClip,
+  notices,
+  OUT,
+  showPicture,
+  shown,
+} from './hall-looks';
 import type { MainRun, NodeRun } from './nodes';
 import { launchMain, launchNode, nodesStatus, pairNode } from './nodes';
 import { makeTestImage } from './test-media';
@@ -119,6 +129,8 @@ test('a node’s screen whose video cannot play (its decoder failing as it plays
     await setUpScreen(main.win, 'Placeholder Hall', 1);
     const nodeOut = await nodeScreenIn(main, node, nodeId, await groupOf(main.win, 'Placeholder Hall'));
     const mainOut = await outputPage(main.app);
+    // The node's page's looks, and its way to raise an element's error (hall-looks.ts).
+    await installLooks(nodeOut, OUT);
     const putUpVideo = () =>
       dispatch(main.win, {
         type: 'setBackground',
