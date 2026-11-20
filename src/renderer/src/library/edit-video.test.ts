@@ -14,7 +14,7 @@ describe('Edit Video in the shared file menu', () => {
       },
     );
     expect(items.map((i) => i.label)).toEqual(['Edit Video…']);
-    items[0]?.onSelect?.();
+    items[0]?.onSelect();
     expect(opened).toEqual({ id: 'video', name: 'Placeholder.mp4' });
     expect(editVideoItems(target, () => false)).toEqual([]);
     expect(editVideoItems({ ...target, kind: 'picture' }, () => true)).toEqual([]);
