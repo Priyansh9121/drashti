@@ -195,9 +195,24 @@ test('a stream link’s sound plays in the hall at the Video level, and none of 
   const sound = audio.locator('audio[data-key^="link:"]');
   await expect(sound).toHaveCount(1);
   await expect(sound).toHaveAttribute('data-kind', 'video');
-  await expect
-    .poll(async () => Number(await audio.locator('body').getAttribute('data-level')), { timeout: 15_000 })
-    .toBeGreaterThan(-50);
+  try {
+    await expect
+      .poll(async () => Number(await audio.locator('body').getAttribute('data-level')), { timeout: 15_000 })
+      .toBeGreaterThan(-50);
+  } catch (error) {
+    // Said with the hall's sound player as it was: its join, clock, events and how it failed, if it did.
+    const player = await sound.evaluate((el: HTMLAudioElement) =>
+      JSON.stringify({
+        ...el.dataset,
+        t: el.currentTime.toFixed(2),
+        paused: el.paused,
+        readyState: el.readyState,
+        error: el.error ? el.error.code : null,
+        now: Date.now(),
+      }),
+    );
+    throw new Error(`the hall’s sound: ${player} Main: ${mainSaid()}: ${String(error)}`, { cause: error });
+  }
   // Video's mute takes it away; unmuted, it is back.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('video', true));
   await expect.poll(async () => Number(await sound.getAttribute('data-gain'))).toBe(0);
