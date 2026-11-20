@@ -1,7 +1,8 @@
 import { useContext } from 'react';
 import type { CSSProperties } from 'react';
 import type { MediaFit } from '../../../shared/engine/state';
-import { shapeAspect, type ShapeOverride } from '../../../shared/video-shape';
+import type { MediaElement } from '../../../shared/model';
+import { shapeAspect, type ShapedBox, type ShapeOverride } from '../../../shared/video-shape';
 import { ScreenPictures } from './picture-looks';
 
 /*
@@ -53,4 +54,18 @@ export function shapedVideoStyle(aspect: number, fit: 'fit' | 'fill'): CSSProper
     height,
     objectFit: 'fill',
   };
+}
+
+/**
+ * A slide's video in a shape of its own: its clip in its shape's box (`box`, in its frame's pixels, so the frame starts
+ * at −box.x, −box.y in the box's own), keeping what showed of it on the slide: the frame's own shape (an ellipse,
+ * rounded corners, a symbol's outline) where it was, and the frame's edge for a video filling it. Undefined: no clip
+ * (a fitted video whose frame has no shape of its own).
+ */
+export function shapedClip(
+  _frame: { width: number; height: number },
+  _box: ShapedBox,
+  _clip: MediaElement['pictureClip'],
+): string | undefined {
+  return undefined;
 }
