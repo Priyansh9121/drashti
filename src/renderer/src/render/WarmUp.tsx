@@ -1111,6 +1111,8 @@ export function WarmUp({
     // False once this step is left (read through a function: the checker cannot follow the cleanup).
     const run = { live: true };
     const live = () => run.live;
+    // Finish is synchronous; passive cleanup may follow a queued frame or decode continuation.
+    const warming = () => live() && !finished.current;
     const keep = (request: number) => {
       frame = request;
     };
@@ -1148,8 +1150,7 @@ export function WarmUp({
         each: () => {
           drewFrame.current = true;
         },
-        // A cut marks it finished before passive cleanup cancels the old step's frame request.
-        live: () => live() && !finished.current,
+        live: warming,
         keep,
         ready: () => {
           setStep({ phase: 'during', at: engineNow() });
@@ -1173,10 +1174,11 @@ export function WarmUp({
       /**
        * Frames until they come on time (or MAX_MS): on time, all of it has been drawn (frames-on-time.ts).
        */
-      const steadyFrames = () => framesOnTime({ maxMs: MAX_MS, each, live, keep });
+      const steadyFrames = () => framesOnTime({ maxMs: MAX_MS, each, live: warming, keep });
       void (async () => {
         pauseClock(step.at);
         await steadyFrames();
+        if (!warming()) return;
         // The screen's compositor decodes a big picture on its own after its first frames, drawing nothing of
         // it until then (Session 27: the pictures' pipelines came after the warm-up, measured); a picture's
         // decode() is the compositor's, so once they are all done its frames draw every one.
@@ -1185,12 +1187,13 @@ export function WarmUp({
           ...(uiDrawing.current?.querySelectorAll('img') ?? []),
         ];
         await Promise.all(drawn.map((img) => img.decode().catch(() => undefined)));
-        if (!live()) return;
+        if (!warming()) return;
         await steadyFrames();
+        if (!warming()) return;
         // A moment on: every change drawn again in part, as a show's next frame is.
         pauseClock(step.at + 50);
         await steadyFrames();
-        if (live()) finish(page === 'live' && uiParent && !uiCopies.current ? 'error' : 'drawn');
+        if (warming()) finish(page === 'live' && uiParent && !uiCopies.current ? 'error' : 'drawn');
       })();
     }
     return () => {
