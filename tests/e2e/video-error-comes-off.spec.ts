@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
 import {
   audienceScreen,
+  backgroundUp,
   dispatch,
   failVideo,
   installLooks,
@@ -200,6 +201,51 @@ test('a video that stops part-way (cut half-way, or damaged in its middle): at i
         .toContainEqual(expect.stringMatching(new RegExp(`${name}[\\s\\S]*${hall.name}`, 'u')));
       await dispatch(win, { type: 'clearAll' });
     }
+  } finally {
+    await app.close();
+  }
+});
+
+test('a video whose first frame does not come within 10 s (each read of its file 15 s late, as from a stalled disk or decoder): the hall keeps the Wallpaper until then, never black, and then it comes off as a video that cannot play: a notice names it and the screen, the log says no picture within 10 s', async () => {
+  test.setTimeout(300_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-no-first-frame-'));
+  const clip = makeClip(join(dir, 'Placeholder never draws.mp4'), 'h264', 30, 350);
+  // Every read of a media file comes 15 s late (the Wallpaper's picture too): the video's first frame cannot come in 10 s.
+  const { app, userData } = await launchApp({ ...SCREENS, DRASHTI_TEST_MEDIA_DELAY_MS: '15000' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const hall = await audienceScreen(app, win);
+    expect(hall.name, 'the audience screen’s name').not.toBe('');
+    await wallpaperAndPicture(win, dir);
+    const [id = ''] = await importAndGetIds(win, [clip]);
+    const { item } = await openNewPlaylist(win, 'Placeholder no first frame', id);
+    await expect
+      .poll(() => shown(hall.page, OUT), { timeout: 90_000, message: 'the Wallpaper, its picture 15 s late' })
+      .toBe('WALL');
+    const putUp = Date.now();
+    await row(win, item).click();
+    await expect.poll(() => backgroundUp(win), { timeout: 5_000, message: 'it is up' }).toBe(id);
+    const w = await watch(app, win, hall.page, id, 30_000, false);
+    const offMs = Date.now() - putUp;
+    expect(w.off, `it came off, as a video that cannot play: ${w.looks.join(' | ')}`).toBe(true);
+    expect(offMs, `it came off soon after 10 s with no first frame: ${w.looks.join(' | ')}`).toBeLessThan(
+      18_000,
+    );
+    expect(offMs, `not before its 10 s: ${w.looks.join(' | ')}`).toBeGreaterThan(9_000);
+    expect(
+      w.looks.filter((l) => !l.includes('H:WALL')),
+      'the hall kept the Wallpaper until it came off, never black',
+    ).toEqual([]);
+    await expect
+      .poll(() => soundPlays(app), { timeout: 5_000, message: 'no sound plays once it is off' })
+      .toBe(false);
+    await expect
+      .poll(() => notices(win), { timeout: 10_000, message: 'a notice names the file and the screen' })
+      .toContainEqual(expect.stringMatching(new RegExp(`Placeholder never draws[\\s\\S]*${hall.name}`, 'u')));
+    await expect
+      .poll(() => logOf(userData), { timeout: 10_000, message: 'the log says no picture within 10 s' })
+      .toMatch(new RegExp(`could not play on the screen “${hall.name}” \\(no picture within 10 s\\)`, 'u'));
   } finally {
     await app.close();
   }

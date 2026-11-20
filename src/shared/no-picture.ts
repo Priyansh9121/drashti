@@ -22,3 +22,14 @@ export function noPictureNotice(name: string, converting: boolean): string {
 export function cannotPlayNotice(name: string, where: string): string {
   return `“${name}” could not play on ${where}, so it came off the screens with its sound. If it happens again, the file may be damaged: tell whoever looks after Drashti.`;
 }
+
+/**
+ * How long a page that draws the show waits for a video's first frame (Q60-44, the owner's answer A of 20 Nov 2026,
+ * through the lead): with none by then, it says the video cannot play, as an element that failed does, and the show
+ * takes it off with its sound, the Wallpaper or the cover over the picture staying up until then (render/Scene.tsx),
+ * never black. Its one place: change it here.
+ */
+export const FIRST_FRAME_MS = 10_000;
+
+/** The code a page sends for a video with no first frame within FIRST_FRAME_MS (MediaError's own codes are 1 to 4). */
+export const NO_FIRST_FRAME = -1;
