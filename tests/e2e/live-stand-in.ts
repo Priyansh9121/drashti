@@ -158,14 +158,19 @@ export function linkLook(page: Page, within: string | null = null): Promise<Link
           )} rate ${String(v.playbackRate)} w ${String(v.videoWidth)} err ${v.error ? String(v.error.code) : '-'}]`,
       )
       .join(' ');
-    const video = all.find((v) => v.dataset['shown'] === '1');
-    if (!video || video.videoWidth === 0) return { state, frame: null, luma: null, players };
+    // What the screen shows: its player shown, or, while a player that gave up is out of sight, its last picture kept
+    // on the box's canvas (render/LinkView.tsx).
+    const video = all.find((v) => v.dataset['shown'] === '1' && v.style.visibility !== 'hidden');
+    const kept = box?.querySelector('canvas');
+    const shown =
+      video && video.videoWidth > 0 ? video : kept?.dataset['kept'] === '1' && kept.width > 0 ? kept : null;
+    if (!shown) return { state, frame: null, luma: null, players };
     const c = document.createElement('canvas');
     c.width = 640;
     c.height = 360;
     const g = c.getContext('2d', { willReadFrequently: true });
     if (!g) return { state, frame: null, luma: null, players };
-    g.drawImage(video, 0, 0, 640, 360);
+    g.drawImage(shown, 0, 0, 640, 360);
     const strip = g.getImageData(0, 0, 640, 40).data;
     let frame = 0;
     for (let i = 0; i < 16; i++) if ((strip[(20 * 640 + 40 * i + 20) * 4] ?? 0) > 128) frame |= 1 << i;
@@ -173,6 +178,7 @@ export function linkLook(page: Page, within: string | null = null): Promise<Link
     let sum = 0;
     for (let i = 0; i < body.length; i += 16)
       sum += ((body[i] ?? 0) + (body[i + 1] ?? 0) + (body[i + 2] ?? 0)) / 3;
-    return { state, frame, luma: Math.round(sum / (body.length / 16)), players };
+    const from = shown === video ? state : `${state} (its kept picture)`;
+    return { state: from, frame, luma: Math.round(sum / (body.length / 16)), players };
   }, within);
 }

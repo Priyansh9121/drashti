@@ -83,6 +83,8 @@ class LinkPlayers {
     this.kept.width = v.videoWidth;
     this.kept.height = v.videoHeight;
     this.kept.getContext('2d')?.drawImage(v, 0, 0);
+    // For the tests: the screen shows its kept picture.
+    this.kept.dataset['kept'] = '1';
   }
 
   private make(): Player {
@@ -106,6 +108,7 @@ class LinkPlayers {
         el.dataset['shown'] = '1';
         if (this.shown) this.drop(this.shown);
         this.kept.getContext('2d')?.clearRect(0, 0, this.kept.width, this.kept.height);
+        delete this.kept.dataset['kept'];
         this.shown = player;
         this.incoming = null;
         this.told('live', true);

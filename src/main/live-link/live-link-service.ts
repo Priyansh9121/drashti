@@ -662,12 +662,15 @@ export class LiveLinkService {
 
   /**
    * A page joins the link up: the segment its player starts at (three from the newest, never before the showing's
-   * anchor) and when that segment's first frame is shown, by the showing's own time. Null when that link is not up.
+   * anchor) and when that segment's first frame is shown, by the showing's own time. Null when that link is not up,
+   * and while it reconnects: each page keeps its last picture until every page starts again together as it comes back
+   * (a player joining then would play the link's last seconds again, the hall's sound too: CI x54-1120-235843-34860).
    */
   join(linkId: string): { segment: number; startAt: number } | null {
     const link = this.current;
     const a = link?.anchor;
-    if (link?.linkId !== linkId || !a || link.newest === null || link.state === 'wallpaper') return null;
+    if (link?.linkId !== linkId || !a || link.newest === null) return null;
+    if (link.state === 'wallpaper' || link.state === 'reconnecting') return null;
     const now = this.deps.now();
     const moment = (n: number): number | null => {
       const at = link.starts.get(n);
