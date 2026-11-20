@@ -1,3 +1,4 @@
+import { NO_PLAYBACK_SETTINGS, type PlaybackSettings } from '../../shared/playback-settings';
 import type { PictureLook } from '../../shared/picture-look';
 import { isPlain, lookOf } from '../../shared/picture-look';
 import type { Statement } from 'better-sqlite3';
@@ -316,5 +317,14 @@ export class MediaRepo {
     return row?.resume_ms != null && row.resume_at !== null
       ? { atMs: row.resume_ms, at: row.resume_at }
       : null;
+  }
+
+  /** Sound and picture… (alpha.20). Red (x47, slice 6a): still to be written. */
+  playbackOf(_mediaId: string): PlaybackSettings {
+    return NO_PLAYBACK_SETTINGS;
+  }
+
+  setPlayback(_mediaId: string, _settings: PlaybackSettings): boolean {
+    return false;
   }
 }
