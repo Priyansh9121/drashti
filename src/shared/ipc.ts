@@ -1,3 +1,4 @@
+import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
@@ -612,6 +613,9 @@ export const IPC = {
     /** Snapshot (alpha.20, the time bar's ⋯): the frame on the screens, a PNG in Media (operator window, Pro Mode). */
     snapshot: 'media:snapshot',
     /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays, read and kept (operator window). */
+    videoEdit: 'media:video-edit',
+    setVideoEdit: 'media:set-video-edit',
+    videoEditChanged: 'media:video-edit-changed',
     playback: 'media:playback',
     setPlayback: 'media:set-playback',
     /**
@@ -1674,6 +1678,8 @@ export interface InvokeContract {
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
   [IPC.media.resumePoint]: { args: [mediaId: string]; result: ResumePoint | null };
   [IPC.media.snapshot]: { args: [playing: PlayingRef]; result: SnapshotResult };
+  [IPC.media.videoEdit]: { args: [mediaId: string]; result: VideoEditResult };
+  [IPC.media.setVideoEdit]: { args: [request: SaveVideoEdit]; result: VideoEditResult };
   [IPC.media.playback]: { args: [mediaId: string]; result: PlaybackSettings | null };
   [IPC.media.setPlayback]: {
     args: [mediaId: string, settings: PlaybackSettings];
@@ -2048,6 +2054,7 @@ export interface EventContract {
   [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];
   [IPC.media.preparingTrimsChanged]: string[];
+  [IPC.media.videoEditChanged]: VideoEditSnapshot;
   [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: { role: 'preview' | 'encoder' | 'speech' };
   [IPC.stream.context]: ProgramContext;
