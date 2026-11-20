@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, webcrypto } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -246,5 +246,92 @@ describe('original-preserving display copies', () => {
     const t = setup();
     expect(await t.copies.prepare({ ...t.candidate, path: '../outside.png' })).toMatchObject({ ok: false });
     expect(t.windows.opened).toBe(0);
+  });
+});
+
+describe('asynchronous display checksums', () => {
+  async function copyJob(signal?: AbortSignal) {
+    const t = setup();
+    const prepared = t.copies.prepare(t.candidate, signal);
+    await vi.waitFor(() => expect(t.windows.opened).toBe(1));
+    const job = await t.copies.next(1);
+    if (!job) throw new Error('The checksum test did not receive its copy job.');
+    const output = new Uint8Array(png(1920, 1080));
+    const hash = Uint8Array.from(createHash('sha256').update(output).digest()).buffer;
+    return { ...t, prepared, job, output, hash };
+  }
+
+  it('advertises the same copy only after its asynchronous checksum is complete', async () => {
+    const t = await copyJob();
+    let finish!: (value: ArrayBuffer) => void;
+    const pending = new Promise<ArrayBuffer>((resolve) => {
+      finish = resolve;
+    });
+    const digest = vi.spyOn(webcrypto.subtle, 'digest').mockReturnValueOnce(pending);
+    const made = t.copies.made(1, t.job.key, t.output);
+    try {
+      await vi.waitFor(() => expect(digest).toHaveBeenCalledOnce());
+      expect(t.copies.ready(SHA)).toBeNull();
+      expect(t.changed).not.toHaveBeenCalled();
+      expect(digest).toHaveBeenCalledWith('SHA-256', t.output);
+      finish(t.hash);
+      expect(await made).toBe(true);
+      const result = await t.prepared;
+      expect(result).toMatchObject({ ok: true, copy: { hash: Buffer.from(t.hash).toString('hex') } });
+      if (!result.ok || !result.copy) throw new Error('The checked copy was not published.');
+      expect(readFileSync(join(t.dir, result.copy.path))).toEqual(Buffer.from(t.output));
+      expect(t.changed).toHaveBeenCalledOnce();
+    } finally {
+      finish(t.hash);
+      await made;
+      digest.mockRestore();
+    }
+  });
+
+  it.each(['cancelled', 'closed'])(
+    'never publishes a copy %s while its asynchronous checksum is pending',
+    async (how) => {
+      const abort = new AbortController();
+      const t = await copyJob(abort.signal);
+      let finish!: (value: ArrayBuffer) => void;
+      const pending = new Promise<ArrayBuffer>((resolve) => {
+        finish = resolve;
+      });
+      const digest = vi.spyOn(webcrypto.subtle, 'digest').mockReturnValueOnce(pending);
+      const made = t.copies.made(1, t.job.key, t.output);
+      try {
+        await vi.waitFor(() => expect(digest).toHaveBeenCalledOnce());
+        if (how === 'closed') t.copies.close();
+        else abort.abort();
+        expect(await t.prepared).toMatchObject({ ok: false });
+        finish(t.hash);
+        expect(await made).toBe(true);
+        expect(t.copies.ready(SHA)).toBeNull();
+        expect(t.changed).not.toHaveBeenCalled();
+        expect(readdirSync(join(t.dir, 'display'))).toEqual([]);
+        expect(readFileSync(join(t.dir, t.candidate.path))).toEqual(png(6144, 3456));
+      } finally {
+        finish(t.hash);
+        await made;
+        digest.mockRestore();
+      }
+    },
+  );
+
+  it('refuses a failed checksum without publishing a copy or changing its original', async () => {
+    const t = await copyJob();
+    const digest = vi
+      .spyOn(webcrypto.subtle, 'digest')
+      .mockRejectedValueOnce(new Error('Generated asynchronous checksum failure'));
+    try {
+      expect(await t.copies.made(1, t.job.key, t.output)).toBe(true);
+      expect(await t.prepared).toMatchObject({ ok: false });
+      expect(t.copies.ready(SHA)).toBeNull();
+      expect(t.changed).not.toHaveBeenCalled();
+      expect(readdirSync(join(t.dir, 'display'))).toEqual([]);
+      expect(readFileSync(join(t.dir, t.candidate.path))).toEqual(png(6144, 3456));
+    } finally {
+      digest.mockRestore();
+    }
   });
 });
