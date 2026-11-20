@@ -69,13 +69,16 @@ export const isDrawn = (slot: Slot): boolean => slot.state === 'ready' || slot.d
 export const drawnKeyOf = (slots: Slots): string | null =>
   slots.shown && isDrawn(slots.shown) ? slots.shown.key : null;
 
-/** A file that failed (as it loaded: the one coming in; or while it played: the one on screen), if one did. */
-const failedFile = (slots: Slots): Slot | null =>
-  slots.incoming?.state === 'failed' && slots.incoming.layer.kind === 'media'
-    ? slots.incoming
-    : slots.shown?.state === 'failed' && slots.shown.layer.kind === 'media'
-      ? slots.shown
-      : null;
+/**
+ * A file that failed (as it loaded: the one coming in; or while it played: the one on screen), if one did; none while
+ * the one on screen is being tried again (out of sight).
+ */
+const failedFile = (slots: Slots): Slot | null => {
+  const coming = slots.incoming;
+  if (coming?.state === 'failed' && coming.layer.kind === 'media') return coming;
+  if (coming !== null && coming.key === slots.shown?.key) return null;
+  return slots.shown?.state === 'failed' && slots.shown.layer.kind === 'media' ? slots.shown : null;
+};
 
 export const slotKey = (layer: SlotLayer): string =>
   layer.kind === 'input'
@@ -162,15 +165,20 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
       const coming = slots.incoming;
       if (coming?.key === event.key && coming.state === 'failed')
         return { ...slots, incoming: { ...coming, state: 'loading', attempt: (coming.attempt ?? 0) + 1 } };
-      // One that failed while it played: loading again out of sight; nothing is on screen meanwhile, as before.
       const failed = slots.shown?.key === event.key && slots.shown.state === 'failed' ? slots.shown : null;
-      if (!failed) return slots;
-      return {
-        shown: null,
-        incoming: { ...failed, state: 'loading', attempt: (failed.attempt ?? 0) + 1 },
-        leaving: null,
-        fade: null,
+      // Not failed, or already being tried again.
+      if (!failed || coming?.key === event.key) return slots;
+      const retry: Slot = {
+        key: failed.key,
+        layer: failed.layer,
+        state: 'loading',
+        attempt: (failed.attempt ?? 0) + 1,
+        ...(failed.joined ? { joined: true as const } : {}),
       };
+      // One that failed while it played, drawn as it was (Q60-31): tried again out of sight, still drawn meanwhile,
+      // never black. One never drawn (an input that could not start, say) is tried again in its place, as before.
+      if (failed.drawn) return { ...slots, incoming: retry };
+      return { shown: null, incoming: retry, leaving: null, fade: null };
     }
     case 'failed': {
       // A file that cannot play as it loads (Q60-31): the picture before stays drawn, never black; the page tells
