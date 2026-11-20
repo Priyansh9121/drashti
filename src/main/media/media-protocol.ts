@@ -52,6 +52,7 @@ export interface MediaProtocolDeps {
   /** The media folder. */
   mediaDir: string;
   lookup: (mediaId: string) => MediaFileRow | null;
+  selectedThumbnail?: (mediaId: string) => Uint8Array | null;
   /** A picture's sharpened copy at a step, relative to the media folder, if it is ready (Session 26f). */
   sharpened?: (sha256: string, step: number) => string | null;
   /** A picture's blurred copy, relative to the media folder, if it is ready (Session 55, Part 5, D). */
@@ -355,6 +356,20 @@ async function inMediaFolder(
 export async function handleMediaRequest(request: Request, deps: MediaProtocolDeps): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') return refused(405);
   const asked = mediaRequestOf(request.url);
+  if (asked?.what === 'still') {
+    const source = deps.lookup(asked.mediaId);
+    const chosen = source && !source.missing ? deps.selectedThumbnail?.(asked.mediaId) : null;
+    if (chosen)
+      return new Response(request.method === 'HEAD' ? null : Uint8Array.from(chosen).buffer, {
+        headers: {
+          'Content-Type': 'image/jpeg',
+          'Content-Length': String(chosen.byteLength),
+          'Cache-Control': 'no-store',
+          'Access-Control-Allow-Origin': '*',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      });
+  }
   // A stream link's playlist (alpha.20, slice 8): made for the player as it joined, never a file as it is.
   if (asked?.what === 'live' && asked.name === 'index.m3u8') {
     const text = (await deps.livePlaylist?.(asked.linkId, asked.segment)) ?? null;

@@ -1,3 +1,4 @@
+import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
@@ -773,6 +774,9 @@ export interface DrashtiBridge {
     /** Snapshot (alpha.20): the frame of a video on the screens now, a PNG in Media; or why not. */
     snapshot(playing: PlayingRef): Promise<SnapshotResult>;
     /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays; null for anything else. */
+    videoEdit(mediaId: string): Promise<VideoEditResult>;
+    setVideoEdit(request: SaveVideoEdit): Promise<VideoEditResult>;
+    onVideoEdit(listener: (edit: VideoEditSnapshot) => void): () => void;
     playback(mediaId: string): Promise<PlaybackSettings | null>;
     /** Keep them (heard at once wherever it plays). */
     setPlayback(
