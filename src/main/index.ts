@@ -1031,6 +1031,18 @@ function pendingRestore(): ReturnType<typeof applyPendingRestore> {
 }
 
 const fromOperator = (event: IpcMainInvokeEvent) => event.sender.id === operatorWindow?.webContents.id;
+/**
+ * Words on the clipboard, by the main process (alpha.20): Drashti's permission rules refuse a page its own clipboard
+ * (windows/security.ts), so the operator window's Copy buttons ask here (Media information's words, Events out's new
+ * secret). Words only, at most 64 KB, from the operator window; never logged. False when they could not be copied.
+ */
+const copyWords = async (event: IpcMainInvokeEvent, text: unknown): Promise<boolean> => {
+  if (!fromOperator(event) || typeof text !== 'string' || text.length > 64 * 1024) return false;
+  return clipboard.writeText(text).then(
+    () => true,
+    () => false,
+  );
+};
 const idListSchema = z.array(idSchema).min(1).max(10_000);
 /** A slide's row the operator's pointer is on (C3, Session 58), or null. */
 const pointAtSchema = z
@@ -5056,6 +5068,8 @@ function start(): void {
   handle(IPC.events.remove, (e, id) => (fromOperator(e) ? eventsOut.remove(id) : notEventsOperator));
   handle(IPC.events.rotate, (e, id) => (fromOperator(e) ? eventsOut.rotate(id) : notEventsOperator));
   handle(IPC.events.test, (e, id) => (fromOperator(e) ? eventsOut.test(id) : notEventsOperator));
+  // The new secret's Copy (alpha.20), by the main process as Media information's is (copyWords): never kept or logged.
+  handle(IPC.events.copySecret, (e, secret) => copyWords(e, secret));
   handle(IPC.backups.pickFolder, async (e) => {
     if (!fromOperator(e) || !operatorWindow) return notBackupsOperator;
     const picked = await dialog.showOpenDialog(operatorWindow, {
@@ -6896,15 +6910,8 @@ function start(): void {
       ? mediaDetails.details(mediaId)
       : { ok: false as const, message: 'Only the operator window can read a file’s information.' },
   );
-  // Its Copy: the window's words on the clipboard, by the main process (a page's own clipboard is refused to every
-  // page: windows/security.ts). Words only, at most 64 KB, from the operator window.
-  handle(IPC.media.copyDetails, async (e, text) => {
-    if (!fromOperator(e) || typeof text !== 'string' || text.length > 64 * 1024) return false;
-    return clipboard.writeText(text).then(
-      () => true,
-      () => false,
-    );
-  });
+  // Its Copy: the window's words on the clipboard, by the main process (copyWords).
+  handle(IPC.media.copyDetails, (e, text) => copyWords(e, text));
   handle(IPC.audio.getOutput, () => audioOutput.status);
   handle(IPC.audio.setOutput, (e, device) =>
     fromOperator(e) ? audioOutput.choose(device) : audioOutput.status,
