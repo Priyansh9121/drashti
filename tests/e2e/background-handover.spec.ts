@@ -119,6 +119,9 @@ test('a video put up over a picture: the picture stays until the video has been 
         background: { kind: 'media', mediaId: clipId, media: 'video', fit: 'fill', loop: true },
       });
       await expect.poll(() => shown(hall.page, OUT), { timeout: 20_000 }).toBe('VIDEO');
+      // Main's readback done before anything is judged (a failure closes the app under it otherwise, and says that
+      // instead: x54-1121-033831-8468).
+      const samples = await native;
       const seen = await hall.page.evaluate(() => {
         const g = globalThis as { handover?: Handover; handoverStop?: () => void };
         g.handoverStop?.();
@@ -133,7 +136,7 @@ test('a video put up over a picture: the picture stays until the video has been 
         `round ${String(round)}: the video was presented on the screen, shown, before the picture went: ${JSON.stringify(seen)}`,
       ).toBeGreaterThan(0);
       // Main's readback: the picture before, then the video, never black between.
-      const looks = (await native).map(([r = 0, g = 0, b = 0]) =>
+      const looks = samples.map(([r = 0, g = 0, b = 0]) =>
         Math.max(r, g, b) <= 12 ? 'BLACK' : r > 150 && g < 120 && b < 80 ? 'VIDEO' : 'OTHER',
       );
       const first = looks.indexOf('VIDEO');
