@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { markerTime } from '../../shared/markers';
+import { markerTime, NO_MARKERS } from '../../shared/markers';
 import type { Db } from '../db/database';
 import type { MediaRepo } from '../db/media';
 export interface SceneMarkerFailure {
@@ -42,12 +42,7 @@ export function withSceneMarkers<T extends { ok: true } | SceneMarkerFailure>(
           ok: false,
           message: 'A scene is outside this video. Open its editor and choose the scenes again.',
         });
-      const current = media.markersOf(mediaId);
-      if (!current)
-        throw new SceneRefused({
-          ok: false,
-          message: 'The video markers are unavailable. Open the video again and try Save again.',
-        });
+      const current = media.markersOf(mediaId) ?? NO_MARKERS;
       const additions = [...new Set(parsed.data)].filter(
         (atMs) => !current.markers.some((marker) => marker.atMs === atMs),
       );
