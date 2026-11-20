@@ -171,6 +171,14 @@ export interface AccessCore {
   reportMailText(parts: ReportMailParts): string;
   /** A file's size as the email says it (x49), as src/shared/format.ts's formatBytes. */
   sizeText(bytes: number): string;
+  /** A report's subject (x49): its first features (up to three, then how many more) and its reference. */
+  reportSubject(names: string[], reference: string): string;
+  /** Where a report was written (x49): the computer and its mode, or the node through its Main. */
+  reportComputerLine(
+    sender: { name: string; version: string; platform: string },
+    from: string,
+    node: { name: string; version: string; platform: string } | null,
+  ): string;
 }
 
 /** What a report's email is made of (x49): the list fills it from the call; Drashti's Review from what it will send. */
