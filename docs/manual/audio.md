@@ -15,6 +15,12 @@ Under the live picture are two levels, **Audio** and **Video**, and under them *
 3. Press **Play** to start a list; **Pause** stops it where it is.
 4. **Clear audio** along the bottom, or **F5**, stops any sound.
 
+**Shuffle** plays the tracks in a drawn order from the next Play. **Repeat** goes round again at the end. While an audio playlist plays, **Ends at** follows its remaining tracks and their start and end points; **Goes round** appears with Repeat on. An end time waits while paused or while a length is not yet known.
+
+Press **Find in audio playlist** above its tracks to find a name or original file name. **Enter** moves to the next match, **Shift+Enter** the one before, and **Esc** closes Find. The tracks stay in place. Find never chooses a track or plays a sound.
+
+Audio’s **+ › Import** accepts an M3U file as well as sounds. An M3U makes a new audio playlist, named after the file, with its sounds in file order. Web addresses are listed as not taken and never fetched. Right-click an audio playlist for **Import a Playlist File (M3U)…** or **Export as M3U…**; the export is a UTF-8 `.m3u8` naming the files in Drashti’s library. The same 2,000-entry and 1 MB limits apply.
+
 ![The Audio panel: its audio playlists, and Music steps aside for a video](../screenshots/music-panel.png)
 
 ## How loud: Audio and Video

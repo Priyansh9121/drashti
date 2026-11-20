@@ -355,6 +355,10 @@ const bridge: DrashtiBridge = {
     editSlot: (itemId, slot) => invoke(IPC.playlists.editSlot, itemId, slot),
     setTimers: (itemId, cues) => invoke(IPC.playlists.setTimers, itemId, cues),
     setWhenEnds: (itemId, whenEnds) => invoke(IPC.playlists.setWhenEnds, itemId, whenEnds),
+    setPlayOptions: (playlistId, options) => invoke(IPC.playlists.setPlayOptions, playlistId, options),
+    importM3u: (audio, targetId) => invoke(IPC.playlists.importM3u, audio, targetId),
+    exportM3u: (playlistId, audio) => invoke(IPC.playlists.exportM3u, playlistId, audio),
+
     duplicate: (playlistId) => invoke(IPC.playlists.duplicate, playlistId),
     splitItem: (itemId, rest, alone, at) => invoke(IPC.playlists.splitItem, itemId, rest, alone, at),
     undoSplit: (itemId, order, madeId) => invoke(IPC.playlists.undoSplit, itemId, order, madeId),

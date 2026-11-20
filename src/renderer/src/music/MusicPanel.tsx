@@ -1,3 +1,8 @@
+import { useMemo } from 'react';
+import { musicLeftMs } from '../../../shared/playlist-playback';
+import { useNow } from '../render/useNow';
+import { PlaylistFind, useRowFind } from '../playlists/PlaylistFind';
+import { exportPlaylistFile, importPlaylistFile, M3uReport } from '../playlists/m3u-actions';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { formatDuration } from '../../../shared/format';
@@ -14,7 +19,7 @@ import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { TextInput } from '../ui/Field';
 import { cx } from '../ui/cx';
 import { rowClass } from '../ui/ListRow';
-import { MenuButton } from '../ui/Menu';
+import { isMenuKey, Menu, MenuButton, menuBelow, menuPlace, type MenuPlace } from '../ui/Menu';
 import { fileMenuProps } from '../files/FileMenu';
 import { trackTarget } from '../files/targets';
 import { plural } from '../ui/text';
@@ -105,6 +110,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
   const skips = useEngine((s) => skipsOf(s.state, 'music'));
   return (
     <div className="space-y-2 px-3 pb-3" data-testid="music-panel">
+      <M3uReport audio />
       {playing && (
         <p className="flex items-center gap-1.5 text-xs" role="status" data-testid="music-now">
           {paused ? <Pause size={12} aria-hidden="true" /> : <Play size={12} aria-hidden="true" />}
@@ -206,8 +212,10 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
               <OptionToggle playlist={shown} option="shuffle" />
             </span>
           </div>
+          {isShownPlaying && playing && <MusicEndsAt playlist={shown} playing={playing} />}
           <AudioDrop playlistId={shown.id}>
             <Tracks
+              key={shown.id}
               platform={platform}
               playlist={shown}
               playingIndex={isShownPlaying ? (playing?.music?.index ?? null) : null}
@@ -273,7 +281,7 @@ export function AudioAddMenu() {
           icon: Import,
           onSelect: () => {
             const { view, shownId } = useMusic.getState();
-            void importSounds(shownMusic(view, shownId, null)?.id ?? null);
+            void importPlaylistFile(true, shownMusic(view, shownId, null)?.id ?? null);
           },
         },
       ]}
@@ -336,6 +344,7 @@ function AudioPlaylists({
   onDelete: (ids: string[]) => void;
 }) {
   const renamingId = useMusic((s) => s.renamingId);
+  const [menu, setMenu] = useState<{ playlist: MusicPlaylist; at: MenuPlace } | null>(null);
   const marked = useMusic((s) => s.markedLists);
   const listRef = useRef<HTMLUListElement>(null);
   const boxBase = useRef<string[]>([]);
@@ -443,7 +452,16 @@ function AudioPlaylists({
                     }
                     useMusic.setState({ shownId: p.id, markedLists: [p.id], listAnchor: p.id });
                   }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setMenu({ playlist: p, at: menuPlace(e) });
+                  }}
                   onKeyDown={(e) => {
+                    if (isMenuKey(e)) {
+                      e.preventDefault();
+                      setMenu({ playlist: p, at: menuBelow(e.currentTarget) });
+                      return;
+                    }
                     if (!isRemoveKey(e, platform)) return;
                     e.preventDefault();
                     onDelete(deleting(p.id));
@@ -483,6 +501,19 @@ function AudioPlaylists({
           );
         })}
       </ul>
+      {menu && (
+        <Menu
+          at={menu.at}
+          label={`Audio playlist: ${menu.playlist.name}`}
+          onClose={() => {
+            setMenu(null);
+          }}
+          entries={[
+            { label: 'Import a Playlist File (M3U)…', onSelect: () => void importPlaylistFile(true) },
+            { label: 'Export as M3U…', onSelect: () => void exportPlaylistFile(menu.playlist.id, true) },
+          ]}
+        />
+      )}
     </>
   );
 }
@@ -527,12 +558,24 @@ function Tracks({
   playingIndex: number | null;
 }) {
   const playing = useMusicPlaying();
+  const listRef = useRef<HTMLOListElement>(null);
+  const findRows = useMemo(
+    () => playlist.tracks.map((track) => ({ key: track.id, words: `${track.name} ${track.fileName ?? ''}` })),
+    [playlist.tracks],
+  );
+  const find = useRowFind(findRows);
+  useEffect(() => {
+    if (find.found)
+      listRef.current
+        ?.querySelector<HTMLElement>(`[data-track-id="${CSS.escape(find.found.key)}"]`)
+        ?.scrollIntoView({ block: 'center' });
+  }, [find.found]);
+
   // Many chosen together (Session 44): Cmd/Ctrl and Shift clicks, a box dragged in the list, Cmd-A.
   const all = useMusic((s) => s.markedTracks);
   const ids = playlist.tracks.map((t) => t.id);
   const marked = all.filter((id) => ids.includes(id));
   const many = marked.length > 1;
-  const listRef = useRef<HTMLOListElement>(null);
   const boxBase = useRef<string[]>([]);
   const box = useBoxSelect({
     list: listRef,
@@ -566,6 +609,7 @@ function Tracks({
     );
   return (
     <>
+      <PlaylistFind label="Find in audio playlist" countTestId="music-find-count" find={find} />
       <ChosenBar
         count={marked.length}
         noun="sounds"
@@ -603,6 +647,8 @@ function Tracks({
             <li
               key={t.id}
               data-testid="music-track"
+              data-track-id={t.id}
+              data-found={find.found?.key === t.id ? 'true' : undefined}
               data-select-id={t.id}
               data-marked={isMarked ? 'true' : undefined}
               data-playing={isPlaying ? 'true' : undefined}
@@ -614,7 +660,11 @@ function Tracks({
               )}
               className={cx(
                 'flex items-center gap-1 rounded-md border px-1.5 py-1',
-                isMarked ? 'border-second/70 bg-panel-3' : 'border-line bg-panel-2',
+                find.found?.key === t.id
+                  ? 'border-accent bg-panel-2'
+                  : isMarked
+                    ? 'border-second/70 bg-panel-3'
+                    : 'border-line bg-panel-2',
               )}
             >
               <button
@@ -748,5 +798,30 @@ function AddSoundsDialog({ playlistId }: { playlistId: string | null }) {
         </ul>
       )}
     </Dialog>
+  );
+}
+
+/** Ends at uses the run’s kept order, never a newly drawn shuffle. */
+function MusicEndsAt({
+  playlist,
+  playing,
+}: {
+  playlist: MusicPlaylist;
+  playing: NonNullable<ReturnType<typeof useMusicPlaying>>;
+}) {
+  const now = useNow(1000);
+  const left = musicLeftMs(playing, playlist, now);
+  if (playing.music?.loop)
+    return (
+      <p className="text-xs text-muted" data-testid="music-ends-at">
+        Goes round
+      </p>
+    );
+  if (left === null || left <= 0) return null;
+  const end = now + left;
+  return (
+    <p className="text-xs text-muted" data-testid="music-ends-at" data-ends-at={Math.round(end)}>
+      Ends at {new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(end)}
+    </p>
   );
 }
