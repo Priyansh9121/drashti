@@ -60,30 +60,32 @@ test('the arrangement sets the order: a repeated chorus shows and plays each tim
     await grid.getByTestId('slide-group').evaluateAll((els) => els.map((e) => e.getAttribute('data-group'))),
   ).toEqual(['Verse 1', 'Chorus', 'Verse 2', 'Chorus']);
 
-  // Next plays it through, chorus included each time.
+  // Next plays it through, chorus included each time: the hall screen shows each slide alone once it has made the
+  // change the operator window already says (x58: it keeps the slide before in its layer until then, X19).
   const slideText = output.locator('[data-layer="slide"]');
   await grid.getByTestId('slide-thumb').first().click();
-  const seen: string[] = [];
-  for (let i = 0; i < 4; i++) {
-    if (i > 0) await win.keyboard.press('ArrowRight');
-    await expect(win.getByTestId('live-text')).toContainText(`slide ${i + 1} of 4`);
-    seen.push((await slideText.innerText()).trim());
-  }
-  expect(seen).toEqual([
+  const order = [
     'Placeholder verse one',
     'Placeholder chorus',
     'Placeholder verse two',
     'Placeholder chorus',
-  ]);
+  ];
+  for (const [i, words] of order.entries()) {
+    if (i > 0) await win.keyboard.press('ArrowRight');
+    await expect(win.getByTestId('live-text')).toContainText(`slide ${i + 1} of 4`);
+    await expect(slideText, `the hall screen at slide ${i + 1} of 4`).toHaveText(words, {
+      useInnerText: true,
+    });
+  }
   await expect(grid.getByTestId('slide-thumb').nth(3)).toHaveAttribute('aria-current', 'true');
 
   // Every slide in order, chosen while the second chorus is live: it stays up, and Next follows the new order.
   await grid.getByTestId('arrangement').selectOption({ label: 'All slides in order' });
   await expect(grid.getByTestId('slide-group')).toHaveCount(3);
   await expect(win.getByTestId('live-text')).toContainText('slide 2 of 3');
-  await expect(slideText).toContainText('Placeholder chorus');
+  await expect(slideText).toHaveText('Placeholder chorus', { useInnerText: true });
   await win.keyboard.press('ArrowRight');
-  await expect(slideText).toContainText('Placeholder verse two');
+  await expect(slideText).toHaveText('Placeholder verse two', { useInnerText: true });
 
   // The choice is kept with the presentation.
   await win.reload();
