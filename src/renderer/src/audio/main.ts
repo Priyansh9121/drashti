@@ -7,7 +7,7 @@ import { kindLevel, musicAside, soundGain, StepAside } from '../../../shared/sou
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { engineNow } from '../render/clock';
 import { startPlayback } from '../render/playback';
-import { startLivePlayback } from '../render/live-playback';
+import { startLinkSound } from './link-sound';
 import { hallSoundsOf, type Sound, soundMoved } from './sounds';
 
 /*
@@ -280,26 +280,11 @@ function play(state: EngineState | null): void {
     // Its level before it makes a sound: the music already aside under a video playing, a file at its even loudness.
     const now = engineNow();
     setLevel(player, aside.levelAt(musicAside(useEngine.getState().state, now), now));
-    // A stream link's sound (alpha.20): its player joined with its pictures, kept on the engine's time by speed alone.
+    // A stream link's sound (alpha.20): its player joined with its pictures, on the engine's time as they are.
     if (sound.link !== undefined) {
-      const linkId = sound.link;
-      // Behind its pictures (its sound card's clock ran slow: it can play at normal speed only), it joins again.
-      const live = (): (() => void) =>
-        startLivePlayback(el, {
-          linkId,
-          audible: true,
-          onBehind: () => {
-            player.resync();
-          },
-        });
-      let stopLive = live();
-      player.stop = () => {
-        stopLive();
-      };
-      player.resync = () => {
-        stopLive();
-        stopLive = live();
-      };
+      const linked = startLinkSound(el, sound.link);
+      player.stop = linked.stop;
+      player.resync = linked.resync;
       players.set(sound.key, player);
       continue;
     }
