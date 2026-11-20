@@ -71,7 +71,7 @@ export function watchFirstFrame(
 ): () => void {
   if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return () => undefined;
   const listening = new AbortController();
-  const stopWatch = watchStart(v, (verdict) => {
+  const stopWatch = watchStart(v, mediaId, (verdict) => {
     listening.abort();
     tellCannotPlay(mediaId, startedAt, attempt, {
       code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
@@ -104,17 +104,35 @@ function decodedFrames(v: HTMLVideoElement): number {
 
 /**
  * Watch a video's start until its first frame (Q60-51, the owner's "Yes, A"; shared/no-picture.ts startVerdict): every
- * half second, how much it has loaded and decoded and how ready it is, and its own 'progress' events; said once:
- * 'stalled' (no progress for FIRST_FRAME_MS: it cannot play, as before) or 'slow' (still loading or decoding with no
- * first frame by SLOW_START_MS: it could not start in time). Stop it when the first frame comes or it fails.
+ * half second, how much it has loaded and decoded and how ready it is, its own 'progress' events, and how much of its
+ * file Main has sent (on CI's Mac a slow file told the page nothing else: x47-1120-205802-554); said once: 'stalled'
+ * (no progress for FIRST_FRAME_MS: it cannot play, as before) or 'slow' (still loading or decoding with no first frame by
+ * SLOW_START_MS: it could not start in time). Stop it when the first frame comes or it fails.
  */
-export function watchStart(v: HTMLVideoElement, said: (verdict: 'stalled' | 'slow') => void): () => void {
+export function watchStart(
+  v: HTMLVideoElement,
+  mediaId: string,
+  said: (verdict: 'stalled' | 'slow') => void,
+): () => void {
   let watch = startWatch(engineNow());
   let progressEvents = 0;
   const onProgress = () => {
     progressEvents++;
   };
   v.addEventListener('progress', onProgress);
+  // What Main has sent of the file, asked at each look (phones' pages have no bridge: 0, as they cannot ask).
+  const bridge = (globalThis as { drashti?: Partial<DrashtiBridge> }).drashti;
+  let served = 0;
+  const askServed = () => {
+    if (!bridge?.media) return;
+    void bridge.media
+      .served(mediaId)
+      .then((bytes) => {
+        if (typeof bytes === 'number' && bytes > served) served = bytes;
+      })
+      .catch(() => undefined);
+  };
+  askServed();
   // eslint-disable-next-line no-restricted-syntax -- decides no frame: only whether a video that never drew is said to fail
   const looks = setInterval(() => {
     const at = engineNow();
@@ -124,8 +142,9 @@ export function watchStart(v: HTMLVideoElement, said: (verdict: 'stalled' | 'slo
       readyState: v.readyState,
       decoded: decodedFrames(v),
       progressEvents,
-      served: 0,
+      served,
     });
+    askServed();
     const verdict = startVerdict(watch, at);
     if (verdict === 'wait') return;
     stop();

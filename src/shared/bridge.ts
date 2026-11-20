@@ -784,6 +784,8 @@ export interface DrashtiBridge {
      * 4; 0: none) and Chromium's words for Main's log.
      */
     cannotPlay(mediaId: string, startedAt: number, code: number, words: string): Promise<null>;
+    /** How many bytes of a library file Main has sent the pages so far (Q60-51; 0 for none). */
+    served(mediaId: string): Promise<number>;
   };
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside, a file's Even loudness,

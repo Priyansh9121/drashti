@@ -96,7 +96,8 @@ export function startWatched(watch: StartWatch, sample: StartSample): StartWatch
     (sample.loadedMs > was.loadedMs ||
       sample.readyState > was.readyState ||
       sample.decoded > was.decoded ||
-      sample.progressEvents > was.progressEvents);
+      sample.progressEvents > was.progressEvents ||
+      sample.served > was.served);
   return { since: watch.since, lastProgress: moved ? sample.at : watch.lastProgress, last: sample };
 }
 
