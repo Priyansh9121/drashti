@@ -4,7 +4,16 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPage, outputReady, setUpScreen, windowShowing } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  outputReady,
+  setUpScreen,
+  windowShowing,
+} from './helpers';
 import { audioPage, dispatch, snapshot } from './time-bar-helpers';
 import { makeTestVideo } from './test-media';
 import { holdClock } from './placeholder-slides';
@@ -22,7 +31,7 @@ async function setup() {
   const hall = await outputPage(app);
   await outputReady(hall);
   await win.getByTestId('open-stream').click();
-  const stream = await windowShowing(app, p => p.url().includes('stream.html'), 'stream');
+  const stream = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
   await expect(stream.getByTestId('program-root')).toBeVisible();
   return { app, win, hall, stream, audio: await audioPage(app), ids };
 }
@@ -33,19 +42,31 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
   const { app, win, hall, stream, audio, ids } = await setup();
   try {
     const id = ids[1] ?? '';
-    await win.evaluate(id => (globalThis as PageGlobals).drashti.media.setMarkers(id, { startMs: 1000, endMs: 7000, markers: [] }), id);
+    await win.evaluate(
+      (id) =>
+        (globalThis as PageGlobals).drashti.media.setMarkers(id, { startMs: 1000, endMs: 7000, markers: [] }),
+      id,
+    );
     await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#205020' } });
     expect((await dispatch(win, { type: 'cueVideo', mediaId: id })).ok).toBe(true);
-    await expect.poll(async () => (await snapshot(win)).videoCue?.ready.length ?? -1, { message: 'Cue publishes matching first-frame acknowledgements' }).toBeGreaterThanOrEqual(4);
+    await expect
+      .poll(async () => (await snapshot(win)).videoCue?.ready.length ?? -1, {
+        message: 'Cue publishes matching first-frame acknowledgements',
+      })
+      .toBeGreaterThanOrEqual(4);
     const cue = (await snapshot(win)).videoCue;
     if (!cue) throw new Error('No video cue');
     expect((await snapshot(win)).layers.background).toEqual({ kind: 'color', color: '#205020' });
     for (const page of [hall, win, stream]) {
       await expect(video(page, id)).toHaveJSProperty('paused', true);
       expect(await video(page, id).evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(1, 2);
-      await video(page, id).evaluate((v: HTMLVideoElement) => { v.dataset['prepared'] = 'yes';
+      await video(page, id).evaluate((v: HTMLVideoElement) => {
+        v.dataset['prepared'] = 'yes';
         const initial = v.currentTime;
-        const tick = () => { if (v.currentTime > initial + 0.001) v.dataset['firstMotionAt'] = String(Date.now()); else requestAnimationFrame(tick); };
+        const tick = () => {
+          if (v.currentTime > initial + 0.001) v.dataset['firstMotionAt'] = String(Date.now());
+          else requestAnimationFrame(tick);
+        };
         requestAnimationFrame(tick);
       });
     }
@@ -62,18 +83,24 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
       await expect(video(page, id)).toHaveAttribute('data-prepared', 'yes');
     }
     await expect(sound).toHaveJSProperty('paused', false);
-  } finally { await app.close(); }
+  } finally {
+    await app.close();
+  }
 });
 
 test('Crossfade in the playlist blends both pictures and sounds without black on hall, LIVE and stream', async () => {
   const { app, win, hall, stream, audio, ids } = await setup();
   try {
-    const made = await win.evaluate(async ids => {
+    const made = await win.evaluate(async (ids) => {
       const d = (globalThis as PageGlobals).drashti;
       const created = await d.playlists.create('Placeholder crossfade', null, false);
       if (!created.ok) throw new Error(created.message);
       const id = created.ids[0] ?? '';
-      const added = await d.playlists.addItems(id, null, ids.map(mediaId => ({ kind: 'media', mediaId })));
+      const added = await d.playlists.addItems(
+        id,
+        null,
+        ids.map((mediaId) => ({ kind: 'media', mediaId })),
+      );
       if (!added.ok) throw new Error(added.message);
       await d.playlists.setWhenEnds(added.ids[0] ?? '', 'next');
       return { id, items: added.ids };
@@ -84,7 +111,9 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
     await win.getByLabel('Crossfade seconds', { exact: true }).fill('2');
     await win.getByRole('button', { name: 'Save crossfade', exact: true }).click();
     await dispatch(win, { type: 'playItem', playlistId: made.id, itemId: made.items[0] });
-    await expect.poll(async () => (await snapshot(win)).videoCue?.ready.length ?? -1).toBeGreaterThanOrEqual(4);
+    await expect
+      .poll(async () => (await snapshot(win)).videoCue?.ready.length ?? -1)
+      .toBeGreaterThanOrEqual(4);
     await dispatch(win, { type: 'moveTo', playing: { layer: 'background' }, toMs: 5500 });
     await expect.poll(async () => (await snapshot(win)).videoCrossfade?.durationMs ?? 0).toBe(2000);
     const fade = (await snapshot(win)).videoCrossfade;
@@ -94,16 +123,34 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
       for (const page of [hall, win, stream]) {
         const root = page.locator('[data-video-crossfade]').first();
         await expect(root).toHaveAttribute('data-video-crossfade', fade.id);
-        await expect.poll(() => root.locator('[data-video-gain]').evaluateAll(ns => ns.map(n => Number((n as HTMLElement).dataset['videoGain'])))).toEqual([1 - fraction, fraction]);
+        await expect
+          .poll(() =>
+            root
+              .locator('[data-video-gain]')
+              .evaluateAll((ns) => ns.map((n) => Number((n as HTMLElement).dataset['videoGain']))),
+          )
+          .toEqual([1 - fraction, fraction]);
       }
-      await expect.poll(() => audio.locator('audio[data-crossfade-gain]').evaluateAll(ns => ns.map(n => Number((n as HTMLElement).dataset['crossfadeGain'])))).toEqual([1 - fraction, fraction]);
+      await expect
+        .poll(() =>
+          audio
+            .locator('audio[data-crossfade-gain]')
+            .evaluateAll((ns) => ns.map((n) => Number((n as HTMLElement).dataset['crossfadeGain']))),
+        )
+        .toEqual([1 - fraction, fraction]);
       const image = decodePng(await hall.screenshot());
       const p = (Math.floor(image.height / 2) * image.width + Math.floor(image.width / 2)) * 4;
-      expect((image.rgba[p] ?? 0) + (image.rgba[p + 2] ?? 0), 'actual picture never dips through black').toBeGreaterThan(80);
+      expect(
+        (image.rgba[p] ?? 0) + (image.rgba[p + 2] ?? 0),
+        'actual picture never dips through black',
+      ).toBeGreaterThan(80);
     }
     await holdClock(app, null);
     await expect.poll(async () => (await snapshot(win)).videoCrossfade ?? null).toBeNull();
     await expect(video(hall, ids[0] ?? '')).toHaveCount(0);
     await expect(video(hall, ids[1] ?? '')).toHaveJSProperty('paused', false);
-  } finally { await holdClock(app, null); await app.close(); }
+  } finally {
+    await holdClock(app, null);
+    await app.close();
+  }
 });

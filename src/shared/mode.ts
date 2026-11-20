@@ -95,6 +95,9 @@ export function startingMode(last: { recentStop: boolean; wasIn: OperatorMode })
  * keeping it as the picture's own stays Pro Mode's.
  */
 export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
+  'cueVideo',
+  'goVideoCue',
+  'cancelVideoCue',
   'showPip',
   'swapPip',
   'placePip',

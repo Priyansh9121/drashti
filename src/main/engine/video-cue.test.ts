@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { VIDEO_GO_LEAD_MS, videoCueReady, videoFadeProgress, type VideoCrossfade } from '../../shared/video-cue';
+import {
+  VIDEO_GO_LEAD_MS,
+  videoCueReady,
+  videoFadeProgress,
+  type VideoCrossfade,
+} from '../../shared/video-cue';
 import { ShowEngine } from './show-engine';
 import { MemoryPlaylistSource } from './playlist-source';
 import { makeSource, RecordingTransport } from './testing';
@@ -8,17 +13,37 @@ function setup() {
   let now = 10_000;
   const lists = new MemoryPlaylistSource();
   lists.set('pl', [
-    { id: 'a', kind: 'media', mediaId: 'first', media: 'video', label: 'Placeholder first', whenEnds: 'next' },
-    { id: 'b', kind: 'media', mediaId: 'second', media: 'video', label: 'Placeholder second', whenEnds: 'freeze' },
+    {
+      id: 'a',
+      kind: 'media',
+      mediaId: 'first',
+      media: 'video',
+      label: 'Placeholder first',
+      whenEnds: 'next',
+    },
+    {
+      id: 'b',
+      kind: 'media',
+      mediaId: 'second',
+      media: 'video',
+      label: 'Placeholder second',
+      whenEnds: 'freeze',
+    },
   ]);
   const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => now, lists, {
     schedule: () => () => undefined,
     mediaLength: () => 10_000,
-    mediaKind: (id) => id === 'missing' ? null : 'video',
+    mediaKind: (id) => (id === 'missing' ? null : 'video'),
     mediaMarkers: () => ({ startMs: 500, endMs: 8000, markers: [] }),
     videoCueParticipants: () => ['hall', 'live', 'audio', 'stream'],
   });
-  return { engine, lists, at: (t: number) => { now = t; } };
+  return {
+    engine,
+    lists,
+    at: (t: number) => {
+      now = t;
+    },
+  };
 }
 
 function prepare(engine: ShowEngine) {
@@ -101,9 +126,16 @@ describe('S5 video cue in the show engine', () => {
 });
 
 describe('S5 engine-clock crossfade curve', () => {
-  const fade: VideoCrossfade = { id: 'pair', from: { kind: 'media', mediaId: 'first', media: 'video', startedAt: 0, fit: 'fit', loop: false }, at: 10_000, durationMs: 2000 };
+  const fade: VideoCrossfade = {
+    id: 'pair',
+    from: { kind: 'media', mediaId: 'first', media: 'video', startedAt: 0, fit: 'fit', loop: false },
+    at: 10_000,
+    durationMs: 2000,
+  };
   it('has complementary gains, exact endpoints and no discontinuity through its length', () => {
-    expect([-1, 0, 250, 1000, 1750, 2000, 3000].map(t => videoFadeProgress(fade, 10_000+t))).toEqual([0, 0, 0.125, 0.5, 0.875, 1, 1]);
+    expect([-1, 0, 250, 1000, 1750, 2000, 3000].map((t) => videoFadeProgress(fade, 10_000 + t))).toEqual([
+      0, 0, 0.125, 0.5, 0.875, 1, 1,
+    ]);
   });
   it('holds the same picture and sound curve while paused', () => {
     expect(videoFadeProgress({ ...fade, pausedAt: 10_500 }, 99_000)).toBe(0.25);
