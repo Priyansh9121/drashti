@@ -4,7 +4,7 @@
  * his answer "Yes, A"). Chromium plays such a file (a codec it has no decoder for here, HEVC on a computer that cannot
  * decode it, ProRes, FFV1) as sound only, with no error: the screens' video has data at 0 × 0 and no frame. A window
  * finds it as the file loads (render/no-picture.ts); the show takes the video off with its sound (a video on the slide
- * or in the picture-in-picture box waits paused), the operator window says so in these words, and Drashti converts the
+ * waits paused; the picture-in-picture box comes off, Q60-46), the operator window says so in these words, and Drashti converts the
  * file by itself once the show is idle (main/convert/convert-service.ts convertUndrawable).
  */
 
