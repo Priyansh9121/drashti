@@ -86,7 +86,9 @@
 
 1. In **Phones**, under **Files from phones**, turn on **Phones and tablets may add files**.
 2. On the phone, open **Library**, then **Media**, then **Add from this Phone…** (or **Add photos**).
-3. The files come into **Media** and the playlist **Added from Phones**, marked with the phone's name.
+3. **Add from this Phone…** puts files into **Media** and **Added from Phones**, marked with the phone's name. **Add photos** instead fills the ordinary playlist open in Pro Mode.
+
+In Simple Mode, files go to the end of the playlist open on the computer; a video or sound goes into **Added from Phones** when it is a Repeat Slides playlist. With no playlist open, files go into **Added from Phones**. See **Simple Mode › A phone in Simple Mode** and the presenter's guide for the phone's limits.
 
 ![Files from phones in the Phones panel, turned on](../screenshots/phones-panel-files.png)
 
