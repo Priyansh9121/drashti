@@ -33,6 +33,12 @@ export const COLOUR_TOKENS = [
   'on-primary',
   'primary-edge',
   'live',
+  /*
+   * LIVE's frame and lit dot (the owner's Q60-36, Q1 A): LIVE's own red where it reads at 3:1 (Black, the light
+   * appearances, one's own), a lighter red on the comfortable dark surfaces, where LIVE's own reads 2.4:1. The
+   * LIVE label is always `live` with white words.
+   */
+  'live-edge',
   'warning',
   'warning-bg',
   'warning-fg',
@@ -188,6 +194,7 @@ const EDITOR = { guide: '#ff4fd8', selection: '#2563eb' } as const;
 /** The states on dark surfaces: Drashti's as they always were. */
 export const DARK_STATES = {
   live: '#d42a31',
+  'live-edge': '#d42a31',
   warning: '#f2b23e',
   'warning-bg': '#3b2a0a',
   'warning-fg': '#ffd88f',
@@ -206,6 +213,7 @@ export const DARK_STATES = {
 /** The states on light surfaces: the same meanings, in shades that read on them. */
 export const LIGHT_STATES = {
   live: '#d42a31',
+  'live-edge': '#d42a31',
   warning: '#b45309',
   'warning-bg': '#fdf0d5',
   'warning-fg': '#713f12',
