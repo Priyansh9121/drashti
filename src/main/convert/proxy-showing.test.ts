@@ -44,6 +44,19 @@ it('keeps current and restored showings unchanged through later copy readiness',
   expect(prepareVideoProxies(initialEngineState(), before, ready, true)).toEqual({ state: before });
   expect(ready).not.toHaveBeenCalled();
 });
+it('gives back the very state it was given when no file changes (the engine reads a new state as a change)', () => {
+  const itself = vi.fn((id: string) => ({ mediaId: id, message: null }));
+  const before = showing();
+  // A cover over a showing kept, and a new showing of a video that needs no lighter copy.
+  const covered = { ...before, wallpaper: true };
+  expect(prepareVideoProxies(before, covered, itself).state).toBe(covered);
+  const again = showing(2000);
+  expect(prepareVideoProxies(before, again, itself).state).toBe(again);
+  // Nothing up at all.
+  const empty = initialEngineState();
+  expect(prepareVideoProxies(before, empty, itself).state).toBe(empty);
+});
+
 it('does not change an existing background when the same source is newly put in the box', () => {
   const before = showing();
   const next: EngineState = {
