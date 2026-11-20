@@ -114,7 +114,9 @@ class LinkPlayers {
       onError: () => {
         if (this.off) return;
         if (this.shown === player) {
+          // Its last picture on the canvas, and the player that gave up out of sight over it.
           this.keep();
+          el.style.visibility = 'hidden';
           this.told('held', true);
         }
         if (this.again) return;
