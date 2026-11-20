@@ -1839,10 +1839,6 @@ test('this session’s playlists: a Dropbox folder as one playlist a folder at a
     await expect(win.getByTestId('live-repeating')).toBeVisible();
     // Its rows in the middle, the step up marked (Session 55: the slides area went).
     await shot(win, 'repeat-slides-1280x720');
-    await part(win, 'repeat-slides-live', [
-      win.getByTestId('live-repeating'),
-      win.getByTestId('live-preview'),
-    ]);
     await win.getByTestId('live-repeat-stop').click();
     await app.close();
   } finally {
