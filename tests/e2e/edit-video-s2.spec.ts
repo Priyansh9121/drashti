@@ -5,8 +5,18 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { VideoEditResult } from '../../src/shared/video-edit';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  openLibrary,
+  type PageGlobals,
+} from './helpers';
 import { testFfmpeg } from './stream-helpers';
+import { expectFits } from './fit';
+import { expectNoSeriousA11yIssues } from './a11y';
+import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 test('a saved edit prepares privately at idle, then a new showing pins its immutable file', async () => {
   test.setTimeout(180_000);
@@ -14,6 +24,7 @@ test('a saved edit prepares privately at idle, then a new showing pins its immut
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
+    await sizeOperatorWindow(app, win, CI_WINDOW);
     const dir = mkdtempSync(join(tmpdir(), 'drashti-edit-video-s2-'));
     const source = join(dir, 'Placeholder prepared.mp4');
     const made = spawnSync(testFfmpeg() ?? '', [
@@ -113,6 +124,8 @@ test('a saved edit prepares privately at idle, then a new showing pins its immut
     await win.getByRole('menuitem', { name: 'Edit Video…', exact: true }).click();
     const dialog = win.getByTestId('edit-video');
     await dialog.getByRole('button', { name: 'Preview saved edits', exact: true }).click();
+    await expectFits(dialog, 'Saved edit preview at the CI operator size');
+    await expectNoSeriousA11yIssues(win, 'Saved edit preview');
     const preview = dialog.getByTestId('edit-video-prepared-preview');
     await expect
       .poll(() => preview.evaluate((v: HTMLVideoElement) => v.readyState))
@@ -123,6 +136,9 @@ test('a saved edit prepares privately at idle, then a new showing pins its immut
     await preview.evaluate((v: HTMLVideoElement) => v.play());
     await expect.poll(() => preview.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0);
     expect((await state()).layers.background).toBeNull();
+    await test
+      .info()
+      .attach('Private saved edit preview', { body: await dialog.screenshot(), contentType: 'image/png' });
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 
     expect((await dispatch({ kind: 'media', mediaId: id, media: 'video', fit: 'fit', loop: true })).ok).toBe(
