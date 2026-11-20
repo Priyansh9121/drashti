@@ -186,6 +186,39 @@ describe('a file played once to an end point', () => {
       timing: () => ({ loop: false, ...timing }),
     });
 
+  it('arms a cued decoder silently at zero rate before Go and releases it at the shared moment', () => {
+    const v = new FakeMedia(8, { startLate: 80 });
+    const timing: { loop: boolean; seek: PlaybackSeek } = {
+      loop: false,
+      seek: { at: Date.now(), toMs: 1000, paused: true },
+    };
+    const options = {
+      mediaId: 'cued',
+      startedAt: Date.now(),
+      prepareScheduledStart: true,
+      timing: () => timing,
+    };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, options);
+    try {
+      vi.advanceTimersByTime(20);
+      expect(v.paused).toBe(true);
+      expect(v.currentTime).toBe(1);
+      const at = Date.now() + 120;
+      timing.seek = { at, toMs: 1000 };
+      stop.resync();
+      expect(v.paused, 'the decoder starts during the already silent lead').toBe(false);
+      expect(v.playbackRate).toBe(0);
+      vi.advanceTimersByTime(119);
+      expect(v.currentTime, 'no motion before Go').toBe(1);
+      vi.advanceTimersByTime(2);
+      expect(v.playbackRate).toBe(1);
+      expect(v.currentTime, 'the first motion has no cold play delay').toBeCloseTo(1.001, 3);
+      expect(v.sourceAssignments).toBe(1);
+    } finally {
+      stop();
+    }
+  });
+
   it('uses an already decoded frame immediately only when the caller opts in', () => {
     vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
     for (const reuseLoadedSource of [true, false]) {
