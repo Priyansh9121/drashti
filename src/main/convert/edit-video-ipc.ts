@@ -18,5 +18,41 @@ const refused: VideoEditResult = {
   message: 'Choose a ready local video in the operator window, then open Edit Video… again.',
 };
 
-/** Red-first operator boundary scaffold. */
-export function registerEditVideoIpc(_deps: Deps): void {}
+/** A page can name only a library ID and validated recipe, never a source or destination path. */
+export function registerEditVideoIpc(deps: Deps): void {
+  handle(IPC.media.videoEdit, (event, id): VideoEditResult => {
+    if (!deps.fromOperator(event) || typeof id !== 'string' || !MEDIA_ID_PATTERN.test(id)) return refused;
+    try {
+      const source = deps.repo.sourceId(id);
+      if (!deps.available(source)) return refused;
+      const edit = deps.repo.read(source);
+      return edit ? { ok: true, edit } : refused;
+    } catch {
+      return {
+        ok: false,
+        message: 'The saved video edits could not be read. Restore a library backup or choose another video.',
+      };
+    }
+  });
+  handle(IPC.media.setVideoEdit, async (event, input): Promise<VideoEditResult> => {
+    const parsed = saveVideoEditSchema.safeParse(input);
+    if (!deps.fromOperator(event) || !parsed.success) return refused;
+    try {
+      const result = await deps.write(
+        {
+          signal: new AbortController().signal,
+          allowed: () => deps.fromOperator(event) && deps.available(deps.repo.sourceId(parsed.data.mediaId)),
+        },
+        () => deps.repo.save(parsed.data),
+      );
+      if (result.ok) deps.changed(result.edit);
+      return result;
+    } catch {
+      return {
+        ok: false,
+        message:
+          'The video edits could not be saved. Keep this window open and try Save again when the library is available.',
+      };
+    }
+  });
+}
