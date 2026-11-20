@@ -15,6 +15,7 @@ import type { MessageLook } from '../message-look';
 import type { StageCall } from '../stage-message';
 import type { CaptionsShown } from '../captions';
 import type { VideoCaptionsShown } from '../video-captions';
+import type { ShapeOverride } from '../video-shape';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -73,9 +74,11 @@ import type { VideoCaptionsShown } from '../video-captions';
 // 28 carries PowerPoint's editable click effects and native transitions to every screen.
 // 29 carries a video’s stored caption track to screens and nodes; live speech stays private. (An A-B repeat, alpha.20,
 // needs no new number: a screen or node plays its `clip` and `loop` as ever; only Main reads the kept `ab`.)
-// 30 (alpha.20, the playback set's slice 8): a stream link as the background (`kind: 'link'`), which an older node or
-// page does not know, so it says 'incompatible'. A state 29 saved is read whole (30 only adds to it).
-export const ENGINE_STATE_VERSION = 30;
+// 30 (alpha.20, x55, slice 6b): a video's own shape on the screens (`videoShapes`); an older page or node would draw it as
+// its file says, so it says 'incompatible'. A state 29 saved is read whole (30 only adds to it).
+// 31 (alpha.20, the playback set's slice 8): a stream link as the background (`kind: 'link'`), which an older node or
+// page does not know, so it says 'incompatible'. A state 30 or 29 saved is read whole (31 only adds to them).
+export const ENGINE_STATE_VERSION = 31;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -87,6 +90,7 @@ export const ENGINE_STATE_VERSION = 30;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
+    version === 30 ||
     version === 29 ||
     version === 28 ||
     version === 27 ||
@@ -846,6 +850,12 @@ export interface EngineState {
   captions?: CaptionsShown | null;
   /** The chosen library track for the first captioned video up, shared with output nodes. Off under covers. */
   videoCaptions?: Record<string, VideoCaptionsShown>;
+  /**
+   * Sound and picture…'s Shape (alpha.20, x55; shared/video-shape.ts): the shapes of the videos on the screens and
+   * coming next (and the box's going out) that are not drawn as their files say, by media id, as the pictures carry
+   * their looks: every screen, node and the stream draw such a video in a box of that shape. Left out until one has.
+   */
+  videoShapes?: Record<string, ShapeOverride>;
 }
 
 export function emptyLayers(): Layers {

@@ -107,6 +107,8 @@
 3. Choose **Where it sits**, the **Size** and how it comes on.
 4. Press **Show in the box**. Under **LIVE**, **Swap** and **Take off** work on it.
 
+If a video in the box cannot play, the box closes and a notice names it: see **LIVE, Back and Next › When a video cannot play**.
+
 ![Picture in Picture…: what goes in the box, where it sits and its size](../screenshots/manual-pip.png)
 
 ## QR code
