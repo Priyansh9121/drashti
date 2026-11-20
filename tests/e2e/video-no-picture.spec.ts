@@ -149,10 +149,13 @@ async function watchWhileItPlays(
   const looks: string[] = [];
   const until = Date.now() + ms;
   for (;;) {
+    // The screen first, then the sound, then the show (x46, Q60-31): a look still up was up when the screen was read, so
+    // one taken as the video comes off is marked off, never a mix of two moments.
+    const look = await shown(page, root);
+    const plays = await soundPlays(app, mediaId);
     const bg = (await snapshot(win)).layers.background;
     const up = bg?.kind === 'media' && bg.mediaId === mediaId;
-    const plays = await soundPlays(app, mediaId);
-    looks.push(`${await shown(page, root)}${plays ? '+sound' : ''}${up ? '' : ' (off)'}`);
+    looks.push(`${look}${plays ? '+sound' : ''}${up ? '' : ' (off)'}`);
     if (!up) return { looks, off: true };
     if (Date.now() > until) return { looks, off: false };
   }
@@ -266,7 +269,9 @@ test('a video this computer cannot draw (FFV1, judged by its header) never plays
     const watched = await watchWhileItPlays(win, app, hall, '[data-testid="output-root"]', clipId, 10_000);
     expect(watched.off, `the video came off the screens: ${watched.looks.join(', ')}`).toBe(true);
     expect(
-      watched.looks.filter((look) => look.includes('+sound') && !/^(VIDEO|BEFORE)/u.test(look)),
+      watched.looks.filter(
+        (look) => look.includes('+sound') && !look.endsWith('(off)') && !/^(VIDEO|BEFORE)/u.test(look),
+      ),
       `never anything but the picture before while its sound played: ${watched.looks.join(', ')}`,
     ).toEqual([]);
     await expect.poll(() => soundPlays(app, clipId), { message: 'its sound stopped' }).toBe(false);
@@ -345,7 +350,9 @@ test('HEVC taken as playable: where this computer decodes it (CI’s Mac) it pla
     });
     const watched = await watchWhileItPlays(win, app, win, '[data-testid="live-preview"]', clipId, 6000);
     expect(
-      watched.looks.filter((look) => look.includes('+sound') && !/^(VIDEO|BEFORE)/u.test(look)),
+      watched.looks.filter(
+        (look) => look.includes('+sound') && !look.endsWith('(off)') && !/^(VIDEO|BEFORE)/u.test(look),
+      ),
       `never anything but its picture, or the picture before, while its sound played: ${watched.looks.join(', ')}`,
     ).toEqual([]);
     if (watched.off) {
