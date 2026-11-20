@@ -37,6 +37,8 @@ const requested = [
   'viz',
   'gpu',
   'gpu.dawn',
+  'disabled-by-default-gpu.dawn',
+  'disabled-by-default-gpu.graphite.dawn',
   'disabled-by-default-gpu.service',
   'disabled-by-default-gpu.device',
   'skia',
