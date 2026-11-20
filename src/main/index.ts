@@ -1792,7 +1792,7 @@ function start(): void {
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
   // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
   const videoEdits = new VideoEditsRepo(db);
-  // S4 can wrap these two functions once with a proxy's parent lookup; every metadata consumer follows it.
+  // Every playback metadata consumer follows the repo's shared identity callback (S4 supplies proxy parents).
   const editedPlaying = {
     sourceId: (id: string) => videoEdits.sourceId(id),
     renditionOf: (id: string) => videoEdits.renditionOf(id),
