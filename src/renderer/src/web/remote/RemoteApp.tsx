@@ -1022,7 +1022,11 @@ function Music() {
             Pause music
           </Button>
         ) : (
-          <Button size="lg" className="flex-1" onClick={() => void tap(post('/api/v1/music/play'))}>
+          <Button
+            size="lg"
+            className="flex-1"
+            onClick={() => void tap(post('/api/v1/music/play', { playOn: true }))}
+          >
             Play music
           </Button>
         )}

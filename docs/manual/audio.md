@@ -12,8 +12,9 @@ Under the live picture are two levels, **Audio** and **Video**, and under them *
 
 1. In **Audio**, press **+**, then **Create playlist**, or **Import** to bring sounds in.
 2. Drag sounds onto a list to add them.
-3. Press **Play** to start a list; **Pause** stops it where it is.
-4. **Clear audio** along the bottom, or **F5**, stops any sound.
+3. Press **Play** to start a list; **Pause** stops it where it is. A list stopped part-way plays on from that track.
+4. Click a track to play from it.
+5. **Clear audio** along the bottom, or **F5**, stops any sound.
 
 ![The Audio panel: its audio playlists, and Music steps aside for a video](../screenshots/music-panel.png)
 
