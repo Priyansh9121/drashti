@@ -714,9 +714,11 @@ hunt (CI x46-1120-112649-63694) found three things Drashti did on every computer
   again by itself (`main/media/cannot-play.ts`). Meanwhile a file that fails as it loads leaves the picture before, and
   one that fails while it plays stays drawn as it was (`render/background-slots.ts`: `drawn`, `isDrawn`).
 - **No first frame** (Q60-44, the owner's answer A, 20 Nov 2026): a video with no first frame 10 s after a page began
-  to load it (`FIRST_FRAME_MS`, `shared/no-picture.ts`, its one place) is said to fail as an element that failed is;
-  Main heeds it from its own screens (LIVE's or the stream's page alone only logs it: a page out of sight may wait
-  longer, and the hall is what the audience sees), the Wallpaper or the cover staying until then, never black.
+  to load it (`FIRST_FRAME_MS`, `shared/no-picture.ts`, its one place) is said to Main as a video that cannot play; the
+  page keeps loading it, what it drew before staying. Main heeds the word from its own screens and takes it off (LIVE's
+  or the stream's page alone is only logged, and shows the video if its first frame comes after all: a page out of
+  sight may wait longer, and the hall is what the audience sees), the Wallpaper or the cover staying until then, never
+  black.
 - **A paired computer's screen** that cannot play (its element failed, no first frame, or a picture it cannot draw;
   ledger G-A14) keeps what it showed, never black; the node tells Main once its copy of the file is there
   (`node-mode/node-app.ts`, the feed's `cannot-play`), and Main tells the operator by the node's and the file's names,

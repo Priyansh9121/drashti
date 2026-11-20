@@ -101,14 +101,15 @@ function VideoSlot({
         dispatch({ type: 'failed', key });
       },
     });
-    // No first frame within FIRST_FRAME_MS (Q60-44, the owner's answer A): it cannot play here, as if its element had
-    // failed. What was drawn before stays until the show takes it off (background-slots.ts, Scene.tsx).
+    // No first frame within FIRST_FRAME_MS (Q60-44, the owner's answer A): said to Main, which takes it off from a
+    // screen's word (shared/no-picture.ts). Only said: it still loads here, what was drawn before staying meanwhile
+    // (background-slots.ts, Scene.tsx), so a page whose word Main only logs (LIVE, the stream, a paired computer) shows
+    // it if its first frame comes after all.
     // eslint-disable-next-line no-restricted-syntax -- decides no frame: only whether a video that never drew is said to fail
     const noFirstFrame = setTimeout(() => {
       if (settled) return;
       settled = true;
       tellCannotPlay(mediaId, startedAt, attempt ?? 0, { code: NO_FIRST_FRAME, message: '' });
-      dispatch({ type: 'failed', key });
     }, FIRST_FRAME_MS);
     playback.current = p;
     return () => {
