@@ -226,7 +226,7 @@ async function platform(tracks: GeneratedTrack[], { onScreen = true }: { onScree
   disposeCapture = async () => {
     // Resolve platform requests before retiring them, then close only these generated readers.
     await expect
-      .poll(() => tracks.filter((track) => track.processorStarted).length)
+      .poll(() => tracks.filter((track) => track.processorStarted || track.stop.mock.calls.length > 0).length)
       .toBe(getDisplayMedia.mock.calls.length);
     capture.stopEncoder();
     capture.stopPreview();
@@ -240,6 +240,61 @@ async function platform(tracks: GeneratedTrack[], { onScreen = true }: { onScree
   };
   return { capture, deliver, getDisplayMedia, body, ended };
 }
+
+describe('Program capture while its picture request is still pending', () => {
+  it('shares one acquisition when encoder and video-out ports arrive before its track', async () => {
+    const first = new GeneratedTrack(4, 2);
+    const second = new GeneratedTrack(4, 2);
+    const third = new GeneratedTrack(4, 2);
+    const p = await platform([first, second, third]);
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const encoder = new EncoderPort(),
+      out = new EncoderPort(),
+      replacement = new EncoderPort();
+    p.deliver(encoder);
+    p.deliver(out, 'video-out');
+    p.deliver(replacement);
+    expect(p.getDisplayMedia, 'one platform request while its first track is pending').toHaveBeenCalledTimes(
+      1,
+    );
+    await expect.poll(() => first.processorStarted).toBe(true);
+    first.frame(61);
+    await expect.poll(() => videoBytes(replacement)).toEqual([Array<number>(32).fill(61)]);
+    await expect.poll(() => videoBytes(out)).toEqual([Array<number>(32).fill(61)]);
+    expect(first.stop).not.toHaveBeenCalled();
+  });
+
+  it('stops an acquired track if the last consumer left before it arrived', async () => {
+    const first = new GeneratedTrack(4, 2);
+    const p = await platform([first]);
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    p.deliver(new EncoderPort());
+    p.capture.stopEncoder();
+    await expect.poll(() => first.stop.mock.calls.length).toBe(1);
+    expect(first.processorStarted).toBe(false);
+    expect(p.getDisplayMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('retires an old pending size and acquires the requested new size once', async () => {
+    const first = new GeneratedTrack(4, 2),
+      second = new GeneratedTrack(6, 4);
+    const p = await platform([first, second]);
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const encoder = new EncoderPort();
+    p.deliver(encoder);
+    p.capture.setCaptureSize({ width: 6, height: 4 });
+    await expect.poll(() => second.processorStarted).toBe(true);
+    expect(first.stop).toHaveBeenCalledTimes(1);
+    expect(first.processorStarted).toBe(false);
+    expect(p.getDisplayMedia).toHaveBeenCalledTimes(2);
+    expect(p.getDisplayMedia).toHaveBeenNthCalledWith(2, {
+      video: { width: 6, height: 4, frameRate: 30 },
+      audio: false,
+    });
+    second.frame(62);
+    await expect.poll(() => videoBytes(encoder)).toEqual([Array<number>(96).fill(62)]);
+  });
+});
 
 describe('Program capture after a reader ends', () => {
   it('asks for its picture again for a replacement encoder port and sends its new format and frame', async () => {
