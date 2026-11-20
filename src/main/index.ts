@@ -7274,13 +7274,13 @@ function start(): void {
         ok: false as const,
         message: 'Those settings could not be kept: open Sound and picture… again and set them once more.',
       };
-    mediaId = videoEdits.sourceId(mediaId);
-    if (!media.setPlayback(mediaId, parsed.data))
+    const sourceId = videoEdits.sourceId(mediaId);
+    if (!media.setPlayback(sourceId, parsed.data))
       return {
         ok: false as const,
         message: 'Only a video or a sound has these settings: choose one in Media.',
       };
-    ownPlayback.set(mediaId, parsed.data);
+    ownPlayback.set(sourceId, parsed.data);
     engine.refreshSound();
     engine.refreshVideoCaptions();
     engine.refreshVideoShapes();
