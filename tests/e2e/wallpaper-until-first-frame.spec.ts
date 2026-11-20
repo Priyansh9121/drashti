@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
 import {
   audienceScreen,
@@ -20,6 +21,7 @@ import {
   SCREENS,
   showPicture,
   shown,
+  slowWallpaper,
   stopAll,
   streamWatched,
   wallpaperAndPicture,
@@ -139,9 +141,7 @@ test('back to the Wallpaper (Clear background over a picture and over a video, a
   const dir = mkdtempSync(join(tmpdir(), 'drashti-back-to-the-wall-'));
   const clip = makeClip(join(dir, 'Placeholder back to the wall.mp4'), 'h264', 30, 410);
   const short = makeClip(join(dir, 'Placeholder ends by itself.mp4'), 'h264', 6, 450);
-  // Every read of a media file 600 ms late: the Wallpaper's picture is read again each time it comes back (no-store),
-  // so it comes 600 ms after the scene shows nothing up (within the 1 s that what was up may stay).
-  const { app } = await launchApp({ ...SCREENS, DRASHTI_TEST_MEDIA_DELAY_MS: '600' });
+  const { app } = await launchApp(SCREENS);
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
@@ -151,6 +151,15 @@ test('back to the Wallpaper (Clear background over a picture and over a video, a
     await installLooks(hall, OUT);
     await installLooks(win, LIVE);
     const pages = [hall, win, stream];
+    // The Wallpaper's picture comes 600 ms late each time it is drawn anew, as from a slow disk (within the 1 s that what
+    // was up may stay): the page keeps a picture it showed, so this is the page's own seam (hall-looks.ts).
+    const wallId = await win.evaluate(
+      async () =>
+        (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.chosenWallpaper?.pictures[0] ??
+        '',
+    );
+    expect(wallId, 'the Wallpaper’s picture').not.toBe('');
+    const slow = (on: boolean) => Promise.all(pages.map((p) => slowWallpaper(p, wallId, 600, on)));
     const [clipId = '', shortId = ''] = await importAndGetIds(win, [clip, short]);
     expect(clipId !== '' && shortId !== '').toBe(true);
     const { item: shortItem } = await openNewPlaylist(win, 'Placeholder ends by itself', shortId);
@@ -180,10 +189,12 @@ test('back to the Wallpaper (Clear background over a picture and over a video, a
       await allShow('WALL', `${what}, before`);
       await up();
       await allShow(upLook, `${what}, up`);
+      await slow(true);
       await recAll(pages);
       await back();
       await allShow('WALL', `${what}, back to the Wallpaper`);
       const [h = [], l = [], st = []] = await stopAll(pages);
+      await slow(false);
       for (const [looks, name] of [
         [h, 'the hall'],
         [l, 'LIVE'],
