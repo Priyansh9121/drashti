@@ -64,6 +64,9 @@ export default defineConfig({
           'download-worker': resolve('src/main/links/worker.ts'),
           // The events process: events out, at the lowest priority (src/main/events/worker.ts).
           'events-worker': resolve('src/main/events/worker.ts'),
+          // The QR worker (Q60-28): a QR code's pictures, drawn and read back off Main's thread, one code at a time
+          // (src/main/library/qr-worker.ts).
+          'qr-worker': resolve('src/main/library/qr-worker.ts'),
           // The performance check's devices and nodes (Sessions 31–36, REL-7): utility processes, as a packaged
           // Drashti's RunAsNode fuse is off (src/main/network/perf-devices-worker.ts, src/main/nodes/perf-nodes-worker.ts).
           'perf-devices-worker': resolve('src/main/network/perf-devices-worker.ts'),
