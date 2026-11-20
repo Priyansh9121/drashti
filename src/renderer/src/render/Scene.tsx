@@ -328,12 +328,7 @@ function BackgroundPicture({
     },
     [onDrawn],
   );
-  const color =
-    background?.kind === 'color'
-      ? background.color
-      : background?.kind === 'media' && background.cueId
-        ? keptColor
-        : null;
+  const color = background?.kind === 'media' && background.cueId ? keptColor : null;
   return (
     <>
       {color !== null && (

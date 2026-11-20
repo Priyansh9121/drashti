@@ -110,6 +110,12 @@ const meterSpectrum = new Float32Array(1024);
  * level (Audio's or Video's, X33: 0 while muted).
  */
 function setLevel(player: Player, musicLevel: number): void {
+  const c = context;
+  if ((player.sound.prepared || player.sound.envelope) && !player.videoLevel && player.level && c && master) {
+    player.videoLevel = c.createGain();
+    player.level.disconnect();
+    player.level.connect(player.videoLevel).connect(master);
+  }
   const state = useEngine.getState().state;
   const envelope = videoSoundGain(player.sound, engineNow());
   if (player.sound.envelope) {
@@ -129,7 +135,6 @@ function setLevel(player: Player, musicLevel: number): void {
   player.levelSet = value;
   // For the tests and diagnostics: the gain this sound plays with now.
   player.el.dataset['gain'] = String(value);
-  const c = context;
   // Its first level at once; after that, smoothly (a few milliseconds), so no change clicks.
   if (player.level && c) {
     if (first) player.level.gain.value = value;
@@ -257,20 +262,17 @@ function play(state: EngineState | null): void {
     // Through its own gain to the chosen output (Part 7); straight out where Web Audio could not be had.
     const c = audioContext();
     let level: GainNode | null = null;
-    let videoLevel: GainNode | null = null;
     let source: MediaElementAudioSourceNode | null = null;
     let tone: ToneChain | null = null;
     if (c && master) {
       try {
         level = c.createGain();
         source = c.createMediaElementSource(el);
-        videoLevel = c.createGain();
-        source.connect(level).connect(videoLevel).connect(master);
+        source.connect(level).connect(master);
         // Its file's tone (alpha.20): filters between its source and its gain, only for a file that has one.
         tone = toneThrough(c, source, level, null, sound.tone ?? null);
       } catch {
         level = null;
-        videoLevel = null;
         source = null;
       }
     }
@@ -285,7 +287,7 @@ function play(state: EngineState | null): void {
       stop: () => undefined,
       resync: () => undefined,
       level,
-      videoLevel,
+      videoLevel: null,
       levelSet: -1,
       source,
       tone,
