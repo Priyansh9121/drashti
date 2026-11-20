@@ -8,15 +8,24 @@ describe('source-time video analysis', () => {
   });
   it('keeps a suggested scene only in a new draft, retaining row trim points and named markers', () => {
     const row: MediaMarkers = {
-      startMs: 120, endMs: 5000, markers: [{ id: 'own', name: 'Placeholder point', atMs: 900 }],
+      startMs: 120,
+      endMs: 5000,
+      markers: [{ id: 'own', name: 'Placeholder point', atMs: 900 }],
     };
     const kept = keepScene(row, 2500, 'suggestion');
-    expect(kept).toEqual({ ...row, markers: [...row.markers, { id: 'suggestion', name: 'Scene 0:02.5', atMs: 2500 }] });
+    expect(kept).toEqual({
+      ...row,
+      markers: [...row.markers, { id: 'suggestion', name: 'Scene 0:02.5', atMs: 2500 }],
+    });
     expect(row.markers).toHaveLength(1);
     expect(keepScene(kept, 2500, 'again')).toEqual(kept);
   });
   it('does not silently replace a marker when the row has 50 already', () => {
-    const row: MediaMarkers = { startMs: null, endMs: null, markers: Array.from({ length: 50 }, (_, i) => ({ id: String(i), name: 'Placeholder', atMs: i })) };
+    const row: MediaMarkers = {
+      startMs: null,
+      endMs: null,
+      markers: Array.from({ length: 50 }, (_, i) => ({ id: String(i), name: 'Placeholder', atMs: i })),
+    };
     expect(keepScene(row, 1000, 'overflow')).toEqual(row);
   });
 });
