@@ -115,6 +115,23 @@ test('a saved edit prepares privately at idle, then a new showing pins its immut
     if (!ready.ok) throw new Error(ready.message);
     expect(ready.edit.readyMediaId).not.toBe(id);
     expect(ready.edit.readyMediaId).not.toBeNull();
+    const soundSettings = await win.evaluate(
+      async ({ sourceId, copyId }) => {
+        const sound = (globalThis as PageGlobals).drashti.sound;
+        const changed = await sound.setEven(copyId, false);
+        const source = await sound.file(sourceId);
+        const copy = await sound.file(copyId);
+        await sound.setEven(copyId, true);
+        return { changed, source, copy };
+      },
+      { sourceId: id, copyId: ready.edit.readyMediaId ?? id },
+    );
+    expect(soundSettings).toMatchObject({
+      changed: { ok: true, even: false },
+      source: { even: false },
+      copy: { even: false },
+    });
+
     await openLibrary(win);
     await win.getByTestId('library-tab-media').click();
     await win
