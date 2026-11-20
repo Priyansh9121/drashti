@@ -186,13 +186,19 @@ function linkHtml(page: LinkPage): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Drashti access list</title></head><body data-kind="${escapeHtml(page.kind)}"><h1>${escapeHtml(page.title)}</h1>${lines}${form}</body></html>`;
 }
 
+/**
+ * A request's text, read whole before it is decoded (a letter's bytes may fall across two parts of a large upload). As
+ * Google's web app, it takes a report of megabytes (x49): up to what the list itself reads, and a little more.
+ */
 async function body(req: IncomingMessage): Promise<string> {
-  let text = '';
+  const parts: Buffer[] = [];
+  let size = 0;
   for await (const chunk of req as AsyncIterable<Buffer>) {
-    text += chunk.toString('utf8');
-    if (text.length > 64 * 1024) throw new Error('Too long');
+    size += chunk.length;
+    if (size > (core.PROTOCOL.report['textChars'] ?? 0) + 64 * 1024) throw new Error('Too long');
+    parts.push(chunk);
   }
-  return text;
+  return Buffer.concat(parts).toString('utf8');
 }
 
 /** Start a stand-in list on 127.0.0.1, set up as the owner's would be after Drashti › Set up…. */

@@ -30,7 +30,7 @@ export function EngineUnread() {
         }
       >
         Next, Back and the clears wait until it can, and the screens keep showing what they show now. If Try
-        again doesn’t work, tell the admin.
+        again doesn’t work, choose Help › Report a Problem….
       </Notice>
     </div>
   );

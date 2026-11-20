@@ -170,6 +170,14 @@ import type { ScreenSwitch, ScreenSwitches, ScreenSwitchResult } from './screen-
 import type { PendingScreens } from './keep-screens';
 import type { PointAt, PointedClip } from './point-ahead';
 import type { PipSettingsResult } from './pip';
+import type {
+  ReportCopied,
+  ReportDraft,
+  ReportOpened,
+  ReportPrepared,
+  ReportRow,
+  ReportStateView,
+} from './report';
 import type { PipPlace } from './engine/state';
 import type {
   EvenResult,
@@ -262,6 +270,8 @@ export const IPC = {
     showGuides: 'app:show-guides',
     /** main -> operator: Help › Drashti Manual… was chosen (x37, Session 60), in either mode. */
     showManual: 'app:show-manual',
+    /** main -> operator: Help › Report a Problem… was chosen (x49), in either mode. */
+    showReport: 'app:show-report',
     /** main -> operator: an item of the Tools menu was chosen (Session 60, x36; Pro Mode): which (shared/setup-tools.ts). */
     showTool: 'app:show-tool',
   },
@@ -292,6 +302,11 @@ export const IPC = {
     rotate: 'events:rotate',
     /** Send a test event now. */
     test: 'events:test',
+    /**
+     * The new secret's Copy (alpha.20): on the clipboard by the main process (operator window only; a page's own
+     * clipboard is refused). Never kept or logged.
+     */
+    copySecret: 'events:copy-secret',
     /** main -> operator: how the addresses stand changed. */
     changed: 'events:changed',
     /** main -> operator: File > Events Out… was chosen. */
@@ -1279,6 +1294,25 @@ export const IPC = {
     /** main -> operator: the bar changed. */
     changed: 'quickbar:changed',
   },
+  /**
+   * Help › Report a Problem… (x49, the owner's Q60-38 and his "Yes, all A" to Q60-42), in either mode, only while this
+   * computer is let in: open (the window's picture taken first), Review (the files made off Main's thread, exactly what
+   * goes), Send (the outbox sends it by itself through the access list), the reports kept here, Forget, Save a Copy….
+   */
+  report: {
+    open: 'report:open',
+    close: 'report:close',
+    prepare: 'report:prepare',
+    discard: 'report:discard',
+    send: 'report:send',
+    list: 'report:list',
+    forget: 'report:forget',
+    copy: 'report:copy',
+    /** A file of a report under Review, shown in the computer's own app (the diagnostics' text). */
+    showFile: 'report:show-file',
+    /** main -> operator: the reports changed (one went, or waits for another reason). */
+    changed: 'report:changed',
+  },
 } as const;
 
 /** Request/response channels: arguments and result for each. */
@@ -1318,6 +1352,15 @@ export interface InvokeContract {
   [IPC.guides.list]: { args: []; result: { id: GuideId; tab: string }[] };
   [IPC.guides.read]: { args: [id: GuideId]; result: GuideRead };
   [IPC.manual.read]: { args: []; result: ManualRead };
+  [IPC.report.open]: { args: []; result: ReportOpened };
+  [IPC.report.close]: { args: []; result: boolean };
+  [IPC.report.prepare]: { args: [draft: ReportDraft]; result: ReportPrepared };
+  [IPC.report.discard]: { args: [id: string]; result: boolean };
+  [IPC.report.send]: { args: [id: string]; result: ReportStateView | null };
+  [IPC.report.list]: { args: []; result: ReportRow[] };
+  [IPC.report.forget]: { args: [id: string]; result: boolean };
+  [IPC.report.copy]: { args: [id: string]; result: ReportCopied };
+  [IPC.report.showFile]: { args: [id: string, name: string]; result: boolean };
   [IPC.manual.pdf]: { args: []; result: ManualPrinted };
   [IPC.manual.print]: { args: []; result: ManualPrinted };
   [IPC.access.view]: { args: []; result: AccessView };
@@ -1355,6 +1398,7 @@ export interface InvokeContract {
   [IPC.events.remove]: { args: [id: string]; result: EventsOutResult };
   [IPC.events.rotate]: { args: [id: string]; result: EventsOutResult };
   [IPC.events.test]: { args: [id: string]; result: { ok: boolean; message: string } };
+  [IPC.events.copySecret]: { args: [secret: string]; result: boolean };
   [IPC.drop.view]: { args: []; result: DropFolderView };
   [IPC.drop.pickFolder]: { args: []; result: DropFolderResult | null };
   [IPC.drop.setOn]: { args: [on: boolean]; result: DropFolderResult };
@@ -1927,6 +1971,8 @@ export interface EventContract {
   [IPC.app.showKeys]: { at: number };
   [IPC.app.showGuides]: { at: number };
   [IPC.app.showManual]: { at: number };
+  [IPC.app.showReport]: { at: number };
+  [IPC.report.changed]: { at: number };
   [IPC.app.showTool]: { tool: ToolsMenuItem; at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.stageLayouts.changed]: StageLayout[];

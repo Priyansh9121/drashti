@@ -8,7 +8,7 @@ import type { FromLinkWorker, LinkAnswers, LinkQuestion, ToLinkWorker } from './
 
 const ANSWER_WITHIN_MS = 10_000;
 
-const noAnswer: { [K in keyof LinkAnswers]: LinkAnswers[K] } = { paired: null, media: null };
+const noAnswer: { [K in keyof LinkAnswers]: LinkAnswers[K] } = { paired: null, media: null, report: null };
 
 export function runLinkWorker(send: (message: FromLinkWorker) => void): (message: ToLinkWorker) => void {
   let nextId = 1;
@@ -32,6 +32,7 @@ export function runLinkWorker(send: (message: FromLinkWorker) => void): (message
   const server = new LinkServer({
     paired: (node) => ask({ kind: 'paired', node }),
     mediaFile: (mediaId) => ask({ kind: 'media', mediaId }),
+    report: (nodeId, body) => ask({ kind: 'report', nodeId, body }),
     offerDropped: () => {
       send({ type: 'offer-dropped' });
     },
