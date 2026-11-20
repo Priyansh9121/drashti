@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
 import { Scene } from '../render/Scene';
+import { useTestFailsWhileUp } from './test-throw-while';
 
 /*
  * The picture on one of the hall's screens (an output: the audience's, or a key and fill pair's half): the show's Scene
@@ -15,5 +16,8 @@ import { Scene } from '../render/Scene';
 type HallSceneProps = Omit<ComponentProps<typeof Scene>, 'place' | 'picturesFirst' | 'annotate'>;
 
 export function HallScene(props: HallSceneProps) {
+  // Tests only (x53): the scene fails each time it draws while a file a test named is up; never in a packaged Drashti.
+  if (useTestFailsWhileUp(props.state))
+    throw new Error('A test asked this screen to fail as it drew while that file is up');
   return <Scene {...props} picturesFirst={(props.matte ?? null) === null} />;
 }
