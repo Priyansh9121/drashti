@@ -1,0 +1,8 @@
+/*
+ * A waiting cut already hides the slide by its opacity. Hide its pictures themselves too: removing this rule when
+ * readiness starts invalidates their paint, rather than relying only on the ancestor's composited opacity.
+ * Videos keep their existing visibility and first-frame signals. No extra frame or wait is introduced.
+ */
+[data-wait-pictures] > [data-slide-in] img {
+  visibility: hidden !important;
+}

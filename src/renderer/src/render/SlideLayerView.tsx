@@ -1,6 +1,7 @@
 import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
+import './slide-picture-wait.css';
 import { nativeDeckMotion } from '../../../shared/deck';
 import { type DeckNativeTransition, isDeckNativeTransition } from '../../../shared/deck-transition';
 import type { EngineState, SlideLayer } from '../../../shared/engine/state';
@@ -1024,6 +1025,8 @@ export function SlideLayerView({
       data-fading={fading ? 'true' : undefined}
       data-fade-start={fade?.start ?? undefined}
       data-transition={fading ? kind : undefined}
+      // This is the existing picture-cut wait, not a new hold; its images need a fresh paint when it clears.
+      data-wait-pictures={waiting && picturesBy !== undefined ? '' : undefined}
       // A deck's own transition (Session 57): which of PowerPoint's it draws (X15's EF-5: the warm-up's tests name it).
       data-deck-effect={fading && native ? native.deckEffect : undefined}
       // The two slides blend with each other only, then go over the background as one; a slide coming
