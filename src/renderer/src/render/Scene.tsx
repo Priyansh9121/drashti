@@ -308,7 +308,9 @@ function BackgroundPicture({
   onDrawn,
   cue,
   crossfade,
+  opaqueCanvas = false,
 }: {
+  opaqueCanvas?: boolean;
   cue?: VideoCue | null;
   crossfade?: VideoCrossfade | null;
   background: BackgroundLayer | null;
@@ -348,6 +350,7 @@ function BackgroundPicture({
         onDrawn={drawn}
         cue={cue}
         crossfade={crossfade}
+        opaqueCanvas={opaqueCanvas}
       />
       {background?.kind === 'window' && <LiveWindowView layer={background} />}
     </>
@@ -622,6 +625,7 @@ export const Scene = memo(function Scene({
                     <BackgroundPicture
                       cue={state.videoCue}
                       crossfade={state.videoCrossfade}
+                      opaqueCanvas={!keyed}
                       background={holding ? back.keep : background}
                       annotate={annotate}
                       movement={look.movement}

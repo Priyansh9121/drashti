@@ -328,18 +328,23 @@ function useFade(
   dispatch: Dispatch<SlotEvent>,
   movement: Movement,
   pair?: VideoCrossfade | null,
+  opaqueCanvas = false,
 ): void {
   const start = slots.fade?.start ?? null;
   const ms = slots.fade?.ms ?? 0;
   useLayoutEffect(() => {
-    if (pair) setVideoFade(root.current, pair);
+    if (pair) setVideoFade(root.current, pair, opaqueCanvas);
     else setFade(root.current, start, ms, movement);
   });
   useEffect(() => {
     if (start === null) return;
     let frame = 0;
     const tick = () => {
-      if ((pair ? setVideoFade(root.current, pair) : setFade(root.current, start, ms, movement)) >= 1) {
+      if (
+        (pair
+          ? setVideoFade(root.current, pair, opaqueCanvas)
+          : setFade(root.current, start, ms, movement)) >= 1
+      ) {
         dispatch({ type: 'faded', start });
         return;
       }
@@ -349,7 +354,7 @@ function useFade(
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [root, start, ms, dispatch, movement, pair]);
+  }, [root, start, ms, dispatch, movement, pair, opaqueCanvas]);
 }
 
 /**
@@ -359,14 +364,14 @@ function useFade(
  * On a phone or tablet it is a still preview instead (render/previews.tsx).
  */
 /** Linear, complementary picture gains at the engine moment, shared with both sound players. */
-function setVideoFade(root: HTMLElement | null, fade: VideoCrossfade): number {
+function setVideoFade(root: HTMLElement | null, fade: VideoCrossfade, opaqueCanvas: boolean): number {
   const progress = videoFadeProgress(fade, engineNow());
   for (const el of root?.querySelectorAll<HTMLElement>('[data-bg-wrap]') ?? []) {
     const role = el.dataset['bgFade'];
     const gain = role === undefined ? 1 : role === 'out' ? 1 - progress : progress;
     // The incoming opaque canvas supplies p; source-over attenuates the opaque old canvas by 1-p.
     // This is the same linear picture mix without a costly plus-lighter software blend.
-    el.style.opacity = String(role === 'out' ? 1 : gain);
+    el.style.opacity = String(role === 'out' && opaqueCanvas ? 1 : gain);
     el.dataset['videoGain'] = String(Math.round(gain * 1e6) / 1e6);
   }
   return progress;
@@ -375,6 +380,8 @@ function setVideoFade(root: HTMLElement | null, fade: VideoCrossfade): number {
 export function BackgroundMedia(props: {
   cue?: VideoCue | null;
   crossfade?: VideoCrossfade | null;
+  /** Opaque hall/stream canvas; key/fill retains the alpha-safe blend. */
+  opaqueCanvas?: boolean;
   layer: BackgroundLayer | null;
   annotate?: boolean;
   /** How this screen's group moves (Session 27): its dissolve's curve. */
@@ -429,7 +436,9 @@ function BackgroundPlayer({
   onDrawn,
   cue,
   crossfade,
+  opaqueCanvas = false,
 }: {
+  opaqueCanvas?: boolean;
   cue?: VideoCue | null;
   crossfade?: VideoCrossfade | null;
   layer: BackgroundLayer | null;
@@ -469,7 +478,7 @@ function BackgroundPlayer({
     setSeenPair(crossfade);
   }
   const rootRef = useRef<HTMLDivElement>(null);
-  useFade(rootRef, slots, dispatch, movement, crossfade);
+  useFade(rootRef, slots, dispatch, movement, crossfade, opaqueCanvas);
   const coming = slots.incoming;
   useEffect(() => {
     if (
@@ -517,6 +526,7 @@ function BackgroundPlayer({
   const list = [leaving, slots.shown, slots.incoming].filter((s): s is Slot => s !== null);
   if (list.length === 0) return null;
   const fading = slots.fade !== null;
+  const opaqueBlend = !!crossfade && opaqueCanvas;
   return (
     <div
       ref={rootRef}
@@ -526,7 +536,7 @@ function BackgroundPlayer({
       data-fading={fading ? 'true' : undefined}
       data-fade-start={slots.fade?.start ?? undefined}
       // The old and new pictures blend with each other only.
-      style={{ position: 'absolute', inset: 0, isolation: fading && !crossfade ? 'isolate' : undefined }}
+      style={{ position: 'absolute', inset: 0, isolation: fading && !opaqueBlend ? 'isolate' : undefined }}
     >
       {list.map((slot) => {
         const visible = (slot === slots.shown || slot === leaving) && isDrawn(slot);
@@ -552,9 +562,9 @@ function BackgroundPlayer({
               position: 'absolute',
               inset: 0,
               mixBlendMode:
-                fading && !crossfade && slot === slots.shown && slots.leaving ? 'plus-lighter' : undefined,
+                fading && !opaqueBlend && slot === slots.shown && slots.leaving ? 'plus-lighter' : undefined,
               // Full canvas matte also preserves linear weights through letterboxes and video shapes.
-              background: fading && crossfade ? '#000000' : undefined,
+              background: fading && opaqueBlend ? '#000000' : undefined,
               willChange: ownLayers ? 'opacity' : undefined,
               // A video in a shape of its own: its box laid out in this place, and clipped to it (filling).
               ...(shape === null ? {} : SHAPED_PLACE),
