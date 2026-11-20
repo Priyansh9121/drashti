@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import type { QrChoices } from '../../../shared/qr-picture';
 import { QR_TEXT_MAX, qrPlan, qrSvg } from '../../../shared/qr-picture';
@@ -74,7 +74,6 @@ function QrSlideForm() {
   const [said, setSaid] = useState('');
   const [busy, setBusy] = useState<Busy>(null);
   const words = text.trim();
-  const shown = useDeferredValue(words);
   const fits = words !== '' && words.length <= MAX;
   const logo = choices?.logo ?? null;
   const useLogo = choices?.useLogo === true && logo !== null;
@@ -242,8 +241,9 @@ function QrSlideForm() {
           )}
         </div>
         <figure className="flex w-[204px] flex-col items-center gap-2 self-start rounded-lg bg-black/40 p-3">
-          {fits && shown !== '' ? (
-            <QrPreview words={shown} logo={useLogo ? logo.dataUrl : null} />
+          {fits ? (
+            // With the words as they are typed (as before), so the code is there the moment they are.
+            <QrPreview words={words} logo={useLogo ? logo.dataUrl : null} />
           ) : (
             <div
               aria-hidden="true"
