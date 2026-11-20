@@ -146,6 +146,7 @@ It works in both modes and on a node. A node hands its report to the Main it is 
 2. Press the red **Muted** switch above **Audio** to have the sound back.
 3. In **Screens**, check **Sound output** is the mixer's.
 4. Check the mixer's channel for this computer.
+5. If a red notice says **Drashti’s sound has stopped**, press **Try again** on it.
 
 ![How loud: the Audio and Video lines, Video muted](../screenshots/manual-levels.png)
 
