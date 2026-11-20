@@ -44,7 +44,6 @@ export function editedClipSource(request: ClipExportRequest, deps: Deps): Export
     row.deleted ||
     row.missing ||
     !row.sha256 ||
-    !row.durationMs ||
     !row.path ||
     !existsSync(join(deps.mediaDir, row.path))
   )
@@ -53,11 +52,8 @@ export function editedClipSource(request: ClipExportRequest, deps: Deps): Export
       message: 'The original video is unavailable. Restore its file before exporting the saved edits.',
     };
   const recipe = structuredClone(edit.recipe);
-  if (
-    startMs < (recipe.trim.startMs ?? 0) ||
-    endMs > (recipe.trim.endMs ?? row.durationMs) ||
-    endMs <= startMs
-  )
+  const savedEnd = recipe.trim.endMs ?? row.durationMs;
+  if (startMs < (recipe.trim.startMs ?? 0) || (savedEnd !== null && endMs > savedEnd) || endMs <= startMs)
     return { ok: false, message: 'Choose an export start and end inside the saved trim, then Export again.' };
   const identity = `${row.sha256}:edit:${String(edit.revision)}:${createHash('sha256').update(JSON.stringify(recipe)).digest('hex')}`;
   const source = join(deps.mediaDir, row.path);

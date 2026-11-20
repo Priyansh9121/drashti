@@ -13,6 +13,7 @@ import {
   type PageGlobals,
 } from './helpers';
 import { testFfmpeg } from './stream-helpers';
+import { expectNoSeriousA11yIssues } from './a11y';
 
 interface CopyJob {
   id: string;
@@ -45,11 +46,11 @@ interface CopiesGlobals {
         mediaId: string;
         startMs: number;
         endMs: number;
-        frame: 'original';
-        shape: 'vertical';
+        frame: 'original' | 'edited';
+        shape: 'vertical' | 'source';
         container: 'mp4';
         addToLibrary: boolean;
-        revision: null;
+        revision: number | null;
       }): Promise<{ ok: true; job: CopyJob | null } | { ok: false; message: string }>;
       clipExports(): Promise<CopyJob[]>;
       stopClipExport(id: string): Promise<boolean>;
@@ -127,6 +128,17 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
         { id, points },
       ),
     ).toMatchObject({ ok: true });
+    const largePoints = {
+      startMs: 40,
+      endMs: 560,
+      markers: [{ id: 'large-own', name: 'Placeholder point', atMs: 200 }],
+    };
+    expect(
+      await win.evaluate(
+        ({ id, points }) => (globalThis as PageGlobals).drashti.media.setMarkers(id, points),
+        { id: largeId, points: largePoints },
+      ),
+    ).toMatchObject({ ok: true });
     const proxy = () =>
       win.evaluate((id) => (globalThis as unknown as CopiesGlobals).drashti.media.proxyStatus(id), largeId);
     expect(await proxy()).toMatchObject({ ok: true, proxy: { state: 'checking' } });
@@ -171,6 +183,7 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
     await editor.getByLabel('Picture and sound').selectOption('original');
     await editor.getByLabel('Clip shape').selectOption('vertical');
     await editor.getByLabel('Also add the clip to Media').check();
+    await expectNoSeriousA11yIssues(win, 'clip export controls');
     await editor.getByRole('button', { name: 'Export clip…', exact: true }).click();
     await expect(editor.locator('[data-testid="clip-export-job"][data-state="waiting"]')).toBeVisible();
     const queued = await win.evaluate(() =>
@@ -178,6 +191,9 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
     );
     const accepted = { job: queued.find((job) => job.id !== stopped.job?.id && job.state === 'waiting') };
     if (!accepted.job) throw new Error('The editor did not queue its export.');
+    await test
+      .info()
+      .attach('Queued clip export', { body: await editor.screenshot(), contentType: 'image/png' });
     await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
     await win.getByRole('button', { name: 'Discard changes', exact: true }).click();
     await expect(editor).not.toBeVisible();
@@ -229,10 +245,231 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
     const ready = await proxy();
     expect(ready).toMatchObject({ ok: true, proxy: { required: true, width: 1920, height: 1080 } });
     if (ready.ok) expect(ready.proxy.readyMediaId).not.toBe(largeId);
+    if (!ready.ok || !ready.proxy.readyMediaId) throw new Error('The lighter copy has no immutable file.');
+    expect(
+      await win.evaluate(
+        (id) =>
+          (globalThis as PageGlobals).drashti.engine.dispatch({
+            type: 'setBackground',
+            background: { kind: 'media', mediaId: id, media: 'video', fit: 'fit', loop: true },
+          }),
+        largeId,
+      ),
+    ).toMatchObject({ ok: true });
+    const shown = await win.evaluate(
+      async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background,
+    );
+    expect(shown).toMatchObject({
+      mediaId: ready.proxy.readyMediaId,
+      clip: { startMs: 40, endMs: 560 },
+      marks: largePoints.markers,
+    });
     expect(await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.markers(id), id)).toEqual(
       points,
     );
     expect([digest(large), digest(source)]).toEqual(hashes);
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('saved edits export full-quality picture, selected sound and speed once from the original', async () => {
+  const { app, userData } = await launchApp({ DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software' });
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-edited-export-'));
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    expect(
+      await win.evaluate(() => typeof (globalThis as unknown as CopiesGlobals).drashti.media.clipExport),
+    ).toBe('function');
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+    const original = join(dir, 'Placeholder full quality.mp4');
+    const made = ffmpeg([
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=0x336699:s=3840x2160:r=25:d=1.6',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=f=440:r=48000:d=1.6',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=f=880:r=48000:d=1.6',
+      '-map',
+      '0:v:0',
+      '-map',
+      '1:a:0',
+      '-map',
+      '2:a:0',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-g',
+      '250',
+      '-threads',
+      '1',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '128k',
+      '-shortest',
+      original,
+    ]);
+    expect(made.status, made.stderr.toString()).toBe(0);
+    const hash = digest(original);
+    const [id] = await importAndGetIds(win, [original]);
+    if (!id) throw new Error('The full-quality fixture was not imported.');
+    const proxy = (id: string) =>
+      win.evaluate((id) => (globalThis as unknown as CopiesGlobals).drashti.media.proxyStatus(id), id);
+    const readyProxy = async (id: string) => {
+      await expect
+        .poll(async () => {
+          const result = await proxy(id);
+          if (!result.ok) throw new Error(result.message);
+          if (result.proxy.state === 'failed')
+            throw new Error(result.proxy.message ?? 'The lighter copy failed.');
+          return result.proxy.state;
+        })
+        .toBe('ready');
+      expect(await proxy(id)).toMatchObject({ ok: true, proxy: { width: 1920, height: 1080 } });
+    };
+    await readyProxy(id);
+    const read = () => win.evaluate((id) => (globalThis as PageGlobals).drashti.media.videoEdit(id), id);
+    const before = await read();
+    if (!before.ok) throw new Error(before.message);
+    const recipe = structuredClone(before.edit.recipe);
+    recipe.trim = { startMs: 200, endMs: 1400 };
+    recipe.speed = 2;
+    recipe.audioTrack = 1;
+    recipe.picture.brightness = -0.25;
+    recipe.fades = { pictureInMs: 100, pictureOutMs: 100, soundInMs: 100, soundOutMs: 100 };
+    expect(
+      await win.evaluate(
+        ({ id, revision, recipe }) =>
+          (globalThis as PageGlobals).drashti.media.setVideoEdit({ mediaId: id, revision, recipe }),
+        { id, revision: before.edit.revision, recipe },
+      ),
+    ).toMatchObject({ ok: true });
+    await expect
+      .poll(async () => {
+        const result = await read();
+        if (!result.ok) throw new Error(result.message);
+        if (result.edit.state === 'failed')
+          throw new Error(result.edit.message ?? 'The edit preparation failed.');
+        return result.edit.state;
+      })
+      .toBe('ready');
+    const edit = await read();
+    if (!edit.ok) throw new Error(edit.message);
+    if (!edit.edit.readyMediaId) throw new Error('The prepared edit has no immutable file.');
+    await readyProxy(edit.edit.readyMediaId);
+    const output = join(dir, 'Placeholder edited clip.mp4');
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: path });
+    }, output);
+    const accepted = await win.evaluate(
+      (request) => (globalThis as unknown as CopiesGlobals).drashti.media.clipExport(request),
+      {
+        mediaId: id,
+        startMs: 200,
+        endMs: 1400,
+        frame: 'edited' as const,
+        shape: 'source' as const,
+        container: 'mp4' as const,
+        addToLibrary: false,
+        revision: edit.edit.revision,
+      },
+    );
+    if (!accepted.ok) throw new Error(accepted.message);
+    if (!accepted.job) throw new Error('The edited export was not queued.');
+    await expect
+      .poll(async () => {
+        const jobs = await win.evaluate(() =>
+          (globalThis as unknown as CopiesGlobals).drashti.media.clipExports(),
+        );
+        const job = jobs.find((job) => job.id === accepted.job?.id);
+        if (job?.state === 'failed') throw new Error(job.message ?? 'The edited export failed.');
+        return job?.state;
+      })
+      .toBe('done');
+    const picture = ffmpeg([
+      '-loglevel',
+      'info',
+      '-ss',
+      '0.300',
+      '-i',
+      output,
+      '-an',
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=2:2',
+      '-pix_fmt',
+      'rgb24',
+      '-f',
+      'rawvideo',
+      'pipe:1',
+    ]);
+    expect(picture.status, picture.stderr.toString()).toBe(0);
+    expect(picture.stderr.toString()).toMatch(/Video: h264[^\r\n]*3840x2160/u);
+    const duration = /Duration:\s*(\d+):(\d+):(\d+\.\d+)/u.exec(picture.stderr.toString());
+    if (!duration) throw new Error('The exported clip has no readable duration.');
+    const ms = (Number(duration[1]) * 3600 + Number(duration[2]) * 60 + Number(duration[3])) * 1000;
+    expect(Math.abs(ms - 600)).toBeLessThanOrEqual(80);
+    expect(picture.stdout).toHaveLength(12);
+    const rgb = [picture.stdout[0] ?? 0, picture.stdout[1] ?? 0, picture.stdout[2] ?? 0];
+    expect(rgb[0]).toBeGreaterThan(29);
+    expect(rgb[0]).toBeLessThan(48);
+    expect(rgb[1]).toBeGreaterThan(67);
+    expect(rgb[1]).toBeLessThan(86);
+    expect(rgb[2]).toBeGreaterThan(104);
+    expect(rgb[2]).toBeLessThan(125);
+    const sound = ffmpeg([
+      '-loglevel',
+      'error',
+      '-ss',
+      '0.150',
+      '-i',
+      output,
+      '-t',
+      '0.300',
+      '-vn',
+      '-map',
+      '0:a:0',
+      '-ac',
+      '1',
+      '-ar',
+      '8000',
+      '-f',
+      'f32le',
+      'pipe:1',
+    ]);
+    expect(sound.status, sound.stderr.toString()).toBe(0);
+    const count = Math.floor(sound.stdout.length / 4);
+    expect(count).toBeGreaterThan(1000);
+    const power = (hz: number) => {
+      let real = 0,
+        imaginary = 0;
+      for (let at = 0; at < count; at++) {
+        const value = sound.stdout.readFloatLE(at * 4),
+          angle = (2 * Math.PI * hz * at) / 8000;
+        real += value * Math.cos(angle);
+        imaginary += value * Math.sin(angle);
+      }
+      return (real * real + imaginary * imaginary) / (count * count);
+    };
+    expect(power(880)).toBeGreaterThan(0.0001);
+    expect(power(880)).toBeGreaterThan(power(440) * 20);
+    expect(digest(original)).toBe(hash);
+    expect(digest(join(userData, 'Media', hash.slice(0, 2), `${hash}.mp4`))).toBe(hash);
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });

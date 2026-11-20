@@ -1,3 +1,5 @@
+import { editPlan } from './convert/edit-plan';
+import { editedClipSource } from './convert/clip-edited-source';
 import { withSceneMarkers } from './convert/scene-marker-save';
 import { VideoEditsRepo } from './db/video-edits';
 import { prepareVideoEdits } from './engine/video-edit-ready';
@@ -4256,6 +4258,14 @@ function start(): void {
       : { ok: false as const, message: 'Open the video in the operator window, then try again.' },
   );
   const videoCopies = registerVideoCopies({
+    editedExport: (request) =>
+      editedClipSource(request, {
+        mediaDir,
+        sourceId: (id) => videoEdits.sourceId(id),
+        row: (id) => media.about(id),
+        read: (id) => videoEdits.read(id),
+        plan: editPlan,
+      }),
     sourceId: (id) => videoEdits.sourceId(id),
     db: libraryDb,
     media,
