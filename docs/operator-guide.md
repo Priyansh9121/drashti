@@ -345,6 +345,12 @@ the network.
 3. It stays on, after a restart too, until it is turned off in the same place (Pro Mode). Drashti sends no sound this
    way. The hall's screens and the stream are as they were, on or off.
 
+### Edit Video…
+
+In Pro Mode, right-click a ready local video in Media or a playlist and choose **Edit Video…**. Its private, silent source preview has a trim timeline and **Go to time** (for example `1:23.500`), with sections for **Trim**, **Picture**, **Sound** and **Playback**. Choose **Use this frame as library thumbnail** to keep that frame when you Save. **Frame shape** offers Original shape, 16:9, 4:3, square and vertical 9:16; Original shape is the default.
+
+**Save** keeps a recipe with the library video for its next showing. **Ready for next showing** or **Preparing** says whether its edited version is available. Preparation waits while a show, stream or recording is active. The video already on the screens keeps its earlier revision. **Reset edits** resets the draft; **Cancel** can discard it. A failed save keeps your draft so you can try again, and a newer save in another editor is reported. The original, playlist row trims and markers, and Sound and picture's tone and delays are kept.
+
 ## 6. Video inputs
 
 A **video input** is a camera or a capture input on this computer: the video mixer's program through its USB output, say. It is named once, for example "Input 1" (**More tools**, then **Add a Video Input…**, or **Tools**, then **Add a Video Input…**; `docs/admin-guide.md` has the details), and from then on it is one click away in **Media**.
