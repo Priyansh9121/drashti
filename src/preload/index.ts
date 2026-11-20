@@ -431,6 +431,7 @@ const bridge: DrashtiBridge = {
     reveal: (mediaId) => invoke(IPC.media.reveal, mediaId),
     reportLength: (mediaId, durationMs) => invoke(IPC.media.reportLength, mediaId, durationMs),
     noPicture: (mediaId, startedAt) => invoke(IPC.media.noPicture, mediaId, startedAt),
+    cannotPlay: (mediaId, startedAt, kind) => invoke(IPC.media.cannotPlay, mediaId, startedAt, kind),
     markers: (mediaId) => invoke(IPC.media.markers, mediaId),
     setMarkers: (mediaId, markers) => invoke(IPC.media.setMarkers, mediaId, markers),
   },
