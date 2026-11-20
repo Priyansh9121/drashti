@@ -16,7 +16,8 @@ describe('a file’s own playback settings', () => {
     expect(readPlaybackSettings(null)).toEqual(NO_PLAYBACK_SETTINGS);
     expect(readPlaybackSettings('not json')).toEqual(NO_PLAYBACK_SETTINGS);
     const ok = { bassDb: 12, trebleDb: -12, voice: true, soundDelayMs: 250, captionDelayMs: -2000 };
-    expect(readPlaybackSettings(JSON.stringify(ok))).toEqual(ok);
+    // Kept before slice 6b's Shape: the file's own shape.
+    expect(readPlaybackSettings(JSON.stringify(ok))).toEqual({ ...ok, shape: 'file' });
     for (const bad of [
       { ...ok, bassDb: 13 },
       { ...ok, trebleDb: -12.5 },
