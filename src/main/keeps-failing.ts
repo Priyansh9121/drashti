@@ -60,6 +60,9 @@ export function keptFailingNotice(name: string, where: string, layer: 'slide' | 
   return `“${name}” could not play on ${where}, ${what}. If it happens again, the file may be damaged: tell whoever looks after Drashti.`;
 }
 
+/** How long after a take-off a page's failure may still come from a draw of what was taken off (ms). */
+export const DRAWING_OFF_MS = 3000;
+
 /** Each page's last failure, and the video to take off when it fails again on one. */
 export class KeepsFailing {
   private readonly last = new Map<string, { at: number; up: readonly UpThen[] }>();
@@ -78,6 +81,19 @@ export class KeepsFailing {
     for (const u of up)
       if (before.up.some((b) => b.mediaId === u.mediaId) && (pick === null || u.since > pick.since)) pick = u;
     return pick?.mediaId ?? null;
+  }
+
+  /** What `page` kept failing on was taken off at `at`, the show then at revision `rev`. */
+  tookOff(_page: string, _rev: number, _at: number): void {
+    // Red (the lead, for x53): not kept yet.
+  }
+
+  /**
+   * Whether a failure of `page` at `at` may still come from a draw of what was taken off: within DRAWING_OFF_MS of the
+   * take-off, while the page has not said it painted the show without it (`paintedRev`, null with no word yet).
+   */
+  stillDrawingWhatWentOff(_page: string, _at: number, _paintedRev: number | null): boolean {
+    return false;
   }
 
   /** A page closed for good: its failures forgotten. */
