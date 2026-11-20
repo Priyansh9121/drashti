@@ -1,10 +1,14 @@
 import { z } from 'zod';
 
+export const VIDEO_EDIT_FRAMES = ['source', '16:9', '4:3', '1:1', '9:16'] as const;
+export type VideoEditFrame = (typeof VIDEO_EDIT_FRAMES)[number];
+
 /** Edit Video… recipes are source-time values; every prepared showing has its own immutable media ID. */
 export interface VideoEditRecipe {
   version: 1;
   trim: { startMs: number | null; endMs: number | null };
   picture: {
+    frame?: VideoEditFrame;
     crop: { x: number; y: number; w: number; h: number };
     zoom: number;
     x: number;
@@ -68,6 +72,7 @@ export const videoEditRecipeSchema: z.ZodType<VideoEditRecipe> = z
       .refine((t) => t.endMs === null || t.endMs > (t.startMs ?? 0)),
     picture: z
       .object({
+        frame: z.enum(VIDEO_EDIT_FRAMES).optional(),
         crop,
         zoom: z.number().min(1).max(4),
         x: z.number().min(-1.5).max(1.5),
@@ -105,6 +110,7 @@ export function parseVideoEditTime(text: string): number | null {
 export function videoEditNeedsCopy(r: VideoEditRecipe): boolean {
   const p = r.picture;
   return (
+    (p.frame !== undefined && p.frame !== 'source') ||
     (r.trim.startMs ?? 0) !== 0 ||
     r.trim.endMs !== null ||
     r.speed !== 1 ||
@@ -150,6 +156,8 @@ export interface SaveVideoEdit {
   revision: number;
   recipe: VideoEditRecipe;
   thumbnailJpeg?: Uint8Array;
+  /** Reserved for x63: source-time scene suggestions appended atomically after S1 lands. */
+  sceneMarkers?: number[];
 }
 export const saveVideoEditSchema: z.ZodType<SaveVideoEdit> = z
   .object({
