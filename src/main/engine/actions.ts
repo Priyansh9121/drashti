@@ -9,6 +9,7 @@ import type { StageState } from '../../shared/stage-layouts';
 import type { StageCall } from '../../shared/stage-message';
 import type { TimerDefinition, TimerRun } from '../../shared/timers';
 import type { ChosenWallpaper } from '../../shared/wallpapers';
+import type { ShapeOverride } from '../../shared/video-shape';
 import type {
   AudienceTimerLayer,
   AudioLayer,
@@ -155,6 +156,8 @@ export type EngineAction =
   | { type: 'repeat/set'; repeat: RepeatRun | null }
   /** The looks of the pictures in use, and the live zoom (Session 26e). */
   | { type: 'pictures/set'; pictures: Record<string, PictureLook>; opaque?: readonly string[] }
+  /** Sound and picture…'s Shape (alpha.20, x55): the videos up and coming next drawn in a shape of their own. */
+  | { type: 'videoShapes/set'; shapes: Record<string, ShapeOverride> }
   | { type: 'zoom/set'; liveZoom: LiveZoom | null }
   /** Each screen group's settings (its languages, and its role's layers and slide style), from the library. */
   | { type: 'look/set'; look: LiveLook }
