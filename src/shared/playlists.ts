@@ -53,6 +53,11 @@ export interface SmartPlaylistView {
    * not there yet), by their path inside the folder: they join once whole.
    */
   copying: string[];
+  /**
+   * Of those, the ones unchanged for 2 minutes and still not whole (Q60-31): their copies stopped, or they are damaged.
+   * Never taken by themselves; they join once whole.
+   */
+  stalled: string[];
   /** Items whose files are gone from the folder (marked, not removed). */
   missing: number;
 }

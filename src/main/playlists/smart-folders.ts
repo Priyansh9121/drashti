@@ -399,6 +399,7 @@ export class SmartFolders {
         state: 'following',
         adding: 0,
         copying: [],
+        stalled: [],
         missing: this.missingCount(playlistId),
       },
     };
@@ -497,7 +498,7 @@ export class SmartFolders {
       if (f.view.state !== 'folder-gone')
         this.deps.log('info', 'Smart playlists: a followed folder is not there');
       f.pending.clear();
-      this.setView(f, { state: 'folder-gone', adding: 0, copying: [] });
+      this.setView(f, { state: 'folder-gone', adding: 0, copying: [], stalled: [] });
       return;
     }
     if (f.view.state === 'folder-gone') {
@@ -508,7 +509,7 @@ export class SmartFolders {
     if (found.tooMany) {
       // Which files are past the limit is anyone's guess: add and mark nothing until some go.
       f.pending.clear();
-      this.setView(f, { state: 'too-many', adding: 0, copying: [] });
+      this.setView(f, { state: 'too-many', adding: 0, copying: [], stalled: [] });
       return;
     }
     const rows = this.rows(playlistId);
@@ -557,6 +558,7 @@ export class SmartFolders {
       state: waiting ? 'waiting' : 'following',
       adding: f.pending.size,
       copying,
+      stalled: [],
       missing: this.missingCount(playlistId),
     });
     if (marked) this.deps.changed(playlistId);
