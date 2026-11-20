@@ -704,6 +704,20 @@ describe('Simple Mode locks', () => {
     expect(answers.get(IPC.library.newQrSlide)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   });
 
+  it('the QR code… window’s logo and Download… (Q60-28) are Pro Mode’s: Simple Mode keeps no logo and saves no picture; the choices are read in either mode', () => {
+    for (const channel of [
+      IPC.library.pickQrLogo,
+      IPC.library.keepQrLogo,
+      IPC.library.setQrChoices,
+      IPC.library.downloadQr,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
+      expect(answers.get(channel)?.(), channel).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    }
+    expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.library.qrChoices);
+  });
+
   it('the opening (Session 55) plays in both modes; File › Opening…’s changes are Pro Mode’s', () => {
     for (const c of [
       IPC.opening.setOn,
