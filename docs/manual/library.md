@@ -121,28 +121,35 @@ The library holds everything on this computer that can go on the screens: presen
 3. Press **Copy** to put its words in a message or a problem report.
 4. Press **Esc** to close it.
 
-For the button that offers a long file's saved place, see **LIVE, Back and Next › Resume where it stopped**. For the time bar's repeat, frame steps and Snapshot, see that chapter too.
+A video also shows its **Lighter playing copy** status; see **Lighter playing copies** below. For the button that offers a long file's saved place, see **LIVE, Back and Next › Resume where it stopped**. For the time bar's repeat, frame steps and Snapshot, see that chapter too.
 
-![Media: right-click a video or sound for Media information…](../screenshots/convert-media-list-done.png)
+![Media information: a generated video and its lighter playing copy status](../screenshots/manual-media-information.png)
 
 ## Edit Video
 
-**What it is.** **Edit Video…** in a ready local video's right-click menu, in Pro Mode: one window with a private source preview, trim timeline, and Picture, Sound and Playback sections. The recipe belongs to the library video; a playlist row keeps its own trim points and markers.
+**What it is.** A ready local video's own editing window, in Pro Mode, with a private preview and **Trim**, **Picture**, **Sound**, **Playback** and **Preparation and export** sections. Saved changes apply to its next showing. A video already on the screens keeps playing as it was.
 
-**When you would use it.** To prepare a video's picture, sound or timing for its next showing, or to choose the frame used for its library thumbnail.
+**When you would use it.** Before the sabha, to prepare a video's picture, sound or timing, or choose its library thumbnail.
 
 **How:**
 
 1. In **Media** or a playlist, right-click the video and choose **Edit Video…**.
-2. Type a source time such as **1:23.500** in **Go to time** and press **Jump**, or move the trim timeline. The preview is private and silent. **Use this frame as library thumbnail** keeps the chosen frame with the next Save.
-3. Set the start and end, picture, sound and playback choices. **Frame shape** offers Original shape, 16:9, 4:3, square and vertical 9:16; Original shape is the default. The source preview is labelled so it is clear which file it shows.
-4. Press **Save**. **Ready for next showing** means the saved revision is ready; **Preparing** waits while a show, stream or recording is active. A video already on the screens keeps its earlier revision. If saving fails, keep the window open, read the reason and retry Save.
+2. Type a time in the original video, such as **0:03.500**, in **Go to time** and press **Jump**, or move the **Trim timeline**. The source preview is private and silent.
+3. In **Trim**, set **Start (seconds)** and **End (seconds)**. **Use this frame as library thumbnail** keeps the chosen frame when you Save.
+4. In **Picture**, crop, turn, flip, zoom or move the picture, adjust **Brightness**, **Contrast** or **Colour**, and choose **Frame shape** and **Blurred fill behind the video**.
+5. In **Sound**, choose **Audio track** or **Reduce steady background noise in a talk**. In **Playback**, choose **Speed** and the picture and sound fades.
+6. Press **Save**. **Preparing** waits while anything is up, streaming or recording. Once clear and idle, let preparation finish until **Ready for next showing** appears.
+7. Choose **Preview saved edits** to check the saved copy privately. **Source preview** returns to the original. If the saved copy cannot play, **Prepare again** rebuilds it.
 
-5. When **Ready for next showing** appears, choose **Preview saved edits** to check the prepared copy privately. **Source preview** returns to source-time trimming. **Prepare again** rebuilds a damaged copy.
+**Original shape** follows the crop and rotation; **16:9**, **4:3**, **Square (1:1)** and **Vertical (9:16)** make a fixed frame. The source preview stays as it was taken: check picture changes with **Preview saved edits** after Save. For a file marked with the wrong shape, see **Audio and the levels › Sound and picture…**; its **Shape** changes the drawing at once.
 
-**Reset edits** changes the draft; press Save to keep that reset. **Cancel**, or closing the window, lets you discard an unsaved draft or keep editing. Originals, the default thumbnail, existing row trims, and Sound and picture's tone and delays are kept. A newer save in another editor is reported instead of being overwritten.
+**Reset edits** changes only the draft until Save. **Cancel**, or closing the window, lets you discard unsaved changes or keep editing. A failed save keeps the draft; read its reason and try Save again. If another editor saved first, reopen the video before saving again. The original, its usual thumbnail, playlist row trims and existing markers stay; tone and delays stay in **Sound and picture…**.
 
-![Media: right-click a video to open its editing tools](../screenshots/convert-media-list-done.png)
+For the waveform and scene suggestions, see **Waveforms and suggested scene markers** below. For lighter copies and clips, choose **Preparation and export** and follow the features below.
+
+![Edit Video: the private source preview, waveform and Trim section](../screenshots/manual-edit-video.png)
+
+![Edit Video's Picture section with Frame shape and crop choices](../screenshots/manual-edit-video-picture.png)
 
 ## The Picture editor
 
@@ -201,9 +208,9 @@ For the button that offers a long file's saved place, see **LIVE, Back and Next 
 2. A video without sound says **No audio track**. Choosing another track prepares its own waveform.
 3. Press **Keep** beside a scene to add it to the current draft, or **Drop** to dismiss that suggestion from this view.
 4. Press **Save** to keep the draft. Cancel leaves saved markers and each playlist row's trim points as they were. A new analysis never replaces those points.
-5. If preparation fails, check the source video and free space, then use **Retry**.
+5. If preparation fails, check the original video and free space, then press **Retry analysis**.
 
-![The video preview and its start, end and marker controls](../screenshots/markers-dialog.png)
+![Edit Video: the waveform and suggested scene markers beside the trim controls](../screenshots/manual-edit-video.png)
 
 ## Lighter playing copies
 
@@ -215,10 +222,10 @@ For the button that offers a long file's saved place, see **LIVE, Back and Next 
 
 1. Open the video's **Media information…** to read its lighter copy's status.
 2. Finish the show and stop streaming and recording so waiting preparation can run.
-3. In **Edit Video…**, use **Stop lighter copy** to stop it. If it failed or was stopped, check the source and free space, then use **Retry lighter copy**.
+3. In **Edit Video…**, choose **Preparation and export**. **Stop lighter copy** stops preparation. If it failed or was stopped, check the original video and free space, then use **Retry lighter copy**.
 4. Wait for the status to say the next showing uses the lighter copy. It retains the picture's proportions and transparency.
 
-![The library's Media controls are opened from its file menu](../screenshots/markers-dialog.png)
+![Media information with the lighter playing copy status](../screenshots/manual-media-information.png)
 
 ## Exporting a clip, including vertical video
 
@@ -228,11 +235,11 @@ For the button that offers a long file's saved place, see **LIVE, Back and Next 
 
 **How:**
 
-1. Open **Edit Video…** in Pro Mode and choose the start and end.
-2. Choose **Saved edits** or **Original**, then **As the video** or **Vertical 9:16**. Save edits and wait for them to be ready before exporting Saved edits.
+1. Open **Edit Video…** in Pro Mode and choose the start and end in **Trim**.
+2. Choose **Preparation and export**. Under **Picture and sound**, choose **Saved edits** or **Original**. Under **Clip shape**, choose **As the video** or **Vertical 9:16**. Save edits and wait for them to be ready before exporting Saved edits.
 3. Choose MP4, or WebM to keep transparency. Tick **Also add the clip to Media** if wanted.
 4. Press **Export clip…** and choose a new file with Save as…. The original is never replaced, even when you choose its name.
 5. The export waits while a show, stream or recording is on. You may close the editor; it keeps the accepted request across a restart too.
 6. Open the editor again for progress, **Stop export**, or **Show the file** when done. If it failed, check the source, chosen folder and free space, then export again.
 
-![The source video's timeline supplies the selected start and end](../screenshots/video-timeline.png)
+![Preparation and export: Original, Vertical 9:16 and a new clip file](../screenshots/manual-edit-video-export.png)
