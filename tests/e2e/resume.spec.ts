@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, letTimePass, openLibrary, operatorPage, operatorReady } from './helpers';
 import { testFfmpeg } from './stream-helpers';
@@ -120,6 +121,7 @@ test('a long video taken off part-way: "Resume at 6:00" the next time, every scr
     await upAsBackground(win, id);
     const offer = win.getByRole('button', { name: /Resume at 6:00/u });
     await expect(offer).toBeVisible({ timeout: 15_000 });
+    await expectNoSeriousA11yIssues(win, 'Resume at under the time bars', '[data-testid="resume-offer"]');
     await offer.click();
     await expect
       .poll(async () => {
