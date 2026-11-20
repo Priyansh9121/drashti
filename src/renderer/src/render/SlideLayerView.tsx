@@ -1,5 +1,6 @@
 import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { nativeDeckMotion } from '../../../shared/deck';
 import { type DeckNativeTransition, isDeckNativeTransition } from '../../../shared/deck-transition';
 import type { EngineState, SlideLayer } from '../../../shared/engine/state';
@@ -539,6 +540,33 @@ export function slideMediaDrawable(
 }
 
 /**
+ * A decode may reject before its file has loaded. That is not permission to show the slide's colour in its place:
+ * wait for the real load/error, then give a loaded picture one more native decode. The caller's original deadline
+ * still wins, and abort removes the fallback listeners when that wait is over.
+ */
+async function prepareSlideImage(img: HTMLImageElement, signal: AbortSignal): Promise<void> {
+  try {
+    await decodeSlideImage(img);
+  } catch {
+    if (!img.complete && !signal.aborted)
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          img.removeEventListener('load', done);
+          img.removeEventListener('error', done);
+          signal.removeEventListener('abort', done);
+          resolve();
+        };
+        img.addEventListener('load', done, { once: true });
+        img.addEventListener('error', done, { once: true });
+        signal.addEventListener('abort', done, { once: true });
+        if (img.complete || signal.aborted) done();
+      });
+    if (!signal.aborted && img.complete && img.naturalWidth > 0)
+      await decodeSlideImage(img).catch(() => undefined);
+  }
+}
+
+/**
  * Whether every picture and video in `root` can be drawn now; else a promise for when it can, or for
  * `deadline` (the engine's time) if that comes first.
  */
@@ -550,7 +578,11 @@ export function slideMediaReady(
   ownImages = false,
 ): true | Promise<void> {
   const { images, videos, first } = notDrawable(root, layer, decodedPictures, ownImages);
-  const waits: Promise<unknown>[] = images.map((img) => decodeSlideImage(img).catch(() => undefined));
+  if (images.length === 0 && videos.length === 0) return true;
+  const stopImages = images.length > 0 ? new AbortController() : null;
+  const waits: Promise<unknown>[] = stopImages
+    ? images.map((img) => prepareSlideImage(img, stopImages.signal))
+    : [];
   for (const video of videos)
     waits.push(
       new Promise<void>((resolve) => {
@@ -560,14 +592,15 @@ export function slideMediaReady(
           video.addEventListener(event, () => resolve(), { once: true });
       }),
     );
-  if (waits.length === 0) return true;
   return Promise.race([
     Promise.all(waits).then(() => undefined),
     new Promise<void>((resolve) =>
       // eslint-disable-next-line no-restricted-syntax -- its deadline is the engine's (3 s after the slide went up), so every screen still waiting starts at once
       setTimeout(resolve, Math.max(0, deadline - engineNow())),
     ),
-  ]);
+  ]).finally(() => {
+    stopImages?.abort();
+  });
 }
 
 /**
@@ -780,7 +813,14 @@ export function SlideLayerView({
     }
     let live = true;
     void ready.then(() => {
-      if (live) begin(whole() ?? (native ? shownAt : Math.max(shownAt, engineNow())));
+      if (!live) return;
+      const reveal = () => {
+        begin(whole() ?? (native ? shownAt : Math.max(shownAt, engineNow())));
+      };
+      // A decoded picture is retained for this frame. Commit the cut while it is ready, before a deferred React
+      // render can move that reveal to another frame. Prepared Next still takes the layout fast path below.
+      if (picturesBy !== undefined) flushSync(reveal);
+      else reveal();
     });
     return () => {
       live = false;
