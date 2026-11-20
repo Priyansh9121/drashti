@@ -88,7 +88,7 @@ it('reports a missing prepared file as retryable, keeping the source recipe and 
     readyMediaId: 'copy',
     message: null,
   };
-  const save = vi.fn();
+  const save = vi.fn(() => ({ ok: true as const, edit }));
   registerEditVideoIpc({
     fromOperator: () => true,
     available: (id) => id === 'video',
