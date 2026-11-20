@@ -111,8 +111,14 @@ const RECORDS: Record<string, 'avcC' | 'hvcC'> = {
 /** A visual sample entry's own fields before its boxes: 6 reserved, its data reference, then 70 bytes of its own. */
 const VISUAL_ENTRY = 78;
 
-/** The first picture's record in a movie box. */
-function inMovie(moov: Buffer): CodecLevel | null {
+/** A movie box's first picture: its record, and its size as its sample entry says (alpha.20, "Plays anything"). */
+export type MovieVideo = CodecLevel & { width: number; height: number };
+
+/**
+ * The first picture's record in a movie box, with its width and height from its visual sample entry (bytes 24 to 27
+ * of its own fields): what the file's header alone says of an H.264 or an HEVC picture.
+ */
+export function movieVideo(moov: Buffer): MovieVideo | null {
   for (const trak of boxesIn(moov, 0, moov.length).filter((b) => b.type === 'trak')) {
     const mdia = child(moov, trak, 'mdia');
     const hdlr = child(moov, mdia, 'hdlr');
@@ -127,9 +133,18 @@ function inMovie(moov: Buffer): CodecLevel | null {
     const record = boxesIn(moov, entry.start + VISUAL_ENTRY, entry.end).find((b) => b.type === wanted);
     if (!record) return null;
     const bytes = moov.subarray(record.start, record.end);
-    return wanted === 'avcC' ? fromAvcC(bytes) : fromHvcC(bytes);
+    const found = wanted === 'avcC' ? fromAvcC(bytes) : fromHvcC(bytes);
+    return found
+      ? { ...found, width: moov.readUInt16BE(entry.start + 24), height: moov.readUInt16BE(entry.start + 26) }
+      : null;
   }
   return null;
+}
+
+/** The first picture's record in a movie box. */
+function inMovie(moov: Buffer): CodecLevel | null {
+  const found = movieVideo(moov);
+  return found ? { codec: found.codec, profileIdc: found.profileIdc, level: found.level } : null;
 }
 
 async function readAt(fh: FileHandle, position: number, length: number): Promise<Buffer> {
@@ -218,7 +233,3 @@ export async function readCodecLevel(path: string): Promise<CodecLevel | null> {
     await fh?.close().catch(() => undefined);
   }
 }
-
-/** Red (x47, slice 2): still to be written. */
-export type MovieVideo = CodecLevel & { width: number; height: number };
-export const movieVideo = (_moov: Buffer): MovieVideo | null => null;
