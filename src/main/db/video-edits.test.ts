@@ -81,3 +81,16 @@ it('keeps the exact recipe of an older prepared showing after a newer Save', () 
   expect(repo.renditionOf('pinned')).toMatchObject({ sourceId: 'video', revision: 1, recipe: first });
   db.close();
 });
+
+it('reads the immutable edit recipe through the same proxy identity callback', () => {
+  const { db, repo } = fixture();
+  const recipe = { ...PLAIN_VIDEO_EDIT, speed: 2 };
+  expect(repo.save({ mediaId: 'video', revision: 0, recipe }).ok).toBe(true);
+  db.prepare(
+    "INSERT INTO media (id,kind,name,path,listed) VALUES ('pinned','video','Placeholder pinned.mp4','bb/pinned.mp4',0)",
+  ).run();
+  expect(repo.complete('video', 1, 'pinned')).toBe(true);
+  const throughProxy = new VideoEditsRepo(db, (id) => (id === 'proxy' ? 'pinned' : id));
+  expect(throughProxy.renditionOf('proxy')).toEqual({ sourceId: 'video', revision: 1, recipe });
+  db.close();
+});

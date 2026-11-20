@@ -23,7 +23,12 @@ interface EditRow {
 
 /** The source's media row and bytes are never replaced by a prepared rendition. */
 export class VideoEditsRepo {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    private readonly originalFileId: (id: string) => string = (id) => id,
+  ) {
+    void this.originalFileId;
+  }
 
   /** Resolve a prepared immutable file back to its source when its editor is opened from a playlist. */
   sourceId(mediaId: string): string {
