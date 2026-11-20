@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test';
 import { decodeQR } from 'qr/decode.js';
 import { readPng } from '../../src/main/library/qr-raster';
 import { PLACEHOLDER_LOGO_MIDDLE, placeholderLogoPng } from '../../src/main/library/testing/qr-logo';
+import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { QR_DOWNLOAD_PIXELS, QR_SLIDE_PIXELS } from '../../src/shared/qr-picture';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
@@ -146,6 +147,17 @@ test('Simple Mode refuses making a QR-code slide; words too long are turned down
     (globalThis as PageGlobals).drashti.library.newQrSlide('https://example.org/placeholder'),
   );
   expect(refused.ok).toBe(false);
+  // The QR code… window's logo and Download… too (Q60-28): nothing kept, nothing saved, no dialog asked.
+  const others = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti.library;
+    return [
+      await d.downloadQr('https://example.org/placeholder', { logo: false }),
+      await d.pickQrLogo(),
+      await d.keepQrLogo('Placeholder logo.png', new Uint8Array([137, 80, 78, 71])),
+      await d.setQrChoices({ useLogo: true }),
+    ];
+  });
+  for (const answer of others) expect(answer).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   const names = await win.evaluate(async () =>
     (await (globalThis as PageGlobals).drashti.library.listPresentations()).map((p) => p.name),
   );
