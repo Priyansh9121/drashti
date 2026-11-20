@@ -100,12 +100,15 @@ const STUCK_MS = 15_000;
 const RETRY_MS = [1000, 2000, 4000, 5000] as const;
 /** Segments written before the screens are given it: three (numbered 0 to 2), so each page can start three from the end. */
 const READY_AT = 2;
-/** How long after a showing's start its first frame is shown: time for every page to load it and hold it ready. */
-const START_MS = 800;
+/**
+ * How long after a showing's start its first frame is shown: time for every page to load it and hold it ready (CI's Mac
+ * took over a second to have a page's first frame, x54-1120-195548-69004).
+ */
+const START_MS = 2000;
 /** How long a player's playlist lists only its first three segments, so Chromium starts it at the first of them. */
 const JOIN_WINDOW_MS = 2000;
 /** A page joins at a segment whose moment is at least this far off: time to load it and have its first frame. */
-const JOIN_LEAD_MS = 300;
+const JOIN_LEAD_MS = 1500;
 
 export const TEST_GUARD =
   'Test guard: a stream link was asked of somewhere other than 127.0.0.1, so it was stopped.';
@@ -200,8 +203,12 @@ interface Link {
   /** Each segment's start in the stream's own time (seconds from its first), and its length. */
   starts: Map<number, number>;
   lengths: Map<number, number>;
-  /** The showing's anchor: segment `segment`'s first frame is shown at `at` (the engine's time); null until it is up. */
-  anchor: { segment: number; at: number } | null;
+  /**
+   * The showing's anchor: segment `segment`, which starts `start` seconds into the stream's own time, has its first
+   * frame shown at `at` (the engine's time); null until it is up. Its start is kept here, as the segment's own entry
+   * goes once it is gone from the disk (each page later joins by the stream's time from it).
+   */
+  anchor: { segment: number; start: number; at: number } | null;
   /** When pages joined at each segment (for their first playlist's three segments). */
   joins: Map<number, number>;
   lastProgress: number;
@@ -618,8 +625,10 @@ export class LiveLinkService {
   /** A new showing's anchor: three segments from the newest, its first frame shown a moment from now. */
   private anchor(link: Link): void {
     if (link.newest === null) return;
-    const segment = Math.max(...[...link.starts.keys()].filter((n) => n <= (link.newest ?? 0) - 2), 0);
-    link.anchor = { segment, at: this.deps.now() + START_MS };
+    const known = [...link.starts.keys()].filter((n) => n <= (link.newest ?? 0) - 2);
+    if (known.length === 0) return;
+    const segment = Math.max(...known);
+    link.anchor = { segment, start: link.starts.get(segment) ?? 0, at: this.deps.now() + START_MS };
     link.joins.clear();
   }
 
@@ -637,13 +646,13 @@ export class LiveLinkService {
     const a = link.anchor;
     const newest = link.newest;
     if (a === null || newest === null) return;
-    const start = link.starts.get(a.segment);
     const end = (link.starts.get(newest) ?? NaN) + (link.lengths.get(newest) ?? 0);
-    if (start === undefined || !Number.isFinite(end)) return;
-    const shown = start + (now - a.at) / 1000;
+    if (!Number.isFinite(end)) return;
+    const shown = a.start + (now - a.at) / 1000;
     const ahead = end - shown;
     const target = link.targetSeconds ?? 1;
-    if (ahead < 0.5 || ahead > 5.5 * target) this.restart_(link);
+    // About three segments and the start's moment ahead as it goes up; past seven, pages near the playlist's end.
+    if (ahead < 0.5 || ahead > 7 * target) this.restart_(link);
   }
 
   /**
@@ -654,12 +663,10 @@ export class LiveLinkService {
     const link = this.current;
     const a = link?.anchor;
     if (link?.linkId !== linkId || !a || link.newest === null || link.state === 'wallpaper') return null;
-    const from = link.starts.get(a.segment);
-    if (from === undefined) return null;
     const now = this.deps.now();
     const moment = (n: number): number | null => {
       const at = link.starts.get(n);
-      return at === undefined ? null : Math.round(a.at + (at - from) * 1000);
+      return at === undefined ? null : Math.round(a.at + (at - a.start) * 1000);
     };
     // Three from the newest, or the next if that one's moment has passed (a page joining late), never before the anchor.
     const choices = [link.newest - 2, link.newest - 1].filter((n) => n >= a.segment && moment(n) !== null);

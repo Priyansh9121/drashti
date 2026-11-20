@@ -50,7 +50,7 @@ describe('the stream link’s FFmpeg', () => {
     expect(args.filter((_a, i) => args[i - 1] === '-map')).toEqual(['0:p:2:v:0', '0:p:2:a:0?']);
   });
 
-  it('writes a short local HLS of MPEG-TS segments in its own folder, about six of them, the older deleted', () => {
+  it('writes a short local HLS of MPEG-TS segments in its own folder, about eight of them, the older deleted', () => {
     const args = relayArgs({
       url: 'https://media.example.org/live.m3u8',
       program: null,
@@ -58,7 +58,7 @@ describe('the stream link’s FFmpeg', () => {
       again: false,
     });
     expect(after(args, '-f')).toBe('hls');
-    expect(after(args, '-hls_list_size')).toBe('6');
+    expect(after(args, '-hls_list_size')).toBe('8');
     expect(after(args, '-hls_segment_filename')).toBe(join(DIR, 'seg-%06d.ts'));
     expect(args.at(-1)).toBe(join(DIR, LOCAL_PLAYLIST));
     const flags = after(args, '-hls_flags')?.split('+') ?? [];
