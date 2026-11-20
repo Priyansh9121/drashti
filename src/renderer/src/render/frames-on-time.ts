@@ -61,3 +61,34 @@ export function framesOnTime({
     keep(frame(tick));
   });
 }
+
+/**
+ * The warm-up's slides before their transitions, drawn for `count` frames. Each request is kept for cleanup;
+ * the caller says whether that step is still live at each delivered frame, including one queued before a cut.
+ */
+export function drawBeforeFrames({
+  count,
+  each,
+  live,
+  keep,
+  ready,
+  frame = (tick) => requestAnimationFrame(tick),
+}: {
+  count: number;
+  each: () => void;
+  live: () => boolean;
+  keep: (request: number) => void;
+  ready: () => void;
+  frame?: FrameSource;
+}): void {
+  if (!live()) return;
+  let left = count;
+  const tick = () => {
+    if (!live()) return;
+    each();
+    left -= 1;
+    if (left > 0) keep(frame(tick));
+    else ready();
+  };
+  keep(frame(tick));
+}
