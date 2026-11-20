@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { shapedFrame } from '../../../shared/video-shape';
-import { SHAPED_PLACE, shapedVideoStyle, shapeFor } from './video-shape';
+import { SHAPED_PLACE, shapedClip, shapedVideoStyle, shapeFor } from './video-shape';
 
 /*
  * Sound and picture…'s Shape on a screen (alpha.20, x55, slice 6b): which videos are drawn in a shape of their own, and
@@ -58,5 +58,29 @@ describe('a video drawn in a shape of its own', () => {
           expect(at(css.height), said).toBeCloseTo(want.height, 1);
         }
       }
+  });
+
+  it('a slide’s video in its shape’s box keeps what showed of it on the slide: the frame’s own clip where it was, and the frame’s edge when it fills it', () => {
+    const frame = { width: 960, height: 540 };
+    // 4:3 fitted in the 16:9 frame: 720 × 540 from 120 in; 21:9 filling it: 1260 × 540 from 150 out.
+    const fitted = shapedFrame(4 / 3, frame, 'fit');
+    const filling = shapedFrame(21 / 9, frame, 'fill');
+    // No shape of its own: fitted, nothing to clip; filling, the frame's edge.
+    expect(shapedClip(frame, fitted, undefined)).toBeUndefined();
+    expect(shapedClip(frame, filling, undefined)).toBe('inset(0px 150px)');
+    expect(shapedClip(frame, filling, { shape: 'rectangle' })).toBe('inset(0px 150px)');
+    // An ellipse: the frame's, about the same middle.
+    expect(shapedClip(frame, fitted, { shape: 'ellipse' })).toBe('ellipse(480px 270px at 50% 50%)');
+    expect(shapedClip(frame, filling, { shape: 'ellipse' })).toBe('ellipse(480px 270px at 50% 50%)');
+    // Rounded corners: the frame's own rectangle, past the box's sides where the video is fitted narrower.
+    expect(shapedClip(frame, fitted, { shape: 'rectangle', cornerRadius: 24 })).toBe(
+      'inset(0px -120px round 24px)',
+    );
+    expect(shapedClip(frame, filling, { shape: 'rectangle', cornerRadius: 24 })).toBe(
+      'inset(0px 150px round 24px)',
+    );
+    // A symbol's outline: the frame's (a triangle: its top's middle, the bottom's corners), in the box's own pixels.
+    expect(shapedClip(frame, fitted, { shape: 'triangle' })).toBe('path("M360 0 L840 540 L-120 540 Z")');
+    expect(shapedClip(frame, filling, { shape: 'triangle' })).toBe('path("M630 0 L1110 540 L150 540 Z")');
   });
 });
