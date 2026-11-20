@@ -1,8 +1,9 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
 import {
   audienceScreen,
@@ -267,6 +268,118 @@ test('a hall screen whose renderer goes down each time it loads a video: after t
     expect(wallAfter, 'back at once on the Wallpaper').toBeGreaterThan(0);
     expect(result.kills, 'down twice, then never again').toBeLessThanOrEqual(3);
     expect(result.stopped, 'never Stopped').toBe(0);
+    expect(
+      events.some((e) => e.includes(' gave-up output')),
+      'never given up',
+    ).toBe(false);
+  } finally {
+    await app.close();
+  }
+});
+
+/** A presentation of one slide with this video over the whole slide, playing round (x46's way). */
+async function slideWithVideo(win: Page, dir: string, mediaId: string, name: string): Promise<string> {
+  const words = join(dir, `${name}.txt`);
+  writeFileSync(words, '[Verse]\nPlaceholder words over a video\n');
+  const [presentationId = ''] = await importAndGetIds(win, [words]);
+  await win.evaluate(
+    async ({ presentationId, mediaId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const opened = await d.library.slidesForEdit(presentationId);
+      if (!opened.ok) throw new Error(opened.message);
+      const slide = opened.doc.groups[0]?.slides[0];
+      if (!slide) throw new Error('The presentation has no slide.');
+      slide.elements = [
+        {
+          id: 'placeholder-slide-video',
+          kind: 'video',
+          mediaId,
+          frame: { x: 0, y: 0, width: 1920, height: 1080 },
+          fit: 'fill',
+          loop: true,
+        },
+      ];
+      const saved = await d.library.saveSlides(presentationId, opened.doc, opened.stamp);
+      if (!saved.ok) throw new Error(saved.message);
+    },
+    { presentationId, mediaId },
+  );
+  return presentationId;
+}
+
+// Q60-52 A (the owner's, x53's question): a video on a slide that brings a page down. x46's take-off pauses it where it
+// is (Q60-21), but the page still loads it: after the third time within a minute its slide comes off as Clear slide
+// takes it, said by its name and where (Back or Oops can bring the slide back).
+test('a video on a slide that brings a hall screen down each time it loads: paused after the second time, its slide comes off after the third with a notice naming it and the screen; the screen back at once, never Stopped', async () => {
+  test.setTimeout(240_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-keeps-failing-slide-'));
+  const clip = makeClip(join(dir, 'Placeholder slide video brings it down.mp4'), 'h264', 120, 587);
+  const { app } = await launchApp(SCREENS);
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const hall = await audienceScreen(app, win);
+    const screenId = await screenOf(hall.page);
+    await wallpaperAndPicture(win, dir);
+    const [id = ''] = await importAndGetIds(win, [clip]);
+    const presentationId = await slideWithVideo(win, dir, id, 'Placeholder slide over a video');
+    await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+    const onSlide = `[data-layer="slide"] video[data-media-id="${id}"]`;
+    await expect
+      .poll(
+        () =>
+          hall.page.evaluate(
+            (sel) => !(document.querySelector<HTMLVideoElement>(sel)?.paused ?? true),
+            onSlide,
+          ),
+        { timeout: 30_000, message: 'the slide’s video plays on the hall' },
+      )
+      .toBe(true);
+
+    // From here the screen's page is read by Main (Playwright cannot follow a page that crashed).
+    const t0 = Date.now();
+    await poisonWindow(app, `screen=${screenId}`, onSlide);
+    const slideUp = () =>
+      win.evaluate(
+        async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide !== null,
+      );
+    const offAfter = await expect
+      .poll(slideUp, { timeout: 20_000 })
+      .toBe(false)
+      .then(
+        () => Date.now() - t0,
+        () => -1,
+      );
+    const backAfter = await expect
+      .poll(() => screenLook(app, screenId), { timeout: 15_000 })
+      .toBe('WALL')
+      .then(
+        () => Date.now() - t0,
+        () => -1,
+      );
+    await letTimePass(win, 3000, 'it draws on');
+    const events = await watchdogEvents(app);
+    const result = {
+      kills: await poisonKills(app, `screen=${screenId}`),
+      slideOffAfterMs: offAfter,
+      wallAfterMs: backAfter,
+      state: await screenState(win, screenId),
+      told: await notices(win),
+      watchdog: events.filter((e) => e.includes('output')),
+    };
+    console.log(`X53 ${process.platform} (slide) ${JSON.stringify(result)}`);
+    expect(
+      offAfter,
+      `its slide comes off once the paused video still brings the screen down: ${JSON.stringify(result)}`,
+    ).toBeGreaterThan(0);
+    expect(result.told).toContainEqual(
+      expect.stringMatching(
+        new RegExp(`Placeholder slide video brings it down[\\s\\S]*${hall.name}[\\s\\S]*slide came off`, 'u'),
+      ),
+    );
+    expect(backAfter, 'the screen back at once on the Wallpaper').toBeGreaterThan(0);
+    expect(result.kills, 'down three times, then never again').toBeLessThanOrEqual(4);
+    expect(result.state, 'never Stopped').toBe('showing');
     expect(
       events.some((e) => e.includes(' gave-up output')),
       'never given up',
