@@ -42,8 +42,19 @@ export function prepareVideoProxies(
   try {
     const layers = { ...next.layers };
     const bg = layers.background;
-    if (bg?.kind === 'media' && bg.media === 'video')
-      layers.background = { ...bg, mediaId: mapped('background', bg.mediaId, bg.startedAt) };
+    if (bg?.kind === 'media' && bg.media === 'video') {
+      // S5 supplies this trusted prior cue; its initial private background has a NEW cue id.
+      const cue = (
+        previous as EngineState & {
+          videoCue?: { id: string; background: { mediaId: string } } | null;
+        }
+      ).videoCue;
+      const held = cue && 'cueId' in bg && bg.cueId === cue.id && bg.mediaId === cue.background.mediaId;
+      layers.background = {
+        ...bg,
+        mediaId: held ? bg.mediaId : mapped('background', bg.mediaId, bg.startedAt),
+      };
+    }
     const audio = layers.audio;
     if (audio?.mediaId) layers.audio = { ...audio, mediaId: mapped('audio', audio.mediaId, audio.startedAt) };
     const slide = layers.slide;
