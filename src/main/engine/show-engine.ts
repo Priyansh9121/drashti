@@ -388,7 +388,10 @@ export interface Restored {
   window: string | null;
   /** Another app's window that was in the picture-in-picture box (Session 50), by name: the same. */
   pipWindow: string | null;
-  /** A stream link that was the background (alpha.20, slice 8), by its name: never put back, only said. */
+  /**
+   * A stream link that was the background (alpha.20, slice 8), by its name: never put back (its local stream went with
+   * the stop; Show a Stream Link… shows it again), only said. Left out when there was none.
+   */
   link?: string;
   /** The video input put back as the background (Session 50), by name (not counted in `background`), or null. */
   input: string | null;
@@ -669,12 +672,14 @@ export class ShowEngine {
     if (alone) actions.push({ type: 'slide/put', layer: this.timerLayer(alone, null) });
     // Another app's window is never put back: it may be gone, or be another window now (Session 48).
     const window = request.background?.kind === 'window' ? request.background.name : null;
+    // Nor is a stream link (alpha.20, slice 8): its local stream went with the stop; only said.
+    const link = request.background?.kind === 'link' ? request.background.name : null;
     // A video input (Session 50) comes back while it is still in this computer's list, as the list has it now;
     // one no longer there is only said. Whether its camera is plugged in only the screens can tell: the first
     // to draw it says (src/main/video-inputs/), and one that is not there comes off again, named.
     const wasInput = request.background?.kind === 'input' ? request.background : null;
     const input = wasInput ? this.asListed(wasInput) : null;
-    let background = window !== null ? null : wasInput ? input : request.background;
+    let background = window !== null || link !== null ? null : wasInput ? input : request.background;
     // A video keeps its start time and its last jump, so it carries on where it would be now, between its start
     // and end points (Session 51: since Session 14 it came back as if never jumped, over the whole file).
     if (background?.kind === 'media') {
@@ -785,6 +790,7 @@ export class ShowEngine {
       stageMessage: Boolean(request.stageMessage),
       timers,
       window,
+      ...(link !== null ? { link } : {}),
       pipWindow: box.window,
       input: kept ? (input?.name ?? null) : null,
       inputGone: wasInput && !input ? wasInput.name : null,
@@ -820,21 +826,62 @@ export class ShowEngine {
     );
   }
 
-  /** Red (x54, slice 8): a stream link as the background, not built yet. */
-  showLink(_link: Pick<LinkBackground, 'linkId' | 'name'>): CommandResult {
-    return this.unchanged();
+  /**
+   * A stream link as the background (alpha.20, the playback set's slice 8; the owner's Q60-39 P3 A), live on this
+   * computer's audience screens from now, in place of what was there. Only the main process calls this, with a link the
+   * operator typed whose local stream has begun (src/main/live-link/): no command from a window, a phone or the API can
+   * name one. The operator's own change, as Media's click is: it takes black-out and the Wallpaper off
+   * (one-at-a-time.ts), and so does its coming back by itself after a drop (the main process's, once nothing else went
+   * up meanwhile).
+   */
+  showLink(link: Pick<LinkBackground, 'linkId' | 'name'>): CommandResult {
+    return this.atOnce(() =>
+      this.apply(
+        [
+          {
+            type: 'background/set',
+            background: { kind: 'link', linkId: link.linkId, name: link.name, startedAt: this.now() },
+          },
+        ],
+        null,
+        true,
+      ),
+    );
   }
 
-  restartLink(_linkId: string): CommandResult {
-    return this.unchanged();
+  /**
+   * A stream link gone for 20 seconds (P3 A): the Wallpaper goes up, the engine's own change (never the operator's), so
+   * the link comes off under it as a video does (one-at-a-time.ts). Nothing when that link is not the background.
+   */
+  linkDropped(linkId: string): CommandResult {
+    const bg = this.state.layers.background;
+    if (bg?.kind !== 'link' || bg.linkId !== linkId) return this.unchanged();
+    return this.apply([{ type: 'wallpaper/set', on: true }]);
   }
 
-  linkDropped(_linkId: string): CommandResult {
-    return this.unchanged();
+  /**
+   * Every page joins the stream link afresh (alpha.20, slice 8): the same link, a new start for all of them at once
+   * (after a drop, or as the show's time drifted from the stream's: src/main/live-link/). Bookkeeping, never the
+   * operator's change: nothing Back or Put it back would undo changes, and no cover is touched.
+   */
+  restartLink(linkId: string): CommandResult {
+    const bg = this.state.layers.background;
+    if (bg?.kind !== 'link' || bg.linkId !== linkId) return this.unchanged();
+    this.bookkeeping = true;
+    try {
+      return this.atOnce(() =>
+        this.apply([{ type: 'background/set', background: { ...bg, startedAt: this.now() } }]),
+      );
+    } finally {
+      this.bookkeeping = false;
+    }
   }
 
-  clearLink(_linkId: string): CommandResult {
-    return this.unchanged();
+  /** A stream link taken off by the main process (the operator's Stop on its notice, or one no longer received). */
+  clearLink(linkId: string): CommandResult {
+    const bg = this.state.layers.background;
+    if (bg?.kind !== 'link' || bg.linkId !== linkId) return this.unchanged();
+    return this.apply([{ type: 'layer/clear', layer: 'background' }], null, true);
   }
 
   /**

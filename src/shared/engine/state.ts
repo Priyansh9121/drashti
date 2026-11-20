@@ -73,7 +73,9 @@ import type { VideoCaptionsShown } from '../video-captions';
 // 28 carries PowerPoint's editable click effects and native transitions to every screen.
 // 29 carries a video’s stored caption track to screens and nodes; live speech stays private. (An A-B repeat, alpha.20,
 // needs no new number: a screen or node plays its `clip` and `loop` as ever; only Main reads the kept `ab`.)
-export const ENGINE_STATE_VERSION = 29;
+// 30 (alpha.20, the playback set's slice 8): a stream link as the background (`kind: 'link'`), which an older node or
+// page does not know, so it says 'incompatible'. A state 29 saved is read whole (30 only adds to it).
+export const ENGINE_STATE_VERSION = 30;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -85,6 +87,7 @@ export const ENGINE_STATE_VERSION = 29;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
+    version === 29 ||
     version === 28 ||
     version === 27 ||
     version === 26 ||
@@ -420,11 +423,6 @@ export interface LinkBackground {
   startedAt: number;
 }
 
-/**
- * What the background layer shows: a colour, an image or video from the
- * media library, another app's window (Session 48), a video input (Session 50) or a stream link (alpha.20). A slide's
- * background cue sets it (PLAN.md 4.3); it stays up on later slides until something replaces or clears it.
- */
 /**
  * What the background layer shows: a colour, an image or video from the
  * media library, another app's window (Session 48), a video input (Session 50) or a stream link (alpha.20). A slide's

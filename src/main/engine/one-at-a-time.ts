@@ -24,11 +24,15 @@ import type { EngineAction } from './actions';
  * under a cover, back as it was when the cover comes off.
  */
 
-/** The background's video file or video input up now, by what it is and when it went up; null for none. */
+/**
+ * The background's video file, video input or stream link (alpha.20, slice 8: a video that plays, with its sound) up now,
+ * by what it is and when it went up; null for none.
+ */
 function backgroundVideo(state: EngineState): string | null {
   const bg = state.layers.background;
   if (bg?.kind === 'media' && bg.media === 'video') return `video:${bg.mediaId}@${String(bg.startedAt)}`;
   if (bg?.kind === 'input') return `input:${bg.inputId}@${String(bg.startedAt)}`;
+  if (bg?.kind === 'link') return `link:${bg.linkId}@${String(bg.startedAt)}`;
   return null;
 }
 

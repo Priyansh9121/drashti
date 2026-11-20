@@ -45,6 +45,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'kirtans',
     'library',
     'links',
+    // Show a Stream Link… (alpha.20, slice 8), and a link up drawn in LIVE.
+    'liveLink',
     'liveWindow',
     'lowerThirds',
     // The Drashti Manual (x37, Session 60).
@@ -87,15 +89,27 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'zoom',
   ],
   // The hall's screens (a video input up now, Session 50: whether this computer has it, and how it stands).
-  output: ['app', 'engine', 'liveWindow', 'media', 'output', 'videoInputs'],
+  // A stream link up (alpha.20): each screen joins it (render/live-playback.ts).
+  output: ['app', 'engine', 'liveLink', 'liveWindow', 'media', 'output', 'videoInputs'],
   // The audio player.
   audio: ['audio', 'engine', 'media'],
   // The stream's picture.
-  stream: ['app', 'engine', 'liveWindow', 'media', 'output', 'stream', 'videoInputs'],
+  stream: ['app', 'engine', 'liveLink', 'liveWindow', 'media', 'output', 'stream', 'videoInputs'],
   // A node's own window, including its explicitly enabled shared show view. Main-only changes have no node handlers.
   // Its code reaches the panels' "What is this?" (ui/Panel's SectionTitle beside it), whose Open the manual asks the
   // manual (x37; the guides until then), though no panel of its own has a "?".
-  node: ['app', 'engine', 'liveWindow', 'manual', 'media', 'node', 'output', 'report', 'videoInputs'],
+  node: [
+    'app',
+    'engine',
+    'liveLink',
+    'liveWindow',
+    'manual',
+    'media',
+    'node',
+    'output',
+    'report',
+    'videoInputs',
+  ],
   // A deck's PDF made into pictures.
   pdf: ['pictures'],
   'pdf-export': ['engine', 'media', 'output', 'pdfExport'],

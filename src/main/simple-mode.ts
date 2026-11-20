@@ -251,6 +251,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.liveWindow.list,
   IPC.liveWindow.show,
   IPC.liveWindow.access,
+  // Show a Stream Link… (alpha.20, slice 8) is Pro Mode's; clearing a link (Clear background, Clear all) is not locked.
+  IPC.liveLink.show,
+  IPC.liveLink.stop,
+  IPC.liveLink.last,
   IPC.zoom.open,
   // The Access List's edits (Session 54, E4): Pro Mode's, as every change; reading it and saving its CSV are not.
   ...ACCESS_LIST_EDITS,
@@ -542,6 +546,8 @@ export function simpleModeRefusals(
   for (const c of ACCESS_LIST_EDITS) answers.set(c, () => ({ ...refused(), view: NO_VIEW }));
   answers.set(IPC.liveWindow.list, () => ({ ok: false, reason: 'unlisted', message: words() }));
   answers.set(IPC.liveWindow.access, () => null);
+  answers.set(IPC.liveLink.stop, () => null);
+  answers.set(IPC.liveLink.last, () => null);
   answers.set(IPC.zoom.open, () => null);
   return answers;
 }

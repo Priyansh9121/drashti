@@ -24,6 +24,7 @@ import {
   session,
   systemPreferences,
 } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, statSync, promises as fsPromises } from 'node:fs';
 import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
@@ -343,6 +344,10 @@ import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { StreamPageWarmUp } from './stream/stream-warm';
 import { LiveWindowService } from './live-window/live-window-service';
+import { LiveLinkService } from './live-link/live-link-service';
+import { localPlaylist, localProgress, startRelay } from './live-link/relay-process';
+import { fetchPlaylist } from './live-link/fetch-playlist';
+import { lookYoutube } from './live-link/youtube-look';
 import { electronWindowSources } from './live-window/electron-sources';
 import { standInWindowSources } from './live-window/stand-in-sources';
 import { applyCaptureRules } from './live-window/capture-rules';
@@ -2195,6 +2200,10 @@ function start(): void {
   });
   /** The opening pack's sound the opening keeps (alpha.16), by its sha256: set once the opening's service is made. */
   let openingSoundFile: (sha256: string) => string | null = () => null;
+  /** A stream link's local stream (alpha.20, slice 8): its folder, and a joined player's playlist; set once its service is made. */
+  let streamLinkFolder: (linkId: string) => string | null = () => null;
+  let streamLinkPlaylist: (linkId: string, segment: number) => Promise<string | null> = () =>
+    Promise.resolve(null);
   const serveMedia = async (request: Request) => {
     const started = performance.now();
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
@@ -2216,6 +2225,9 @@ function start(): void {
       openingPhoto: () => openingPhoto,
       // The opening pack's sound, as Drashti keeps its copy in the media folder (only the one the opening keeps).
       openingSound: (sha256) => openingSoundFile(sha256),
+      // A stream link's local stream (alpha.20, slice 8): only while that link is connecting or up.
+      liveFolder: (linkId) => streamLinkFolder(linkId),
+      livePlaylist: (linkId, segment) => streamLinkPlaylist(linkId, segment),
       warn: (message) => {
         log.warn(message);
       },
@@ -2903,6 +2915,8 @@ function start(): void {
       stageMessage: put.stageMessage,
       timers: put.timers,
       window: put.window,
+      // A stream link (alpha.20, slice 8): never put back, only named.
+      link: put.link ?? null,
       pipWindow: put.pipWindow,
       input: put.input,
       inputGone: put.inputGone,
@@ -2913,6 +2927,7 @@ function start(): void {
     const {
       slide: slideBack,
       window: windowName,
+      link: linkName,
       pipWindow: boxWindowName,
       input: inputName,
       inputGone: inputNotListed,
@@ -2929,6 +2944,7 @@ function start(): void {
         playlistItem: saved.playlist?.itemId ?? null,
         ...alsoBack,
         windowNotPutBack: windowName !== null,
+        linkNotPutBack: linkName !== undefined,
         boxWindowNotPutBack: boxWindowName !== null,
         inputPutBack: inputName !== null,
         inputNotListed: inputNotListed !== null,
@@ -2955,8 +2971,12 @@ function start(): void {
           : null,
       slideGone,
       background:
-        old.background !== null && old.background.kind !== 'window' && old.background.kind !== 'input',
+        old.background !== null &&
+        old.background.kind !== 'window' &&
+        old.background.kind !== 'input' &&
+        old.background.kind !== 'link',
       window: old.background?.kind === 'window' ? old.background.name : null,
+      link: old.background?.kind === 'link' ? old.background.name : null,
       // The picture-in-picture box (Session 50): a window in it named apart, as the background's is.
       pip: old.pip !== null && old.pip.source.kind !== 'window',
       pipWindow: old.pip?.source.kind === 'window' ? old.pip.source.name : null,
@@ -3393,6 +3413,108 @@ function start(): void {
   stops.add('shown window', () => {
     shownWindows.close();
   });
+
+  // ---- a stream link on the screens (alpha.20, the playback set's slice 8; the owner's Q60-39 P3 A) ------------------
+  // Show a Stream Link… (Pro Mode): an HLS or YouTube live link, received by Drashti's own FFmpeg into a short local
+  // stream in its own folder, which the screens play (src/main/live-link/). The folder is emptied at each start (what a
+  // crash left; its FFmpeg was stopped above with the other leftovers). A test run asks nothing of any address but
+  // 127.0.0.1, and looks at YouTube links with the fake yt-dlp only.
+  const streamLinkRoot = join(userDataDir, 'Stream links');
+  void fsPromises.rm(streamLinkRoot, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
+  const streamLinkFfmpeg = findFfmpeg({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+    override: sw('DRASHTI_FFMPEG'),
+  });
+  let lastStreamLink: string | null = null;
+  const streamLinks = new LiveLinkService({
+    startRelay: (args) =>
+      startRelay(streamLinkFfmpeg, args, {
+        started: (pid) => void leftovers.started(pid, 'stream-link'),
+        ended: (pid) => {
+          leftovers.forget(pid);
+        },
+      }),
+    fetchPlaylist: (url, signal) => fetchPlaylist(url, { guard: !packaged() && anyTestSwitch(), signal }),
+    lookYoutube: (url, signal) =>
+      lookYoutube(url, signal, {
+        work: join(userDataDir, 'Stream link look'),
+        launch: (folders) =>
+          youtubeLaunch(
+            {
+              packaged: packaged(),
+              platform: process.platform,
+              testing: anyTestSwitch(),
+              fake: packaged() ? null : (sw('DRASHTI_TEST_FAKE_YT_DLP') ?? null),
+              fakeConfig: packaged() ? null : (sw('DRASHTI_TEST_FAKE_YT_DLP_CONFIG') ?? null),
+              execPath: process.execPath,
+              tools: findYoutubeTools({
+                packaged: packaged(),
+                resourcesPath: process.resourcesPath,
+                appPath: app.getAppPath(),
+                platform: process.platform,
+                arch: process.arch,
+              }),
+              ffmpeg: streamLinkFfmpeg,
+            },
+            folders,
+          ),
+        children: {
+          started: (pid, group) => void leftovers.started(pid, 'yt-dlp', { group }),
+          ended: (pid) => {
+            leftovers.forget(pid);
+          },
+        },
+      }),
+    onAir: () => streaming.inUse() || testOnAir,
+    root: streamLinkRoot,
+    progress: localProgress,
+    readPlaylist: localPlaylist,
+    makeFolder: (dir) => {
+      mkdirSync(dir, { recursive: true });
+    },
+    removeFolder: (dir) =>
+      fsPromises.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }),
+    showLink: (link) => engine.showLink(link),
+    restartLink: (linkId) => engine.restartLink(linkId),
+    dropped: (linkId) => engine.linkDropped(linkId),
+    clearLink: (linkId) => engine.clearLink(linkId),
+    state: () => engine.current,
+    changed: (status) => {
+      sendToOperator(IPC.liveLink.changed, status);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    now: Date.now,
+    newId: randomUUID,
+    guard: !packaged() && anyTestSwitch(),
+  });
+  streamLinkFolder = (linkId) => streamLinks.folderOf(linkId);
+  streamLinkPlaylist = (linkId, segment) => streamLinks.playlistFor(linkId, segment);
+  engine.onChange(() => {
+    streamLinks.follow();
+  });
+  stops.add('stream links', () => streamLinks.close());
+  handle(IPC.liveLink.show, async (e, link) => {
+    if (!fromOperator(e) || typeof link !== 'string')
+      return { ok: false as const, message: 'Only the operator window can show a stream link.' };
+    // Kept for this run only, to offer again (never written down: a link can hold a token); never one too long to be a link.
+    lastStreamLink = link.length <= 2000 ? link.trim() : null;
+    return streamLinks.show(link);
+  });
+  handle(IPC.liveLink.stop, (e) => {
+    if (fromOperator(e)) streamLinks.stop();
+    return null;
+  });
+  handle(IPC.liveLink.status, () => streamLinks.view());
+  handle(IPC.liveLink.last, (e) => (fromOperator(e) ? lastStreamLink : null));
+  // Any of Drashti's own pages that plays it (a screen, LIVE, a card, a stage screen's box, the audio player).
+  handle(IPC.liveLink.join, (_e, linkId) => (typeof linkId === 'string' ? streamLinks.join(linkId) : null));
 
   // ---- the window for Zoom (Session 48) -------------------------------------------
   const zoom = new ZoomWindow({

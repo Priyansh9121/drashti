@@ -123,6 +123,7 @@ export function slidePictureReadyAt(state: EngineState, now: number): number {
     slide?.timer ||
     background?.kind === 'input' ||
     background?.kind === 'window' ||
+    background?.kind === 'link' ||
     pip?.source.kind === 'input' ||
     pip?.source.kind === 'window' ||
     (lowerThird?.look.motion && lowerThird.look.motion !== 'none') ||
