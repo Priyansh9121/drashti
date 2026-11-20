@@ -672,7 +672,8 @@ export class LiveLinkService {
     const choices = [link.newest - 2, link.newest - 1].filter((n) => n >= a.segment && moment(n) !== null);
     const segment = choices.find((n) => (moment(n) ?? 0) >= now + JOIN_LEAD_MS) ?? choices[0];
     if (segment === undefined) return null;
-    if (!link.joins.has(segment)) link.joins.set(segment, now);
+    // Each page joining there has its own first playlist of three: the window runs from the latest join.
+    link.joins.set(segment, now);
     return { segment, startAt: moment(segment) ?? now };
   }
 
