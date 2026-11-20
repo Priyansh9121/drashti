@@ -38,6 +38,7 @@ function actions(mode: 'pro' | 'simple', on = { audience: true, stage: true }) {
     redo: { run: nothing },
     uncoverControls: { accelerator: 'CommandOrControl+Shift+U', run: nothing },
     saveDiagnostics: nothing,
+    reportProblem: nothing,
     importFromLink: nothing,
     backUpLibrary: nothing,
     restoreLibrary: nothing,

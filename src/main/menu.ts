@@ -56,6 +56,8 @@ export interface MenuActions {
   uncoverControls: { accelerator: string | null; run: () => void };
   /** Help > Save diagnostics: one file on the Desktop to send after a problem. */
   saveDiagnostics: () => void;
+  /** Help › Report a Problem… (x49, both modes): tell the admin where a problem is and what it is. */
+  reportProblem: () => void;
   /** File > Import from a Link… (Session 25b, Pro Mode): YouTube or Dropbox. */
   importFromLink: () => void;
   /** File > Back Up Library… and Restore Library…. */
@@ -373,6 +375,8 @@ export function installMenu(actions: MenuActions): void {
             } as MenuItemConstructorOptions,
             { type: 'separator' } as MenuItemConstructorOptions,
           ]),
+      // Help › Report a Problem… (x49, the owner's Q60-38): in both modes, just above Save Diagnostics….
+      { id: 'report-problem', label: 'Report a Problem…', click: actions.reportProblem },
       { id: 'save-diagnostics', label: 'Save Diagnostics…', click: actions.saveDiagnostics },
       // Simple Mode never sees updates.
       ...(simple
