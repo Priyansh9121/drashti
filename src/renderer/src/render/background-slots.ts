@@ -148,8 +148,19 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
       if (!cue) return slots.incoming?.cued ? { ...slots, incoming: null } : slots;
       const key = slotKey(cue.background);
       if (slots.shown?.key === key || slots.leaving?.key === key) return slots;
-      if (slots.incoming?.key === key)
-        return { ...slots, incoming: { ...slots.incoming, layer: cue.background, cued: true } };
+      if (slots.incoming?.key === key) {
+        const { cued: _private, ...incoming } = slots.incoming;
+        // Go already armed this showing: errors must use the ordinary take-off path.
+        // It stays hidden in incoming until activate reaches the shared future moment.
+        return {
+          ...slots,
+          incoming: {
+            ...incoming,
+            layer: cue.background,
+            ...(cue.background.seek?.paused ? { cued: true as const } : {}),
+          },
+        };
+      }
       if (slots.incoming && !slots.incoming.cued) return slots;
       // An active dissolve owns both decoders: a third one is never prepared over it.
       if (slots.leaving) return slots;
