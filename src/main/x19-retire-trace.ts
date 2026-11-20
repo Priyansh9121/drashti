@@ -27,14 +27,29 @@ const now = () => performance.timeOrigin + performance.now();
 
 const requested = [
   'toplevel',
-  'cc',
   'gpu',
   'disabled-by-default-gpu.dawn',
   'disabled-by-default-gpu.graphite.dawn',
   'disabled-by-default-skia.shaders',
-  'disabled-by-default-skia.gpu.cache',
   'blink.user_timing',
 ];
+
+// SCRATCH: the12held rows whose normal retirement path can be reached; screen2shares its original jump command.
+const LATE_PLAIN = new Set([
+  'deck click, windows without a Preloader',
+  'jump to a deck slide Drashti plays: its effects',
+]);
+const LATE_STREAMING = new Set([
+  'deck Drashti plays: its 4:3 Cover 700 (between bars)',
+  'deck Drashti plays: its 4:3 Uncover 700 (between bars)',
+  'deck click after 20 s still',
+  'deck click, a slide pointed at and let go meanwhile',
+  'deck click, windows without a Preloader',
+  'deck slide in (step 0), pointed at first',
+  'lower third letters-blur-glass-sparkles in',
+  'table slide, 250 cells',
+  'wipe 800 (Bold)',
+]);
 
 function metrics() {
   return app.getAppMetrics().map((metric) => {
@@ -111,6 +126,8 @@ export async function startRetireTrace(
 ): Promise<((press?: Press) => Promise<void>) | undefined> {
   const root = sw('DRASHTI_X19_RETIRE_TRACE');
   if (packaged() || !root || sw('DRASHTI_TEST_MOTION_PROBE') !== '1') return undefined;
+  if (scope.track !== 'screen-startup' && !(scope.streaming ? LATE_STREAMING : LATE_PLAIN).has(scope.name))
+    return undefined;
   const sequence = ++serial;
   const repetition = (repetitions.get(scope.name) ?? 0) + 1;
   repetitions.set(scope.name, repetition);
