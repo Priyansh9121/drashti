@@ -120,7 +120,7 @@ function useHidden(): boolean {
   return hidden;
 }
 
-/** Moving now, or what holds the touch still (data-look-moving on the layer's place says it, for the tests). */
+/** Moving now, or what holds the touch still (shared/appearance/moving.ts), with the shown look's motions. */
 export function useLookMoving(): { now: MovingNow; look: readonly MotionKind[] } {
   const root = useRootFacts();
   const reduced = useMedia('(prefers-reduced-motion: reduce)');
