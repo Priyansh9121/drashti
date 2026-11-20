@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID, webcrypto } from 'node:crypto';
 import { mkdir, readdir, rename, stat, writeFile, rm } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import type { PictureLook, PixelSize } from '../../shared/picture-look';
@@ -413,13 +413,16 @@ export class DisplayCopies {
       if (!(await realPlaceAsync(this.deps.mediaDir, dir))?.inside) throw new Error('outside media');
       partial = `${join(this.deps.mediaDir, relative)}.part-${randomUUID()}`;
       await writeFile(partial, bytes);
-      if (this.stopped || this.pending.get(job.key) !== job) throw new Error('cancelled');
+      if (this.cancelled() || this.pending.get(job.key) !== job) throw new Error('cancelled');
+      // A native asynchronous crypto job keeps the full-copy checksum off Main's event loop.
+      const hash = Buffer.from(await webcrypto.subtle.digest('SHA-256', bytes)).toString('hex');
+      if (this.cancelled() || this.pending.get(job.key) !== job) throw new Error('cancelled');
       await rename(partial, join(this.deps.mediaDir, relative));
       const file: DisplayFile = {
         key: job.key,
         ...job.size,
         path: relative,
-        hash: createHash('sha256').update(bytes).digest('hex'),
+        hash,
         bytes: bytes.length,
         ext: job.header.type,
       };
