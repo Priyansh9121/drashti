@@ -78,3 +78,35 @@ describe('Edit Video operator boundary', () => {
     expect(f.changed).not.toHaveBeenCalled();
   });
 });
+
+it('reports a missing prepared file as retryable, keeping the source recipe and revision', () => {
+  const edit: VideoEditSnapshot = {
+    mediaId: 'video',
+    revision: 3,
+    recipe: { ...PLAIN_VIDEO_EDIT, speed: 2 },
+    state: 'ready',
+    readyMediaId: 'copy',
+    message: null,
+  };
+  const save = vi.fn();
+  registerEditVideoIpc({
+    fromOperator: () => true,
+    available: (id) => id === 'video',
+    repo: { sourceId: (id) => id, read: () => edit, save },
+    changed: () => undefined,
+    write: (_guard, run) => Promise.resolve(run()),
+  });
+  const result = handlers.get('media:video-edit')?.({}, 'video');
+  expect(result).toMatchObject({
+    ok: true,
+    edit: {
+      mediaId: 'video',
+      revision: 3,
+      state: 'failed',
+      readyMediaId: null,
+      recipe: { speed: 2 },
+      message: expect.stringContaining('Save'),
+    },
+  });
+  expect(save).not.toHaveBeenCalled();
+});
