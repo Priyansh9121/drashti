@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { dispatch } from './time-bar-helpers';
+import { dispatch, snapshot } from './time-bar-helpers';
 import { cueReady, setupVideoCue } from './video-cue-helpers';
 import { freePort, readFlv, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
 
@@ -21,27 +21,60 @@ function powershell(command: string): string {
 }
 
 async function frames(page: Page, ms: number) {
-  const gaps = await page.evaluate(async (ms) => {
+  const measured = await page.evaluate(async (ms) => {
     let before = performance.now();
     const until = before + ms;
     const gaps: number[] = [];
+    const decoders = new Map<
+      HTMLVideoElement,
+      { start: number; droppedStart: number; total: number; dropped: number }
+    >();
+    const observe = (initial: boolean) => {
+      for (const video of document.querySelectorAll<HTMLVideoElement>('video[data-media-id]')) {
+        const q = video.getVideoPlaybackQuality();
+        let seen = decoders.get(video);
+        if (!seen) {
+          seen = {
+            start: initial ? q.totalVideoFrames : 0,
+            droppedStart: initial ? q.droppedVideoFrames : 0,
+            total: 0,
+            dropped: 0,
+          };
+          decoders.set(video, seen);
+        }
+        // Keep the maximum if an outgoing element's cleanup resets its decoder counters.
+        seen.total = Math.max(seen.total, q.totalVideoFrames);
+        seen.dropped = Math.max(seen.dropped, q.droppedVideoFrames);
+      }
+    };
+    observe(true);
     await new Promise<void>((resolve) => {
       const frame = (now: number) => {
         gaps.push(now - before);
         before = now;
+        observe(false);
         if (now >= until) resolve();
         else requestAnimationFrame(frame);
       };
       requestAnimationFrame(frame);
     });
-    return gaps;
+    return {
+      gaps,
+      decodedVideoFrames: [...decoders.values()].reduce((n, d) => n + Math.max(0, d.total - d.start), 0),
+      droppedVideoFrames: [...decoders.values()].reduce(
+        (n, d) => n + Math.max(0, d.dropped - d.droppedStart),
+        0,
+      ),
+    };
   }, ms);
-  const sorted = [...gaps].sort((a, b) => a - b);
+  const sorted = [...measured.gaps].sort((a, b) => a - b);
   return {
-    frames: gaps.length,
+    frames: measured.gaps.length,
     p95: sorted[Math.floor(sorted.length * 0.95)] ?? 0,
     longest: sorted.at(-1) ?? 0,
-    over50: gaps.filter((x) => x > 50).length,
+    over50: measured.gaps.filter((x) => x > 50).length,
+    decodedVideoFrames: measured.decodedVideoFrames,
+    droppedVideoFrames: measured.droppedVideoFrames,
   };
 }
 
@@ -161,6 +194,9 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         if (mode === 'cue') {
           await dispatch(win, { type: 'cueVideo', mediaId: ids[1] });
           await cueReady(win);
+          const cue = (await snapshot(win)).videoCue;
+          if (!cue) throw new Error('No prepared cue for the streaming Go measurement');
+          expect((await dispatch(win, { type: 'goVideoCue', cueId: cue.id })).ok).toBe(true);
         }
         if (mode === 'crossfade') await dispatch(win, { type: 'next' });
         const pages = await sampling,
