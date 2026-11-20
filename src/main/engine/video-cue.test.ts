@@ -147,12 +147,12 @@ describe('S5 engine-clock crossfade curve', () => {
 it('repeated decoder readiness does not broadcast another revision or create a readiness feedback loop', () => {
   const { engine } = setup();
   const cue = prepare(engine);
-  expect(engine.reportVideoCue(cue.id, 'hall', true).changed).toBe(true);
+  expect(engine.reportVideoCue(cue.id, 'hall', true)).toMatchObject({ ok: true, changed: true });
   const revision = engine.rev;
-  expect(engine.reportVideoCue(cue.id, 'hall', true).changed).toBe(false);
+  expect(engine.reportVideoCue(cue.id, 'hall', true)).toMatchObject({ ok: true, changed: false });
   expect(engine.rev).toBe(revision);
   engine.reportVideoCue(cue.id, 'audio', false);
   const failedRevision = engine.rev;
-  expect(engine.reportVideoCue(cue.id, 'audio', false).changed).toBe(false);
+  expect(engine.reportVideoCue(cue.id, 'audio', false)).toMatchObject({ ok: true, changed: false });
   expect(engine.rev).toBe(failedRevision);
 });
