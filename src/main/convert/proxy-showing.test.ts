@@ -62,3 +62,19 @@ it('does not change an existing background when the same source is newly put in 
   expect(result.state?.layers.background).toEqual(before.layers.background);
   expect(result.state?.layers.pip?.source).toMatchObject({ mediaId: 'proxy' });
 });
+
+it('keeps the privately cued file on Go when a lighter copy becomes ready after Cue', () => {
+  const empty = initialEngineState();
+  const background = showing().layers.background;
+  if (background?.kind !== 'media') throw new Error('The placeholder video is missing.');
+  const held = { ...background, cueId: 'placeholder-cue' };
+  const previous = { ...empty, videoCue: { id: 'placeholder-cue', background: held } };
+  const next = {
+    ...empty,
+    layers: { ...empty.layers, background: { ...held, seek: { at: 2000, toMs: 350 } } },
+  };
+  const ready = vi.fn(() => ({ mediaId: 'newly-ready-proxy', message: null }));
+  const result = prepareVideoProxies(previous, next, ready);
+  expect(result.state?.layers.background).toEqual(next.layers.background);
+  expect(ready).not.toHaveBeenCalled();
+});
