@@ -1,4 +1,5 @@
 import type { DrashtiBridge } from '../../../shared/bridge';
+import { NO_FIRST_FRAME } from '../../../shared/no-picture';
 import type { PlaybackError } from './playback';
 
 /*
@@ -41,7 +42,8 @@ export function tellCannotPlay(
   error: PlaybackError,
 ): void {
   const bridge = (globalThis as { drashti?: Partial<DrashtiBridge> }).drashti;
-  const key = `${mediaId}@${String(startedAt)}#${String(attempt)}`;
+  // A first frame that never came is said once, and an error after it still is (Q60-44).
+  const key = `${mediaId}@${String(startedAt)}#${String(attempt)}${error.code === NO_FIRST_FRAME ? '/no-frame' : ''}`;
   if (!bridge?.media?.cannotPlay || failedTold.has(key)) return;
   failedTold.add(key);
   void bridge.media.cannotPlay(mediaId, startedAt, error.code, error.message).catch(() => undefined);
