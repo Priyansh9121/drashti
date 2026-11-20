@@ -20,15 +20,22 @@ function cueMenu(target: FileTarget) {
 }
 
 /** One first-frame preview, copied from LIVE's already loaded element, never another decoder. */
-function CuedFrame({ id }: { id: string }) {
+function CuedFrame({ id, ready }: { id: string; ready: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
+    if (!ready) return;
     let frame = 0;
     const draw = () => {
       const video = document.querySelector<HTMLVideoElement>(`video[data-cue-id="${CSS.escape(id)}"]`);
       const canvas = ref.current;
       if (!canvas) return;
-      if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0) {
+      if (
+        !video ||
+        video.seeking ||
+        video.dataset['state'] !== 'ready' ||
+        video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+        video.videoWidth === 0
+      ) {
         frame = requestAnimationFrame(draw);
         return;
       }
@@ -41,7 +48,7 @@ function CuedFrame({ id }: { id: string }) {
     };
     draw();
     return () => cancelAnimationFrame(frame);
-  }, [id]);
+  }, [id, ready]);
   return (
     <canvas
       ref={ref}
@@ -64,7 +71,7 @@ export function VideoCueStrip() {
       data-testid="video-cue"
       className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-panel-2 p-2 text-xs"
     >
-      <CuedFrame id={cue.id} />
+      <CuedFrame id={cue.id} ready={ready} />
       <div className="min-w-0 flex-1" role="status">
         <div className="font-semibold">
           {cue.automatic ? 'Next video · Crossfade' : 'Cued video'} · {cue.label}
