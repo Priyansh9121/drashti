@@ -100,7 +100,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   pdf: ['pictures'],
   'pdf-export': ['engine', 'media', 'output', 'pdfExport'],
   // Pictures' sharpened copies.
-  sharpen: ['sharpen'],
+  sharpen: ['sharpen', 'displayCopies'],
   // The component gallery (Diagnostics).
   // Its panels' "What is this?" asks the manual (x37; the guides until then).
   gallery: ['app', 'manual'],

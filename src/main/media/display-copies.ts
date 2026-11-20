@@ -47,6 +47,7 @@ function originalForOlderPictureWithoutDisplayCopy(): null { return null; }
 export class DisplayCopies {
   private readonly files = new Map<string, DisplayFile>();
   private readonly sources = new Map<string, PictureHeader>();
+  private readonly latest = new Map<string, DisplayFile>();
   private readonly headers = new Map<string, Promise<PictureHeader | null>>();
   private readonly pending = new Map<string, Job>();
   private queue: Job[] = [];
@@ -83,6 +84,7 @@ export class DisplayCopies {
       const { sha256: hash, bytes } = await sha256File(place.path);
       const file = { key, ...size, path: relative, hash, bytes, ext: header.type };
       this.files.set(`${candidate.sha256}/${key}`, file);
+      this.latest.set(candidate.sha256, file);
       return file;
     } catch { return null; }
   }
@@ -199,7 +201,7 @@ export class DisplayCopies {
         const data = await readFile(source.path);
         if (data.length > MAX_SOURCE_BYTES) throw new Error('too large');
         if (this.win?.id !== sender || this.current?.job !== job) return null;
-        return { key: job.key, data: new Uint8Array(data), percent: 0, type: job.header.type === 'jpg' ? 'image/jpeg' : 'image/png', maxPixels: MAX_SOURCE_PIXELS, box: job.size, resizeOnly: true };
+        return { key: job.key, data: new Uint8Array(data), percent: 0, type: job.header.type === 'jpg' ? 'image/jpeg' : 'image/png', maxPixels: MAX_SOURCE_PIXELS, box: job.size, sourceSize: job.header.size, resizeOnly: true };
       } catch { this.complete(job, failure('The picture could not be read.')); }
     }
     this.finishing = true;
@@ -225,6 +227,7 @@ export class DisplayCopies {
       await rename(partial, join(this.deps.mediaDir, relative));
       const file: DisplayFile = { key: job.key, ...job.size, path: relative, hash: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length, ext: job.header.type };
       this.files.set(`${job.candidate.sha256}/${job.key}`, file);
+      this.latest.set(job.candidate.sha256, file);
       this.complete(job, { ok: true, copy: file }); this.deps.changed();
     } catch { if (partial) await rm(partial, { force: true }).catch(() => undefined); this.complete(job, failure('The display copy could not be kept.')); }
     return true;
@@ -238,7 +241,7 @@ export class DisplayCopies {
     const exact = this.files.get(`${sha}/${keyOf(sha, size)}`);
     if (exact) return exact;
     // A larger screen is being prepared: retain a checked older rendition until it is ready.
-    return [...this.files.entries()].findLast(([key]) => key.startsWith(`${sha}/`))?.[1] ?? originalForOlderPictureWithoutDisplayCopy();
+    return this.latest.get(sha) ?? originalForOlderPictureWithoutDisplayCopy();
   }
   relativePath(sha: string, key: string): string | null { return this.files.get(`${sha}/${key}`)?.path ?? null; }
   fileOf(sha: string, key: string): DisplayFile | null { return this.files.get(`${sha}/${key}`) ?? null; }

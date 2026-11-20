@@ -133,6 +133,8 @@ export interface SharpenJobView {
   percent: number;
   /** Private display-copy job: resize only, with no pixel convolution/readback. */
   resizeOnly?: true;
+  /** The oriented source dimensions read from its header; a mismatch is refused, never stretched. */
+  sourceSize?: { width: number; height: number };
   type: 'image/jpeg' | 'image/png';
   maxPixels: number;
   /** The size the screens draw it at (Session 26g): the copy is the picture fitted into it; null, its own size. */

@@ -1240,6 +1240,7 @@ export const IPC = {
     /** pdf.js's own data (fonts a PDF names without embedding them, and its decoders), by kind and name. */
     asset: 'pictures:asset',
   },
+  displayCopies: { next: 'display-copies:next', made: 'display-copies:made' },
   sharpen: {
     /** The hidden window that makes sharpened copies (Session 26f) asks for the next picture (that window only). */
     next: 'sharpen:next',
@@ -1347,6 +1348,8 @@ export interface InvokeContract {
   };
   [IPC.pdfExport.done]: { args: [done: PdfCopyFinished]; result: boolean };
   [IPC.pdfExport.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
+  [IPC.displayCopies.next]: { args: []; result: SharpenJobView | null };
+  [IPC.displayCopies.made]: { args: [key: string, bytes: Uint8Array | null]; result: boolean };
   [IPC.sharpen.next]: { args: []; result: SharpenJobView | null };
   [IPC.sharpen.made]: { args: [key: string, bytes: Uint8Array | null]; result: boolean };
   [IPC.guides.list]: { args: []; result: { id: GuideId; tab: string }[] };

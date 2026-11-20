@@ -1238,6 +1238,10 @@ export interface DrashtiBridge {
     asset(kind: PictureAssetKind, name: string): Promise<Uint8Array | null>;
   };
   /** The hidden window that makes pictures' sharpened copies (Session 26f); that window only. */
+  displayCopies: {
+    next(): Promise<SharpenJobView | null>;
+    made(key: string, bytes: Uint8Array | null): Promise<boolean>;
+  };
   sharpen: {
     /** The next picture to make a copy of (null: none left). */
     next(): Promise<SharpenJobView | null>;

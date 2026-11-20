@@ -8,7 +8,7 @@ import { secureWebPreferences } from '../windows/web-preferences';
  * shown, never focused, never throttled, with the app's secure settings, its process at the lowest
  * priority so the show's processes always come first. `gone`: its process ended unexpectedly.
  */
-export function createSharpenWindow(gone: () => void): BrowserWindow {
+export function createSharpenWindow(gone: () => void, display = false): BrowserWindow {
   const win = new BrowserWindow({
     show: false,
     width: 320,
@@ -29,6 +29,6 @@ export function createSharpenWindow(gone: () => void): BrowserWindow {
     gone();
     if (!win.isDestroyed()) win.destroy();
   });
-  void loadPage(win, 'sharpen');
+  void loadPage(win, 'sharpen', display ? { purpose: 'display' } : {});
   return win;
 }
