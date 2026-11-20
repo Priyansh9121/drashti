@@ -188,7 +188,7 @@ test('a long sound: its plays counted and when it last played, in Media and Medi
   }
 });
 
-test('an audio playlist stopped part-way plays on from the track it stopped on; a track asked for plays as asked', async () => {
+test('an audio playlist stopped part-way plays on from the track it stopped on at the Audio panel’s Play; a track’s own row plays that track', async () => {
   test.setTimeout(240_000);
   const { app, win, dir } = await start();
   try {
@@ -197,30 +197,29 @@ test('an audio playlist stopped part-way plays on from the track it stopped on; 
       sound(join(dir, 'Placeholder dhun two.m4a'), 30, 440),
       sound(join(dir, 'Placeholder dhun three.m4a'), 30, 550),
     ]);
-    const listId = await win.evaluate(async (mediaIds) => {
+    await win.evaluate(async (mediaIds) => {
       const d = (globalThis as PageGlobals).drashti;
       const made = await d.music.create('Placeholder before sabha');
       if (!made.ok || !made.id) throw new Error('no audio playlist');
       const added = await d.music.addTracks(made.id, mediaIds, null);
       if (!added.ok) throw new Error(added.message);
-      return made.id;
     }, ids);
     const playing = async () => (await snapshot(win)).layers.audio?.mediaId ?? null;
-    const play = (index?: number) =>
-      win.evaluate(({ listId, index }) => (globalThis as PageGlobals).drashti.music.play(listId, index), {
-        listId,
-        index,
-      });
-    expect((await play(1)).ok).toBe(true);
+    // The Audio panel as the operator has it: the list shown, its tracks' rows, and its Play.
+    await win.getByTestId('music-playlist').filter({ hasText: 'Placeholder before sabha' }).click();
+    const panel = win.getByTestId('music-panel');
+    const track = (name: string) => panel.getByRole('button', { name: `Play from ${name}` });
+    await track('Placeholder dhun two').click();
     await expect.poll(playing).toBe(ids[1]);
-    // Clear audio part-way: Play (no track asked) plays on from that track.
+    // Clear audio part-way: Play plays on from that track.
     await dispatch(win, { type: 'clearLayer', layer: 'audio' });
     await expect.poll(playing).toBeNull();
-    expect((await play()).ok).toBe(true);
+    await panel.getByTestId('music-play').click();
     await expect.poll(playing).toBe(ids[1]);
-    // A track asked for plays as asked.
+    // A track's own row plays that track.
     await dispatch(win, { type: 'clearLayer', layer: 'audio' });
-    expect((await play(0)).ok).toBe(true);
+    await expect.poll(playing).toBeNull();
+    await track('Placeholder dhun one').click();
     await expect.poll(playing).toBe(ids[0]);
   } finally {
     await app.close();
