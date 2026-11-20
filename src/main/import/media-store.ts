@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
 import type { MediaMarkers } from '../../shared/markers';
+import type { DisplayCandidate, DisplayResult } from '../media/display-copies';
 import { constants, createReadStream, statfsSync } from 'node:fs';
 import { copyFile, mkdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
@@ -50,6 +51,8 @@ export interface MediaStoreOptions {
    * with that answer; null or left out while not known (then every kind is as playsHevc says).
    */
   hevcKinds?: HevcKinds | null;
+  /** Main prepares a still display rendition before this new item can be announced ready. */
+  prepareDisplay?: (candidate: DisplayCandidate) => Promise<DisplayResult>;
 }
 
 export type MediaImportResult =
