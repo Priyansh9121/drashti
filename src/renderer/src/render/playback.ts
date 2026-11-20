@@ -59,6 +59,8 @@ export interface PlaybackOptions {
    * whatever the element holds.
    */
   reuseLoadedSource?: boolean;
+  /** S5 Cue only: warm the decoder at zero rate during an armed future start, still held at its first frame. */
+  prepareScheduledStart?: boolean;
   /**
    * A deck's clip or hold that may start late and catch up (`timing().catchUp`; render/DeckStep.tsx alone asks): its
    * pace is set from its first moving frame, not the next check. Left out (every other caller), nothing more listens to
@@ -337,6 +339,16 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (c.seek?.paused) {
       if (wrap) clearTimeout(wrap);
       wrap = null;
+      const intended = options.timing?.().seek;
+      const beginsAt = intended?.at ?? startedAt;
+      if (options.prepareScheduledStart && !intended?.paused && beginsAt > engineNow()) {
+        // The existing Go lead warms play() without moving the held frame or making sound. At Go only the
+        // rate changes: starting a paused decoder there presented its first motion 65–122 ms late on CI.
+        if (v.currentTime !== at) v.currentTime = at;
+        if (v.playbackRate !== 0) v.playbackRate = 0;
+        if (v.paused) void v.play().catch(() => undefined);
+        return;
+      }
       // A jump while paused (the time bar's move, or one frame back or on, alpha.20) lands exactly where it was sent,
       // however near: one frame of a 60 a second video is 1/60 s, the hold's own margin.
       if (moved) {

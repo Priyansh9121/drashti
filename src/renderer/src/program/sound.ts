@@ -235,6 +235,7 @@ export class StreamSound {
       const playback = startPlayback(el, {
         mediaId: sound.mediaId,
         startedAt: sound.startedAt,
+        prepareScheduledStart: sound.cueId !== undefined,
         audible: true,
         limits: SOUND_LIMITS,
         onFrame: () => reportVideoCue(sound.cueId, 'sound', true),

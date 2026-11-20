@@ -101,33 +101,14 @@ function VideoSlot({
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    // A private Cue is ready only after its decoded first frame has reached the compositor.
-    // loadeddata alone can precede that by several frames on a software renderer.
-    let settled = false,
-      loaded = false,
-      presented = !privateCue.current,
-      frameRequest = 0;
-    const ready = () => {
-      if (settled || !loaded || !presented) return;
-      settled = true;
-      reportVideoCue(layer.cueId, 'picture', true);
-      dispatch({ type: 'ready', key, at: engineNow() });
-    };
-    const waitForFrame = () => {
-      frameRequest = v.requestVideoFrameCallback(() => {
-        frameRequest = 0;
-        if (v.seeking) waitForFrame();
-        else {
-          presented = true;
-          ready();
-        }
-      });
-    };
-    if (privateCue.current) waitForFrame();
+    // A hidden private video may never receive a compositor callback. Its trimmed decoded frame is ready;
+    // the armed Go lead warms its decoder silently before the shared moment (playback.ts).
+    let settled = false;
     const p = startPlayback(v, {
       mediaId,
       attempt,
       startedAt,
+      prepareScheduledStart: layer.cueId !== undefined,
       timing: () => ({ loop: timing.current.loop, clip: timing.current.clip, seek: timing.current.seek }),
       onFrame: () => {
         if (hasNoPicture(v)) {
@@ -136,11 +117,11 @@ function VideoSlot({
           if (!privateCue.current) tellNoPicture(mediaId, startedAt);
           return;
         }
-        loaded = true;
-        if (privateCue.current) ready();
+        settled = true;
+        reportVideoCue(layer.cueId, 'picture', true);
+        if (privateCue.current) dispatch({ type: 'ready', key, at: engineNow() });
         else {
-          settled = true;
-          // Its data draws over the previous picture; that picture stays until presentation.
+          // Ordinary hand-over still keeps its previous picture until native presentation.
           dispatch({ type: 'loaded', key });
         }
       },
@@ -170,7 +151,6 @@ function VideoSlot({
     return () => {
       settled = true;
       stopWatch();
-      if (frameRequest) v.cancelVideoFrameCallback(frameRequest);
       playback.current = null;
       p();
     };
