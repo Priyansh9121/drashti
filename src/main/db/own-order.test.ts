@@ -130,7 +130,29 @@ describe('an item’s own order of slides', () => {
       MIGRATIONS.filter((m) => m.version <= 49),
     );
     expect(schemaVersion(v49)).toBe(49);
-    const old = library(v49);
+    // Seed the old schema as that version wrote it; today’s repo also maintains migration 087’s order.
+    const presentations = new PresentationRepo(v49);
+    const deck = presentations.insert({
+      libraryId: presentations.ensureLibrary('Placeholder library'),
+      name: 'Placeholder deck',
+      groups: [
+        { name: '', slides: [{ elements: [] }, { elements: [] }, { elements: [] }, { elements: [] }] },
+      ],
+    });
+    const old = { list: 'old-list', item: 'old-item' };
+    v49
+      .prepare("INSERT INTO playlists (id, name, is_folder, position) VALUES (?, 'Placeholder Sunday', 0, 0)")
+      .run(old.list);
+    v49
+      .prepare(
+        "INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, label) VALUES (?, ?, 0, 'presentation', ?, 'Placeholder deck')",
+      )
+      .run(old.item, old.list, deck);
+    v49
+      .prepare(
+        "INSERT INTO playlist_items (id, playlist_id, position, kind, label) VALUES ('old-header', ?, 1, 'header', 'Placeholder part')",
+      )
+      .run(old.list);
     // Every slide in order, as an older Drashti writes it.
     v49.prepare("UPDATE playlist_items SET order_mode = 'all' WHERE id = ?").run(old.item);
     const columns = (db: Db) =>

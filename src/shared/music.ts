@@ -30,6 +30,9 @@ export interface MusicTrackInfo {
   name: string;
   /** Its length once learned (ms), or null. */
   durationMs: number | null;
+  /** Its length between its points, and original file name for Find. */
+  playingMs?: number | null;
+  fileName?: string;
   /** The file is missing, or Drashti cannot play it: it is passed over. */
   playable: boolean;
 }

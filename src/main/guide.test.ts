@@ -50,6 +50,8 @@ const NOT_KEYMAP: Record<string, string> = {
   'Fn+Shift+F10': 'Shift+F10 on a Mac laptop',
   Tab: 'moving through the window: the browser’s own key',
   'Shift+Tab': 'moving back through the window: the browser’s own key',
+  'Shift+Enter':
+    'the playlist Find textbox’s own key: the previous match only, while that textbox has the keyboard',
   Enter: 'pressing the button or switch the keyboard is on (X33: the sound’s switch): the browser’s own key',
   'Cmd+Enter': 'saving words: the words editor’s own key, while it has the keyboard',
   'Cmd+Q': 'quitting: the Mac’s own key',
