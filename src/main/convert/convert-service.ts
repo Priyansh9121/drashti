@@ -228,6 +228,23 @@ export interface CopyOptions {
   waitForShow?: boolean;
   /** Record a managed Trim copy before it can appear at its final path. */
   beforePublish?(temporary: string, destination: string): void;
+  /** Idle analysis: probe in this same worker, never alongside another conversion. */
+  inspect?: ((info: MediaInfo) => void) | ((info: MediaInfo) => false | string);
+  /** Validate an encoded video in this worker before it receives a public filename. */
+  validate?: ((info: MediaInfo) => void) | ((info: MediaInfo) => string);
+  /** User-requested files go before speculative copies when the worker next becomes free. */
+  background?: boolean;
+  /** Hash/copy/register in this same worker. Activity aborts this work before publication. */
+  preparePublish?(temporary: string, signal: AbortSignal): Promise<void>;
+  /** Bounded consumers only; called afresh after args() resets each attempt's reducers. */
+  stdout?(chunk: Buffer): void;
+  /** Materialize a reduced artifact, after close drained all FFmpeg output. */
+  finish?(temporary: string): void;
+  /** Refuse preparation when below-normal priority cannot be verified. */
+  strictPriority?: boolean;
+  /** Bounded artifacts reserve their actual upper bound, rather than a whole source-sized video. */
+  estimatedBytes?: number;
+  kind?: 'analysis' | 'proxy' | 'clip';
   progress?(fraction: number | null): void;
   waiting?(note: string | null): void;
 }
