@@ -1006,20 +1006,14 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
     } = {},
   ): Promise<void> => {
     // SCRATCH only: all existing repetitions and their original nominal waits remain intact.
-    const stopRetireTrace = [
-      'dissolve 800',
-      'zoom 800',
-      'lower third letters-blur-glass-sparkles in',
-      'lower third letters-blur-glass-sparkles out',
-    ].includes(name)
-      ? await startRetireTrace({
-          name,
-          track,
-          setMs,
-          waitMs,
-          streaming: (sw('DRASHTI_PERF_STREAM') ?? '') !== '',
-        })
-      : undefined;
+    const stopRetireTrace = await startRetireTrace({
+      name,
+      track,
+      setMs,
+      waitMs,
+      streaming: (sw('DRASHTI_PERF_STREAM') ?? '') !== '',
+      primaryHallId: deps.outputs()[0]?.webContents.id,
+    });
     let retirePress: { at: number; rev: number; from: string; until: number } | undefined;
     try {
       // After three presses in a row the operator window never answered, from the main process.
@@ -1118,35 +1112,47 @@ export function animationsScenario(deps: ScenarioDeps): ScenarioRun {
     job: 'audience' | 'stage',
     on?: number,
   ): Promise<{ window: BrowserWindow; displayId: number } | string> => {
-    const op = operator();
-    if (!op) return 'no operator window';
-    let free = on === undefined ? await ask<number[], number[]>(op, FREE_DISPLAYS, []) : [on];
-    if (free.length === 0 && deps.pretendDisplays) {
-      deps.pretendDisplays(1);
-      // As Drashti hears of a display plugged in (electron-outputs.ts watchDisplays: 300 ms).
-      await sleep(500);
-      free = await ask<number[], number[]>(op, FREE_DISPLAYS, []);
+    const stopOpeningTrace = await startRetireTrace({
+      name: 'open ' + job + ' screen',
+      track: 'screen-startup',
+      setMs: 0,
+      waitMs: SCREEN_LIMIT_MS,
+      streaming: (sw('DRASHTI_PERF_STREAM') ?? '') !== '',
+      primaryHallId: deps.outputs()[0]?.webContents.id,
+    });
+    try {
+      const op = operator();
+      if (!op) return 'no operator window';
+      let free = on === undefined ? await ask<number[], number[]>(op, FREE_DISPLAYS, []) : [on];
+      if (free.length === 0 && deps.pretendDisplays) {
+        deps.pretendDisplays(1);
+        // As Drashti hears of a display plugged in (electron-outputs.ts watchDisplays: 300 ms).
+        await sleep(500);
+        free = await ask<number[], number[]>(op, FREE_DISPLAYS, []);
+      }
+      const displayId = free.at(-1);
+      if (displayId === undefined) return 'no display for it (no pretend display here)';
+      // A new hall screen is a new window; a stage screen may be the same window given another job.
+      const before = new Set(job === 'audience' ? deps.outputs() : []);
+      if (!(await ask<boolean, boolean>(op, SET_JOB(displayId, job), false))) return 'Screens did not give it';
+      const until = Date.now() + SCREEN_LIMIT_MS;
+      while (Date.now() < until) {
+        const ready = (await screens()).find(
+          ({ window, state }) =>
+            !before.has(window) &&
+            state !== null &&
+            state.role === job &&
+            state.fonts === 'ready' &&
+            state.warmUp !== 'warming' &&
+            state.probe,
+        );
+        if (ready) return { window: ready.window, displayId };
+        await sleep(100);
+      }
+      return `it was not ready within ${String(SCREEN_LIMIT_MS / 1000)} s`;
+    } finally {
+      if (stopOpeningTrace) await stopOpeningTrace();
     }
-    const displayId = free.at(-1);
-    if (displayId === undefined) return 'no display for it (no pretend display here)';
-    // A new hall screen is a new window; a stage screen may be the same window given another job.
-    const before = new Set(job === 'audience' ? deps.outputs() : []);
-    if (!(await ask<boolean, boolean>(op, SET_JOB(displayId, job), false))) return 'Screens did not give it';
-    const until = Date.now() + SCREEN_LIMIT_MS;
-    while (Date.now() < until) {
-      const ready = (await screens()).find(
-        ({ window, state }) =>
-          !before.has(window) &&
-          state !== null &&
-          state.role === job &&
-          state.fonts === 'ready' &&
-          state.warmUp !== 'warming' &&
-          state.probe,
-      );
-      if (ready) return { window: ready.window, displayId };
-      await sleep(100);
-    }
-    return `it was not ready within ${String(SCREEN_LIMIT_MS / 1000)} s`;
   };
   /** The motion probe's record of a screen from `from` until `until` (ms since the epoch), or null. */
   const readProbe = (output: BrowserWindow | undefined, from: number, until: number) =>
