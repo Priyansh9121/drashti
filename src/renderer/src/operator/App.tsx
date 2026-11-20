@@ -10,6 +10,7 @@ import { connectSaves } from '../markers/save-store';
 import { connectPictureLooks } from '../render/picture-looks';
 import { PictureEditor } from '../pictures/PictureEditor';
 import { MediaInfoDialog } from '../library/MediaInfoDialog';
+import { ResumeOffers } from '../markers/ResumeOffers';
 import { RemoveConfirm, RemoveItemsConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { MediaRemoveConfirm } from '../library/media-removal';
 import { UndoBar } from '../library/UndoBar';
@@ -396,6 +397,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
               <NextBack platform={platform} run={run} />
               {/* The time bar for what plays (Session 54), under Next and Back so they never move. */}
               <PlayingBars className="px-3 pt-2" />
+              {/* Resume where it stopped (alpha.20): "Resume at …" for a long file's first 30 s. */}
+              <ResumeOffers />
               <MarkerJumps />
               {/* The chosen video input on the audience in one press (Session 55). */}
               <InputOnAudience />

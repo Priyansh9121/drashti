@@ -1,3 +1,5 @@
+import { formatDuration } from './format';
+
 /*
  * Resume where it stopped, last played and play counts (alpha.20: the owner's Q60-34 item 3 and "last played", his
  * "Yes, all A" to Q60-39: P1 A, P6 (e) A and (j) A): what the main process keeps of each file's plays
@@ -19,7 +21,24 @@ export interface ResumePoint {
   at: string;
 }
 
-/* Red (x47, slice 3): the words, still to be written. */
-export const resumeWords = (_atMs: number): string => '';
-export const dayWords = (_iso: string, _short = false, _locale?: string): string | null => null;
-export const playedWords = (_count: number, _lastPlayedAt: string | null, _locale?: string): string => '';
+/** The offer's words: "Resume at 6:00", "Resume at 1:02:10". */
+export const resumeWords = (atMs: number): string => `Resume at ${formatDuration(atMs)}`;
+
+/** A day as this computer writes it, long ("20 Nov 2026") or short ("20 Nov"); null for a time that is no time. */
+export function dayWords(iso: string, short = false, locale?: string): string | null {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  return new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'short',
+    ...(short ? {} : { year: 'numeric' }),
+  }).format(at);
+}
+
+/** A file's plays for people: "Not yet", "Once, last on 20 Nov 2026", "12 times, last on 20 Nov 2026". */
+export function playedWords(count: number, lastPlayedAt: string | null, locale?: string): string {
+  if (count <= 0) return 'Not yet';
+  const day = lastPlayedAt ? dayWords(lastPlayedAt, false, locale) : null;
+  const times = count === 1 ? 'Once' : `${String(count)} times`;
+  return day ? `${times}, last on ${day}` : times;
+}

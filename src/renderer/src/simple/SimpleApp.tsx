@@ -16,6 +16,7 @@ import { UndoBar } from '../library/UndoBar';
 import { LinkDialog } from '../links/LinkDialog';
 import { MarkersDialog } from '../markers/MarkersDialog';
 import { MediaInfoDialog } from '../library/MediaInfoDialog';
+import { ResumeOffers } from '../markers/ResumeOffers';
 import { PlayingBars } from '../markers/PlayingBars';
 import { setMidiHandler } from '../midi/midi-store';
 import { AudioGroup } from '../music/AudioGroup';
@@ -365,6 +366,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
             <NextBack platform={platform} run={run} oops={false} canStart={items.some(playable)} caption />
             {/* The time bar for what plays (Session 54), under Next and Back: Play while paused (question 14). */}
             <PlayingBars className="px-3 pt-2" />
+            {/* Resume where it stopped (alpha.20; the owner's "Yes, all A" to Q60-39: Simple Mode has it too). */}
+            <ResumeOffers />
             {/* Record (Session 56, the owner's item 19): sound or video, on air or off, under the time bar and above
                 Audio; its folder is chosen in Pro Mode. */}
             <div className="px-3 pt-2">
