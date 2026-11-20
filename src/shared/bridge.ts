@@ -824,6 +824,8 @@ export interface DrashtiBridge {
     onChosen(listener: (device: AudioDevice | null) => void): () => void;
     /** Audio player only: play a short test tone on this output ('' for the system default). */
     onTestTone(listener: (deviceId: string) => void): () => void;
+    /** The sound player given up on, tried again now (x53: its red notice's Try again). */
+    tryAgain(): Promise<{ ok: true } | { ok: false; message: string }>;
   };
   /** Built-in streaming (PLAN.md 4.2). Going live and ending need the operator's confirmation. */
   stream: {
@@ -1229,6 +1231,8 @@ export interface DrashtiBridge {
     onPointed(listener: (clip: PointedClip | null) => void): () => void;
     /** Tests only (a packaged Drashti never sends it): draw an element that throws (Session 23). */
     onTestThrow(listener: () => void): () => void;
+    /** Tests only (a packaged Drashti never sends it): the scene fails as it draws while this file is up (x53). */
+    onTestThrowWhile(listener: (mediaId: string | null) => void): () => void;
     /** Tests only (a packaged Drashti never sends it): hold the clock at a moment, or let it go (Session 26d). */
     onTestClock(listener: (at: number | null) => void): () => void;
     /** Keep these screens? (Session 50) on this output, when it covers the controls (null: answered). */
