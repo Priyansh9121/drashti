@@ -1552,7 +1552,10 @@ export interface InvokeContract {
   [IPC.media.playsHevc]: { args: []; result: boolean | null };
   [IPC.media.reportLength]: { args: [mediaId: string, durationMs: number]; result: null };
   [IPC.media.noPicture]: { args: [mediaId: string, startedAt: number]; result: null };
-  [IPC.media.cannotPlay]: { args: [mediaId: string, startedAt: number, kind: string]; result: null };
+  [IPC.media.cannotPlay]: {
+    args: [mediaId: string, startedAt: number, code: number, words: string];
+    result: null;
+  };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };

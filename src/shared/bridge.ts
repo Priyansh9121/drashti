@@ -708,9 +708,10 @@ export interface DrashtiBridge {
     noPicture(mediaId: string, startedAt: number): Promise<null>;
     /**
      * A video's element failed on a page that draws the show (Q60-31: this computer's decoder raising an error, a cut
-     * or damaged file, its copy unreadable): its showing (its file and when it went up) and the error's kind in words.
+     * or damaged file, its copy unreadable): its showing (its file and when it went up), and its MediaError's code (1 to
+     * 4; 0: none) and Chromium's words for Main's log.
      */
-    cannotPlay(mediaId: string, startedAt: number, kind: string): Promise<null>;
+    cannotPlay(mediaId: string, startedAt: number, code: number, words: string): Promise<null>;
   };
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside, a file's Even loudness,
