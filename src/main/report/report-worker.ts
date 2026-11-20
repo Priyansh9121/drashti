@@ -1,6 +1,13 @@
 import Database from 'better-sqlite3';
 import { constants, setPriority } from 'node:os';
-import { makeReportFiles, type ReportFilesJob, type ReportFilesMade } from './report-files';
+import {
+  intakeNodeReport,
+  makeReportFiles,
+  type NodeIntake,
+  type NodeIntakeJob,
+  type ReportFilesJob,
+  type ReportFilesMade,
+} from './report-files';
 
 /*
  * The report worker (x49, Help › Report a Problem…): an Electron utility process, started for one report's Review and
@@ -24,6 +31,17 @@ const yieldNow = () =>
   });
 
 port.on('message', (event: { data: unknown }) => {
+  // A node's report handed to Main (x49): read, checked and written here, off Main's thread.
+  if (event.data && typeof event.data === 'object' && 'body' in event.data) {
+    let taken: NodeIntake;
+    try {
+      taken = intakeNodeReport(event.data as NodeIntakeJob);
+    } catch (error) {
+      taken = { ok: false, message: error instanceof Error ? error.message : String(error) };
+    }
+    port.postMessage(taken);
+    return;
+  }
   void (async () => {
     let made: ReportFilesMade;
     try {

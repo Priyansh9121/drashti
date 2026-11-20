@@ -359,7 +359,7 @@ import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
-import { runReportJob } from './report/report-worker-run';
+import { runReportIntake, runReportJob } from './report/report-worker-run';
 import { fileProblem } from './plain-errors';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
@@ -7862,6 +7862,8 @@ function start(): void {
       graphics: await readGraphics(),
     }),
     makeFiles: (job) => runReportJob(job),
+    // A paired node's report (x49): read, checked and written by a report worker, off Main's thread.
+    intake: (job) => runReportIntake(job),
     now: () => Date.now(),
     setTimer: (ms, run) => {
       const t = setTimeout(run, ms);
