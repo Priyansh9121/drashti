@@ -4,6 +4,7 @@ import type { Statement } from 'better-sqlite3';
 import type { MediaMarkers } from '../../shared/markers';
 import { mediaMarkersSchema } from '../../shared/markers';
 import type { MediaSummary } from '../../shared/playlists';
+import type { DetailsRow } from '../media/media-details';
 import type { MediaFileRow } from '../media/media-protocol';
 import type { Db } from './database';
 
@@ -220,5 +221,15 @@ export class MediaRepo {
     return row
       ? { path: row.path, missing: row.missing === 1, sha256: row.sha256, deleted: row.deleted === 1 }
       : null;
+  }
+
+  /**
+   * What Media information… (alpha.20, Q60-34) says of a media item from the library: its file, its size and length,
+   * when and from where it came in, whether it plays as it is, and the copy everything uses when it was converted (or
+   * the original, when it is Drashti's copy). Null for no such item.
+   */
+  about(_mediaId: string): DetailsRow | null {
+    // Red (x47): still to be written.
+    return null;
   }
 }
