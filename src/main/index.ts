@@ -165,7 +165,8 @@ import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
-import { noPictureNotice } from '../shared/no-picture';
+import { cannotPlayNotice, noPictureNotice } from '../shared/no-picture';
+import { CannotPlay } from './media/cannot-play';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -528,6 +529,16 @@ app.on('child-process-gone', (_event, details) => {
 
 /** The GPU process's stops (Sessions 31–36, ROB-5): a second within 10 minutes is said. */
 const gpuStops = new GpuStops();
+/**
+ * A video whose element failed on a page that draws the show (Q60-31): taken off after a short wait, unless a GPU
+ * process stopped then (its videos load again by themselves). main/media/cannot-play.ts.
+ */
+const cannotPlay = new CannotPlay({
+  now: () => Date.now(),
+  later: (ms, run) => {
+    setTimeout(run, ms);
+  },
+});
 /** Said to the operator (Main) once the GPU process has stopped twice within 10 minutes. */
 let gpuStoppedTwice: ((text: string) => void) | null = null;
 // The GPU process stopped (Sessions 31–36, ROB-5): Chromium starts another by itself, but the videos it was
@@ -535,6 +546,7 @@ let gpuStoppedTwice: ((text: string) => void) | null = null;
 // engine's time. A second stop within 10 minutes is told to the operator, once.
 app.on('child-process-gone', (_event, details) => {
   if (details.type !== 'GPU' || quitting) return;
+  cannotPlay.gpuGone();
   log.warn(
     `The GPU process stopped (${details.reason}); its features now: ${JSON.stringify(app.getGPUFeatureStatus())}`,
   );
@@ -6670,6 +6682,39 @@ function start(): void {
     log.warn(`A video's picture cannot be drawn here (sound only): ${mediaId}; taken off`);
     const converting = conversions.convertUndrawable(mediaId);
     sendToOperator(IPC.app.notice, { text: noPictureNotice(file.name, converting) });
+    return null;
+  });
+  // A video whose element failed on a page that draws the show (Q60-31, the owner's own bug: the hall went black while
+  // its sound played on, never taken off, nobody told): taken off as one whose picture cannot be drawn (its sound with
+  // it; on the slide or in the box, paused), said by its name and where it failed, and logged with the error's kind,
+  // after a short wait; unless a GPU process stopped then, whose videos load again by themselves.
+  handle(IPC.media.cannotPlay, (e, mediaId, startedAt, kind) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    const where =
+      screenId !== undefined
+        ? `the screen “${screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId}”`
+        : fromOperator(e)
+          ? 'LIVE'
+          : streaming.isProgram(e.sender)
+            ? 'the stream'
+            : null;
+    if (where === null || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt) || typeof kind !== 'string') return null;
+    const file = media.kindAndName(mediaId);
+    if (file?.kind !== 'video') return null;
+    const said = cutText(kind, 300, '…');
+    cannotPlay.heard(
+      () => {
+        if (!engine.noPicture(mediaId)) return;
+        log.warn(`A video could not play on ${where} (${said}): ${mediaId}; taken off`);
+        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, where) });
+      },
+      () => {
+        log.info(
+          `A video could not play on ${where} (${said}) as the GPU process stopped: ${mediaId}; it loads again`,
+        );
+      },
+    );
     return null;
   });
   handle(IPC.audio.reportDevices, (e, devices, state) => {

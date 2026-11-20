@@ -14,3 +14,11 @@ export function noPictureNotice(name: string, converting: boolean): string {
     ? `“${name}”: this computer can’t show its picture, so it came off the screens. Drashti is converting it to a copy that plays; it can go live once that is done.`
     : `“${name}”: this computer can’t show its picture, so it came off the screens. Convert it in Media to play it.`;
 }
+
+/**
+ * What the operator window says when a video could not play on one of this computer's pictures (Q60-31): its element
+ * failed there (that computer's decoder, a cut or damaged file). `where`: "the screen “…”", "LIVE" or "the stream".
+ */
+export function cannotPlayNotice(name: string, where: string): string {
+  return `“${name}” could not play on ${where}, so it came off the screens with its sound. If it happens again, the file may be damaged: tell whoever looks after Drashti.`;
+}
