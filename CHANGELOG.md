@@ -25,6 +25,7 @@ Update after a sabha, and update Main and nodes together.
 - Files dropped with no playlist open ask for a new playlist or folder; the Library button shows only while the library is shut; Show a Window…, Add a Video Input…, Picture in Picture… and QR code… moved to More tools and a new Tools menu.
 - LIVE no longer goes black for a moment while a slow video starts: it keeps showing what the screens show.
 - Help › Drashti Manual…: every feature, searchable and printable.
+- Help › Save Diagnostics… now holds the graphics: each GPU and its driver, how each part draws, the video decoding offered.
 
 ## 1.0.0-alpha.19 (19 Nov 2026)
 
