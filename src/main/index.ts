@@ -570,12 +570,16 @@ const warmUps = new WarmUpChoices({
  */
 const gpuSaidLate = !packaged() && sw('DRASHTI_TEST_GPU_SAID') === 'late';
 app.on('gpu-info-update', () => {
-  if (!gpuSaidLate) warmUps.gpuSaid();
+  if (gpuSaidLate) return;
+  warmUps.gpuSaid();
+  // A live appearance's touch waits for this word (Session 60).
+  appearance.chipMayHaveChanged();
 });
 if (gpuSaidLate)
   (globalThis as { drashtiTestGpuSaid?: () => void }).drashtiTestGpuSaid = () => {
     setImmediate(() => {
       warmUps.gpuSaid();
+      appearance.chipMayHaveChanged();
     });
   };
 
@@ -726,6 +730,8 @@ const ownFieldsSchema = ownSchema.omit({ id: true }).extend({
 });
 const appearance = new AppearanceService({
   userData: app.getPath('userData'),
+  // Whether Chromium draws with a graphics chip, once its GPU process has said (Session 60: a live look waits for it).
+  chip: () => (warmUps.hasSaid ? (warmUps.drawsWithoutChip() ? 'no' : 'yes') : 'unknown'),
   startIn: sw('DRASHTI_TEST_APPEARANCE'),
   // Tests only (never a packaged Drashti): how many logical cores this computer has, for the moving looks' pause.
   ...(!packaged() && /^[0-9]{1,3}$/u.test(sw('DRASHTI_TEST_CORES') ?? '')

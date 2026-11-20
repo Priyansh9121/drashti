@@ -36,12 +36,16 @@ const COUNTS: Readonly<Record<MotionKind, number>> = {
   clouds: 3,
 };
 
-/** What <html> says (the preload sets it): the look's motions, Moving, interface motion, a slow computer, opened. */
+/**
+ * What <html> says (the preload sets it): the look's motions, Moving, interface motion, a slow computer, whether a
+ * graphics chip is known to be there (only "yes" lets a touch move: unknown until Chromium has said), opened.
+ */
 interface RootFacts {
   look: readonly MotionKind[];
   on: boolean;
   interfaceOff: boolean;
   slow: boolean;
+  chip: boolean;
   opened: boolean;
 }
 
@@ -54,6 +58,7 @@ function rootFacts(): RootFacts {
     on: d['moving'] !== 'off',
     interfaceOff: d['interfaceMotion'] === 'off',
     slow: d['slow'] === 'true',
+    chip: d['chip'] === 'yes',
     opened: d['opened'] !== undefined,
   };
 }
@@ -73,6 +78,7 @@ function useRootFacts(): RootFacts {
         'data-look-motion',
         'data-moving',
         'data-interface-motion',
+        'data-chip',
         'data-slow',
         'data-opened',
       ],
@@ -114,36 +120,11 @@ function useHidden(): boolean {
   return hidden;
 }
 
-/** Whether Chromium draws without a graphics chip: unknown (null) until Main says, so nothing moves before it does. */
-function useNoChip(): boolean | null {
-  const [noChip, setNoChip] = useState<boolean | null>(null);
-  useEffect(() => {
-    let live = true;
-    const off = window.drashti.app.onNoGpu(() => {
-      setNoChip(true);
-    });
-    window.drashti.app.noGpu().then(
-      (on) => {
-        if (live) setNoChip((was) => was === true || on);
-      },
-      () => {
-        if (live) setNoChip(true);
-      },
-    );
-    return () => {
-      live = false;
-      off();
-    };
-  }, []);
-  return noChip;
-}
-
 /** Moving now, or what holds the touch still (data-look-moving on the layer's place says it, for the tests). */
 export function useLookMoving(): { now: MovingNow; look: readonly MotionKind[] } {
   const root = useRootFacts();
   const reduced = useMedia('(prefers-reduced-motion: reduce)');
   const hidden = useHidden();
-  const noChip = useNoChip();
   const busy = useStream((s) =>
     s.status === null ? false : s.status.live.state !== 'off' || s.status.recording.state !== 'off',
   );
@@ -152,7 +133,7 @@ export function useLookMoving(): { now: MovingNow; look: readonly MotionKind[] }
     on: root.on,
     interfaceOff: root.interfaceOff,
     reduced,
-    noGpu: noChip !== false,
+    noGpu: !root.chip,
     busy,
     slow: root.slow,
     opened: root.opened,

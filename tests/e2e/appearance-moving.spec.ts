@@ -22,7 +22,11 @@ async function opened(win: Page): Promise<void> {
   await expect(win.locator('html')).toHaveAttribute('data-opened', '');
 }
 
-const chipless = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.app.noGpu());
+/** Whether Chromium draws without a graphics chip, once it has said (data-chip: unknown until then). */
+async function chipless(win: Page): Promise<boolean> {
+  await expect(win.locator('html')).toHaveAttribute('data-chip', /^(yes|no)$/u);
+  return (await win.locator('html').getAttribute('data-chip')) === 'no';
+}
 
 /** Every animation running on a live look's touch: whether it is in a look's layer, and the properties it moves. */
 const animations = (win: Page) =>
