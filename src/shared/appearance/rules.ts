@@ -427,7 +427,7 @@ export function measureDistances(a: Appearance): Measured[] {
 export function appearanceProblems(a: Appearance): string[] {
   const cut = (v: number, places: number) => (Math.floor(v * 10 ** places) / 10 ** places).toFixed(places);
   return [
-    ...measureContrast(a)
+    ...[...measureContrast(a), ...measureMoving(a)]
       .filter((m) => !m.ok)
       .map((m) => `${m.what}: ${cut(m.value, 2)}:1, at least ${String(m.min)}:1`),
     ...measureDistances(a)
@@ -576,7 +576,38 @@ export function lookApart(a: Appearance, b: Appearance): number {
   return sum / LOOK_PLACES.length;
 }
 
-/** A live look's touch over the header, measured as the header is (Session 60). Not yet: the red tests say how. */
-export function measureMoving(_a: Appearance): Measured[] {
-  return [];
+/*
+ * A live look's touch over the header (Session 60): a drift's far end, a glow, petals, puffs, rain, kites or clouds
+ * draw over the header's colour, under its words and controls, so the header's rules are measured on the touch's
+ * colour too: the words at 4.5:1, the focus ring and controls' edges at 3:1, a warning button by its edge or fill.
+ * A touch drawn part see-through lies between the header and its colour, and the header is measured at every point
+ * already, so its words hold everywhere the touch moves.
+ */
+export function measureMoving(a: Appearance): Measured[] {
+  const touch = a.moving?.touch;
+  if (touch === undefined) return [];
+  const d = a.decoration;
+  const c = a.colours;
+  const row = (what: string, fg: string, name: string, min: number): Measured => {
+    const value = contrastRatio(fg, touch);
+    return {
+      what: `${what} on the header’s touch`,
+      colours: `${name} ${fg} on the touch ${touch}`,
+      value,
+      min,
+      source: 'WCAG 1.4.3 and 1.4.11 (appearance/LookMotion.tsx)',
+      ok: value >= min,
+    };
+  };
+  const warning =
+    contrastRatio(c.warning, touch) >= contrastRatio(c['warning-bg'], touch)
+      ? (['warning', c.warning] as const)
+      : (['warning-bg', c['warning-bg']] as const);
+  return [
+    row('words', d['on-header'], 'on-header', 4.5),
+    row('the header’s buttons’ words', d['on-header-muted'], 'on-header-muted', 4.5),
+    row('focus ring', d['header-ring'], 'header-ring', 3),
+    row('control edge', d['header-field'], 'header-field', 3),
+    row('a warning button (its edge or its fill)', warning[1], warning[0], 3),
+  ];
 }
