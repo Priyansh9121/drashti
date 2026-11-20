@@ -324,6 +324,11 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         ...(sameOpaque ? {} : { opaquePictures: opaque }),
       };
     }
+    case 'videoShapes/set':
+      // Sound and picture…'s Shape (alpha.20, x55): left out of the state until a video has one.
+      return sameData(state.videoShapes ?? {}, action.shapes)
+        ? state
+        : { ...state, videoShapes: action.shapes };
     case 'zoom/set':
       return sameData(state.liveZoom, action.liveZoom) ? state : { ...state, liveZoom: action.liveZoom };
     case 'message/show': {

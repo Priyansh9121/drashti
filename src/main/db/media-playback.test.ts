@@ -18,7 +18,14 @@ describe('a file’s playback settings in the library', () => {
     add.run('s', 'audio', 'Placeholder tone.m4a', 'bb/s.m4a');
     add.run('p', 'image', 'Placeholder picture.png', 'cc/p.png');
     expect(media.playbackOf('v')).toEqual(NO_PLAYBACK_SETTINGS);
-    const settings = { bassDb: 6, trebleDb: -3, voice: true, soundDelayMs: 200, captionDelayMs: -500 };
+    const settings = {
+      bassDb: 6,
+      trebleDb: -3,
+      voice: true,
+      soundDelayMs: 200,
+      captionDelayMs: -500,
+      shape: '4:3' as const,
+    };
     expect(media.setPlayback('v', settings)).toBe(true);
     expect(media.playbackOf('v')).toEqual(settings);
     expect(media.setPlayback('s', { ...NO_PLAYBACK_SETTINGS, trebleDb: 12 })).toBe(true);
