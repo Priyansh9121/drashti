@@ -747,27 +747,16 @@ const mediaPaceBps = Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_PACE_BPS') ?? 0) 
  * Bytes Main has sent of each library file as the pages load it, by its id (Q60-51): a video whose file is still coming
  * in is loading, even where its page can tell nothing else (on CI's Mac a slow file showed no buffered time, no frame,
  * no readiness step and no 'progress' event: x47-1120-205802-554). One number a file, for as long as Drashti runs.
+ * Counted as the file is read for the page (media-protocol.ts `sent`), or as the test pace sends it (paced): never by
+ * wrapping the response, which changed how the bytes reached the player (x47-1120-215255-57755).
  */
 const mediaServed = new Map<string, number>();
+const mediaSent = (mediaId: string, bytes: number): void => {
+  mediaServed.set(mediaId, (mediaServed.get(mediaId) ?? 0) + bytes);
+};
 
-/** A library file's response, counting what of it goes out (mediaServed). */
-function counted(response: Response, mediaId: string): Response {
-  if (!response.body) return response;
-  const counter = new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      mediaServed.set(mediaId, (mediaServed.get(mediaId) ?? 0) + chunk.byteLength);
-      controller.enqueue(chunk);
-    },
-  });
-  return new Response(response.body.pipeThrough(counter), {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
-}
-
-/** A response's body sent at mediaPaceBps (the test switch above); as it is with none. */
-async function paced(response: Response): Promise<Response> {
+/** A response's body sent at mediaPaceBps (the test switch above), counted as it goes for a library file; as it is with none. */
+async function paced(response: Response, mediaId: string | null): Promise<Response> {
   if (mediaPaceBps <= 0 || !response.body) return response;
   const bytes = new Uint8Array(await response.arrayBuffer());
   const slice = Math.max(1024, Math.floor(mediaPaceBps / 4));
@@ -778,7 +767,9 @@ async function paced(response: Response): Promise<Response> {
         controller.close();
         return;
       }
-      controller.enqueue(bytes.subarray(at, at + slice));
+      const chunk = bytes.subarray(at, at + slice);
+      controller.enqueue(chunk);
+      if (mediaId !== null) mediaSent(mediaId, chunk.byteLength);
       at += slice;
       // A test switch's pace, never in a real show.
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -2351,10 +2342,11 @@ function start(): void {
       warn: (message) => {
         log.warn(message);
       },
+      // What of a library file goes out (Q60-51, mediaServed): as it is read, or, at the test pace, as that sends it.
+      ...(mediaPaceBps > 0 ? {} : { sent: mediaSent }),
     });
     const asked = mediaRequestOf(request.url);
-    const sent =
-      asked?.what === 'media' ? counted(await paced(response), asked.mediaId) : await paced(response);
+    const sent = await paced(response, asked?.what === 'media' ? asked.mediaId : null);
     return perfWatch ? watchedMedia(perfWatch, request, started, sent) : sent;
   };
   // Every window's session: the default one, and the audio player's own.
