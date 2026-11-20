@@ -104,6 +104,27 @@ test('a saved edit prepares privately at idle, then a new showing pins its immut
     if (!ready.ok) throw new Error(ready.message);
     expect(ready.edit.readyMediaId).not.toBe(id);
     expect(ready.edit.readyMediaId).not.toBeNull();
+    await openLibrary(win);
+    await win.getByTestId('library-tab-media').click();
+    await win
+      .getByTestId('media-item')
+      .filter({ hasText: 'Placeholder prepared' })
+      .click({ button: 'right' });
+    await win.getByRole('menuitem', { name: 'Edit Video…', exact: true }).click();
+    const dialog = win.getByTestId('edit-video');
+    await dialog.getByRole('button', { name: 'Preview saved edits', exact: true }).click();
+    const preview = dialog.getByTestId('edit-video-prepared-preview');
+    await expect
+      .poll(() => preview.evaluate((v: HTMLVideoElement) => v.readyState))
+      .toBeGreaterThanOrEqual(2);
+    expect(
+      await preview.evaluate((v: HTMLVideoElement) => ({ width: v.videoWidth, height: v.videoHeight })),
+    ).toEqual({ width: 320, height: 320 });
+    await preview.evaluate((v: HTMLVideoElement) => v.play());
+    await expect.poll(() => preview.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0);
+    expect((await state()).layers.background).toBeNull();
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+
     expect((await dispatch({ kind: 'media', mediaId: id, media: 'video', fit: 'fit', loop: true })).ok).toBe(
       true,
     );
