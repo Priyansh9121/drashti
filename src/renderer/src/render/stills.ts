@@ -29,6 +29,11 @@ function set(mediaId: string, state: StillState): void {
   for (const l of listeners) l();
 }
 
+export function refreshStill(mediaId: string): void {
+  asked.add(mediaId);
+  set(mediaId, { version: ++made, failed: false });
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
