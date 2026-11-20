@@ -2,7 +2,7 @@ import type { KeyboardEvent, PointerEvent } from 'react';
 import { useRef, useState } from 'react';
 import { formatDuration } from '../../../shared/format';
 import { cx } from './cx';
-import { barFraction, barSpan, keyPress, leftText, timeAt, timeWords } from './time-bar';
+import { barFraction, barSpan, frameKey, keyPress, leftText, timeAt, timeWords } from './time-bar';
 
 /*
  * The time bar (Session 54): a file's time, as LIVE, Music and a phone show what plays, and as a phone shows a video
@@ -48,6 +48,8 @@ export interface TimeBarProps {
    * drag is let go of with no move (Esc, the pointer taken away). onMove still has where it is let go.
    */
   onScrub?: (ms: number | null) => void;
+  /** Alt with ← or → (alpha.20): one frame back (-1) or on (1); left out, those keys do nothing here. */
+  onFrame?: (by: 1 | -1) => void;
   /** 'lg' for a finger (a phone's: 44 px tall, larger words); 'sm' beside LIVE's small buttons. */
   size?: 'sm' | 'lg';
   /** The elapsed time before the bar (Simple Mode shows the time left alone). */
@@ -76,6 +78,7 @@ export function TimeBar({
   markers = [],
   onMove,
   onScrub,
+  onFrame,
   size = 'sm',
   elapsed = true,
   warning = false,
@@ -162,6 +165,14 @@ export function TimeBar({
       return;
     }
     if (!movable) return;
+    // One frame back or on (alpha.20): the bar's own keys too, one step a press.
+    const frame = frameKey(e);
+    if (onFrame && frame !== null) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat) onFrame(frame);
+      return;
+    }
     const press = keyPress(e, at, span);
     if (!press) return;
     // The bar's keys are its own: the show's keys (the arrows are Next and Back) never hear them. One move a press:

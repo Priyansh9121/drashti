@@ -104,7 +104,7 @@ function StudioList({ upId }: { upId: string | null }) {
                 >
                   <span className="flex w-full min-w-0 items-center gap-1.5">
                     {lt.id === upId && (
-                      <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-live" />
+                      <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-live-edge" />
                     )}
                     <Truncate
                       text={lowerThirdName(lt.lines)}

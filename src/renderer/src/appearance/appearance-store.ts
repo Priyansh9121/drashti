@@ -58,6 +58,20 @@ export async function removeAppearance(id: string): Promise<void> {
   await refresh();
 }
 
+/** Moving: On or Off (Session 60): whether a live appearance's touch moves at all, in every window at once. */
+export async function chooseMoving(on: boolean): Promise<void> {
+  const result = await window.drashti.appearance.setMoving(on);
+  useAppearance.setState({ problem: result.ok ? null : result.message });
+  await refresh();
+}
+
+/** Star or unstar an appearance (Session 60): kept on this computer, shown first in the window. */
+export async function starAppearance(id: string, on: boolean): Promise<void> {
+  const result = await window.drashti.appearance.setFavourite(id, on);
+  useAppearance.setState({ problem: result.ok ? null : result.message });
+  await refresh();
+}
+
 /** Interface motion (Session 40): Calm, Lively or Off, in every one of Drashti's own windows at once. */
 export async function chooseMotion(motion: InterfaceMotion): Promise<void> {
   const result = await window.drashti.appearance.setMotion(motion);
