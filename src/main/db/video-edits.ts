@@ -122,6 +122,10 @@ export class VideoEditsRepo {
     return row?.video_edit_thumbnail ?? null;
   }
 
+  renditionOf(_copyId: string): { sourceId: string; revision: number; recipe: VideoEditRecipe } | null {
+    return null;
+  }
+
   complete(mediaId: string, revision: number, copyId: string): boolean {
     return this.db.transaction(() => {
       const source = this.read(mediaId);
