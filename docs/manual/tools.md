@@ -95,16 +95,19 @@
 
 ## QR code
 
-**What it is.** A slide with a large code that phones can scan, made on this computer with no internet.
+**What it is.** A large code that phones can scan, made on this computer with no internet: a slide, or a picture to save with **Download…**. It can have a logo in its middle.
 
-**When you would use it.** To share a link or a few words with everyone in the hall.
+**When you would use it.** To share a link or a few words with everyone in the hall, or to print the code on a poster or a notice.
 
 **How:**
 
 1. In **More tools**, press **QR code…**.
 2. Paste a link or type words under **Link or words** (300 letters at most).
-3. Check the code and the words under it.
-4. Press **Make the slide**. It comes into the library, ready to put up.
+3. For a logo in the middle, press **Choose a Picture…** and choose it: a PNG or JPEG, such as the mandir's logo from the setup kit. Drashti remembers it. **Logo in the middle** turns it on or off.
+4. Check the code. For a slide with the code alone, untick **Words under the code**.
+5. Press **Make the slide**. It comes into the library, ready to put up.
+6. Or press **Download…** and choose where to save it. Drashti saves the code as a PNG picture and an SVG picture, with no words.
+7. Scan it with a phone before the sabha.
 
 ![QR code…: a placeholder link and its code](../screenshots/manual-qr.png)
 

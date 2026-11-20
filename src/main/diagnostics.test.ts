@@ -137,6 +137,58 @@ describe('diagnostics', () => {
   });
 });
 
+describe('the graphics in diagnostics (Session 60, the owner\u2019s Q60-37)', () => {
+  it('holds how each feature draws, each GPU with its driver, and the video decoding Chromium offers', () => {
+    const { input } = setup();
+    const text = diagnosticsText({
+      ...input,
+      graphics: {
+        featureStatus: { gpu_compositing: 'enabled', video_decode: 'enabled', rasterization: 'enabled' },
+        info: {
+          gpuDevice: [
+            {
+              active: true,
+              vendorId: 0x8086,
+              deviceId: 0x9a49,
+              driverVendor: 'Placeholder Vendor',
+              driverVersion: '31.0.101',
+            },
+            { active: false, vendorId: 0x10de, deviceId: 0x1f95 },
+          ],
+          auxAttributes: {
+            videoDecodeAcceleratorSupportedProfile: [
+              { profile: 'h264 main', maxResolutionWidth: 4096, maxResolutionHeight: 2304 },
+            ],
+          },
+        },
+      },
+    });
+    expect(text).toContain('== Graphics ==');
+    expect(text).toContain('gpu_compositing: enabled');
+    expect(text).toContain('video_decode: enabled');
+    expect(text).toContain(
+      'GPU 1 (in use): vendor 0x8086, device 0x9a49, driver Placeholder Vendor 31.0.101',
+    );
+    expect(text).toContain('GPU 2: vendor 0x10de, device 0x1f95');
+    expect(text).toContain('h264 main');
+  });
+
+  it('says plainly when the GPU details could not be read, and keeps the rest', () => {
+    const { input } = setup();
+    const text = diagnosticsText({
+      ...input,
+      graphics: {
+        featureStatus: { gpu_compositing: 'disabled_software' },
+        info: null,
+        problem: 'not answered within 3 s',
+      },
+    });
+    expect(text).toContain('gpu_compositing: disabled_software');
+    expect(text).toContain('GPU details: could not be read (not answered within 3 s)');
+    expect(text).toContain('Drashti 1.0.0; Electron 44, Chrome 152, Node 24');
+  });
+});
+
 describe("a node's diagnostics (Session 17)", () => {
   function nodeInput(): { dir: string; input: NodeDiagnosticsInput } {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-node-diag-'));
