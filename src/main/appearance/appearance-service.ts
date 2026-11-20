@@ -6,6 +6,7 @@ import type {
   InterfaceMotion,
 } from '../../shared/appearance/appearances';
 import { randomBytes } from 'node:crypto';
+import { availableParallelism } from 'node:os';
 import { BUILT_IN, FOLLOW, followed, INTERFACE_MOTIONS } from '../../shared/appearance/appearances';
 import {
   checkAccent,
@@ -15,11 +16,12 @@ import {
   OWN_PREFIX,
   type OwnAppearance,
 } from '../../shared/appearance/derive';
+import { isSlow } from '../../shared/appearance/moving';
 import { appearanceVars } from '../../shared/appearance/vars';
 import { IPC } from '../../shared/ipc';
 import { cleanRenameName } from '../../shared/rename-name';
 import { sendToPage } from '../windows/send';
-import { readAppearance, writeAppearance, type AppearanceSettings } from './appearance-file';
+import { FAVOURITES_MAX, readAppearance, writeAppearance, type AppearanceSettings } from './appearance-file';
 
 /*
  * The appearance this computer shows (Sessions 39–40): Follow the computer (Black or White, as macOS or Windows
@@ -158,9 +160,9 @@ export class AppearanceService {
       base: shown.base,
       vars: appearanceVars(shown),
       motion: this.settings.motion,
-      moving: false,
-      look: [],
-      slow: false,
+      moving: this.settings.moving,
+      look: shown.moving?.kinds ?? [],
+      slow: isSlow(this.deps.cores ?? availableParallelism()),
     };
   }
 
@@ -171,19 +173,38 @@ export class AppearanceService {
       list: this.list(),
       own: this.settings.own,
       motion: this.settings.motion,
-      moving: false,
-      favourites: [],
+      moving: this.settings.moving,
+      // Only the ones there are: one's own deleted, or a built-in one taken out, is simply not starred.
+      favourites: this.settings.favourites.filter((id) => this.list().some((a) => a.id === id)),
     };
   }
 
-  /** Moving: On or Off (Session 60). Not yet. */
-  setMoving(_on: boolean): boolean {
-    return false;
+  /**
+   * Moving: On or Off (Session 60, the owner's safety rule): whether a live appearance's touch moves at all, in every
+   * one of Drashti's own windows at once. On until turned Off.
+   */
+  setMoving(on: boolean): boolean {
+    this.settings = { ...this.settings, moving: on };
+    this.keep();
+    this.tell();
+    this.deps.say(`Appearance: moving ${on ? 'on' : 'off'}`);
+    return true;
   }
 
-  /** Star or unstar an appearance (Session 60). Not yet. */
-  setFavourite(_id: string, _on: boolean): boolean {
-    return false;
+  /** Star or unstar an appearance there is (Session 60): kept on this computer, in the order starred. */
+  setFavourite(id: string, on: boolean): boolean {
+    if (!this.list().some((a) => a.id === id)) return false;
+    const now = this.settings.favourites;
+    // Starred again, it keeps its place.
+    const favourites = on
+      ? now.includes(id)
+        ? now
+        : [...now, id].slice(-FAVOURITES_MAX)
+      : now.filter((f) => f !== id);
+    const changed = favourites.join(' ') !== this.settings.favourites.join(' ');
+    this.settings = { ...this.settings, favourites };
+    if (changed) this.keep();
+    return true;
   }
 
   /** The colour a window of Drashti's own opens on: its appearance's window colour. */
