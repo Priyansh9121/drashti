@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import type { DisplayCandidate, DisplayResult } from '../media/display-copies';
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { rename } from 'node:fs/promises';
 import { constants, setPriority } from 'node:os';
@@ -87,6 +88,8 @@ function spoken(ms: number): string {
 }
 
 export interface ConvertDeps {
+  /** A new still remains unready until its display rendition exists. */
+  prepareDisplay?(candidate: DisplayCandidate, signal?: AbortSignal): Promise<DisplayResult>;
   db: Db;
   mediaDir: string;
   ffmpegPath(): string | null;

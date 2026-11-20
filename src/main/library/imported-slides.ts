@@ -23,7 +23,7 @@ import type { ContentRows } from '../db/content';
 import type { Db } from '../db/database';
 import { unavailableSourceReader, type SourceReader } from '../documents/source-reader';
 import { unavailableSourceWrite, type SourceCommitGuard, type SourceWrite } from '../documents/source-write';
-import { MediaStore } from '../import/media-store';
+import { MediaStore, type MediaStoreOptions } from '../import/media-store';
 import { OriginalsStore, type OriginalDescriptor } from '../import/originals-store';
 import { editDocOf, sameData } from './slides';
 
@@ -163,7 +163,7 @@ export class ImportedSlides {
   constructor(
     private readonly db: Db,
     mediaDir = join(dirname(db.name), 'Media'),
-    options: { sourceReader?: SourceReader; sourceWrite?: SourceWrite } = {},
+    options: { sourceReader?: SourceReader; sourceWrite?: SourceWrite; prepareDisplay?: MediaStoreOptions['prepareDisplay'] } = {},
   ) {
     this.originals = new OriginalsStore(db, mediaDir);
     this.media = new MediaStore(db, { dir: mediaDir });
