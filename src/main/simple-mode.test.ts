@@ -95,6 +95,9 @@ describe('Simple Mode locks', () => {
       // LIVE's one press for the chosen video input (Session 55), as showInput.
       'toggleInput',
       'skip',
+      // The time bar's ⋯ (alpha.20) is Pro Mode's; Stop repeating A-B is not refused.
+      'repeatAb',
+      'stepFrame',
     ]);
   });
 

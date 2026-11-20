@@ -133,6 +133,8 @@ import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
 import type { SavePictureResult, SaveStillResult } from './media';
 import type { MediaDetailsResult } from './media-details';
+import type { SnapshotResult } from './snapshot';
+import type { PlayingRef } from './engine/playing';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
@@ -724,6 +726,8 @@ export interface DrashtiBridge {
     details(mediaId: string): Promise<MediaDetailsResult>;
     /** Media information's Copy: its words on the clipboard, by the main process; false when they could not be. */
     copyDetails(text: string): Promise<boolean>;
+    /** Snapshot (alpha.20): the frame of a video on the screens now, a PNG in Media; or why not. */
+    snapshot(playing: PlayingRef): Promise<SnapshotResult>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
