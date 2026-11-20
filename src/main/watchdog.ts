@@ -81,12 +81,6 @@ export interface WatchdogOptions {
   backoffMs?: readonly number[];
 }
 
-/**
- * An error a page says this soon after its reload after a render error is its old page's, said on its way out, not the
- * new page failing again (x53): no new page loads and draws its scene this fast.
- */
-export const RELOAD_SETTLE_MS = 250;
-
 /** After giving up on a window (a crash loop), it is tried again this long after (Session 23)... */
 export const RETRY_FIRST_MS = 2 * 60_000;
 /** ...and then this long after each time it gives up again. */
@@ -168,13 +162,13 @@ export class RendererWatchdog {
    * a minute of that reload (x53; the owner's Q60-31 bug hunt, x52's D6a: until then it was left black for
    * good, counted as showing, nobody told), it is given up on as a crash loop is: Stopped and said, tried
    * again by itself 2 minutes later (then 10), and back as soon as it draws again (drawsAgain). An error its
-   * old page says before the reload, or just after it, is not its failing again.
+   * old page says before the reload is not its failing again; one after it is (a page loaded again can fail at
+   * once, and missing that left it black and counted as showing).
    */
   renderError(target: WatchTarget, name: string, reason: string, reload?: () => void): void {
     if (this.renderGaveUp.has(name) || this.renderReloading.has(name)) return;
     const now = this.timers.now();
     const last = this.renderReloads.get(name);
-    if (last !== undefined && now - last < RELOAD_SETTLE_MS) return;
     this.record(name, 'render-error', reason);
     // A page that failed to load is loaded again as itself (Session 31), not reloaded at the failed address.
     if (reload) this.ownReloads.set(name, reload);
