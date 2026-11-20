@@ -58,15 +58,19 @@ async function showLink(win: Page, url: string, a11y = false): Promise<void> {
 async function moving(page: Page, why: string, within: string | null = null): Promise<void> {
   let last = await linkLook(page, within);
   const said = () => `${why}: ${JSON.stringify(last)}`;
-  await expect
-    .poll(
-      async () => {
-        last = await linkLook(page, within);
-        return last.frame;
-      },
-      { message: why, timeout: 15_000 },
-    )
-    .not.toBeNull();
+  try {
+    await expect
+      .poll(
+        async () => {
+          last = await linkLook(page, within);
+          return last.frame;
+        },
+        { message: why, timeout: 15_000 },
+      )
+      .not.toBeNull();
+  } catch (error) {
+    throw new Error(`${said()} (no picture shown): ${String(error)}`, { cause: error });
+  }
   const first = last.frame ?? 0;
   try {
     await expect

@@ -84,6 +84,8 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
   const frameIn = () => {
     if (framed || !on) return;
     framed = true;
+    // For the tests and Save Diagnostics: it plays.
+    el.dataset['moved'] = '1';
     options.onFrame?.();
   };
   /** Where its time stood as it was first played. */
@@ -93,6 +95,8 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     if (playedAt !== null) return;
     playedAt = engineNow();
     playedFrom = el.currentTime;
+    // For the tests and Save Diagnostics: when it was first played (the engine's time).
+    el.dataset['played'] = String(Math.round(playedAt));
   };
   const check = () => {
     const j = joined;

@@ -11,8 +11,8 @@ import { usePreviewsOnly } from './previews';
  * screen with black around it, joined with every other page at the same frame at the same moment (render/
  * live-playback.ts). While the link drops, the screen keeps its last picture, never black: a player waiting for more
  * shows the frame it has. When it must join again (every page starting again together after a drop, or this one alone
- * fallen behind) a new player loads beside the one shown, which stays until the new one's first frame is in; a player
- * that gives up leaves its last picture on a canvas under it meanwhile. The screen is told when its first picture is
+ * fallen behind) a new player loads and plays under the one shown, which stays over it until the new one plays; a
+ * player that gives up leaves its last picture on a canvas over the joining one meanwhile. The screen is told when its first picture is
  * drawn (Scene keeps what was there, or the Wallpaper, until then). Drawn on this computer's own pages only: never on a
  * phone or tablet (previews only), nor a node's screen (the link is received on Main's computer).
  */
@@ -88,7 +88,9 @@ class LinkPlayers {
     el.playsInline = true;
     el.disablePictureInPicture = true;
     el.crossOrigin = 'anonymous';
-    Object.assign(el.style, FITTED, { opacity: '0' });
+    // Joining, it plays under the one shown and the kept picture (a player kept unseen may never play: x54-1120-205049-94352),
+    // and comes over them once it plays.
+    Object.assign(el.style, FITTED, { zIndex: '0' });
     this.root.appendChild(el);
     const player: Player = { el, stop: () => undefined };
     player.stop = startLivePlayback(el, {
@@ -97,7 +99,9 @@ class LinkPlayers {
       limits: PICTURE_LIMITS,
       onFrame: () => {
         if (this.off || this.incoming !== player) return;
-        el.style.opacity = '1';
+        el.style.zIndex = '2';
+        // For the tests: the player shown.
+        el.dataset['shown'] = '1';
         if (this.shown) this.drop(this.shown);
         this.kept.getContext('2d')?.clearRect(0, 0, this.kept.width, this.kept.height);
         this.shown = player;
@@ -198,7 +202,14 @@ function LinkPicture({
       <canvas
         ref={kept}
         aria-hidden="true"
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          zIndex: 1,
+        }}
       />
     </div>
   );
