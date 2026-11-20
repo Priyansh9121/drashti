@@ -54,7 +54,8 @@ export type SlotEvent =
   | { type: 'layer'; layer: BackgroundLayer | null; joined?: boolean }
   /** `at`: when it became ready, to time its dissolve. */
   | { type: 'ready'; key: string; at?: number }
-  | { type: 'failed'; key: string }
+  /** `landed`: its file's landings and the GPU processes started, when it failed (Q60-31: only later ones try it again). */
+  | { type: 'failed'; key: string; landed?: number }
   /** The file it failed on can be had now (a node's copy landed): try that playback again. */
   | { type: 'retry'; key: string }
   /** The dissolve that started at `start` has finished. */
