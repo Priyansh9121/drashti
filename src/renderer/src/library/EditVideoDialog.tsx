@@ -133,6 +133,15 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
       active = false;
     };
   }, [initial.mediaId]);
+  const prepared = useRef<HTMLVideoElement>(null);
+  const [savedPreview, setSavedPreview] = useState(false);
+  const canPreviewSaved =
+    kept.state === 'ready' && kept.readyMediaId !== null && kept.readyMediaId !== initial.mediaId;
+  const showSaved = savedPreview && canPreviewSaved;
+  useEffect(() => {
+    const player = showSaved ? prepared.current : video.current;
+    return () => player?.pause();
+  }, [showSaved]);
   useEffect(
     () =>
       window.drashti.media.onVideoEdit((next) => {
@@ -154,6 +163,7 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
   }, [initial.mediaId]);
   const close = () => {
     video.current?.pause();
+    prepared.current?.pause();
     closeEditVideo();
   };
   const requestClose = () => {
@@ -326,106 +336,154 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
             </p>
           )}
           <div className="mx-auto w-full max-w-xl overflow-hidden rounded-md bg-black">
-            <video
-              ref={video}
-              data-testid="edit-video-preview"
-              aria-label="Private source preview"
-              crossOrigin="anonymous"
-              muted
-              playsInline
-              preload="auto"
-              src={mediaUrl(initial.mediaId)}
-              className="h-44 w-full object-contain"
-              onLoadedMetadata={(e) => {
-                const player = e.currentTarget;
-                if (Number.isFinite(player.duration)) setDuration(Math.round(player.duration * 1000));
-                player.currentTime = (initial.recipe.trim.startMs ?? 0) / 1000;
-              }}
-              onTimeUpdate={(e) => setPosition(Math.round(e.currentTarget.currentTime * 1000))}
-              onError={() =>
-                setProblem(
-                  'The source preview could not play. Check Media information, then try opening the video again.',
-                )
-              }
-            />
-          </div>
-          <p className="text-xs text-muted">
-            Private source preview · sound off · {videoEditTime(position)}
-            {duration === null ? '' : ` / ${videoEditTime(duration)}`}
-          </p>
-          <fieldset disabled={saving} className="space-y-3">
-            <div className="flex flex-wrap items-end gap-2">
-              <Field label="Go to time" hint="m:ss.mmm or h:mm:ss.mmm">
-                <TextInput
-                  value={jump}
-                  onChange={(e) => setJump(e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter') return;
-                    e.preventDefault();
-                    const ms = parseVideoEditTime(jump);
-                    if (ms === null || (duration !== null && ms > duration))
-                      setProblem('Type a time inside the video, such as 1:23.500.');
-                    else {
-                      setProblem(null);
-                      seek(ms);
-                    }
-                  }}
-                />
-              </Field>
-              <Button
-                onClick={() => {
-                  const ms = parseVideoEditTime(jump);
-                  if (ms === null || (duration !== null && ms > duration))
-                    setProblem('Type a time inside the video, such as 1:23.500.');
-                  else {
-                    setProblem(null);
-                    seek(ms);
-                  }
+            {showSaved ? (
+              <video
+                ref={prepared}
+                data-testid="edit-video-prepared-preview"
+                aria-label="Private saved edit preview"
+                controls
+                muted
+                playsInline
+                preload="auto"
+                src={mediaUrl(kept.readyMediaId ?? initial.mediaId)}
+                onError={() =>
+                  setProblem('The saved preview could not play. Press Prepare again to rebuild it.')
+                }
+                className="h-44 w-full object-contain"
+              />
+            ) : (
+              <video
+                ref={video}
+                data-testid="edit-video-preview"
+                aria-label="Private source preview"
+                crossOrigin="anonymous"
+                muted
+                playsInline
+                preload="auto"
+                src={mediaUrl(initial.mediaId)}
+                className="h-44 w-full object-contain"
+                onLoadedMetadata={(e) => {
+                  const player = e.currentTarget;
+                  if (Number.isFinite(player.duration)) setDuration(Math.round(player.duration * 1000));
+                  player.currentTime = (kept.recipe.trim.startMs ?? 0) / 1000;
                 }}
-              >
-                Jump
+                onTimeUpdate={(e) => setPosition(Math.round(e.currentTarget.currentTime * 1000))}
+                onError={() =>
+                  setProblem(
+                    'The source preview could not play. Check Media information, then try opening the video again.',
+                  )
+                }
+              />
+            )}
+          </div>
+          {canPreviewSaved && (
+            <div className="flex gap-2" role="group" aria-label="Private preview file">
+              <Button aria-pressed={!showSaved} onClick={() => setSavedPreview(false)}>
+                Source preview
+              </Button>
+              <Button aria-pressed={showSaved} onClick={() => setSavedPreview(true)}>
+                Preview saved edits
               </Button>
               <Button
+                disabled={saving || dirty}
                 onClick={() => {
-                  const player = video.current;
-                  if (player) {
-                    if (player.paused)
-                      void player
-                        .play()
-                        .catch(() => setProblem('The preview could not start. Try opening the video again.'));
-                    else player.pause();
-                  }
+                  setSavedPreview(false);
+                  void save();
                 }}
               >
-                Play / pause preview
+                Prepare again
               </Button>
             </div>
-            <Waveform
-              analysis={analysis}
-              startMs={draft.trim.startMs ?? 0}
-              endMs={draft.trim.endMs ?? duration ?? analysis?.durationMs ?? 0}
-              playheadMs={position}
-            />
-            {analysisReading.result && !analysisReading.result.ok && (
-              <p role="alert" className="text-xs text-danger-fg">
-                {analysisReading.result.message}
-              </p>
+          )}
+          <p className="text-xs text-muted">
+            {showSaved ? (
+              'Preview of the last saved edits. Save draft changes to prepare another preview.'
+            ) : (
+              <>
+                Private source preview · sound off · {videoEditTime(position)}
+                {duration === null ? '' : ` / ${videoEditTime(duration)}`}
+              </>
             )}
-            {(analysis?.state === 'failed' || (analysisReading.result && !analysisReading.result.ok)) && (
-              <Button onClick={analysisReading.retry}>Retry analysis</Button>
+          </p>
+          <fieldset disabled={saving} className="space-y-3">
+            {!showSaved && (
+              <>
+                <div className="flex flex-wrap items-end gap-2">
+                  <Field label="Go to time" hint="m:ss.mmm or h:mm:ss.mmm">
+                    <TextInput
+                      value={jump}
+                      onChange={(e) => setJump(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        const ms = parseVideoEditTime(jump);
+                        if (ms === null || (duration !== null && ms > duration))
+                          setProblem('Type a time inside the video, such as 1:23.500.');
+                        else {
+                          setProblem(null);
+                          seek(ms);
+                        }
+                      }}
+                    />
+                  </Field>
+                  <Button
+                    onClick={() => {
+                      const ms = parseVideoEditTime(jump);
+                      if (ms === null || (duration !== null && ms > duration))
+                        setProblem('Type a time inside the video, such as 1:23.500.');
+                      else {
+                        setProblem(null);
+                        seek(ms);
+                      }
+                    }}
+                  >
+                    Jump
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      const player = video.current;
+                      if (player) {
+                        if (player.paused)
+                          void player
+                            .play()
+                            .catch(() =>
+                              setProblem('The preview could not start. Try opening the video again.'),
+                            );
+                        else player.pause();
+                      }
+                    }}
+                  >
+                    Play / pause preview
+                  </Button>
+                </div>
+                <Waveform
+                  analysis={analysis}
+                  startMs={draft.trim.startMs ?? 0}
+                  endMs={draft.trim.endMs ?? duration ?? analysis?.durationMs ?? 0}
+                  playheadMs={position}
+                />
+                {analysisReading.result && !analysisReading.result.ok && (
+                  <p role="alert" className="text-xs text-danger-fg">
+                    {analysisReading.result.message}
+                  </p>
+                )}
+                {(analysis?.state === 'failed' || (analysisReading.result && !analysisReading.result.ok)) && (
+                  <Button onClick={analysisReading.retry}>Retry analysis</Button>
+                )}
+                <Field label="Trim timeline">
+                  <Slider
+                    min={0}
+                    max={duration ?? 1}
+                    step={1}
+                    value={Math.min(position, duration ?? 1)}
+                    disabled={duration === null}
+                    className="w-full"
+                    format={videoEditTime}
+                    onChange={(e) => seek(Number(e.currentTarget.value))}
+                  />
+                </Field>
+              </>
             )}
-            <Field label="Trim timeline">
-              <Slider
-                min={0}
-                max={duration ?? 1}
-                step={1}
-                value={Math.min(position, duration ?? 1)}
-                disabled={duration === null}
-                className="w-full"
-                format={videoEditTime}
-                onChange={(e) => seek(Number(e.currentTarget.value))}
-              />
-            </Field>
             <div className="flex flex-wrap gap-2" role="group" aria-label="Video edit sections">
               {sections.map((s) => (
                 <Button key={s} aria-pressed={section === s} onClick={() => setSection(s)}>
@@ -478,6 +536,7 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
                     </div>
                   )}
                   <Button
+                    disabled={showSaved}
                     onClick={() => {
                       void chooseThumb();
                     }}

@@ -497,6 +497,8 @@ A press says **Applied on Main**, **No change on Main**, or why Main refused it.
 
 **Connected to Main** means it has Main's current show. **Not connected** leaves the last view visible while it tries to reconnect. Main and its audience screens keep running. Any displays assigned to the controller keep their last show too, even through a longer link loss; an explicit stop from Main still applies. Untick **Shared show view** on Main to remove the view; the show stays as it was. Sound stays on Main. Main's video inputs and other app windows are named as being on Main; pictures and videos use the copies on the second computer.
 
+The video editor’s **Preview saved edits** checks the prepared file privately once it is ready; **Source preview** returns to the original for source-time trimming. Saving draft changes prepares the next preview while idle. **Prepare again** rebuilds a copy that cannot play, keeping the same recipe and original.
+
 ### Browsing video frames, waveforms and scene suggestions
 
 In the library's **Media**, point at a video and move across its small preview to browse a silent strip of approximate frames. Tab to **Browse frames of …** for arrow keys, Home and End. The strip is made once while the show, stream and recording are idle. A failure offers **Retry preview** after the file and free space are checked.
