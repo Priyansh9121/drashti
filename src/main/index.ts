@@ -1,4 +1,5 @@
-import { importM3u, writeM3u, type M3uExportRow } from './playlists/m3u';
+import { fileProblem } from './plain-errors';
+import { importM3u, M3uError, writeM3u, type M3uExportRow } from './playlists/m3u';
 import { playlistPlayOptionsSchema } from '../shared/playlist-playback';
 import type { M3uResult, M3uNotTaken } from '../shared/m3u';
 import { itemsMadeBy } from '../shared/import-items';
@@ -6416,7 +6417,7 @@ function start(): void {
       };
       const importFiles = async (paths: string[]) => {
         const result = await imports.start(paths, mode === 'simple' ? SIMPLE_IMPORT : {});
-        if (!result.ok) throw new Error(result.message);
+        if (!result.ok) throw new M3uError(result.message);
         return importRepo.report(result.run.id)?.items ?? [];
       };
       for (const file of picked.filePaths.filter((path) => /\.m3u8?$/iu.test(path))) {
@@ -6437,7 +6438,7 @@ function start(): void {
                 return made;
               }
               const made = playlists.create(freeName(playlists, cutText(name, 180)), null, false);
-              if (!made) throw new Error('The playlist could not be made.');
+              if (!made) throw new M3uError('The playlist could not be made: try importing the file again.');
               const added = playlists.addItems(
                 made,
                 null,
@@ -6477,9 +6478,7 @@ function start(): void {
       playlistsChanged();
       return { ok: true, id, notTaken };
     } catch (error) {
-      return playlistFileFailure(
-        error instanceof Error ? error.message : 'The playlist file could not be imported.',
-      );
+      return playlistFileFailure(error instanceof M3uError ? error.message : fileProblem(error, 'read'));
     }
   });
   handle(IPC.playlists.exportM3u, async (e, playlistId, audio): Promise<M3uResult> => {
@@ -6551,9 +6550,7 @@ function start(): void {
       await fsPromises.writeFile(file, text, 'utf8');
       return { ok: true, id: null, notTaken: [] };
     } catch (error) {
-      return playlistFileFailure(
-        error instanceof Error ? error.message : 'The playlist file could not be exported.',
-      );
+      return playlistFileFailure(error instanceof M3uError ? error.message : fileProblem(error, 'write'));
     }
   });
 

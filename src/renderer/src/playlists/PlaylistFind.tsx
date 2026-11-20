@@ -14,8 +14,8 @@ export function useRowFind<T extends FindRow>(rows: readonly T[]) {
   const [query, setQuery] = useState('');
   const [position, setPosition] = useState(0);
   const matches = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase();
-    return q ? rows.filter((r) => r.words.toLocaleLowerCase().includes(q)) : [];
+    const q = query.trim().normalize('NFC').toLocaleLowerCase();
+    return q ? rows.filter((r) => r.words.normalize('NFC').toLocaleLowerCase().includes(q)) : [];
   }, [query, rows]);
   const index = matches.length ? position % matches.length : 0;
   return {

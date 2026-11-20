@@ -22,6 +22,7 @@ test('Find in 60 rows moves and marks matches without choosing a row or changing
     await win.evaluate(
       async ({ picture, sound }) => {
         const d = (globalThis as PageGlobals).drashti;
+        await d.media.rename(sound, 'Placeholder renamed track.wav');
         const list = await d.playlists.create('Placeholder find', null, false);
         if (!list.ok) throw new Error(list.message);
         await d.playlists.addItems(list.ids[0] ?? '', null, [
@@ -44,7 +45,11 @@ test('Find in 60 rows moves and marks matches without choosing a row or changing
     await expect(panel.getByTestId('playlist-item')).toHaveCount(60);
     await panel.getByTestId('playlist-item').first().click();
     const before = await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
-    const chosen = await panel.locator('[data-marked="true"]').count();
+    const chosenIds = () =>
+      panel
+        .locator('[data-marked="true"]')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-item-id')));
+    const chosen = await chosenIds();
     await panel.getByRole('button', { name: 'Find in playlist', exact: true }).click();
     const find = panel.getByRole('textbox', { name: 'Find in playlist', exact: true });
     await find.fill('Needle');
@@ -54,7 +59,7 @@ test('Find in 60 rows moves and marks matches without choosing a row or changing
     await expect(panel.locator('[data-found="true"]')).toContainText('37');
     await find.press('Shift+Enter');
     await expect(panel.getByTestId('playlist-find-count')).toHaveText('1 of 3');
-    expect(await panel.locator('[data-marked="true"]').count()).toBe(chosen);
+    expect(await chosenIds()).toEqual(chosen);
     const after = await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
     expect(after.rev).toBe(before.rev);
     expect(after.state.live).toEqual(before.state.live);
@@ -73,6 +78,39 @@ test('Find in 60 rows moves and marks matches without choosing a row or changing
       before.rev,
     );
     await expectNoSeriousA11yIssues(win, 'audio playlist Find');
+  } finally {
+    await app.close();
+  }
+});
+
+test('Find reads a folded presentation’s words beyond its first line without putting it up', async () => {
+  const { app } = await launchApp();
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      const doc = await d.library.newFromWords(
+        'Placeholder words',
+        'Placeholder first line\nPlaceholder deeper match',
+      );
+      const list = await d.playlists.create('Placeholder word find', null, false);
+      if (!doc.ok || !list.ok) throw new Error('Could not make the placeholder words');
+      await d.playlists.addItems(list.ids[0] ?? '', null, [{ kind: 'presentation', presentationId: doc.id }]);
+    });
+    await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder word find' }).click();
+    const panel = win.getByTestId('open-playlist');
+    await expect(panel.getByTestId('slide-thumb')).toHaveCount(1);
+    await panel.getByTestId('playlist-item').click();
+    await expect(panel.getByTestId('slide-thumb')).toHaveCount(0);
+    const before = await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
+    await panel.getByRole('button', { name: 'Find in playlist', exact: true }).click();
+    await panel.getByRole('textbox', { name: 'Find in playlist', exact: true }).fill('deeper match');
+    await expect(panel.getByTestId('playlist-find-count')).toHaveText('1 of 1');
+    await expect(panel.getByTestId('slide-thumb')).toHaveAttribute('data-found', 'true');
+    const after = await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
+    expect(after.state.layers).toEqual(before.state.layers);
+    expect(after.state.live).toEqual(before.state.live);
   } finally {
     await app.close();
   }
