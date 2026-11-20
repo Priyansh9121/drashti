@@ -56,14 +56,23 @@ export class ToneChain {
  * chain (null while it has none).
  */
 export function toneThrough(
-  _ctx: BaseAudioContext,
-  _source: AudioNode,
-  _level: AudioNode,
+  ctx: BaseAudioContext,
+  source: AudioNode,
+  level: AudioNode,
   chain: ToneChain | null,
-  _tone: Tone | null,
+  tone: Tone | null,
 ): ToneChain | null {
-  // Red (x47, slice 6a): still to be written.
-  return chain;
+  if (chain) {
+    chain.set(tone);
+    return chain;
+  }
+  if (!tone) return null;
+  const made = new ToneChain(ctx);
+  made.output.connect(level);
+  source.connect(made.input);
+  source.disconnect(level);
+  made.set(tone);
+  return made;
 }
 
 /** The two bands the tests' meter reads (Hz): a low one under the bass shelf, a high one over the treble shelf. */
@@ -71,13 +80,17 @@ export const METER_BANDS = { low: [40, 62], high: [7200, 8800] } as const;
 
 /** The loudest bin of a band of a spectrum (dB, rounded), -200 for none: for the meter's data-bands. */
 export function bandDb(
-  _spectrum: Float32Array,
-  _sampleRate: number,
-  _fftSize: number,
-  _band: readonly [number, number],
+  spectrum: Float32Array,
+  sampleRate: number,
+  fftSize: number,
+  band: readonly [number, number],
 ): number {
-  // Red (x47, slice 6a): still to be written.
-  return -200;
+  const binHz = sampleRate / fftSize;
+  let loudest = -Infinity;
+  const last = Math.min(spectrum.length - 1, Math.ceil(band[1] / binHz));
+  for (let i = Math.max(0, Math.floor(band[0] / binHz)); i <= last; i++)
+    loudest = Math.max(loudest, spectrum[i] ?? -Infinity);
+  return Number.isFinite(loudest) ? Math.round(loudest) : -200;
 }
 
 /** An analyser's two bands now, as the meter writes them: "low,high" in dB. */
